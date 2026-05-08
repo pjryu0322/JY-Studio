@@ -1,7 +1,7 @@
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatDynamicSlotDefinitionV1,
-  SingleChatDynamicSlotProposalHistoryV1,
+  SingleChatDynamicSlotProposalWireV1,
   SingleChatDynamicSlotValidationRejectionV1,
   SingleChatOrchestrationSlotDefinition,
   SingleChatOrchestrationSlotStatus,
@@ -181,11 +181,14 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     actorTypes: `${p}.flow.actorTypes`,
     permissionRelations: `${p}.flow.permissionRelations`,
     serviceFlow: `${p}.flow.serviceFlow`,
+    collaborationFlow: `${p}.flow.collaborationFlow`,
     externalIntegration: `${p}.flow.externalIntegration`,
     exceptionFlow: `${p}.flow.exceptionFlow`,
     operationsFlow: `${p}.flow.operationsFlow`,
     approvalFlow: `${p}.flow.approvalFlow`,
     userStateChange: `${p}.flow.userStateChange`,
+    automationLevel: `${p}.architecture.automationLevel`,
+    architecturePrototypeBoundary: `${p}.architecture.prototypeBoundary`,
     coreFeatures: `${p}.design.coreFeatures`,
     featurePriority: `${p}.design.featurePriority`,
     prototypeScope: `${p}.design.prototypeScope`,
@@ -294,6 +297,14 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       dependsOn: [k.actorTypes, k.purpose],
     },
     {
+      slotKey: k.collaborationFlow,
+      label: "협업·공동 편집",
+      ownerAgent: "service-designer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "동시 편집·검토 요청·역할 분담 등 다인 협업 경계.",
+      dependsOn: [k.purpose, k.serviceFlow],
+    },
+    {
       slotKey: k.externalIntegration,
       label: "외부 연동",
       ownerAgent: "service-designer",
@@ -332,6 +343,23 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "계정/세션/단계 상태 전이.",
       dependsOn: [k.serviceFlow],
+    },
+    // —— 아키텍처 관점(오케스트레이션·자동화 경계) ——
+    {
+      slotKey: k.automationLevel,
+      label: "자동화·AI 처리 수준",
+      ownerAgent: "solution-architect",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "실시간 vs 배치, AI 검증·수정 허용 범위, 사람 개입 지점.",
+      dependsOn: [k.purpose, k.serviceFlow],
+    },
+    {
+      slotKey: k.architecturePrototypeBoundary,
+      label: "초기 구현·프로토타입 경계",
+      ownerAgent: "solution-architect",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "업로드·연동·품질 검증 한도 등 MVP 대비 기술 경계.",
+      dependsOn: [k.mvpScope, k.automationLevel],
     },
     // —— AI 설계자 (solution-architect / task-reviewer) ——
     {
@@ -402,6 +430,14 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
 
   if (hasDesigner) {
     defs.push(
+      {
+        slotKey: `${p}.design.userInteractionMode`,
+        label: "사용자 상호작용 방식",
+        ownerAgent: "ui-designer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\n즉시 피드백 vs 배치 안내·알림 등 상호작용 모드.`,
+        dependsOn: [k.purpose],
+      },
       {
         slotKey: `${p}.design.uiToneAndStyle`,
         label: "UI 톤 & 스타일",
@@ -485,14 +521,15 @@ export function internalOwnerToLlmExternalRole(internalRaw: string): string {
   return "planner";
 }
 
-/** Bootstrap LLM에만 넘기는 Phase1 기획·핵심 흐름 슬롯(전체 카탈로그/dependsOn/딥 디자인 제외). */
+/** Bootstrap LLM에만 넘기는 Phase1 슬롯 — planner / analyst / architect / (designer) 균형 */
 const BOOTSTRAP_PHASE1_SLOT_SUFFIXES = [
   ".planning.servicePurpose",
-  ".planning.problem",
-  ".planning.coreUsers",
-  ".planning.expectedOutcome",
   ".planning.coreValue",
-  ".flow.serviceFlow",
+  ".flow.collaborationFlow",
+  ".flow.approvalFlow",
+  ".architecture.automationLevel",
+  ".architecture.prototypeBoundary",
+  ".design.userInteractionMode",
 ] as const;
 
 export function isBootstrapPhase1CatalogSlotKey(slotKey: string): boolean {
@@ -573,7 +610,7 @@ export type CompactBootstrapSlotCatalogRow = {
   readonly slotId: string;
   readonly label: string;
   readonly ownerAgent: string;
-  readonly group: "planning" | "flow";
+  readonly group: "planning" | "flow" | "architecture" | "design";
 };
 
 export function slotKeyToCompactSlotId(slotKey: string): string {
@@ -592,7 +629,13 @@ export function buildCompactBootstrapSlotCatalogForLlm(
       slotId: slotKeyToCompactSlotId(d.slotKey),
       label: d.label,
       ownerAgent: internalOwnerToLlmExternalRole(d.ownerAgent),
-      group: d.slotKey.includes(".flow.") ? ("flow" as const) : ("planning" as const),
+      group: d.slotKey.includes(".architecture.")
+        ? ("architecture" as const)
+        : d.slotKey.includes(".flow.")
+          ? ("flow" as const)
+          : d.slotKey.includes(".design.")
+            ? ("design" as const)
+            : ("planning" as const),
     }));
 }
 
@@ -619,15 +662,69 @@ export function normalizeDynamicOwnerToInternalOwner(ownerRaw: string): string {
   return o;
 }
 
+/** planner-route 등에서 받은 제안을 검증 입력용으로 한 번만 정규화·복사한다. */
+export function cloneDynamicSlotProposalsFromPlannerRoute(
+  slots: readonly SingleChatDynamicSlotProposalWireV1[] | null | undefined
+): SingleChatDynamicSlotProposalWireV1[] {
+  if (!slots?.length) return [];
+  return slots.map((s) => ({
+    slotKey: String(s.slotKey ?? "").trim(),
+    title: String(s.title ?? "").trim(),
+    description: String(s.description ?? "").trim(),
+    ownerAgent: String(s.ownerAgent ?? "").trim().toLowerCase(),
+    reason: typeof s.reason === "string" ? s.reason.slice(0, 200) : s.reason === null ? null : null,
+    priority: s.priority ?? null,
+    proposalConfidence:
+      s.proposalConfidence !== null && s.proposalConfidence !== undefined && Number.isFinite(Number(s.proposalConfidence))
+        ? Math.min(1, Math.max(0, Number(s.proposalConfidence)))
+        : null,
+  }));
+}
+
+export type ValidateDynamicProposedSlotsResult = Readonly<{
+  accepted: SingleChatDynamicSlotDefinitionV1[];
+  rejected: SingleChatDynamicSlotValidationRejectionV1[];
+}>;
+
+/** 채택된 동적 슬롯마다 `state.slots`에 empty 행을 보장한다(merge 패치는 기존 키만 갱신). */
+export function ensureDynamicSlotRowsInState(params: {
+  readonly state: RequirementsSingleChatOrchestrationStateV1;
+  readonly accepted: readonly SingleChatDynamicSlotDefinitionV1[];
+  readonly nowIso: string;
+  readonly stageGroup: string;
+}): RequirementsSingleChatOrchestrationStateV1 {
+  if (!params.accepted.length) return params.state;
+  const nextSlots = { ...params.state.slots };
+  let changed = false;
+  for (const d of params.accepted) {
+    const key = String(d.slotKey ?? "").trim();
+    if (!key || nextSlots[key]) continue;
+    nextSlots[key] = {
+      slotKey: key,
+      ownerAgent: String(d.ownerAgent ?? "").trim(),
+      stageGroup: params.stageGroup,
+      label: String(d.title ?? "").trim().slice(0, 80) || key,
+      status: "empty",
+      value: "",
+      confidence: 0,
+      updatedAt: params.nowIso,
+      dependsOn: [],
+      derivedFrom: "dynamic-proposal-orchestration",
+      staleReason: null,
+      revision: 0,
+    };
+    changed = true;
+  }
+  if (!changed) return params.state;
+  return { ...params.state, slots: nextSlots, updatedAt: params.nowIso };
+}
+
 export function validateDynamicProposedSlots(input: {
   readonly nowIso: string;
   readonly baseDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly existingDynamicSlots: Record<string, SingleChatDynamicSlotDefinitionV1> | null | undefined;
-  readonly suggestedSlots: readonly Omit<SingleChatDynamicSlotDefinitionV1, "proposedAt">[];
-}): {
-  accepted: SingleChatDynamicSlotDefinitionV1[];
-  rejected: SingleChatDynamicSlotValidationRejectionV1[];
-} {
+  readonly suggestedSlots: readonly SingleChatDynamicSlotProposalWireV1[];
+}): ValidateDynamicProposedSlotsResult {
   const baseKeys = new Set(input.baseDefinitions.map((d) => d.slotKey));
   const existingKeys = new Set(Object.keys(input.existingDynamicSlots ?? {}));
   const accepted: SingleChatDynamicSlotDefinitionV1[] = [];
@@ -678,11 +775,13 @@ export function validateDynamicProposedSlots(input: {
       reject(slotKey, "ownerAgent_not_allowed");
       continue;
     }
+    const internalOwner = normalizeDynamicOwnerToInternalOwner(ownerAgent);
     accepted.push({
       slotKey,
       title,
       description,
-      ownerAgent,
+      ownerAgent: internalOwner,
+      externalProposedOwner: ownerAgent,
       reason: typeof s.reason === "string" ? s.reason.slice(0, 200) : null,
       priority: s.priority ?? null,
       proposalConfidence:

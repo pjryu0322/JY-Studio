@@ -31,6 +31,8 @@ describe("hybrid slot orchestration", () => {
         },
       ],
     });
+    expect(dyn.accepted[0]?.ownerAgent).toBe("security-reviewer");
+    expect(dyn.accepted[0]?.externalProposedOwner).toBe("security");
     const defs = buildDynamicServicePlanningSlotDefinitions({
       projectName: "회의록 서비스",
       projectDescription: "회의 내용을 자동으로 정리하고 공유합니다.",

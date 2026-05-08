@@ -13,6 +13,13 @@ import {
   stripJsonMarkdownFences,
 } from "@/lib/requirements/ideationDeliverables";
 import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
+import {
+  analyzeBootstrapQuestionQuality,
+  buildBootstrapQuestionRetryUserPayload,
+  filterBootstrapInterviewSuggestions,
+  repairBootstrapQuestionFromContext,
+} from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import { formatBootstrapAxisRotationBlock } from "@/lib/requirements/requirementsBootstrapOrchestrationHints";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 
@@ -32,6 +39,20 @@ export type RequirementsFacilitatorOpenAiResult =
     }
   | { ok: false; code: string; message: string };
 
+export type OrchestrationBootstrapInitializerWire = Readonly<{
+  detectedDomain?: string | null;
+  missingInformation?: string[];
+  recommendedFocus?: string | null;
+  interactionMode?: string | null;
+  initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+  primaryDecisionAxis?: string | null;
+  selectedQuestionAxis?: string | null;
+  reasoningContributors?: readonly string[];
+  riskSignals?: readonly string[];
+  /** 사용자 대면 질문 스타일 태그(내부 메타; 하드코딩 질문 아님) */
+  userFacingQuestionStyle?: string | null;
+}>;
+
 export type RequirementsSingleChatBootstrapSuggestedSlot = {
   slotKey: string;
   title: string;
@@ -42,6 +63,8 @@ export type RequirementsSingleChatBootstrapSuggestedSlot = {
   proposalConfidence?: number | null;
 };
 
+export type BootstrapQuestionQualityStatus = "pass" | "retry_passed" | "retry_failed_repaired";
+
 export type RequirementsSingleChatBootstrapOpenAIResult =
   | {
       ok: true;
@@ -49,17 +72,17 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       suggestions: string[];
       allowCustomInput: boolean;
       suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[];
-      orchestrationBootstrap?: {
-        detectedDomain?: string | null;
-        missingInformation?: string[];
-        recommendedFocus?: string | null;
-        interactionMode?: string | null;
-        initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
-      };
+      orchestrationBootstrap?: OrchestrationBootstrapInitializerWire;
+      suggestedSlotReasons?: ReadonlyArray<{ slotKey: string; reason: string }>;
       model: string;
       promptText: string;
       provider: string;
       calledAt: string;
+      questionQualityStatus: BootstrapQuestionQualityStatus;
+      questionQualityIssues: readonly string[];
+      questionQualityRetryCount: number;
+      finalQuestionSource: "llm" | "llm_retry" | "repaired_context";
+      suggestionQualityIssues?: readonly string[];
     }
   | {
       ok: false;
@@ -72,6 +95,113 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       calledAt?: string;
       responseText?: string;
     };
+
+function extractSingleChatBootstrapFromJson(j: Record<string, unknown>): {
+  question: string;
+  suggestions: string[];
+  allowCustomInput: boolean;
+  suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[];
+  orchestrationBootstrap?: OrchestrationBootstrapInitializerWire;
+  suggestedSlotReasons: ReadonlyArray<{ slotKey: string; reason: string }>;
+} {
+  const question = String(
+    j.question ?? j.interviewQuestion ?? j.questionText ?? j.q ?? j.text ?? j.reply ?? ""
+  ).trim();
+  let suggestions: string[] = [];
+  if (Array.isArray(j.suggestions)) {
+    suggestions = normalizeLlmInterviewSuggestions(j.suggestions.map((x) => String(x ?? "")));
+  }
+  let allowCustomInput = true;
+  if (j.allowCustomInput === false) allowCustomInput = false;
+  let suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[] = [];
+  if (Array.isArray(j.suggestedSlots)) {
+    suggestedSlots = (j.suggestedSlots as unknown[])
+      .map((x): RequirementsSingleChatBootstrapSuggestedSlot | null => {
+        if (!x || typeof x !== "object") return null;
+        const r = x as Record<string, unknown>;
+        const slotKey = String(r.slotKey ?? "").trim();
+        const title = String(r.title ?? "").trim();
+        const description = String(r.description ?? "").trim();
+        const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
+        if (!slotKey || !title || !description || !ownerAgent) return null;
+        const owner =
+          ownerAgent === "planner" ||
+          ownerAgent === "analyst" ||
+          ownerAgent === "architect" ||
+          ownerAgent === "designer" ||
+          ownerAgent === "reviewer" ||
+          ownerAgent === "security"
+            ? (ownerAgent as RequirementsSingleChatBootstrapSuggestedSlot["ownerAgent"])
+            : null;
+        if (!owner) return null;
+        const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
+        const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
+        const priority =
+          priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low" ? (priorityRaw as any) : null;
+        const proposalConfidence =
+          r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
+            ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
+            : null;
+        return { slotKey, title, description, ownerAgent: owner, reason, priority, proposalConfidence };
+      })
+      .filter((x): x is RequirementsSingleChatBootstrapSuggestedSlot => x !== null);
+  }
+  const suggestedSlotReasons = suggestedSlots
+    .filter((s) => typeof s.reason === "string" && String(s.reason).trim())
+    .map((s) => ({ slotKey: s.slotKey, reason: String(s.reason).trim().slice(0, 220) }));
+  let orchestrationBootstrap: OrchestrationBootstrapInitializerWire | undefined = undefined;
+  if (j.orchestrationBootstrap && typeof j.orchestrationBootstrap === "object") {
+    const ob = j.orchestrationBootstrap as Record<string, unknown>;
+    const detectedDomain = typeof ob.detectedDomain === "string" ? ob.detectedDomain.slice(0, 80) : null;
+    const recommendedFocus = typeof ob.recommendedFocus === "string" ? ob.recommendedFocus.slice(0, 120) : null;
+    const interactionMode = typeof ob.interactionMode === "string" ? ob.interactionMode.slice(0, 80) : null;
+    const missingInformation = Array.isArray(ob.missingInformation)
+      ? ob.missingInformation.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10)
+      : [];
+    const initialOwnershipHints = Array.isArray(ob.initialOwnershipHints)
+      ? ob.initialOwnershipHints
+          .map((x) => {
+            if (!x || typeof x !== "object") return null;
+            const r = x as Record<string, unknown>;
+            const slotKey = String(r.slotKey ?? r.slotId ?? "").trim();
+            const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
+            if (!slotKey || !ownerAgent) return null;
+            return { slotKey: slotKey.slice(0, 120), ownerAgent: ownerAgent.slice(0, 60) };
+          })
+          .filter((x): x is { slotKey: string; ownerAgent: string } => x !== null)
+          .slice(0, 12)
+      : [];
+    const primaryDecisionAxis =
+      typeof ob.primaryDecisionAxis === "string" ? ob.primaryDecisionAxis.trim().slice(0, 80) : null;
+    const selectedQuestionAxis =
+      typeof ob.selectedQuestionAxis === "string" ? ob.selectedQuestionAxis.trim().slice(0, 80) : null;
+    const contribAllowed = new Set(["planner", "analyst", "architect", "designer", "reviewer", "security"]);
+    const reasoningContributors = Array.isArray(ob.reasoningContributors)
+      ? ob.reasoningContributors
+          .map((x) => String(x ?? "").trim().toLowerCase())
+          .filter((x) => contribAllowed.has(x))
+          .slice(0, 8)
+      : [];
+    const riskSignals = Array.isArray(ob.riskSignals)
+      ? ob.riskSignals.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12)
+      : [];
+    const userFacingQuestionStyle =
+      typeof ob.userFacingQuestionStyle === "string" ? ob.userFacingQuestionStyle.trim().slice(0, 80) : null;
+    orchestrationBootstrap = {
+      detectedDomain,
+      recommendedFocus,
+      ...(interactionMode ? { interactionMode } : {}),
+      ...(missingInformation.length ? { missingInformation } : {}),
+      ...(initialOwnershipHints.length ? { initialOwnershipHints } : {}),
+      ...(primaryDecisionAxis ? { primaryDecisionAxis } : {}),
+      ...(selectedQuestionAxis ? { selectedQuestionAxis } : {}),
+      ...(reasoningContributors.length ? { reasoningContributors } : {}),
+      ...(riskSignals.length ? { riskSignals } : {}),
+      ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
+    };
+  }
+  return { question, suggestions, allowCustomInput, suggestedSlots, orchestrationBootstrap, suggestedSlotReasons };
+}
 
 function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
   const s = style === "brief" || style === "detailed" ? style : "standard";
@@ -344,8 +474,8 @@ IMPORTANT:
 }
 
 /**
- * SingleChat bootstrap(단일 호출): 첫 질문 + suggestion chips + dynamic slot proposal.
- * - bootstrap에서는 절대 LLM을 2회 호출하지 않는다.
+ * SingleChat bootstrap: 첫 질문 + suggestion chips + dynamic slot proposal.
+ * 질문 품질 미달 시 최대 1회 재시도 후, 필요하면 프로젝트 맥락 기반 보정 질문으로 대체한다.
  */
 export async function runRequirementsSingleChatBootstrapOpenAI(input: {
   projectName: string;
@@ -378,36 +508,85 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
     ? `${String(input.orchestrationBootstrapInstructions).trim()}\n\n`
     : "";
 
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}[BOOTSTRAP — orchestration initializer]
-역할: 상태 초기 추론(detectedDomain·missingInformation·recommendedFocus·interactionMode)·workflow 리스크 감지·dyn 슬롯 0~3(필요 시)·첫 질문 1개(question).
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}[BOOTSTRAP — multi-agent orchestration initializer]
+역할: planner/analyst/architect/(designer) 관점을 혼합해 상태 초기 추론·dyn 슬롯(필요 시)·첫 질문 1개(question)를 산출한다.
 참여 AI 블록의 역할 문자열은 외부 6종(planner/analyst/architect/designer/reviewer/security)만 사용한다.
 
+[bootstrap reasoning mode]
+질문 생성 전에 내부적으로 planner·analyst·architect 관점을 모두 검토한 뒤, 프로젝트에서 가장 중요한 orchestration decision 축 하나를 고른다.
+question은 단순 정보 수집이 아니라 현재 프로젝트의 핵심 설계 분기를 드러내야 한다.
+
+question 선택 우선순위(내부, 단일 축만 출력):
+1 workflow branching 2 collaboration boundary 3 approval responsibility 4 automation level 5 quality validation 6 prototype boundary 7 editing authority 8 realtime vs batch — 동일 서비스 목적 재질문 금지.
+
 질문 정책(orchestration-first):
-- 프로젝트 설명·이름·유형에 이미 드러난 사실(예: 이미 서술된 핵심 문제·타깃)은 되물리지 말 것.
-- 공백은 협업·검토/수정·승인·책임 경계·품질 검증·분기 흐름처럼 “다음 설계 판단”에 필요한 정보만 묻는다.
+- [phase1_slot_catalog]의 label 문자열을 question에 그대로 넣지 말 것.
+- 한 질문에는 하나의 판단축만(물음표 1개·한 문장).
+- 프로젝트 설명에 이미 적힌 사실을 되묻지 말 것.
+- question에는 도메인 실행 단어 최소 1개: 회의록·녹취·화자·요약·검토·수정·확정·자동화·실시간·배치·협업·산출물 중 하나(프로젝트 설명에 없으면 산출물·흐름을 자연어로 특정).
 
-suggestedSlots: base로 커버되는 phase1 충분하면 []. 정말 필요할 때만 dyn_ 0~3. base 슬롯 제거/변경 금지.
-dyn 규칙: slotKey=dyn_* , ownerAgent ∈ {planner,analyst,architect,designer,reviewer,security}, title≤40자, description≤140자, reason 한 줄, priority, proposalConfidence 0~1.
+architect 관점: 자동화·품질·수정 허용·처리 속도·업로드·연동 한도 등 분기를 후보에 포함한다(단, question에는 이런 내부 라벨을 그대로 넣지 말 것).
 
-JSON 스키마(마크다운·코드펜스 금지):
+[question language policy]
+- question은 사용자 업무 대화체로만 작성한다. 문서/SI 요구사항 인터뷰·정책서 문체 금지.
+- primaryDecisionAxis 등 내부 축 이름·영문 축 id·승인 책임·자동화 수준·prototype boundary 같은 오케스트레이션 용어를 question에 쓰지 말 것. 축은 orchestrationBootstrap 메타에만 둔다.
+- 실제로 일이 돌아가는 그림: 누가 확인/수정하는지, 어떤 순서로 진행되는지, 어디까지 자동인지, 누가 같이 볼지.
+- “~의 책임은 누구에게 있나요?” 류 딱딱한 질문보다, “누가 최종 확인하나요?”, “참석자도 같이 고칠 수 있어야 하나요?” 같은 말투.
+
+[orchestration axis → 사용자 언어 (정책 예시 — 하드코딩 질문 테이블 아님)]
+- approval-responsibility → 누가 최종 확인·확정하는지
+- workflow-branching → 어떤 순서/분기로 진행되는지
+- automation-level → AI·시스템이 어디까지 자동으로 처리하는지
+- collaboration-boundary → 누가 함께 검토·편집하는지
+- quality-validation → 사람이 직접 볼지·자동으로 걸러낼지
+- prototype-boundary → 첫 버전에서 어디까지 만들지
+
+[suggestions policy]
+- 프로젝트 매니저·개발 팀·팀 리더 같은 조직 역할 라벨 금지.
+- 실제 행동·흐름 선택지: 작성자만 확정 / 참석자와 함께 수정 후 확정 / AI 초안 후 사람 검토 / 바로 사용 등.
+
+suggestions: 사용자가 바로 탭할 구체 선택지. 메타 문구 금지.
+
+suggestedSlots:
+- 기본 phase1 슬롯만으로 orchestration 리스크를 커버하면 [].
+- 부족할 때만 dyn_ 0~3. 각 항목에 reason 필수: 어떤 리스크·분기를 해결하는지 orchestration 관점에서 한 줄.
+dyn 규칙: slotKey=dyn_* , ownerAgent ∈ {planner,analyst,architect,designer,reviewer,security}, title≤40자, description≤140자, priority, proposalConfidence 0~1.
+
+orchestrationBootstrap에 반드시 포함:
+- reasoningContributors: 위 관점 검토에 실제로 참여한 외부 역할 배열(예: ["planner","analyst","architect"])
+- primaryDecisionAxis: 이번 질문의 단일 축 식별자(예: automation-level, collaboration-boundary) — 내부 전용
+- selectedQuestionAxis: primary와 동일해도 됨
+- userFacingQuestionStyle: 사용자에게 보이는 질문 톤 태그(예: workflow-confirmation, automation-scope) — 질문 하드코딩 아님
+- riskSignals: 짧은 토큰 배열(예: multi-user-collaboration)
+
+JSON 스키마(마크다운·코드펜스 금지 — 예시 문장은 도메인 특정 금지, 플레이스홀더만):
 {
-  "question": "한국어 한 문장",
-  "suggestions": ["…","…","…"],
+  "question": "다음 설계 판단에 필요한 한국어 질문 한 문장",
+  "suggestions": ["작성자만 최종 확정", "참석자와 함께 수정 후 확정"],
   "allowCustomInput": true,
   "orchestrationBootstrap": {
     "detectedDomain": "…",
     "missingInformation": ["…"],
     "recommendedFocus": "…",
     "interactionMode": "collaborative-review|auto-approve|mixed|unknown",
-    "initialOwnershipHints": [{ "slotId": "planning.servicePurpose", "ownerAgent": "planner" }]
+    "initialOwnershipHints": [{ "slotId": "planning.servicePurpose", "ownerAgent": "planner" }],
+    "primaryDecisionAxis": "workflow-branching",
+    "selectedQuestionAxis": "workflow-branching",
+    "userFacingQuestionStyle": "flow-branch",
+    "reasoningContributors": ["planner", "analyst", "architect"],
+    "riskSignals": ["approval-boundary"]
   },
   "suggestedSlots": []
 }`;
+
+  const axisBlock = formatBootstrapAxisRotationBlock({ projectName: pn, projectDescription: pd });
 
   const user = `[project]
 name: ${pn}
 type: ${pt}
 description: ${pd.slice(0, 1400)}
+
+${axisBlock}
 
 [phase1_slot_catalog]
 ${baseCatalog.slice(0, 6000)}
@@ -454,98 +633,12 @@ ${baseCatalog.slice(0, 6000)}
     };
   }
 
-  let question = "";
-  let suggestions: string[] = [];
-  let allowCustomInput = true;
-  let suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[] = [];
-  let orchestrationBootstrap:
-    | {
-        detectedDomain?: string | null;
-        missingInformation?: string[];
-        recommendedFocus?: string | null;
-        interactionMode?: string | null;
-        initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
-      }
-    | undefined = undefined;
+  let assistantRaw: string;
+  let payload: ReturnType<typeof extractSingleChatBootstrapFromJson>;
   try {
-    const raw = stripJsonMarkdownFences(String(text).trim());
-    const j = JSON.parse(raw) as Record<string, unknown>;
-    // 모델이 스키마를 약간 어겨도 최대한 복구한다.
-    // (단, 완전 무관한 텍스트를 억지로 question으로 쓰지는 않는다 — 비어 있으면 상위에서 fallback 처리)
-    question = String(
-      j.question ??
-        j.interviewQuestion ??
-        j.questionText ??
-        j.q ??
-        j.text ??
-        j.reply ??
-        ""
-    ).trim();
-    if (Array.isArray(j.suggestions)) {
-      suggestions = normalizeLlmInterviewSuggestions(j.suggestions.map((x) => String(x ?? "")));
-    }
-    if (j.allowCustomInput === false) allowCustomInput = false;
-    if (Array.isArray(j.suggestedSlots)) {
-      suggestedSlots = (j.suggestedSlots as unknown[])
-        .map((x): RequirementsSingleChatBootstrapSuggestedSlot | null => {
-          if (!x || typeof x !== "object") return null;
-          const r = x as Record<string, unknown>;
-          const slotKey = String(r.slotKey ?? "").trim();
-          const title = String(r.title ?? "").trim();
-          const description = String(r.description ?? "").trim();
-          const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
-          if (!slotKey || !title || !description || !ownerAgent) return null;
-          const owner =
-            ownerAgent === "planner" ||
-            ownerAgent === "analyst" ||
-            ownerAgent === "architect" ||
-            ownerAgent === "designer" ||
-            ownerAgent === "reviewer" ||
-            ownerAgent === "security"
-              ? (ownerAgent as RequirementsSingleChatBootstrapSuggestedSlot["ownerAgent"])
-              : null;
-          if (!owner) return null;
-          const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
-          const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
-          const priority =
-            priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low" ? (priorityRaw as any) : null;
-          const proposalConfidence =
-            r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
-              ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
-              : null;
-          return { slotKey, title, description, ownerAgent: owner, reason, priority, proposalConfidence };
-        })
-        .filter((x): x is RequirementsSingleChatBootstrapSuggestedSlot => x !== null);
-    }
-    if (j.orchestrationBootstrap && typeof j.orchestrationBootstrap === "object") {
-      const ob = j.orchestrationBootstrap as Record<string, unknown>;
-      const detectedDomain = typeof ob.detectedDomain === "string" ? ob.detectedDomain.slice(0, 80) : null;
-      const recommendedFocus = typeof ob.recommendedFocus === "string" ? ob.recommendedFocus.slice(0, 120) : null;
-      const interactionMode = typeof ob.interactionMode === "string" ? ob.interactionMode.slice(0, 80) : null;
-      const missingInformation = Array.isArray(ob.missingInformation)
-        ? ob.missingInformation.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10)
-        : [];
-      const initialOwnershipHints = Array.isArray(ob.initialOwnershipHints)
-        ? ob.initialOwnershipHints
-            .map((x) => {
-              if (!x || typeof x !== "object") return null;
-              const r = x as Record<string, unknown>;
-              const slotKey = String(r.slotKey ?? r.slotId ?? "").trim();
-              const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
-              if (!slotKey || !ownerAgent) return null;
-              return { slotKey: slotKey.slice(0, 120), ownerAgent: ownerAgent.slice(0, 60) };
-            })
-            .filter((x): x is { slotKey: string; ownerAgent: string } => x !== null)
-            .slice(0, 12)
-        : [];
-      orchestrationBootstrap = {
-        detectedDomain,
-        recommendedFocus,
-        ...(interactionMode ? { interactionMode } : {}),
-        ...(missingInformation.length ? { missingInformation } : {}),
-        ...(initialOwnershipHints.length ? { initialOwnershipHints } : {}),
-      };
-    }
+    assistantRaw = stripJsonMarkdownFences(String(text).trim());
+    const j = JSON.parse(assistantRaw) as Record<string, unknown>;
+    payload = extractSingleChatBootstrapFromJson(j);
   } catch {
     return {
       ok: false,
@@ -559,7 +652,7 @@ ${baseCatalog.slice(0, 6000)}
     };
   }
 
-  if (!question) {
+  if (!payload.question) {
     return {
       ok: false,
       code: "EMPTY",
@@ -572,17 +665,101 @@ ${baseCatalog.slice(0, 6000)}
     };
   }
 
+  let promptTextOut = promptText;
+  let questionQualityRetryCount = 0;
+  let questionQualityStatus: BootstrapQuestionQualityStatus;
+  let questionQualityIssues: string[] = [];
+  let finalQuestionSource: "llm" | "llm_retry" | "repaired_context" = "llm";
+
+  const q0 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
+  if (q0.ok) {
+    questionQualityStatus = "pass";
+    questionQualityIssues = [];
+  } else {
+    const firstIssues = q0.issues.map(String);
+    questionQualityRetryCount = 1;
+    const retryUser = buildBootstrapQuestionRetryUserPayload({
+      issues: q0.issues,
+      rejectedQuestion: payload.question,
+    });
+    promptTextOut = `${promptText}\n\n--- bootstrap_question_retry ---\n${retryUser}`;
+
+    const res2 = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+        { role: "assistant", content: assistantRaw },
+        { role: "user", content: retryUser },
+      ],
+      temperature: 0.2,
+      maxTokens: 520,
+      responseFormatJsonObject: true,
+    });
+
+    if (res2.ok && res2.text) {
+      try {
+        const raw2 = stripJsonMarkdownFences(String(res2.text).trim());
+        const j2 = JSON.parse(raw2) as Record<string, unknown>;
+        const p2 = extractSingleChatBootstrapFromJson(j2);
+        if (p2.question) {
+          assistantRaw = raw2;
+          payload = {
+            ...p2,
+            orchestrationBootstrap: {
+              ...(payload.orchestrationBootstrap ?? {}),
+              ...(p2.orchestrationBootstrap ?? {}),
+            },
+          };
+        }
+      } catch {
+        /* keep first payload */
+      }
+    }
+
+    const q1 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
+    if (q1.ok) {
+      questionQualityStatus = "retry_passed";
+      questionQualityIssues = firstIssues;
+      finalQuestionSource = "llm_retry";
+    } else {
+      payload = {
+        ...payload,
+        question: repairBootstrapQuestionFromContext({
+          projectName: pn,
+          projectDescription: pd,
+          orchestrationBootstrap: payload.orchestrationBootstrap ?? null,
+        }),
+      };
+      questionQualityStatus = "retry_failed_repaired";
+      questionQualityIssues = [...new Set([...firstIssues, ...q1.issues.map(String)])];
+      finalQuestionSource = "repaired_context";
+    }
+  }
+
+  const sugPack = filterBootstrapInterviewSuggestions({
+    suggestions: payload.suggestions,
+    question: payload.question,
+  });
+
   return {
     ok: true,
-    question,
-    suggestions,
-    allowCustomInput,
-    suggestedSlots,
-    ...(orchestrationBootstrap ? { orchestrationBootstrap } : {}),
+    question: payload.question,
+    suggestions: [...sugPack.suggestions],
+    allowCustomInput: payload.allowCustomInput,
+    suggestedSlots: payload.suggestedSlots,
+    ...(payload.orchestrationBootstrap ? { orchestrationBootstrap: payload.orchestrationBootstrap } : {}),
+    ...(payload.suggestedSlotReasons.length ? { suggestedSlotReasons: [...payload.suggestedSlotReasons] } : {}),
     model,
-    promptText,
+    promptText: promptTextOut,
     provider: "openai",
     calledAt,
+    questionQualityStatus,
+    questionQualityIssues,
+    questionQualityRetryCount,
+    finalQuestionSource,
+    ...(sugPack.issues.length ? { suggestionQualityIssues: sugPack.issues } : {}),
   };
 }
 

@@ -190,6 +190,72 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(r.slotExpansionPhase === 1 || r.slotExpansionPhase === 2 || r.slotExpansionPhase === 3
       ? { slotExpansionPhase: r.slotExpansionPhase }
       : {}),
+    ...(typeof r.questionQualityStatus === "string" &&
+    (r.questionQualityStatus === "pass" ||
+      r.questionQualityStatus === "retry_passed" ||
+      r.questionQualityStatus === "retry_failed_repaired")
+      ? { questionQualityStatus: r.questionQualityStatus }
+      : {}),
+    ...(Array.isArray(r.questionQualityIssues)
+      ? {
+          questionQualityIssues: r.questionQualityIssues.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24),
+        }
+      : {}),
+    ...(typeof r.questionQualityRetryCount === "number" && Number.isFinite(r.questionQualityRetryCount)
+      ? { questionQualityRetryCount: Math.max(0, Math.min(3, Math.floor(r.questionQualityRetryCount))) }
+      : {}),
+    ...(typeof r.finalQuestionSource === "string" &&
+    (r.finalQuestionSource === "llm" || r.finalQuestionSource === "llm_retry" || r.finalQuestionSource === "repaired_context")
+      ? { finalQuestionSource: r.finalQuestionSource }
+      : {}),
+    ...(Array.isArray(r.suggestionQualityIssues)
+      ? {
+          suggestionQualityIssues: r.suggestionQualityIssues.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24),
+        }
+      : {}),
+    ...(typeof r.primaryDecisionAxis === "string" && r.primaryDecisionAxis.trim()
+      ? { primaryDecisionAxis: r.primaryDecisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.selectedQuestionAxis === "string" && r.selectedQuestionAxis.trim()
+      ? { selectedQuestionAxis: r.selectedQuestionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(Array.isArray(r.reasoningContributors)
+      ? {
+          reasoningContributors: r.reasoningContributors
+            .map((x) => String(x ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 12),
+        }
+      : {}),
+    ...(Array.isArray(r.riskSignals)
+      ? {
+          riskSignals: r.riskSignals
+            .map((x) => String(x ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 16),
+        }
+      : {}),
+    ...(Array.isArray(r.suggestedSlotReasons)
+      ? {
+          suggestedSlotReasons: r.suggestedSlotReasons
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const slotKey = String(o.slotKey ?? "").trim();
+              const reason = String(o.reason ?? "").trim();
+              if (!slotKey || !reason) return null;
+              return { slotKey: slotKey.slice(0, 120), reason: reason.slice(0, 240) };
+            })
+            .filter(Boolean) as Array<{ slotKey: string; reason: string }>,
+        }
+      : {}),
+    ...(typeof r.internalAxis === "string" && r.internalAxis.trim()
+      ? { internalAxis: r.internalAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.userFacingQuestionStyle === "string" && r.userFacingQuestionStyle.trim()
+      ? { userFacingQuestionStyle: r.userFacingQuestionStyle.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.userLanguageTransformApplied === "boolean" ? { userLanguageTransformApplied: r.userLanguageTransformApplied } : {}),
   };
 }
 
@@ -289,6 +355,16 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly bootstrapPhase?: 1 | 2 | 3;
   readonly compactCatalogMode?: boolean;
   readonly slotExpansionPhase?: 1 | 2 | 3;
+  readonly questionQualityStatus?: "pass" | "retry_passed" | "retry_failed_repaired";
+  readonly questionQualityIssues?: readonly string[];
+  readonly questionQualityRetryCount?: number;
+  readonly finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+  readonly suggestionQualityIssues?: readonly string[];
+  readonly primaryDecisionAxis?: string | null;
+  readonly selectedQuestionAxis?: string | null;
+  readonly reasoningContributors?: readonly string[];
+  readonly riskSignals?: readonly string[];
+  readonly suggestedSlotReasons?: ReadonlyArray<{ slotKey: string; reason: string }>;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -340,6 +416,21 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.bootstrapPhase !== undefined ? { bootstrapPhase: params.bootstrapPhase } : {}),
     ...(params.compactCatalogMode !== undefined ? { compactCatalogMode: params.compactCatalogMode } : {}),
     ...(params.slotExpansionPhase !== undefined ? { slotExpansionPhase: params.slotExpansionPhase } : {}),
+    ...(params.questionQualityStatus ? { questionQualityStatus: params.questionQualityStatus } : {}),
+    ...(params.questionQualityIssues?.length ? { questionQualityIssues: [...params.questionQualityIssues] } : {}),
+    ...(params.questionQualityRetryCount !== undefined ? { questionQualityRetryCount: params.questionQualityRetryCount } : {}),
+    ...(params.finalQuestionSource ? { finalQuestionSource: params.finalQuestionSource } : {}),
+    ...(params.suggestionQualityIssues?.length ? { suggestionQualityIssues: [...params.suggestionQualityIssues] } : {}),
+    ...(params.primaryDecisionAxis ? { primaryDecisionAxis: params.primaryDecisionAxis } : {}),
+    ...(params.selectedQuestionAxis ? { selectedQuestionAxis: params.selectedQuestionAxis } : {}),
+    ...(params.reasoningContributors?.length ? { reasoningContributors: [...params.reasoningContributors] } : {}),
+    ...(params.riskSignals?.length ? { riskSignals: [...params.riskSignals] } : {}),
+    ...(params.suggestedSlotReasons?.length ? { suggestedSlotReasons: [...params.suggestedSlotReasons] } : {}),
+    ...(params.internalAxis ? { internalAxis: params.internalAxis } : {}),
+    ...(params.userFacingQuestionStyle ? { userFacingQuestionStyle: params.userFacingQuestionStyle } : {}),
+    ...(typeof params.userLanguageTransformApplied === "boolean"
+      ? { userLanguageTransformApplied: params.userLanguageTransformApplied }
+      : {}),
   };
 }
 

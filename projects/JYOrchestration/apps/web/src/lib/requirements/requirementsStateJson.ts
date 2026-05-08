@@ -120,6 +120,24 @@ export type RequirementsPromptTimelineEntry = {
   compactCatalogMode?: boolean;
   /** 슬롯 확장 단계(진행도 스냅샷; bootstrap 시점은 보통 1) */
   slotExpansionPhase?: 1 | 2 | 3;
+  /** bootstrap 질문 품질 가드 결과 */
+  questionQualityStatus?: "pass" | "retry_passed" | "retry_failed_repaired";
+  questionQualityIssues?: readonly string[];
+  questionQualityRetryCount?: number;
+  finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+  suggestionQualityIssues?: readonly string[];
+  /** 멀티 에이전트 bootstrap reasoning 메타 */
+  primaryDecisionAxis?: string | null;
+  selectedQuestionAxis?: string | null;
+  reasoningContributors?: readonly string[];
+  riskSignals?: readonly string[];
+  suggestedSlotReasons?: ReadonlyArray<{ slotKey: string; reason: string }>;
+  /** 내부 축 id(primaryDecisionAxis와 동일 의미로 기록 가능) */
+  internalAxis?: string | null;
+  /** 사용자 대면 질문 스타일 태그(메타) */
+  userFacingQuestionStyle?: string | null;
+  /** 최종 question이 내부 오케스트레이션 어휘 없이 사용자 업무 언어로 정리되었는지 */
+  userLanguageTransformApplied?: boolean;
 };
 
 export type RequirementsStateJson = {
