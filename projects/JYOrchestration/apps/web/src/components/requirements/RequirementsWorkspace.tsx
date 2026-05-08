@@ -1002,6 +1002,8 @@ export function RequirementsWorkspace({
         if (!promptTrace) {
           promptTrace = buildIdeationBootstrapFallbackPromptTrace({
             error: fallbackReason ?? "bootstrap_http_failed",
+            fallbackReason: fallbackReason ?? "UNKNOWN_BOOTSTRAP_ERROR",
+            provider: "fallback",
             fallbackText: bodyText,
             routingDecision: "bootstrap_contextual_fallback_http",
             interviewQuestion: bodyText,
@@ -1045,6 +1047,8 @@ export function RequirementsWorkspace({
             fallbackReason: "persist_failed",
             promptTrace: buildIdeationBootstrapFallbackPromptTrace({
               error: "persist_failed",
+              fallbackReason: "UNKNOWN_BOOTSTRAP_ERROR",
+              provider: "fallback",
               fallbackText: persistFailBody,
               routingDecision: "bootstrap_contextual_fallback_persist_failed",
               interviewQuestion: persistFailBody,

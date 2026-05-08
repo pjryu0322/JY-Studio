@@ -601,9 +601,10 @@ export async function POST(request: NextRequest) {
 
     const bootstrapSugSource =
       bootstrapInterview && result.ok ? (bootSug?.length ? ("llm" as const) : ("empty" as const)) : undefined;
+    const usedRepair = bootstrapInterview && result.ok && (result as any).finalQuestionSource === "repaired_context";
     const bootstrapPromptTrace = buildSingleChatPromptTimelineEntry({
       action: "bootstrapInterview",
-      source: "llm",
+      source: usedRepair ? "fallback" : "llm",
       timelineStage: agentCtxBootstrap.timelineStage,
       stageGroup: agentCtxBootstrap.stageGroup,
       workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
@@ -616,7 +617,8 @@ export async function POST(request: NextRequest) {
       routingDecision: plannerChosenOk ? "bootstrap_llm_first_question(planner)" : "bootstrap_llm_first_question(default)",
       orchestratorAgent: "planner",
       delegatedAgents: [],
-      fallback: false,
+      fallback: usedRepair ? true : false,
+      ...(usedRepair ? { fallbackReason: "REPAIRED_CONTEXT_USED" } : {}),
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
