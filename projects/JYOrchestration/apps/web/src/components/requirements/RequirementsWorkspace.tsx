@@ -1247,16 +1247,17 @@ export function RequirementsWorkspace({
         setInput("");
       });
       const sendTraceId = newIdeationSendTraceId();
-      const replyToIdSnapshot = replyTo?.id ?? null;
+      const hasAtAtMention = text.includes("@@");
+      const replyToIdSnapshot = hasAtAtMention ? null : (replyTo?.id ?? null);
       const replyMode = Boolean(replyToIdSnapshot?.trim());
       // reply는 "일회성 컨텍스트" — 이번 전송 이후 자동 해제되어야 한다.
       // UI에서는 전송 시작 즉시 해제해 다음 입력이 자동으로 reply로 묶이지 않게 한다.
-      if (replyMode) setReplyTo(null);
+      if (replyMode || hasAtAtMention) setReplyTo(null);
 
       // suggestion chip 선택도 one-shot: 이번 전송에만 포함하고 즉시 비움
       const selectedSuggestionSnapshot = interviewSuggestionPickRef.current;
       interviewSuggestionPickRef.current = null;
-      ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}`);
+      ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}${hasAtAtMention ? " mention=@@(detach-reply)" : ""}`);
       setServiceFlowDraftBusy(true);
       setError(null);
       const { targets, anyAi, effectiveReplyTo, msgs, turn } = composeIdeationSendUserTurn({

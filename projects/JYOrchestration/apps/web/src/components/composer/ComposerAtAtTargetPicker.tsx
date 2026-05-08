@@ -12,8 +12,6 @@ export function ComposerAtAtTargetPicker(p: {
   readonly onClose: () => void;
   readonly zIndex?: number;
 }) {
-  if (!p.open || !p.items.length) return null;
-  const z = p.zIndex ?? DEFAULT_Z;
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -37,6 +35,9 @@ export function ComposerAtAtTargetPicker(p: {
       document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [p.open, p.onClose]);
+
+  if (!p.open || !p.items.length) return null;
+  const z = p.zIndex ?? DEFAULT_Z;
 
   return (
     <div
