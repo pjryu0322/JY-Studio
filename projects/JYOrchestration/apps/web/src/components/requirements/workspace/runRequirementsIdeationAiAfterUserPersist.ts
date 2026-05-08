@@ -111,18 +111,44 @@ export async function runRequirementsIdeationAiAfterUserPersist(
   ): { id: string; name: string } => {
     const a = String(agent ?? "").trim().toLowerCase();
     const axis = String(hintAxis ?? "").trim();
-    const subtitle =
-      axis === "ux_direction" || axis === "mobile_experience"
-        ? "편집 UX 검토 중"
-        : axis === "automation_latency" || axis === "processing_pipeline"
-          ? "처리 구조 검토 중"
-          : axis === "permissions_approval" || axis === "collaboration_flow"
-            ? "권한·승인 흐름 분석 중"
-            : axis === "security_risk"
-              ? "보안·보관 정책 검토 중"
-              : axis === "scope_value"
-                ? "목표·범위 정리 중"
-                : "";
+    const subtitleFor = (owner: string, ax: string): { subtitle: string; mismatch: boolean } => {
+      const o = String(owner ?? "").trim().toLowerCase();
+      const normalizedAxis = String(ax ?? "").trim();
+      const byAxis =
+        normalizedAxis === "ux_direction" || normalizedAxis === "mobile_experience"
+          ? "편집 UX 검토 중"
+          : normalizedAxis === "automation_latency" || normalizedAxis === "processing_pipeline"
+            ? "처리 구조 검토 중"
+            : normalizedAxis === "permissions_approval" || normalizedAxis === "collaboration_flow"
+              ? "권한·승인 흐름 분석 중"
+              : normalizedAxis === "security_risk"
+                ? "보안·보관 정책 검토 중"
+                : normalizedAxis === "scope_value"
+                  ? "목표·범위 정리 중"
+                  : "";
+      const defaultByOwner =
+        o === "designer"
+          ? "편집 UX 검토 중"
+          : o === "architect"
+            ? "처리 구조 검토 중"
+            : o === "analyst"
+              ? "권한·승인 흐름 분석 중"
+              : o === "security"
+                ? "보안·보관 정책 검토 중"
+                : o === "planner"
+                  ? "목표·범위 정리 중"
+                  : "";
+      // enforce owner-aligned hint (avoid "AI 분석가 (편집 UX...)")
+      if (!byAxis) return { subtitle: defaultByOwner, mismatch: Boolean(defaultByOwner) };
+      if (!defaultByOwner) return { subtitle: byAxis, mismatch: false };
+      if (o === "designer" && (normalizedAxis === "ux_direction" || normalizedAxis === "mobile_experience")) return { subtitle: byAxis, mismatch: false };
+      if (o === "architect" && (normalizedAxis === "automation_latency" || normalizedAxis === "processing_pipeline")) return { subtitle: byAxis, mismatch: false };
+      if (o === "analyst" && (normalizedAxis === "permissions_approval" || normalizedAxis === "collaboration_flow")) return { subtitle: byAxis, mismatch: false };
+      if (o === "security" && normalizedAxis === "security_risk") return { subtitle: byAxis, mismatch: false };
+      if (o === "planner" && (normalizedAxis === "scope_value" || normalizedAxis === "unknown")) return { subtitle: byAxis || defaultByOwner, mismatch: false };
+      return { subtitle: defaultByOwner, mismatch: true };
+    };
+    const { subtitle } = subtitleFor(a, axis);
     const suffix = subtitle ? ` (${subtitle})` : "";
     if (a === "analyst") return { id: "virtual:ai-analyst", name: `AI 분석가${suffix}` };
     if (a === "architect") return { id: "virtual:ai-architect", name: `AI 설계자${suffix}` };

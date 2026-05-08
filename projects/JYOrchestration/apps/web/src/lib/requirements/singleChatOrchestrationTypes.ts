@@ -100,8 +100,18 @@ export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   rejectedDynamicSlots?: readonly SingleChatDynamicSlotValidationRejectionV1[];
   slotProposalHistory?: readonly SingleChatDynamicSlotProposalHistoryV1[];
   lastOrchestratorAgent?: string | null;
+  /** 이전 턴 conversationOwner (UX/진단; optional) */
+  lastConversationOwner?: string | null;
+  /** explicit mention 등으로 고정된 active owner (persistence; optional) */
+  activeConversationOwner?: string | null;
+  /** active owner 고정 남은 턴 수 (persistence; optional) */
+  stickyTurnsRemaining?: number | null;
   /** owner momentum (stabilization; optional for backward compatibility) */
   ownerMomentum?: Record<string, number> | null;
+  /** 직전 턴 decisionAxis (persistence; optional) */
+  lastDecisionAxis?: string | null;
+  /** 직전 턴 decisionAxisCandidates (persistence; optional) */
+  lastDecisionAxisCandidates?: readonly { axis: string; score: number }[] | null;
   /** 마지막 턴에서 실제 LLM이 실행된 specialist 역할(플래너 제외) */
   lastDelegatedAgents?: readonly string[];
   lastRoutingDecision?: string | null;

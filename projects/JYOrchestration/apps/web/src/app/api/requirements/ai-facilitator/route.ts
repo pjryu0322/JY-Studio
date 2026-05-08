@@ -372,6 +372,18 @@ export async function POST(request: NextRequest) {
         ...(typeof (turnOk.meta as any).conversationOwner === "string"
           ? { conversationOwner: (turnOk.meta as any).conversationOwner }
           : {}),
+        ...(typeof (turnOk.meta as any).previousConversationOwner === "string"
+          ? { previousConversationOwner: (turnOk.meta as any).previousConversationOwner }
+          : {}),
+        ...(typeof (turnOk.meta as any).activeConversationOwner === "string"
+          ? { activeConversationOwner: (turnOk.meta as any).activeConversationOwner }
+          : {}),
+        ...(typeof (turnOk.meta as any).ownerPersistenceReason === "string"
+          ? { ownerPersistenceReason: (turnOk.meta as any).ownerPersistenceReason }
+          : {}),
+        ...(typeof (turnOk.meta as any).stickyTurnsRemaining === "number"
+          ? { stickyTurnsRemaining: (turnOk.meta as any).stickyTurnsRemaining }
+          : {}),
         ...(typeof (turnOk.meta as any).questionGeneratedBy === "string"
           ? { questionGeneratedBy: (turnOk.meta as any).questionGeneratedBy }
           : {}),
@@ -380,6 +392,15 @@ export async function POST(request: NextRequest) {
           : {}),
         ...(typeof (turnOk.meta as any).decisionAxis === "string"
           ? { decisionAxis: (turnOk.meta as any).decisionAxis }
+          : {}),
+        ...(typeof (turnOk.meta as any).previousDecisionAxis === "string"
+          ? { previousDecisionAxis: (turnOk.meta as any).previousDecisionAxis }
+          : {}),
+        ...(typeof (turnOk.meta as any).decisionAxisSource === "string"
+          ? { decisionAxisSource: (turnOk.meta as any).decisionAxisSource }
+          : {}),
+        ...(typeof (turnOk.meta as any).ownerAxisMismatch === "boolean"
+          ? { ownerAxisMismatch: (turnOk.meta as any).ownerAxisMismatch }
           : {}),
         ...(typeof (turnOk.meta as any).mergeCoordinator === "string"
           ? { mergeCoordinator: (turnOk.meta as any).mergeCoordinator }
