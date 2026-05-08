@@ -94,6 +94,20 @@ const ALL_ORCH_ROLES = new Set([
   "security-reviewer",
 ]);
 
+function detectExplicitSpecialistMention(userMessage: string): { owner: string; reason: string } | null {
+  const s = String(userMessage ?? "").trim().toLowerCase();
+  if (!s) return null;
+  const has = (re: RegExp) => re.test(s);
+  // Match user natural language role call-outs (Korean) and common English tokens.
+  if (has(/(디자이너|ui|ux)/i)) return { owner: "designer", reason: "explicit_role_mention(ui-designer)" };
+  if (has(/(설계자|아키텍트|개발자\s*관점|architect)/i)) return { owner: "architect", reason: "explicit_role_mention(solution-architect)" };
+  if (has(/(분석가|도메인\s*전문가|service\s*designer|domain\s*expert|analyst)/i))
+    return { owner: "analyst", reason: "explicit_role_mention(service-designer)" };
+  if (has(/(보안|개인정보|security)/i)) return { owner: "security", reason: "explicit_role_mention(security-reviewer)" };
+  if (has(/(리뷰어|검토|reviewer)/i)) return { owner: "reviewer", reason: "explicit_role_mention(task-reviewer)" };
+  return null;
+}
+
 function effectiveOrchestrationRoles(agents: readonly SingleChatSelectedAgentWire[]): Set<string> {
   const raw = activeOrchestrationRolesFromAgents(agents);
   return raw.size ? raw : ALL_ORCH_ROLES;
@@ -223,6 +237,8 @@ export async function POST(request: NextRequest) {
       ? agentCtxBootstrap
       : await resolveSingleChatAgentContext(projectId, workspaceScreenForChat);
 
+    const explicitSpecialist = detectExplicitSpecialistMention(userMessage);
+
     /** 상세 정책은 `runRequirementsSingleChatBootstrapOpenAI` 시스템 프롬프트에 통합(중복 방지). */
     const orchestrationBootstrapInstructions = "";
 
@@ -274,12 +290,23 @@ export async function POST(request: NextRequest) {
       workspaceScreenForChat === "requirements_ideation" &&
       isWorkspaceServicePlanningScreenKey(workspaceScreenForChat);
 
-    if (useIdeationOrchestration && orchPlanningCtx) {
+    // Force orchestration wake-up when user explicitly calls a specialist, even right after bootstrap/reset.
+    // This bypasses unstable hydration timing (orchPlanningCtx may be null momentarily).
+    const forceWakeup = Boolean(projectId) && !bootstrapInterview && isWorkspaceServicePlanningScreenKey(workspaceScreenForChat) && Boolean(explicitSpecialist);
+    const orchCtxForTurn = orchPlanningCtx ?? (forceWakeup ? await resolveSingleChatAgentContext(projectId, workspaceScreenForChat) : null);
+    const orchestrationLazyInit = Boolean(forceWakeup && !orchPlanningCtx);
+    const orchestrationWakeupReason = explicitSpecialist?.reason ?? null;
+
+    if ((useIdeationOrchestration || forceWakeup) && orchCtxForTurn) {
       const defs = buildDynamicServicePlanningSlotDefinitions({
         projectName,
         projectDescription,
         projectType,
-        servicePlanningAgentCatalogKeys: (servicePlanningCatalogKeys ?? []) as WorkspaceAiMemberId[],
+        servicePlanningAgentCatalogKeys:
+          (servicePlanningCatalogKeys ??
+            orchCtxForTurn.selectedAgents
+              .map((a) => (a.source === "catalog" ? a.catalogKey : undefined))
+              .filter((x): x is WorkspaceAiMemberId => Boolean(String(x ?? "").trim()))) as WorkspaceAiMemberId[],
       });
       const nowIso = new Date().toISOString();
       const baseState = ensureOrchestrationBaseState({
@@ -288,7 +315,7 @@ export async function POST(request: NextRequest) {
         nowIso,
       });
       const orchestrationSlotExpansionPhase = computeSlotExpansionPhaseFromState(baseState, defs);
-      const effectiveRoles = effectiveOrchestrationRoles(orchPlanningCtx.selectedAgents);
+      const effectiveRoles = effectiveOrchestrationRoles(orchCtxForTurn.selectedAgents);
 
       const orchTry = await runSelectiveMultiAgentOrchestrationOpenAI({
         projectName,
@@ -298,11 +325,13 @@ export async function POST(request: NextRequest) {
         dialogueExcerpt,
         definitions: defs,
         baseState,
-        participatingAgentsPromptBlock: orchPlanningCtx.promptBlock,
+        participatingAgentsPromptBlock: orchCtxForTurn.promptBlock,
         activeRoles: effectiveRoles,
         mentionTargetsSummary: mentionTargetsSummary || undefined,
         senderSummary: senderSummary || undefined,
         priorScreenHandoff: priorScreenHandoff || undefined,
+        orchestrationWakeupReason: orchestrationWakeupReason || undefined,
+        orchestrationLazyInit,
       });
 
       let usedFallback = false;
@@ -324,10 +353,10 @@ export async function POST(request: NextRequest) {
       const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
         action: "requirementsChatOrchestration",
         source: usedFallback ? "fallback" : "llm",
-        timelineStage: orchPlanningCtx.timelineStage,
-        stageGroup: orchPlanningCtx.stageGroup,
-        workspaceScreenKey: orchPlanningCtx.workspaceScreenKey,
-        selectedAgents: orchPlanningCtx.selectedAgents,
+        timelineStage: orchCtxForTurn.timelineStage,
+        stageGroup: orchCtxForTurn.stageGroup,
+        workspaceScreenKey: orchCtxForTurn.workspaceScreenKey,
+        selectedAgents: orchCtxForTurn.selectedAgents,
         promptText: turnOk.promptText,
         responseText: replyTrim,
         model: turnOk.model,
@@ -373,6 +402,10 @@ export async function POST(request: NextRequest) {
         ...(Array.isArray((turnOk.meta as any).slotStateTransitions)
           ? { slotStateTransitions: (turnOk.meta as any).slotStateTransitions }
           : {}),
+        ...(typeof orchestrationWakeupReason === "string" && orchestrationWakeupReason.trim()
+          ? { orchestrationWakeupReason }
+          : {}),
+        ...(typeof orchestrationLazyInit === "boolean" ? { orchestrationLazyInit } : {}),
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],

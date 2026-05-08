@@ -758,6 +758,26 @@ export function RequirementsPromptDocumentDrawer({
                                     <strong>conflictSignals</strong>: {String((row as any).conflictSignals.join(" · "))}
                                   </div>
                                 ) : null}
+                                {(row as any).orchestrationWakeupReason ? (
+                                  <div>
+                                    <strong>orchestrationWakeupReason</strong>: {String((row as any).orchestrationWakeupReason)}
+                                  </div>
+                                ) : null}
+                                {typeof (row as any).orchestrationLazyInit === "boolean" ? (
+                                  <div>
+                                    <strong>orchestrationLazyInit</strong>: {(row as any).orchestrationLazyInit ? "true" : "false"}
+                                  </div>
+                                ) : null}
+                                {(row as any).personaValidationReason ? (
+                                  <div>
+                                    <strong>personaValidationReason</strong>: {String((row as any).personaValidationReason)}
+                                  </div>
+                                ) : null}
+                                {typeof (row as any).personaValidationRetry === "number" ? (
+                                  <div>
+                                    <strong>personaValidationRetry</strong>: {(row as any).personaValidationRetry}
+                                  </div>
+                                ) : null}
                                 {typeof (row as any).updatedSlotCount === "number" ? (
                                   <div>
                                     <strong>updatedSlotCount</strong>: {(row as any).updatedSlotCount}

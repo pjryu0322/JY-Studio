@@ -129,6 +129,16 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
             .slice(0, 40) as any,
         }
       : {}),
+    ...(typeof r.orchestrationWakeupReason === "string" && r.orchestrationWakeupReason.trim()
+      ? { orchestrationWakeupReason: r.orchestrationWakeupReason.trim().slice(0, 120) }
+      : {}),
+    ...(typeof r.orchestrationLazyInit === "boolean" ? { orchestrationLazyInit: r.orchestrationLazyInit } : {}),
+    ...(typeof r.personaValidationReason === "string" && r.personaValidationReason.trim()
+      ? { personaValidationReason: r.personaValidationReason.trim().slice(0, 200) }
+      : {}),
+    ...(typeof r.personaValidationRetry === "number" && Number.isFinite(r.personaValidationRetry)
+      ? { personaValidationRetry: Math.max(0, Math.min(3, Math.floor(r.personaValidationRetry))) }
+      : {}),
     ...(typeof r.updatedSlotCount === "number" && Number.isFinite(r.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(r.updatedSlotCount)) }
       : {}),
@@ -425,6 +435,10 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly momentumContribution?: RequirementsPromptTimelineEntry["momentumContribution"];
   readonly conflictSignals?: readonly string[];
   readonly slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
+  readonly orchestrationWakeupReason?: string;
+  readonly orchestrationLazyInit?: boolean;
+  readonly personaValidationReason?: string;
+  readonly personaValidationRetry?: number;
   readonly updatedSlotCount?: number;
   readonly matchedSlots?: readonly string[];
   readonly updatedSlots?: readonly string[];
@@ -527,6 +541,16 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.momentumContribution ? { momentumContribution: params.momentumContribution } : {}),
     ...(params.conflictSignals?.length ? { conflictSignals: [...params.conflictSignals].slice(0, 10) } : {}),
     ...(params.slotStateTransitions?.length ? { slotStateTransitions: [...params.slotStateTransitions].slice(0, 60) } : {}),
+    ...(typeof params.orchestrationWakeupReason === "string" && params.orchestrationWakeupReason.trim()
+      ? { orchestrationWakeupReason: params.orchestrationWakeupReason.trim().slice(0, 120) }
+      : {}),
+    ...(typeof params.orchestrationLazyInit === "boolean" ? { orchestrationLazyInit: params.orchestrationLazyInit } : {}),
+    ...(typeof params.personaValidationReason === "string" && params.personaValidationReason.trim()
+      ? { personaValidationReason: params.personaValidationReason.trim().slice(0, 200) }
+      : {}),
+    ...(typeof params.personaValidationRetry === "number" && Number.isFinite(params.personaValidationRetry)
+      ? { personaValidationRetry: Math.max(0, Math.min(3, Math.floor(params.personaValidationRetry))) }
+      : {}),
     ...(typeof params.updatedSlotCount === "number" && Number.isFinite(params.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(params.updatedSlotCount)) }
       : {}),
