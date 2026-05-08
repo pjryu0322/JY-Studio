@@ -76,6 +76,7 @@ import {
   buildIdeationBootstrapContextualFallbackQuestion,
   buildIdeationBootstrapFallbackPromptTrace,
   coerceBootstrapPromptTrace,
+  coerceRequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
@@ -1713,7 +1714,12 @@ export function RequirementsWorkspace({
         }),
       ]);
       setRoom(nextRoom);
-      const tr = coerceRequirementsPromptTimelineEntry(json.data.promptTrace);
+      let tr: RequirementsPromptTimelineEntry | null = null;
+      try {
+        tr = coerceRequirementsPromptTimelineEntry(json.data.promptTrace);
+      } catch {
+        tr = null;
+      }
       if (tr) {
         const nextTimeline = appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, tr);
         stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, { promptTimeline: nextTimeline });
