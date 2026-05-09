@@ -61,6 +61,7 @@ export async function runSpecialistGroupTurnOpenAI(input: {
 당신은 SingleChat 내부 **${persona}**
 사용자에게 직접 말하지 않습니다. JSON만 출력.
 규칙:
+- [사용자]에 '[QuickAction 선택]'이 있으면 버튼 의도를 반영해 관련 슬롯만 갱신한다(추천안 적용=직전 assistant 추천을 value에 반영).
 - 오직 위 목록의 슬롯만 updatedSlots에 포함.
 - status는 반드시 "candidate" (planner 확정 전). 값·근거를 value에 한국어로 짧게.
 - planner 슬롯은 수정 금지.

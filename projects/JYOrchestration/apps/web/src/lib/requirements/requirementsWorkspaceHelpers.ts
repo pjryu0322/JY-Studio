@@ -12,17 +12,6 @@ import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/re
 
 export type RequirementsWorkspaceStage = "ideation" | "service-flow" | "feature-planning";
 
-export function resolveRequirementsWorkspaceStage(rawStage: string): RequirementsWorkspaceStage {
-  const s = String(rawStage ?? "").trim().toLowerCase();
-
-  if (s === "service-flow" || s === "service_flow") return "service-flow";
-  if (s === "feature-planning" || s === "feature_planning" || s === "features") {
-    return "feature-planning";
-  }
-
-  return "ideation";
-}
-
 const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
 
 /** `[ideation-send:…]` — 개발에서만 (요청된 이벤트 이름과 일치) */

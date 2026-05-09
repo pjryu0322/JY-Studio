@@ -76,6 +76,7 @@ export async function runPlannerRouteTurnOpenAI(input: {
 [슬롯 카탈로그 범위] expansionPhase=${expansionPhase} (1=planning, 2=+flow, 3=전체). [슬롯 정의]는 이 범위만 포함할 수 있으나, updatedSlots의 slotKey는 반드시 [현재 슬롯]에 존재하는 전체 키와 일치해야 한다.
 
 역할:
+0) [사용자 발화]에 '[QuickAction 선택]' 블록이 있으면, 버튼 의도(추천안 적용/일부 수정/다른 대안/직접 입력/보류)를 최우선으로 해석하고 [대화 발췌]의 직전 assistant 제안과 연결해 updatedSlots·delegatedAgents를 조정한다.
 1) 사용자 발화를 분석해 planner 소유 슬롯만 갱신(updatedSlots의 owner는 planner만).
 2) 액터·흐름·시나리오가 핵심이면 delegatedAgents에 "service-designer" 또는 "domain-expert"를 넣습니다(활성 역할만).
 3) 기능·우선순위·화면·프로토 범위가 핵심이면 "solution-architect" 또는 "task-reviewer"를 넣습니다(활성만).

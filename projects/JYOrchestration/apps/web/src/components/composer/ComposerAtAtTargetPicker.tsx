@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { composerPopoverAboveAnchorStyle } from "@/components/ui/composerPopoverAboveAnchorStyle";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 const DEFAULT_Z = 200;
@@ -45,16 +46,9 @@ export function ComposerAtAtTargetPicker(p: {
       role="dialog"
       aria-label="질문 대상 선택"
       style={{
-        position: "absolute",
-        left: 0,
+        ...composerPopoverAboveAnchorStyle(z),
         right: 0,
-        bottom: "calc(100% + 8px)",
         padding: 8,
-        borderRadius: 14,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-        boxShadow: "0 18px 50px -18px rgba(15, 23, 42, 0.25)",
-        zIndex: z,
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

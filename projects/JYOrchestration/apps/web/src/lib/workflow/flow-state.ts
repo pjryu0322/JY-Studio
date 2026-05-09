@@ -37,8 +37,6 @@ export type AppFlowStepDef = Readonly<{
 
 export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
   { id: "requirements", label: "서비스 기획" },
-  { id: "service_flow", label: "액터 및 서비스 흐름 정의" },
-  { id: "features", label: "기능 정리" },
   { id: "tasks", label: "작업 정리" },
   { id: "planning", label: "생성 준비" },
   { id: "execution", label: "프로토타입 생성" },
@@ -54,11 +52,9 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
     case "requirements":
       return `/requirements${q}`;
     case "service_flow":
-      return pid
-        ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`
-        : "/requirements?stage=service-flow";
+      return `/requirements${q}`;
     case "features":
-      return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=features` : "/requirements?stage=features";
+      return `/requirements${q}`;
     case "tasks":
       return `/tasks${q}`;
     case "planning":
@@ -81,15 +77,14 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   if (p.startsWith("/admin")) return null;
   if (p === "/requirements" || p.startsWith("/requirements/")) {
     const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-    if (stage === "service-flow") return "service_flow";
-    if (stage === "feature-planning" || stage === "feature_planning") return "features";
-    if (stage === "features") return "features";
+    // SingleChat 정책: service-flow/feature-planning 등 하위 단계는 UI 라우팅에 쓰지 않는다.
+    // (있어도 클라이언트에서 stage 제거 리다이렉트된다.)
     if (stage === "execution") return "execution";
     if (stage === "prototype-review") return "prototype_review";
     return "requirements";
   }
   if (p === "/collaboration" || p.startsWith("/collaboration/")) return null;
-  if (p === "/features" || p.startsWith("/features/")) return "features";
+  if (p === "/features" || p.startsWith("/features/")) return "requirements";
   if (p === "/tasks" || p.startsWith("/tasks/")) return "tasks";
   if (p.startsWith("/projects/")) {
     return sp.get("view") === "workspace" ? "planning" : "requirements";
@@ -150,27 +145,15 @@ export function isWorkflowStepNavActive(
   }
   if (stepId === "requirements") {
     if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
-    const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-    return (
-      qp === ctx &&
-      stage !== "service-flow" &&
-      stage !== "feature-planning" &&
-      stage !== "feature_planning" &&
-      stage !== "features"
-    );
+    return qp === ctx;
   }
   if (stepId === "service_flow") {
-    if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
-    const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-    return qp === ctx && stage === "service-flow";
+    // SingleChat 통합: 별도 화면 없음
+    return false;
   }
   if (stepId === "features") {
-    if (pathname === "/requirements" || pathname.startsWith("/requirements/")) {
-      const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-      return qp === ctx && (stage === "features" || stage === "feature-planning" || stage === "feature_planning");
-    }
-    if (!(pathname === "/features" || pathname.startsWith("/features/"))) return false;
-    return qp === ctx;
+    // SingleChat 통합: 별도 화면 없음
+    return false;
   }
   if (stepId === "tasks") {
     if (!(pathname === "/tasks" || pathname.startsWith("/tasks/"))) return false;

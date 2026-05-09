@@ -13,11 +13,10 @@ export default async function RequirementsPage({
   const sp = await searchParams;
   const projectId = pickFirst(sp.projectId);
   const workflowNotice = pickFirst(sp.workflowNotice);
-  const stage = pickFirst(sp.stage);
 
   return (
     <div className="jyo-requirements-page-shell">
-      <RequirementsWorkspaceWithComposerBridge initialProjectId={projectId} initialWorkflowNotice={workflowNotice} initialStage={stage} />
+      <RequirementsWorkspaceWithComposerBridge initialProjectId={projectId} initialWorkflowNotice={workflowNotice} />
     </div>
   );
 }

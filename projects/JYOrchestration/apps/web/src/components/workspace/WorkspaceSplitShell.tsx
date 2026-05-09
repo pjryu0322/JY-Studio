@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { uiFixedViewportScrimButtonStyle } from "@/components/ui/fixedViewportScrimStyle";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 /**
@@ -47,12 +48,7 @@ export function WorkspaceSplitShell({
         position: "relative",
       };
 
-  const overlayScrim: CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    background: t.overlayScrim,
-    zIndex: 40,
-  };
+  const mobileDrawerScrim = uiFixedViewportScrimButtonStyle(40);
 
   const drawerBase: CSSProperties = {
     position: "fixed",
@@ -137,13 +133,13 @@ export function WorkspaceSplitShell({
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{main}</div>
             {mobileSidebarOpen ? (
               <>
-                <button type="button" aria-label="사이드바 닫기" style={overlayScrim} onClick={onCloseMobileSidebar} />
+                <button type="button" aria-label="사이드바 닫기" style={mobileDrawerScrim} onClick={onCloseMobileSidebar} />
                 <div style={{ ...drawerBase, left: 0, borderRight: `1px solid ${t.border}` }}>{sidebar}</div>
               </>
             ) : null}
             {mobileRightOpen ? (
               <>
-                <button type="button" aria-label="결과 패널 닫기" style={overlayScrim} onClick={onCloseMobileRight} />
+                <button type="button" aria-label="결과 패널 닫기" style={mobileDrawerScrim} onClick={onCloseMobileRight} />
                 <div style={{ ...drawerBase, right: 0, borderLeft: `1px solid ${t.border}` }}>{rightPanel}</div>
               </>
             ) : null}

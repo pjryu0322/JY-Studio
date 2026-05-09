@@ -71,6 +71,8 @@ type Body = {
   singleChatOrchestrationV1?: unknown;
   /** 대화 요약 전용(슬롯/오케스트레이션 업데이트 없이 요약만 생성) */
   summaryOnly?: boolean;
+  /** 서비스 기획 SingleChat QuickAction 칩(추천안 적용 등) */
+  quickActionLabel?: string;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -171,6 +173,7 @@ export async function POST(request: NextRequest) {
       });
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
+    const quickActionLabel = typeof body.quickActionLabel === "string" ? String(body.quickActionLabel).trim() : "";
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
     const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
@@ -332,6 +335,7 @@ export async function POST(request: NextRequest) {
         priorScreenHandoff: priorScreenHandoff || undefined,
         orchestrationWakeupReason: orchestrationWakeupReason || undefined,
         orchestrationLazyInit,
+        ...(quickActionLabel ? { quickActionLabel } : {}),
       });
 
       let usedFallback = false;
@@ -346,6 +350,7 @@ export async function POST(request: NextRequest) {
                 baseState,
                 activeRoles: effectiveRoles,
                 nowIso: new Date().toISOString(),
+                ...(quickActionLabel ? { quickActionLabel } : {}),
               });
             })();
 
@@ -427,6 +432,12 @@ export async function POST(request: NextRequest) {
           ? { orchestrationWakeupReason }
           : {}),
         ...(typeof orchestrationLazyInit === "boolean" ? { orchestrationLazyInit } : {}),
+        ...(typeof (turnOk.meta as any).quickActionLabel === "string" && (turnOk.meta as any).quickActionLabel.trim()
+          ? { quickActionLabel: String((turnOk.meta as any).quickActionLabel).trim().slice(0, 40) }
+          : {}),
+        ...(typeof (turnOk.meta as any).quickActionKind === "string" && (turnOk.meta as any).quickActionKind.trim()
+          ? { quickActionKind: String((turnOk.meta as any).quickActionKind).trim().slice(0, 24) }
+          : {}),
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],
@@ -457,6 +468,9 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           reply: replyTrim,
+          ...(Array.isArray((turnOk.meta as any)?.interviewSuggestions) && (turnOk.meta as any).interviewSuggestions.length
+            ? { interviewSuggestions: [...((turnOk.meta as any).interviewSuggestions as string[])] }
+            : {}),
           singleChatOrchestrationV1: turnOk.nextState,
           promptTrace: facilitatorPromptTrace,
         },

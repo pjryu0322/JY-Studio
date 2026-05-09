@@ -71,7 +71,6 @@ import type { ParticipantOption } from "@/components/workspace/workspaceParticip
 import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
 import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
-import { serviceFlowStageComposerColumnStyle } from "@/components/service-flow/serviceFlowStageLayout";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -82,6 +81,13 @@ type EnvStatus = Readonly<{
   runnable: EnvBadge;
   message: string | null;
 }>;
+
+const prototypeComposerColumnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  minWidth: 0,
+};
 
 function githubPagesSettingsUrlFromSuggestedPreview(suggested: string | null | undefined): string | null {
   const s = String(suggested ?? "").trim();
@@ -1663,7 +1669,7 @@ export function PrototypePreviewPanel({
               <div className="chat-input">
                 <ChatWindowScreenLabelBottom />
               <RequirementsChatComposerFooter>
-                <div style={serviceFlowStageComposerColumnStyle}>
+                <div style={prototypeComposerColumnStyle}>
                   <div
                     style={{
                       display: "flex",

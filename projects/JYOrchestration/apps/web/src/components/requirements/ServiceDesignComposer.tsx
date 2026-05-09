@@ -1,10 +1,8 @@
 "use client";
 
-import type { MutableRefObject, ReactNode } from "react";
+import type { MutableRefObject } from "react";
 import type { RequirementsComposerTargetPickerItem, RequirementsComposerToolsMenu } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
-import { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
-import type { ServiceFlowActionMenuRenderContext } from "@/components/service-flow/ServiceFlowComposer";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import {
   buildServiceDesignHarnessPayload,
@@ -26,14 +24,6 @@ export type ServiceDesignComposerProps = {
   ideationToolsMenu?: RequirementsComposerToolsMenu;
   /** ideation: 부모 포커스 제어(기존 `RequirementsIdeationChatPanel`) */
   textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
-  /** `stage === "service-flow"` 일 때 기존 `ServiceFlowComposer` 액션 메뉴·포커스 */
-  serviceFlowChrome?: {
-    readonly renderActionMenu: (ctx: ServiceFlowActionMenuRenderContext) => ReactNode;
-    readonly actionsOpen: boolean;
-    readonly onOpenActions: () => void;
-    readonly onToolsOpenChange: (open: boolean) => void;
-    readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
-  };
 };
 
 export function ServiceDesignComposer({
@@ -49,7 +39,6 @@ export function ServiceDesignComposer({
   onSendFeaturePlanning,
   ideationToolsMenu,
   textAreaRef,
-  serviceFlowChrome,
 }: ServiceDesignComposerProps) {
   const submit = async () => {
     const harnessPayload = buildServiceDesignHarnessPayload(stage, value);
@@ -62,28 +51,6 @@ export function ServiceDesignComposer({
     void submit();
   };
 
-  if (stage === "service-flow") {
-    const chrome = serviceFlowChrome;
-    if (!chrome) {
-      throw new Error("ServiceDesignComposer: serviceFlowChrome is required when stage is service-flow");
-    }
-    return (
-      <ServiceFlowComposer
-        value={value}
-        onChange={onChange}
-        onSubmit={fireSend}
-        disabled={disabled}
-        placeholder={placeholder}
-        onOpenActions={chrome.onOpenActions}
-        onToolsOpenChange={chrome.onToolsOpenChange}
-        textAreaRef={chrome.textAreaRef}
-        renderActionMenu={chrome.renderActionMenu}
-        actionsOpen={chrome.actionsOpen}
-        targetPickerItems={targetPickerItems}
-      />
-    );
-  }
-
   return (
     <RequirementsComposerGpt
       textAreaRef={textAreaRef}
@@ -94,7 +61,7 @@ export function ServiceDesignComposer({
       disabled={disabled}
       placeholder={placeholder}
       targetPickerItems={targetPickerItems}
-      toolsMenu={ideationToolsMenu}
+      toolsMenu={stage === "ideation" ? ideationToolsMenu : undefined}
     />
   );
 }

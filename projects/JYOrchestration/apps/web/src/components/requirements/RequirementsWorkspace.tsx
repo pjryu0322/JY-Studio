@@ -5,15 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { Project } from "@/components/project-spec/types";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
-import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsIdeationChatPanel } from "@/components/requirements/RequirementsIdeationChatPanel";
 import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/RequirementsIdeationDocumentDrawers";
 import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
-import { RequirementsFeaturePlanningStagePanel } from "@/components/requirements/RequirementsFeaturePlanningStagePanel";
-import { RequirementsServiceFlowStagePanel } from "@/components/requirements/RequirementsServiceFlowStagePanel";
 import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
 import { RequirementsWorkspaceTopChrome } from "@/components/requirements/RequirementsWorkspaceTopChrome";
-import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import {
   requirementsWorkspaceMainRowStyle,
   requirementsWorkspaceShellStyle,
@@ -108,7 +104,6 @@ import {
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
   IDEATION_DRAFT_REQUIRED_SLOTS,
-  resolveRequirementsWorkspaceStage,
   type MemberRow,
   type RequirementsWorkspaceStage,
   type SessionUser,
@@ -118,6 +113,8 @@ import { buildPlatformMemberActivityFromRequirementsMessages } from "@/lib/ai-me
 import { extractHandoffSnippetFromRequirementsMessages } from "@/lib/ai-member/extractHandoffSnippetFromRequirementsMessages";
 import { publishWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
+import { useFeaturePlanningSingleChatBridge } from "@/components/feature-planning/useFeaturePlanningSingleChatBridge";
+import { useServiceFlowSingleChatBridge } from "@/components/service-flow/useServiceFlowSingleChatBridge";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 
@@ -139,16 +136,14 @@ import { dispatchServiceFlowSingleChatSend } from "@/lib/service-design/serviceD
 export function RequirementsWorkspace({
   initialProjectId,
   initialWorkflowNotice,
-  initialStage,
 }: {
   readonly initialProjectId: string;
   readonly initialWorkflowNotice: string;
-  readonly initialStage?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
-  useRequirementsStageRouteRedirect(initialProjectId, initialStage);
+  useRequirementsStageRouteRedirect(initialProjectId);
 
   const autoOpenPrototypePreview = useMemo(() => {
     const v = String(searchParams?.get("preview") ?? "").trim();
@@ -220,18 +215,20 @@ export function RequirementsWorkspace({
   const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
   const featurePlanningSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
 
-  const stage = useMemo(() => {
-    const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
-    if (urlStage) return urlStage;
-    const propStage = String(initialStage ?? "").trim().toLowerCase();
-    return propStage;
-  }, [searchParams, initialStage]);
   const activeStage = useMemo((): RequirementsWorkspaceStage => {
-    if (stage === "features") {
-      return "ideation";
-    }
-    return resolveRequirementsWorkspaceStage(stage);
-  }, [stage]);
+    // SingleChat 정책: URL stage 쿼리는 더 이상 UI/내부 단계의 단일 소스가 아니다.
+    // 내부 단계는 저장된 state JSON(요구사항 상태)을 기반으로 자동 산정한다.
+    const persisted = parseRequirementsStateJson(project?.requirementsStateJson);
+    const local = stateJsonRef.current;
+    const st = (local && Object.keys(local).length ? local : persisted) as RequirementsStateJson;
+
+    // 1) 기능 정리 산출물이 있으면 feature-planning
+    if (st.featurePlanningSlotsV1?.slots?.length) return "feature-planning";
+    // 2) 서비스 흐름이 있으면 service-flow
+    if (st.serviceFlowV1?.steps?.length || st.serviceFlowV1?.actors?.length) return "service-flow";
+    // 3) 그 외는 ideation
+    return "ideation";
+  }, [project?.requirementsStateJson, fetchNonce]);
   const inIdeationStage = activeStage === "ideation";
   const participantAiMemberId = useMemo(() => resolveParticipantContextKey(activeStage), [activeStage]);
   const ideationScreenCatalogIds = useMemo(() => {
@@ -1481,6 +1478,12 @@ export function RequirementsWorkspace({
     [resolvedProjectId, persistRemote]
   );
 
+  useFeaturePlanningSingleChatBridge({
+    projectId: resolvedProjectId.trim(),
+    singleChatSendRef: featurePlanningSendRef,
+    onSingleChatAiMessages: appendFeaturePlanningAiTurnsToRequirementsConversation,
+  });
+
   const handleServiceDesignComposerSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       if (activeStage === "ideation") {
@@ -1592,7 +1595,7 @@ export function RequirementsWorkspace({
       setAiInvokePending(false);
       notifyAppFlowProjectContextRefresh();
       showSuccessToast("아이디어 초안이 확정되었습니다. 다음 단계로 이동합니다.");
-      router.push(`/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`);
+      router.push(`/requirements?projectId=${encodeURIComponent(pid)}`);
     },
     [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly, router, showErrorToast, showSuccessToast]
   );
@@ -1664,6 +1667,30 @@ export function RequirementsWorkspace({
           ? "불러오는 중…"
           : "이름 미설정";
 
+  useServiceFlowSingleChatBridge({
+    projectId: resolvedProjectId.trim(),
+    projectName: headerProjectName,
+    projectDescription: String(project?.description ?? ""),
+    ideationParticipantHumanMemberIds,
+    ideationAssets: (stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
+      type: a.type,
+      title: a.title,
+      content: a.content,
+    })),
+    flow: serviceFlow,
+    onChangeFlow: (next) => void persistServiceFlow(next),
+    members,
+    currentUserId: sessionUser?.id ?? null,
+    ideationReady: ideationReadyForServiceFlow,
+    generatingDraft: serviceFlowDraftBusy,
+    draftGenerationCount: serviceFlowDraft.serviceFlowDraftGenerationCount,
+    persistedServiceFlowMessages: serviceFlowWorkshopPersisted,
+    onAppendPersistedServiceFlowMessages: appendServiceFlowWorkshopMessages,
+    platformScreenAiMemberIds: serviceFlowScreenCatalogIds,
+    onSingleChatPromptTrace: appendSingleChatPromptTimeline,
+    serviceFlowSendRef,
+  });
+
   const onDownloadConversationMarkdown = useCallback(() => {
     const pid = resolvedProjectId.trim();
     const projectLabel = (project?.name ?? "").trim() || "서비스기획";
@@ -1674,8 +1701,10 @@ export function RequirementsWorkspace({
     lines.push(`- exportedAt: ${new Date().toISOString()}`);
     lines.push("");
     const list = ideationConversationOnly.length ? ideationConversationOnly : conversationMessages;
+    const meLabel = String(sessionUser?.name ?? "").trim() || "나";
     for (const m of list) {
-      const who = m.role === "user" ? "사용자" : m.role === "ai" ? (m.speakerName ? `AI(${m.speakerName})` : "AI") : m.role === "human" ? (m.speakerName ? `멤버(${m.speakerName})` : "멤버") : "시스템";
+      const who =
+        m.role === "user" ? meLabel : m.role === "ai" ? (m.speakerName ? `AI(${m.speakerName})` : "AI") : m.role === "human" ? (m.speakerName ? `멤버(${m.speakerName})` : "멤버") : "시스템";
       lines.push(`## ${who} · ${new Date(m.createdAt).toISOString()}`);
       lines.push("");
       lines.push(String(m.content ?? "").trim() || "(빈 메시지)");
@@ -1694,7 +1723,7 @@ export function RequirementsWorkspace({
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId]);
+  }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId, sessionUser?.name]);
 
   const [aiSummaryBusy, setAiSummaryBusy] = useState(false);
   const [conversationAiInsight, setConversationAiInsight] = useState<ConversationAiInsight | null>(null);
@@ -1711,10 +1740,11 @@ export function RequirementsWorkspace({
         .replace(/'/g, "&#39;");
     const lines: string[] = [];
     lines.push(`<div>`);
+    const meLabel = String(sessionUser?.name ?? "").trim() || "나";
     for (const m of list.slice(-80)) {
       const who =
         m.role === "user"
-          ? "사용자"
+          ? escape(meLabel)
           : m.role === "ai"
             ? m.speakerName
               ? `AI(${escape(String(m.speakerName))})`
@@ -1730,7 +1760,7 @@ export function RequirementsWorkspace({
     }
     lines.push(`</div>`);
     return lines.join("\n");
-  }, [conversationMessages, ideationConversationOnly]);
+  }, [conversationMessages, ideationConversationOnly, sessionUser?.name]);
 
   const onSummarizeConversation = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -1801,12 +1831,11 @@ export function RequirementsWorkspace({
       <RequirementsIdeationChatPanel
         showScreenLabels={showScreenLabels}
         conversationStatus={conversationStatus}
-        ideationConversationOnly={ideationConversationOnly}
+        chatMessages={conversationMessages}
         participantAiMemberId={participantAiMemberId}
         aiInvokePending={aiInvokePending}
-        inIdeationStage={inIdeationStage}
-        participantBadgeCount={participantBadgeCount}
-        onOpenMembersModal={() => setMembersModalOpen(true)}
+        serviceDesignStage={activeStage}
+        memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
         proposalReadinessPercentVal={proposalReadinessPercentVal}
         problemInterviewCovered={problemInterviewCovered}
         progressSlotTotal={progressSlotTotal}
@@ -1830,6 +1859,7 @@ export function RequirementsWorkspace({
         composerTextAreaRef={composerTextAreaRef}
         typingIndicatorSpeakerLine={typingIndicatorSpeakerLine}
         typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
+        sessionUserDisplayName={sessionUser?.name?.trim() || "나"}
         input={input}
         onInputChange={setInput}
         onSendIdeation={handleServiceDesignComposerSend}
@@ -1842,80 +1872,6 @@ export function RequirementsWorkspace({
         onOpenDraftView={() => setDraftDrawerOpen(true)}
       />
     </div>
-  );
-
-  const featurePlanningStage = resolvedProjectId.trim() ? (
-    <div style={{ display: "flex", flexDirection: "row", gap: 14, minWidth: 0, width: "100%" }}>
-      <div style={{ flex: "1 1 520px", minWidth: 0 }}>
-        <RequirementsChatPanel
-          messages={conversationStatus === "loaded" ? conversationMessages : null}
-          typingIndicator={false}
-          screenAiMemberId="feature_planning"
-          memberControls={null}
-          ideationInterviewUi={null}
-          onInsertComposerPrompt={() => {}}
-          onSetReplyTo={() => {}}
-          onOpenDeliverableDocument={() => {}}
-          onOpenDeliverableList={() => {}}
-          onOpenDeliverableDocuments={() => {}}
-          onRegenerateDeliverables={() => {}}
-          onConfirmDeliverables={() => {}}
-          composer={
-            <ServiceDesignComposer
-              stage="feature-planning"
-              value={input}
-              onChange={setInput}
-              busy={busy}
-              disabled={busy || remoteLocked}
-              placeholder={composerPlaceholder}
-              targetPickerItems={targetPickerItems}
-              onSendIdeation={async () => {}}
-              onSendServiceFlow={async () => {}}
-              onSendFeaturePlanning={runFeaturePlanningSend}
-            />
-          }
-        />
-      </div>
-      <div style={{ flex: "1 1 520px", minWidth: 0 }}>
-        <RequirementsFeaturePlanningStagePanel
-          projectId={resolvedProjectId.trim()}
-          singleChatSendRef={featurePlanningSendRef}
-          onSingleChatAiMessages={appendFeaturePlanningAiTurnsToRequirementsConversation}
-        />
-      </div>
-    </div>
-  ) : (
-    <div style={{ padding: 16, fontSize: 13, color: "#64748b" }}>프로젝트를 연결하면 기능 정리 단계를 사용할 수 있습니다.</div>
-  );
-
-  const serviceFlowStage = (
-    <RequirementsServiceFlowStagePanel
-      projectId={resolvedProjectId.trim()}
-      projectName={headerProjectName}
-      projectDescription={String(project?.description ?? "")}
-      ideationParticipantHumanMemberIds={ideationParticipantHumanMemberIds}
-      persistedServiceFlowMessages={serviceFlowWorkshopPersisted}
-      onAppendPersistedServiceFlowMessages={appendServiceFlowWorkshopMessages}
-      ideationAssets={(stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
-        type: a.type,
-        title: a.title,
-        content: a.content,
-      }))}
-      flow={serviceFlow}
-      ideationReady={ideationReadyForServiceFlow}
-      generatingDraft={serviceFlowDraftBusy}
-      draftGenerationCount={serviceFlowDraft.serviceFlowDraftGenerationCount}
-      members={members}
-      currentUserId={sessionUser?.id ?? null}
-      onInviteMember={() => setInviteOpen(true)}
-      onRetryGate={() => setFetchNonce((n) => n + 1)}
-      onUpdateFlow={(next) => void persistServiceFlow(next)}
-      platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
-      onSendServiceFlow={runServiceFlowSend}
-      serviceFlowSendRef={serviceFlowSendRef}
-      onSingleChatPromptTrace={appendSingleChatPromptTimeline}
-      singleChatMode
-    />
   );
 
   return (
@@ -1958,6 +1914,19 @@ export function RequirementsWorkspace({
         remoteLocked={remoteLocked}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
         onResetConversation={() => void onResetConversation()}
+        ideationInterviewUi={
+          conversationStatus === "loaded"
+            ? {
+                readinessPercent: proposalReadinessPercentVal,
+                covered: problemInterviewCovered,
+                total: progressSlotTotal,
+                statusCounts: orchestrationStatusCounts ?? null,
+                remainingQuestionsEstimate,
+                orchestrationSlotSections: orchestrationSlotSectionsForUi ?? null,
+                onForceGeneratePlanNow,
+              }
+            : null
+        }
         memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
         onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
         onSummarizeConversation={() => void onSummarizeConversation()}
@@ -2075,12 +2044,7 @@ export function RequirementsWorkspace({
 
       <div className="jyo-requirements-workspace-body">
         <div style={requirementsWorkspaceMainRowStyle} className="jyo-requirements-workspace-main">
-          <RequirementsWorkspaceStageRenderer
-            activeStage={activeStage}
-            ideationStage={ideationStage}
-            serviceFlowStage={serviceFlowStage}
-            featurePlanningStage={featurePlanningStage}
-          />
+          <RequirementsWorkspaceStageRenderer singleChatSurface={ideationStage} />
         </div>
       </div>
 
