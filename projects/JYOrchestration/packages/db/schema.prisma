@@ -207,8 +207,110 @@ model User {
   defaultOpenaiApiKeyMasked String?
 
   userIntegrations UserIntegration[]
+  /// 메신저형 사전 대화방(소유)
+  ownedChatRooms ChatRoom[] @relation("ChatRoomOwner")
+  /// 대화방 멤버십(사람)
+  chatRoomMemberships ChatRoomMember[]
 
   @@map("users")
+}
+
+/// 프로젝트 생성 전 메신저 대화방 유형
+enum ChatRoomType {
+  SOLO
+  DIRECT
+  GROUP
+  PROJECT
+}
+
+/// 메신저 대화방에서 AI 기획자가 사용자 메시지에 어떻게 반응할지
+enum MessengerAiParticipationMode {
+  NONE
+  AUTO
+  MENTION_ONLY
+}
+
+enum ChatRoomMemberKind {
+  USER
+  AI
+}
+
+enum ChatMessageSenderKind {
+  USER
+  AI
+  SYSTEM
+}
+
+/// 프로젝트 전 일반 대화방 + 승격 후 프로젝트 연결
+model ChatRoom {
+  id                  String       @id @default(cuid())
+  title               String
+  type                ChatRoomType @default(SOLO)
+  /// AI 기획자(메신저 LLM) 참여 방식
+  aiParticipationMode MessengerAiParticipationMode @default(AUTO)
+  ownerUserId         String
+  owner               User         @relation("ChatRoomOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lastMessagePreview  String?      @db.Text
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  members             ChatRoomMember[]
+  messages            ChatMessage[]
+  projectDrafts       ProjectFromChatDraft[]
+
+  @@index([ownerUserId, updatedAt])
+  @@index([projectId])
+  @@map("chat_rooms")
+}
+
+model ChatRoomMember {
+  id          String             @id @default(cuid())
+  chatRoomId  String
+  chatRoom    ChatRoom           @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  memberType  ChatRoomMemberKind
+  userId      String?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 플랫폼 AI 카탈로그 키(예: ideation)
+  aiMemberId  String?
+  displayName String
+  role        String?
+  joinedAt    DateTime           @default(now())
+
+  @@index([chatRoomId])
+  @@index([userId])
+  @@map("chat_room_members")
+}
+
+model ChatMessage {
+  id         String               @id @default(cuid())
+  chatRoomId String
+  chatRoom   ChatRoom             @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  projectId  String?
+  senderType ChatMessageSenderKind
+  senderId   String?
+  senderName String
+  content    String               @db.Text
+  metadata   Json?
+  createdAt  DateTime             @default(now())
+
+  @@index([chatRoomId, createdAt])
+  @@map("chat_messages")
+}
+
+/// 대화 기반 프로젝트 초안(감사·재현)
+model ProjectFromChatDraft {
+  id         String   @id @default(cuid())
+  chatRoomId String
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  /// DRAFT | CONFIRMED | FAILED
+  status     String   @default("DRAFT")
+  payloadJson Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([chatRoomId, status])
+  @@map("project_from_chat_drafts")
 }
 
 /// 암호화된 자격 증명 원문(IV·알고리즘 포함 메타)
@@ -421,6 +523,8 @@ model Project {
   projectIntegrations   ProjectIntegration[]
   /// 대기 중인 사람 멤버 초대
   memberInvites ProjectMemberInvite[]
+  /// 메신저 대화방에서 승격되어 연결된 룸
+  chatRooms ChatRoom[]
 
   @@index([ownerUserId])
   @@map("projects")

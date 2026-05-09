@@ -54,13 +54,16 @@ export function PlatformUserSearchCombobox({
   disabled,
   bootstrapRecent = false,
   existingMemberUserIds,
+  duplicateBadgeLabel = "참여 중",
 }: {
   readonly onPick: (u: PlatformUserRow) => void;
   readonly disabled?: boolean;
   /** true면 모달 오픈 시 최근 사용자 목록을 불러옵니다. */
   readonly bootstrapRecent?: boolean;
-  /** 이미 프로젝트 HUMAN 멤버인 userId — 행 비활성화 */
+  /** 이미 선택·추가된 userId — 행 비활성화 */
   readonly existingMemberUserIds?: ReadonlySet<string>;
+  /** `existingMemberUserIds`에 걸렸을 때 배지 문구(프로젝트 멤버 vs 친구 등) */
+  readonly duplicateBadgeLabel?: string;
 }) {
   const [q, setQ] = useState("");
   const [recentRows, setRecentRows] = useState<PlatformUserRow[]>([]);
@@ -190,7 +193,7 @@ export function PlatformUserSearchCombobox({
                     color: "#3730a3",
                   }}
                 >
-                  참여 중
+                  {duplicateBadgeLabel}
                 </span>
               ) : (
                 <span

@@ -398,6 +398,28 @@ export function RequirementsChatPanel({
               ) : null;
 
             const showActions = hoveredId === m.id || pinnedActionsMessageId === m.id;
+            const headerCopyBtn = (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void copyToClipboard(normalizeRequirementsMessageText(m.content));
+                }}
+                style={{ ...iconActionBtn, flexShrink: 0 }}
+                title="복사"
+                aria-label="메시지 복사"
+              >
+                <SvgCopyIcon />
+              </button>
+            );
+            const headerRowWithCopy: CSSProperties = {
+              ...WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
+              width: "100%",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 6,
+            };
             const actionIconRow = (align: "start" | "end") =>
               showActions ? (
                 <div
@@ -423,15 +445,6 @@ export function RequirementsChatPanel({
                       <SvgReplyIcon />
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void copyToClipboard(normalizeRequirementsMessageText(m.content))}
-                    style={iconActionBtn}
-                    title="복사"
-                    aria-label="복사"
-                  >
-                    <SvgCopyIcon />
-                  </button>
                   {repliesNavBtn}
                 </div>
               ) : null;
@@ -463,12 +476,13 @@ export function RequirementsChatPanel({
                   <div style={{ ...workspaceStandardChatBubbleShell("user"), width: "100%", maxWidth: "100%" }}>
                     {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
-                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                    <div style={headerRowWithCopy}>
                       <span style={{ flex: "1 1 auto", minWidth: 0 }}>
                         {sessionLine}
                         {showToMeta ? <span style={{ fontWeight: 600, color: t.textMuted }}> · To: {targetLine}</span> : null}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
+                      {headerCopyBtn}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                     {actionIconRow("end")}
@@ -498,11 +512,12 @@ export function RequirementsChatPanel({
                 >
                   <div style={workspaceStandardChatBubbleShell("member")}>
                     {replyContextLine}
-                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                    <div style={headerRowWithCopy}>
                       <span style={{ flex: "1 1 auto", minWidth: 0 }}>
                         멤버 · {memberName}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
+                      {headerCopyBtn}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                     {actionIconRow("start")}
@@ -581,8 +596,8 @@ export function RequirementsChatPanel({
                   >
                     {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
-                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
-                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId}>
+                    <div style={headerRowWithCopy}>
+                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={headerCopyBtn}>
                         {aiSpeakerLine}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </WorkspaceAiHeaderWithAvatar>

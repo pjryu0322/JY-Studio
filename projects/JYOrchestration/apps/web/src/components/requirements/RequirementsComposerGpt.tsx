@@ -1,6 +1,6 @@
 "use client";
 
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import {
   WorkspaceComposerColumn,
   WorkspaceComposerHubRow,
@@ -33,6 +33,7 @@ export function RequirementsComposerGpt({
   disabled,
   placeholder,
   toolsMenu,
+  plusMenuRender,
   textAreaRef,
   targetPickerItems,
 }: {
@@ -44,6 +45,8 @@ export function RequirementsComposerGpt({
   readonly placeholder?: string;
   /** + 메뉴(정리 요청 등). 없으면 + 버튼 미표시 */
   readonly toolsMenu?: RequirementsComposerToolsMenu;
+  /** + 메뉴 전체 커스텀(`toolsMenu`보다 우선). 메신저 등 단계별 항목 분기용 */
+  readonly plusMenuRender?: (ctx: { readonly close: () => void }) => ReactNode;
   /** 부모에서 포커스·커서 제어용(선택) */
   readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   /** `@@` 입력 시 노출할 멘션 후보(멤버별 1행) */
@@ -54,10 +57,16 @@ export function RequirementsComposerGpt({
   return (
     <WorkspaceComposerColumn>
       <WorkspaceComposerHubRow>
-        {toolsMenu ? (
+        {plusMenuRender || toolsMenu ? (
           <WorkspaceComposerLeadingSlot>
             <WorkspaceComposerToolsMenuFrame
-              renderMenu={({ close }) => <WorkspacePlusMenuItems tools={toolsMenu} onPick={close} />}
+              renderMenu={({ close }) =>
+                plusMenuRender ? (
+                  plusMenuRender({ close })
+                ) : toolsMenu ? (
+                  <WorkspacePlusMenuItems tools={toolsMenu} onPick={close} />
+                ) : null
+              }
               menuZ={menuZ}
             />
           </WorkspaceComposerLeadingSlot>
