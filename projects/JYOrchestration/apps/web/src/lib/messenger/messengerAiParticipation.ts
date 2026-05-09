@@ -40,19 +40,6 @@ export function messengerAiModeShortLabel(mode: MessengerAiMode): string {
   }
 }
 
-export function messengerAiModeRoomSubtitle(mode: MessengerAiMode): string {
-  switch (mode) {
-    case "NONE":
-      return "AI 응답 없이 혼자 아이디어를 정리하는 메모방입니다.";
-    case "AUTO":
-      return "AI기획자가 함께 아이디어를 정리하는 대화방입니다.";
-    case "MENTION_ONLY":
-      return "AI기획자는 @AI기획자로 부를 때만 응답합니다.";
-    default:
-      return "";
-  }
-}
-
 export function messengerAiModeChangeSystemLine(
   mode: MessengerAiMode,
   label = messengerAiModeShortLabel(mode)
