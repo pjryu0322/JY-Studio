@@ -3,6 +3,7 @@
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
+import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,93 +40,6 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onClearLoadErrorAndRetry: () => void;
   onGoHome: () => void;
 }>;
-
-function IconButton({
-  title,
-  ariaLabel,
-  disabled,
-  onClick,
-  children,
-  badge,
-  buttonRef,
-}: {
-  readonly title: string;
-  readonly ariaLabel: string;
-  readonly disabled?: boolean;
-  readonly onClick: () => void | Promise<void>;
-  readonly children: React.ReactNode;
-  readonly badge?: number | null;
-  readonly buttonRef?: (node: HTMLButtonElement | null) => void;
-}) {
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      title={title}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        void onClick();
-      }}
-      style={{
-        position: "relative",
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        border: "1px solid #e2e8f0",
-        background: disabled ? "#f8fafc" : "#fff",
-        color: disabled ? t.textMuted : "#0f172a",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {children}
-      {typeof badge === "number" && badge > 0 ? (
-        <span
-          style={{
-            position: "absolute",
-            top: 2,
-            right: 2,
-            minWidth: 16,
-            height: 16,
-            padding: "0 4px",
-            borderRadius: 999,
-            background: "#0ea5e9",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: 900,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1.5px solid #fff",
-            lineHeight: 1,
-            boxSizing: "border-box",
-            pointerEvents: "none",
-          }}
-        >
-          {badge > 99 ? "99+" : badge}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="8.5" cy="7" r="4" />
-      <path d="M20 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
 
 function RefreshIcon() {
   return (
@@ -436,7 +350,7 @@ export function RequirementsWorkspaceTopChrome({
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, marginBottom: 6, gap: 8 }}>
         {slotPanel}
         {slotsUi ? (
-          <IconButton
+          <WorkspaceHubChromeIconButton
             title="서비스 기획 슬롯 상세 보기"
             ariaLabel="서비스 기획 슬롯 상세 보기"
             disabled={false}
@@ -446,47 +360,47 @@ export function RequirementsWorkspaceTopChrome({
             onClick={() => setSlotsOpen((v) => !v)}
           >
             <SlotsIcon />
-          </IconButton>
+          </WorkspaceHubChromeIconButton>
         ) : null}
         {memberControls ? (
-          <IconButton
+          <WorkspaceHubChromeIconButton
             title="참여 멤버/AI 보기"
             ariaLabel="참여 멤버/AI 보기"
             disabled={false}
             badge={memberControls.count}
             onClick={() => memberControls.onOpen()}
           >
-            <UsersIcon />
-          </IconButton>
+            <WorkspaceHubUsersIcon />
+          </WorkspaceHubChromeIconButton>
         ) : null}
         {onDownloadConversationMarkdown ? (
-          <IconButton
+          <WorkspaceHubChromeIconButton
             title="대화 내역 마크다운 다운로드"
             ariaLabel="대화 내역 마크다운 다운로드"
             disabled={false}
             onClick={() => onDownloadConversationMarkdown()}
           >
             <DownloadIcon />
-          </IconButton>
+          </WorkspaceHubChromeIconButton>
         ) : null}
         {onSummarizeConversation ? (
-          <IconButton
+          <WorkspaceHubChromeIconButton
             title="대화 내역 AI 요약"
             ariaLabel="대화 내역 AI 요약"
             disabled={busy || remoteLocked}
             onClick={() => onSummarizeConversation()}
           >
             <SparklesIcon />
-          </IconButton>
+          </WorkspaceHubChromeIconButton>
         ) : null}
-        <IconButton
+        <WorkspaceHubChromeIconButton
           title="대화 초기화"
           ariaLabel="대화 초기화"
           disabled={resetConversationDisabled}
           onClick={() => onResetConversation()}
         >
           <RefreshIcon />
-        </IconButton>
+        </WorkspaceHubChromeIconButton>
       </div>
 
       {showOrganizeCta ? (

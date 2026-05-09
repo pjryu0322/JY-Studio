@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
-import { MessengerChatRoomRenameModal, MessengerRoomSettingsGearMenu } from "./MessengerChatRoomRenameModal";
+import { MessengerChatRoomHeaderBar } from "./MessengerChatRoomHeaderBar";
+import { MessengerChatRoomProjectDraftModal } from "./MessengerChatRoomProjectDraftModal";
+import { MessengerChatRoomRenameModal } from "./MessengerChatRoomRenameModal";
 import { MessengerRoomAiSettingsModal } from "./MessengerRoomAiSettingsModal";
 import { MessengerRoomMembersModal } from "./MessengerRoomMembersModal";
+import { useMessengerChatRoomData } from "./useMessengerChatRoomData";
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import {
@@ -16,175 +18,21 @@ import {
   requirementsWorkspaceMainRowStyle,
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
-import { Button, InlineAlert, uiTokens as t } from "@/components/ui";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
-import { WORKSPACE_AI_MEMBER_KEYS, getWorkspaceAiMember, type WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { InlineAlert } from "@/components/ui";
+import { messengerMembersToParticipants } from "@/lib/messenger/messengerRoomParticipantMapping";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
-import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
-import {
-  messengerAiModeShortLabel,
-  parseMessengerAiMode,
-  textMentionsMessengerAiPlanner,
-  type MessengerAiMode,
-} from "@/lib/messenger/messengerAiParticipation";
-
-type ChatRoomMemberWire = {
-  readonly id: string;
-  readonly memberType: "USER" | "AI";
-  readonly userId: string | null;
-  readonly aiMemberId: string | null;
-  readonly displayName: string;
-  readonly role: string | null;
-};
-
-type RoomDetail = {
-  readonly room: {
-    id: string;
-    title: string;
-    ownerUserId: string;
-    projectId: string | null;
-    aiParticipationMode: MessengerAiMode;
-    /** Prisma `ChatRoomType` — GROUP이면 친구 Chat 등 */
-    type: string;
-  };
-  readonly members: readonly ChatRoomMemberWire[];
-};
-
-function parseWorkspaceAiMemberId(raw: string | null | undefined): WorkspaceAiMemberId | undefined {
-  const s = String(raw ?? "").trim();
-  return (WORKSPACE_AI_MEMBER_KEYS as readonly string[]).includes(s) ? (s as WorkspaceAiMemberId) : undefined;
-}
-
-function messengerMembersToParticipants(members: readonly ChatRoomMemberWire[]): readonly ParticipantOption[] {
-  const out: ParticipantOption[] = [];
-  for (const m of members) {
-    if (m.memberType === "USER") {
-      out.push({
-        id: `human:${m.userId ?? m.id}`,
-        name: m.displayName.trim() || "나",
-        kind: "human",
-        onlineHint: true,
-        roleLabel: m.role?.trim() || undefined,
-      });
-      continue;
-    }
-    if (m.memberType === "AI") {
-      const wid = parseWorkspaceAiMemberId(m.aiMemberId);
-      const def = wid ? getWorkspaceAiMember(wid) : undefined;
-      out.push({
-        id: `ai:${m.aiMemberId ?? m.id}`,
-        name: m.displayName.trim() || def?.title || "AI",
-        kind: "ai",
-        onlineHint: false,
-        platformMemberId: wid,
-        isCurrentScreenAi: Boolean(wid),
-        aiAvatarGlyphKey: def?.avatarGlyphKey,
-        aiAvatarAccent: def?.avatarAccent,
-        aiAvatarLabel: def?.avatarLabel,
-        roleLabel: m.role?.trim() || undefined,
-      });
-    }
-  }
-  return out;
-}
-
-function ChromeIconButton({
-  title,
-  ariaLabel,
-  disabled,
-  badge,
-  onClick,
-  children,
-}: {
-  readonly title: string;
-  readonly ariaLabel: string;
-  readonly disabled?: boolean;
-  readonly badge?: number | null;
-  readonly onClick: () => void | Promise<void>;
-  readonly children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        void onClick();
-      }}
-      style={{
-        position: "relative",
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        border: "1px solid #e2e8f0",
-        background: disabled ? "#f8fafc" : "#fff",
-        color: disabled ? t.textMuted : "#0f172a",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {children}
-      {typeof badge === "number" && badge > 0 ? (
-        <span
-          style={{
-            position: "absolute",
-            top: 2,
-            right: 2,
-            minWidth: 16,
-            height: 16,
-            padding: "0 4px",
-            borderRadius: 999,
-            background: "#0ea5e9",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: 900,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1.5px solid #fff",
-            lineHeight: 1,
-            boxSizing: "border-box",
-            pointerEvents: "none",
-          }}
-        >
-          {badge > 99 ? "99+" : badge}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="8.5" cy="7" r="4" />
-      <path d="M20 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
+import { textMentionsMessengerAiPlanner, type MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
 
 export function MessengerChatRoomClient({ roomId }: { readonly roomId: string }) {
   const router = useRouter();
   const rid = roomId.trim();
-  const [sessionName, setSessionName] = useState("나");
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<RoomDetail | null>(null);
-  const [messages, setMessages] = useState<readonly RequirementsMessage[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { sessionName, sessionUserId, detail, messages, loadError, reloadDetail, reloadMessages } =
+    useMessengerChatRoomData(roomId);
+
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -208,100 +56,9 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const [roomLifecycleBusy, setRoomLifecycleBusy] = useState(false);
   const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const reloadMessages = useCallback(async () => {
-    if (!rid) return;
-    const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/messages`);
-    const json = (await res.json()) as { success?: boolean; data?: { messages?: RequirementsMessage[] }; message?: string };
-    if (!res.ok || !json.success || !Array.isArray(json.data?.messages)) {
-      throw new Error(json.message || "메시지를 불러오지 못했습니다.");
-    }
-    setMessages(json.data!.messages!);
-  }, [rid]);
-
-  const reloadDetail = useCallback(async () => {
-    if (!rid) return;
-    const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}`);
-    const json = (await res.json()) as {
-      success?: boolean;
-      data?: {
-        room?: {
-          id: string;
-          title: string;
-          ownerUserId?: string;
-          projectId: string | null;
-          aiParticipationMode?: string;
-          type?: string;
-        };
-        members?: ChatRoomMemberWire[];
-      };
-      message?: string;
-    };
-    if (!res.ok || !json.success || !json.data?.room) {
-      throw new Error(json.message || "대화방을 불러오지 못했습니다.");
-    }
-    const row = json.data.room;
-    const mode = parseMessengerAiMode(row.aiParticipationMode) ?? "AUTO";
-    const roomType = typeof row.type === "string" && row.type.trim() ? row.type.trim() : "SOLO";
-    const ownerUserId = typeof row.ownerUserId === "string" && row.ownerUserId.trim() ? row.ownerUserId.trim() : "";
-    const members = Array.isArray(json.data.members) ? json.data.members : [];
-    setDetail({
-      room: {
-        id: row.id,
-        title: row.title,
-        ownerUserId,
-        projectId: row.projectId ?? null,
-        aiParticipationMode: mode,
-        type: roomType,
-      },
-      members,
-    });
-  }, [rid]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
-        const json = (await res.json()) as { success?: boolean; data?: AuthMeDataWire | null };
-        if (res.ok && json.success && json.data) {
-          const u = sessionUserFromAuthMe(json.data);
-          setSessionUserId(u.id || null);
-          setSessionName(u.name || "나");
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!rid) {
-      setLoadError("대화방 ID가 없습니다.");
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      setLoadError(null);
-      setMessages(null);
-      try {
-        await reloadDetail();
-        await reloadMessages();
-      } catch (e) {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : "불러오기 실패");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [rid, reloadDetail, reloadMessages]);
-
-  const title = detail?.room.title ?? "대화";
   const projectLinkedId = detail?.room.projectId ?? null;
   const aiMode = detail?.room.aiParticipationMode ?? "AUTO";
-  const roomType = detail?.room.type ?? "SOLO";
-  const isGroupFriendChat = roomType === "GROUP" && aiMode === "NONE";
-  const isRoomOwner = Boolean(sessionUserId && detail?.room.ownerUserId && detail.room.ownerUserId === sessionUserId);
-  const showRoomDelete = isRoomOwner && !projectLinkedId;
-  const showRoomLeave = Boolean(sessionUserId && detail);
+
   const participantOptions = useMemo(() => messengerMembersToParticipants(detail?.members ?? []), [detail?.members]);
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
     return participantOptions.map((p) => ({
@@ -563,8 +320,6 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     ? "프로젝트에 연결된 대화방입니다. 요구사항 화면에서 계속하세요."
     : "메시지를 입력하세요";
 
-  const hasChatBody = Boolean((messages ?? []).some((m) => String(m.content ?? "").trim()));
-
   const composer = (
     <ServiceDesignComposer
       stage="ideation"
@@ -595,68 +350,29 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
         <div className="jyo-requirements-workspace-top-chrome">
           <RequirementsHeader showProjectWorkflowNav={false} />
 
-          {projectLinkedId ? (
-            <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, lineHeight: 1.45 }}>
-              프로젝트룸에 연결된 대화입니다.{" "}
-              <Link href={appFlowStepHref("requirements", projectLinkedId)} style={{ color: "#2563eb", fontWeight: 700 }}>
-                요구사항(SingleChat)으로 계속하기 →
-              </Link>
-            </div>
-          ) : null}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-                {title}
-              </div>
-              <MessengerRoomSettingsGearMenu
-                disabled={roomLifecycleBusy}
-                showRename
-                showAiSettings={!projectLinkedId}
-                showAiSummarize
-                showProjectApply={!projectLinkedId}
-                aiSummarizeDisabled={summaryBusy || busy || aiBusy || messages === null || !hasChatBody}
-                projectApplyDisabled={draftBusy || busy || aiBusy || summaryBusy}
-                showLeave={showRoomLeave}
-                showDelete={showRoomDelete}
-                onRename={() => {
-                  setRenameInitialTitle(title);
-                  setRenameDraft(title);
-                  setRenameError(null);
-                  setRenameOpen(true);
-                }}
-                onAiSettings={() => setSettingsOpen(true)}
-                onAiSummarize={() => void handleWorkNoteSummarize()}
-                onProjectApply={() => void runDraft()}
-                onLeave={() => void leaveRoomInView()}
-                onDelete={() => void deleteRoomInView()}
-              />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: "#0f766e",
-                  background: "#ecfdf5",
-                  border: "1px solid #a7f3d0",
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {isGroupFriendChat ? "Chat" : messengerAiModeShortLabel(aiMode)}
-              </span>
-              <ChromeIconButton
-                title="참여 멤버"
-                ariaLabel="참여 멤버 및 초대"
-                disabled={roomLifecycleBusy}
-                badge={participantOptions.length > 0 ? participantOptions.length : undefined}
-                onClick={() => setMembersModalOpen(true)}
-              >
-                <UsersIcon />
-              </ChromeIconButton>
-            </div>
-          </div>
+          <MessengerChatRoomHeaderBar
+            detail={detail}
+            sessionUserId={sessionUserId}
+            participantCount={participantOptions.length}
+            messages={messages}
+            roomLifecycleBusy={roomLifecycleBusy}
+            summaryBusy={summaryBusy}
+            busy={busy}
+            aiBusy={aiBusy}
+            draftBusy={draftBusy}
+            onOpenRename={(title) => {
+              setRenameInitialTitle(title);
+              setRenameDraft(title);
+              setRenameError(null);
+              setRenameOpen(true);
+            }}
+            onOpenAiSettings={() => setSettingsOpen(true)}
+            onAiSummarize={() => void handleWorkNoteSummarize()}
+            onProjectApply={() => void runDraft()}
+            onLeave={() => void leaveRoomInView()}
+            onDelete={() => void deleteRoomInView()}
+            onOpenMembers={() => setMembersModalOpen(true)}
+          />
 
           {loadError ? (
             <div style={{ marginBottom: 8 }}>
@@ -712,83 +428,17 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
           error={renameError}
         />
 
-        {draftOpen && draftPayload ? (
-          <div
-            role="dialog"
-            aria-label="프로젝트 초안"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 90,
-              background: t.overlayScrim,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 16,
-            }}
-            onMouseDown={() => {
-              if (!confirmBusy) setDraftOpen(false);
-            }}
-          >
-            <div
-              style={{
-                width: "min(96vw, 560px)",
-                maxHeight: "min(88vh, 720px)",
-                overflowY: "auto",
-                borderRadius: t.radiusLg,
-                background: t.bgCard,
-                border: `1px solid ${t.border}`,
-                padding: 16,
-                boxSizing: "border-box",
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프로젝트 초안</div>
-              <p style={{ fontSize: 13, color: t.textSecondary, lineHeight: 1.5, margin: "10px 0 14px" }}>
-                제목 후보: {draftPayload.titleCandidates.join(" · ")}
-              </p>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 6 }}>프로젝트 이름</label>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                style={{
-                  width: "100%",
-                  marginBottom: 12,
-                  padding: 10,
-                  borderRadius: t.radiusMd,
-                  border: `1px solid ${t.borderStrong}`,
-                  fontSize: 14,
-                  boxSizing: "border-box",
-                }}
-              />
-              <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 6 }}>설명</label>
-              <textarea
-                value={projectDesc}
-                onChange={(e) => setProjectDesc(e.target.value)}
-                rows={5}
-                style={{
-                  width: "100%",
-                  marginBottom: 14,
-                  padding: 10,
-                  borderRadius: t.radiusMd,
-                  border: `1px solid ${t.borderStrong}`,
-                  fontSize: 13,
-                  lineHeight: 1.45,
-                  resize: "vertical",
-                  boxSizing: "border-box",
-                }}
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <Button type="button" variant="secondary" size="md" disabled={confirmBusy} onClick={() => setDraftOpen(false)}>
-                  취소
-                </Button>
-                <Button type="button" variant="primary" size="md" loading={confirmBusy} disabled={confirmBusy} onClick={() => void confirmProject()}>
-                  프로젝트룸 만들기
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <MessengerChatRoomProjectDraftModal
+          open={draftOpen}
+          payload={draftPayload}
+          projectName={projectName}
+          projectDesc={projectDesc}
+          confirmBusy={confirmBusy}
+          onProjectNameChange={setProjectName}
+          onProjectDescChange={setProjectDesc}
+          onClose={() => setDraftOpen(false)}
+          onConfirm={() => void confirmProject()}
+        />
       </div>
     </div>
   );
