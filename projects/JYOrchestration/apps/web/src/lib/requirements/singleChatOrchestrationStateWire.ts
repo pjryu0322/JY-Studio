@@ -137,6 +137,13 @@ export function parseRequirementsSingleChatOrchestrationV1(
         ? []
         : undefined;
 
+  const recentAssistantQuestions =
+    Array.isArray(o.recentAssistantQuestions)
+      ? o.recentAssistantQuestions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12)
+      : o.recentAssistantQuestions === null
+        ? []
+        : undefined;
+
   const bootstrapMeta =
     o.bootstrapMeta && typeof o.bootstrapMeta === "object"
       ? (() => {
@@ -291,6 +298,7 @@ export function parseRequirementsSingleChatOrchestrationV1(
     ...(ownerMomentum !== null ? { ownerMomentum } : {}),
     ...(lastDecisionAxis !== undefined ? { lastDecisionAxis } : {}),
     ...(lastDecisionAxisCandidates !== undefined ? { lastDecisionAxisCandidates } : {}),
+    ...(recentAssistantQuestions !== undefined ? { recentAssistantQuestions } : {}),
     ...(lastRoutingDecision !== undefined ? { lastRoutingDecision } : {}),
     ...(lastDelegatedAgents !== undefined ? { lastDelegatedAgents } : {}),
     updatedAt,

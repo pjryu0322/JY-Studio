@@ -325,6 +325,83 @@ describe("singleChatOrchestration agents & fallback", () => {
       expect(second.meta.decisionAxis).toBe(first.meta.decisionAxis);
     }
   });
+
+  it("선택형 UX 답변 이후 동일 질문이 반복되지 않는다 (designer answer -> next question changes)", async () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "RepeatGuard",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+    });
+    const ts = "2026-05-08T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+
+    // First: AI asks A vs B (mocked by LLM output)
+    mockPostOpenAi.mockResolvedValueOnce({ ok: true, text: JSON.stringify({ updatedSlots: [] }) }); // planner-route
+    mockPostOpenAi.mockResolvedValueOnce({ ok: true, text: JSON.stringify({ updatedSlots: [] }) }); // planner-merge
+    mockPostOpenAi.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        assistantMessage: "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?",
+      }),
+    }); // next-question
+
+    const first = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "RepeatGuard",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "디자이너가 UX 방향 제안해줘",
+      dialogueExcerpt: "[u] ...",
+      baseState: base,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.assistantMessage).toContain("문서 편집기");
+
+    // Second: user answers, model tries to repeat same question -> should be blocked/retried and end up different or fallback
+    mockPostOpenAi.mockResolvedValueOnce({ ok: true, text: JSON.stringify({ updatedSlots: [] }) }); // planner-route
+    mockPostOpenAi.mockResolvedValueOnce({ ok: true, text: JSON.stringify({ updatedSlots: [] }) }); // specialist (feature-designer) safety net
+    mockPostOpenAi.mockResolvedValueOnce({ ok: true, text: JSON.stringify({ updatedSlots: [] }) }); // planner-merge
+    mockPostOpenAi.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        assistantMessage: "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?",
+      }),
+    }); // next-question (repeated)
+    mockPostOpenAi.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        assistantMessage: "편집기 화면에서 가장 먼저 보여야 할 정보는 요약, 화자별 발언, 원문 중 무엇인가요?",
+      }),
+    }); // retry
+
+    const second = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "RepeatGuard",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "직관적인 편집기 스타일이 좋아",
+      dialogueExcerpt: first.assistantMessage,
+      baseState: first.nextState,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.meta.repeatedQuestionDetected).toBe(true);
+      expect(second.assistantMessage).not.toContain("댓글 기반 검토 중 어떤 흐름");
+    }
+  });
 });
 
 describe("singleChatOrchestration parse wire", () => {

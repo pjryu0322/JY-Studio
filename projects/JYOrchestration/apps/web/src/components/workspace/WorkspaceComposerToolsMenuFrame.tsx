@@ -1,6 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
+import { uiFixedViewportScrimButtonStyle } from "@/components/ui/fixedViewportScrimStyle";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
@@ -8,12 +19,12 @@ import { WorkspaceComposerPlusTrigger } from "@/components/workspace/WorkspaceCo
 import {
   WORKSPACE_HUB_CHAT_MENU_Z,
   WORKSPACE_HUB_SCREEN_LABEL_ACTION,
-  workspaceComposerNarrowMenuGrabberStyle,
   workspaceComposerNarrowMenuInnerFlexStyle,
-  workspaceComposerNarrowMenuScrimStyle,
-  workspaceComposerNarrowMenuSheetStyle,
+  workspaceComposerNarrowMenuModalStyle,
   workspaceComposerWideToolsPopoverStyle,
+  WORKSPACE_COMPOSER_NARROW_PORTAL_Z,
 } from "@/components/workspace/workspaceComposerHubMenuLayout";
+import { focusFirstRoleMenuitem } from "@/lib/ui/focusFirstRoleMenuitem";
 
 export type WorkspaceComposerToolsMenuContext = {
   readonly close: () => void;
@@ -22,7 +33,7 @@ export type WorkspaceComposerToolsMenuContext = {
 };
 
 export type WorkspaceComposerToolsMenuFrameProps = {
-  /** + 메뉴 항목(와이드 팝오버·내로우 시트 공통) */
+  /** + 메뉴 항목(와이드 팝오버·좁은 화면 중앙 모달 공통) */
   readonly renderMenu: (ctx: WorkspaceComposerToolsMenuContext) => ReactNode;
   readonly plusTestId?: string;
   readonly menuZ?: number;
@@ -37,22 +48,11 @@ export type WorkspaceComposerToolsMenuFrameProps = {
   readonly onPlusClick?: () => void;
 };
 
-export function WorkspaceComposerToolsMenuFrame({
-  renderMenu,
-  plusTestId = "workspace-composer-tools-trigger",
-  menuZ = WORKSPACE_HUB_CHAT_MENU_Z,
-  menuAriaLabel = "입력 도구",
-  menuOpen: controlledOpen,
-  onMenuOpenChange,
-  onPlusClick,
-}: WorkspaceComposerToolsMenuFrameProps) {
-  const showScreenLabels = useShowScreenLabels();
-  const plusRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
+function useComposerToolsMenuOpenState(
+  controlledOpen: boolean | undefined,
+  onMenuOpenChange: ((open: boolean) => void) | undefined
+) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const menuId = useId();
-
   const controlled = typeof controlledOpen === "boolean" && typeof onMenuOpenChange === "function";
   const menuOpen = controlled ? Boolean(controlledOpen) : internalOpen;
 
@@ -66,12 +66,20 @@ export function WorkspaceComposerToolsMenuFrame({
 
   const closeMenu = useCallback(() => setOpen(false), [setOpen]);
 
-  const onPlus = useCallback(() => {
-    if (onPlusClick) onPlusClick();
-    else setOpen(!menuOpen);
-  }, [menuOpen, onPlusClick, setOpen]);
+  return { menuOpen, setOpen, closeMenu };
+}
 
-  const narrow = useComposerNarrowBreakpoint();
+function useComposerToolsMenuEffects(input: {
+  readonly menuOpen: boolean;
+  readonly narrow: boolean;
+  readonly closeMenu: () => void;
+  readonly plusRef: RefObject<HTMLButtonElement | null>;
+  readonly popoverRef: RefObject<HTMLDivElement | null>;
+  readonly narrowModalRef: RefObject<HTMLDivElement | null>;
+  readonly setOpen: (next: boolean) => void;
+}) {
+  const { menuOpen, narrow, closeMenu, plusRef, popoverRef, narrowModalRef, setOpen } = input;
+
   useEffect(() => {
     setOpen(false);
   }, [narrow, setOpen]);
@@ -97,18 +105,98 @@ export function WorkspaceComposerToolsMenuFrame({
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen, narrow, closeMenu]);
+  }, [menuOpen, narrow, closeMenu, plusRef, popoverRef]);
 
   useEffect(() => {
     if (!menuOpen) return;
-    const t = window.setTimeout(() => {
-      const root = narrow ? sheetRef.current : popoverRef.current;
-      const first = root?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])');
-      const link = root?.querySelector<HTMLAnchorElement>('a[role="menuitem"]:not([aria-disabled="true"])');
-      (first ?? link)?.focus();
+    const id = window.setTimeout(() => {
+      focusFirstRoleMenuitem(narrow ? narrowModalRef.current : popoverRef.current);
     }, 0);
-    return () => window.clearTimeout(t);
-  }, [menuOpen, narrow]);
+    return () => window.clearTimeout(id);
+  }, [menuOpen, narrow, narrowModalRef, popoverRef]);
+}
+
+type NarrowToolsMenuPortalProps = Readonly<{
+  portalZ: number;
+  menuId: string;
+  menuAriaLabel: string;
+  modalRef: RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+  children: ReactNode;
+}>;
+
+function NarrowToolsMenuPortal({ portalZ, menuId, menuAriaLabel, modalRef, onClose, children }: NarrowToolsMenuPortalProps) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <>
+      <button type="button" aria-label="메뉴 닫기" style={uiFixedViewportScrimButtonStyle(portalZ)} onClick={onClose} />
+      <div
+        ref={modalRef}
+        id={menuId}
+        role="dialog"
+        aria-modal="true"
+        aria-label={menuAriaLabel}
+        style={workspaceComposerNarrowMenuModalStyle(portalZ)}
+      >
+        <div role="menu" style={workspaceComposerNarrowMenuInnerFlexStyle}>
+          {children}
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
+export function WorkspaceComposerToolsMenuFrame({
+  renderMenu,
+  plusTestId = "workspace-composer-tools-trigger",
+  menuZ = WORKSPACE_HUB_CHAT_MENU_Z,
+  menuAriaLabel = "입력 도구",
+  menuOpen: controlledOpen,
+  onMenuOpenChange,
+  onPlusClick,
+}: WorkspaceComposerToolsMenuFrameProps) {
+  const showScreenLabels = useShowScreenLabels();
+  const plusRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const narrowModalRef = useRef<HTMLDivElement | null>(null);
+  const menuId = useId();
+
+  const { menuOpen, setOpen, closeMenu } = useComposerToolsMenuOpenState(controlledOpen, onMenuOpenChange);
+
+  const menuCtx = useMemo((): WorkspaceComposerToolsMenuContext => ({ close: closeMenu, menuId }), [closeMenu, menuId]);
+  const menuContent = menuOpen ? renderMenu(menuCtx) : null;
+
+  const onPlus = useCallback(() => {
+    if (onPlusClick) onPlusClick();
+    else setOpen(!menuOpen);
+  }, [menuOpen, onPlusClick, setOpen]);
+
+  const narrow = useComposerNarrowBreakpoint();
+  const portalZ = Math.max(menuZ, WORKSPACE_COMPOSER_NARROW_PORTAL_Z);
+
+  useComposerToolsMenuEffects({
+    menuOpen,
+    narrow,
+    closeMenu,
+    plusRef,
+    popoverRef,
+    narrowModalRef,
+    setOpen,
+  });
+
+  const narrowMenuPortal =
+    menuOpen && narrow ? (
+      <NarrowToolsMenuPortal
+        portalZ={portalZ}
+        menuId={menuId}
+        menuAriaLabel={menuAriaLabel}
+        modalRef={narrowModalRef}
+        onClose={closeMenu}
+      >
+        {menuContent}
+      </NarrowToolsMenuPortal>
+    ) : null;
 
   return (
     <>
@@ -123,29 +211,12 @@ export function WorkspaceComposerToolsMenuFrame({
         />
         {menuOpen && !narrow ? (
           <div ref={popoverRef} id={menuId} role="menu" aria-label={menuAriaLabel} style={workspaceComposerWideToolsPopoverStyle(menuZ)}>
-            {renderMenu({ close: closeMenu, menuId })}
+            {menuContent}
           </div>
         ) : null}
       </div>
 
-      {menuOpen && narrow ? (
-        <>
-          <button type="button" aria-label="메뉴 닫기" style={workspaceComposerNarrowMenuScrimStyle(menuZ)} onClick={closeMenu} />
-          <div
-            ref={sheetRef}
-            id={menuId}
-            role="dialog"
-            aria-modal="true"
-            aria-label={menuAriaLabel}
-            style={workspaceComposerNarrowMenuSheetStyle(menuZ)}
-          >
-            <div style={workspaceComposerNarrowMenuGrabberStyle} aria-hidden />
-            <div role="menu" style={workspaceComposerNarrowMenuInnerFlexStyle}>
-              {renderMenu({ close: closeMenu, menuId })}
-            </div>
-          </div>
-        </>
-      ) : null}
+      {narrowMenuPortal}
     </>
   );
 }

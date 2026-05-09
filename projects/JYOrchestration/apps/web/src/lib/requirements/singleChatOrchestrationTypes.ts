@@ -112,6 +112,8 @@ export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   lastDecisionAxis?: string | null;
   /** 직전 턴 decisionAxisCandidates (persistence; optional) */
   lastDecisionAxisCandidates?: readonly { axis: string; score: number }[] | null;
+  /** 최근 assistant 질문(반복 질문 방지용) */
+  recentAssistantQuestions?: readonly string[] | null;
   /** 마지막 턴에서 실제 LLM이 실행된 specialist 역할(플래너 제외) */
   lastDelegatedAgents?: readonly string[];
   lastRoutingDecision?: string | null;

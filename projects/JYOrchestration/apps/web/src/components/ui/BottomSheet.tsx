@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { uiFixedViewportScrimButtonStyle } from "@/components/ui/fixedViewportScrimStyle";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 export function BottomSheet({
@@ -24,16 +25,7 @@ export function BottomSheet({
         type="button"
         aria-label={`${ariaLabel} 닫기`}
         onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: zIndex - 1,
-          border: 0,
-          padding: 0,
-          margin: 0,
-          background: t.overlayScrim,
-          cursor: "pointer",
-        }}
+        style={uiFixedViewportScrimButtonStyle(zIndex - 1)}
       />
       <div
         role="dialog"

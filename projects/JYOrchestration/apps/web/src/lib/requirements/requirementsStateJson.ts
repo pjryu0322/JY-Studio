@@ -152,6 +152,10 @@ export type RequirementsPromptTimelineEntry = {
   orchestrationWakeupReason?: string;
   /** Orchestration: whether lazy-init was used */
   orchestrationLazyInit?: boolean;
+  /** SingleChat QuickAction 칩 라벨(추천안 적용 등) */
+  quickActionLabel?: string;
+  /** SingleChat QuickAction 분류(apply 등) */
+  quickActionKind?: string;
   /** Next-question: persona validation failure reason (if retried) */
   personaValidationReason?: string;
   /** Next-question: persona validation retry count */

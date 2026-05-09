@@ -126,16 +126,18 @@ export function buildOrchestrationSlotSummarySections(
   state: RequirementsSingleChatOrchestrationStateV1 | null | undefined
 ): readonly OrchestrationSlotSummarySection[] {
   if (!state?.slots) return [];
-  const sectionOrder = ["기획", "분석", "설계"] as const;
+  const sectionOrder = ["기획", "분석", "설계", "디자인"] as const;
   const ownerToSection = (owner: string): (typeof sectionOrder)[number] => {
     if (owner === PLANNER_AGENT) return "기획";
     if (owner === "service-designer" || owner === "domain-expert") return "분석";
+    if (owner === "ui-designer") return "디자인";
     return "설계";
   };
   const buckets: Record<(typeof sectionOrder)[number], { label: string; level: "filled" | "partial" | "empty" }[]> = {
     기획: [],
     분석: [],
     설계: [],
+    디자인: [],
   };
   for (const d of definitions) {
     const row = state.slots[d.slotKey];

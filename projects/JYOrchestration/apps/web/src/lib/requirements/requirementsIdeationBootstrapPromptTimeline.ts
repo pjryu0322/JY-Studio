@@ -162,6 +162,12 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       ? { orchestrationWakeupReason: r.orchestrationWakeupReason.trim().slice(0, 120) }
       : {}),
     ...(typeof r.orchestrationLazyInit === "boolean" ? { orchestrationLazyInit: r.orchestrationLazyInit } : {}),
+    ...(typeof r.quickActionLabel === "string" && r.quickActionLabel.trim()
+      ? { quickActionLabel: r.quickActionLabel.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.quickActionKind === "string" && r.quickActionKind.trim()
+      ? { quickActionKind: r.quickActionKind.trim().slice(0, 24) }
+      : {}),
     ...(typeof r.personaValidationReason === "string" && r.personaValidationReason.trim()
       ? { personaValidationReason: r.personaValidationReason.trim().slice(0, 200) }
       : {}),
@@ -477,6 +483,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
   readonly orchestrationWakeupReason?: string;
   readonly orchestrationLazyInit?: boolean;
+  readonly quickActionLabel?: string;
+  readonly quickActionKind?: string;
   readonly personaValidationReason?: string;
   readonly personaValidationRetry?: number;
   readonly updatedSlotCount?: number;
@@ -616,6 +624,12 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { orchestrationWakeupReason: params.orchestrationWakeupReason.trim().slice(0, 120) }
       : {}),
     ...(typeof params.orchestrationLazyInit === "boolean" ? { orchestrationLazyInit: params.orchestrationLazyInit } : {}),
+    ...(typeof params.quickActionLabel === "string" && params.quickActionLabel.trim()
+      ? { quickActionLabel: params.quickActionLabel.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.quickActionKind === "string" && params.quickActionKind.trim()
+      ? { quickActionKind: params.quickActionKind.trim().slice(0, 24) }
+      : {}),
     ...(typeof params.personaValidationReason === "string" && params.personaValidationReason.trim()
       ? { personaValidationReason: params.personaValidationReason.trim().slice(0, 200) }
       : {}),

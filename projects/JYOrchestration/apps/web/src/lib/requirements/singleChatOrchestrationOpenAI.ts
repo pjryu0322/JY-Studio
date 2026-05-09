@@ -25,6 +25,12 @@ import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+import {
+  augmentUserMessageForLlm,
+  classifyQuickAction,
+  quickActionNextQuestionBlock,
+  routingUserMessageForHeuristics,
+} from "@/lib/requirements/singleChatQuickAction";
 
 export type SingleChatOrchestrationTurnMeta = Readonly<{
   routingDecision: string;
@@ -58,6 +64,18 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   decisionAxisSource?: string | null;
   /** owner-axis mismatch detected (UX/diagnostic) */
   ownerAxisMismatch?: boolean | null;
+  /** 반복 질문 감지 여부 */
+  repeatedQuestionDetected?: boolean | null;
+  /** 반복 질문 감지 사유 */
+  repeatedQuestionReason?: string | null;
+  /** next-question 재시도 사유 */
+  nextQuestionRetryReason?: string | null;
+  /** UI: quick action suggestions (chips) */
+  interviewSuggestions?: readonly string[] | null;
+  /** 사용자가 선택한 QuickAction 칩 라벨(있을 때만) */
+  quickActionLabel?: string | null;
+  /** QuickAction 의도 분류 */
+  quickActionKind?: string | null;
   /** merge coordinator 역할(진단용; tone contamination 방지) */
   mergeCoordinator?: string | null;
   /** 내부 specialist contributor(진단용) */
@@ -239,17 +257,28 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly mentionTargetsSummary?: string;
   readonly senderSummary?: string;
   readonly priorScreenHandoff?: string;
+  readonly orchestrationWakeupReason?: string;
+  readonly orchestrationLazyInit?: boolean;
+  /** 인터뷰/오케스트레이션 QuickAction 칩(추천안 적용 등) */
+  readonly quickActionLabel?: string | null;
 }): Promise<SingleChatOrchestrationTurnResult> {
   const calledAt = new Date().toISOString();
   const promptChunks: string[] = [];
   const executedAgents: string[] = ["planner-route"];
+  let interviewSuggestions: string[] | null = null;
+
+  const rawUserMessage = String(input.userMessage ?? "").trim();
+  const quickActionLabel = String(input.quickActionLabel ?? "").trim() || null;
+  const quickActionKind = classifyQuickAction(quickActionLabel);
+  const userMessageForLlm = augmentUserMessageForLlm(rawUserMessage, quickActionLabel);
+  const routingUserMessage = routingUserMessageForHeuristics(rawUserMessage, quickActionLabel);
 
   // Definitions can grow during the turn (hybrid dynamic slots).
   let definitions = [...input.definitions];
 
   const slotExpansionPhase = computeSlotExpansionPhaseFromState(input.baseState, input.definitions);
 
-  const route = await runPlannerRouteTurnOpenAI({ ...input, slotExpansionPhase });
+  const route = await runPlannerRouteTurnOpenAI({ ...input, userMessage: userMessageForLlm, slotExpansionPhase });
   if (!route.ok) return route;
 
   promptChunks.push(route.promptText);
@@ -335,7 +364,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "flow-analyst",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      userMessage: input.userMessage,
+      userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
       state,
@@ -360,7 +389,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "feature-designer",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      userMessage: input.userMessage,
+      userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
       state,
@@ -385,7 +414,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "security-reviewer",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      userMessage: input.userMessage,
+      userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
       state,
@@ -412,7 +441,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const merge = await runPlannerMergeTurnOpenAI({
     projectName: input.projectName,
     projectDescription: input.projectDescription,
-    userMessage: input.userMessage,
+    userMessage: userMessageForLlm,
     dialogueExcerpt: input.dialogueExcerpt,
     state,
     specialistDigest,
@@ -623,7 +652,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     axisCandidates: readonly DecisionAxisCandidate[],
     momentumWeights: Record<NextOwner, number>
   ): { owner: NextOwner; reason: string; breakdown: SingleChatOrchestrationTurnMeta["ownershipScoreBreakdown"] } => {
-    const explicit = resolveExplicitOwnerFromUserIntent(input.userMessage);
+    const explicit = resolveExplicitOwnerFromUserIntent(routingUserMessage);
     if (explicit) {
       const breakdown: any = {
         [explicit.owner]: {
@@ -738,12 +767,12 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const previousDecisionAxisCandidates =
     Array.isArray((state as any).lastDecisionAxisCandidates) ? ((state as any).lastDecisionAxisCandidates as any) : null;
 
-  const axisResolved = resolveDecisionAxisCandidatesFromUserIntent(input.userMessage, previousDecisionAxisCandidates);
+  const axisResolved = resolveDecisionAxisCandidatesFromUserIntent(routingUserMessage, previousDecisionAxisCandidates);
   const decisionAxisCandidates = axisResolved.candidates;
   const decisionAxisSource = axisResolved.source;
-  const decisionAxis = decisionAxisCandidates[0]?.axis ?? inferDecisionAxisFromUserIntent(input.userMessage);
+  const decisionAxis = decisionAxisCandidates[0]?.axis ?? inferDecisionAxisFromUserIntent(routingUserMessage);
 
-  const explicitOwner = resolveExplicitOwnerFromUserIntent(input.userMessage);
+  const explicitOwner = resolveExplicitOwnerFromUserIntent(routingUserMessage);
 
   // Owner persistence state
   let activeConversationOwner: NextOwner | null =
@@ -840,6 +869,62 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const questionGeneratedBy: NextOwner = conversationOwner;
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const recentQuestionsPrev = Array.isArray((state as any).recentAssistantQuestions)
+    ? ((state as any).recentAssistantQuestions as unknown[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+
+  const normalizeQuestionForCompare = (q: string): string =>
+    String(q ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[?？!.。,]/g, "")
+      .trim();
+
+  const isRepeatedQuestion = (candidate: string, recent: readonly string[]): { repeated: boolean; reason?: string } => {
+    const c = normalizeQuestionForCompare(candidate);
+    if (!c) return { repeated: false };
+    for (const prev of recent.slice(0, 6)) {
+      const p = normalizeQuestionForCompare(prev);
+      if (!p) continue;
+      if (c === p) return { repeated: true, reason: "exact_normalized_match" };
+      // lightweight containment check (prevents same A vs B being re-asked)
+      if (c.length >= 18 && p.length >= 18 && (c.includes(p) || p.includes(c))) return { repeated: true, reason: "contains_match" };
+    }
+    return { repeated: false };
+  };
+
+  // If we're in UX/designer context, ensure we actually update UI-designer slots for answer turns.
+  // This is not a scoring redesign: it's a safety net to reflect user choices into slots.
+  // Only run on follow-up turns where the previous owner was designer (avoid extra calls on unrelated turns).
+  const shouldRunDesignerAnswerMerge =
+    Boolean(apiKey) &&
+    previousConversationOwner === "designer" &&
+    activeConversationOwner === "designer" &&
+    (decisionAxis === "ux_direction" || decisionAxis === "mobile_experience");
+  if (shouldRunDesignerAnswerMerge) {
+    const sp = await runSpecialistGroupTurnOpenAI({
+      groupLabel: "feature-designer",
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      userMessage: userMessageForLlm,
+      dialogueExcerpt: input.dialogueExcerpt,
+      definitions,
+      state,
+      activeRoles: input.activeRoles,
+      allowedOwners: DESIGN_OWNERS,
+      slotExpansionPhase,
+    });
+    promptChunks.push(sp.promptText);
+    if (sp.ok && sp.patches.length) {
+      state = mergeOrchestrationSlotPatches({
+        base: state,
+        patches: sp.patches,
+        nowIso: new Date().toISOString(),
+      });
+      executedAgents.push(...sp.executedRoles.filter((r) => DESIGN_OWNERS.has(r)));
+    }
+  }
+
   const buildOwnerFallbackQuestion = (): string => {
     // Ensure owner voice even without LLM.
     if (nextOwner === "designer") return "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?";
@@ -866,6 +951,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   let nextQuestion = conflictDetected ? buildConflictMediationQuestion() : buildOwnerFallbackQuestion();
   let personaValidationReason: string | null = null;
   let personaValidationRetry = 0;
+  let repeatedQuestionDetected: boolean | null = null;
+  let repeatedQuestionReason: string | null = null;
+  let nextQuestionRetryReason: string | null = null;
 
   // Conflict slot marking (replay + routing safety): mark representative slots for competing owners as conflicted.
   const conflictPatchedKeys: string[] = [];
@@ -908,11 +996,14 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       .join("\n");
     const baseRules = [
       "당신은 SingleChat의 다음 대화 진행자(conversation owner)다.",
-      "출력은 사용자에게 보이는 질문 1문장만 생성한다(물음표 1개).",
-      "‘구체적인 요구사항이 있을까요?’ 같은 기획자 톤의 일반론 질문 금지.",
+      "질문만 던지고 끝내지 말고, 가능하면 아래 4요소를 포함해 짧게 제시한다:",
+      "1) 지금 이해한 내용 1~2줄 요약",
+      "2) 가능한 대안 2~3개(번호 목록)",
+      "3) 역할 관점의 추천안 1개(‘추천: …’ 한 줄)",
+      "4) 사용자가 바로 고를 다음 행동(‘다음: …’ 한 줄)",
       "내부 슬롯 키/ownerAgent/phase/오케스트레이션 용어 금지.",
-      "사용자가 방금 한 말의 방향을 이어서, 결정을 전진시키는 질문 1개만 묻는다.",
-      '출력(JSON 1개): { "assistantMessage": "질문 한 문장" }',
+      "이미 답한 선택지를 다시 묻는 동일 의미 질문 금지.",
+      '출력(JSON 1개): { "assistantMessage": "짧은 제안 메시지", "suggestions": ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력", "보류"] }',
     ].join("\n");
 
     const roleSystem =
@@ -980,12 +1071,15 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
                     baseRules,
                   ].join("\n");
 
+    const quickNextBlock = quickActionNextQuestionBlock(quickActionKind, quickActionLabel);
     const user = `[프로젝트] ${input.projectName.trim()}
-[최근 사용자 발화] ${input.userMessage.trim().slice(0, 1600)}
-[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
+[최근 사용자 발화] ${userMessageForLlm.trim().slice(0, 1600)}
+${quickNextBlock ? `${quickNextBlock}\n` : ""}[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
 [이 역할이 담당하는 슬롯(참고)]\n${keyHints || "- (없음)"}
 [현재 슬롯 스냅샷] ${slotsJson}
 [결정 축] ${decisionAxis}`;
+    const skipRepeatGuard = quickActionKind === "alternatives";
+    const qMaxTokens = quickActionKind ? 220 : 160;
     const resQ = await postOpenAiChatCompletion({
       apiKey,
       model,
@@ -995,11 +1089,16 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       ],
       temperature: 0.25,
       responseFormatJsonObject: true,
-      maxTokens: 160,
+      maxTokens: qMaxTokens,
     });
     if (resQ.ok) {
       const parsed = safeJsonParse(resQ.text ?? "") as Record<string, unknown> | null;
       const msg = String(parsed?.assistantMessage ?? "").trim();
+      const quickSug =
+        Array.isArray((parsed as any)?.suggestions) && (parsed as any).suggestions.length
+          ? (parsed as any).suggestions.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
+          : null;
+      if (quickSug?.length) interviewSuggestions = quickSug;
       if (msg) {
         const validate = (owner: NextOwner, q: string): { ok: boolean; reason?: string } => {
           const qq = String(q ?? "").trim();
@@ -1012,9 +1111,50 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
           return { ok: true };
         };
 
+        const rep1 = skipRepeatGuard ? { repeated: false as const } : isRepeatedQuestion(msg, recentQuestionsPrev);
+        if (rep1.repeated) {
+          repeatedQuestionDetected = true;
+          repeatedQuestionReason = rep1.reason ?? "repeated";
+        }
         const v1 = validate(conversationOwner, msg);
         if (v1.ok) {
-          nextQuestion = msg;
+          if (!rep1.repeated) {
+            nextQuestion = msg;
+          } else {
+            // Repeat-guard retry even if persona validation passed.
+            nextQuestionRetryReason = "repeated_question_retry";
+            const recentBlock = recentQuestionsPrev.slice(0, 6).map((q) => `- ${q}`).join("\n");
+            const repeatGuardSystem = `${roleSystem}\n\n[repeat-guard]\n아래의 최근 질문과 의미가 같은 질문은 금지합니다.\n최근 질문:\n${recentBlock || "- (없음)"}\n\n반드시 다른 세부 결정으로 이어지는 질문 1문장만 생성하세요.`;
+            const resRepeatRetry = await postOpenAiChatCompletion({
+              apiKey,
+              model,
+              messages: [
+                { role: "system", content: repeatGuardSystem },
+                { role: "user", content: user },
+              ],
+              temperature: 0.22,
+              responseFormatJsonObject: true,
+              maxTokens: qMaxTokens,
+            });
+            if (resRepeatRetry.ok) {
+              const parsedR = safeJsonParse(resRepeatRetry.text ?? "") as Record<string, unknown> | null;
+              const msgR = String(parsedR?.assistantMessage ?? "").trim();
+              const vR = validate(conversationOwner, msgR);
+              const repR = skipRepeatGuard || !msgR ? { repeated: false as const } : isRepeatedQuestion(msgR, recentQuestionsPrev);
+              if (msgR && vR.ok && !repR.repeated) {
+                nextQuestion = msgR;
+                promptChunks.push(
+                  `[next-question:${conversationOwner}:repeat-guard]\n[system]\n${repeatGuardSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resRepeatRetry.text ?? "").slice(0, 4000)}`
+                );
+                executedAgents.push(`question:${conversationOwner}:repeat-guard`);
+                nextQuestionRetryReason = "repeated_question_retry_succeeded";
+              } else {
+                nextQuestionRetryReason = "repeated_question_retry_failed";
+              }
+            } else {
+              nextQuestionRetryReason = "repeated_question_retry_failed";
+            }
+          }
           promptChunks.push(`[next-question:${conversationOwner}]\n[system]\n${roleSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
           executedAgents.push(`question:${conversationOwner}`);
         } else {
@@ -1030,18 +1170,30 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
             ],
             temperature: 0.22,
             responseFormatJsonObject: true,
-            maxTokens: 160,
+            maxTokens: qMaxTokens,
           });
           if (resRetry.ok) {
             const parsed2 = safeJsonParse(resRetry.text ?? "") as Record<string, unknown> | null;
             const msg2 = String(parsed2?.assistantMessage ?? "").trim();
+            const sug2 =
+              Array.isArray((parsed2 as any)?.suggestions) && (parsed2 as any).suggestions.length
+                ? (parsed2 as any).suggestions.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
+                : null;
+            if (sug2?.length) interviewSuggestions = sug2;
             const v2 = validate(conversationOwner, msg2);
-            if (msg2 && v2.ok) {
+            const rep2 = skipRepeatGuard || !msg2 ? { repeated: false as const } : isRepeatedQuestion(msg2, recentQuestionsPrev);
+            if (rep2.repeated) {
+              repeatedQuestionDetected = true;
+              repeatedQuestionReason = rep2.reason ?? repeatedQuestionReason ?? "repeated";
+              nextQuestionRetryReason = "repeated_question_retry_failed";
+            }
+            if (msg2 && v2.ok && !rep2.repeated) {
               nextQuestion = msg2;
               promptChunks.push(
                 `[next-question:${conversationOwner}:retry]\n[system]\n${retrySystem}\n\n[user]\n${user}\n\n[raw]\n${String(resRetry.text ?? "").slice(0, 4000)}`
               );
               executedAgents.push(`question:${conversationOwner}:retry`);
+              if (rep1.repeated) nextQuestionRetryReason = "repeated_question_retry_succeeded";
             }
           }
         }
@@ -1086,6 +1238,12 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     ...(previousDecisionAxis ? { previousDecisionAxis } : {}),
     ...(typeof decisionAxisSource === "string" ? { decisionAxisSource } : {}),
     ...(typeof ownerAxisMismatch === "boolean" ? { ownerAxisMismatch } : {}),
+    ...(typeof repeatedQuestionDetected === "boolean" ? { repeatedQuestionDetected } : {}),
+    ...(repeatedQuestionReason ? { repeatedQuestionReason } : {}),
+    ...(nextQuestionRetryReason ? { nextQuestionRetryReason } : {}),
+    ...(interviewSuggestions?.length ? { interviewSuggestions } : {}),
+    ...(quickActionLabel ? { quickActionLabel: quickActionLabel.slice(0, 40) } : {}),
+    ...(quickActionKind ? { quickActionKind } : {}),
     mergeCoordinator: "merge-coordinator",
     specialistContributors: uniqSpecialists,
     decisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
@@ -1128,6 +1286,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       ownerMomentum: ownerMomentumNext,
       lastDecisionAxis: decisionAxis,
       lastDecisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
+      recentAssistantQuestions: [nextQuestion, ...recentQuestionsPrev].filter(Boolean).slice(0, 8),
     },
     meta,
     promptText: promptChunks.join("\n\n---\n\n"),
@@ -1146,8 +1305,13 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
   readonly baseState: RequirementsSingleChatOrchestrationStateV1;
   readonly activeRoles: Set<string>;
   readonly nowIso: string;
+  readonly quickActionLabel?: string | null;
 }): SingleChatOrchestrationTurnOk {
-  const um = input.userMessage.trim();
+  const rawUm = String(input.userMessage ?? "").trim();
+  const qaLabel = String(input.quickActionLabel ?? "").trim() || null;
+  const qaKind = classifyQuickAction(qaLabel);
+  const heur = routingUserMessageForHeuristics(rawUm, qaLabel);
+  const um = heur;
   const patches: SlotPatchInput[] = [];
   const matched: string[] = [];
   const delegatedIntent = new Set<string>();
@@ -1246,9 +1410,20 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
     return "이 서비스의 첫 버전에서 반드시 해결해야 할 핵심 목표를 한 문장으로 정리해 주실래요?";
   };
 
-  const msg = explicitOwner ? roleFallbackQuestion(explicitOwner) : patches.length === 0
+  const baseMsg = explicitOwner ? roleFallbackQuestion(explicitOwner) : patches.length === 0
     ? "말씀해 주신 내용을 바탕으로 조금만 더 구체화하고 싶습니다. 가장 먼저 해결하려는 사용자의 문제를 한 문장으로 알려주실 수 있을까요?"
     : `좋습니다. 현재 답변을 반영해 필요한 정보를 정리했습니다.\n\n한 가지만 더 알려주세요. 지금 단계에서 가장 불확실한 부분은 무엇인가요?`;
+  const prefix =
+    qaKind === "apply"
+      ? "선택하신 내용을 반영하는 방향으로 이어가겠습니다.\n\n"
+      : qaKind === "alternatives"
+        ? "다른 대안을 같은 관점에서 다시 정리했습니다.\n\n"
+        : qaKind === "partial_edit"
+          ? "추천안을 기준으로 일부만 조정하면 됩니다.\n\n"
+          : qaKind === "defer"
+            ? "보류하신 부분은 나중으로 미루고,\n\n"
+            : "";
+  const msg = `${prefix}${baseMsg}`.trim();
 
   const buckets = slotBucketsByStatus(nextState);
 
@@ -1261,6 +1436,8 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
     conversationOwner: explicitOwner ?? "planner",
     questionGeneratedBy: explicitOwner ?? "planner",
     ownershipReason: explicitOwner ? "explicit_role_mention(fallback)" : "fallback_no_llm",
+    ...(qaLabel ? { quickActionLabel: qaLabel.slice(0, 40) } : {}),
+    ...(qaKind ? { quickActionKind: qaKind } : {}),
     executedAgents: [explicitOwner ? `fallback:${explicitOwner}` : "planner"],
     staleSlots: buckets.stale,
     confirmedSlots: buckets.confirmed,

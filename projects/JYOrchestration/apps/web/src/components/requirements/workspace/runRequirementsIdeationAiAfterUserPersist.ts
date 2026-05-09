@@ -216,6 +216,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
   const runFacilitatorOrDraftPipeline = async (): Promise<FacilitatorPipelineResult> => {
     let facilitatorFinalRoom: RequirementsRoomStateV3;
     try {
+      const quickActionChip = String(consumeInterviewSelectedSuggestion?.() ?? "").trim();
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
       const res = await credentialsIncludeFetch(endpoint, {
         method: "POST",
@@ -227,6 +228,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           ...(projectType !== undefined ? { projectType } : {}),
           stage: "requirements",
           userMessage: text,
+          ...(quickActionChip ? { quickActionLabel: quickActionChip } : {}),
           dialogueExcerpt: excerpt,
           targets: targets.map((t) => ({ id: t.id, name: t.name })),
           sender: { id: sessionUserId, name: sessionUserName },
@@ -251,6 +253,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         message?: string;
         data?: {
           reply?: string;
+          interviewSuggestions?: unknown;
           draft?: {
             overview: string;
             goals: string[];
@@ -285,6 +288,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           (createdDraft
             ? `요구사항 문서 초안을 만들었습니다.\n\n- 개요 ${createdDraft.overview}\n- 사용자 ${createdDraft.users.join(", ")}\n- 기능 ${createdDraft.features.join(", ")}\n- 기준 ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 남은 확인사항 ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
             : "");
+        const quickChipsRaw = json.data?.interviewSuggestions;
+        const quickChips =
+          Array.isArray(quickChipsRaw) && quickChipsRaw.length
+            ? quickChipsRaw.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
+            : [];
 
         const nextDraftDoc =
           createdDraft && pid
@@ -336,6 +344,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                   speakerId: speaker.id || primaryId,
                   speakerName: speaker.name || aiName,
                   messageType: "ANSWER",
+                  ...(quickChips.length ? { meta: { interviewSuggestions: quickChips } } : {}),
                 }),
               ],
             },

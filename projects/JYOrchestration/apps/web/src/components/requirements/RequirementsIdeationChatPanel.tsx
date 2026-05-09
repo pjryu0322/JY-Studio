@@ -12,17 +12,20 @@ import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
 export type RequirementsIdeationChatPanelProps = Readonly<{
   showScreenLabels: boolean;
   conversationStatus: "idle" | "loading" | "loaded" | "error";
-  ideationConversationOnly: readonly RequirementsMessage[];
+  /** 통합 타임라인(`requirementsConversation.messages` 전체) */
+  chatMessages: readonly RequirementsMessage[];
   participantAiMemberId: WorkspaceAiMemberId;
   aiInvokePending: boolean;
-  inIdeationStage: boolean;
-  participantBadgeCount: number;
-  onOpenMembersModal: () => void;
+  /** SingleChat 입력·하네스 라우팅용 내부 단계 */
+  serviceDesignStage: RequirementsWorkspaceStage;
+  /** 채팅 헤더 참가자 배지(통합 화면에서는 항상 전달 권장) */
+  memberControls: { count: number; onOpen: () => void } | null;
   proposalReadinessPercentVal: number;
   problemInterviewCovered: number;
   /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */
@@ -51,6 +54,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   targetPickerItems: readonly RequirementsComposerTargetPickerItem[];
   typingIndicatorSpeakerLine?: string | null;
   typingIndicatorResolvedSpeakerSource?: string | null;
+  /** 채팅 내 내 메시지 표시명(세션 닉네임) */
+  sessionUserDisplayName?: string;
   onOrganizeRequirements: () => void | Promise<void>;
   organizeDisabled: boolean;
   draftDocTruthy: boolean;
@@ -60,12 +65,11 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
 export function RequirementsIdeationChatPanel({
   showScreenLabels,
   conversationStatus,
-  ideationConversationOnly,
+  chatMessages,
   participantAiMemberId,
   aiInvokePending,
-  inIdeationStage,
-  participantBadgeCount,
-  onOpenMembersModal,
+  serviceDesignStage,
+  memberControls,
   proposalReadinessPercentVal,
   problemInterviewCovered,
   progressSlotTotal,
@@ -92,15 +96,15 @@ export function RequirementsIdeationChatPanel({
   targetPickerItems,
   typingIndicatorSpeakerLine,
   typingIndicatorResolvedSpeakerSource,
+  sessionUserDisplayName,
   onOrganizeRequirements,
   organizeDisabled,
   draftDocTruthy,
   onOpenDraftView,
 }: RequirementsIdeationChatPanelProps) {
   const ideationInterviewUi =
-    inIdeationStage && conversationStatus === "loaded"
+    conversationStatus === "loaded"
       ? {
-          // Orchestration-first: treat interview UI as active in ideation stage, independent of legacy ProblemInterview state.
           active: true,
           readinessPercent: proposalReadinessPercentVal,
           covered: problemInterviewCovered,
@@ -151,7 +155,7 @@ export function RequirementsIdeationChatPanel({
         </div>
       ) : null}
       <ServiceDesignComposer
-        stage="ideation"
+        stage={serviceDesignStage}
         textAreaRef={composerTextAreaRef}
         value={input}
         onChange={onInputChange}
@@ -160,8 +164,8 @@ export function RequirementsIdeationChatPanel({
         placeholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
         onSendIdeation={onSendIdeation}
-        onSendServiceFlow={async () => {}}
-        onSendFeaturePlanning={async () => {}}
+        onSendServiceFlow={onSendIdeation}
+        onSendFeaturePlanning={onSendIdeation}
         ideationToolsMenu={{
           onOrganizeRequirements: () => void onOrganizeRequirements(),
           organizeDisabled,
@@ -176,12 +180,13 @@ export function RequirementsIdeationChatPanel({
     <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>
       <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
       <RequirementsChatPanel
-        messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
+        messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
         typingIndicator={aiInvokePending}
         typingIndicatorSpeakerLine={typingIndicatorSpeakerLine}
         typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
-        memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: onOpenMembersModal }}
+        sessionUserDisplayName={sessionUserDisplayName}
+        memberControls={memberControls}
         ideationInterviewUi={ideationInterviewUi}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}

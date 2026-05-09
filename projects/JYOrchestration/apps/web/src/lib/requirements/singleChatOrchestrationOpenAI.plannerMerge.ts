@@ -39,6 +39,7 @@ export async function runPlannerMergeTurnOpenAI(input: {
 당신은 SingleChat의 **merge coordinator**입니다.
 목표는 "대화 품질"이 아니라 **오케스트레이션 상태(state) 업데이트**입니다.
 사용자에게 보이는 문장/톤/질문을 만들지 마라. assistantMessage는 쓰지 않는다.
+[사용자]에 '[QuickAction 선택]'이 있으면, 대화 발췌에서 직전 assistant 추천을 반영해 planner 슬롯 조정·derivedPromotions를 수행한다(추천안 적용=후보 확정에 가깝게, 보류=변경 최소).
 
 ${stableLine}
 

@@ -1,20 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 
-export function RequirementsWorkspaceStageRenderer({
-  activeStage,
-  ideationStage,
-  serviceFlowStage,
-  featurePlanningStage,
-}: {
-  readonly activeStage: RequirementsWorkspaceStage;
-  readonly ideationStage: ReactNode;
-  readonly serviceFlowStage: ReactNode;
-  readonly featurePlanningStage: ReactNode;
-}) {
-  if (activeStage === "feature-planning") return <>{featurePlanningStage}</>;
-  if (activeStage === "service-flow") return <>{serviceFlowStage}</>;
-  return <>{ideationStage}</>;
+/**
+ * 서비스 기획 워크스페이스는 항상 동일한 SingleChat 표면(통합 대화)만 노출한다.
+ * 내부 `activeStage`(ideation / service-flow / feature-planning)는 URL·상태로 유지되며
+ * 전송·오케스트레이션 라우팅에만 쓰인다.
+ */
+export function RequirementsWorkspaceStageRenderer({ singleChatSurface }: { readonly singleChatSurface: ReactNode }) {
+  return <>{singleChatSurface}</>;
 }
