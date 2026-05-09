@@ -1,6 +1,6 @@
 "use client";
 
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import type { RequirementsComposerTargetPickerItem, RequirementsComposerToolsMenu } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
@@ -22,6 +22,8 @@ export type ServiceDesignComposerProps = {
   onSendFeaturePlanning: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   /** ideation(및 단계 폴백)에서 `RequirementsComposerGpt` + 메뉴 */
   ideationToolsMenu?: RequirementsComposerToolsMenu;
+  /** + 메뉴 커스텀(ideation에서 `RequirementsComposerGpt.plusMenuRender`로 전달) */
+  plusMenuRender?: (ctx: { readonly close: () => void }) => ReactNode;
   /** ideation: 부모 포커스 제어(기존 `RequirementsIdeationChatPanel`) */
   textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
 };
@@ -38,6 +40,7 @@ export function ServiceDesignComposer({
   onSendServiceFlow,
   onSendFeaturePlanning,
   ideationToolsMenu,
+  plusMenuRender,
   textAreaRef,
 }: ServiceDesignComposerProps) {
   const submit = async () => {
@@ -61,7 +64,8 @@ export function ServiceDesignComposer({
       disabled={disabled}
       placeholder={placeholder}
       targetPickerItems={targetPickerItems}
-      toolsMenu={stage === "ideation" ? ideationToolsMenu : undefined}
+      plusMenuRender={stage === "ideation" ? plusMenuRender : undefined}
+      toolsMenu={stage === "ideation" && !plusMenuRender ? ideationToolsMenu : undefined}
     />
   );
 }

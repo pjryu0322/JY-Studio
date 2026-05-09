@@ -96,6 +96,7 @@ import {
 } from "@/lib/project/requirementsRoomState";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
+import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import {
@@ -1731,35 +1732,8 @@ export function RequirementsWorkspace({
 
   const buildConversationHtmlForSummary = useCallback((): string => {
     const list = ideationConversationOnly.length ? ideationConversationOnly : conversationMessages;
-    const escape = (s: string) =>
-      String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    const lines: string[] = [];
-    lines.push(`<div>`);
     const meLabel = String(sessionUser?.name ?? "").trim() || "나";
-    for (const m of list.slice(-80)) {
-      const who =
-        m.role === "user"
-          ? escape(meLabel)
-          : m.role === "ai"
-            ? m.speakerName
-              ? `AI(${escape(String(m.speakerName))})`
-              : "AI"
-            : m.role === "human"
-              ? m.speakerName
-                ? `멤버(${escape(String(m.speakerName))})`
-                : "멤버"
-              : "시스템";
-      const body = escape(String(m.content ?? "").trim());
-      if (!body) continue;
-      lines.push(`<div><strong>${who}</strong>: ${body.replace(/\n/g, "<br/>")}</div>`);
-    }
-    lines.push(`</div>`);
-    return lines.join("\n");
+    return buildConversationContentHtmlForWorkNoteSummary(list, meLabel, { maxMessages: 80 });
   }, [conversationMessages, ideationConversationOnly, sessionUser?.name]);
 
   const onSummarizeConversation = useCallback(async () => {

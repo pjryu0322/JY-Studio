@@ -90,21 +90,23 @@ function IconButton({
         <span
           style={{
             position: "absolute",
-            top: -6,
-            right: -6,
-            minWidth: 18,
-            height: 18,
-            padding: "0 5px",
+            top: 2,
+            right: 2,
+            minWidth: 16,
+            height: 16,
+            padding: "0 4px",
             borderRadius: 999,
             background: "#0ea5e9",
             color: "#fff",
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 900,
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            border: "2px solid #fff",
+            border: "1.5px solid #fff",
             lineHeight: 1,
+            boxSizing: "border-box",
+            pointerEvents: "none",
           }}
         >
           {badge > 99 ? "99+" : badge}

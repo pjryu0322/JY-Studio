@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { usePathname } from "next/navigation";
+import { MessengerRailNavLinks } from "@/components/layout/MessengerRailNavLinks";
 import { PlatformNotificationsBell } from "@/components/layout/PlatformNotificationsBell";
 import { PlatformSettingsTrigger } from "@/components/layout/PlatformSettingsTrigger";
 import { ProjectWorkNoteButton, UserWorkNoteButton } from "@/components/worknote/WorkNoteButton";
@@ -61,6 +64,8 @@ function profileHoverTitle(me: TopRightToolbarMe): string {
 }
 
 export function TopRightToolbar(p: TopRightToolbarProps) {
+  const pathname = usePathname() || "/";
+  const showMessengerRailNav = pathname === "/" || pathname.startsWith("/chat/");
   const gap = p.compact ? 6 : 8;
   const vertical = p.layout === "vertical";
   const stackGap = p.compact ? 8 : 10;
@@ -164,11 +169,11 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
   ) : null;
   const projectListBtn = (
     <Link
-      href="/"
+      href="/?panel=chat"
       prefetch={false}
       data-testid="platform-project-list"
-      aria-label="프로젝트 목록으로 이동"
-      title="프로젝트 목록"
+      aria-label="대화 목록으로 이동"
+      title="대화 목록"
       style={{
         width: 36,
         height: 36,
@@ -190,35 +195,36 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
       <ProjectListNavIcon />
     </Link>
   );
-  const projectMembersPlaceholderBtn = p.hasSession ? (
-    <button
-      type="button"
-      data-testid="platform-project-members"
-      aria-label={CONTACTS_MEMBERS_PLACEHOLDER_MSG}
-      title="연락처 사용자 (준비 중)"
-      onClick={() => {
-        window.alert(CONTACTS_MEMBERS_PLACEHOLDER_MSG);
-      }}
-      style={{
-        width: 36,
-        height: 36,
-        padding: 0,
-        borderRadius: 10,
-        border: "1px solid #cbd5e1",
-        background: "#fff",
-        color: "#334155",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        boxSizing: "border-box",
-        cursor: "pointer",
-        outlineOffset: 2,
-      }}
-    >
-      <ProjectMembersNavIcon />
-    </button>
-  ) : null;
+  const projectMembersPlaceholderBtn =
+    p.hasSession && !showMessengerRailNav ? (
+      <button
+        type="button"
+        data-testid="platform-project-members"
+        aria-label={CONTACTS_MEMBERS_PLACEHOLDER_MSG}
+        title="연락처 사용자 (준비 중)"
+        onClick={() => {
+          window.alert(CONTACTS_MEMBERS_PLACEHOLDER_MSG);
+        }}
+        style={{
+          width: 36,
+          height: 36,
+          padding: 0,
+          borderRadius: 10,
+          border: "1px solid #cbd5e1",
+          background: "#fff",
+          color: "#334155",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          boxSizing: "border-box",
+          cursor: "pointer",
+          outlineOffset: 2,
+        }}
+      >
+        <ProjectMembersNavIcon />
+      </button>
+    ) : null;
 
   const logoutButton = p.hasSession ? (
     <button
@@ -276,6 +282,11 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
           >
             {profileBlock}
             {projectListBtn}
+            {showMessengerRailNav ? (
+              <Suspense fallback={null}>
+                <MessengerRailNavLinks />
+              </Suspense>
+            ) : null}
             {promptTimelineBtn}
             {notificationsBell}
             {workNoteBtn}
