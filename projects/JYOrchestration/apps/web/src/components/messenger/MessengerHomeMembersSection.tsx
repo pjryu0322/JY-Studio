@@ -6,7 +6,7 @@ import { aiMemberStatusLabel, MESSENGER_HOME_AI_CATALOG } from "@/lib/messenger/
 import type { HumanFriendStatus, HumanMember } from "@/lib/messenger/messengerHomeMemberTypes";
 import { loadMessengerFriendsFromStorage, saveMessengerFriendsToStorage } from "@/lib/messenger/messengerLocalFriendsStorage";
 import type { PlatformUserRow } from "@/components/requirements/PlatformUserSearchCombobox";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { createMessengerChatRoom } from "@/lib/messenger/messengerChatRoomApi";
 import { MessengerFriendAddSheet } from "./MessengerFriendAddSheet";
 
 type MembersSubTab = "human" | "ai";
@@ -167,24 +167,12 @@ export function MessengerHomeMembersSection() {
       setStartBusy(true);
       setStartError(null);
       try {
-        const res = await credentialsIncludeFetch("/api/chat-rooms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomType: "GROUP",
-            aiParticipationMode: "NONE",
-            participantUserIds: ids,
-          }),
+        const { id } = await createMessengerChatRoom({
+          roomType: "GROUP",
+          aiParticipationMode: "NONE",
+          participantUserIds: ids,
         });
-        const json = (await res.json()) as {
-          success?: boolean;
-          data?: { id?: string };
-          message?: string;
-        };
-        if (!res.ok || !json.success || !json.data?.id) {
-          throw new Error(json.message || "대화방을 만들지 못했습니다.");
-        }
-        window.location.href = `/chat/${encodeURIComponent(json.data.id)}`;
+        window.location.href = `/chat/${encodeURIComponent(id)}`;
       } catch (e) {
         setStartError(e instanceof Error ? e.message : "오류가 발생했습니다.");
       } finally {

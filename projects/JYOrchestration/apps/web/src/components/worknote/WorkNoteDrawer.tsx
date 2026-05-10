@@ -22,6 +22,7 @@ import {
 } from "@/components/worknote/workNoteDrawerUiHelpers";
 import { escapeHtmlText, imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
+import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 
 type PanelGeom = WorkNotePanelGeom;
 
@@ -141,45 +142,23 @@ export function WorkNoteDrawer(p: {
       setAiInsight(null);
       return;
     }
-    const summarizeBody =
-      p.activeMemoScope === "USER"
-        ? { scope: "user", contentHtml: html }
-        : { projectId: String(p.activeProjectId ?? "").trim(), contentHtml: html };
     setAiSummarizing(true);
     setAiSummaryError(null);
     setAiInsight(null);
     try {
-      const res = await fetch("/api/work-notes/summarize", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(summarizeBody),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
-      };
-      if (!res.ok || !json.success) {
-        setAiSummaryError(typeof json.message === "string" ? json.message : "요약에 실패했습니다.");
-        return;
-      }
-      const s = typeof json.data?.summary === "string" ? json.data.summary.trim() : "";
-      if (!s) {
-        setAiSummaryError("요약 결과가 비어 있습니다.");
-        return;
-      }
-      const requestType = typeof json.data?.requestType === "string" ? json.data.requestType.trim() : "기타";
-      const priority = typeof json.data?.priority === "string" ? json.data.priority.trim().toUpperCase() : "P2";
-      const pr = typeof json.data?.priorityReason === "string" ? json.data.priorityReason.trim() : "";
+      const wire = await postWorkNoteSummarize(
+        p.activeMemoScope === "USER"
+          ? { scope: "user", contentHtml: html }
+          : { projectId: String(p.activeProjectId ?? "").trim(), contentHtml: html }
+      );
       setAiInsight({
-        summary: s,
-        requestType: requestType || "기타",
-        priority: priority || "P2",
-        ...(pr ? { priorityReason: pr } : {}),
+        summary: wire.summary,
+        requestType: wire.requestType,
+        priority: wire.priority,
+        ...(wire.priorityReason.trim() ? { priorityReason: wire.priorityReason.trim() } : {}),
       });
-    } catch {
-      setAiSummaryError("요약 요청 중 오류가 발생했습니다.");
+    } catch (e) {
+      setAiSummaryError(e instanceof Error ? e.message : "요약 요청 중 오류가 발생했습니다.");
     } finally {
       setAiSummarizing(false);
     }
