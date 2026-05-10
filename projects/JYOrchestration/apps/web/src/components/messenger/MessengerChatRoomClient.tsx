@@ -19,9 +19,19 @@ import {
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { InlineAlert } from "@/components/ui";
+import {
+  deleteMessengerChatRoom,
+  patchMessengerRoomAiParticipation,
+  patchMessengerRoomTitle,
+  postMessengerAiSummaryBlockMessage,
+  postMessengerChatRoomLeave,
+  postMessengerConfirmProject,
+  postMessengerProjectDraft,
+  postMessengerUserMessage,
+} from "@/lib/messenger/messengerChatRoomApi";
+import { postWorkNoteSummarizeFromHtml } from "@/lib/worknote/workNotesSummarizeApi";
 import { messengerMembersToParticipants } from "@/lib/messenger/messengerRoomParticipantMapping";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
@@ -82,22 +92,8 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
         flushSync(() => {
           setInput("");
         });
-        const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
-        });
-        const json = (await res.json()) as {
-          success?: boolean;
-          message?: string;
-          data?: { aiRan?: boolean; aiError?: string };
-        };
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "전송에 실패했습니다.");
-        }
-        if (json.data?.aiError) {
-          setToast(json.data.aiError);
-        }
+        const { aiError } = await postMessengerUserMessage(rid, text);
+        if (aiError) setToast(aiError);
         await reloadMessages();
         await reloadDetail();
       } catch (e) {
@@ -116,15 +112,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       setSettingsSaving(true);
       setToast(null);
       try {
-        const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ aiParticipationMode: mode }),
-        });
-        const json = (await res.json()) as { success?: boolean; message?: string };
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "설정을 저장하지 못했습니다.");
-        }
+        await patchMessengerRoomAiParticipation(rid, mode);
         await reloadDetail();
         await reloadMessages();
       } catch (e) {
@@ -146,15 +134,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setRenameBusy(true);
     setRenameError(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: next }),
-      });
-      const json = (await res.json()) as { success?: boolean; message?: string };
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || "저장에 실패했습니다.");
-      }
+      await patchMessengerRoomTitle(rid, next);
       setRenameOpen(false);
       await reloadDetail();
     } catch (e) {
@@ -170,9 +150,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setRoomLifecycleBusy(true);
     setToast(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}`, { method: "DELETE" });
-      const json = (await res.json()) as { success?: boolean; message?: string };
-      if (!res.ok || !json.success) throw new Error(json.message || "삭제에 실패했습니다.");
+      await deleteMessengerChatRoom(rid);
       router.push("/?panel=chat");
     } catch (e) {
       setToast(e instanceof Error ? e.message : "삭제 오류");
@@ -187,9 +165,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setRoomLifecycleBusy(true);
     setToast(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/leave`, { method: "POST" });
-      const json = (await res.json()) as { success?: boolean; message?: string };
-      if (!res.ok || !json.success) throw new Error(json.message || "나가기에 실패했습니다.");
+      await postMessengerChatRoomLeave(rid);
       router.push("/?panel=chat");
     } catch (e) {
       setToast(e instanceof Error ? e.message : "나가기 오류");
@@ -203,20 +179,10 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setDraftBusy(true);
     setToast(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/project-draft`, {
-        method: "POST",
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        data?: { payload?: ProjectFromChatDraftPayloadV1 };
-        message?: string;
-      };
-      if (!res.ok || !json.success || !json.data?.payload) {
-        throw new Error(json.message || "초안 생성에 실패했습니다.");
-      }
-      setDraftPayload(json.data.payload);
-      setProjectName(json.data.payload.chosenTitle);
-      setProjectDesc(json.data.payload.description);
+      const payload = await postMessengerProjectDraft(rid);
+      setDraftPayload(payload);
+      setProjectName(payload.chosenTitle);
+      setProjectDesc(payload.description);
       setDraftOpen(true);
     } catch (e) {
       setToast(e instanceof Error ? e.message : "초안 생성 오류");
@@ -237,41 +203,14 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setToast(null);
     try {
       const contentHtml = buildConversationContentHtmlForWorkNoteSummary(list, sessionName, { maxMessages: 80 });
-      const res = await credentialsIncludeFetch("/api/work-notes/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: "user",
-          contentHtml,
-        }),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
-      };
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || `HTTP ${res.status}`);
-      }
-      const summary = typeof json.data?.summary === "string" ? json.data.summary.trim() : "";
-      if (!summary) throw new Error("요약 결과가 비어 있습니다.");
-      const requestType = typeof json.data?.requestType === "string" ? json.data.requestType.trim() || "기타" : "기타";
-      const priority = typeof json.data?.priority === "string" ? json.data.priority.trim().toUpperCase() || "P2" : "P2";
-      const priorityReason =
-        typeof json.data?.priorityReason === "string" && json.data.priorityReason.trim()
-          ? json.data.priorityReason.trim()
-          : "";
-      const meta = [`요청 분류 ${requestType}`, `우선순위 추천 ${priority}`, ...(priorityReason ? [`근거 ${priorityReason}`] : [])].join("\n");
-      const block = ["【AI 요약 정리】", "", summary, "", meta].join("\n");
-      const post = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: block, kind: "ai_work_note_summary" }),
-      });
-      const postJson = (await post.json()) as { success?: boolean; message?: string };
-      if (!post.ok || !postJson.success) {
-        throw new Error(postJson.message || "요약을 대화에 저장하지 못했습니다.");
-      }
+      const sn = await postWorkNoteSummarizeFromHtml(contentHtml);
+      const meta = [
+        `요청 분류 ${sn.requestType}`,
+        `우선순위 추천 ${sn.priority}`,
+        ...(sn.priorityReason ? [`근거 ${sn.priorityReason}`] : []),
+      ].join("\n");
+      const block = ["【AI 요약 정리】", "", sn.summary, "", meta].join("\n");
+      await postMessengerAiSummaryBlockMessage(rid, block);
       await reloadMessages();
     } catch (e) {
       setToast(e instanceof Error ? e.message : "AI 요약에 실패했습니다.");
@@ -290,17 +229,9 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setConfirmBusy(true);
     setToast(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(rid)}/confirm-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: projectDesc.trim() || null }),
-      });
-      const json = (await res.json()) as { success?: boolean; data?: { projectId?: string }; message?: string };
-      if (!res.ok || !json.success || !json.data?.projectId) {
-        throw new Error(json.message || "프로젝트 생성에 실패했습니다.");
-      }
+      const { projectId } = await postMessengerConfirmProject(rid, name, projectDesc.trim() || null);
       setDraftOpen(false);
-      const path = appFlowStepHref("requirements", json.data.projectId);
+      const path = appFlowStepHref("requirements", projectId);
       const url = typeof window !== "undefined" ? new URL(path, window.location.origin).href : path;
       const opened = typeof window !== "undefined" ? window.open(url, "_blank", "noopener,noreferrer") : null;
       if (!opened) {

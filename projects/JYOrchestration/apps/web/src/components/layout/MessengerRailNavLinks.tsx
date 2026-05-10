@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useRef, useState, type CSSProperties } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { parseMessengerHomePanel, type MessengerHomePanel } from "@/components/messenger/messengerHomePanel";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { createMessengerChatRoom } from "@/lib/messenger/messengerChatRoomApi";
 import { platformRailIconLinkStyle } from "@/lib/layout/platformTopNavConstants";
 
 function ChatBubbleIcon() {
@@ -53,23 +53,14 @@ export function MessengerRailNavLinks() {
     quickBusyRef.current = true;
     setQuickBusy(kind);
     try {
-      const body =
+      const payload =
         kind === "aichat"
-          ? { roomType: "DIRECT", aiParticipationMode: "AUTO" }
-          : { roomType: "DIRECT", aiParticipationMode: "MENTION_ONLY" };
-      const res = await credentialsIncludeFetch("/api/chat-rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = (await res.json()) as { success?: boolean; data?: { id?: string }; message?: string };
-      if (!res.ok || !json.success || !json.data?.id) {
-        window.alert(json.message || "대화방을 만들지 못했습니다.");
-        return;
-      }
-      window.location.href = `/chat/${encodeURIComponent(json.data.id)}`;
-    } catch {
-      window.alert("네트워크 오류가 발생했습니다.");
+          ? ({ roomType: "DIRECT", aiParticipationMode: "AUTO" } as const)
+          : ({ roomType: "DIRECT", aiParticipationMode: "MENTION_ONLY" } as const);
+      const { id } = await createMessengerChatRoom(payload);
+      window.location.href = `/chat/${encodeURIComponent(id)}`;
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
     } finally {
       quickBusyRef.current = false;
       setQuickBusy(null);

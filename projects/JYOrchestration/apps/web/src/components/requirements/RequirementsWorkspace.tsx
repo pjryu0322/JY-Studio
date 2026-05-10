@@ -97,6 +97,7 @@ import {
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
+import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import {
@@ -1743,32 +1744,12 @@ export function RequirementsWorkspace({
     setConversationAiSummaryError(null);
     try {
       const contentHtml = buildConversationHtmlForSummary();
-      const res = await credentialsIncludeFetch("/api/work-notes/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: pid,
-          scope: "project",
-          contentHtml,
-        }),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
-      };
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || `HTTP ${res.status}`);
-      }
-      const summary = typeof json.data?.summary === "string" ? json.data.summary.trim() : "";
-      if (!summary) throw new Error("요약 결과가 비어 있습니다.");
+      const wire = await postWorkNoteSummarize({ projectId: pid, scope: "project", contentHtml });
       setConversationAiInsight({
-        summary,
-        requestType: typeof json.data?.requestType === "string" ? json.data.requestType.trim() || "기타" : "기타",
-        priority: typeof json.data?.priority === "string" ? json.data.priority.trim().toUpperCase() || "P2" : "P2",
-        ...(typeof json.data?.priorityReason === "string" && json.data.priorityReason.trim()
-          ? { priorityReason: json.data.priorityReason.trim() }
-          : {}),
+        summary: wire.summary,
+        requestType: wire.requestType,
+        priority: wire.priority,
+        ...(wire.priorityReason.trim() ? { priorityReason: wire.priorityReason.trim() } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "요약 실패";

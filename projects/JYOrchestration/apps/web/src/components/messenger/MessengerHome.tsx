@@ -9,25 +9,22 @@ import { MessengerChatRoomRenameModal } from "@/components/messenger/MessengerCh
 import { MessengerRoomSettingsGearMenu } from "@/components/messenger/MessengerRoomSettingsGearMenu";
 import { MessengerHomeMembersSection } from "@/components/messenger/MessengerHomeMembersSection";
 import { parseMessengerHomePanel, type MessengerHomePanel } from "@/components/messenger/messengerHomePanel";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import {
+  createMessengerChatRoom,
+  deleteMessengerChatRoom,
+  fetchMessengerChatRooms,
+  patchMessengerRoomTitle,
+  postMessengerChatRoomLeave,
+  type CreateMessengerChatRoomPayload,
+  type MessengerChatRoomListRow,
+} from "@/lib/messenger/messengerChatRoomApi";
 
-type ChatRoomRow = {
-  id: string;
-  title: string;
-  lastMessagePreview: string | null;
-  updatedAt: string;
-  projectId: string | null;
-  type?: string;
-  isOwner?: boolean;
-  aiParticipationMode?: string;
-};
-
-type CreatePayload = { roomType: "SOLO" | "DIRECT"; aiParticipationMode: "NONE" | "AUTO" | "MENTION_ONLY" };
+type HomeCreatePayload = Extract<CreateMessengerChatRoomPayload, { roomType: "SOLO" | "DIRECT" }>;
 
 function NewRoomOptions(p: {
   readonly creating: boolean;
   readonly panel: MessengerHomePanel;
-  readonly onPick: (payload: CreatePayload) => void;
+  readonly onPick: (payload: HomeCreatePayload) => void;
 }) {
   const soloNone = (
     <button
@@ -102,7 +99,7 @@ export function MessengerHome() {
   const searchParams = useSearchParams();
   const panel = parseMessengerHomePanel(searchParams.get("panel"));
 
-  const [rooms, setRooms] = useState<ChatRoomRow[] | null>(null);
+  const [rooms, setRooms] = useState<MessengerChatRoomListRow[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
@@ -116,34 +113,13 @@ export function MessengerHome() {
   const loadRooms = useCallback(async () => {
     setListError(null);
     try {
-      const res = await credentialsIncludeFetch("/api/chat-rooms");
-      const json = (await res.json()) as {
-        success?: boolean;
-        data?: { rooms?: (ChatRoomRow & Record<string, unknown>)[] };
-        message?: string;
-      };
-      if (res.status === 401) {
+      const result = await fetchMessengerChatRooms();
+      if (!result.ok) {
         setRooms([]);
-        setListError(json.message || "로그인이 필요합니다.");
+        setListError(result.message);
         return;
       }
-      if (!res.ok || !json.success || !Array.isArray(json.data?.rooms)) {
-        setRooms([]);
-        setListError(json.message || "대화 목록을 불러오지 못했습니다.");
-        return;
-      }
-      setRooms(
-        json.data.rooms.map((row) => ({
-          id: String(row.id ?? ""),
-          title: String(row.title ?? ""),
-          lastMessagePreview: typeof row.lastMessagePreview === "string" ? row.lastMessagePreview : null,
-          updatedAt: String(row.updatedAt ?? ""),
-          projectId: row.projectId == null ? null : String(row.projectId),
-          type: typeof row.type === "string" ? row.type : undefined,
-          isOwner: Boolean(row.isOwner),
-          aiParticipationMode: typeof row.aiParticipationMode === "string" ? row.aiParticipationMode : undefined,
-        }))
-      );
+      setRooms([...result.rooms]);
     } catch {
       setRooms([]);
       setListError("네트워크 오류가 발생했습니다.");
@@ -155,24 +131,15 @@ export function MessengerHome() {
   }, [loadRooms]);
 
   const createRoomWithOptions = useCallback(
-    async (payload: CreatePayload) => {
+    async (payload: HomeCreatePayload) => {
       if (creating) return;
       setCreating(true);
       try {
-        const res = await credentialsIncludeFetch("/api/chat-rooms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const json = (await res.json()) as { success?: boolean; data?: { id?: string }; message?: string };
-        if (!res.ok || !json.success || !json.data?.id) {
-          setListError(json.message || "대화방을 만들지 못했습니다.");
-          return;
-        }
+        const { id } = await createMessengerChatRoom(payload);
         setCreateSheetOpen(false);
-        window.location.href = `/chat/${encodeURIComponent(json.data.id)}`;
-      } catch {
-        setListError("대화방 생성 중 오류가 발생했습니다.");
+        window.location.href = `/chat/${encodeURIComponent(id)}`;
+      } catch (e) {
+        setListError(e instanceof Error ? e.message : "대화방 생성 중 오류가 발생했습니다.");
       } finally {
         setCreating(false);
       }
@@ -190,15 +157,7 @@ export function MessengerHome() {
     setRenameBusy(true);
     setRenameError(null);
     try {
-      const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(renameRoomId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: next }),
-      });
-      const json = (await res.json()) as { success?: boolean; message?: string };
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || "저장에 실패했습니다.");
-      }
+      await patchMessengerRoomTitle(renameRoomId, next);
       setRenameRoomId(null);
       await loadRooms();
     } catch (e) {
@@ -214,11 +173,7 @@ export function MessengerHome() {
       setRoomListBusyId(roomId);
       setListError(null);
       try {
-        const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(roomId)}`, { method: "DELETE" });
-        const json = (await res.json()) as { success?: boolean; message?: string };
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "삭제에 실패했습니다.");
-        }
+        await deleteMessengerChatRoom(roomId);
         await loadRooms();
       } catch (e) {
         setListError(e instanceof Error ? e.message : "삭제 오류");
@@ -235,13 +190,7 @@ export function MessengerHome() {
       setRoomListBusyId(roomId);
       setListError(null);
       try {
-        const res = await credentialsIncludeFetch(`/api/chat-rooms/${encodeURIComponent(roomId)}/leave`, {
-          method: "POST",
-        });
-        const json = (await res.json()) as { success?: boolean; message?: string };
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "나가기에 실패했습니다.");
-        }
+        await postMessengerChatRoomLeave(roomId);
         await loadRooms();
       } catch (e) {
         setListError(e instanceof Error ? e.message : "나가기 오류");
