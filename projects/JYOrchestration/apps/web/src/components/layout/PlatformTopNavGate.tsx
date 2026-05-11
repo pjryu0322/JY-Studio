@@ -20,6 +20,8 @@ export function platformTopNavVisibleForPath(pathname: string): boolean {
 
   if (p === "/") return true;
 
+  if (p === "/knowledge-packs" || p.startsWith("/knowledge-packs/")) return true;
+
   // 요구사항 화면은 좌측 레일(작업메모/알림/설정 등) 접근이 필요하므로 표시한다.
   if (p === "/requirements" || p.startsWith("/requirements/")) return true;
   if (p === "/features") return false;

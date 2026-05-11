@@ -61,6 +61,7 @@ export function MessengerRailNavLinks() {
   const projectsActive = pathOnly === "/workspace" || pathOnly.startsWith("/workspace/");
   const friendsActive = railLinkActive("friends", current, pathname);
   const logActive = pathOnly === "/prompt-timeline" || pathOnly.startsWith("/prompt-timeline/");
+  const knowledgePacksActive = pathOnly === "/knowledge-packs" || pathOnly.startsWith("/knowledge-packs/");
 
   /** 빠른 생성 버튼은 내비 ‘선택’과 무관하게 배경을 쓰지 않음(선택 강조는 Chat·친구 등 링크만). */
   const actionCol = (extra?: CSSProperties): CSSProperties => ({
@@ -127,6 +128,28 @@ export function MessengerRailNavLinks() {
         }}
       >
         <span style={projectsActive ? platformRailMessengerActiveText : platformRailNavPrimaryText}>프로젝트</span>
+      </Link>
+      <Link
+        href="/knowledge-packs"
+        prefetch={false}
+        data-testid="platform-knowledge-packs-rail"
+        aria-label="지식팩 · AI 개발 기준"
+        title="지식팩 — Grid 등 AI개발자 참조 기준"
+        style={{
+          ...navCol(knowledgePacksActive),
+          textDecoration: "none",
+          color: "inherit",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+        <span style={knowledgePacksActive ? platformRailMessengerActiveText : platformRailNavPrimaryText}>지식팩</span>
       </Link>
       <Link
         href="/?panel=friends"
