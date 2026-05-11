@@ -701,7 +701,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                           e.preventDefault();
                           openProjectRoomWindow(project.id, workspaceMode);
                         }}
-                        title={`${project.name} — 아이디어 구체화(작업모드 ${WORKSPACE_MODE_HINT[workspaceMode]})`}
+                        title={`${project.name} — 아이디어 구체화(화면 레이아웃 ${WORKSPACE_MODE_HINT[workspaceMode]})`}
                         style={homeProjectTitleLinkStyle}
                       >
                         {project.name}

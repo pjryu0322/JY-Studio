@@ -10,6 +10,7 @@ import { PlatformSettingsTrigger } from "@/components/layout/PlatformSettingsTri
 import { ProjectWorkNoteButton, UserWorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { WorkNotePendingChatNav } from "@/components/worknote/WorkNotePendingChatNav";
 import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
+import { isPlatformGlobalMessengerRailPath } from "@/lib/layout/effectiveWorkflowProjectId";
 import { parseMessengerHomePanel } from "@/components/messenger/messengerHomePanel";
 import {
   platformRailMessengerActiveShell,
@@ -108,14 +109,7 @@ function profileHoverTitle(me: TopRightToolbarMe): string {
 export function TopRightToolbar(p: TopRightToolbarProps) {
   const pathname = usePathname() || "/";
   const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
-  const showMessengerRailNav =
-    pathOnly === "/" ||
-    pathOnly === "/workspace" ||
-    pathOnly === "/knowledge-packs" ||
-    pathOnly.startsWith("/knowledge-packs/") ||
-    pathOnly === "/prompt-timeline" ||
-    pathOnly.startsWith("/prompt-timeline/") ||
-    pathname.startsWith("/chat/");
+  const showMessengerRailNav = pathOnly.startsWith("/chat/") || isPlatformGlobalMessengerRailPath(pathOnly);
   const gap = p.compact ? 6 : 8;
   const vertical = p.layout === "vertical";
   const stackGap = vertical ? (p.compact ? 3 : 4) : p.compact ? 8 : 10;
