@@ -13,7 +13,19 @@ const MOCK_ROWS: readonly { code: string; name: string; status: string; owner: s
 
 function PreviewNotice({ children }: { readonly children: string }) {
   return (
-    <p style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.55, margin: "0 0 12px", padding: 10, background: t.surfaceInfoSoft, border: `1px solid ${t.borderInfoSoft}`, borderRadius: t.radiusMd }}>
+    <p
+      style={{
+        fontSize: 12,
+        color: t.textSecondary,
+        lineHeight: 1.55,
+        margin: "0 0 12px",
+        padding: 10,
+        background: t.surfaceInfoSoft,
+        border: `1px solid ${t.borderInfoSoft}`,
+        borderRadius: t.radiusMd,
+        overflowWrap: "anywhere",
+      }}
+    >
       {children}
     </p>
   );
@@ -25,14 +37,14 @@ function AgGridCommunityPreview() {
       <PreviewNotice>
         AG Grid Community 적용 예시입니다. Community 기능 범위에서 업무용 목록, 정렬, 필터, 페이지네이션, 행 선택 UX를 반영합니다. Enterprise 전용 기능은 포함하지 않습니다.
       </PreviewNotice>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", padding: 10, border: `1px solid ${t.border}`, borderRadius: t.radiusMd, background: "#f8fafc" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: t.textMuted }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", padding: 10, border: `1px solid ${t.border}`, borderRadius: t.radiusMd, background: "#f8fafc", minWidth: 0 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: t.textMuted, flex: "1 1 140px", minWidth: 0 }}>
           검색어
-          <input readOnly placeholder="서비스명·코드" style={{ padding: "6px 8px", borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, minWidth: 160 }} />
+          <input readOnly placeholder="서비스명·코드" style={{ padding: "6px 8px", borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }} />
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: t.textMuted }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: t.textMuted, flex: "0 1 120px", minWidth: 0 }}>
           상태
-          <select style={{ padding: "6px 8px", borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, minWidth: 120 }} defaultValue="ALL">
+          <select style={{ padding: "6px 8px", borderRadius: 6, border: `1px solid ${t.border}`, fontSize: 12, width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }} defaultValue="ALL">
             <option>전체</option>
             <option>진행</option>
             <option>완료</option>
@@ -42,26 +54,26 @@ function AgGridCommunityPreview() {
           조회
         </button>
       </div>
-      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "auto", background: "#fff" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 520 }}>
+      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "hidden", background: "#fff", maxWidth: "100%" }}>
+        <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: "#f1f5f9" }}>
               <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, width: 36, textAlign: "center" }}>
                 <span aria-hidden>☑</span>
               </th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800 }}>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800, overflowWrap: "anywhere" }}>
                 코드 ↕
               </th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800 }}>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800, overflowWrap: "anywhere" }}>
                 서비스명 <span style={{ color: t.primary }}>▾</span>
               </th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800 }}>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800, overflowWrap: "anywhere" }}>
                 상태
               </th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800 }}>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800, overflowWrap: "anywhere" }}>
                 담당
               </th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800 }}>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", fontWeight: 800, overflowWrap: "anywhere" }}>
                 수정일
               </th>
             </tr>
@@ -72,9 +84,9 @@ function AgGridCommunityPreview() {
                 <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "center" }}>
                   <input type="checkbox" readOnly checked={i === 1} aria-label="행 선택" style={{ cursor: "default" }} />
                 </td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontFamily: "monospace", color: t.textSecondary }}>{row.code}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontWeight: 600 }}>{row.name}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontFamily: "ui-monospace, monospace", color: t.textSecondary, overflowWrap: "anywhere" }}>{row.code}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontWeight: 600, overflowWrap: "anywhere" }}>{row.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>
                   <span
                     style={{
                       padding: "2px 8px",
@@ -88,8 +100,8 @@ function AgGridCommunityPreview() {
                     {row.status}
                   </span>
                 </td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>{row.owner}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, color: t.textMuted }}>{row.updated}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>{row.owner}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, color: t.textMuted, overflowWrap: "anywhere" }}>{row.updated}</td>
               </tr>
             ))}
           </tbody>
@@ -128,21 +140,21 @@ function TanStackTablePreview() {
         <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted }}>필터: 상태 = 진행</span>
         <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted }}>선택: 2행</span>
       </div>
-      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
+      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "hidden", maxWidth: "100%" }}>
+        <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: "#fff" }}>
-              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left" }}>코드</th>
-              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left" }}>업무명</th>
-              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left" }}>상태</th>
+              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left", width: "22%", overflowWrap: "anywhere" }}>코드</th>
+              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left", overflowWrap: "anywhere" }}>업무명</th>
+              <th style={{ padding: 8, borderBottom: `2px solid ${t.accentTeal}`, textAlign: "left", width: "24%", overflowWrap: "anywhere" }}>상태</th>
             </tr>
           </thead>
           <tbody>
             {MOCK_ROWS.slice(0, 6).map((row, i) => (
               <tr key={row.code} style={{ background: i % 2 === 0 ? "#fff" : "#f1f5f9" }}>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontFamily: "ui-monospace, monospace" }}>{row.code}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>{row.name}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontFamily: "ui-monospace, monospace", overflowWrap: "anywhere" }}>{row.code}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>{row.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>
                   <span style={{ padding: "2px 8px", borderRadius: 6, background: "#e0f2fe", color: t.info, fontSize: 11, fontWeight: 800 }}>
                     {row.status}
                   </span>
@@ -183,21 +195,21 @@ function TabulatorPreview() {
         </button>
         <span style={{ fontSize: 11, color: t.textMuted, marginLeft: "auto" }}>데이터 로딩…</span>
       </div>
-      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "auto", background: "#fff" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
+      <div style={{ border: `1px solid ${t.borderStrong}`, borderRadius: t.radiusMd, overflow: "hidden", background: "#fff", maxWidth: "100%" }}>
+        <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: "linear-gradient(180deg,#f8fafc,#eef2ff)" }}>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left" }}>코드</th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left" }}>항목</th>
-              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left" }}>비고 (편집)</th>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", width: "22%", overflowWrap: "anywhere" }}>코드</th>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", overflowWrap: "anywhere" }}>항목</th>
+              <th style={{ padding: 8, borderBottom: `1px solid ${t.border}`, textAlign: "left", width: "28%", overflowWrap: "anywhere" }}>비고 (편집)</th>
             </tr>
           </thead>
           <tbody>
             {MOCK_ROWS.slice(0, 7).map((row, i) => (
               <tr key={row.code} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>{row.code}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>{row.name}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, background: i === 2 ? "#fff7ed" : undefined, outline: i === 2 ? `1px dashed ${t.warning}` : undefined }}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>{row.code}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, overflowWrap: "anywhere" }}>{row.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${t.border}`, background: i === 2 ? "#fff7ed" : undefined, outline: i === 2 ? `1px dashed ${t.warning}` : undefined, overflowWrap: "anywhere" }}>
                   {i === 2 ? "편집 중…" : "—"}
                 </td>
               </tr>

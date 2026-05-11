@@ -18,6 +18,9 @@ export function platformTopNavVisibleForPath(pathname: string): boolean {
   /** 메신저 대화방 전용 창: 본문만 보이도록 좌측 플랫폼 레일 숨김 */
   if (p.startsWith("/chat/")) return false;
 
+  /** 지식팩 상세 팝업 전용 라우트: 본문만 보이도록 레일 숨김 */
+  if (p === "/knowledge-packs/detail" || p.startsWith("/knowledge-packs/detail/")) return false;
+
   if (p === "/") return true;
 
   if (p === "/knowledge-packs" || p.startsWith("/knowledge-packs/")) return true;
