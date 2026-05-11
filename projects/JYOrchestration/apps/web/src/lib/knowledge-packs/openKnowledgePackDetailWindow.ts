@@ -18,6 +18,14 @@ export type OpenKnowledgePackDetailWindowOptions = Readonly<{
   effectiveLayout?: WorkspaceEffectiveLayout;
 }>;
 
+/** `useWorkspaceModeOptional()` 등 `{ mode, effectiveLayout }`를 팝업 옵션으로 변환 */
+export function toOpenKnowledgePackWindowOptions(
+  ctx: Readonly<{ mode: WorkspaceMode; effectiveLayout: WorkspaceEffectiveLayout }> | null | undefined
+): OpenKnowledgePackDetailWindowOptions | undefined {
+  if (!ctx) return undefined;
+  return { workspaceMode: ctx.mode, effectiveLayout: ctx.effectiveLayout };
+}
+
 /**
  * `WorkspaceModeProvider` 부트스트랩 순서와 동일하게 모드·유효 레이아웃을 정한다.
  * (세션 미리보기 → URL 파라미터 → localStorage → 뷰포트 추정)

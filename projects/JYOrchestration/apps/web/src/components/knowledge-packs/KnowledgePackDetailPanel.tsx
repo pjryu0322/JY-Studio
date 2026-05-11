@@ -4,6 +4,7 @@ import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePackApplyPreview } from "@/components/knowledge-packs/KnowledgePackApplyPreview";
 import { KNOWLEDGE_PACK_AGENT_LABEL, KNOWLEDGE_PACK_CATEGORY_LABEL } from "@/lib/knowledge-packs/developerGridPacks";
+import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgePackFormat";
 import { downloadKnowledgePackMarkdownFile } from "@/lib/knowledge-packs/knowledgePackMarkdown";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
 
@@ -65,6 +66,111 @@ function RefLinks({ refs }: { readonly refs: readonly { label: string; url: stri
   );
 }
 
+function OperationalMvpFootnote({ pack }: { readonly pack: KnowledgePack }) {
+  return (
+    <div
+      style={{
+        marginTop: 20,
+        padding: "10px 12px",
+        borderRadius: t.radiusMd,
+        background: "#f8fafc",
+        border: `1px solid ${t.border}`,
+        fontSize: 11,
+        color: t.textMuted,
+        lineHeight: 1.55,
+        maxWidth: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ fontWeight: 900, color: t.textSecondary, marginBottom: 6, letterSpacing: "0.02em" }}>운영 정보 (MVP)</div>
+      <div>Scope: {pack.scope}</div>
+      <div>Version: v{pack.version}</div>
+      <div>Status: {pack.status}</div>
+      <div style={{ marginTop: 6 }}>향후 버전·승인 이력이 이 화면과 연동될 예정입니다.</div>
+      <div>향후 Agent별 최적화 프로필은 별도 설정으로 분리될 예정입니다.</div>
+    </div>
+  );
+}
+
+function SummaryTab({ pack, licenseLabel }: { readonly pack: KnowledgePack; readonly licenseLabel: string }) {
+  return (
+    <>
+      <SectionTitle>개요</SectionTitle>
+      <p style={{ fontSize: 14, color: t.textPrimary, lineHeight: 1.6, margin: "0 0 18px", overflowWrap: "anywhere" }}>{pack.summary}</p>
+
+      <SectionTitle>적용 권장 상황</SectionTitle>
+      <div style={{ marginBottom: 18 }}>
+        <BulletList items={pack.recommendedUseCases} />
+      </div>
+
+      <SectionTitle>적용 비권장 상황</SectionTitle>
+      <div style={{ marginBottom: 18 }}>
+        <BulletList items={pack.notRecommendedUseCases} />
+      </div>
+
+      <SectionTitle>라이선스 / 제약</SectionTitle>
+      <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 800, color: t.textSecondary }}>라이선스: {licenseLabel}</div>
+      <div style={{ marginBottom: 18 }}>
+        <BulletList items={pack.license.notes} />
+      </div>
+      {pack.constraints.length ? (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 6 }}>추가 제약</div>
+          <div style={{ marginBottom: 18 }}>
+            <BulletList items={pack.constraints} />
+          </div>
+        </>
+      ) : null}
+
+      <SectionTitle>주요 기능</SectionTitle>
+      <div style={{ marginBottom: 18 }}>
+        <BulletList items={pack.capabilities} />
+      </div>
+
+      <SectionTitle>대체 / 비교 기준</SectionTitle>
+      <div style={{ marginBottom: 18 }}>
+        <BulletList items={pack.alternatives} />
+      </div>
+
+      <SectionTitle>참고 링크</SectionTitle>
+      <RefLinks refs={pack.references} />
+
+      <OperationalMvpFootnote pack={pack} />
+    </>
+  );
+}
+
+function SingleSectionTab({ title, items }: { readonly title: string; readonly items: readonly string[] }) {
+  return (
+    <>
+      <SectionTitle>{title}</SectionTitle>
+      <BulletList items={items} />
+    </>
+  );
+}
+
+function renderActiveTab(tab: DetailTabId, pack: KnowledgePack, licenseLabel: string) {
+  switch (tab) {
+    case "summary":
+      return <SummaryTab pack={pack} licenseLabel={licenseLabel} />;
+    case "implementation":
+      return <SingleSectionTab title="AI개발자 구현 지침" items={pack.implementationGuidelines} />;
+    case "cursor":
+      return <SingleSectionTab title="Cursor 프롬프트 반영 기준" items={pack.cursorPromptRules} />;
+    case "forbidden":
+      return <SingleSectionTab title="금지사항" items={pack.forbiddenPatterns} />;
+    case "review":
+      return <SingleSectionTab title="검수 체크리스트" items={pack.reviewChecklist} />;
+    case "preview":
+      return (
+        <>
+          <SectionTitle>적용 미리보기</SectionTitle>
+          <KnowledgePackApplyPreview packId={pack.id} />
+        </>
+      );
+  }
+}
+
 export type KnowledgePackDetailPanelProps = Readonly<{
   pack: KnowledgePack;
   /** 독립 팝업 창에서 사용 시 세로 높이를 뷰포트에 맞춤 */
@@ -73,9 +179,7 @@ export type KnowledgePackDetailPanelProps = Readonly<{
 
 export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPanelProps) {
   const [tab, setTab] = useState<DetailTabId>("summary");
-  const licenseLabel =
-    pack.license.type === "MIT" ? "MIT" : pack.license.type === "OPEN_SOURCE" ? "Open Source" : pack.license.type;
-
+  const licenseLabel = formatKnowledgePackLicenseType(pack.license.type);
   const maxHeight = embed ? "calc(100dvh - 88px)" : "min(calc(100dvh - 12.5rem), 880px)";
 
   return (
@@ -196,106 +300,7 @@ export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPan
           padding: "16px 16px 20px",
         }}
       >
-        {tab === "summary" ? (
-          <>
-            <SectionTitle>개요</SectionTitle>
-            <p style={{ fontSize: 14, color: t.textPrimary, lineHeight: 1.6, margin: "0 0 18px", overflowWrap: "anywhere" }}>{pack.summary}</p>
-
-            <SectionTitle>적용 권장 상황</SectionTitle>
-            <div style={{ marginBottom: 18 }}>
-              <BulletList items={pack.recommendedUseCases} />
-            </div>
-
-            <SectionTitle>적용 비권장 상황</SectionTitle>
-            <div style={{ marginBottom: 18 }}>
-              <BulletList items={pack.notRecommendedUseCases} />
-            </div>
-
-            <SectionTitle>라이선스 / 제약</SectionTitle>
-            <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 800, color: t.textSecondary }}>라이선스: {licenseLabel}</div>
-            <div style={{ marginBottom: 18 }}>
-              <BulletList items={pack.license.notes} />
-            </div>
-            {pack.constraints.length ? (
-              <>
-                <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 6 }}>추가 제약</div>
-                <div style={{ marginBottom: 18 }}>
-                  <BulletList items={pack.constraints} />
-                </div>
-              </>
-            ) : null}
-
-            <SectionTitle>주요 기능</SectionTitle>
-            <div style={{ marginBottom: 18 }}>
-              <BulletList items={pack.capabilities} />
-            </div>
-
-            <SectionTitle>대체 / 비교 기준</SectionTitle>
-            <div style={{ marginBottom: 18 }}>
-              <BulletList items={pack.alternatives} />
-            </div>
-
-            <SectionTitle>참고 링크</SectionTitle>
-            <RefLinks refs={pack.references} />
-
-            <div
-              style={{
-                marginTop: 20,
-                padding: "10px 12px",
-                borderRadius: t.radiusMd,
-                background: "#f8fafc",
-                border: `1px solid ${t.border}`,
-                fontSize: 11,
-                color: t.textMuted,
-                lineHeight: 1.55,
-                maxWidth: "100%",
-                boxSizing: "border-box",
-              }}
-            >
-              <div style={{ fontWeight: 900, color: t.textSecondary, marginBottom: 6, letterSpacing: "0.02em" }}>운영 정보 (MVP)</div>
-              <div>Scope: {pack.scope}</div>
-              <div>Version: v{pack.version}</div>
-              <div>Status: {pack.status}</div>
-              <div style={{ marginTop: 6 }}>향후 버전·승인 이력이 이 화면과 연동될 예정입니다.</div>
-              <div>향후 Agent별 최적화 프로필은 별도 설정으로 분리될 예정입니다.</div>
-            </div>
-          </>
-        ) : null}
-
-        {tab === "implementation" ? (
-          <>
-            <SectionTitle>AI개발자 구현 지침</SectionTitle>
-            <BulletList items={pack.implementationGuidelines} />
-          </>
-        ) : null}
-
-        {tab === "cursor" ? (
-          <>
-            <SectionTitle>Cursor 프롬프트 반영 기준</SectionTitle>
-            <BulletList items={pack.cursorPromptRules} />
-          </>
-        ) : null}
-
-        {tab === "forbidden" ? (
-          <>
-            <SectionTitle>금지사항</SectionTitle>
-            <BulletList items={pack.forbiddenPatterns} />
-          </>
-        ) : null}
-
-        {tab === "review" ? (
-          <>
-            <SectionTitle>검수 체크리스트</SectionTitle>
-            <BulletList items={pack.reviewChecklist} />
-          </>
-        ) : null}
-
-        {tab === "preview" ? (
-          <>
-            <SectionTitle>적용 미리보기</SectionTitle>
-            <KnowledgePackApplyPreview packId={pack.id} />
-          </>
-        ) : null}
+        {renderActiveTab(tab, pack, licenseLabel)}
       </div>
     </div>
   );

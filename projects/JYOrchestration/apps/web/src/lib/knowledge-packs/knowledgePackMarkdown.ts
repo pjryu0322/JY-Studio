@@ -2,6 +2,7 @@ import {
   KNOWLEDGE_PACK_AGENT_LABEL,
   KNOWLEDGE_PACK_CATEGORY_LABEL,
 } from "@/lib/knowledge-packs/developerGridPacks";
+import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgePackFormat";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
 
 function flatLine(s: string): string {
@@ -15,13 +16,6 @@ function flatLine(s: string): string {
 function bulletsMd(items: readonly string[]): string {
   if (!items.length) return "_없음_\n\n";
   return `${items.map((item) => `- ${flatLine(item)}`).join("\n")}\n\n`;
-}
-
-function licenseTypeLabel(pack: KnowledgePack): string {
-  const ty = pack.license.type;
-  if (ty === "MIT") return "MIT";
-  if (ty === "OPEN_SOURCE") return "Open Source";
-  return ty;
 }
 
 /**
@@ -55,7 +49,7 @@ ${bulletsMd(pack.recommendedUseCases)}## 적용 비권장 상황
 
 ${bulletsMd(pack.notRecommendedUseCases)}## 라이선스
 
-**유형:** ${licenseTypeLabel(pack)}
+**유형:** ${formatKnowledgePackLicenseType(pack.license.type)}
 
 ### 라이선스 메모
 
