@@ -1,4 +1,4 @@
-export type KnowledgePackScope = "PLATFORM" | "USER" | "PROJECT";
+export type KnowledgePackScope = "PLATFORM" | "ORGANIZATION" | "USER" | "PROJECT";
 
 export type KnowledgePackAgent =
   | "AI_DEVELOPER"
