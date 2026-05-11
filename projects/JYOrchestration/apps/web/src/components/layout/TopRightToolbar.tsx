@@ -111,6 +111,8 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
   const showMessengerRailNav =
     pathOnly === "/" ||
     pathOnly === "/workspace" ||
+    pathOnly === "/knowledge-packs" ||
+    pathOnly.startsWith("/knowledge-packs/") ||
     pathOnly === "/prompt-timeline" ||
     pathOnly.startsWith("/prompt-timeline/") ||
     pathname.startsWith("/chat/");
