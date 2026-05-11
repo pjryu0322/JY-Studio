@@ -10,6 +10,7 @@ import {
   workUnitProgressAllMerged,
 } from "@/components/preview/prototypePreviewPanelHelpers";
 import type { StepTone } from "@/components/preview/prototypePreviewPanelHelpers";
+import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 
 const subCard: CSSProperties = {
   border: "1px solid #e2e8f0",
@@ -191,7 +192,15 @@ export function WorkUnitPlanCard(p: WorkUnitPlanCardProps) {
                       </button>
                     ) : null}
                     {u.prUrl ? (
-                      <button type="button" onClick={() => window.open(u.prUrl ?? "", "_blank", "noopener,noreferrer")} style={btn}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const href = u.prUrl ?? "";
+                          const win = window.open(href, "_blank", "noopener,noreferrer");
+                          registerPlatformPopupFromOpenedUrl(win, href);
+                        }}
+                        style={btn}
+                      >
                         PR 보기
                       </button>
                     ) : null}
@@ -435,7 +444,14 @@ export function DeploymentStatusPanel(p: DeploymentStatusPanelProps) {
       ) : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {s === "DEPLOYING" && actionsUrl ? (
-          <button type="button" onClick={() => window.open(actionsUrl, "_blank", "noopener,noreferrer")} style={btn}>
+          <button
+            type="button"
+            onClick={() => {
+              const win = window.open(actionsUrl, "_blank", "noopener,noreferrer");
+              registerPlatformPopupFromOpenedUrl(win, actionsUrl);
+            }}
+            style={btn}
+          >
             Actions 보기
           </button>
         ) : null}
@@ -445,7 +461,14 @@ export function DeploymentStatusPanel(p: DeploymentStatusPanelProps) {
           </a>
         ) : null}
         {isDeployFail && actionsUrl ? (
-          <button type="button" onClick={() => window.open(actionsUrl, "_blank", "noopener,noreferrer")} style={btn}>
+          <button
+            type="button"
+            onClick={() => {
+              const win = window.open(actionsUrl, "_blank", "noopener,noreferrer");
+              registerPlatformPopupFromOpenedUrl(win, actionsUrl);
+            }}
+            style={btn}
+          >
             Actions 보기
           </button>
         ) : null}

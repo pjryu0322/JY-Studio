@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
@@ -126,8 +127,8 @@ function LoginForm() {
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px 0" }}>
           JYOrchestration
         </h1>
-        <p style={{ margin: "0 0 24px 0", color: "#666", fontSize: 14 }}>
-          회원가입 후 프로젝트를 만들고 <strong>아이디어 구체화</strong>부터 진행할 수 있습니다.
+        <p style={{ margin: "0 0 24px 0", color: "#666", fontSize: 14, lineHeight: 1.55 }}>
+          전문가와 AI팀 협업으로 디지털 서비스를 구현하는 AI 오케스트레이션 플랫폼
         </p>
 
         <div data-ui-label="[L-2] Auth Tabs" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -206,6 +207,14 @@ function LoginForm() {
               data-testid="login-password"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+              <Link href="/login/find-id" style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
+                아이디(이메일) 찾기
+              </Link>
+              <Link href="/login/forgot-password" style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
+                비밀번호 재설정
+              </Link>
+            </div>
             <button
               type="submit"
               disabled={submitting}

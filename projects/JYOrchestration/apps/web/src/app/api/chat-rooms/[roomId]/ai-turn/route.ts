@@ -39,7 +39,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ roomId: st
           message:
             room.aiParticipationMode === "NONE"
               ? "이 방은 AI 응답 없이 메모만 작성하는 모드입니다."
-              : "이 방은 @AI기획자 또는 @기획자가 있을 때만 AI가 응답합니다.",
+              : "이 방은 @@AI기획자 또는 @@기획자가 있을 때만 AI가 응답합니다.",
         },
         { status: 400 }
       );

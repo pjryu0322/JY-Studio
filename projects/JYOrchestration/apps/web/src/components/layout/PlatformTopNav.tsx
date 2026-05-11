@@ -18,6 +18,7 @@ import { resolveEffectiveWorkflowProjectId } from "@/lib/layout/effectiveWorkflo
 import {
   PLATFORM_RAIL_EXPAND_TAB_W,
   PLATFORM_RAIL_WIDTH_PX,
+  platformRailCollapseEdgeTabStyle,
   platformRailExpandTabStyle,
 } from "@/lib/layout/platformTopNavConstants";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
@@ -63,7 +64,7 @@ export function PlatformTopNav() {
           paddingLeft: "max(0px, env(safe-area-inset-left, 0px))",
         }}
       >
-        <ChevronRightIcon />
+        <ChevronRightIcon size={15} />
       </button>
     );
   }
@@ -84,10 +85,10 @@ export function PlatformTopNav() {
         backdropFilter: "blur(8px)",
         display: "flex",
         flexDirection: "column",
-        paddingTop: 8,
-        paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+        paddingTop: 4,
+        paddingBottom: "max(4px, env(safe-area-inset-bottom, 0px))",
         paddingLeft: "max(6px, env(safe-area-inset-left, 0px))",
-        paddingRight: 6,
+        paddingRight: 12,
         boxSizing: "border-box",
       }}
     >
@@ -97,24 +98,9 @@ export function PlatformTopNav() {
         aria-label="사이드바 접기"
         title="메뉴 접기"
         onClick={() => persistRailCollapsed(true)}
-        style={{
-          flexShrink: 0,
-          width: "100%",
-          height: 34,
-          marginBottom: 6,
-          padding: 0,
-          borderRadius: 8,
-          border: "1px solid #e2e8f0",
-          background: "#f8fafc",
-          cursor: "pointer",
-          color: "#64748b",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxSizing: "border-box",
-        }}
+        style={platformRailCollapseEdgeTabStyle()}
       >
-        <ChevronLeftIcon />
+        <ChevronLeftIcon size={15} />
       </button>
 
       <div
@@ -125,12 +111,12 @@ export function PlatformTopNav() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-start",
-          overflow: "auto",
-          overscrollBehavior: "contain",
+          overflow: "hidden",
+          overscrollBehavior: "none",
         }}
       >
         {hasProjectContext && effectiveProjectId ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minHeight: 0, paddingBottom: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minHeight: 0, paddingBottom: 4 }}>
             <ProjectRailWorkflowStrip
               effectiveProjectId={effectiveProjectId}
               pathname={pathname}
@@ -146,7 +132,7 @@ export function PlatformTopNav() {
                 width: 22,
                 height: 1,
                 background: "rgba(148,163,184,0.55)",
-                margin: compactToolbar ? "10px 0" : "12px 0",
+                margin: compactToolbar ? "4px 0" : "6px 0",
                 flexShrink: 0,
                 borderRadius: 999,
               }}

@@ -113,7 +113,7 @@ export type CreateMessengerChatRoomInput = {
 function messengerBootstrapSystemContent(mode: CreateMessengerChatRoomInput["aiParticipationMode"]): string {
   if (mode === "NONE") return "이 방은 AI 응답 없이 메모만 작성하는 모드입니다.";
   if (mode === "AUTO") return "AI 기획자가 메시지에 자동으로 응답합니다.";
-  return "@AI기획자 또는 @기획자로 부를 때만 AI가 응답합니다.";
+  return "@@AI기획자 또는 @@기획자로 부를 때만 AI가 응답합니다.";
 }
 
 /** 메신저 사전 대화방 생성(혼자 메모 / AI 자동 / AI 멘션) */
@@ -130,7 +130,12 @@ export async function createMessengerChatRoom(
 
   const ai = getPlatformAiMemberById(MESSENGER_DEFAULT_AI_CATALOG_KEY);
   const aiName = ai?.name ?? "AI 기획자";
-  const defaultTitle = mode === "NONE" ? "혼자 정리하는 대화" : "AI기획자와의 대화";
+  const defaultTitle =
+    mode === "NONE"
+      ? "혼자 정리하는 대화"
+      : mode === "MENTION_ONLY"
+        ? "일반 대화방"
+        : "AI기획자와의 대화";
   const title = String(input.title ?? "").trim() || defaultTitle;
 
   return prisma.$transaction(async (tx) => {
@@ -300,6 +305,7 @@ export type MessengerAiTurnRunResult =
 
 /** 마지막 메시지가 사용자(user)인 전제에서 메신저 LLM 한 턴 실행 후 AI 메시지 저장 */
 export async function executeMessengerAiTurnForRoom(roomId: string, userId: string): Promise<MessengerAiTurnRunResult> {
+  const room = await assertChatRoomAccess(roomId, userId);
   const rows = await listChatMessages(roomId, userId);
   const transcript = buildMessengerTranscriptForLlm(rows);
   if (transcript.length === 0) {
@@ -311,7 +317,11 @@ export async function executeMessengerAiTurnForRoom(roomId: string, userId: stri
   }
   const ai = getPlatformAiMemberById(MESSENGER_DEFAULT_AI_CATALOG_KEY);
   const aiName = ai?.name ?? "AI 기획자";
-  const result = await runMessengerAiTurn({ userId, transcript });
+  const result = await runMessengerAiTurn({
+    userId,
+    transcript,
+    logContext: { roomId: room.id, roomTitle: room.title, projectId: room.projectId },
+  });
   if (!result.ok) {
     return { ok: false, code: result.code, message: result.message };
   }

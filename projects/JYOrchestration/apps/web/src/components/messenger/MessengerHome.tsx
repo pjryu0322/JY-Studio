@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ResponsivePageContainer, ResponsiveShell } from "@/components/layout";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { BottomSheet, Button, Card, EmptyState, InlineAlert, LoadingState, uiTokens as t } from "@/components/ui";
 import { MessengerChatRoomRenameModal } from "@/components/messenger/MessengerChatRoomRenameModal";
 import { MessengerRoomSettingsGearMenu } from "@/components/messenger/MessengerRoomSettingsGearMenu";
@@ -18,6 +19,8 @@ import {
   type CreateMessengerChatRoomPayload,
   type MessengerChatRoomListRow,
 } from "@/lib/messenger/messengerChatRoomApi";
+import { openMessengerChatRoomWindow } from "@/lib/messenger/openMessengerChatRoomWindow";
+import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 
 type HomeCreatePayload = Extract<CreateMessengerChatRoomPayload, { roomType: "SOLO" | "DIRECT" }>;
 
@@ -83,7 +86,7 @@ function NewRoomOptions(p: {
     >
       <div style={{ fontWeight: 900, fontSize: 14, color: t.textPrimary }}>AI기획자 멘션 시만 응답</div>
       <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 4, lineHeight: 1.45 }}>
-        AI기획자는 대화방에 있지만 @AI기획자로 부를 때만 응답합니다.
+        AI기획자는 대화방에 있지만 @@AI기획자 또는 @@기획자로 부를 때만 응답합니다.
       </div>
     </button>
   );
@@ -97,6 +100,7 @@ function NewRoomOptions(p: {
 
 export function MessengerHome() {
   const searchParams = useSearchParams();
+  const { effectiveLayout } = useWorkspaceMode();
   const panel = parseMessengerHomePanel(searchParams.get("panel"));
 
   const [rooms, setRooms] = useState<MessengerChatRoomListRow[] | null>(null);
@@ -251,18 +255,43 @@ export function MessengerHome() {
                 {rooms.map((r) => (
                   <Card key={r.id} compact>
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <Link
-                        href={`/chat/${encodeURIComponent(r.id)}`}
-                        style={{ flex: "1 1 auto", minWidth: 0, textDecoration: "none", color: "inherit" }}
-                      >
-                        <div style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary, marginBottom: 4 }}>{r.title}</div>
-                        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.4 }}>
-                          {r.lastMessagePreview?.trim() || "메시지 없음"}
-                          {r.projectId ? (
-                            <span style={{ marginLeft: 8, fontWeight: 800, color: t.accentTealFg }}>· 프로젝트 연결됨</span>
-                          ) : null}
-                        </div>
-                      </Link>
+                      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                        <a
+                          href={`/chat/${encodeURIComponent(r.id)}`}
+                          rel="noopener noreferrer"
+                          title="새 창에서 대화방 열기"
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                            e.preventDefault();
+                            const opened = openMessengerChatRoomWindow(r.id, { effectiveLayout });
+                            if (!opened) {
+                              const path = `/chat/${encodeURIComponent(r.id)}`;
+                              const w = window.open(path, "_blank", "noopener,noreferrer");
+                              registerPlatformPopupFromOpenedUrl(w, path);
+                            }
+                          }}
+                          style={{
+                            display: "block",
+                            textDecoration: "none",
+                            color: "inherit",
+                            cursor: "pointer",
+                            marginBottom: 4,
+                          }}
+                        >
+                          <div style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary }}>{r.title}</div>
+                        </a>
+                        <Link
+                          href={`/chat/${encodeURIComponent(r.id)}`}
+                          style={{ display: "block", textDecoration: "none", color: "inherit" }}
+                        >
+                          <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.4 }}>
+                            {r.lastMessagePreview?.trim() || "메시지 없음"}
+                            {r.projectId ? (
+                              <span style={{ marginLeft: 8, fontWeight: 800, color: t.accentTealFg }}>· 프로젝트 연결됨</span>
+                            ) : null}
+                          </div>
+                        </Link>
+                      </div>
                       <MessengerRoomSettingsGearMenu
                         disabled={roomListBusyId !== null}
                         showRename

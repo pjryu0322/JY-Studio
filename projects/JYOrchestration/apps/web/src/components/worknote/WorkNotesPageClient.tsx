@@ -88,7 +88,7 @@ export function WorkNotesPageClient() {
   const activeMemoScope = inProject ? ("PROJECT" as const) : ("USER" as const);
   const activeProjectId = inProject ? (projectId || null) : null;
   const memoBadgeKind = activeMemoScope;
-  const memoBadgeSubtitle = inProject ? (projectName?.trim() || "이 프로젝트") : "내 작업메모";
+  const memoBadgeSubtitle = inProject ? (projectName?.trim() || "이 프로젝트") : ":메모";
 
   const handleClose = useCallback(() => {
     void (async () => {

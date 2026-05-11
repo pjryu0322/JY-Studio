@@ -84,7 +84,7 @@ export function MessengerRoomMembersModal(p: {
     p.aiParticipationMode === "NONE"
       ? "이 방은 AI 없이 메모만 작성하는 모드입니다."
       : p.aiParticipationMode === "MENTION_ONLY"
-        ? "AI는 @AI기획자로 부를 때만 응답합니다."
+        ? "AI는 @@AI기획자 또는 @@기획자로 부를 때만 응답합니다."
         : "AI가 메시지에 자동으로 응답합니다.";
 
   const renderParticipantRow = (m: ParticipantOption) => (

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
-import { isPromptTimelineDebugServer } from "@/lib/debug/promptTimelineDebug";
-import { getPromptTimelineEntries } from "@/lib/debug/promptTimelineStore";
+import { getPromptTimelineEntries, listMessengerPromptTimelineEntriesForProject } from "@/lib/debug/promptTimelineStore";
 import type { PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 import type { FeaturePlanningPromptLogStatus } from "@/lib/debug/featurePlanningPromptPurpose";
 import { prisma } from "@/lib/prisma";
@@ -76,10 +75,11 @@ export async function GET(request: NextRequest, segmentData: { params: Promise<{
       throw error;
     }
 
-    const debugEntries = isPromptTimelineDebugServer() ? getPromptTimelineEntries(projectId) : [];
+    const debugEntries = [...getPromptTimelineEntries(projectId)];
+    const messengerEntries = await listMessengerPromptTimelineEntriesForProject(projectId);
     const proj = await prisma.project.findUnique({ where: { id: projectId }, select: { requirementsStateJson: true } });
     const reqEntries = mapRequirementsPromptTimelineToDebugEntries(proj?.requirementsStateJson ?? null, projectId);
-    const entries = [...reqEntries, ...debugEntries];
+    const entries = [...reqEntries, ...debugEntries, ...messengerEntries].sort((a, b) => String(b.at).localeCompare(String(a.at)));
     return NextResponse.json({ success: true, data: { entries } });
   } catch (error) {
     console.error("GET /api/projects/[projectId]/debug/prompt-timeline error:", error);

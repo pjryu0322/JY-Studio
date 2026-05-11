@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { runMessengerProjectDraft } from "@/lib/messenger/messengerLlm";
-import { ChatRoomAccessError, listChatMessages, saveProjectFromChatDraft } from "@/lib/service/chatRoomService";
+import { assertChatRoomAccess, ChatRoomAccessError, listChatMessages, saveProjectFromChatDraft } from "@/lib/service/chatRoomService";
 
 export async function POST(request: Request, ctx: { params: Promise<{ roomId: string }> }) {
   const userId = await requireSessionUserId(request);
   if (userId instanceof NextResponse) return userId;
   const { roomId } = await ctx.params;
   try {
+    const room = await assertChatRoomAccess(roomId, userId);
     const rows = await listChatMessages(roomId, userId);
     const lines = rows
       .filter((r) => r.senderType !== "SYSTEM")
@@ -19,7 +20,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ roomId: st
     if (!transcript.trim()) {
       return NextResponse.json({ success: false, message: "대화 내용이 없습니다." }, { status: 400 });
     }
-    const draft = await runMessengerProjectDraft({ userId, transcript });
+    const draft = await runMessengerProjectDraft({
+      userId,
+      transcript,
+      logContext: { roomId: room.id, roomTitle: room.title, projectId: room.projectId },
+    });
     if (!draft.ok) {
       return NextResponse.json(
         { success: false, message: draft.message, data: { code: draft.code } },

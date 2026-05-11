@@ -211,8 +211,25 @@ model User {
   ownedChatRooms ChatRoom[] @relation("ChatRoomOwner")
   /// 대화방 멤버십(사람)
   chatRoomMemberships ChatRoomMember[]
+  passwordResetTokens PasswordResetToken[]
+  /// 메신저 등 LLM 호출 프롬프트 타임라인(감사·재현)
+  messengerPromptTimelineLogs MessengerPromptTimelineLog[]
 
   @@map("users")
+}
+
+/// 비밀번호 재설정 링크용 일회성 토큰(평문은 URL에만, DB에는 해시만 저장)
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
 }
 
 /// 프로젝트 생성 전 메신저 대화방 유형
@@ -311,6 +328,30 @@ model ProjectFromChatDraft {
 
   @@index([chatRoomId, status])
   @@map("project_from_chat_drafts")
+}
+
+/// 메신저(일반·AI) 등 Chat Completions 호출 로그 — 인메모리가 아닌 DB에 두어 HMR·멀티 워커에서도 타임라인이 유지된다.
+model MessengerPromptTimelineLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomId       String?
+  /// 방이 프로젝트에 연결된 경우(프로젝트 타임라인 병합용)
+  projectId    String?
+  /// messenger_chat | messenger_project_draft
+  kind         String
+  label        String
+  channel      String   @default("openai")
+  model        String?
+  outbound     String   @db.Text
+  inbound      String   @db.Text
+  status       String?
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@map("messenger_prompt_timeline_logs")
 }
 
 /// 암호화된 자격 증명 원문(IV·알고리즘 포함 메타)

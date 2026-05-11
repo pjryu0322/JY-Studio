@@ -704,7 +704,7 @@ export function WorkNoteDrawer(p: {
                   cursor: "pointer",
                 }}
               >
-                내 작업메모
+                :메모
               </button>
               <button
                 type="button"

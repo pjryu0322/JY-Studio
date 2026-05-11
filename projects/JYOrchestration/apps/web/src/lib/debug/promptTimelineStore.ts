@@ -4,9 +4,12 @@ import type {
   FeaturePlanningPromptPurpose,
 } from "@/lib/debug/featurePlanningPromptPurpose";
 import type { FeaturePlanningPromptMetricsV1, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
+import { prisma } from "@/lib/prisma";
 import { IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 
 const MAX_BODY = 12_000;
+/** 메신저 로그는 system+최근 대화를 함께 담아 길어질 수 있음 */
+const MAX_BODY_MESSENGER = 100_000;
 const MAX_PER_PROJECT = 80;
 
 export type { PromptTimelineChannel, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
@@ -32,6 +35,111 @@ export function getPromptTimelineEntries(projectId: string): readonly PromptTime
   const id = projectId.trim();
   if (!id) return [];
   return [...(byProject.get(id) ?? [])].reverse();
+}
+
+function messengerLogRowToEntry(row: {
+  id: string;
+  createdAt: Date;
+  channel: string;
+  label: string;
+  model: string | null;
+  outbound: string;
+  inbound: string;
+  status: string | null;
+  errorMessage: string | null;
+}): PromptTimelineEntry {
+  const st = String(row.status ?? "").trim();
+  const status: FeaturePlanningPromptLogStatus | undefined =
+    st === "SUCCESS" || st === "FAILED" ? st : undefined;
+  return {
+    id: row.id,
+    at: row.createdAt.toISOString(),
+    channel: row.channel === "cursor" ? "cursor" : "openai",
+    label: row.label,
+    model: row.model,
+    outbound: row.outbound,
+    inbound: row.inbound,
+    ...(status ? { status } : {}),
+    errorMessage: row.errorMessage,
+  };
+}
+
+export async function listMessengerPromptTimelineEntriesForUser(
+  userId: string,
+  take = 120
+): Promise<PromptTimelineEntry[]> {
+  const uid = userId.trim();
+  if (!uid) return [];
+  const rows = await prisma.messengerPromptTimelineLog.findMany({
+    where: { userId: uid },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+  return rows.map(messengerLogRowToEntry);
+}
+
+export async function listMessengerPromptTimelineEntriesForProject(
+  projectId: string,
+  take = 80
+): Promise<PromptTimelineEntry[]> {
+  const pid = projectId.trim();
+  if (!pid) return [];
+  const rows = await prisma.messengerPromptTimelineLog.findMany({
+    where: { projectId: pid },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+  return rows.map(messengerLogRowToEntry);
+}
+
+/**
+ * 메신저 일반/AI 대화방의 Chat Completions 호출을 DB 타임라인에 남긴다(인메모리는 HMR·워커 분리로 비어 보일 수 있음).
+ */
+export async function recordMessengerOpenAi(input: {
+  readonly userId: string;
+  readonly roomId: string;
+  readonly roomTitle?: string | null;
+  readonly projectId?: string | null;
+  readonly kind: "messenger_chat" | "messenger_project_draft";
+  readonly model: string | null;
+  readonly outbound: string;
+  readonly ok: boolean;
+  readonly replyText?: string;
+  readonly error?: string;
+}): Promise<void> {
+  const uid = input.userId.trim();
+  if (!uid) return;
+  const roomLabel = String(input.roomTitle ?? "").trim() || input.roomId.trim().slice(0, 10);
+  const modeLabel = input.kind === "messenger_project_draft" ? "프로젝트 초안" : "대화 응답";
+  const label = `메신저 · ${modeLabel} · ${roomLabel}`;
+  const inbound = input.ok
+    ? `[response]\n${trunc(input.replyText ?? "")}`
+    : `[FAILED]\n${trunc(input.error ?? "unknown")}`;
+  const status = input.ok ? "SUCCESS" : "FAILED";
+  const rid = input.roomId.trim();
+  const pid = String(input.projectId ?? "").trim() || null;
+  try {
+    await prisma.messengerPromptTimelineLog.create({
+      data: {
+        userId: uid,
+        roomId: rid || null,
+        projectId: pid,
+        kind: input.kind,
+        label,
+        channel: "openai",
+        model: input.model,
+        outbound: trunc(
+          input.outbound,
+          input.kind === "messenger_chat" || input.kind === "messenger_project_draft" ? MAX_BODY_MESSENGER : MAX_BODY
+        ),
+        inbound,
+        status,
+        errorMessage: input.ok ? null : (input.error ?? null),
+      },
+    });
+  } catch (e) {
+    console.error("recordMessengerOpenAi", e);
+  }
 }
 
 /** 기능정리 OpenAI 호출 — projectId 고정, purpose·상태·JSON 미리보기 포함 */

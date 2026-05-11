@@ -3,12 +3,29 @@
 import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { ProjectRailCountBadge } from "@/components/layout/ProjectRailCountBadge";
-import { workflowStepRailGlyph } from "@/components/layout/platformTopNav/workflowStepRailGlyph";
 import { appFlowStepIdToRailParticipantKey } from "@/lib/layout/projectRailParticipants";
 import type { ProjectRailParticipantStepKey } from "@/lib/layout/projectRailParticipants";
-import { platformRailIconLinkStyle } from "@/lib/layout/platformTopNavConstants";
+import {
+  platformRailNavPrimaryText,
+  platformRailNavPrimaryTextWorkflowActive,
+  platformRailNavTextCell,
+} from "@/lib/layout/platformTopNavConstants";
 import { appFlowStepHref, isWorkflowStepNavActive } from "@/lib/workflow/flow-state";
+import type { AppFlowStepId } from "@/lib/workflow/flow-state";
 import { workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
+
+function railShortLabel(stepId: AppFlowStepId): string {
+  switch (stepId) {
+    case "requirements":
+      return "기획";
+    case "execution":
+      return "생성";
+    case "prototype_review":
+      return "검토";
+    default:
+      return "단계";
+  }
+}
 
 type Props = Readonly<{
   effectiveProjectId: string;
@@ -30,7 +47,7 @@ export function ProjectRailWorkflowStrip({
   return (
     <nav
       aria-label="프로젝트 단계"
-      style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 8 : 10, alignItems: "center", width: "100%", flexShrink: 0 }}
+      style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 4 : 5, alignItems: "center", width: "100%", flexShrink: 0 }}
     >
       {workflowStepMeta.map((item) => {
         const href = appFlowStepHref(item.stepId, effectiveProjectId);
@@ -38,27 +55,25 @@ export function ProjectRailWorkflowStrip({
         const participantKey = appFlowStepIdToRailParticipantKey(item.stepId);
         const badgeCount = participantKey ? (participantCounts[participantKey] ?? projectMembersCount) : 0;
         const showBadge = participantKey !== null && badgeCount > 0;
+        const short = railShortLabel(item.stepId);
         return (
           <Link
             key={item.stepId}
             href={href}
             prefetch={false}
-            aria-label={item.label}
+            aria-label={`${item.label} (${short})`}
             title={item.label}
             style={{
-              ...platformRailIconLinkStyle,
-              border: active ? "2px solid #2563eb" : platformRailIconLinkStyle.border,
-              background: active ? "rgba(37,99,235,0.08)" : platformRailIconLinkStyle.background,
-              color: active ? "#2563eb" : platformRailIconLinkStyle.color,
-              fontSize: 12,
-              fontWeight: 900,
+              ...platformRailNavTextCell,
+              border: active ? "2px solid #2563eb" : "1px solid #e2e8f0",
+              background: active ? "rgba(37,99,235,0.08)" : "transparent",
               position: "relative",
+              textDecoration: "none",
+              color: "inherit",
             }}
             aria-current={active ? "page" : undefined}
           >
-            <span aria-hidden style={{ lineHeight: 1, display: "inline-flex" }}>
-              {workflowStepRailGlyph(item.stepId)}
-            </span>
+            <span style={active ? platformRailNavPrimaryTextWorkflowActive : platformRailNavPrimaryText}>{short}</span>
             {showBadge ? <ProjectRailCountBadge count={badgeCount} /> : null}
           </Link>
         );

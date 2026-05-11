@@ -11,19 +11,20 @@ export function parseMessengerAiMode(raw: unknown): MessengerAiMode | null {
   return null;
 }
 
-/** `@AI기획자` / `@AI 기획자`(공백 허용) / `@@AI …` 멘션 등 */
-const RE_AI_PLANNER_MENTION = /@AI\s*기획자/i;
+/** `@@AI기획자` / `@@AI 기획자`(공백 허용) / `@@기획자` */
+const RE_AI_PLANNER_MENTION = /@@\s*AI\s*기획자/i;
+const RE_PLANNER_SHORT_MENTION = /@@\s*기획자/i;
 
-/** 사용자 메시지에 AI 기획자 멘션이 있는지(텍스트 기준, 향후 metadata.mentions 확장 가능) */
+/** 사용자 메시지에 AI 기획자 멘션이 있는지(텍스트 기준, `@@` 접두사만 인정) */
 export function textMentionsMessengerAiPlanner(text: string): boolean {
   const t = String(text ?? "");
-  return RE_AI_PLANNER_MENTION.test(t) || /@기획자/.test(t);
+  return RE_AI_PLANNER_MENTION.test(t) || RE_PLANNER_SHORT_MENTION.test(t);
 }
 
 export function messengerMentionTokensFromText(text: string): readonly string[] {
   const out: string[] = [];
-  if (RE_AI_PLANNER_MENTION.test(text)) out.push("@AI기획자");
-  if (/@기획자/.test(text)) out.push("@기획자");
+  if (RE_AI_PLANNER_MENTION.test(text)) out.push("@@AI기획자");
+  if (RE_PLANNER_SHORT_MENTION.test(text)) out.push("@@기획자");
   return out;
 }
 

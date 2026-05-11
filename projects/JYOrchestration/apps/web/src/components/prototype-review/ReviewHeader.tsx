@@ -5,6 +5,7 @@ import type { PrototypeDeployStatusSnapshot, PrototypeRun } from "@/lib/prototyp
 import { Button } from "@/components/ui/Button";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useProjectPrototypePreview } from "@/lib/project/useProjectPrototypePreview";
+import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 
 const bar: CSSProperties = {
   display: "flex",
@@ -278,7 +279,15 @@ export function ReviewHeader(p: {
               >
                 URL 복사
               </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const win = window.open(publicUrl, "_blank", "noopener,noreferrer");
+                  registerPlatformPopupFromOpenedUrl(win, publicUrl);
+                }}
+              >
                 새 창에서 열기
               </Button>
             </>
