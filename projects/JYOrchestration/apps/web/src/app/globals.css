@@ -141,9 +141,9 @@ html:has(.jyo-requirements-route-root) body {
   max-width: 1600px;
 }
 
-/** 플랫폼 작업모드(프로토타입 생성 설정과 무관) */
+/** 플랫폼 화면 레이아웃(프로토타입 생성 설정과 무관). 가로 폭은 `WorkingSurfaceLayoutEffect`가 경로별로 설정 */
 .jyo-platform-main.jyo-workspace-desktop {
-  max-width: min(100%, 1920px);
+  max-width: min(100%, var(--jyo-platform-main-max-width, 1920px));
 }
 
 .jyo-platform-main.jyo-workspace-mobile {

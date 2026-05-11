@@ -193,7 +193,7 @@ export function SettingsPanelBody() {
         </>
       ) : null}
 
-      {sectionTitle("작업모드", { first: !sessionPresent })}
+      {sectionTitle("화면 레이아웃", { first: !sessionPresent })}
       <div style={{ marginBottom: 4 }}>
         <WorkspaceModeSwitcher variant="menu" />
       </div>

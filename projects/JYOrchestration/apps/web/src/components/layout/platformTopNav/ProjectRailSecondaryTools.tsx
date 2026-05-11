@@ -17,6 +17,7 @@ import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFla
 type Props = Readonly<{
   effectiveProjectId: string;
   compactToolbar: boolean;
+  meReady: boolean;
   me: PlatformTopNavMeState | null;
   projectMembersCount: number;
   projectWorkNotesCount: number;
@@ -25,6 +26,7 @@ type Props = Readonly<{
 export function ProjectRailSecondaryTools({
   effectiveProjectId,
   compactToolbar,
+  meReady,
   me,
   projectMembersCount,
   projectWorkNotesCount,
@@ -32,6 +34,8 @@ export function ProjectRailSecondaryTools({
   const pathname = usePathname() || "/";
   const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
   const knowledgePacksActive = pathOnly === "/knowledge-packs" || pathOnly.startsWith("/knowledge-packs/");
+  /** `/api/auth/me` 지연 시에도 지식팩 진입은 보이게(미로그인 확정 시에만 숨김). */
+  const showKnowledgePacksLink = !meReady || Boolean(me);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 4 : 5, alignItems: "center", flexShrink: 0 }}>
@@ -56,7 +60,7 @@ export function ProjectRailSecondaryTools({
           <ProjectRailCountBadge count={projectMembersCount} />
         </Link>
       ) : null}
-      {Boolean(me) ? (
+      {showKnowledgePacksLink ? (
         <Link
           href="/knowledge-packs"
           prefetch={false}

@@ -2,7 +2,7 @@ import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopup
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
 
 /**
- * 플랫폼 UI 전용 “작업모드”. 프로토타입 생성/배포 설정과 무관합니다.
+ * 플랫폼 UI 전용 “화면 레이아웃”(데스크톱/모바일/자동). 프로토타입 생성/배포 설정과 무관합니다.
  */
 export const WORKSPACE_MODE_STORAGE_KEY = "jyo:workspaceMode";
 
@@ -117,7 +117,7 @@ const PREVIEW_WIN: Record<WorkspaceMode, { w: number; h: number }> = {
 };
 
 /**
- * 현재 URL을 그대로 두고 작업모드 미리보기용 창을 연다(사용자 클릭 핸들러에서만 호출).
+ * 현재 URL을 그대로 두고 화면 레이아웃 미리보기용 창을 연다(사용자 클릭 핸들러에서만 호출).
  * `noopener`로 오프너와 분리; 대상 탭은 URL·세션으로 모드를 잡는다.
  */
 export function openWorkspaceModePreviewWindow(mode: WorkspaceMode): void {
@@ -159,7 +159,7 @@ export function buildPathWithLayoutPreview(
   return `${u.pathname}${u.search}${u.hash}`;
 }
 
-/** 현재 저장된 작업모드와 동일한 미리보기 쿼리를 붙입니다. */
+/** 현재 저장된 화면 레이아웃과 동일한 미리보기 쿼리를 붙입니다. */
 export function buildPathWithWorkspaceModePreview(pathnameAndSearch: string, mode: WorkspaceMode): string {
   return buildPathWithLayoutPreview(
     pathnameAndSearch,
@@ -168,7 +168,7 @@ export function buildPathWithWorkspaceModePreview(pathnameAndSearch: string, mod
 }
 
 /**
- * 지정 URL을 현재 작업모드에 맞는 레이아웃·창 크기로 연다 (`PREVIEW_WIN`과 URL 쿼리 동기화).
+ * 지정 URL을 현재 화면 레이아웃에 맞는 레이아웃·창 크기로 연다 (`PREVIEW_WIN`과 URL 쿼리 동기화).
  * 모바일 브라우저에서는 보통 전체 탭으로 열리며, 쿼리로 레이아웃이 고정된다.
  */
 export function openUrlInWorkspaceModePreviewWindow(

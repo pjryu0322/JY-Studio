@@ -141,6 +141,7 @@ export function PlatformTopNav() {
             <ProjectRailSecondaryTools
               effectiveProjectId={effectiveProjectId}
               compactToolbar={compactToolbar}
+              meReady={meReady}
               me={me}
               projectMembersCount={projectMembersCount}
               projectWorkNotesCount={projectWorkNotesCount}

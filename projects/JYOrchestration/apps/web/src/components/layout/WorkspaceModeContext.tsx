@@ -27,6 +27,8 @@ const WorkspaceModeContext = createContext<WorkspaceModeContextValue | null>(nul
 export function WorkspaceModeProvider({ children }: { readonly children: ReactNode }) {
   const layoutMqIsMobile = useLayoutMobileBreakpoint();
   const [mode, setModeState] = useState<WorkspaceMode>("AUTO");
+  /** localStorage 등 클라이언트 전용 소스 반영 전에는 항상 `AUTO`로 노출해 SSR·하이드레이션과 맞춘다. */
+  const [workspaceModeBootstrapped, setWorkspaceModeBootstrapped] = useState(false);
 
   /* 최초 마운트: localStorage 또는 뷰포트 기반 기본(DESKTOP/모바일)으로 동기화 */
   /* eslint-disable react-hooks/set-state-in-effect -- 단일 bootstrap */
@@ -34,6 +36,7 @@ export function WorkspaceModeProvider({ children }: { readonly children: ReactNo
     const fromSession = readLayoutPreviewSessionMode();
     if (fromSession) {
       setModeState(fromSession);
+      setWorkspaceModeBootstrapped(true);
       return;
     }
     const fromUrl = parseLayoutPreviewParam(window.location.search);
@@ -41,47 +44,53 @@ export function WorkspaceModeProvider({ children }: { readonly children: ReactNo
       setModeState(fromUrl);
       writeLayoutPreviewSessionMode(fromUrl);
       stripLayoutPreviewParamFromAddressBar();
+      setWorkspaceModeBootstrapped(true);
       return;
     }
     const stored = readStoredWorkspaceMode();
     if (stored) {
       setModeState(stored);
+      setWorkspaceModeBootstrapped(true);
       return;
     }
     const inferred = inferDefaultWorkspaceModeFromWidth(window.innerWidth);
     writeStoredWorkspaceMode(inferred);
     setModeState(inferred);
+    setWorkspaceModeBootstrapped(true);
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const setMode = useCallback((next: WorkspaceMode) => {
+    setWorkspaceModeBootstrapped(true);
     setModeState(next);
     writeStoredWorkspaceMode(next);
     syncLayoutPreviewSessionIfOpen(next);
   }, []);
 
+  const displayMode = workspaceModeBootstrapped ? mode : "AUTO";
+
   const effectiveLayout = useMemo(
-    () => resolveEffectiveLayout(mode, layoutMqIsMobile),
-    [mode, layoutMqIsMobile]
+    () => resolveEffectiveLayout(displayMode, layoutMqIsMobile),
+    [displayMode, layoutMqIsMobile]
   );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.dataset.jyoWorkspaceEffective = effectiveLayout.toLowerCase();
-    document.documentElement.dataset.jyoWorkspaceMode = mode.toLowerCase();
+    document.documentElement.dataset.jyoWorkspaceMode = displayMode.toLowerCase();
     return () => {
       delete document.documentElement.dataset.jyoWorkspaceEffective;
       delete document.documentElement.dataset.jyoWorkspaceMode;
     };
-  }, [effectiveLayout, mode]);
+  }, [effectiveLayout, displayMode]);
 
   const value = useMemo(
     () => ({
-      mode,
+      mode: displayMode,
       setMode,
       effectiveLayout,
     }),
-    [mode, setMode, effectiveLayout]
+    [displayMode, setMode, effectiveLayout]
   );
 
   return <WorkspaceModeContext.Provider value={value}>{children}</WorkspaceModeContext.Provider>;

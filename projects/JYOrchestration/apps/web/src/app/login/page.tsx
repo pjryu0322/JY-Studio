@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { queuePostLoginWindowLayout } from "@/lib/ui/workingSurfaceLayout";
 
 type Tab = "login" | "register";
 
@@ -28,6 +29,8 @@ function LoginForm() {
 
   const redirectHome = useCallback(async () => {
     const from = searchParams.get("from")?.trim();
+    const target = from && from.startsWith("/") && !from.startsWith("//") ? from : "/";
+    queuePostLoginWindowLayout(target);
     if (from && from.startsWith("/") && !from.startsWith("//")) {
       router.replace(from);
       router.refresh();

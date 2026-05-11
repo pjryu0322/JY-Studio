@@ -2,7 +2,7 @@ import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopup
 import type { WorkspaceEffectiveLayout } from "@/lib/ui/workspaceMode";
 
 export type OpenMessengerChatRoomWindowOptions = Readonly<{
-  /** 현재 탭 작업모드와 맞추면, 새 창 크기를 모바일·데스크톱에 맞게 잡는다. */
+  /** 현재 탭 화면 레이아웃과 맞추면, 새 창 크기를 모바일·데스크톱에 맞게 잡는다. */
   effectiveLayout?: WorkspaceEffectiveLayout;
   /**
    * true이면 URL에 `discardEmpty=1`을 붙인다.

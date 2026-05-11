@@ -1,4 +1,4 @@
-/** 프로토타입 Preview iframe 뷰포트(작업모드·모바일 프리셋) — localStorage와 함께 쓰일 타입·상수 */
+/** 프로토타입 Preview iframe 뷰포트(화면 레이아웃·모바일 프리셋) — localStorage와 함께 쓰일 타입·상수 */
 
 export type PrototypePreviewWorkMode = "desktop" | "mobile" | "auto";
 
