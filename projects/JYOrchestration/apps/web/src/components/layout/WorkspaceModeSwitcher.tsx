@@ -56,10 +56,10 @@ export function WorkspaceModeSwitcher({ variant = "toolbar" }: { readonly varian
     background: t.bgPage,
   };
 
-  /** SSR·첫 하이드레이트: 저장 모드와 무관하게 동일한 DOM(모두 비선택)으로 맞춘다. */
+  /** SSR·첫 하이드레이트: 저장 모드와 무관하게 동일한 DOM(모두 비선택)으로 맞춘다. 하단 “적용” 줄은 마운트 후에만 넣어 AUTO 외 모드와 DOM 구조를 맞춘다. */
   if (!clientMounted) {
     return (
-      <div role="group" aria-label="화면 레이아웃" style={shellStyle}>
+      <div role="group" aria-label="화면 레이아웃" style={shellStyle} suppressHydrationWarning>
         {!menu ? (
           <span style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap" }}>화면 레이아웃</span>
         ) : null}
@@ -78,17 +78,6 @@ export function WorkspaceModeSwitcher({ variant = "toolbar" }: { readonly varian
             </button>
           ))}
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: t.textMuted,
-            whiteSpace: menu ? "normal" : "nowrap",
-            lineHeight: menu ? 1.4 : undefined,
-          }}
-        >
-          적용: 넓은 화면
-        </span>
       </div>
     );
   }

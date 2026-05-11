@@ -19,7 +19,8 @@ export function isJyoPlatformAuxiliaryWindowName(name: string | undefined | null
   return (
     n.startsWith("jyo-messenger-chat-") ||
     n.startsWith("jyo-workspace-") ||
-    n.startsWith("jyo-idea-")
+    n.startsWith("jyo-idea-") ||
+    n.startsWith("jyo-knowledge-pack-")
   );
 }
 
