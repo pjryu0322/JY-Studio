@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { Suspense } from "react";
-import { usePathname } from "next/navigation";
+import type { CSSProperties } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { MessengerRailNavLinks } from "@/components/layout/MessengerRailNavLinks";
 import { PlatformNotificationsBell } from "@/components/layout/PlatformNotificationsBell";
 import { PlatformSettingsTrigger } from "@/components/layout/PlatformSettingsTrigger";
 import { ProjectWorkNoteButton, UserWorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { WorkNotePendingChatNav } from "@/components/worknote/WorkNotePendingChatNav";
 import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
+import { parseMessengerHomePanel } from "@/components/messenger/messengerHomePanel";
+import {
+  platformRailMessengerActiveShell,
+  platformRailMessengerActiveText,
+  platformRailNavPrimaryText,
+  platformRailNavTextCell,
+} from "@/lib/layout/platformTopNavConstants";
 
 const CONTACTS_MEMBERS_PLACEHOLDER_MSG = "내 연락처에 있는 사용자 목록 보여지게 개발 예정 입니다.";
 
@@ -35,7 +43,7 @@ export type TopRightToolbarProps = Readonly<{
 
 function ProjectMembersNavIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -44,14 +52,48 @@ function ProjectMembersNavIcon() {
   );
 }
 
-function ProjectListNavIcon() {
+/** 메신저 홈의 일반 대화방 목록 (`/?panel=chat`) — `useSearchParams` 사용 */
+function ChatListRailNavLink() {
+  const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
+  /** 목록 화면(`/?panel=chat`)에서만 선택 강조. `/chat/방`에서는 레일과 동일한 테두리만(민트 단독 적용 방지). */
+  const active = pathname === "/" && parseMessengerHomePanel(searchParams.get("panel")) === "chat";
+  const style: CSSProperties = {
+    ...platformRailNavTextCell,
+    textDecoration: "none",
+    color: "inherit",
+    ...(active ? platformRailMessengerActiveShell : {}),
+  };
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      <circle cx="9" cy="10" r="1.25" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="10" r="1.25" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="10" r="1.25" fill="currentColor" stroke="none" />
-    </svg>
+    <Link
+      href="/?panel=chat"
+      prefetch={false}
+      data-testid="platform-project-list"
+      aria-label="Chat · 일반 대화방 목록으로 이동"
+      title="일반 대화방 목록"
+      style={style}
+    >
+      <span style={active ? platformRailMessengerActiveText : platformRailNavPrimaryText}>Chat</span>
+    </Link>
+  );
+}
+
+function ChatListRailNavLinkFallback() {
+  return (
+    <Link
+      href="/?panel=chat"
+      prefetch={false}
+      data-testid="platform-project-list"
+      aria-label="Chat · 일반 대화방 목록으로 이동"
+      title="일반 대화방 목록"
+      style={{
+        ...platformRailNavTextCell,
+        textDecoration: "none",
+        color: "inherit",
+      }}
+    >
+      <span style={platformRailNavPrimaryText}>Chat</span>
+    </Link>
   );
 }
 
@@ -65,10 +107,16 @@ function profileHoverTitle(me: TopRightToolbarMe): string {
 
 export function TopRightToolbar(p: TopRightToolbarProps) {
   const pathname = usePathname() || "/";
-  const showMessengerRailNav = pathname === "/" || pathname.startsWith("/chat/");
+  const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
+  const showMessengerRailNav =
+    pathOnly === "/" ||
+    pathOnly === "/workspace" ||
+    pathOnly === "/prompt-timeline" ||
+    pathOnly.startsWith("/prompt-timeline/") ||
+    pathname.startsWith("/chat/");
   const gap = p.compact ? 6 : 8;
   const vertical = p.layout === "vertical";
-  const stackGap = p.compact ? 8 : 10;
+  const stackGap = vertical ? (p.compact ? 3 : 4) : p.compact ? 8 : 10;
 
   const profileBlock =
     p.meReady && p.me ? (
@@ -76,7 +124,7 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
         href="/account"
         prefetch={false}
         data-testid="platform-top-menu-account"
-        aria-label={`프로필 및 계정 설정으로 이동. ${profileHoverTitle(p.me).replace(/\n/g, " · ")}`}
+        aria-label={`계정 · 프로필 및 설정으로 이동. ${profileHoverTitle(p.me).replace(/\n/g, " · ")}`}
         title={profileHoverTitle(p.me)}
         style={{
           display: "inline-flex",
@@ -86,7 +134,6 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
           textDecoration: "none",
           borderRadius: 9999,
           outlineOffset: 2,
-          alignSelf: vertical ? "center" : undefined,
         }}
       >
         {p.me.avatarUrl && !p.avatarLoadFailed ? (
@@ -121,90 +168,179 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
         )}
       </Link>
     ) : p.meReady ? (
-      <span style={{ fontSize: 12, color: "#94a3b8", textAlign: vertical ? "center" : undefined, alignSelf: vertical ? "center" : undefined }}>
-        로그인 필요
-      </span>
+      <span style={{ fontSize: 12, color: "#94a3b8" }}>로그인 필요</span>
     ) : (
-      <span style={{ fontSize: 12, color: "#94a3b8", alignSelf: vertical ? "center" : undefined }}>…</span>
+      <span style={{ fontSize: 12, color: "#94a3b8" }}>…</span>
     );
 
-  const notificationsBell = p.hasSession ? <PlatformNotificationsBell enabled /> : null;
-  const promptTimelineBtn =
-    p.hasSession && isPromptTimelineDebugClient() && p.workNotesProjectId?.trim() ? (
+  const profileRailWrapped = vertical ? (
+    p.meReady && p.me ? (
       <Link
-        href={`/prompt-timeline?projectId=${encodeURIComponent(p.workNotesProjectId.trim())}`}
+        href="/account"
         prefetch={false}
-        aria-label="프롬프트 타임라인"
-        title="프롬프트 타임라인 (디버그)"
+        data-testid="platform-top-menu-account"
+        aria-label={`계정 · 프로필 및 설정으로 이동. ${profileHoverTitle(p.me).replace(/\n/g, " · ")}`}
+        title={profileHoverTitle(p.me)}
         style={{
-          width: 36,
-          height: 36,
-          padding: 0,
-          borderRadius: 10,
-          border: "1px solid #cbd5e1",
-          background: "#fff",
-          color: "#334155",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          boxSizing: "border-box",
-          cursor: "pointer",
-          outlineOffset: 2,
+          ...platformRailNavTextCell,
           textDecoration: "none",
+          color: "inherit",
         }}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-        </svg>
+        <span style={platformRailNavPrimaryText}>계정</span>
       </Link>
+    ) : p.meReady ? (
+      <div style={{ ...platformRailNavTextCell, cursor: "default" }}>
+        <span style={{ ...platformRailNavPrimaryText, color: "#94a3b8", fontSize: 12, lineHeight: 1.2 }}>로그인 필요</span>
+      </div>
+    ) : (
+      <div style={{ ...platformRailNavTextCell, cursor: "default" }}>
+        <span style={platformRailNavPrimaryText}>…</span>
+      </div>
+    )
+  ) : (
+    profileBlock
+  );
+
+  const notificationsBell = p.hasSession ? (
+    <PlatformNotificationsBell enabled railFooterLabel={vertical ? "알림" : undefined} />
+  ) : null;
+
+  const promptTimelineBtn =
+    p.hasSession && isPromptTimelineDebugClient() && p.workNotesProjectId?.trim() ? (
+      vertical ? (
+        <Link
+          href={`/prompt-timeline?projectId=${encodeURIComponent(p.workNotesProjectId.trim())}`}
+          prefetch={false}
+          aria-label="프롬프트 타임라인 (디버그)"
+          title="프롬프트 타임라인 (디버그)"
+          style={{
+            ...platformRailNavTextCell,
+            cursor: "pointer",
+            outlineOffset: 2,
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          <span style={platformRailNavPrimaryText}>로그</span>
+        </Link>
+      ) : (
+        <Link
+          href={`/prompt-timeline?projectId=${encodeURIComponent(p.workNotesProjectId.trim())}`}
+          prefetch={false}
+          aria-label="프롬프트 타임라인"
+          title="프롬프트 타임라인 (디버그)"
+          style={{
+            width: 36,
+            height: 36,
+            padding: 0,
+            borderRadius: 10,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            color: "#334155",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            boxSizing: "border-box",
+            cursor: "pointer",
+            outlineOffset: 2,
+            textDecoration: "none",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+          </svg>
+        </Link>
+      )
     ) : null;
-  const workNoteBtn = p.hasSession ? <UserWorkNoteButton /> : null;
+
+  const workNoteBtn = p.hasSession ? <UserWorkNoteButton railFooterLabel={vertical ? "메모" : undefined} /> : null;
   const projectWorkNoteBtn = p.hasSession ? (
     <>
       {p.workNotesProjectId?.trim() ? <WorkNotePendingChatNav projectId={p.workNotesProjectId} /> : null}
-      <ProjectWorkNoteButton notesProjectId={p.workNotesProjectId} />
+      {vertical && !p.workNotesProjectId?.trim() ? null : (
+        <ProjectWorkNoteButton notesProjectId={p.workNotesProjectId} railFooterLabel={vertical ? "문서" : undefined} />
+      )}
     </>
   ) : null;
-  const projectListBtn = (
-    <Link
-      href="/?panel=chat"
-      prefetch={false}
-      data-testid="platform-project-list"
-      aria-label="대화 목록으로 이동"
-      title="대화 목록"
-      style={{
-        width: 36,
-        height: 36,
-        padding: 0,
-        borderRadius: 10,
-        border: "1px solid #cbd5e1",
-        background: "#fff",
-        color: "#334155",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        boxSizing: "border-box",
-        cursor: "pointer",
-        outlineOffset: 2,
-        textDecoration: "none",
-      }}
-    >
-      <ProjectListNavIcon />
-    </Link>
-  );
+
   const projectMembersPlaceholderBtn =
     p.hasSession && !showMessengerRailNav ? (
+      vertical ? (
+        <button
+          type="button"
+          data-testid="platform-project-members"
+          aria-label={`친구 · ${CONTACTS_MEMBERS_PLACEHOLDER_MSG}`}
+          title="친구 (준비 중)"
+          onClick={() => {
+            window.alert(CONTACTS_MEMBERS_PLACEHOLDER_MSG);
+          }}
+          style={{
+            ...platformRailNavTextCell,
+            cursor: "pointer",
+            outlineOffset: 2,
+            font: "inherit",
+          }}
+        >
+          <span style={platformRailNavPrimaryText}>친구</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          data-testid="platform-project-members"
+          aria-label={`친구 · ${CONTACTS_MEMBERS_PLACEHOLDER_MSG}`}
+          title="친구 (준비 중)"
+          onClick={() => {
+            window.alert(CONTACTS_MEMBERS_PLACEHOLDER_MSG);
+          }}
+          style={{
+            width: 32,
+            height: 32,
+            padding: 0,
+            borderRadius: 9,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            color: "#334155",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            boxSizing: "border-box",
+            cursor: "pointer",
+            outlineOffset: 2,
+          }}
+        >
+          <ProjectMembersNavIcon />
+        </button>
+      )
+    ) : null;
+
+  const logoutButton = p.hasSession ? (
+    vertical ? (
       <button
         type="button"
-        data-testid="platform-project-members"
-        aria-label={CONTACTS_MEMBERS_PLACEHOLDER_MSG}
-        title="연락처 사용자 (준비 중)"
-        onClick={() => {
-          window.alert(CONTACTS_MEMBERS_PLACEHOLDER_MSG);
+        data-testid="platform-top-logout"
+        aria-label="로그아웃"
+        title="로그아웃"
+        onClick={() => void p.onLogout()}
+        style={{
+          ...platformRailNavTextCell,
+          cursor: "pointer",
+          outlineOffset: 2,
+          font: "inherit",
         }}
+      >
+        <span style={{ ...platformRailNavPrimaryText, fontSize: 12 }}>로그아웃</span>
+      </button>
+    ) : (
+      <button
+        type="button"
+        data-testid="platform-top-logout"
+        aria-label="로그아웃"
+        title="로그아웃"
+        onClick={() => void p.onLogout()}
         style={{
           width: 36,
           height: 36,
@@ -212,52 +348,25 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
           borderRadius: 10,
           border: "1px solid #cbd5e1",
           background: "#fff",
+          cursor: "pointer",
           color: "#334155",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
           boxSizing: "border-box",
-          cursor: "pointer",
-          outlineOffset: 2,
         }}
       >
-        <ProjectMembersNavIcon />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
       </button>
-    ) : null;
-
-  const logoutButton = p.hasSession ? (
-    <button
-      type="button"
-      data-testid="platform-top-logout"
-      aria-label="로그아웃"
-      title="로그아웃"
-      onClick={() => void p.onLogout()}
-      style={{
-        width: 36,
-        height: 36,
-        padding: 0,
-        borderRadius: 10,
-        border: "1px solid #cbd5e1",
-        background: "#fff",
-        cursor: "pointer",
-        color: "#334155",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        boxSizing: "border-box",
-      }}
-    >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-        <polyline points="16 17 21 12 16 7" />
-        <line x1="21" y1="12" x2="9" y2="12" />
-      </svg>
-    </button>
+    )
   ) : null;
 
-  const settingsTrigger = <PlatformSettingsTrigger />;
+  const settingsTrigger = vertical ? <PlatformSettingsTrigger railTextOnly /> : <PlatformSettingsTrigger />;
 
   if (vertical) {
     return (
@@ -280,8 +389,9 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
               flexShrink: 0,
             }}
           >
-            {profileBlock}
-            {projectListBtn}
+            <Suspense fallback={<ChatListRailNavLinkFallback />}>
+              <ChatListRailNavLink />
+            </Suspense>
             {showMessengerRailNav ? (
               <Suspense fallback={null}>
                 <MessengerRailNavLinks />
@@ -301,11 +411,12 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
               alignItems: "center",
               gap: stackGap,
               flexShrink: 0,
-              paddingTop: stackGap,
+              paddingTop: 4,
             }}
           >
-            {logoutButton}
+            {profileRailWrapped}
             {settingsTrigger}
+            {logoutButton}
           </div>
         </div>
       </>

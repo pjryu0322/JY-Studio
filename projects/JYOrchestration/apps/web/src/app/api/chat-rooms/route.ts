@@ -76,9 +76,31 @@ export async function POST(request: Request) {
     }
 
     const roomType = roomTypeRaw === "SOLO" || roomTypeRaw === "DIRECT" ? (roomTypeRaw as "SOLO" | "DIRECT") : null;
-    const mode = parseMessengerAiMode(o.aiParticipationMode);
-    const resolvedMode = mode ?? "AUTO";
-    const resolvedType = roomType ?? (resolvedMode === "NONE" ? "SOLO" : "DIRECT");
+    const modeParsed = parseMessengerAiMode(o.aiParticipationMode);
+
+    let resolvedType: "SOLO" | "DIRECT";
+    let resolvedMode: "NONE" | "AUTO" | "MENTION_ONLY";
+
+    if (roomType === "SOLO") {
+      resolvedType = "SOLO";
+      resolvedMode = modeParsed ?? "NONE";
+    } else if (roomType === "DIRECT") {
+      resolvedType = "DIRECT";
+      if (modeParsed !== "AUTO" && modeParsed !== "MENTION_ONLY") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "DIRECT 방은 aiParticipationMode로 AUTO 또는 MENTION_ONLY를 보내야 합니다.",
+          },
+          { status: 400 }
+        );
+      }
+      resolvedMode = modeParsed;
+    } else {
+      resolvedMode = modeParsed ?? "AUTO";
+      resolvedType = resolvedMode === "NONE" ? "SOLO" : "DIRECT";
+    }
+
     if (resolvedMode === "NONE" && resolvedType !== "SOLO") {
       return NextResponse.json({ success: false, message: "혼자 메모 방은 roomType SOLO 여야 합니다." }, { status: 400 });
     }

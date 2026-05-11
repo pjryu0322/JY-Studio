@@ -34,7 +34,7 @@ const menuItemDisabled: CSSProperties = {
 };
 
 /**
- * 제목 옆 설정(톱니) — 제목 변경·대화 설정·요약/프로젝트(선택)·나가기·삭제.
+ * 제목 옆 설정(톱니) — 제목 변경·대화 설정·요약·현재 대화로 프로토타입 준비(선택)·나가기·삭제.
  */
 export function MessengerRoomSettingsGearMenu(p: {
   readonly disabled?: boolean;
@@ -121,7 +121,8 @@ export function MessengerRoomSettingsGearMenu(p: {
             position: "absolute",
             top: "calc(100% + 6px)",
             right: 0,
-            minWidth: 168,
+            minWidth: 260,
+            maxWidth: "min(320px, calc(100vw - 24px))",
             zIndex: 80,
             background: t.bgCard,
             border: `1px solid ${t.border}`,
@@ -169,7 +170,11 @@ export function MessengerRoomSettingsGearMenu(p: {
             <button
               type="button"
               role="menuitem"
-              style={p.projectApplyDisabled ? menuItemDisabled : menuItemBase}
+              style={
+                p.projectApplyDisabled
+                  ? { ...menuItemDisabled, whiteSpace: "normal", lineHeight: 1.35 }
+                  : { ...menuItemBase, whiteSpace: "normal", lineHeight: 1.35 }
+              }
               disabled={p.projectApplyDisabled}
               onClick={() => {
                 if (p.projectApplyDisabled) return;
@@ -177,7 +182,7 @@ export function MessengerRoomSettingsGearMenu(p: {
                 if (fn) closeAnd(fn);
               }}
             >
-              프로젝트 적용
+              현재 대화로 프로토타입 준비
             </button>
           ) : null}
           {p.showLeave ? (

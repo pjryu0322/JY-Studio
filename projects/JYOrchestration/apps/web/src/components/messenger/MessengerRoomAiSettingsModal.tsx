@@ -18,7 +18,7 @@ const OPTIONS: readonly { mode: MessengerAiMode; title: string; desc: string }[]
   {
     mode: "MENTION_ONLY",
     title: "AI기획자 멘션 시만 응답",
-    desc: "AI기획자는 대화방에 있지만 @AI기획자로 부를 때만 응답합니다.",
+    desc: "AI기획자는 대화방에 있지만 @@AI기획자 또는 @@기획자로 부를 때만 응답합니다.",
   },
 ];
 

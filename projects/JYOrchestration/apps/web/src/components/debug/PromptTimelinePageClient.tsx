@@ -33,8 +33,17 @@ function ClipboardGlyph({ size = 16 }: { readonly size?: number }) {
 export function PromptTimelinePageClient() {
   const isNarrow = useMediaQuery("(max-width: 720px)");
   const pathname = usePathname() || "/";
+  const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
   const searchParams = useSearchParams();
-  const projectId = useMemo(() => resolveWorkflowProjectContextId(pathname, searchParams)?.trim() ?? "", [pathname, searchParams]);
+  /** `/prompt-timeline`는 `?projectId=`만 보고, 그 외 경로는 워크플로 컨텍스트를 쓴다. */
+  const activeProjectId = useMemo(() => {
+    if (pathOnly === "/prompt-timeline" || pathOnly.startsWith("/prompt-timeline/")) {
+      return String(searchParams.get("projectId") ?? "").trim();
+    }
+    return resolveWorkflowProjectContextId(pathname, searchParams)?.trim() ?? "";
+  }, [pathOnly, pathname, searchParams]);
+
+  const scopeLabel = activeProjectId ? `프로젝트 · ${activeProjectId}` : "내 계정(메신저 등)";
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +52,14 @@ export function PromptTimelinePageClient() {
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const id = projectId.trim();
-    if (!id) return;
+    const id = activeProjectId.trim();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/debug/prompt-timeline`, { method: "GET", cache: "no-store" });
+      const url = id
+        ? `/api/projects/${encodeURIComponent(id)}/debug/prompt-timeline`
+        : `/api/me/debug/prompt-timeline`;
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
       const json = (await res.json()) as ApiOk | ApiErr;
       if (!res.ok || !json.success) {
         setError((json as ApiErr).message ?? `HTTP ${res.status}`);
@@ -62,7 +73,7 @@ export function PromptTimelinePageClient() {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [activeProjectId]);
 
   useEffect(() => {
     void load();
@@ -94,11 +105,11 @@ export function PromptTimelinePageClient() {
   );
 
   const onExportMarkdown = useCallback(() => {
-    if (!entries.length || !projectId.trim()) return;
-    const stem = sanitizeTimelineExportBasename(projectId);
+    if (!entries.length) return;
+    const stem = activeProjectId.trim() ? sanitizeTimelineExportBasename(activeProjectId) : "prompt-timeline-me";
     const md = buildDebugPromptTimelineMarkdown(entries);
     downloadDebugPromptTimelineMarkdown(`${stem}-prompt-timeline-${localDateSlug()}.md`, md);
-  }, [entries, projectId]);
+  }, [entries, activeProjectId]);
 
   return (
     <div style={{ minHeight: "70vh", padding: isNarrow ? "12px 12px 28px" : "18px 16px 44px", position: "relative" }}>
@@ -127,12 +138,15 @@ export function PromptTimelinePageClient() {
         </div>
       ) : null}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프롬프트 타임라인</div>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프롬프트 타임라인</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginTop: 4 }}>{scopeLabel}</div>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={() => void load()}
-            disabled={loading || !projectId}
+            disabled={loading}
             style={{
               border: `1px solid ${t.border}`,
               background: "#fff",
@@ -140,7 +154,7 @@ export function PromptTimelinePageClient() {
               fontSize: 12,
               fontWeight: 700,
               padding: "6px 12px",
-              cursor: loading || !projectId ? "wait" : "pointer",
+              cursor: loading ? "wait" : "pointer",
               color: t.textSecondary,
             }}
           >
@@ -149,7 +163,7 @@ export function PromptTimelinePageClient() {
           <button
             type="button"
             onClick={onExportMarkdown}
-            disabled={!entries.length || !projectId}
+            disabled={!entries.length}
             style={{
               border: `1px solid ${t.border}`,
               background: entries.length ? "#ecfdf5" : "#f1f5f9",
@@ -157,9 +171,9 @@ export function PromptTimelinePageClient() {
               fontSize: 12,
               fontWeight: 700,
               padding: "6px 12px",
-              cursor: entries.length && projectId ? "pointer" : "not-allowed",
+              cursor: entries.length ? "pointer" : "not-allowed",
               color: t.textSecondary,
-              opacity: entries.length && projectId ? 1 : 0.55,
+              opacity: entries.length ? 1 : 0.55,
             }}
           >
             MD 저장
@@ -167,11 +181,7 @@ export function PromptTimelinePageClient() {
         </div>
       </div>
 
-      {!projectId ? (
-        <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.6 }}>
-          프로젝트가 선택되지 않았습니다. `?projectId=...` 가 포함된 화면에서 접근해 주세요.
-        </div>
-      ) : loading && entries.length === 0 ? (
+      {loading && entries.length === 0 ? (
         <div style={{ fontSize: 13, color: t.textMuted }}>불러오는 중…</div>
       ) : error ? (
         <div style={{ fontSize: 13, color: "#b91c1c" }}>{error}</div>

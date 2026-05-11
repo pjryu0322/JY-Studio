@@ -33,6 +33,7 @@ import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
+import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 import {
   defaultPrototypeGenerationRecord,
   loadPrototypeGenerationRecord,
@@ -1353,7 +1354,10 @@ export function PrototypePreviewPanel({
         }
         case "OPEN_ACTIONS_URL": {
           const u = latestRun?.pagesDeployWorkflowRunUrl?.trim();
-          if (u) window.open(u, "_blank", "noopener,noreferrer");
+          if (u) {
+            const win = window.open(u, "_blank", "noopener,noreferrer");
+            registerPlatformPopupFromOpenedUrl(win, u);
+          }
           return;
         }
         case "OPEN_PR_URL": {
@@ -1361,12 +1365,18 @@ export function PrototypePreviewPanel({
           if (typeof ord !== "number") return;
           const wu = sortedWorkUnitsForSidebar.find((x) => x.order === ord);
           const u = wu?.prUrl?.trim();
-          if (u) window.open(u, "_blank", "noopener,noreferrer");
+          if (u) {
+            const win = window.open(u, "_blank", "noopener,noreferrer");
+            registerPlatformPopupFromOpenedUrl(win, u);
+          }
           return;
         }
         case "OPEN_PREVIEW": {
           const u = previewUrl ?? latestRun?.previewUrl ?? latestRun?.suggestedPreviewUrl ?? "";
-          if (u) window.open(u, "_blank", "noopener,noreferrer");
+          if (u) {
+            const win = window.open(u, "_blank", "noopener,noreferrer");
+            registerPlatformPopupFromOpenedUrl(win, u);
+          }
           return;
         }
         case "COPY_PREVIEW_URL": {

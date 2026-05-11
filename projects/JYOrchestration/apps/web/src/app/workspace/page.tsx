@@ -1,7 +1,13 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { Suspense } from "react";
+import { LoadingState } from "@/components/ui";
+import { WorkspaceHomeProjectsView } from "@/components/home/WorkspaceHomeProjectsView";
 
 export default function WorkspacePage() {
-  // Workspace is an alias of the existing overview/home surface.
-  redirect("/");
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <WorkspaceHomeProjectsView />
+    </Suspense>
+  );
 }
-

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLayoutMobileBreakpoint } from "@/components/ui/breakpoints";
+import { platformRailNavPrimaryText, platformRailNavTextCell } from "@/lib/layout/platformTopNavConstants";
 
 function GearIcon() {
   return (
@@ -14,10 +15,29 @@ function GearIcon() {
 }
 
 /** 상단 헤더: `/settings` 본문 라우트로 이동합니다(알림·작업메모와 동일 패턴). */
-export function PlatformSettingsTrigger() {
+export function PlatformSettingsTrigger({ railTextOnly = false }: { readonly railTextOnly?: boolean } = {}) {
   const pathname = usePathname() || "/";
   const narrow = useLayoutMobileBreakpoint();
   const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+
+  if (railTextOnly) {
+    return (
+      <Link
+        href="/settings"
+        prefetch={false}
+        aria-label="설정"
+        title="설정"
+        style={{
+          ...platformRailNavTextCell,
+          ...(inSettings ? { background: "#f1f5f9" as const } : {}),
+          textDecoration: "none",
+          color: "inherit",
+        }}
+      >
+        <span style={platformRailNavPrimaryText}>설정</span>
+      </Link>
+    );
+  }
 
   return (
     <Link

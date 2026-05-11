@@ -1,3 +1,6 @@
+import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
+import { appFlowStepHref } from "@/lib/workflow/flow-state";
+
 /**
  * 플랫폼 UI 전용 “작업모드”. 프로토타입 생성/배포 설정과 무관합니다.
  */
@@ -122,6 +125,7 @@ export function openWorkspaceModePreviewWindow(mode: WorkspaceMode): void {
   try {
     const u = new URL(window.location.href);
     u.searchParams.set(JYO_LAYOUT_PREVIEW_PARAM, mode.toLowerCase());
+    const href = u.toString();
     const { w, h } = PREVIEW_WIN[mode];
     const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
     const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
@@ -135,7 +139,8 @@ export function openWorkspaceModePreviewWindow(mode: WorkspaceMode): void {
       "menubar=no",
       "toolbar=no",
     ].join(",");
-    window.open(u.toString(), `jyo-workspace-${mode}`, `noopener,noreferrer,${feats}`);
+    const opened = window.open(href, `jyo-workspace-${mode}`, `noopener,noreferrer,${feats}`);
+    registerPlatformPopupFromOpenedUrl(opened, href);
   } catch {
     /* popup 차단 등 */
   }
@@ -175,6 +180,7 @@ export function openUrlInWorkspaceModePreviewWindow(
   try {
     const u = new URL(pathnameAndSearch, window.location.origin);
     u.searchParams.set(JYO_LAYOUT_PREVIEW_PARAM, mode.toLowerCase());
+    const href = u.toString();
     const { w, h } = PREVIEW_WIN[mode];
     const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
     const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
@@ -188,11 +194,71 @@ export function openUrlInWorkspaceModePreviewWindow(
       "menubar=no",
       "toolbar=no",
     ].join(",");
-    let opened = window.open(u.toString(), windowName, `noopener,noreferrer,${feats}`);
+    let opened = window.open(href, windowName, `noopener,noreferrer,${feats}`);
     if (!opened) {
-      opened = window.open(u.toString(), "_blank", "noopener,noreferrer");
+      opened = window.open(href, windowName, "noopener,noreferrer");
     }
+    if (opened) {
+      try {
+        opened.focus();
+      } catch {
+        /* noop */
+      }
+    }
+    registerPlatformPopupFromOpenedUrl(opened, href);
   } catch {
     /* popup 차단 등 */
+  }
+}
+
+/** 동일 `projectId`는 항상 같은 보조 창에서만 열리도록 고정(`window.name`). 프로젝트 목록과 동일 접두사 유지. */
+export function projectRoomWindowName(projectId: string): string {
+  const id = String(projectId ?? "").trim();
+  if (!id) return "jyo-idea-_";
+  return `jyo-idea-${encodeURIComponent(id)}`;
+}
+
+/**
+ * 프로젝트 룸(기본: 요구사항 SingleChat)을 전용 창으로 연다.
+ * 같은 `projectId`로 다시 호출하면 기존 창이 포커스되고 URL이 갱신된다.
+ */
+export function openProjectRoomWindow(projectId: string, mode: WorkspaceMode, pathnameAndSearch?: string): Window | null {
+  if (typeof window === "undefined") return null;
+  const pid = String(projectId ?? "").trim();
+  if (!pid) return null;
+  const path = (pathnameAndSearch ?? appFlowStepHref("requirements", pid)).trim();
+  try {
+    const u = new URL(path, window.location.origin);
+    u.searchParams.set(JYO_LAYOUT_PREVIEW_PARAM, mode.toLowerCase());
+    const href = u.toString();
+    const { w, h } = PREVIEW_WIN[mode];
+    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
+    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
+    const feats = [
+      `width=${w}`,
+      `height=${h}`,
+      `left=${left}`,
+      `top=${top}`,
+      "scrollbars=yes",
+      "resizable=yes",
+      "menubar=no",
+      "toolbar=no",
+    ].join(",");
+    const name = projectRoomWindowName(pid);
+    let opened = window.open(href, name, `noopener,noreferrer,${feats}`);
+    if (!opened) {
+      opened = window.open(href, name, "noopener,noreferrer");
+    }
+    if (opened) {
+      try {
+        opened.focus();
+      } catch {
+        /* noop */
+      }
+    }
+    registerPlatformPopupFromOpenedUrl(opened, href);
+    return opened;
+  } catch {
+    return null;
   }
 }

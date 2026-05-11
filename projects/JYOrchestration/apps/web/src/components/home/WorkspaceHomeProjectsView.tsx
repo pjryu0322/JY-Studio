@@ -15,7 +15,7 @@ import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/proje
 import type { WorkspaceMode } from "@/lib/ui/workspaceMode";
 import {
   buildPathWithWorkspaceModePreview,
-  openUrlInWorkspaceModePreviewWindow,
+  openProjectRoomWindow,
 } from "@/lib/ui/workspaceMode";
 import { APP_FLOW_LAST_PROJECT_KEY, appFlowStepHref } from "@/lib/workflow/flow-state";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
@@ -696,12 +696,10 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                         }
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (e.button !== 0) return;
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                           e.preventDefault();
-                          openUrlInWorkspaceModePreviewWindow(
-                            appFlowStepHref("requirements", project.id),
-                            `jyo-idea-${project.id}`,
-                            workspaceMode
-                          );
+                          openProjectRoomWindow(project.id, workspaceMode);
                         }}
                         title={`${project.name} — 아이디어 구체화(작업모드 ${WORKSPACE_MODE_HINT[workspaceMode]})`}
                         style={homeProjectTitleLinkStyle}

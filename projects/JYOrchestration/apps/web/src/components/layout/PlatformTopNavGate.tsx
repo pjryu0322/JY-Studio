@@ -5,12 +5,18 @@ import { Suspense, useMemo } from "react";
 import { PlatformTopNav } from "@/components/layout/PlatformTopNav";
 
 /**
- * 플랫폼 상단 바(JY Orchestration·프로젝트 컨텍스트·알림 등) 표시 여부.
+ * 플랫폼 좌측 레일(내비·작업메모 등) 표시 여부.
  * 프로젝트 목록(홈 `/`)·일반 설정 화면에서는 표시하고,
  * 아이디어 구체화 및 그 이후 워크플로·프로젝트 작업 화면에서는 숨긴다.
+ * 로그인·회원가입(`/login`)은 비로그인 전용이므로 레일을 두지 않는다.
  */
 export function platformTopNavVisibleForPath(pathname: string): boolean {
   const p = (pathname.split("?")[0] || "/").trim() || "/";
+
+  if (p === "/login" || p.startsWith("/login/")) return false;
+
+  /** 메신저 대화방 전용 창: 본문만 보이도록 좌측 플랫폼 레일 숨김 */
+  if (p.startsWith("/chat/")) return false;
 
   if (p === "/") return true;
 

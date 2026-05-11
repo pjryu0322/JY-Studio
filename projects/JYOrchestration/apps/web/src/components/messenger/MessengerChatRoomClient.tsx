@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
@@ -18,6 +18,7 @@ import {
   requirementsWorkspaceMainRowStyle,
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
+import plusMenuStyles from "@/components/workspace/workspacePlusMenu.module.css";
 import { InlineAlert } from "@/components/ui";
 import {
   deleteMessengerChatRoom,
@@ -36,9 +37,16 @@ import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromC
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
 import { textMentionsMessengerAiPlanner, type MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
+import { openProjectRoomWindow } from "@/lib/ui/workspaceMode";
+
+function messengerDiscardEmptyStorageKey(roomId: string): string {
+  return `jyo:messengerDiscardEmpty:${roomId.trim()}`;
+}
 
 export function MessengerChatRoomClient({ roomId }: { readonly roomId: string }) {
   const router = useRouter();
+  const { mode: workspaceMode } = useWorkspaceMode();
   const rid = roomId.trim();
   const { sessionName, sessionUserId, detail, messages, loadError, reloadDetail, reloadMessages } =
     useMessengerChatRoomData(roomId);
@@ -65,9 +73,80 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const [renameError, setRenameError] = useState<string | null>(null);
   const [roomLifecycleBusy, setRoomLifecycleBusy] = useState(false);
   const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 레일에서 `?discardEmpty=1`로 연 방: 사용자(현재 세션)가 USER 메시지를 보내지 않고 창을 나가면 삭제 */
+  const discardEmptyOnCloseRef = useRef(false);
+  const userPostedInRoomRef = useRef(false);
+  const emptyDiscardSentRef = useRef(false);
+  const projectLinkedRef = useRef<string | null>(null);
 
   const projectLinkedId = detail?.room.projectId ?? null;
   const aiMode = detail?.room.aiParticipationMode ?? "AUTO";
+
+  useEffect(() => {
+    userPostedInRoomRef.current = false;
+    emptyDiscardSentRef.current = false;
+    discardEmptyOnCloseRef.current = false;
+    if (!rid || typeof window === "undefined") return;
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get("discardEmpty") === "1") {
+        sessionStorage.setItem(messengerDiscardEmptyStorageKey(rid), "1");
+        u.searchParams.delete("discardEmpty");
+        window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}`);
+      }
+    } catch {
+      /* noop */
+    }
+    try {
+      if (sessionStorage.getItem(messengerDiscardEmptyStorageKey(rid)) === "1") {
+        discardEmptyOnCloseRef.current = true;
+      }
+    } catch {
+      /* noop */
+    }
+  }, [rid]);
+
+  useEffect(() => {
+    projectLinkedRef.current = detail?.room.projectId ?? null;
+  }, [detail?.room.projectId]);
+
+  useEffect(() => {
+    if (!sessionUserId || !messages || !rid) return;
+    const uid = sessionUserId.trim();
+    if (!uid) return;
+    if (messages.some((m) => m.speakerType === "USER" && m.speakerId === uid)) {
+      userPostedInRoomRef.current = true;
+      try {
+        sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+      } catch {
+        /* noop */
+      }
+    }
+  }, [messages, sessionUserId, rid]);
+
+  useEffect(() => {
+    if (!rid) return;
+    const onPageHide = () => {
+      if (!discardEmptyOnCloseRef.current) return;
+      if (userPostedInRoomRef.current) return;
+      if (projectLinkedRef.current) return;
+      if (emptyDiscardSentRef.current) return;
+      emptyDiscardSentRef.current = true;
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      void fetch(`${origin}/api/chat-rooms/${encodeURIComponent(rid)}`, {
+        method: "DELETE",
+        credentials: "include",
+        keepalive: true,
+      });
+      try {
+        sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+      } catch {
+        /* noop */
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [rid]);
 
   const participantOptions = useMemo(() => messengerMembersToParticipants(detail?.members ?? []), [detail?.members]);
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
@@ -93,6 +172,12 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
           setInput("");
         });
         const { aiError } = await postMessengerUserMessage(rid, text);
+        userPostedInRoomRef.current = true;
+        try {
+          sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+        } catch {
+          /* noop */
+        }
         if (aiError) setToast(aiError);
         await reloadMessages();
         await reloadDetail();
@@ -151,6 +236,12 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setToast(null);
     try {
       await deleteMessengerChatRoom(rid);
+      try {
+        sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+      } catch {
+        /* noop */
+      }
+      discardEmptyOnCloseRef.current = false;
       router.push("/?panel=chat");
     } catch (e) {
       setToast(e instanceof Error ? e.message : "삭제 오류");
@@ -166,6 +257,12 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setToast(null);
     try {
       await postMessengerChatRoomLeave(rid);
+      try {
+        sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+      } catch {
+        /* noop */
+      }
+      discardEmptyOnCloseRef.current = false;
       router.push("/?panel=chat");
     } catch (e) {
       setToast(e instanceof Error ? e.message : "나가기 오류");
@@ -232,8 +329,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       const { projectId } = await postMessengerConfirmProject(rid, name, projectDesc.trim() || null);
       setDraftOpen(false);
       const path = appFlowStepHref("requirements", projectId);
-      const url = typeof window !== "undefined" ? new URL(path, window.location.origin).href : path;
-      const opened = typeof window !== "undefined" ? window.open(url, "_blank", "noopener,noreferrer") : null;
+      const opened = typeof window !== "undefined" ? openProjectRoomWindow(projectId, workspaceMode, path) : null;
       if (!opened) {
         setToast(
           "프로젝트는 만들어졌습니다. 새 탭이 차단되어 서비스 기획 화면이 열리지 않았습니다. 브라우저에서 이 사이트의 팝업을 허용한 뒤, 상단의 프로젝트 연결 안내 링크로 이동할 수 있습니다."
@@ -251,6 +347,56 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     ? "프로젝트에 연결된 대화방입니다. 요구사항 화면에서 계속하세요."
     : "메시지를 입력하세요";
 
+  const messengerPlusMenuRender = useCallback(
+    ({ close }: { readonly close: () => void }) => (
+      <>
+        <button
+          type="button"
+          role="menuitem"
+          className={plusMenuStyles.item}
+          onClick={() => {
+            setInput((v) => {
+              const t = v.trimEnd();
+              const sep = t.length ? " " : "";
+              return `${t}${sep}@@AI기획자 `;
+            });
+            close();
+            requestAnimationFrame(() => {
+              composerTextAreaRef.current?.focus();
+            });
+          }}
+        >
+          <span className={plusMenuStyles.stack}>
+            <span className={plusMenuStyles.title}>@@AI기획자 붙이기</span>
+            <span className={plusMenuStyles.sub}>AI 멘션만 삽입</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={plusMenuStyles.item}
+          onClick={() => {
+            setInput((v) => {
+              const t = v.trimEnd();
+              const sep = t.length ? " " : "";
+              return `${t}${sep}@@기획자 `;
+            });
+            close();
+            requestAnimationFrame(() => {
+              composerTextAreaRef.current?.focus();
+            });
+          }}
+        >
+          <span className={plusMenuStyles.stack}>
+            <span className={plusMenuStyles.title}>@@기획자 붙이기</span>
+            <span className={plusMenuStyles.sub}>짧은 멘션만 삽입</span>
+          </span>
+        </button>
+      </>
+    ),
+    []
+  );
+
   const composer = (
     <ServiceDesignComposer
       stage="ideation"
@@ -261,6 +407,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       disabled={Boolean(projectLinkedId)}
       placeholder={composerPlaceholder}
       targetPickerItems={targetPickerItems}
+      plusMenuRender={projectLinkedId ? undefined : messengerPlusMenuRender}
       onSendIdeation={handleComposerSend}
       onSendServiceFlow={handleComposerSend}
       onSendFeaturePlanning={handleComposerSend}

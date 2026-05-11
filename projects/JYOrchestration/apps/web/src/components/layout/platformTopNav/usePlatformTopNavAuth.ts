@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { notifyPlatformLogoutCloseWindows } from "@/lib/platform/platformPopupRegistry";
 
 export type PlatformTopNavMeState = {
   id: string;
@@ -80,6 +81,7 @@ export function usePlatformTopNavAuth(pathname: string): {
     } catch {
       /* ignore */
     }
+    notifyPlatformLogoutCloseWindows();
     window.location.href = "/login";
   }
 
