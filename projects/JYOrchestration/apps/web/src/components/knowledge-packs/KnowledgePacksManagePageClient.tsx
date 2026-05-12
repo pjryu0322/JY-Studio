@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePacksManageAiDraftSection } from "./KnowledgePacksManageAiDraftSection";
+import { KnowledgePackSourceManager } from "./KnowledgePackSourceManager";
 import { applyKnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftApply";
 import { generateKnowledgePackDraftMock, type KnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
 import { formatReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
@@ -417,7 +418,7 @@ export function KnowledgePacksManagePageClient() {
       </div>
 
       <p style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.55, margin: "0 0 12px" }}>
-        최소 정보를 입력한 뒤 「AI로 지식팩 초안 생성」은 서버에서 LLM을 시도하고, 키가 없거나 실패하면 Mock으로 채웁니다. RAG 색인은 아직 연결하지 않았습니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있습니다.
+        최소 정보를 입력한 뒤 「AI로 지식팩 초안 생성」은 서버에서 LLM을 시도하고, 키가 없거나 실패하면 Mock으로 채웁니다. DB 지식팩 편집 시 아래에서 원천자료 수집·청크(1단계)와 키워드 검색을 사용할 수 있습니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있습니다.
       </p>
 
       {err ? (
@@ -595,6 +596,24 @@ export function KnowledgePacksManagePageClient() {
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>미리보기 정의 (선택)</label>
         <textarea value={previewSpec} onChange={(e) => setPreviewSpec(e.target.value)} rows={3} style={{ ...fieldStyle(), resize: "vertical" }} />
       </Section>
+
+      {isEdit ? (
+        <Section title="원천자료 / RAG 색인 (1단계)">
+          <KnowledgePackSourceManager
+            knowledgePackId={editId}
+            referencesText={references}
+            onNotify={(kind, m) => {
+              if (kind === "ok") {
+                setMsg(m);
+                setErr(null);
+              } else {
+                setErr(m);
+                setMsg(null);
+              }
+            }}
+          />
+        </Section>
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
         <button

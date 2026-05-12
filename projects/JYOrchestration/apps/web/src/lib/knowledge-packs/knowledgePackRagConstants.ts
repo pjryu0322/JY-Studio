@@ -1,0 +1,28 @@
+/** 원천자료 상태 */
+export const KP_SOURCE_STATUS = {
+  PENDING: "PENDING",
+  READY: "READY",
+  COLLECTING: "COLLECTING",
+  COLLECTED: "COLLECTED",
+  PARSED: "PARSED",
+  CHUNKED: "CHUNKED",
+  INDEXED: "INDEXED",
+  FAILED: "FAILED",
+  DISABLED: "DISABLED",
+} as const;
+
+/** 색인 작업 */
+export const KP_INDEX_JOB_STATUS = {
+  PENDING: "PENDING",
+  RUNNING: "RUNNING",
+  SUCCESS: "SUCCESS",
+  FAILED: "FAILED",
+} as const;
+
+export const KP_INDEX_JOB_STEP = {
+  COLLECT: "COLLECT",
+  PARSE: "PARSE",
+  CHUNK: "CHUNK",
+  EMBED: "EMBED",
+  VECTOR_SAVE: "VECTOR_SAVE",
+} as const;

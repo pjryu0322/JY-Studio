@@ -1526,10 +1526,80 @@ model KpKnowledgePack {
 
   versions  KpKnowledgePackVersion[]
   histories KpKnowledgePackHistory[]
+  sources   KpKnowledgePackSource[]
 
   @@index([ownerUserId])
   @@index([scope, category])
   @@map("kp_knowledge_packs")
+}
+
+/// 지식팩 원천자료 (RAG 1단계)
+model KpKnowledgePackSource {
+  id               String    @id @default(cuid())
+  knowledgePackId  String
+  knowledgePack    KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  sourceType       String
+  title            String
+  url              String?   @db.Text
+  rawText          String?   @db.Text
+  description      String    @default("") @db.Text
+  version          String    @default("")
+  isOfficial       Boolean   @default(false)
+  ragEnabled       Boolean   @default(true)
+  status           String
+  lastCollectedAt  DateTime?
+  lastError        String?   @db.Text
+  /// 수집·파싱 후 평문(재청크 시 재사용)
+  lastCollectedText String?  @db.Text
+  lastContentType  String?
+
+  chunks    KpKnowledgePackChunk[]
+  indexJobs KpKnowledgePackIndexJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgePackId])
+  @@index([knowledgePackId, status])
+  @@map("kp_knowledge_pack_sources")
+}
+
+model KpKnowledgePackChunk {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  sourceId       String
+  source         KpKnowledgePackSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  chunkText      String   @db.Text
+  chunkOrder     Int
+  tokenEstimate  Int      @default(0)
+  contentHash    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgePackId])
+  @@index([sourceId])
+  @@index([contentHash])
+  @@map("kp_knowledge_pack_chunks")
+}
+
+model KpKnowledgePackIndexJob {
+  id              String    @id @default(cuid())
+  knowledgePackId String
+  sourceId        String
+  source          KpKnowledgePackSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status          String
+  step            String
+  message         String    @db.Text
+  createdBy       String
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceId, createdAt])
+  @@map("kp_knowledge_pack_index_jobs")
 }
 
 model KpKnowledgePackVersion {
