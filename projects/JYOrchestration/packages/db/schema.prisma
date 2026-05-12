@@ -1501,3 +1501,95 @@ model TaskHistory {
   @@index([projectId, taskId, createdAt])
   @@map("task_histories")
 }
+
+// --- 지식팩 관리 (DB + 정적 seed 병행) — 테이블 접두사 kp_
+
+model KpKnowledgePack {
+  id               String   @id
+  scope            String
+  category         String
+  name             String
+  summary          String   @db.Text
+  description      String   @default("") @db.Text
+  vendor           String   @default("")
+  licenseType      String
+  status           String
+  currentVersionId String?
+  ownerUserId      String
+  organizationId   String?
+  projectId        String?
+  isSystem         Boolean  @default(false)
+  /// JSON 배열 문자열, 예: ["AI_DEVELOPER"] — 목록 필터용
+  agentsJson       String   @default("[\"AI_DEVELOPER\"]")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  versions  KpKnowledgePackVersion[]
+  histories KpKnowledgePackHistory[]
+
+  @@index([ownerUserId])
+  @@index([scope, category])
+  @@map("kp_knowledge_packs")
+}
+
+model KpKnowledgePackVersion {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  knowledgePack   KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  version         String
+  changeSummary   String   @default("") @db.Text
+  sourceType      String
+  status          String
+  createdBy       String
+  createdAt       DateTime @default(now())
+
+  sections  KpKnowledgePackSection[]
+  histories KpKnowledgePackHistory[]
+
+  @@index([knowledgePackId, createdAt])
+  @@map("kp_knowledge_pack_versions")
+}
+
+model KpKnowledgePackSection {
+  id         String   @id @default(cuid())
+  versionId  String
+  version    KpKnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sectionKey String
+  content    String   @db.Text
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([versionId, sectionKey])
+  @@map("kp_knowledge_pack_sections")
+}
+
+model KpKnowledgePackHistory {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  knowledgePack   KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  versionId       String?
+  version         KpKnowledgePackVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  action          String
+  actorId         String
+  actorType       String
+  summary         String   @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([knowledgePackId, createdAt])
+  @@map("kp_knowledge_pack_histories")
+}
+
+model KpAgentCategoryMapping {
+  id        String   @id @default(cuid())
+  agentRole String
+  category  String
+  enabled   Boolean  @default(true)
+  usageMode String
+  priority  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([agentRole, category])
+  @@map("kp_agent_category_mappings")
+}

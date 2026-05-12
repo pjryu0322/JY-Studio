@@ -243,23 +243,240 @@ const PACK_TABULATOR: KnowledgePack = {
   ],
 };
 
-/** 플랫폼 정적 seed — AI개발자 / Grid (MVP) */
+const PACK_TOAST_UI_GRID: KnowledgePack = {
+  id: "grid.toast-ui-grid",
+  name: "NHN TOAST UI Grid",
+  version: "1.0.0",
+  scope: "PLATFORM",
+  category: "GRID",
+  agents: ["AI_DEVELOPER"],
+  status: "ACTIVE",
+  summary:
+    "NHN TOAST UI Grid는 업무용 데이터 그리드 구현에 사용할 수 있는 오픈소스 Grid 후보입니다. 정렬, 필터, 편집, 페이지네이션, 고정 컬럼, 트리/계층 데이터, 대량 데이터 표시 등 업무형 목록 화면 구현에 활용할 수 있습니다. JYOrchestration에서는 국내 제품군 기반 Grid 대안으로 검토합니다.",
+  license: {
+    type: "MIT",
+    notes: [
+      "MIT 라이선스 및 사용 조건은 공식 저장소·npm 페이지에서 현재 버전 기준으로 확인해야 한다.",
+      "React wrapper 지원 여부는 공식 문서에서 확인해야 한다.",
+    ],
+  },
+  recommendedUseCases: [
+    "국내 제품군 기반의 오픈소스 Grid 후보가 필요한 경우",
+    "업무용 목록 화면에 정렬, 필터, 편집, 페이지네이션이 필요한 경우",
+    "AG Grid 외 대체 Grid 후보를 비교해야 하는 경우",
+    "React 기반 프로토타입에서 업무형 Grid UX를 보여줘야 하는 경우",
+    "IBSheet 같은 상용 Grid를 바로 사용할 수 없을 때 국내 오픈소스 대안이 필요한 경우",
+  ],
+  notRecommendedUseCases: [
+    "제품 라이선스/버전/Wrapper 호환성을 확인하지 않고 운영 적용하려는 경우",
+    "단순 목록이면 충분한데 복잡한 Grid 라이브러리를 과도하게 적용하려는 경우",
+    "공식 문서에서 확인되지 않은 고급 기능을 임의로 구현해야 하는 경우",
+    "프로젝트 표준 UI가 이미 다른 Grid로 확정된 경우",
+  ],
+  capabilities: [
+    "정렬",
+    "필터",
+    "페이지네이션",
+    "셀 편집",
+    "행 선택",
+    "고정 컬럼",
+    "트리/계층형 데이터 표현",
+    "업무용 목록 화면 구성",
+    "테스트 데이터 기반 프로토타입 Grid 구성",
+    "React Wrapper 또는 React 적용 방식 검토",
+  ],
+  constraints: [
+    "실제 적용 전 현재 버전과 React wrapper 지원 상태를 공식 문서에서 확인해야 한다.",
+    "운영 적용 전 라이선스와 사용 조건을 확인해야 한다.",
+    "프로젝트 UI 표준과 충돌하지 않는지 확인해야 한다.",
+    "단순 HTML table 대체가 아니라 업무용 Grid UX 기준으로 설계해야 한다.",
+    "외부 문서나 CDN을 사용할 경우 보안/망분리/폐쇄망 조건을 확인해야 한다.",
+  ],
+  implementationGuidelines: [
+    "단순 HTML table 대신 업무용 Grid 컴포넌트 후보로 검토한다.",
+    "조회 조건 영역, Grid 영역, 페이지네이션, 상태 표시를 함께 설계한다.",
+    "정렬, 필터, 행 선택, 상태 컬럼을 기본 반영한다.",
+    "React 프로젝트에서는 공식 React wrapper 또는 React 적용 예제를 우선 확인한다.",
+    "테스트 데이터는 5~20행 수준으로 구성하되 실제 업무 목록처럼 보이게 한다.",
+    "JYOrchestration 프로토타입에서는 라이브러리 설치 없이도 Preview Mock으로 Grid 특성을 표현할 수 있다.",
+    "운영 적용 시에는 npm 패키지, import 방식, CSS 로딩 방식, 번들 크기, 라이선스를 확인한다.",
+  ],
+  cursorPromptRules: [
+    "사용자가 국내 오픈소스 Grid 또는 TOAST UI Grid를 요구하면 `grid.toast-ui-grid` 지식팩을 참조한다.",
+    "단순 table 생성이 아니라 업무용 Grid 화면 구조를 생성하도록 지시한다.",
+    "조회 조건, 컬럼 정의, 정렬/필터/페이지네이션, 행 선택, 상태 컬럼을 작업 범위에 포함한다.",
+    "실제 라이브러리 설치가 범위에 없다면 정적 Preview Mock으로 특성을 표현한다.",
+    "실제 라이브러리를 적용할 때는 공식 문서 기준 import와 CSS 로딩 방식을 확인하도록 지시한다.",
+    "라이선스와 외부 리소스 사용 조건을 확인하지 않은 상태에서 운영 배포 전제 코드를 만들지 않는다.",
+  ],
+  forbiddenPatterns: [
+    "공식 문서 확인 없이 API 이름이나 옵션을 임의로 만들어 사용 금지",
+    "단순 HTML table만 만들고 TOAST UI Grid 특성을 반영했다고 주장 금지",
+    "라이선스 확인 없이 운영 적용 가능하다고 단정 금지",
+    "외부 CDN 스크립트를 보안 검토 없이 삽입 금지",
+    "React 생명주기와 충돌하는 DOM 직접 조작 금지",
+    "프로젝트 표준 Grid가 따로 있는데 임의로 TOAST UI Grid로 교체 금지",
+  ],
+  reviewChecklist: [
+    "업무용 Grid 구조가 반영되었는가",
+    "조회 조건과 결과 Grid가 분리되어 있는가",
+    "정렬/필터/페이지네이션/행 선택이 표현되었는가",
+    "상태 컬럼 또는 업무 상태 표시가 있는가",
+    "단순 table로 끝나지 않았는가",
+    "라이선스와 공식 문서 확인 필요성이 명시되었는가",
+    "실제 라이브러리 미적용 시 Preview Mock임이 명확한가",
+    "React 적용 시 wrapper/라이프사이클 고려가 포함되었는가",
+  ],
+  alternatives: [
+    "AG Grid Community",
+    "TanStack Table 기반 JY Basic Grid",
+    "Tabulator",
+    "IBSheet는 사용자가 라이선스를 보유하거나 벤더 협약이 있을 때만 실제 적용",
+  ],
+  references: [
+    { label: "TOAST UI Grid", url: "https://ui.toast.com/tui-grid" },
+    { label: "TOAST UI Grid GitHub", url: "https://github.com/nhn/tui.grid" },
+    { label: "tui-grid npm", url: "https://www.npmjs.com/package/tui-grid" },
+    { label: "TOAST UI Grid License (저장소)", url: "https://github.com/nhn/tui.grid/blob/master/LICENSE" },
+  ],
+};
+
+const PACK_KAKAO_LOGIN: KnowledgePack = {
+  id: "auth.kakao-login",
+  name: "Kakao Login",
+  version: "1.0.0",
+  scope: "PLATFORM",
+  category: "AUTH",
+  agents: ["AI_DEVELOPER"],
+  status: "ACTIVE",
+  summary:
+    "Kakao Login은 Kakao Developers 기반 OAuth 인증 연계 지식팩입니다. JYOrchestration에서는 카카오 로그인 버튼, 인가 요청, Redirect URI, 토큰 처리, 사용자 정보 조회, 로그아웃/연결 끊기 흐름을 프로토타입과 실제 구현 단계에서 구분해 설계하기 위한 기준으로 사용합니다.",
+  license: {
+    type: "UNKNOWN",
+    notes: [
+      "Kakao Developers 정책과 앱 설정, API 이용 약관 확인 필요",
+      "동의항목·개인정보 처리방침·검수 요건은 서비스 유형에 따라 달라질 수 있다.",
+    ],
+  },
+  recommendedUseCases: [
+    "국내 사용자 대상 서비스에서 카카오 로그인이 필요한 경우",
+    "소셜 로그인 기반 회원가입/로그인 UX가 필요한 경우",
+    "카카오 사용자 정보 조회가 필요한 경우",
+    "프로토타입에서 카카오 로그인 흐름을 실제 운영과 유사하게 표현해야 하는 경우",
+    "OAuth 기반 인증 흐름을 AI개발자가 구현 지침으로 받아야 하는 경우",
+  ],
+  notRecommendedUseCases: [
+    "Redirect URI, 앱 키, 동의항목 설정 없이 바로 실제 연동하려는 경우",
+    "Client Secret이나 Access Token을 프론트엔드에 노출하려는 경우",
+    "카카오 검수/권한 조건이 필요한 API를 승인 없이 사용하려는 경우",
+    "단순 버튼 Mock만으로 실제 로그인 구현이 완료된 것처럼 보이게 하려는 경우",
+    "개인정보 수집/저장 정책 없이 사용자 정보를 저장하려는 경우",
+  ],
+  capabilities: [
+    "카카오 로그인 버튼 UX",
+    "OAuth 인가 요청",
+    "Redirect URI 기반 콜백 처리",
+    "Access Token 처리",
+    "사용자 정보 조회",
+    "로그아웃",
+    "연결 끊기",
+    "인증 실패/취소/설정 오류 처리",
+    "프로토타입용 Simulator/Mock 로그인 흐름",
+    "보안 기준 기반 Secret 관리",
+  ],
+  constraints: [
+    "Kakao Developers 앱 설정이 필요하다.",
+    "Redirect URI 등록이 필요하다.",
+    "REST API Key, JavaScript Key, Client Secret을 구분해야 한다.",
+    "Client Secret과 Access Token은 서버 측에서 안전하게 처리해야 한다.",
+    "사용자 정보 수집 항목은 동의항목 설정과 개인정보 처리방침에 맞아야 한다.",
+    "일부 API는 권한/검수/앱 설정 조건이 필요할 수 있다.",
+    "프로토타입에서는 실제 Kakao API 호출이 아니라 Simulator/Mock 흐름으로 대체할 수 있다.",
+  ],
+  implementationGuidelines: [
+    "Kakao Login은 단순 로그인 버튼이 아니라 OAuth 인증 흐름으로 설계한다.",
+    "프론트엔드는 로그인 시작 버튼과 인가 요청 진입을 담당한다.",
+    "Redirect URI 콜백은 서버 또는 안전한 인증 처리 계층에서 처리한다.",
+    "Access Token, Refresh Token, Client Secret은 프론트엔드에 노출하지 않는다.",
+    "로그인 성공 후 사용자 정보 조회 흐름을 분리한다.",
+    "로그아웃과 연결 끊기는 의미가 다르므로 별도 동작으로 구분한다.",
+    "프로토타입에서는 `KakaoAuthModule`, `KakaoAuthAdapter`, `KakaoAuthSimulationConnector` 구조로 표현할 수 있다.",
+    "외부 Kakao 호출부는 `SIMULATOR`, `SANDBOX`, `REAL` 모드로 분리 가능한 구조를 권장한다.",
+    "인증 실패, 사용자 취소, Redirect URI 불일치, 앱 키 오류, 토큰 만료를 오류 시나리오에 포함한다.",
+  ],
+  cursorPromptRules: [
+    "사용자가 Kakao Login을 요구하면 OAuth 인증 흐름으로 설계하도록 지시한다.",
+    "단순 버튼 Mock만 만들지 말고 로그인 시작, 콜백 처리, 사용자 정보 조회, 실패/취소 상태를 포함한다.",
+    "실제 Kakao API Key나 Secret을 코드에 하드코딩하지 않도록 지시한다.",
+    "Secret은 서버 환경변수 또는 플랫폼 Secret 저장소를 사용하도록 지시한다.",
+    "프로토타입 단계에서는 SimulationConnector를 사용하고 실제 API 호출은 범위 밖으로 분리한다.",
+    "Redirect URI, 앱 키, 동의항목 설정 필요성을 주석/문서/환경설정 안내로 남긴다.",
+    "인증 성공 후 내부 세션 생성 또는 사용자 상태 반영 흐름을 포함한다.",
+  ],
+  forbiddenPatterns: [
+    "Client Secret을 프론트엔드 코드에 넣는 것 금지",
+    "Access Token을 localStorage에 장기 저장하는 것 금지",
+    "Kakao 앱 키를 운영 Secret처럼 하드코딩하는 것 금지",
+    "Redirect URI 설정 없이 실제 연동된 것처럼 구현 금지",
+    "사용자 동의 없이 개인정보 필드를 저장하는 코드 금지",
+    "로그인 버튼만 만들고 인증 완료로 처리하는 단순 Mock 금지",
+    "로그아웃과 연결 끊기를 동일 기능으로 처리 금지",
+    "공식 문서 확인 없이 오류 코드나 API endpoint를 임의로 만드는 것 금지",
+  ],
+  reviewChecklist: [
+    "OAuth 인가 요청 흐름이 표현되었는가",
+    "Redirect URI/콜백 처리 구조가 분리되었는가",
+    "Token/Secret이 프론트에 노출되지 않는가",
+    "사용자 정보 조회 흐름이 로그인 성공 이후로 분리되었는가",
+    "실패/취소/토큰 만료/설정 오류 시나리오가 있는가",
+    "프로토타입이 실제 API 호출인지 Simulator인지 명확한가",
+    "로그아웃과 연결 끊기가 구분되었는가",
+    "개인정보 수집/저장 주의사항이 반영되었는가",
+    "Cursor 프롬프트에 보안 금지사항이 포함되는가",
+  ],
+  alternatives: [
+    "자체 로그인",
+    "OAuth 2.0 범용 인증",
+    "네이버 로그인",
+    "Google Login",
+    "금융인증서",
+    "공동인증서",
+    "사내 SSO",
+  ],
+  references: [
+    { label: "Kakao Developers", url: "https://developers.kakao.com/" },
+    { label: "Kakao Login 문서", url: "https://developers.kakao.com/docs/latest/ko/kakaologin/common" },
+    { label: "Kakao REST API", url: "https://developers.kakao.com/docs/latest/ko/rest-api/README" },
+  ],
+};
+
+/** 플랫폼 정적 seed — AI개발자 / Grid (기존 3종 + TOAST UI Grid) */
 export const DEVELOPER_GRID_KNOWLEDGE_PACKS: readonly KnowledgePack[] = [
   PACK_AG_GRID,
   PACK_TANSTACK,
   PACK_TABULATOR,
+  PACK_TOAST_UI_GRID,
+];
+
+/** 플랫폼 정적 seed — 인증 등 (Kakao Login 등) */
+export const DEVELOPER_AUTH_KNOWLEDGE_PACKS: readonly KnowledgePack[] = [PACK_KAKAO_LOGIN];
+
+/** 목록·병합·정적 ID 판별에 사용하는 전체 정적 seed (Grid + Auth) */
+export const DEVELOPER_SEED_KNOWLEDGE_PACKS: readonly KnowledgePack[] = [
+  ...DEVELOPER_GRID_KNOWLEDGE_PACKS,
+  ...DEVELOPER_AUTH_KNOWLEDGE_PACKS,
 ];
 
 export function getKnowledgePackById(id: string): KnowledgePack | undefined {
   const q = id.trim();
-  return DEVELOPER_GRID_KNOWLEDGE_PACKS.find((p) => p.id === q);
+  return DEVELOPER_SEED_KNOWLEDGE_PACKS.find((p) => p.id === q);
 }
 
 export function filterKnowledgePacks(input: {
   readonly agent: KnowledgePack["agents"][number] | "ALL";
   readonly category: KnowledgePack["category"] | "ALL";
 }): readonly KnowledgePack[] {
-  return DEVELOPER_GRID_KNOWLEDGE_PACKS.filter((p) => {
+  return DEVELOPER_SEED_KNOWLEDGE_PACKS.filter((p) => {
     if (input.agent !== "ALL" && !p.agents.includes(input.agent)) return false;
     if (input.category !== "ALL" && p.category !== input.category) return false;
     return true;

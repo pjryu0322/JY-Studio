@@ -6,10 +6,24 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 
 ## 1. 현재 상태 (Phase 1 기준)
 
-- 플랫폼 **정적 seed** 기반 Grid 지식팩 3종: `grid.ag-grid-community`, `grid.tanstack-table`, `grid.tabulator`
+- 플랫폼 **정적 seed** 기반 지식팩 5종: Grid 4종(`grid.ag-grid-community`, `grid.tanstack-table`, `grid.tabulator`, `grid.toast-ui-grid`) + 인증 1종(`auth.kakao-login`)
 - 라우트: `/knowledge-packs`, `/knowledge-packs/detail`
 - AI Agent / 카테고리 필터, 목록, **별도 창** 상세 탭(요약·구현 지침·Cursor 반영·금지사항·검수·미리보기), Mock 미리보기, Markdown보내기
 - 주요 코드: `types.ts`, `developerGridPacks.ts`, `KnowledgePacksPageClient.tsx`, `KnowledgePackDetailPanel.tsx`, `KnowledgePackApplyPreview.tsx`, `tests/api/knowledgePacksSeed.unit.test.ts`
+
+---
+
+## 1.1 국내 공개 문서 기반 1차 후보 (정적 seed)
+
+다음은 **온라인 공개 문서**를 바탕으로 한 1차 지식팩 후보며, 현재는 **정적 seed**로 등록되어 있다. 향후 **원천자료 URL 등록 → AI 구조화 → RAG 색인·벡터 저장소**로 확장할 수 있다.
+
+| id | 제품·주제 | 카테고리 | 비고 |
+|----|------------|----------|------|
+| `grid.toast-ui-grid` | NHN TOAST UI Grid | GRID | 국내 오픈소스 Grid 확장 후보 |
+| `auth.kakao-login` | Kakao Login | AUTH | OAuth·인증 연계 확장 후보 |
+
+- TOAST UI Grid: Grid 지식팩 확장, React wrapper·라이선스는 공식 문서에서 버전별 확인.
+- Kakao Login: Auth/API 지식팩 확장, Secret·Redirect URI·토큰 처리 등 보안 기준을 지식팩 본문에 포함.
 
 ---
 
@@ -105,7 +119,7 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 
 **유지**
 
-- 3종 seed **핵심 문구·구조** 훼손 없음
+- 5종 seed **핵심 문구·구조** 훼손 없음 (기존 Grid 3종 문맥 유지, 신규 2종은 별도 id)
 - 기존 조회·상세·테스트·파이프라인(Stage1/ENV_TEST/GitHub/Cursor) 비변경
 
 **제외 (다음 단계)**

@@ -8,7 +8,6 @@ import { KnowledgePacksPageManagementSection } from "@/components/knowledge-pack
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import {
-  DEVELOPER_GRID_KNOWLEDGE_PACKS,
   filterKnowledgePacks,
   getKnowledgePackById,
   KNOWLEDGE_PACK_AGENT_LABEL,
@@ -21,7 +20,7 @@ import {
   resolveKnowledgePackOpenLayout,
   toOpenKnowledgePackWindowOptions,
 } from "@/lib/knowledge-packs/openKnowledgePackDetailWindow";
-import type { KnowledgePackAgent, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
+import type { KnowledgePack, KnowledgePackAgent, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 
 const AGENTS: Array<KnowledgePackAgent | "ALL"> = [
   "ALL",
@@ -54,16 +53,51 @@ export function KnowledgePacksPageClient() {
   const [agentFilter, setAgentFilter] = useState<KnowledgePackAgent | "ALL">("AI_DEVELOPER");
   const [categoryFilter, setCategoryFilter] = useState<KnowledgePackCategory | "ALL">("GRID");
 
+  const [mergedPacks, setMergedPacks] = useState<KnowledgePack[] | null>(null);
+  const [listDegraded, setListDegraded] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+
   const selectedId = useMemo(() => String(searchParams.get("id") ?? "").trim(), [searchParams]);
 
-  const filtered = useMemo(
-    () => filterKnowledgePacks({ agent: agentFilter, category: categoryFilter }),
-    [agentFilter, categoryFilter]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const q = new URLSearchParams();
+    q.set("agent", agentFilter);
+    q.set("category", categoryFilter);
+    setListLoading(true);
+    void (async () => {
+      try {
+        const r = await fetch(`/api/knowledge-packs?${q.toString()}`);
+        const j = (await r.json()) as { ok?: boolean; packs?: KnowledgePack[]; degraded?: boolean };
+        if (cancelled) return;
+        if (j.ok && Array.isArray(j.packs)) {
+          setMergedPacks(j.packs);
+          setListDegraded(Boolean(j.degraded));
+        } else {
+          setMergedPacks(filterKnowledgePacks({ agent: agentFilter, category: categoryFilter }) as KnowledgePack[]);
+          setListDegraded(true);
+        }
+      } catch {
+        if (cancelled) return;
+        setMergedPacks(filterKnowledgePacks({ agent: agentFilter, category: categoryFilter }) as KnowledgePack[]);
+        setListDegraded(true);
+      } finally {
+        if (!cancelled) setListLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentFilter, categoryFilter]);
+
+  const filtered = mergedPacks ?? [];
 
   const selected = useMemo(() => {
-    const fromUrl = selectedId ? getKnowledgePackById(selectedId) : undefined;
-    if (fromUrl && filtered.some((p) => p.id === fromUrl.id)) return fromUrl;
+    if (!filtered.length) return null;
+    const fromFiltered = selectedId ? filtered.find((p) => p.id === selectedId) : undefined;
+    if (fromFiltered) return fromFiltered;
+    const fromStatic = selectedId ? getKnowledgePackById(selectedId) : undefined;
+    if (fromStatic && filtered.some((p) => p.id === fromStatic.id)) return fromStatic;
     return filtered[0] ?? null;
   }, [selectedId, filtered]);
 
@@ -122,6 +156,23 @@ export function KnowledgePacksPageClient() {
 
       <KnowledgePacksPageManagementSection />
 
+      {listDegraded ? (
+        <div
+          style={{
+            flexShrink: 0,
+            marginBottom: 10,
+            padding: "8px 12px",
+            borderRadius: t.radiusMd,
+            border: `1px solid ${t.border}`,
+            background: "#fffbeb",
+            fontSize: 12,
+            color: "#92400e",
+          }}
+        >
+          DB 목록을 불러오지 못해 정적 seed만 표시합니다. 네트워크·DB·로그인 상태를 확인해 주세요.
+        </div>
+      ) : null}
+
       <div
         style={{
           flexShrink: 0,
@@ -162,7 +213,9 @@ export function KnowledgePacksPageClient() {
         </label>
       </div>
 
-      {filtered.length === 0 ? (
+      {listLoading ? (
+        <div style={{ padding: 16, fontSize: 14, color: t.textMuted }}>목록을 불러오는 중…</div>
+      ) : filtered.length === 0 ? (
         <div
           style={{
             padding: 24,
@@ -210,6 +263,9 @@ export function KnowledgePacksPageClient() {
                     </span>
                     <span style={{ padding: "2px 8px", borderRadius: 999, background: "#ecfdf5", color: t.accentTealFg }}>License: {lic}</span>
                     <span style={{ padding: "2px 8px", borderRadius: 999, background: "#eff6ff", color: t.info }}>Status: {pack.status}</span>
+                    {pack.source === "DB" ? (
+                      <span style={{ padding: "2px 8px", borderRadius: 999, background: "#fae8ff", color: "#86198f" }}>DB</span>
+                    ) : null}
                   </div>
                 </button>
               );
@@ -219,8 +275,8 @@ export function KnowledgePacksPageClient() {
       )}
 
       <div style={{ flexShrink: 0, marginTop: 24, fontSize: 11, color: t.textMuted }}>
-        정적 seed 기반 MVP입니다. 상세 전용 URL:{" "}
-        <code style={{ fontSize: 11 }}>/knowledge-packs/detail?id={DEVELOPER_GRID_KNOWLEDGE_PACKS[0]?.id}</code>
+        정적 Grid seed와 등록한 DB 지식팩이 함께 표시됩니다. 상세:{" "}
+        <code style={{ fontSize: 11 }}>/knowledge-packs/detail?id=…</code>
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePackApplyPreview } from "@/components/knowledge-packs/KnowledgePackApplyPreview";
 import { KNOWLEDGE_PACK_AGENT_LABEL, KNOWLEDGE_PACK_CATEGORY_LABEL } from "@/lib/knowledge-packs/developerGridPacks";
+import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgePackFormat";
 import { downloadKnowledgePackMarkdownFile } from "@/lib/knowledge-packs/knowledgePackMarkdown";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
@@ -24,6 +26,7 @@ const DETAIL_TABS = [
   { id: "cursor" as const, label: "Cursor 반영" },
   { id: "forbidden" as const, label: "금지사항" },
   { id: "review" as const, label: "검수" },
+  { id: "security" as const, label: "보안" },
   { id: "preview" as const, label: "미리보기" },
 ];
 type DetailTabId = (typeof DETAIL_TABS)[number]["id"];
@@ -97,6 +100,17 @@ function SummaryTab({ pack, licenseLabel }: { readonly pack: KnowledgePack; read
     <>
       <SectionTitle>개요</SectionTitle>
       <p style={{ fontSize: 14, color: t.textPrimary, lineHeight: 1.6, margin: "0 0 18px", overflowWrap: "anywhere" }}>{pack.summary}</p>
+      {pack.description?.trim() ? (
+        <>
+          <SectionTitle>설명</SectionTitle>
+          <p style={{ fontSize: 13, color: t.textSecondary, lineHeight: 1.55, margin: "0 0 18px", overflowWrap: "anywhere" }}>{pack.description}</p>
+        </>
+      ) : null}
+      {pack.vendor?.trim() ? (
+        <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 18 }}>
+          <span style={{ fontWeight: 800 }}>Vendor:</span> {pack.vendor}
+        </div>
+      ) : null}
 
       <SectionTitle>적용 권장 상황</SectionTitle>
       <div style={{ marginBottom: 18 }}>
@@ -161,7 +175,32 @@ function renderActiveTab(tab: DetailTabId, pack: KnowledgePack, licenseLabel: st
       return <SingleSectionTab title="금지사항" items={pack.forbiddenPatterns} />;
     case "review":
       return <SingleSectionTab title="검수 체크리스트" items={pack.reviewChecklist} />;
+    case "security":
+      return <SingleSectionTab title="보안 체크리스트" items={pack.securityChecklist ?? []} />;
     case "preview":
+      if (pack.previewSpec?.trim()) {
+        return (
+          <>
+            <SectionTitle>미리보기 정의</SectionTitle>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                borderRadius: t.radiusMd,
+                border: `1px solid ${t.border}`,
+                background: "#f8fafc",
+                fontSize: 12,
+                lineHeight: 1.5,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                maxWidth: "100%",
+              }}
+            >
+              {pack.previewSpec}
+            </pre>
+          </>
+        );
+      }
       return (
         <>
           <SectionTitle>적용 미리보기</SectionTitle>
@@ -181,6 +220,8 @@ export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPan
   const [tab, setTab] = useState<DetailTabId>("summary");
   const licenseLabel = formatKnowledgePackLicenseType(pack.license.type);
   const maxHeight = embed ? "calc(100dvh - 88px)" : "min(calc(100dvh - 12.5rem), 880px)";
+  const readOnlySeed = isStaticKnowledgePackId(pack.id) || pack.source === "STATIC";
+  const showEdit = pack.id.startsWith("kp_") && pack.editable !== false;
 
   return (
     <div
@@ -242,7 +283,48 @@ export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPan
         >
           <MarkdownDownloadIcon />
         </button>
+        {showEdit ? (
+          <Link
+            href={`/knowledge-packs/manage?id=${encodeURIComponent(pack.id)}`}
+            prefetch={false}
+            style={{
+              flex: "0 0 auto",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 12px",
+              height: 40,
+              borderRadius: 10,
+              border: `1px solid ${t.accentTeal}`,
+              background: t.accentTealSurface,
+              color: t.accentTealFg,
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: "none",
+            }}
+          >
+            수정
+          </Link>
+        ) : null}
       </div>
+
+      {readOnlySeed ? (
+        <div
+          style={{
+            flexShrink: 0,
+            margin: "0 16px 10px",
+            padding: "10px 12px",
+            borderRadius: t.radiusMd,
+            background: "#fffbeb",
+            border: `1px solid #fcd34d`,
+            fontSize: 12,
+            color: "#92400e",
+            lineHeight: 1.5,
+          }}
+        >
+          플랫폼 기본 지식팩은 읽기 전용입니다. 직접 수정할 수 없습니다.
+        </div>
+      ) : null}
 
       <div
         role="tablist"
