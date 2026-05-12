@@ -19,9 +19,9 @@ AI 초안은 **`POST /api/knowledge-packs/draft`** 로 요청한다. 서버는 �
 
 AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다.
 
-실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. RAG는 Source 수집 → Parsing → Chunking → Embedding → Vector Store 저장 → Agent별 Retrieval → Prompt Injection 순으로 확장한다. 현재 단계에서는 **`knowledgePackRagPipeline.ts`** 에 Stub/타입만 두고 실제 색인·외부 fetch·임베딩·벡터 저장은 하지 않는다.
+실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. **1단계(현재 구현)**: Prisma `KpKnowledgePackSource` / `Chunk` / `IndexJob`, SSRF-safe URL fetch, 평문 파싱, 겹침 청크 저장, `POST /api/knowledge-packs/retrieve-context` 키워드 검색, 관리 UI의 원천자료 섹션. **2단계(다음)**: 임베딩·벡터 저장·의미 검색, Agent 런타임 주입. Stub 파이프라인(`knowledgePackRagPipeline.ts`)은 2단계용 타입·플레이스홀더로 유지한다.
 
-향후에는 원천자료 후보를 `KnowledgePackSource`로 저장하고, 위 파이프라인과 연동한다.
+향후에는 원천자료 후보를 DB `KpKnowledgePackSource`로 저장하고, 위 파이프라인과 연동한다(1단계에서 시작됨).
 
 ---
 
@@ -38,7 +38,7 @@ AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라
 - Kakao Login(`auth.kakao-login`)은 외부 서비스 연동 지식팩으로 **license type `EXTERNAL_SERVICE`** 로 관리한다 (UI: 외부 서비스).
 - 정적 seed는 파일로 **`developerGridPacks`(Grid 4종)**, **`developerAuthPacks`(Auth 1종)**, 엔트리 **`developerKnowledgePacks`(병합·resolver·라벨)** 로 분리했다.
 - `references`는 단순 링크 배열을 유지하되, 런타임에서 **`KnowledgePackSource`** 후보로 유도할 수 있다 (`knowledgePackSources.ts`의 `referencesToKnowledgePackSources`). 향후 DB·RAG에서는 동일 개념의 원천자료 단위로 저장한다.
-- **`KnowledgePackSource`** 는 RAG 색인의 원천자료 단위다. 실제 문서 파싱·청크·임베딩·벡터저장소 저장은 아직 구현하지 않는다.
+- **`KnowledgePackSource`** 는 RAG 색인의 원천자료 단위다. DB 모델 `kp_knowledge_pack_sources` 및 관리 API·UI로 등록·수집·청크(1단계)가 가능하다. 임베딩·벡터 저장은 다음 단계다.
 
 향후 흐름(참고):
 
@@ -133,10 +133,11 @@ AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라
 |-------|------|
 | **1 (현재)** | 정적 seed, 조회·상세·미리보기, **관리 확장 지점 UI**, 본 로드맵 문서 |
 | **2** | 등록 Wizard·원본 입력·AI 결과 Preview·Agent Preview·이력/Mock 매핑 화면 |
-| **3** | DB 모델 도입 (KnowledgePack, Version, Section, Profile, Mapping, History, Source) |
+| **3 (진행)** | DB 모델: KnowledgePack, Version, Section, History + **RAG 1단계** Source·Chunk·IndexJob, 수집·청크·키워드 검색 API |
 | **4** | LLM 기반 구조화·Agent 프로필 자동 초안·보안/라이선스 추출 |
 | **5** | 검수/승인 워크플로, ACTIVE 지정, 이전 버전 보존 |
 | **6** | Agent 실행 컨텍스트 주입 (매핑·Scope 병합·프로필 추출·프롬프트 연동·테스트 하네스) |
+| **7 (RAG 2)** | 임베딩·벡터 DB·의미 검색·`retrieve-context` 벡터 모드·프롬프트 주입 |
 
 ---
 
