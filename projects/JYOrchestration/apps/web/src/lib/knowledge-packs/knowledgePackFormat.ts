@@ -8,6 +8,6 @@ export function formatKnowledgePackLicenseType(type: KnowledgePackLicenseType): 
   if (type === "UNKNOWN") return "미상/사용자 제공";
   if (type === "PARTNER_LICENSE") return "파트너 라이선스";
   if (type === "USER_PROVIDED_LICENSE") return "사용자 제공 라이선스";
-  if (type === "EXTERNAL_SERVICE") return "외부 서비스 연동";
+  if (type === "EXTERNAL_SERVICE") return "외부 서비스";
   return type;
 }

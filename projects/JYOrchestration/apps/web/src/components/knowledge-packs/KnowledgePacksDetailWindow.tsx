@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePackDetailPanel } from "@/components/knowledge-packs/KnowledgePackDetailPanel";
-import { getKnowledgePackById } from "@/lib/knowledge-packs/developerGridPacks";
+import { getKnowledgePackById } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
 
 export function KnowledgePacksDetailWindow() {

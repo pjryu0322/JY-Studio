@@ -24,7 +24,7 @@ const linkBtnStyle: CSSProperties = {
 };
 
 const OPERATIONS_INTRO =
-  "플랫폼 기본 Grid 지식팩은 정적 seed로 제공됩니다. 사용자/프로젝트 지식팩은 DB에 등록·수정할 수 있으며, Agent–카테고리 매핑과 변경 이력은 각 메뉴에서 관리합니다. AI 구조화·검수/승인 워크플로는 다음 단계입니다.";
+  "플랫폼 기본 Grid 지식팩은 정적 seed로 제공됩니다. 사용자/프로젝트 지식팩은 DB에 등록·수정할 수 있으며, Agent–카테고리 매핑과 변경 이력은 각 메뉴에서 관리합니다. 참고 링크는 향후 KnowledgePackSource 단위로 확장되어 RAG 색인의 원천자료가 될 수 있습니다. AI 구조화·검수/승인 워크플로는 다음 단계입니다.";
 
 export function KnowledgePacksPageManagementSection() {
   return (
@@ -40,7 +40,7 @@ export function KnowledgePacksPageManagementSection() {
           maxWidth: "100%",
         }}
       >
-        <Link href="/knowledge-packs/manage" prefetch={false} style={linkBtnStyle}>
+        <Link href="/knowledge-packs/manage" prefetch={false} target="_blank" rel="noopener noreferrer" style={linkBtnStyle}>
           지식팩 등록
         </Link>
         <Link href="/knowledge-packs/agent-mapping" prefetch={false} style={linkBtnStyle}>

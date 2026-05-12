@@ -9,7 +9,7 @@ import {
   parseReferences,
   sectionsMapToKnowledgePackFields,
 } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
-import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerGridPacks";
+import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerKnowledgePacks";
 
 describe("knowledge pack management (adapter)", () => {
   it("1. 줄바꿈 문자열이 배열로 변환된다", () => {

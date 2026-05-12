@@ -5,8 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { KnowledgePacksManageAiDraftSection } from "./KnowledgePacksManageAiDraftSection";
+import { applyKnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftApply";
+import { generateKnowledgePackDraftMock } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
 import { formatReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
-import type { KnowledgePack } from "@/lib/knowledge-packs/types";
+import { inferLicenseTypeFromHint, parseKnowledgePackAgentsForDraft } from "@/lib/knowledge-packs/knowledgePackManageFormHelpers";
+import type { KnowledgePack, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 
 const SCOPES = ["USER", "PROJECT"] as const;
 const CATEGORIES = ["GRID", "AUTH", "SECURITY", "UI", "API", "DATA", "INTEGRATION"] as const;
@@ -73,6 +77,16 @@ export function KnowledgePacksManagePageClient() {
   const [agents, setAgents] = useState("AI_DEVELOPER");
   const [changeSummary, setChangeSummary] = useState("");
 
+  const [aiProductUrl, setAiProductUrl] = useState("");
+  const [aiPurpose, setAiPurpose] = useState("");
+  const [aiOfficialDocsUrl, setAiOfficialDocsUrl] = useState("");
+  const [aiApiDocsUrl, setAiApiDocsUrl] = useState("");
+  const [aiRepositoryUrl, setAiRepositoryUrl] = useState("");
+  const [aiLicenseHint, setAiLicenseHint] = useState("");
+  const [aiMemo, setAiMemo] = useState("");
+  const [lastSourceCandidates, setLastSourceCandidates] = useState("");
+  const [lastDraftWarnings, setLastDraftWarnings] = useState<readonly string[]>([]);
+
   const [recommendedUseCases, setRecommendedUseCases] = useState("");
   const [notRecommendedUseCases, setNotRecommendedUseCases] = useState("");
   const [capabilities, setCapabilities] = useState("");
@@ -110,6 +124,15 @@ export function KnowledgePacksManagePageClient() {
     setAlternatives("");
     setReferences("");
     setPreviewSpec("");
+    setAiProductUrl("");
+    setAiPurpose("");
+    setAiOfficialDocsUrl("");
+    setAiApiDocsUrl("");
+    setAiRepositoryUrl("");
+    setAiLicenseHint("");
+    setAiMemo("");
+    setLastSourceCandidates("");
+    setLastDraftWarnings([]);
   }, []);
 
   const loadDbList = useCallback(async () => {
@@ -147,6 +170,15 @@ export function KnowledgePacksManagePageClient() {
     setAlternatives(ta(p.alternatives));
     setReferences(formatReferences(p.references));
     setPreviewSpec(p.previewSpec ?? "");
+    setAiProductUrl("");
+    setAiPurpose("");
+    setAiOfficialDocsUrl("");
+    setAiApiDocsUrl("");
+    setAiRepositoryUrl("");
+    setAiLicenseHint("");
+    setAiMemo("");
+    setLastSourceCandidates("");
+    setLastDraftWarnings([]);
   }, []);
 
   useEffect(() => {
@@ -277,10 +309,81 @@ export function KnowledgePacksManagePageClient() {
     }
   };
 
+  const generateDraft = () => {
+    if (!name.trim()) {
+      setErr("제품명을 입력해야 AI 초안을 생성할 수 있습니다.");
+      return;
+    }
+    setErr(null);
+    const cat = category as KnowledgePackCategory;
+    const draft = generateKnowledgePackDraftMock({
+      productName: name.trim(),
+      productUrl: aiProductUrl.trim() || undefined,
+      category: cat,
+      agents: parseKnowledgePackAgentsForDraft(agents),
+      purpose: aiPurpose.trim() || undefined,
+      officialDocsUrl: aiOfficialDocsUrl.trim() || undefined,
+      apiDocsUrl: aiApiDocsUrl.trim() || undefined,
+      repositoryUrl: aiRepositoryUrl.trim() || undefined,
+      licenseHint: aiLicenseHint.trim() || undefined,
+      memo: aiMemo.trim() || undefined,
+    });
+    applyKnowledgePackDraftResult(draft, {
+      setSummary,
+      setLicenseNotes,
+      setRecommendedUseCases,
+      setNotRecommendedUseCases,
+      setCapabilities,
+      setConstraints,
+      setImplementationGuidelines,
+      setCursorPromptRules,
+      setForbiddenPatterns,
+      setReviewChecklist,
+      setSecurityChecklist,
+      setAlternatives,
+      setReferences,
+      setPreviewSpec,
+    });
+    setLastSourceCandidates(draft.sourceCandidates);
+    setLastDraftWarnings(draft.warnings);
+    setStatus("DRAFT");
+    const inferred = inferLicenseTypeFromHint(aiLicenseHint);
+    if (inferred) setLicenseType(inferred);
+    const descLines: string[] = [];
+    if (aiPurpose.trim()) descLines.push(`사용 목적: ${aiPurpose.trim()}`);
+    if (aiProductUrl.trim()) descLines.push(`제품 URL: ${aiProductUrl.trim()}`);
+    if (descLines.length) setDescription(descLines.join("\n"));
+    setMsg("AI 초안이 생성되었습니다. 공식 문서 기준으로 확인 후 저장하세요.");
+  };
+
   const isEdit = editId.startsWith("kp_");
 
   return (
-    <div style={{ flex: 1, minWidth: 0, padding: "16px 14px 80px", boxSizing: "border-box", maxWidth: 920, width: "100%" }}>
+    <div
+      style={{
+        boxSizing: "border-box",
+        flex: 1,
+        minHeight: 0,
+        width: "100%",
+        maxWidth: 920,
+        margin: "0 auto",
+        maxHeight: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          padding: "16px 14px max(24px, env(safe-area-inset-bottom, 12px))",
+          boxSizing: "border-box",
+        }}
+      >
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <h1 style={{ fontSize: 20, fontWeight: 900, margin: 0, flex: "1 1 auto" }}>지식팩 등록·수정</h1>
         <Link href="/knowledge-packs" prefetch={false} style={{ fontSize: 13, fontWeight: 700, color: t.accentTealFg }}>
@@ -289,7 +392,7 @@ export function KnowledgePacksManagePageClient() {
       </div>
 
       <p style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.55, margin: "0 0 12px" }}>
-        현재는 수동 등록 MVP입니다. AI 구조화는 다음 단계에서 제공됩니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있으며 여기서 직접 수정할 수 없습니다.
+        최소 정보(이름·카테고리·URL 등)를 입력한 뒤 「AI로 지식팩 초안 생성」으로 Mock 초안을 채울 수 있습니다. 실제 LLM·RAG는 연결하지 않았습니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있습니다.
       </p>
 
       {err ? (
@@ -333,36 +436,50 @@ export function KnowledgePacksManagePageClient() {
 
       {loading ? <div style={{ marginBottom: 12, fontSize: 13, color: t.textMuted }}>불러오는 중…</div> : null}
 
+      <Section title="AI 초안 · 최소 입력">
+        <KnowledgePacksManageAiDraftSection
+          inputStyle={fieldStyle()}
+          categories={CATEGORIES}
+          name={name}
+          onNameChange={setName}
+          aiProductUrl={aiProductUrl}
+          onAiProductUrlChange={setAiProductUrl}
+          category={category}
+          onCategoryChange={setCategory}
+          agents={agents}
+          onAgentsChange={setAgents}
+          aiPurpose={aiPurpose}
+          onAiPurposeChange={setAiPurpose}
+          aiOfficialDocsUrl={aiOfficialDocsUrl}
+          onAiOfficialDocsUrlChange={setAiOfficialDocsUrl}
+          aiApiDocsUrl={aiApiDocsUrl}
+          onAiApiDocsUrlChange={setAiApiDocsUrl}
+          aiRepositoryUrl={aiRepositoryUrl}
+          onAiRepositoryUrlChange={setAiRepositoryUrl}
+          aiLicenseHint={aiLicenseHint}
+          onAiLicenseHintChange={setAiLicenseHint}
+          aiMemo={aiMemo}
+          onAiMemoChange={setAiMemo}
+          onGenerateDraft={generateDraft}
+          lastDraftWarnings={lastDraftWarnings}
+          lastSourceCandidates={lastSourceCandidates}
+        />
+      </Section>
+
       <Section title="기본 정보">
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
-          이름
-          <input value={name} onChange={(e) => setName(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
-        </label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <label style={{ flex: "1 1 140px", fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
-            Scope
-            <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
-              {SCOPES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-              <option value="ORGANIZATION" disabled>
-                ORGANIZATION (준비중)
+          Scope
+          <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
+            {SCOPES.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
-            </select>
-          </label>
-          <label style={{ flex: "1 1 140px", fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
-            카테고리
-            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+            ))}
+            <option value="ORGANIZATION" disabled>
+              ORGANIZATION (준비중)
+            </option>
+          </select>
+        </label>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           벤더
           <input value={vendor} onChange={(e) => setVendor(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
@@ -389,6 +506,21 @@ export function KnowledgePacksManagePageClient() {
             </select>
           </label>
         </div>
+        {status === "ACTIVE" ? (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 8,
+              borderRadius: 8,
+              background: "#fefce8",
+              border: `1px solid #fde047`,
+              fontSize: 12,
+              color: "#713f12",
+            }}
+          >
+            ACTIVE로 저장하면 즉시 병합 후보에 반영될 수 있습니다. AI 초안·검수 전에는 DRAFT 저장을 권장합니다.
+          </div>
+        ) : null}
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           요약
           <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
@@ -400,10 +532,6 @@ export function KnowledgePacksManagePageClient() {
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           라이선스 메모 (줄바꿈)
           <textarea value={licenseNotes} onChange={(e) => setLicenseNotes(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
-        </label>
-        <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
-          Agent (줄바꿈, 예: AI_DEVELOPER)
-          <textarea value={agents} onChange={(e) => setAgents(e.target.value)} rows={2} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
         </label>
         {isEdit ? (
           <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
@@ -478,6 +606,7 @@ export function KnowledgePacksManagePageClient() {
             활성화 (ACTIVE)
           </button>
         ) : null}
+      </div>
       </div>
     </div>
   );

@@ -9,7 +9,15 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 - 플랫폼 **정적 seed** 기반 지식팩 5종: Grid 4종(`grid.ag-grid-community`, `grid.tanstack-table`, `grid.tabulator`, `grid.toast-ui-grid`) + 인증 1종(`auth.kakao-login`)
 - 라우트: `/knowledge-packs`, `/knowledge-packs/detail`
 - AI Agent / 카테고리 필터, 목록, **별도 창** 상세 탭(요약·구현 지침·Cursor 반영·금지사항·검수·미리보기), Mock 미리보기, Markdown보내기
-- 주요 코드: `types.ts`, `developerGridPacks.ts`, `KnowledgePacksPageClient.tsx`, `KnowledgePackDetailPanel.tsx`, `KnowledgePackApplyPreview.tsx`, `tests/api/knowledgePacksSeed.unit.test.ts`
+- 주요 코드: `types.ts`, `developerGridPacks.ts`, `developerAuthPacks.ts`, `developerKnowledgePacks.ts`, `knowledgePackSources.ts`, `KnowledgePacksPageClient.tsx`, `KnowledgePackDetailPanel.tsx`, `KnowledgePackApplyPreview.tsx`, `tests/api/knowledgePacksSeed.unit.test.ts`
+
+### 1.2 AI 초안(Mock) 등록 UX
+
+지식팩 등록은 사용자가 모든 섹션을 직접 작성하는 방식이 아니라, 제품명·제품 URL·공식 문서 URL 등 최소 정보를 입력하면 AI가 지식팩 초안을 생성하고 사용자가 검토·수정·저장하는 방식으로 발전한다.
+
+AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다. (`/knowledge-packs/manage`의 Mock 생성기 `knowledgePackDraftGenerator.ts`; 실제 LLM·크롤링·RAG는 미연결.)
+
+향후에는 원천자료 후보를 `KnowledgePackSource`로 저장하고, 문서 파싱 → 청크 분할 → 임베딩 → 벡터저장소 저장 → Agent별 검색·프롬프트 주입으로 확장한다.
 
 ---
 
@@ -23,7 +31,20 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 | `auth.kakao-login` | Kakao Login | AUTH | OAuth·인증 연계 확장 후보 |
 
 - TOAST UI Grid: Grid 지식팩 확장, React wrapper·라이선스는 공식 문서에서 버전별 확인.
-- Kakao Login: Auth/API 지식팩 확장, Secret·Redirect URI·토큰 처리 등 보안 기준을 지식팩 본문에 포함.
+- Kakao Login(`auth.kakao-login`)은 외부 서비스 연동 지식팩으로 **license type `EXTERNAL_SERVICE`** 로 관리한다 (UI: 외부 서비스).
+- 정적 seed는 파일로 **`developerGridPacks`(Grid 4종)**, **`developerAuthPacks`(Auth 1종)**, 엔트리 **`developerKnowledgePacks`(병합·resolver·라벨)** 로 분리했다.
+- `references`는 단순 링크 배열을 유지하되, 런타임에서 **`KnowledgePackSource`** 후보로 유도할 수 있다 (`knowledgePackSources.ts`의 `referencesToKnowledgePackSources`). 향후 DB·RAG에서는 동일 개념의 원천자료 단위로 저장한다.
+- **`KnowledgePackSource`** 는 RAG 색인의 원천자료 단위다. 실제 문서 파싱·청크·임베딩·벡터저장소 저장은 아직 구현하지 않는다.
+
+향후 흐름(참고):
+
+- `KnowledgePackSource` 등록·버전 연동
+- 문서 파싱
+- 청크 분할
+- 임베딩 생성
+- 벡터저장소 저장
+- Agent별 검색
+- 프롬프트 주입
 
 ---
 

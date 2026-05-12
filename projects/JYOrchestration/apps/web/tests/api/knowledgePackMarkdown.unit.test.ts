@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerGridPacks";
+import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import { knowledgePackToMarkdown } from "@/lib/knowledge-packs/knowledgePackMarkdown";
 
 describe("knowledgePackToMarkdown", () => {
