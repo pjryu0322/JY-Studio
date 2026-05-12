@@ -40,7 +40,10 @@ const GRID_KEYWORDS = [
   "toast ui",
   "ag grid",
   "tanstack",
+  "tanstack table",
   "tabulator",
+  "react-table",
+  "handsontable",
 ];
 
 const AUTH_KEYWORDS = [

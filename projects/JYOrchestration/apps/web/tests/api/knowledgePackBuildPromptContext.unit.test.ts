@@ -74,4 +74,15 @@ describe("buildMergedKnowledgePackPromptContext", () => {
     expect(r.contextText).toBe("");
     expect(r.usedKnowledgePackIds).toEqual([]);
   });
+
+  it("respects maxTotalChars with truncation marker", async () => {
+    const r = await buildMergedKnowledgePackPromptContext({
+      userId: "u1",
+      knowledgePackIds: ["auth.kakao-login", "grid.toast-ui-grid"],
+      query: "login grid",
+      maxTotalChars: 900,
+    });
+    expect(r.contextText.length).toBeLessThanOrEqual(920);
+    expect(r.contextText).toMatch(/truncated/);
+  });
 });

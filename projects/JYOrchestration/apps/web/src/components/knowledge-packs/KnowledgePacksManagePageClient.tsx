@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePacksManageAiDraftSection } from "./KnowledgePacksManageAiDraftSection";
+import { KnowledgePackPromptInjectionLab } from "./KnowledgePackPromptInjectionLab";
 import { KnowledgePackSourceManager } from "./KnowledgePackSourceManager";
 import { applyKnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftApply";
 import { generateKnowledgePackDraftMock, type KnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
@@ -689,11 +690,34 @@ export function KnowledgePacksManagePageClient() {
         <textarea value={previewSpec} onChange={(e) => setPreviewSpec(e.target.value)} rows={3} style={{ ...fieldStyle(), resize: "vertical" }} />
       </Section>
 
+      <Section title="AI개발자 프롬프트 주입 미리보기">
+        <p style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.5, marginTop: 0 }}>
+          신규 등록·편집 공통으로 요구·작업 설명 기반 추천과 병합 컨텍스트를 시험합니다. 편집 시 아래 원천자료 섹션의 RAG 검색어는 별도 블록에서도 쿼리 보조로 쓸 수 있으며, 여기서는 폼에 선택된 카테고리를 추천 힌트로 넘깁니다.
+        </p>
+        <KnowledgePackPromptInjectionLab
+          onNotify={(kind, m) => {
+            if (kind === "ok") {
+              setMsg(m);
+              setErr(null);
+            } else {
+              setErr(m);
+              setMsg(null);
+            }
+          }}
+          categoryHints={
+            CATEGORIES.includes(category as (typeof CATEGORIES)[number]) ? [category.trim().toUpperCase()] : undefined
+          }
+        />
+      </Section>
+
       {isEdit ? (
         <Section title="원천자료 / RAG 색인 (1단계)">
           <KnowledgePackSourceManager
             knowledgePackId={editId}
             referencesText={references}
+            categoryHints={
+              CATEGORIES.includes(category as (typeof CATEGORIES)[number]) ? [category.trim().toUpperCase()] : undefined
+            }
             onNotify={(kind, m) => {
               if (kind === "ok") {
                 setMsg(m);

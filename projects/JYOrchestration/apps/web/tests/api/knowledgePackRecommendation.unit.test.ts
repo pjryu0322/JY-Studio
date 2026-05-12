@@ -65,6 +65,27 @@ describe("recommendKnowledgePacks", () => {
     expect(r.recommendations.length).toBeLessThanOrEqual(2);
   });
 
+  it("applies categoryHints for scoring", async () => {
+    findMany.mockResolvedValueOnce([]);
+    const withHint = await recommendKnowledgePacks({
+      userId: "u1",
+      text: "일반 업무 화면",
+      categoryHints: ["GRID"],
+      limit: 6,
+    });
+    expect(withHint.recommendations.some((x) => x.knowledgePackId.startsWith("grid."))).toBe(true);
+  });
+
+  it("react-table wording still surfaces grid recommendations", async () => {
+    findMany.mockResolvedValueOnce([]);
+    const r = await recommendKnowledgePacks({
+      userId: "u1",
+      text: "react-table 기반 목록 화면",
+      limit: 6,
+    });
+    expect(r.recommendations.some((x) => x.knowledgePackId.startsWith("grid."))).toBe(true);
+  });
+
   it("includes DB API packs when prisma returns rows", async () => {
     findMany.mockResolvedValueOnce([
       {
