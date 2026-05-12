@@ -3,6 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { filterMergedKnowledgePacks, mergeStaticAndDbKnowledgePacks, parseLines } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { createKnowledgePack, mergeKnowledgePackListForUser } from "@/lib/knowledge-packs/knowledgePackDbService";
 import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerKnowledgePacks";
+import { parsePrecheckSummaryForHistory } from "@/lib/knowledge-packs/knowledgePackPrecheckHttpBody";
 import type { KnowledgePackAgent, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 import { prisma } from "@/lib/prisma";
 
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
       status,
       licenseNotes,
       agents,
+      precheckHistoryLine: parsePrecheckSummaryForHistory(body),
       sections: {
         recommendedUseCases: sections.recommendedUseCases,
         notRecommendedUseCases: sections.notRecommendedUseCases,

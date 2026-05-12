@@ -9,7 +9,18 @@ export type PrototypePromptBuildInput = Readonly<{
   actors: ReadonlyArray<{ name: string; kind: string; description?: string | null }>;
   flowSteps: ReadonlyArray<{ title: string; purpose: string; primaryActorId: string; ownerName?: string }>;
   featureDraftTitles?: readonly string[];
+  /** 지식팩 RAG 기반 컨텍스트(선택). 비어 있으면 삽입하지 않음. 최대 6000자. */
+  knowledgePackContextText?: string;
 }>;
+
+const KP_CTX_MAX = 6000;
+
+function clampPrototypeKp(raw: string | undefined): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  if (t.length <= KP_CTX_MAX) return t;
+  return `${t.slice(0, KP_CTX_MAX - 20)}\n…(truncated)`;
+}
 
 export function buildCursorPrototypePromptPackage(input: PrototypePromptBuildInput): string {
   const templateId = input.analysis.recommendedTemplate;
@@ -23,13 +34,23 @@ export function buildCursorPrototypePromptPackage(input: PrototypePromptBuildInp
       input.featureDraftTitles.map((x, i) => `${i + 1}. ${x}`).join("\n")
     : "(아직 기능 정리 초안이 없으면 서비스 흐름만으로 1차 프로토타입 생성)";
 
+  const kpClamped = clampPrototypeKp(input.knowledgePackContextText);
+  const kpBlock = kpClamped
+    ? `
+
+## Knowledge Pack Context
+
+${kpClamped}
+`
+    : "";
+
   return `Create a responsive web prototype for the following product context.
 
 Project:
 ${input.projectName}
 
 Summary:
-${input.projectDescription.trim() || "(설명 없음 — 채팅·아이디어 자산을 반영해 주세요)"}
+${input.projectDescription.trim() || "(설명 없음 — 채팅·아이디어 자산을 반영해 주세요)"}${kpBlock}
 
 Project type (analyzer): ${input.analysis.projectType}
 Primary user type: ${input.analysis.userType}

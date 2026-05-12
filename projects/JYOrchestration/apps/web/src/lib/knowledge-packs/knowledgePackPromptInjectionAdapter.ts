@@ -26,6 +26,7 @@ export async function buildKnowledgePackContextForDeveloperTask(input: {
     taskTitle: input.taskTitle,
     taskDescription: input.taskDescription,
     retrieval,
+    maxChars: 6000,
   });
 
   return {

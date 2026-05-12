@@ -38,6 +38,13 @@ function hasAnyUrl(input: KnowledgePackPrecheckInput): boolean {
   );
 }
 
+/** 제품·공식 문서·저장소 URL (GRID/UI 등록 가능성 판정용) */
+function hasStructuredPublicUrl(input: KnowledgePackPrecheckInput): boolean {
+  return Boolean(
+    input.productUrl?.trim() || input.officialDocsUrl?.trim() || input.repositoryUrl?.trim()
+  );
+}
+
 function licenseLooksOpen(input: KnowledgePackPrecheckInput): boolean {
   const h = (input.licenseHint ?? "").toLowerCase();
   return /\b(mit|apache|bsd|gpl|lgpl|open\s*source|오픈소스|무료\s*오픈)\b/i.test(h);
@@ -52,7 +59,16 @@ function categoryBaseRisk(cat: KnowledgePackCategory): KnowledgePackPrecheckRisk
   return "MEDIUM";
 }
 
-function pushIssue(
+const RISK_ORDER: readonly KnowledgePackPrecheckRiskLevel[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+function maxRisk(a: KnowledgePackPrecheckRiskLevel, b: KnowledgePackPrecheckRiskLevel): KnowledgePackPrecheckRiskLevel {
+  return RISK_ORDER[Math.max(RISK_ORDER.indexOf(a), RISK_ORDER.indexOf(b))]!;
+}
+
+/**
+ * 동일 issue type은 1건만 유지하고, 더 높은 risk·더 긴 설명을 우선한다.
+ */
+function upsertIssueByType(
   issues: KnowledgePackPrecheckIssue[],
   type: KnowledgePackPrecheckIssueType,
   riskLevel: KnowledgePackPrecheckRiskLevel,
@@ -60,12 +76,17 @@ function pushIssue(
   description: string,
   recommendedAction: string
 ) {
-  issues.push({ type, riskLevel, title, description, recommendedAction });
-}
-
-function maxRisk(a: KnowledgePackPrecheckRiskLevel, b: KnowledgePackPrecheckRiskLevel): KnowledgePackPrecheckRiskLevel {
-  const order: KnowledgePackPrecheckRiskLevel[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-  return order[Math.max(order.indexOf(a), order.indexOf(b))]!;
+  const idx = issues.findIndex((x) => x.type === type);
+  if (idx < 0) {
+    issues.push({ type, riskLevel, title, description, recommendedAction });
+    return;
+  }
+  const cur = issues[idx]!;
+  const nextRisk = maxRisk(cur.riskLevel, riskLevel);
+  const takeDesc = description.length >= cur.description.length ? description : cur.description;
+  const takeTitle = title.length >= cur.title.length ? title : cur.title;
+  const takeRec = recommendedAction.length >= cur.recommendedAction.length ? recommendedAction : cur.recommendedAction;
+  issues[idx] = { type, riskLevel: nextRisk, title: takeTitle, description: takeDesc, recommendedAction: takeRec };
 }
 
 function defaultLists(): Pick<
@@ -118,6 +139,10 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
 
   const text = combinedText(input);
   const urls = hasAnyUrl(input);
+  const docUrls = hasStructuredPublicUrl(input);
+  const payHit = PAY_KW.test(text) || (input.category === "API" && /\b(결제|pg|금융)\b/i.test(text));
+  const malHit = MAL_KW.test(text);
+
   let risk: KnowledgePackPrecheckRiskLevel = categoryBaseRisk(input.category);
   let score = 55;
 
@@ -128,7 +153,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   if (AUTH_KW.test(text)) {
     risk = maxRisk(risk, "HIGH");
     score -= 8;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "AUTH_SECRET_RISK",
       "HIGH",
@@ -138,10 +163,10 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
     );
   }
 
-  if (PAY_KW.test(text) || (input.category === "API" && /\b(결제|pg|금융)\b/i.test(text))) {
-    risk = maxRisk(risk, "CRITICAL");
+  if (payHit) {
+    risk = "CRITICAL";
     score -= 18;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "PAYMENT_OR_FINANCE_RISK",
       "CRITICAL",
@@ -154,7 +179,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   if (PII_KW.test(text)) {
     risk = maxRisk(risk, "HIGH");
     score -= 6;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "PERSONAL_DATA_RISK",
       "HIGH",
@@ -167,7 +192,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   if (LIC_KW.test(text)) {
     risk = maxRisk(risk, "MEDIUM");
     score -= 4;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "COMMERCIAL_LICENSE_RISK",
       "MEDIUM",
@@ -175,7 +200,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
       "상용 라이선스·벤더 계약은 사용 범위·배포·서브라이선스 조항을 확인해야 합니다.",
       "EULA·약관·견적서를 확보하고 라이선스 검토를 예약하세요."
     );
-    pushIssue(
+    upsertIssueByType(
       issues,
       "TERMS_REVIEW_REQUIRED",
       "MEDIUM",
@@ -185,10 +210,10 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
     );
   }
 
-  if (MAL_KW.test(text)) {
+  if (malHit) {
     risk = "CRITICAL";
     score = Math.min(score, 15);
-    pushIssue(
+    upsertIssueByType(
       issues,
       "TERMS_REVIEW_REQUIRED",
       "CRITICAL",
@@ -201,7 +226,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   if ((input.category === "API" || input.category === "INTEGRATION") && !input.apiDocsUrl?.trim()) {
     risk = maxRisk(risk, "MEDIUM");
     score -= 5;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "API_SPEC_MISSING",
       "MEDIUM",
@@ -214,7 +239,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   if (!urls && !licenseLooksOpen(input)) {
     risk = maxRisk(risk, "MEDIUM");
     score -= 10;
-    pushIssue(
+    upsertIssueByType(
       issues,
       "OFFICIAL_DOCS_MISSING",
       "MEDIUM",
@@ -225,7 +250,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   }
 
   if (!urls) {
-    pushIssue(
+    upsertIssueByType(
       issues,
       "USER_DOCUMENT_REQUIRED",
       "MEDIUM",
@@ -236,7 +261,7 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   }
 
   if (input.category === "AUTH" || /\bkakao\b/i.test(text)) {
-    pushIssue(
+    upsertIssueByType(
       issues,
       "AUTH_SECRET_RISK",
       "HIGH",
@@ -247,7 +272,14 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   }
 
   if (!urls) {
-    pushIssue(issues, "RAG_NOT_READY", "LOW", "RAG 색인 준비", "원천 URL이 없으면 수집 기반 RAG를 바로 시작하기 어렵습니다.", "복제 후 원천 URL을 등록하고 수집·청크 파이프라인을 실행하세요.");
+    upsertIssueByType(
+      issues,
+      "RAG_NOT_READY",
+      "LOW",
+      "RAG 색인 준비",
+      "원천 URL이 없으면 수집 기반 RAG를 바로 시작하기 어렵습니다.",
+      "복제 후 원천 URL을 등록하고 수집·청크 파이프라인을 실행하세요."
+    );
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
@@ -259,13 +291,23 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
   let shouldRequireLicenseReview = false;
   let shouldRequireUserProvidedDocs = false;
 
-  if (MAL_KW.test(text) || score < 12) {
+  if (malHit || score < 12) {
     decision = "NOT_RECOMMENDED";
     summary = "현재 정보만으로는 지식팩 등록을 권장하지 않습니다.";
     canGenerateDraft = false;
     shouldRequireSecurityReview = true;
     shouldRequireLicenseReview = true;
     shouldRequireUserProvidedDocs = true;
+  } else if (payHit) {
+    risk = "CRITICAL";
+    shouldRequireSecurityReview = true;
+    shouldRequireLicenseReview = true;
+    shouldRequireUserProvidedDocs = !urls;
+    decision = urls ? "LIMITED_REGISTERABLE" : "USER_SOURCE_REQUIRED";
+    summary = urls
+      ? "결제·금융 연동은 규제·보안 요건이 큽니다. 지식팩 초안 생성은 가능하나 라이선스·약관·보안 확인이 필수입니다."
+      : "공개 자료만으로는 지식팩 품질을 보장하기 어렵습니다. 사용자가 매뉴얼/API 명세를 추가해야 합니다.";
+    canGenerateDraft = true;
   } else if (!urls) {
     decision = "USER_SOURCE_REQUIRED";
     summary =
@@ -287,11 +329,37 @@ export async function precheckKnowledgePackRegistration(input: KnowledgePackPrec
     canGenerateDraft = true;
   }
 
-  if (decision === "REGISTERABLE" && input.category === "AUTH") {
+  if (input.category === "AUTH" && decision !== "NOT_RECOMMENDED") {
     decision = "LIMITED_REGISTERABLE";
+    risk = maxRisk(risk, "HIGH");
     summary = "지식팩 초안 생성은 가능하지만, 라이선스·약관·보안 확인이 필요합니다.";
     shouldRequireSecurityReview = true;
     shouldRequireLicenseReview = true;
+    canGenerateDraft = true;
+  }
+
+  const gridUiClean =
+    (input.category === "GRID" || input.category === "UI") &&
+    docUrls &&
+    licenseLooksOpen(input) &&
+    !AUTH_KW.test(text) &&
+    !payHit &&
+    !PII_KW.test(text) &&
+    !malHit &&
+    !LIC_KW.test(text);
+
+  if (gridUiClean && decision !== "NOT_RECOMMENDED" && decision !== "USER_SOURCE_REQUIRED") {
+    decision = "REGISTERABLE";
+    summary = "공식 문서 또는 공개 자료를 기반으로 지식팩 초안 생성이 가능합니다.";
+    shouldRequireSecurityReview = false;
+    shouldRequireLicenseReview = false;
+    shouldRequireUserProvidedDocs = false;
+  }
+
+  if (payHit && !malHit) {
+    shouldRequireSecurityReview = true;
+    shouldRequireLicenseReview = true;
+    if (!urls) shouldRequireUserProvidedDocs = true;
   }
 
   return {

@@ -203,20 +203,21 @@ export function KnowledgePacksManageAiDraftSection(p: KnowledgePacksManageAiDraf
         <div style={{ fontWeight: 800, marginBottom: 6 }}>AI 초안 vs RAG 색인</div>
         <div>AI 초안 생성은 현재 입력값 기반 지식팩 초안 생성 기능입니다.</div>
         <div style={{ marginTop: 6 }}>
-          RAG 색인은 원천자료를 청크/임베딩/벡터 저장소에 저장해 Agent가 검색할 수 있게 만드는 후속 기능입니다.
+          RAG 색인은 원천자료를 청크/임베딩/벡터 저장소에 저장해 Agent가 검색할 수 있게 만드는 후속 기능입니다. (현재 1단계: 수집·파싱·청크·KEYWORD 검색까지 지원)
         </div>
       </div>
 
       <div style={noticeRag}>
         <div style={{ fontWeight: 900, marginBottom: 6 }}>RAG 준비 상태</div>
         <ul style={{ margin: 0, paddingLeft: 18 }}>
-          <li>원천자료 링크: 입력 가능</li>
-          <li>원천자료 수집: 다음 단계</li>
-          <li>문서 파싱: 다음 단계</li>
-          <li>청크 분할: 다음 단계</li>
+          <li>원천자료 링크/본문 등록: 지원</li>
+          <li>원천자료 수집: 지원</li>
+          <li>문서 파싱: 지원</li>
+          <li>청크 분할/저장: 지원</li>
+          <li>KEYWORD 기반 검색: 지원</li>
           <li>임베딩 생성: 다음 단계</li>
           <li>벡터저장소 저장: 다음 단계</li>
-          <li>Agent별 검색/프롬프트 주입: 다음 단계</li>
+          <li>Agent별 자동 프롬프트 주입: 준비 중</li>
         </ul>
       </div>
 

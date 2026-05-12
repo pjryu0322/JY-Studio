@@ -38,3 +38,15 @@ export function parseKnowledgePackPrecheckRequestBody(
     },
   };
 }
+
+/** 저장 API 본문 `precheckSummary` → 이력 한 줄 (`Precheck: …`). */
+export function parsePrecheckSummaryForHistory(body: Record<string, unknown>): string | undefined {
+  const raw = body.precheckSummary;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const decision = String(o.decision ?? "").trim();
+  const riskLevel = String(o.riskLevel ?? "").trim();
+  const score = Number(o.score);
+  if (!decision || !riskLevel || !Number.isFinite(score)) return undefined;
+  return `Precheck: ${decision} / ${riskLevel} / ${Math.round(score)}`;
+}

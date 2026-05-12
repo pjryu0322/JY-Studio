@@ -31,13 +31,24 @@ function optionalPrecheckRisk(body: Record<string, unknown>): KnowledgePackPrech
   return PRECHECK_RISKS.has(s as KnowledgePackPrecheckRiskLevel) ? (s as KnowledgePackPrecheckRiskLevel) : undefined;
 }
 
-function optionalPrecheckIssues(body: Record<string, unknown>): readonly string[] | undefined {
-  const raw = body.precheckIssues;
+function optionalStringList(body: Record<string, unknown>, key: string): readonly string[] | undefined {
+  const raw = body[key];
   if (Array.isArray(raw)) {
     const lines = raw.map((x) => String(x).trim()).filter(Boolean);
     return lines.length ? lines : undefined;
   }
   if (typeof raw === "string" && raw.trim()) return [raw.trim()];
+  return undefined;
+}
+
+function optionalPrecheckIssueLines(body: Record<string, unknown>): readonly string[] | undefined {
+  return optionalStringList(body, "precheckIssueSummaries") ?? optionalStringList(body, "precheckIssues");
+}
+
+function optionalBooleanField(body: Record<string, unknown>, key: string): boolean | undefined {
+  const v = body[key];
+  if (v === true) return true;
+  if (v === false) return false;
   return undefined;
 }
 
@@ -56,7 +67,10 @@ export function parseKnowledgePackDraftRequestBody(
 
   const precheckDecision = optionalPrecheckDecision(body);
   const precheckRiskLevel = optionalPrecheckRisk(body);
-  const precheckIssues = optionalPrecheckIssues(body);
+  const issueLines = optionalPrecheckIssueLines(body);
+  const precheckRequiresSecurityReview = optionalBooleanField(body, "precheckRequiresSecurityReview");
+  const precheckRequiresLicenseReview = optionalBooleanField(body, "precheckRequiresLicenseReview");
+  const precheckRequiresUserProvidedDocs = optionalBooleanField(body, "precheckRequiresUserProvidedDocs");
 
   return {
     ok: true,
@@ -73,7 +87,10 @@ export function parseKnowledgePackDraftRequestBody(
       memo: optionalStringField(body, "memo"),
       ...(precheckDecision ? { precheckDecision } : {}),
       ...(precheckRiskLevel ? { precheckRiskLevel } : {}),
-      ...(precheckIssues ? { precheckIssues } : {}),
+      ...(issueLines ? { precheckIssueSummaries: issueLines, precheckIssues: issueLines } : {}),
+      ...(precheckRequiresSecurityReview !== undefined ? { precheckRequiresSecurityReview } : {}),
+      ...(precheckRequiresLicenseReview !== undefined ? { precheckRequiresLicenseReview } : {}),
+      ...(precheckRequiresUserProvidedDocs !== undefined ? { precheckRequiresUserProvidedDocs } : {}),
     },
   };
 }

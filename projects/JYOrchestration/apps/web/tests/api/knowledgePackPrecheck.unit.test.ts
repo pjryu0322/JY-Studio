@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseKnowledgePackDraftRequestBody } from "@/lib/knowledge-packs/knowledgePackDraftHttpBody";
 import { generateKnowledgePackDraftMock } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
-import { parseKnowledgePackPrecheckRequestBody } from "@/lib/knowledge-packs/knowledgePackPrecheckHttpBody";
+import { parseKnowledgePackPrecheckRequestBody, parsePrecheckSummaryForHistory } from "@/lib/knowledge-packs/knowledgePackPrecheckHttpBody";
 import { precheckKnowledgePackRegistration } from "@/lib/knowledge-packs/knowledgePackPrecheckService";
 
 const agents = ["AI_DEVELOPER"] as const;
@@ -16,6 +16,14 @@ describe("parseKnowledgePackPrecheckRequestBody", () => {
   it("rejects invalid category", () => {
     const r = parseKnowledgePackPrecheckRequestBody({ productName: "X", category: "NOT_A_CAT", agents: [] });
     expect(r.ok).toBe(false);
+  });
+
+  it("formats precheckSummary for history line", () => {
+    expect(
+      parsePrecheckSummaryForHistory({
+        precheckSummary: { decision: "LIMITED_REGISTERABLE", riskLevel: "HIGH", score: 68 },
+      })
+    ).toBe("Precheck: LIMITED_REGISTERABLE / HIGH / 68");
   });
 });
 
@@ -56,7 +64,7 @@ describe("precheckKnowledgePackRegistration", () => {
     expect(blob).toMatch(/AUTH_SECRET_RISK|Redirect|인증|토큰|Secret/i);
   });
 
-  it("5. payment / finance keywords yield HIGH or CRITICAL risk", async () => {
+  it("5. payment / finance keywords yield CRITICAL risk and LIMITED when URLs exist", async () => {
     const r = await precheckKnowledgePackRegistration({
       productName: "Checkout",
       category: "API",
@@ -64,7 +72,33 @@ describe("precheckKnowledgePackRegistration", () => {
       memo: "PG 결제 및 오픈뱅킹 연동",
       apiDocsUrl: "https://example.com/api",
     });
-    expect(["HIGH", "CRITICAL"]).toContain(r.riskLevel);
+    expect(r.riskLevel).toBe("CRITICAL");
+    expect(r.decision).toBe("LIMITED_REGISTERABLE");
+  });
+
+  it("payment without public URLs → USER_SOURCE_REQUIRED and CRITICAL", async () => {
+    const r = await precheckKnowledgePackRegistration({
+      productName: "PayOnly",
+      category: "API",
+      agents: [...agents],
+      memo: "PG 결제 연동",
+    });
+    expect(r.decision).toBe("USER_SOURCE_REQUIRED");
+    expect(r.riskLevel).toBe("CRITICAL");
+    expect(r.shouldRequireSecurityReview).toBe(true);
+    expect(r.shouldRequireLicenseReview).toBe(true);
+    expect(r.shouldRequireUserProvidedDocs).toBe(true);
+  });
+
+  it("AUTH + Kakao-style text dedupes AUTH_SECRET_RISK to a single issue type", async () => {
+    const r = await precheckKnowledgePackRegistration({
+      productName: "Kakao Login",
+      category: "AUTH",
+      agents: [...agents],
+      purpose: "OAuth redirect 및 token",
+      productUrl: "https://developers.kakao.com",
+    });
+    expect(r.issues.filter((i) => i.type === "AUTH_SECRET_RISK").length).toBe(1);
   });
 
   it("6. product name only (no URLs) → USER_SOURCE_REQUIRED", async () => {
@@ -138,13 +172,26 @@ describe("draft body + precheck meta", () => {
       precheckDecision: "LIMITED_REGISTERABLE",
       precheckRiskLevel: "HIGH",
       precheckIssues: ["약관 확인"],
+      precheckRequiresSecurityReview: true,
     });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.input.precheckDecision).toBe("LIMITED_REGISTERABLE");
       expect(r.input.precheckRiskLevel).toBe("HIGH");
-      expect(r.input.precheckIssues).toEqual(["약관 확인"]);
+      expect(r.input.precheckIssueSummaries).toEqual(["약관 확인"]);
+      expect(r.input.precheckRequiresSecurityReview).toBe(true);
     }
+  });
+
+  it("accepts precheckIssueSummaries alias", () => {
+    const r = parseKnowledgePackDraftRequestBody({
+      productName: "P",
+      category: "GRID",
+      agents: [],
+      precheckIssueSummaries: ["a"],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.input.precheckIssueSummaries).toEqual(["a"]);
   });
 
   it("generateKnowledgePackDraftMock merges precheck warnings", () => {
@@ -156,7 +203,7 @@ describe("draft body + precheck meta", () => {
       precheckRiskLevel: "MEDIUM",
       precheckIssues: ["문서 부족: 공개 URL 없음"],
     });
-    expect(d.warnings.some((w) => w.includes("사전점검"))).toBe(true);
+    expect(d.warnings.some((w) => w.includes("공개 자료만으로는 부족합니다"))).toBe(true);
     expect(d.sourceCandidates).toMatch(/사용자 원천자료/);
   });
 });

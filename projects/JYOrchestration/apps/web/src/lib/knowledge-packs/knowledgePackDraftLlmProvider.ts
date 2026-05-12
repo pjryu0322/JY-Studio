@@ -43,7 +43,10 @@ function buildKnowledgePackDraftUserJson(input: KnowledgePackDraftInput): string
             ? {
                 decision: input.precheckDecision,
                 riskLevel: input.precheckRiskLevel ?? null,
-                issues: input.precheckIssues ? [...input.precheckIssues] : [],
+                issues: [...(input.precheckIssueSummaries ?? input.precheckIssues ?? [])],
+                requiresSecurityReview: input.precheckRequiresSecurityReview ?? null,
+                requiresLicenseReview: input.precheckRequiresLicenseReview ?? null,
+                requiresUserProvidedDocs: input.precheckRequiresUserProvidedDocs ?? null,
               }
             : null,
       },

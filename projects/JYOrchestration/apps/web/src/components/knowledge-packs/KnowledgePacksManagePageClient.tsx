@@ -278,6 +278,15 @@ export function KnowledgePacksManagePageClient() {
       agents: agentList.length ? agentList : ["AI_DEVELOPER"],
       sections: sectionsPayload,
       ...(isPatch ? { changeSummary: changeSummary || "수정" } : {}),
+      ...(precheckResult
+        ? {
+            precheckSummary: {
+              decision: precheckResult.decision,
+              riskLevel: precheckResult.riskLevel,
+              score: precheckResult.score,
+            },
+          }
+        : {}),
     };
     try {
       const url = isPatch ? `/api/knowledge-packs/${encodeURIComponent(editId)}` : "/api/knowledge-packs";
@@ -406,7 +415,10 @@ export function KnowledgePacksManagePageClient() {
             ...inputBase,
             precheckDecision: precheckResult.decision,
             precheckRiskLevel: precheckResult.riskLevel,
-            precheckIssues: precheckResult.issues.map((i) => `${i.title}: ${i.description}`),
+            precheckIssueSummaries: precheckResult.issues.map((i) => `${i.title}: ${i.description}`),
+            precheckRequiresSecurityReview: precheckResult.shouldRequireSecurityReview,
+            precheckRequiresLicenseReview: precheckResult.shouldRequireLicenseReview,
+            precheckRequiresUserProvidedDocs: precheckResult.shouldRequireUserProvidedDocs,
           }
         : inputBase;
     setErr(null);

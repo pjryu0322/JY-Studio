@@ -10,7 +10,17 @@ export type BuildWorkUnitCursorPromptParams = Readonly<{
   ideationSummary: string;
   actorFlowSummary: string;
   featureSummary: string;
+  knowledgePackContextText?: string;
 }>;
+
+const WU_KP_MAX = 6000;
+
+function clampWorkUnitKp(raw: string | undefined): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  if (t.length <= WU_KP_MAX) return t;
+  return `${t.slice(0, WU_KP_MAX - 20)}\n…(truncated)`;
+}
 
 function linesCompletedSummary(completed: readonly PrototypeWorkUnit[]): string {
   if (!completed.length) return "(없음)";
@@ -43,6 +53,17 @@ export function buildWorkUnitCursorPrompt(params: BuildWorkUnitCursorPromptParam
   const features = String(params.featureSummary ?? "").trim() || "(없음)";
   const completed = linesCompletedSummary(params.completedWorkUnits);
 
+  const kpClamped = clampWorkUnitKp(params.knowledgePackContextText);
+  const kpBlock = kpClamped
+    ? [
+        "",
+        "## Knowledge Pack Context",
+        "",
+        kpClamped,
+        "",
+      ].join("\n")
+    : "";
+
   return [
     "--------------------------------------------------",
     "",
@@ -51,7 +72,7 @@ export function buildWorkUnitCursorPrompt(params: BuildWorkUnitCursorPromptParam
     "",
     `Goal:`,
     goal,
-    "",
+    ...(kpClamped ? [kpBlock] : [""]),
     `Template id (must follow the same layout contract as the global prototype prompt / JY preview):`,
     String(params.selectedTemplate ?? "").trim() || "(미지정)",
     "",

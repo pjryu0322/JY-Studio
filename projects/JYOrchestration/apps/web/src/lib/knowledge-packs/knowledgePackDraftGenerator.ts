@@ -21,7 +21,12 @@ export type KnowledgePackDraftInput = Readonly<{
   /** 선택: 사전점검 직후 초안 생성 시 경고·원천자료 안내에 반영 */
   precheckDecision?: KnowledgePackPrecheckDecision;
   precheckRiskLevel?: KnowledgePackPrecheckRiskLevel;
+  /** 이슈 한 줄 요약(구 `precheckIssues`와 동일 용도로 병합) */
+  precheckIssueSummaries?: readonly string[];
   precheckIssues?: readonly string[];
+  precheckRequiresSecurityReview?: boolean;
+  precheckRequiresLicenseReview?: boolean;
+  precheckRequiresUserProvidedDocs?: boolean;
 }>;
 
 /** Mock 초안 결과 — textarea에 그대로 넣을 수 있는 줄 단위 문자열. */
@@ -200,8 +205,16 @@ function sourceCandidatesBlock(input: KnowledgePackDraftInput): string {
   if (input.repositoryUrl?.trim()) lines.push(`  · 저장소: ${input.repositoryUrl.trim()}`);
   if (input.licenseHint?.trim()) lines.push(`  · 라이선스 힌트: ${input.licenseHint.trim()}`);
   lines.push("");
-  lines.push("현재는 원천자료 후보만 저장합니다. 문서 파싱, 청크 분할, 임베딩, 벡터저장소 저장은 다음 단계에서 제공됩니다.");
+  lines.push(
+    "RAG 1단계: 원천자료 등록·수집·평문 파싱·겹침 청크 저장·KEYWORD 검색까지 연결 가능합니다. 임베딩·벡터 저장소·Agent 자동 주입은 다음 단계입니다."
+  );
   return lines.join("\n");
+}
+
+function issueLinesForDraft(input: KnowledgePackDraftInput): readonly string[] {
+  const a = input.precheckIssueSummaries ?? [];
+  const b = input.precheckIssues ?? [];
+  return a.length ? a : b;
 }
 
 function precheckDraftWarnings(input: KnowledgePackDraftInput): string[] {
@@ -212,15 +225,26 @@ function precheckDraftWarnings(input: KnowledgePackDraftInput): string[] {
     `[사전점검] 판정: ${PRECHECK_DECISION_LABEL[d]}${r ? `, 위험도: ${PRECHECK_RISK_LABEL[r]}` : ""}`,
   ];
   if (d === "LIMITED_REGISTERABLE") {
-    out.push("[사전점검] 라이선스·약관·보안 관점에서 추가 검토 후 저장·활성화할 것을 권장합니다.");
+    out.push("사전점검 결과 제한 등록입니다. 라이선스·약관·보안 확인 후 사용하세요.");
   }
   if (d === "USER_SOURCE_REQUIRED") {
-    out.push("[사전점검] 공개 URL이 부족합니다. 내부 매뉴얼·API 명세(PDF/Markdown)를 원천자료로 추가한 뒤 RAG 수집을 진행하는 것이 좋습니다.");
+    out.push("공개 자료만으로는 부족합니다. 사용자 매뉴얼/API 명세 등록이 필요합니다.");
   }
   if (d === "NOT_RECOMMENDED") {
-    out.push("[사전점검] 등록 비권장 판정입니다. 공식 문서·목적을 보강한 뒤 다시 점검하세요.");
+    out.push(
+      "[사전점검·강함] 등록 비권장 판정입니다. 공식 문서·목적·합법 범위를 재검토하기 전에는 운영 기준으로 사용하지 마세요."
+    );
   }
-  for (const line of input.precheckIssues ?? []) {
+  if (input.precheckRequiresSecurityReview === true) {
+    out.push("AI보안관 검토 필요");
+  }
+  if (input.precheckRequiresLicenseReview === true) {
+    out.push("라이선스/약관 검토 필요");
+  }
+  if (input.precheckRequiresUserProvidedDocs === true && d !== "USER_SOURCE_REQUIRED") {
+    out.push("사용자 제공 원천자료 확보가 필요합니다.");
+  }
+  for (const line of issueLinesForDraft(input)) {
     const t = line.trim();
     if (t) out.push(`[사전점검 이슈] ${t}`);
   }

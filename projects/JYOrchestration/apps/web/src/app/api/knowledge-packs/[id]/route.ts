@@ -3,6 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { parseLines } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { getMergedKnowledgePackById, patchKnowledgePack } from "@/lib/knowledge-packs/knowledgePackDbService";
+import { parsePrecheckSummaryForHistory } from "@/lib/knowledge-packs/knowledgePackPrecheckHttpBody";
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -64,6 +65,7 @@ export async function PATCH(request: NextRequest, ctx: RouteCtx) {
       changeSummary,
       licenseNotes,
       agents,
+      precheckHistoryLine: parsePrecheckSummaryForHistory(body),
       sections: {
         recommendedUseCases: sections.recommendedUseCases,
         notRecommendedUseCases: sections.notRecommendedUseCases,

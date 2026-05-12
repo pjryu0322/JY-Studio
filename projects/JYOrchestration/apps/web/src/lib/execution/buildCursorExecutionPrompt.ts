@@ -28,9 +28,19 @@ export type BuildCursorExecutionPromptOptions = {
   compactHelloWorld?: boolean;
   /** 기본 연결 테스트는 orchestration-test 트리, 역할 분리 경로는 hello-world.md 단일 파일(머지 규칙과 정합). */
   envTestCompactVariant?: "stage1" | "stage2";
+  /** 지식팩 RAG 기반 컨텍스트(비어 있으면 삽입하지 않음). 최대 6000자로 잘라 넣는다. */
+  knowledgePackContextText?: string;
 };
 
 const ENV_TEST_COMPACT_PROMPT_MAX_CHARS = 800;
+const KNOWLEDGE_PACK_CONTEXT_MAX_CHARS = 6000;
+
+function clampKnowledgePackContextBlock(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (t.length <= KNOWLEDGE_PACK_CONTEXT_MAX_CHARS) return t;
+  return `${t.slice(0, KNOWLEDGE_PACK_CONTEXT_MAX_CHARS - 20)}\n…(truncated)`;
+}
 
 /**
  * Cursor Background Agent용 프롬프트. 로컬 경로 없음 — 원격 저장소 URL만 전달한다.
@@ -123,6 +133,18 @@ export function buildCursorExecutionPrompt(
     ? "Push your branch to origin when work is complete and validated per policy."
     : "Do not push unless explicitly required; leave branch local if policy disables push.";
 
+  const kpRaw = opts?.knowledgePackContextText;
+  const kpClamped = clampKnowledgePackContextBlock(kpRaw ?? "");
+  const kpBlock = kpClamped
+    ? `
+
+## Knowledge Pack Context
+
+${kpClamped}
+
+`
+    : "";
+
   return `You are the **execution engine** (e.g. Cursor Background Agent) for an orchestration platform.
 The platform does **not** clone repos, run git, or modify files — **you** own clone, branch, commit, and push to GitHub.
 
@@ -148,7 +170,7 @@ ${allowed}
 
 ## Description
 ${task.description?.trim() || "(none)"}
-
+${kpBlock}
 ## Acceptance criteria (must satisfy)
 ${criteria}
 

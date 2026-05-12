@@ -51,6 +51,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
   const [newRaw, setNewRaw] = useState("");
   const [retrieveQuery, setRetrieveQuery] = useState("");
   const [retrieveResult, setRetrieveResult] = useState<KnowledgePackRetrieveContextApiOk | KnowledgePackRetrieveContextApiErr | null>(null);
+  const [promptContextPreview, setPromptContextPreview] = useState<{ text: string; diagnostics: string[] } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -217,10 +218,48 @@ export function KnowledgePackSourceManager(props: Readonly<{
     }
   };
 
+  const buildPromptContextPreview = async () => {
+    const q = retrieveQuery.trim();
+    if (!q) {
+      onNotify("err", "프롬프트 미리보기에 사용할 검색어를 입력하세요.");
+      return;
+    }
+    setBusy("promptContext");
+    try {
+      const r = await fetch("/api/knowledge-packs/build-prompt-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          knowledgePackId,
+          query: q,
+          taskTitle: "",
+          taskDescription: "",
+          limit: 5,
+        }),
+      });
+      const j = (await r.json()) as { ok?: boolean; contextText?: string; diagnostics?: string[]; message?: string };
+      if (!j.ok || typeof j.contextText !== "string") {
+        onNotify("err", j.message ?? "프롬프트 컨텍스트 생성 실패");
+        setPromptContextPreview(null);
+        return;
+      }
+      setPromptContextPreview({
+        text: j.contextText,
+        diagnostics: Array.isArray(j.diagnostics) ? j.diagnostics.map(String) : [],
+      });
+      onNotify("ok", "프롬프트 컨텍스트 미리보기를 갱신했습니다.");
+    } catch {
+      onNotify("err", "네트워크 오류");
+      setPromptContextPreview(null);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div style={{ marginTop: 12 }}>
       <p style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.5, margin: "0 0 10px" }}>
-        RAG 1단계: URL 수집(DNS·사설망 차단 포함)·평문 파싱·겹침 청크 저장·키워드 검색 API가 연결되었습니다. 임베딩/벡터 검색은 다음 단계입니다.
+        RAG 1단계: 원천자료 링크/본문 등록, 수집, 평문 파싱, 청크 분할·저장, KEYWORD 검색까지 지원합니다. 임베딩·벡터 저장소·Agent 자동 프롬프트 주입은 다음 단계입니다.
       </p>
       {loading ? <div style={{ fontSize: 12, color: t.textMuted }}>원천자료 불러오는 중…</div> : null}
 
@@ -359,7 +398,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
       <div style={{ marginTop: 14, padding: 10, border: `1px solid ${t.border}`, borderRadius: t.radiusMd }}>
         <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 4 }}>RAG 검색 테스트</div>
         <p style={{ fontSize: 11, color: t.textMuted, margin: "0 0 8px", lineHeight: 1.45 }}>
-          현재는 KEYWORD 기반 검색입니다. 임베딩/벡터 검색은 다음 단계입니다.
+          KEYWORD 기반 검색 결과입니다. 아래에서 AI개발자 프롬프트에 붙는 Markdown 형식 컨텍스트를 별도로 생성할 수 있습니다.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
           <label style={{ flex: "1 1 200px", fontSize: 11, fontWeight: 700 }}>
@@ -380,6 +419,23 @@ export function KnowledgePackSourceManager(props: Readonly<{
             }}
           >
             검색
+          </button>
+          <button
+            type="button"
+            disabled={busy === "promptContext"}
+            onClick={() => void buildPromptContextPreview()}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: `1px solid ${t.accentTealFg}`,
+              background: "#f0fdfa",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: busy === "promptContext" ? "wait" : "pointer",
+              color: t.accentTealFg,
+            }}
+          >
+            프롬프트 컨텍스트 미리보기
           </button>
         </div>
         {retrieveResult && !retrieveResult.ok ? (
@@ -432,6 +488,28 @@ export function KnowledgePackSourceManager(props: Readonly<{
             </pre>
           </div>
         ) : null}
+        <div style={{ fontWeight: 800, fontSize: 12, marginTop: 14, marginBottom: 6 }}>프롬프트 컨텍스트 미리보기</div>
+        <p style={{ fontSize: 11, color: t.textMuted, margin: "0 0 6px", lineHeight: 1.45 }}>
+          위 검색어로 `## Knowledge Pack Context` 블록을 생성합니다. Cursor 실행 프롬프트에 선택적으로 붙일 수 있습니다.
+        </p>
+        {promptContextPreview ? (
+          <>
+            <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 6 }}>
+              <span style={{ fontWeight: 800 }}>diagnostics</span> {promptContextPreview.diagnostics.join(" · ") || "—"}
+            </div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: t.textSecondary }}>
+              contextText (읽기 전용)
+              <textarea
+                readOnly
+                value={promptContextPreview.text}
+                rows={12}
+                style={{ ...fieldStyle(), marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 11, lineHeight: 1.45 }}
+              />
+            </label>
+          </>
+        ) : (
+          <div style={{ fontSize: 11, color: t.textMuted }}>「프롬프트 컨텍스트 미리보기」를 누르면 이곳에 표시됩니다.</div>
+        )}
       </div>
     </div>
   );

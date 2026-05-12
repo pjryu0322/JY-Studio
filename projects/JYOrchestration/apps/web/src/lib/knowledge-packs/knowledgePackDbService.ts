@@ -95,6 +95,8 @@ export type CreateKnowledgePackInput = Readonly<{
   licenseNotes: readonly string[];
   agents: readonly string[];
   sections: Parameters<typeof knowledgePackFieldsToSections>[2];
+  /** 이력에 `Precheck: …` 한 줄을 추가할 때 사용 */
+  precheckHistoryLine?: string;
 }>;
 
 export async function createKnowledgePack(ownerUserId: string, input: CreateKnowledgePackInput): Promise<KnowledgePack> {
@@ -154,6 +156,19 @@ export async function createKnowledgePack(ownerUserId: string, input: CreateKnow
         summary: `지식팩 생성: ${input.name}`,
       },
     });
+    const precheckLine = input.precheckHistoryLine?.trim();
+    if (precheckLine) {
+      await tx.kpKnowledgePackHistory.create({
+        data: {
+          knowledgePackId: id,
+          versionId,
+          action: "PRECHECK",
+          actorId: ownerUserId,
+          actorType: "USER",
+          summary: precheckLine,
+        },
+      });
+    }
   });
 
   const created = await getDbKnowledgePackById(id, ownerUserId);
@@ -172,6 +187,7 @@ export type PatchKnowledgePackInput = Readonly<{
   licenseNotes: readonly string[];
   agents: readonly string[];
   sections: Parameters<typeof knowledgePackFieldsToSections>[2];
+  precheckHistoryLine?: string;
 }>;
 
 export async function patchKnowledgePack(
@@ -245,6 +261,19 @@ export async function patchKnowledgePack(
         summary: `내용 갱신 (${nextVersionStr})`,
       },
     });
+    const precheckLine = input.precheckHistoryLine?.trim();
+    if (precheckLine) {
+      await tx.kpKnowledgePackHistory.create({
+        data: {
+          knowledgePackId: packId,
+          versionId,
+          action: "PRECHECK",
+          actorId: ownerUserId,
+          actorType: "USER",
+          summary: precheckLine,
+        },
+      });
+    }
   });
 
   const updated = await getDbKnowledgePackById(packId, ownerUserId);
