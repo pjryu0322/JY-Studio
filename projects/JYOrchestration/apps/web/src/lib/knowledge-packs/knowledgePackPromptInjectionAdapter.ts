@@ -1,8 +1,10 @@
+import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
+import { buildMergedKnowledgePackPromptContext } from "@/lib/knowledge-packs/knowledgePackMergedPromptContext";
 import { buildKnowledgePackPromptContext } from "@/lib/knowledge-packs/knowledgePackPromptContextBuilder";
 import { retrieveKnowledgePackKeywordRetrievalResult } from "@/lib/knowledge-packs/knowledgePackRetrievalService";
 
 /**
- * 지식팩 검색 → 프롬프트용 컨텍스트 문자열. Cursor 실행 파이프라인에는 아직 연결하지 않는다.
+ * 지식팩 검색 → 프롬프트용 컨텍스트 문자열.
  */
 export async function buildKnowledgePackContextForDeveloperTask(input: {
   userId: string;
@@ -14,6 +16,24 @@ export async function buildKnowledgePackContextForDeveloperTask(input: {
   agentRole?: string;
 }): Promise<{ contextText: string; diagnostics: string[] }> {
   const limit = input.limit != null ? Number(input.limit) : 8;
+
+  if (isStaticKnowledgePackId(input.knowledgePackId)) {
+    const merged = await buildMergedKnowledgePackPromptContext({
+      userId: input.userId,
+      knowledgePackIds: [input.knowledgePackId],
+      query: input.query,
+      taskTitle: input.taskTitle,
+      taskDescription: input.taskDescription,
+      agentRole: input.agentRole ?? "AI_DEVELOPER",
+      limitPerPack: Number.isFinite(limit) ? limit : 8,
+      maxTotalChars: 6000,
+    });
+    return {
+      contextText: merged.contextText,
+      diagnostics: [...merged.diagnostics, `context_chars=${merged.contextText.length}`],
+    };
+  }
+
   const retrieval = await retrieveKnowledgePackKeywordRetrievalResult(
     input.userId,
     input.knowledgePackId,
@@ -34,3 +54,5 @@ export async function buildKnowledgePackContextForDeveloperTask(input: {
     diagnostics: [...retrieval.diagnostics, `context_chars=${contextText.length}`],
   };
 }
+
+export { buildMergedKnowledgePackPromptContext } from "@/lib/knowledge-packs/knowledgePackMergedPromptContext";

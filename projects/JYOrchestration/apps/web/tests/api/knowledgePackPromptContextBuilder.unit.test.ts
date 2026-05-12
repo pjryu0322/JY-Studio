@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKnowledgePackPromptContext } from "@/lib/knowledge-packs/knowledgePackPromptContextBuilder";
+import { buildKnowledgePackPromptContext, stripKnowledgePackContextMarkdownWrapper } from "@/lib/knowledge-packs/knowledgePackPromptContextBuilder";
 import type { KnowledgePackRetrievalResult } from "@/lib/knowledge-packs/knowledgePackRetrievalService";
 
 function baseRetrieval(over: Partial<KnowledgePackRetrievalResult> = {}): KnowledgePackRetrievalResult {
@@ -76,5 +76,11 @@ describe("knowledgePackPromptContextBuilder", () => {
     });
     expect(text.length).toBeLessThanOrEqual(850);
     expect(text).toContain("truncated");
+  });
+
+  it("stripKnowledgePackContextMarkdownWrapper removes outer heading once", () => {
+    const inner = stripKnowledgePackContextMarkdownWrapper("## Knowledge Pack Context\n\nAgent Role: X\nbody");
+    expect(inner).not.toMatch(/^##\s*Knowledge Pack Context/);
+    expect(inner).toContain("Agent Role:");
   });
 });

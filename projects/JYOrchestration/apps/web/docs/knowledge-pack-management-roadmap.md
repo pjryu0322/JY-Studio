@@ -19,7 +19,7 @@ AI 초안은 **`POST /api/knowledge-packs/draft`** 로 요청한다. 서버는 �
 
 등록 전에는 **`POST /api/knowledge-packs/precheck`** 로 룰 기반 사전점검을 수행한다. 공식 문서·API 명세·라이선스/약관·보안/개인정보 위험·RAG 적합성·사용자 제공 문서 필요성을 점검하고, 판정은 **REGISTERABLE / LIMITED_REGISTERABLE / USER_SOURCE_REQUIRED / NOT_RECOMMENDED** 네 단계다. 사전점검 결과는 AI 초안 생성 요청에 선택 필드로 실려 **warnings·원천자료 안내**에 반영된다. DB 지식팩 저장 시 본문 `precheckSummary`를 넘기면 이력에 `Precheck: …` 한 줄이 추가된다(`PRECHECK` 액션). 별도 사전점검 전용 테이블은 후속.
 
-사전점검은 지식팩 등록 전 품질 게이트로 사용한다. **RAG 1단계**는 원천자료 수집, 파싱, 청크 저장, KEYWORD 검색까지 지원한다. **Embedding/vector store**는 RAG 2단계다. **`POST /api/knowledge-packs/build-prompt-context`** 로 수동 선택 지식팩·검색어 기반 `contextText`를 미리 볼 수 있다. **AI개발자/Cursor 프롬프트 주입**은 1차로 `knowledgePackContextText` 선택 필드로 `buildCursorExecutionPrompt` / 프로토타입 프롬프트 빌더에 `## Knowledge Pack Context` 블록을 삽입하는 방식으로 시작한다. 자동 지식팩 추천/선택은 후속 단계다.
+사전점검은 지식팩 등록 전 품질 게이트로 사용한다. **RAG 1단계**는 원천자료 수집, 파싱, 청크 저장, KEYWORD 검색까지 지원한다. **Embedding/vector store**는 RAG 2단계다. **`POST /api/knowledge-packs/build-prompt-context`** 로 다중 `knowledgePackIds`·검색어 기반 병합 `contextText`를 미리 볼 수 있으며, 정적 seed는 요약·구현 지침 등으로 직렬화해 포함한다. **`POST /api/knowledge-packs/recommend`** 로 요구/작업 텍스트 기반 룰 추천을 받을 수 있다. **AI개발자/Cursor 프롬프트 주입 1단계**: 프로토타입 WorkUnit Cursor 프롬프트 생성 시 추천 상위 지식팩을 병합해 `knowledgePackContextText`에 넣고, 요구사항 미리보기 패널에서도 동일 API로 선택적 컨텍스트를 반영한다. 실패 시 기존 프롬프트로 동작한다. 자동 선택 고도화·임베딩 검색은 후속 단계다.
 
 AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다.
 
@@ -168,6 +168,17 @@ AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라
 2. Phase 3: Prisma 스키마 초안 및 마이그레이션 설계 리뷰
 3. seed → DB **이중 공급**(읽기 경로 추상화)으로 점진 전환
 4. 플랫폼 관리자 전용 네비 게이트 연결
+
+---
+
+## 10.1 지식팩 주입 1단계 (요약)
+
+- 요구사항·작업 설명에서 룰 기반 지식팩 후보 추천(`POST /api/knowledge-packs/recommend`)
+- 정적 seed는 요약·구현 지침·Cursor 기준 등을 직렬화해 프롬프트 컨텍스트에 포함
+- DB 지식팩은 RAG keyword retrieval 기반 컨텍스트 생성
+- 병합 컨텍스트를 프로토타입 Cursor 프롬프트·미리보기 패널에 선택적으로 삽입, 실패 시 기존 프롬프트 유지
+
+**후속:** 자동 지식팩 선택 고도화, embedding·vector retrieval, hybrid retrieval, AI검수자·AI보안관 체크리스트 자동 주입
 
 ---
 

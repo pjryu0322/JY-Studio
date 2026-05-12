@@ -68,3 +68,10 @@ function clampText(s: string, max: number): string {
   if (s.length <= max) return s;
   return `${s.slice(0, max - 20)}\n…(truncated)`;
 }
+
+/** 병합/단일 컨텍스트 문자열의 최상위 `## Knowledge Pack Context` 제목 한 번 제거 — `buildWorkUnitCursorPrompt` 등이 동일 제목을 다시 붙일 때 사용. */
+export function stripKnowledgePackContextMarkdownWrapper(raw: string): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  return t.replace(/^##\s*Knowledge Pack Context\s*\n+/i, "").trim();
+}

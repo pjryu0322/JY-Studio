@@ -32,6 +32,10 @@ import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
+import {
+  buildPrototypeKnowledgePackQueryBlob,
+  fetchPrototypePreviewKnowledgePackInnerMarkdown,
+} from "@/lib/knowledge-packs/knowledgePackPrototypePreviewContext";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
 import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 import {
@@ -191,6 +195,8 @@ export function PrototypePreviewPanel({
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
   const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
+  /** 추천·병합 지식팩 컨텍스트(프로토타입 프롬프트 미리보기용, 실패 시 비움) */
+  const [knowledgePackContextText, setKnowledgePackContextText] = useState<string | undefined>(undefined);
   const prototypeAiTitle = displayedWorkspaceAiTitle("prototype_build");
   const prototypeComposerAtAtItems = useMemo((): readonly ComposerAtAtPickerItem[] => {
     return [
@@ -358,6 +364,54 @@ export function PrototypePreviewPanel({
     [actors],
   );
 
+  const plannerContextPayload = useMemo(
+    () => ({
+      projectDescription: projectDescription.trim(),
+      actorFlowSummary: flowSteps.map((s) => `${s.title}: ${String(s.purpose ?? "").trim()}`).join("\n"),
+      featureDraftTitles: featureDraftTitles ?? [],
+      ideationSummary: ideationAssets
+        .map((a) => `${String(a.title ?? "").trim()}: ${String(a.content ?? "").trim()}`.trim())
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 12_000),
+    }),
+    [projectDescription, flowSteps, featureDraftTitles, ideationAssets],
+  );
+
+  const knowledgePackQueryBlob = useMemo(
+    () =>
+      buildPrototypeKnowledgePackQueryBlob({
+        projectName,
+        projectDescription,
+        ideationAssets,
+        flowSteps,
+        featureDraftTitles,
+      }),
+    [projectName, projectDescription, ideationAssets, flowSteps, featureDraftTitles],
+  );
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid || knowledgePackQueryBlob.trim().length < 12) {
+      setKnowledgePackContextText(undefined);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const inner = await fetchPrototypePreviewKnowledgePackInnerMarkdown(credentialsIncludeFetch, {
+            projectId: pid,
+            queryBlob: knowledgePackQueryBlob,
+          });
+          setKnowledgePackContextText(inner);
+        } catch {
+          setKnowledgePackContextText(undefined);
+        }
+      })();
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [projectId, knowledgePackQueryBlob]);
+
   const promptPackage = useMemo(() => {
     const stepsForPrompt = flowSteps.map((s) => ({
       title: s.title,
@@ -372,22 +426,18 @@ export function PrototypePreviewPanel({
       actors: actors.map((a) => ({ name: a.name, kind: a.kind, description: a.description })),
       flowSteps: stepsForPrompt,
       featureDraftTitles,
+      knowledgePackContextText,
     });
-  }, [effectiveAnalysis, projectName, projectDescription, actors, flowSteps, featureDraftTitles, actorName]);
-
-  const plannerContextPayload = useMemo(
-    () => ({
-      projectDescription: projectDescription.trim(),
-      actorFlowSummary: flowSteps.map((s) => `${s.title}: ${String(s.purpose ?? "").trim()}`).join("\n"),
-      featureDraftTitles: featureDraftTitles ?? [],
-      ideationSummary: ideationAssets
-        .map((a) => `${String(a.title ?? "").trim()}: ${String(a.content ?? "").trim()}`.trim())
-        .filter(Boolean)
-        .join("\n\n")
-        .slice(0, 12_000),
-    }),
-    [projectDescription, flowSteps, featureDraftTitles, ideationAssets],
-  );
+  }, [
+    effectiveAnalysis,
+    projectName,
+    projectDescription,
+    actors,
+    flowSteps,
+    featureDraftTitles,
+    actorName,
+    knowledgePackContextText,
+  ]);
 
   const ownersOk = flowSteps.length > 0 && flowSteps.every((s) => String(s.primaryActorId ?? "").trim());
   const ideaOk = projectDescription.trim().length > 24 || ideationAssets.some((a) => String(a.content ?? a.title ?? "").trim().length > 20);

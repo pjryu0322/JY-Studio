@@ -64,4 +64,15 @@ describe("buildKnowledgePackContextForDeveloperTask", () => {
     });
     expect(r.contextText.length).toBeLessThanOrEqual(6200);
   });
+
+  it("builds static seed context via merge path", async () => {
+    const r = await buildKnowledgePackContextForDeveloperTask({
+      userId: "user_1",
+      knowledgePackId: "auth.kakao-login",
+      query: "redirect uri",
+      taskTitle: "Login",
+    });
+    expect(r.contextText).toMatch(/## Knowledge Pack Context/);
+    expect(r.contextText).toMatch(/Kakao|카카오/i);
+  });
 });

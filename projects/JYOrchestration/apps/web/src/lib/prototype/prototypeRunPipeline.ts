@@ -28,6 +28,8 @@ import {
   type PlanPrototypeWorkUnitsResolved,
 } from "@/lib/prototype/prototypePlannerService";
 import { buildWorkUnitCursorPrompt } from "@/lib/prototype/prototypeWorkUnitPromptBuilder";
+import { recordKnowledgePackContextInjection } from "@/lib/debug/promptTimelineStore";
+import { resolveWorkUnitKnowledgePackInjection } from "@/lib/knowledge-packs/knowledgePackWorkUnitPromptInjection";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
   createRun,
@@ -214,7 +216,7 @@ function computeCurrentWorkUnitOrderFromUnits(workUnits: readonly PrototypeWorkU
   return failed?.order ?? merged.find((x) => x.status !== "MERGED" && x.status !== "SKIPPED")?.order ?? null;
 }
 
-function persistWorkUnitCursorPrompt(
+async function persistWorkUnitCursorPromptAsync(
   projectId: string,
   runId: string,
   run: PrototypeRun,
@@ -222,7 +224,8 @@ function persistWorkUnitCursorPrompt(
   projectName: string,
   projectDescriptionFromDb: string,
   source: NonNullable<PrototypeWorkUnit["cursorPromptSource"]>,
-): string {
+  ownerUserId: string | null,
+): Promise<string> {
   const goal =
     String(run.prototypeProjectDescription ?? "").trim() ||
     projectDescriptionFromDb.trim() ||
@@ -232,6 +235,54 @@ function persistWorkUnitCursorPrompt(
     .filter((u) => u.order < active.order && (u.status === "MERGED" || u.status === "SKIPPED"))
     .sort((a, b) => a.order - b.order);
   const features = parseFeatureDraftTitlesJson(run.prototypeFeatureDraftTitlesJson);
+  const featureSummary = features.join(", ");
+
+  let knowledgePackContextText: string | undefined;
+  const textBlob = [
+    projectName.trim(),
+    goal,
+    String(run.prototypeIdeationSummary ?? "").trim(),
+    String(run.prototypeActorFlowSummary ?? "").trim(),
+    featureSummary,
+    String(active.title ?? "").trim(),
+    String(active.description ?? "").trim(),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 12_000);
+
+  const uid = String(ownerUserId ?? "").trim();
+  if (uid && textBlob.trim()) {
+    const kp = await resolveWorkUnitKnowledgePackInjection({
+      userId: uid,
+      projectId,
+      textBlob,
+      taskTitle: active.title,
+      taskDescription: active.description,
+    });
+    if (kp.outcome === "failure") {
+      logPrototypePipelineEvent("prototype_knowledge_pack_context_failed", {
+        projectId,
+        runId,
+        workUnitOrder: active.order,
+        message: kp.message,
+      });
+    } else if (kp.outcome !== "skipped") {
+      recordKnowledgePackContextInjection({
+        projectId,
+        agentRole: kp.timeline.agentRole,
+        recommendedKnowledgePackIds: kp.timeline.recommendedKnowledgePackIds,
+        usedKnowledgePackIds: kp.timeline.usedKnowledgePackIds,
+        contextChars: kp.timeline.contextChars,
+        mode: kp.timeline.mode,
+        diagnostics: kp.timeline.diagnostics,
+      });
+    }
+    if (kp.outcome === "merged") {
+      knowledgePackContextText = kp.innerMarkdown;
+    }
+  }
+
   const prompt = buildWorkUnitCursorPrompt({
     projectName,
     projectDescription: goal,
@@ -241,7 +292,8 @@ function persistWorkUnitCursorPrompt(
     completedWorkUnits: completed,
     ideationSummary: String(run.prototypeIdeationSummary ?? ""),
     actorFlowSummary: String(run.prototypeActorFlowSummary ?? ""),
-    featureSummary: features.join(", "),
+    featureSummary,
+    knowledgePackContextText,
   });
   const now = new Date().toISOString();
   const nextVer = (active.cursorPromptVersion ?? 0) + 1;
@@ -882,9 +934,13 @@ async function advanceAfterUnitMerged(
  */
 export async function refreshPrototypeRunState(projectId: string, runId: string): Promise<PrototypeRun | null> {
   const gate = await evaluatePrototypeCursorAutomation(projectId);
-  const projectRow = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, description: true } });
+  const projectRow = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { name: true, description: true, ownerUserId: true },
+  });
   const projectName = String(projectRow?.name ?? "Project");
   const projectDescriptionFromDb = String(projectRow?.description ?? "");
+  const projectOwnerUserId = String(projectRow?.ownerUserId ?? "").trim() || null;
 
   let run = getRun(projectId, runId);
   if (!run) return null;
@@ -957,7 +1013,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
     if (!cursorPrompt) {
       const buildSource: NonNullable<PrototypeWorkUnit["cursorPromptSource"]> =
         active.cursorPromptSource === "regenerated" ? "regenerated" : "planner";
-      cursorPrompt = persistWorkUnitCursorPrompt(
+      cursorPrompt = await persistWorkUnitCursorPromptAsync(
         projectId,
         runId,
         run,
@@ -965,6 +1021,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         projectName,
         projectDescriptionFromDb,
         buildSource,
+        projectOwnerUserId,
       );
     }
     run = getRun(projectId, runId) ?? run;

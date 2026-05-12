@@ -23,7 +23,8 @@ export type PrototypeRunLogEvent =
   | "prototype_restarted"
   | "prototype_cleanup_requested"
   | "prototype_failed"
-  | "prototype_deploy_security_fix_unit_appended";
+  | "prototype_deploy_security_fix_unit_appended"
+  | "prototype_knowledge_pack_context_failed";
 
 export function logPrototypePipelineEvent(
   event: PrototypeRunLogEvent,

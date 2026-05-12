@@ -185,6 +185,42 @@ export function recordFeaturePlanningOpenAi(input: {
   });
 }
 
+export function recordKnowledgePackContextInjection(input: {
+  readonly projectId: string;
+  readonly agentRole: string;
+  readonly recommendedKnowledgePackIds: readonly string[];
+  readonly usedKnowledgePackIds: readonly string[];
+  readonly contextChars: number;
+  readonly mode: string;
+  readonly diagnostics: readonly string[];
+}): void {
+  const pid = input.projectId.trim();
+  if (!pid) return;
+  const payload = {
+    purpose: "KNOWLEDGE_PACK_CONTEXT_INJECTION",
+    agentRole: input.agentRole,
+    recommendedKnowledgePackIds: [...input.recommendedKnowledgePackIds],
+    usedKnowledgePackIds: [...input.usedKnowledgePackIds],
+    contextChars: input.contextChars,
+    mode: input.mode,
+    diagnostics: [...input.diagnostics],
+  };
+  const outbound = `[KNOWLEDGE_PACK_CONTEXT_INJECTION]\n${trunc(JSON.stringify(payload), 6000)}`;
+  const inbound =
+    input.contextChars > 0
+      ? `주입 완료 · ${input.contextChars}자 · 사용 ${input.usedKnowledgePackIds.length}건`
+      : "주입 생략(컨텍스트 없음)";
+  push(pid, {
+    id: `kp_inj_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+    at: new Date().toISOString(),
+    channel: "cursor",
+    label: "지식팩 · Cursor 프롬프트 컨텍스트",
+    model: null,
+    outbound,
+    inbound,
+  });
+}
+
 export function recordCursorAgentLaunch(input: {
   readonly projectId: string;
   readonly label: string;
