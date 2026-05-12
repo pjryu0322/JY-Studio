@@ -11,13 +11,17 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 - AI Agent / 카테고리 필터, 목록, **별도 창** 상세 탭(요약·구현 지침·Cursor 반영·금지사항·검수·미리보기), Mock 미리보기, Markdown보내기
 - 주요 코드: `types.ts`, `developerGridPacks.ts`, `developerAuthPacks.ts`, `developerKnowledgePacks.ts`, `knowledgePackSources.ts`, `KnowledgePacksPageClient.tsx`, `KnowledgePackDetailPanel.tsx`, `KnowledgePackApplyPreview.tsx`, `tests/api/knowledgePacksSeed.unit.test.ts`
 
-### 1.2 AI 초안(Mock) 등록 UX
+### 1.2 AI 초안 등록 UX (서버 LLM + Mock fallback)
 
-지식팩 등록은 사용자가 모든 섹션을 직접 작성하는 방식이 아니라, 제품명·제품 URL·공식 문서 URL 등 최소 정보를 입력하면 AI가 지식팩 초안을 생성하고 사용자가 검토·수정·저장하는 방식으로 발전한다.
+지식팩 등록은 제품명·제품 URL·공식 문서 URL 등 최소 정보를 입력하면 AI가 지식팩 초안을 생성하고 사용자가 검토·수정·저장하는 방식으로 발전한다.
 
-AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다. (`/knowledge-packs/manage`의 Mock 생성기 `knowledgePackDraftGenerator.ts`; 실제 LLM·크롤링·RAG는 미연결.)
+AI 초안은 **`POST /api/knowledge-packs/draft`** 로 요청한다. 서버는 사용자 OpenAI 연동 키 또는 `OPENAI_API_KEY`(직접)로 OpenAI Chat Completions를 시도하고, 키가 없거나 호출·JSON 파싱 실패 시 **`generateKnowledgePackDraftMock`** 으로 안전하게 대체한다. API Key는 프론트에 노출하지 않는다.
 
-향후에는 원천자료 후보를 `KnowledgePackSource`로 저장하고, 문서 파싱 → 청크 분할 → 임베딩 → 벡터저장소 저장 → Agent별 검색·프롬프트 주입으로 확장한다.
+AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다.
+
+실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. RAG는 Source 수집 → Parsing → Chunking → Embedding → Vector Store 저장 → Agent별 Retrieval → Prompt Injection 순으로 확장한다. 현재 단계에서는 **`knowledgePackRagPipeline.ts`** 에 Stub/타입만 두고 실제 색인·외부 fetch·임베딩·벡터 저장은 하지 않는다.
+
+향후에는 원천자료 후보를 `KnowledgePackSource`로 저장하고, 위 파이프라인과 연동한다.
 
 ---
 

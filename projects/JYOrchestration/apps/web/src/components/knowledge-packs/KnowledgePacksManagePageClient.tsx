@@ -7,9 +7,15 @@ import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePacksManageAiDraftSection } from "./KnowledgePacksManageAiDraftSection";
 import { applyKnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftApply";
-import { generateKnowledgePackDraftMock } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
+import { generateKnowledgePackDraftMock, type KnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
 import { formatReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
-import { inferLicenseTypeFromHint, parseKnowledgePackAgentsForDraft } from "@/lib/knowledge-packs/knowledgePackManageFormHelpers";
+import {
+  buildKnowledgePackDraftInputFromWizard,
+  interpretKnowledgePackDraftApiResponse,
+  knowledgePackDraftClientMessages,
+  requestKnowledgePackDraftApi,
+} from "@/lib/knowledge-packs/knowledgePackManageDraftClient";
+import { inferLicenseTypeFromHint } from "@/lib/knowledge-packs/knowledgePackManageFormHelpers";
 import type { KnowledgePack, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 
 const SCOPES = ["USER", "PROJECT"] as const;
@@ -61,6 +67,7 @@ export function KnowledgePacksManagePageClient() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draftGenerating, setDraftGenerating] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [dbPacks, setDbPacks] = useState<KnowledgePack[]>([]);
@@ -309,51 +316,69 @@ export function KnowledgePacksManagePageClient() {
     }
   };
 
-  const generateDraft = () => {
-    if (!name.trim()) {
+  const generateDraft = async () => {
+    const input = buildKnowledgePackDraftInputFromWizard({
+      name,
+      category: category as KnowledgePackCategory,
+      agentsText: agents,
+      aiProductUrl,
+      aiPurpose,
+      aiOfficialDocsUrl,
+      aiApiDocsUrl,
+      aiRepositoryUrl,
+      aiLicenseHint,
+      aiMemo,
+    });
+    if (!input) {
       setErr("제품명을 입력해야 AI 초안을 생성할 수 있습니다.");
       return;
     }
     setErr(null);
-    const cat = category as KnowledgePackCategory;
-    const draft = generateKnowledgePackDraftMock({
-      productName: name.trim(),
-      productUrl: aiProductUrl.trim() || undefined,
-      category: cat,
-      agents: parseKnowledgePackAgentsForDraft(agents),
-      purpose: aiPurpose.trim() || undefined,
-      officialDocsUrl: aiOfficialDocsUrl.trim() || undefined,
-      apiDocsUrl: aiApiDocsUrl.trim() || undefined,
-      repositoryUrl: aiRepositoryUrl.trim() || undefined,
-      licenseHint: aiLicenseHint.trim() || undefined,
-      memo: aiMemo.trim() || undefined,
-    });
-    applyKnowledgePackDraftResult(draft, {
-      setSummary,
-      setLicenseNotes,
-      setRecommendedUseCases,
-      setNotRecommendedUseCases,
-      setCapabilities,
-      setConstraints,
-      setImplementationGuidelines,
-      setCursorPromptRules,
-      setForbiddenPatterns,
-      setReviewChecklist,
-      setSecurityChecklist,
-      setAlternatives,
-      setReferences,
-      setPreviewSpec,
-    });
-    setLastSourceCandidates(draft.sourceCandidates);
-    setLastDraftWarnings(draft.warnings);
-    setStatus("DRAFT");
-    const inferred = inferLicenseTypeFromHint(aiLicenseHint);
-    if (inferred) setLicenseType(inferred);
-    const descLines: string[] = [];
-    if (aiPurpose.trim()) descLines.push(`사용 목적: ${aiPurpose.trim()}`);
-    if (aiProductUrl.trim()) descLines.push(`제품 URL: ${aiProductUrl.trim()}`);
-    if (descLines.length) setDescription(descLines.join("\n"));
-    setMsg("AI 초안이 생성되었습니다. 공식 문서 기준으로 확인 후 저장하세요.");
+    setDraftGenerating(true);
+
+    const applyLocal = (draft: KnowledgePackDraftResult) => {
+      applyKnowledgePackDraftResult(draft, {
+        setSummary,
+        setLicenseNotes,
+        setRecommendedUseCases,
+        setNotRecommendedUseCases,
+        setCapabilities,
+        setConstraints,
+        setImplementationGuidelines,
+        setCursorPromptRules,
+        setForbiddenPatterns,
+        setReviewChecklist,
+        setSecurityChecklist,
+        setAlternatives,
+        setReferences,
+        setPreviewSpec,
+      });
+      setLastSourceCandidates(draft.sourceCandidates);
+      setLastDraftWarnings(draft.warnings);
+      setStatus("DRAFT");
+      const inferred = inferLicenseTypeFromHint(aiLicenseHint);
+      if (inferred) setLicenseType(inferred);
+      const descLines: string[] = [];
+      if (aiPurpose.trim()) descLines.push(`사용 목적: ${aiPurpose.trim()}`);
+      if (aiProductUrl.trim()) descLines.push(`제품 URL: ${aiProductUrl.trim()}`);
+      if (descLines.length) setDescription(descLines.join("\n"));
+    };
+
+    try {
+      const api = await requestKnowledgePackDraftApi(input);
+      const out = interpretKnowledgePackDraftApiResponse(input, api);
+      if (out.kind === "error") {
+        setErr(out.message);
+        return;
+      }
+      applyLocal(out.draft);
+      setMsg(out.message);
+    } catch {
+      applyLocal(generateKnowledgePackDraftMock(input));
+      setMsg(knowledgePackDraftClientMessages.networkFallback);
+    } finally {
+      setDraftGenerating(false);
+    }
   };
 
   const isEdit = editId.startsWith("kp_");
@@ -392,7 +417,7 @@ export function KnowledgePacksManagePageClient() {
       </div>
 
       <p style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.55, margin: "0 0 12px" }}>
-        최소 정보(이름·카테고리·URL 등)를 입력한 뒤 「AI로 지식팩 초안 생성」으로 Mock 초안을 채울 수 있습니다. 실제 LLM·RAG는 연결하지 않았습니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있습니다.
+        최소 정보를 입력한 뒤 「AI로 지식팩 초안 생성」은 서버에서 LLM을 시도하고, 키가 없거나 실패하면 Mock으로 채웁니다. RAG 색인은 아직 연결하지 않았습니다. 저장 시 새 버전이 생성됩니다(수정 시). 플랫폼 기본 지식팩은 목록에서만 읽을 수 있습니다.
       </p>
 
       {err ? (
@@ -439,6 +464,7 @@ export function KnowledgePacksManagePageClient() {
       <Section title="AI 초안 · 최소 입력">
         <KnowledgePacksManageAiDraftSection
           inputStyle={fieldStyle()}
+          draftBusy={draftGenerating}
           categories={CATEGORIES}
           name={name}
           onNameChange={setName}
