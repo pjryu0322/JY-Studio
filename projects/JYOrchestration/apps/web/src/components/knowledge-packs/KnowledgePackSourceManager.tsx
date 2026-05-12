@@ -5,6 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { parseReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { inferSourceTypeFromReference } from "@/lib/knowledge-packs/knowledgePackSources";
+import type {
+  KnowledgePackRetrieveContextApiErr,
+  KnowledgePackRetrieveContextApiOk,
+} from "@/lib/knowledge-packs/knowledgePackRetrieveContextApiTypes";
 
 type ListedSource = Readonly<{
   id: string;
@@ -46,7 +50,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
   const [newUrl, setNewUrl] = useState("");
   const [newRaw, setNewRaw] = useState("");
   const [retrieveQuery, setRetrieveQuery] = useState("");
-  const [retrieveOut, setRetrieveOut] = useState<string>("");
+  const [retrieveResult, setRetrieveResult] = useState<KnowledgePackRetrieveContextApiOk | KnowledgePackRetrieveContextApiErr | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -197,12 +201,17 @@ export function KnowledgePackSourceManager(props: Readonly<{
       const r = await fetch("/api/knowledge-packs/retrieve-context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ knowledgePackId, query: q, topK: 6 }),
+        body: JSON.stringify({ knowledgePackId, query: q, limit: 8 }),
       });
-      const j = (await r.json()) as { ok?: boolean; chunks?: unknown };
-      setRetrieveOut(JSON.stringify(j, null, 2));
+      const j = (await r.json()) as KnowledgePackRetrieveContextApiOk | KnowledgePackRetrieveContextApiErr | { ok?: boolean; message?: string };
+      if (!j || j.ok !== true) {
+        const msg = "message" in j && typeof j.message === "string" ? j.message : "검색 실패";
+        setRetrieveResult({ ok: false, message: msg });
+        return;
+      }
+      setRetrieveResult(j as KnowledgePackRetrieveContextApiOk);
     } catch {
-      setRetrieveOut("error");
+      setRetrieveResult({ ok: false, message: "네트워크 오류" });
     } finally {
       setBusy(null);
     }
@@ -211,7 +220,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
   return (
     <div style={{ marginTop: 12 }}>
       <p style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.5, margin: "0 0 10px" }}>
-        RAG 1단계: URL 수집(SSRF 차단)·평문 파싱·겹침 청크 저장·키워드 검색 API가 연결되었습니다. 벡터 임베딩·의미 검색은 다음 단계입니다.
+        RAG 1단계: URL 수집(DNS·사설망 차단 포함)·평문 파싱·겹침 청크 저장·키워드 검색 API가 연결되었습니다. 임베딩/벡터 검색은 다음 단계입니다.
       </p>
       {loading ? <div style={{ fontSize: 12, color: t.textMuted }}>원천자료 불러오는 중…</div> : null}
 
@@ -348,10 +357,13 @@ export function KnowledgePackSourceManager(props: Readonly<{
       </div>
 
       <div style={{ marginTop: 14, padding: 10, border: `1px solid ${t.border}`, borderRadius: t.radiusMd }}>
-        <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>키워드 검색 시험 (retrieve-context)</div>
+        <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 4 }}>RAG 검색 테스트</div>
+        <p style={{ fontSize: 11, color: t.textMuted, margin: "0 0 8px", lineHeight: 1.45 }}>
+          현재는 KEYWORD 기반 검색입니다. 임베딩/벡터 검색은 다음 단계입니다.
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
           <label style={{ flex: "1 1 200px", fontSize: 11, fontWeight: 700 }}>
-            질의
+            검색어
             <input value={retrieveQuery} onChange={(e) => setRetrieveQuery(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
           </label>
           <button
@@ -370,8 +382,55 @@ export function KnowledgePackSourceManager(props: Readonly<{
             검색
           </button>
         </div>
-        {retrieveOut ? (
-          <pre style={{ marginTop: 8, fontSize: 11, maxHeight: 200, overflow: "auto", background: "#0f172a", color: "#e2e8f0", padding: 8, borderRadius: 6 }}>{retrieveOut}</pre>
+        {retrieveResult && !retrieveResult.ok ? (
+          <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>{retrieveResult.message}</div>
+        ) : null}
+        {retrieveResult?.ok ? (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 6 }}>
+              <span style={{ fontWeight: 800 }}>mode</span> {retrieveResult.mode ?? "—"} ·{" "}
+              <span style={{ fontWeight: 800 }}>diagnostics</span> {(retrieveResult.diagnostics ?? []).join(" · ")}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 11, marginBottom: 4 }}>결과 청크</div>
+            <div style={{ overflowX: "auto", maxHeight: 200, overflowY: "auto", border: `1px solid ${t.border}`, borderRadius: 6 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr style={{ background: "#f1f5f9" }}>
+                    <th style={{ padding: 6, textAlign: "left" }}>score</th>
+                    <th style={{ padding: 6, textAlign: "left" }}>source</th>
+                    <th style={{ padding: 6, textAlign: "left" }}>url</th>
+                    <th style={{ padding: 6, textAlign: "left" }}>excerpt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(retrieveResult.chunks ?? []).map((c) => (
+                    <tr key={c.chunkId} style={{ borderTop: `1px solid ${t.border}` }}>
+                      <td style={{ padding: 6, whiteSpace: "nowrap" }}>{c.score}</td>
+                      <td style={{ padding: 6 }}>{c.sourceTitle}</td>
+                      <td style={{ padding: 6, wordBreak: "break-all", maxWidth: 140 }}>{c.sourceUrl ?? "—"}</td>
+                      <td style={{ padding: 6, wordBreak: "break-word" }}>{c.excerpt}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 11, marginTop: 10, marginBottom: 4 }}>promptContext 미리보기</div>
+            <pre
+              style={{
+                margin: 0,
+                fontSize: 11,
+                maxHeight: 160,
+                overflow: "auto",
+                background: "#0f172a",
+                color: "#e2e8f0",
+                padding: 8,
+                borderRadius: 6,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {(retrieveResult.promptContext ?? []).join("\n---\n")}
+            </pre>
+          </div>
         ) : null}
       </div>
     </div>

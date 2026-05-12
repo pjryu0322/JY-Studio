@@ -1,28 +1,57 @@
+import dns from "node:dns";
+
 const MAX_REDIRECTS = 5;
 export const KP_FETCH_TIMEOUT_MS = 15_000;
 export const KP_FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
+export const KNOWLEDGE_PACK_COLLECTOR_USER_AGENT = "JYOrchestration-KnowledgePackCollector/0.1";
+
 const BLOCKED_PROTOCOLS = new Set(["file:", "ftp:", "data:", "javascript:"]);
 
-function isBlockedHostname(host: string): boolean {
+/** 향후 allowlist/denylist 확장용 (현재 로직에서는 참조만). */
+export type KnowledgePackFetchPolicy = Readonly<{
+  allowHosts?: readonly string[];
+  denyHosts?: readonly string[];
+}>;
+
+function isLiteralPrivateOrLocalIpv4(host: string): boolean {
+  const h = host.toLowerCase();
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!ipv4) return false;
+  const a = Number(ipv4[1]);
+  const b = Number(ipv4[2]);
+  const c = Number(ipv4[3]);
+  const d = Number(ipv4[4]);
+  if ([a, b, c, d].some((n) => n > 255)) return true;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  return false;
+}
+
+/** URL 문자열의 hostname이 금지된 리터럴(localhost, 사설 IPv4 등)인지 검사한다. */
+export function isBlockedHostname(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   if (h === "localhost" || h.endsWith(".localhost")) return true;
   if (h === "127.0.0.1" || h === "0.0.0.0" || h === "::1") return true;
+  if (isLiteralPrivateOrLocalIpv4(h)) return true;
+  return false;
+}
 
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (ipv4) {
-    const a = Number(ipv4[1]);
-    const b = Number(ipv4[2]);
-    const c = Number(ipv4[3]);
-    const d = Number(ipv4[4]);
-    if ([a, b, c, d].some((n) => n > 255)) return true;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 127) return true;
-    if (a === 0) return true;
+/** DNS로 확인된 IPv4/IPv6 주소가 SSRF 차단 대상인지 검사한다. */
+export function isBlockedResolvedIpAddress(address: string, family: number): boolean {
+  const a = address.trim();
+  if (family === 4 || (family === 6 && /^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(a))) {
+    const v4 = family === 6 ? (a.replace(/^::ffff:/i, "") as string) : a;
+    return isLiteralPrivateOrLocalIpv4(v4) || isBlockedHostname(v4);
   }
+  const low = a.toLowerCase();
+  if (low === "::1") return true;
+  if (low.startsWith("fe80:")) return true;
+  if (low.startsWith("fc") || low.startsWith("fd")) return true;
   return false;
 }
 
@@ -48,6 +77,32 @@ export function validateUrlForKnowledgePackFetch(raw: string): { ok: true; href:
   return { ok: true, href: u.href };
 }
 
+/**
+ * DNS 조회 후 resolved IP가 사설/로컬이면 차단한다.
+ * 공식 문서·약관을 준수해 등록한 URL만 수집한다. robots.txt 자동 해석은 하지 않는다.
+ */
+export async function validateUrlForKnowledgePackFetchWithDns(
+  raw: string,
+  _policy?: KnowledgePackFetchPolicy
+): Promise<{ ok: true; href: string } | { ok: false; message: string }> {
+  const sync = validateUrlForKnowledgePackFetch(raw);
+  if (!sync.ok) return sync;
+
+  const u = new URL(sync.href);
+  const host = u.hostname;
+
+  try {
+    const lookedUp = await dns.promises.lookup(host, { verbatim: true });
+    if (isBlockedResolvedIpAddress(lookedUp.address, lookedUp.family)) {
+      return { ok: false, message: "DNS 확인 결과 로컬·사설망 주소로 판단되어 수집할 수 없습니다." };
+    }
+  } catch {
+    return { ok: false, message: "호스트 DNS 조회에 실패했습니다." };
+  }
+
+  return { ok: true, href: sync.href };
+}
+
 function allowedContentType(ct: string): boolean {
   const c = ct.toLowerCase().split(";")[0]?.trim() ?? "";
   if (!c) return true;
@@ -65,14 +120,17 @@ export type KnowledgePackFetchResult =
   | { ok: true; body: string; contentType: string; finalUrl: string }
   | { ok: false; message: string };
 
-/** 등록된 단일 URL만 가져온다. 리다이렉트는 최대 MAX_REDIRECTS. */
-export async function fetchKnowledgePackUrlSafe(startHref: string): Promise<KnowledgePackFetchResult> {
-  const first = validateUrlForKnowledgePackFetch(startHref);
+/** 등록된 단일 URL만 가져온다. 리다이렉트마다 scheme·hostname·DNS 재검증. */
+export async function fetchKnowledgePackUrlSafe(
+  startHref: string,
+  policy?: KnowledgePackFetchPolicy
+): Promise<KnowledgePackFetchResult> {
+  const first = await validateUrlForKnowledgePackFetchWithDns(startHref, policy);
   if (!first.ok) return first;
 
   let current = first.href;
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
-    const v = validateUrlForKnowledgePackFetch(current);
+    const v = await validateUrlForKnowledgePackFetchWithDns(current, policy);
     if (!v.ok) return { ok: false, message: v.message };
 
     const ctrl = new AbortController();
@@ -82,7 +140,10 @@ export async function fetchKnowledgePackUrlSafe(startHref: string): Promise<Know
         method: "GET",
         redirect: "manual",
         signal: ctrl.signal,
-        headers: { Accept: "text/html,application/xhtml+xml,text/plain,text/markdown,application/json,*/*;q=0.8" },
+        headers: {
+          Accept: "text/html,application/xhtml+xml,text/plain,text/markdown,application/json,*/*;q=0.8",
+          "User-Agent": KNOWLEDGE_PACK_COLLECTOR_USER_AGENT,
+        },
       });
 
       if (res.status >= 300 && res.status < 400) {

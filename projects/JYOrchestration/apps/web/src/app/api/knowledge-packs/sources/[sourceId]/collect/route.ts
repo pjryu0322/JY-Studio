@@ -4,6 +4,8 @@ import { chunkAndSaveKnowledgePackSource } from "@/lib/knowledge-packs/knowledge
 import { collectKnowledgePackSource } from "@/lib/knowledge-packs/knowledgePackSourceCollector";
 import { isVirtualKnowledgePackSourceId, parseKnowledgePackSourceRouteId } from "@/lib/knowledge-packs/knowledgePackSourceRouteUtils";
 
+export const runtime = "nodejs";
+
 type RouteCtx = { params: Promise<{ sourceId: string }> };
 
 export async function POST(request: NextRequest, ctx: RouteCtx) {

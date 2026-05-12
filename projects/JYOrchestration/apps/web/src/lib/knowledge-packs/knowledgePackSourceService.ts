@@ -2,7 +2,7 @@ import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAd
 import { getKnowledgePackById } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import { KP_SOURCE_STATUS } from "@/lib/knowledge-packs/knowledgePackRagConstants";
 import { virtualKnowledgePackSourceId } from "@/lib/knowledge-packs/knowledgePackSourceRouteUtils";
-import { validateUrlForKnowledgePackFetch } from "@/lib/knowledge-packs/knowledgePackSourceUrlGuard";
+import { validateUrlForKnowledgePackFetchWithDns } from "@/lib/knowledge-packs/knowledgePackSourceUrlGuard";
 import { prisma } from "@/lib/prisma";
 
 const ALLOWED_SOURCE_TYPES = new Set([
@@ -67,14 +67,14 @@ export async function createKnowledgePackSource(
   if (st === "URL" || st === "API_REFERENCE") {
     const u = (input.url ?? "").trim();
     if (!u) return { ok: false, message: "URL이 필요합니다." };
-    const v = validateUrlForKnowledgePackFetch(u);
+    const v = await validateUrlForKnowledgePackFetchWithDns(u);
     if (!v.ok) return { ok: false, message: v.message };
   } else if (st === "OPENAPI") {
     const u = (input.url ?? "").trim();
     const raw = (input.rawText ?? "").trim();
     if (!u && !raw) return { ok: false, message: "OpenAPI는 URL 또는 본문(rawText) 중 하나가 필요합니다." };
     if (u) {
-      const v = validateUrlForKnowledgePackFetch(u);
+      const v = await validateUrlForKnowledgePackFetchWithDns(u);
       if (!v.ok) return { ok: false, message: v.message };
     }
   } else {

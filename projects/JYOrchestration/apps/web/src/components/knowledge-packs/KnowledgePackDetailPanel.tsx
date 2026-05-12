@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePackApplyPreview } from "@/components/knowledge-packs/KnowledgePackApplyPreview";
@@ -10,6 +11,55 @@ import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgeP
 import { downloadKnowledgePackMarkdownFile } from "@/lib/knowledge-packs/knowledgePackMarkdown";
 import { resolveKnowledgePackSourcesForDisplay } from "@/lib/knowledge-packs/knowledgePackSources";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
+
+function StaticSeedCloneBar({ packId }: { readonly packId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const onClone = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/knowledge-packs/${encodeURIComponent(packId)}/clone`, { method: "POST" });
+      const j = (await r.json()) as { ok?: boolean; packId?: string; message?: string };
+      if (!j.ok || !j.packId) {
+        setErr(j.message ?? "복제에 실패했습니다.");
+        return;
+      }
+      router.push(`/knowledge-packs/manage?id=${encodeURIComponent(j.packId)}`);
+    } catch {
+      setErr("네트워크 오류");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      {err ? (
+        <div style={{ marginBottom: 8, color: "#b91c1c", fontWeight: 700 }}>{err}</div>
+      ) : null}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void onClone()}
+        style={{
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "none",
+          background: "#ca8a04",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: 12,
+          cursor: busy ? "wait" : "pointer",
+        }}
+      >
+        내 지식팩으로 복제
+      </button>
+    </div>
+  );
+}
 
 function MarkdownDownloadIcon({ size = 20 }: { readonly size?: number }) {
   return (
@@ -364,7 +414,11 @@ export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPan
             lineHeight: 1.5,
           }}
         >
-          플랫폼 기본 지식팩은 읽기 전용입니다. 직접 수정할 수 없습니다.
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>플랫폼 기본 지식팩은 직접 수정할 수 없습니다.</div>
+          <div style={{ marginBottom: 10 }}>
+            원천자료를 추가하거나 RAG 색인을 관리하려면 내 지식팩으로 복제하세요.
+          </div>
+          <StaticSeedCloneBar packId={pack.id} />
         </div>
       ) : null}
 

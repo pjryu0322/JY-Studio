@@ -19,7 +19,11 @@ AI 초안은 **`POST /api/knowledge-packs/draft`** 로 요청한다. 서버는 �
 
 AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다.
 
-실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. **1단계(현재 구현)**: Prisma `KpKnowledgePackSource` / `Chunk` / `IndexJob`, SSRF-safe URL fetch, 평문 파싱, 겹침 청크 저장, `POST /api/knowledge-packs/retrieve-context` 키워드 검색, 관리 UI의 원천자료 섹션. **2단계(다음)**: 임베딩·벡터 저장·의미 검색, Agent 런타임 주입. Stub 파이프라인(`knowledgePackRagPipeline.ts`)은 2단계용 타입·플레이스홀더로 유지한다.
+실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. **1단계(현재 구현)**: Prisma `KpKnowledgePackSource` / `Chunk` / `IndexJob`, DNS·사설망까지 고려한 URL fetch 가드, 평문 파싱, 겹침 청크 저장, `POST /api/knowledge-packs/retrieve-context` 표준 응답(`mode=KEYWORD`, `promptContext`, `diagnostics`, `chunkId`, `sourceUrl` 등), 정적 시드 **`POST /api/knowledge-packs/[id]/clone`** 복제, `knowledgePackPromptContextBuilder` / `knowledgePackPromptInjectionAdapter` 로 Agent 프롬프트 주입 준비, 관리 UI의 원천자료·RAG 검색 테스트 섹션. **2단계(다음)**: 임베딩·벡터 저장·의미·하이브리드 검색, Agent별 retrieval 정책, Cursor 실행 파이프라인 자동 주입, AI검수자/AI보안관 체크리스트 자동 보강. Stub 파이프라인(`knowledgePackRagPipeline.ts`)은 2단계용 타입·플레이스홀더로 유지한다.
+
+**RAG 1단계 보완(요약):** retrieve-context 응답 표준화, promptContext·diagnostics, keyword 결과를 프롬프트 블록으로 변환, URL 수집 보안 가드 강화, static seed 복제 후 사용자 지식팩에서 RAG 관리.
+
+**RAG 2단계(요약):** embedding provider, vector store, vector retrieval, hybrid retrieval, Agent별 retrieval policy, Cursor 프롬프트 자동 주입.
 
 향후에는 원천자료 후보를 DB `KpKnowledgePackSource`로 저장하고, 위 파이프라인과 연동한다(1단계에서 시작됨).
 
