@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { filterMergedKnowledgePacks, mergeStaticAndDbKnowledgePacks, parseLines } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { createKnowledgePack, mergeKnowledgePackListForUser } from "@/lib/knowledge-packs/knowledgePackDbService";
-import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerGridPacks";
+import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import type { KnowledgePackAgent, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 import { prisma } from "@/lib/prisma";
 

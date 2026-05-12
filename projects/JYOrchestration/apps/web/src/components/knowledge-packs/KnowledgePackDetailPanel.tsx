@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { KnowledgePackApplyPreview } from "@/components/knowledge-packs/KnowledgePackApplyPreview";
-import { KNOWLEDGE_PACK_AGENT_LABEL, KNOWLEDGE_PACK_CATEGORY_LABEL } from "@/lib/knowledge-packs/developerGridPacks";
+import { KNOWLEDGE_PACK_AGENT_LABEL, KNOWLEDGE_PACK_CATEGORY_LABEL } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgePackFormat";
 import { downloadKnowledgePackMarkdownFile } from "@/lib/knowledge-packs/knowledgePackMarkdown";
+import { resolveKnowledgePackSourcesForDisplay } from "@/lib/knowledge-packs/knowledgePackSources";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
 
 function MarkdownDownloadIcon({ size = 20 }: { readonly size?: number }) {
@@ -66,6 +67,43 @@ function RefLinks({ refs }: { readonly refs: readonly { label: string; url: stri
         </a>
       ))}
     </div>
+  );
+}
+
+function KnowledgeRagReadinessBox({ pack }: { readonly pack: KnowledgePack }) {
+  const sources = resolveKnowledgePackSourcesForDisplay(pack);
+  const hasIndexed = sources.some((s) => Boolean(s.indexedAt));
+  return (
+    <>
+      <SectionTitle>원천자료 / RAG 준비</SectionTitle>
+      <div
+        style={{
+          marginBottom: 18,
+          padding: "10px 12px",
+          borderRadius: t.radiusMd,
+          border: `1px solid ${t.border}`,
+          background: "#f8fafc",
+          fontSize: 12,
+          color: t.textSecondary,
+          lineHeight: 1.55,
+          maxWidth: "100%",
+          boxSizing: "border-box",
+        }}
+      >
+        <div>
+          <span style={{ fontWeight: 800 }}>원천자료:</span> {sources.length}개
+        </div>
+        <div>
+          <span style={{ fontWeight: 800 }}>RAG 색인:</span> {hasIndexed ? "일부 색인됨" : "미색인"}
+        </div>
+        <div style={{ marginTop: 4 }}>
+          <span style={{ fontWeight: 800 }}>상태:</span> 원천자료 링크 기반 준비
+        </div>
+        <p style={{ margin: "8px 0 0", color: t.textMuted, fontSize: 11 }}>
+          현재는 원천자료 링크 기반 준비 단계입니다. 문서 파싱, 청크 분할, 임베딩, 벡터저장소 저장은 다음 단계에서 제공됩니다.
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -148,6 +186,8 @@ function SummaryTab({ pack, licenseLabel }: { readonly pack: KnowledgePack; read
 
       <SectionTitle>참고 링크</SectionTitle>
       <RefLinks refs={pack.references} />
+
+      <KnowledgeRagReadinessBox pack={pack} />
 
       <OperationalMvpFootnote pack={pack} />
     </>
@@ -287,6 +327,8 @@ export function KnowledgePackDetailPanel({ pack, embed }: KnowledgePackDetailPan
           <Link
             href={`/knowledge-packs/manage?id=${encodeURIComponent(pack.id)}`}
             prefetch={false}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
               flex: "0 0 auto",
               display: "inline-flex",

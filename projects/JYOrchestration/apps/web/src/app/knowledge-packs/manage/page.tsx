@@ -4,8 +4,18 @@ import { KnowledgePacksManagePageClient } from "@/components/knowledge-packs/Kno
 
 export default function KnowledgePacksManagePage() {
   return (
-    <Suspense fallback={<LoadingState />}>
-      <KnowledgePacksManagePageClient />
-    </Suspense>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        maxHeight: "100dvh",
+      }}
+    >
+      <Suspense fallback={<LoadingState />}>
+        <KnowledgePacksManagePageClient />
+      </Suspense>
+    </div>
   );
 }

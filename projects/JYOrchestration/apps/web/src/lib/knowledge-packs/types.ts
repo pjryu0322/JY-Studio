@@ -29,6 +29,33 @@ export type KnowledgePackLicenseType =
 
 export type KnowledgePackStatus = "ACTIVE" | "DRAFT" | "ARCHIVED" | "REVIEW_REQUESTED" | "APPROVED";
 
+/** 향후 RAG 원천자료 단위 (DB·색인은 다음 단계). */
+export type KnowledgePackSourceType =
+  | "URL"
+  | "FILE"
+  | "TEXT"
+  | "MARKDOWN"
+  | "OPENAPI"
+  | "CODE_SAMPLE"
+  | "LICENSE"
+  | "MANUAL"
+  | "API_REFERENCE";
+
+export type KnowledgePackSource = Readonly<{
+  id: string;
+  knowledgePackId: string;
+  sourceType: KnowledgePackSourceType;
+  title: string;
+  url?: string;
+  fileId?: string;
+  rawText?: string;
+  description?: string;
+  version?: string;
+  isOfficial: boolean;
+  ragEnabled: boolean;
+  indexedAt?: string | null;
+}>;
+
 export type KnowledgePack = {
   readonly id: string;
   readonly name: string;
@@ -54,6 +81,8 @@ export type KnowledgePack = {
   readonly reviewChecklist: readonly string[];
   readonly alternatives: readonly string[];
   readonly references: readonly { readonly label: string; readonly url: string }[];
+  /** 향후 DB·RAG 연동 시 명시적 원천자료. 없으면 `references`에서 유도한다. */
+  readonly sources?: readonly KnowledgePackSource[];
   /** API·목록 병합용 */
   readonly source?: "STATIC" | "DB";
   readonly editable?: boolean;

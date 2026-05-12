@@ -6,7 +6,7 @@ import {
   knowledgePackFieldsToSections,
   mergeStaticAndDbKnowledgePacks,
 } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
-import { DEVELOPER_SEED_KNOWLEDGE_PACKS, getKnowledgePackById } from "@/lib/knowledge-packs/developerGridPacks";
+import { DEVELOPER_SEED_KNOWLEDGE_PACKS, getKnowledgePackById } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
 import { prisma } from "@/lib/prisma";
 

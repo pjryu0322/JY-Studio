@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { KnowledgePack } from "@/lib/knowledge-packs/types";
+import { DEVELOPER_GRID_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerGridPacks";
 import {
-  DEVELOPER_GRID_KNOWLEDGE_PACKS,
   DEVELOPER_SEED_KNOWLEDGE_PACKS,
   filterKnowledgePacks,
   getKnowledgePackById,
   KNOWLEDGE_PACK_AGENT_LABEL,
   KNOWLEDGE_PACK_CATEGORY_LABEL,
-} from "@/lib/knowledge-packs/developerGridPacks";
+} from "@/lib/knowledge-packs/developerKnowledgePacks";
+import { DEVELOPER_AUTH_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerAuthPacks";
 
 const LEGACY_GRID_THREE_IDS = ["grid.ag-grid-community", "grid.tanstack-table", "grid.tabulator"] as const;
 const ALL_EXPECTED_IDS = [
@@ -95,6 +96,15 @@ describe("knowledge pack seed / resolver (정적 seed 5종 + Grid 배열)", () =
 
   it("6. auth.kakao-login은 category AUTH이다", () => {
     expect(getKnowledgePackById("auth.kakao-login")?.category).toBe("AUTH");
+  });
+
+  it("6b. auth.kakao-login license type은 EXTERNAL_SERVICE이다", () => {
+    expect(getKnowledgePackById("auth.kakao-login")?.license.type).toBe("EXTERNAL_SERVICE");
+  });
+
+  it("6c. DEVELOPER_AUTH_KNOWLEDGE_PACKS는 Kakao 1종만 포함한다", () => {
+    expect(DEVELOPER_AUTH_KNOWLEDGE_PACKS.length).toBe(1);
+    expect(DEVELOPER_AUTH_KNOWLEDGE_PACKS[0]?.id).toBe("auth.kakao-login");
   });
 
   it("7. 두 신규 지식팩 모두 AI_DEVELOPER agent를 포함한다", () => {

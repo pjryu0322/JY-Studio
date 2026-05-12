@@ -12,7 +12,7 @@ import {
   getKnowledgePackById,
   KNOWLEDGE_PACK_AGENT_LABEL,
   KNOWLEDGE_PACK_CATEGORY_LABEL,
-} from "@/lib/knowledge-packs/developerGridPacks";
+} from "@/lib/knowledge-packs/developerKnowledgePacks";
 import { formatKnowledgePackLicenseType } from "@/lib/knowledge-packs/knowledgePackFormat";
 import {
   buildKnowledgePackDetailAbsoluteUrl,

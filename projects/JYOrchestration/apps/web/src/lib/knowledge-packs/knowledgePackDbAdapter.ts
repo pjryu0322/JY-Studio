@@ -1,4 +1,4 @@
-import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerGridPacks";
+import { DEVELOPER_SEED_KNOWLEDGE_PACKS } from "@/lib/knowledge-packs/developerKnowledgePacks";
 import type {
   KnowledgePack,
   KnowledgePackAgent,
@@ -64,7 +64,7 @@ const LICENSE_DB_TO_UI: Record<string, KnowledgePackLicenseType> = {
   COMMERCIAL: "COMMERCIAL",
   PARTNER_LICENSE: "COMMERCIAL",
   USER_PROVIDED_LICENSE: "UNKNOWN",
-  EXTERNAL_SERVICE: "UNKNOWN",
+  EXTERNAL_SERVICE: "EXTERNAL_SERVICE",
   UNKNOWN: "UNKNOWN",
 };
 
