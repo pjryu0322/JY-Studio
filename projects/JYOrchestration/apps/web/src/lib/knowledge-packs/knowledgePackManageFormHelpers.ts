@@ -10,6 +10,17 @@ const VALID_AGENT_IDS = new Set<string>([
   "AI_SECURITY",
 ]);
 
+/** API 본문 `agents: string[]` 정규화 — 알려진 id만 유지, 없으면 AI_DEVELOPER. */
+export function normalizeKnowledgePackAgentsFromApi(raw: unknown): KnowledgePackAgent[] {
+  if (!Array.isArray(raw) || raw.length === 0) return ["AI_DEVELOPER"];
+  const out: KnowledgePackAgent[] = [];
+  for (const x of raw) {
+    const s = String(x).trim();
+    if (VALID_AGENT_IDS.has(s)) out.push(s as KnowledgePackAgent);
+  }
+  return out.length ? out : ["AI_DEVELOPER"];
+}
+
 /** 초안 생성·검증용: 알려진 Agent id만 유지하고, 없으면 AI_DEVELOPER. */
 export function parseKnowledgePackAgentsForDraft(agentsText: string): KnowledgePackAgent[] {
   const out: KnowledgePackAgent[] = [];

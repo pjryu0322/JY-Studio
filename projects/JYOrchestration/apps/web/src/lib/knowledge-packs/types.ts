@@ -18,6 +18,12 @@ export type KnowledgePackCategory =
   | "DATA"
   | "INTEGRATION";
 
+const KNOWLEDGE_PACK_CATEGORY_SET = new Set<string>(["GRID", "AUTH", "SECURITY", "UI", "API", "DATA", "INTEGRATION"]);
+
+export function isKnowledgePackCategory(value: string): value is KnowledgePackCategory {
+  return KNOWLEDGE_PACK_CATEGORY_SET.has(value);
+}
+
 export type KnowledgePackLicenseType =
   | "MIT"
   | "COMMERCIAL"

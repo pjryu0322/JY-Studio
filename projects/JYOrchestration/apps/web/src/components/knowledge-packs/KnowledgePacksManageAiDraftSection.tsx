@@ -52,8 +52,20 @@ const btnDraft: CSSProperties = {
   marginBottom: 10,
 };
 
+const noticeLlmVsRag: CSSProperties = {
+  marginBottom: 10,
+  padding: 10,
+  borderRadius: 8,
+  background: "#f8fafc",
+  border: `1px solid #e2e8f0`,
+  fontSize: 12,
+  color: "#334155",
+  lineHeight: 1.55,
+};
+
 export type KnowledgePacksManageAiDraftSectionProps = Readonly<{
   inputStyle: CSSProperties;
+  draftBusy?: boolean;
   categories: readonly string[];
   name: string;
   onNameChange: (v: string) => void;
@@ -75,7 +87,7 @@ export type KnowledgePacksManageAiDraftSectionProps = Readonly<{
   onAiLicenseHintChange: (v: string) => void;
   aiMemo: string;
   onAiMemoChange: (v: string) => void;
-  onGenerateDraft: () => void;
+  onGenerateDraft: () => void | Promise<void>;
   lastDraftWarnings: readonly string[];
   lastSourceCandidates: string;
 }>;
@@ -154,20 +166,38 @@ export function KnowledgePacksManageAiDraftSection(p: KnowledgePacksManageAiDraf
         </div>
       </div>
 
+      <div style={noticeLlmVsRag}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>AI 초안 vs RAG 색인</div>
+        <div>AI 초안 생성은 현재 입력값 기반 지식팩 초안 생성 기능입니다.</div>
+        <div style={{ marginTop: 6 }}>
+          RAG 색인은 원천자료를 청크/임베딩/벡터 저장소에 저장해 Agent가 검색할 수 있게 만드는 후속 기능입니다.
+        </div>
+      </div>
+
       <div style={noticeRag}>
         <div style={{ fontWeight: 900, marginBottom: 6 }}>RAG 준비 상태</div>
         <ul style={{ margin: 0, paddingLeft: 18 }}>
-          <li>원천자료 링크: 준비 가능</li>
+          <li>원천자료 링크: 입력 가능</li>
+          <li>원천자료 수집: 다음 단계</li>
           <li>문서 파싱: 다음 단계</li>
           <li>청크 분할: 다음 단계</li>
           <li>임베딩 생성: 다음 단계</li>
           <li>벡터저장소 저장: 다음 단계</li>
-          <li>Agent별 검색/주입: 다음 단계</li>
+          <li>Agent별 검색/프롬프트 주입: 다음 단계</li>
         </ul>
       </div>
 
-      <button type="button" onClick={p.onGenerateDraft} style={btnDraft}>
-        AI로 지식팩 초안 생성
+      <button
+        type="button"
+        disabled={p.draftBusy}
+        onClick={() => void p.onGenerateDraft()}
+        style={{
+          ...btnDraft,
+          opacity: p.draftBusy ? 0.75 : 1,
+          cursor: p.draftBusy ? "wait" : "pointer",
+        }}
+      >
+        {p.draftBusy ? "AI 초안 생성 중..." : "AI로 지식팩 초안 생성"}
       </button>
 
       {p.lastDraftWarnings.length > 0 ? (
