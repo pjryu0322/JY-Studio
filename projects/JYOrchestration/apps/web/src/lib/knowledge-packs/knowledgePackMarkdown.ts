@@ -69,7 +69,15 @@ ${bulletsMd(pack.cursorPromptRules)}## 금지사항
 
 ${bulletsMd(pack.forbiddenPatterns)}## 검수 체크리스트
 
-${bulletsMd(pack.reviewChecklist)}---
+${bulletsMd(pack.reviewChecklist)}${
+    pack.securityChecklist?.length
+      ? `## 보안 체크리스트\n\n${bulletsMd(pack.securityChecklist)}`
+      : ""
+  }${
+    pack.previewSpec?.trim()
+      ? `## 미리보기 정의\n\n${String(pack.previewSpec).replace(/\r\n/g, "\n")}\n\n`
+      : ""
+  }---
 _보낸 시각(UTC): ${new Date().toISOString()}_
 `;
 }

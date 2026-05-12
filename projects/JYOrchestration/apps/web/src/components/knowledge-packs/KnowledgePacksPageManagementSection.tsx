@@ -1,18 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 
-const MANAGEMENT_STUBS = [
-  { label: "지식팩 등록", message: "지식팩 등록 기능은 다음 단계에서 제공됩니다." },
-  { label: "Agent 매핑 설정", message: "AI Agent와 카테고리 매핑 설정은 다음 단계에서 제공됩니다." },
-  { label: "변경 이력", message: "지식팩 변경 이력 관리는 다음 단계에서 제공됩니다." },
-] as const;
-
-const OPERATIONS_INTRO =
-  "현재는 플랫폼 기본 AI개발자 Grid 지식팩을 정적 seed로 제공합니다. 다음 단계에서는 사용자/조직/프로젝트 단위 지식팩 등록, AI 구조화, Agent별 최적화, 검수/승인, 버전/이력관리를 지원할 예정입니다.";
-
-const btnStyle: CSSProperties = {
+const linkBtnStyle: CSSProperties = {
   flex: "1 1 140px",
   minWidth: 0,
   maxWidth: "100%",
@@ -27,7 +19,12 @@ const btnStyle: CSSProperties = {
   fontFamily: "inherit",
   textAlign: "center",
   boxSizing: "border-box",
+  textDecoration: "none",
+  display: "inline-block",
 };
+
+const OPERATIONS_INTRO =
+  "플랫폼 기본 Grid 지식팩은 정적 seed로 제공됩니다. 사용자/프로젝트 지식팩은 DB에 등록·수정할 수 있으며, Agent–카테고리 매핑과 변경 이력은 각 메뉴에서 관리합니다. AI 구조화·검수/승인 워크플로는 다음 단계입니다.";
 
 export function KnowledgePacksPageManagementSection() {
   return (
@@ -43,11 +40,15 @@ export function KnowledgePacksPageManagementSection() {
           maxWidth: "100%",
         }}
       >
-        {MANAGEMENT_STUBS.map((row) => (
-          <button key={row.label} type="button" style={btnStyle} onClick={() => window.alert(row.message)}>
-            {row.label}
-          </button>
-        ))}
+        <Link href="/knowledge-packs/manage" prefetch={false} style={linkBtnStyle}>
+          지식팩 등록
+        </Link>
+        <Link href="/knowledge-packs/agent-mapping" prefetch={false} style={linkBtnStyle}>
+          Agent 매핑 설정
+        </Link>
+        <Link href="/knowledge-packs/history" prefetch={false} style={linkBtnStyle}>
+          변경 이력
+        </Link>
       </div>
 
       <div

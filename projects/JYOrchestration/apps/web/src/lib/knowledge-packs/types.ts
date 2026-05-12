@@ -18,9 +18,16 @@ export type KnowledgePackCategory =
   | "DATA"
   | "INTEGRATION";
 
-export type KnowledgePackLicenseType = "MIT" | "COMMERCIAL" | "OPEN_SOURCE" | "UNKNOWN";
+export type KnowledgePackLicenseType =
+  | "MIT"
+  | "COMMERCIAL"
+  | "OPEN_SOURCE"
+  | "UNKNOWN"
+  | "PARTNER_LICENSE"
+  | "USER_PROVIDED_LICENSE"
+  | "EXTERNAL_SERVICE";
 
-export type KnowledgePackStatus = "ACTIVE" | "DRAFT" | "ARCHIVED";
+export type KnowledgePackStatus = "ACTIVE" | "DRAFT" | "ARCHIVED" | "REVIEW_REQUESTED" | "APPROVED";
 
 export type KnowledgePack = {
   readonly id: string;
@@ -31,6 +38,8 @@ export type KnowledgePack = {
   readonly agents: readonly KnowledgePackAgent[];
   readonly status: KnowledgePackStatus;
   readonly summary: string;
+  readonly description?: string;
+  readonly vendor?: string;
   readonly license: {
     readonly type: KnowledgePackLicenseType;
     readonly notes: readonly string[];
@@ -45,4 +54,9 @@ export type KnowledgePack = {
   readonly reviewChecklist: readonly string[];
   readonly alternatives: readonly string[];
   readonly references: readonly { readonly label: string; readonly url: string }[];
+  /** API·목록 병합용 */
+  readonly source?: "STATIC" | "DB";
+  readonly editable?: boolean;
+  readonly securityChecklist?: readonly string[];
+  readonly previewSpec?: string;
 };
