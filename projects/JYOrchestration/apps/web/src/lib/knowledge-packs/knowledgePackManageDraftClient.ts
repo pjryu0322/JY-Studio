@@ -1,5 +1,6 @@
 import { generateKnowledgePackDraftMock, type KnowledgePackDraftInput, type KnowledgePackDraftResult } from "@/lib/knowledge-packs/knowledgePackDraftGenerator";
 import { parseKnowledgePackAgentsForDraft } from "@/lib/knowledge-packs/knowledgePackManageFormHelpers";
+import type { KnowledgePackPrecheckInput, KnowledgePackPrecheckResult } from "@/lib/knowledge-packs/knowledgePackPrecheckTypes";
 import type { KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 
 export type KnowledgePackDraftApiJson = Readonly<{
@@ -22,24 +23,65 @@ export type WizardDraftSourceFields = Readonly<{
   aiMemo: string;
 }>;
 
+function trimOptional(s: string): string | undefined {
+  const t = s.trim();
+  return t.length ? t : undefined;
+}
+
+export function buildKnowledgePackPrecheckInputFromWizard(w: WizardDraftSourceFields): KnowledgePackPrecheckInput | null {
+  const productName = w.name.trim();
+  if (!productName) return null;
+  return {
+    productName,
+    productUrl: trimOptional(w.aiProductUrl),
+    category: w.category,
+    agents: parseKnowledgePackAgentsForDraft(w.agentsText),
+    purpose: trimOptional(w.aiPurpose),
+    officialDocsUrl: trimOptional(w.aiOfficialDocsUrl),
+    apiDocsUrl: trimOptional(w.aiApiDocsUrl),
+    repositoryUrl: trimOptional(w.aiRepositoryUrl),
+    licenseHint: trimOptional(w.aiLicenseHint),
+    memo: trimOptional(w.aiMemo),
+  };
+}
+
+export type KnowledgePackPrecheckApiJson = Readonly<{
+  ok?: boolean;
+  result?: KnowledgePackPrecheckResult;
+  message?: string;
+}>;
+
+export async function requestKnowledgePackPrecheckApi(
+  input: KnowledgePackPrecheckInput
+): Promise<{ readonly status: number; readonly json: KnowledgePackPrecheckApiJson }> {
+  const r = await fetch("/api/knowledge-packs/precheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, agents: [...input.agents] }),
+  });
+  let json: KnowledgePackPrecheckApiJson = {};
+  try {
+    json = (await r.json()) as KnowledgePackPrecheckApiJson;
+  } catch {
+    json = {};
+  }
+  return { status: r.status, json };
+}
+
 export function buildKnowledgePackDraftInputFromWizard(w: WizardDraftSourceFields): KnowledgePackDraftInput | null {
   const productName = w.name.trim();
   if (!productName) return null;
-  const trim = (s: string) => {
-    const t = s.trim();
-    return t.length ? t : undefined;
-  };
   return {
     productName,
-    productUrl: trim(w.aiProductUrl),
+    productUrl: trimOptional(w.aiProductUrl),
     category: w.category,
     agents: parseKnowledgePackAgentsForDraft(w.agentsText),
-    purpose: trim(w.aiPurpose),
-    officialDocsUrl: trim(w.aiOfficialDocsUrl),
-    apiDocsUrl: trim(w.aiApiDocsUrl),
-    repositoryUrl: trim(w.aiRepositoryUrl),
-    licenseHint: trim(w.aiLicenseHint),
-    memo: trim(w.aiMemo),
+    purpose: trimOptional(w.aiPurpose),
+    officialDocsUrl: trimOptional(w.aiOfficialDocsUrl),
+    apiDocsUrl: trimOptional(w.aiApiDocsUrl),
+    repositoryUrl: trimOptional(w.aiRepositoryUrl),
+    licenseHint: trimOptional(w.aiLicenseHint),
+    memo: trimOptional(w.aiMemo),
   };
 }
 

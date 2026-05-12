@@ -38,6 +38,14 @@ function buildKnowledgePackDraftUserJson(input: KnowledgePackDraftInput): string
         repositoryUrl: input.repositoryUrl ?? null,
         licenseHint: input.licenseHint ?? null,
         memo: input.memo ?? null,
+        precheck:
+          input.precheckDecision != null
+            ? {
+                decision: input.precheckDecision,
+                riskLevel: input.precheckRiskLevel ?? null,
+                issues: input.precheckIssues ? [...input.precheckIssues] : [],
+              }
+            : null,
       },
     },
     null,

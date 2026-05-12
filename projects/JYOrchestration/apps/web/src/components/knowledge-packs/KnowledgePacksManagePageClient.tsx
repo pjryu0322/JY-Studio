@@ -12,11 +12,14 @@ import { generateKnowledgePackDraftMock, type KnowledgePackDraftResult } from "@
 import { formatReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import {
   buildKnowledgePackDraftInputFromWizard,
+  buildKnowledgePackPrecheckInputFromWizard,
   interpretKnowledgePackDraftApiResponse,
   knowledgePackDraftClientMessages,
   requestKnowledgePackDraftApi,
+  requestKnowledgePackPrecheckApi,
 } from "@/lib/knowledge-packs/knowledgePackManageDraftClient";
 import { inferLicenseTypeFromHint } from "@/lib/knowledge-packs/knowledgePackManageFormHelpers";
+import type { KnowledgePackPrecheckResult } from "@/lib/knowledge-packs/knowledgePackPrecheckTypes";
 import type { KnowledgePack, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
 
 const SCOPES = ["USER", "PROJECT"] as const;
@@ -69,6 +72,8 @@ export function KnowledgePacksManagePageClient() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftGenerating, setDraftGenerating] = useState(false);
+  const [precheckBusy, setPrecheckBusy] = useState(false);
+  const [precheckResult, setPrecheckResult] = useState<KnowledgePackPrecheckResult | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [dbPacks, setDbPacks] = useState<KnowledgePack[]>([]);
@@ -141,6 +146,7 @@ export function KnowledgePacksManagePageClient() {
     setAiMemo("");
     setLastSourceCandidates("");
     setLastDraftWarnings([]);
+    setPrecheckResult(null);
   }, []);
 
   const loadDbList = useCallback(async () => {
@@ -187,6 +193,7 @@ export function KnowledgePacksManagePageClient() {
     setAiMemo("");
     setLastSourceCandidates("");
     setLastDraftWarnings([]);
+    setPrecheckResult(null);
   }, []);
 
   useEffect(() => {
@@ -317,8 +324,25 @@ export function KnowledgePacksManagePageClient() {
     }
   };
 
-  const generateDraft = async () => {
-    const input = buildKnowledgePackDraftInputFromWizard({
+  const precheckDraftHint = useMemo(() => {
+    if (!precheckResult) return null;
+    if (!precheckResult.canGenerateDraft) {
+      return "사전점검에서 등록 비권장으로 판단되어 AI 초안 생성을 막았습니다. 제품명·문서 링크·목적을 보강한 뒤 다시 사전점검하세요.";
+    }
+    if (precheckResult.decision === "USER_SOURCE_REQUIRED") {
+      return "사전점검: 공개 자료가 부족합니다. 초안은 생성할 수 있으나 내부 매뉴얼·API 명세를 원천자료로 추가하는 것을 권장합니다.";
+    }
+    if (precheckResult.decision === "LIMITED_REGISTERABLE") {
+      return "사전점검: 제한 등록입니다. 라이선스·약관·보안 검토를 거친 뒤 저장하세요.";
+    }
+    if (precheckResult.decision === "REGISTERABLE") {
+      return "사전점검: 등록 가능 판정입니다. 초안 생성 후에도 공식 문서와 대조 검증하세요.";
+    }
+    return null;
+  }, [precheckResult]);
+
+  const runPrecheck = async () => {
+    const preInput = buildKnowledgePackPrecheckInputFromWizard({
       name,
       category: category as KnowledgePackCategory,
       agentsText: agents,
@@ -330,10 +354,61 @@ export function KnowledgePacksManagePageClient() {
       aiLicenseHint,
       aiMemo,
     });
-    if (!input) {
+    if (!preInput) {
+      setErr("제품명을 입력해야 사전점검을 할 수 있습니다.");
+      return;
+    }
+    setErr(null);
+    setPrecheckBusy(true);
+    try {
+      const res = await requestKnowledgePackPrecheckApi(preInput);
+      if (res.status === 401) {
+        setErr(res.json.message ?? "로그인이 필요합니다.");
+        return;
+      }
+      if (res.status === 400 || !res.json.ok) {
+        setErr(res.json.message ?? "사전점검 요청이 처리되지 않았습니다.");
+        return;
+      }
+      if (!res.json.result) {
+        setErr("사전점검 응답 형식이 올바르지 않습니다.");
+        return;
+      }
+      setPrecheckResult(res.json.result);
+      setMsg("사전점검이 완료되었습니다.");
+    } catch {
+      setErr("네트워크 오류");
+    } finally {
+      setPrecheckBusy(false);
+    }
+  };
+
+  const generateDraft = async () => {
+    const inputBase = buildKnowledgePackDraftInputFromWizard({
+      name,
+      category: category as KnowledgePackCategory,
+      agentsText: agents,
+      aiProductUrl,
+      aiPurpose,
+      aiOfficialDocsUrl,
+      aiApiDocsUrl,
+      aiRepositoryUrl,
+      aiLicenseHint,
+      aiMemo,
+    });
+    if (!inputBase) {
       setErr("제품명을 입력해야 AI 초안을 생성할 수 있습니다.");
       return;
     }
+    const input =
+      precheckResult && precheckResult.canGenerateDraft
+        ? {
+            ...inputBase,
+            precheckDecision: precheckResult.decision,
+            precheckRiskLevel: precheckResult.riskLevel,
+            precheckIssues: precheckResult.issues.map((i) => `${i.title}: ${i.description}`),
+          }
+        : inputBase;
     setErr(null);
     setDraftGenerating(true);
 
@@ -488,6 +563,11 @@ export function KnowledgePacksManagePageClient() {
           aiMemo={aiMemo}
           onAiMemoChange={setAiMemo}
           onGenerateDraft={generateDraft}
+          onRunPrecheck={runPrecheck}
+          precheckBusy={precheckBusy}
+          precheckResult={precheckResult}
+          draftBlockedByPrecheck={precheckResult != null && !precheckResult.canGenerateDraft}
+          precheckDraftHint={precheckDraftHint}
           lastDraftWarnings={lastDraftWarnings}
           lastSourceCandidates={lastSourceCandidates}
         />

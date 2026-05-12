@@ -2,6 +2,11 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import {
+  PRECHECK_DECISION_LABEL,
+  PRECHECK_RISK_LABEL,
+  type KnowledgePackPrecheckResult,
+} from "@/lib/knowledge-packs/knowledgePackPrecheckTypes";
 
 type FieldProps = {
   readonly label: string;
@@ -40,6 +45,18 @@ const noticeRag: CSSProperties = {
   lineHeight: 1.5,
 };
 
+const btnPrecheck: CSSProperties = {
+  padding: "10px 18px",
+  borderRadius: 10,
+  border: `1px solid ${t.border}`,
+  background: "#fff",
+  color: t.textPrimary,
+  fontWeight: 800,
+  cursor: "pointer",
+  fontSize: 14,
+  marginBottom: 10,
+};
+
 const btnDraft: CSSProperties = {
   padding: "10px 18px",
   borderRadius: 10,
@@ -50,6 +67,17 @@ const btnDraft: CSSProperties = {
   cursor: "pointer",
   fontSize: 14,
   marginBottom: 10,
+};
+
+const cardPrecheck: CSSProperties = {
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 10,
+  border: `1px solid ${t.border}`,
+  background: "#fafafa",
+  fontSize: 12,
+  color: t.textSecondary,
+  lineHeight: 1.55,
 };
 
 const noticeLlmVsRag: CSSProperties = {
@@ -90,6 +118,11 @@ export type KnowledgePacksManageAiDraftSectionProps = Readonly<{
   onGenerateDraft: () => void | Promise<void>;
   lastDraftWarnings: readonly string[];
   lastSourceCandidates: string;
+  onRunPrecheck: () => void | Promise<void>;
+  precheckBusy?: boolean;
+  precheckResult: KnowledgePackPrecheckResult | null;
+  draftBlockedByPrecheck: boolean;
+  precheckDraftHint: string | null;
 }>;
 
 export function KnowledgePacksManageAiDraftSection(p: KnowledgePacksManageAiDraftSectionProps) {
@@ -187,14 +220,108 @@ export function KnowledgePacksManageAiDraftSection(p: KnowledgePacksManageAiDraf
         </ul>
       </div>
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 10 }}>
+        <button
+          type="button"
+          disabled={p.precheckBusy || p.draftBusy}
+          onClick={() => void p.onRunPrecheck()}
+          style={{
+            ...btnPrecheck,
+            opacity: p.precheckBusy || p.draftBusy ? 0.7 : 1,
+            cursor: p.precheckBusy || p.draftBusy ? "wait" : "pointer",
+          }}
+        >
+          {p.precheckBusy ? "사전점검 중..." : "지식팩 등록 가능성 사전점검"}
+        </button>
+      </div>
+
+      {p.precheckResult ? (
+        <div style={cardPrecheck}>
+          <div style={{ fontWeight: 900, fontSize: 13, color: t.textPrimary, marginBottom: 8 }}>사전점검 결과</div>
+          <div style={{ marginBottom: 6 }}>
+            <strong>판정</strong> {PRECHECK_DECISION_LABEL[p.precheckResult.decision]} · <strong>위험도</strong>{" "}
+            {PRECHECK_RISK_LABEL[p.precheckResult.riskLevel]} · <strong>점수</strong> {p.precheckResult.score}
+          </div>
+          <div style={{ marginBottom: 8, color: t.textPrimary }}>{p.precheckResult.summary}</div>
+          {p.precheckResult.reasons.length > 0 ? (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>판정 근거</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {p.precheckResult.reasons.map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {p.precheckResult.issues.length > 0 ? (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>위험·보완 요소</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {p.precheckResult.issues.map((iss, i) => (
+                  <li key={i}>
+                    <span style={{ fontWeight: 700 }}>{iss.title}</span> ({PRECHECK_RISK_LABEL[iss.riskLevel]}) — {iss.description}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>필수 자료</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {p.precheckResult.requiredSources.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>권장 자료</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {p.precheckResult.recommendedSources.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>다음 조치</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {p.precheckResult.nextActions.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ fontSize: 11, color: t.textMuted }}>
+            검토 필요 — 보안: {p.precheckResult.shouldRequireSecurityReview ? "예" : "아니오"} · 라이선스:{" "}
+            {p.precheckResult.shouldRequireLicenseReview ? "예" : "아니오"} · 사용자 제공 문서:{" "}
+            {p.precheckResult.shouldRequireUserProvidedDocs ? "예" : "아니오"}
+          </div>
+        </div>
+      ) : null}
+
+      {p.precheckDraftHint ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: 10,
+            borderRadius: 8,
+            background: p.draftBlockedByPrecheck ? "#fef2f2" : "#fffbeb",
+            border: p.draftBlockedByPrecheck ? "1px solid #fecaca" : "1px solid #fcd34d",
+            color: p.draftBlockedByPrecheck ? "#991b1b" : "#78350f",
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}
+        >
+          {p.precheckDraftHint}
+        </div>
+      ) : null}
+
       <button
         type="button"
-        disabled={p.draftBusy}
+        disabled={p.draftBusy || p.draftBlockedByPrecheck}
         onClick={() => void p.onGenerateDraft()}
         style={{
           ...btnDraft,
-          opacity: p.draftBusy ? 0.75 : 1,
-          cursor: p.draftBusy ? "wait" : "pointer",
+          opacity: p.draftBusy || p.draftBlockedByPrecheck ? 0.75 : 1,
+          cursor: p.draftBusy || p.draftBlockedByPrecheck ? "not-allowed" : "pointer",
         }}
       >
         {p.draftBusy ? "AI 초안 생성 중..." : "AI로 지식팩 초안 생성"}

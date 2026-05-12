@@ -1,4 +1,10 @@
 import type { KnowledgePackAgent, KnowledgePackCategory } from "@/lib/knowledge-packs/types";
+import {
+  PRECHECK_DECISION_LABEL,
+  PRECHECK_RISK_LABEL,
+  type KnowledgePackPrecheckDecision,
+  type KnowledgePackPrecheckRiskLevel,
+} from "@/lib/knowledge-packs/knowledgePackPrecheckTypes";
 
 /** AI 초안 생성 입력 (향후 LLM 호출 본문으로 확장). */
 export type KnowledgePackDraftInput = Readonly<{
@@ -12,6 +18,10 @@ export type KnowledgePackDraftInput = Readonly<{
   repositoryUrl?: string;
   licenseHint?: string;
   memo?: string;
+  /** 선택: 사전점검 직후 초안 생성 시 경고·원천자료 안내에 반영 */
+  precheckDecision?: KnowledgePackPrecheckDecision;
+  precheckRiskLevel?: KnowledgePackPrecheckRiskLevel;
+  precheckIssues?: readonly string[];
 }>;
 
 /** Mock 초안 결과 — textarea에 그대로 넣을 수 있는 줄 단위 문자열. */
@@ -194,6 +204,34 @@ function sourceCandidatesBlock(input: KnowledgePackDraftInput): string {
   return lines.join("\n");
 }
 
+function precheckDraftWarnings(input: KnowledgePackDraftInput): string[] {
+  if (!input.precheckDecision) return [];
+  const d = input.precheckDecision;
+  const r = input.precheckRiskLevel;
+  const out: string[] = [
+    `[사전점검] 판정: ${PRECHECK_DECISION_LABEL[d]}${r ? `, 위험도: ${PRECHECK_RISK_LABEL[r]}` : ""}`,
+  ];
+  if (d === "LIMITED_REGISTERABLE") {
+    out.push("[사전점검] 라이선스·약관·보안 관점에서 추가 검토 후 저장·활성화할 것을 권장합니다.");
+  }
+  if (d === "USER_SOURCE_REQUIRED") {
+    out.push("[사전점검] 공개 URL이 부족합니다. 내부 매뉴얼·API 명세(PDF/Markdown)를 원천자료로 추가한 뒤 RAG 수집을 진행하는 것이 좋습니다.");
+  }
+  if (d === "NOT_RECOMMENDED") {
+    out.push("[사전점검] 등록 비권장 판정입니다. 공식 문서·목적을 보강한 뒤 다시 점검하세요.");
+  }
+  for (const line of input.precheckIssues ?? []) {
+    const t = line.trim();
+    if (t) out.push(`[사전점검 이슈] ${t}`);
+  }
+  return out;
+}
+
+function precheckSourceCandidatesSuffix(input: KnowledgePackDraftInput): string {
+  if (input.precheckDecision !== "USER_SOURCE_REQUIRED") return "";
+  return "\n\n[사전점검 · 사용자 원천자료]\n공식 공개 문서만으로는 부족할 수 있습니다.\n- 내부 설계서·매뉴얼\n- 비공개 API 명세(Swagger export, PDF)\n위 자료를 원천자료로 등록한 뒤 텍스트 추출·청크 파이프라인을 실행하세요.";
+}
+
 function draftBodyWithoutMeta(
   category: KnowledgePackCategory,
   name: string,
@@ -226,10 +264,14 @@ export function generateKnowledgePackDraftMock(input: KnowledgePackDraftInput): 
     warnings.push(`추가 메모 반영 필요: ${memoTrim.slice(0, 200)}${memoTrim.length > 200 ? "…" : ""}`);
   }
 
+  for (const w of precheckDraftWarnings(input)) {
+    if (!warnings.includes(w)) warnings.push(w);
+  }
+
   return {
     ...body,
     references,
     warnings,
-    sourceCandidates: sourceCandidatesBlock(input),
+    sourceCandidates: sourceCandidatesBlock(input) + precheckSourceCandidatesSuffix(input),
   };
 }

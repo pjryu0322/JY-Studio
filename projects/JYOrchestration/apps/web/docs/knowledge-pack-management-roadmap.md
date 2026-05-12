@@ -17,6 +17,8 @@ JYOrchestration의 지식팩은 **정적 seed 조회 MVP**에서 출발해, **�
 
 AI 초안은 **`POST /api/knowledge-packs/draft`** 로 요청한다. 서버는 사용자 OpenAI 연동 키 또는 `OPENAI_API_KEY`(직접)로 OpenAI Chat Completions를 시도하고, 키가 없거나 호출·JSON 파싱 실패 시 **`generateKnowledgePackDraftMock`** 으로 안전하게 대체한다. API Key는 프론트에 노출하지 않는다.
 
+등록 전에는 **`POST /api/knowledge-packs/precheck`** 로 룰 기반 사전점검을 수행한다. 공식 문서·API 명세·라이선스/약관·보안/개인정보 위험·RAG 적합성·사용자 제공 문서 필요성을 점검하고, 판정은 **REGISTERABLE / LIMITED_REGISTERABLE / USER_SOURCE_REQUIRED / NOT_RECOMMENDED** 네 단계다. 사전점검 결과는 AI 초안 생성 요청에 선택 필드로 실려 **warnings·원천자료 안내**에 반영된다. (별도 DB 테이블 저장·이력 자동 기록은 후속.)
+
 AI 초안 생성 결과는 바로 ACTIVE가 아니라 DRAFT로 저장하며, 라이선스·보안·개인정보·Secret 관련 내용은 검수·승인 대상이다.
 
 실제 원천자료 기반 학습은 **RAG 파이프라인**으로 분리한다. **1단계(현재 구현)**: Prisma `KpKnowledgePackSource` / `Chunk` / `IndexJob`, DNS·사설망까지 고려한 URL fetch 가드, 평문 파싱, 겹침 청크 저장, `POST /api/knowledge-packs/retrieve-context` 표준 응답(`mode=KEYWORD`, `promptContext`, `diagnostics`, `chunkId`, `sourceUrl` 등), 정적 시드 **`POST /api/knowledge-packs/[id]/clone`** 복제, `knowledgePackPromptContextBuilder` / `knowledgePackPromptInjectionAdapter` 로 Agent 프롬프트 주입 준비, 관리 UI의 원천자료·RAG 검색 테스트 섹션. **2단계(다음)**: 임베딩·벡터 저장·의미·하이브리드 검색, Agent별 retrieval 정책, Cursor 실행 파이프라인 자동 주입, AI검수자/AI보안관 체크리스트 자동 보강. Stub 파이프라인(`knowledgePackRagPipeline.ts`)은 2단계용 타입·플레이스홀더로 유지한다.
