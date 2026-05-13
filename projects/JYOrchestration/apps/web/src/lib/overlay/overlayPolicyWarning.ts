@@ -25,8 +25,32 @@ export type OverlayPolicyWarning = Readonly<{
 const WARNING_SOURCES = new Set<OverlayPolicyWarning["source"]>(["singlechat", "review-harness", "diagnostic", "unknown"]);
 const WARNING_SEVERITIES = new Set<OverlayPolicyWarningSeverity>(["info", "warning", "critical"]);
 
+/** 진단 API `overlayPolicyWarningSummary.warnings` 등에 넣을 샘플 상한 */
+export const OVERLAY_POLICY_WARNINGS_MAX_API_SUMMARY = 50;
+
 /** 타임라인·API 응답에 넣을 policy warning 최대 개수 */
 export const OVERLAY_POLICY_WARNINGS_MAX_TIMELINE = 20;
+
+/** `enforcement: "not_applied"` 고정 행(진단·SingleChat·Harness 공통). */
+function overlayPolicyWarningRow(input: Readonly<{
+  code: string;
+  severity: OverlayPolicyWarningSeverity;
+  message: string;
+  source: OverlayPolicyWarning["source"];
+  roleKey?: string | null;
+}>): OverlayPolicyWarning {
+  const rk = input.roleKey;
+  const roleKey =
+    rk === null || rk === undefined ? undefined : String(rk).trim().slice(0, 120) || undefined;
+  return {
+    code: input.code,
+    severity: input.severity,
+    message: input.message,
+    source: input.source,
+    enforcement: "not_applied",
+    ...(roleKey ? { roleKey } : {}),
+  };
+}
 
 export function buildOverlayPolicyWarnings(input: Readonly<{
   roleKey: string | null | undefined;
@@ -40,49 +64,54 @@ export function buildOverlayPolicyWarnings(input: Readonly<{
   const out: OverlayPolicyWarning[] = [];
 
   if (rk && !id) {
-    out.push({
-      code: "OVERLAY_ROLE_UNRESOLVED",
-      severity: "warning",
-      message: `Overlay contract identity could not be resolved for role key "${rk}".`,
-      roleKey: rk,
-      source: input.source,
-      enforcement: "not_applied",
-    });
+    out.push(
+      overlayPolicyWarningRow({
+        code: "OVERLAY_ROLE_UNRESOLVED",
+        severity: "warning",
+        message: `Overlay contract identity could not be resolved for role key "${rk}".`,
+        roleKey: rk,
+        source: input.source,
+      })
+    );
   }
 
   if (input.cursorRequested && rk && id && !shouldAllowCursorCapability(rk)) {
-    out.push({
-      code: "OVERLAY_CURSOR_CAPABILITY_NOT_ALLOWED",
-      severity: "warning",
-      message: "Cursor capability is not allowed for this overlay identity (recorded for diagnostics only; not enforced).",
-      roleKey: rk,
-      source: input.source,
-      enforcement: "not_applied",
-    });
+    out.push(
+      overlayPolicyWarningRow({
+        code: "OVERLAY_CURSOR_CAPABILITY_NOT_ALLOWED",
+        severity: "warning",
+        message:
+          "Cursor capability is not allowed for this overlay identity (recorded for diagnostics only; not enforced).",
+        roleKey: rk,
+        source: input.source,
+      })
+    );
   }
 
   const knExpected = Boolean(input.knowledgeHintsExpected);
   if (knExpected && rk && !shouldEnableKnowledgeHints(rk)) {
-    out.push({
-      code: "OVERLAY_KNOWLEDGE_HINT_DISABLED",
-      severity: "info",
-      message: "Knowledge activation hints are disabled by overlay policy for this role.",
-      roleKey: rk,
-      source: input.source,
-      enforcement: "not_applied",
-    });
+    out.push(
+      overlayPolicyWarningRow({
+        code: "OVERLAY_KNOWLEDGE_HINT_DISABLED",
+        severity: "info",
+        message: "Knowledge activation hints are disabled by overlay policy for this role.",
+        roleKey: rk,
+        source: input.source,
+      })
+    );
   }
 
   const ctxExpected = Boolean(input.contextAssemblyExpected);
   if (ctxExpected && rk && !shouldEnableContextAssembly(rk)) {
-    out.push({
-      code: "OVERLAY_CONTEXT_ASSEMBLY_DISABLED",
-      severity: "info",
-      message: "Context assembly trace metadata is minimized by overlay policy for this role.",
-      roleKey: rk,
-      source: input.source,
-      enforcement: "not_applied",
-    });
+    out.push(
+      overlayPolicyWarningRow({
+        code: "OVERLAY_CONTEXT_ASSEMBLY_DISABLED",
+        severity: "info",
+        message: "Context assembly trace metadata is minimized by overlay policy for this role.",
+        roleKey: rk,
+        source: input.source,
+      })
+    );
   }
 
   return out;
@@ -91,14 +120,15 @@ export function buildOverlayPolicyWarnings(input: Readonly<{
 export function buildWorkspaceCatalogUnmappedWarnings(
   unmappedCatalogKeys: readonly string[]
 ): readonly OverlayPolicyWarning[] {
-  return unmappedCatalogKeys.map((key) => ({
-    code: "OVERLAY_WORKSPACE_CATALOG_UNMAPPED",
-    severity: "warning" as const,
-    message: `Workspace AI catalog key "${key}" has no overlay identity mapping.`,
-    roleKey: key,
-    source: "diagnostic" as const,
-    enforcement: "not_applied" as const,
-  }));
+  return unmappedCatalogKeys.map((key) =>
+    overlayPolicyWarningRow({
+      code: "OVERLAY_WORKSPACE_CATALOG_UNMAPPED",
+      severity: "warning",
+      message: `Workspace AI catalog key "${key}" has no overlay identity mapping.`,
+      roleKey: key,
+      source: "diagnostic",
+    })
+  );
 }
 
 export function buildProjectAgentUnresolvedDiagnosticWarnings(
@@ -108,14 +138,15 @@ export function buildProjectAgentUnresolvedDiagnosticWarnings(
     readonly displayName: string;
   }>
 ): readonly OverlayPolicyWarning[] {
-  return rows.map((row) => ({
-    code: "OVERLAY_PROJECT_AGENT_UNRESOLVED",
-    severity: "warning" as const,
-    message: `Selected agent "${row.displayName}" could not be resolved to overlay identity (catalog=${row.catalogKey ?? "—"}, role=${row.aiOrchestrationRole ?? "—"}).`,
-    roleKey: row.aiOrchestrationRole ?? row.catalogKey,
-    source: "diagnostic" as const,
-    enforcement: "not_applied" as const,
-  }));
+  return rows.map((row) =>
+    overlayPolicyWarningRow({
+      code: "OVERLAY_PROJECT_AGENT_UNRESOLVED",
+      severity: "warning",
+      message: `Selected agent "${row.displayName}" could not be resolved to overlay identity (catalog=${row.catalogKey ?? "—"}, role=${row.aiOrchestrationRole ?? "—"}).`,
+      roleKey: row.aiOrchestrationRole ?? row.catalogKey,
+      source: "diagnostic",
+    })
+  );
 }
 
 export function parseOverlayPolicyWarningsFromUnknown(raw: unknown): readonly OverlayPolicyWarning[] {
@@ -140,14 +171,15 @@ export function parseOverlayPolicyWarningsFromUnknown(raw: unknown): readonly Ov
         : typeof roleKeyRaw === "string"
           ? roleKeyRaw.trim().slice(0, 120) || undefined
           : undefined;
-    out.push({
-      code,
-      severity: severity as OverlayPolicyWarningSeverity,
-      message,
-      roleKey,
-      source: source as OverlayPolicyWarning["source"],
-      enforcement: "not_applied",
-    });
+    out.push(
+      overlayPolicyWarningRow({
+        code,
+        severity: severity as OverlayPolicyWarningSeverity,
+        message,
+        roleKey,
+        source: source as OverlayPolicyWarning["source"],
+      })
+    );
   }
   return out;
 }
@@ -178,7 +210,7 @@ export function summarizeOverlayPolicyWarnings(warnings: readonly OverlayPolicyW
     warningCount,
     criticalCount,
     infoCount,
-    warnings: warnings.slice(0, 50),
+    warnings: warnings.slice(0, OVERLAY_POLICY_WARNINGS_MAX_API_SUMMARY),
     byCode: groupOverlayPolicyWarningsByCode(warnings),
     byRole: groupOverlayPolicyWarningsByRole(warnings),
     bySource: groupOverlayPolicyWarningsBySource(warnings),

@@ -55,6 +55,7 @@ export {
   overlayPolicyExpectationFlagsFromIdentity,
   parseOverlayPolicyWarningsFromUnknown,
   summarizeOverlayPolicyWarnings,
+  OVERLAY_POLICY_WARNINGS_MAX_API_SUMMARY,
   OVERLAY_POLICY_WARNINGS_MAX_TIMELINE,
 } from "@/lib/overlay/overlayPolicyWarning";
 export type { OverlayPolicyWarning, OverlayPolicyWarningSeverity, OverlayPolicyWarningSummaryWire } from "@/lib/overlay/overlayPolicyWarning";
