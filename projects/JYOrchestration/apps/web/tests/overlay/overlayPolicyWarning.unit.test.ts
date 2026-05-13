@@ -41,7 +41,7 @@ describe("overlayPolicyWarning", () => {
     ];
     expect(groupOverlayPolicyWarningsByCode(ws).X).toBe(2);
     expect(groupOverlayPolicyWarningsByRole(ws).a).toBe(1);
-    expect(groupOverlayPolicyWarningsByRole(ws)["(none)"]).toBe(1);
+    expect(groupOverlayPolicyWarningsByRole(ws)["unknown"]).toBe(1);
     expect(groupOverlayPolicyWarningsBySource(ws).diagnostic).toBe(2);
   });
 
@@ -116,7 +116,7 @@ describe("overlayPolicyWarning", () => {
     expect(s.byCode.A).toBe(1);
     expect(s.byCode.B).toBe(1);
     expect(s.byRole.planner).toBe(1);
-    expect(s.byRole["(none)"]).toBe(2);
+    expect(s.byRole["unknown"]).toBe(2);
     expect(s.bySource.diagnostic).toBe(2);
     expect(s.bySource.singlechat).toBe(1);
   });

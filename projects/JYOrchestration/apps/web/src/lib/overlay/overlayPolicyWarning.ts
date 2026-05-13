@@ -196,7 +196,7 @@ export type OverlayPolicyWarningSummaryWire = Readonly<{
   warnings: readonly OverlayPolicyWarning[];
   /** 코드별 발생 횟수(진단·리포트용; 전체 입력 배열 기준). */
   byCode: Readonly<Record<string, number>>;
-  /** roleKey별 발생 횟수(없으면 `(none)` 버킷). */
+  /** roleKey별 발생 횟수(없으면 `unknown` 버킷). */
   byRole: Readonly<Record<string, number>>;
   /** source별 발생 횟수. */
   bySource: Readonly<Record<string, number>>;

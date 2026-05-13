@@ -21,9 +21,13 @@ export function groupOverlayPolicyWarningsByCode(
 export function groupOverlayPolicyWarningsByRole(
   warnings: readonly OverlayPolicyWarning[]
 ): Readonly<Record<string, number>> {
-  return countByKey(warnings, (w) =>
-    w.roleKey === null || w.roleKey === undefined ? "" : String(w.roleKey)
-  );
+  const m: Record<string, number> = {};
+  for (const w of warnings) {
+    const rk = w.roleKey === null || w.roleKey === undefined ? "" : String(w.roleKey).trim();
+    const k = rk || "unknown";
+    m[k] = (m[k] ?? 0) + 1;
+  }
+  return m;
 }
 
 export function groupOverlayPolicyWarningsBySource(
