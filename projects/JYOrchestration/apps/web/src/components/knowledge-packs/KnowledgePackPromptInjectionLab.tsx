@@ -1,22 +1,13 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
-
-function fieldStyle(): CSSProperties {
-  return {
-    width: "100%",
-    minWidth: 0,
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    padding: "8px 10px",
-    borderRadius: 8,
-    border: `1px solid ${t.border}`,
-    fontSize: 13,
-    fontFamily: "inherit",
-  };
-}
+import { knowledgePackFormFieldStyle } from "@/components/knowledge-packs/knowledgePackFormFieldStyle";
+import {
+  postKnowledgePackBuildPromptContext,
+  postKnowledgePackRecommend,
+  type KnowledgePackRecommendRow,
+} from "@/lib/knowledge-packs/knowledgePackPromptInjectionClient";
 
 export type KnowledgePackPromptInjectionLabProps = Readonly<{
   onNotify: (kind: "ok" | "err", message: string) => void;
@@ -28,22 +19,13 @@ export type KnowledgePackPromptInjectionLabProps = Readonly<{
   categoryHints?: readonly string[];
 }>;
 
-type InjectRecRow = Readonly<{
-  knowledgePackId: string;
-  name: string;
-  category: string;
-  score: number;
-  reasons: string[];
-  source: string;
-}>;
-
 /**
  * 지식팩 룰 추천 + 병합 프롬프트 컨텍스트 미리보기(관리·검증용).
  */
 export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInjectionLabProps) {
   const { onNotify, queryFallback = "", projectId, categoryHints } = props;
   const [injectTaskText, setInjectTaskText] = useState("");
-  const [injectRecs, setInjectRecs] = useState<InjectRecRow[]>([]);
+  const [injectRecs, setInjectRecs] = useState<KnowledgePackRecommendRow[]>([]);
   const [injectSelected, setInjectSelected] = useState<Record<string, boolean>>({});
   const [injectLabPreview, setInjectLabPreview] = useState<{ text: string; diagnostics: string[] } | null>(null);
   const [injectBusy, setInjectBusy] = useState<string | null>(null);
@@ -59,24 +41,14 @@ export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInject
     setInjectBusy("injectRec");
     setInjectLabPreview(null);
     try {
-      const body: Record<string, unknown> = { text, agentRole: "AI_DEVELOPER", limit: 8 };
-      const pid = String(projectId ?? "").trim();
-      if (pid) body.projectId = pid;
-      const hints = (categoryHints ?? []).map((h) => String(h ?? "").trim()).filter(Boolean);
-      if (hints.length) body.categoryHints = hints;
-
-      const r = await fetch("/api/knowledge-packs/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const j = await postKnowledgePackRecommend({
+        text,
+        projectId,
+        categoryHints,
+        limit: 8,
       });
-      const j = (await r.json()) as {
-        ok?: boolean;
-        recommendations?: InjectRecRow[];
-        message?: string;
-      };
-      if (!j.ok || !Array.isArray(j.recommendations)) {
-        onNotify("err", j.message ?? "추천 실패");
+      if (!j.ok) {
+        onNotify("err", j.message);
         setInjectRecs([]);
         setInjectSelected({});
         return;
@@ -86,8 +58,6 @@ export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInject
       for (const row of j.recommendations) sel[row.knowledgePackId] = true;
       setInjectSelected(sel);
       onNotify("ok", `추천 ${j.recommendations.length}건`);
-    } catch {
-      onNotify("err", "네트워크 오류");
     } finally {
       setInjectBusy(null);
     }
@@ -106,32 +76,24 @@ export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInject
     }
     setInjectBusy("injectCtx");
     try {
-      const r = await fetch("/api/knowledge-packs/build-prompt-context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          knowledgePackIds: ids,
-          query: text.slice(0, 4000),
-          taskTitle: "관리 UI 미리보기",
-          taskDescription: injectTaskText.trim() || undefined,
-          agentRole: "AI_DEVELOPER",
-          limit: 5,
-        }),
+      const j = await postKnowledgePackBuildPromptContext({
+        knowledgePackIds: ids,
+        query: text.slice(0, 4000),
+        taskTitle: "관리 UI 미리보기",
+        taskDescription: injectTaskText.trim() || undefined,
+        agentRole: "AI_DEVELOPER",
+        limit: 5,
       });
-      const j = (await r.json()) as { ok?: boolean; contextText?: string; diagnostics?: string[]; message?: string };
-      if (!j.ok || typeof j.contextText !== "string") {
-        onNotify("err", j.message ?? "컨텍스트 생성 실패");
+      if (!j.ok) {
+        onNotify("err", j.message);
         setInjectLabPreview(null);
         return;
       }
       setInjectLabPreview({
         text: j.contextText,
-        diagnostics: Array.isArray(j.diagnostics) ? j.diagnostics.map(String) : [],
+        diagnostics: j.diagnostics,
       });
       onNotify("ok", "병합 프롬프트 컨텍스트를 생성했습니다.");
-    } catch {
-      onNotify("err", "네트워크 오류");
-      setInjectLabPreview(null);
     } finally {
       setInjectBusy(null);
     }
@@ -149,7 +111,7 @@ export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInject
           value={injectTaskText}
           onChange={(e) => setInjectTaskText(e.target.value)}
           rows={3}
-          style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }}
+          style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, resize: "vertical" }}
         />
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
@@ -239,7 +201,7 @@ export function KnowledgePackPromptInjectionLab(props: KnowledgePackPromptInject
               readOnly
               value={injectLabPreview.text}
               rows={14}
-              style={{ ...fieldStyle(), marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 11, lineHeight: 1.45 }}
+              style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 11, lineHeight: 1.45 }}
             />
           </label>
         </>

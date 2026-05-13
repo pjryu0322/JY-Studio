@@ -1,3 +1,7 @@
+/**
+ * Overlay: **Orchestration Entry** — 요구사항 SingleChat·멀티에이전트 오케스트레이션의 HTTP 진입점.
+ * 철학·매핑표: `docs/OVERLAY_ARCHITECTURE_CONTRACTS.md`
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";

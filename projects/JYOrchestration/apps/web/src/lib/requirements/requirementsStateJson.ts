@@ -28,6 +28,8 @@ function unwrapDbJsonField(raw: unknown): unknown {
 
 /**
  * `Project.requirementsStateJson` — 클라이언트·서버 공통 형태(필드 추가 시 하위 호환 유지).
+ * Overlay: **Project Orchestration Memory** — 슬롯·오케스트레이션 상태 등 프로젝트 단위 “기억” JSON.
+ * (`docs/OVERLAY_ARCHITECTURE_CONTRACTS.md`)
  */
 export type RequirementsOrganizePlannerState = {
   requestedType: IdeationDeliverableType;

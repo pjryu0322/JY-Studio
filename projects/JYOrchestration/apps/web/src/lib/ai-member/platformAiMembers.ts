@@ -1,6 +1,8 @@
 /**
- * 화면별 전담 AI 멤버(표시명·프롬프트·참여자 패널 공통).
+ * Overlay: **AI Identity Catalog** — 화면별 전담 AI의 정체성·표시명·system 문구·실행 provider 표시.
+ * (기능 나열이 아니라 “누가 무엇을 말하는가”를 고정하는 카탈로그 층.)
  * ON/OFF: `NEXT_PUBLIC_AI_MEMBER_<KEY>=0|false` (예: NEXT_PUBLIC_AI_MEMBER_MEMO=0)
+ * 철학·매핑: `docs/OVERLAY_ARCHITECTURE_CONTRACTS.md`
  */
 
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";

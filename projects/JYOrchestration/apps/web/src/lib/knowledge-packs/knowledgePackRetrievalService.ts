@@ -1,3 +1,7 @@
+/**
+ * Overlay: **Knowledge Retrieval Provider** — 청크 검색·점수·프롬프트용 컨텍스트 조각 조립(키워드 중심).
+ * Activation·추천 정책은 `lib/overlay/activeKnowledgePackRef.ts` 등과 점진 연계.
+ */
 import { isStaticKnowledgePackId } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { KP_SOURCE_STATUS } from "@/lib/knowledge-packs/knowledgePackRagConstants";
 import { prisma } from "@/lib/prisma";

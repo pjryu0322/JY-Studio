@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { knowledgePackFormFieldStyle } from "@/components/knowledge-packs/knowledgePackFormFieldStyle";
 import { KnowledgePacksManageAiDraftSection } from "./KnowledgePacksManageAiDraftSection";
 import { KnowledgePackPromptInjectionLab } from "./KnowledgePackPromptInjectionLab";
 import { KnowledgePackSourceManager } from "./KnowledgePackSourceManager";
@@ -30,20 +31,6 @@ const STATUSES = ["DRAFT", "ACTIVE", "REVIEW_REQUESTED", "APPROVED", "ARCHIVED"]
 
 function ta(rows: readonly string[]): string {
   return rows.join("\n");
-}
-
-function fieldStyle(): CSSProperties {
-  return {
-    width: "100%",
-    minWidth: 0,
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    padding: "8px 10px",
-    borderRadius: 8,
-    border: `1px solid ${t.border}`,
-    fontSize: 13,
-    fontFamily: "inherit",
-  };
 }
 
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
@@ -114,6 +101,10 @@ export function KnowledgePacksManagePageClient() {
   const [references, setReferences] = useState("");
   const [previewSpec, setPreviewSpec] = useState("");
 
+  const packCategoryHints = useMemo(() => {
+    return CATEGORIES.includes(category as (typeof CATEGORIES)[number]) ? [category.trim().toUpperCase()] : undefined;
+  }, [category]);
+
   const resetEmpty = useCallback(() => {
     setName("");
     setScope("USER");
@@ -148,6 +139,16 @@ export function KnowledgePacksManagePageClient() {
     setLastSourceCandidates("");
     setLastDraftWarnings([]);
     setPrecheckResult(null);
+  }, []);
+
+  const handlePackNotify = useCallback((kind: "ok" | "err", message: string) => {
+    if (kind === "ok") {
+      setMsg(message);
+      setErr(null);
+    } else {
+      setErr(message);
+      setMsg(null);
+    }
   }, []);
 
   const loadDbList = useCallback(async () => {
@@ -552,7 +553,7 @@ export function KnowledgePacksManagePageClient() {
 
       <Section title="AI 초안 · 최소 입력">
         <KnowledgePacksManageAiDraftSection
-          inputStyle={fieldStyle()}
+          inputStyle={knowledgePackFormFieldStyle()}
           draftBusy={draftGenerating}
           categories={CATEGORIES}
           name={name}
@@ -589,7 +590,7 @@ export function KnowledgePacksManagePageClient() {
       <Section title="기본 정보">
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           Scope
-          <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
+          <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }}>
             {SCOPES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -602,12 +603,12 @@ export function KnowledgePacksManagePageClient() {
         </label>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           벤더
-          <input value={vendor} onChange={(e) => setVendor(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
+          <input value={vendor} onChange={(e) => setVendor(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }} />
         </label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
           <label style={{ flex: "1 1 160px", fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
             라이선스 유형
-            <select value={licenseType} onChange={(e) => setLicenseType(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
+            <select value={licenseType} onChange={(e) => setLicenseType(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }}>
               {LICENSES.map((l) => (
                 <option key={l} value={l}>
                   {l}
@@ -617,7 +618,7 @@ export function KnowledgePacksManagePageClient() {
           </label>
           <label style={{ flex: "1 1 160px", fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
             상태
-            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -643,51 +644,51 @@ export function KnowledgePacksManagePageClient() {
         ) : null}
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           요약
-          <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
+          <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, resize: "vertical" }} />
         </label>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           설명
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, resize: "vertical" }} />
         </label>
         <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
           라이선스 메모 (줄바꿈)
-          <textarea value={licenseNotes} onChange={(e) => setLicenseNotes(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
+          <textarea value={licenseNotes} onChange={(e) => setLicenseNotes(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, resize: "vertical" }} />
         </label>
         {isEdit ? (
           <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 800, color: t.textSecondary }}>
             변경 요약 (새 버전 설명)
-            <input value={changeSummary} onChange={(e) => setChangeSummary(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
+            <input value={changeSummary} onChange={(e) => setChangeSummary(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }} />
           </label>
         ) : null}
       </Section>
 
       <Section title="상세 섹션 (줄바꿈 = 항목)">
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>적용 권장</label>
-        <textarea value={recommendedUseCases} onChange={(e) => setRecommendedUseCases(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={recommendedUseCases} onChange={(e) => setRecommendedUseCases(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>적용 비권장</label>
-        <textarea value={notRecommendedUseCases} onChange={(e) => setNotRecommendedUseCases(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={notRecommendedUseCases} onChange={(e) => setNotRecommendedUseCases(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>주요 기능</label>
-        <textarea value={capabilities} onChange={(e) => setCapabilities(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={capabilities} onChange={(e) => setCapabilities(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>제약 (라이선스 메모와 별도)</label>
-        <textarea value={constraints} onChange={(e) => setConstraints(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={constraints} onChange={(e) => setConstraints(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>구현 지침</label>
-        <textarea value={implementationGuidelines} onChange={(e) => setImplementationGuidelines(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={implementationGuidelines} onChange={(e) => setImplementationGuidelines(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>Cursor 반영</label>
-        <textarea value={cursorPromptRules} onChange={(e) => setCursorPromptRules(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={cursorPromptRules} onChange={(e) => setCursorPromptRules(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>금지사항</label>
-        <textarea value={forbiddenPatterns} onChange={(e) => setForbiddenPatterns(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={forbiddenPatterns} onChange={(e) => setForbiddenPatterns(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>검수 체크리스트</label>
-        <textarea value={reviewChecklist} onChange={(e) => setReviewChecklist(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={reviewChecklist} onChange={(e) => setReviewChecklist(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>보안 체크리스트</label>
-        <textarea value={securityChecklist} onChange={(e) => setSecurityChecklist(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={securityChecklist} onChange={(e) => setSecurityChecklist(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>대체/비교</label>
-        <textarea value={alternatives} onChange={(e) => setAlternatives(e.target.value)} rows={3} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={alternatives} onChange={(e) => setAlternatives(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>
           참고 링크 (`라벨 | URL` 줄 단위)
         </label>
-        <textarea value={references} onChange={(e) => setReferences(e.target.value)} rows={4} style={{ ...fieldStyle(), resize: "vertical", marginBottom: 10 }} />
+        <textarea value={references} onChange={(e) => setReferences(e.target.value)} rows={4} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical", marginBottom: 10 }} />
         <label style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 800 }}>미리보기 정의 (선택)</label>
-        <textarea value={previewSpec} onChange={(e) => setPreviewSpec(e.target.value)} rows={3} style={{ ...fieldStyle(), resize: "vertical" }} />
+        <textarea value={previewSpec} onChange={(e) => setPreviewSpec(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), resize: "vertical" }} />
       </Section>
 
       <Section title="AI개발자 프롬프트 주입 미리보기">
@@ -695,18 +696,8 @@ export function KnowledgePacksManagePageClient() {
           신규 등록·편집 공통으로 요구·작업 설명 기반 추천과 병합 컨텍스트를 시험합니다. 편집 시 아래 원천자료 섹션의 RAG 검색어는 별도 블록에서도 쿼리 보조로 쓸 수 있으며, 여기서는 폼에 선택된 카테고리를 추천 힌트로 넘깁니다.
         </p>
         <KnowledgePackPromptInjectionLab
-          onNotify={(kind, m) => {
-            if (kind === "ok") {
-              setMsg(m);
-              setErr(null);
-            } else {
-              setErr(m);
-              setMsg(null);
-            }
-          }}
-          categoryHints={
-            CATEGORIES.includes(category as (typeof CATEGORIES)[number]) ? [category.trim().toUpperCase()] : undefined
-          }
+          onNotify={handlePackNotify}
+          categoryHints={packCategoryHints}
         />
       </Section>
 
@@ -715,18 +706,8 @@ export function KnowledgePacksManagePageClient() {
           <KnowledgePackSourceManager
             knowledgePackId={editId}
             referencesText={references}
-            categoryHints={
-              CATEGORIES.includes(category as (typeof CATEGORIES)[number]) ? [category.trim().toUpperCase()] : undefined
-            }
-            onNotify={(kind, m) => {
-              if (kind === "ok") {
-                setMsg(m);
-                setErr(null);
-              } else {
-                setErr(m);
-                setMsg(null);
-              }
-            }}
+            categoryHints={packCategoryHints}
+            onNotify={handlePackNotify}
           />
         </Section>
       ) : null}

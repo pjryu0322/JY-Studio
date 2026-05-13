@@ -1,8 +1,8 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { knowledgePackFormFieldStyle } from "@/components/knowledge-packs/knowledgePackFormFieldStyle";
 import { parseReferences } from "@/lib/knowledge-packs/knowledgePackDbAdapter";
 import { inferSourceTypeFromReference } from "@/lib/knowledge-packs/knowledgePackSources";
 import type {
@@ -22,20 +22,6 @@ type ListedSource = Readonly<{
   chunkCount: number;
   lastError?: string | null;
 }>;
-
-function fieldStyle(): CSSProperties {
-  return {
-    width: "100%",
-    minWidth: 0,
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    padding: "8px 10px",
-    borderRadius: 8,
-    border: `1px solid ${t.border}`,
-    fontSize: 13,
-    fontFamily: "inherit",
-  };
-}
 
 export function KnowledgePackSourceManager(props: Readonly<{
   knowledgePackId: string;
@@ -270,7 +256,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
           <label style={{ flex: "1 1 120px", fontSize: 11, fontWeight: 700, color: t.textSecondary }}>
             유형
-            <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }}>
+            <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }}>
               <option value="URL">URL</option>
               <option value="MARKDOWN">MARKDOWN</option>
               <option value="TEXT">TEXT</option>
@@ -281,16 +267,16 @@ export function KnowledgePackSourceManager(props: Readonly<{
           </label>
           <label style={{ flex: "2 1 180px", fontSize: 11, fontWeight: 700, color: t.textSecondary }}>
             제목
-            <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
+            <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }} />
           </label>
         </div>
         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: t.textSecondary, marginBottom: 8 }}>
           URL (URL·API_REFERENCE·OpenAPI URL)
-          <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
+          <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }} />
         </label>
         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: t.textSecondary }}>
           본문 rawText (TEXT·MARKDOWN·OpenAPI JSON 본문 등)
-          <textarea value={newRaw} onChange={(e) => setNewRaw(e.target.value)} rows={3} style={{ ...fieldStyle(), marginTop: 4, resize: "vertical" }} />
+          <textarea value={newRaw} onChange={(e) => setNewRaw(e.target.value)} rows={3} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, resize: "vertical" }} />
         </label>
         <button
           type="button"
@@ -405,7 +391,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
           <label style={{ flex: "1 1 200px", fontSize: 11, fontWeight: 700 }}>
             검색어
-            <input value={retrieveQuery} onChange={(e) => setRetrieveQuery(e.target.value)} style={{ ...fieldStyle(), marginTop: 4 }} />
+            <input value={retrieveQuery} onChange={(e) => setRetrieveQuery(e.target.value)} style={{ ...knowledgePackFormFieldStyle(), marginTop: 4 }} />
           </label>
           <button
             type="button"
@@ -505,7 +491,7 @@ export function KnowledgePackSourceManager(props: Readonly<{
                 readOnly
                 value={promptContextPreview.text}
                 rows={12}
-                style={{ ...fieldStyle(), marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 11, lineHeight: 1.45 }}
+                style={{ ...knowledgePackFormFieldStyle(), marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: 11, lineHeight: 1.45 }}
               />
             </label>
           </>

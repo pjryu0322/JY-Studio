@@ -1,3 +1,12 @@
+/**
+ * Overlay: **Review Harness** — Cursor 실행 **이후** OpenAI 기반 JSON 리뷰를 멤버 순으로 수행.
+ * 내부 단계(의미만 분리, 동작 동일):
+ * 1) member selection — `projectMember` 조회·정렬
+ * 2) context build — `buildCommonContext` + 역할별 user 메시지
+ * 3) model execution — `runOpenAiChatJsonEvaluation` 루프
+ * 4) result aggregation — `aggregateExecutionReviewDecisions` + usage 합산
+ * Stage1/2·Cursor launch·GitHub 자동화와 분리된 **리뷰 전용** 경로.
+ */
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import {
   runOpenAiChatJsonEvaluation,
@@ -142,7 +151,7 @@ ${roleSpecificInstructions(role)}
 }`;
 }
 
-/** execution-review 스테이지에 배정된 AI 멤버 수 (리뷰어 없음 판별용). */
+/** Review Harness — member selection (count). execution-review 스테이지 AI 멤버 수. */
 export async function countExecutionReviewAiMembers(projectId: string): Promise<number> {
   return prisma.projectMember.count({
     where: {
@@ -155,6 +164,7 @@ export async function countExecutionReviewAiMembers(projectId: string): Promise<
   });
 }
 
+/** Review Harness — member selection + context + model loop + aggregation. */
 export async function tryRunExecutionReviewWithAiMembers(params: {
   projectId: string;
   task: {
@@ -177,6 +187,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   usage: OpenAiRelayEvalUsage;
   steps: ExecutionReviewerStepRecord[];
 } | null> {
+  // Review Harness — 1) member selection
   const rows = await prisma.projectMember.findMany({
     where: {
       projectId: params.projectId,
@@ -216,11 +227,13 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
     return null;
   }
 
+  // Review Harness — 2) context build (shared + per-role user message inside loop)
   const baseContext = buildCommonContext(params);
   const steps: ExecutionReviewerStepRecord[] = [];
   const decisions: ExecutionReviewDecision[] = [];
   let totalUsage: NonNullable<OpenAiRelayEvalUsage> | null = null;
 
+  // Review Harness — 3) model execution
   for (const m of members) {
     const userMessage = buildUserMessageForRole(m.role, baseContext);
     const { result, usage } = await runOpenAiChatJsonEvaluation({
@@ -254,6 +267,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
     }
   }
 
+  // Review Harness — 4) result aggregation
   const finalDecision = aggregateExecutionReviewDecisions(decisions);
   const reason = steps
     .map((s) => `[${s.name}·${s.role}·${s.model}] ${s.decision}: ${s.summary}`)
