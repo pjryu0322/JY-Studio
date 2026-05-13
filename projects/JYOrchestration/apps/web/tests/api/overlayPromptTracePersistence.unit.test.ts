@@ -84,12 +84,32 @@ describe("Overlay prompt trace persistence", () => {
           source: "singlechat",
           enforcement: "not_applied",
         },
-        { code: "DROP", severity: "nope", message: "bad", source: "singlechat", enforcement: "not_applied" },
+        { code: "DROP", severity: "warning", message: "bad", source: "not-a-valid-source", enforcement: "not_applied" },
       ],
     };
     const parsed = parseRequirementsStateJson({ promptTimeline: [timelineRow] });
     expect(parsed.promptTimeline?.[0]?.overlayPolicyWarnings?.length).toBe(1);
     expect(parsed.promptTimeline?.[0]?.overlayPolicyWarnings?.[0]?.code).toBe("KEEP");
+  });
+
+  it("parseRequirementsStateJson coerces unknown overlayPolicyWarnings severity to warning on replay", () => {
+    const timelineRow = {
+      createdAt: "2026-01-03T00:00:00.000Z",
+      action: "requirementsChatOrchestration",
+      stage: "ideation",
+      source: "llm",
+      overlayPolicyWarnings: [
+        {
+          code: "COERCED",
+          severity: "legacy",
+          message: "m",
+          source: "singlechat",
+          enforcement: "not_applied",
+        },
+      ],
+    };
+    const parsed = parseRequirementsStateJson({ promptTimeline: [timelineRow] });
+    expect(parsed.promptTimeline?.[0]?.overlayPolicyWarnings?.[0]?.severity).toBe("warning");
   });
 
   it("workspace AI catalog keys have overlay mapping coverage (diagnostic contract)", () => {

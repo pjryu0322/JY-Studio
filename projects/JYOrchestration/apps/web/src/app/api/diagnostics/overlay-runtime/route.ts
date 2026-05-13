@@ -13,6 +13,7 @@ import {
   collateOverlayRuntimeDiagnosticWarnings,
   summarizeOverlayPolicyWarnings,
 } from "@/lib/overlay/overlayPolicyWarning";
+import { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
@@ -77,6 +78,15 @@ export async function GET(request: NextRequest) {
     timelineWarnings: lastPromptTraceOverlayExtract?.overlayPolicyWarnings,
   });
   const overlayPolicyWarningSummary = summarizeOverlayPolicyWarnings(summaryWarnings);
+  const overlayWarningReport = buildOverlayWarningReport({ warnings: summaryWarnings });
+
+  const overlayArchitecturePhase = {
+    current: "runtime-policy-warning-layer" as const,
+    enforcementEnabled: false,
+    retrievalOrchestrationEnabled: false,
+    providerOrchestrationEnabled: false,
+    memoryOrchestrationEnabled: false,
+  };
 
   const overlayMaturity = {
     contractLayer: true,
@@ -105,6 +115,8 @@ export async function GET(request: NextRequest) {
       unresolvedRoleKeys,
       workspaceAiMemberOverlayMappings,
       overlayPolicyWarningSummary,
+      overlayWarningReport,
+      overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,
       promptTraceOverlayEnabled: true,

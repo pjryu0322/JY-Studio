@@ -334,14 +334,15 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 
 ## Overlay Runtime Policy (힌트 전용)
 
+- **현재 warning·diagnostic은 실행 차단이 아니다.** 운영·감사·추적·정책 설계용 metadata다.
 - **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → **Diagnostic / Warning(4)** → Enforcement(5, **미도입**).
-- **Soft policy + warning wire**: `overlayPolicy.ts` + **`overlayPolicyWarning.ts`** + **`overlayPolicyWarningSummary.ts`** — `buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(코드/역할/출처 집계 포함); read-only 리포트 묶음 **`overlayWarningReport.ts`**(`buildOverlayWarningReport`). SingleChat `buildOrchestrationOverlayPromptTraceAugments`가 `overlayPolicyHints`와 **`overlayPolicyWarnings`** 를 함께 기록. `requirementsStateJson` 타임라인은 `coerceRequirementsPromptTimelineEntry`가 **`parseOverlayPolicyWarningsFromUnknown`** 으로 경고를 보존(행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`). **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
+- **Soft policy + warning wire**: `overlayPolicy.ts` + **`overlayPolicyWarning.ts`** + **`overlayPolicyWarningSummary.ts`** — `buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(코드/역할/출처 집계 포함); read-only 리포트 묶음 **`overlayWarningReport.ts`**(`buildOverlayWarningReport`). SingleChat `buildOrchestrationOverlayPromptTraceAugments`가 `overlayPolicyHints`와 **`overlayPolicyWarnings`** 를 함께 기록. `requirementsStateJson` 타임라인은 `coerceRequirementsPromptTimelineEntry`가 **`parseOverlayPolicyWarningsFromUnknown`** 으로 경고를 보존(행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`; 알 수 없는 severity는 **`warning`** 으로 정규화). **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
 - **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
 - **프로젝트 진단 스냅샷**: `overlayProjectDiagnostic.ts` — 서비스 기획 `selectedAgents` 기준 resolve·분포.
 - **프롬프트 타임라인 추출**: `overlayPromptTraceExtract.ts` — `extractOverlayPromptTraceMetadata`가 hints·**warnings** 포함; 진단 API `?projectId=` 시 마지막 타임라인 행에 대해 호출.
-- **진단 API**: `GET /api/diagnostics/overlay-runtime` — **`overlayPolicyWarningSummary`**, **`overlayMaturity`**, **`enforcementStatus`**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`.
-- **Review Harness**: `executionReviewWithAiMembers.ts` — 스텝에 **`overlayPolicyWarnings`**(JSON 리뷰 **판단 로직 비영향**); 반환에 **`overlayWarningCount`**(감사용 총계, decision 비영향).
-- **단위 테스트**: `tests/overlay/*.unit.test.ts`, `tests/api/overlayPromptTracePersistence.unit.test.ts`.
+- **진단 API**: `GET /api/diagnostics/overlay-runtime` — **`overlayPolicyWarningSummary`**, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **`overlayMaturity`**, **`enforcementStatus`**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`.
+- **Review Harness**: `executionReviewWithAiMembers.ts` — 스텝에 **`overlayPolicyWarnings`**(JSON 리뷰 **판단 로직 비영향**); 반환에 **`overlayWarningCount`**·**`overlayWarningSummary`**(감사용 집계, decision 비영향). `evaluateExecutionResult`가 동일 metadata를 optional로 노출.
+- **단위 테스트**: `tests/overlay/*.unit.test.ts`, `tests/api/overlayPromptTracePersistence.unit.test.ts`, `tests/api/executionReviewOverlayWarningSummary.unit.test.ts`.
 - **의도적으로 하지 않음**: 정책 엔진 강제, Cursor 실행 차단, vector memory, retrieval 본문 변경, Stage1/2·GitHub 플로우 변경.
 
 ## 관련 문서

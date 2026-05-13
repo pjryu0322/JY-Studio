@@ -62,10 +62,24 @@ describe("overlayPolicyWarning", () => {
         enforcement: "not_applied",
       },
       { code: "", severity: "warning", message: "x", source: "diagnostic", enforcement: "not_applied" },
-      { code: "BAD", severity: "nope", message: "x", source: "diagnostic", enforcement: "not_applied" },
+      { code: "BAD", severity: "warning", message: "x", source: "diagnostic", enforcement: "blocked" },
     ]);
     expect(parsed).toHaveLength(1);
     expect(parsed[0]?.code).toBe("OK");
+  });
+
+  it("parseOverlayPolicyWarningsFromUnknown coerces unknown severity to warning", () => {
+    const parsed = parseOverlayPolicyWarningsFromUnknown([
+      {
+        code: "LEGACY",
+        severity: "unknown-sev",
+        message: "m",
+        source: "diagnostic",
+        enforcement: "not_applied",
+      },
+    ]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.severity).toBe("warning");
   });
 
   it("overlayPolicyExpectationFlagsFromIdentity derives from capabilities", () => {

@@ -47,7 +47,7 @@
 1. **Contract Layer** — 타입·정적 resolver 행.
 2. **Runtime Metadata Layer** — `promptTrace` / Review step에 optional overlay 필드 기록.
 3. **Runtime Policy Helper Layer** — `overlayPolicy`의 `shouldEnable*`·`buildOverlayRuntimePolicyHintsWire`·`parseOverlayRuntimePolicyHintsWire`; **기록·진단만**, 차단 없음.
-4. **Runtime Policy Diagnostic / Warning Layer** (현재) — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API `overlayPolicyWarningSummary`·**`overlayMaturity`**·**`enforcementStatus`**. **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
+4. **Runtime Policy Diagnostic / Warning Layer** (현재) — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API **`overlayPolicyWarningSummary`**·**`overlayWarningReport`**(`buildOverlayWarningReport`)·**`overlayArchitecturePhase`**·**`overlayMaturity`**·**`enforcementStatus`**. **`parseOverlayPolicyWarningsFromUnknown`** 는 알 수 없는 `severity`를 replay 안정화를 위해 **`warning`** 으로 본다(그 외 필드는 기존 검증 유지). **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
 5. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
@@ -66,7 +66,8 @@
 | **Knowledge activation hint** | `resolveKnowledgeActivationHintsForRole` — synthetic id만, DB·retrieval 비침해 |
 | **Review Harness helpers** | `selectExecutionReviewMembers`, `buildExecutionReviewBaseContext`, `executeReviewerStep`, `aggregateReviewerHarnessResult` — 스텝에 overlay·`overlayPolicyHints`·**`overlayPolicyWarnings`**; knowledge 힌트는 `shouldEnableKnowledgeHints`에 따름 |
 | **Registry / policy / trace extract** | `getOverlayIdentity` 등, `shouldEnable*`, `extractOverlayPromptTraceMetadata`, `parseOverlayRuntimePolicyHintsWire`, **`parseOverlayPolicyWarningsFromUnknown`** |
-| **읽기 전용 진단 API** | `GET /api/diagnostics/overlay-runtime` — `overlayPolicyWarningSummary`(경고 샘플 + **byCode/byRole/bySource**), **overlayMaturity**, **enforcementStatus**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` 시 `projectOverlay`·`lastPromptTraceOverlayExtract` |
+| **읽기 전용 진단 API** | `GET /api/diagnostics/overlay-runtime` — `overlayPolicyWarningSummary`(경고 샘플 + **byCode/byRole/bySource**), **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` 시 `projectOverlay`·`lastPromptTraceOverlayExtract` |
+| **Review Harness 집계** | `evaluateExecutionResult` — Harness 경로에서 **`overlayWarningSummary`**·`overlayWarningCount` optional(metadata; **decision 비영향**). |
 
 ### 아직 하지 않은 것 (Drift 방지)
 
@@ -84,4 +85,4 @@
 
 - 본문: `apps/web/docs/platform-structure-diagnosis.md`
 - 다운로드: `GET /api/diagnostics/platform-structure-report`
-- Overlay 런타임 스냅샷(JSON): `GET /api/diagnostics/overlay-runtime` (`overlayPolicyWarningSummary`에 **byCode/byRole/bySource**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `?projectId=` + 로그인 시 `projectOverlay`·`lastPromptTraceOverlayExtract`, `workspaceAiMemberOverlayMappings`)
+- Overlay 런타임 스냅샷(JSON): `GET /api/diagnostics/overlay-runtime` (`overlayPolicyWarningSummary`, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `?projectId=` + 로그인 시 `projectOverlay`·`lastPromptTraceOverlayExtract`, `workspaceAiMemberOverlayMappings`)

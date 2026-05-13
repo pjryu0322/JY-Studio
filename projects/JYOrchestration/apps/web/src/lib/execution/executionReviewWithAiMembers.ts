@@ -32,7 +32,31 @@ import {
 } from "@/lib/overlay/overlayPolicy";
 import { buildOverlayPolicyWarningsForResolvedRole } from "@/lib/overlay/overlayPolicyWarning";
 import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import { summarizeOverlayPolicyWarnings } from "@/lib/overlay/overlayPolicyWarning";
 import { resolveAiIdentityContract, resolveDefaultMemoryScopesForRole } from "@/lib/overlay/overlayRuntimeResolver";
+
+/** Review Harness 전체 기준 overlay 경고 집계(metadata only; decision 비영향). */
+export type ExecutionReviewOverlayWarningSummaryWire = Readonly<{
+  total: number;
+  critical: number;
+  warning: number;
+  info: number;
+  byRole: Readonly<Record<string, number>>;
+}>;
+
+export function buildExecutionReviewOverlayWarningSummary(
+  steps: readonly ExecutionReviewerStepRecord[]
+): ExecutionReviewOverlayWarningSummaryWire {
+  const flat = steps.flatMap((s) => [...(s.overlayPolicyWarnings ?? [])]);
+  const s = summarizeOverlayPolicyWarnings(flat);
+  return {
+    total: flat.length,
+    critical: s.criticalCount,
+    warning: s.warningCount,
+    info: s.infoCount,
+    byRole: s.byRole,
+  };
+}
 
 export type ExecutionReviewerStepRecord = {
   memberId: string;
@@ -311,6 +335,8 @@ function aggregateReviewerHarnessResult(input: {
   steps: ExecutionReviewerStepRecord[];
   /** 스텝별 `overlayPolicyWarnings` 총 개수(감사용; decision과 무관). */
   overlayWarningCount: number;
+  /** 전체 run 기준 severity·역할 분포(metadata only). */
+  overlayWarningSummary: ExecutionReviewOverlayWarningSummaryWire;
 } {
   const finalDecision = aggregateExecutionReviewDecisions(input.decisions);
   const reason = input.steps
@@ -319,6 +345,7 @@ function aggregateReviewerHarnessResult(input: {
     .slice(0, 8000);
 
   const overlayWarningCount = input.steps.reduce((n, s) => n + (s.overlayPolicyWarnings?.length ?? 0), 0);
+  const overlayWarningSummary = buildExecutionReviewOverlayWarningSummary(input.steps);
 
   return {
     result: {
@@ -329,6 +356,7 @@ function aggregateReviewerHarnessResult(input: {
     usage: input.usage,
     steps: input.steps,
     overlayWarningCount,
+    overlayWarningSummary,
   };
 }
 
@@ -368,6 +396,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   usage: OpenAiRelayEvalUsage | null;
   steps: ExecutionReviewerStepRecord[];
   overlayWarningCount: number;
+  overlayWarningSummary: ExecutionReviewOverlayWarningSummaryWire;
 } | null> {
   const members = await selectExecutionReviewMembers(params.projectId);
   if (members.length === 0) {

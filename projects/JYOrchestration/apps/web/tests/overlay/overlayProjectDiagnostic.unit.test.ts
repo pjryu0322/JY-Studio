@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildProjectAgentUnresolvedDiagnosticWarnings } from "@/lib/overlay/overlayPolicyWarning";
+import {
+  buildProjectAgentUnresolvedDiagnosticWarnings,
+  buildWorkspaceCatalogUnmappedWarnings,
+} from "@/lib/overlay/overlayPolicyWarning";
 import { buildProjectOverlayDiagnosticFromSelectedAgents } from "@/lib/overlay/overlayProjectDiagnostic";
 
 describe("buildProjectOverlayDiagnosticFromSelectedAgents", () => {
@@ -47,5 +50,14 @@ describe("buildProjectOverlayDiagnosticFromSelectedAgents", () => {
     expect(rows[0]?.code).toBe("OVERLAY_PROJECT_AGENT_UNRESOLVED");
     expect(rows[0]?.message).toContain("U1");
     expect(rows[0]?.enforcement).toBe("not_applied");
+  });
+
+  it("buildWorkspaceCatalogUnmappedWarnings lists each unmapped catalog key", () => {
+    const w = buildWorkspaceCatalogUnmappedWarnings(["a", "b"]);
+    expect(w).toHaveLength(2);
+    expect(w.map((x) => x.code)).toEqual([
+      "OVERLAY_WORKSPACE_CATALOG_UNMAPPED",
+      "OVERLAY_WORKSPACE_CATALOG_UNMAPPED",
+    ]);
   });
 });

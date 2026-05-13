@@ -149,6 +149,7 @@ export function buildProjectAgentUnresolvedDiagnosticWarnings(
   );
 }
 
+/** 타임라인·외부 JSON에서 경고 배열 복원. 알 수 없는 severity는 replay 안정화를 위해 `warning`으로 본다. */
 export function parseOverlayPolicyWarningsFromUnknown(raw: unknown): readonly OverlayPolicyWarning[] {
   if (!Array.isArray(raw)) return [];
   const out: OverlayPolicyWarning[] = [];
@@ -157,11 +158,15 @@ export function parseOverlayPolicyWarningsFromUnknown(raw: unknown): readonly Ov
     const r = item as Record<string, unknown>;
     const code = String(r.code ?? "").trim().slice(0, 80);
     const message = String(r.message ?? "").trim().slice(0, 500);
-    const severity = r.severity;
+    const severityRaw = r.severity;
     const source = r.source;
     const enforcement = r.enforcement;
     if (!code || !message) continue;
-    if (!WARNING_SEVERITIES.has(severity as OverlayPolicyWarningSeverity)) continue;
+    const severityResolved: OverlayPolicyWarningSeverity = WARNING_SEVERITIES.has(
+      severityRaw as OverlayPolicyWarningSeverity
+    )
+      ? (severityRaw as OverlayPolicyWarningSeverity)
+      : "warning";
     if (!WARNING_SOURCES.has(source as OverlayPolicyWarning["source"])) continue;
     if (enforcement !== "not_applied") continue;
     const roleKeyRaw = r.roleKey;
@@ -174,7 +179,7 @@ export function parseOverlayPolicyWarningsFromUnknown(raw: unknown): readonly Ov
     out.push(
       overlayPolicyWarningRow({
         code,
-        severity: severity as OverlayPolicyWarningSeverity,
+        severity: severityResolved,
         message,
         roleKey,
         source: source as OverlayPolicyWarning["source"],
