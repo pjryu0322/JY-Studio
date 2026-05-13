@@ -1,4 +1,5 @@
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
+import type { AiIdentityContract } from "@/lib/overlay/aiIdentityContract";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
 import { emptyPromptAssemblyMetadata } from "@/lib/overlay/contextAssemblyContract";
 import { buildPromptAssemblyMemoryRef } from "@/lib/overlay/memoryScopeRuntime";
@@ -30,6 +31,8 @@ export type OverlayPromptTraceIdentityWire = Readonly<{
   capabilities: readonly string[];
 }>;
 
+const USED_STAGE_MAX_LEN = 240;
+
 /**
  * SingleChat 오케스트레이션 성공 턴의 `promptTrace`에만 붙는 Overlay 메타(프롬프트 본문·라우팅 비변경).
  */
@@ -55,17 +58,10 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
 }> {
-  const usedRoleRaw =
-    String(input.meta.questionGeneratedBy ?? "").trim() ||
-    String(input.meta.orchestratorAgent ?? "").trim() ||
-    String(input.meta.activeConversationOwner ?? "").trim() ||
-    String(input.meta.conversationOwner ?? "").trim() ||
-    null;
-
+  const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
   const policyRoleKey = identity?.roleKey ?? usedRoleRaw ?? null;
   const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
-
   const overlayPolicyWarnings = buildOverlayPolicyWarningsForResolvedRole({
     policyRoleKey,
     source: "singlechat",
@@ -81,82 +77,45 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     };
   }
 
-  const overlayIdentity: OverlayPromptTraceIdentityWire | undefined = identity
-    ? {
-        roleKey: identity.roleKey,
-        perspective: identity.perspective,
-        provider: identity.provider,
-        capabilities: [...identity.capabilities],
-      }
-    : usedRoleRaw
-      ? {
-          roleKey: usedRoleRaw,
-          perspective: "unknown",
-          provider: "unknown",
-          capabilities: [],
-        }
-      : undefined;
-
-  const roleKeyForHints = identity?.roleKey ?? usedRoleRaw;
+  const overlayIdentity = buildOverlayPromptTraceIdentity(identity, usedRoleRaw);
   const overlayKnowledgeActivationHints = shouldEnableKnowledgeHints(policyRoleKey)
     ? resolveKnowledgeActivationHintsForRole({
-        roleKey: roleKeyForHints,
+        roleKey: identity?.roleKey ?? usedRoleRaw,
         projectId: input.projectId,
       })
     : [];
 
-  const usedMemoryRefs = [
-    buildPromptAssemblyMemoryRef("singleChatOrchestrationV1", "singleChatOrchestrationV1"),
-    buildPromptAssemblyMemoryRef("ChatMessage", "dialogueExcerpt"),
-  ];
-
-  const overlayContextAssembly: PromptAssemblyMetadataContract = shouldEnableContextAssembly(policyRoleKey)
-    ? {
-        usedRole: usedRoleRaw ?? identity?.roleKey ?? null,
-        usedMemoryRefs,
-        usedKnowledgePacks: overlayKnowledgeActivationHints.map((h) => h.knowledgePackId),
-        usedStage: `${input.workspaceScreenKey} · ${input.timelineStage}`.slice(0, 240),
-        tokenBudgetHint: "not_measured",
-      }
-    : emptyPromptAssemblyMetadata();
-
-  // Overlay 5단계 준비 metadata — 모두 read-only, prompt 본문·라우팅 비변경.
-  const memoryScopesForSelection = identity ? [...identity.memoryScopes] : [];
-  const knowledgeHintsForSelection = overlayKnowledgeActivationHints.map((h) => h.knowledgePackId);
-  const overlaySelectedContextRefs = buildOverlaySelectedContextRefs({
-    roleKey: identity?.roleKey ?? usedRoleRaw ?? null,
-    memoryScopes: memoryScopesForSelection,
-    knowledgeHints: knowledgeHintsForSelection,
-    timelineEnabled: true,
+  const overlayContextAssembly = buildOverlayPromptTraceContextAssembly({
+    policyRoleKey,
+    usedRoleRaw,
+    identity,
     workspaceScreenKey: input.workspaceScreenKey,
-    policyHintSource: identity?.roleKey ?? null,
+    timelineStage: input.timelineStage,
+    knowledgeHints: overlayKnowledgeActivationHints,
   });
 
-  const resolvedPromptLength = resolveOverlayBudgetPromptLength({
-    promptLength: input.promptLength,
-    promptText: input.promptText,
-    fallbackPayload: { meta: input.meta, refs: overlaySelectedContextRefs },
+  const overlaySelectedContextRefs = buildOverlayPromptTraceSelectionRefs({
+    identity,
+    usedRoleRaw,
+    workspaceScreenKey: input.workspaceScreenKey,
+    knowledgeHints: overlayKnowledgeActivationHints,
   });
+
   const overlayContextBudget = buildOverlayContextBudgetMetadata({
-    promptLength: resolvedPromptLength,
+    promptLength: resolveOverlayBudgetPromptLength({
+      promptLength: input.promptLength,
+      promptText: input.promptText,
+      fallbackPayload: { meta: input.meta, refs: overlaySelectedContextRefs },
+    }),
     selectedContextCount: overlaySelectedContextRefs.length,
   });
 
-  const overlayOrchestrationDecisionTrace = identity
-    ? buildOverlayOrchestrationDecisionTrace({
-        roleKey: identity.roleKey,
-        capabilities: [...identity.capabilities],
-        knowledgeScopes: [...identity.knowledgeScopes],
-        selectionReason: usedRoleRaw === identity.roleKey ? "role_resolved" : "role_resolved_via_meta",
-      })
-    : undefined;
+  const overlayOrchestrationDecisionTrace = buildOverlayPromptTraceDecisionTrace({
+    identity,
+    usedRoleRaw,
+  });
 
-  const conflictTimelineMessages = (input.timelineMessages ?? [])
-    .map((m) => (typeof m === "string" ? m : ""))
-    .filter((m) => m.length > 0);
-  const overlayConflictWarnings = conflictTimelineMessages.length
-    ? detectOverlayConflicts({ timelineMessages: conflictTimelineMessages })
-    : [];
+  const overlayConflictWarnings = buildOverlayPromptTraceConflictWarnings(input.timelineMessages);
 
   return {
     overlayIdentity,
@@ -169,6 +128,107 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     ...(overlayOrchestrationDecisionTrace ? { overlayOrchestrationDecisionTrace } : {}),
     ...(overlayConflictWarnings.length ? { overlayConflictWarnings } : {}),
   };
+}
+
+/** orchestration turn meta에서 가장 신뢰도 높은 role 키를 우선순위대로 선택한다. */
+function resolveOverlayTurnRoleKey(meta: SingleChatOrchestrationTurnMeta): string | null {
+  const candidates: readonly (string | null | undefined)[] = [
+    meta.questionGeneratedBy,
+    meta.orchestratorAgent,
+    meta.activeConversationOwner,
+    meta.conversationOwner,
+  ];
+  for (const c of candidates) {
+    const s = String(c ?? "").trim();
+    if (s) return s;
+  }
+  return null;
+}
+
+function buildOverlayPromptTraceIdentity(
+  identity: AiIdentityContract | null | undefined,
+  usedRoleRaw: string | null
+): OverlayPromptTraceIdentityWire | undefined {
+  if (identity) {
+    return {
+      roleKey: identity.roleKey,
+      perspective: identity.perspective,
+      provider: identity.provider,
+      capabilities: [...identity.capabilities],
+    };
+  }
+  if (usedRoleRaw) {
+    return {
+      roleKey: usedRoleRaw,
+      perspective: "unknown",
+      provider: "unknown",
+      capabilities: [],
+    };
+  }
+  return undefined;
+}
+
+function buildOverlayPromptTraceContextAssembly(input: {
+  readonly policyRoleKey: string | null;
+  readonly usedRoleRaw: string | null;
+  readonly identity: AiIdentityContract | null | undefined;
+  readonly workspaceScreenKey: string;
+  readonly timelineStage: string;
+  readonly knowledgeHints: readonly ActiveKnowledgePackRef[];
+}): PromptAssemblyMetadataContract {
+  if (!shouldEnableContextAssembly(input.policyRoleKey)) {
+    return emptyPromptAssemblyMetadata();
+  }
+  return {
+    usedRole: input.usedRoleRaw ?? input.identity?.roleKey ?? null,
+    usedMemoryRefs: [
+      buildPromptAssemblyMemoryRef("singleChatOrchestrationV1", "singleChatOrchestrationV1"),
+      buildPromptAssemblyMemoryRef("ChatMessage", "dialogueExcerpt"),
+    ],
+    usedKnowledgePacks: input.knowledgeHints.map((h) => h.knowledgePackId),
+    usedStage: `${input.workspaceScreenKey} · ${input.timelineStage}`.slice(0, USED_STAGE_MAX_LEN),
+    tokenBudgetHint: "not_measured",
+  };
+}
+
+function buildOverlayPromptTraceSelectionRefs(input: {
+  readonly identity: AiIdentityContract | null | undefined;
+  readonly usedRoleRaw: string | null;
+  readonly workspaceScreenKey: string;
+  readonly knowledgeHints: readonly ActiveKnowledgePackRef[];
+}): readonly OverlaySelectedContextRef[] {
+  return buildOverlaySelectedContextRefs({
+    roleKey: input.identity?.roleKey ?? input.usedRoleRaw ?? null,
+    memoryScopes: input.identity ? [...input.identity.memoryScopes] : [],
+    knowledgeHints: input.knowledgeHints.map((h) => h.knowledgePackId),
+    timelineEnabled: true,
+    workspaceScreenKey: input.workspaceScreenKey,
+    policyHintSource: input.identity?.roleKey ?? null,
+  });
+}
+
+function buildOverlayPromptTraceDecisionTrace(input: {
+  readonly identity: AiIdentityContract | null | undefined;
+  readonly usedRoleRaw: string | null;
+}): OverlayOrchestrationDecisionTrace | undefined {
+  if (!input.identity) return undefined;
+  return buildOverlayOrchestrationDecisionTrace({
+    roleKey: input.identity.roleKey,
+    capabilities: [...input.identity.capabilities],
+    knowledgeScopes: [...input.identity.knowledgeScopes],
+    selectionReason:
+      input.usedRoleRaw === input.identity.roleKey ? "role_resolved" : "role_resolved_via_meta",
+  });
+}
+
+function buildOverlayPromptTraceConflictWarnings(
+  rawMessages: readonly (string | null | undefined)[] | undefined
+): readonly OverlayConflictWarning[] {
+  const cleaned = (rawMessages ?? [])
+    .map((m) => (typeof m === "string" ? m : ""))
+    .filter((m) => m.length > 0);
+  if (!cleaned.length) return [];
+  return detectOverlayConflicts({ timelineMessages: cleaned });
 }
 
 /**

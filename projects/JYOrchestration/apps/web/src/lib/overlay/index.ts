@@ -95,6 +95,7 @@ export {
   detectOverlayConflicts,
   parseOverlayConflictWarningsFromUnknown,
   summarizeOverlayConflictWarnings,
+  OVERLAY_CONFLICT_WARNINGS_MAX,
 } from "@/lib/overlay/overlayConflictDetection";
 export type {
   OverlayConflictWarning,

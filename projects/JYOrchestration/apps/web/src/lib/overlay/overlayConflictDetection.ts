@@ -76,10 +76,28 @@ const RULES: readonly Rule[] = [
 ];
 
 function anyMatch(text: string, patterns: readonly RegExp[]): boolean {
-  for (const p of patterns) {
-    if (p.test(text)) return true;
-  }
-  return false;
+  return patterns.some((p) => p.test(text));
+}
+
+function ruleMatches(text: string, rule: Rule): boolean {
+  return anyMatch(text, rule.needA) && anyMatch(text, rule.needB);
+}
+
+function ruleToWarning(rule: Rule): OverlayConflictWarning {
+  return {
+    code: rule.code,
+    severity: rule.severity,
+    category: rule.category,
+    message: rule.message,
+  };
+}
+
+function isValidSeverity(value: string): value is OverlayConflictWarningSeverity {
+  return CONFLICT_SEVERITIES.has(value as OverlayConflictWarningSeverity);
+}
+
+function isValidCategory(value: string): value is OverlayConflictWarningCategory {
+  return CONFLICT_CATEGORIES.has(value as OverlayConflictWarningCategory);
 }
 
 export function detectOverlayConflicts(input: {
@@ -90,18 +108,9 @@ export function detectOverlayConflicts(input: {
     .slice(0, OVERLAY_CONFLICT_DETECT_MAX_MESSAGES)
     .map((m) => (typeof m === "string" ? m : ""))
     .join("\n");
-  const out: OverlayConflictWarning[] = [];
-  for (const rule of RULES) {
-    if (anyMatch(joined, rule.needA) && anyMatch(joined, rule.needB)) {
-      out.push({
-        code: rule.code,
-        severity: rule.severity,
-        category: rule.category,
-        message: rule.message,
-      });
-    }
-  }
-  return out.slice(0, OVERLAY_CONFLICT_WARNINGS_MAX);
+  return RULES.filter((rule) => ruleMatches(joined, rule))
+    .slice(0, OVERLAY_CONFLICT_WARNINGS_MAX)
+    .map(ruleToWarning);
 }
 
 export function parseOverlayConflictWarningsFromUnknown(
@@ -115,11 +124,10 @@ export function parseOverlayConflictWarningsFromUnknown(
     const r = item as Record<string, unknown>;
     const code = String(r.code ?? "").trim().slice(0, CODE_MAX_LEN);
     const message = String(r.message ?? "").trim().slice(0, MESSAGE_MAX_LEN);
-    const severity = String(r.severity ?? "").trim() as OverlayConflictWarningSeverity;
-    const category = String(r.category ?? "").trim() as OverlayConflictWarningCategory;
+    const severity = String(r.severity ?? "").trim();
+    const category = String(r.category ?? "").trim();
     if (!code || !message) continue;
-    if (!CONFLICT_SEVERITIES.has(severity)) continue;
-    if (!CONFLICT_CATEGORIES.has(category)) continue;
+    if (!isValidSeverity(severity) || !isValidCategory(category)) continue;
     out.push({ code, severity, category, message });
   }
   return out;
