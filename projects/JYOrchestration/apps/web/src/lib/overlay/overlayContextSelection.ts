@@ -32,6 +32,48 @@ const VALID_TYPES = new Set<OverlaySelectedContextRefType>([
   "policy",
 ]);
 
+const SOURCE_MAX_LEN = { default: 120, knowledge: 240 } as const;
+
+/** 각 type별 기본 priority/reason 정책. 동일 type 안에서는 idx만큼 priority가 증가한다. */
+const SELECTION_KIND_POLICY: Readonly<
+  Record<
+    OverlaySelectedContextRefType,
+    { basePriority: number; reason: string; sourceMaxLen: number }
+  >
+> = {
+  role: { basePriority: 0, reason: "role_resolved", sourceMaxLen: SOURCE_MAX_LEN.default },
+  memory: { basePriority: 10, reason: "role_memory_scope", sourceMaxLen: SOURCE_MAX_LEN.default },
+  knowledge: { basePriority: 20, reason: "role_knowledge_hint", sourceMaxLen: SOURCE_MAX_LEN.knowledge },
+  timeline: { basePriority: 30, reason: "promptTrace_overlay_enabled", sourceMaxLen: SOURCE_MAX_LEN.default },
+  workspace: { basePriority: 40, reason: "workspace_screen", sourceMaxLen: SOURCE_MAX_LEN.default },
+  policy: { basePriority: 50, reason: "policy_hint_source", sourceMaxLen: SOURCE_MAX_LEN.default },
+};
+
+function trimmedOrNull(value: string | null | undefined): string | null {
+  const s = String(value ?? "").trim();
+  return s ? s : null;
+}
+
+function makeRef(
+  type: OverlaySelectedContextRefType,
+  rawSource: string | null | undefined,
+  indexOffset = 0
+): OverlaySelectedContextRef | null {
+  const policy = SELECTION_KIND_POLICY[type];
+  const s = trimmedOrNull(rawSource);
+  if (!s) return null;
+  return {
+    type,
+    source: s.slice(0, policy.sourceMaxLen),
+    reason: policy.reason,
+    priority: policy.basePriority + indexOffset,
+  };
+}
+
+function pushIf(out: OverlaySelectedContextRef[], ref: OverlaySelectedContextRef | null): void {
+  if (ref) out.push(ref);
+}
+
 /** SingleChat·Review·Bootstrap 공통: 역할 기반 selection metadata를 만든다. */
 export function buildOverlaySelectedContextRefs(input: {
   roleKey: string | null | undefined;
@@ -42,67 +84,13 @@ export function buildOverlaySelectedContextRefs(input: {
   policyHintSource?: string | null;
 }): readonly OverlaySelectedContextRef[] {
   const out: OverlaySelectedContextRef[] = [];
-  const rk = String(input.roleKey ?? "").trim();
 
-  if (rk) {
-    out.push({
-      type: "role",
-      source: rk.slice(0, 120),
-      reason: "role_resolved",
-      priority: 0,
-    });
-  }
-
-  input.memoryScopes.forEach((scope, idx) => {
-    const s = String(scope ?? "").trim();
-    if (!s) return;
-    out.push({
-      type: "memory",
-      source: s.slice(0, 120),
-      reason: "role_memory_scope",
-      priority: 10 + idx,
-    });
-  });
-
-  input.knowledgeHints.forEach((hint, idx) => {
-    const s = String(hint ?? "").trim();
-    if (!s) return;
-    out.push({
-      type: "knowledge",
-      source: s.slice(0, 240),
-      reason: "role_knowledge_hint",
-      priority: 20 + idx,
-    });
-  });
-
-  if (input.timelineEnabled) {
-    out.push({
-      type: "timeline",
-      source: "promptTimeline",
-      reason: "promptTrace_overlay_enabled",
-      priority: 30,
-    });
-  }
-
-  const ws = String(input.workspaceScreenKey ?? "").trim();
-  if (ws) {
-    out.push({
-      type: "workspace",
-      source: ws.slice(0, 120),
-      reason: "workspace_screen",
-      priority: 40,
-    });
-  }
-
-  const hintSrc = String(input.policyHintSource ?? "").trim();
-  if (hintSrc) {
-    out.push({
-      type: "policy",
-      source: hintSrc.slice(0, 120),
-      reason: "policy_hint_source",
-      priority: 50,
-    });
-  }
+  pushIf(out, makeRef("role", input.roleKey));
+  input.memoryScopes.forEach((scope, idx) => pushIf(out, makeRef("memory", scope, idx)));
+  input.knowledgeHints.forEach((hint, idx) => pushIf(out, makeRef("knowledge", hint, idx)));
+  if (input.timelineEnabled) pushIf(out, makeRef("timeline", "promptTimeline"));
+  pushIf(out, makeRef("workspace", input.workspaceScreenKey));
+  pushIf(out, makeRef("policy", input.policyHintSource));
 
   return out;
 }

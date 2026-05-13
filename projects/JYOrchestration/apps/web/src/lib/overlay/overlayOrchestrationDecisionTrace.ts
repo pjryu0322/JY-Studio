@@ -13,6 +13,31 @@ export type OverlayOrchestrationDecisionTrace = Readonly<{
 }>;
 
 const MAX_MATCH = 24;
+const ROLE_KEY_MAX = 120;
+const REASON_MAX = 200;
+const DEFAULT_SELECTION_REASON = "role_resolved";
+
+function normalizeStringList(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    const s = String(item ?? "").trim();
+    if (s) out.push(s);
+    if (out.length >= MAX_MATCH) break;
+  }
+  return out;
+}
+
+function normalizeRoleKey(raw: unknown, fallback: string | null = null): string | null {
+  const s = String(raw ?? "").trim().slice(0, ROLE_KEY_MAX);
+  if (s) return s;
+  return fallback;
+}
+
+function normalizeReason(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  return (s || DEFAULT_SELECTION_REASON).slice(0, REASON_MAX);
+}
 
 export function buildOverlayOrchestrationDecisionTrace(input: {
   roleKey: string;
@@ -20,21 +45,11 @@ export function buildOverlayOrchestrationDecisionTrace(input: {
   knowledgeScopes: readonly string[];
   selectionReason?: string;
 }): OverlayOrchestrationDecisionTrace {
-  const selectedRoleKey = String(input.roleKey ?? "").trim().slice(0, 120) || "unknown";
-  const selectionReason = (String(input.selectionReason ?? "").trim() || "role_resolved").slice(0, 200);
-  const matchedCapabilities = (input.capabilities ?? [])
-    .map((c) => String(c ?? "").trim())
-    .filter(Boolean)
-    .slice(0, MAX_MATCH);
-  const matchedKnowledgeScopes = (input.knowledgeScopes ?? [])
-    .map((s) => String(s ?? "").trim())
-    .filter(Boolean)
-    .slice(0, MAX_MATCH);
   return {
-    selectedRoleKey,
-    selectionReason,
-    matchedCapabilities,
-    matchedKnowledgeScopes,
+    selectedRoleKey: normalizeRoleKey(input.roleKey, "unknown") ?? "unknown",
+    selectionReason: normalizeReason(input.selectionReason),
+    matchedCapabilities: normalizeStringList(input.capabilities),
+    matchedKnowledgeScopes: normalizeStringList(input.knowledgeScopes),
   };
 }
 
@@ -43,20 +58,12 @@ export function parseOverlayOrchestrationDecisionTraceFromUnknown(
 ): OverlayOrchestrationDecisionTrace | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const selectedRoleKey = String(r.selectedRoleKey ?? "").trim().slice(0, 120);
+  const selectedRoleKey = normalizeRoleKey(r.selectedRoleKey);
   if (!selectedRoleKey) return null;
-  const selectionReason = String(r.selectionReason ?? "").trim().slice(0, 200) || "role_resolved";
-  const matchedCapabilities = Array.isArray(r.matchedCapabilities)
-    ? (r.matchedCapabilities as unknown[])
-        .map((x) => String(x ?? "").trim())
-        .filter(Boolean)
-        .slice(0, MAX_MATCH)
-    : [];
-  const matchedKnowledgeScopes = Array.isArray(r.matchedKnowledgeScopes)
-    ? (r.matchedKnowledgeScopes as unknown[])
-        .map((x) => String(x ?? "").trim())
-        .filter(Boolean)
-        .slice(0, MAX_MATCH)
-    : [];
-  return { selectedRoleKey, selectionReason, matchedCapabilities, matchedKnowledgeScopes };
+  return {
+    selectedRoleKey,
+    selectionReason: normalizeReason(r.selectionReason),
+    matchedCapabilities: normalizeStringList(r.matchedCapabilities),
+    matchedKnowledgeScopes: normalizeStringList(r.matchedKnowledgeScopes),
+  };
 }

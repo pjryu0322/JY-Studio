@@ -15,6 +15,7 @@ import {
 } from "@/lib/overlay/overlayPolicyWarning";
 import { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
 import { summarizeOverlaySelectedContextRefs } from "@/lib/overlay/overlayContextSelection";
+import { summarizeOverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import { summarizeOverlayConflictWarnings } from "@/lib/overlay/overlayConflictDetection";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
@@ -88,14 +89,9 @@ export async function GET(request: NextRequest) {
   const overlayConflictSummary = summarizeOverlayConflictWarnings(
     lastPromptTraceOverlayExtract?.overlayConflictWarnings ?? []
   );
-  const overlayContextBudgetSummary = lastPromptTraceOverlayExtract?.overlayContextBudget
-    ? {
-        budgetPolicy: lastPromptTraceOverlayExtract.overlayContextBudget.budgetPolicy,
-        overflowRisk: lastPromptTraceOverlayExtract.overlayContextBudget.overflowRisk,
-        estimatedInputTokens: lastPromptTraceOverlayExtract.overlayContextBudget.estimatedInputTokens,
-        estimatedOutputTokens: lastPromptTraceOverlayExtract.overlayContextBudget.estimatedOutputTokens,
-      }
-    : { budgetPolicy: null, overflowRisk: null, estimatedInputTokens: null, estimatedOutputTokens: null };
+  const overlayContextBudgetSummary = summarizeOverlayContextBudgetMetadata(
+    lastPromptTraceOverlayExtract?.overlayContextBudget
+  );
 
   const overlayArchitecturePhase = {
     current: "runtime-policy-warning-layer" as const,

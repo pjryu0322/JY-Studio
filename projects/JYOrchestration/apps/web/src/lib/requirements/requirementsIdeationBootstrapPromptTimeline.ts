@@ -12,16 +12,11 @@ import { parseOverlayPolicyWarningsFromUnknown } from "@/lib/overlay/overlayPoli
 import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { OVERLAY_POLICY_WARNINGS_MAX_TIMELINE } from "@/lib/overlay/overlayPolicyWarning";
 import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSelection";
-import {
-  parseOverlaySelectedContextRefsFromUnknown,
-  OVERLAY_SELECTED_CONTEXT_REFS_MAX,
-} from "@/lib/overlay/overlayContextSelection";
+import { OVERLAY_SELECTED_CONTEXT_REFS_MAX } from "@/lib/overlay/overlayContextSelection";
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
-import { parseOverlayContextBudgetMetadataFromUnknown } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
-import { parseOverlayConflictWarningsFromUnknown } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
-import { parseOverlayOrchestrationDecisionTraceFromUnknown } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -131,22 +126,7 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   );
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
 
-  const parsedSelected = parseOverlaySelectedContextRefsFromUnknown(r.overlaySelectedContextRefs).slice(
-    0,
-    OVERLAY_SELECTED_CONTEXT_REFS_MAX
-  );
-  if (parsedSelected.length) out.overlaySelectedContextRefs = parsedSelected;
-
-  const parsedBudget = parseOverlayContextBudgetMetadataFromUnknown(r.overlayContextBudget);
-  if (parsedBudget) out.overlayContextBudget = parsedBudget;
-
-  const parsedConflicts = parseOverlayConflictWarningsFromUnknown(r.overlayConflictWarnings);
-  if (parsedConflicts.length) out.overlayConflictWarnings = parsedConflicts;
-
-  const parsedDecision = parseOverlayOrchestrationDecisionTraceFromUnknown(
-    r.overlayOrchestrationDecisionTrace
-  );
-  if (parsedDecision) out.overlayOrchestrationDecisionTrace = parsedDecision;
+  Object.assign(out, coerceOverlayPromptTracePreparationMetadata(r));
 
   return out;
 }

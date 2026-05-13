@@ -79,12 +79,18 @@ export type {
 export {
   buildOverlayContextBudgetMetadata,
   parseOverlayContextBudgetMetadataFromUnknown,
+  summarizeOverlayContextBudgetMetadata,
+  OVERLAY_CONTEXT_BUDGET_CHARS_PER_TOKEN,
+  OVERLAY_CONTEXT_BUDGET_POLICY_BUDGETS,
 } from "@/lib/overlay/overlayContextBudget";
 export type {
   OverlayContextBudgetMetadata,
   OverlayContextBudgetOverflowRisk,
   OverlayContextBudgetPolicy,
+  OverlayContextBudgetSummaryWire,
 } from "@/lib/overlay/overlayContextBudget";
+export { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
+export type { OverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 export {
   detectOverlayConflicts,
   parseOverlayConflictWarningsFromUnknown,

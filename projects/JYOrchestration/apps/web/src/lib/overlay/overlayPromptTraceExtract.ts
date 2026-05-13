@@ -6,13 +6,10 @@ import { parseOverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy"
 import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { parseOverlayPolicyWarningsFromUnknown } from "@/lib/overlay/overlayPolicyWarning";
 import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSelection";
-import { parseOverlaySelectedContextRefsFromUnknown } from "@/lib/overlay/overlayContextSelection";
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
-import { parseOverlayContextBudgetMetadataFromUnknown } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
-import { parseOverlayConflictWarningsFromUnknown } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
-import { parseOverlayOrchestrationDecisionTraceFromUnknown } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayIdentity?: RequirementsPromptTimelineEntry["overlayIdentity"];
@@ -97,19 +94,7 @@ export function extractOverlayPromptTraceMetadata(
   const parsedWarnings = parseOverlayPolicyWarningsFromUnknown(e.overlayPolicyWarnings);
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
 
-  const parsedSelected = parseOverlaySelectedContextRefsFromUnknown(e.overlaySelectedContextRefs);
-  if (parsedSelected.length) out.overlaySelectedContextRefs = parsedSelected;
-
-  const parsedBudget = parseOverlayContextBudgetMetadataFromUnknown(e.overlayContextBudget);
-  if (parsedBudget) out.overlayContextBudget = parsedBudget;
-
-  const parsedConflicts = parseOverlayConflictWarningsFromUnknown(e.overlayConflictWarnings);
-  if (parsedConflicts.length) out.overlayConflictWarnings = parsedConflicts;
-
-  const parsedDecision = parseOverlayOrchestrationDecisionTraceFromUnknown(
-    e.overlayOrchestrationDecisionTrace
-  );
-  if (parsedDecision) out.overlayOrchestrationDecisionTrace = parsedDecision;
+  Object.assign(out, coerceOverlayPromptTracePreparationMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }

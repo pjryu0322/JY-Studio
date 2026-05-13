@@ -24,20 +24,56 @@ const VALID_POLICIES = new Set<OverlayContextBudgetPolicy>([
 const VALID_RISKS = new Set<OverlayContextBudgetOverflowRisk>(["low", "medium", "high"]);
 
 /** 4 chars ≈ 1 token (OpenAI 공통 휴리스틱). */
-const CHARS_PER_TOKEN = 4;
+export const OVERLAY_CONTEXT_BUDGET_CHARS_PER_TOKEN = 4;
 
 /** policy별 권장 입력 토큰 한계(휴리스틱). */
-const POLICY_BUDGETS: Record<OverlayContextBudgetPolicy, number> = {
+export const OVERLAY_CONTEXT_BUDGET_POLICY_BUDGETS: Readonly<Record<OverlayContextBudgetPolicy, number>> = {
   compact: 2_000,
   balanced: 6_000,
   default: 6_000,
   extended: 16_000,
 };
 
+/** policy 판별 임계값(prompt 길이·선택 컨텍스트 개수). */
+const POLICY_THRESHOLDS = {
+  compactMaxLength: 2_000,
+  compactMaxContextCount: 6,
+  extendedMinLength: 24_000,
+  extendedMinContextCount: 20,
+  balancedMinLength: 8_000,
+  balancedMinContextCount: 12,
+} as const;
+
+/** overflowRisk 판정 비율(budget 대비). */
+const OVERFLOW_RISK_RATIOS = { low: 0.6, medium: 0.9 } as const;
+
+/** 응답 토큰 추정 휴리스틱. */
+const OUTPUT_ESTIMATION = { ratio: 0.3, min: 256, max: 4_000 } as const;
+
+function clampNonNegativeInt(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
 function pickPolicy(promptLength: number, selectedContextCount: number): OverlayContextBudgetPolicy {
-  if (promptLength <= 2_000 && selectedContextCount <= 6) return "compact";
-  if (promptLength >= 24_000 || selectedContextCount >= 20) return "extended";
-  if (promptLength >= 8_000 || selectedContextCount >= 12) return "balanced";
+  if (
+    promptLength <= POLICY_THRESHOLDS.compactMaxLength &&
+    selectedContextCount <= POLICY_THRESHOLDS.compactMaxContextCount
+  ) {
+    return "compact";
+  }
+  if (
+    promptLength >= POLICY_THRESHOLDS.extendedMinLength ||
+    selectedContextCount >= POLICY_THRESHOLDS.extendedMinContextCount
+  ) {
+    return "extended";
+  }
+  if (
+    promptLength >= POLICY_THRESHOLDS.balancedMinLength ||
+    selectedContextCount >= POLICY_THRESHOLDS.balancedMinContextCount
+  ) {
+    return "balanced";
+  }
   return "default";
 }
 
@@ -45,9 +81,9 @@ function pickOverflowRisk(
   estimatedInput: number,
   policy: OverlayContextBudgetPolicy
 ): OverlayContextBudgetOverflowRisk {
-  const budget = POLICY_BUDGETS[policy];
-  if (estimatedInput <= budget * 0.6) return "low";
-  if (estimatedInput <= budget * 0.9) return "medium";
+  const budget = OVERLAY_CONTEXT_BUDGET_POLICY_BUDGETS[policy];
+  if (estimatedInput <= budget * OVERFLOW_RISK_RATIOS.low) return "low";
+  if (estimatedInput <= budget * OVERFLOW_RISK_RATIOS.medium) return "medium";
   return "high";
 }
 
@@ -55,21 +91,26 @@ export function buildOverlayContextBudgetMetadata(input: {
   promptLength: number;
   selectedContextCount: number;
 }): OverlayContextBudgetMetadata {
-  const promptLength = Number.isFinite(input.promptLength) ? Math.max(0, Math.floor(input.promptLength)) : 0;
-  const selectedContextCount = Number.isFinite(input.selectedContextCount)
-    ? Math.max(0, Math.floor(input.selectedContextCount))
-    : 0;
+  const promptLength = clampNonNegativeInt(input.promptLength);
+  const selectedContextCount = clampNonNegativeInt(input.selectedContextCount);
   const policy = pickPolicy(promptLength, selectedContextCount);
-  const estimatedInputTokens = Math.ceil(promptLength / CHARS_PER_TOKEN);
-  // 응답 길이는 측정 불가 — heuristic으로 입력 대비 30% 추정(상한 4_000).
-  const estimatedOutputTokens = Math.min(4_000, Math.max(256, Math.ceil(estimatedInputTokens * 0.3)));
-  const overflowRisk = pickOverflowRisk(estimatedInputTokens, policy);
+  const estimatedInputTokens = Math.ceil(promptLength / OVERLAY_CONTEXT_BUDGET_CHARS_PER_TOKEN);
+  const estimatedOutputTokens = Math.min(
+    OUTPUT_ESTIMATION.max,
+    Math.max(OUTPUT_ESTIMATION.min, Math.ceil(estimatedInputTokens * OUTPUT_ESTIMATION.ratio))
+  );
   return {
     estimatedInputTokens: estimatedInputTokens || null,
     estimatedOutputTokens: promptLength > 0 ? estimatedOutputTokens : null,
     budgetPolicy: policy,
-    overflowRisk,
+    overflowRisk: pickOverflowRisk(estimatedInputTokens, policy),
   };
+}
+
+function coerceOptionalTokenCount(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
 }
 
 export function parseOverlayContextBudgetMetadataFromUnknown(
@@ -80,14 +121,37 @@ export function parseOverlayContextBudgetMetadataFromUnknown(
   const policy = String(r.budgetPolicy ?? "").trim() as OverlayContextBudgetPolicy;
   const risk = String(r.overflowRisk ?? "").trim() as OverlayContextBudgetOverflowRisk;
   if (!VALID_POLICIES.has(policy) || !VALID_RISKS.has(risk)) return null;
-  const input = r.estimatedInputTokens;
-  const output = r.estimatedOutputTokens;
-  const ein = input === null ? null : Number.isFinite(Number(input)) ? Math.max(0, Math.floor(Number(input))) : null;
-  const eout = output === null ? null : Number.isFinite(Number(output)) ? Math.max(0, Math.floor(Number(output))) : null;
   return {
-    estimatedInputTokens: ein,
-    estimatedOutputTokens: eout,
+    estimatedInputTokens: coerceOptionalTokenCount(r.estimatedInputTokens),
+    estimatedOutputTokens: coerceOptionalTokenCount(r.estimatedOutputTokens),
     budgetPolicy: policy,
     overflowRisk: risk,
+  };
+}
+
+export type OverlayContextBudgetSummaryWire = Readonly<{
+  budgetPolicy: OverlayContextBudgetPolicy | null;
+  overflowRisk: OverlayContextBudgetOverflowRisk | null;
+  estimatedInputTokens: number | null;
+  estimatedOutputTokens: number | null;
+}>;
+
+/** Diagnostic API용 budget summary(없으면 모든 필드 `null`). */
+export function summarizeOverlayContextBudgetMetadata(
+  metadata: OverlayContextBudgetMetadata | null | undefined
+): OverlayContextBudgetSummaryWire {
+  if (!metadata) {
+    return {
+      budgetPolicy: null,
+      overflowRisk: null,
+      estimatedInputTokens: null,
+      estimatedOutputTokens: null,
+    };
+  }
+  return {
+    budgetPolicy: metadata.budgetPolicy,
+    overflowRisk: metadata.overflowRisk,
+    estimatedInputTokens: metadata.estimatedInputTokens,
+    estimatedOutputTokens: metadata.estimatedOutputTokens,
   };
 }
