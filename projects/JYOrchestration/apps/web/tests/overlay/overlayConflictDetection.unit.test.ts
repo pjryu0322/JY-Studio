@@ -15,6 +15,15 @@ describe("detectOverlayConflicts", () => {
     expect(w.find((x) => x.code === "OVERLAY_CONFLICT_LOCALSTORAGE_VS_JWT")?.severity).toBe("warning");
   });
 
+  it("detects session vs stateless auth conflict (authentication warning)", () => {
+    const w = detectOverlayConflicts({
+      timelineMessages: ["기본은 세션 기반 인증을 사용하지만, 점진적으로 stateless JWT로 전환"],
+    });
+    expect(w.find((x) => x.code === "OVERLAY_CONFLICT_SESSION_VS_STATELESS_AUTH")?.category).toBe(
+      "authentication"
+    );
+  });
+
   it("detects monolith vs microservice as info-level architecture conflict", () => {
     const w = detectOverlayConflicts({
       timelineMessages: ["우선은 monolith로 가지만, 차후 microservice로 분리"],

@@ -19,6 +19,8 @@ import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextB
 import { buildOverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import { buildOverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
+import { detectOverlayConflicts } from "@/lib/overlay/overlayConflictDetection";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 export type OverlayPromptTraceIdentityWire = Readonly<{
@@ -36,8 +38,12 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   readonly timelineStage: string;
   readonly meta: SingleChatOrchestrationTurnMeta;
   readonly projectId?: string | null;
-  /** 선택: 다음 단계 selection metadata 생성을 위한 프롬프트 길이(없으면 budget metadata 미생성) */
+  /** 선택: budget metadata용 실제 프롬프트 길이(가장 정확). */
   readonly promptLength?: number;
+  /** 선택: `promptLength`가 없을 때 fallback heuristic으로 사용할 프롬프트 본문. */
+  readonly promptText?: string | null;
+  /** 선택: conflict 키워드 휴리스틱 입력(user/assistant/bootstrap/orchestration 메시지 등). */
+  readonly timelineMessages?: readonly (string | null | undefined)[];
 }): Readonly<{
   overlayIdentity?: OverlayPromptTraceIdentityWire;
   overlayContextAssembly: PromptAssemblyMetadataContract;
@@ -47,6 +53,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+  overlayConflictWarnings?: readonly OverlayConflictWarning[];
 }> {
   const usedRoleRaw =
     String(input.meta.questionGeneratedBy ?? "").trim() ||
@@ -125,14 +132,15 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     policyHintSource: identity?.roleKey ?? null,
   });
 
-  const promptLength = typeof input.promptLength === "number" ? input.promptLength : 0;
-  const overlayContextBudget =
-    promptLength > 0
-      ? buildOverlayContextBudgetMetadata({
-          promptLength,
-          selectedContextCount: overlaySelectedContextRefs.length,
-        })
-      : undefined;
+  const resolvedPromptLength = resolveOverlayBudgetPromptLength({
+    promptLength: input.promptLength,
+    promptText: input.promptText,
+    fallbackPayload: { meta: input.meta, refs: overlaySelectedContextRefs },
+  });
+  const overlayContextBudget = buildOverlayContextBudgetMetadata({
+    promptLength: resolvedPromptLength,
+    selectedContextCount: overlaySelectedContextRefs.length,
+  });
 
   const overlayOrchestrationDecisionTrace = identity
     ? buildOverlayOrchestrationDecisionTrace({
@@ -143,6 +151,13 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
       })
     : undefined;
 
+  const conflictTimelineMessages = (input.timelineMessages ?? [])
+    .map((m) => (typeof m === "string" ? m : ""))
+    .filter((m) => m.length > 0);
+  const overlayConflictWarnings = conflictTimelineMessages.length
+    ? detectOverlayConflicts({ timelineMessages: conflictTimelineMessages })
+    : [];
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -150,7 +165,35 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     overlayPolicyHints,
     overlayPolicyWarnings,
     ...(overlaySelectedContextRefs.length ? { overlaySelectedContextRefs } : {}),
-    ...(overlayContextBudget ? { overlayContextBudget } : {}),
+    overlayContextBudget,
     ...(overlayOrchestrationDecisionTrace ? { overlayOrchestrationDecisionTrace } : {}),
+    ...(overlayConflictWarnings.length ? { overlayConflictWarnings } : {}),
   };
+}
+
+/**
+ * Context budget metadata용 프롬프트 길이를 안전하게 산출한다.
+ *
+ * 우선순위:
+ * 1. 명시된 `promptLength`(가장 정확).
+ * 2. `promptText.length` (실제 직렬화된 프롬프트 본문 길이).
+ * 3. `JSON.stringify({ meta, refs })` 길이(휴리스틱 fallback).
+ *
+ * **실제 토큰 카운팅이 아니다.** OpenAI payload·라우팅 비변경. budget metadata 생성만을 위함.
+ */
+function resolveOverlayBudgetPromptLength(input: {
+  readonly promptLength?: number;
+  readonly promptText?: string | null;
+  readonly fallbackPayload: { readonly meta: unknown; readonly refs: readonly OverlaySelectedContextRef[] };
+}): number {
+  if (typeof input.promptLength === "number" && Number.isFinite(input.promptLength) && input.promptLength > 0) {
+    return Math.floor(input.promptLength);
+  }
+  const promptTextLen = typeof input.promptText === "string" ? input.promptText.length : 0;
+  if (promptTextLen > 0) return promptTextLen;
+  try {
+    return JSON.stringify(input.fallbackPayload).length;
+  } catch {
+    return 0;
+  }
 }

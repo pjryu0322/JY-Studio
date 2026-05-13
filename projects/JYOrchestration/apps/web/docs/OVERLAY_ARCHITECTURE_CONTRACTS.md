@@ -39,9 +39,10 @@
 | Warning 집계(byCode/byRole/bySource) | `apps/web/src/lib/overlay/overlayPolicyWarningSummary.ts` — `byRole`은 `roleKey` 없으면 **`unknown`** 버킷 |
 | Warning read-only 리포트 묶음 | `apps/web/src/lib/overlay/overlayWarningReport.ts` |
 | **Selection metadata 빌더(read-only)** | `apps/web/src/lib/overlay/overlayContextSelection.ts` — `buildOverlaySelectedContextRefs`·`summarizeOverlaySelectedContextRefs`·`parseOverlaySelectedContextRefsFromUnknown` |
-| **Context budget heuristic(read-only)** | `apps/web/src/lib/overlay/overlayContextBudget.ts` — `buildOverlayContextBudgetMetadata`·`parseOverlayContextBudgetMetadataFromUnknown` (payload·prompt 비변경) |
-| **Conflict detection(키워드 휴리스틱, warning only)** | `apps/web/src/lib/overlay/overlayConflictDetection.ts` — `detectOverlayConflicts`·`summarizeOverlayConflictWarnings` |
+| **Context budget heuristic(read-only)** | `apps/web/src/lib/overlay/overlayContextBudget.ts` — `buildOverlayContextBudgetMetadata`·`parseOverlayContextBudgetMetadataFromUnknown`·`summarizeOverlayContextBudgetMetadata` (payload·prompt 비변경) |
+| **Conflict detection(키워드 휴리스틱, warning only)** | `apps/web/src/lib/overlay/overlayConflictDetection.ts` — `detectOverlayConflicts`·`summarizeOverlayConflictWarnings`·`OVERLAY_CONFLICT_WARNINGS_MAX` |
 | **Orchestration decision trace(replay metadata)** | `apps/web/src/lib/overlay/overlayOrchestrationDecisionTrace.ts` — `buildOverlayOrchestrationDecisionTrace` |
+| **5단계 preparation 코어션 단일창** | `apps/web/src/lib/overlay/overlayPromptTracePreparationCoerce.ts` — `coerceOverlayPromptTracePreparationMetadata`(extract+coerce 공유) |
 | 재export | `apps/web/src/lib/overlay/index.ts` |
 
 기존 Stage1/2·Cursor launch·GitHub·retrieval 본문은 변경하지 않는다.
@@ -52,8 +53,9 @@
 2. **Runtime Metadata Layer** — `promptTrace` / Review step에 optional overlay 필드 기록.
 3. **Runtime Policy Helper Layer** — `overlayPolicy`의 `shouldEnable*`·`buildOverlayRuntimePolicyHintsWire`·`parseOverlayRuntimePolicyHintsWire`; **기록·진단만**, 차단 없음.
 4. **Runtime Policy Diagnostic / Warning Layer** — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API **`overlayPolicyWarningSummary`**·**`overlayWarningReport`**(`buildOverlayWarningReport`)·**`overlayArchitecturePhase`**·**`overlayMaturity`**·**`enforcementStatus`**. **`parseOverlayPolicyWarningsFromUnknown`** 는 알 수 없는 `severity`를 replay 안정화를 위해 **`warning`** 으로 본다(그 외 필드는 기존 검증 유지). **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
-5. **Selection / Budget / Conflict Trace Preparation Layer** (현재) — `overlaySelectedContextRefs`·`overlayContextBudget`·`overlayConflictWarnings`·`overlayOrchestrationDecisionTrace`(모두 read-only optional metadata). 진단 API에 **`overlaySelectionSummary`**·**`overlayConflictSummary`**·**`overlayContextBudgetSummary`** 노출. **prompt 본문·OpenAI payload·라우팅 변경 없음**, **자동 orchestration / retrieval / provider 선택 없음**. 충돌 검출은 키워드 휴리스틱이며 **warning only**(차단 없음).
-6. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+5. **Runtime Diagnostic / Selection Preparation Layer** (현재) — `overlaySelectedContextRefs`·`overlayContextBudget`·`overlayConflictWarnings`·`overlayOrchestrationDecisionTrace`(모두 read-only optional metadata). 진단 API에 **`overlaySelectionSummary`**·**`overlayConflictSummary`**·**`overlayContextBudgetSummary`** 노출(`overlayArchitecturePhase.current = "runtime-diagnostic-selection-preparation-layer"`). SingleChat augment 경로가 `detectOverlayConflicts({ timelineMessages })`를 호출해 `overlayConflictWarnings`를 실제로 생성한다(warning only). budget metadata는 `promptLength → promptText.length → JSON.stringify` fallback을 사용해 항상 생성된다. **prompt 본문·OpenAI payload·라우팅 변경 없음**, **자동 orchestration / retrieval / provider 선택 없음**.
+6. **Policy-guided Context Assembly Layer** (다음 단계 준비) — **미도입**. "무엇이 존재하는가"→"무엇을 실제 prompt assembly에 사용할 것인가"로 이행하기 위한 context prioritization·memory ranking·knowledge activation priority·orchestration selection policy·context pruning·token overflow mitigation 등을 read-only metadata로 준비할 예정. **hard enforcement·자동 blocking·provider switching·retrieval rewriting·자율 orchestration 실행은 여전히 금지.**
+7. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
 

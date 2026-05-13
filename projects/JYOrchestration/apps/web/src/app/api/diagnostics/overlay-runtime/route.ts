@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
   );
 
   const overlayArchitecturePhase = {
-    current: "runtime-policy-warning-layer" as const,
+    current: "runtime-diagnostic-selection-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
     runtimeMetadataLayer: true,
     runtimePolicyHelperLayer: true,
     runtimePolicyWarningLayer: true,
+    runtimeDiagnosticSelectionPreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 

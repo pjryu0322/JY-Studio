@@ -366,6 +366,8 @@ export async function POST(request: NextRequest) {
         timelineStage: orchCtxForTurn.timelineStage,
         meta: turnOk.meta,
         projectId: projectId ?? null,
+        promptText: turnOk.promptText,
+        timelineMessages: [userMessage, dialogueExcerpt, replyTrim],
       });
       const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
         action: "requirementsChatOrchestration",

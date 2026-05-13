@@ -30,7 +30,14 @@ const CONFLICT_CATEGORIES = new Set<OverlayConflictWarningCategory>([
 ]);
 const CONFLICT_SEVERITIES = new Set<OverlayConflictWarningSeverity>(["info", "warning"]);
 
-const MAX_MESSAGES = 64;
+/** detect 입력 timeline 메시지 수 상한(휴리스틱 비대화 방지). */
+const OVERLAY_CONFLICT_DETECT_MAX_MESSAGES = 64;
+
+/** 행당 conflict warning 최대 보존 개수(promptTrace replay 안정화). */
+export const OVERLAY_CONFLICT_WARNINGS_MAX = 32;
+
+const CODE_MAX_LEN = 80;
+const MESSAGE_MAX_LEN = 500;
 
 type Rule = Readonly<{
   code: string;
@@ -80,7 +87,7 @@ export function detectOverlayConflicts(input: {
 }): readonly OverlayConflictWarning[] {
   if (!Array.isArray(input.timelineMessages) || input.timelineMessages.length === 0) return [];
   const joined = input.timelineMessages
-    .slice(0, MAX_MESSAGES)
+    .slice(0, OVERLAY_CONFLICT_DETECT_MAX_MESSAGES)
     .map((m) => (typeof m === "string" ? m : ""))
     .join("\n");
   const out: OverlayConflictWarning[] = [];
@@ -94,7 +101,7 @@ export function detectOverlayConflicts(input: {
       });
     }
   }
-  return out;
+  return out.slice(0, OVERLAY_CONFLICT_WARNINGS_MAX);
 }
 
 export function parseOverlayConflictWarningsFromUnknown(
@@ -102,11 +109,12 @@ export function parseOverlayConflictWarningsFromUnknown(
 ): readonly OverlayConflictWarning[] {
   if (!Array.isArray(raw)) return [];
   const out: OverlayConflictWarning[] = [];
-  for (const item of raw.slice(0, 32)) {
+  for (const item of raw) {
+    if (out.length >= OVERLAY_CONFLICT_WARNINGS_MAX) break;
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
-    const code = String(r.code ?? "").trim().slice(0, 80);
-    const message = String(r.message ?? "").trim().slice(0, 500);
+    const code = String(r.code ?? "").trim().slice(0, CODE_MAX_LEN);
+    const message = String(r.message ?? "").trim().slice(0, MESSAGE_MAX_LEN);
     const severity = String(r.severity ?? "").trim() as OverlayConflictWarningSeverity;
     const category = String(r.category ?? "").trim() as OverlayConflictWarningCategory;
     if (!code || !message) continue;

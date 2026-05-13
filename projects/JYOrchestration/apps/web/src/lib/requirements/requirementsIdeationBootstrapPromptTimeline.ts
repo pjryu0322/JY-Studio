@@ -15,6 +15,7 @@ import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSele
 import { OVERLAY_SELECTED_CONTEXT_REFS_MAX } from "@/lib/overlay/overlayContextSelection";
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
+import { OVERLAY_CONFLICT_WARNINGS_MAX } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
@@ -829,7 +830,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
       : {}),
     ...(params.overlayContextBudget ? { overlayContextBudget: params.overlayContextBudget } : {}),
     ...(params.overlayConflictWarnings?.length
-      ? { overlayConflictWarnings: [...params.overlayConflictWarnings].slice(0, 32) }
+      ? {
+          overlayConflictWarnings: [...params.overlayConflictWarnings].slice(0, OVERLAY_CONFLICT_WARNINGS_MAX),
+        }
       : {}),
     ...(params.overlayOrchestrationDecisionTrace
       ? { overlayOrchestrationDecisionTrace: params.overlayOrchestrationDecisionTrace }
