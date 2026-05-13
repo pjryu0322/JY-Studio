@@ -53,6 +53,9 @@ export type ExecutionReviewerStepRecord = {
   overlayMemoryScopes?: readonly MemoryScope[];
   overlayKnowledgeHints?: readonly ActiveKnowledgePackRef[];
   overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
+  /**
+   * 진단·감사용 metadata. review decision(pass/retry/fail) 및 집계 결과에 영향 없음.
+   */
   overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 };
 
@@ -306,12 +309,16 @@ function aggregateReviewerHarnessResult(input: {
   result: TaskEvaluationResult;
   usage: OpenAiRelayEvalUsage | null;
   steps: ExecutionReviewerStepRecord[];
+  /** 스텝별 `overlayPolicyWarnings` 총 개수(감사용; decision과 무관). */
+  overlayWarningCount: number;
 } {
   const finalDecision = aggregateExecutionReviewDecisions(input.decisions);
   const reason = input.steps
     .map((s) => `[${s.name}·${s.role}·${s.model}] ${s.decision}: ${s.summary}`)
     .join("\n---\n")
     .slice(0, 8000);
+
+  const overlayWarningCount = input.steps.reduce((n, s) => n + (s.overlayPolicyWarnings?.length ?? 0), 0);
 
   return {
     result: {
@@ -321,6 +328,7 @@ function aggregateReviewerHarnessResult(input: {
     },
     usage: input.usage,
     steps: input.steps,
+    overlayWarningCount,
   };
 }
 
@@ -359,6 +367,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   result: TaskEvaluationResult;
   usage: OpenAiRelayEvalUsage | null;
   steps: ExecutionReviewerStepRecord[];
+  overlayWarningCount: number;
 } | null> {
   const members = await selectExecutionReviewMembers(params.projectId);
   if (members.length === 0) {

@@ -114,7 +114,10 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   const parsedHints = parseOverlayRuntimePolicyHintsWire(op);
   if (parsedHints) out.overlayPolicyHints = parsedHints;
 
-  const parsedWarnings = parseOverlayPolicyWarningsFromUnknown(r.overlayPolicyWarnings);
+  const parsedWarnings = parseOverlayPolicyWarningsFromUnknown(r.overlayPolicyWarnings).slice(
+    0,
+    OVERLAY_POLICY_WARNINGS_MAX_TIMELINE
+  );
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
 
   return out;

@@ -7,6 +7,11 @@ import {
   parseOverlayPolicyWarningsFromUnknown,
   summarizeOverlayPolicyWarnings,
 } from "@/lib/overlay/overlayPolicyWarning";
+import {
+  groupOverlayPolicyWarningsByCode,
+  groupOverlayPolicyWarningsByRole,
+  groupOverlayPolicyWarningsBySource,
+} from "@/lib/overlay/overlayPolicyWarningSummary";
 import { resolveAiIdentityContract } from "@/lib/overlay/overlayRuntimeResolver";
 
 describe("overlayPolicyWarning", () => {
@@ -27,6 +32,17 @@ describe("overlayPolicyWarning", () => {
     });
     expect(w.some((x) => x.code === "OVERLAY_CURSOR_CAPABILITY_NOT_ALLOWED")).toBe(true);
     expect(w.find((x) => x.code === "OVERLAY_CURSOR_CAPABILITY_NOT_ALLOWED")?.severity).toBe("warning");
+  });
+
+  it("groupOverlayPolicyWarningsBy* helpers count buckets", () => {
+    const ws = [
+      { code: "X", severity: "info" as const, message: "m", source: "diagnostic" as const, enforcement: "not_applied" as const, roleKey: "a" },
+      { code: "X", severity: "info" as const, message: "m2", source: "diagnostic" as const, enforcement: "not_applied" as const },
+    ];
+    expect(groupOverlayPolicyWarningsByCode(ws).X).toBe(2);
+    expect(groupOverlayPolicyWarningsByRole(ws).a).toBe(1);
+    expect(groupOverlayPolicyWarningsByRole(ws)["(none)"]).toBe(1);
+    expect(groupOverlayPolicyWarningsBySource(ws).diagnostic).toBe(2);
   });
 
   it("workspace unmapped catalog produces diagnostic warnings", () => {
@@ -74,14 +90,20 @@ describe("overlayPolicyWarning", () => {
     expect(a.map((x) => x.code).sort()).toEqual(b.map((x) => x.code).sort());
   });
 
-  it("summarizeOverlayPolicyWarnings counts severities", () => {
+  it("summarizeOverlayPolicyWarnings counts severities and aggregates by code, role, source", () => {
     const s = summarizeOverlayPolicyWarnings([
-      { code: "A", severity: "warning", message: "a", source: "diagnostic", enforcement: "not_applied" },
+      { code: "A", severity: "warning", message: "a", source: "diagnostic", enforcement: "not_applied", roleKey: "planner" },
       { code: "B", severity: "critical", message: "b", source: "diagnostic", enforcement: "not_applied" },
-      { code: "C", severity: "info", message: "c", source: "diagnostic", enforcement: "not_applied" },
+      { code: "C", severity: "info", message: "c", source: "singlechat", enforcement: "not_applied", roleKey: null },
     ]);
     expect(s.warningCount).toBe(1);
     expect(s.criticalCount).toBe(1);
     expect(s.infoCount).toBe(1);
+    expect(s.byCode.A).toBe(1);
+    expect(s.byCode.B).toBe(1);
+    expect(s.byRole.planner).toBe(1);
+    expect(s.byRole["(none)"]).toBe(2);
+    expect(s.bySource.diagnostic).toBe(2);
+    expect(s.bySource.singlechat).toBe(1);
   });
 });

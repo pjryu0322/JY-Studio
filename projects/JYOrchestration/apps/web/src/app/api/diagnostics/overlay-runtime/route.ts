@@ -78,6 +78,21 @@ export async function GET(request: NextRequest) {
   });
   const overlayPolicyWarningSummary = summarizeOverlayPolicyWarnings(summaryWarnings);
 
+  const overlayMaturity = {
+    contractLayer: true,
+    runtimeMetadataLayer: true,
+    runtimePolicyHelperLayer: true,
+    runtimePolicyWarningLayer: true,
+    runtimePolicyEnforcementLayer: false,
+  } as const;
+
+  const enforcementStatus = {
+    hardBlockingEnabled: false,
+    cursorCapabilityBlockingEnabled: false,
+    retrievalPolicyEnforcementEnabled: false,
+    promptInjectionPolicyEnabled: false,
+  } as const;
+
   return NextResponse.json({
     success: true,
     data: {
@@ -90,6 +105,8 @@ export async function GET(request: NextRequest) {
       unresolvedRoleKeys,
       workspaceAiMemberOverlayMappings,
       overlayPolicyWarningSummary,
+      overlayMaturity,
+      enforcementStatus,
       promptTraceOverlayEnabled: true,
       ...(projectOverlay ? { projectOverlay } : {}),
       ...(projectId ? { lastPromptTraceOverlayExtract: lastPromptTraceOverlayExtract ?? null } : {}),

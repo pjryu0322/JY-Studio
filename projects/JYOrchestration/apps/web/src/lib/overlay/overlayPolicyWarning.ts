@@ -4,6 +4,11 @@ import {
   shouldEnableKnowledgeHints,
 } from "@/lib/overlay/overlayPolicy";
 import type { AiIdentityContract } from "@/lib/overlay/aiIdentityContract";
+import {
+  groupOverlayPolicyWarningsByCode,
+  groupOverlayPolicyWarningsByRole,
+  groupOverlayPolicyWarningsBySource,
+} from "@/lib/overlay/overlayPolicyWarningSummary";
 import { resolveAiIdentityContract } from "@/lib/overlay/overlayRuntimeResolver";
 
 export type OverlayPolicyWarningSeverity = "info" | "warning" | "critical";
@@ -152,6 +157,12 @@ export type OverlayPolicyWarningSummaryWire = Readonly<{
   criticalCount: number;
   infoCount: number;
   warnings: readonly OverlayPolicyWarning[];
+  /** 코드별 발생 횟수(진단·리포트용; 전체 입력 배열 기준). */
+  byCode: Readonly<Record<string, number>>;
+  /** roleKey별 발생 횟수(없으면 `(none)` 버킷). */
+  byRole: Readonly<Record<string, number>>;
+  /** source별 발생 횟수. */
+  bySource: Readonly<Record<string, number>>;
 }>;
 
 export function summarizeOverlayPolicyWarnings(warnings: readonly OverlayPolicyWarning[]): OverlayPolicyWarningSummaryWire {
@@ -168,6 +179,9 @@ export function summarizeOverlayPolicyWarnings(warnings: readonly OverlayPolicyW
     criticalCount,
     infoCount,
     warnings: warnings.slice(0, 50),
+    byCode: groupOverlayPolicyWarningsByCode(warnings),
+    byRole: groupOverlayPolicyWarningsByRole(warnings),
+    bySource: groupOverlayPolicyWarningsBySource(warnings),
   };
 }
 

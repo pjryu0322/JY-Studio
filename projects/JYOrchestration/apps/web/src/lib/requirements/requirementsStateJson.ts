@@ -261,7 +261,11 @@ export type RequirementsPromptTimelineEntry = {
   overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
   /** Overlay 3단계: 런타임 정책 힌트(비차단; 진단·replay용) */
   overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
-  /** Overlay 4단계: 정책 경고(비차단; enforcement 항상 not_applied) */
+  /**
+   * Overlay 4단계: 정책 경고(비차단; enforcement 항상 not_applied).
+   * 저장/로드: `parseRequirementsStateJson` → `coerceRequirementsPromptTimelineEntry`가
+   * `parseOverlayPolicyWarningsFromUnknown`으로 검증·보존하며, 행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`개.
+   */
   overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 };
 

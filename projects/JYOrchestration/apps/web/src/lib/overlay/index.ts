@@ -59,6 +59,12 @@ export {
 } from "@/lib/overlay/overlayPolicyWarning";
 export type { OverlayPolicyWarning, OverlayPolicyWarningSeverity, OverlayPolicyWarningSummaryWire } from "@/lib/overlay/overlayPolicyWarning";
 export {
+  groupOverlayPolicyWarningsByCode,
+  groupOverlayPolicyWarningsByRole,
+  groupOverlayPolicyWarningsBySource,
+} from "@/lib/overlay/overlayPolicyWarningSummary";
+export { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
+export {
   resolveOverlayIdentityFromAiMember,
   validateWorkspaceAiMemberOverlayMappings,
   listUnmappedWorkspaceAiMemberKeys,

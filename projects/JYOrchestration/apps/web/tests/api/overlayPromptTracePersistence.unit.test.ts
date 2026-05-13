@@ -70,6 +70,28 @@ describe("Overlay prompt trace persistence", () => {
     expect(extracted.overlayPolicyWarnings?.[0]?.enforcement).toBe("not_applied");
   });
 
+  it("parseRequirementsStateJson drops invalid overlayPolicyWarnings rows but keeps valid ones", () => {
+    const timelineRow = {
+      createdAt: "2026-01-02T00:00:00.000Z",
+      action: "requirementsChatOrchestration",
+      stage: "ideation",
+      source: "llm",
+      overlayPolicyWarnings: [
+        {
+          code: "KEEP",
+          severity: "info",
+          message: "ok",
+          source: "singlechat",
+          enforcement: "not_applied",
+        },
+        { code: "DROP", severity: "nope", message: "bad", source: "singlechat", enforcement: "not_applied" },
+      ],
+    };
+    const parsed = parseRequirementsStateJson({ promptTimeline: [timelineRow] });
+    expect(parsed.promptTimeline?.[0]?.overlayPolicyWarnings?.length).toBe(1);
+    expect(parsed.promptTimeline?.[0]?.overlayPolicyWarnings?.[0]?.code).toBe("KEEP");
+  });
+
   it("workspace AI catalog keys have overlay mapping coverage (diagnostic contract)", () => {
     const { mapped, unmapped } = validateWorkspaceAiMemberOverlayMappings();
     expect(mapped.length + unmapped.length).toBeGreaterThan(0);
