@@ -8,6 +8,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
+  buildBootstrapOpenAiRouteHandlingExceptionResult,
   runRequirementsFacilitatorOpenAI,
   runRequirementsIdeationInterviewSeedFromProjectOpenAI,
   runRequirementsSingleChatBootstrapOpenAI,
@@ -520,23 +521,10 @@ export async function POST(request: NextRequest) {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        result = {
-          ok: false,
-          code: "ROUTE",
-          message: `bootstrap 라우트 예외: ${msg.slice(0, 400)}`,
-          fallbackReason: "ROUTE_HANDLING_ERROR",
-          provider: "openai",
-          model: resolveOpenAiModelFromEnv(),
-          actualModel: resolveOpenAiModelFromEnv(),
+        result = buildBootstrapOpenAiRouteHandlingExceptionResult({
+          errorMessage: msg,
           configuredModelOverride: configuredModelOverrideBoot,
-          calledAt: new Date().toISOString(),
-          responseText: "",
-          rawResponseText: "",
-          parseError: msg.slice(0, 400),
-          questionQualityRetryCount: 0,
-          questionQualityIssues: [],
-          finalQuestionBeforeFallback: "",
-        };
+        });
       }
     } else {
       result = await runRequirementsFacilitatorOpenAI({
@@ -764,7 +752,7 @@ export async function POST(request: NextRequest) {
       bootstrapMeta = r.orchestrationBootstrap && typeof r.orchestrationBootstrap === "object" ? r.orchestrationBootstrap : undefined;
       const suggestedSlotsRaw = Array.isArray(r.suggestedSlots) ? r.suggestedSlots : [];
       const suggestedSnapshot = cloneDynamicSlotProposalsFromPlannerRoute(
-        suggestedSlotsRaw.filter((x) => x && typeof x === "object") as readonly SingleChatDynamicSlotProposalWireV1[]
+        suggestedSlotsRaw.filter((x: unknown): x is object => Boolean(x && typeof x === "object")) as readonly SingleChatDynamicSlotProposalWireV1[]
       );
       suggestedDynamicSlots = suggestedSnapshot.map((s) => s.slotKey).filter(Boolean);
 

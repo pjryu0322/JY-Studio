@@ -30,9 +30,19 @@
 | Memory scope → 출처 매핑 | `apps/web/src/lib/overlay/memoryScopeRuntime.ts` |
 | Knowledge activation synthetic hints | `apps/web/src/lib/overlay/knowledgeActivationResolver.ts` |
 | Orchestration `promptTrace` augment | `apps/web/src/lib/overlay/overlayPromptTraceAugment.ts` |
+| Registry wrapper (identity·scopes·provider) | `apps/web/src/lib/overlay/overlayRegistry.ts` |
+| Runtime policy (soft booleans, 비차단) | `apps/web/src/lib/overlay/overlayPolicy.ts` |
+| Workspace catalog → contract role (선택 매핑) | `apps/web/src/lib/overlay/overlayIdentityFromWorkspace.ts` |
+| Prompt trace row에서 overlay 메타 추출 | `apps/web/src/lib/overlay/overlayPromptTraceExtract.ts` |
 | 재export | `apps/web/src/lib/overlay/index.ts` |
 
 기존 Stage1/2·Cursor launch·GitHub·retrieval 본문은 변경하지 않는다.
+
+### Contract → Runtime Metadata → Runtime Policy
+
+- **Contract**: `aiIdentityContract`·`memoryScopeContract`·`contextAssemblyContract`·`activeKnowledgePackRef` 등 타입과 `overlayRuntimeResolver`의 정적 행(역할별 identity·기본 memory/knowledge scope).
+- **Runtime Metadata**: 오케스트레이션·리뷰 경로가 이미 붙이거나 붙일 수 있는 값 — 예: `promptTrace`의 `overlayIdentity` / `overlayContextAssembly` / `overlayKnowledgeActivationHints`, 실행 리뷰 스텝의 `overlayIdentity`·`overlayMemoryScopes`·`overlayKnowledgeHints` (프롬프트 본문은 그대로).
+- **Runtime Policy**: `overlayPolicy`의 `shouldEnable*` / `shouldAllowCursorCapability` — UI·진단·향후 게이트에 쓸 **힌트만** 제공하며, 요청 차단·라우팅 변경·DB 스키마 변경은 하지 않음.
 
 ### 2단계: 최소 런타임 연결 (완료 범위)
 
@@ -43,6 +53,8 @@
 | **Prompt timeline metadata** | `requirementsChatOrchestration` 성공 시 `promptTrace`에 `overlayIdentity`, `overlayContextAssembly`, `overlayKnowledgeActivationHints` optional 필드 (`coerceRequirementsPromptTimelineEntry`에서 복원) |
 | **Knowledge activation hint** | `resolveKnowledgeActivationHintsForRole` — synthetic id만, DB·retrieval 비침해 |
 | **Review Harness helpers** | `selectExecutionReviewMembers`, `buildExecutionReviewBaseContext`, `executeReviewerStep`, `aggregateReviewerHarnessResult` |
+| **Registry / policy / trace extract** | `getOverlayIdentity` 등, `shouldEnable*`, `extractOverlayPromptTraceMetadata` |
+| **읽기 전용 진단 API** | `GET /api/diagnostics/overlay-runtime` (`?roles=` 선택) — `OVERLAY_REGISTRY_*`, memory/knowledge 매핑 스냅샷 |
 
 ### 아직 하지 않은 것 (Drift 방지)
 
@@ -56,3 +68,4 @@
 
 - 본문: `apps/web/docs/platform-structure-diagnosis.md`
 - 다운로드: `GET /api/diagnostics/platform-structure-report`
+- Overlay 런타임 스냅샷(JSON): `GET /api/diagnostics/overlay-runtime`

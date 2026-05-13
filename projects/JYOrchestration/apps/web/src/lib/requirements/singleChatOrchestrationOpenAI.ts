@@ -126,6 +126,14 @@ export type SingleChatOrchestrationTurnOk = Readonly<{
 
 export type SingleChatOrchestrationTurnResult = SingleChatOrchestrationTurnOk | Readonly<{ ok: false; code: string; message: string }>;
 
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values)];
+}
+
+function uniqueOrchestrationUpdatedSlotKeys(patches: ReadonlyArray<{ slotKey: string }>): readonly string[] {
+  return uniqueStrings(patches.map((p) => p.slotKey));
+}
+
 export function activeOrchestrationRolesFromAgents(agents: readonly SingleChatSelectedAgentWire[]): Set<string> {
   const s = new Set<string>();
   for (const a of agents) {
@@ -1219,11 +1227,13 @@ ${quickNextBlock ? `${quickNextBlock}\n` : ""}[대화 발췌] ${input.dialogueEx
     })
     .filter(Boolean) as Array<{ slotKey: string; from: string; to: string; reason?: string }>;
 
+  const updatedSlotKeys = uniqueStrings(allUpdated);
+
   const meta: SingleChatOrchestrationTurnMeta = {
     routingDecision: `orchestration_turn(${conversationOwner})`,
     matchedSlots: route.matchedSlots,
-    updatedSlotKeys: [...new Set(allUpdated)],
-    updatedSlotCount: [...new Set(allUpdated)].length,
+    updatedSlotKeys,
+    updatedSlotCount: updatedSlotKeys.length,
     delegatedAgents: uniqSpecialists,
     orchestratorAgent: conversationOwner,
     nextQuestionOwnerAgent: conversationOwner,
@@ -1427,10 +1437,13 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
 
   const buckets = slotBucketsByStatus(nextState);
 
+  const updatedSlotKeys = uniqueOrchestrationUpdatedSlotKeys(patches);
+
   const meta: SingleChatOrchestrationTurnMeta = {
     routingDecision,
     matchedSlots: matched,
-    updatedSlotKeys: patches.map((p) => p.slotKey),
+    updatedSlotKeys,
+    updatedSlotCount: updatedSlotKeys.length,
     delegatedAgents: [],
     orchestratorAgent: explicitOwner ?? "planner",
     conversationOwner: explicitOwner ?? "planner",

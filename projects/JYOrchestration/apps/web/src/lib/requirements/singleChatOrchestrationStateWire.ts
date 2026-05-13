@@ -98,9 +98,13 @@ export function parseRequirementsSingleChatOrchestrationV1(
     ownerMomentumRaw
       ? Object.fromEntries(
           Object.entries(ownerMomentumRaw)
-            .map(([k, v]) => [String(k).trim(), Number(v)])
-            .filter(([k, v]) => Boolean(k) && Number.isFinite(v))
-            .map(([k, v]) => [k, Math.max(0, Math.min(2.0, v))])
+            .map(([k, raw]) => {
+              const key = String(k).trim();
+              const num = Number(raw);
+              if (!key || !Number.isFinite(num)) return null;
+              return [key, Math.max(0, Math.min(2, num))] as const;
+            })
+            .filter((e): e is readonly [string, number] => e != null)
         )
       : null;
 

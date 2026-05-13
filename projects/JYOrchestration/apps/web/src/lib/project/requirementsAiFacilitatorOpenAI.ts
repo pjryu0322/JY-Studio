@@ -39,7 +39,15 @@ export type RequirementsFacilitatorOpenAiResult =
       interviewSuggestions?: string[];
       interviewAllowCustomInput?: boolean;
     }
-  | { ok: false; code: string; message: string };
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      fallbackReason?: string;
+      provider?: string;
+      model?: string;
+      calledAt?: string;
+    };
 
 export type OrchestrationBootstrapInitializerWire = Readonly<{
   detectedDomain?: string | null;
@@ -149,7 +157,36 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       questionQualityRetryCount?: number;
       /** final question source(가능하면) */
       finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+      /** 성공 분기와 동일 — 라우트 예외 등에서 기록 */
+      actualModel?: string;
+      configuredModelOverride?: string | null;
     };
+
+/** `ai-facilitator` 라우트 try/catch 등: 부트스트랩 실패 페이로드를 한 형태로 맞춘다 */
+export function buildBootstrapOpenAiRouteHandlingExceptionResult(params: {
+  errorMessage: string;
+  configuredModelOverride?: string | null;
+}): Extract<RequirementsSingleChatBootstrapOpenAIResult, { ok: false }> {
+  const msg = String(params.errorMessage ?? "").slice(0, 400);
+  const model = resolveOpenAiModelFromEnv();
+  return {
+    ok: false,
+    code: "ROUTE",
+    message: `bootstrap 라우트 예외: ${msg}`,
+    fallbackReason: "ROUTE_HANDLING_ERROR",
+    provider: "openai",
+    model,
+    actualModel: model,
+    configuredModelOverride: params.configuredModelOverride ?? null,
+    calledAt: new Date().toISOString(),
+    responseText: "",
+    rawResponseText: "",
+    parseError: msg,
+    questionQualityRetryCount: 0,
+    questionQualityIssues: [],
+    finalQuestionBeforeFallback: "",
+  };
+}
 
 function truncateForTimeline(s: string, max: number): string {
   const t = String(s ?? "");

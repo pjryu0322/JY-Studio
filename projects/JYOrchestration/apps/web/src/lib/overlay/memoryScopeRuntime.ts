@@ -25,3 +25,16 @@ export function buildPromptAssemblyMemoryRef(source: string, ref: string): Promp
     ref: String(ref ?? "").trim().slice(0, 500) || "unknown",
   };
 }
+
+/** 진단 API용: `resolveMemoryScopeFromSource`와 동일 규칙의 대표 라벨(읽기 전용) */
+export const OVERLAY_MEMORY_SCOPE_SOURCE_RULES: readonly { readonly sourceLabel: string; readonly scope: MemoryScope }[] = [
+  { sourceLabel: "requirementsStateJson", scope: "project" },
+  { sourceLabel: "singleChatOrchestrationV1", scope: "project" },
+  { sourceLabel: "ChatMessage", scope: "session" },
+  { sourceLabel: "MessengerPromptTimelineLog", scope: "session" },
+  { sourceLabel: "promptTimeline", scope: "session" },
+  { sourceLabel: "localStorage", scope: "working" },
+  { sourceLabel: "sessionStorage", scope: "working" },
+  { sourceLabel: "platformAiMembers", scope: "platform" },
+  { sourceLabel: "ProjectMember", scope: "project" },
+];

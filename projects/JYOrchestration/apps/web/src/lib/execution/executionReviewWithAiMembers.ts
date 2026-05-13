@@ -22,6 +22,13 @@ import {
   roleOrderIndex,
 } from "@/lib/ai-member/aiMemberOrchestration";
 import { prisma } from "@/lib/prisma";
+import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
+import type { MemoryScope } from "@/lib/overlay/memoryScopeContract";
+import { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
+import {
+  resolveAiIdentityContract,
+  resolveDefaultMemoryScopesForRole,
+} from "@/lib/overlay/overlayRuntimeResolver";
 
 export type ExecutionReviewerStepRecord = {
   memberId: string;
@@ -32,6 +39,15 @@ export type ExecutionReviewerStepRecord = {
   summary: string;
   issues: string[];
   reviewedAt: string;
+  /** Overlay policy layer: 리뷰어 역할 기준 메타(LLM 프롬프트 본문은 기존과 동일) */
+  overlayIdentity?: Readonly<{
+    roleKey: string;
+    perspective: string;
+    provider: string;
+    capabilities: readonly string[];
+  }>;
+  overlayMemoryScopes?: readonly MemoryScope[];
+  overlayKnowledgeHints?: readonly ActiveKnowledgePackRef[];
 };
 
 function buildCommonContext(params: {
@@ -199,7 +215,8 @@ async function selectExecutionReviewMembers(projectId: string): Promise<Executio
 
 async function executeReviewerStep(
   m: ExecutionReviewMemberRow,
-  baseContext: string
+  baseContext: string,
+  projectId: string
 ): Promise<{
   step: ExecutionReviewerStepRecord;
   decision: ExecutionReviewDecision;
@@ -214,6 +231,27 @@ async function executeReviewerStep(
 
   const decision = result.decision as ExecutionReviewDecision;
   const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
+
+  const identity = resolveAiIdentityContract(m.role);
+  const overlayIdentity = identity
+    ? {
+        roleKey: identity.roleKey,
+        perspective: identity.perspective,
+        provider: identity.provider,
+        capabilities: [...identity.capabilities],
+      }
+    : {
+        roleKey: m.role,
+        perspective: "unknown",
+        provider: "unknown",
+        capabilities: [] as const,
+      };
+  const overlayMemoryScopes = resolveDefaultMemoryScopesForRole(m.role);
+  const overlayKnowledgeHints = resolveKnowledgeActivationHintsForRole({
+    roleKey: m.role,
+    projectId,
+  });
+
   const step: ExecutionReviewerStepRecord = {
     memberId: m.id,
     name: m.name,
@@ -223,6 +261,9 @@ async function executeReviewerStep(
     summary: result.reason.slice(0, 4000),
     issues,
     reviewedAt: new Date().toISOString(),
+    overlayIdentity,
+    overlayMemoryScopes,
+    overlayKnowledgeHints,
   };
   return { step, decision, usage: usage ?? null };
 }
@@ -313,7 +354,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   let totalUsage: NonNullable<OpenAiRelayEvalUsage> | null = null;
 
   for (const m of members) {
-    const { step, decision, usage } = await executeReviewerStep(m, baseContext);
+    const { step, decision, usage } = await executeReviewerStep(m, baseContext, params.projectId);
     steps.push(step);
     decisions.push(decision);
     totalUsage = mergeReviewerUsage(totalUsage, usage);

@@ -98,6 +98,22 @@ const ROWS: readonly ContractRow[] = [
 
 const ROW_BY_KEY = new Map<string, ContractRow>(ROWS.map((r) => [r.roleKey, r]));
 
+/** 진단·registry용 등록 역할 키(정렬 고정) */
+export const OVERLAY_REGISTRY_ROLE_KEYS: readonly string[] = [...ROWS.map((r) => r.roleKey)].sort();
+
+/** 등록된 capability 유니온(진단용, 정렬) */
+export const OVERLAY_REGISTRY_CAPABILITY_IDS: readonly OverlayAiCapabilityId[] = (
+  Array.from(new Set(ROWS.flatMap((r) => [...r.capabilities]))) as OverlayAiCapabilityId[]
+)
+  .slice()
+  .sort((a, b) => a.localeCompare(b)) as readonly OverlayAiCapabilityId[];
+
+/** 등록된 provider 목록(진단용, 정렬) */
+export const OVERLAY_REGISTRY_PROVIDERS: readonly AiIdentityContract["provider"][] = (
+  Array.from(new Set(ROWS.map((r) => r.provider))) as AiIdentityContract["provider"][]
+).slice()
+  .sort() as readonly AiIdentityContract["provider"][];
+
 /** SingleChat owner / planner-route 외부 역할 → 계약 roleKey */
 const INTERNAL_OWNER_TO_ROLE_KEY: Readonly<Record<string, string>> = {
   planner: "planner",
