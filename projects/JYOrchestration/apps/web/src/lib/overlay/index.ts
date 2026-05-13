@@ -47,6 +47,18 @@ export {
 } from "@/lib/overlay/overlayPolicy";
 export type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 export {
+  buildOverlayPolicyWarnings,
+  buildOverlayPolicyWarningsForResolvedRole,
+  buildProjectAgentUnresolvedDiagnosticWarnings,
+  buildWorkspaceCatalogUnmappedWarnings,
+  collateOverlayRuntimeDiagnosticWarnings,
+  overlayPolicyExpectationFlagsFromIdentity,
+  parseOverlayPolicyWarningsFromUnknown,
+  summarizeOverlayPolicyWarnings,
+  OVERLAY_POLICY_WARNINGS_MAX_TIMELINE,
+} from "@/lib/overlay/overlayPolicyWarning";
+export type { OverlayPolicyWarning, OverlayPolicyWarningSeverity, OverlayPolicyWarningSummaryWire } from "@/lib/overlay/overlayPolicyWarning";
+export {
   resolveOverlayIdentityFromAiMember,
   validateWorkspaceAiMemberOverlayMappings,
   listUnmappedWorkspaceAiMemberKeys,

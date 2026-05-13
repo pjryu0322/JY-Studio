@@ -9,6 +9,11 @@ import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTr
 import { validateWorkspaceAiMemberOverlayMappings } from "@/lib/overlay/overlayIdentityFromWorkspace";
 import { buildProjectOverlayDiagnosticFromSelectedAgents } from "@/lib/overlay/overlayProjectDiagnostic";
 import {
+  buildWorkspaceCatalogUnmappedWarnings,
+  collateOverlayRuntimeDiagnosticWarnings,
+  summarizeOverlayPolicyWarnings,
+} from "@/lib/overlay/overlayPolicyWarning";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -37,6 +42,7 @@ export async function GET(request: NextRequest) {
   }));
 
   const workspaceAiMemberOverlayMappings = validateWorkspaceAiMemberOverlayMappings();
+  const workspaceUnmappedWarnings = buildWorkspaceCatalogUnmappedWarnings(workspaceAiMemberOverlayMappings.unmapped);
 
   const projectId = request.nextUrl.searchParams.get("projectId")?.trim() ?? "";
   let projectOverlay: ReturnType<typeof buildProjectOverlayDiagnosticFromSelectedAgents> | undefined;
@@ -65,6 +71,13 @@ export async function GET(request: NextRequest) {
     lastPromptTraceOverlayExtract = last ? extractOverlayPromptTraceMetadata(last) : null;
   }
 
+  const summaryWarnings = collateOverlayRuntimeDiagnosticWarnings({
+    workspaceUnmappedWarnings,
+    unresolvedAgentRows: projectOverlay?.unresolvedAgents,
+    timelineWarnings: lastPromptTraceOverlayExtract?.overlayPolicyWarnings,
+  });
+  const overlayPolicyWarningSummary = summarizeOverlayPolicyWarnings(summaryWarnings);
+
   return NextResponse.json({
     success: true,
     data: {
@@ -76,6 +89,7 @@ export async function GET(request: NextRequest) {
       knowledgeHintMappings,
       unresolvedRoleKeys,
       workspaceAiMemberOverlayMappings,
+      overlayPolicyWarningSummary,
       promptTraceOverlayEnabled: true,
       ...(projectOverlay ? { projectOverlay } : {}),
       ...(projectId ? { lastPromptTraceOverlayExtract: lastPromptTraceOverlayExtract ?? null } : {}),

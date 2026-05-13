@@ -10,6 +10,8 @@ import {
   shouldEnableKnowledgeHints,
   shouldEnableOverlayTrace,
 } from "@/lib/overlay/overlayPolicy";
+import { buildOverlayPolicyWarningsForResolvedRole } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { resolveAiIdentityContract } from "@/lib/overlay/overlayRuntimeResolver";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
@@ -33,6 +35,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayContextAssembly: PromptAssemblyMetadataContract;
   overlayKnowledgeActivationHints: readonly ActiveKnowledgePackRef[];
   overlayPolicyHints: OverlayRuntimePolicyHintsWire;
+  overlayPolicyWarnings: readonly OverlayPolicyWarning[];
 }> {
   const usedRoleRaw =
     String(input.meta.questionGeneratedBy ?? "").trim() ||
@@ -45,11 +48,18 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   const policyRoleKey = identity?.roleKey ?? usedRoleRaw ?? null;
   const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
 
+  const overlayPolicyWarnings = buildOverlayPolicyWarningsForResolvedRole({
+    policyRoleKey,
+    source: "singlechat",
+    identity,
+  });
+
   if (!shouldEnableOverlayTrace(policyRoleKey)) {
     return {
       overlayPolicyHints,
       overlayContextAssembly: emptyPromptAssemblyMetadata(),
       overlayKnowledgeActivationHints: [],
+      overlayPolicyWarnings,
     };
   }
 
@@ -92,5 +102,11 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
       }
     : emptyPromptAssemblyMetadata();
 
-  return { overlayIdentity, overlayContextAssembly, overlayKnowledgeActivationHints, overlayPolicyHints };
+  return {
+    overlayIdentity,
+    overlayContextAssembly,
+    overlayKnowledgeActivationHints,
+    overlayPolicyHints,
+    overlayPolicyWarnings,
+  };
 }

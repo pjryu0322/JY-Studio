@@ -42,6 +42,15 @@ describe("Overlay prompt trace persistence", () => {
         cursorCapabilityAllowed: false,
         cursorCapabilityEnforcement: "not_applied" as const,
       },
+      overlayPolicyWarnings: [
+        {
+          code: "OVERLAY_KNOWLEDGE_HINT_DISABLED",
+          severity: "info",
+          message: "test",
+          source: "singlechat",
+          enforcement: "not_applied" as const,
+        },
+      ],
     };
 
     const parsed = parseRequirementsStateJson({ promptTimeline: [timelineRow] });
@@ -51,12 +60,14 @@ describe("Overlay prompt trace persistence", () => {
     expect(entry?.overlayContextAssembly?.usedKnowledgePacks).toContain("role-default:test");
     expect(entry?.overlayKnowledgeActivationHints?.length).toBe(1);
     expect(entry?.overlayPolicyHints?.cursorCapabilityEnforcement).toBe("not_applied");
+    expect(entry?.overlayPolicyWarnings?.[0]?.code).toBe("OVERLAY_KNOWLEDGE_HINT_DISABLED");
 
     const extracted = extractOverlayPromptTraceMetadata(entry!);
     expect(extracted.overlayIdentity?.roleKey).toBe("planner");
     expect(extracted.overlayContextAssembly?.usedStage).toContain("requirements_ideation");
     expect(extracted.overlayKnowledgeActivationHints?.[0]?.status).toBe("proposed");
     expect(extracted.overlayPolicyHints?.overlayTraceEnabled).toBe(true);
+    expect(extracted.overlayPolicyWarnings?.[0]?.enforcement).toBe("not_applied");
   });
 
   it("workspace AI catalog keys have overlay mapping coverage (diagnostic contract)", () => {

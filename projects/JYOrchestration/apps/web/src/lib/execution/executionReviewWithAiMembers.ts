@@ -30,6 +30,8 @@ import {
   type OverlayRuntimePolicyHintsWire,
   shouldEnableKnowledgeHints,
 } from "@/lib/overlay/overlayPolicy";
+import { buildOverlayPolicyWarningsForResolvedRole } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { resolveAiIdentityContract, resolveDefaultMemoryScopesForRole } from "@/lib/overlay/overlayRuntimeResolver";
 
 export type ExecutionReviewerStepRecord = {
@@ -51,6 +53,7 @@ export type ExecutionReviewerStepRecord = {
   overlayMemoryScopes?: readonly MemoryScope[];
   overlayKnowledgeHints?: readonly ActiveKnowledgePackRef[];
   overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
+  overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 };
 
 function buildCommonContext(params: {
@@ -258,6 +261,11 @@ async function executeReviewerStep(
       })
     : [];
   const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
+  const overlayPolicyWarnings = buildOverlayPolicyWarningsForResolvedRole({
+    policyRoleKey,
+    source: "review-harness",
+    identity,
+  });
 
   const step: ExecutionReviewerStepRecord = {
     memberId: m.id,
@@ -272,6 +280,7 @@ async function executeReviewerStep(
     overlayMemoryScopes,
     overlayKnowledgeHints,
     overlayPolicyHints,
+    overlayPolicyWarnings,
   };
   return { step, decision, usage: usage ?? null };
 }

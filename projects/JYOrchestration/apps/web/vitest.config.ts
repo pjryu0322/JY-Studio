@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/api/**/*.test.ts"],
+    include: ["tests/api/**/*.test.ts", "tests/overlay/**/*.test.ts"],
     fileParallelism: false,
     maxConcurrency: 1,
     testTimeout: 60_000,

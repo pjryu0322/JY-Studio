@@ -14,6 +14,7 @@ import {
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
 import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
+import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -260,6 +261,8 @@ export type RequirementsPromptTimelineEntry = {
   overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
   /** Overlay 3단계: 런타임 정책 힌트(비차단; 진단·replay용) */
   overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
+  /** Overlay 4단계: 정책 경고(비차단; enforcement 항상 not_applied) */
+  overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 };
 
 export type RequirementsStateJson = {

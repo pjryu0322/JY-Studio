@@ -8,6 +8,9 @@ import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemb
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 import { parseOverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
+import { parseOverlayPolicyWarningsFromUnknown } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import { OVERLAY_POLICY_WARNINGS_MAX_TIMELINE } from "@/lib/overlay/overlayPolicyWarning";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -110,6 +113,10 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   const op = r.overlayPolicyHints;
   const parsedHints = parseOverlayRuntimePolicyHintsWire(op);
   if (parsedHints) out.overlayPolicyHints = parsedHints;
+
+  const parsedWarnings = parseOverlayPolicyWarningsFromUnknown(r.overlayPolicyWarnings);
+  if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
+
   return out;
 }
 
@@ -630,6 +637,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayContextAssembly?: PromptAssemblyMetadataContract;
   readonly overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
   readonly overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
+  readonly overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -791,6 +799,11 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { overlayKnowledgeActivationHints: [...params.overlayKnowledgeActivationHints] }
       : {}),
     ...(params.overlayPolicyHints ? { overlayPolicyHints: params.overlayPolicyHints } : {}),
+    ...(params.overlayPolicyWarnings?.length
+      ? {
+          overlayPolicyWarnings: params.overlayPolicyWarnings.slice(0, OVERLAY_POLICY_WARNINGS_MAX_TIMELINE),
+        }
+      : {}),
   };
 }
 
