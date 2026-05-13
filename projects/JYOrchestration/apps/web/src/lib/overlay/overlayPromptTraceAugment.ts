@@ -22,6 +22,10 @@ import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrc
 import { buildOverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
 import { detectOverlayConflicts } from "@/lib/overlay/overlayConflictDetection";
+import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
+import { buildOverlayContextAssemblyPlan } from "@/lib/overlay/overlayContextAssemblyPlan";
+import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
+import { suggestOverlayPruningCandidates } from "@/lib/overlay/overlayContextPruning";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 export type OverlayPromptTraceIdentityWire = Readonly<{
@@ -57,6 +61,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
+  overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+  overlayPruningCandidates?: readonly OverlayPruningCandidate[];
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -117,6 +123,15 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
 
   const overlayConflictWarnings = buildOverlayPromptTraceConflictWarnings(input.timelineMessages);
 
+  const overlayContextAssemblyPlan = buildOverlayContextAssemblyPlan({
+    selectedContextRefs: overlaySelectedContextRefs,
+    budgetMetadata: overlayContextBudget,
+  });
+  const overlayPruningCandidates = suggestOverlayPruningCandidates({
+    assemblyPlan: overlayContextAssemblyPlan,
+    overflowRisk: overlayContextBudget.overflowRisk,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -127,6 +142,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     overlayContextBudget,
     ...(overlayOrchestrationDecisionTrace ? { overlayOrchestrationDecisionTrace } : {}),
     ...(overlayConflictWarnings.length ? { overlayConflictWarnings } : {}),
+    ...(overlayContextAssemblyPlan.length ? { overlayContextAssemblyPlan } : {}),
+    ...(overlayPruningCandidates.length ? { overlayPruningCandidates } : {}),
   };
 }
 

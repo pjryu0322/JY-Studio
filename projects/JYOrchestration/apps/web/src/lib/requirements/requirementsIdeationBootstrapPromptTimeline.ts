@@ -17,6 +17,10 @@ import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextB
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
 import { OVERLAY_CONFLICT_WARNINGS_MAX } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
+import { OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX } from "@/lib/overlay/overlayContextAssemblyPlan";
+import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
+import { OVERLAY_PRUNING_CANDIDATES_MAX } from "@/lib/overlay/overlayContextPruning";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
@@ -654,6 +658,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayContextBudget?: OverlayContextBudgetMetadata;
   readonly overlayConflictWarnings?: readonly OverlayConflictWarning[];
   readonly overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+  readonly overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+  readonly overlayPruningCandidates?: readonly OverlayPruningCandidate[];
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -836,6 +842,22 @@ export function buildSingleChatPromptTimelineEntry(params: {
       : {}),
     ...(params.overlayOrchestrationDecisionTrace
       ? { overlayOrchestrationDecisionTrace: params.overlayOrchestrationDecisionTrace }
+      : {}),
+    ...(params.overlayContextAssemblyPlan?.length
+      ? {
+          overlayContextAssemblyPlan: [...params.overlayContextAssemblyPlan].slice(
+            0,
+            OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX
+          ),
+        }
+      : {}),
+    ...(params.overlayPruningCandidates?.length
+      ? {
+          overlayPruningCandidates: [...params.overlayPruningCandidates].slice(
+            0,
+            OVERLAY_PRUNING_CANDIDATES_MAX
+          ),
+        }
       : {}),
   };
 }

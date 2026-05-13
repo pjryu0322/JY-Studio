@@ -109,6 +109,30 @@ export {
 } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 export type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 export {
+  buildOverlayContextAssemblyPlan,
+  parseOverlayAssemblyPlanFromUnknown,
+  summarizeOverlayAssemblyPlan,
+  OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX,
+  OVERLAY_ASSEMBLY_PLAN_HIGH_PRIORITY_THRESHOLD,
+} from "@/lib/overlay/overlayContextAssemblyPlan";
+export type {
+  OverlayAssemblyPlanItem,
+  OverlayAssemblyPlanItemType,
+  OverlayAssemblyPlanSummaryWire,
+} from "@/lib/overlay/overlayContextAssemblyPlan";
+export { prioritizeOverlayContexts } from "@/lib/overlay/overlayContextPrioritization";
+export {
+  suggestOverlayPruningCandidates,
+  parseOverlayPruningCandidatesFromUnknown,
+  summarizeOverlayPruningCandidates,
+  OVERLAY_PRUNING_CANDIDATES_MAX,
+} from "@/lib/overlay/overlayContextPruning";
+export type {
+  OverlayPruningCandidate,
+  OverlayPruningSummaryWire,
+} from "@/lib/overlay/overlayContextPruning";
+export { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
+export {
   resolveOverlayIdentityFromAiMember,
   validateWorkspaceAiMemberOverlayMappings,
   listUnmappedWorkspaceAiMemberKeys,

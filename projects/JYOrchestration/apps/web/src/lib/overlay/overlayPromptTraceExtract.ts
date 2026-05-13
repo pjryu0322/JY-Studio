@@ -9,6 +9,8 @@ import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSele
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
+import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -21,6 +23,8 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+  overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+  overlayPruningCandidates?: readonly OverlayPruningCandidate[];
 }>;
 
 /**
@@ -41,6 +45,8 @@ export function extractOverlayPromptTraceMetadata(
     overlayContextBudget?: OverlayContextBudgetMetadata;
     overlayConflictWarnings?: readonly OverlayConflictWarning[];
     overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+    overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+    overlayPruningCandidates?: readonly OverlayPruningCandidate[];
   } = {};
 
   const oi = e.overlayIdentity;

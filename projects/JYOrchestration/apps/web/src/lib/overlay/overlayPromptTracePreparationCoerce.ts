@@ -23,12 +23,22 @@ import {
   parseOverlayOrchestrationDecisionTraceFromUnknown,
   type OverlayOrchestrationDecisionTrace,
 } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import {
+  parseOverlayAssemblyPlanFromUnknown,
+  type OverlayAssemblyPlanItem,
+} from "@/lib/overlay/overlayContextAssemblyPlan";
+import {
+  parseOverlayPruningCandidatesFromUnknown,
+  type OverlayPruningCandidate,
+} from "@/lib/overlay/overlayContextPruning";
 
 export type OverlayPromptTracePreparationMetadata = Readonly<{
   overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+  overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+  overlayPruningCandidates?: readonly OverlayPruningCandidate[];
 }>;
 
 /**
@@ -43,6 +53,8 @@ export function coerceOverlayPromptTracePreparationMetadata(
     overlayContextBudget?: OverlayContextBudgetMetadata;
     overlayConflictWarnings?: readonly OverlayConflictWarning[];
     overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+    overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+    overlayPruningCandidates?: readonly OverlayPruningCandidate[];
   } = {};
 
   const refs = parseOverlaySelectedContextRefsFromUnknown(raw.overlaySelectedContextRefs).slice(
@@ -59,6 +71,12 @@ export function coerceOverlayPromptTracePreparationMetadata(
 
   const decision = parseOverlayOrchestrationDecisionTraceFromUnknown(raw.overlayOrchestrationDecisionTrace);
   if (decision) out.overlayOrchestrationDecisionTrace = decision;
+
+  const plan = parseOverlayAssemblyPlanFromUnknown(raw.overlayContextAssemblyPlan);
+  if (plan.length) out.overlayContextAssemblyPlan = plan;
+
+  const pruning = parseOverlayPruningCandidatesFromUnknown(raw.overlayPruningCandidates);
+  if (pruning.length) out.overlayPruningCandidates = pruning;
 
   return out;
 }

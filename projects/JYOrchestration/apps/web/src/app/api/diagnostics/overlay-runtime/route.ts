@@ -17,6 +17,9 @@ import { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
 import { summarizeOverlaySelectedContextRefs } from "@/lib/overlay/overlayContextSelection";
 import { summarizeOverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import { summarizeOverlayConflictWarnings } from "@/lib/overlay/overlayConflictDetection";
+import { summarizeOverlayAssemblyPlan } from "@/lib/overlay/overlayContextAssemblyPlan";
+import { summarizeOverlayPruningCandidates } from "@/lib/overlay/overlayContextPruning";
+import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
@@ -93,12 +96,25 @@ export async function GET(request: NextRequest) {
     lastPromptTraceOverlayExtract?.overlayContextBudget
   );
 
+  const lastAssemblyPlan = lastPromptTraceOverlayExtract?.overlayContextAssemblyPlan ?? [];
+  const lastPruningCandidates = lastPromptTraceOverlayExtract?.overlayPruningCandidates ?? [];
+  const overlayAssemblyPlanSummary = summarizeOverlayAssemblyPlan({
+    plan: lastAssemblyPlan,
+    budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
+  });
+  const overlayPruningSummary = summarizeOverlayPruningCandidates(lastPruningCandidates);
+  const overlayPolicyDriftWarnings = detectOverlayPolicyDrift({
+    assemblyPlan: lastAssemblyPlan,
+    budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
+  });
+
   const overlayArchitecturePhase = {
-    current: "runtime-diagnostic-selection-preparation-layer" as const,
+    current: "policy-guided-context-assembly-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
     memoryOrchestrationEnabled: false,
+    autoPromptAssemblyEnabled: false,
   };
 
   const overlayMaturity = {
@@ -107,6 +123,7 @@ export async function GET(request: NextRequest) {
     runtimePolicyHelperLayer: true,
     runtimePolicyWarningLayer: true,
     runtimeDiagnosticSelectionPreparationLayer: true,
+    policyGuidedContextAssemblyPreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -133,6 +150,9 @@ export async function GET(request: NextRequest) {
       overlaySelectionSummary,
       overlayConflictSummary,
       overlayContextBudgetSummary,
+      overlayAssemblyPlanSummary,
+      overlayPruningSummary,
+      overlayPolicyDriftWarnings,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

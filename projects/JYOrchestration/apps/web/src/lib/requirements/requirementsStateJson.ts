@@ -19,6 +19,8 @@ import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSele
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
+import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -279,6 +281,10 @@ export type RequirementsPromptTimelineEntry = {
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   /** Overlay 5단계 준비: 어떤 역할이 왜 선택되었는지 decision trace */
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
+  /** Overlay 6단계 준비: 무엇을 prompt assembly에 우선 사용할지 계획(읽기 전용 metadata) */
+  overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
+  /** Overlay 6단계 준비: overflow 시 줄일 수 있는 후보(suggestion only) */
+  overlayPruningCandidates?: readonly OverlayPruningCandidate[];
 };
 
 export type RequirementsStateJson = {
