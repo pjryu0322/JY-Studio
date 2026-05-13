@@ -6,6 +6,8 @@ import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatA
 import type { MemoryScope } from "@/lib/overlay/memoryScopeContract";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
+import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
+import { parseOverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -105,6 +107,9 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
     }
     if (parsed.length) out.overlayKnowledgeActivationHints = parsed;
   }
+  const op = r.overlayPolicyHints;
+  const parsedHints = parseOverlayRuntimePolicyHintsWire(op);
+  if (parsedHints) out.overlayPolicyHints = parsedHints;
   return out;
 }
 
@@ -624,6 +629,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayIdentity?: RequirementsPromptTimelineEntry["overlayIdentity"];
   readonly overlayContextAssembly?: PromptAssemblyMetadataContract;
   readonly overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
+  readonly overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -784,6 +790,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.overlayKnowledgeActivationHints?.length
       ? { overlayKnowledgeActivationHints: [...params.overlayKnowledgeActivationHints] }
       : {}),
+    ...(params.overlayPolicyHints ? { overlayPolicyHints: params.overlayPolicyHints } : {}),
   };
 }
 

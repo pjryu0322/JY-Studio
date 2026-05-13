@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
+import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { prisma } from "@/lib/prisma";
 import { OVERLAY_KNOWLEDGE_HINT_SCOPE_BY_ROLE } from "@/lib/overlay/knowledgeActivationResolver";
 import { OVERLAY_MEMORY_SCOPE_SOURCE_RULES } from "@/lib/overlay/memoryScopeRuntime";
+import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+import { validateWorkspaceAiMemberOverlayMappings } from "@/lib/overlay/overlayIdentityFromWorkspace";
+import { buildProjectOverlayDiagnosticFromSelectedAgents } from "@/lib/overlay/overlayProjectDiagnostic";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
   resolveAiIdentityContract,
 } from "@/lib/overlay/overlayRuntimeResolver";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
- * 선택 쿼리: `?roles=a,b,c` — 각 문자열에 대해 `resolveAiIdentityContract` 실패 시 `unresolvedRoleKeys`에 포함.
+ * - `?roles=a,b,c` — 각 문자열에 대해 `resolveAiIdentityContract` 실패 시 `unresolvedRoleKeys`에 포함.
+ * - `?projectId=` — 로그인 + `canViewProject` 필요. 서비스 기획 통합 `selectedAgents` 및 마지막 prompt 타임라인 overlay 추출(읽기).
  */
 export async function GET(request: NextRequest) {
   const rolesParam = request.nextUrl.searchParams.get("roles");
@@ -26,6 +36,35 @@ export async function GET(request: NextRequest) {
     scope: r.scope,
   }));
 
+  const workspaceAiMemberOverlayMappings = validateWorkspaceAiMemberOverlayMappings();
+
+  const projectId = request.nextUrl.searchParams.get("projectId")?.trim() ?? "";
+  let projectOverlay: ReturnType<typeof buildProjectOverlayDiagnosticFromSelectedAgents> | undefined;
+  let lastPromptTraceOverlayExtract: ReturnType<typeof extractOverlayPromptTraceMetadata> | null | undefined;
+
+  if (projectId) {
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) return userId;
+    try {
+      await requireProjectPermission(projectId, userId, "canViewProject", "diagnostics.overlay-runtime");
+    } catch (e) {
+      const denied = rbacErrorResponse(e);
+      if (denied) return denied;
+      throw e;
+    }
+
+    const orch = await resolveServicePlanningOrchestrationContext(projectId);
+    projectOverlay = buildProjectOverlayDiagnosticFromSelectedAgents(projectId, orch.selectedAgents);
+
+    const row = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { requirementsStateJson: true },
+    });
+    const parsed = parseRequirementsStateJson(row?.requirementsStateJson ?? null);
+    const last = parsed.promptTimeline?.length ? parsed.promptTimeline[parsed.promptTimeline.length - 1] : undefined;
+    lastPromptTraceOverlayExtract = last ? extractOverlayPromptTraceMetadata(last) : null;
+  }
+
   return NextResponse.json({
     success: true,
     data: {
@@ -36,7 +75,10 @@ export async function GET(request: NextRequest) {
       memoryScopeMappings,
       knowledgeHintMappings,
       unresolvedRoleKeys,
+      workspaceAiMemberOverlayMappings,
       promptTraceOverlayEnabled: true,
+      ...(projectOverlay ? { projectOverlay } : {}),
+      ...(projectId ? { lastPromptTraceOverlayExtract: lastPromptTraceOverlayExtract ?? null } : {}),
     },
   });
 }

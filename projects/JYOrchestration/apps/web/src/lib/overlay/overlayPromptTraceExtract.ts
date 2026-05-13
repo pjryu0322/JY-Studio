@@ -1,11 +1,14 @@
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ActiveKnowledgePackActivationStatus, ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
+import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
+import { parseOverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayIdentity?: RequirementsPromptTimelineEntry["overlayIdentity"];
   overlayContextAssembly?: PromptAssemblyMetadataContract;
   overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
+  overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
 }>;
 
 /**
@@ -20,6 +23,7 @@ export function extractOverlayPromptTraceMetadata(
     overlayIdentity?: RequirementsPromptTimelineEntry["overlayIdentity"];
     overlayContextAssembly?: PromptAssemblyMetadataContract;
     overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
+    overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -66,6 +70,9 @@ export function extractOverlayPromptTraceMetadata(
     }
     if (hints.length) out.overlayKnowledgeActivationHints = hints;
   }
+
+  const parsedPolicy = parseOverlayRuntimePolicyHintsWire(e.overlayPolicyHints);
+  if (parsedPolicy) out.overlayPolicyHints = parsedPolicy;
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }

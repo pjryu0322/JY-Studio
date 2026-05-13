@@ -1,4 +1,5 @@
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { WORKSPACE_AI_MEMBER_KEYS } from "@/lib/ai-member/platformAiMembers";
 import { resolveAiIdentityContract } from "@/lib/overlay/overlayRuntimeResolver";
 import type { AiIdentityContract } from "@/lib/overlay/aiIdentityContract";
 
@@ -42,4 +43,22 @@ export function resolveOverlayIdentityFromAiMember(input: Readonly<{
   }
   if (ck) return resolveAiIdentityContract(ck);
   return null;
+}
+
+/** `platformAiMembers` 카탈로그 키 전체에 대해 Overlay identity resolve 가능 여부(구조 변경 없음). */
+export function validateWorkspaceAiMemberOverlayMappings(): Readonly<{
+  mapped: readonly WorkspaceAiMemberId[];
+  unmapped: readonly WorkspaceAiMemberId[];
+}> {
+  const mapped: WorkspaceAiMemberId[] = [];
+  const unmapped: WorkspaceAiMemberId[] = [];
+  for (const id of WORKSPACE_AI_MEMBER_KEYS) {
+    if (resolveOverlayIdentityFromAiMember({ catalogKey: id })) mapped.push(id);
+    else unmapped.push(id);
+  }
+  return { mapped, unmapped };
+}
+
+export function listUnmappedWorkspaceAiMemberKeys(): readonly WorkspaceAiMemberId[] {
+  return validateWorkspaceAiMemberOverlayMappings().unmapped;
 }

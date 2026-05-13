@@ -334,12 +334,15 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 
 ## Overlay Runtime Policy (힌트 전용)
 
+- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → **Diagnostic / Warning(4)** → Enforcement(5, **미도입**).
 - **Registry wrapper**: `overlayRegistry.ts` — `getOverlayIdentity` 등, 기존 `overlayRuntimeResolver` 위의 얇은 조회.
-- **Soft policy**: `overlayPolicy.ts` — `shouldEnableKnowledgeHints` 등; **요청 차단·라우팅 변경 없음**.
-- **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `platformAiMembers` 키의 **선택적** 매핑만(카탈로그 스키마 불변).
-- **프롬프트 타임라인 추출**: `overlayPromptTraceExtract.ts` — 리플레이·진단용으로 타임라인 행에서 overlay 메타만 읽음.
-- **진단 API**: `GET /api/diagnostics/overlay-runtime` — 등록 역할·provider·capability, memory/knowledge 매핑 스냅샷, `?roles=` 미해결 키 나열.
-- **의도적으로 하지 않음**: 정책 엔진 강제, vector memory, retrieval 본문 변경, Stage1/2·Cursor·GitHub 플로우 변경.
+- **Soft policy**: `overlayPolicy.ts` — `shouldEnable*`·`buildOverlayRuntimePolicyHintsWire`·`parseOverlayRuntimePolicyHintsWire`; SingleChat `buildOrchestrationOverlayPromptTraceAugments`에서 trace·context assembly·knowledge 힌트 양을 정책에 맞춤. **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
+- **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
+- **프로젝트 진단 스냅샷**: `overlayProjectDiagnostic.ts` — 서비스 기획 `selectedAgents` 기준 resolve·분포.
+- **프롬프트 타임라인 추출**: `overlayPromptTraceExtract.ts` — `extractOverlayPromptTraceMetadata`; 진단 API `?projectId=` 시 마지막 타임라인 행에 대해 호출.
+- **진단 API**: `GET /api/diagnostics/overlay-runtime` — `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`.
+- **단위 테스트**: `tests/api/overlayPromptTracePersistence.unit.test.ts` — `parseRequirementsStateJson` 후 overlay 필드·추출 유지 검증.
+- **의도적으로 하지 않음**: 정책 엔진 강제, Cursor 실행 차단, vector memory, retrieval 본문 변경, Stage1/2·GitHub 플로우 변경.
 
 ## 관련 문서
 

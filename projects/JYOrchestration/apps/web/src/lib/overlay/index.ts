@@ -28,6 +28,8 @@ export { resolveMemoryScopeFromSource, buildPromptAssemblyMemoryRef } from "@/li
 export { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
 export { buildOrchestrationOverlayPromptTraceAugments } from "@/lib/overlay/overlayPromptTraceAugment";
 export type { OverlayPromptTraceIdentityWire } from "@/lib/overlay/overlayPromptTraceAugment";
+export type { ProjectOverlayDiagnosticWire, ProjectOverlayAgentDiagnosticRow } from "@/lib/overlay/overlayProjectDiagnostic";
+export { buildProjectOverlayDiagnosticFromSelectedAgents } from "@/lib/overlay/overlayProjectDiagnostic";
 export {
   getOverlayCapabilities,
   getOverlayDefaultMemoryScopes,
@@ -40,8 +42,15 @@ export {
   shouldEnableContextAssembly,
   shouldEnableKnowledgeHints,
   shouldEnableOverlayTrace,
+  buildOverlayRuntimePolicyHintsWire,
+  parseOverlayRuntimePolicyHintsWire,
 } from "@/lib/overlay/overlayPolicy";
-export { resolveOverlayIdentityFromAiMember } from "@/lib/overlay/overlayIdentityFromWorkspace";
+export type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
+export {
+  resolveOverlayIdentityFromAiMember,
+  validateWorkspaceAiMemberOverlayMappings,
+  listUnmappedWorkspaceAiMemberKeys,
+} from "@/lib/overlay/overlayIdentityFromWorkspace";
 export { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 export type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 export {

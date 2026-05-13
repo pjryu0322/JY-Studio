@@ -13,6 +13,7 @@ import {
 } from "@/lib/requirements/requirementsOrganizeContext";
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
+import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -257,6 +258,8 @@ export type RequirementsPromptTimelineEntry = {
   overlayContextAssembly?: PromptAssemblyMetadataContract;
   /** Overlay 2단계: 지식팩 활성화 synthetic 힌트 */
   overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
+  /** Overlay 3단계: 런타임 정책 힌트(비차단; 진단·replay용) */
+  overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
 };
 
 export type RequirementsStateJson = {

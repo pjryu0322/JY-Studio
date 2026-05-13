@@ -26,9 +26,11 @@ import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRe
 import type { MemoryScope } from "@/lib/overlay/memoryScopeContract";
 import { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
 import {
-  resolveAiIdentityContract,
-  resolveDefaultMemoryScopesForRole,
-} from "@/lib/overlay/overlayRuntimeResolver";
+  buildOverlayRuntimePolicyHintsWire,
+  type OverlayRuntimePolicyHintsWire,
+  shouldEnableKnowledgeHints,
+} from "@/lib/overlay/overlayPolicy";
+import { resolveAiIdentityContract, resolveDefaultMemoryScopesForRole } from "@/lib/overlay/overlayRuntimeResolver";
 
 export type ExecutionReviewerStepRecord = {
   memberId: string;
@@ -48,6 +50,7 @@ export type ExecutionReviewerStepRecord = {
   }>;
   overlayMemoryScopes?: readonly MemoryScope[];
   overlayKnowledgeHints?: readonly ActiveKnowledgePackRef[];
+  overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
 };
 
 function buildCommonContext(params: {
@@ -247,10 +250,14 @@ async function executeReviewerStep(
         capabilities: [] as const,
       };
   const overlayMemoryScopes = resolveDefaultMemoryScopesForRole(m.role);
-  const overlayKnowledgeHints = resolveKnowledgeActivationHintsForRole({
-    roleKey: m.role,
-    projectId,
-  });
+  const policyRoleKey = identity?.roleKey ?? m.role;
+  const overlayKnowledgeHints = shouldEnableKnowledgeHints(policyRoleKey)
+    ? resolveKnowledgeActivationHintsForRole({
+        roleKey: m.role,
+        projectId,
+      })
+    : [];
+  const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
 
   const step: ExecutionReviewerStepRecord = {
     memberId: m.id,
@@ -264,6 +271,7 @@ async function executeReviewerStep(
     overlayIdentity,
     overlayMemoryScopes,
     overlayKnowledgeHints,
+    overlayPolicyHints,
   };
   return { step, decision, usage: usage ?? null };
 }

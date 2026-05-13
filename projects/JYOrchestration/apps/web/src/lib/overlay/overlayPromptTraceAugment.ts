@@ -1,7 +1,15 @@
 import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
+import { emptyPromptAssemblyMetadata } from "@/lib/overlay/contextAssemblyContract";
 import { buildPromptAssemblyMemoryRef } from "@/lib/overlay/memoryScopeRuntime";
 import { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
+import {
+  buildOverlayRuntimePolicyHintsWire,
+  type OverlayRuntimePolicyHintsWire,
+  shouldEnableContextAssembly,
+  shouldEnableKnowledgeHints,
+  shouldEnableOverlayTrace,
+} from "@/lib/overlay/overlayPolicy";
 import { resolveAiIdentityContract } from "@/lib/overlay/overlayRuntimeResolver";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
@@ -24,6 +32,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayIdentity?: OverlayPromptTraceIdentityWire;
   overlayContextAssembly: PromptAssemblyMetadataContract;
   overlayKnowledgeActivationHints: readonly ActiveKnowledgePackRef[];
+  overlayPolicyHints: OverlayRuntimePolicyHintsWire;
 }> {
   const usedRoleRaw =
     String(input.meta.questionGeneratedBy ?? "").trim() ||
@@ -33,6 +42,17 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     null;
 
   const identity = resolveAiIdentityContract(usedRoleRaw);
+  const policyRoleKey = identity?.roleKey ?? usedRoleRaw ?? null;
+  const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
+
+  if (!shouldEnableOverlayTrace(policyRoleKey)) {
+    return {
+      overlayPolicyHints,
+      overlayContextAssembly: emptyPromptAssemblyMetadata(),
+      overlayKnowledgeActivationHints: [],
+    };
+  }
+
   const overlayIdentity: OverlayPromptTraceIdentityWire | undefined = identity
     ? {
         roleKey: identity.roleKey,
@@ -50,23 +70,27 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
       : undefined;
 
   const roleKeyForHints = identity?.roleKey ?? usedRoleRaw;
-  const overlayKnowledgeActivationHints = resolveKnowledgeActivationHintsForRole({
-    roleKey: roleKeyForHints,
-    projectId: input.projectId,
-  });
+  const overlayKnowledgeActivationHints = shouldEnableKnowledgeHints(policyRoleKey)
+    ? resolveKnowledgeActivationHintsForRole({
+        roleKey: roleKeyForHints,
+        projectId: input.projectId,
+      })
+    : [];
 
   const usedMemoryRefs = [
     buildPromptAssemblyMemoryRef("singleChatOrchestrationV1", "singleChatOrchestrationV1"),
     buildPromptAssemblyMemoryRef("ChatMessage", "dialogueExcerpt"),
   ];
 
-  const overlayContextAssembly: PromptAssemblyMetadataContract = {
-    usedRole: usedRoleRaw ?? identity?.roleKey ?? null,
-    usedMemoryRefs,
-    usedKnowledgePacks: overlayKnowledgeActivationHints.map((h) => h.knowledgePackId),
-    usedStage: `${input.workspaceScreenKey} · ${input.timelineStage}`.slice(0, 240),
-    tokenBudgetHint: "not_measured",
-  };
+  const overlayContextAssembly: PromptAssemblyMetadataContract = shouldEnableContextAssembly(policyRoleKey)
+    ? {
+        usedRole: usedRoleRaw ?? identity?.roleKey ?? null,
+        usedMemoryRefs,
+        usedKnowledgePacks: overlayKnowledgeActivationHints.map((h) => h.knowledgePackId),
+        usedStage: `${input.workspaceScreenKey} · ${input.timelineStage}`.slice(0, 240),
+        tokenBudgetHint: "not_measured",
+      }
+    : emptyPromptAssemblyMetadata();
 
-  return { overlayIdentity, overlayContextAssembly, overlayKnowledgeActivationHints };
+  return { overlayIdentity, overlayContextAssembly, overlayKnowledgeActivationHints, overlayPolicyHints };
 }
