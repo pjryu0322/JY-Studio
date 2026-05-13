@@ -18,3 +18,13 @@ export type {
   ActiveKnowledgePackActivationStatus,
   ActiveKnowledgePackRef,
 } from "@/lib/overlay/activeKnowledgePackRef";
+export {
+  resolveAiIdentityContract,
+  canUseCursorByIdentity,
+  resolveDefaultMemoryScopesForRole,
+  resolveDefaultKnowledgeScopesForRole,
+} from "@/lib/overlay/overlayRuntimeResolver";
+export { resolveMemoryScopeFromSource, buildPromptAssemblyMemoryRef } from "@/lib/overlay/memoryScopeRuntime";
+export { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
+export { buildOrchestrationOverlayPromptTraceAugments } from "@/lib/overlay/overlayPromptTraceAugment";
+export type { OverlayPromptTraceIdentityWire } from "@/lib/overlay/overlayPromptTraceAugment";

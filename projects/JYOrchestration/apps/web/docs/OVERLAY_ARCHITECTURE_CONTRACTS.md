@@ -26,9 +26,31 @@
 | AI identity | `apps/web/src/lib/overlay/aiIdentityContract.ts` |
 | Prompt assembly metadata | `apps/web/src/lib/overlay/contextAssemblyContract.ts` |
 | Active knowledge pack ref | `apps/web/src/lib/overlay/activeKnowledgePackRef.ts` |
+| Runtime resolver (identity·memory default) | `apps/web/src/lib/overlay/overlayRuntimeResolver.ts` |
+| Memory scope → 출처 매핑 | `apps/web/src/lib/overlay/memoryScopeRuntime.ts` |
+| Knowledge activation synthetic hints | `apps/web/src/lib/overlay/knowledgeActivationResolver.ts` |
+| Orchestration `promptTrace` augment | `apps/web/src/lib/overlay/overlayPromptTraceAugment.ts` |
 | 재export | `apps/web/src/lib/overlay/index.ts` |
 
-기존 파이프라인은 이 타입들을 **필수로 사용하지 않는다**. 신규 기능·진단·UI에서 점진적으로 import.
+기존 Stage1/2·Cursor launch·GitHub·retrieval 본문은 변경하지 않는다.
+
+### 2단계: 최소 런타임 연결 (완료 범위)
+
+| 연결 | 설명 |
+|------|------|
+| **Identity resolve** | `resolveAiIdentityContract` 등 — 오케스트레이션 메타의 역할 문자열을 계약 행으로 매핑 |
+| **Memory scope mapping** | `resolveMemoryScopeFromSource` / `buildPromptAssemblyMemoryRef` |
+| **Prompt timeline metadata** | `requirementsChatOrchestration` 성공 시 `promptTrace`에 `overlayIdentity`, `overlayContextAssembly`, `overlayKnowledgeActivationHints` optional 필드 (`coerceRequirementsPromptTimelineEntry`에서 복원) |
+| **Knowledge activation hint** | `resolveKnowledgeActivationHintsForRole` — synthetic id만, DB·retrieval 비침해 |
+| **Review Harness helpers** | `selectExecutionReviewMembers`, `buildExecutionReviewBaseContext`, `executeReviewerStep`, `aggregateReviewerHarnessResult` |
+
+### 아직 하지 않은 것 (Drift 방지)
+
+- hard blocking (`canUseCursorByIdentity`는 힌트만)
+- provider engine 단일 통합
+- DB memory 스키마
+- vector retrieval ↔ activation 자동 연결
+- system prompt 본문에 perspective 강제 주입
 
 ## 진단 보고서·다운로드
 

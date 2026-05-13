@@ -3,6 +3,9 @@ import type {
   RequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsStateJson";
 import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
+import type { MemoryScope } from "@/lib/overlay/memoryScopeContract";
+import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
+import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -30,6 +33,80 @@ export function buildIdeationBootstrapContextualFallbackQuestion(input: {
 
 const MAX_PROMPT_TIMELINE = 50;
 const BOOTSTRAP_DRAWER_SLICE = 10;
+
+const MEMORY_SCOPES = new Set<MemoryScope>(["platform", "project", "role", "session", "working"]);
+
+function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial<RequirementsPromptTimelineEntry> {
+  const out: Partial<RequirementsPromptTimelineEntry> = {};
+  const oi = r.overlayIdentity;
+  if (oi && typeof oi === "object") {
+    const o = oi as Record<string, unknown>;
+    const roleKey = String(o.roleKey ?? "").trim();
+    const perspective = String(o.perspective ?? "").trim();
+    const provider = String(o.provider ?? "").trim();
+    const caps = Array.isArray(o.capabilities)
+      ? o.capabilities.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24)
+      : [];
+    if (roleKey && perspective && provider) {
+      out.overlayIdentity = { roleKey, perspective, provider, capabilities: caps };
+    }
+  }
+  const oc = r.overlayContextAssembly;
+  if (oc && typeof oc === "object") {
+    const c = oc as Record<string, unknown>;
+    const usedRole = typeof c.usedRole === "string" || c.usedRole === null ? (c.usedRole as string | null) : null;
+    const refsRaw = Array.isArray(c.usedMemoryRefs) ? c.usedMemoryRefs : [];
+    const usedMemoryRefs = refsRaw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const m = item as Record<string, unknown>;
+        const scope = String(m.scope ?? "").trim() as MemoryScope;
+        const ref = String(m.ref ?? "").trim().slice(0, 500);
+        if (!MEMORY_SCOPES.has(scope) || !ref) return null;
+        return { scope, ref };
+      })
+      .filter(Boolean) as Array<{ scope: MemoryScope; ref: string }>;
+    const packs = Array.isArray(c.usedKnowledgePacks)
+      ? c.usedKnowledgePacks.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24)
+      : [];
+    const usedStage = typeof c.usedStage === "string" || c.usedStage === null ? (c.usedStage as string | null) : null;
+    const tokenBudgetHint =
+      typeof c.tokenBudgetHint === "string" || c.tokenBudgetHint === null ? (c.tokenBudgetHint as string | null) : null;
+    out.overlayContextAssembly = {
+      usedRole,
+      usedMemoryRefs,
+      usedKnowledgePacks: packs,
+      usedStage: usedStage?.slice(0, 240) ?? null,
+      tokenBudgetHint: tokenBudgetHint?.slice(0, 120) ?? null,
+    };
+  }
+  const hints = r.overlayKnowledgeActivationHints;
+  if (Array.isArray(hints)) {
+    const parsed: ActiveKnowledgePackRef[] = [];
+    for (const h of hints.slice(0, 8)) {
+      if (!h || typeof h !== "object") continue;
+      const o = h as Record<string, unknown>;
+      const knowledgePackId = String(o.knowledgePackId ?? "").trim();
+      const activationReason = String(o.activationReason ?? "").trim();
+      const status = String(o.status ?? "").trim();
+      const priority = Number(o.priority);
+      const targetRoles = Array.isArray(o.targetRoles)
+        ? o.targetRoles.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12)
+        : [];
+      if (!knowledgePackId || !activationReason) continue;
+      if (status !== "proposed" && status !== "selected" && status !== "merged" && status !== "skipped") continue;
+      parsed.push({
+        knowledgePackId: knowledgePackId.slice(0, 240),
+        targetRoles,
+        activationReason: activationReason.slice(0, 200),
+        priority: Number.isFinite(priority) ? Math.max(0, Math.floor(priority)) : 0,
+        status,
+      });
+    }
+    if (parsed.length) out.overlayKnowledgeActivationHints = parsed;
+  }
+  return out;
+}
 
 /**
  * `promptTimeline` 행·API `data.promptTrace` 등을 `RequirementsPromptTimelineEntry`로 정규화한다.
@@ -390,6 +467,7 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       : {}),
     ...(typeof r.userLanguageTransformApplied === "boolean" ? { userLanguageTransformApplied: r.userLanguageTransformApplied } : {}),
     ...(typeof r.fallbackGeneratedSuggestions === "boolean" ? { fallbackGeneratedSuggestions: r.fallbackGeneratedSuggestions } : {}),
+    ...coerceOverlayPromptTraceExtensions(r),
   };
 }
 
@@ -543,6 +621,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly retryRawResponseText?: string;
   readonly finalQuestionBeforeFallback?: string;
   readonly fallbackGeneratedSuggestions?: boolean;
+  readonly overlayIdentity?: RequirementsPromptTimelineEntry["overlayIdentity"];
+  readonly overlayContextAssembly?: PromptAssemblyMetadataContract;
+  readonly overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -697,6 +778,11 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.finalQuestionBeforeFallback ? { finalQuestionBeforeFallback: params.finalQuestionBeforeFallback.slice(0, 600) } : {}),
     ...(typeof params.fallbackGeneratedSuggestions === "boolean"
       ? { fallbackGeneratedSuggestions: params.fallbackGeneratedSuggestions }
+      : {}),
+    ...(params.overlayIdentity ? { overlayIdentity: params.overlayIdentity } : {}),
+    ...(params.overlayContextAssembly ? { overlayContextAssembly: params.overlayContextAssembly } : {}),
+    ...(params.overlayKnowledgeActivationHints?.length
+      ? { overlayKnowledgeActivationHints: [...params.overlayKnowledgeActivationHints] }
       : {}),
   };
 }

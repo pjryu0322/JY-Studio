@@ -11,6 +11,8 @@ import {
   parseRequirementsOrganizeContextV1,
   type RequirementsOrganizeContextV1,
 } from "@/lib/requirements/requirementsOrganizeContext";
+import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
+import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -244,6 +246,17 @@ export type RequirementsPromptTimelineEntry = {
   retryRawResponseText?: string;
   /** fallback 직전 최종 후보 question(있으면 보존) */
   finalQuestionBeforeFallback?: string;
+  /** Overlay 2단계: AI Identity 스냅샷(프롬프트 본문 비주입) */
+  overlayIdentity?: Readonly<{
+    roleKey: string;
+    perspective: string;
+    provider: string;
+    capabilities: readonly string[];
+  }>;
+  /** Overlay 2단계: 컨텍스트 조립 추적 메타 */
+  overlayContextAssembly?: PromptAssemblyMetadataContract;
+  /** Overlay 2단계: 지식팩 활성화 synthetic 힌트 */
+  overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
 };
 
 export type RequirementsStateJson = {

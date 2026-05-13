@@ -2,6 +2,7 @@
  * Overlay: **Orchestration Entry** — 요구사항 SingleChat·멀티에이전트 오케스트레이션의 HTTP 진입점.
  * 철학·매핑표: `docs/OVERLAY_ARCHITECTURE_CONTRACTS.md`
  */
+import { buildOrchestrationOverlayPromptTraceAugments } from "@/lib/overlay/overlayPromptTraceAugment";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
@@ -359,6 +360,12 @@ export async function POST(request: NextRequest) {
             })();
 
       const replyTrim = String(turnOk.assistantMessage ?? "").trim();
+      const overlayAugments = buildOrchestrationOverlayPromptTraceAugments({
+        workspaceScreenKey: orchCtxForTurn.workspaceScreenKey,
+        timelineStage: orchCtxForTurn.timelineStage,
+        meta: turnOk.meta,
+        projectId: projectId ?? null,
+      });
       const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
         action: "requirementsChatOrchestration",
         source: usedFallback ? "fallback" : "llm",
@@ -466,6 +473,7 @@ export async function POST(request: NextRequest) {
               })),
             }
           : {}),
+        ...overlayAugments,
       });
 
       return NextResponse.json({

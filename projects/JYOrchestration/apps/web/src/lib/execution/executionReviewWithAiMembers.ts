@@ -108,6 +108,8 @@ ${gitSection}
 ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하면 fail.\n" : ""}`;
 }
 
+const buildExecutionReviewBaseContext = buildCommonContext;
+
 function roleSpecificInstructions(role: AiMemberRole): string {
   switch (role) {
     case "reviewer":
@@ -137,7 +139,7 @@ function roleSpecificInstructions(role: AiMemberRole): string {
 
 function buildUserMessageForRole(
   role: AiMemberRole,
-  base: ReturnType<typeof buildCommonContext>
+  base: ReturnType<typeof buildExecutionReviewBaseContext>
 ): string {
   return `${base}
 
@@ -149,6 +151,119 @@ ${roleSpecificInstructions(role)}
   "summary": "한국어 2~5문장",
   "issues": ["구체적 지적", "..."]
 }`;
+}
+
+type ExecutionReviewMemberRow = Readonly<{
+  id: string;
+  name: string;
+  role: AiMemberRole;
+  model: string;
+}>;
+
+async function selectExecutionReviewMembers(projectId: string): Promise<ExecutionReviewMemberRow[]> {
+  const rows = await prisma.projectMember.findMany({
+    where: {
+      projectId,
+      memberType: "AI",
+      orchestrationEnabled: true,
+      orchestrationStage: "execution-review",
+      aiOrchestrationRole: { in: [...EXECUTION_REVIEW_ROLE_ORDER] },
+    },
+    select: {
+      id: true,
+      displayName: true,
+      aiOrchestrationRole: true,
+      aiModelOverride: true,
+    },
+  });
+
+  return rows
+    .map((r) => {
+      const role = r.aiOrchestrationRole as AiMemberRole | null;
+      if (!role) return null;
+      return {
+        id: r.id,
+        name: r.displayName?.trim() || role,
+        role,
+        model: resolveEffectiveReviewerModel(role, r.aiModelOverride),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => {
+      const oa = roleOrderIndex(a.role);
+      const ob = roleOrderIndex(b.role);
+      if (oa !== ob) return oa - ob;
+      return a.id.localeCompare(b.id);
+    });
+}
+
+async function executeReviewerStep(
+  m: ExecutionReviewMemberRow,
+  baseContext: string
+): Promise<{
+  step: ExecutionReviewerStepRecord;
+  decision: ExecutionReviewDecision;
+  usage: NonNullable<OpenAiRelayEvalUsage> | null;
+}> {
+  const userMessage = buildUserMessageForRole(m.role, baseContext);
+  const { result, usage } = await runOpenAiChatJsonEvaluation({
+    model: m.model,
+    systemContent: `You are AI member "${m.name}" with orchestration role "${m.role}". Output only valid JSON.`,
+    userMessage,
+  });
+
+  const decision = result.decision as ExecutionReviewDecision;
+  const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
+  const step: ExecutionReviewerStepRecord = {
+    memberId: m.id,
+    name: m.name,
+    role: m.role,
+    model: m.model,
+    decision,
+    summary: result.reason.slice(0, 4000),
+    issues,
+    reviewedAt: new Date().toISOString(),
+  };
+  return { step, decision, usage: usage ?? null };
+}
+
+function mergeReviewerUsage(
+  acc: NonNullable<OpenAiRelayEvalUsage> | null,
+  usage: NonNullable<OpenAiRelayEvalUsage> | null
+): NonNullable<OpenAiRelayEvalUsage> | null {
+  if (!usage) return acc;
+  if (!acc) return { ...usage };
+  return {
+    promptTokens: acc.promptTokens + usage.promptTokens,
+    completionTokens: acc.completionTokens + usage.completionTokens,
+    totalTokens: acc.totalTokens + usage.totalTokens,
+  };
+}
+
+function aggregateReviewerHarnessResult(input: {
+  steps: ExecutionReviewerStepRecord[];
+  decisions: ExecutionReviewDecision[];
+  usage: OpenAiRelayEvalUsage | null;
+}): {
+  result: TaskEvaluationResult;
+  usage: OpenAiRelayEvalUsage | null;
+  steps: ExecutionReviewerStepRecord[];
+} {
+  const finalDecision = aggregateExecutionReviewDecisions(input.decisions);
+  const reason = input.steps
+    .map((s) => `[${s.name}·${s.role}·${s.model}] ${s.decision}: ${s.summary}`)
+    .join("\n---\n")
+    .slice(0, 8000);
+
+  return {
+    result: {
+      decision: finalDecision,
+      reason,
+      suspiciousChanges: input.steps.flatMap((s) => (s.decision === "failed" ? [`${s.role}_failed`] : [])),
+    },
+    usage: input.usage,
+    steps: input.steps,
+  };
 }
 
 /** Review Harness — member selection (count). execution-review 스테이지 AI 멤버 수. */
@@ -184,103 +299,25 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   } | null;
 }): Promise<{
   result: TaskEvaluationResult;
-  usage: OpenAiRelayEvalUsage;
+  usage: OpenAiRelayEvalUsage | null;
   steps: ExecutionReviewerStepRecord[];
 } | null> {
-  // Review Harness — 1) member selection
-  const rows = await prisma.projectMember.findMany({
-    where: {
-      projectId: params.projectId,
-      memberType: "AI",
-      orchestrationEnabled: true,
-      orchestrationStage: "execution-review",
-      aiOrchestrationRole: { in: [...EXECUTION_REVIEW_ROLE_ORDER] },
-    },
-    select: {
-      id: true,
-      displayName: true,
-      aiOrchestrationRole: true,
-      aiModelOverride: true,
-    },
-  });
-
-  const members = rows
-    .map((r) => {
-      const role = r.aiOrchestrationRole as AiMemberRole | null;
-      if (!role) return null;
-      return {
-        id: r.id,
-        name: r.displayName?.trim() || role,
-        role,
-        model: resolveEffectiveReviewerModel(role, r.aiModelOverride),
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null)
-    .sort((a, b) => {
-      const oa = roleOrderIndex(a.role);
-      const ob = roleOrderIndex(b.role);
-      if (oa !== ob) return oa - ob;
-      return a.id.localeCompare(b.id);
-    });
-
+  const members = await selectExecutionReviewMembers(params.projectId);
   if (members.length === 0) {
     return null;
   }
 
-  // Review Harness — 2) context build (shared + per-role user message inside loop)
-  const baseContext = buildCommonContext(params);
+  const baseContext = buildExecutionReviewBaseContext(params);
   const steps: ExecutionReviewerStepRecord[] = [];
   const decisions: ExecutionReviewDecision[] = [];
   let totalUsage: NonNullable<OpenAiRelayEvalUsage> | null = null;
 
-  // Review Harness — 3) model execution
   for (const m of members) {
-    const userMessage = buildUserMessageForRole(m.role, baseContext);
-    const { result, usage } = await runOpenAiChatJsonEvaluation({
-      model: m.model,
-      systemContent: `You are AI member "${m.name}" with orchestration role "${m.role}". Output only valid JSON.`,
-      userMessage,
-    });
-
-    const decision = result.decision as ExecutionReviewDecision;
+    const { step, decision, usage } = await executeReviewerStep(m, baseContext);
+    steps.push(step);
     decisions.push(decision);
-    const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
-    steps.push({
-      memberId: m.id,
-      name: m.name,
-      role: m.role,
-      model: m.model,
-      decision,
-      summary: result.reason.slice(0, 4000),
-      issues,
-      reviewedAt: new Date().toISOString(),
-    });
-
-    if (usage) {
-      totalUsage = totalUsage
-        ? {
-            promptTokens: totalUsage.promptTokens + usage.promptTokens,
-            completionTokens: totalUsage.completionTokens + usage.completionTokens,
-            totalTokens: totalUsage.totalTokens + usage.totalTokens,
-          }
-        : { ...usage };
-    }
+    totalUsage = mergeReviewerUsage(totalUsage, usage);
   }
 
-  // Review Harness — 4) result aggregation
-  const finalDecision = aggregateExecutionReviewDecisions(decisions);
-  const reason = steps
-    .map((s) => `[${s.name}·${s.role}·${s.model}] ${s.decision}: ${s.summary}`)
-    .join("\n---\n")
-    .slice(0, 8000);
-
-  return {
-    result: {
-      decision: finalDecision,
-      reason,
-      suspiciousChanges: steps.flatMap((s) => (s.decision === "failed" ? [`${s.role}_failed`] : [])),
-    },
-    usage: totalUsage,
-    steps,
-  };
+  return aggregateReviewerHarnessResult({ steps, decisions, usage: totalUsage });
 }

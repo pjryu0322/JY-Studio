@@ -319,11 +319,18 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 
 - **중간**: 조립 함수가 다수 모듈에 흩어져 **토큰 예산·출처 추적**을 한 레이어에서 보기 어렵다.
 - **완화 계약**: `PromptAssemblyMetadataContract` (`contextAssemblyContract.ts`) — 상위 호출이 선택적으로 메타를 채울 수 있게 함(기존 build 경로 비침해).
+- **2단계 연결**: 서비스 기획 SingleChat 오케스트레이션 성공 턴에서 `promptTrace.overlayContextAssembly`에 `usedRole`, `usedMemoryRefs`, `usedKnowledgePacks`(synthetic 힌트 id), `usedStage`, `tokenBudgetHint: "not_measured"` 기록 (`ai-facilitator` + `buildOrchestrationOverlayPromptTraceAugments`).
 
 ## Knowledge Activation 부족 영역
 
 - 추천·병합·WorkUnit 주입은 있으나 **런타임 activation 메타**가 단일 타입으로 고정되어 있지 않았다.
-- **완화**: `ActiveKnowledgePackRef` (`activeKnowledgePackRef.ts`) — `targetRoles`, `activationReason`, `priority`, `status` (retrieval 본문 로직 비변경).
+- **완화(1단계)**: `ActiveKnowledgePackRef` (`activeKnowledgePackRef.ts`) — 타입만.
+- **완화(2단계)**: `resolveKnowledgeActivationHintsForRole` — `role-default:…` synthetic 힌트를 `promptTrace.overlayKnowledgeActivationHints`에 동시 기록(실제 지식팩 로드 아님).
+
+## 2단계 Runtime 요약
+
+- **1차**: 계약·문서·주석 중심.
+- **2차**: 위 필드 + resolver·coerce 경로로 **추적성** 확보. 라우팅·LLM 파라미터·프롬프트 본문은 불변.
 
 ## 관련 문서
 
