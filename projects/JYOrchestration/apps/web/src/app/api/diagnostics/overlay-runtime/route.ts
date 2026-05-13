@@ -14,6 +14,8 @@ import {
   summarizeOverlayPolicyWarnings,
 } from "@/lib/overlay/overlayPolicyWarning";
 import { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
+import { summarizeOverlaySelectedContextRefs } from "@/lib/overlay/overlayContextSelection";
+import { summarizeOverlayConflictWarnings } from "@/lib/overlay/overlayConflictDetection";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
@@ -80,6 +82,21 @@ export async function GET(request: NextRequest) {
   const overlayPolicyWarningSummary = summarizeOverlayPolicyWarnings(summaryWarnings);
   const overlayWarningReport = buildOverlayWarningReport({ warnings: summaryWarnings });
 
+  const overlaySelectionSummary = summarizeOverlaySelectedContextRefs(
+    lastPromptTraceOverlayExtract?.overlaySelectedContextRefs ?? []
+  );
+  const overlayConflictSummary = summarizeOverlayConflictWarnings(
+    lastPromptTraceOverlayExtract?.overlayConflictWarnings ?? []
+  );
+  const overlayContextBudgetSummary = lastPromptTraceOverlayExtract?.overlayContextBudget
+    ? {
+        budgetPolicy: lastPromptTraceOverlayExtract.overlayContextBudget.budgetPolicy,
+        overflowRisk: lastPromptTraceOverlayExtract.overlayContextBudget.overflowRisk,
+        estimatedInputTokens: lastPromptTraceOverlayExtract.overlayContextBudget.estimatedInputTokens,
+        estimatedOutputTokens: lastPromptTraceOverlayExtract.overlayContextBudget.estimatedOutputTokens,
+      }
+    : { budgetPolicy: null, overflowRisk: null, estimatedInputTokens: null, estimatedOutputTokens: null };
+
   const overlayArchitecturePhase = {
     current: "runtime-policy-warning-layer" as const,
     enforcementEnabled: false,
@@ -116,6 +133,9 @@ export async function GET(request: NextRequest) {
       workspaceAiMemberOverlayMappings,
       overlayPolicyWarningSummary,
       overlayWarningReport,
+      overlaySelectionSummary,
+      overlayConflictSummary,
+      overlayContextBudgetSummary,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

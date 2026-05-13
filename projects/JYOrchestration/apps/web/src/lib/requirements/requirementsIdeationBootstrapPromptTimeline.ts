@@ -11,6 +11,17 @@ import { parseOverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy"
 import { parseOverlayPolicyWarningsFromUnknown } from "@/lib/overlay/overlayPolicyWarning";
 import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
 import { OVERLAY_POLICY_WARNINGS_MAX_TIMELINE } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSelection";
+import {
+  parseOverlaySelectedContextRefsFromUnknown,
+  OVERLAY_SELECTED_CONTEXT_REFS_MAX,
+} from "@/lib/overlay/overlayContextSelection";
+import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
+import { parseOverlayContextBudgetMetadataFromUnknown } from "@/lib/overlay/overlayContextBudget";
+import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
+import { parseOverlayConflictWarningsFromUnknown } from "@/lib/overlay/overlayConflictDetection";
+import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+import { parseOverlayOrchestrationDecisionTraceFromUnknown } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -119,6 +130,23 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
     OVERLAY_POLICY_WARNINGS_MAX_TIMELINE
   );
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
+
+  const parsedSelected = parseOverlaySelectedContextRefsFromUnknown(r.overlaySelectedContextRefs).slice(
+    0,
+    OVERLAY_SELECTED_CONTEXT_REFS_MAX
+  );
+  if (parsedSelected.length) out.overlaySelectedContextRefs = parsedSelected;
+
+  const parsedBudget = parseOverlayContextBudgetMetadataFromUnknown(r.overlayContextBudget);
+  if (parsedBudget) out.overlayContextBudget = parsedBudget;
+
+  const parsedConflicts = parseOverlayConflictWarningsFromUnknown(r.overlayConflictWarnings);
+  if (parsedConflicts.length) out.overlayConflictWarnings = parsedConflicts;
+
+  const parsedDecision = parseOverlayOrchestrationDecisionTraceFromUnknown(
+    r.overlayOrchestrationDecisionTrace
+  );
+  if (parsedDecision) out.overlayOrchestrationDecisionTrace = parsedDecision;
 
   return out;
 }
@@ -641,6 +669,10 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayKnowledgeActivationHints?: readonly ActiveKnowledgePackRef[];
   readonly overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
   readonly overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
+  readonly overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+  readonly overlayContextBudget?: OverlayContextBudgetMetadata;
+  readonly overlayConflictWarnings?: readonly OverlayConflictWarning[];
+  readonly overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -806,6 +838,21 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? {
           overlayPolicyWarnings: params.overlayPolicyWarnings.slice(0, OVERLAY_POLICY_WARNINGS_MAX_TIMELINE),
         }
+      : {}),
+    ...(params.overlaySelectedContextRefs?.length
+      ? {
+          overlaySelectedContextRefs: params.overlaySelectedContextRefs.slice(
+            0,
+            OVERLAY_SELECTED_CONTEXT_REFS_MAX
+          ),
+        }
+      : {}),
+    ...(params.overlayContextBudget ? { overlayContextBudget: params.overlayContextBudget } : {}),
+    ...(params.overlayConflictWarnings?.length
+      ? { overlayConflictWarnings: [...params.overlayConflictWarnings].slice(0, 32) }
+      : {}),
+    ...(params.overlayOrchestrationDecisionTrace
+      ? { overlayOrchestrationDecisionTrace: params.overlayOrchestrationDecisionTrace }
       : {}),
   };
 }

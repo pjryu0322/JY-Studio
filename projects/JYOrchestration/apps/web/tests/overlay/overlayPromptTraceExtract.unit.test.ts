@@ -71,4 +71,38 @@ describe("extractOverlayPromptTraceMetadata", () => {
     expect(x.overlayPolicyHints?.overlayTraceEnabled).toBe(true);
     expect(x.overlayPolicyWarnings?.length).toBe(1);
   });
+
+  it("replays overlay 5단계 optional metadata (selection/budget/conflict/decision trace)", () => {
+    const x = extractOverlayPromptTraceMetadata({
+      overlaySelectedContextRefs: [
+        { type: "role", source: "planner", reason: "role_resolved", priority: 0 },
+        { type: "memory", source: "platform", reason: "role_memory_scope", priority: 10 },
+        { type: "bogus", source: "x", reason: "x", priority: 1 },
+      ],
+      overlayContextBudget: {
+        budgetPolicy: "balanced",
+        overflowRisk: "medium",
+        estimatedInputTokens: 1234,
+        estimatedOutputTokens: 256,
+      },
+      overlayConflictWarnings: [
+        {
+          code: "OVERLAY_CONFLICT_LOCALSTORAGE_VS_JWT",
+          severity: "warning",
+          category: "storage",
+          message: "ok",
+        },
+      ],
+      overlayOrchestrationDecisionTrace: {
+        selectedRoleKey: "planner",
+        selectionReason: "role_resolved",
+        matchedCapabilities: ["llm_chat"],
+        matchedKnowledgeScopes: ["platform_catalog"],
+      },
+    });
+    expect(x.overlaySelectedContextRefs?.length).toBe(2);
+    expect(x.overlayContextBudget?.budgetPolicy).toBe("balanced");
+    expect(x.overlayConflictWarnings?.[0]?.code).toBe("OVERLAY_CONFLICT_LOCALSTORAGE_VS_JWT");
+    expect(x.overlayOrchestrationDecisionTrace?.selectedRoleKey).toBe("planner");
+  });
 });

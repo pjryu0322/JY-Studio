@@ -15,6 +15,10 @@ import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRe
 import type { PromptAssemblyMetadataContract } from "@/lib/overlay/contextAssemblyContract";
 import type { OverlayRuntimePolicyHintsWire } from "@/lib/overlay/overlayPolicy";
 import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSelection";
+import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
+import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
+import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -267,6 +271,14 @@ export type RequirementsPromptTimelineEntry = {
    * `parseOverlayPolicyWarningsFromUnknown`으로 검증·보존하며, 행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`개.
    */
   overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
+  /** Overlay 5단계 준비: 선택된 context refs(읽기 전용 metadata; prompt 본문 비반영) */
+  overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+  /** Overlay 5단계 준비: heuristic 토큰 budget metadata(라우팅·payload 비변경) */
+  overlayContextBudget?: OverlayContextBudgetMetadata;
+  /** Overlay 5단계 준비: 충돌 키워드 휴리스틱 warning(비차단) */
+  overlayConflictWarnings?: readonly OverlayConflictWarning[];
+  /** Overlay 5단계 준비: 어떤 역할이 왜 선택되었는지 decision trace */
+  overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
 };
 
 export type RequirementsStateJson = {

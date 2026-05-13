@@ -335,15 +335,22 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 ## Overlay Runtime Policy (힌트 전용)
 
 - **현재 warning·diagnostic은 실행 차단이 아니다.** 운영·감사·추적·정책 설계용 metadata다.
-- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → **Diagnostic / Warning(4)** → Enforcement(5, **미도입**).
+- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → Diagnostic / Warning(4) → **Selection / Budget / Conflict Trace Preparation(5, 현재)** → Enforcement(6, **미도입**).
 - **Soft policy + warning wire**: `overlayPolicy.ts` + **`overlayPolicyWarning.ts`** + **`overlayPolicyWarningSummary.ts`** — `buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(코드/역할/출처 집계 포함); read-only 리포트 묶음 **`overlayWarningReport.ts`**(`buildOverlayWarningReport`). SingleChat `buildOrchestrationOverlayPromptTraceAugments`가 `overlayPolicyHints`와 **`overlayPolicyWarnings`** 를 함께 기록. `requirementsStateJson` 타임라인은 `coerceRequirementsPromptTimelineEntry`가 **`parseOverlayPolicyWarningsFromUnknown`** 으로 경고를 보존(행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`; 알 수 없는 severity는 **`warning`** 으로 정규화). **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
 - **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
 - **프로젝트 진단 스냅샷**: `overlayProjectDiagnostic.ts` — 서비스 기획 `selectedAgents` 기준 resolve·분포.
 - **프롬프트 타임라인 추출**: `overlayPromptTraceExtract.ts` — `extractOverlayPromptTraceMetadata`가 hints·**warnings** 포함; 진단 API `?projectId=` 시 마지막 타임라인 행에 대해 호출.
 - **진단 API**: `GET /api/diagnostics/overlay-runtime` — **`overlayPolicyWarningSummary`**, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **`overlayMaturity`**, **`enforcementStatus`**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`.
 - **Review Harness**: `executionReviewWithAiMembers.ts` — 스텝에 **`overlayPolicyWarnings`**(JSON 리뷰 **판단 로직 비영향**); 반환에 **`overlayWarningCount`**·**`overlayWarningSummary`**(감사용 집계, decision 비영향). `evaluateExecutionResult`가 동일 metadata를 optional로 노출.
-- **단위 테스트**: `tests/overlay/*.unit.test.ts`, `tests/api/overlayPromptTracePersistence.unit.test.ts`, `tests/api/executionReviewOverlayWarningSummary.unit.test.ts`.
-- **의도적으로 하지 않음**: 정책 엔진 강제, Cursor 실행 차단, vector memory, retrieval 본문 변경, Stage1/2·GitHub 플로우 변경.
+- **Selection / Budget / Conflict Preparation (현재 단계)** — 모두 read-only optional metadata. **prompt 본문·OpenAI payload·라우팅 비변경**, **자동 orchestration / 자동 retrieval / 자동 provider 선택 없음**.
+  - `overlayContextSelection.ts` — `buildOverlaySelectedContextRefs`(역할·memory scope·knowledge hint·timeline·workspace·policy refs를 priority 정렬된 selection metadata로) / `summarizeOverlaySelectedContextRefs`.
+  - `overlayContextBudget.ts` — `buildOverlayContextBudgetMetadata`(4 chars≈1 token 휴리스틱; `compact|balanced|default|extended` 정책 + `low|medium|high` overflowRisk). 실제 토큰 측정 아님.
+  - `overlayConflictDetection.ts` — `detectOverlayConflicts`(키워드 휴리스틱; `localStorage vs JWT`, `session vs stateless`, `monolith vs microservice`). **warning only**.
+  - `overlayOrchestrationDecisionTrace.ts` — `buildOverlayOrchestrationDecisionTrace`(왜 그 역할이 선택되었는지 replay·감사용).
+  - **PromptTrace 직렬화**: `requirementsStateJson` 타임라인 entry가 optional **`overlaySelectedContextRefs`**·**`overlayContextBudget`**·**`overlayConflictWarnings`**·**`overlayOrchestrationDecisionTrace`** 보존(읽기·쓰기 모두 coerce / parse 통과). 행당 selection 최대 `OVERLAY_SELECTED_CONTEXT_REFS_MAX`.
+  - **진단 API 확장**: `overlay-runtime` 응답에 **`overlaySelectionSummary`**·**`overlayConflictSummary`**·**`overlayContextBudgetSummary`** 추가(`?projectId=` 동반 시 마지막 promptTrace 기반).
+- **단위 테스트**: `tests/overlay/*.unit.test.ts`(`overlayContextSelection`, `overlayContextBudget`, `overlayConflictDetection`, `overlayOrchestrationDecisionTrace` 포함), `tests/api/overlayPromptTracePersistence.unit.test.ts`, `tests/api/executionReviewOverlayWarningSummary.unit.test.ts`.
+- **의도적으로 하지 않음**: 정책 엔진 강제, Cursor 실행 차단, vector memory, retrieval 본문 변경, Stage1/2·GitHub 플로우 변경, **자동 prompt 본문 조립**, **자동 retrieval orchestration**, **자동 provider orchestration**.
 
 ## 관련 문서
 

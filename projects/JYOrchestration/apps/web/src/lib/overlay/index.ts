@@ -66,6 +66,42 @@ export {
 } from "@/lib/overlay/overlayPolicyWarningSummary";
 export { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
 export {
+  buildOverlaySelectedContextRefs,
+  parseOverlaySelectedContextRefsFromUnknown,
+  summarizeOverlaySelectedContextRefs,
+  OVERLAY_SELECTED_CONTEXT_REFS_MAX,
+} from "@/lib/overlay/overlayContextSelection";
+export type {
+  OverlaySelectedContextRef,
+  OverlaySelectedContextRefType,
+  OverlaySelectionSummaryWire,
+} from "@/lib/overlay/overlayContextSelection";
+export {
+  buildOverlayContextBudgetMetadata,
+  parseOverlayContextBudgetMetadataFromUnknown,
+} from "@/lib/overlay/overlayContextBudget";
+export type {
+  OverlayContextBudgetMetadata,
+  OverlayContextBudgetOverflowRisk,
+  OverlayContextBudgetPolicy,
+} from "@/lib/overlay/overlayContextBudget";
+export {
+  detectOverlayConflicts,
+  parseOverlayConflictWarningsFromUnknown,
+  summarizeOverlayConflictWarnings,
+} from "@/lib/overlay/overlayConflictDetection";
+export type {
+  OverlayConflictWarning,
+  OverlayConflictWarningCategory,
+  OverlayConflictWarningSeverity,
+  OverlayConflictSummaryWire,
+} from "@/lib/overlay/overlayConflictDetection";
+export {
+  buildOverlayOrchestrationDecisionTrace,
+  parseOverlayOrchestrationDecisionTraceFromUnknown,
+} from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+export type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
+export {
   resolveOverlayIdentityFromAiMember,
   validateWorkspaceAiMemberOverlayMappings,
   listUnmappedWorkspaceAiMemberKeys,

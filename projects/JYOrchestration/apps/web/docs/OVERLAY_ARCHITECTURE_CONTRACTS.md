@@ -38,6 +38,10 @@
 | Policy warning 표준(비차단) | `apps/web/src/lib/overlay/overlayPolicyWarning.ts` |
 | Warning 집계(byCode/byRole/bySource) | `apps/web/src/lib/overlay/overlayPolicyWarningSummary.ts` — `byRole`은 `roleKey` 없으면 **`unknown`** 버킷 |
 | Warning read-only 리포트 묶음 | `apps/web/src/lib/overlay/overlayWarningReport.ts` |
+| **Selection metadata 빌더(read-only)** | `apps/web/src/lib/overlay/overlayContextSelection.ts` — `buildOverlaySelectedContextRefs`·`summarizeOverlaySelectedContextRefs`·`parseOverlaySelectedContextRefsFromUnknown` |
+| **Context budget heuristic(read-only)** | `apps/web/src/lib/overlay/overlayContextBudget.ts` — `buildOverlayContextBudgetMetadata`·`parseOverlayContextBudgetMetadataFromUnknown` (payload·prompt 비변경) |
+| **Conflict detection(키워드 휴리스틱, warning only)** | `apps/web/src/lib/overlay/overlayConflictDetection.ts` — `detectOverlayConflicts`·`summarizeOverlayConflictWarnings` |
+| **Orchestration decision trace(replay metadata)** | `apps/web/src/lib/overlay/overlayOrchestrationDecisionTrace.ts` — `buildOverlayOrchestrationDecisionTrace` |
 | 재export | `apps/web/src/lib/overlay/index.ts` |
 
 기존 Stage1/2·Cursor launch·GitHub·retrieval 본문은 변경하지 않는다.
@@ -47,13 +51,14 @@
 1. **Contract Layer** — 타입·정적 resolver 행.
 2. **Runtime Metadata Layer** — `promptTrace` / Review step에 optional overlay 필드 기록.
 3. **Runtime Policy Helper Layer** — `overlayPolicy`의 `shouldEnable*`·`buildOverlayRuntimePolicyHintsWire`·`parseOverlayRuntimePolicyHintsWire`; **기록·진단만**, 차단 없음.
-4. **Runtime Policy Diagnostic / Warning Layer** (현재) — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API **`overlayPolicyWarningSummary`**·**`overlayWarningReport`**(`buildOverlayWarningReport`)·**`overlayArchitecturePhase`**·**`overlayMaturity`**·**`enforcementStatus`**. **`parseOverlayPolicyWarningsFromUnknown`** 는 알 수 없는 `severity`를 replay 안정화를 위해 **`warning`** 으로 본다(그 외 필드는 기존 검증 유지). **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
-5. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+4. **Runtime Policy Diagnostic / Warning Layer** — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API **`overlayPolicyWarningSummary`**·**`overlayWarningReport`**(`buildOverlayWarningReport`)·**`overlayArchitecturePhase`**·**`overlayMaturity`**·**`enforcementStatus`**. **`parseOverlayPolicyWarningsFromUnknown`** 는 알 수 없는 `severity`를 replay 안정화를 위해 **`warning`** 으로 본다(그 외 필드는 기존 검증 유지). **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
+5. **Selection / Budget / Conflict Trace Preparation Layer** (현재) — `overlaySelectedContextRefs`·`overlayContextBudget`·`overlayConflictWarnings`·`overlayOrchestrationDecisionTrace`(모두 read-only optional metadata). 진단 API에 **`overlaySelectionSummary`**·**`overlayConflictSummary`**·**`overlayContextBudgetSummary`** 노출. **prompt 본문·OpenAI payload·라우팅 변경 없음**, **자동 orchestration / retrieval / provider 선택 없음**. 충돌 검출은 키워드 휴리스틱이며 **warning only**(차단 없음).
+6. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
 
 - **Contract**: `aiIdentityContract`·`memoryScopeContract`·`contextAssemblyContract`·`activeKnowledgePackRef` 등 타입과 `overlayRuntimeResolver`의 정적 행(역할별 identity·기본 memory/knowledge scope).
-- **Runtime Metadata**: 오케스트레이션·리뷰 경로가 기록하는 값 — `promptTrace`의 `overlayIdentity` / `overlayContextAssembly` / `overlayKnowledgeActivationHints` / `overlayPolicyHints` / **`overlayPolicyWarnings`**, Review 스텝의 동일 계열 필드(프롬프트 본문은 그대로).
+- **Runtime Metadata**: 오케스트레이션·리뷰 경로가 기록하는 값 — `promptTrace`의 `overlayIdentity` / `overlayContextAssembly` / `overlayKnowledgeActivationHints` / `overlayPolicyHints` / **`overlayPolicyWarnings`** / **`overlaySelectedContextRefs`** / **`overlayContextBudget`** / **`overlayConflictWarnings`** / **`overlayOrchestrationDecisionTrace`**, Review 스텝의 동일 계열 필드(프롬프트 본문은 그대로).
 - **Runtime Policy**: `overlayPolicy`의 `shouldEnable*` 등과 `buildOverlayPolicyWarnings`가 역할 미해결·Cursor 요청 불일치·hint/assembly 기대 vs 정책 불일치를 **warning/info** 로만 기록(`enforcement: "not_applied"`). SingleChat augment·Review Harness·진단 API가 동일 어휘를 사용한다.
 
 ### 2단계: 최소 런타임 연결 (완료 범위)
@@ -66,13 +71,14 @@
 | **Knowledge activation hint** | `resolveKnowledgeActivationHintsForRole` — synthetic id만, DB·retrieval 비침해 |
 | **Review Harness helpers** | `selectExecutionReviewMembers`, `buildExecutionReviewBaseContext`, `executeReviewerStep`, `aggregateReviewerHarnessResult` — 스텝에 overlay·`overlayPolicyHints`·**`overlayPolicyWarnings`**; knowledge 힌트는 `shouldEnableKnowledgeHints`에 따름 |
 | **Registry / policy / trace extract** | `getOverlayIdentity` 등, `shouldEnable*`, `extractOverlayPromptTraceMetadata`, `parseOverlayRuntimePolicyHintsWire`, **`parseOverlayPolicyWarningsFromUnknown`** |
-| **읽기 전용 진단 API** | `GET /api/diagnostics/overlay-runtime` — `overlayPolicyWarningSummary`(경고 샘플 + **byCode/byRole/bySource**), **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` 시 `projectOverlay`·`lastPromptTraceOverlayExtract` |
+| **읽기 전용 진단 API** | `GET /api/diagnostics/overlay-runtime` — `overlayPolicyWarningSummary`(경고 샘플 + **byCode/byRole/bySource**), **`overlayWarningReport`**, **`overlaySelectionSummary`**, **`overlayConflictSummary`**, **`overlayContextBudgetSummary`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` 시 `projectOverlay`·`lastPromptTraceOverlayExtract` |
 | **Review Harness 집계** | `evaluateExecutionResult` — Harness 경로에서 **`overlayWarningSummary`**·`overlayWarningCount` optional(metadata; **decision 비영향**). |
 
 ### 아직 하지 않은 것 (Drift 방지)
 
 - **현재 warning은 실행 차단이 아니다** (pass/fail·Cursor launch·retrieval 본문 비영향). Warning은 진단·감사·추적·향후 정책 설계를 위한 metadata다.
-- **아직 없음**: hard enforcement, Cursor execution blocking, retrieval orchestration 변경, prompt injection policy, context budget enforcement, memory orchestration, provider orchestration.
+- **선택/예산/충돌 metadata는 read-only**: `overlaySelectedContextRefs`·`overlayContextBudget`·`overlayConflictWarnings`·`overlayOrchestrationDecisionTrace`는 **promptTrace replay 용 metadata** 이며 prompt 본문 자동 조립·라우팅·payload 어떤 것도 변경하지 않는다.
+- **아직 없음**: hard enforcement, Cursor execution blocking, retrieval orchestration 변경, prompt injection policy, **context budget enforcement(현재는 휴리스틱 진단만)**, memory orchestration, provider orchestration, **자동 orchestration / 자동 retrieval / 자동 provider 선택**.
 - **Cursor capability**는 메타·경고만; hard block 아님.
 - **지식팩 hint**는 retrieval에 강제 반영되지 않는다.
 - **context assembly 메타**는 prompt 본문을 바꾸지 않는다.
@@ -85,4 +91,4 @@
 
 - 본문: `apps/web/docs/platform-structure-diagnosis.md`
 - 다운로드: `GET /api/diagnostics/platform-structure-report`
-- Overlay 런타임 스냅샷(JSON): `GET /api/diagnostics/overlay-runtime` (`overlayPolicyWarningSummary`, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `?projectId=` + 로그인 시 `projectOverlay`·`lastPromptTraceOverlayExtract`, `workspaceAiMemberOverlayMappings`)
+- Overlay 런타임 스냅샷(JSON): `GET /api/diagnostics/overlay-runtime` (`overlayPolicyWarningSummary`, **`overlayWarningReport`**, **`overlaySelectionSummary`**, **`overlayConflictSummary`**, **`overlayContextBudgetSummary`**, **`overlayArchitecturePhase`**, **overlayMaturity**, **enforcementStatus**, `?roles=`, `?projectId=` + 로그인 시 `projectOverlay`·`lastPromptTraceOverlayExtract`, `workspaceAiMemberOverlayMappings`)
