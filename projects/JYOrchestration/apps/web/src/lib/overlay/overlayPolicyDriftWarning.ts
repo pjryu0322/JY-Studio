@@ -8,77 +8,109 @@
  * 어느 것도 변경하지 않는다.
  */
 
-import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
+import type {
+  OverlayAssemblyPlanItem,
+  OverlayAssemblyPlanItemType,
+} from "@/lib/overlay/overlayContextAssemblyPlan";
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
-import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import type {
+  OverlayPolicyWarning,
+  OverlayPolicyWarningSeverity,
+} from "@/lib/overlay/overlayPolicyWarning";
 
-const DRIFT_SOURCE = "diagnostic" as const;
+const DRIFT_SOURCE: OverlayPolicyWarning["source"] = "diagnostic";
 
 const COMPACT_TIMELINE_DRIFT_THRESHOLD = 1;
 
-function drift(code: string, severity: "info" | "warning", message: string): OverlayPolicyWarning {
+type PlanStats = Readonly<{
+  total: number;
+  byType: Readonly<Record<OverlayAssemblyPlanItemType, number>>;
+  hasPruningCandidate: boolean;
+}>;
+
+type DriftContext = Readonly<{
+  stats: PlanStats;
+  budgetMetadata: OverlayContextBudgetMetadata | null;
+}>;
+
+type DriftRule = Readonly<{
+  code: string;
+  severity: OverlayPolicyWarningSeverity;
+  test: (ctx: DriftContext) => boolean;
+  message: (ctx: DriftContext) => string;
+}>;
+
+function makePlanStats(plan: readonly OverlayAssemblyPlanItem[]): PlanStats {
+  const byType: Record<OverlayAssemblyPlanItemType, number> = {
+    memory: 0,
+    knowledge: 0,
+    timeline: 0,
+    workspace: 0,
+    policy: 0,
+  };
+  let hasPruningCandidate = false;
+  for (const item of plan) {
+    byType[item.type]++;
+    if (item.pruningCandidate) hasPruningCandidate = true;
+  }
+  return { total: plan.length, byType, hasPruningCandidate };
+}
+
+function makeDrift(rule: DriftRule, ctx: DriftContext): OverlayPolicyWarning {
   return {
-    code,
-    severity,
-    message,
+    code: rule.code,
+    severity: rule.severity,
+    message: rule.message(ctx),
     source: DRIFT_SOURCE,
     enforcement: "not_applied",
   };
 }
 
+const DRIFT_RULES: readonly DriftRule[] = [
+  {
+    code: "OVERLAY_DRIFT_COMPACT_TIMELINE_OVERLOAD",
+    severity: "warning",
+    test: (c) =>
+      c.budgetMetadata?.budgetPolicy === "compact" &&
+      c.stats.byType.timeline > COMPACT_TIMELINE_DRIFT_THRESHOLD,
+    message: (c) =>
+      `compact policy인데 timeline 항목이 ${c.stats.byType.timeline}개로 과다합니다(권장 ≤ ${COMPACT_TIMELINE_DRIFT_THRESHOLD}).`,
+  },
+  {
+    code: "OVERLAY_DRIFT_OVERFLOW_HIGH_WITHOUT_PRUNING",
+    severity: "warning",
+    test: (c) =>
+      c.budgetMetadata?.overflowRisk === "high" &&
+      c.stats.total > 0 &&
+      !c.stats.hasPruningCandidate,
+    message: () => "overflowRisk가 high인데 pruning candidate가 없습니다(plan 재검토 권장).",
+  },
+  {
+    code: "OVERLAY_DRIFT_NO_MEMORY_SCOPE",
+    severity: "info",
+    test: (c) => c.stats.total > 0 && c.stats.byType.memory === 0,
+    message: () => "assembly plan에 memory scope 항목이 없습니다(역할 기본 memory scope 누락 가능).",
+  },
+  {
+    code: "OVERLAY_DRIFT_NO_KNOWLEDGE_SCOPE",
+    severity: "info",
+    test: (c) => c.stats.total > 0 && c.stats.byType.knowledge === 0,
+    message: () =>
+      "assembly plan에 knowledge scope 항목이 없습니다(planner 등 역할 기본 knowledge hint 누락 가능).",
+  },
+];
+
 export function detectOverlayPolicyDrift(input: {
   assemblyPlan: readonly OverlayAssemblyPlanItem[];
   budgetMetadata?: OverlayContextBudgetMetadata | null;
 }): readonly OverlayPolicyWarning[] {
+  const ctx: DriftContext = {
+    stats: makePlanStats(input.assemblyPlan),
+    budgetMetadata: input.budgetMetadata ?? null,
+  };
   const out: OverlayPolicyWarning[] = [];
-  const plan = input.assemblyPlan;
-  const policy = input.budgetMetadata?.budgetPolicy ?? null;
-  const overflow = input.budgetMetadata?.overflowRisk ?? null;
-
-  const timelineCount = plan.filter((i) => i.type === "timeline").length;
-  const memoryCount = plan.filter((i) => i.type === "memory").length;
-  const knowledgeCount = plan.filter((i) => i.type === "knowledge").length;
-  const hasPruningCandidate = plan.some((i) => i.pruningCandidate);
-
-  if (policy === "compact" && timelineCount > COMPACT_TIMELINE_DRIFT_THRESHOLD) {
-    out.push(
-      drift(
-        "OVERLAY_DRIFT_COMPACT_TIMELINE_OVERLOAD",
-        "warning",
-        `compact policy인데 timeline 항목이 ${timelineCount}개로 과다합니다(권장 ≤ ${COMPACT_TIMELINE_DRIFT_THRESHOLD}).`
-      )
-    );
+  for (const rule of DRIFT_RULES) {
+    if (rule.test(ctx)) out.push(makeDrift(rule, ctx));
   }
-
-  if (overflow === "high" && plan.length > 0 && !hasPruningCandidate) {
-    out.push(
-      drift(
-        "OVERLAY_DRIFT_OVERFLOW_HIGH_WITHOUT_PRUNING",
-        "warning",
-        "overflowRisk가 high인데 pruning candidate가 없습니다(plan 재검토 권장)."
-      )
-    );
-  }
-
-  if (plan.length > 0 && memoryCount === 0) {
-    out.push(
-      drift(
-        "OVERLAY_DRIFT_NO_MEMORY_SCOPE",
-        "info",
-        "assembly plan에 memory scope 항목이 없습니다(역할 기본 memory scope 누락 가능)."
-      )
-    );
-  }
-
-  if (plan.length > 0 && knowledgeCount === 0) {
-    out.push(
-      drift(
-        "OVERLAY_DRIFT_NO_KNOWLEDGE_SCOPE",
-        "info",
-        "assembly plan에 knowledge scope 항목이 없습니다(planner 등 역할 기본 knowledge hint 누락 가능)."
-      )
-    );
-  }
-
   return out;
 }

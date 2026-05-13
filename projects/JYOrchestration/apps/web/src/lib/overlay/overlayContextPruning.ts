@@ -22,8 +22,23 @@ export const OVERLAY_PRUNING_CANDIDATES_MAX = 32;
 const SOURCE_MAX_LEN = 240;
 const REASON_MAX_LEN = 120;
 
+function trimSlice(value: unknown, max: number): string {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function coerceNonNegInt(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
 function reasonFor(item: OverlayAssemblyPlanItem, overflow: OverlayContextBudgetOverflowRisk): string {
   return `overflow_${overflow}_${item.type}`.slice(0, REASON_MAX_LEN);
+}
+
+/** pruning 우선순위: 낮은 우선순위(큰 priority) 먼저, 같으면 비용이 큰 것 먼저. */
+function comparePlanForPruning(a: OverlayAssemblyPlanItem, b: OverlayAssemblyPlanItem): number {
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  return b.estimatedCost - a.estimatedCost;
 }
 
 export function suggestOverlayPruningCandidates(input: {
@@ -31,17 +46,12 @@ export function suggestOverlayPruningCandidates(input: {
   overflowRisk: OverlayContextBudgetOverflowRisk;
 }): readonly OverlayPruningCandidate[] {
   if (input.overflowRisk === "low") return [];
-  // pruningCandidate가 true로 표시된 항목을 우선 모으되, 우선순위 낮음(priority 큼) → 비용 큰 순서로 정렬.
-  const candidates = input.assemblyPlan
+  const sorted = input.assemblyPlan
     .filter((it) => it.pruningCandidate)
-    .slice() // shallow copy
-    .sort((a, b) => {
-      if (a.priority !== b.priority) return b.priority - a.priority;
-      return b.estimatedCost - a.estimatedCost;
-    })
+    .slice()
+    .sort(comparePlanForPruning)
     .slice(0, OVERLAY_PRUNING_CANDIDATES_MAX);
-
-  return candidates.map((item) => ({
+  return sorted.map((item) => ({
     source: item.source.slice(0, SOURCE_MAX_LEN),
     reason: reasonFor(item, input.overflowRisk),
     estimatedReduction: item.estimatedCost,
@@ -57,12 +67,10 @@ export function parseOverlayPruningCandidatesFromUnknown(
     if (out.length >= OVERLAY_PRUNING_CANDIDATES_MAX) break;
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
-    const source = String(r.source ?? "").trim().slice(0, SOURCE_MAX_LEN);
-    const reason = String(r.reason ?? "").trim().slice(0, REASON_MAX_LEN);
+    const source = trimSlice(r.source, SOURCE_MAX_LEN);
+    const reason = trimSlice(r.reason, REASON_MAX_LEN);
     if (!source || !reason) continue;
-    const redRaw = Number(r.estimatedReduction);
-    const estimatedReduction = Number.isFinite(redRaw) ? Math.max(0, Math.floor(redRaw)) : 0;
-    out.push({ source, reason, estimatedReduction });
+    out.push({ source, reason, estimatedReduction: coerceNonNegInt(r.estimatedReduction) });
   }
   return out;
 }

@@ -31,16 +31,14 @@ export type OverlayAssemblyPlanItem = Readonly<{
   pruningCandidate: boolean;
 }>;
 
-const VALID_PLAN_TYPES = new Set<OverlayAssemblyPlanItemType>([
-  "memory",
-  "knowledge",
-  "timeline",
-  "workspace",
-  "policy",
-]);
+const PLAN_TYPES = ["memory", "knowledge", "timeline", "workspace", "policy"] as const;
+const VALID_PLAN_TYPES = new Set<OverlayAssemblyPlanItemType>(PLAN_TYPES);
 
 const SOURCE_MAX_LEN = 240;
 const REASON_MAX_LEN = 120;
+const DEFAULT_LOW_PRIORITY = 999;
+const MIN_ESTIMATED_COST = 1;
+const COST_SOURCE_LENGTH_DIVISOR = 4;
 
 /** 행당 plan item 상한(타임라인 비대화 방지). */
 export const OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX = 32;
@@ -49,7 +47,7 @@ export const OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX = 32;
 export const OVERLAY_ASSEMBLY_PLAN_HIGH_PRIORITY_THRESHOLD = 20;
 
 /** estimatedCost 산출용 기본 비용(휴리스틱). */
-const BASE_COST_BY_TYPE: Record<OverlayAssemblyPlanItemType, number> = {
+const BASE_COST_BY_TYPE: Readonly<Record<OverlayAssemblyPlanItemType, number>> = {
   memory: 40,
   knowledge: 60,
   timeline: 25,
@@ -57,19 +55,51 @@ const BASE_COST_BY_TYPE: Record<OverlayAssemblyPlanItemType, number> = {
   policy: 10,
 };
 
+/** overflow 단계별 pruning 후보로 간주하는 type 집합. `low`는 아무것도 줄이지 않는다. */
+const PRUNING_TYPES_BY_OVERFLOW: Readonly<
+  Record<OverlayContextBudgetOverflowRisk, ReadonlySet<OverlayAssemblyPlanItemType>>
+> = {
+  low: new Set<OverlayAssemblyPlanItemType>(),
+  medium: new Set<OverlayAssemblyPlanItemType>(["timeline", "workspace"]),
+  high: new Set<OverlayAssemblyPlanItemType>(["timeline", "workspace", "knowledge"]),
+};
+
+function emptyByType(): Record<OverlayAssemblyPlanItemType, number> {
+  return PLAN_TYPES.reduce(
+    (acc, t) => {
+      acc[t] = 0;
+      return acc;
+    },
+    {} as Record<OverlayAssemblyPlanItemType, number>
+  );
+}
+
+function trimSlice(value: unknown, max: number): string {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function coercePriority(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : DEFAULT_LOW_PRIORITY;
+}
+
+function coerceEstimatedCost(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(MIN_ESTIMATED_COST, Math.floor(n)) : MIN_ESTIMATED_COST;
+}
+
 function pruningCandidateForOverflow(
   type: OverlayAssemblyPlanItemType,
   overflowRisk: OverlayContextBudgetOverflowRisk | null
 ): boolean {
-  if (overflowRisk === "high") return type === "timeline" || type === "workspace" || type === "knowledge";
-  if (overflowRisk === "medium") return type === "timeline" || type === "workspace";
-  return false;
+  if (!overflowRisk) return false;
+  return PRUNING_TYPES_BY_OVERFLOW[overflowRisk].has(type);
 }
 
 function estimatedCostOf(item: OverlaySelectedContextRef, planType: OverlayAssemblyPlanItemType): number {
   const base = BASE_COST_BY_TYPE[planType];
   const sourceLen = typeof item.source === "string" ? item.source.length : 0;
-  return Math.max(1, Math.floor(base + sourceLen / 4));
+  return Math.max(MIN_ESTIMATED_COST, Math.floor(base + sourceLen / COST_SOURCE_LENGTH_DIVISOR));
 }
 
 function asPlanType(type: OverlaySelectedContextRefType): OverlayAssemblyPlanItemType | null {
@@ -94,9 +124,9 @@ export function buildOverlayContextAssemblyPlan(input: {
     if (!planType) continue;
     out.push({
       type: planType,
-      source: String(ref.source ?? "").trim().slice(0, SOURCE_MAX_LEN),
-      priority: Number.isFinite(ref.priority) ? Math.max(0, Math.floor(ref.priority)) : 999,
-      includeReason: String(ref.reason ?? "").trim().slice(0, REASON_MAX_LEN),
+      source: trimSlice(ref.source, SOURCE_MAX_LEN),
+      priority: coercePriority(ref.priority),
+      includeReason: trimSlice(ref.reason, REASON_MAX_LEN),
       estimatedCost: estimatedCostOf(ref, planType),
       pruningCandidate: pruningCandidateForOverflow(planType, overflowRisk),
     });
@@ -114,17 +144,19 @@ export function parseOverlayAssemblyPlanFromUnknown(
     if (out.length >= OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX) break;
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
-    const planType = String(r.type ?? "").trim() as OverlayAssemblyPlanItemType;
+    const planType = trimSlice(r.type, 32) as OverlayAssemblyPlanItemType;
     if (!VALID_PLAN_TYPES.has(planType)) continue;
-    const source = String(r.source ?? "").trim().slice(0, SOURCE_MAX_LEN);
-    const includeReason = String(r.includeReason ?? "").trim().slice(0, REASON_MAX_LEN);
+    const source = trimSlice(r.source, SOURCE_MAX_LEN);
+    const includeReason = trimSlice(r.includeReason, REASON_MAX_LEN);
     if (!source || !includeReason) continue;
-    const priorityRaw = Number(r.priority);
-    const priority = Number.isFinite(priorityRaw) ? Math.max(0, Math.floor(priorityRaw)) : 999;
-    const costRaw = Number(r.estimatedCost);
-    const estimatedCost = Number.isFinite(costRaw) ? Math.max(1, Math.floor(costRaw)) : 1;
-    const pruningCandidate = r.pruningCandidate === true;
-    out.push({ type: planType, source, priority, includeReason, estimatedCost, pruningCandidate });
+    out.push({
+      type: planType,
+      source,
+      priority: coercePriority(r.priority),
+      includeReason,
+      estimatedCost: coerceEstimatedCost(r.estimatedCost),
+      pruningCandidate: r.pruningCandidate === true,
+    });
   }
   return out;
 }
@@ -143,18 +175,12 @@ export function summarizeOverlayAssemblyPlan(input: {
   plan: readonly OverlayAssemblyPlanItem[];
   budgetMetadata?: OverlayContextBudgetMetadata | null;
 }): OverlayAssemblyPlanSummaryWire {
-  const byType: Record<OverlayAssemblyPlanItemType, number> = {
-    memory: 0,
-    knowledge: 0,
-    timeline: 0,
-    workspace: 0,
-    policy: 0,
-  };
+  const byType = emptyByType();
   let highPriorityItems = 0;
   let pruningCandidateCount = 0;
   let totalEstimatedCost = 0;
   for (const item of input.plan) {
-    if (byType[item.type] !== undefined) byType[item.type]++;
+    byType[item.type]++;
     if (item.priority <= OVERLAY_ASSEMBLY_PLAN_HIGH_PRIORITY_THRESHOLD) highPriorityItems++;
     if (item.pruningCandidate) pruningCandidateCount++;
     totalEstimatedCost += item.estimatedCost;
