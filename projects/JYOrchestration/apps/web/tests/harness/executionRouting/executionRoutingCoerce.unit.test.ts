@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceExecutionRoutingMetadata,
   parseExecutionRoutingPlanFromUnknown,
+  parseExecutionRoutingSafetyReportFromUnknown,
 } from "@/lib/harness/executionRouting/executionRoutingCoerce";
 
 describe("executionRoutingCoerce", () => {
@@ -110,5 +111,93 @@ describe("executionRoutingCoerce", () => {
     });
     expect(out.executionRoutingPlan).toBeDefined();
     expect(out.executionRoutingPlan?.items.length).toBe(1);
+  });
+});
+
+describe("parseExecutionRoutingSafetyReportFromUnknown", () => {
+  it("rejects non-object and wrong mode", () => {
+    expect(parseExecutionRoutingSafetyReportFromUnknown(null)).toBeNull();
+    expect(parseExecutionRoutingSafetyReportFromUnknown({})).toBeNull();
+    expect(parseExecutionRoutingSafetyReportFromUnknown({ mode: "apply" })).toBeNull();
+  });
+
+  it("parses valid report and forces safety flags to false", () => {
+    const parsed = parseExecutionRoutingSafetyReportFromUnknown({
+      mode: "dry_run_safety",
+      status: "watch",
+      providerSwitchingEnabled: true,
+      executionBlockingEnabled: true,
+      automaticExecutionEnabled: true,
+      unsupportedCapabilityCount: 2,
+      warningItemCount: 1,
+      providerHintCount: 0,
+      totalItems: 3,
+      findings: [
+        { code: "X", severity: "warning", message: "msg" },
+        { code: "Y", severity: "info", message: "msg2" },
+      ],
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed?.status).toBe("watch");
+    expect(parsed?.providerSwitchingEnabled).toBe(false);
+    expect(parsed?.executionBlockingEnabled).toBe(false);
+    expect(parsed?.automaticExecutionEnabled).toBe(false);
+    expect(parsed?.findings.length).toBe(2);
+  });
+
+  it("falls back to safe_dry_run for invalid/missing status", () => {
+    const parsed = parseExecutionRoutingSafetyReportFromUnknown({
+      mode: "dry_run_safety",
+      status: "weird",
+      totalItems: 0,
+    });
+    expect(parsed?.status).toBe("safe_dry_run");
+  });
+
+  it("drops invalid findings (missing fields / bad severity)", () => {
+    const parsed = parseExecutionRoutingSafetyReportFromUnknown({
+      mode: "dry_run_safety",
+      status: "safe_dry_run",
+      findings: [
+        { code: "OK", severity: "info", message: "ok" },
+        { code: "BAD", severity: "panic", message: "x" },
+        { code: "", severity: "info", message: "x" },
+        { code: "Z", severity: "warning" },
+      ],
+    });
+    expect(parsed?.findings.length).toBe(1);
+    expect(parsed?.findings[0]?.code).toBe("OK");
+  });
+
+  it("coerceExecutionRoutingMetadata returns both plan and report fields", () => {
+    const out = coerceExecutionRoutingMetadata({
+      executionRoutingPlan: {
+        mode: "dry_run",
+        items: [
+          {
+            roleKey: "planner",
+            capability: "planning",
+            provider: "openai",
+            enabled: true,
+            reason: "r",
+          },
+        ],
+      },
+      executionRoutingSafetyReport: {
+        mode: "dry_run_safety",
+        status: "safe_dry_run",
+        providerSwitchingEnabled: false,
+        executionBlockingEnabled: false,
+        automaticExecutionEnabled: false,
+        unsupportedCapabilityCount: 0,
+        warningItemCount: 0,
+        providerHintCount: 0,
+        totalItems: 1,
+        findings: [],
+      },
+    });
+    expect(out.executionRoutingPlan).toBeDefined();
+    expect(out.executionRoutingSafetyReport).toBeDefined();
+    expect(out.executionRoutingSafetyReport?.providerSwitchingEnabled).toBe(false);
   });
 });

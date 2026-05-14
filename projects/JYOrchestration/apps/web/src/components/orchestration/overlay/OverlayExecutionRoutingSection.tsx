@@ -1,17 +1,24 @@
 "use client";
 
 /**
- * Harness Phase H5 Preparation — **Overlay Execution Routing Section**.
+ * Harness Phase H5 / H5.5 — **Overlay Execution Routing Section**.
  *
  * Prompt Timeline Overlay 탭에서 "이번 턴에 어떤 역할이 어떤 capability를 어느 provider로
- * 처리할 수 있는지"를 표시한다.
+ * 처리할 수 있는지(H5)" + "그 routing plan의 dry-run safety 진단(H5.5)"을 함께 표시한다.
  *
- * **read-only / planning metadata display.** 실제 provider switching·execution이 아님을 상단에 명시한다.
+ * **read-only / planning + dry-run safety diagnostic.** 실제 provider switching·execution은 수행하지 않는다.
  */
+
+import type { ReactNode } from "react";
 
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
-import { buildExecutionRoutingPlanVM } from "@/lib/overlay-ui/executionRoutingUiAdapter";
+import {
+  buildExecutionRoutingPlanVM,
+  buildExecutionRoutingSafetyVM,
+  type ExecutionRoutingSafetyFlagVM,
+  type ExecutionRoutingSafetyVM,
+} from "@/lib/overlay-ui/executionRoutingUiAdapter";
 import {
   OverlayUiBadge,
   OverlayUiEmptyHint,
@@ -32,12 +39,14 @@ export function OverlayExecutionRoutingSection({
   readonly defaultOpen?: boolean;
 }) {
   const vm = buildExecutionRoutingPlanVM(overlay?.executionRoutingPlan ?? null);
+  const safetyVM = buildExecutionRoutingSafetyVM(overlay?.executionRoutingSafetyReport ?? null);
   return (
     <OverlayUiSection
       title="Execution Routing Plan"
       description={vm.disclaimer}
       defaultOpen={defaultOpen}
     >
+      <SafetyBlock vm={safetyVM} />
       {!vm.hasData ? (
         <OverlayUiEmptyHint
           message="이번 턴에 대해 기록된 execution routing 후보가 없습니다."
@@ -116,5 +125,41 @@ function PlanHeader({ vm }: { readonly vm: ReturnType<typeof buildExecutionRouti
       <OverlayUiKeyValueRow label="provider 분포" value={vm.providerBreakdownText} />
       <OverlayUiKeyValueRow label="capability 분포" value={vm.capabilityBreakdownText} />
     </div>
+  );
+}
+
+function SafetyBlock({ vm }: { readonly vm: ExecutionRoutingSafetyVM }): ReactNode {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        marginBottom: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <strong style={{ color: t.textPrimary, fontSize: 12 }}>Safety</strong>
+        <OverlayUiBadge tone={vm.statusTone} title="safety status">
+          {vm.statusLabel}
+        </OverlayUiBadge>
+        <span style={{ fontSize: 11, color: t.textMuted }}>{vm.summaryLine}</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {vm.flags.map((flag) => (
+          <SafetyFlagBadge key={flag.label} flag={flag} />
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>{vm.disclaimer}</div>
+      <OverlayUiFindingList findings={vm.findings} ariaLabel="Execution Routing 안전 진단" />
+    </div>
+  );
+}
+
+function SafetyFlagBadge({ flag }: { readonly flag: ExecutionRoutingSafetyFlagVM }) {
+  return (
+    <OverlayUiBadge tone={flag.tone} title={`${flag.label} ${flag.stateLabel}`}>
+      {flag.label} {flag.stateLabel}
+    </OverlayUiBadge>
   );
 }

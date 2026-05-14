@@ -46,6 +46,15 @@ import {
   summarizeExecutionRoutingPlan,
 } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import {
+  emptyExecutionRoutingSafetyReport,
+  type ExecutionRoutingSafetyReport,
+} from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
+import { evaluateExecutionRoutingSafety } from "@/lib/harness/executionRouting/evaluateExecutionRoutingSafety";
+import {
+  emptyRecentExecutionRoutingSummary,
+  summarizeRecentExecutionRoutingPlans,
+} from "@/lib/harness/executionRouting/executionRoutingRecentSummary";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -83,6 +92,9 @@ export async function GET(request: NextRequest) {
     | ReturnType<typeof evaluateHarnessPromptApplyReadiness>
     | undefined;
   let recentMemoryRuntimeSummary: ReturnType<typeof summarizeRecentMemoryRuntimePlans> | undefined;
+  let recentExecutionRoutingSummary:
+    | ReturnType<typeof summarizeRecentExecutionRoutingPlans>
+    | undefined;
 
   if (projectId) {
     const userId = await requireSessionUserId(request);
@@ -125,6 +137,14 @@ export async function GET(request: NextRequest) {
       .map((extracted) => extracted.memoryRuntimePlan)
       .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
     recentMemoryRuntimeSummary = summarizeRecentMemoryRuntimePlans({ plans: recentMemoryPlans });
+
+    // Harness Phase H5.5 — Recent Execution Routing Summary(누적 read-only).
+    const recentExecutionRoutingPlans = recentExtracts
+      .map((extracted) => extracted.executionRoutingPlan)
+      .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
+    recentExecutionRoutingSummary = summarizeRecentExecutionRoutingPlans({
+      plans: recentExecutionRoutingPlans,
+    });
   }
 
   const summaryWarnings = collateOverlayRuntimeDiagnosticWarnings({
@@ -195,8 +215,20 @@ export async function GET(request: NextRequest) {
     ? summarizeExecutionRoutingPlan(lastPromptTraceOverlayExtract.executionRoutingPlan)
     : emptyExecutionRoutingSummary();
 
+  // Harness Phase H5.5 — Execution Routing Safety Report(read-only dry-run safety diagnostic).
+  // 우선 replay에 기록된 safety report를 사용하고, 없으면 plan으로부터 즉시 평가(자동 차단 없음).
+  const executionRoutingSafetyReport: ExecutionRoutingSafetyReport =
+    lastPromptTraceOverlayExtract?.executionRoutingSafetyReport ??
+    (lastPromptTraceOverlayExtract?.executionRoutingPlan
+      ? evaluateExecutionRoutingSafety({ plan: lastPromptTraceOverlayExtract.executionRoutingPlan })
+      : emptyExecutionRoutingSafetyReport());
+
+  // Harness Phase H5.5 — Recent Execution Routing Summary(누적). projectId가 없으면 empty fallback.
+  const recentExecutionRoutingSummaryForResponse =
+    recentExecutionRoutingSummary ?? emptyRecentExecutionRoutingSummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-execution-routing-preparation-layer" as const,
+    current: "harness-execution-routing-safety-stabilization-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -208,6 +240,7 @@ export async function GET(request: NextRequest) {
     harnessMemoryRuntimePlanningEnabled: true,
     harnessMemoryRuntimeStabilizationEnabled: true,
     harnessExecutionRoutingPlanningEnabled: true,
+    harnessExecutionRoutingSafetyStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -224,6 +257,7 @@ export async function GET(request: NextRequest) {
     harnessMemoryRuntimePreparationLayer: true,
     harnessMemoryRuntimeStabilizationLayer: true,
     harnessExecutionRoutingPreparationLayer: true,
+    harnessExecutionRoutingSafetyStabilizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -260,6 +294,8 @@ export async function GET(request: NextRequest) {
       memoryRuntimeSummary,
       recentMemoryRuntimeSummary: recentMemoryRuntimeSummaryForResponse,
       executionRoutingSummary,
+      executionRoutingSafetyReport,
+      recentExecutionRoutingSummary: recentExecutionRoutingSummaryForResponse,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

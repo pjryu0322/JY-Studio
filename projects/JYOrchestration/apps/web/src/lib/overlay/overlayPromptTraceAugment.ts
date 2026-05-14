@@ -42,6 +42,8 @@ import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntim
 import { buildMemoryRuntimePlan } from "@/lib/harness/memoryRuntime/buildMemoryRuntimePlan";
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import { buildExecutionRoutingPlan } from "@/lib/harness/executionRouting/buildExecutionRoutingPlan";
+import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
+import { evaluateExecutionRoutingSafety } from "@/lib/harness/executionRouting/evaluateExecutionRoutingSafety";
 import {
   buildMemoryRuntimeEntriesFromTimelineMessages,
   extractDirectionalKeywordsFromTimelineMessages,
@@ -90,6 +92,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
   executionRoutingPlan?: ExecutionRoutingPlan;
+  executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -223,6 +226,13 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     workspaceStage: input.timelineStage ?? null,
   });
 
+  // Harness Phase H5.5 — Execution Routing Safety Report (dry-run safety diagnostic only).
+  // 위에서 만든 plan을 입력으로 safety status / disabled·warning rate / 민감 capability 진단을 생성.
+  // **여전히 어떤 자동 차단·routing·execution도 발생하지 않음(타입 시스템에서 false 고정).**
+  const executionRoutingSafetyReport = evaluateExecutionRoutingSafety({
+    plan: executionRoutingPlan,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -242,6 +252,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     knowledgeActivationPlan,
     memoryRuntimePlan,
     executionRoutingPlan,
+    executionRoutingSafetyReport,
   };
 }
 

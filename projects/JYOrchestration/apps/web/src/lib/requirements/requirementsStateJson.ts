@@ -28,6 +28,7 @@ import type {
 import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/knowledgeActivationPolicyTypes";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
+import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -329,6 +330,14 @@ export type RequirementsPromptTimelineEntry = {
    * 영향을 주지 않는다. mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
    */
   executionRoutingPlan?: ExecutionRoutingPlan;
+  /**
+   * Harness Phase H5.5: Execution Routing Safety Report.
+   *
+   * **read-only / dry-run safety diagnostic only.** mode는 항상 `"dry_run_safety"`. provider
+   * switching/automatic execution/execution blocking은 타입 시스템에서 `false`로 강제된다.
+   * 과거 timeline row와의 호환을 위해 optional.
+   */
+  executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
 };
 
 export type RequirementsStateJson = {

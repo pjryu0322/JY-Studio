@@ -17,6 +17,12 @@ import {
   type ExecutionRoutingPlan,
   type ExecutionRoutingPlanItem,
 } from "./executionCapabilityTypes";
+import type {
+  ExecutionRoutingSafetyFinding,
+  ExecutionRoutingSafetyFindingSeverity,
+  ExecutionRoutingSafetyReport,
+  ExecutionRoutingSafetyStatus,
+} from "./executionRoutingSafetyTypes";
 
 const MAX_ITEMS = 64;
 const MAX_FINDINGS = 16;
@@ -130,16 +136,101 @@ export function parseExecutionRoutingPlanFromUnknown(raw: unknown): ExecutionRou
 
 export type CoercedExecutionRoutingMetadata = Readonly<{
   executionRoutingPlan?: ExecutionRoutingPlan;
+  executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
 }>;
 
+const SAFETY_STATUS_VALUES: readonly ExecutionRoutingSafetyStatus[] = [
+  "safe_dry_run",
+  "watch",
+  "unsafe_to_apply",
+];
+
+function parseSafetyStatus(value: unknown): ExecutionRoutingSafetyStatus | null {
+  const s = typeof value === "string" ? value.trim() : "";
+  return (SAFETY_STATUS_VALUES as readonly string[]).includes(s)
+    ? (s as ExecutionRoutingSafetyStatus)
+    : null;
+}
+
+function parseSafetyFindingSeverity(
+  value: unknown
+): ExecutionRoutingSafetyFindingSeverity | null {
+  const s = typeof value === "string" ? value.trim() : "";
+  return (SEVERITY_VALUES as readonly string[]).includes(s)
+    ? (s as ExecutionRoutingSafetyFindingSeverity)
+    : null;
+}
+
+function parseSafetyFinding(value: unknown): ExecutionRoutingSafetyFinding | null {
+  const r = asRecord(value);
+  if (!r) return null;
+  const code = trimAndClipString(r.code, FINDING_CODE_MAX);
+  if (!code) return null;
+  const severity = parseSafetyFindingSeverity(r.severity);
+  if (!severity) return null;
+  const message = trimAndClipString(r.message, FINDING_MESSAGE_MAX);
+  if (!message) return null;
+  return { code, severity, message };
+}
+
+function coerceNonNegativeInt(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
 /**
- * 단일 timeline row의 `executionRoutingPlan` 필드만 안전하게 coerce.
+ * unknown raw → `ExecutionRoutingSafetyReport | null`.
+ *
+ * - `mode === "dry_run_safety"`만 허용. 그 외는 null.
+ * - `providerSwitchingEnabled` / `executionBlockingEnabled` / `automaticExecutionEnabled`는
+ *   타입 시스템에서 `false` 고정 — 입력 값과 무관하게 false로 강제(replay 안전성).
+ * - status 누락/오류 → `safe_dry_run` fallback.
+ */
+export function parseExecutionRoutingSafetyReportFromUnknown(
+  raw: unknown
+): ExecutionRoutingSafetyReport | null {
+  const r = asRecord(raw);
+  if (!r) return null;
+  if (r.mode !== "dry_run_safety") return null;
+  const status = parseSafetyStatus(r.status) ?? "safe_dry_run";
+  const findingsRaw = Array.isArray(r.findings) ? r.findings : [];
+  const findings: ExecutionRoutingSafetyFinding[] = [];
+  for (const item of findingsRaw) {
+    const parsed = parseSafetyFinding(item);
+    if (parsed) findings.push(parsed);
+    if (findings.length >= MAX_FINDINGS) break;
+  }
+  return {
+    mode: "dry_run_safety",
+    status,
+    providerSwitchingEnabled: false,
+    executionBlockingEnabled: false,
+    automaticExecutionEnabled: false,
+    unsupportedCapabilityCount: coerceNonNegativeInt(r.unsupportedCapabilityCount),
+    warningItemCount: coerceNonNegativeInt(r.warningItemCount),
+    providerHintCount: coerceNonNegativeInt(r.providerHintCount),
+    totalItems: coerceNonNegativeInt(r.totalItems),
+    findings,
+  };
+}
+
+/**
+ * 단일 timeline row의 `executionRoutingPlan` / `executionRoutingSafetyReport` 필드만 안전하게 coerce.
  * `Object.assign(out, coerceExecutionRoutingMetadata(row))`로 사용.
  */
 export function coerceExecutionRoutingMetadata(
   raw: Record<string, unknown> | null | undefined
 ): CoercedExecutionRoutingMetadata {
   if (!raw || typeof raw !== "object") return {};
-  const parsed = parseExecutionRoutingPlanFromUnknown(raw.executionRoutingPlan);
-  return parsed ? { executionRoutingPlan: parsed } : {};
+  const out: {
+    executionRoutingPlan?: ExecutionRoutingPlan;
+    executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
+  } = {};
+  const parsedPlan = parseExecutionRoutingPlanFromUnknown(raw.executionRoutingPlan);
+  if (parsedPlan) out.executionRoutingPlan = parsedPlan;
+  const parsedSafety = parseExecutionRoutingSafetyReportFromUnknown(
+    raw.executionRoutingSafetyReport
+  );
+  if (parsedSafety) out.executionRoutingSafetyReport = parsedSafety;
+  return out;
 }

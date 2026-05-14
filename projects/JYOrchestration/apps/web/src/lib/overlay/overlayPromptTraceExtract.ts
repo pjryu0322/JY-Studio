@@ -21,6 +21,7 @@ import { coerceKnowledgeActivationMetadata } from "@/lib/harness/knowledgeActiva
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
+import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
 import { coerceExecutionRoutingMetadata } from "@/lib/harness/executionRouting/executionRoutingCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
@@ -43,6 +44,7 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
   executionRoutingPlan?: ExecutionRoutingPlan;
+  executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
 }>;
 
 /**
@@ -72,6 +74,7 @@ export function extractOverlayPromptTraceMetadata(
     knowledgeActivationPlan?: KnowledgeActivationPlan;
     memoryRuntimePlan?: MemoryRuntimePlan;
     executionRoutingPlan?: ExecutionRoutingPlan;
+    executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
   } = {};
 
   const oi = e.overlayIdentity;
