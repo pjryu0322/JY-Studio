@@ -7,6 +7,7 @@ export { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 export { OverlayPruningSection } from "./OverlayPruningSection";
 export { OverlayHarnessPromptPreviewSection } from "./OverlayHarnessPromptPreviewSection";
 export { HarnessApplyReadinessSummaryCard } from "./HarnessApplyReadinessSummaryCard";
+export { OverlayKnowledgeActivationSection } from "./OverlayKnowledgeActivationSection";
 export { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
 export {
   OVERLAY_INCLUDE_MODE_ORDER,

@@ -16,6 +16,8 @@ import type {
   HarnessPromptPreviewDiff,
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembly/harnessPromptAssemblyCoerce";
+import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/knowledgeActivationPolicyTypes";
+import { coerceKnowledgeActivationMetadata } from "@/lib/harness/knowledgeActivation/knowledgeActivationCoerce";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
@@ -36,6 +38,7 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
 }>;
 
@@ -63,6 +66,7 @@ export function extractOverlayPromptTraceMetadata(
     overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
     harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
     harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+    knowledgeActivationPlan?: KnowledgeActivationPlan;
     memoryRuntimePlan?: MemoryRuntimePlan;
   } = {};
 
@@ -119,6 +123,7 @@ export function extractOverlayPromptTraceMetadata(
 
   Object.assign(out, coerceOverlayPromptTracePreparationMetadata(e));
   Object.assign(out, coerceHarnessPromptAssemblyMetadata(e));
+  Object.assign(out, coerceKnowledgeActivationMetadata(e));
   Object.assign(out, coerceMemoryRuntimeMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;

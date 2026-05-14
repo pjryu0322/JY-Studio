@@ -12,6 +12,7 @@ import { OverlayWarningSection } from "./OverlayWarningSection";
 import { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 import { OverlayPruningSection } from "./OverlayPruningSection";
 import { OverlayHarnessPromptPreviewSection } from "./OverlayHarnessPromptPreviewSection";
+import { OverlayKnowledgeActivationSection } from "./OverlayKnowledgeActivationSection";
 import { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
@@ -20,7 +21,8 @@ import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
  * Overlay 탭 진입점 카드.
  *
  * - empty 상태(no metadata): empty hint + 보조 안내.
- * - 그 외: 상단 `OverlaySummaryHeader` + 5개 섹션.
+ * - 그 외: 상단 `OverlaySummaryHeader` + Context/Budget/Warning/Assembly/Pruning + Harness 섹션
+ *   (Phase H1 preview / Phase H3 knowledge activation / Phase H4 memory runtime).
  * - 섹션 default 펼침/접힘은 adapter `sectionDefaults`(단일 출처)에서 결정.
  *
  * 이전 단계까지 존재했던 별도 `SnapshotStrip`은 SummaryHeader와 정보가 중복되어
@@ -50,6 +52,7 @@ export function OverlaySummaryCard({
       <OverlayAssemblyPlanSection vm={vm.assemblyPlan} defaultOpen={d.assemblyPlan} />
       <OverlayPruningSection vm={vm.pruning} defaultOpen={d.pruning} />
       <OverlayHarnessPromptPreviewSection overlay={overlay} defaultOpen={d.harnessPromptPreview} />
+      <OverlayKnowledgeActivationSection overlay={overlay} defaultOpen={d.knowledgeActivation} />
       <OverlayMemoryRuntimeSection overlay={overlay} defaultOpen={d.memoryRuntime} />
     </div>
   );

@@ -152,6 +152,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   pruning: boolean;
   /** Harness Phase H1 preview 섹션 펼침 정책(데이터 있을 때만 펼침). */
   harnessPromptPreview: boolean;
+  /** Harness Phase H3 — Knowledge Activation 섹션 펼침 정책(데이터 있을 때만 펼침). */
+  knowledgeActivation: boolean;
   /** Harness Phase H4 Preparation — Memory Runtime 섹션 펼침 정책(데이터 있을 때만 펼침). */
   memoryRuntime: boolean;
 }>;
@@ -385,6 +387,7 @@ function buildSectionDefaults(
   warning: OverlayUiWarningSectionVM,
   pruning: OverlayUiPruningSectionVM,
   hasHarnessPreview: boolean,
+  hasKnowledgeActivation: boolean,
   hasMemoryRuntime: boolean
 ): OverlayUiSectionDefaultsVM {
   return {
@@ -394,6 +397,7 @@ function buildSectionDefaults(
     assemblyPlan: false,
     pruning: pruning.hasData,
     harnessPromptPreview: hasHarnessPreview,
+    knowledgeActivation: hasKnowledgeActivation,
     memoryRuntime: hasMemoryRuntime,
   };
 }
@@ -415,6 +419,10 @@ export function buildOverlayUiViewModel(
     pruning.hasData;
   const hasHarnessPreview =
     !!safe.harnessPromptAssemblyPreview && safe.harnessPromptAssemblyPreview.sections.length > 0;
+  const hasKnowledgeActivation =
+    !!safe.knowledgeActivationPlan &&
+    ((safe.knowledgeActivationPlan.items?.length ?? 0) > 0 ||
+      (safe.knowledgeActivationPlan.findings?.length ?? 0) > 0);
   const hasMemoryRuntime =
     !!safe.memoryRuntimePlan &&
     ((safe.memoryRuntimePlan.references?.length ?? 0) > 0 ||
@@ -422,7 +430,13 @@ export function buildOverlayUiViewModel(
   return {
     hasOverlayData,
     summary: buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData),
-    sectionDefaults: buildSectionDefaults(warning, pruning, hasHarnessPreview, hasMemoryRuntime),
+    sectionDefaults: buildSectionDefaults(
+      warning,
+      pruning,
+      hasHarnessPreview,
+      hasKnowledgeActivation,
+      hasMemoryRuntime
+    ),
     context,
     budget,
     warning,

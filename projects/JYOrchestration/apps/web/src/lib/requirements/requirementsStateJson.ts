@@ -25,6 +25,7 @@ import type {
   HarnessPromptAssemblyPreview,
   HarnessPromptPreviewDiff,
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
+import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/knowledgeActivationPolicyTypes";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
@@ -306,6 +307,13 @@ export type RequirementsPromptTimelineEntry = {
    * **enforcement 없음.** 진단 metadata only.
    */
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  /**
+   * Harness Phase H3: Role-aware Knowledge Activation planning metadata.
+   *
+   * **read-only / planning only.** retrieval/vector DB/prompt payload와 무관하다.
+   * mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  knowledgeActivationPlan?: KnowledgeActivationPlan;
   /**
    * Harness Phase H4 Preparation: Memory Runtime planning metadata.
    *

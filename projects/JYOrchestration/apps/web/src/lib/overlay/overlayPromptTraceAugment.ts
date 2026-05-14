@@ -35,6 +35,9 @@ import type {
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { buildHarnessPromptAssemblyPreview } from "@/lib/harness/promptAssembly/buildHarnessPromptAssemblyPreview";
 import { compareHarnessPromptPreview } from "@/lib/harness/promptAssembly/compareHarnessPromptPreview";
+import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/knowledgeActivationPolicyTypes";
+import { buildKnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/buildKnowledgeActivationPlan";
+import { deriveKnowledgeActivationTaskTypeFromMeta } from "@/lib/harness/knowledgeActivation/deriveKnowledgeActivationTaskType";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { buildMemoryRuntimePlan } from "@/lib/harness/memoryRuntime/buildMemoryRuntimePlan";
 import {
@@ -82,6 +85,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
@@ -175,6 +179,20 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     preview: harnessPromptAssemblyPreview,
   });
 
+  // Harness Phase H3 — Role-aware Knowledge Activation Plan (dry-run only).
+  // role/stage/taskType + 기존 overlay hints를 입력으로 "어떤 지식팩이 왜 후보인지" planning.
+  // **실제 retrieval 없음.** 위에서 계산한 overlay metadata와 meta hint만 사용.
+  const knowledgeActivationPlan = buildKnowledgeActivationPlan({
+    roleKey: overlayIdentity?.roleKey ?? usedRoleRaw ?? null,
+    workspaceStage: input.timelineStage,
+    taskType: deriveKnowledgeActivationTaskTypeFromMeta({
+      decisionAxis: input.meta.decisionAxis ?? null,
+      roleKey: overlayIdentity?.roleKey ?? usedRoleRaw ?? null,
+      workspaceStage: input.timelineStage,
+    }),
+    existingHints: overlayKnowledgeActivationHints,
+  });
+
   // Harness Phase H4 Preparation — Memory Runtime Plan (dry-run only).
   // 이번 turn의 역할·overlay·timeline messages를 입력으로 "참조 후보 메모리"를 planning.
   // **실제 retrieval/injection 없음.** 위에서 계산한 overlay metadata와 입력만 사용.
@@ -208,6 +226,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     ...(overlayPolicyDriftWarnings.length ? { overlayPolicyDriftWarnings } : {}),
     harnessPromptAssemblyPreview,
     harnessPromptPreviewDiff,
+    knowledgeActivationPlan,
     memoryRuntimePlan,
   };
 }
