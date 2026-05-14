@@ -7,6 +7,7 @@ import type { FeaturePlanningPromptLogStatus } from "@/lib/debug/featurePlanning
 import { prisma } from "@/lib/prisma";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 
 function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, projectId: string): PromptTimelineEntry[] {
   // `proj.requirementsStateJson` 전체를 받아도 promptTimeline을 파싱할 수 있어야 한다.
@@ -41,6 +42,8 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
           ? `[FAILED]\n${error}`
           : "[response]\n(없음)";
     const status: FeaturePlanningPromptLogStatus = responseText ? "SUCCESS" : "FAILED";
+    const overlay = extractOverlayPromptTraceMetadata(e as Record<string, unknown>);
+    const hasOverlayMetadata = Object.keys(overlay).length > 0;
     out.push({
       id: `req_${String(at || Date.now())}_${action || "trace"}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48),
       at: at || new Date().toISOString(),
@@ -51,6 +54,7 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
       inbound,
       status,
       errorMessage: !responseText && error ? error : null,
+      ...(hasOverlayMetadata ? { overlay } : {}),
     });
   }
   return out.reverse(); // newest first (match debug store behavior)

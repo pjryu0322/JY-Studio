@@ -59,7 +59,7 @@
 4. **Runtime Policy Diagnostic / Warning Layer** — `overlayPolicyWarnings`·`buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(요약에 **`byCode` / `byRole` / `bySource`** 포함); 진단 API **`overlayPolicyWarningSummary`**·**`overlayWarningReport`**(`buildOverlayWarningReport`)·**`overlayArchitecturePhase`**·**`overlayMaturity`**·**`enforcementStatus`**. **`parseOverlayPolicyWarningsFromUnknown`** 는 알 수 없는 `severity`를 replay 안정화를 위해 **`warning`** 으로 본다(그 외 필드는 기존 검증 유지). **경고는 기록·진단만** 하며 실행 차단·pass/fail 변경 없음.
 5. **Runtime Diagnostic / Selection Preparation Layer** — `overlaySelectedContextRefs`·`overlayContextBudget`·`overlayConflictWarnings`·`overlayOrchestrationDecisionTrace`(모두 read-only optional metadata). 진단 API에 **`overlaySelectionSummary`**·**`overlayConflictSummary`**·**`overlayContextBudgetSummary`** 노출. SingleChat augment 경로가 `detectOverlayConflicts({ timelineMessages })`를 호출해 `overlayConflictWarnings`를 실제로 생성한다(warning only). budget metadata는 `promptLength → promptText.length → JSON.stringify` fallback을 사용해 항상 생성된다. **prompt 본문·OpenAI payload·라우팅 변경 없음**, **자동 orchestration / retrieval / provider 선택 없음**.
 6. **Policy-guided Context Assembly Preparation Layer** — "무엇이 선택되었는가"에서 한 단계 더 들어가 **"무엇을 실제 prompt assembly에 우선 사용할 것인가"** 를 read-only로 *계획*한다. 신규 metadata: `overlayContextAssemblyPlan`, `overlayPruningCandidates`. 신규 helper: `buildOverlayContextAssemblyPlan`·`prioritizeOverlayContexts`·`suggestOverlayPruningCandidates`·`detectOverlayPolicyDrift`. **여전히 prompt 본문 자동 변경·자동 pruning 실행·retrieval/provider/orchestration 자율 실행 금지**.
-7. **Policy-guided Assembly Plan Stabilization Layer** (현재) — selection → prioritization → assembly plan → pruning candidate → drift warning 흐름을 안정적으로 연결하고 replay·diagnostic 가능하게 만든다.
+7. **Policy-guided Assembly Plan Stabilization Layer** — selection → prioritization → assembly plan → pruning candidate → drift warning 흐름을 안정적으로 연결하고 replay·diagnostic 가능하게 만든다.
    - `overlayPrioritizedContextRefs`: augment 경로에서 `prioritizeOverlayContexts({contexts, budgetPolicy})` 결과를 read-only optional metadata로 보존(sorting only, payload 비변경).
    - `OverlayAssemblyPlanItem.includeMode` (`required` / `recommended` / `optional` / `excludeCandidate`): type별 기본 분류 + `overflowRisk === "high"` && 낮은 우선순위 timeline/workspace는 `excludeCandidate`로 강등(실제 include/exclude 수행 없음).
    - `estimatedCost`: type별 base + `compact|extended` budget policy multiplier로 timeline/workspace 비용 조정(휴리스틱, 실제 토큰 측정 아님).
@@ -68,8 +68,17 @@
    - `overlayPolicyDriftWarnings`: 계산된 drift warning을 promptTrace optional metadata로 저장하여 replay 가능. 진단 API는 replay 값이 있으면 우선 사용, 없으면 즉시 재계산.
    - 진단 API 신규 응답 필드: **`overlayAssemblyIncludeModeSummary`** (`{ required, recommended, optional, excludeCandidate }`), drift warning replay 우선 노출. `overlayArchitecturePhase.current = "policy-guided-assembly-plan-stabilization-layer"`, `overlayMaturity.policyGuidedAssemblyPlanStabilizationLayer = true`, `autoPromptAssemblyEnabled = false`.
    - **여전히 금지**: actual prompt assembly, actual context pruning, retrieval/provider/autonomous orchestration, hard enforcement.
-8. **Controlled Prompt Assembly Preparation Layer** (다음 단계 준비) — **미도입**. deterministic ordering·controlled assembly·overflow mitigation planning·memory/knowledge ranking·assembly trace. **자율 execution·provider switching·retrieval rewriting·automatic blocking 금지 유지**.
-9. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+8. **Overlay Observability UI — Phase 1** (현재) — replay 가능한 overlay metadata를 사용자가 볼 수 있게 만드는 *시각화 단계*. **runtime payload·라우팅·retrieval·orchestration 어디에도 영향이 없는 UI-only 변경**.
+   - `PromptTimelineEntry`에 optional `overlay` 필드 추가(`ExtractedOverlayPromptTraceMetadata`). `/api/projects/[projectId]/debug/prompt-timeline` 응답이 promptTrace에서 `extractOverlayPromptTraceMetadata`로 꺼낸 값을 함께 내려준다.
+   - 신규 UI helper: `apps/web/src/lib/overlay-ui/overlayUiLabel.ts`, `overlayUiDescription.ts`, `overlayUiAdapter.ts` — 내부 enum/code 값을 사용자 표현으로 변환하는 **순수 함수**. 토큰 추정·overflow 위험·includeMode 등을 한국어 label/badge tone/문장으로 변환.
+   - 신규 React 컴포넌트(`apps/web/src/components/orchestration/overlay/`): `OverlaySummaryCard`, `OverlayContextSection`, `OverlayBudgetSection`, `OverlayWarningSection`, `OverlayAssemblyPlanSection`, `OverlayPruningSection`, `OverlayUiPrimitives`. 모두 **read-only display**.
+   - Prompt Timeline 페이지에 페이지 레벨 **[Overlay 보기]** 토글(기본 닫힘) 추가. 토글이 ON일 때 각 entry가 `프롬프트 / 응답 / Overlay / 진단` 4-탭 구조로 전환되며, OFF면 기존 dual-pane UX 유지.
+   - Empty/null 안전: overlay metadata 없는 과거 timeline은 "이 시점에는 Overlay Runtime 정보가 기록되지 않았습니다." empty state로 처리. `OverlaySummaryCard`가 `buildOverlayUiViewModel` 결과의 `hasOverlayData`를 검사.
+   - UI 문구는 항상 planning metadata임을 명시(`OVERLAY_UI_PLANNING_DISCLAIMER`, `OVERLAY_UI_BUDGET_DISCLAIMER`, `OVERLAY_UI_WARNING_DISCLAIMER`)하여 실제 prompt 포함 여부와 혼동을 방지.
+   - **여전히 금지**: prompt payload 변경, retrieval/provider 변경, orchestration/Cursor execution 변경, DB schema 변경, hard enforcement, `selectedAgents/platformAiMembers` 구조 변경, 기존 Prompt Timeline 공개 동작(`PromptTimelineEntry` 필수 필드) breaking change.
+9. **Message-level Explainability UI** (다음 단계 준비) — **미도입**. SingleChat 메시지 단위에 [AI 판단 보기] 확장(역할 선택 이유·knowledge activation·context summary·warning·budget risk) 노출. **여전히 read-only**.
+10. **Controlled Prompt Assembly Preparation Layer** (향후) — **미도입**. deterministic ordering·controlled assembly·overflow mitigation planning·memory/knowledge ranking·assembly trace. **자율 execution·provider switching·retrieval rewriting·automatic blocking 금지 유지**.
+11. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
 
