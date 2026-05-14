@@ -15,6 +15,7 @@ import {
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { OverlaySummaryCard } from "@/components/orchestration/overlay";
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
+import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 
 type ApiOk = { success: true; data: { entries: PromptTimelineEntry[] } };
 type ApiErr = { success: false; message?: string };
@@ -302,51 +303,23 @@ export function PromptTimelinePageClient() {
 function PromptTimelineEntryHeader({ entry }: { readonly entry: PromptTimelineEntry }) {
   const overlayVm = useMemo(() => buildOverlayUiViewModel(entry.overlay ?? undefined), [entry.overlay]);
   const showOverlayBadge = overlayVm.hasOverlayData;
+  const channelVariant: BadgeVariant = entry.channel === "openai" ? "info" : "neutral";
+  const statusVariant: BadgeVariant | null = entry.status
+    ? entry.status === "SUCCESS"
+      ? "success"
+      : "danger"
+    : null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 8, rowGap: 6, marginBottom: 8 }}>
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 900,
-          padding: "2px 8px",
-          borderRadius: 999,
-          background: entry.channel === "openai" ? "rgba(59,130,246,0.12)" : "rgba(100,116,139,0.15)",
-          color: t.textSecondary,
-        }}
-      >
-        {channelLabel(entry.channel)}
-      </span>
+      <Badge variant={channelVariant}>{channelLabel(entry.channel)}</Badge>
       <span style={{ fontSize: 12, fontWeight: 900, color: t.textSecondary }}>{entry.label}</span>
       {entry.purpose ? <span style={{ fontSize: 10, fontWeight: 900, color: t.textMuted, letterSpacing: "0.02em" }}>{entry.purpose}</span> : null}
-      {entry.status ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 900,
-            padding: "2px 6px",
-            borderRadius: 6,
-            background: entry.status === "SUCCESS" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-            color: entry.status === "SUCCESS" ? "#166534" : "#991b1b",
-          }}
-        >
-          {entry.status}
-        </span>
-      ) : null}
+      {statusVariant && entry.status ? <Badge variant={statusVariant}>{entry.status}</Badge> : null}
       {entry.model ? <span style={{ fontSize: 11, color: t.textMuted }}>{entry.model}</span> : null}
       {showOverlayBadge ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 900,
-            padding: "2px 6px",
-            borderRadius: 6,
-            background: "rgba(59,130,246,0.12)",
-            color: "#1d4ed8",
-          }}
-          title="이 시점에 Overlay Runtime 정보가 기록되어 있습니다."
-        >
+        <Badge variant="info" title="이 시점에 Overlay Runtime 정보가 기록되어 있습니다.">
           Overlay
-        </span>
+        </Badge>
       ) : null}
       <span style={{ fontSize: 11, color: t.textMuted, marginLeft: "auto" }}>{entry.at}</span>
     </div>

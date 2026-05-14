@@ -18,13 +18,16 @@ export type BadgeProps = Readonly<{
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** Native HTML title (hover tooltip). 접근성 보조 설명에 활용. */
+  title?: string;
 }>;
 
-export function Badge({ variant = "neutral", children, className, style }: BadgeProps) {
+export function Badge({ variant = "neutral", children, className, style, title }: BadgeProps) {
   const v = variantMap[variant];
   return (
     <span
       className={className}
+      title={title}
       style={{
         display: "inline-flex",
         alignItems: "center",

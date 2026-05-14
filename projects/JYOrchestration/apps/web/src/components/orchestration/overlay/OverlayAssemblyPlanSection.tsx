@@ -6,6 +6,7 @@ import type {
   OverlayUiAssemblyPlanSectionVM,
 } from "@/lib/overlay-ui/overlayUiAdapter";
 import { OVERLAY_UI_PLANNING_DISCLAIMER } from "@/lib/overlay-ui/overlayUiDescription";
+import { formatKoreanInt } from "@/lib/overlay-ui/overlayUiFormat";
 import {
   OverlayUiBadge,
   OverlayUiEmptyHint,
@@ -30,10 +31,6 @@ const SUMMARY_BADGES: readonly SummaryBadge[] = [
   { mode: "excludeCandidate", label: "축소 후보", tone: "warning", title: "축소 후보(실제 제거 아님)" },
 ];
 
-function fmt(n: number): string {
-  return n.toLocaleString("ko-KR");
-}
-
 function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
   return (
     <OverlayUiRowCard layout={{ gap: 4 }}>
@@ -48,7 +45,7 @@ function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
           </OverlayUiBadge>
         ) : null}
         <span style={{ marginLeft: "auto", fontSize: 11, color: t.textMuted }}>
-          추정 비용 {fmt(row.estimatedCost)}
+          추정 비용 {formatKoreanInt(row.estimatedCost)}
         </span>
       </div>
       <div style={{ fontSize: 11, color: t.textMuted, wordBreak: "break-all" }}>

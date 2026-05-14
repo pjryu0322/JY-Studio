@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * Overlay Observability UI — 공통 시각 primitive(Badge, Section, RowCard).
+ * Overlay Observability UI — 공통 시각 primitive(Badge alias, Section, RowCard).
  *
  * read-only 시각 컴포넌트. enforcement·routing 어디에도 영향 없음.
  */
 
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
 
 const ROW_CARD_BASE_STYLE: CSSProperties = {
@@ -19,14 +20,24 @@ const ROW_CARD_BASE_STYLE: CSSProperties = {
   padding: "6px 10px",
 };
 
-const BADGE_TONE_STYLES: Readonly<Record<OverlayUiBadgeTone, { background: string; color: string; border: string }>> = {
-  neutral: { background: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
-  info: { background: "rgba(59,130,246,0.12)", color: "#1d4ed8", border: "#bfdbfe" },
-  positive: { background: "rgba(34,197,94,0.15)", color: "#166534", border: "#bbf7d0" },
-  warning: { background: "rgba(251,191,36,0.18)", color: "#92400e", border: "#fde68a" },
-  danger: { background: "rgba(239,68,68,0.15)", color: "#991b1b", border: "#fecaca" },
+/**
+ * Overlay tone → 공통 Badge variant 매핑.
+ * - `positive`는 공통 Badge의 `success`와 의미적으로 동일.
+ * - 나머지는 직매핑이라 시각적 가시성이 통일된다.
+ */
+const TONE_TO_VARIANT: Readonly<Record<OverlayUiBadgeTone, BadgeVariant>> = {
+  neutral: "neutral",
+  info: "info",
+  positive: "success",
+  warning: "warning",
+  danger: "danger",
 };
 
+/**
+ * Overlay UI 용 Badge — 공통 `Badge` primitive에 위임한다.
+ *
+ * Overlay 도메인의 tone 어휘를 그대로 유지하면서 시각은 공통 Badge로 통일.
+ */
 export function OverlayUiBadge({
   tone = "neutral",
   children,
@@ -36,26 +47,10 @@ export function OverlayUiBadge({
   readonly children: ReactNode;
   readonly title?: string;
 }) {
-  const s = BADGE_TONE_STYLES[tone];
   return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        fontSize: 11,
-        fontWeight: 800,
-        padding: "2px 8px",
-        borderRadius: 999,
-        background: s.background,
-        color: s.color,
-        border: `1px solid ${s.border}`,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <Badge variant={TONE_TO_VARIANT[tone]} title={title} style={{ whiteSpace: "nowrap", gap: 4 }}>
       {children}
-    </span>
+    </Badge>
   );
 }
 

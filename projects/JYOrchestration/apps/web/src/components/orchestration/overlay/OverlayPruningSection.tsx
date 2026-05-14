@@ -2,6 +2,7 @@
 
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { OverlayUiPruningSectionVM } from "@/lib/overlay-ui/overlayUiAdapter";
+import { formatKoreanInt } from "@/lib/overlay-ui/overlayUiFormat";
 import {
   OverlayUiEmptyHint,
   OverlayUiRowCard,
@@ -27,7 +28,7 @@ export function OverlayPruningSection({ vm }: { readonly vm: OverlayUiPruningSec
               <strong style={{ color: t.textPrimary, wordBreak: "break-all" }}>{row.source}</strong>
               <span style={{ color: t.textMuted, fontSize: 11 }}>{row.reason}</span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: t.textMuted }}>
-                절감 가능 ~{row.estimatedReduction.toLocaleString("ko-KR")}
+                절감 가능 ~{formatKoreanInt(row.estimatedReduction)}
               </span>
             </OverlayUiRowCard>
           ))}

@@ -2,12 +2,8 @@
 
 import type { OverlayUiBudgetSectionVM } from "@/lib/overlay-ui/overlayUiAdapter";
 import { OVERLAY_UI_BUDGET_DISCLAIMER } from "@/lib/overlay-ui/overlayUiDescription";
+import { formatKoreanInt } from "@/lib/overlay-ui/overlayUiFormat";
 import { OverlayUiBadge, OverlayUiEmptyHint, OverlayUiKeyValueRow, OverlayUiSection } from "./OverlayUiPrimitives";
-
-function fmtInt(n: number | null | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
-  return Math.max(0, Math.floor(n)).toLocaleString("ko-KR");
-}
 
 export function OverlayBudgetSection({ vm }: { readonly vm: OverlayUiBudgetSectionVM }) {
   return (
@@ -22,8 +18,8 @@ export function OverlayBudgetSection({ vm }: { readonly vm: OverlayUiBudgetSecti
             value={vm.overflowRiskDescription}
             badge={<OverlayUiBadge tone={vm.overflowRiskTone}>{vm.overflowRiskLabel}</OverlayUiBadge>}
           />
-          <OverlayUiKeyValueRow label="추정 입력 토큰" value={fmtInt(vm.estimatedInputTokens)} />
-          <OverlayUiKeyValueRow label="추정 출력 토큰" value={fmtInt(vm.estimatedOutputTokens)} />
+          <OverlayUiKeyValueRow label="추정 입력 토큰" value={formatKoreanInt(vm.estimatedInputTokens)} />
+          <OverlayUiKeyValueRow label="추정 출력 토큰" value={formatKoreanInt(vm.estimatedOutputTokens)} />
         </div>
       )}
     </OverlayUiSection>

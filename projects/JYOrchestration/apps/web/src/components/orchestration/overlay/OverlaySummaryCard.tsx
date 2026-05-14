@@ -23,12 +23,18 @@ type SnapshotBadge = Readonly<{
   title: string;
 }>;
 
+/** 위험 라벨이 결측("ㅡ")이면 0으로 취급하여 뱃지를 숨긴다. */
+function hasOverflowRiskBadge(label: string): boolean {
+  const normalized = label.trim();
+  return normalized.length > 0 && normalized !== "ㅡ";
+}
+
 function buildSnapshotBadges(s: OverlayUiTimelineSnapshotVM): readonly SnapshotBadge[] {
   return [
     {
       key: "risk",
       label: `위험 ${s.overflowRiskLabel}`,
-      count: 1,
+      count: hasOverflowRiskBadge(s.overflowRiskLabel) ? 1 : 0,
       tone: s.overflowRiskTone,
       title: "토큰 예산 과부하 위험(휴리스틱)",
     },
