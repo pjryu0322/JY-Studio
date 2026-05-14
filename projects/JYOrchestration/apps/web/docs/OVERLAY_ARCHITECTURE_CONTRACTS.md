@@ -86,9 +86,20 @@
    - 조립 계획/축소 후보 row의 긴 `source` 텍스트를 1줄 `text-overflow: ellipsis`로 말줄임 + `title` hover로 전체 노출(모바일 카드 안정성).
    - 신규 unit 테스트: `tests/overlay-ui/overlayUiDescription.unit.test.ts`(5) + adapter `summary` viewmodel 테스트 2건 추가. 기존 라벨 테스트는 한국어 라벨로 갱신.
    - **여전히 금지**: prompt payload 변경, retrieval/provider 변경, orchestration/Cursor execution 변경, DB schema 변경, hard enforcement, `selectedAgents/platformAiMembers` 구조 변경, 기존 Prompt Timeline 공개 동작 breaking change.
-10. **Message-level Explainability UI** (다음 단계 준비) — **미도입**. SingleChat 메시지 단위에 [AI 판단 보기] 확장(역할 선택 이유·knowledge activation·context summary·warning·budget risk) 노출. **여전히 read-only**.
-11. **Controlled Prompt Assembly Preparation Layer** (향후) — **미도입**. deterministic ordering·controlled assembly·overflow mitigation planning·memory/knowledge ranking·assembly trace. **자율 execution·provider switching·retrieval rewriting·automatic blocking 금지 유지**.
-12. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+10. **Harness Phase H1 — Controlled Prompt Assembly Preview Layer** (현재; dry-run only) — Harness가 기존 prompt를 "표준 방식으로 조립한다면 어떤 prompt가 만들어질지" 미리 보여주는 **read-only preview** 단계. **실제 prompt payload, OpenAI 호출, retrieval, provider, Cursor execution 어디에도 영향 없음.**
+    - 신규 모듈: `apps/web/src/lib/harness/promptAssembly/`
+      - `harnessPromptAssemblyTypes.ts` — `HarnessPromptSectionType`(system, role_contract, project_context, memory_context, knowledge_context, current_request, constraints, output_format, diagnostic), `HarnessPromptSection`, `HarnessPromptAssemblyPreview`(`mode === "dry_run"` 강제), `HarnessPromptPreviewDiff`, `HarnessPromptAssemblySummary`.
+      - `buildHarnessPromptAssemblyPreview.ts` — overlay identity + assembly plan + budget + (선택) userRequest/existingPromptText에서 **deterministic ordering**으로 preview 생성. 각 section은 source/includeReason/priority/estimatedCost를 포함.
+      - `compareHarnessPromptPreview.ts` — preview vs 기존 prompt 본문의 거시적 diff(길이·누락/추가 섹션·경고).
+      - `harnessPromptAssemblyCoerce.ts` — unknown raw → preview/diff 안전 정규화 + 단일 dispatcher `coerceHarnessPromptAssemblyMetadata`.
+    - `RequirementsPromptTimelineEntry`에 `harnessPromptAssemblyPreview?` / `harnessPromptPreviewDiff?` optional 필드 추가. 과거 timeline row와 호환 유지.
+    - `overlayPromptTraceAugment`가 SingleChat 성공 턴마다 build/diff를 계산해 promptTrace에 attach. **payload 자체는 변경하지 않음** — augment 출력 객체의 별도 metadata로만 흐른다.
+    - Diagnostic API(`GET /api/diagnostics/overlay-runtime?projectId=...`)에 `harnessPromptAssemblySummary { mode, sectionCount, totalEstimatedCost, overflowRisk, warningCount }` 추가. `lastPromptTraceOverlayExtract`에 preview/diff도 포함.
+    - UI: Prompt Timeline Overlay 탭에 **`Harness Prompt Preview` 섹션**(접힘 기본; 데이터 있을 때 펼침) — section list, summary header(mode/예산 위험/섹션 수/추정 비용 합계), warnings, 기존 prompt 길이 vs preview 길이 diff. 상단에 "이 미리보기는 실제 LLM 호출에 사용된 프롬프트가 아니라, Harness 기준으로 조립했을 때의 예시입니다." 안내 고정.
+    - **여전히 금지**: 실제 prompt payload 변경, LLM call payload 변경, retrieval query 변경, provider switching, hard enforcement, automatic context pruning, DB schema 변경.
+11. **Message-level Explainability UI** (다음 단계 준비) — **미도입**. SingleChat 메시지 단위에 [AI 판단 보기] 확장(역할 선택 이유·knowledge activation·context summary·warning·budget risk) 노출. **여전히 read-only**.
+12. **Harness Phase H2 — Apply-readiness Preparation** (향후) — **미도입**. preview ↔ existing payload 누적 diff·section별 누락/중복 분석·controlled assembly 적용 가능성 판단. 여전히 payload 변경 없음.
+13. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
 

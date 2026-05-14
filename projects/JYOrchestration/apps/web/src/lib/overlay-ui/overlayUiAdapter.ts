@@ -150,6 +150,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   warning: boolean;
   assemblyPlan: boolean;
   pruning: boolean;
+  /** Harness Phase H1 preview 섹션 펼침 정책(데이터 있을 때만 펼침). */
+  harnessPromptPreview: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -379,7 +381,8 @@ function buildSummaryHeader(
 
 function buildSectionDefaults(
   warning: OverlayUiWarningSectionVM,
-  pruning: OverlayUiPruningSectionVM
+  pruning: OverlayUiPruningSectionVM,
+  hasHarnessPreview: boolean
 ): OverlayUiSectionDefaultsVM {
   return {
     context: true,
@@ -387,6 +390,7 @@ function buildSectionDefaults(
     warning: warning.hasData,
     assemblyPlan: false,
     pruning: pruning.hasData,
+    harnessPromptPreview: hasHarnessPreview,
   };
 }
 
@@ -405,10 +409,12 @@ export function buildOverlayUiViewModel(
     warning.hasData ||
     assemblyPlan.hasData ||
     pruning.hasData;
+  const hasHarnessPreview =
+    !!safe.harnessPromptAssemblyPreview && safe.harnessPromptAssemblyPreview.sections.length > 0;
   return {
     hasOverlayData,
     summary: buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData),
-    sectionDefaults: buildSectionDefaults(warning, pruning),
+    sectionDefaults: buildSectionDefaults(warning, pruning, hasHarnessPreview),
     context,
     budget,
     warning,

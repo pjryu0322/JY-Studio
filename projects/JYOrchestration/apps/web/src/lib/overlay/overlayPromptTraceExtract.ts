@@ -11,6 +11,11 @@ import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetect
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
 import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
+import type {
+  HarnessPromptAssemblyPreview,
+  HarnessPromptPreviewDiff,
+} from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
+import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembly/harnessPromptAssemblyCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -27,6 +32,8 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
+  harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
+  harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
 }>;
 
 /**
@@ -51,6 +58,8 @@ export function extractOverlayPromptTraceMetadata(
     overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
     overlayPruningCandidates?: readonly OverlayPruningCandidate[];
     overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
+    harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
+    harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -105,6 +114,7 @@ export function extractOverlayPromptTraceMetadata(
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
 
   Object.assign(out, coerceOverlayPromptTracePreparationMetadata(e));
+  Object.assign(out, coerceHarnessPromptAssemblyMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }

@@ -29,6 +29,12 @@ import { suggestOverlayPruningCandidates } from "@/lib/overlay/overlayContextPru
 import { prioritizeOverlayContexts } from "@/lib/overlay/overlayContextPrioritization";
 import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
+import type {
+  HarnessPromptAssemblyPreview,
+  HarnessPromptPreviewDiff,
+} from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
+import { buildHarnessPromptAssemblyPreview } from "@/lib/harness/promptAssembly/buildHarnessPromptAssemblyPreview";
+import { compareHarnessPromptPreview } from "@/lib/harness/promptAssembly/compareHarnessPromptPreview";
 
 export type OverlayPromptTraceIdentityWire = Readonly<{
   roleKey: string;
@@ -67,6 +73,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
+  harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
+  harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -145,6 +153,20 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     budgetMetadata: overlayContextBudget,
   });
 
+  // Harness Phase H1 — Controlled prompt assembly preview (dry-run only).
+  // 실제 prompt payload·OpenAI 호출과 무관. 위에서 이미 계산한 overlay metadata만 입력으로 사용.
+  const harnessPromptAssemblyPreview = buildHarnessPromptAssemblyPreview({
+    overlayAssemblyPlan: overlayContextAssemblyPlan,
+    overlayPrioritizedContextRefs,
+    overlayContextBudget,
+    overlayIdentity,
+    existingPromptText: input.promptText ?? null,
+  });
+  const harnessPromptPreviewDiff = compareHarnessPromptPreview({
+    existingPromptText: input.promptText ?? null,
+    preview: harnessPromptAssemblyPreview,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -159,6 +181,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     ...(overlayContextAssemblyPlan.length ? { overlayContextAssemblyPlan } : {}),
     ...(overlayPruningCandidates.length ? { overlayPruningCandidates } : {}),
     ...(overlayPolicyDriftWarnings.length ? { overlayPolicyDriftWarnings } : {}),
+    harnessPromptAssemblyPreview,
+    harnessPromptPreviewDiff,
   };
 }
 

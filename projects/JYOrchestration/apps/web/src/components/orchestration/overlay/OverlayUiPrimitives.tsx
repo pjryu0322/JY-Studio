@@ -250,6 +250,48 @@ export function OverlayUiSourceText({
   );
 }
 
+/**
+ * Overlay UI — 경고/주의 메시지 리스트(공통). `OverlayWarningSection`, Harness preview 등
+ * 여러 위치의 동일한 amber 스타일 목록을 단일 출처로 통합.
+ *
+ * - role="status" + aria-live="polite"로 스크린리더 친화.
+ * - 0건이면 null 반환(상위에서 분기 불필요).
+ */
+export function OverlayUiWarningList({
+  warnings,
+  ariaLabel = "Overlay warnings",
+}: {
+  readonly warnings: readonly string[];
+  readonly ariaLabel?: string;
+}) {
+  if (!warnings.length) return null;
+  return (
+    <ul
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel}
+      style={{
+        listStyle: "none",
+        margin: 0,
+        padding: "6px 10px",
+        background: "#fff7ed",
+        border: `1px solid #fdba74`,
+        borderRadius: 8,
+        color: "#9a3412",
+        fontSize: 11,
+        lineHeight: 1.5,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      {warnings.map((w, i) => (
+        <li key={`w-${i}`}>• {w}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function OverlayUiEmptyHint({
   message,
   secondary,

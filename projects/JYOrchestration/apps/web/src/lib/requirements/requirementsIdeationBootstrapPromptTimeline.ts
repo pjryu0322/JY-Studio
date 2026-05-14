@@ -22,6 +22,11 @@ import { OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX } from "@/lib/overlay/overlayContextAss
 import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
 import { OVERLAY_PRUNING_CANDIDATES_MAX } from "@/lib/overlay/overlayContextPruning";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
+import type {
+  HarnessPromptAssemblyPreview,
+  HarnessPromptPreviewDiff,
+} from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
+import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembly/harnessPromptAssemblyCoerce";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -132,6 +137,7 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   if (parsedWarnings.length) out.overlayPolicyWarnings = parsedWarnings;
 
   Object.assign(out, coerceOverlayPromptTracePreparationMetadata(r));
+  Object.assign(out, coerceHarnessPromptAssemblyMetadata(r));
 
   return out;
 }
@@ -662,6 +668,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayPruningCandidates?: readonly OverlayPruningCandidate[];
   readonly overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
   readonly overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
+  readonly harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
+  readonly harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -876,6 +884,12 @@ export function buildSingleChatPromptTimelineEntry(params: {
             OVERLAY_POLICY_WARNINGS_MAX_TIMELINE
           ),
         }
+      : {}),
+    ...(params.harnessPromptAssemblyPreview
+      ? { harnessPromptAssemblyPreview: params.harnessPromptAssemblyPreview }
+      : {}),
+    ...(params.harnessPromptPreviewDiff
+      ? { harnessPromptPreviewDiff: params.harnessPromptPreviewDiff }
       : {}),
   };
 }

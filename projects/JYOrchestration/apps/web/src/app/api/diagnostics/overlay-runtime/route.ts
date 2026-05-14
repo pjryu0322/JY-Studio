@@ -23,6 +23,7 @@ import {
 } from "@/lib/overlay/overlayContextAssemblyPlan";
 import { summarizeOverlayPruningCandidates } from "@/lib/overlay/overlayContextPruning";
 import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
+import { summarizeHarnessPromptAssemblyPreview } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
@@ -118,13 +119,20 @@ export async function GET(request: NextRequest) {
           budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
         });
 
+  // Harness Phase H1 — Controlled prompt assembly preview (dry-run only).
+  // **여전히 실제 prompt payload·LLM 호출에 영향 없음.** 진단 응답 노출용 summary만.
+  const harnessPromptAssemblySummary = summarizeHarnessPromptAssemblyPreview(
+    lastPromptTraceOverlayExtract?.harnessPromptAssemblyPreview
+  );
+
   const overlayArchitecturePhase = {
-    current: "policy-guided-assembly-plan-stabilization-layer" as const,
+    current: "harness-controlled-prompt-assembly-preview-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
     memoryOrchestrationEnabled: false,
     autoPromptAssemblyEnabled: false,
+    harnessPromptAssemblyPreviewEnabled: true,
   };
 
   const overlayMaturity = {
@@ -135,6 +143,7 @@ export async function GET(request: NextRequest) {
     runtimeDiagnosticSelectionPreparationLayer: true,
     policyGuidedContextAssemblyPreparationLayer: true,
     policyGuidedAssemblyPlanStabilizationLayer: true,
+    harnessControlledPromptAssemblyPreviewLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -165,6 +174,7 @@ export async function GET(request: NextRequest) {
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
       overlayPolicyDriftWarnings,
+      harnessPromptAssemblySummary,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

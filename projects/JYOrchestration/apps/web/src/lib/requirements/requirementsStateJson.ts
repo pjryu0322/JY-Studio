@@ -21,6 +21,10 @@ import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetect
 import type { OverlayOrchestrationDecisionTrace } from "@/lib/overlay/overlayOrchestrationDecisionTrace";
 import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemblyPlan";
 import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
+import type {
+  HarnessPromptAssemblyPreview,
+  HarnessPromptPreviewDiff,
+} from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -289,6 +293,18 @@ export type RequirementsPromptTimelineEntry = {
   overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
   /** Overlay stabilization: 계산된 drift warning replay (warning only, `enforcement: "not_applied"`) */
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
+  /**
+   * Harness Phase H1: Controlled prompt assembly **preview**.
+   *
+   * **dry-run / 진단용 metadata only.** 실제 prompt payload·OpenAI 호출과 무관하다.
+   * mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
+  /**
+   * Harness Phase H1: 기존 prompt 본문과 preview의 거시적 diff(길이·누락 섹션·경고).
+   * **enforcement 없음.** 진단 metadata only.
+   */
+  harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
 };
 
 export type RequirementsStateJson = {
