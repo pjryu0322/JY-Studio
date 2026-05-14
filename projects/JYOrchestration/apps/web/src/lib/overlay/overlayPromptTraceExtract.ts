@@ -16,6 +16,8 @@ import type {
   HarnessPromptPreviewDiff,
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembly/harnessPromptAssemblyCoerce";
+import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
+import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -34,6 +36,7 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  memoryRuntimePlan?: MemoryRuntimePlan;
 }>;
 
 /**
@@ -60,6 +63,7 @@ export function extractOverlayPromptTraceMetadata(
     overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
     harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
     harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+    memoryRuntimePlan?: MemoryRuntimePlan;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -115,6 +119,7 @@ export function extractOverlayPromptTraceMetadata(
 
   Object.assign(out, coerceOverlayPromptTracePreparationMetadata(e));
   Object.assign(out, coerceHarnessPromptAssemblyMetadata(e));
+  Object.assign(out, coerceMemoryRuntimeMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }

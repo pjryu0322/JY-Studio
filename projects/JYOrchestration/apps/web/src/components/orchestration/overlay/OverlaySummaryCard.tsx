@@ -12,6 +12,7 @@ import { OverlayWarningSection } from "./OverlayWarningSection";
 import { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 import { OverlayPruningSection } from "./OverlayPruningSection";
 import { OverlayHarnessPromptPreviewSection } from "./OverlayHarnessPromptPreviewSection";
+import { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 
@@ -49,6 +50,7 @@ export function OverlaySummaryCard({
       <OverlayAssemblyPlanSection vm={vm.assemblyPlan} defaultOpen={d.assemblyPlan} />
       <OverlayPruningSection vm={vm.pruning} defaultOpen={d.pruning} />
       <OverlayHarnessPromptPreviewSection overlay={overlay} defaultOpen={d.harnessPromptPreview} />
+      <OverlayMemoryRuntimeSection overlay={overlay} defaultOpen={d.memoryRuntime} />
     </div>
   );
 }

@@ -25,6 +25,7 @@ import type {
   HarnessPromptAssemblyPreview,
   HarnessPromptPreviewDiff,
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
+import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -305,6 +306,13 @@ export type RequirementsPromptTimelineEntry = {
    * **enforcement 없음.** 진단 metadata only.
    */
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  /**
+   * Harness Phase H4 Preparation: Memory Runtime planning metadata.
+   *
+   * **read-only / planning only.** 실제 prompt payload·retrieval·vector DB와 무관하다.
+   * mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  memoryRuntimePlan?: MemoryRuntimePlan;
 };
 
 export type RequirementsStateJson = {

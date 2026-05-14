@@ -30,6 +30,10 @@ import {
 } from "@/lib/harness/promptAssembly/evaluateHarnessPromptApplyReadiness";
 import { emptyHarnessPromptApplyReadinessReport } from "@/lib/harness/promptAssembly/harnessPromptApplyReadinessTypes";
 import {
+  emptyMemoryRuntimeSummary,
+  summarizeMemoryRuntimePlan,
+} from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -152,8 +156,14 @@ export async function GET(request: NextRequest) {
   // Harness Phase H2 — Apply-readiness 진단(누적 read-only). projectId가 없으면 empty fallback.
   const harnessReadinessForResponse = harnessPromptApplyReadinessReport ?? emptyHarnessPromptApplyReadinessReport();
 
+  // Harness Phase H4 Preparation — Memory Runtime Plan summary(read-only).
+  // 최근 promptTrace 1건의 memoryRuntimePlan을 요약(누적 통계 아님; UI는 planning metadata로 표시).
+  const memoryRuntimeSummary = lastPromptTraceOverlayExtract?.memoryRuntimePlan
+    ? summarizeMemoryRuntimePlan(lastPromptTraceOverlayExtract.memoryRuntimePlan)
+    : emptyMemoryRuntimeSummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-apply-readiness-preparation-layer" as const,
+    current: "harness-memory-runtime-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -161,6 +171,7 @@ export async function GET(request: NextRequest) {
     autoPromptAssemblyEnabled: false,
     harnessPromptAssemblyPreviewEnabled: true,
     harnessPromptApplyReadinessEnabled: true,
+    harnessMemoryRuntimePlanningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -173,6 +184,7 @@ export async function GET(request: NextRequest) {
     policyGuidedAssemblyPlanStabilizationLayer: true,
     harnessControlledPromptAssemblyPreviewLayer: true,
     harnessApplyReadinessPreparationLayer: true,
+    harnessMemoryRuntimePreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -205,6 +217,7 @@ export async function GET(request: NextRequest) {
       overlayPolicyDriftWarnings,
       harnessPromptAssemblySummary,
       harnessPromptApplyReadinessReport: harnessReadinessForResponse,
+      memoryRuntimeSummary,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

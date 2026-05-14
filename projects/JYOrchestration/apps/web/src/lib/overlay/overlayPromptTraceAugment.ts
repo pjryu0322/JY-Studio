@@ -35,6 +35,13 @@ import type {
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { buildHarnessPromptAssemblyPreview } from "@/lib/harness/promptAssembly/buildHarnessPromptAssemblyPreview";
 import { compareHarnessPromptPreview } from "@/lib/harness/promptAssembly/compareHarnessPromptPreview";
+import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
+import { buildMemoryRuntimePlan } from "@/lib/harness/memoryRuntime/buildMemoryRuntimePlan";
+import {
+  buildMemoryRuntimeEntriesFromTimelineMessages,
+  extractDirectionalKeywordsFromTimelineMessages,
+  pickRecentUserTextFromTimelineMessages,
+} from "@/lib/harness/memoryRuntime/internal/timelineMemoryInputs";
 
 export type OverlayPromptTraceIdentityWire = Readonly<{
   roleKey: string;
@@ -75,6 +82,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  memoryRuntimePlan?: MemoryRuntimePlan;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -167,6 +175,23 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     preview: harnessPromptAssemblyPreview,
   });
 
+  // Harness Phase H4 Preparation — Memory Runtime Plan (dry-run only).
+  // 이번 turn의 역할·overlay·timeline messages를 입력으로 "참조 후보 메모리"를 planning.
+  // **실제 retrieval/injection 없음.** 위에서 계산한 overlay metadata와 입력만 사용.
+  const memoryRuntimePlan = buildMemoryRuntimePlan({
+    roleKey: overlayIdentity?.roleKey ?? usedRoleRaw ?? null,
+    projectContext: {
+      projectId: input.projectId ?? null,
+      directionalKeywords: extractDirectionalKeywordsFromTimelineMessages(input.timelineMessages),
+    },
+    recentTimelineEntries: buildMemoryRuntimeEntriesFromTimelineMessages(input.timelineMessages),
+    workingContext: {
+      workspaceScreenKey: input.workspaceScreenKey,
+      recentUserText: pickRecentUserTextFromTimelineMessages(input.timelineMessages),
+    },
+    overlayMetadata: { overlayContextAssembly },
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -183,8 +208,10 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     ...(overlayPolicyDriftWarnings.length ? { overlayPolicyDriftWarnings } : {}),
     harnessPromptAssemblyPreview,
     harnessPromptPreviewDiff,
+    memoryRuntimePlan,
   };
 }
+
 
 /** orchestration turn meta에서 가장 신뢰도 높은 role 키를 우선순위대로 선택한다. */
 function resolveOverlayTurnRoleKey(meta: SingleChatOrchestrationTurnMeta): string | null {

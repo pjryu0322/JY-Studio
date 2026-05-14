@@ -7,8 +7,15 @@
 /** 결측치 표기. UI에서 "—" / "ㅡ" 등 시각 통일에 사용. */
 export const OVERLAY_UI_MISSING_NUMBER = "—";
 
-/** 결측치 표기(rate). 분모 0/NaN 등에서 사용. */
+/**
+ * 결측치 표기(rate / 일반 short label).
+ *
+ * 분모 0/NaN의 rate 표기 시작점이었으나, role/scope 등 한 글자 fallback이 필요한
+ * 다른 short label에서도 같은 시각을 유지하기 위해 재사용한다. 별칭 `OVERLAY_UI_MISSING_LABEL`로도 노출.
+ */
 export const OVERLAY_UI_MISSING_RATE = "ㅡ";
+/** `OVERLAY_UI_MISSING_RATE`의 의미 별칭. 일반 short label fallback에 사용. */
+export const OVERLAY_UI_MISSING_LABEL = OVERLAY_UI_MISSING_RATE;
 
 /**
  * `number | null | undefined` 을 사용자 표시용 한국어 정수 문자열로 변환한다.

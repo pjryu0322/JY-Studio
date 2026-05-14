@@ -27,6 +27,7 @@ import type {
   HarnessPromptPreviewDiff,
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembly/harnessPromptAssemblyCoerce";
+import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -138,6 +139,7 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
 
   Object.assign(out, coerceOverlayPromptTracePreparationMetadata(r));
   Object.assign(out, coerceHarnessPromptAssemblyMetadata(r));
+  Object.assign(out, coerceMemoryRuntimeMetadata(r));
 
   return out;
 }
