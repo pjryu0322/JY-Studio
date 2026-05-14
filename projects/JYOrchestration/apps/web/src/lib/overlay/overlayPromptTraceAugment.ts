@@ -26,6 +26,8 @@ import type { OverlayAssemblyPlanItem } from "@/lib/overlay/overlayContextAssemb
 import { buildOverlayContextAssemblyPlan } from "@/lib/overlay/overlayContextAssemblyPlan";
 import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
 import { suggestOverlayPruningCandidates } from "@/lib/overlay/overlayContextPruning";
+import { prioritizeOverlayContexts } from "@/lib/overlay/overlayContextPrioritization";
+import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
 import type { SingleChatOrchestrationTurnMeta } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 export type OverlayPromptTraceIdentityWire = Readonly<{
@@ -58,11 +60,13 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   overlayPolicyHints: OverlayRuntimePolicyHintsWire;
   overlayPolicyWarnings: readonly OverlayPolicyWarning[];
   overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+  overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+  overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -123,13 +127,22 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
 
   const overlayConflictWarnings = buildOverlayPromptTraceConflictWarnings(input.timelineMessages);
 
+  const overlayPrioritizedContextRefs = prioritizeOverlayContexts({
+    contexts: overlaySelectedContextRefs,
+    budgetPolicy: overlayContextBudget.budgetPolicy,
+  });
+
   const overlayContextAssemblyPlan = buildOverlayContextAssemblyPlan({
-    selectedContextRefs: overlaySelectedContextRefs,
+    selectedContextRefs: overlayPrioritizedContextRefs,
     budgetMetadata: overlayContextBudget,
   });
   const overlayPruningCandidates = suggestOverlayPruningCandidates({
     assemblyPlan: overlayContextAssemblyPlan,
     overflowRisk: overlayContextBudget.overflowRisk,
+  });
+  const overlayPolicyDriftWarnings = detectOverlayPolicyDrift({
+    assemblyPlan: overlayContextAssemblyPlan,
+    budgetMetadata: overlayContextBudget,
   });
 
   return {
@@ -139,11 +152,13 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     overlayPolicyHints,
     overlayPolicyWarnings,
     ...(overlaySelectedContextRefs.length ? { overlaySelectedContextRefs } : {}),
+    ...(overlayPrioritizedContextRefs.length ? { overlayPrioritizedContextRefs } : {}),
     overlayContextBudget,
     ...(overlayOrchestrationDecisionTrace ? { overlayOrchestrationDecisionTrace } : {}),
     ...(overlayConflictWarnings.length ? { overlayConflictWarnings } : {}),
     ...(overlayContextAssemblyPlan.length ? { overlayContextAssemblyPlan } : {}),
     ...(overlayPruningCandidates.length ? { overlayPruningCandidates } : {}),
+    ...(overlayPolicyDriftWarnings.length ? { overlayPolicyDriftWarnings } : {}),
   };
 }
 

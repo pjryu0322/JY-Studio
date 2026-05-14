@@ -285,6 +285,10 @@ export type RequirementsPromptTimelineEntry = {
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   /** Overlay 6단계 준비: overflow 시 줄일 수 있는 후보(suggestion only) */
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+  /** Overlay stabilization: budget policy 기반 prioritization 결과(sorting metadata only) */
+  overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
+  /** Overlay stabilization: 계산된 drift warning replay (warning only, `enforcement: "not_applied"`) */
+  overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
 };
 
 export type RequirementsStateJson = {

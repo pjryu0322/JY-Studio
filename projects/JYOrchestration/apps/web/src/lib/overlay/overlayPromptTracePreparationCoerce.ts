@@ -31,14 +31,21 @@ import {
   parseOverlayPruningCandidatesFromUnknown,
   type OverlayPruningCandidate,
 } from "@/lib/overlay/overlayContextPruning";
+import {
+  parseOverlayPolicyWarningsFromUnknown,
+  OVERLAY_POLICY_WARNINGS_MAX_TIMELINE,
+  type OverlayPolicyWarning,
+} from "@/lib/overlay/overlayPolicyWarning";
 
 export type OverlayPromptTracePreparationMetadata = Readonly<{
   overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+  overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+  overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
 }>;
 
 /**
@@ -50,11 +57,13 @@ export function coerceOverlayPromptTracePreparationMetadata(
   if (!raw || typeof raw !== "object") return {};
   const out: {
     overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+    overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
     overlayContextBudget?: OverlayContextBudgetMetadata;
     overlayConflictWarnings?: readonly OverlayConflictWarning[];
     overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
     overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
     overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+    overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   } = {};
 
   const refs = parseOverlaySelectedContextRefsFromUnknown(raw.overlaySelectedContextRefs).slice(
@@ -62,6 +71,11 @@ export function coerceOverlayPromptTracePreparationMetadata(
     OVERLAY_SELECTED_CONTEXT_REFS_MAX
   );
   if (refs.length) out.overlaySelectedContextRefs = refs;
+
+  const prioritized = parseOverlaySelectedContextRefsFromUnknown(
+    raw.overlayPrioritizedContextRefs
+  ).slice(0, OVERLAY_SELECTED_CONTEXT_REFS_MAX);
+  if (prioritized.length) out.overlayPrioritizedContextRefs = prioritized;
 
   const budget = parseOverlayContextBudgetMetadataFromUnknown(raw.overlayContextBudget);
   if (budget) out.overlayContextBudget = budget;
@@ -77,6 +91,12 @@ export function coerceOverlayPromptTracePreparationMetadata(
 
   const pruning = parseOverlayPruningCandidatesFromUnknown(raw.overlayPruningCandidates);
   if (pruning.length) out.overlayPruningCandidates = pruning;
+
+  const drift = parseOverlayPolicyWarningsFromUnknown(raw.overlayPolicyDriftWarnings).slice(
+    0,
+    OVERLAY_POLICY_WARNINGS_MAX_TIMELINE
+  );
+  if (drift.length) out.overlayPolicyDriftWarnings = drift;
 
   return out;
 }

@@ -20,11 +20,13 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
   overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
   overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+  overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
   overlayContextBudget?: OverlayContextBudgetMetadata;
   overlayConflictWarnings?: readonly OverlayConflictWarning[];
   overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+  overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
 }>;
 
 /**
@@ -42,11 +44,13 @@ export function extractOverlayPromptTraceMetadata(
     overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
     overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
     overlaySelectedContextRefs?: readonly OverlaySelectedContextRef[];
+    overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
     overlayContextBudget?: OverlayContextBudgetMetadata;
     overlayConflictWarnings?: readonly OverlayConflictWarning[];
     overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
     overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
     overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+    overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   } = {};
 
   const oi = e.overlayIdentity;

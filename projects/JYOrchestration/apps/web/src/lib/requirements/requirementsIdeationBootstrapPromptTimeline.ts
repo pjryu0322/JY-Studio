@@ -660,6 +660,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayOrchestrationDecisionTrace?: OverlayOrchestrationDecisionTrace;
   readonly overlayContextAssemblyPlan?: readonly OverlayAssemblyPlanItem[];
   readonly overlayPruningCandidates?: readonly OverlayPruningCandidate[];
+  readonly overlayPrioritizedContextRefs?: readonly OverlaySelectedContextRef[];
+  readonly overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -856,6 +858,22 @@ export function buildSingleChatPromptTimelineEntry(params: {
           overlayPruningCandidates: [...params.overlayPruningCandidates].slice(
             0,
             OVERLAY_PRUNING_CANDIDATES_MAX
+          ),
+        }
+      : {}),
+    ...(params.overlayPrioritizedContextRefs?.length
+      ? {
+          overlayPrioritizedContextRefs: [...params.overlayPrioritizedContextRefs].slice(
+            0,
+            OVERLAY_SELECTED_CONTEXT_REFS_MAX
+          ),
+        }
+      : {}),
+    ...(params.overlayPolicyDriftWarnings?.length
+      ? {
+          overlayPolicyDriftWarnings: [...params.overlayPolicyDriftWarnings].slice(
+            0,
+            OVERLAY_POLICY_WARNINGS_MAX_TIMELINE
           ),
         }
       : {}),

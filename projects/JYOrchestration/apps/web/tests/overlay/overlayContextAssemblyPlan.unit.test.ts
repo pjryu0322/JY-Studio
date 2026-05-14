@@ -4,6 +4,7 @@ import {
   buildOverlayContextAssemblyPlan,
   parseOverlayAssemblyPlanFromUnknown,
   summarizeOverlayAssemblyPlan,
+  summarizeOverlayAssemblyIncludeMode,
   OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX,
   OVERLAY_ASSEMBLY_PLAN_HIGH_PRIORITY_THRESHOLD,
 } from "@/lib/overlay/overlayContextAssemblyPlan";
@@ -80,6 +81,107 @@ describe("parseOverlayAssemblyPlanFromUnknown", () => {
     expect(parsed[0].source).toBe("platform");
     expect(parsed[0].priority).toBe(0);
     expect(parsed[0].estimatedCost).toBe(1);
+  });
+});
+
+describe("buildOverlayContextAssemblyPlan — includeMode", () => {
+  it("assigns default includeMode by type (policy=required, memory/knowledge=recommended, timeline/workspace=optional)", () => {
+    const refs = buildOverlaySelectedContextRefs({
+      roleKey: "planner",
+      memoryScopes: ["platform"],
+      knowledgeHints: ["pack1"],
+      timelineEnabled: true,
+      workspaceScreenKey: "design.canvas",
+      policyHintSource: "planner",
+    });
+    const plan = buildOverlayContextAssemblyPlan({ selectedContextRefs: refs });
+    const byType = Object.fromEntries(plan.map((p) => [p.type, p.includeMode]));
+    expect(byType.policy).toBe("required");
+    expect(byType.memory).toBe("recommended");
+    expect(byType.knowledge).toBe("recommended");
+    expect(byType.timeline).toBe("optional");
+    expect(byType.workspace).toBe("optional");
+  });
+
+  it("downgrades low-priority timeline/workspace to excludeCandidate under overflow=high", () => {
+    const refs = buildOverlaySelectedContextRefs({
+      roleKey: "planner",
+      memoryScopes: ["platform"],
+      knowledgeHints: ["pack1"],
+      timelineEnabled: true,
+      workspaceScreenKey: "design.canvas",
+      policyHintSource: "planner",
+    });
+    const budget = buildOverlayContextBudgetMetadata({
+      promptLength: 80_000,
+      selectedContextCount: refs.length,
+    });
+    const plan = buildOverlayContextAssemblyPlan({ selectedContextRefs: refs, budgetMetadata: budget });
+    const includeByType = Object.fromEntries(plan.map((p) => [p.type, p.includeMode]));
+    expect(includeByType.timeline).toBe("excludeCandidate");
+    expect(includeByType.workspace).toBe("excludeCandidate");
+    expect(includeByType.memory).toBe("recommended");
+    expect(includeByType.policy).toBe("required");
+  });
+
+  it("compact policy increases timeline/workspace estimatedCost vs extended", () => {
+    const refs = buildOverlaySelectedContextRefs({
+      roleKey: "planner",
+      memoryScopes: ["platform"],
+      knowledgeHints: ["pack1"],
+      timelineEnabled: true,
+      workspaceScreenKey: "design.canvas",
+      policyHintSource: "planner",
+    });
+    const compactBudget = buildOverlayContextBudgetMetadata({
+      promptLength: 1_000,
+      selectedContextCount: refs.length,
+    });
+    const extendedBudget = buildOverlayContextBudgetMetadata({
+      promptLength: 30_000,
+      selectedContextCount: refs.length,
+    });
+    expect(compactBudget.budgetPolicy).toBe("compact");
+    expect(extendedBudget.budgetPolicy).toBe("extended");
+    const planCompact = buildOverlayContextAssemblyPlan({
+      selectedContextRefs: refs,
+      budgetMetadata: compactBudget,
+    });
+    const planExtended = buildOverlayContextAssemblyPlan({
+      selectedContextRefs: refs,
+      budgetMetadata: extendedBudget,
+    });
+    const tlCompact = planCompact.find((p) => p.type === "timeline")!.estimatedCost;
+    const tlExtended = planExtended.find((p) => p.type === "timeline")!.estimatedCost;
+    expect(tlCompact).toBeGreaterThan(tlExtended);
+    const wsCompact = planCompact.find((p) => p.type === "workspace")!.estimatedCost;
+    const wsExtended = planExtended.find((p) => p.type === "workspace")!.estimatedCost;
+    expect(wsCompact).toBeGreaterThan(wsExtended);
+  });
+});
+
+describe("summarizeOverlayAssemblyIncludeMode", () => {
+  it("returns counts for required/recommended/optional/excludeCandidate", () => {
+    const refs = buildOverlaySelectedContextRefs({
+      roleKey: "planner",
+      memoryScopes: ["platform"],
+      knowledgeHints: ["pack1"],
+      timelineEnabled: true,
+      workspaceScreenKey: "design.canvas",
+      policyHintSource: "planner",
+    });
+    const budget = buildOverlayContextBudgetMetadata({
+      promptLength: 80_000,
+      selectedContextCount: refs.length,
+    });
+    const plan = buildOverlayContextAssemblyPlan({ selectedContextRefs: refs, budgetMetadata: budget });
+    const s = summarizeOverlayAssemblyIncludeMode(plan);
+    expect(s.required).toBe(plan.filter((p) => p.includeMode === "required").length);
+    expect(s.recommended).toBe(plan.filter((p) => p.includeMode === "recommended").length);
+    expect(s.optional + s.excludeCandidate).toBe(
+      plan.filter((p) => p.type === "timeline" || p.type === "workspace").length
+    );
+    expect(s.excludeCandidate).toBeGreaterThan(0);
   });
 });
 

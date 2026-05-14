@@ -24,10 +24,23 @@ const highBudget = buildOverlayContextBudgetMetadata({
 });
 const planHigh = buildOverlayContextAssemblyPlan({ selectedContextRefs: refs, budgetMetadata: highBudget });
 
+// low overflow에서는 includeMode가 excludeCandidate가 되지 않으므로 비어 있는 후보 셋을 만든다.
+const lowBudget = buildOverlayContextBudgetMetadata({
+  promptLength: 1_000,
+  selectedContextCount: refs.length,
+});
+const planLow = buildOverlayContextAssemblyPlan({ selectedContextRefs: refs, budgetMetadata: lowBudget });
+
 describe("suggestOverlayPruningCandidates", () => {
-  it("returns empty for overflowRisk=low", () => {
-    const out = suggestOverlayPruningCandidates({ assemblyPlan: planHigh, overflowRisk: "low" });
+  it("returns empty when plan has no excludeCandidate and overflowRisk=low", () => {
+    const out = suggestOverlayPruningCandidates({ assemblyPlan: planLow, overflowRisk: "low" });
     expect(out).toEqual([]);
+  });
+
+  it("returns excludeCandidate items even when overflowRisk=low (1차 후보)", () => {
+    const out = suggestOverlayPruningCandidates({ assemblyPlan: planHigh, overflowRisk: "low" });
+    expect(out.length).toBeGreaterThan(0);
+    for (const c of out) expect(c.reason.startsWith("overflow_low_")).toBe(true);
   });
 
   it("returns candidates with reason prefix overflow_<risk>_<type> for high risk", () => {

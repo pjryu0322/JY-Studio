@@ -112,13 +112,17 @@ export {
   buildOverlayContextAssemblyPlan,
   parseOverlayAssemblyPlanFromUnknown,
   summarizeOverlayAssemblyPlan,
+  summarizeOverlayAssemblyIncludeMode,
   OVERLAY_ASSEMBLY_PLAN_ITEMS_MAX,
   OVERLAY_ASSEMBLY_PLAN_HIGH_PRIORITY_THRESHOLD,
+  OVERLAY_ASSEMBLY_PLAN_LOW_PRIORITY_THRESHOLD,
 } from "@/lib/overlay/overlayContextAssemblyPlan";
 export type {
   OverlayAssemblyPlanItem,
   OverlayAssemblyPlanItemType,
   OverlayAssemblyPlanSummaryWire,
+  OverlayAssemblyIncludeMode,
+  OverlayAssemblyIncludeModeSummaryWire,
 } from "@/lib/overlay/overlayContextAssemblyPlan";
 export { prioritizeOverlayContexts } from "@/lib/overlay/overlayContextPrioritization";
 export {

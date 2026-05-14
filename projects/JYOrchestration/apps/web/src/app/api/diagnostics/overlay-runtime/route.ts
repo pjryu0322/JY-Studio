@@ -17,7 +17,10 @@ import { buildOverlayWarningReport } from "@/lib/overlay/overlayWarningReport";
 import { summarizeOverlaySelectedContextRefs } from "@/lib/overlay/overlayContextSelection";
 import { summarizeOverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import { summarizeOverlayConflictWarnings } from "@/lib/overlay/overlayConflictDetection";
-import { summarizeOverlayAssemblyPlan } from "@/lib/overlay/overlayContextAssemblyPlan";
+import {
+  summarizeOverlayAssemblyPlan,
+  summarizeOverlayAssemblyIncludeMode,
+} from "@/lib/overlay/overlayContextAssemblyPlan";
 import { summarizeOverlayPruningCandidates } from "@/lib/overlay/overlayContextPruning";
 import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
 import {
@@ -102,14 +105,21 @@ export async function GET(request: NextRequest) {
     plan: lastAssemblyPlan,
     budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
   });
+  const overlayAssemblyIncludeModeSummary = summarizeOverlayAssemblyIncludeMode(lastAssemblyPlan);
   const overlayPruningSummary = summarizeOverlayPruningCandidates(lastPruningCandidates);
-  const overlayPolicyDriftWarnings = detectOverlayPolicyDrift({
-    assemblyPlan: lastAssemblyPlan,
-    budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
-  });
+
+  // Drift는 replay에 저장된 값을 우선 사용하고, 없으면 즉시 재계산한다(읽기 전용 진단).
+  const driftFromReplay = lastPromptTraceOverlayExtract?.overlayPolicyDriftWarnings;
+  const overlayPolicyDriftWarnings =
+    driftFromReplay && driftFromReplay.length > 0
+      ? driftFromReplay
+      : detectOverlayPolicyDrift({
+          assemblyPlan: lastAssemblyPlan,
+          budgetMetadata: lastPromptTraceOverlayExtract?.overlayContextBudget,
+        });
 
   const overlayArchitecturePhase = {
-    current: "policy-guided-context-assembly-preparation-layer" as const,
+    current: "policy-guided-assembly-plan-stabilization-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -124,6 +134,7 @@ export async function GET(request: NextRequest) {
     runtimePolicyWarningLayer: true,
     runtimeDiagnosticSelectionPreparationLayer: true,
     policyGuidedContextAssemblyPreparationLayer: true,
+    policyGuidedAssemblyPlanStabilizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -151,6 +162,7 @@ export async function GET(request: NextRequest) {
       overlayConflictSummary,
       overlayContextBudgetSummary,
       overlayAssemblyPlanSummary,
+      overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
       overlayPolicyDriftWarnings,
       overlayArchitecturePhase,

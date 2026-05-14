@@ -26,6 +26,9 @@ type PlanStats = Readonly<{
   total: number;
   byType: Readonly<Record<OverlayAssemblyPlanItemType, number>>;
   hasPruningCandidate: boolean;
+  requiredCount: number;
+  excludeCandidateCount: number;
+  optionalTimelineCount: number;
 }>;
 
 type DriftContext = Readonly<{
@@ -49,11 +52,24 @@ function makePlanStats(plan: readonly OverlayAssemblyPlanItem[]): PlanStats {
     policy: 0,
   };
   let hasPruningCandidate = false;
+  let requiredCount = 0;
+  let excludeCandidateCount = 0;
+  let optionalTimelineCount = 0;
   for (const item of plan) {
     byType[item.type]++;
     if (item.pruningCandidate) hasPruningCandidate = true;
+    if (item.includeMode === "required") requiredCount++;
+    if (item.includeMode === "excludeCandidate") excludeCandidateCount++;
+    if (item.includeMode === "optional" && item.type === "timeline") optionalTimelineCount++;
   }
-  return { total: plan.length, byType, hasPruningCandidate };
+  return {
+    total: plan.length,
+    byType,
+    hasPruningCandidate,
+    requiredCount,
+    excludeCandidateCount,
+    optionalTimelineCount,
+  };
 }
 
 function makeDrift(rule: DriftRule, ctx: DriftContext): OverlayPolicyWarning {
@@ -97,6 +113,31 @@ const DRIFT_RULES: readonly DriftRule[] = [
     test: (c) => c.stats.total > 0 && c.stats.byType.knowledge === 0,
     message: () =>
       "assembly plan에 knowledge scope 항목이 없습니다(planner 등 역할 기본 knowledge hint 누락 가능).",
+  },
+  {
+    code: "OVERLAY_DRIFT_COMPACT_OPTIONAL_TIMELINE_OVERLOAD",
+    severity: "warning",
+    test: (c) =>
+      c.budgetMetadata?.budgetPolicy === "compact" && c.stats.optionalTimelineCount > 1,
+    message: (c) =>
+      `compact policy인데 optional timeline 항목이 ${c.stats.optionalTimelineCount}개로 과다합니다(권장 ≤ 1).`,
+  },
+  {
+    code: "OVERLAY_DRIFT_HIGH_OVERFLOW_WITHOUT_EXCLUDE_CANDIDATE",
+    severity: "warning",
+    test: (c) =>
+      c.budgetMetadata?.overflowRisk === "high" &&
+      c.stats.total > 0 &&
+      c.stats.excludeCandidateCount === 0,
+    message: () =>
+      "overflowRisk가 high인데 excludeCandidate(includeMode) 항목이 없습니다(우선 줄일 항목 후보 필요).",
+  },
+  {
+    code: "OVERLAY_DRIFT_NO_REQUIRED_ITEM",
+    severity: "info",
+    test: (c) => c.stats.total > 0 && c.stats.requiredCount === 0,
+    message: () =>
+      "assembly plan에 required(includeMode) 항목이 없습니다(policy hint 누락 가능).",
   },
 ];
 

@@ -35,22 +35,37 @@ function reasonFor(item: OverlayAssemblyPlanItem, overflow: OverlayContextBudget
   return `overflow_${overflow}_${item.type}`.slice(0, REASON_MAX_LEN);
 }
 
-/** pruning 우선순위: 낮은 우선순위(큰 priority) 먼저, 같으면 비용이 큰 것 먼저. */
+/**
+ * pruning 우선순위:
+ * 1) `includeMode === "excludeCandidate"` 우선,
+ * 2) 같은 그룹 내에서는 낮은 우선순위(큰 priority) 먼저,
+ * 3) 같으면 비용이 큰 것 먼저.
+ */
 function comparePlanForPruning(a: OverlayAssemblyPlanItem, b: OverlayAssemblyPlanItem): number {
+  const aExclude = a.includeMode === "excludeCandidate" ? 0 : 1;
+  const bExclude = b.includeMode === "excludeCandidate" ? 0 : 1;
+  if (aExclude !== bExclude) return aExclude - bExclude;
   if (a.priority !== b.priority) return b.priority - a.priority;
   return b.estimatedCost - a.estimatedCost;
 }
 
+/**
+ * pruning 후보 산출 기준:
+ * - `includeMode === "excludeCandidate"` 항목은 overflow 단계와 무관하게 1차 후보.
+ * - 그 외 항목은 legacy `pruningCandidate` 플래그가 true인 경우만 medium/high 단계에서 후보.
+ * - `overflowRisk === "low"`이고 excludeCandidate도 없는 경우엔 빈 배열.
+ */
 export function suggestOverlayPruningCandidates(input: {
   assemblyPlan: readonly OverlayAssemblyPlanItem[];
   overflowRisk: OverlayContextBudgetOverflowRisk;
 }): readonly OverlayPruningCandidate[] {
-  if (input.overflowRisk === "low") return [];
-  const sorted = input.assemblyPlan
-    .filter((it) => it.pruningCandidate)
-    .slice()
-    .sort(comparePlanForPruning)
-    .slice(0, OVERLAY_PRUNING_CANDIDATES_MAX);
+  const candidates = input.assemblyPlan.filter((it) => {
+    if (it.includeMode === "excludeCandidate") return true;
+    if (input.overflowRisk === "low") return false;
+    return it.pruningCandidate === true;
+  });
+  if (!candidates.length) return [];
+  const sorted = candidates.slice().sort(comparePlanForPruning).slice(0, OVERLAY_PRUNING_CANDIDATES_MAX);
   return sorted.map((item) => ({
     source: item.source.slice(0, SOURCE_MAX_LEN),
     reason: reasonFor(item, input.overflowRisk),

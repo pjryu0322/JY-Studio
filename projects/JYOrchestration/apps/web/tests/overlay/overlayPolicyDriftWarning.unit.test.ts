@@ -11,6 +11,7 @@ function plan(items: ReadonlyArray<Partial<OverlayAssemblyPlanItem>>): OverlayAs
     includeReason: i.includeReason ?? "reason",
     estimatedCost: i.estimatedCost ?? 10,
     pruningCandidate: i.pruningCandidate ?? false,
+    includeMode: (i.includeMode ?? "optional") as OverlayAssemblyPlanItem["includeMode"],
   }));
 }
 
@@ -60,6 +61,56 @@ describe("detectOverlayPolicyDrift", () => {
     const codes = warnings.map((w) => w.code);
     expect(codes).toContain("OVERLAY_DRIFT_NO_MEMORY_SCOPE");
     expect(codes).toContain("OVERLAY_DRIFT_NO_KNOWLEDGE_SCOPE");
+  });
+
+  it("flags compact with too many optional timeline items (includeMode 기반)", () => {
+    const warnings = detectOverlayPolicyDrift({
+      assemblyPlan: plan([
+        { type: "memory", includeMode: "recommended" },
+        { type: "knowledge", includeMode: "recommended" },
+        { type: "timeline", source: "t1", includeMode: "optional" },
+        { type: "timeline", source: "t2", includeMode: "optional" },
+      ]),
+      budgetMetadata: {
+        estimatedInputTokens: 100,
+        estimatedOutputTokens: 30,
+        budgetPolicy: "compact",
+        overflowRisk: "low",
+      },
+    });
+    expect(
+      warnings.find((w) => w.code === "OVERLAY_DRIFT_COMPACT_OPTIONAL_TIMELINE_OVERLOAD"),
+    ).toBeTruthy();
+  });
+
+  it("flags overflowRisk high without any excludeCandidate (includeMode 기반)", () => {
+    const warnings = detectOverlayPolicyDrift({
+      assemblyPlan: plan([
+        { type: "memory", includeMode: "recommended" },
+        { type: "knowledge", includeMode: "recommended" },
+        { type: "timeline", includeMode: "optional" },
+      ]),
+      budgetMetadata: {
+        estimatedInputTokens: 100,
+        estimatedOutputTokens: 30,
+        budgetPolicy: "extended",
+        overflowRisk: "high",
+      },
+    });
+    expect(
+      warnings.find((w) => w.code === "OVERLAY_DRIFT_HIGH_OVERFLOW_WITHOUT_EXCLUDE_CANDIDATE"),
+    ).toBeTruthy();
+  });
+
+  it("flags missing required item", () => {
+    const warnings = detectOverlayPolicyDrift({
+      assemblyPlan: plan([
+        { type: "memory", includeMode: "recommended" },
+        { type: "knowledge", includeMode: "recommended" },
+      ]),
+      budgetMetadata: null,
+    });
+    expect(warnings.find((w) => w.code === "OVERLAY_DRIFT_NO_REQUIRED_ITEM")).toBeTruthy();
   });
 
   it("returns empty list for empty plan", () => {
