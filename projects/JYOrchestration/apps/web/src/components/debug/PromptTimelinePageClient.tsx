@@ -24,6 +24,9 @@ function channelLabel(ch: PromptTimelineChannel): string {
 }
 
 type EntryTabKey = "prompt" | "response" | "overlay" | "diagnostic";
+type EntryDirection = "outbound" | "inbound";
+
+const ENTRY_TAB_KEYS: readonly EntryTabKey[] = ["prompt", "response", "overlay", "diagnostic"];
 
 const TAB_LABEL: Readonly<Record<EntryTabKey, string>> = {
   prompt: "프롬프트",
@@ -32,17 +35,61 @@ const TAB_LABEL: Readonly<Record<EntryTabKey, string>> = {
   diagnostic: "진단",
 };
 
+const TAB_ACCENT_COLOR = "#1d4ed8";
+const TAB_ACCENT_BG = "rgba(59,130,246,0.10)";
+
 function tabButtonStyle(active: boolean, narrow: boolean): React.CSSProperties {
   return {
-    border: `1px solid ${active ? "#1d4ed8" : t.border}`,
-    background: active ? "rgba(59,130,246,0.10)" : "#fff",
-    color: active ? "#1d4ed8" : t.textSecondary,
+    border: `1px solid ${active ? TAB_ACCENT_COLOR : t.border}`,
+    background: active ? TAB_ACCENT_BG : "#fff",
+    color: active ? TAB_ACCENT_COLOR : t.textSecondary,
     borderRadius: 999,
     fontSize: narrow ? 11 : 12,
     fontWeight: 800,
     padding: narrow ? "4px 10px" : "5px 12px",
     cursor: "pointer",
   };
+}
+
+type PromptDirectionMeta = Readonly<{
+  textKey: "outbound" | "inbound";
+  ariaLabel: string;
+  labelLeft: (channel: PromptTimelineChannel) => string;
+}>;
+
+const DIRECTION_META: Readonly<Record<EntryDirection, PromptDirectionMeta>> = {
+  outbound: {
+    textKey: "outbound",
+    ariaLabel: "플랫폼→모델 프롬프트 복사",
+    labelLeft: (ch) => `플랫폼 → ${channelLabel(ch)}`,
+  },
+  inbound: {
+    textKey: "inbound",
+    ariaLabel: "모델→플랫폼 응답 복사",
+    labelLeft: (ch) => `${channelLabel(ch)} → 플랫폼`,
+  },
+};
+
+type DiagnosticRow = Readonly<{ label: string; value: string }>;
+
+function buildDiagnosticRows(entry: PromptTimelineEntry): readonly DiagnosticRow[] {
+  const m = entry.promptMetrics ?? null;
+  const rows: DiagnosticRow[] = [
+    { label: "ID", value: entry.id },
+    { label: "발생 시각", value: entry.at },
+    { label: "채널", value: channelLabel(entry.channel) },
+    { label: "라벨", value: entry.label },
+    { label: "모델", value: entry.model ?? "—" },
+    { label: "목적", value: entry.purpose ?? "—" },
+    { label: "상태", value: entry.status ?? "—" },
+  ];
+  if (entry.errorMessage) rows.push({ label: "오류 메시지", value: entry.errorMessage });
+  if (entry.parsedJsonPreview) rows.push({ label: "응답 JSON 미리보기", value: entry.parsedJsonPreview });
+  if (m?.tokenEstimateIn != null) rows.push({ label: "입력 토큰 추정", value: String(m.tokenEstimateIn) });
+  if (m?.tokenEstimateOut != null) rows.push({ label: "출력 토큰 추정", value: String(m.tokenEstimateOut) });
+  if (m?.compressedContextSize != null) rows.push({ label: "압축 컨텍스트", value: String(m.compressedContextSize) });
+  if (m?.topic) rows.push({ label: "주제", value: m.topic });
+  return rows;
 }
 
 function ClipboardGlyph({ size = 16 }: { readonly size?: number }) {
@@ -172,24 +219,10 @@ export function PromptTimelinePageClient() {
           <div style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginTop: 4 }}>{scopeLabel}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setShowOverlayTabs((v) => !v)}
-            aria-pressed={showOverlayTabs}
-            title="Overlay/진단 탭을 보기"
-            style={{
-              border: `1px solid ${showOverlayTabs ? "#1d4ed8" : t.border}`,
-              background: showOverlayTabs ? "rgba(59,130,246,0.10)" : "#fff",
-              color: showOverlayTabs ? "#1d4ed8" : t.textSecondary,
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              padding: "6px 12px",
-              cursor: "pointer",
-            }}
-          >
-            {showOverlayTabs ? "Overlay 숨기기" : "Overlay 보기"}
-          </button>
+          <OverlayVisibilityToggle
+            active={showOverlayTabs}
+            onToggle={() => setShowOverlayTabs((v) => !v)}
+          />
           <button
             type="button"
             onClick={() => void load()}
@@ -386,23 +419,64 @@ function PromptCopyPane({
   );
 }
 
+function OverlayVisibilityToggle({
+  active,
+  onToggle,
+}: {
+  readonly active: boolean;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      title="Overlay/진단 탭을 보기"
+      style={{
+        border: `1px solid ${active ? TAB_ACCENT_COLOR : t.border}`,
+        background: active ? TAB_ACCENT_BG : "#fff",
+        color: active ? TAB_ACCENT_COLOR : t.textSecondary,
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 700,
+        padding: "6px 12px",
+        cursor: "pointer",
+      }}
+    >
+      {active ? "Overlay 숨기기" : "Overlay 보기"}
+    </button>
+  );
+}
+
+function PromptDirectionPane({
+  entry,
+  direction,
+  isNarrow,
+  onCopy,
+}: {
+  readonly entry: PromptTimelineEntry;
+  readonly direction: EntryDirection;
+  readonly isNarrow: boolean;
+  readonly onCopy: (text: string) => Promise<void> | void;
+}) {
+  const meta = DIRECTION_META[direction];
+  return (
+    <>
+      <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>
+        {meta.labelLeft(entry.channel)}
+      </div>
+      <PromptCopyPane
+        text={entry[meta.textKey]}
+        ariaLabel={meta.ariaLabel}
+        isNarrow={isNarrow}
+        onCopy={onCopy}
+      />
+    </>
+  );
+}
+
 function PromptTimelineDiagnosticPane({ entry }: { readonly entry: PromptTimelineEntry }) {
-  const metrics = entry.promptMetrics ?? null;
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "ID", value: entry.id },
-    { label: "발생 시각", value: entry.at },
-    { label: "채널", value: channelLabel(entry.channel) },
-    { label: "라벨", value: entry.label },
-    { label: "모델", value: entry.model ?? "—" },
-    { label: "목적", value: entry.purpose ?? "—" },
-    { label: "상태", value: entry.status ?? "—" },
-  ];
-  if (entry.errorMessage) rows.push({ label: "오류 메시지", value: entry.errorMessage });
-  if (entry.parsedJsonPreview) rows.push({ label: "응답 JSON 미리보기", value: entry.parsedJsonPreview });
-  if (metrics?.tokenEstimateIn != null) rows.push({ label: "입력 토큰 추정", value: String(metrics.tokenEstimateIn) });
-  if (metrics?.tokenEstimateOut != null) rows.push({ label: "출력 토큰 추정", value: String(metrics.tokenEstimateOut) });
-  if (metrics?.compressedContextSize != null) rows.push({ label: "압축 컨텍스트", value: String(metrics.compressedContextSize) });
-  if (metrics?.topic) rows.push({ label: "주제", value: metrics.topic });
+  const rows = buildDiagnosticRows(entry);
   return (
     <div
       style={{
@@ -435,6 +509,37 @@ function PromptTimelineDiagnosticPane({ entry }: { readonly entry: PromptTimelin
   );
 }
 
+function EntryTabStrip({
+  activeTab,
+  onChange,
+  isNarrow,
+}: {
+  readonly activeTab: EntryTabKey;
+  readonly onChange: (next: EntryTabKey) => void;
+  readonly isNarrow: boolean;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="프롬프트 타임라인 탭"
+      style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}
+    >
+      {ENTRY_TAB_KEYS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === k}
+          onClick={() => onChange(k)}
+          style={tabButtonStyle(activeTab === k, isNarrow)}
+        >
+          {TAB_LABEL[k]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PromptTimelineEntryCard({
   entry,
   isNarrow,
@@ -447,7 +552,7 @@ function PromptTimelineEntryCard({
   readonly onCopyText: (text: string) => Promise<void> | void;
 }) {
   const [tab, setTab] = useState<EntryTabKey>("prompt");
-  const tabs: readonly EntryTabKey[] = ["prompt", "response", "overlay", "diagnostic"];
+  const directions: readonly EntryDirection[] = ["outbound", "inbound"];
   return (
     <li
       style={{
@@ -461,77 +566,20 @@ function PromptTimelineEntryCard({
       <PromptTimelineEntryHeader entry={entry} />
 
       {!showOverlayTabs ? (
-        <>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>
-            플랫폼 → {channelLabel(entry.channel)}
+        directions.map((dir, i) => (
+          <div key={dir} style={{ marginBottom: i === 0 ? 10 : 0 }}>
+            <PromptDirectionPane entry={entry} direction={dir} isNarrow={isNarrow} onCopy={onCopyText} />
           </div>
-          <div style={{ marginBottom: 10 }}>
-            <PromptCopyPane
-              text={entry.outbound}
-              ariaLabel="플랫폼→모델 프롬프트 복사"
-              isNarrow={isNarrow}
-              onCopy={onCopyText}
-            />
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>
-            {channelLabel(entry.channel)} → 플랫폼
-          </div>
-          <PromptCopyPane
-            text={entry.inbound}
-            ariaLabel="모델→플랫폼 응답 복사"
-            isNarrow={isNarrow}
-            onCopy={onCopyText}
-          />
-        </>
+        ))
       ) : (
         <>
-          <div
-            role="tablist"
-            aria-label="프롬프트 타임라인 탭"
-            style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}
-          >
-            {tabs.map((k) => (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={tab === k}
-                onClick={() => setTab(k)}
-                style={tabButtonStyle(tab === k, isNarrow)}
-              >
-                {TAB_LABEL[k]}
-              </button>
-            ))}
-          </div>
-
+          <EntryTabStrip activeTab={tab} onChange={setTab} isNarrow={isNarrow} />
           {tab === "prompt" ? (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>
-                플랫폼 → {channelLabel(entry.channel)}
-              </div>
-              <PromptCopyPane
-                text={entry.outbound}
-                ariaLabel="플랫폼→모델 프롬프트 복사"
-                isNarrow={isNarrow}
-                onCopy={onCopyText}
-              />
-            </>
+            <PromptDirectionPane entry={entry} direction="outbound" isNarrow={isNarrow} onCopy={onCopyText} />
           ) : null}
-
           {tab === "response" ? (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>
-                {channelLabel(entry.channel)} → 플랫폼
-              </div>
-              <PromptCopyPane
-                text={entry.inbound}
-                ariaLabel="모델→플랫폼 응답 복사"
-                isNarrow={isNarrow}
-                onCopy={onCopyText}
-              />
-            </>
+            <PromptDirectionPane entry={entry} direction="inbound" isNarrow={isNarrow} onCopy={onCopyText} />
           ) : null}
-
           {tab === "overlay" ? <OverlaySummaryCard overlay={entry.overlay ?? null} /> : null}
           {tab === "diagnostic" ? <PromptTimelineDiagnosticPane entry={entry} /> : null}
         </>

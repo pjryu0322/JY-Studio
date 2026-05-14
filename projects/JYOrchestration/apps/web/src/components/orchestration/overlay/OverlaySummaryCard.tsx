@@ -2,7 +2,10 @@
 
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
-import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
+import {
+  buildOverlayUiViewModel,
+  type OverlayUiTimelineSnapshotVM,
+} from "@/lib/overlay-ui/overlayUiAdapter";
 import { OVERLAY_UI_EMPTY_STATE_MESSAGE } from "@/lib/overlay-ui/overlayUiDescription";
 import { OverlayContextSection } from "./OverlayContextSection";
 import { OverlayBudgetSection } from "./OverlayBudgetSection";
@@ -10,6 +13,82 @@ import { OverlayWarningSection } from "./OverlayWarningSection";
 import { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 import { OverlayPruningSection } from "./OverlayPruningSection";
 import { OverlayUiBadge, OverlayUiEmptyHint } from "./OverlayUiPrimitives";
+import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
+
+type SnapshotBadge = Readonly<{
+  key: string;
+  label: string;
+  count: number;
+  tone: OverlayUiBadgeTone;
+  title: string;
+}>;
+
+function buildSnapshotBadges(s: OverlayUiTimelineSnapshotVM): readonly SnapshotBadge[] {
+  return [
+    {
+      key: "risk",
+      label: `위험 ${s.overflowRiskLabel}`,
+      count: 1,
+      tone: s.overflowRiskTone,
+      title: "토큰 예산 과부하 위험(휴리스틱)",
+    },
+    {
+      key: "conflict",
+      label: `충돌 ${s.conflictCount}`,
+      count: s.conflictCount,
+      tone: "warning",
+      title: "설계 방향 충돌 가능성",
+    },
+    {
+      key: "drift",
+      label: `정책 ${s.driftCount}`,
+      count: s.driftCount,
+      tone: "warning",
+      title: "정책 정렬 이슈",
+    },
+    {
+      key: "required",
+      label: `핵심 ${s.requiredContextsCount}`,
+      count: s.requiredContextsCount,
+      tone: "info",
+      title: "핵심 컨텍스트(계획)",
+    },
+    {
+      key: "exclude",
+      label: `축소 ${s.excludeCandidatesCount}`,
+      count: s.excludeCandidatesCount,
+      tone: "warning",
+      title: "축소 후보(계획)",
+    },
+  ];
+}
+
+function SnapshotStrip({ snapshot }: { readonly snapshot: OverlayUiTimelineSnapshotVM }) {
+  const badges = buildSnapshotBadges(snapshot);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        flexWrap: "wrap",
+        padding: "6px 10px",
+        background: "#f1f5f9",
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+      }}
+    >
+      <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted }}>Overlay 요약</span>
+      {badges.map((b) =>
+        b.count > 0 ? (
+          <OverlayUiBadge key={b.key} tone={b.tone} title={b.title}>
+            {b.label}
+          </OverlayUiBadge>
+        ) : null
+      )}
+    </div>
+  );
+}
 
 export function OverlaySummaryCard({
   overlay,
@@ -20,46 +99,9 @@ export function OverlaySummaryCard({
   if (!vm.hasOverlayData) {
     return <OverlayUiEmptyHint message={OVERLAY_UI_EMPTY_STATE_MESSAGE} />;
   }
-  const snapshot = vm.snapshot;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          flexWrap: "wrap",
-          padding: "6px 10px",
-          background: "#f1f5f9",
-          border: `1px solid ${t.border}`,
-          borderRadius: 8,
-        }}
-      >
-        <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted }}>Overlay 요약</span>
-        <OverlayUiBadge tone={snapshot.overflowRiskTone} title="토큰 예산 과부하 위험(휴리스틱)">
-          위험 {snapshot.overflowRiskLabel}
-        </OverlayUiBadge>
-        {snapshot.conflictCount > 0 ? (
-          <OverlayUiBadge tone="warning" title="설계 방향 충돌 가능성">
-            충돌 {snapshot.conflictCount}
-          </OverlayUiBadge>
-        ) : null}
-        {snapshot.driftCount > 0 ? (
-          <OverlayUiBadge tone="warning" title="정책 정렬 이슈">
-            정책 {snapshot.driftCount}
-          </OverlayUiBadge>
-        ) : null}
-        {snapshot.requiredContextsCount > 0 ? (
-          <OverlayUiBadge tone="info" title="핵심 컨텍스트(계획)">
-            핵심 {snapshot.requiredContextsCount}
-          </OverlayUiBadge>
-        ) : null}
-        {snapshot.excludeCandidatesCount > 0 ? (
-          <OverlayUiBadge tone="warning" title="축소 후보(계획)">
-            축소 {snapshot.excludeCandidatesCount}
-          </OverlayUiBadge>
-        ) : null}
-      </div>
+      <SnapshotStrip snapshot={vm.snapshot} />
       <OverlayContextSection vm={vm.context} />
       <OverlayBudgetSection vm={vm.budget} />
       <OverlayWarningSection vm={vm.warning} />

@@ -10,7 +10,7 @@ import type { OverlayAssemblyPlanItem, OverlayAssemblyIncludeMode } from "@/lib/
 import type { OverlaySelectedContextRef } from "@/lib/overlay/overlayContextSelection";
 import type { OverlayContextBudgetMetadata } from "@/lib/overlay/overlayContextBudget";
 import type { OverlayConflictWarning } from "@/lib/overlay/overlayConflictDetection";
-import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlayPolicyWarning, OverlayPolicyWarningSeverity } from "@/lib/overlay/overlayPolicyWarning";
 import type { OverlayPruningCandidate } from "@/lib/overlay/overlayContextPruning";
 import {
   overlayUiBudgetPolicyLabel,
@@ -127,50 +127,86 @@ export type OverlayUiViewModel = Readonly<{
   snapshot: OverlayUiTimelineSnapshotVM;
 }>;
 
+const MISSING_SOURCE_LABEL = "(미지정)";
+const MISSING_REASON_LABEL = "ㅡ";
+const ROLE_TYPE_LABEL = "역할";
+const DEFAULT_PRIORITY = 999;
 const PLANNING_COMMENT_NON_EMPTY =
   "현재 선택된 컨텍스트는 실제 프롬프트 포함 여부와 별개의 계획 정보입니다.";
 const PLANNING_COMMENT_EMPTY = "Overlay 컨텍스트 정보가 기록되지 않았습니다.";
+const EMPTY_INCLUDE_MODE_COUNTS: Readonly<Record<OverlayAssemblyIncludeMode, number>> = {
+  required: 0,
+  recommended: 0,
+  optional: 0,
+  excludeCandidate: 0,
+};
 
-function safeRefRow(ref: OverlaySelectedContextRef): OverlayUiContextRow {
-  const typeLabel =
-    ref.type === "role"
-      ? "역할"
-      : overlayUiPlanTypeLabel(ref.type as Parameters<typeof overlayUiPlanTypeLabel>[0]);
+/** `String(value ?? "").trim()`이 비면 fallback을 돌려준다. */
+function trimOr(value: unknown, fallback: string): string {
+  const s = String(value ?? "").trim();
+  return s.length ? s : fallback;
+}
+
+/** 음수·NaN·Infinity는 fallback으로, 그 외에는 0 이상 정수로 정규화. */
+function coerceNonNegInt(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : fallback;
+}
+
+function planTypeLabel(type: OverlaySelectedContextRef["type"]): string {
+  // OverlaySelectedContextRefType의 "role"은 plan type에 없으므로 별도 라벨 사용.
+  return type === "role" ? ROLE_TYPE_LABEL : overlayUiPlanTypeLabel(type);
+}
+
+function refToContextRow(ref: OverlaySelectedContextRef): OverlayUiContextRow {
   return {
-    typeLabel,
-    source: String(ref.source ?? "").trim() || "(미지정)",
-    reason: String(ref.reason ?? "").trim() || "ㅡ",
-    priority: Number.isFinite(ref.priority) ? Math.max(0, Math.floor(ref.priority)) : 999,
+    typeLabel: planTypeLabel(ref.type),
+    source: trimOr(ref.source, MISSING_SOURCE_LABEL),
+    reason: trimOr(ref.reason, MISSING_REASON_LABEL),
+    priority: coerceNonNegInt(ref.priority, DEFAULT_PRIORITY),
   };
+}
+
+function memoryRefLabel(ref: { scope?: unknown; ref?: unknown }): string {
+  const scope = String(ref.scope ?? "").trim();
+  const r = String(ref.ref ?? "").trim();
+  return r ? `${scope}:${r}` : scope;
+}
+
+function identityRoleLabel(
+  identity: ExtractedOverlayPromptTraceMetadata["overlayIdentity"]
+): string | null {
+  if (!identity?.roleKey) return null;
+  const perspective = String(identity.perspective ?? "").trim();
+  return perspective ? `${identity.roleKey} · ${perspective}` : identity.roleKey;
 }
 
 function buildContextSection(
   metadata: ExtractedOverlayPromptTraceMetadata
 ): OverlayUiContextSectionVM {
-  const selected = metadata.overlaySelectedContextRefs ?? [];
-  const prioritized = metadata.overlayPrioritizedContextRefs ?? [];
+  const selectedRefs = metadata.overlaySelectedContextRefs ?? [];
+  const prioritizedRefs = metadata.overlayPrioritizedContextRefs ?? [];
   const memoryScopes = (metadata.overlayContextAssembly?.usedMemoryRefs ?? [])
-    .map((m) => {
-      const scope = String(m.scope ?? "").trim();
-      const ref = String(m.ref ?? "").trim();
-      return ref ? `${scope}:${ref}` : scope;
-    })
+    .map(memoryRefLabel)
     .filter(Boolean);
-  const knowledgeHints = (metadata.overlayKnowledgeActivationHints ?? []).map(
-    (h) => String(h.knowledgePackId ?? "").trim()
-  ).filter(Boolean);
-  const identityRoleLabel = metadata.overlayIdentity?.roleKey
-    ? `${metadata.overlayIdentity.roleKey} · ${metadata.overlayIdentity.perspective ?? ""}`.trim()
-    : null;
+  const knowledgeHints = (metadata.overlayKnowledgeActivationHints ?? [])
+    .map((h) => String(h.knowledgePackId ?? "").trim())
+    .filter(Boolean);
+  const role = identityRoleLabel(metadata.overlayIdentity);
   const hasData =
-    selected.length > 0 || prioritized.length > 0 || memoryScopes.length > 0 || knowledgeHints.length > 0 || !!identityRoleLabel;
+    selectedRefs.length > 0 ||
+    prioritizedRefs.length > 0 ||
+    memoryScopes.length > 0 ||
+    knowledgeHints.length > 0 ||
+    !!role;
   return {
     hasData,
-    selected: selected.map(safeRefRow),
-    prioritized: prioritized.map(safeRefRow),
+    selected: selectedRefs.map(refToContextRow),
+    prioritized: prioritizedRefs.map(refToContextRow),
     memoryScopes,
     knowledgeHints,
-    identityRoleLabel,
+    identityRoleLabel: role,
     planningComment: hasData ? PLANNING_COMMENT_NON_EMPTY : PLANNING_COMMENT_EMPTY,
   };
 }
@@ -178,57 +214,43 @@ function buildContextSection(
 function buildBudgetSection(
   budget: OverlayContextBudgetMetadata | undefined
 ): OverlayUiBudgetSectionVM {
-  if (!budget) {
-    return {
-      hasData: false,
-      budgetPolicyLabel: overlayUiBudgetPolicyLabel(null),
-      overflowRiskLabel: overlayUiOverflowRiskLabel(null),
-      overflowRiskTone: overlayUiOverflowRiskTone(null),
-      overflowRiskDescription: overlayUiOverflowRiskDescription(null),
-      estimatedInputTokens: null,
-      estimatedOutputTokens: null,
-    };
-  }
+  const risk = budget?.overflowRisk ?? null;
   return {
-    hasData: true,
-    budgetPolicyLabel: overlayUiBudgetPolicyLabel(budget.budgetPolicy),
-    overflowRiskLabel: overlayUiOverflowRiskLabel(budget.overflowRisk),
-    overflowRiskTone: overlayUiOverflowRiskTone(budget.overflowRisk),
-    overflowRiskDescription: overlayUiOverflowRiskDescription(budget.overflowRisk),
-    estimatedInputTokens: budget.estimatedInputTokens,
-    estimatedOutputTokens: budget.estimatedOutputTokens,
+    hasData: !!budget,
+    budgetPolicyLabel: overlayUiBudgetPolicyLabel(budget?.budgetPolicy ?? null),
+    overflowRiskLabel: overlayUiOverflowRiskLabel(risk),
+    overflowRiskTone: overlayUiOverflowRiskTone(risk),
+    overflowRiskDescription: overlayUiOverflowRiskDescription(risk),
+    estimatedInputTokens: budget?.estimatedInputTokens ?? null,
+    estimatedOutputTokens: budget?.estimatedOutputTokens ?? null,
   };
 }
 
-function conflictToRow(w: OverlayConflictWarning): OverlayUiWarningRow {
-  return {
-    code: String(w.code ?? "").trim() || "OVERLAY_CONFLICT",
-    severityLabel: overlayUiWarningSeverityLabel(
-      (w.severity ?? "info") as Parameters<typeof overlayUiWarningSeverityLabel>[0]
-    ),
-    severityTone: overlayUiWarningSeverityTone(
-      (w.severity ?? "info") as Parameters<typeof overlayUiWarningSeverityTone>[0]
-    ),
-    message: String(w.message ?? "").trim() || "충돌 메시지가 비어 있습니다.",
-  };
-}
+type WarningRowSource = OverlayConflictWarning | OverlayPolicyWarning;
 
-function policyWarningToRow(w: OverlayPolicyWarning): OverlayUiWarningRow {
+function toWarningRow(
+  warning: WarningRowSource,
+  fallbackCode: string,
+  fallbackMessage: string
+): OverlayUiWarningRow {
+  const severity = (warning.severity ?? "info") as OverlayPolicyWarningSeverity;
   return {
-    code: String(w.code ?? "").trim() || "OVERLAY_DRIFT",
-    severityLabel: overlayUiWarningSeverityLabel(w.severity),
-    severityTone: overlayUiWarningSeverityTone(w.severity),
-    message: String(w.message ?? "").trim() || "경고 메시지가 비어 있습니다.",
+    code: trimOr(warning.code, fallbackCode),
+    severityLabel: overlayUiWarningSeverityLabel(severity),
+    severityTone: overlayUiWarningSeverityTone(severity),
+    message: trimOr(warning.message, fallbackMessage),
   };
 }
 
 function buildWarningSection(
   metadata: ExtractedOverlayPromptTraceMetadata
 ): OverlayUiWarningSectionVM {
-  const conflicts = metadata.overlayConflictWarnings ?? [];
-  const drift = metadata.overlayPolicyDriftWarnings ?? [];
-  const conflictRows = conflicts.map(conflictToRow);
-  const driftRows = drift.map(policyWarningToRow);
+  const conflictRows = (metadata.overlayConflictWarnings ?? []).map((w) =>
+    toWarningRow(w, "OVERLAY_CONFLICT", "충돌 메시지가 비어 있습니다.")
+  );
+  const driftRows = (metadata.overlayPolicyDriftWarnings ?? []).map((w) =>
+    toWarningRow(w, "OVERLAY_DRIFT", "경고 메시지가 비어 있습니다.")
+  );
   return {
     hasData: conflictRows.length > 0 || driftRows.length > 0,
     conflictRows,
@@ -252,34 +274,31 @@ function planItemToRow(item: OverlayAssemblyPlanItem): OverlayUiAssemblyPlanRow 
   };
 }
 
+function aggregateByIncludeMode(
+  items: readonly OverlayAssemblyPlanItem[]
+): Readonly<Record<OverlayAssemblyIncludeMode, number>> {
+  const acc: Record<OverlayAssemblyIncludeMode, number> = { ...EMPTY_INCLUDE_MODE_COUNTS };
+  for (const item of items) acc[item.includeMode] += 1;
+  return acc;
+}
+
 function buildAssemblyPlanSection(
   plan: readonly OverlayAssemblyPlanItem[] | undefined
 ): OverlayUiAssemblyPlanSectionVM {
   const items = plan ?? [];
-  const byIncludeMode: Record<OverlayAssemblyIncludeMode, number> = {
-    required: 0,
-    recommended: 0,
-    optional: 0,
-    excludeCandidate: 0,
-  };
-  for (const item of items) {
-    byIncludeMode[item.includeMode] = (byIncludeMode[item.includeMode] ?? 0) + 1;
-  }
   return {
     hasData: items.length > 0,
     rows: items.map(planItemToRow),
     totalCount: items.length,
-    byIncludeMode,
+    byIncludeMode: aggregateByIncludeMode(items),
   };
 }
 
-function pruningRow(c: OverlayPruningCandidate): OverlayUiPruningRow {
+function candidateToRow(c: OverlayPruningCandidate): OverlayUiPruningRow {
   return {
-    source: String(c.source ?? "").trim() || "(미지정)",
-    reason: String(c.reason ?? "").trim() || "축소 후보",
-    estimatedReduction: Number.isFinite(c.estimatedReduction)
-      ? Math.max(0, Math.floor(c.estimatedReduction))
-      : 0,
+    source: trimOr(c.source, MISSING_SOURCE_LABEL),
+    reason: trimOr(c.reason, "축소 후보"),
+    estimatedReduction: coerceNonNegInt(c.estimatedReduction, 0),
   };
 }
 
@@ -289,7 +308,7 @@ function buildPruningSection(
   const items = pruning ?? [];
   return {
     hasData: items.length > 0,
-    rows: items.map(pruningRow),
+    rows: items.map(candidateToRow),
     description: overlayUiPruningSuggestionDescription(items.length),
   };
 }

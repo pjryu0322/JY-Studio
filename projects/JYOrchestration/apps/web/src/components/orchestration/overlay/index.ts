@@ -9,4 +9,6 @@ export {
   OverlayUiSection,
   OverlayUiKeyValueRow,
   OverlayUiEmptyHint,
+  OverlayUiRowCard,
+  OverlayUiRowList,
 } from "./OverlayUiPrimitives";

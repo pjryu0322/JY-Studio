@@ -1,14 +1,23 @@
 "use client";
 
 /**
- * Overlay Observability UI — 공통 시각 primitive(Badge, Section).
+ * Overlay Observability UI — 공통 시각 primitive(Badge, Section, RowCard).
  *
  * read-only 시각 컴포넌트. enforcement·routing 어디에도 영향 없음.
  */
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
+
+const ROW_CARD_BASE_STYLE: CSSProperties = {
+  fontSize: 12,
+  color: t.textSecondary,
+  background: "#fff",
+  border: `1px solid ${t.border}`,
+  borderRadius: 8,
+  padding: "6px 10px",
+};
 
 const BADGE_TONE_STYLES: Readonly<Record<OverlayUiBadgeTone, { background: string; color: string; border: string }>> = {
   neutral: { background: "#f1f5f9", color: "#475569", border: "#cbd5e1" },
@@ -123,6 +132,46 @@ export function OverlayUiKeyValueRow({
         {badge}
       </span>
     </div>
+  );
+}
+
+/**
+ * Section 내부에서 반복 사용되는 "흰 카드형 행"을 통일한다.
+ * - 기본 layout은 column. flex direction/align/gap 등은 `layout` prop으로 override.
+ */
+export function OverlayUiRowCard({
+  children,
+  layout,
+}: {
+  readonly children: ReactNode;
+  readonly layout?: Pick<
+    CSSProperties,
+    "display" | "flexDirection" | "alignItems" | "justifyContent" | "gap" | "flexWrap"
+  >;
+}) {
+  return (
+    <li
+      style={{
+        ...ROW_CARD_BASE_STYLE,
+        display: layout?.display ?? "flex",
+        flexDirection: layout?.flexDirection ?? "column",
+        alignItems: layout?.alignItems,
+        justifyContent: layout?.justifyContent,
+        gap: layout?.gap ?? 4,
+        flexWrap: layout?.flexWrap,
+      }}
+    >
+      {children}
+    </li>
+  );
+}
+
+/** `<ul>` 기본 스타일 컨테이너. row 간격 통일. */
+export function OverlayUiRowList({ children }: { readonly children: ReactNode }) {
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+      {children}
+    </ul>
   );
 }
 
