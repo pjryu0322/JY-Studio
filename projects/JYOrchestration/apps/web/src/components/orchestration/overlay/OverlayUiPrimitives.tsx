@@ -251,6 +251,39 @@ export function OverlayUiSourceText({
 }
 
 /**
+ * amber 톤(주황 계열) UI 알림 리스트의 공통 컨테이너 스타일.
+ *
+ * - 기본(`warning`): `#fff7ed`/`#fdba74`/`#9a3412` — 강한 주의(preview warnings).
+ * - 보조(`finding`): `#fffbeb`/`#fde68a`/`#92400e` — 진단/검토 안내(readiness findings).
+ *
+ * 두 톤은 의도적으로 분리해 사용자가 시각으로 "행동 필요한 경고" vs "관찰 진단"을 구분한다.
+ */
+const ALERT_LIST_STYLE_BY_VARIANT: Readonly<
+  Record<"warning" | "finding", { background: string; border: string; color: string }>
+> = {
+  warning: { background: "#fff7ed", border: "#fdba74", color: "#9a3412" },
+  finding: { background: "#fffbeb", border: "#fde68a", color: "#92400e" },
+};
+
+function buildAlertListContainerStyle(variant: "warning" | "finding"): CSSProperties {
+  const tone = ALERT_LIST_STYLE_BY_VARIANT[variant];
+  return {
+    listStyle: "none",
+    margin: 0,
+    padding: "6px 10px",
+    background: tone.background,
+    border: `1px solid ${tone.border}`,
+    borderRadius: 8,
+    color: tone.color,
+    fontSize: 11,
+    lineHeight: 1.5,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  };
+}
+
+/**
  * Overlay UI — 경고/주의 메시지 리스트(공통). `OverlayWarningSection`, Harness preview 등
  * 여러 위치의 동일한 amber 스타일 목록을 단일 출처로 통합.
  *
@@ -270,23 +303,41 @@ export function OverlayUiWarningList({
       role="status"
       aria-live="polite"
       aria-label={ariaLabel}
-      style={{
-        listStyle: "none",
-        margin: 0,
-        padding: "6px 10px",
-        background: "#fff7ed",
-        border: `1px solid #fdba74`,
-        borderRadius: 8,
-        color: "#9a3412",
-        fontSize: 11,
-        lineHeight: 1.5,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-      }}
+      style={buildAlertListContainerStyle("warning")}
     >
       {warnings.map((w, i) => (
         <li key={`w-${i}`}>• {w}</li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Overlay UI — **진단 발견(finding) 리스트**(공통). 각 row가 `[severityLabel] message` 구조.
+ *
+ * - `OverlayUiWarningList`와 분리된 amber-soft 톤(`#fffbeb`)으로 "행동 필요" vs "관찰 진단"을 구분.
+ * - 0건이면 null 반환.
+ */
+export function OverlayUiFindingList({
+  findings,
+  ariaLabel = "Overlay findings",
+}: {
+  readonly findings: readonly { code: string; severityLabel: string; message: string }[];
+  readonly ariaLabel?: string;
+}) {
+  if (!findings.length) return null;
+  return (
+    <ul
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel}
+      style={buildAlertListContainerStyle("finding")}
+    >
+      {findings.map((f) => (
+        <li key={f.code}>
+          <strong style={{ marginRight: 4 }}>[{f.severityLabel}]</strong>
+          {f.message}
+        </li>
       ))}
     </ul>
   );

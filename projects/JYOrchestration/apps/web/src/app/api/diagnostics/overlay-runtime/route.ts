@@ -25,6 +25,11 @@ import { summarizeOverlayPruningCandidates } from "@/lib/overlay/overlayContextP
 import { detectOverlayPolicyDrift } from "@/lib/overlay/overlayPolicyDriftWarning";
 import { summarizeHarnessPromptAssemblyPreview } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import {
+  HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT,
+  evaluateHarnessPromptApplyReadiness,
+} from "@/lib/harness/promptAssembly/evaluateHarnessPromptApplyReadiness";
+import { emptyHarnessPromptApplyReadinessReport } from "@/lib/harness/promptAssembly/harnessPromptApplyReadinessTypes";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -58,6 +63,9 @@ export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("projectId")?.trim() ?? "";
   let projectOverlay: ReturnType<typeof buildProjectOverlayDiagnosticFromSelectedAgents> | undefined;
   let lastPromptTraceOverlayExtract: ReturnType<typeof extractOverlayPromptTraceMetadata> | null | undefined;
+  let harnessPromptApplyReadinessReport:
+    | ReturnType<typeof evaluateHarnessPromptApplyReadiness>
+    | undefined;
 
   if (projectId) {
     const userId = await requireSessionUserId(request);
@@ -80,6 +88,22 @@ export async function GET(request: NextRequest) {
     const parsed = parseRequirementsStateJson(row?.requirementsStateJson ?? null);
     const last = parsed.promptTimeline?.length ? parsed.promptTimeline[parsed.promptTimeline.length - 1] : undefined;
     lastPromptTraceOverlayExtract = last ? extractOverlayPromptTraceMetadata(last) : null;
+
+    // Harness Phase H2 — Apply-readiness: 최근 N entry의 preview/diff를 누적 집계(read-only).
+    const recentTimeline = parsed.promptTimeline ?? [];
+    const recentReadinessEntries = recentTimeline
+      .slice(-HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT)
+      .map((row) => {
+        const extracted = extractOverlayPromptTraceMetadata(row);
+        return {
+          harnessPromptAssemblyPreview: extracted.harnessPromptAssemblyPreview,
+          harnessPromptPreviewDiff: extracted.harnessPromptPreviewDiff,
+        };
+      });
+    harnessPromptApplyReadinessReport = evaluateHarnessPromptApplyReadiness({
+      entries: recentReadinessEntries,
+      sampleLimit: HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT,
+    });
   }
 
   const summaryWarnings = collateOverlayRuntimeDiagnosticWarnings({
@@ -125,14 +149,18 @@ export async function GET(request: NextRequest) {
     lastPromptTraceOverlayExtract?.harnessPromptAssemblyPreview
   );
 
+  // Harness Phase H2 — Apply-readiness 진단(누적 read-only). projectId가 없으면 empty fallback.
+  const harnessReadinessForResponse = harnessPromptApplyReadinessReport ?? emptyHarnessPromptApplyReadinessReport();
+
   const overlayArchitecturePhase = {
-    current: "harness-controlled-prompt-assembly-preview-layer" as const,
+    current: "harness-apply-readiness-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
     memoryOrchestrationEnabled: false,
     autoPromptAssemblyEnabled: false,
     harnessPromptAssemblyPreviewEnabled: true,
+    harnessPromptApplyReadinessEnabled: true,
   };
 
   const overlayMaturity = {
@@ -144,6 +172,7 @@ export async function GET(request: NextRequest) {
     policyGuidedContextAssemblyPreparationLayer: true,
     policyGuidedAssemblyPlanStabilizationLayer: true,
     harnessControlledPromptAssemblyPreviewLayer: true,
+    harnessApplyReadinessPreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -175,6 +204,7 @@ export async function GET(request: NextRequest) {
       overlayPruningSummary,
       overlayPolicyDriftWarnings,
       harnessPromptAssemblySummary,
+      harnessPromptApplyReadinessReport: harnessReadinessForResponse,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

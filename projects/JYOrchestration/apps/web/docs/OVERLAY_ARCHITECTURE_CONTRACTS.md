@@ -97,9 +97,17 @@
     - Diagnostic API(`GET /api/diagnostics/overlay-runtime?projectId=...`)에 `harnessPromptAssemblySummary { mode, sectionCount, totalEstimatedCost, overflowRisk, warningCount }` 추가. `lastPromptTraceOverlayExtract`에 preview/diff도 포함.
     - UI: Prompt Timeline Overlay 탭에 **`Harness Prompt Preview` 섹션**(접힘 기본; 데이터 있을 때 펼침) — section list, summary header(mode/예산 위험/섹션 수/추정 비용 합계), warnings, 기존 prompt 길이 vs preview 길이 diff. 상단에 "이 미리보기는 실제 LLM 호출에 사용된 프롬프트가 아니라, Harness 기준으로 조립했을 때의 예시입니다." 안내 고정.
     - **여전히 금지**: 실제 prompt payload 변경, LLM call payload 변경, retrieval query 변경, provider switching, hard enforcement, automatic context pruning, DB schema 변경.
-11. **Message-level Explainability UI** (다음 단계 준비) — **미도입**. SingleChat 메시지 단위에 [AI 판단 보기] 확장(역할 선택 이유·knowledge activation·context summary·warning·budget risk) 노출. **여전히 read-only**.
-12. **Harness Phase H2 — Apply-readiness Preparation** (향후) — **미도입**. preview ↔ existing payload 누적 diff·section별 누락/중복 분석·controlled assembly 적용 가능성 판단. 여전히 payload 변경 없음.
-13. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+11. **Harness Phase H2 — Apply-readiness Preparation Layer** (현재; dry-run readiness only) — 최근 promptTrace를 누적 집계해 "Harness preview가 실제 적용 후보 수준인지" 진단하는 단계. **실제 prompt payload·LLM 호출·retrieval·provider·Cursor execution·GitHub PR/merge 어디에도 영향 없음.**
+    - 신규 모듈: `apps/web/src/lib/harness/promptAssembly/`
+      - `harnessPromptApplyReadinessTypes.ts` — `HarnessPromptApplyReadinessLevel`(`not_ready`/`watch`/`ready_candidate`), `HarnessPromptApplyReadinessFinding { code, severity, message }`, `HarnessPromptApplyReadinessReport { mode: "dry_run_readiness", level, sampledEntryCount, previewEntryCount, missingSectionRate, highOverflowRiskRate, warningRate, averageExistingPromptLength, averagePreviewLength, findings }`. mode는 항상 `"dry_run_readiness"` — apply가 아닌 readiness.
+      - `evaluateHarnessPromptApplyReadiness.ts` — 최근 N entry의 preview/diff를 안전 집계. threshold(`HARNESS_APPLY_READINESS_THRESHOLDS`)는 상수화: not_ready(누락≥50%·위험≥50%·경고≥70%), watch(누락≥20%·위험≥20%·경고≥30%), 그 외 ready_candidate. `sampleLimit`은 1 ≤ value ≤ 50으로 정규화.
+    - Diagnostic API(`GET /api/diagnostics/overlay-runtime?projectId=...`)에 `harnessPromptApplyReadinessReport` 추가. `overlayArchitecturePhase.current = "harness-apply-readiness-preparation-layer"`, `harnessPromptApplyReadinessEnabled: true`, `overlayMaturity.harnessApplyReadinessPreparationLayer: true`.
+    - UI: 신규 `HarnessApplyReadinessSummaryCard` (Prompt Timeline 상단; `Overlay 보기` 토글이 ON일 때만 노출). dry-run 진단 안내 고정 + 레벨 배지(`준비 부족`/`관찰 필요`/`적용 후보`) + 샘플·Preview 수·누락/위험/경고 비율·평균 길이·진단 findings. 적용 버튼·단정 표현 없음.
+    - UI adapter: `harnessPromptApplyReadinessUiAdapter` — `HarnessPromptApplyReadinessReport` → VM 변환. 비율 % 포맷, 한국어 레벨/severity 라벨, 임계 헬프 텍스트 노출.
+    - **여전히 금지**: 실제 prompt payload·LLM call payload 변경, retrieval query 변경, provider switching, hard enforcement, automatic pruning, DB schema·Prisma 변경, selectedAgents/platformAiMembers 구조 변경, "적용 가능" 단정 표현, 적용 트리거 UI.
+12. **Message-level Explainability UI** (다음 단계 준비) — **미도입**. SingleChat 메시지 단위에 [AI 판단 보기] 확장(역할 선택 이유·knowledge activation·context summary·warning·budget risk) 노출. **여전히 read-only**.
+13. **Harness Phase H3 — Role-aware Knowledge Activation Harness** (향후) — **미도입**. AI 역할별 지식팩 활성화 정책·우선순위·activation reason trace 도입(초기는 retrieval query 변경 없이 plan/preview).
+14. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### Contract → Runtime Metadata → Runtime Policy
 

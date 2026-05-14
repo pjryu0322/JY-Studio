@@ -13,9 +13,10 @@ import {
   sanitizeTimelineExportBasename,
 } from "@/lib/debug/promptTimelineMarkdown";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
-import { OverlaySummaryCard } from "@/components/orchestration/overlay";
+import { HarnessApplyReadinessSummaryCard, OverlaySummaryCard } from "@/components/orchestration/overlay";
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
+import { evaluateHarnessPromptApplyReadiness } from "@/lib/harness/promptAssembly/evaluateHarnessPromptApplyReadiness";
 
 type ApiOk = { success: true; data: { entries: PromptTimelineEntry[] } };
 type ApiErr = { success: false; message?: string };
@@ -188,6 +189,24 @@ export function PromptTimelinePageClient() {
     downloadDebugPromptTimelineMarkdown(`${stem}-prompt-timeline-${localDateSlug()}.md`, md);
   }, [entries, activeProjectId]);
 
+  /**
+   * Harness Phase H2 — 클라이언트 사이드 readiness 평가.
+   * 이미 가지고 있는 timeline entries(각 `entry.overlay`)로 evaluator를 호출한다.
+   * **read-only / 진단 metadata only.** 실제 적용 행위는 없다.
+   *
+   * `showOverlayTabs`가 ON일 때만 노출되어 기존 dual-pane UX를 깨지 않도록 한다.
+   */
+  const harnessReadinessReport = useMemo(
+    () =>
+      evaluateHarnessPromptApplyReadiness({
+        entries: entries.map((e) => ({
+          harnessPromptAssemblyPreview: e.overlay?.harnessPromptAssemblyPreview ?? null,
+          harnessPromptPreviewDiff: e.overlay?.harnessPromptPreviewDiff ?? null,
+        })),
+      }),
+    [entries]
+  );
+
   return (
     <div style={{ minHeight: "70vh", padding: isNarrow ? "12px 12px 28px" : "18px 16px 44px", position: "relative" }}>
       {copyToast ? (
@@ -261,6 +280,10 @@ export function PromptTimelinePageClient() {
           </button>
         </div>
       </div>
+
+      {showOverlayTabs && entries.length > 0 ? (
+        <HarnessApplyReadinessSummaryCard report={harnessReadinessReport} />
+      ) : null}
 
       {loading && entries.length === 0 ? (
         <div style={{ fontSize: 13, color: t.textMuted }}>불러오는 중…</div>
