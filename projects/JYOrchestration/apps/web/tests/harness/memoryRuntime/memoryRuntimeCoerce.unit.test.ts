@@ -43,18 +43,23 @@ describe("parseMemoryRuntimePlanFromUnknown", () => {
     expect(parsed?.findings).toHaveLength(1);
   });
 
-  it("drops invalid reference entries silently", () => {
+  it("drops only references missing required fields and falls back invalid scope/freshness", () => {
     const parsed = parseMemoryRuntimePlanFromUnknown({
       mode: "dry_run",
       references: [
-        VALID_REF,
-        { ...VALID_REF, scope: "invalid_scope" },
-        { ...VALID_REF, freshness: "weird" },
+        { ...VALID_REF, memoryId: "valid-1" },
+        { ...VALID_REF, memoryId: "bad-scope", scope: "invalid_scope" },
+        { ...VALID_REF, memoryId: "bad-freshness", freshness: "weird" },
         { ...VALID_REF, memoryId: "" },
         null,
       ],
     });
-    expect(parsed?.references).toHaveLength(1);
+    expect(parsed?.references).toHaveLength(3);
+    // H4.5: invalid scope/freshness는 보수적 fallback으로 흡수.
+    const fallbackScope = parsed?.references.find((r) => r.memoryId === "bad-scope");
+    expect(fallbackScope?.scope).toBe("working");
+    const fallbackFreshness = parsed?.references.find((r) => r.memoryId === "bad-freshness");
+    expect(fallbackFreshness?.freshness).toBe("aging");
   });
 
   it("normalizes estimatedImportance to 0..100 non-negative int", () => {

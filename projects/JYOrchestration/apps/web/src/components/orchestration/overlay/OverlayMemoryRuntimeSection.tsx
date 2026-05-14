@@ -16,6 +16,7 @@ import {
   OverlayUiEmptyHint,
   OverlayUiFindingList,
   OverlayUiKeyValueRow,
+  OverlayUiNoticeBanner,
   OverlayUiRowCard,
   OverlayUiRowList,
   OverlayUiSection,
@@ -44,6 +45,18 @@ export function OverlayMemoryRuntimeSection({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <PlanHeader vm={vm} />
+          {vm.staleWarning.visible ? (
+            <OverlayUiNoticeBanner
+              variant="warning"
+              message={vm.staleWarning.label}
+              ariaLabel="Memory Runtime stale 경고"
+              badge={
+                <OverlayUiBadge tone={vm.staleWarning.tone} title="stale 경고">
+                  주의
+                </OverlayUiBadge>
+              }
+            />
+          ) : null}
           <OverlayUiFindingList findings={vm.findings} ariaLabel="Memory Runtime 진단" />
           <OverlayUiRowList>
             {vm.references.map((ref) => (

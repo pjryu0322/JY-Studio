@@ -38,6 +38,10 @@ import {
   summarizeMemoryRuntimePlan,
 } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import {
+  emptyRecentMemoryRuntimeSummary,
+  summarizeRecentMemoryRuntimePlans,
+} from "@/lib/harness/memoryRuntime/memoryRuntimeRecentSummary";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -74,6 +78,7 @@ export async function GET(request: NextRequest) {
   let harnessPromptApplyReadinessReport:
     | ReturnType<typeof evaluateHarnessPromptApplyReadiness>
     | undefined;
+  let recentMemoryRuntimeSummary: ReturnType<typeof summarizeRecentMemoryRuntimePlans> | undefined;
 
   if (projectId) {
     const userId = await requireSessionUserId(request);
@@ -99,19 +104,23 @@ export async function GET(request: NextRequest) {
 
     // Harness Phase H2 — Apply-readiness: 최근 N entry의 preview/diff를 누적 집계(read-only).
     const recentTimeline = parsed.promptTimeline ?? [];
-    const recentReadinessEntries = recentTimeline
+    const recentExtracts = recentTimeline
       .slice(-HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT)
-      .map((row) => {
-        const extracted = extractOverlayPromptTraceMetadata(row);
-        return {
-          harnessPromptAssemblyPreview: extracted.harnessPromptAssemblyPreview,
-          harnessPromptPreviewDiff: extracted.harnessPromptPreviewDiff,
-        };
-      });
+      .map((row) => extractOverlayPromptTraceMetadata(row));
+    const recentReadinessEntries = recentExtracts.map((extracted) => ({
+      harnessPromptAssemblyPreview: extracted.harnessPromptAssemblyPreview,
+      harnessPromptPreviewDiff: extracted.harnessPromptPreviewDiff,
+    }));
     harnessPromptApplyReadinessReport = evaluateHarnessPromptApplyReadiness({
       entries: recentReadinessEntries,
       sampleLimit: HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT,
     });
+
+    // Harness Phase H4.5 — Recent Memory Runtime Summary(누적 read-only).
+    const recentMemoryPlans = recentExtracts
+      .map((extracted) => extracted.memoryRuntimePlan)
+      .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
+    recentMemoryRuntimeSummary = summarizeRecentMemoryRuntimePlans({ plans: recentMemoryPlans });
   }
 
   const summaryWarnings = collateOverlayRuntimeDiagnosticWarnings({
@@ -172,8 +181,12 @@ export async function GET(request: NextRequest) {
     ? summarizeMemoryRuntimePlan(lastPromptTraceOverlayExtract.memoryRuntimePlan)
     : emptyMemoryRuntimeSummary();
 
+  // Harness Phase H4.5 — Recent Memory Runtime Summary(누적). projectId가 없으면 empty fallback.
+  const recentMemoryRuntimeSummaryForResponse =
+    recentMemoryRuntimeSummary ?? emptyRecentMemoryRuntimeSummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-memory-runtime-preparation-layer" as const,
+    current: "harness-memory-runtime-stabilization-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -183,6 +196,7 @@ export async function GET(request: NextRequest) {
     harnessPromptApplyReadinessEnabled: true,
     harnessRoleAwareKnowledgeActivationEnabled: true,
     harnessMemoryRuntimePlanningEnabled: true,
+    harnessMemoryRuntimeStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -197,6 +211,7 @@ export async function GET(request: NextRequest) {
     harnessApplyReadinessPreparationLayer: true,
     harnessRoleAwareKnowledgeActivationLayer: true,
     harnessMemoryRuntimePreparationLayer: true,
+    harnessMemoryRuntimeStabilizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -231,6 +246,7 @@ export async function GET(request: NextRequest) {
       harnessPromptApplyReadinessReport: harnessReadinessForResponse,
       knowledgeActivationSummary,
       memoryRuntimeSummary,
+      recentMemoryRuntimeSummary: recentMemoryRuntimeSummaryForResponse,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

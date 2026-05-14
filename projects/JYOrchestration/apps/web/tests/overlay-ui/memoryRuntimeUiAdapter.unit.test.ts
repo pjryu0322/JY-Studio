@@ -24,8 +24,8 @@ describe("memoryRuntimeUiAdapter labels", () => {
 
   it("exposes Korean freshness labels and tones", () => {
     expect(memoryRuntimeFreshnessLabel("fresh")).toBe("최신");
-    expect(memoryRuntimeFreshnessLabel("aging")).toBe("유의");
-    expect(memoryRuntimeFreshnessLabel("stale")).toBe("오래됨");
+    expect(memoryRuntimeFreshnessLabel("aging")).toBe("확인 필요");
+    expect(memoryRuntimeFreshnessLabel("stale")).toBe("오래됨/충돌 가능");
     expect(memoryRuntimeFreshnessTone("stale")).toBe("warning");
     expect(memoryRuntimeFreshnessTone("fresh")).toBe("positive");
   });
@@ -36,9 +36,10 @@ describe("buildMemoryRuntimePlanVM", () => {
     const vm = buildMemoryRuntimePlanVM(null);
     expect(vm.hasData).toBe(false);
     expect(vm.disclaimer).toBe(MEMORY_RUNTIME_PLAN_DISCLAIMER);
-    expect(vm.disclaimer).toContain("실제 장기 기억이 아니라");
+    expect(vm.disclaimer).toContain("실제 장기기억 저장 결과가 아니라");
     expect(vm.references).toEqual([]);
     expect(vm.findings).toEqual([]);
+    expect(vm.staleWarning.visible).toBe(false);
   });
 
   it("rejects plans with invalid mode", () => {
@@ -65,17 +66,35 @@ describe("buildMemoryRuntimePlanVM", () => {
     expect(vm.hasData).toBe(true);
     expect(vm.totalLabel).toMatch(/^후보 \d+개$/);
     expect(vm.freshLabel).toMatch(/^최신 \d+/);
-    expect(vm.agingLabel).toMatch(/^유의 \d+/);
-    expect(vm.staleLabel).toMatch(/^오래됨 \d+/);
+    expect(vm.agingLabel).toMatch(/^확인 필요 \d+/);
+    expect(vm.staleLabel).toMatch(/^오래됨\/충돌 가능 \d+/);
     expect(vm.scopeBreakdownText).toContain("·");
     expect(vm.references.length).toBeGreaterThan(0);
     for (const r of vm.references) {
       expect(r.scopeLabel.length).toBeGreaterThan(0);
       expect(r.freshnessLabel.length).toBeGreaterThan(0);
-      expect(r.selectedReasonLabel.startsWith("사유:")).toBe(true);
-      expect(r.selectedByLabel.startsWith("선택자:")).toBe(true);
-      expect(r.estimatedImportanceLabel.startsWith("중요도 ")).toBe(true);
+      expect(r.selectedReasonLabel.startsWith("선택 사유:")).toBe(true);
+      expect(r.selectedByLabel.startsWith("선택 기준:")).toBe(true);
+      expect(r.estimatedImportanceLabel.startsWith("중요도 추정 ")).toBe(true);
     }
+  });
+
+  it("shows staleWarning when at least one reference is stale", () => {
+    const plan = buildMemoryRuntimePlan({
+      roleKey: "planner",
+      now: NOW,
+      projectContext: { directionalKeywords: ["microservice"] },
+      recentTimelineEntries: [
+        // "monolith"이 들어간 메모리 텍스트 + directional "microservice" → stale 강등.
+        { text: "We will keep the legacy monolith server", source: "ChatMessage", memoryId: "x", at: NOW - 60_000 },
+      ],
+    });
+    const vm = buildMemoryRuntimePlanVM(plan);
+    const stale = vm.references.filter((r) => r.freshness === "stale");
+    expect(stale.length).toBeGreaterThan(0);
+    expect(vm.staleWarning.visible).toBe(true);
+    expect(vm.staleWarning.tone).toBe("warning");
+    expect(vm.staleWarning.label).toContain("오래됨/충돌 가능");
   });
 
   it("surfaces findings with Korean severity labels", () => {

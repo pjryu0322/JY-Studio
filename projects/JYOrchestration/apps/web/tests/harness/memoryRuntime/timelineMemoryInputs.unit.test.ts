@@ -36,7 +36,7 @@ describe("buildMemoryRuntimeEntriesFromTimelineMessages", () => {
     expect(buildMemoryRuntimeEntriesFromTimelineMessages(undefined)).toEqual([]);
   });
 
-  it("drops texts shorter than 8 chars and trims", () => {
+  it("drops texts shorter than the min length and trims", () => {
     const out = buildMemoryRuntimeEntriesFromTimelineMessages(["hi", "  ", "valid message text"]);
     expect(out).toHaveLength(1);
     expect(out[0]?.text).toBe("valid message text");

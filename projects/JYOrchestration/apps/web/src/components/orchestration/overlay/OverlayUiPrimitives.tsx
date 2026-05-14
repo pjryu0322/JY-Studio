@@ -284,6 +284,51 @@ function buildAlertListContainerStyle(variant: "warning" | "finding"): CSSProper
 }
 
 /**
+ * Overlay UI — 단일 줄 알림 배너(공통). `OverlayUiWarningList`/`OverlayUiFindingList`와 동일한
+ * amber 톤 팔레트를 단일 출처로 공유한다. 메모리 stale 경고처럼 1개 메시지를 강조하는 경우 사용.
+ *
+ * - `variant`로 톤 결정(`warning` = "행동 필요" 주황, `finding` = "관찰 진단" 부드러운 호박).
+ * - `badge`는 좌측에 small 카테고리 라벨(예: "주의"). 생략 가능.
+ * - role="status" + aria-live="polite"로 스크린리더 친화.
+ */
+export function OverlayUiNoticeBanner({
+  message,
+  variant = "warning",
+  badge,
+  ariaLabel,
+}: {
+  readonly message: string;
+  readonly variant?: "warning" | "finding";
+  readonly badge?: ReactNode;
+  readonly ariaLabel?: string;
+}) {
+  if (!message) return null;
+  const palette = ALERT_LIST_STYLE_BY_VARIANT[variant];
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel ?? message}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 8,
+        background: palette.background,
+        border: `1px solid ${palette.border}`,
+        color: palette.color,
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}
+    >
+      {badge}
+      <span>{message}</span>
+    </div>
+  );
+}
+
+/**
  * Overlay UI — 경고/주의 메시지 리스트(공통). `OverlayWarningSection`, Harness preview 등
  * 여러 위치의 동일한 amber 스타일 목록을 단일 출처로 통합.
  *

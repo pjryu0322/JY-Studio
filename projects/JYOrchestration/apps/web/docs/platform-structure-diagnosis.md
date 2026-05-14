@@ -335,7 +335,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 ## Overlay Runtime Policy (힌트 전용)
 
 - **현재 warning·diagnostic은 실행 차단이 아니다.** 운영·감사·추적·정책 설계용 metadata다.
-- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → Diagnostic / Warning(4) → Runtime Diagnostic / Selection Preparation(5) → Policy-guided Context Assembly Preparation(6) → Policy-guided Assembly Plan Stabilization(7) → Overlay Observability UI Phase 1(8) → Overlay Observability UI Phase 1.5(9) → Harness Phase H1 — Controlled Prompt Assembly Preview(10) → Harness Phase H2 — Apply-readiness Preparation(11) → **Harness Phase H3 — Role-aware Knowledge Activation(12, 현재; planning metadata only)** → **Harness Phase H4 Preparation — Memory Runtime Harness(13, 현재; planning metadata only)** → Enforcement(14, **미도입**). Harness 순서는 H1 → H2 → H3 → H4로 정렬되어 있다.
+- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → Diagnostic / Warning(4) → Runtime Diagnostic / Selection Preparation(5) → Policy-guided Context Assembly Preparation(6) → Policy-guided Assembly Plan Stabilization(7) → Overlay Observability UI Phase 1(8) → Overlay Observability UI Phase 1.5(9) → Harness Phase H1 — Controlled Prompt Assembly Preview(10) → Harness Phase H2 — Apply-readiness Preparation(11) → Harness Phase H3 — Role-aware Knowledge Activation(12) → Harness Phase H4 Preparation — Memory Runtime Harness(13) → **Harness Phase H4.5 — Memory Runtime Harness Stabilization(14, 현재; planning metadata only)** → Enforcement(15, **미도입**). Harness 순서는 H1 → H2 → H3 → H4 → H4.5로 정렬되어 있다.
   - 진단 API의 `overlayArchitecturePhase.current = "policy-guided-assembly-plan-stabilization-layer"`, `overlayArchitecturePhase.autoPromptAssemblyEnabled = false`, `overlayMaturity.policyGuidedAssemblyPlanStabilizationLayer = true`.
 - **Soft policy + warning wire**: `overlayPolicy.ts` + **`overlayPolicyWarning.ts`** + **`overlayPolicyWarningSummary.ts`** — `buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(코드/역할/출처 집계 포함); read-only 리포트 묶음 **`overlayWarningReport.ts`**(`buildOverlayWarningReport`). SingleChat `buildOrchestrationOverlayPromptTraceAugments`가 `overlayPolicyHints`와 **`overlayPolicyWarnings`** 를 함께 기록. `requirementsStateJson` 타임라인은 `coerceRequirementsPromptTimelineEntry`가 **`parseOverlayPolicyWarningsFromUnknown`** 으로 경고를 보존(행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`; 알 수 없는 severity는 **`warning`** 으로 정규화). **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
 - **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
@@ -372,7 +372,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
   - **테스트**: 7 (role) + 6 (stage) + 5 (task) + 5 (derive task) + 8 (planner) + 10 (coerce) + 9 (UI adapter) = 50 신규. harness + overlay-ui 통합 **168/168 통과**.
   - **여전히 금지**: 실제 retrieval orchestration, vector search control, automatic retrieval, actual prompt injection, provider routing, hard enforcement, automatic pruning, selectedAgents/platformAiMembers 구조 변경, DB schema·Prisma 변경, "지식팩이 활성화/주입되었다" 단정 표현, 적용 트리거 UI.
 
-- **Harness Phase H4 Preparation — Memory Runtime Harness (13단계, 현재; planning metadata only)** — "AI가 이번 턴에 어떤 기억을 왜 참조 후보로 삼았는가"를 설명 가능한 구조로 만든다. **실제 prompt payload, LLM 호출, retrieval, vector DB, provider, Cursor execution, GitHub PR/merge 어디에도 영향 없음.**
+- **Harness Phase H4 Preparation — Memory Runtime Harness (13단계; planning metadata only)** — "AI가 이번 턴에 어떤 기억을 왜 참조 후보로 삼았는가"를 설명 가능한 구조로 만든다. **실제 prompt payload, LLM 호출, retrieval, vector DB, provider, Cursor execution, GitHub PR/merge 어디에도 영향 없음.**
   - **신규 모듈** (`apps/web/src/lib/harness/memoryRuntime/`):
     - `memoryRuntimeTypes.ts` — `MemoryScopeType`(기존 `MemoryScope` 재사용으로 단일 출처), `MemoryFreshness`(`fresh` / `aging` / `stale`), `MemoryRuntimeReference { memoryId, scope, summary, freshness, selectedReason, selectedBy, estimatedImportance }`, `MemoryRuntimeFinding { code, severity, message }`, `MemoryRuntimePlan { mode: "dry_run", roleKey, references, findings }`, `MemoryRuntimeSummary`. mode는 타입 시스템에서 강제(`"dry_run"` only).
     - `memoryRuntimeRolePolicy.ts` — 역할별 선호 스코프/키워드 단일 출처. 7개 역할(planner/architect/developer/security/reviewer/analyst/designer) + `MEMORY_RUNTIME_DEFAULT_POLICY` fallback. role key 정규화(`AI_PLANNER` / `ai-Architect` → `planner`/`architect`).
@@ -382,9 +382,34 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
   - **PromptTrace 통합**: `overlayPromptTraceAugment`가 plan을 만들어 `RequirementsPromptTimelineEntry.memoryRuntimePlan?`로 attach. `requirementsIdeationBootstrapPromptTimeline.coerceRequirementsPromptTimelineEntry`/`overlayPromptTraceExtract.extractOverlayPromptTraceMetadata`가 replay 복원.
   - **Diagnostic API**: `GET /api/diagnostics/overlay-runtime?projectId=...` 응답에 `memoryRuntimeSummary { mode, total, fresh, aging, stale, platformScoped, projectScoped, roleScoped, sessionScoped, workingScoped, findingsCount }` 추가. `overlayArchitecturePhase.current = "harness-memory-runtime-preparation-layer"`, `harnessMemoryRuntimePlanningEnabled: true`, `overlayMaturity.harnessMemoryRuntimePreparationLayer: true`.
   - **Overlay UI**: 신규 `OverlayMemoryRuntimeSection` — Overlay 탭 안에서 plan 헤더(역할·후보 수·freshness 분포·스코프 분포) + 후보 카드 리스트(스코프/freshness 배지, 사유, 선택자, 중요도) + finding list. "이 표시는 실제 장기 기억이 아니라, 이번 턴에서 AI가 참조 후보로 삼은 메모리 계획입니다." 안내 고정.
-  - **UI adapter** (`apps/web/src/lib/overlay-ui/memoryRuntimeUiAdapter.ts`): `MemoryRuntimePlan` → VM 변환. 한국어 라벨(`최신`/`유의`/`오래됨`, `플랫폼`/`프로젝트`/`역할`/`세션`/`작업 컨텍스트`), 잘못된 mode/null → `hasData: false` 안전 fallback.
+  - **UI adapter** (`apps/web/src/lib/overlay-ui/memoryRuntimeUiAdapter.ts`): `MemoryRuntimePlan` → VM 변환. 한국어 라벨(H4.5에서 `최신`/`확인 필요`/`오래됨·충돌 가능`으로 보강), 잘못된 mode/null → `hasData: false` 안전 fallback.
   - **테스트**: 6 (role policy) + 7 (freshness) + 8 (planner) + 9 (coerce) + 7 (UI adapter) = 37 신규. harness + overlay-ui 통합 **110/110 통과**.
   - **여전히 금지**: 실제 prompt payload·LLM call payload 변경, retrieval orchestration, vector DB orchestration, provider switching, hard enforcement, automatic pruning, memory persistence orchestration, autonomous memory update, DB schema·Prisma 변경, selectedAgents/platformAiMembers 구조 변경, "실제 long-term memory" 단정 표현, 적용 트리거 UI.
+
+- **Harness Phase H4.5 — Memory Runtime Harness Stabilization (14단계, 현재; planning metadata only)** — H4의 입력 품질·scope 판단·stale 탐지·누적 진단·UI 표현을 안정화한다. **여전히 실제 prompt payload, LLM 호출, retrieval, vector DB, provider, Cursor execution, GitHub PR/merge 어디에도 영향 없음.** 장기기억 저장/검색/주입은 도입하지 않는다.
+  - **Timeline memory input normalization** (`apps/web/src/lib/harness/memoryRuntime/internal/timelineMemoryInputs.ts`):
+    - 신규 `normalizeTimelineMemoryMessages()` — 빈 문자열·10자 미만 noise·동일 문장 중복·`SUCCESS`/`OK`/`undefined`/`null`/`{}`/`[]`/`HTTP 200` 등 디버그 마커·내용 없는 bracket-only 문자열 제거. 한국어 문장은 유지. 메시지당 최대 길이/전체 결과 상한 보호.
+    - `extractDirectionalKeywordsFromTimelineMessages` / `buildMemoryRuntimeEntriesFromTimelineMessages` / `pickRecentUserTextFromTimelineMessages`가 normalized 결과만 사용해 single source of truth 확립.
+  - **Memory scope classifier** (`memoryRuntimeScopeClassifier.ts`):
+    - 신규 `classifyMemoryRuntimeScope({ source, memoryId, roleKey, workspaceScreenKey })` — 우선순위: explicit token(`role-`/`session`/`working`/`project`/`platform`; **role 토큰이 project보다 우선**) → role memory token + roleKey → project memory token → working/workspaceScreenKey 매치 → session memory token → fallback **`working`**.
+    - 기존 `resolveMemoryScopeFromSource()`는 그대로 두고, Memory Runtime planner 내부의 timeline/overlay reference 채집에서만 새 classifier 사용.
+  - **Stale detection / conflict rules** (`memoryRuntimeConflictRules.ts`):
+    - 카테고리별 상반 키워드 테이블: architecture(monolith ↔ microservice, client-side ↔ server-side), auth(session ↔ jwt, cookie ↔ bearer token), storage(localStorage ↔ server DB, sql ↔ nosql), deployment(on-premise ↔ cloud, static hosting ↔ server runtime).
+    - `detectMemoryRuntimeDirectionalConflict({ memoryText, currentDirectionalKeywords }): boolean`이 `evaluateMemoryFreshness.conflictDetected` 입력으로 연결되어 stale 강등을 안정화. **warning only** — 실제 메모리 삭제·persistence 영향 없음.
+    - `classifyMemoryRuntimeConflictCategory` / `listMemoryRuntimeConflictCategories`는 diagnostic 보조용.
+  - **Recent memory runtime summary** (`memoryRuntimeRecentSummary.ts`):
+    - 신규 `summarizeRecentMemoryRuntimePlans({ plans }): RecentMemoryRuntimeSummary { sampledEntryCount, planEntryCount, totalReferences, staleReferenceRate, agingReferenceRate, freshReferenceRate, roleScopedRate, projectScopedRate, workingScopedRate, findingRate }`.
+    - reference 단위 rate(stale/aging/fresh, role/project/working scope), plan 단위 rate(findingRate). projectId 있을 때 `HARNESS_APPLY_READINESS_DEFAULT_SAMPLE_LIMIT`개 최근 promptTrace 묶음 기준.
+  - **Diagnostic API**: `recentMemoryRuntimeSummary` 응답 필드 추가(projectId 없으면 empty fallback). `overlayArchitecturePhase.current = "harness-memory-runtime-stabilization-layer"`, `harnessMemoryRuntimeStabilizationEnabled: true`, `overlayMaturity.harnessMemoryRuntimeStabilizationLayer: true`.
+  - **PromptTrace replay coerce 보강** (`memoryRuntimeCoerce.ts`):
+    - invalid `scope`는 row drop 대신 **`working` fallback**, invalid `freshness`는 **`aging` fallback**으로 흡수해 replay 안정성 확보. memoryId/summary/selectedReason/selectedBy 같은 필수 필드 누락 row는 그대로 drop.
+    - `mode !== "dry_run"` reject, oversized reference truncate(64), findings truncate(16) 정책은 유지.
+  - **Overlay UI 보강** (`memoryRuntimeUiAdapter.ts`, `OverlayMemoryRuntimeSection.tsx`):
+    - freshness label: `최신`/`확인 필요`/`오래됨·충돌 가능`. 항목 라벨: `선택 사유` / `선택 기준` / `중요도 추정`.
+    - plan VM에 `staleWarning { visible, label, tone }` 신규 — stale 후보가 1개 이상이면 섹션 상단 강조 배너로 표시(warning tone).
+    - disclaimer: "이 정보는 실제 장기기억 저장 결과가 아니라, 현재 응답에서 참고 후보로 분류한 기억 계획 정보입니다."
+  - **테스트**: 6 (normalize) + 7 (scope classifier) + 11 (conflict rules) + 6 (recent summary) + 9 (coerce 갱신) + 8 (UI adapter; staleWarning 포함) = 47 신규/갱신. harness + overlay + overlay-ui 통합 **282/282 통과**.
+  - **여전히 금지**: 실제 prompt payload·LLM call payload 변경, retrieval orchestration, vector DB orchestration, provider switching, hard enforcement, automatic pruning, memory persistence orchestration, autonomous memory update, DB schema·Prisma 변경, selectedAgents/platformAiMembers 구조 변경, breaking API 변경, "실제 long-term memory" 단정 표현, 적용 트리거 UI.
 
 - **Harness Phase H2 — Apply-readiness Preparation (11단계; dry-run readiness only)** — 최근 promptTrace를 누적 집계해 "Harness preview가 실제 적용 후보 수준인지" 진단한다. **실제 prompt payload, LLM 호출, retrieval, provider, Cursor execution, GitHub PR/merge 어디에도 영향 없음.**
   - **신규 모듈** (`apps/web/src/lib/harness/promptAssembly/`):

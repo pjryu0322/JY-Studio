@@ -63,16 +63,16 @@ function parseReference(value: unknown): MemoryRuntimeReference | null {
   if (!r) return null;
   const memoryId = trimAndClipString(r.memoryId, MEMORY_ID_MAX);
   if (!memoryId) return null;
-  const scope = parseMemoryScope(r.scope);
-  if (!scope) return null;
-  const freshness = parseFreshness(r.freshness);
-  if (!freshness) return null;
   const summary = trimAndClipString(r.summary, SUMMARY_MAX);
   if (!summary) return null;
   const selectedReason = trimAndClipString(r.selectedReason, REASON_MAX);
   if (!selectedReason) return null;
   const selectedBy = trimAndClipString(r.selectedBy, SELECTED_BY_MAX);
   if (!selectedBy) return null;
+  // H4.5: scope/freshness가 invalid면 보수적 fallback(`working` / `aging`)으로 흡수.
+  // → row 전체 drop을 피해 replay 안정성 확보. 실제 값에 영향 없음(planning metadata only).
+  const scope = parseMemoryScope(r.scope) ?? "working";
+  const freshness = parseFreshness(r.freshness) ?? "aging";
   const estimatedImportance = Math.min(100, coerceNonNegInt(r.estimatedImportance, 0));
   return { memoryId, scope, summary, freshness, selectedReason, selectedBy, estimatedImportance };
 }

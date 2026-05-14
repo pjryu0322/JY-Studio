@@ -13,9 +13,10 @@
 
 import { trimAndClipString } from "@/lib/harness/promptAssembly/internal/harnessPromptAssemblyStrings";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
-import { resolveMemoryScopeFromSource } from "@/lib/overlay/memoryScopeRuntime";
 
 import { evaluateMemoryFreshness } from "./evaluateMemoryFreshness";
+import { detectMemoryRuntimeDirectionalConflict } from "./memoryRuntimeConflictRules";
+import { classifyMemoryRuntimeScope } from "./memoryRuntimeScopeClassifier";
 import {
   MEMORY_RUNTIME_DEFAULT_POLICY,
   resolveMemoryRuntimeRolePolicy,
@@ -78,6 +79,12 @@ export type BuildMemoryRuntimePlanInput = Readonly<{
   overlayMetadata?: Pick<ExtractedOverlayPromptTraceMetadata, "overlayContextAssembly"> | null;
 }>;
 
+/** 분류 보조 입력(planner 내부에서만 사용). */
+type ScopeClassifierContext = Readonly<{
+  readonly roleKey: string | null;
+  readonly workspaceScreenKey: string | null;
+}>;
+
 /**
  * Memory Runtime Plan 빌더. **결정론적·read-only**.
  */
@@ -85,12 +92,16 @@ export function buildMemoryRuntimePlan(input: BuildMemoryRuntimePlanInput): Memo
   const policy = resolveMemoryRuntimeRolePolicy(input.roleKey ?? null);
   const now = toEpochMsOrNow(input.now);
   const directionalKeywords = normalizeKeywords(input.projectContext?.directionalKeywords ?? []);
+  const classifierContext: ScopeClassifierContext = {
+    roleKey: trimAndClipString(input.roleKey, 80) || null,
+    workspaceScreenKey: trimAndClipString(input.workingContext?.workspaceScreenKey, 80) || null,
+  };
 
   const collected: MemoryRuntimeReference[] = [];
   const seenIds = new Set<string>();
 
   // 1) Overlay에서 이미 식별된 memory refs를 우선 채택(가장 신뢰도 높음).
-  for (const ref of collectOverlayMemoryReferences(input, policy, now, directionalKeywords)) {
+  for (const ref of collectOverlayMemoryReferences(input, policy, now, directionalKeywords, classifierContext)) {
     if (collected.length >= MEMORY_RUNTIME_REFERENCE_MAX) break;
     if (seenIds.has(ref.memoryId)) continue;
     seenIds.add(ref.memoryId);
@@ -98,7 +109,7 @@ export function buildMemoryRuntimePlan(input: BuildMemoryRuntimePlanInput): Memo
   }
 
   // 2) Recent timeline에서 키워드/스코프 매치 후보 보강.
-  for (const ref of collectTimelineMemoryReferences(input, policy, now, directionalKeywords)) {
+  for (const ref of collectTimelineMemoryReferences(input, policy, now, directionalKeywords, classifierContext)) {
     if (collected.length >= MEMORY_RUNTIME_REFERENCE_MAX) break;
     if (seenIds.has(ref.memoryId)) continue;
     seenIds.add(ref.memoryId);
@@ -190,34 +201,16 @@ function keywordMatchScore(text: string, policy: MemoryRuntimeRolePolicy): numbe
   return Math.min(40, hits * 10);
 }
 
-function detectDirectionalConflict(text: string, directional: readonly string[]): boolean {
-  if (!directional.length) return false;
-  const lower = text.toLowerCase();
-  // 현재 방향 키워드가 메모리 요약에 부정 표현/대척 단어와 같이 있으면 충돌로 본다.
-  // 휴리스틱이므로 보수적: 단어 자체가 들어있고, 명시적 충돌 단어(`monolith` vs `microservice` 같은) 매칭만 사용.
-  const oppositePairs: ReadonlyArray<readonly [string, string]> = [
-    ["monolith", "microservice"],
-    ["sync", "async"],
-    ["sql", "nosql"],
-    ["on-premise", "cloud"],
-    ["client-side", "server-side"],
-  ];
-  for (const dir of directional) {
-    for (const [a, b] of oppositePairs) {
-      if (dir === a && lower.includes(b)) return true;
-      if (dir === b && lower.includes(a)) return true;
-    }
-  }
-  return false;
-}
-
 function evaluateRefFreshness(opts: {
   readonly lastReferencedAt: string | number | Date | null;
   readonly text: string;
   readonly directionalKeywords: readonly string[];
   readonly now: number;
 }): { freshness: MemoryFreshness; reason: string } {
-  const conflict = detectDirectionalConflict(opts.text, opts.directionalKeywords);
+  const conflict = detectMemoryRuntimeDirectionalConflict({
+    memoryText: opts.text,
+    currentDirectionalKeywords: opts.directionalKeywords,
+  });
   const { freshness, reason } = evaluateMemoryFreshness({
     lastReferencedAt: opts.lastReferencedAt,
     now: opts.now,
@@ -236,7 +229,8 @@ function collectOverlayMemoryReferences(
   input: BuildMemoryRuntimePlanInput,
   policy: MemoryRuntimeRolePolicy,
   now: number,
-  directionalKeywords: readonly string[]
+  directionalKeywords: readonly string[],
+  classifierContext: ScopeClassifierContext
 ): readonly MemoryRuntimeReference[] {
   const overlay = input.overlayMetadata?.overlayContextAssembly;
   if (!overlay?.usedMemoryRefs?.length) return [];
@@ -244,7 +238,12 @@ function collectOverlayMemoryReferences(
   for (const ref of overlay.usedMemoryRefs) {
     const memoryId = trimAndClipString(ref.ref, 200);
     if (!memoryId) continue;
-    const scope = ref.scope as MemoryScopeType;
+    const scope: MemoryScopeType = classifyMemoryRuntimeScope({
+      source: ref.scope,
+      memoryId,
+      roleKey: classifierContext.roleKey,
+      workspaceScreenKey: classifierContext.workspaceScreenKey,
+    });
     const summary = buildSummaryFromText(memoryId, `Overlay 기록 메모리 (${scope})`);
     const { freshness, reason } = evaluateRefFreshness({
       lastReferencedAt: null,
@@ -275,7 +274,8 @@ function collectTimelineMemoryReferences(
   input: BuildMemoryRuntimePlanInput,
   policy: MemoryRuntimeRolePolicy,
   now: number,
-  directionalKeywords: readonly string[]
+  directionalKeywords: readonly string[],
+  classifierContext: ScopeClassifierContext
 ): readonly MemoryRuntimeReference[] {
   const entries = Array.isArray(input.recentTimelineEntries) ? input.recentTimelineEntries : [];
   if (!entries.length) return [];
@@ -288,7 +288,13 @@ function collectTimelineMemoryReferences(
     if (!memoryIdRaw && !sourceRaw && !text) continue;
     const memoryId = memoryIdRaw || (sourceRaw ? `source:${sourceRaw}` : `timeline:${text.slice(0, 32)}`);
     const scope: MemoryScopeType =
-      (entry.scope as MemoryScopeType | null | undefined) ?? resolveMemoryScopeFromSource(sourceRaw || memoryIdRaw);
+      (entry.scope as MemoryScopeType | null | undefined) ??
+      classifyMemoryRuntimeScope({
+        source: sourceRaw,
+        memoryId: memoryIdRaw,
+        roleKey: classifierContext.roleKey,
+        workspaceScreenKey: classifierContext.workspaceScreenKey,
+      });
     const summary = buildSummaryFromText(text || sourceRaw || memoryId, `최근 기록 (${scope})`);
     const { freshness, reason } = evaluateRefFreshness({
       lastReferencedAt: entry.at ?? null,

@@ -19,7 +19,7 @@ import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
 
 /** "실제 long-term memory가 아닌 planning metadata"임을 노출하는 공식 안내 문구. */
 export const MEMORY_RUNTIME_PLAN_DISCLAIMER =
-  "이 표시는 실제 장기 기억이 아니라, 이번 턴에서 AI가 참조 후보로 삼은 메모리 계획입니다.";
+  "이 정보는 실제 장기기억 저장 결과가 아니라, 현재 응답에서 참고 후보로 분류한 기억 계획 정보입니다.";
 
 const SCOPE_LABEL: Readonly<Record<MemoryScopeType, string>> = {
   platform: "플랫폼",
@@ -39,8 +39,8 @@ const SCOPE_TONE: Readonly<Record<MemoryScopeType, OverlayUiBadgeTone>> = {
 
 const FRESHNESS_LABEL: Readonly<Record<MemoryFreshness, string>> = {
   fresh: "최신",
-  aging: "유의",
-  stale: "오래됨",
+  aging: "확인 필요",
+  stale: "오래됨/충돌 가능",
 };
 
 const FRESHNESS_TONE: Readonly<Record<MemoryFreshness, OverlayUiBadgeTone>> = {
@@ -63,7 +63,7 @@ export function memoryRuntimeScopeTone(scope: MemoryScopeType): OverlayUiBadgeTo
 }
 
 export function memoryRuntimeFreshnessLabel(freshness: MemoryFreshness): string {
-  return FRESHNESS_LABEL[freshness] ?? "유의";
+  return FRESHNESS_LABEL[freshness] ?? "확인 필요";
 }
 
 export function memoryRuntimeFreshnessTone(freshness: MemoryFreshness): OverlayUiBadgeTone {
@@ -106,6 +106,12 @@ export type MemoryRuntimePlanVM = Readonly<{
   agingLabel: string;
   staleLabel: string;
   scopeBreakdownText: string;
+  /** stale 후보가 1개 이상이면 UI에서 강조 노출. read-only diagnostic. */
+  staleWarning: {
+    readonly visible: boolean;
+    readonly label: string;
+    readonly tone: OverlayUiBadgeTone;
+  };
   references: readonly MemoryRuntimeReferenceVM[];
   findings: readonly MemoryRuntimeFindingVM[];
 }>;
@@ -120,9 +126,9 @@ function toReferenceVM(ref: MemoryRuntimeReference): MemoryRuntimeReferenceVM {
     freshnessLabel: memoryRuntimeFreshnessLabel(ref.freshness),
     freshnessTone: memoryRuntimeFreshnessTone(ref.freshness),
     summary: ref.summary,
-    selectedReasonLabel: `사유: ${ref.selectedReason}`,
-    selectedByLabel: `선택자: ${ref.selectedBy}`,
-    estimatedImportanceLabel: `중요도 ${formatKoreanInt(ref.estimatedImportance)}`,
+    selectedReasonLabel: `선택 사유: ${ref.selectedReason}`,
+    selectedByLabel: `선택 기준: ${ref.selectedBy}`,
+    estimatedImportanceLabel: `중요도 추정 ${formatKoreanInt(ref.estimatedImportance)}`,
   };
 }
 
@@ -167,9 +173,10 @@ export function buildMemoryRuntimePlanVM(
       roleLabel: `역할: ${OVERLAY_UI_MISSING_LABEL}`,
       totalLabel: "후보 0개",
       freshLabel: "최신 0",
-      agingLabel: "유의 0",
-      staleLabel: "오래됨 0",
+      agingLabel: "확인 필요 0",
+      staleLabel: "오래됨/충돌 가능 0",
       scopeBreakdownText: "후보 없음",
+      staleWarning: { visible: false, label: "", tone: "neutral" },
       references: [],
       findings: [],
     };
@@ -188,9 +195,17 @@ export function buildMemoryRuntimePlanVM(
     roleLabel: `역할: ${safe.roleKey?.length ? safe.roleKey : OVERLAY_UI_MISSING_LABEL}`,
     totalLabel: `후보 ${formatKoreanInt(safe.references.length)}개`,
     freshLabel: `최신 ${formatKoreanInt(fresh)}`,
-    agingLabel: `유의 ${formatKoreanInt(aging)}`,
-    staleLabel: `오래됨 ${formatKoreanInt(stale)}`,
+    agingLabel: `확인 필요 ${formatKoreanInt(aging)}`,
+    staleLabel: `오래됨/충돌 가능 ${formatKoreanInt(stale)}`,
     scopeBreakdownText: buildScopeBreakdownText(safe.references),
+    staleWarning:
+      stale > 0
+        ? {
+            visible: true,
+            label: `오래됨/충돌 가능 메모리 ${formatKoreanInt(stale)}건이 감지되었습니다. 참고 시 검토가 필요합니다.`,
+            tone: "warning",
+          }
+        : { visible: false, label: "", tone: "neutral" },
     references: safe.references.map(toReferenceVM),
     findings: safe.findings.map(toFindingVM),
   };
