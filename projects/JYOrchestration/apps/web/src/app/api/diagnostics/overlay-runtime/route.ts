@@ -42,6 +42,10 @@ import {
   summarizeRecentMemoryRuntimePlans,
 } from "@/lib/harness/memoryRuntime/memoryRuntimeRecentSummary";
 import {
+  emptyExecutionRoutingSummary,
+  summarizeExecutionRoutingPlan,
+} from "@/lib/harness/executionRouting/executionCapabilityTypes";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -185,8 +189,14 @@ export async function GET(request: NextRequest) {
   const recentMemoryRuntimeSummaryForResponse =
     recentMemoryRuntimeSummary ?? emptyRecentMemoryRuntimeSummary();
 
+  // Harness Phase H5 Preparation — Execution Routing summary(read-only).
+  // 최근 promptTrace 1건의 executionRoutingPlan을 요약(누적 아님; UI는 planning metadata로 표시).
+  const executionRoutingSummary = lastPromptTraceOverlayExtract?.executionRoutingPlan
+    ? summarizeExecutionRoutingPlan(lastPromptTraceOverlayExtract.executionRoutingPlan)
+    : emptyExecutionRoutingSummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-memory-runtime-stabilization-layer" as const,
+    current: "harness-execution-routing-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -197,6 +207,7 @@ export async function GET(request: NextRequest) {
     harnessRoleAwareKnowledgeActivationEnabled: true,
     harnessMemoryRuntimePlanningEnabled: true,
     harnessMemoryRuntimeStabilizationEnabled: true,
+    harnessExecutionRoutingPlanningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -212,6 +223,7 @@ export async function GET(request: NextRequest) {
     harnessRoleAwareKnowledgeActivationLayer: true,
     harnessMemoryRuntimePreparationLayer: true,
     harnessMemoryRuntimeStabilizationLayer: true,
+    harnessExecutionRoutingPreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -247,6 +259,7 @@ export async function GET(request: NextRequest) {
       knowledgeActivationSummary,
       memoryRuntimeSummary,
       recentMemoryRuntimeSummary: recentMemoryRuntimeSummaryForResponse,
+      executionRoutingSummary,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

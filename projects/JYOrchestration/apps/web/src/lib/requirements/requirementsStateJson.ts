@@ -27,6 +27,7 @@ import type {
 } from "@/lib/harness/promptAssembly/harnessPromptAssemblyTypes";
 import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/knowledgeActivationPolicyTypes";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
+import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -321,6 +322,13 @@ export type RequirementsPromptTimelineEntry = {
    * mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
    */
   memoryRuntimePlan?: MemoryRuntimePlan;
+  /**
+   * Harness Phase H5 Preparation: Execution Routing planning metadata.
+   *
+   * **read-only / planning only.** 실제 provider switching·Cursor execution·GitHub operation에
+   * 영향을 주지 않는다. mode는 항상 `"dry_run"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  executionRoutingPlan?: ExecutionRoutingPlan;
 };
 
 export type RequirementsStateJson = {

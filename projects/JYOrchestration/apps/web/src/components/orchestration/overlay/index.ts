@@ -9,6 +9,7 @@ export { OverlayHarnessPromptPreviewSection } from "./OverlayHarnessPromptPrevie
 export { HarnessApplyReadinessSummaryCard } from "./HarnessApplyReadinessSummaryCard";
 export { OverlayKnowledgeActivationSection } from "./OverlayKnowledgeActivationSection";
 export { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
+export { OverlayExecutionRoutingSection } from "./OverlayExecutionRoutingSection";
 export {
   OVERLAY_INCLUDE_MODE_ORDER,
   OverlayIncludeModeBadge,

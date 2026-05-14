@@ -40,6 +40,8 @@ import { buildKnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/
 import { deriveKnowledgeActivationTaskTypeFromMeta } from "@/lib/harness/knowledgeActivation/deriveKnowledgeActivationTaskType";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { buildMemoryRuntimePlan } from "@/lib/harness/memoryRuntime/buildMemoryRuntimePlan";
+import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
+import { buildExecutionRoutingPlan } from "@/lib/harness/executionRouting/buildExecutionRoutingPlan";
 import {
   buildMemoryRuntimeEntriesFromTimelineMessages,
   extractDirectionalKeywordsFromTimelineMessages,
@@ -87,6 +89,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
   knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
+  executionRoutingPlan?: ExecutionRoutingPlan;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -210,6 +213,16 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     overlayMetadata: { overlayContextAssembly },
   });
 
+  // Harness Phase H5 Preparation — Execution Routing Plan (dry-run only).
+  // 이번 turn의 역할만 입력으로 "어떤 capability를 어느 provider로 처리할지"를 planning.
+  // provider hint는 이후 단계에서 외부 orchestration이 명시할 때만 주입한다(기본 식별자
+  // provider를 일률 hint로 쓰면 모든 developer turn이 unsupported로 표시되어 노이즈가 됨).
+  // **실제 provider switching·Cursor execution·GitHub operation 영향 없음.**
+  const executionRoutingPlan = buildExecutionRoutingPlan({
+    roleKey: overlayIdentity?.roleKey ?? usedRoleRaw ?? null,
+    workspaceStage: input.timelineStage ?? null,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -228,6 +241,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     harnessPromptPreviewDiff,
     knowledgeActivationPlan,
     memoryRuntimePlan,
+    executionRoutingPlan,
   };
 }
 

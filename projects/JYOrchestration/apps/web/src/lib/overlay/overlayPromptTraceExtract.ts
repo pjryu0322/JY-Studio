@@ -20,6 +20,8 @@ import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/
 import { coerceKnowledgeActivationMetadata } from "@/lib/harness/knowledgeActivation/knowledgeActivationCoerce";
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
+import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
+import { coerceExecutionRoutingMetadata } from "@/lib/harness/executionRouting/executionRoutingCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -40,6 +42,7 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
   knowledgeActivationPlan?: KnowledgeActivationPlan;
   memoryRuntimePlan?: MemoryRuntimePlan;
+  executionRoutingPlan?: ExecutionRoutingPlan;
 }>;
 
 /**
@@ -68,6 +71,7 @@ export function extractOverlayPromptTraceMetadata(
     harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
     knowledgeActivationPlan?: KnowledgeActivationPlan;
     memoryRuntimePlan?: MemoryRuntimePlan;
+    executionRoutingPlan?: ExecutionRoutingPlan;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -125,6 +129,7 @@ export function extractOverlayPromptTraceMetadata(
   Object.assign(out, coerceHarnessPromptAssemblyMetadata(e));
   Object.assign(out, coerceKnowledgeActivationMetadata(e));
   Object.assign(out, coerceMemoryRuntimeMetadata(e));
+  Object.assign(out, coerceExecutionRoutingMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }
