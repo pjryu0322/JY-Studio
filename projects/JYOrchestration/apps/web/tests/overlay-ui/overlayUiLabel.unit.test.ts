@@ -13,10 +13,10 @@ import {
 } from "@/lib/overlay-ui/overlayUiLabel";
 
 describe("overlayUiLabel", () => {
-  it("converts overflowRisk into user-facing label and tone", () => {
-    expect(overlayUiOverflowRiskLabel("high")).toBe("HIGH");
-    expect(overlayUiOverflowRiskLabel("medium")).toBe("MEDIUM");
-    expect(overlayUiOverflowRiskLabel("low")).toBe("LOW");
+  it("converts overflowRisk into Korean label and tone", () => {
+    expect(overlayUiOverflowRiskLabel("high")).toBe("높음");
+    expect(overlayUiOverflowRiskLabel("medium")).toBe("중간");
+    expect(overlayUiOverflowRiskLabel("low")).toBe("낮음");
     expect(overlayUiOverflowRiskLabel(null)).toBe("ㅡ");
     expect(overlayUiOverflowRiskTone("high")).toBe("warning");
     expect(overlayUiOverflowRiskTone("low")).toBe("positive");

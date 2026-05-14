@@ -48,8 +48,21 @@ function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
           추정 비용 {formatKoreanInt(row.estimatedCost)}
         </span>
       </div>
-      <div style={{ fontSize: 11, color: t.textMuted, wordBreak: "break-all" }}>
-        출처: <span style={{ color: t.textSecondary }}>{row.source}</span>
+      <div style={{ fontSize: 11, color: t.textMuted, display: "flex", alignItems: "baseline", gap: 4, minWidth: 0 }}>
+        <span style={{ flexShrink: 0 }}>출처:</span>
+        <span
+          title={row.source}
+          style={{
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+            flex: "1 1 auto",
+          }}
+        >
+          {row.source}
+        </span>
       </div>
       <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
         {row.includeModeDescription}
@@ -59,9 +72,15 @@ function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
   );
 }
 
-export function OverlayAssemblyPlanSection({ vm }: { readonly vm: OverlayUiAssemblyPlanSectionVM }) {
+export function OverlayAssemblyPlanSection({
+  vm,
+  defaultOpen,
+}: {
+  readonly vm: OverlayUiAssemblyPlanSectionVM;
+  readonly defaultOpen?: boolean;
+}) {
   return (
-    <OverlayUiSection title="조립 계획" description={OVERLAY_UI_PLANNING_DISCLAIMER}>
+    <OverlayUiSection title="조립 계획" description={OVERLAY_UI_PLANNING_DISCLAIMER} defaultOpen={defaultOpen}>
       {!vm.hasData ? (
         <OverlayUiEmptyHint message="조립 계획 정보가 기록되지 않았습니다." />
       ) : (

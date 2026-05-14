@@ -5,9 +5,15 @@ import { OVERLAY_UI_BUDGET_DISCLAIMER } from "@/lib/overlay-ui/overlayUiDescript
 import { formatKoreanInt } from "@/lib/overlay-ui/overlayUiFormat";
 import { OverlayUiBadge, OverlayUiEmptyHint, OverlayUiKeyValueRow, OverlayUiSection } from "./OverlayUiPrimitives";
 
-export function OverlayBudgetSection({ vm }: { readonly vm: OverlayUiBudgetSectionVM }) {
+export function OverlayBudgetSection({
+  vm,
+  defaultOpen,
+}: {
+  readonly vm: OverlayUiBudgetSectionVM;
+  readonly defaultOpen?: boolean;
+}) {
   return (
-    <OverlayUiSection title="토큰 예산" description={OVERLAY_UI_BUDGET_DISCLAIMER}>
+    <OverlayUiSection title="토큰 예산" description={OVERLAY_UI_BUDGET_DISCLAIMER} defaultOpen={defaultOpen}>
       {!vm.hasData ? (
         <OverlayUiEmptyHint message="이 시점에 토큰 예산 정보가 기록되지 않았습니다." />
       ) : (

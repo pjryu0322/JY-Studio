@@ -46,11 +46,17 @@ function WarningGroup({
   );
 }
 
-export function OverlayWarningSection({ vm }: { readonly vm: OverlayUiWarningSectionVM }) {
+export function OverlayWarningSection({
+  vm,
+  defaultOpen,
+}: {
+  readonly vm: OverlayUiWarningSectionVM;
+  readonly defaultOpen?: boolean;
+}) {
   return (
-    <OverlayUiSection title="주의·정보" description={OVERLAY_UI_WARNING_DISCLAIMER}>
+    <OverlayUiSection title="경고" description={OVERLAY_UI_WARNING_DISCLAIMER} defaultOpen={defaultOpen}>
       {!vm.hasData ? (
-        <OverlayUiEmptyHint message="현재 시점에 충돌·정책 정렬 경고가 감지되지 않았습니다." />
+        <OverlayUiEmptyHint message="현재 시점에 충돌·정책 기준 차이 경고가 감지되지 않았습니다." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <WarningGroup
@@ -59,7 +65,7 @@ export function OverlayWarningSection({ vm }: { readonly vm: OverlayUiWarningSec
             keyPrefix="cf"
           />
           <WarningGroup
-            title={`정책 정렬 — ${vm.driftDescription}`}
+            title={`정책 기준 차이 — ${vm.driftDescription}`}
             rows={vm.driftRows}
             keyPrefix="dr"
           />

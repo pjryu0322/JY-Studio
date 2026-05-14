@@ -116,9 +116,33 @@ export type OverlayUiTimelineSnapshotVM = Readonly<{
   excludeCandidatesCount: number;
 }>;
 
+/**
+ * Overlay 탭 상단 "AI 판단 요약" 헤더 ViewModel.
+ *
+ * 운영자가 탭을 열자마자 한눈에 상태를 파악할 수 있도록 핵심 지표를 모은 read-only 요약이다.
+ * **모든 값은 사용자 표현으로 변환**된 상태(예: 낮음/중간/높음). 내부 enum/code는 노출하지 않는다.
+ */
+export type OverlayUiSummaryHeaderVM = Readonly<{
+  /** overlay metadata가 존재하는지(empty timeline 구분). */
+  hasData: boolean;
+  /** "AI 설계자 / planner / unknown" 같은 사용자 친화 역할 라벨. 없으면 null. */
+  roleLabel: string | null;
+  selectedContextCount: number;
+  prioritizedContextCount: number;
+  warningCount: number;
+  pruningCandidateCount: number;
+  /** 사용자 표현(낮음/중간/높음/ㅡ). */
+  overflowRiskLabel: string;
+  overflowRiskTone: OverlayUiBadgeTone;
+  /** 조립 계획 includeMode 카운트(핵심/추천/선택/축소 후보). */
+  assemblyIncludeModeCounts: Readonly<Record<OverlayAssemblyIncludeMode, number>>;
+}>;
+
 export type OverlayUiViewModel = Readonly<{
   /** 해당 timeline entry에 overlay metadata가 하나라도 있는지. UI empty state 판별용. */
   hasOverlayData: boolean;
+  /** 탭 상단 "AI 판단 요약" 헤더. */
+  summary: OverlayUiSummaryHeaderVM;
   context: OverlayUiContextSectionVM;
   budget: OverlayUiBudgetSectionVM;
   warning: OverlayUiWarningSectionVM;
@@ -338,6 +362,27 @@ function buildSnapshot(
   };
 }
 
+function buildSummaryHeader(
+  context: OverlayUiContextSectionVM,
+  budget: OverlayUiBudgetSectionVM,
+  warning: OverlayUiWarningSectionVM,
+  assemblyPlan: OverlayUiAssemblyPlanSectionVM,
+  pruning: OverlayUiPruningSectionVM,
+  hasOverlayData: boolean
+): OverlayUiSummaryHeaderVM {
+  return {
+    hasData: hasOverlayData,
+    roleLabel: context.identityRoleLabel,
+    selectedContextCount: context.selected.length,
+    prioritizedContextCount: context.prioritized.length,
+    warningCount: warning.conflictRows.length + warning.driftRows.length,
+    pruningCandidateCount: pruning.rows.length,
+    overflowRiskLabel: budget.overflowRiskLabel,
+    overflowRiskTone: budget.overflowRiskTone,
+    assemblyIncludeModeCounts: assemblyPlan.byIncludeMode,
+  };
+}
+
 export function buildOverlayUiViewModel(
   metadata: ExtractedOverlayPromptTraceMetadata | null | undefined
 ): OverlayUiViewModel {
@@ -348,13 +393,16 @@ export function buildOverlayUiViewModel(
   const assemblyPlan = buildAssemblyPlanSection(safe.overlayContextAssemblyPlan);
   const pruning = buildPruningSection(safe.overlayPruningCandidates);
   const snapshot = buildSnapshot(safe, assemblyPlan, budget);
+  const hasOverlayData =
+    context.hasData ||
+    budget.hasData ||
+    warning.hasData ||
+    assemblyPlan.hasData ||
+    pruning.hasData;
+  const summary = buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData);
   return {
-    hasOverlayData:
-      context.hasData ||
-      budget.hasData ||
-      warning.hasData ||
-      assemblyPlan.hasData ||
-      pruning.hasData,
+    hasOverlayData,
+    summary,
     context,
     budget,
     warning,

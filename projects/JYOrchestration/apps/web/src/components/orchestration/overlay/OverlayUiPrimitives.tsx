@@ -170,7 +170,13 @@ export function OverlayUiRowList({ children }: { readonly children: ReactNode })
   );
 }
 
-export function OverlayUiEmptyHint({ message }: { readonly message: string }) {
+export function OverlayUiEmptyHint({
+  message,
+  secondary,
+}: {
+  readonly message: string;
+  readonly secondary?: string;
+}) {
   return (
     <div
       style={{
@@ -181,9 +187,15 @@ export function OverlayUiEmptyHint({ message }: { readonly message: string }) {
         borderRadius: 8,
         padding: "10px 12px",
         lineHeight: 1.5,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
       }}
+      role="status"
+      aria-live="polite"
     >
-      {message}
+      <span>{message}</span>
+      {secondary ? <span style={{ fontSize: 11, color: t.textMuted, opacity: 0.85 }}>{secondary}</span> : null}
     </div>
   );
 }

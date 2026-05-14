@@ -60,7 +60,7 @@ describe("buildOverlayUiViewModel", () => {
     const vm = buildOverlayUiViewModel({ overlayContextBudget: budget });
     expect(vm.budget.hasData).toBe(true);
     expect(vm.budget.budgetPolicyLabel).toBe("압축 정책");
-    expect(vm.budget.overflowRiskLabel).toBe("HIGH");
+    expect(vm.budget.overflowRiskLabel).toBe("높음");
     expect(vm.budget.overflowRiskTone).toBe("warning");
     expect(vm.budget.estimatedInputTokens).toBe(1234);
     expect(vm.snapshot.hasData).toBe(true);
@@ -158,5 +158,58 @@ describe("buildOverlayUiViewModel", () => {
       overlayIdentity: { roleKey: "planner", perspective: "system", provider: "openai", capabilities: ["plan"] },
     });
     expect(vm.context.identityRoleLabel).toContain("planner");
+  });
+
+  it("populates summary header from sections", () => {
+    const refs: readonly OverlaySelectedContextRef[] = [
+      { type: "memory", source: "platform", reason: "role_default", priority: 10 },
+      { type: "role", source: "planner", reason: "bootstrap", priority: 0 },
+    ];
+    const conflicts: readonly OverlayConflictWarning[] = [
+      { code: "C1", severity: "warning", category: "architecture", message: "x" },
+    ];
+    const drift: readonly OverlayPolicyWarning[] = [
+      { code: "D1", severity: "info", message: "y", source: "diagnostic", enforcement: "not_applied", roleKey: null },
+    ];
+    const plan: readonly OverlayAssemblyPlanItem[] = [
+      { type: "memory", source: "platform", priority: 10, includeReason: "r", estimatedCost: 100, pruningCandidate: false, includeMode: "required" },
+      { type: "timeline", source: "recent", priority: 80, includeReason: "r", estimatedCost: 100, pruningCandidate: true, includeMode: "excludeCandidate" },
+    ];
+    const pruning: readonly OverlayPruningCandidate[] = [
+      { source: "timeline:recent", reason: "x", estimatedReduction: 40 },
+    ];
+    const vm = buildOverlayUiViewModel({
+      overlaySelectedContextRefs: refs,
+      overlayPrioritizedContextRefs: refs,
+      overlayConflictWarnings: conflicts,
+      overlayPolicyDriftWarnings: drift,
+      overlayContextAssemblyPlan: plan,
+      overlayPruningCandidates: pruning,
+      overlayContextBudget: {
+        estimatedInputTokens: 1000,
+        estimatedOutputTokens: 100,
+        budgetPolicy: "compact",
+        overflowRisk: "high",
+      },
+      overlayIdentity: { roleKey: "planner", perspective: "system", provider: "openai", capabilities: ["plan"] },
+    });
+    expect(vm.summary.hasData).toBe(true);
+    expect(vm.summary.roleLabel).toContain("planner");
+    expect(vm.summary.selectedContextCount).toBe(2);
+    expect(vm.summary.prioritizedContextCount).toBe(2);
+    expect(vm.summary.warningCount).toBe(2);
+    expect(vm.summary.pruningCandidateCount).toBe(1);
+    expect(vm.summary.overflowRiskLabel).toBe("높음");
+    expect(vm.summary.overflowRiskTone).toBe("warning");
+    expect(vm.summary.assemblyIncludeModeCounts.required).toBe(1);
+    expect(vm.summary.assemblyIncludeModeCounts.excludeCandidate).toBe(1);
+  });
+
+  it("summary header has hasData=false on empty metadata", () => {
+    const vm = buildOverlayUiViewModel(null);
+    expect(vm.summary.hasData).toBe(false);
+    expect(vm.summary.warningCount).toBe(0);
+    expect(vm.summary.selectedContextCount).toBe(0);
+    expect(vm.summary.assemblyIncludeModeCounts.required).toBe(0);
   });
 });

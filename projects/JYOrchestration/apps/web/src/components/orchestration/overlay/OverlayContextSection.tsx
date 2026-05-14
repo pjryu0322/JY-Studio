@@ -34,9 +34,15 @@ function joinedValue(values: readonly string[]) {
   return <span style={{ wordBreak: "break-all" }}>{values.join(", ")}</span>;
 }
 
-export function OverlayContextSection({ vm }: { readonly vm: OverlayUiContextSectionVM }) {
+export function OverlayContextSection({
+  vm,
+  defaultOpen,
+}: {
+  readonly vm: OverlayUiContextSectionVM;
+  readonly defaultOpen?: boolean;
+}) {
   return (
-    <OverlayUiSection title="컨텍스트" description={vm.planningComment}>
+    <OverlayUiSection title="컨텍스트" description={vm.planningComment} defaultOpen={defaultOpen}>
       {!vm.hasData ? (
         <OverlayUiEmptyHint message="이 시점에 선택·우선순위 컨텍스트 정보가 기록되지 않았습니다." />
       ) : (

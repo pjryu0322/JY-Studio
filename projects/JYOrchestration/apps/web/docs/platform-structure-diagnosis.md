@@ -335,7 +335,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 ## Overlay Runtime Policy (힌트 전용)
 
 - **현재 warning·diagnostic은 실행 차단이 아니다.** 운영·감사·추적·정책 설계용 metadata다.
-- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → Diagnostic / Warning(4) → Runtime Diagnostic / Selection Preparation(5) → Policy-guided Context Assembly Preparation(6) → Policy-guided Assembly Plan Stabilization(7) → **Overlay Observability UI Phase 1(8, 현재; UI-only)** → Message-level Explainability UI(9, 다음 단계 준비; **미도입**) → Controlled Prompt Assembly Preparation(10, **미도입**) → Enforcement(11, **미도입**).
+- **단계**: Contract(1) → Runtime Metadata(2) → Policy Helper(3) → Diagnostic / Warning(4) → Runtime Diagnostic / Selection Preparation(5) → Policy-guided Context Assembly Preparation(6) → Policy-guided Assembly Plan Stabilization(7) → Overlay Observability UI Phase 1(8) → **Overlay Observability UI Phase 1.5(9, 현재; UI-only 안정화)** → Message-level Explainability UI(10, 다음 단계 준비; **미도입**) → Controlled Prompt Assembly Preparation(11, **미도입**) → Enforcement(12, **미도입**).
   - 진단 API의 `overlayArchitecturePhase.current = "policy-guided-assembly-plan-stabilization-layer"`, `overlayArchitecturePhase.autoPromptAssemblyEnabled = false`, `overlayMaturity.policyGuidedAssemblyPlanStabilizationLayer = true`.
 - **Soft policy + warning wire**: `overlayPolicy.ts` + **`overlayPolicyWarning.ts`** + **`overlayPolicyWarningSummary.ts`** — `buildOverlayPolicyWarnings`·`summarizeOverlayPolicyWarnings`(코드/역할/출처 집계 포함); read-only 리포트 묶음 **`overlayWarningReport.ts`**(`buildOverlayWarningReport`). SingleChat `buildOrchestrationOverlayPromptTraceAugments`가 `overlayPolicyHints`와 **`overlayPolicyWarnings`** 를 함께 기록. `requirementsStateJson` 타임라인은 `coerceRequirementsPromptTimelineEntry`가 **`parseOverlayPolicyWarningsFromUnknown`** 으로 경고를 보존(행당 최대 `OVERLAY_POLICY_WARNINGS_MAX_TIMELINE`; 알 수 없는 severity는 **`warning`** 으로 정규화). **`cursorCapabilityEnforcement`는 항상 `not_applied`** (Cursor launch 비변경).
 - **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
@@ -356,7 +356,16 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
   - `overlayContextPrioritization.ts` — `prioritizeOverlayContexts({contexts, budgetPolicy})` — `compact|balanced|default|extended` 별 type weight로 selection refs sorting only.
   - `overlayContextPruning.ts` — `suggestOverlayPruningCandidates`. **suggestion only**.
   - `overlayPolicyDriftWarning.ts` — `detectOverlayPolicyDrift`. **warning only**(`enforcement: "not_applied"`).
-- **Overlay Observability UI Phase 1 (8단계, 현재; UI-only)** — replay 가능한 overlay metadata를 사용자가 볼 수 있게 만드는 *시각화 단계*. **runtime payload·라우팅·retrieval·orchestration 어디에도 영향 없음.**
+- **Overlay Observability UI Phase 1.5 (9단계, 현재; UI-only 안정화)** — Prompt Timeline Overlay 탭을 운영자/개발자가 실제 활용할 수 있는 수준으로 다듬는다. **여전히 runtime payload·라우팅·retrieval·orchestration 어디에도 영향 없음.**
+  - **신규 SummaryHeader VM/컴포넌트**: `OverlayUiSummaryHeaderVM` + `OverlaySummaryHeader.tsx`. 역할 / 맥락 수(선택·우선순위) / 예산 위험 / 경고 수 / 축소 후보 수 / 핵심·추천·선택·축소 후보 카운트를 한눈에 노출.
+  - **사용자 표현 강화**: `overlayUiOverflowRiskLabel`이 영어 "LOW/MEDIUM/HIGH" → 한국어 "낮음/중간/높음" 으로 변경. drift 그룹 타이틀 "정책 정렬" → "정책 기준 차이", Warning 섹션 타이틀 "주의·정보" → "경고". budget high description은 "축약될 가능성이 있습니다" 등 사용자 친화 표현으로 보강.
+  - **섹션 기본 펼침 정책**: 컨텍스트/예산은 항상 펼침, 경고·축소 후보는 데이터 있을 때 펼침, 조립 계획은 접힘(모바일 과밀 방지). 각 section 컴포넌트가 optional `defaultOpen` prop을 받도록 확장.
+  - **Empty state 보강**: `OVERLAY_UI_EMPTY_STATE_HINT`("최근 AI 응답부터 역할, 맥락, 경고, 예산 정보가 기록됩니다.") 보조 안내. `OverlayUiEmptyHint`가 `secondary` prop을 받아 2-line 노출 + `role="status"` 접근성 보강.
+  - **소스 말줄임**: `OverlayAssemblyPlanSection` / `OverlayPruningSection` row의 긴 `source` 텍스트를 `text-overflow: ellipsis`로 1줄 말줄임 + native `title` hover로 전체 노출.
+  - **테스트**: `tests/overlay-ui/overlayUiDescription.unit.test.ts`(5 신규), adapter `summary` viewmodel 테스트 2건 추가. 기존 `overlayUiLabel` / `overlayUiAdapter`의 "HIGH" 등 영어 라벨 assertion은 한국어로 갱신. overlay-ui 전체 **24/24 통과**(기존 17 + 신규 7).
+  - **여전히 금지**: 실제 prompt 조립, 자동 context 제거, hard enforcement, provider/retrieval orchestration, SingleChat 메시지 하단 AI 판단 보기(다음 단계).
+
+- **Overlay Observability UI Phase 1 (8단계)** — replay 가능한 overlay metadata를 사용자가 볼 수 있게 만드는 *시각화 단계*. **runtime payload·라우팅·retrieval·orchestration 어디에도 영향 없음.**
   - **debug API 확장**: `PromptTimelineEntry.overlay?: ExtractedOverlayPromptTraceMetadata`. `/api/projects/[projectId]/debug/prompt-timeline` 응답이 promptTrace에서 `extractOverlayPromptTraceMetadata`로 꺼낸 metadata를 함께 포함(없을 때는 부재). `/api/me/debug/prompt-timeline`(messenger 전용)은 영향 없음.
   - **UI helper**: `apps/web/src/lib/overlay-ui/overlayUiLabel.ts`(badge label/tone), `overlayUiDescription.ts`(설명 문구·disclaimer 상수), `overlayUiAdapter.ts`(`buildOverlayUiViewModel` — `ExtractedOverlayPromptTraceMetadata` → 사용자 표현 view-model). 모두 **순수 함수**.
   - **컴포넌트**: `apps/web/src/components/orchestration/overlay/` 하위 `OverlaySummaryCard`, `OverlayContextSection`, `OverlayBudgetSection`, `OverlayWarningSection`, `OverlayAssemblyPlanSection`, `OverlayPruningSection`, `OverlayUiPrimitives`. 모두 read-only display(`details/summary` 기반 아코디언).

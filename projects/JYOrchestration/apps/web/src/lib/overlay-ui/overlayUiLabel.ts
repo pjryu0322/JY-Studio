@@ -22,9 +22,9 @@ const BUDGET_POLICY_LABEL: Readonly<Record<OverlayContextBudgetPolicy, string>> 
 };
 
 const OVERFLOW_RISK_LABEL: Readonly<Record<OverlayContextBudgetOverflowRisk, string>> = {
-  low: "LOW",
-  medium: "MEDIUM",
-  high: "HIGH",
+  low: "낮음",
+  medium: "중간",
+  high: "높음",
 };
 
 const OVERFLOW_RISK_TONE: Readonly<Record<OverlayContextBudgetOverflowRisk, OverlayUiBadgeTone>> = {

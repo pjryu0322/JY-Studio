@@ -6,12 +6,16 @@ import {
   buildOverlayUiViewModel,
   type OverlayUiTimelineSnapshotVM,
 } from "@/lib/overlay-ui/overlayUiAdapter";
-import { OVERLAY_UI_EMPTY_STATE_MESSAGE } from "@/lib/overlay-ui/overlayUiDescription";
+import {
+  OVERLAY_UI_EMPTY_STATE_HINT,
+  OVERLAY_UI_EMPTY_STATE_MESSAGE,
+} from "@/lib/overlay-ui/overlayUiDescription";
 import { OverlayContextSection } from "./OverlayContextSection";
 import { OverlayBudgetSection } from "./OverlayBudgetSection";
 import { OverlayWarningSection } from "./OverlayWarningSection";
 import { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 import { OverlayPruningSection } from "./OverlayPruningSection";
+import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 import { OverlayUiBadge, OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
 
@@ -103,16 +107,30 @@ export function OverlaySummaryCard({
 }) {
   const vm = buildOverlayUiViewModel(overlay);
   if (!vm.hasOverlayData) {
-    return <OverlayUiEmptyHint message={OVERLAY_UI_EMPTY_STATE_MESSAGE} />;
+    return (
+      <OverlayUiEmptyHint
+        message={OVERLAY_UI_EMPTY_STATE_MESSAGE}
+        secondary={OVERLAY_UI_EMPTY_STATE_HINT}
+      />
+    );
   }
+  /**
+   * 섹션 기본 펼침 정책(Phase 1.5):
+   * - 컨텍스트(역할/판단): 펼침
+   * - 맥락 예산: 펼침
+   * - 경고: warning이 있을 때 펼침
+   * - 조립 계획: 접힘(데이터 많을 수 있어 mobile 과밀 방지)
+   * - 축소 후보: 후보가 있을 때 펼침
+   */
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <OverlaySummaryHeader vm={vm.summary} />
       <SnapshotStrip snapshot={vm.snapshot} />
-      <OverlayContextSection vm={vm.context} />
-      <OverlayBudgetSection vm={vm.budget} />
-      <OverlayWarningSection vm={vm.warning} />
-      <OverlayAssemblyPlanSection vm={vm.assemblyPlan} />
-      <OverlayPruningSection vm={vm.pruning} />
+      <OverlayContextSection vm={vm.context} defaultOpen />
+      <OverlayBudgetSection vm={vm.budget} defaultOpen />
+      <OverlayWarningSection vm={vm.warning} defaultOpen={vm.warning.hasData} />
+      <OverlayAssemblyPlanSection vm={vm.assemblyPlan} defaultOpen={false} />
+      <OverlayPruningSection vm={vm.pruning} defaultOpen={vm.pruning.hasData} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 export { OverlaySummaryCard } from "./OverlaySummaryCard";
+export { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 export { OverlayContextSection } from "./OverlayContextSection";
 export { OverlayBudgetSection } from "./OverlayBudgetSection";
 export { OverlayWarningSection } from "./OverlayWarningSection";
