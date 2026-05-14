@@ -63,6 +63,16 @@ import {
   summarizeRecentReviewSecurityPlans,
 } from "@/lib/harness/reviewSecurity/reviewSecurityRecentSummary";
 import {
+  emptyRemediationLoopSummary,
+  emptyReviewSecurityIssuePlanningSummary,
+  summarizeRemediationLoopPlan,
+  summarizeReviewSecurityIssuePlanningReport,
+} from "@/lib/harness/reviewSecurity/reviewSecurityIssueTypes";
+import {
+  emptyRecentReviewSecurityIssueSummary,
+  summarizeRecentReviewSecurityIssuePlans,
+} from "@/lib/harness/reviewSecurity/reviewSecurityIssueRecentSummary";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -105,6 +115,9 @@ export async function GET(request: NextRequest) {
     | undefined;
   let recentReviewSecuritySummary:
     | ReturnType<typeof summarizeRecentReviewSecurityPlans>
+    | undefined;
+  let recentReviewSecurityIssueSummary:
+    | ReturnType<typeof summarizeRecentReviewSecurityIssuePlans>
     | undefined;
 
   if (projectId) {
@@ -163,6 +176,14 @@ export async function GET(request: NextRequest) {
       .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
     recentReviewSecuritySummary = summarizeRecentReviewSecurityPlans({
       plans: recentReviewSecurityPlans,
+    });
+
+    // Harness Phase H6.5 — Recent Review/Security Issue Summary(누적 read-only).
+    const recentReviewSecurityIssueReports = recentExtracts
+      .map((extracted) => extracted.reviewSecurityIssuePlanningReport)
+      .filter((report): report is NonNullable<typeof report> => Boolean(report));
+    recentReviewSecurityIssueSummary = summarizeRecentReviewSecurityIssuePlans({
+      reports: recentReviewSecurityIssueReports,
     });
   }
 
@@ -256,8 +277,25 @@ export async function GET(request: NextRequest) {
   const recentReviewSecuritySummaryForResponse =
     recentReviewSecuritySummary ?? emptyRecentReviewSecuritySummary();
 
+  // Harness Phase H6.5 — Review/Security Issue Planning Summary(read-only).
+  // 최근 promptTrace 1건의 reviewSecurityIssuePlanningReport를 요약(누적 아님).
+  const reviewSecurityIssuePlanningSummary = lastPromptTraceOverlayExtract?.reviewSecurityIssuePlanningReport
+    ? summarizeReviewSecurityIssuePlanningReport(
+        lastPromptTraceOverlayExtract.reviewSecurityIssuePlanningReport
+      )
+    : emptyReviewSecurityIssuePlanningSummary();
+
+  // Harness Phase H6.5 — Remediation Loop Summary(read-only).
+  const remediationLoopSummary = lastPromptTraceOverlayExtract?.remediationLoopPlan
+    ? summarizeRemediationLoopPlan(lastPromptTraceOverlayExtract.remediationLoopPlan)
+    : emptyRemediationLoopSummary();
+
+  // Harness Phase H6.5 — Recent Review/Security Issue Summary(누적). projectId가 없으면 empty fallback.
+  const recentReviewSecurityIssueSummaryForResponse =
+    recentReviewSecurityIssueSummary ?? emptyRecentReviewSecurityIssueSummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-review-security-preparation-layer" as const,
+    current: "harness-review-security-issue-planning-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -271,6 +309,7 @@ export async function GET(request: NextRequest) {
     harnessExecutionRoutingPlanningEnabled: true,
     harnessExecutionRoutingSafetyStabilizationEnabled: true,
     harnessReviewSecurityPreparationEnabled: true,
+    harnessReviewSecurityIssuePlanningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -289,6 +328,7 @@ export async function GET(request: NextRequest) {
     harnessExecutionRoutingPreparationLayer: true,
     harnessExecutionRoutingSafetyStabilizationLayer: true,
     harnessReviewSecurityPreparationLayer: true,
+    harnessReviewSecurityIssuePlanningLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -329,6 +369,9 @@ export async function GET(request: NextRequest) {
       recentExecutionRoutingSummary: recentExecutionRoutingSummaryForResponse,
       reviewSecuritySummary,
       recentReviewSecuritySummary: recentReviewSecuritySummaryForResponse,
+      reviewSecurityIssuePlanningSummary,
+      remediationLoopSummary,
+      recentReviewSecurityIssueSummary: recentReviewSecurityIssueSummaryForResponse,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

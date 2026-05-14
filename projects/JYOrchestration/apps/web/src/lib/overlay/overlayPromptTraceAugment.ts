@@ -46,6 +46,12 @@ import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRoutin
 import { evaluateExecutionRoutingSafety } from "@/lib/harness/executionRouting/evaluateExecutionRoutingSafety";
 import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
 import { buildReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/buildReviewSecurityHarnessPlan";
+import type {
+  RemediationLoopPlan,
+  ReviewSecurityIssuePlanningReport,
+} from "@/lib/harness/reviewSecurity/reviewSecurityIssueTypes";
+import { buildReviewSecurityIssuePlanningReport } from "@/lib/harness/reviewSecurity/buildReviewSecurityIssuePlanningReport";
+import { buildRemediationLoopPlan } from "@/lib/harness/reviewSecurity/buildRemediationLoopPlan";
 import {
   buildMemoryRuntimeEntriesFromTimelineMessages,
   extractDirectionalKeywordsFromTimelineMessages,
@@ -96,6 +102,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   executionRoutingPlan?: ExecutionRoutingPlan;
   executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
   reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
+  reviewSecurityIssuePlanningReport?: ReviewSecurityIssuePlanningReport;
+  remediationLoopPlan?: RemediationLoopPlan;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -247,6 +255,23 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     memoryRuntimePlan,
   });
 
+  // Harness Phase H6.5 — Review/Security Issue Planning Report (dry-run issue planning only).
+  // H6 checklist + H5.5 safety + H4 stale memory를 입력으로 "조치 가능한 issue 후보"와 진단을 만든다.
+  // **여전히 실제 이슈 등록·머지 차단·remediation 자동 실행은 발생하지 않음.**
+  const reviewSecurityIssuePlanningReport = buildReviewSecurityIssuePlanningReport({
+    reviewSecurityHarnessPlan,
+    executionRoutingSafetyReport,
+    knowledgeActivationPlan,
+    memoryRuntimePlan,
+  });
+
+  // Harness Phase H6.5 — Remediation Loop Plan (dry-run remediation loop only).
+  // 위 issue report를 입력으로 "검토 → 조치 요청 → 조치 → 재점검 → 최종 검토" 흐름을 dry-run plan으로 표현.
+  // **실제 task 생성·assignment·Cursor execution 없음.**
+  const remediationLoopPlan = buildRemediationLoopPlan({
+    issuePlanningReport: reviewSecurityIssuePlanningReport,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -268,6 +293,8 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     executionRoutingPlan,
     executionRoutingSafetyReport,
     reviewSecurityHarnessPlan,
+    reviewSecurityIssuePlanningReport,
+    remediationLoopPlan,
   };
 }
 

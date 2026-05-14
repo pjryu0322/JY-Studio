@@ -11,6 +11,8 @@ export { OverlayKnowledgeActivationSection } from "./OverlayKnowledgeActivationS
 export { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
 export { OverlayExecutionRoutingSection } from "./OverlayExecutionRoutingSection";
 export { OverlayReviewSecuritySection } from "./OverlayReviewSecuritySection";
+export { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueSection";
+export { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 export {
   OVERLAY_INCLUDE_MODE_ORDER,
   OverlayIncludeModeBadge,

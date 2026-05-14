@@ -16,6 +16,8 @@ import { OverlayKnowledgeActivationSection } from "./OverlayKnowledgeActivationS
 import { OverlayMemoryRuntimeSection } from "./OverlayMemoryRuntimeSection";
 import { OverlayExecutionRoutingSection } from "./OverlayExecutionRoutingSection";
 import { OverlayReviewSecuritySection } from "./OverlayReviewSecuritySection";
+import { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueSection";
+import { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 
@@ -25,7 +27,7 @@ import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
  * - empty 상태(no metadata): empty hint + 보조 안내.
  * - 그 외: 상단 `OverlaySummaryHeader` + Context/Budget/Warning/Assembly/Pruning + Harness 섹션
  *   (Phase H1 preview / Phase H3 knowledge activation / Phase H4 memory runtime /
- *   Phase H5 execution routing / Phase H6 review-security).
+ *   Phase H5 execution routing / Phase H6 review-security / Phase H6.5 issue + remediation loop).
  * - 섹션 default 펼침/접힘은 adapter `sectionDefaults`(단일 출처)에서 결정.
  *
  * 이전 단계까지 존재했던 별도 `SnapshotStrip`은 SummaryHeader와 정보가 중복되어
@@ -59,6 +61,11 @@ export function OverlaySummaryCard({
       <OverlayMemoryRuntimeSection overlay={overlay} defaultOpen={d.memoryRuntime} />
       <OverlayExecutionRoutingSection overlay={overlay} defaultOpen={d.executionRouting} />
       <OverlayReviewSecuritySection overlay={overlay} defaultOpen={d.reviewSecurity} />
+      <OverlayReviewSecurityIssueSection
+        overlay={overlay}
+        defaultOpen={d.reviewSecurityIssue}
+      />
+      <OverlayRemediationLoopSection overlay={overlay} defaultOpen={d.remediationLoop} />
     </div>
   );
 }

@@ -160,6 +160,10 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   executionRouting: boolean;
   /** Harness Phase H6 Preparation — Review/Security 섹션 펼침 정책(데이터 있을 때만 펼침). */
   reviewSecurity: boolean;
+  /** Harness Phase H6.5 — Review/Security Issue Plan 섹션 펼침 정책(데이터 있을 때만 펼침). */
+  reviewSecurityIssue: boolean;
+  /** Harness Phase H6.5 — Remediation Loop Plan 섹션 펼침 정책(데이터 있을 때만 펼침). */
+  remediationLoop: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -394,7 +398,9 @@ function buildSectionDefaults(
   hasKnowledgeActivation: boolean,
   hasMemoryRuntime: boolean,
   hasExecutionRouting: boolean,
-  hasReviewSecurity: boolean
+  hasReviewSecurity: boolean,
+  hasReviewSecurityIssue: boolean,
+  hasRemediationLoop: boolean
 ): OverlayUiSectionDefaultsVM {
   return {
     context: true,
@@ -407,6 +413,8 @@ function buildSectionDefaults(
     memoryRuntime: hasMemoryRuntime,
     executionRouting: hasExecutionRouting,
     reviewSecurity: hasReviewSecurity,
+    reviewSecurityIssue: hasReviewSecurityIssue,
+    remediationLoop: hasRemediationLoop,
   };
 }
 
@@ -443,6 +451,14 @@ export function buildOverlayUiViewModel(
     !!safe.reviewSecurityHarnessPlan &&
     ((safe.reviewSecurityHarnessPlan.checklist?.length ?? 0) > 0 ||
       (safe.reviewSecurityHarnessPlan.findings?.length ?? 0) > 0);
+  const hasReviewSecurityIssue =
+    !!safe.reviewSecurityIssuePlanningReport &&
+    ((safe.reviewSecurityIssuePlanningReport.issues?.length ?? 0) > 0 ||
+      (safe.reviewSecurityIssuePlanningReport.findings?.length ?? 0) > 0);
+  const hasRemediationLoop =
+    !!safe.remediationLoopPlan &&
+    ((safe.remediationLoopPlan.steps?.length ?? 0) > 0 ||
+      (safe.remediationLoopPlan.findings?.length ?? 0) > 0);
   return {
     hasOverlayData,
     summary: buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData),
@@ -453,7 +469,9 @@ export function buildOverlayUiViewModel(
       hasKnowledgeActivation,
       hasMemoryRuntime,
       hasExecutionRouting,
-      hasReviewSecurity
+      hasReviewSecurity,
+      hasReviewSecurityIssue,
+      hasRemediationLoop
     ),
     context,
     budget,

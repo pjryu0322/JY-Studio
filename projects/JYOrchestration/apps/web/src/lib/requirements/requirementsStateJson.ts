@@ -30,6 +30,10 @@ import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntim
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
 import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
+import type {
+  RemediationLoopPlan,
+  ReviewSecurityIssuePlanningReport,
+} from "@/lib/harness/reviewSecurity/reviewSecurityIssueTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -347,6 +351,20 @@ export type RequirementsPromptTimelineEntry = {
    * 과거 timeline row와의 호환을 위해 optional.
    */
   reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
+  /**
+   * Harness Phase H6.5: Review/Security Issue Planning Report.
+   *
+   * **read-only / planning only.** 실제 이슈 등록·머지 차단·조치 실행과 무관.
+   * mode는 항상 `"dry_run_issue_planning"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  reviewSecurityIssuePlanningReport?: ReviewSecurityIssuePlanningReport;
+  /**
+   * Harness Phase H6.5: Remediation Loop Plan.
+   *
+   * **read-only / planning only.** 실제 task 생성·assignment·Cursor 실행·머지 차단과 무관.
+   * mode는 항상 `"dry_run_remediation_loop"`. 과거 timeline row와의 호환을 위해 optional.
+   */
+  remediationLoopPlan?: RemediationLoopPlan;
 };
 
 export type RequirementsStateJson = {

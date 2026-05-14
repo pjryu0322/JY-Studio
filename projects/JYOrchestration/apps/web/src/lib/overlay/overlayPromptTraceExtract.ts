@@ -25,6 +25,11 @@ import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRoutin
 import { coerceExecutionRoutingMetadata } from "@/lib/harness/executionRouting/executionRoutingCoerce";
 import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
 import { coerceReviewSecurityHarnessMetadata } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessCoerce";
+import type {
+  RemediationLoopPlan,
+  ReviewSecurityIssuePlanningReport,
+} from "@/lib/harness/reviewSecurity/reviewSecurityIssueTypes";
+import { coerceReviewSecurityIssuePlanningMetadata } from "@/lib/harness/reviewSecurity/reviewSecurityIssueCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -48,6 +53,8 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   executionRoutingPlan?: ExecutionRoutingPlan;
   executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
   reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
+  reviewSecurityIssuePlanningReport?: ReviewSecurityIssuePlanningReport;
+  remediationLoopPlan?: RemediationLoopPlan;
 }>;
 
 /**
@@ -79,6 +86,8 @@ export function extractOverlayPromptTraceMetadata(
     executionRoutingPlan?: ExecutionRoutingPlan;
     executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
     reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
+    reviewSecurityIssuePlanningReport?: ReviewSecurityIssuePlanningReport;
+    remediationLoopPlan?: RemediationLoopPlan;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -138,6 +147,7 @@ export function extractOverlayPromptTraceMetadata(
   Object.assign(out, coerceMemoryRuntimeMetadata(e));
   Object.assign(out, coerceExecutionRoutingMetadata(e));
   Object.assign(out, coerceReviewSecurityHarnessMetadata(e));
+  Object.assign(out, coerceReviewSecurityIssuePlanningMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }
