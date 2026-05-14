@@ -6,10 +6,13 @@ export { OverlayWarningSection } from "./OverlayWarningSection";
 export { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 export { OverlayPruningSection } from "./OverlayPruningSection";
 export {
+  OVERLAY_INCLUDE_MODE_ORDER,
+  OverlayIncludeModeBadge,
   OverlayUiBadge,
-  OverlayUiSection,
-  OverlayUiKeyValueRow,
   OverlayUiEmptyHint,
+  OverlayUiKeyValueRow,
   OverlayUiRowCard,
   OverlayUiRowList,
+  OverlayUiSection,
+  OverlayUiSourceText,
 } from "./OverlayUiPrimitives";

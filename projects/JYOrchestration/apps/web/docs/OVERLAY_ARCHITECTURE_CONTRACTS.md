@@ -76,7 +76,9 @@
    - Empty/null 안전: overlay metadata 없는 과거 timeline은 "이 시점에는 Overlay Runtime 정보가 기록되지 않았습니다." empty state로 처리. `OverlaySummaryCard`가 `buildOverlayUiViewModel` 결과의 `hasOverlayData`를 검사.
    - UI 문구는 항상 planning metadata임을 명시(`OVERLAY_UI_PLANNING_DISCLAIMER`, `OVERLAY_UI_BUDGET_DISCLAIMER`, `OVERLAY_UI_WARNING_DISCLAIMER`)하여 실제 prompt 포함 여부와 혼동을 방지.
 9. **Overlay Observability UI — Phase 1.5** (현재; UI-only 안정화) — Prompt Timeline Overlay 탭을 운영자/개발자가 실제 활용 가능한 수준으로 다듬는다.
-   - 신규 viewmodel `OverlayUiSummaryHeaderVM` + 컴포넌트 `OverlaySummaryHeader`: 역할 / 맥락 수(선택·우선순위) / 예산 위험 / 경고 수 / 축소 후보 수 / 핵심·추천·선택·축소 후보 카운트를 한눈에 보여준다.
+   - 신규 viewmodel `OverlayUiSummaryHeaderVM` + 컴포넌트 `OverlaySummaryHeader`: 역할 / 맥락 수(선택·우선순위) / 예산 위험 / 경고 수(conflict·drift 분리 카운트 포함) / 축소 후보 수 / 핵심·추천·선택·축소 후보 카운트를 한눈에 보여준다. 이전의 `OverlayUiTimelineSnapshotVM` + `SnapshotStrip`은 정보가 중복되어 제거되었고, summary가 단일 출처가 되었다.
+   - 신규 공통 원시티브: `OverlayIncludeModeBadge`(includeMode 단일 출처 배지) + `OverlayUiSourceText`(긴 source 1줄 ellipsis) + `OVERLAY_INCLUDE_MODE_ORDER`(노출 순서 상수). includeMode 배지의 label/tone/title 트리오는 `overlayUiIncludeModeLabel/Tone/BadgeTitle` 매핑에서 일관되게 도출된다.
+   - 섹션 default 펼침/접힘 정책은 adapter `OverlayUiSectionDefaultsVM`(단일 출처)에서 결정 후 SummaryCard가 prop으로 전달.
    - `overlayUiOverflowRiskLabel`을 영어 "LOW/MEDIUM/HIGH" → 한국어 "낮음/중간/높음" 으로 교체(내부 enum 노출 완화). description 문구도 "축약될 가능성이 있습니다" 등 사용자 친화 표현으로 보강.
    - `OverlayWarningSection`을 "경고" 섹션으로 리네이밍, drift 그룹 타이틀을 "정책 정렬" → "정책 기준 차이"로 변경(요구사항 매핑).
    - 섹션 기본 펼침 정책 도입: 컨텍스트/예산은 항상 펼침, 경고·축소 후보는 데이터 있을 때 펼침, 조립 계획은 접힘(모바일 과밀 방지).

@@ -20,7 +20,12 @@ describe("buildOverlayUiViewModel", () => {
     expect(vmNull.warning.hasData).toBe(false);
     expect(vmNull.assemblyPlan.hasData).toBe(false);
     expect(vmNull.pruning.hasData).toBe(false);
-    expect(vmNull.snapshot.hasData).toBe(false);
+    expect(vmNull.summary.hasData).toBe(false);
+    expect(vmNull.sectionDefaults.context).toBe(true);
+    expect(vmNull.sectionDefaults.budget).toBe(true);
+    expect(vmNull.sectionDefaults.warning).toBe(false);
+    expect(vmNull.sectionDefaults.assemblyPlan).toBe(false);
+    expect(vmNull.sectionDefaults.pruning).toBe(false);
   });
 
   it("returns hasOverlayData=false on empty object input", () => {
@@ -63,7 +68,7 @@ describe("buildOverlayUiViewModel", () => {
     expect(vm.budget.overflowRiskLabel).toBe("높음");
     expect(vm.budget.overflowRiskTone).toBe("warning");
     expect(vm.budget.estimatedInputTokens).toBe(1234);
-    expect(vm.snapshot.hasData).toBe(true);
+    expect(vm.summary.hasData).toBe(true);
   });
 
   it("converts conflict + drift warnings into rows", () => {
@@ -80,8 +85,10 @@ describe("buildOverlayUiViewModel", () => {
     expect(vm.warning.hasData).toBe(true);
     expect(vm.warning.conflictRows[0].severityLabel).toBe("주의");
     expect(vm.warning.driftRows[0].severityLabel).toBe("정보");
-    expect(vm.snapshot.conflictCount).toBe(1);
-    expect(vm.snapshot.driftCount).toBe(1);
+    expect(vm.summary.conflictCount).toBe(1);
+    expect(vm.summary.driftCount).toBe(1);
+    expect(vm.summary.warningCount).toBe(2);
+    expect(vm.sectionDefaults.warning).toBe(true);
   });
 
   it("aggregates assembly plan by includeMode and surfaces required/excludeCandidate counts", () => {
@@ -121,8 +128,8 @@ describe("buildOverlayUiViewModel", () => {
     expect(vm.assemblyPlan.byIncludeMode.excludeCandidate).toBe(1);
     expect(vm.assemblyPlan.byIncludeMode.recommended).toBe(1);
     expect(vm.assemblyPlan.byIncludeMode.optional).toBe(0);
-    expect(vm.snapshot.requiredContextsCount).toBe(1);
-    expect(vm.snapshot.excludeCandidatesCount).toBe(1);
+    expect(vm.summary.assemblyIncludeModeCounts.required).toBe(1);
+    expect(vm.summary.assemblyIncludeModeCounts.excludeCandidate).toBe(1);
   });
 
   it("converts pruning candidates into rows with safe defaults", () => {
@@ -197,12 +204,17 @@ describe("buildOverlayUiViewModel", () => {
     expect(vm.summary.roleLabel).toContain("planner");
     expect(vm.summary.selectedContextCount).toBe(2);
     expect(vm.summary.prioritizedContextCount).toBe(2);
+    expect(vm.summary.conflictCount).toBe(1);
+    expect(vm.summary.driftCount).toBe(1);
     expect(vm.summary.warningCount).toBe(2);
     expect(vm.summary.pruningCandidateCount).toBe(1);
     expect(vm.summary.overflowRiskLabel).toBe("높음");
     expect(vm.summary.overflowRiskTone).toBe("warning");
     expect(vm.summary.assemblyIncludeModeCounts.required).toBe(1);
     expect(vm.summary.assemblyIncludeModeCounts.excludeCandidate).toBe(1);
+    expect(vm.sectionDefaults.warning).toBe(true);
+    expect(vm.sectionDefaults.pruning).toBe(true);
+    expect(vm.sectionDefaults.assemblyPlan).toBe(false);
   });
 
   it("summary header has hasData=false on empty metadata", () => {

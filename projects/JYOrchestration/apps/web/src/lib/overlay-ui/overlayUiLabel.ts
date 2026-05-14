@@ -47,6 +47,21 @@ const INCLUDE_MODE_TONE: Readonly<Record<OverlayAssemblyIncludeMode, OverlayUiBa
   excludeCandidate: "warning",
 };
 
+/**
+ * includeMode 배지 hover title 문구. 사용자에게 "계획" 정보임을 명시하는 짧은 해설.
+ *
+ * - `required`: 핵심 맥락으로 우선 참조(계획)
+ * - `excludeCandidate`: 축소 후보(실제 제거 아님)
+ *
+ * SummaryHeader 카운트 배지, AssemblyPlan 그룹 배지 등 **모든 includeMode 배지의 단일 출처**.
+ */
+const INCLUDE_MODE_BADGE_TITLE: Readonly<Record<OverlayAssemblyIncludeMode, string>> = {
+  required: "핵심 맥락으로 우선 참조(계획)",
+  recommended: "추천 맥락(계획)",
+  optional: "선택 맥락(계획)",
+  excludeCandidate: "축소 후보(실제 제거 아님)",
+};
+
 const PLAN_TYPE_LABEL: Readonly<Record<OverlayAssemblyPlanItemType, string>> = {
   memory: "기억 컨텍스트",
   knowledge: "지식 컨텍스트",
@@ -90,6 +105,11 @@ export function overlayUiIncludeModeLabel(value: OverlayAssemblyIncludeMode | nu
 export function overlayUiIncludeModeTone(value: OverlayAssemblyIncludeMode | null | undefined): OverlayUiBadgeTone {
   if (!value) return "neutral";
   return INCLUDE_MODE_TONE[value] ?? "neutral";
+}
+
+export function overlayUiIncludeModeBadgeTitle(value: OverlayAssemblyIncludeMode | null | undefined): string {
+  if (!value) return "선택 맥락(계획)";
+  return INCLUDE_MODE_BADGE_TITLE[value] ?? "선택 맥락(계획)";
 }
 
 export function overlayUiPlanTypeLabel(value: OverlayAssemblyPlanItemType | null | undefined): string {

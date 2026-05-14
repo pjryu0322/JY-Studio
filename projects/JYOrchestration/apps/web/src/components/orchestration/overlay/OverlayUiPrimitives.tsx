@@ -9,7 +9,13 @@
 import type { CSSProperties, ReactNode } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
-import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
+import {
+  overlayUiIncludeModeBadgeTitle,
+  overlayUiIncludeModeLabel,
+  overlayUiIncludeModeTone,
+  type OverlayUiBadgeTone,
+} from "@/lib/overlay-ui/overlayUiLabel";
+import type { OverlayAssemblyIncludeMode } from "@/lib/overlay/overlayContextAssemblyPlan";
 
 const ROW_CARD_BASE_STYLE: CSSProperties = {
   fontSize: 12,
@@ -167,6 +173,80 @@ export function OverlayUiRowList({ children }: { readonly children: ReactNode })
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
       {children}
     </ul>
+  );
+}
+
+/**
+ * includeMode 배지 노출 순서(중요도 ↓). SummaryHeader / AssemblyPlan에서 공통 사용.
+ */
+export const OVERLAY_INCLUDE_MODE_ORDER: readonly OverlayAssemblyIncludeMode[] = [
+  "required",
+  "recommended",
+  "optional",
+  "excludeCandidate",
+];
+
+/**
+ * includeMode(`핵심/추천/선택/축소 후보`) 단일 배지.
+ *
+ * tone/label/title이 `overlayUiLabel`의 **단일 매핑**에서 일관되게 도출된다.
+ * SummaryHeader, AssemblyPlan 그룹/row 등 모든 includeMode 배지의 공통 진입점.
+ *
+ * - `count`가 주어지면 라벨 뒤에 숫자가 붙는다("핵심 3"). 없으면 라벨만("핵심").
+ * - `count <= 0`이면 `null`을 반환 — 호출부에서 별도 조건 분기를 줄여준다.
+ */
+export function OverlayIncludeModeBadge({
+  mode,
+  count,
+  titleOverride,
+}: {
+  readonly mode: OverlayAssemblyIncludeMode;
+  readonly count?: number;
+  readonly titleOverride?: string;
+}) {
+  if (typeof count === "number" && count <= 0) return null;
+  const label = overlayUiIncludeModeLabel(mode);
+  const tone = overlayUiIncludeModeTone(mode);
+  const title = titleOverride ?? overlayUiIncludeModeBadgeTitle(mode);
+  return (
+    <Badge variant={TONE_TO_VARIANT[tone]} title={title} style={{ whiteSpace: "nowrap", gap: 4 }}>
+      {typeof count === "number" ? `${label} ${count}` : label}
+    </Badge>
+  );
+}
+
+/**
+ * 긴 source 텍스트를 1줄 ellipsis로 노출하는 공통 원시티브.
+ *
+ * - `title` hover로 전체 텍스트 노출(native browser tooltip).
+ * - `maxWidth`로 모바일/카드 너비 제어 가능.
+ * - `min-width: 0`를 강제해 flex 부모 내부에서도 ellipsis가 동작하도록 한다.
+ */
+export function OverlayUiSourceText({
+  source,
+  maxWidth,
+  style,
+}: {
+  readonly source: string;
+  readonly maxWidth?: number | string;
+  readonly style?: CSSProperties;
+}) {
+  return (
+    <span
+      title={source}
+      style={{
+        color: t.textSecondary,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        minWidth: 0,
+        flex: "1 1 auto",
+        maxWidth,
+        ...style,
+      }}
+    >
+      {source}
+    </span>
   );
 }
 

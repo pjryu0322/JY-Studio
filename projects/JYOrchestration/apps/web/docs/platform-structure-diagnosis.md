@@ -357,7 +357,9 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
   - `overlayContextPruning.ts` — `suggestOverlayPruningCandidates`. **suggestion only**.
   - `overlayPolicyDriftWarning.ts` — `detectOverlayPolicyDrift`. **warning only**(`enforcement: "not_applied"`).
 - **Overlay Observability UI Phase 1.5 (9단계, 현재; UI-only 안정화)** — Prompt Timeline Overlay 탭을 운영자/개발자가 실제 활용할 수 있는 수준으로 다듬는다. **여전히 runtime payload·라우팅·retrieval·orchestration 어디에도 영향 없음.**
-  - **신규 SummaryHeader VM/컴포넌트**: `OverlayUiSummaryHeaderVM` + `OverlaySummaryHeader.tsx`. 역할 / 맥락 수(선택·우선순위) / 예산 위험 / 경고 수 / 축소 후보 수 / 핵심·추천·선택·축소 후보 카운트를 한눈에 노출.
+  - **신규 SummaryHeader VM/컴포넌트**: `OverlayUiSummaryHeaderVM` + `OverlaySummaryHeader.tsx`. 역할 / 맥락 수(선택·우선순위) / 예산 위험 / 경고 수(conflict·drift 분리 카운트 포함) / 축소 후보 수 / 핵심·추천·선택·축소 후보 카운트를 한눈에 노출. 이전 `OverlayUiTimelineSnapshotVM` + `SnapshotStrip`은 정보 중복으로 제거됨(summary가 단일 출처).
+  - **공통화 원시티브**: `OverlayIncludeModeBadge`(includeMode 배지 단일 진입점, label/tone/title이 `overlayUiLabel`의 매핑에서 도출) + `OverlayUiSourceText`(긴 source 말줄임) + `OVERLAY_INCLUDE_MODE_ORDER`(노출 순서 상수)를 `OverlayUiPrimitives.tsx`에 추가. SummaryHeader / AssemblyPlanSection / PruningSection이 동일한 출처를 공유.
+  - **섹션 default 펼침 정책 → adapter VM 이관**: `OverlayUiSectionDefaultsVM`(context/budget=항상, warning/pruning=데이터 있을 때, assemblyPlan=항상 접힘)을 adapter에서 산출하여 SummaryCard가 prop 전달. UI 컴포넌트의 분기 분산 해소.
   - **사용자 표현 강화**: `overlayUiOverflowRiskLabel`이 영어 "LOW/MEDIUM/HIGH" → 한국어 "낮음/중간/높음" 으로 변경. drift 그룹 타이틀 "정책 정렬" → "정책 기준 차이", Warning 섹션 타이틀 "주의·정보" → "경고". budget high description은 "축약될 가능성이 있습니다" 등 사용자 친화 표현으로 보강.
   - **섹션 기본 펼침 정책**: 컨텍스트/예산은 항상 펼침, 경고·축소 후보는 데이터 있을 때 펼침, 조립 계획은 접힘(모바일 과밀 방지). 각 section 컴포넌트가 optional `defaultOpen` prop을 받도록 확장.
   - **Empty state 보강**: `OVERLAY_UI_EMPTY_STATE_HINT`("최근 AI 응답부터 역할, 맥락, 경고, 예산 정보가 기록됩니다.") 보조 안내. `OverlayUiEmptyHint`가 `secondary` prop을 받아 2-line 노출 + `role="status"` 접근성 보강.

@@ -106,21 +106,14 @@ export type OverlayUiPruningSectionVM = Readonly<{
   description: string;
 }>;
 
-export type OverlayUiTimelineSnapshotVM = Readonly<{
-  hasData: boolean;
-  conflictCount: number;
-  driftCount: number;
-  overflowRiskLabel: string;
-  overflowRiskTone: OverlayUiBadgeTone;
-  requiredContextsCount: number;
-  excludeCandidatesCount: number;
-}>;
-
 /**
  * Overlay 탭 상단 "AI 판단 요약" 헤더 ViewModel.
  *
  * 운영자가 탭을 열자마자 한눈에 상태를 파악할 수 있도록 핵심 지표를 모은 read-only 요약이다.
  * **모든 값은 사용자 표현으로 변환**된 상태(예: 낮음/중간/높음). 내부 enum/code는 노출하지 않는다.
+ *
+ * 과거 단계의 `OverlayUiTimelineSnapshotVM`(별도의 상단 strip용)을 이 viewmodel로 통합했다.
+ * 충돌/정책 분리 카운트는 `conflictCount`/`driftCount`로 유지하며 합계가 `warningCount`.
  */
 export type OverlayUiSummaryHeaderVM = Readonly<{
   /** overlay metadata가 존재하는지(empty timeline 구분). */
@@ -129,6 +122,11 @@ export type OverlayUiSummaryHeaderVM = Readonly<{
   roleLabel: string | null;
   selectedContextCount: number;
   prioritizedContextCount: number;
+  /** 충돌 가능성 경고 수. */
+  conflictCount: number;
+  /** 정책 기준 차이 경고 수. */
+  driftCount: number;
+  /** 통합 경고 수 = conflictCount + driftCount. */
   warningCount: number;
   pruningCandidateCount: number;
   /** 사용자 표현(낮음/중간/높음/ㅡ). */
@@ -138,17 +136,34 @@ export type OverlayUiSummaryHeaderVM = Readonly<{
   assemblyIncludeModeCounts: Readonly<Record<OverlayAssemblyIncludeMode, number>>;
 }>;
 
+/**
+ * 섹션별 기본 펼침/접힘 정책. SummaryCard가 각 section 컴포넌트에 prop으로 전달.
+ *
+ * 정책 산출은 adapter(단일 출처)에서 수행하여 UI 컴포넌트의 분기 분산을 막는다.
+ * - context/budget: 항상 펼침
+ * - warning/pruning: 데이터가 있을 때만 펼침
+ * - assemblyPlan: 항상 접힘(모바일 과밀 방지)
+ */
+export type OverlayUiSectionDefaultsVM = Readonly<{
+  context: boolean;
+  budget: boolean;
+  warning: boolean;
+  assemblyPlan: boolean;
+  pruning: boolean;
+}>;
+
 export type OverlayUiViewModel = Readonly<{
   /** 해당 timeline entry에 overlay metadata가 하나라도 있는지. UI empty state 판별용. */
   hasOverlayData: boolean;
   /** 탭 상단 "AI 판단 요약" 헤더. */
   summary: OverlayUiSummaryHeaderVM;
+  /** 섹션별 기본 펼침/접힘 정책. */
+  sectionDefaults: OverlayUiSectionDefaultsVM;
   context: OverlayUiContextSectionVM;
   budget: OverlayUiBudgetSectionVM;
   warning: OverlayUiWarningSectionVM;
   assemblyPlan: OverlayUiAssemblyPlanSectionVM;
   pruning: OverlayUiPruningSectionVM;
-  snapshot: OverlayUiTimelineSnapshotVM;
 }>;
 
 const MISSING_SOURCE_LABEL = "(미지정)";
@@ -337,31 +352,6 @@ function buildPruningSection(
   };
 }
 
-function buildSnapshot(
-  metadata: ExtractedOverlayPromptTraceMetadata,
-  plan: OverlayUiAssemblyPlanSectionVM,
-  budget: OverlayUiBudgetSectionVM
-): OverlayUiTimelineSnapshotVM {
-  const conflictCount = metadata.overlayConflictWarnings?.length ?? 0;
-  const driftCount = metadata.overlayPolicyDriftWarnings?.length ?? 0;
-  const requiredContextsCount = plan.byIncludeMode.required;
-  const excludeCandidatesCount = plan.byIncludeMode.excludeCandidate;
-  return {
-    hasData:
-      conflictCount > 0 ||
-      driftCount > 0 ||
-      requiredContextsCount > 0 ||
-      excludeCandidatesCount > 0 ||
-      budget.hasData,
-    conflictCount,
-    driftCount,
-    overflowRiskLabel: budget.overflowRiskLabel,
-    overflowRiskTone: budget.overflowRiskTone,
-    requiredContextsCount,
-    excludeCandidatesCount,
-  };
-}
-
 function buildSummaryHeader(
   context: OverlayUiContextSectionVM,
   budget: OverlayUiBudgetSectionVM,
@@ -370,16 +360,33 @@ function buildSummaryHeader(
   pruning: OverlayUiPruningSectionVM,
   hasOverlayData: boolean
 ): OverlayUiSummaryHeaderVM {
+  const conflictCount = warning.conflictRows.length;
+  const driftCount = warning.driftRows.length;
   return {
     hasData: hasOverlayData,
     roleLabel: context.identityRoleLabel,
     selectedContextCount: context.selected.length,
     prioritizedContextCount: context.prioritized.length,
-    warningCount: warning.conflictRows.length + warning.driftRows.length,
+    conflictCount,
+    driftCount,
+    warningCount: conflictCount + driftCount,
     pruningCandidateCount: pruning.rows.length,
     overflowRiskLabel: budget.overflowRiskLabel,
     overflowRiskTone: budget.overflowRiskTone,
     assemblyIncludeModeCounts: assemblyPlan.byIncludeMode,
+  };
+}
+
+function buildSectionDefaults(
+  warning: OverlayUiWarningSectionVM,
+  pruning: OverlayUiPruningSectionVM
+): OverlayUiSectionDefaultsVM {
+  return {
+    context: true,
+    budget: true,
+    warning: warning.hasData,
+    assemblyPlan: false,
+    pruning: pruning.hasData,
   };
 }
 
@@ -392,22 +399,20 @@ export function buildOverlayUiViewModel(
   const warning = buildWarningSection(safe);
   const assemblyPlan = buildAssemblyPlanSection(safe.overlayContextAssemblyPlan);
   const pruning = buildPruningSection(safe.overlayPruningCandidates);
-  const snapshot = buildSnapshot(safe, assemblyPlan, budget);
   const hasOverlayData =
     context.hasData ||
     budget.hasData ||
     warning.hasData ||
     assemblyPlan.hasData ||
     pruning.hasData;
-  const summary = buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData);
   return {
     hasOverlayData,
-    summary,
+    summary: buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData),
+    sectionDefaults: buildSectionDefaults(warning, pruning),
     context,
     budget,
     warning,
     assemblyPlan,
     pruning,
-    snapshot,
   };
 }

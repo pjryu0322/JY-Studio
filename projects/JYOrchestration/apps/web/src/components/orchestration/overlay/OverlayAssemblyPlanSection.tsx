@@ -8,28 +8,15 @@ import type {
 import { OVERLAY_UI_PLANNING_DISCLAIMER } from "@/lib/overlay-ui/overlayUiDescription";
 import { formatKoreanInt } from "@/lib/overlay-ui/overlayUiFormat";
 import {
+  OVERLAY_INCLUDE_MODE_ORDER,
+  OverlayIncludeModeBadge,
   OverlayUiBadge,
   OverlayUiEmptyHint,
   OverlayUiRowCard,
   OverlayUiRowList,
   OverlayUiSection,
+  OverlayUiSourceText,
 } from "./OverlayUiPrimitives";
-import type { OverlayAssemblyIncludeMode } from "@/lib/overlay/overlayContextAssemblyPlan";
-import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
-
-type SummaryBadge = Readonly<{
-  mode: OverlayAssemblyIncludeMode;
-  label: string;
-  tone: OverlayUiBadgeTone;
-  title: string;
-}>;
-
-const SUMMARY_BADGES: readonly SummaryBadge[] = [
-  { mode: "required", label: "핵심", tone: "info", title: "핵심 맥락으로 우선 참조" },
-  { mode: "recommended", label: "추천", tone: "neutral", title: "추천 맥락" },
-  { mode: "optional", label: "선택", tone: "neutral", title: "선택 맥락" },
-  { mode: "excludeCandidate", label: "축소 후보", tone: "warning", title: "축소 후보(실제 제거 아님)" },
-];
 
 function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
   return (
@@ -50,19 +37,7 @@ function PlanItemCard({ row }: { readonly row: OverlayUiAssemblyPlanRow }) {
       </div>
       <div style={{ fontSize: 11, color: t.textMuted, display: "flex", alignItems: "baseline", gap: 4, minWidth: 0 }}>
         <span style={{ flexShrink: 0 }}>출처:</span>
-        <span
-          title={row.source}
-          style={{
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            minWidth: 0,
-            flex: "1 1 auto",
-          }}
-        >
-          {row.source}
-        </span>
+        <OverlayUiSourceText source={row.source} />
       </div>
       <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
         {row.includeModeDescription}
@@ -86,13 +61,9 @@ export function OverlayAssemblyPlanSection({
       ) : (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-            {SUMMARY_BADGES.map((b) =>
-              vm.byIncludeMode[b.mode] > 0 ? (
-                <OverlayUiBadge key={b.mode} tone={b.tone} title={b.title}>
-                  {b.label} {vm.byIncludeMode[b.mode]}
-                </OverlayUiBadge>
-              ) : null
-            )}
+            {OVERLAY_INCLUDE_MODE_ORDER.map((mode) => (
+              <OverlayIncludeModeBadge key={mode} mode={mode} count={vm.byIncludeMode[mode]} />
+            ))}
           </div>
           <OverlayUiRowList>
             {vm.rows.map((row, i) => (

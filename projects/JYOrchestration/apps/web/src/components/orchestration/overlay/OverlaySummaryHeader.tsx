@@ -2,7 +2,12 @@
 
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { OverlayUiSummaryHeaderVM } from "@/lib/overlay-ui/overlayUiAdapter";
-import { OverlayUiBadge, OverlayUiKeyValueRow } from "./OverlayUiPrimitives";
+import {
+  OVERLAY_INCLUDE_MODE_ORDER,
+  OverlayIncludeModeBadge,
+  OverlayUiBadge,
+  OverlayUiKeyValueRow,
+} from "./OverlayUiPrimitives";
 
 /**
  * "AI 판단 요약" 헤더 — Overlay 탭 상단에 노출되어 운영자가 한눈에 상태를 파악하게 한다.
@@ -67,26 +72,9 @@ export function OverlaySummaryHeader({ vm }: { readonly vm: OverlayUiSummaryHead
       <OverlayUiKeyValueRow label="축소 후보" value={`${vm.pruningCandidateCount}건`} />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-        {vm.assemblyIncludeModeCounts.required > 0 ? (
-          <OverlayUiBadge tone="info" title="핵심 맥락으로 우선 참조(계획)">
-            핵심 {vm.assemblyIncludeModeCounts.required}
-          </OverlayUiBadge>
-        ) : null}
-        {vm.assemblyIncludeModeCounts.recommended > 0 ? (
-          <OverlayUiBadge tone="neutral" title="추천 맥락(계획)">
-            추천 {vm.assemblyIncludeModeCounts.recommended}
-          </OverlayUiBadge>
-        ) : null}
-        {vm.assemblyIncludeModeCounts.optional > 0 ? (
-          <OverlayUiBadge tone="neutral" title="선택 맥락(계획)">
-            선택 {vm.assemblyIncludeModeCounts.optional}
-          </OverlayUiBadge>
-        ) : null}
-        {vm.assemblyIncludeModeCounts.excludeCandidate > 0 ? (
-          <OverlayUiBadge tone="warning" title="축소 후보(계획)">
-            축소 후보 {vm.assemblyIncludeModeCounts.excludeCandidate}
-          </OverlayUiBadge>
-        ) : null}
+        {OVERLAY_INCLUDE_MODE_ORDER.map((mode) => (
+          <OverlayIncludeModeBadge key={mode} mode={mode} count={vm.assemblyIncludeModeCounts[mode]} />
+        ))}
       </div>
     </section>
   );

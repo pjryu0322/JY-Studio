@@ -8,6 +8,7 @@ import {
   OverlayUiRowCard,
   OverlayUiRowList,
   OverlayUiSection,
+  OverlayUiSourceText,
 } from "./OverlayUiPrimitives";
 
 const SECTION_DESCRIPTION =
@@ -31,19 +32,11 @@ export function OverlayPruningSection({
               key={`pr-${i}`}
               layout={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}
             >
-              <strong
-                title={row.source}
-                style={{
-                  color: t.textPrimary,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                  maxWidth: "min(60%, 240px)",
-                }}
-              >
-                {row.source}
-              </strong>
+              <OverlayUiSourceText
+                source={row.source}
+                maxWidth="min(60%, 240px)"
+                style={{ color: t.textPrimary, fontWeight: 700, flex: "0 1 auto" }}
+              />
               <span style={{ color: t.textMuted, fontSize: 11 }}>{row.reason}</span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: t.textMuted }}>
                 절감 가능 ~{formatKoreanInt(row.estimatedReduction)}
