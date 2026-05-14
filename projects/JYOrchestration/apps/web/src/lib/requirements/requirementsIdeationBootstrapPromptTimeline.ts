@@ -30,6 +30,7 @@ import { coerceHarnessPromptAssemblyMetadata } from "@/lib/harness/promptAssembl
 import { coerceKnowledgeActivationMetadata } from "@/lib/harness/knowledgeActivation/knowledgeActivationCoerce";
 import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryRuntimeCoerce";
 import { coerceExecutionRoutingMetadata } from "@/lib/harness/executionRouting/executionRoutingCoerce";
+import { coerceReviewSecurityHarnessMetadata } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessCoerce";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -144,6 +145,7 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   Object.assign(out, coerceKnowledgeActivationMetadata(r));
   Object.assign(out, coerceMemoryRuntimeMetadata(r));
   Object.assign(out, coerceExecutionRoutingMetadata(r));
+  Object.assign(out, coerceReviewSecurityHarnessMetadata(r));
 
   return out;
 }

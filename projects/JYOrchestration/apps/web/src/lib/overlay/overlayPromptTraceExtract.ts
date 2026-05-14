@@ -23,6 +23,8 @@ import { coerceMemoryRuntimeMetadata } from "@/lib/harness/memoryRuntime/memoryR
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
 import { coerceExecutionRoutingMetadata } from "@/lib/harness/executionRouting/executionRoutingCoerce";
+import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
+import { coerceReviewSecurityHarnessMetadata } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessCoerce";
 import { coerceOverlayPromptTracePreparationMetadata } from "@/lib/overlay/overlayPromptTracePreparationCoerce";
 
 export type ExtractedOverlayPromptTraceMetadata = Readonly<{
@@ -45,6 +47,7 @@ export type ExtractedOverlayPromptTraceMetadata = Readonly<{
   memoryRuntimePlan?: MemoryRuntimePlan;
   executionRoutingPlan?: ExecutionRoutingPlan;
   executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
+  reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
 }>;
 
 /**
@@ -75,6 +78,7 @@ export function extractOverlayPromptTraceMetadata(
     memoryRuntimePlan?: MemoryRuntimePlan;
     executionRoutingPlan?: ExecutionRoutingPlan;
     executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
+    reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
   } = {};
 
   const oi = e.overlayIdentity;
@@ -133,6 +137,7 @@ export function extractOverlayPromptTraceMetadata(
   Object.assign(out, coerceKnowledgeActivationMetadata(e));
   Object.assign(out, coerceMemoryRuntimeMetadata(e));
   Object.assign(out, coerceExecutionRoutingMetadata(e));
+  Object.assign(out, coerceReviewSecurityHarnessMetadata(e));
 
   return out as ExtractedOverlayPromptTraceMetadata;
 }

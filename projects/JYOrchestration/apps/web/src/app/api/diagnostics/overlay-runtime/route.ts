@@ -55,6 +55,14 @@ import {
   summarizeRecentExecutionRoutingPlans,
 } from "@/lib/harness/executionRouting/executionRoutingRecentSummary";
 import {
+  emptyReviewSecuritySummary,
+  summarizeReviewSecurityHarnessPlan,
+} from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
+import {
+  emptyRecentReviewSecuritySummary,
+  summarizeRecentReviewSecurityPlans,
+} from "@/lib/harness/reviewSecurity/reviewSecurityRecentSummary";
+import {
   OVERLAY_REGISTRY_CAPABILITY_IDS,
   OVERLAY_REGISTRY_PROVIDERS,
   OVERLAY_REGISTRY_ROLE_KEYS,
@@ -94,6 +102,9 @@ export async function GET(request: NextRequest) {
   let recentMemoryRuntimeSummary: ReturnType<typeof summarizeRecentMemoryRuntimePlans> | undefined;
   let recentExecutionRoutingSummary:
     | ReturnType<typeof summarizeRecentExecutionRoutingPlans>
+    | undefined;
+  let recentReviewSecuritySummary:
+    | ReturnType<typeof summarizeRecentReviewSecurityPlans>
     | undefined;
 
   if (projectId) {
@@ -144,6 +155,14 @@ export async function GET(request: NextRequest) {
       .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
     recentExecutionRoutingSummary = summarizeRecentExecutionRoutingPlans({
       plans: recentExecutionRoutingPlans,
+    });
+
+    // Harness Phase H6 — Recent Review/Security Summary(누적 read-only).
+    const recentReviewSecurityPlans = recentExtracts
+      .map((extracted) => extracted.reviewSecurityHarnessPlan)
+      .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
+    recentReviewSecuritySummary = summarizeRecentReviewSecurityPlans({
+      plans: recentReviewSecurityPlans,
     });
   }
 
@@ -227,8 +246,18 @@ export async function GET(request: NextRequest) {
   const recentExecutionRoutingSummaryForResponse =
     recentExecutionRoutingSummary ?? emptyRecentExecutionRoutingSummary();
 
+  // Harness Phase H6 — Review/Security Summary(read-only).
+  // 최근 promptTrace 1건의 reviewSecurityHarnessPlan을 요약(누적 아님; UI는 planning metadata로 표시).
+  const reviewSecuritySummary = lastPromptTraceOverlayExtract?.reviewSecurityHarnessPlan
+    ? summarizeReviewSecurityHarnessPlan(lastPromptTraceOverlayExtract.reviewSecurityHarnessPlan)
+    : emptyReviewSecuritySummary();
+
+  // Harness Phase H6 — Recent Review/Security Summary(누적). projectId가 없으면 empty fallback.
+  const recentReviewSecuritySummaryForResponse =
+    recentReviewSecuritySummary ?? emptyRecentReviewSecuritySummary();
+
   const overlayArchitecturePhase = {
-    current: "harness-execution-routing-safety-stabilization-layer" as const,
+    current: "harness-review-security-preparation-layer" as const,
     enforcementEnabled: false,
     retrievalOrchestrationEnabled: false,
     providerOrchestrationEnabled: false,
@@ -241,6 +270,7 @@ export async function GET(request: NextRequest) {
     harnessMemoryRuntimeStabilizationEnabled: true,
     harnessExecutionRoutingPlanningEnabled: true,
     harnessExecutionRoutingSafetyStabilizationEnabled: true,
+    harnessReviewSecurityPreparationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -258,6 +288,7 @@ export async function GET(request: NextRequest) {
     harnessMemoryRuntimeStabilizationLayer: true,
     harnessExecutionRoutingPreparationLayer: true,
     harnessExecutionRoutingSafetyStabilizationLayer: true,
+    harnessReviewSecurityPreparationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -296,6 +327,8 @@ export async function GET(request: NextRequest) {
       executionRoutingSummary,
       executionRoutingSafetyReport,
       recentExecutionRoutingSummary: recentExecutionRoutingSummaryForResponse,
+      reviewSecuritySummary,
+      recentReviewSecuritySummary: recentReviewSecuritySummaryForResponse,
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,

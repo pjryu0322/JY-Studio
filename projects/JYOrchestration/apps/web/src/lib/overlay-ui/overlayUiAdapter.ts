@@ -158,6 +158,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   memoryRuntime: boolean;
   /** Harness Phase H5 Preparation — Execution Routing 섹션 펼침 정책(데이터 있을 때만 펼침). */
   executionRouting: boolean;
+  /** Harness Phase H6 Preparation — Review/Security 섹션 펼침 정책(데이터 있을 때만 펼침). */
+  reviewSecurity: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -391,7 +393,8 @@ function buildSectionDefaults(
   hasHarnessPreview: boolean,
   hasKnowledgeActivation: boolean,
   hasMemoryRuntime: boolean,
-  hasExecutionRouting: boolean
+  hasExecutionRouting: boolean,
+  hasReviewSecurity: boolean
 ): OverlayUiSectionDefaultsVM {
   return {
     context: true,
@@ -403,6 +406,7 @@ function buildSectionDefaults(
     knowledgeActivation: hasKnowledgeActivation,
     memoryRuntime: hasMemoryRuntime,
     executionRouting: hasExecutionRouting,
+    reviewSecurity: hasReviewSecurity,
   };
 }
 
@@ -435,6 +439,10 @@ export function buildOverlayUiViewModel(
     !!safe.executionRoutingPlan &&
     ((safe.executionRoutingPlan.items?.length ?? 0) > 0 ||
       (safe.executionRoutingPlan.findings?.length ?? 0) > 0);
+  const hasReviewSecurity =
+    !!safe.reviewSecurityHarnessPlan &&
+    ((safe.reviewSecurityHarnessPlan.checklist?.length ?? 0) > 0 ||
+      (safe.reviewSecurityHarnessPlan.findings?.length ?? 0) > 0);
   return {
     hasOverlayData,
     summary: buildSummaryHeader(context, budget, warning, assemblyPlan, pruning, hasOverlayData),
@@ -444,7 +452,8 @@ export function buildOverlayUiViewModel(
       hasHarnessPreview,
       hasKnowledgeActivation,
       hasMemoryRuntime,
-      hasExecutionRouting
+      hasExecutionRouting,
+      hasReviewSecurity
     ),
     context,
     budget,

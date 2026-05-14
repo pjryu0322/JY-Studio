@@ -29,6 +29,7 @@ import type { KnowledgeActivationPlan } from "@/lib/harness/knowledgeActivation/
 import type { MemoryRuntimePlan } from "@/lib/harness/memoryRuntime/memoryRuntimeTypes";
 import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/executionCapabilityTypes";
 import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
+import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
@@ -338,6 +339,14 @@ export type RequirementsPromptTimelineEntry = {
    * 과거 timeline row와의 호환을 위해 optional.
    */
   executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
+  /**
+   * Harness Phase H6 Preparation: Review / Security Harness planning metadata.
+   *
+   * **read-only / planning only.** 실제 보안 스캔·코드 리뷰·이슈 등록·머지 차단·PR 게이트·
+   * remediation 자동 실행과 무관. mode는 항상 `"dry_run_review_security"`.
+   * 과거 timeline row와의 호환을 위해 optional.
+   */
+  reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
 };
 
 export type RequirementsStateJson = {

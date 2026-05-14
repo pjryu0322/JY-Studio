@@ -44,6 +44,8 @@ import type { ExecutionRoutingPlan } from "@/lib/harness/executionRouting/execut
 import { buildExecutionRoutingPlan } from "@/lib/harness/executionRouting/buildExecutionRoutingPlan";
 import type { ExecutionRoutingSafetyReport } from "@/lib/harness/executionRouting/executionRoutingSafetyTypes";
 import { evaluateExecutionRoutingSafety } from "@/lib/harness/executionRouting/evaluateExecutionRoutingSafety";
+import type { ReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/reviewSecurityHarnessTypes";
+import { buildReviewSecurityHarnessPlan } from "@/lib/harness/reviewSecurity/buildReviewSecurityHarnessPlan";
 import {
   buildMemoryRuntimeEntriesFromTimelineMessages,
   extractDirectionalKeywordsFromTimelineMessages,
@@ -93,6 +95,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
   memoryRuntimePlan?: MemoryRuntimePlan;
   executionRoutingPlan?: ExecutionRoutingPlan;
   executionRoutingSafetyReport?: ExecutionRoutingSafetyReport;
+  reviewSecurityHarnessPlan?: ReviewSecurityHarnessPlan;
 }> {
   const usedRoleRaw = resolveOverlayTurnRoleKey(input.meta);
   const identity = resolveAiIdentityContract(usedRoleRaw);
@@ -233,6 +236,17 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     plan: executionRoutingPlan,
   });
 
+  // Harness Phase H6 — Review / Security Harness Plan (dry-run review-security planning only).
+  // 위에서 만든 H3 / H4 / H5 plan을 입력으로 "AI검수자/AI보안관이 어떤 기준으로 검토해야 하는가"를
+  // checklist planning metadata로 만든다. **실제 보안 스캔·코드 리뷰·이슈 등록·머지 차단 없음.**
+  const reviewSecurityHarnessPlan = buildReviewSecurityHarnessPlan({
+    roleKey: overlayIdentity?.roleKey ?? usedRoleRaw ?? null,
+    workspaceStage: input.timelineStage ?? null,
+    executionRoutingPlan,
+    knowledgeActivationPlan,
+    memoryRuntimePlan,
+  });
+
   return {
     overlayIdentity,
     overlayContextAssembly,
@@ -253,6 +267,7 @@ export function buildOrchestrationOverlayPromptTraceAugments(input: {
     memoryRuntimePlan,
     executionRoutingPlan,
     executionRoutingSafetyReport,
+    reviewSecurityHarnessPlan,
   };
 }
 
