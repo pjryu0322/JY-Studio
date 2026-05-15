@@ -1,5 +1,5 @@
 /**
- * H12–H15.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H16 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -8,6 +8,8 @@ import { buildUnifiedRuntimePlanningSummary } from "@/lib/harness/runtimeConsoli
 import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
+import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
+import { RUNTIME_TRACEABILITY_SECTION_DISCLAIMER_KO } from "@/lib/harness/runtimeTraceability/runtimeTraceabilityLabelsKo";
 import {
   RUNTIME_CRITICALITY_SECTION_DISCLAIMER_KO,
   formatRuntimePlanningCriticalityScoreLabel,
@@ -42,6 +44,7 @@ import {
   RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
 import type { OverlayRuntimeCriticalitySectionVM } from "./overlayRuntimeCriticalityAdapter";
+import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
 import type { OverlayRuntimeLifecycleSectionVM } from "./overlayRuntimeLifecycleAdapter";
@@ -60,6 +63,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   consolidatedVm: OverlayRuntimePlanningConsolidatedSectionVM;
   dependencyGraphVm: OverlayRuntimeDependencyGraphSectionVM;
   criticalityVm: OverlayRuntimeCriticalitySectionVM;
+  traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -183,6 +187,39 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     criticalDependencyChains: dependencyGraph.dependencyChains,
   };
 
+  const traceabilityReports = buildRuntimeTraceabilityPlanningReports(
+    ctx,
+    dependencyReports,
+    criticalityReports
+  );
+  const { reasoningChain, dependencyReasoningTraceSummary, priorityReasoningTraceSummary } =
+    traceabilityReports;
+  const dependencyTracePaths = [
+    ...dependencyReasoningTraceSummary.staleDependencyReasoning,
+    ...dependencyReasoningTraceSummary.propagationReasoning,
+    ...dependencyReasoningTraceSummary.lifecycleDependencyReasoning,
+  ];
+  const priorityTracePaths = [
+    ...priorityReasoningTraceSummary.escalationPriorityReasoning,
+    ...priorityReasoningTraceSummary.criticalNodeReasoning,
+    ...priorityReasoningTraceSummary.propagationReasoning,
+  ];
+  const traceabilityVm: OverlayRuntimeTraceabilitySectionVM = {
+    sectionDisclaimer: RUNTIME_TRACEABILITY_SECTION_DISCLAIMER_KO,
+    showAttention:
+      reasoningChain.criticalTransitions.length >= 2 ||
+      criticalitySummary.criticalityScore >= 75 ||
+      dependencyReasoningTraceSummary.propagationReasoning.length >= 3,
+    reasoningStepRows: reasoningChain.reasoningSteps.map((s) => ({
+      id: s.id,
+      label: s.labelKo,
+      explanation: s.explanationKo,
+    })),
+    dependencyTracePaths,
+    priorityTracePaths,
+    criticalTransitionChains: reasoningChain.criticalTransitions,
+  };
+
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
   const explainabilityUnstable =
@@ -255,5 +292,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     consolidatedVm,
     dependencyGraphVm,
     criticalityVm,
+    traceabilityVm,
   };
 }

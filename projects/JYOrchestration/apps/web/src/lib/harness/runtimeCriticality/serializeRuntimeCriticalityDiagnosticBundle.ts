@@ -5,21 +5,21 @@
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
 import type { RuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
-import { buildRuntimeCriticalityPlanningReports } from "./buildRuntimeCriticalityPlanningReports";
+import {
+  buildRuntimeCriticalityPlanningReports,
+  type RuntimeCriticalityPlanningReports,
+} from "./buildRuntimeCriticalityPlanningReports";
 import { serializeRuntimePlanningCriticalitySummaryForDiagnostic } from "./evaluateRuntimePlanningCriticality";
 import { serializeRuntimePriorityPropagationSummaryForDiagnostic } from "./evaluatePriorityPropagation";
 import { serializeRuntimeEscalationPriorityFlowSummaryForDiagnostic } from "./evaluateEscalationPriorityFlow";
 
-export function serializeRuntimeCriticalityDiagnosticBundleFromPlanning(
-  ctx: NormalizedRuntimePlanningContext,
-  dependencyReports: RuntimeDependencyPlanningReports
+export function serializeRuntimeCriticalityDiagnosticBundleFromReports(
+  reports: RuntimeCriticalityPlanningReports
 ): Readonly<{
   runtimePlanningCriticalitySummary: ReturnType<typeof serializeRuntimePlanningCriticalitySummaryForDiagnostic>;
   runtimePriorityPropagationSummary: ReturnType<typeof serializeRuntimePriorityPropagationSummaryForDiagnostic>;
   runtimeEscalationPriorityFlowSummary: ReturnType<typeof serializeRuntimeEscalationPriorityFlowSummaryForDiagnostic>;
 }> {
-  const reports = buildRuntimeCriticalityPlanningReports(ctx, dependencyReports);
-
   return {
     runtimePlanningCriticalitySummary: serializeRuntimePlanningCriticalitySummaryForDiagnostic(
       reports.criticalitySummary
@@ -31,6 +31,15 @@ export function serializeRuntimeCriticalityDiagnosticBundleFromPlanning(
       reports.escalationPriorityFlowSummary
     ),
   };
+}
+
+export function serializeRuntimeCriticalityDiagnosticBundleFromPlanning(
+  ctx: NormalizedRuntimePlanningContext,
+  dependencyReports: RuntimeDependencyPlanningReports
+): ReturnType<typeof serializeRuntimeCriticalityDiagnosticBundleFromReports> {
+  return serializeRuntimeCriticalityDiagnosticBundleFromReports(
+    buildRuntimeCriticalityPlanningReports(ctx, dependencyReports)
+  );
 }
 
 export function serializeRuntimeCriticalityDiagnosticBundleFromContext(

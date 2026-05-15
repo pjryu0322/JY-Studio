@@ -162,6 +162,7 @@ export function OverlaySummaryCard({
     consolidatedVm: runtimePlanningConsolidatedVm,
     dependencyGraphVm: runtimePlanningDependencyVm,
     criticalityVm: runtimePlanningCriticalityVm,
+    traceabilityVm: runtimePlanningTraceabilityVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -231,7 +232,12 @@ export function OverlaySummaryCard({
     d.runtimePlanningCriticality || runtimePlanningCriticalityVm.showAttention
   );
   const showLifecycleCoherenceGrouped = !pLife.omitFromDom || !pCoh.omitFromDom;
-  const showDependencyCriticalityGrouped = !pDep.omitFromDom || !pCrit.omitFromDom;
+  const pTrace = pol(
+    "runtime_planning_traceability",
+    d.runtimePlanningTraceability || runtimePlanningTraceabilityVm.showAttention
+  );
+  const showDependencyCriticalityGrouped =
+    !pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -320,15 +326,21 @@ export function OverlaySummaryCard({
           showCoherence={!pCoh.omitFromDom}
         />
       ) : null}
-      {showDependencyCriticalityGrouped && (!pDep.omitFromDom || !pCrit.omitFromDom) ? (
+      {showDependencyCriticalityGrouped &&
+      (!pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
-          groupOpen={!compactAndNarrowUi && (pDep.defaultOpen || pCrit.defaultOpen)}
+          traceabilityDefaultOpen={pTrace.defaultOpen}
+          groupOpen={
+            !compactAndNarrowUi && (pDep.defaultOpen || pCrit.defaultOpen || pTrace.defaultOpen)
+          }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
+          showTraceability={!pTrace.omitFromDom}
         />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
