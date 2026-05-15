@@ -21,6 +21,7 @@ import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScro
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
+import { RequirementsMessageExplainability } from "@/components/requirements/RequirementsMessageExplainability";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -630,6 +631,7 @@ export function RequirementsChatPanel({
                         ))}
                       </div>
                     ) : null}
+                    <RequirementsMessageExplainability message={m} />
                     {actionIconRow("start")}
                   </div>
                 </div>

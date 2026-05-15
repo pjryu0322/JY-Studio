@@ -8,6 +8,7 @@ export type RequirementsVisibility = "PUBLIC";
 export type RequirementsMessageType = "QUESTION" | "STATEMENT" | "ANSWER" | "NOTICE" | "FRIENDLY_ERROR";
 
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 
 export type RequirementsMessageMeta = {
   stage: "REQUIREMENTS";
@@ -34,6 +35,11 @@ export type RequirementsMessageMeta = {
   replyToSlotKey?: string;
   /** 사용자 답글: 대상 메시지 발화자(speakerId) */
   replyTargetSpeakerId?: string;
+  /**
+   * H7: 해당 AI 응답과 함께 생성된 overlay+harness extract 스냅샷(read-only explainability).
+   * 사용자 메시지에는 저장하지 않는 것이 일반적이다.
+   */
+  messageOverlayExplainability?: ExtractedOverlayPromptTraceMetadata | null;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

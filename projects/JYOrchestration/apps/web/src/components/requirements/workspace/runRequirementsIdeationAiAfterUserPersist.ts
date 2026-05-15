@@ -36,6 +36,7 @@ import {
 } from "@/lib/project/requirementsRoomState";
 import type { IdeationPlannerTail } from "@/components/requirements/workspace/requirementsIdeationAiTypes";
 import { runLegacyProblemInterviewFallbackPipeline } from "@/components/requirements/workspace/legacyProblemInterviewFallbackPipeline";
+import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 
 export type { IdeationPlannerTail } from "@/components/requirements/workspace/requirementsIdeationAiTypes";
 
@@ -330,6 +331,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
               ? String((promptTraceParsed as any).decisionAxisCandidates[0]?.axis ?? "").trim()
               : String((promptTraceParsed as any)?.decisionAxis ?? "").trim();
           const speaker = speakerForOrchestratorAgent(promptTraceParsed?.orchestratorAgent, axisTop || null);
+          const overlayExplain = extractOverlayPromptTraceMetadata(promptTraceParsed);
+          const explainMeta =
+            Object.keys(overlayExplain).length > 0 ? { messageOverlayExplainability: overlayExplain } : {};
+          const chipMeta = quickChips.length ? { interviewSuggestions: quickChips } : {};
           facilitatorFinalRoom = {
             ...withCalling,
             aiQuestionIndex: turn + 1,
@@ -344,7 +349,9 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                   speakerId: speaker.id || primaryId,
                   speakerName: speaker.name || aiName,
                   messageType: "ANSWER",
-                  ...(quickChips.length ? { meta: { interviewSuggestions: quickChips } } : {}),
+                  ...(Object.keys(chipMeta).length || Object.keys(explainMeta).length
+                    ? { meta: { ...chipMeta, ...explainMeta } }
+                    : {}),
                 }),
               ],
             },

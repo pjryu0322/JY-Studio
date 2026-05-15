@@ -74,6 +74,7 @@ import {
   coerceBootstrapPromptTrace,
   coerceRequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
@@ -934,6 +935,12 @@ export function RequirementsWorkspace({
                 ? { interviewSuggestions: [...params.interviewSuggestions] }
                 : {}),
               ...(params.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
+              ...(params.promptTrace
+                ? (() => {
+                    const ex = extractOverlayPromptTraceMetadata(params.promptTrace);
+                    return Object.keys(ex).length > 0 ? { messageOverlayExplainability: ex } : {};
+                  })()
+                : {}),
             },
           }),
         ]);
