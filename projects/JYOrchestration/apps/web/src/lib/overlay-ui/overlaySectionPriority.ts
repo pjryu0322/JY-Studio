@@ -22,7 +22,8 @@ export type OverlaySectionKind =
   | "pruning"
   | "harness_prompt_preview"
   | "resource_orchestration"
-  | "runtime_trial";
+  | "runtime_trial"
+  | "runtime_governance";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -38,6 +39,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "budget":
     case "resource_orchestration":
     case "runtime_trial":
+    case "runtime_governance":
     case "knowledge_activation":
     case "memory_runtime":
       return "normal";

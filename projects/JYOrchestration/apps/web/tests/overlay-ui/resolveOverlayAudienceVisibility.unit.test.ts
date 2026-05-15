@@ -30,6 +30,10 @@ describe("isOverlaySectionVisibleForAudience", () => {
     expect(isOverlaySectionVisibleForAudience("runtime_trial", "user")).toBe(false);
   });
 
+  it("hides runtime governance section for user audience", () => {
+    expect(isOverlaySectionVisibleForAudience("runtime_governance", "user")).toBe(false);
+  });
+
   it("shows all sections for operator", () => {
     expect(isOverlaySectionVisibleForAudience("review_security", "operator")).toBe(true);
   });

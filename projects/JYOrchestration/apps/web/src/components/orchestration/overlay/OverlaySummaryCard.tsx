@@ -15,6 +15,7 @@ import { buildOverlayOperatorResourceSummaryVm } from "@/lib/overlay-ui/overlayO
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
 import { buildOverlayResourceOrchestrationSectionVm } from "@/lib/overlay-ui/overlayResourceOrchestrationAdapter";
 import { buildOverlayRuntimeTrialSectionVm } from "@/lib/overlay-ui/overlayRuntimeTrialAdapter";
+import { buildOverlayRuntimeGovernanceSectionVm } from "@/lib/overlay-ui/overlayRuntimeGovernanceAdapter";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -37,6 +38,7 @@ import { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueS
 import { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 import { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
 import { OverlayRuntimeTrialSection } from "./OverlayRuntimeTrialSection";
+import { OverlayRuntimeGovernanceSection } from "./OverlayRuntimeGovernanceSection";
 import { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 import { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
@@ -120,6 +122,11 @@ export function OverlaySummaryCard({
     maturityBaseline,
     releaseGate,
   });
+  const runtimeGovernanceVm = buildOverlayRuntimeGovernanceSectionVm({
+    overlay,
+    maturityBaseline,
+    releaseGate,
+  });
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
     { kind: "review_security", base: d.reviewSecurity },
@@ -150,6 +157,7 @@ export function OverlaySummaryCard({
   const pEx = pol("execution_routing", d.executionRouting);
   const pMat = pol("maturity_baseline", d.harnessMaturity);
   const pRt = pol("runtime_trial", d.runtimeTrial);
+  const pGov = pol("runtime_governance", d.runtimeGovernance);
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -207,6 +215,9 @@ export function OverlaySummaryCard({
         />
       ) : null}
       {!pRt.omitFromDom ? <OverlayRuntimeTrialSection vm={runtimeTrialVm} defaultOpen={pRt.defaultOpen} /> : null}
+      {!pGov.omitFromDom ? (
+        <OverlayRuntimeGovernanceSection vm={runtimeGovernanceVm} defaultOpen={pGov.defaultOpen} />
+      ) : null}
       {advancedClip.hiddenCount > 0 ? (
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", padding: "4px 2px" }}>
           고급 Harness 섹션 {advancedClip.hiddenCount}건은 화면 budget으로 숨겼습니다. 넓은 화면·일반 모드에서 확인하세요.

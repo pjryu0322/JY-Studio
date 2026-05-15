@@ -98,6 +98,7 @@ import {
   buildRuntimeSimulationSummary,
   serializeRuntimeSimulationSummaryForDiagnostic,
 } from "@/lib/harness/runtimeTrial/buildRuntimeSimulationSummary";
+import { serializeRuntimeGovernanceDiagnosticBundle } from "@/lib/harness/runtimeGovernance/serializeRuntimeGovernanceDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -340,6 +341,7 @@ export async function GET(request: NextRequest) {
     harnessResourceOrchestrationPlanningEnabled: true,
     harnessResourceStabilizationEnabled: true,
     harnessControlledRuntimeTrialPreparationEnabled: true,
+    harnessControlledRuntimeGovernanceEnabled: true,
   };
 
   const overlayMaturity = {
@@ -359,6 +361,7 @@ export async function GET(request: NextRequest) {
     harnessExecutionRoutingSafetyStabilizationLayer: true,
     harnessReviewSecurityPreparationLayer: true,
     harnessReviewSecurityIssuePlanningLayer: true,
+    harnessControlledRuntimeGovernanceLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -397,6 +400,11 @@ export async function GET(request: NextRequest) {
     extract: lastPromptTraceOverlayExtract ?? null,
   });
   const runtimeTrialReadiness = serializeRuntimeTrialReadinessForDiagnostic(runtimeTrialReadinessReport);
+  const governanceDiag = serializeRuntimeGovernanceDiagnosticBundle({
+    baseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    extract: lastPromptTraceOverlayExtract ?? null,
+  });
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
       baseline: harnessMaturityBaselineReport,
@@ -427,6 +435,9 @@ export async function GET(request: NextRequest) {
       runtimeTrialReadiness,
       runtimeRiskSummary,
       runtimeSimulationSummary,
+      runtimeGovernanceSummary: governanceDiag.runtimeGovernanceSummary,
+      rollbackSafetyPlanning: governanceDiag.rollbackSafetyPlanning,
+      runtimeAuditabilitySummary: governanceDiag.runtimeAuditabilitySummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

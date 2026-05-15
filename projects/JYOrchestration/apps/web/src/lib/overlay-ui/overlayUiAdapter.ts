@@ -174,6 +174,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   resourceOrchestration: boolean;
   /** Harness Phase H10 — Controlled runtime trial preparation(기본 접힘). */
   runtimeTrial: boolean;
+  /** Harness Phase H10.5 — Runtime governance planning(기본 접힘). */
+  runtimeGovernance: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -430,6 +432,7 @@ function buildSectionDefaults(
     harnessMaturity: false,
     resourceOrchestration: true,
     runtimeTrial: false,
+    runtimeGovernance: false,
   };
 }
 
