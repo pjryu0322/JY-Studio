@@ -165,6 +165,7 @@ export function OverlaySummaryCard({
     traceabilityVm: runtimePlanningTraceabilityVm,
     reasoningVm: runtimePlanningReasoningVm,
     semanticVm: runtimePlanningSemanticVm,
+    semanticGraphVm: runtimePlanningSemanticGraphVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -246,12 +247,17 @@ export function OverlaySummaryCard({
     "runtime_planning_semantic",
     d.runtimePlanningSemantic || runtimePlanningSemanticVm.showAttention
   );
+  const pSemanticGraph = pol(
+    "runtime_planning_semantic_graph",
+    d.runtimePlanningSemanticGraph || runtimePlanningSemanticGraphVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
     !pTrace.omitFromDom ||
     !pReason.omitFromDom ||
-    !pSemantic.omitFromDom;
+    !pSemantic.omitFromDom ||
+    !pSemanticGraph.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -345,15 +351,18 @@ export function OverlaySummaryCard({
         !pCrit.omitFromDom ||
         !pTrace.omitFromDom ||
         !pReason.omitFromDom ||
-        !pSemantic.omitFromDom) ? (
+        !pSemantic.omitFromDom ||
+        !pSemanticGraph.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          semanticGraphVm={runtimePlanningSemanticGraphVm}
           semanticVm={runtimePlanningSemanticVm}
           reasoningVm={runtimePlanningReasoningVm}
           traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
+          semanticGraphDefaultOpen={pSemanticGraph.defaultOpen}
           semanticDefaultOpen={pSemantic.defaultOpen}
           reasoningDefaultOpen={pReason.defaultOpen}
           traceabilityDefaultOpen={pTrace.defaultOpen}
@@ -363,13 +372,17 @@ export function OverlaySummaryCard({
               pCrit.defaultOpen ||
               pTrace.defaultOpen ||
               pReason.defaultOpen ||
-              pSemantic.defaultOpen)
+              pSemantic.defaultOpen ||
+              pSemanticGraph.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showSemantic={!pSemantic.omitFromDom}
-          showReasoning={!pReason.omitFromDom && pSemantic.omitFromDom}
-          showTraceability={!pTrace.omitFromDom && pReason.omitFromDom && pSemantic.omitFromDom}
+          showSemanticGraph={!pSemanticGraph.omitFromDom}
+          showSemantic={!pSemantic.omitFromDom && pSemanticGraph.omitFromDom}
+          showReasoning={!pReason.omitFromDom && pSemantic.omitFromDom && pSemanticGraph.omitFromDom}
+          showTraceability={
+            !pTrace.omitFromDom && pReason.omitFromDom && pSemantic.omitFromDom && pSemanticGraph.omitFromDom
+          }
         />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (

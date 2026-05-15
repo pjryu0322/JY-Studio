@@ -1,5 +1,5 @@
 /**
- * H17–H17.5 — 진단 API용 runtime semantic wire 묶음.
+ * H17–H18 — 진단 API용 runtime semantic wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -16,6 +16,9 @@ import { serializeRuntimeSemanticCompressionQualityReportForDiagnostic } from ".
 import { serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic } from "./evaluateRuntimeSemanticGroupBalance";
 import { serializeRuntimeSemanticRedundancySummaryForDiagnostic } from "./evaluateRuntimeSemanticRedundancy";
 import { serializeStabilizedRuntimeSemanticOrderingForDiagnostic } from "./stabilizeRuntimeSemanticOrdering";
+import { serializeRuntimeSemanticExplainabilityGraphForDiagnostic } from "@/lib/harness/runtimeSemanticGraph/buildRuntimeSemanticExplainabilityGraph";
+import { serializeRuntimeSemanticExplosionRiskSummaryForDiagnostic } from "@/lib/harness/runtimeSemanticGraph/evaluateRuntimeSemanticExplosionRisk";
+import { serializeRuntimeSemanticWarningOriginSummaryForDiagnostic } from "@/lib/harness/runtimeSemanticGraph/resolveRuntimeSemanticWarningOrigins";
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -29,6 +32,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   >;
   runtimeHiddenSemanticTraceAudit: ReturnType<typeof serializeRuntimeHiddenSemanticTraceAuditForDiagnostic>;
   runtimeSemanticGroupBalanceSummary: ReturnType<typeof serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic>;
+  runtimeSemanticExplainabilityGraph: ReturnType<typeof serializeRuntimeSemanticExplainabilityGraphForDiagnostic>;
+  runtimeSemanticWarningOriginSummary: ReturnType<typeof serializeRuntimeSemanticWarningOriginSummaryForDiagnostic>;
+  runtimeSemanticExplosionRiskSummary: ReturnType<typeof serializeRuntimeSemanticExplosionRiskSummaryForDiagnostic>;
 }> {
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
@@ -49,6 +55,15 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ),
     runtimeSemanticGroupBalanceSummary: serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic(
       reports.semanticGroupBalanceSummary
+    ),
+    runtimeSemanticExplainabilityGraph: serializeRuntimeSemanticExplainabilityGraphForDiagnostic(
+      reports.semanticExplainabilityGraph
+    ),
+    runtimeSemanticWarningOriginSummary: serializeRuntimeSemanticWarningOriginSummaryForDiagnostic(
+      reports.semanticWarningOriginSummary
+    ),
+    runtimeSemanticExplosionRiskSummary: serializeRuntimeSemanticExplosionRiskSummaryForDiagnostic(
+      reports.semanticExplosionRiskSummary
     ),
   };
 }

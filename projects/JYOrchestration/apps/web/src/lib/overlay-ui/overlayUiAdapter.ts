@@ -200,6 +200,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningReasoning: boolean;
   /** Harness Phase H17 — Semantic compression & observability stabilization(기본 접힘; explosion·compression 시 펼침). */
   runtimePlanningSemantic: boolean;
+  /** Harness Phase H18 — Semantic explainability graph & causal linking(기본 접힘; warning cascade 시 펼침). */
+  runtimePlanningSemanticGraph: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -469,6 +471,7 @@ function buildSectionDefaults(
     runtimePlanningTraceability: false,
     runtimePlanningReasoning: false,
     runtimePlanningSemantic: false,
+    runtimePlanningSemanticGraph: false,
   };
 }
 

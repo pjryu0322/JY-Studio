@@ -1,8 +1,14 @@
 /**
- * H17–H17.5 — semantic groups·compression·quality gate **planning 보고서** 일괄 산출.
+ * H17–H18 — semantic groups·compression·quality·explainability graph **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
+import { buildRuntimeSemanticGraphPlanningReports } from "@/lib/harness/runtimeSemanticGraph/buildRuntimeSemanticGraphPlanningReports";
+import type {
+  RuntimeSemanticExplosionRiskSummary,
+  RuntimeSemanticExplainabilityGraph,
+  RuntimeSemanticWarningOriginSummary,
+} from "@/lib/harness/runtimeSemanticGraph/runtimeSemanticGraphTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -22,7 +28,7 @@ import type {
   RuntimeSemanticGroupBalanceSummary,
 } from "./runtimeSemanticQualityTypes";
 
-export type RuntimeSemanticPlanningReports = Readonly<{
+export type RuntimeSemanticCorePlanningReports = Readonly<{
   semanticGroupsSummary: RuntimeSemanticGroupsSummary;
   compressedReasoningTrace: CompressedRuntimeReasoningTrace;
   semanticRedundancySummary: RuntimeSemanticRedundancySummary;
@@ -31,6 +37,13 @@ export type RuntimeSemanticPlanningReports = Readonly<{
   hiddenTraceAudit: RuntimeHiddenSemanticTraceAudit;
   semanticGroupBalanceSummary: RuntimeSemanticGroupBalanceSummary;
 }>;
+
+export type RuntimeSemanticPlanningReports = RuntimeSemanticCorePlanningReports &
+  Readonly<{
+    semanticExplainabilityGraph: RuntimeSemanticExplainabilityGraph;
+    semanticWarningOriginSummary: RuntimeSemanticWarningOriginSummary;
+    semanticExplosionRiskSummary: RuntimeSemanticExplosionRiskSummary;
+  }>;
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -61,7 +74,7 @@ export function buildRuntimeSemanticPlanningReports(
   });
   const semanticGroupBalanceSummary = evaluateRuntimeSemanticGroupBalance(semanticGroupsSummary);
 
-  return {
+  const coreReports: RuntimeSemanticCorePlanningReports = {
     semanticGroupsSummary,
     compressedReasoningTrace,
     semanticRedundancySummary,
@@ -70,4 +83,8 @@ export function buildRuntimeSemanticPlanningReports(
     hiddenTraceAudit,
     semanticGroupBalanceSummary,
   };
+
+  const graphReports = buildRuntimeSemanticGraphPlanningReports(reasoningReports, coreReports);
+
+  return { ...coreReports, ...graphReports };
 }
