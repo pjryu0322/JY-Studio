@@ -13,7 +13,13 @@ describe("resolveOverlaySectionPriority", () => {
     expect(resolveOverlaySectionPriority("operator_runtime_summary")).toBe("important");
   });
 
-  it("marks harness preview as advanced", () => {
-    expect(resolveOverlaySectionPriority("harness_prompt_preview")).toBe("advanced");
+  it("marks resource orchestration as normal priority", () => {
+    expect(resolveOverlaySectionPriority("resource_orchestration")).toBe("normal");
+  });
+
+  it("marks raw assembly / pruning / harness preview as internal (same compact policy as advanced)", () => {
+    expect(resolveOverlaySectionPriority("assembly_plan")).toBe("internal");
+    expect(resolveOverlaySectionPriority("pruning")).toBe("internal");
+    expect(resolveOverlaySectionPriority("harness_prompt_preview")).toBe("internal");
   });
 });

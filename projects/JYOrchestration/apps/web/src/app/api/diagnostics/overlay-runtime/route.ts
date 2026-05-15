@@ -84,6 +84,7 @@ import { evaluateHarnessMaturityBaseline } from "@/lib/harness/maturity/evaluate
 import { evaluateHarnessReleaseGateReadiness } from "@/lib/harness/maturity/evaluateHarnessReleaseGateReadiness";
 import type { OverlayAudienceMode } from "@/lib/overlay-ui/overlayAudienceTypes";
 import { filterOverlayRuntimeDiagnosticDataForAudience } from "@/lib/overlay/overlayRuntimeDiagnosticAudienceFilter";
+import { summarizeResourceOrchestrationPlanning } from "@/lib/harness/resourceOrchestration/summarizeResourceOrchestrationPlanning";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -214,6 +215,10 @@ export async function GET(request: NextRequest) {
     lastPromptTraceOverlayExtract?.overlayContextBudget
   );
 
+  const resourceOrchestrationPlanningSummary = summarizeResourceOrchestrationPlanning(
+    lastPromptTraceOverlayExtract ?? null
+  );
+
   const lastAssemblyPlan = lastPromptTraceOverlayExtract?.overlayContextAssemblyPlan ?? [];
   const lastPruningCandidates = lastPromptTraceOverlayExtract?.overlayPruningCandidates ?? [];
   const overlayAssemblyPlanSummary = summarizeOverlayAssemblyPlan({
@@ -319,6 +324,7 @@ export async function GET(request: NextRequest) {
     harnessExecutionRoutingSafetyStabilizationEnabled: true,
     harnessReviewSecurityPreparationEnabled: true,
     harnessReviewSecurityIssuePlanningEnabled: true,
+    harnessResourceOrchestrationPlanningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -370,6 +376,7 @@ export async function GET(request: NextRequest) {
       overlaySelectionSummary,
       overlayConflictSummary,
       overlayContextBudgetSummary,
+      resourceOrchestrationPlanningSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

@@ -7,6 +7,7 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import { Fragment } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import {
@@ -16,6 +17,7 @@ import {
   type OverlayUiBadgeTone,
 } from "@/lib/overlay-ui/overlayUiLabel";
 import type { OverlayAssemblyIncludeMode } from "@/lib/overlay/overlayContextAssemblyPlan";
+import { clipWithHiddenCount, OVERLAY_MAX_VISIBLE_FINDINGS } from "@/lib/overlay-ui/overlayRenderingBudget";
 
 const ROW_CARD_BASE_STYLE: CSSProperties = {
   fontSize: 12,
@@ -366,25 +368,37 @@ export function OverlayUiWarningList({
 export function OverlayUiFindingList({
   findings,
   ariaLabel = "Overlay findings",
+  maxFindings = OVERLAY_MAX_VISIBLE_FINDINGS,
 }: {
   readonly findings: readonly { code: string; severityLabel: string; message: string }[];
   readonly ariaLabel?: string;
+  /** H8.5 — findings 과밀 완화(0이면 상한 없음). */
+  readonly maxFindings?: number;
 }) {
   if (!findings.length) return null;
+  const cap = maxFindings > 0 ? maxFindings : findings.length;
+  const { visible, hiddenCount } = clipWithHiddenCount(findings, cap);
   return (
-    <ul
-      role="status"
-      aria-live="polite"
-      aria-label={ariaLabel}
-      style={buildAlertListContainerStyle("finding")}
-    >
-      {findings.map((f) => (
-        <li key={f.code}>
-          <strong style={{ marginRight: 4 }}>[{f.severityLabel}]</strong>
-          {f.message}
-        </li>
-      ))}
-    </ul>
+    <Fragment>
+      <ul
+        role="status"
+        aria-live="polite"
+        aria-label={ariaLabel}
+        style={buildAlertListContainerStyle("finding")}
+      >
+        {visible.map((f) => (
+          <li key={f.code}>
+            <strong style={{ marginRight: 4 }}>[{f.severityLabel}]</strong>
+            {f.message}
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 ? (
+        <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginTop: 4 }}>
+          추가 {hiddenCount}건 숨김
+        </div>
+      ) : null}
+    </Fragment>
   );
 }
 

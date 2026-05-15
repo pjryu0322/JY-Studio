@@ -12,6 +12,7 @@ import type { RecentMemoryRuntimeSummary } from "@/lib/harness/memoryRuntime/mem
 import type { OverlayAudienceMode } from "@/lib/overlay-ui/overlayAudienceTypes";
 import { buildOverlayOperatorRuntimeSummaryVm } from "@/lib/overlay-ui/overlayOperatorRuntimeSummaryAdapter";
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
+import { buildOverlayResourceOrchestrationSectionVm } from "@/lib/overlay-ui/overlayResourceOrchestrationAdapter";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -21,6 +22,7 @@ import {
 import { clipWithHiddenCount, OVERLAY_MAX_VISIBLE_ADVANCED_SECTIONS } from "@/lib/overlay-ui/overlayRenderingBudget";
 import { OverlayContextSection } from "./OverlayContextSection";
 import { OverlayBudgetSection } from "./OverlayBudgetSection";
+import { OverlayResourceOrchestrationSection } from "./OverlayResourceOrchestrationSection";
 import { OverlayWarningSection } from "./OverlayWarningSection";
 import { OverlayAssemblyPlanSection } from "./OverlayAssemblyPlanSection";
 import { OverlayPruningSection } from "./OverlayPruningSection";
@@ -102,6 +104,7 @@ export function OverlaySummaryCard({
     releaseGate,
     messageExplainabilityAvailable,
   });
+  const resourceOrchVm = buildOverlayResourceOrchestrationSectionVm(overlay);
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
     { kind: "review_security", base: d.reviewSecurity },
@@ -126,6 +129,7 @@ export function OverlaySummaryCard({
   const pOp = pol("operator_runtime_summary", true);
   const pCtx = pol("context", d.context);
   const pBud = pol("budget", d.budget);
+  const pRes = pol("resource_orchestration", d.resourceOrchestration);
   const pWar = pol("warning", d.warning);
   const pEx = pol("execution_routing", d.executionRouting);
   const pMat = pol("maturity_baseline", d.harnessMaturity);
@@ -146,6 +150,9 @@ export function OverlaySummaryCard({
       ) : null}
       {!pCtx.omitFromDom ? <OverlayContextSection vm={vm.context} defaultOpen={pCtx.defaultOpen} /> : null}
       {!pBud.omitFromDom ? <OverlayBudgetSection vm={vm.budget} defaultOpen={pBud.defaultOpen} /> : null}
+      {!pRes.omitFromDom ? (
+        <OverlayResourceOrchestrationSection vm={resourceOrchVm} defaultOpen={pRes.defaultOpen} />
+      ) : null}
       {!pWar.omitFromDom ? <OverlayWarningSection vm={vm.warning} defaultOpen={pWar.defaultOpen} /> : null}
       {!pAsm.omitFromDom && showAdvanced("assembly_plan") ? (
         <OverlayAssemblyPlanSection vm={vm.assemblyPlan} defaultOpen={pAsm.defaultOpen} />

@@ -166,6 +166,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   remediationLoop: boolean;
   /** Harness Phase H8 — Maturity baseline(진단 요약; 기본 접힘). */
   harnessMaturity: boolean;
+  /** Harness Phase H9 — Resource orchestration planning(기본 펼침). */
+  resourceOrchestration: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -418,6 +420,7 @@ function buildSectionDefaults(
     reviewSecurityIssue: hasReviewSecurityIssue,
     remediationLoop: hasRemediationLoop,
     harnessMaturity: false,
+    resourceOrchestration: true,
   };
 }
 

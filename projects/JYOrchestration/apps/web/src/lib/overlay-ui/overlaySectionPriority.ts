@@ -19,10 +19,12 @@ export type OverlaySectionKind =
   | "remediation_loop"
   | "assembly_plan"
   | "pruning"
-  | "harness_prompt_preview";
+  | "harness_prompt_preview"
+  | "resource_orchestration";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
+    /** 경고 + 실행 라우팅(안전 요약 포함) — 사용자 뷰에서도 critical 유지. */
     case "warning":
     case "execution_routing":
       return "critical";
@@ -31,15 +33,18 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
       return "important";
     case "context":
     case "budget":
+    case "resource_orchestration":
     case "knowledge_activation":
     case "memory_runtime":
       return "normal";
     case "review_security":
     case "review_security_issue":
     case "remediation_loop":
+      return "advanced";
+    /** Raw harness replay / assembly 진단 — `advanced`와 동일한 compact·narrow 정책이지만 의미상 내부 raw에 가깝다. */
     case "assembly_plan":
     case "pruning":
     case "harness_prompt_preview":
-      return "advanced";
+      return "internal";
   }
 }
