@@ -378,6 +378,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningSemanticCompressionEnabled: true,
     harnessRuntimePlanningSemanticQualityGateEnabled: true,
     harnessRuntimePlanningSemanticExplainabilityGraphEnabled: true,
+    harnessRuntimePlanningSemanticNarrativeConsolidationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -412,6 +413,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningSemanticCompressionLayer: true,
     harnessRuntimePlanningSemanticQualityGateLayer: true,
     harnessRuntimePlanningSemanticExplainabilityGraphLayer: true,
+    harnessRuntimePlanningSemanticNarrativeConsolidationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -599,6 +601,9 @@ export async function GET(request: NextRequest) {
       runtimeSemanticExplainabilityGraph: runtimeSemanticDiag.runtimeSemanticExplainabilityGraph,
       runtimeSemanticWarningOriginSummary: runtimeSemanticDiag.runtimeSemanticWarningOriginSummary,
       runtimeSemanticExplosionRiskSummary: runtimeSemanticDiag.runtimeSemanticExplosionRiskSummary,
+      runtimeSemanticNarrativeSummary: runtimeSemanticDiag.runtimeSemanticNarrativeSummary,
+      runtimeSemanticRootCauseGroups: runtimeSemanticDiag.runtimeSemanticRootCauseGroups,
+      runtimeSemanticGraphRelevanceSummary: runtimeSemanticDiag.runtimeSemanticGraphRelevanceSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

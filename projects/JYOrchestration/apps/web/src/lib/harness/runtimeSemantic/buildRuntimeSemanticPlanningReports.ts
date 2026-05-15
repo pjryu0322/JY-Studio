@@ -1,5 +1,5 @@
 /**
- * H17–H18 — semantic groups·compression·quality·explainability graph **planning 보고서** 일괄 산출.
+ * H17–H18.5 — semantic groups·compression·quality·graph·narrative **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -9,6 +9,13 @@ import type {
   RuntimeSemanticExplainabilityGraph,
   RuntimeSemanticWarningOriginSummary,
 } from "@/lib/harness/runtimeSemanticGraph/runtimeSemanticGraphTypes";
+import { buildRuntimeSemanticNarrativePlanningReports } from "@/lib/harness/runtimeSemanticNarrative/buildRuntimeSemanticNarrativePlanningReports";
+import type {
+  RuntimeSemanticGraphRelevanceSummary,
+  RuntimeSemanticNarrativePlanningReports,
+  RuntimeSemanticNarrativeSummary,
+  RuntimeSemanticRootCauseGroup,
+} from "@/lib/harness/runtimeSemanticNarrative/runtimeSemanticNarrativeTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -43,7 +50,8 @@ export type RuntimeSemanticPlanningReports = RuntimeSemanticCorePlanningReports 
     semanticExplainabilityGraph: RuntimeSemanticExplainabilityGraph;
     semanticWarningOriginSummary: RuntimeSemanticWarningOriginSummary;
     semanticExplosionRiskSummary: RuntimeSemanticExplosionRiskSummary;
-  }>;
+  }> &
+  RuntimeSemanticNarrativePlanningReports;
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -85,6 +93,13 @@ export function buildRuntimeSemanticPlanningReports(
   };
 
   const graphReports = buildRuntimeSemanticGraphPlanningReports(reasoningReports, coreReports);
+  const narrativeReports = buildRuntimeSemanticNarrativePlanningReports(coreReports, graphReports);
 
-  return { ...coreReports, ...graphReports };
+  return { ...coreReports, ...graphReports, ...narrativeReports };
 }
+
+export type {
+  RuntimeSemanticNarrativeSummary,
+  RuntimeSemanticRootCauseGroup,
+  RuntimeSemanticGraphRelevanceSummary,
+};

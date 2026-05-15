@@ -1,5 +1,5 @@
 /**
- * H12–H18 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H18.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -58,6 +58,10 @@ import {
   buildOverlayRuntimeSemanticGraphSectionVmFromReports,
   type OverlayRuntimeSemanticGraphSectionVM,
 } from "./overlayRuntimeSemanticGraphSectionVm";
+import {
+  buildOverlayRuntimeSemanticNarrativeSectionVmFromReports,
+  type OverlayRuntimeSemanticNarrativeSectionVM,
+} from "./overlayRuntimeSemanticNarrativeSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -81,6 +85,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   reasoningVm: OverlayRuntimeReasoningSectionVM;
   semanticVm: OverlayRuntimeSemanticSectionVM;
   semanticGraphVm: OverlayRuntimeSemanticGraphSectionVM;
+  semanticNarrativeVm: OverlayRuntimeSemanticNarrativeSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -250,6 +255,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const semanticGraphVm = buildOverlayRuntimeSemanticGraphSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const semanticNarrativeVm = buildOverlayRuntimeSemanticNarrativeSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -327,5 +335,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     reasoningVm,
     semanticVm,
     semanticGraphVm,
+    semanticNarrativeVm,
   };
 }

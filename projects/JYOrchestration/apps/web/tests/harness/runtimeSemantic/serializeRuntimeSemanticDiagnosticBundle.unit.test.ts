@@ -42,7 +42,7 @@ describe("H17 runtime semantic compression", () => {
     expect(compressed.compressedLines.length).toBeGreaterThan(0);
   });
 
-  it("serializes ten H17–H18 diagnostic fields", () => {
+  it("serializes thirteen H17–H18.5 diagnostic fields", () => {
     const baseline = evaluateHarnessMaturityBaseline({
       overlayExtract: null,
       harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
@@ -92,5 +92,11 @@ describe("H17 runtime semantic compression", () => {
     expect(origins.mode).toBe("runtime_semantic_warning_origin_summary");
     expect(explosion.mode).toBe("runtime_semantic_explosion_risk_summary");
     expect(explosion.explosionRisk).toBeTruthy();
+    const narrative = b.runtimeSemanticNarrativeSummary as { mode?: string };
+    const rootCauses = b.runtimeSemanticRootCauseGroups as { mode?: string };
+    const relevance = b.runtimeSemanticGraphRelevanceSummary as { mode?: string };
+    expect(narrative.mode).toBe("runtime_semantic_narrative_summary");
+    expect(rootCauses.mode).toBe("runtime_semantic_root_cause_groups");
+    expect(relevance.mode).toBe("runtime_semantic_graph_relevance_summary");
   });
 });

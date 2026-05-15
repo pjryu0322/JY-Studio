@@ -166,6 +166,7 @@ export function OverlaySummaryCard({
     reasoningVm: runtimePlanningReasoningVm,
     semanticVm: runtimePlanningSemanticVm,
     semanticGraphVm: runtimePlanningSemanticGraphVm,
+    semanticNarrativeVm: runtimePlanningSemanticNarrativeVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -251,13 +252,18 @@ export function OverlaySummaryCard({
     "runtime_planning_semantic_graph",
     d.runtimePlanningSemanticGraph || runtimePlanningSemanticGraphVm.showAttention
   );
+  const pSemanticNarrative = pol(
+    "runtime_planning_semantic_narrative",
+    d.runtimePlanningSemanticNarrative || runtimePlanningSemanticNarrativeVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
     !pTrace.omitFromDom ||
     !pReason.omitFromDom ||
     !pSemantic.omitFromDom ||
-    !pSemanticGraph.omitFromDom;
+    !pSemanticGraph.omitFromDom ||
+    !pSemanticNarrative.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -352,16 +358,19 @@ export function OverlaySummaryCard({
         !pTrace.omitFromDom ||
         !pReason.omitFromDom ||
         !pSemantic.omitFromDom ||
-        !pSemanticGraph.omitFromDom) ? (
+        !pSemanticGraph.omitFromDom ||
+        !pSemanticNarrative.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          semanticNarrativeVm={runtimePlanningSemanticNarrativeVm}
           semanticGraphVm={runtimePlanningSemanticGraphVm}
           semanticVm={runtimePlanningSemanticVm}
           reasoningVm={runtimePlanningReasoningVm}
           traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
+          semanticNarrativeDefaultOpen={pSemanticNarrative.defaultOpen}
           semanticGraphDefaultOpen={pSemanticGraph.defaultOpen}
           semanticDefaultOpen={pSemantic.defaultOpen}
           reasoningDefaultOpen={pReason.defaultOpen}
@@ -373,15 +382,26 @@ export function OverlaySummaryCard({
               pTrace.defaultOpen ||
               pReason.defaultOpen ||
               pSemantic.defaultOpen ||
-              pSemanticGraph.defaultOpen)
+              pSemanticGraph.defaultOpen ||
+              pSemanticNarrative.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showSemanticGraph={!pSemanticGraph.omitFromDom}
-          showSemantic={!pSemantic.omitFromDom && pSemanticGraph.omitFromDom}
-          showReasoning={!pReason.omitFromDom && pSemantic.omitFromDom && pSemanticGraph.omitFromDom}
+          showSemanticNarrative={!pSemanticNarrative.omitFromDom}
+          showSemanticGraph={!pSemanticGraph.omitFromDom && pSemanticNarrative.omitFromDom}
+          showSemantic={!pSemantic.omitFromDom && pSemanticGraph.omitFromDom && pSemanticNarrative.omitFromDom}
+          showReasoning={
+            !pReason.omitFromDom &&
+            pSemantic.omitFromDom &&
+            pSemanticGraph.omitFromDom &&
+            pSemanticNarrative.omitFromDom
+          }
           showTraceability={
-            !pTrace.omitFromDom && pReason.omitFromDom && pSemantic.omitFromDom && pSemanticGraph.omitFromDom
+            !pTrace.omitFromDom &&
+            pReason.omitFromDom &&
+            pSemantic.omitFromDom &&
+            pSemanticGraph.omitFromDom &&
+            pSemanticNarrative.omitFromDom
           }
         />
       ) : null}
