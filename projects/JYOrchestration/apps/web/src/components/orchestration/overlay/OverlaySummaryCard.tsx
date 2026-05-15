@@ -17,6 +17,7 @@ import { buildOverlayResourceOrchestrationSectionVm } from "@/lib/overlay-ui/ove
 import { buildOverlayRuntimeTrialSectionVm } from "@/lib/overlay-ui/overlayRuntimeTrialAdapter";
 import { buildOverlayRuntimeGovernanceSectionVm } from "@/lib/overlay-ui/overlayRuntimeGovernanceAdapter";
 import { buildOverlayRuntimeEnforcementCandidateSectionVm } from "@/lib/overlay-ui/overlayRuntimeEnforcementCandidateAdapter";
+import { buildOverlayControlledEnforcementGovernanceSectionVm } from "@/lib/overlay-ui/overlayControlledEnforcementGovernanceAdapter";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -41,6 +42,7 @@ import { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
 import { OverlayRuntimeTrialSection } from "./OverlayRuntimeTrialSection";
 import { OverlayRuntimeGovernanceSection } from "./OverlayRuntimeGovernanceSection";
 import { OverlayRuntimeEnforcementCandidateSection } from "./OverlayRuntimeEnforcementCandidateSection";
+import { OverlayControlledEnforcementGovernanceSection } from "./OverlayControlledEnforcementGovernanceSection";
 import { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 import { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
@@ -136,6 +138,13 @@ export function OverlaySummaryCard({
     messageExplainabilityAvailable,
     overlayWarningCount: vm.summary.warningCount,
   });
+  const controlledEnforcementGovVm = buildOverlayControlledEnforcementGovernanceSectionVm({
+    overlay,
+    maturityBaseline,
+    releaseGate,
+    messageExplainabilityAvailable,
+    overlayWarningCount: vm.summary.warningCount,
+  });
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
     { kind: "review_security", base: d.reviewSecurity },
@@ -168,6 +177,7 @@ export function OverlaySummaryCard({
   const pRt = pol("runtime_trial", d.runtimeTrial);
   const pGov = pol("runtime_governance", d.runtimeGovernance);
   const pEnf = pol("runtime_enforcement_candidate", d.runtimeEnforcementCandidate);
+  const pCEg = pol("controlled_enforcement_governance", d.controlledEnforcementGovernance);
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -230,6 +240,9 @@ export function OverlaySummaryCard({
       ) : null}
       {!pEnf.omitFromDom ? (
         <OverlayRuntimeEnforcementCandidateSection vm={runtimeEnforcementVm} defaultOpen={pEnf.defaultOpen} />
+      ) : null}
+      {!pCEg.omitFromDom ? (
+        <OverlayControlledEnforcementGovernanceSection vm={controlledEnforcementGovVm} defaultOpen={pCEg.defaultOpen} />
       ) : null}
       {advancedClip.hiddenCount > 0 ? (
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", padding: "4px 2px" }}>

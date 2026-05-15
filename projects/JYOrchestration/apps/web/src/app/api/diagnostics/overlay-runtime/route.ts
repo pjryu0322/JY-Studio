@@ -102,7 +102,9 @@ import { buildRuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGove
 import {
   serializeRuntimeGovernanceDiagnosticBundleFromContext,
 } from "@/lib/harness/runtimeGovernance/serializeRuntimeGovernanceDiagnosticBundle";
-import { serializeRuntimeEnforcementDiagnosticBundle } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
+import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
+import { serializeRuntimeEnforcementDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
+import { serializeEnforcementGovernanceDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/enforcementGovernance/serializeEnforcementGovernanceDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -347,6 +349,7 @@ export async function GET(request: NextRequest) {
     harnessControlledRuntimeTrialPreparationEnabled: true,
     harnessControlledRuntimeGovernanceEnabled: true,
     harnessRuntimeEnforcementCandidateLayerEnabled: true,
+    harnessControlledEnforcementGovernanceEnabled: true,
   };
 
   const overlayMaturity = {
@@ -368,6 +371,7 @@ export async function GET(request: NextRequest) {
     harnessReviewSecurityIssuePlanningLayer: true,
     harnessControlledRuntimeGovernanceLayer: true,
     harnessRuntimeEnforcementCandidateLayer: true,
+    harnessControlledEnforcementGovernanceLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -412,10 +416,26 @@ export async function GET(request: NextRequest) {
     extract: lastPromptTraceOverlayExtract ?? null,
   });
   const governanceDiag = serializeRuntimeGovernanceDiagnosticBundleFromContext(governanceCtx);
-  const enforcementDiag = serializeRuntimeEnforcementDiagnosticBundle({
+  const enforcementPlanning = buildRuntimeEnforcementPlanningContext({
     baseline: harnessMaturityBaselineReport,
     releaseGate: harnessReleaseGateReadinessReport,
     governanceCtx,
+    extract: lastPromptTraceOverlayExtract ?? null,
+    messageExplainabilityAvailable: true,
+  });
+  const enforcementDiag = serializeRuntimeEnforcementDiagnosticBundleFromPlanning({
+    baseline: harnessMaturityBaselineReport,
+    governanceCtx,
+    enforcementPlanning,
+    extract: lastPromptTraceOverlayExtract ?? null,
+    messageExplainabilityAvailable: true,
+    overlayWarningCount: overlayUiForDiag.summary.warningCount,
+  });
+  const enforcementGovernanceDiag = serializeEnforcementGovernanceDiagnosticBundleFromEnforcementPlanning({
+    baseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    governanceCtx,
+    enforcementPlanning,
     extract: lastPromptTraceOverlayExtract ?? null,
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
@@ -456,6 +476,9 @@ export async function GET(request: NextRequest) {
       runtimeEnforcementCandidate: enforcementDiag.runtimeEnforcementCandidate,
       runtimeEnforcementRiskSummary: enforcementDiag.runtimeEnforcementRiskSummary,
       candidateCapabilityPlanning: enforcementDiag.candidateCapabilityPlanning,
+      controlledEnforcementGovernance: enforcementGovernanceDiag.controlledEnforcementGovernance,
+      governanceDependencyPlanning: enforcementGovernanceDiag.governanceDependencyPlanning,
+      governanceRiskSummary: enforcementGovernanceDiag.governanceRiskSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
