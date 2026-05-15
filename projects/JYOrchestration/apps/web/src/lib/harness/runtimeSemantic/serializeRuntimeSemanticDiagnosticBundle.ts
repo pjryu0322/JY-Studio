@@ -1,5 +1,5 @@
 /**
- * H17–H19.5 — 진단 API용 runtime semantic·decision wire 묶음.
+ * H17–H20 — 진단 API용 runtime semantic·decision·forecast wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -31,6 +31,10 @@ import { serializeRuntimeDecisionLineageForDiagnostic } from "@/lib/harness/runt
 import { serializeRuntimeDecisionSnapshotForDiagnostic } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionSnapshot";
 import { serializeRuntimeRecommendationSummaryForDiagnostic } from "@/lib/harness/runtimeDecision/buildRuntimeRecommendationSummary";
 import { serializeRuntimeDecisionCoherenceForDiagnostic } from "@/lib/harness/runtimeDecision/evaluateRuntimeDecisionCoherence";
+import { serializeRuntimeForecastSummaryForDiagnostic } from "@/lib/harness/runtimeForecast/buildRuntimeForecastSummary";
+import { serializeRuntimeForecastEscalationForDiagnostic } from "@/lib/harness/runtimeForecast/predictRuntimeEscalationChains";
+import { serializeRuntimeForecastGovernanceDriftForDiagnostic } from "@/lib/harness/runtimeForecast/predictRuntimeGovernanceDrift";
+import { serializeRuntimeForecastStabilityForDiagnostic } from "@/lib/harness/runtimeForecast/evaluateRuntimeForecastStability";
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -57,6 +61,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeDecisionSnapshot: ReturnType<typeof serializeRuntimeDecisionSnapshotForDiagnostic>;
   runtimeRecommendationSummary: ReturnType<typeof serializeRuntimeRecommendationSummaryForDiagnostic>;
   runtimeDecisionCoherence: ReturnType<typeof serializeRuntimeDecisionCoherenceForDiagnostic>;
+  runtimeForecastSummary: ReturnType<typeof serializeRuntimeForecastSummaryForDiagnostic>;
+  runtimeForecastEscalation: ReturnType<typeof serializeRuntimeForecastEscalationForDiagnostic>;
+  runtimeForecastGovernanceDrift: ReturnType<typeof serializeRuntimeForecastGovernanceDriftForDiagnostic>;
+  runtimeForecastStability: ReturnType<typeof serializeRuntimeForecastStabilityForDiagnostic>;
 }> {
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
@@ -111,6 +119,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
       reports.runtimeRecommendationSummary
     ),
     runtimeDecisionCoherence: serializeRuntimeDecisionCoherenceForDiagnostic(reports.runtimeDecisionCoherence),
+    runtimeForecastSummary: serializeRuntimeForecastSummaryForDiagnostic(reports.runtimeForecastSummary),
+    runtimeForecastEscalation: serializeRuntimeForecastEscalationForDiagnostic(reports.runtimeForecastEscalation),
+    runtimeForecastGovernanceDrift: serializeRuntimeForecastGovernanceDriftForDiagnostic(
+      reports.runtimeForecastGovernanceDrift
+    ),
+    runtimeForecastStability: serializeRuntimeForecastStabilityForDiagnostic(reports.runtimeForecastStability),
   };
 }
 

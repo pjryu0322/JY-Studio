@@ -39,7 +39,8 @@ export type OverlaySectionKind =
   | "runtime_planning_semantic_graph"
   | "runtime_planning_semantic_narrative"
   | "runtime_planning_semantic_vocabulary"
-  | "runtime_planning_decision";
+  | "runtime_planning_decision"
+  | "runtime_planning_forecast";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -64,6 +65,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_planning_semantic_narrative":
     case "runtime_planning_semantic_vocabulary":
     case "runtime_planning_decision":
+    case "runtime_planning_forecast":
       return "important";
     case "context":
     case "budget":

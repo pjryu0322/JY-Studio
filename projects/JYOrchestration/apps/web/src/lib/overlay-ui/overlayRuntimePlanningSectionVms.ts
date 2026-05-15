@@ -1,5 +1,5 @@
 /**
- * H12–H19.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H20 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -70,6 +70,10 @@ import {
   buildOverlayRuntimeDecisionSectionVmFromReports,
   type OverlayRuntimeDecisionSectionVM,
 } from "./overlayRuntimeDecisionSectionVm";
+import {
+  buildOverlayRuntimeForecastSectionVmFromReports,
+  type OverlayRuntimeForecastSectionVM,
+} from "./overlayRuntimeForecastSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -96,6 +100,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   semanticNarrativeVm: OverlayRuntimeSemanticNarrativeSectionVM;
   semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
   decisionVm: OverlayRuntimeDecisionSectionVM;
+  forecastVm: OverlayRuntimeForecastSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -274,6 +279,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const decisionVm = buildOverlayRuntimeDecisionSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const forecastVm = buildOverlayRuntimeForecastSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -354,5 +362,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     semanticNarrativeVm,
     semanticVocabularyVm,
     decisionVm,
+    forecastVm,
   };
 }

@@ -6,6 +6,7 @@ import type { OverlayRuntimeReasoningSectionVM } from "@/lib/overlay-ui/overlayR
 import type { OverlayRuntimeSemanticGraphSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticGraphAdapter";
 import type { OverlayRuntimeSemanticNarrativeSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticNarrativeAdapter";
 import type { OverlayRuntimeDecisionSectionVM } from "@/lib/overlay-ui/overlayRuntimeDecisionAdapter";
+import type { OverlayRuntimeForecastSectionVM } from "@/lib/overlay-ui/overlayRuntimeForecastAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -15,14 +16,16 @@ import { OverlayRuntimeReasoningSection } from "./OverlayRuntimeReasoningSection
 import { OverlayRuntimeSemanticGraphSection } from "./OverlayRuntimeSemanticGraphSection";
 import { OverlayRuntimeSemanticNarrativeSection } from "./OverlayRuntimeSemanticNarrativeSection";
 import { OverlayRuntimeDecisionSection } from "./OverlayRuntimeDecisionSection";
+import { OverlayRuntimeForecastSection } from "./OverlayRuntimeForecastSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H19.5 — dependency·criticality·decision·vocabulary·narrative·graph·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
+/** H15–H20 — dependency·criticality·forecast·decision·vocabulary·narrative·graph·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
+  forecastVm,
   decisionVm,
   semanticVocabularyVm,
   semanticNarrativeVm,
@@ -32,6 +35,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   traceabilityVm,
   dependencyDefaultOpen,
   criticalityDefaultOpen,
+  forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
   semanticNarrativeDefaultOpen,
@@ -42,6 +46,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   groupOpen,
   showDependency = true,
   showCriticality = true,
+  showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
   showSemanticNarrative = true,
@@ -52,6 +57,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
 }: {
   readonly dependencyVm: OverlayRuntimeDependencyGraphSectionVM;
   readonly criticalityVm: OverlayRuntimeCriticalitySectionVM;
+  readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
   readonly semanticNarrativeVm: OverlayRuntimeSemanticNarrativeSectionVM;
@@ -61,6 +67,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
   readonly dependencyDefaultOpen?: boolean;
   readonly criticalityDefaultOpen?: boolean;
+  readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
   readonly semanticNarrativeDefaultOpen?: boolean;
@@ -71,6 +78,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly groupOpen?: boolean;
   readonly showDependency?: boolean;
   readonly showCriticality?: boolean;
+  readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
   readonly showSemanticNarrative?: boolean;
@@ -91,8 +99,11 @@ export function OverlayRuntimeDependencyCriticalityGroup({
           listStyle: "none",
         }}
       >
-        Planning observability (H15–H19.5, read-only)
+        Planning observability (H15–H20, read-only)
       </summary>
+      {showForecast ? (
+        <OverlayRuntimeForecastSection vm={forecastVm} defaultOpen={forecastDefaultOpen} />
+      ) : null}
       {showDecision ? (
         <OverlayRuntimeDecisionSection vm={decisionVm} defaultOpen={decisionDefaultOpen} />
       ) : null}

@@ -208,6 +208,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningSemanticVocabulary: boolean;
   /** Harness Phase H19.5 — Runtime decision intelligence(기본 접힘; coherence·recommendation 시 펼침). */
   runtimePlanningDecision: boolean;
+  /** Harness Phase H20 — Runtime forecasting(기본 접힘; escalation·saturation risk 시 펼침). */
+  runtimePlanningForecast: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -481,6 +483,7 @@ function buildSectionDefaults(
     runtimePlanningSemanticNarrative: false,
     runtimePlanningSemanticVocabulary: false,
     runtimePlanningDecision: false,
+    runtimePlanningForecast: false,
   };
 }
 

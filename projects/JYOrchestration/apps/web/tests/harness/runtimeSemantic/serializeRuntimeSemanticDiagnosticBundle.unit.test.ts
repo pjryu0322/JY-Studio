@@ -42,7 +42,7 @@ describe("H17 runtime semantic compression", () => {
     expect(compressed.compressedLines.length).toBeGreaterThan(0);
   });
 
-  it("serializes twenty H17–H19.5 diagnostic fields", () => {
+  it("serializes twenty-four H17–H20 diagnostic fields", () => {
     const baseline = evaluateHarnessMaturityBaseline({
       overlayExtract: null,
       harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
@@ -112,5 +112,13 @@ describe("H17 runtime semantic compression", () => {
     expect(snapshot.mode).toBe("runtime_decision_snapshot");
     expect(recommendation.mode).toBe("runtime_recommendation_summary");
     expect(coherence.mode).toBe("runtime_decision_coherence");
+    const forecastSummary = b.runtimeForecastSummary as { mode?: string };
+    const forecastEscalation = b.runtimeForecastEscalation as { mode?: string };
+    const forecastDrift = b.runtimeForecastGovernanceDrift as { mode?: string };
+    const forecastStability = b.runtimeForecastStability as { mode?: string };
+    expect(forecastSummary.mode).toBe("runtime_forecast_summary");
+    expect(forecastEscalation.mode).toBe("runtime_forecast_escalation");
+    expect(forecastDrift.mode).toBe("runtime_forecast_governance_drift");
+    expect(forecastStability.mode).toBe("runtime_forecast_stability");
   });
 });

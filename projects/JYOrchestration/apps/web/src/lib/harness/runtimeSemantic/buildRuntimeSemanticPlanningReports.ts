@@ -1,5 +1,5 @@
 /**
- * H17–H19.5 — semantic·vocabulary·decision intelligence **planning 보고서** 일괄 산출.
+ * H17–H20 — semantic·vocabulary·decision·forecast **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -20,6 +20,8 @@ import { buildRuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/run
 import type { RuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/runtimeSemanticVocabularyTypes";
 import { buildRuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionPlanningReports";
 import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
+import { buildRuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/buildRuntimeForecastPlanningReports";
+import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -58,8 +60,11 @@ export type RuntimeSemanticPlanningReportsBeforeDecision = RuntimeSemanticCorePl
   RuntimeSemanticNarrativePlanningReports &
   RuntimeSemanticVocabularyPlanningReports;
 
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeDecision &
+export type RuntimeSemanticPlanningReportsBeforeForecast = RuntimeSemanticPlanningReportsBeforeDecision &
   RuntimeDecisionPlanningReports;
+
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeForecast &
+  RuntimeForecastPlanningReports;
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -114,9 +119,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...narrativeReports,
     ...vocabularyReports,
   };
-  const decisionReports = buildRuntimeDecisionPlanningReports(reasoningReports, semanticWithVocabulary);
+  const semanticWithDecision = {
+    ...semanticWithVocabulary,
+    ...buildRuntimeDecisionPlanningReports(reasoningReports, semanticWithVocabulary),
+  };
+  const forecastReports = buildRuntimeForecastPlanningReports(semanticWithDecision);
 
-  return { ...semanticWithVocabulary, ...decisionReports };
+  return { ...semanticWithDecision, ...forecastReports };
 }
 
 export type {
