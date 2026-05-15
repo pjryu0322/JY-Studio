@@ -26,6 +26,7 @@ import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 import { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
 import { OverlayRuntimePlanningConsolidatedSection } from "./OverlayRuntimePlanningConsolidatedSection";
 import { OverlayRuntimeLifecycleCoherenceGroup } from "./OverlayRuntimeLifecycleCoherenceGroup";
+import { OverlayRuntimeDependencyGraphSection } from "./OverlayRuntimeDependencyGraphSection";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -159,6 +160,7 @@ export function OverlaySummaryCard({
     lifecycleVm: runtimeLifecycleVm,
     coherenceVm: runtimeCoherenceVm,
     consolidatedVm: runtimePlanningConsolidatedVm,
+    dependencyGraphVm: runtimePlanningDependencyVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -218,6 +220,10 @@ export function OverlaySummaryCard({
   const pCon = pol(
     "runtime_planning_consolidated",
     d.runtimePlanningConsolidated || runtimePlanningConsolidatedVm.showAttention
+  );
+  const pDep = pol(
+    "runtime_planning_dependency",
+    d.runtimePlanningDependency || runtimePlanningDependencyVm.showAttention
   );
   const showLifecycleCoherenceGrouped = !pLife.omitFromDom || !pCoh.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
@@ -307,6 +313,9 @@ export function OverlaySummaryCard({
           showLifecycle={!pLife.omitFromDom}
           showCoherence={!pCoh.omitFromDom}
         />
+      ) : null}
+      {!pDep.omitFromDom ? (
+        <OverlayRuntimeDependencyGraphSection vm={runtimePlanningDependencyVm} defaultOpen={pDep.defaultOpen} />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
         <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>

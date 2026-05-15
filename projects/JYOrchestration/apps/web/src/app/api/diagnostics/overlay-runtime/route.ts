@@ -111,6 +111,7 @@ import { serializeRuntimeLifecycleDiagnosticBundleFromReports } from "@/lib/harn
 import { serializeRuntimeCoherenceDiagnosticBundleFromReports } from "@/lib/harness/runtimeCoherence/serializeRuntimeCoherenceDiagnosticBundle";
 import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
 import { serializeRuntimeConsolidationDiagnosticBundleFromContext } from "@/lib/harness/runtimeConsolidation/serializeRuntimeConsolidationDiagnosticBundle";
+import { serializeRuntimeDependencyDiagnosticBundleFromContext } from "@/lib/harness/runtimeDependency/serializeRuntimeDependencyDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -361,6 +362,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningLifecycleGovernanceEnabled: true,
     harnessRuntimePlanningCoherenceSynchronizationEnabled: true,
     harnessRuntimePlanningConsolidationNormalizationEnabled: true,
+    harnessRuntimePlanningDependencyImpactGraphEnabled: true,
   };
 
   const overlayMaturity = {
@@ -388,6 +390,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningLifecycleGovernanceLayer: true,
     harnessRuntimePlanningCoherenceSynchronizationLayer: true,
     harnessRuntimePlanningConsolidationNormalizationLayer: true,
+    harnessRuntimePlanningDependencyImpactGraphLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -471,6 +474,7 @@ export async function GET(request: NextRequest) {
   const runtimeLifecycleDiag = serializeRuntimeLifecycleDiagnosticBundleFromReports(planningCtx.lifecycleReports);
   const runtimeCoherenceDiag = serializeRuntimeCoherenceDiagnosticBundleFromReports(planningCtx.coherenceReports);
   const runtimeConsolidationDiag = serializeRuntimeConsolidationDiagnosticBundleFromContext(planningCtx);
+  const runtimeDependencyDiag = serializeRuntimeDependencyDiagnosticBundleFromContext(planningCtx);
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
       baseline: harnessMaturityBaselineReport,
@@ -524,6 +528,9 @@ export async function GET(request: NextRequest) {
       runtimePlanningDivergenceReport: runtimeCoherenceDiag.runtimePlanningDivergenceReport,
       unifiedRuntimePlanningSummary: runtimeConsolidationDiag.unifiedRuntimePlanningSummary,
       runtimePlanningRedundancySummary: runtimeConsolidationDiag.runtimePlanningRedundancySummary,
+      runtimePlanningDependencyGraph: runtimeDependencyDiag.runtimePlanningDependencyGraph,
+      runtimePlanningImpactPropagationSummary: runtimeDependencyDiag.runtimePlanningImpactPropagationSummary,
+      runtimePlanningDependencyConflictSummary: runtimeDependencyDiag.runtimePlanningDependencyConflictSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

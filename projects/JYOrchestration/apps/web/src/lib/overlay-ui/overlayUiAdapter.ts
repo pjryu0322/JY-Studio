@@ -190,6 +190,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimeCoherence: boolean;
   /** Harness Phase H14.5 — Unified runtime planning summary(기본 접힘; critical 시 펼침). */
   runtimePlanningConsolidated: boolean;
+  /** Harness Phase H15 — Planning dependency graph(기본 접힘; conflict·critical deps 시 펼침). */
+  runtimePlanningDependency: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -454,6 +456,7 @@ function buildSectionDefaults(
     runtimeLifecycle: false,
     runtimeCoherence: false,
     runtimePlanningConsolidated: false,
+    runtimePlanningDependency: false,
   };
 }
 
