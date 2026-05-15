@@ -105,6 +105,7 @@ import {
 import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
 import { serializeRuntimeEnforcementDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
 import { serializeEnforcementGovernanceDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/enforcementGovernance/serializeEnforcementGovernanceDiagnosticBundle";
+import { serializeRuntimeStabilityDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/runtimeStability/serializeRuntimeStabilityDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -350,6 +351,7 @@ export async function GET(request: NextRequest) {
     harnessControlledRuntimeGovernanceEnabled: true,
     harnessRuntimeEnforcementCandidateLayerEnabled: true,
     harnessControlledEnforcementGovernanceEnabled: true,
+    harnessRuntimeStabilityPlanningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -372,6 +374,7 @@ export async function GET(request: NextRequest) {
     harnessControlledRuntimeGovernanceLayer: true,
     harnessRuntimeEnforcementCandidateLayer: true,
     harnessControlledEnforcementGovernanceLayer: true,
+    harnessRuntimeStabilityPlanningLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -440,6 +443,15 @@ export async function GET(request: NextRequest) {
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
   });
+  const runtimeStabilityDiag = serializeRuntimeStabilityDiagnosticBundleFromEnforcementPlanning({
+    baseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    governanceCtx,
+    enforcementPlanning,
+    extract: lastPromptTraceOverlayExtract ?? null,
+    messageExplainabilityAvailable: true,
+    overlayWarningCount: overlayUiForDiag.summary.warningCount,
+  });
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
       baseline: harnessMaturityBaselineReport,
@@ -479,6 +491,9 @@ export async function GET(request: NextRequest) {
       controlledEnforcementGovernance: enforcementGovernanceDiag.controlledEnforcementGovernance,
       governanceDependencyPlanning: enforcementGovernanceDiag.governanceDependencyPlanning,
       governanceRiskSummary: enforcementGovernanceDiag.governanceRiskSummary,
+      runtimeStabilitySummary: runtimeStabilityDiag.runtimeStabilitySummary,
+      runtimeCandidateConflictReport: runtimeStabilityDiag.runtimeCandidateConflictReport,
+      candidateSaturationSummary: runtimeStabilityDiag.candidateSaturationSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

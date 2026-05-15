@@ -18,6 +18,9 @@ import { buildOverlayRuntimeTrialSectionVm } from "@/lib/overlay-ui/overlayRunti
 import { buildOverlayRuntimeGovernanceSectionVm } from "@/lib/overlay-ui/overlayRuntimeGovernanceAdapter";
 import { buildOverlayRuntimeEnforcementCandidateSectionVm } from "@/lib/overlay-ui/overlayRuntimeEnforcementCandidateAdapter";
 import { buildOverlayControlledEnforcementGovernanceSectionVm } from "@/lib/overlay-ui/overlayControlledEnforcementGovernanceAdapter";
+import { buildOverlayRuntimeStabilitySectionVm } from "@/lib/overlay-ui/overlayRuntimeStabilityAdapter";
+import { OverlayRuntimeStabilitySection } from "./OverlayRuntimeStabilitySection";
+import { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -145,6 +148,14 @@ export function OverlaySummaryCard({
     messageExplainabilityAvailable,
     overlayWarningCount: vm.summary.warningCount,
   });
+  const runtimeStabilityVm = buildOverlayRuntimeStabilitySectionVm({
+    overlay,
+    maturityBaseline,
+    releaseGate,
+    messageExplainabilityAvailable,
+    overlayWarningCount: vm.summary.warningCount,
+    compactAndNarrowUi,
+  });
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
     { kind: "review_security", base: d.reviewSecurity },
@@ -178,6 +189,7 @@ export function OverlaySummaryCard({
   const pGov = pol("runtime_governance", d.runtimeGovernance);
   const pEnf = pol("runtime_enforcement_candidate", d.runtimeEnforcementCandidate);
   const pCEg = pol("controlled_enforcement_governance", d.controlledEnforcementGovernance);
+  const pStab = pol("runtime_stability", d.runtimeStability || runtimeStabilityVm.showSaturationBanner);
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -234,15 +246,31 @@ export function OverlaySummaryCard({
           defaultOpen={pMat.defaultOpen}
         />
       ) : null}
-      {!pRt.omitFromDom ? <OverlayRuntimeTrialSection vm={runtimeTrialVm} defaultOpen={pRt.defaultOpen} /> : null}
-      {!pGov.omitFromDom ? (
-        <OverlayRuntimeGovernanceSection vm={runtimeGovernanceVm} defaultOpen={pGov.defaultOpen} />
+      {runtimeStabilityVm.showSaturationBanner && !pStab.omitFromDom ? (
+        <OverlaySaturationBanner message={runtimeStabilityVm.saturationBannerMessage} />
       ) : null}
-      {!pEnf.omitFromDom ? (
-        <OverlayRuntimeEnforcementCandidateSection vm={runtimeEnforcementVm} defaultOpen={pEnf.defaultOpen} />
+      {!pStab.omitFromDom ? (
+        <OverlayRuntimeStabilitySection vm={runtimeStabilityVm} defaultOpen={pStab.defaultOpen} />
       ) : null}
-      {!pCEg.omitFromDom ? (
-        <OverlayControlledEnforcementGovernanceSection vm={controlledEnforcementGovVm} defaultOpen={pCEg.defaultOpen} />
+      {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", padding: "0 2px" }}>
+            Runtime planning (H10–H11.5, read-only)
+          </div>
+          {!pRt.omitFromDom ? <OverlayRuntimeTrialSection vm={runtimeTrialVm} defaultOpen={pRt.defaultOpen} /> : null}
+          {!pGov.omitFromDom ? (
+            <OverlayRuntimeGovernanceSection vm={runtimeGovernanceVm} defaultOpen={pGov.defaultOpen} />
+          ) : null}
+          {!pEnf.omitFromDom ? (
+            <OverlayRuntimeEnforcementCandidateSection vm={runtimeEnforcementVm} defaultOpen={pEnf.defaultOpen} />
+          ) : null}
+          {!pCEg.omitFromDom ? (
+            <OverlayControlledEnforcementGovernanceSection
+              vm={controlledEnforcementGovVm}
+              defaultOpen={pCEg.defaultOpen}
+            />
+          ) : null}
+        </div>
       ) : null}
       {advancedClip.hiddenCount > 0 ? (
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", padding: "4px 2px" }}>

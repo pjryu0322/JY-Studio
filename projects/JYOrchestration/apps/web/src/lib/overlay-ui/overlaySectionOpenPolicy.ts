@@ -34,6 +34,16 @@ export function resolveOverlaySectionUiPolicy(input: {
       defaultOpen = false;
       if (input.isNarrow) omitFromDom = true;
     }
+    if (
+      input.isNarrow &&
+      (input.section === "runtime_trial" ||
+        input.section === "runtime_governance" ||
+        input.section === "runtime_enforcement_candidate" ||
+        input.section === "controlled_enforcement_governance")
+    ) {
+      omitFromDom = true;
+      defaultOpen = false;
+    }
   }
 
   return { defaultOpen, omitFromDom };

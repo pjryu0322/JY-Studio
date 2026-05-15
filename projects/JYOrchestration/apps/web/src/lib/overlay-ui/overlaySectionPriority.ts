@@ -25,7 +25,8 @@ export type OverlaySectionKind =
   | "runtime_trial"
   | "runtime_governance"
   | "runtime_enforcement_candidate"
-  | "controlled_enforcement_governance";
+  | "controlled_enforcement_governance"
+  | "runtime_stability";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -36,6 +37,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "operator_runtime_summary":
     case "operator_resource_summary":
     case "maturity_baseline":
+    case "runtime_stability":
       return "important";
     case "context":
     case "budget":
