@@ -190,9 +190,10 @@
     - **하드코딩 방지**: `mode !== "dry_run_issue_planning"` / `mode !== "dry_run_remediation_loop"`는 coerce에서 reject. UI·문서에 **이슈 후보 = 실제 티켓 등록 아님**을 반복 명시.
     - **여전히 금지**: H6 항목과 동일 — 특히 actual issue registration, actual remediation execution, automatic recheck, merge gate, PR blocking.
 19. **Harness Phase H7 — Message-level Explainability UI** (현재; read-only) — SingleChat **AI 응답**에 한해 `RequirementsMessageMeta.messageOverlayExplainability`에 `extractOverlayPromptTraceMetadata` 결과를 저장하고, 채팅 UI에서 `[AI 판단 보기]` 접기 패널로 `buildMessageExplainabilityViewModel` 기반 요약(headline·summary 최대 5줄·risk 배지·섹션 미니 리스트)을 표시한다. **실제 orchestration·provider routing·프롬프트/LLM 페이로드·retrieval·이슈 등록·remediation 실행 변경 없음.** 메타가 없거나 불명확한 메시지에는 버튼을 표시하지 않는다(억지 매핑 금지).
-20. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+20. **Harness Phase H7.5 — Explainability UX Stabilization** (현재; read-only) — H7 패널을 `MessageExplainabilityPanel`로 분리하고 `resolveMessageExplainabilityTrace`로 **메시지 meta 우선 → 타임라인 responseText 단일 일치 → orchestratorAgent+시간창 단일 후보** 순의 안전 매핑을 수행한다(불명확하면 null·버튼 미표시). 워크스페이스 `promptTimelineUi`를 SingleChat에 전달해 과거 메시지 보조 연결, 720px 이하 모바일 레이아웃·줄바꿈 정리, 선택적 「프롬프트 이력에서 자세히 보기」 링크(드로어 열기 콜백). `NEXT_PUBLIC_JY_EXPLAINABILITY_DEBUG=1`일 때만 메타 없는 AI 메시지에 안내 문구 노출.
+21. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
-> Harness 단계 순서는 **H1 → H2 → H3 → H4 → H4.5 → H5 → H5.5 → H6 → H6.5 → H7**로 정렬되어 있다. 위 phase list는 도입 순서가 아니라 **권장 학습 순서**(Controlled Preview → Apply-readiness → Knowledge Activation → Memory Runtime → Memory Runtime Stabilization → Execution Routing → Execution Routing Safety → Review/Security checklist → Review/Security issue & remediation loop planning → **SingleChat message-level explainability**)로 읽는다.
+> Harness 단계 순서는 **H1 → H2 → H3 → H4 → H4.5 → H5 → H5.5 → H6 → H6.5 → H7 → H7.5**로 정렬되어 있다. 위 phase list는 도입 순서가 아니라 **권장 학습 순서**(Controlled Preview → Apply-readiness → Knowledge Activation → Memory Runtime → Memory Runtime Stabilization → Execution Routing → Execution Routing Safety → Review/Security checklist → Review/Security issue & remediation loop planning → **SingleChat message-level explainability** → **Explainability UX stabilization**)로 읽는다.
 
 ### Contract → Runtime Metadata → Runtime Policy
 

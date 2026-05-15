@@ -1832,6 +1832,8 @@ export function RequirementsWorkspace({
         organizeDisabled={busy || remoteLocked}
         draftDocTruthy={Boolean(draftDoc)}
         onOpenDraftView={() => setDraftDrawerOpen(true)}
+        promptTimeline={promptTimelineUi ?? null}
+        onOpenPromptTimeline={() => setPromptDrawerOpen(true)}
       />
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { normalizeRequirementsMessageText } from "@/lib/requirements/requirementsMessageDisplay";
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
@@ -111,6 +112,8 @@ export function RequirementsChatPanel({
   memberControls,
   screenAiMemberId = "ideation",
   sessionUserDisplayName = "나",
+  promptTimeline,
+  onOpenPromptTimeline,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -138,6 +141,10 @@ export function RequirementsChatPanel({
   readonly screenAiMemberId?: WorkspaceAiMemberId;
   /** 내 메시지 헤더에 표시할 닉네임(세션 사용자 표시명) */
   readonly sessionUserDisplayName?: string;
+  /** H7.5: explainability 매핑용 프롬프트 타임라인(같은 화면 state) */
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  /** H7.5: 프롬프트 이력 드로어 열기(워크스페이스에서 주입) */
+  readonly onOpenPromptTimeline?: () => void;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
@@ -631,7 +638,11 @@ export function RequirementsChatPanel({
                         ))}
                       </div>
                     ) : null}
-                    <RequirementsMessageExplainability message={m} />
+                    <RequirementsMessageExplainability
+                      message={m}
+                      promptTimeline={promptTimeline}
+                      onOpenPromptTimeline={onOpenPromptTimeline}
+                    />
                     {actionIconRow("start")}
                   </div>
                 </div>

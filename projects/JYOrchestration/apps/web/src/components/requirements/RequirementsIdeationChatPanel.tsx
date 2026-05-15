@@ -12,6 +12,7 @@ import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
@@ -60,6 +61,9 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   organizeDisabled: boolean;
   draftDocTruthy: boolean;
   onOpenDraftView: () => void;
+  /** H7.5: explainability 보조 매핑용 */
+  promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  onOpenPromptTimeline?: () => void;
 }>;
 
 export function RequirementsIdeationChatPanel({
@@ -101,6 +105,8 @@ export function RequirementsIdeationChatPanel({
   organizeDisabled,
   draftDocTruthy,
   onOpenDraftView,
+  promptTimeline,
+  onOpenPromptTimeline,
 }: RequirementsIdeationChatPanelProps) {
   const ideationInterviewUi =
     conversationStatus === "loaded"
@@ -187,6 +193,8 @@ export function RequirementsIdeationChatPanel({
         typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
         sessionUserDisplayName={sessionUserDisplayName}
         memberControls={memberControls}
+        promptTimeline={promptTimeline}
+        onOpenPromptTimeline={onOpenPromptTimeline}
         ideationInterviewUi={ideationInterviewUi}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}
