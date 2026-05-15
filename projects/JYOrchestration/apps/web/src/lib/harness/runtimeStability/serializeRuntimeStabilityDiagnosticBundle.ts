@@ -9,7 +9,10 @@ import type {
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 import type { RuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
 import type { RuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
-import { buildRuntimeStabilityPlanningReports } from "./buildRuntimeStabilityPlanningReports";
+import {
+  buildRuntimeStabilityPlanningReports,
+  type RuntimeStabilityPlanningReports,
+} from "./buildRuntimeStabilityPlanningReports";
 import { serializeCandidateSaturationSummaryForDiagnostic } from "./evaluateCandidateSaturation";
 import { serializeRuntimeCandidateConflictReportForDiagnostic } from "./evaluateRuntimeCandidateConflicts";
 import { serializeRuntimeStabilitySummaryForDiagnostic } from "./buildRuntimeStabilitySummary";
@@ -31,7 +34,16 @@ export function serializeRuntimeStabilityDiagnosticBundleFromEnforcementPlanning
     ...input,
     compactAndNarrowUi: false,
   });
+  return serializeRuntimeStabilityDiagnosticBundleFromReports(reports);
+}
 
+export function serializeRuntimeStabilityDiagnosticBundleFromReports(
+  reports: RuntimeStabilityPlanningReports
+): Readonly<{
+  runtimeStabilitySummary: ReturnType<typeof serializeRuntimeStabilitySummaryForDiagnostic>;
+  runtimeCandidateConflictReport: ReturnType<typeof serializeRuntimeCandidateConflictReportForDiagnostic>;
+  candidateSaturationSummary: ReturnType<typeof serializeCandidateSaturationSummaryForDiagnostic>;
+}> {
   return {
     runtimeStabilitySummary: serializeRuntimeStabilitySummaryForDiagnostic(reports.stabilitySummary),
     runtimeCandidateConflictReport: serializeRuntimeCandidateConflictReportForDiagnostic(reports.conflictReport),

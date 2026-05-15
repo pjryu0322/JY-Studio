@@ -1,0 +1,140 @@
+/**
+ * H12 / H12.5 — Overlay planning 섹션 VM 일괄 산출(stability·priority 1회 평가).
+ */
+
+import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
+import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+import { buildRuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
+import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
+import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
+import { buildRuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
+import {
+  CANDIDATE_CONFLICT_SEVERITY_LABEL_KO,
+  CANDIDATE_SATURATION_LEVEL_LABEL_KO,
+  RUNTIME_CANDIDATE_CONFLICT_KIND_LABEL_KO,
+  RUNTIME_STABILITY_LEVEL_LABEL_KO,
+  RUNTIME_STABILITY_SECTION_DISCLAIMER_KO,
+} from "@/lib/harness/runtimeStability/runtimeStabilityLabelsKo";
+import {
+  RUNTIME_ESCALATION_LEVEL_LABEL_KO,
+  RUNTIME_PLANNING_PRIORITY_LABEL_KO,
+  RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
+} from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
+import type { OverlayRuntimePrioritySectionVM } from "./overlayRuntimePriorityAdapter";
+import type { OverlayRuntimeStabilitySectionVM } from "./overlayRuntimeStabilityAdapter";
+
+export type OverlayRuntimePlanningSectionVms = Readonly<{
+  stabilityVm: OverlayRuntimeStabilitySectionVM;
+  priorityVm: OverlayRuntimePrioritySectionVM;
+}>;
+
+export function buildOverlayRuntimePlanningSectionVms(input: {
+  readonly overlay: ExtractedOverlayPromptTraceMetadata | null | undefined;
+  readonly maturityBaseline: HarnessMaturityBaselineReport;
+  readonly releaseGate: HarnessReleaseGateReadinessReport;
+  readonly messageExplainabilityAvailable: boolean;
+  readonly overlayWarningCount: number;
+  readonly compactAndNarrowUi?: boolean;
+}): OverlayRuntimePlanningSectionVms {
+  const governanceCtx = buildRuntimeGovernancePlanningContext({
+    baseline: input.maturityBaseline,
+    releaseGate: input.releaseGate,
+    extract: input.overlay,
+  });
+  const enforcementPlanning = buildRuntimeEnforcementPlanningContext({
+    baseline: input.maturityBaseline,
+    releaseGate: input.releaseGate,
+    governanceCtx,
+    extract: input.overlay,
+    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
+  });
+  const stabilityReports = buildRuntimeStabilityPlanningReports({
+    baseline: input.maturityBaseline,
+    releaseGate: input.releaseGate,
+    governanceCtx,
+    enforcementPlanning,
+    extract: input.overlay,
+    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
+    overlayWarningCount: input.overlayWarningCount,
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
+  const priorityReports = buildRuntimePriorityPlanningReports({
+    baseline: input.maturityBaseline,
+    governanceCtx,
+    stabilityReports,
+    extract: input.overlay,
+    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
+  });
+
+  const governanceUnstable =
+    governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
+  const explainabilityUnstable =
+    !input.messageExplainabilityAvailable || !input.maturityBaseline.userVisibleSummaryReady;
+
+  const showSaturationBanner =
+    stabilityReports.saturationSummary.saturationLevel === "high" ||
+    stabilityReports.stabilitySummary.stabilityLevel === "unstable" ||
+    stabilityReports.overlayOverload.overlayOverloadRisk === "high";
+
+  const saturationBannerMessage =
+    stabilityReports.saturationSummary.saturationLevel === "high"
+      ? "후보·거버넌스 planning 포화가 높습니다. Runtime planning 섹션은 접힌 상태를 권장합니다."
+      : stabilityReports.stabilitySummary.stabilityLevel === "unstable"
+        ? "Planning stability가 불안정합니다. 후보 충돌·dependency를 먼저 확인하세요."
+        : "Overlay 과밀 위험이 있습니다. compact·narrow 모드에서 일부 섹션이 숨겨질 수 있습니다.";
+
+  const escalation = priorityReports.escalationSummary;
+  const showEscalationBadge =
+    escalation.escalationLevel === "escalated" || escalation.escalationLevel === "critical";
+
+  return {
+    stabilityVm: {
+      sectionDisclaimer: RUNTIME_STABILITY_SECTION_DISCLAIMER_KO,
+      stabilityLevelLabel: RUNTIME_STABILITY_LEVEL_LABEL_KO[stabilityReports.stabilitySummary.stabilityLevel],
+      conflictSeverityLabel: CANDIDATE_CONFLICT_SEVERITY_LABEL_KO[stabilityReports.conflictReport.severity],
+      saturationLevelLabel: CANDIDATE_SATURATION_LEVEL_LABEL_KO[stabilityReports.saturationSummary.saturationLevel],
+      showSaturationBanner,
+      saturationBannerMessage,
+      conflictRows: stabilityReports.conflictReport.conflicts.map((c) => ({
+        title: RUNTIME_CANDIDATE_CONFLICT_KIND_LABEL_KO[c.kind] ?? c.labelKo,
+        severityLabel: CANDIDATE_CONFLICT_SEVERITY_LABEL_KO[c.severity],
+        note: c.noteKo,
+      })),
+      blockedCandidates: stabilityReports.conflictReport.blockedCandidates,
+      recommendedCandidates: stabilityReports.conflictReport.recommendedCandidates,
+      criticalDependencies: stabilityReports.stabilitySummary.criticalDependencies,
+      riskFactors: stabilityReports.stabilitySummary.riskFactors,
+      unstableGovernanceNote: governanceUnstable
+        ? `거버넌스 리스크 ${governanceCtx.governance.governanceRisk} — 후보 orchestration stability 저하 가능.`
+        : "거버넌스 planning 신호는 관측 범위에서 안정적입니다.",
+      unstableExplainabilityNote: explainabilityUnstable
+        ? "Explainability·사용자 요약 경로 불안정 — enforcement planning 신뢰 저하."
+        : "Explainability 경로는 planning 판단에 사용 가능합니다.",
+    },
+    priorityVm: {
+      sectionDisclaimer: RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
+      overallPlanningPriorityLabel:
+        RUNTIME_PLANNING_PRIORITY_LABEL_KO[priorityReports.bottleneckSummary.overallPlanningPriority],
+      escalationLevelLabel: RUNTIME_ESCALATION_LEVEL_LABEL_KO[escalation.escalationLevel],
+      showEscalationBadge,
+      operatorAttentionRequired: escalation.operatorAttentionRequired,
+      operatorAttentionLabel: escalation.operatorAttentionRequired
+        ? "운영자 attention 필요(메타)"
+        : "운영자 attention 불필요(메타)",
+      dependencyRows: priorityReports.dependencyReport.orderedDependencies.map((d) => ({
+        title: d.labelKo,
+        priorityLabel: RUNTIME_PLANNING_PRIORITY_LABEL_KO[d.priority],
+        status: d.status,
+        note: d.noteKo,
+      })),
+      bottleneckRows: priorityReports.bottleneckSummary.bottlenecks.map((b) => ({
+        title: b.labelKo,
+        priorityLabel: RUNTIME_PLANNING_PRIORITY_LABEL_KO[b.priority],
+        note: b.noteKo,
+      })),
+      criticalDependencies: priorityReports.dependencyReport.criticalDependencies,
+      dependencyCycles: priorityReports.dependencyReport.dependencyCycles,
+      escalationReasons: escalation.escalationReasons,
+    },
+  };
+}

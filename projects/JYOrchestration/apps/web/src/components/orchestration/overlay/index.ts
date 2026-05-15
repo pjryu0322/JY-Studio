@@ -21,6 +21,8 @@ export { OverlayRuntimeEnforcementCandidateSection } from "./OverlayRuntimeEnfor
 export { OverlayControlledEnforcementGovernanceSection } from "./OverlayControlledEnforcementGovernanceSection";
 export { OverlayRuntimeStabilitySection } from "./OverlayRuntimeStabilitySection";
 export { OverlaySaturationBanner } from "./OverlaySaturationBanner";
+export { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
+export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 export {

@@ -29,6 +29,7 @@ describe("resolveOverlaySectionPriority", () => {
   it("marks controlled enforcement governance as normal priority", () => {
     expect(resolveOverlaySectionPriority("controlled_enforcement_governance")).toBe("normal");
     expect(resolveOverlaySectionPriority("runtime_stability")).toBe("important");
+    expect(resolveOverlaySectionPriority("runtime_priority")).toBe("important");
   });
 
   it("marks resource orchestration as normal priority", () => {

@@ -18,9 +18,11 @@ import { buildOverlayRuntimeTrialSectionVm } from "@/lib/overlay-ui/overlayRunti
 import { buildOverlayRuntimeGovernanceSectionVm } from "@/lib/overlay-ui/overlayRuntimeGovernanceAdapter";
 import { buildOverlayRuntimeEnforcementCandidateSectionVm } from "@/lib/overlay-ui/overlayRuntimeEnforcementCandidateAdapter";
 import { buildOverlayControlledEnforcementGovernanceSectionVm } from "@/lib/overlay-ui/overlayControlledEnforcementGovernanceAdapter";
-import { buildOverlayRuntimeStabilitySectionVm } from "@/lib/overlay-ui/overlayRuntimeStabilityAdapter";
+import { buildOverlayRuntimePlanningSectionVms } from "@/lib/overlay-ui/overlayRuntimePlanningSectionVms";
 import { OverlayRuntimeStabilitySection } from "./OverlayRuntimeStabilitySection";
+import { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 import { OverlaySaturationBanner } from "./OverlaySaturationBanner";
+import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -148,14 +150,15 @@ export function OverlaySummaryCard({
     messageExplainabilityAvailable,
     overlayWarningCount: vm.summary.warningCount,
   });
-  const runtimeStabilityVm = buildOverlayRuntimeStabilitySectionVm({
-    overlay,
-    maturityBaseline,
-    releaseGate,
-    messageExplainabilityAvailable,
-    overlayWarningCount: vm.summary.warningCount,
-    compactAndNarrowUi,
-  });
+  const { stabilityVm: runtimeStabilityVm, priorityVm: runtimePriorityVm } =
+    buildOverlayRuntimePlanningSectionVms({
+      overlay,
+      maturityBaseline,
+      releaseGate,
+      messageExplainabilityAvailable,
+      overlayWarningCount: vm.summary.warningCount,
+      compactAndNarrowUi,
+    });
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
     { kind: "review_security", base: d.reviewSecurity },
@@ -190,6 +193,10 @@ export function OverlaySummaryCard({
   const pEnf = pol("runtime_enforcement_candidate", d.runtimeEnforcementCandidate);
   const pCEg = pol("controlled_enforcement_governance", d.controlledEnforcementGovernance);
   const pStab = pol("runtime_stability", d.runtimeStability || runtimeStabilityVm.showSaturationBanner);
+  const pPri = pol(
+    "runtime_priority",
+    d.runtimePriority || runtimePriorityVm.showEscalationBadge || runtimePriorityVm.operatorAttentionRequired
+  );
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -249,14 +256,29 @@ export function OverlaySummaryCard({
       {runtimeStabilityVm.showSaturationBanner && !pStab.omitFromDom ? (
         <OverlaySaturationBanner message={runtimeStabilityVm.saturationBannerMessage} />
       ) : null}
+      {runtimePriorityVm.showEscalationBadge && !pPri.omitFromDom ? (
+        <OverlayEscalationBadge escalationLabel={runtimePriorityVm.escalationLevelLabel} />
+      ) : null}
       {!pStab.omitFromDom ? (
         <OverlayRuntimeStabilitySection vm={runtimeStabilityVm} defaultOpen={pStab.defaultOpen} />
       ) : null}
+      {!pPri.omitFromDom ? (
+        <OverlayRuntimePrioritySection vm={runtimePriorityVm} defaultOpen={pPri.defaultOpen} />
+      ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", padding: "0 2px" }}>
+        <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <summary
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "#64748b",
+              padding: "0 2px",
+              cursor: "pointer",
+              listStyle: "none",
+            }}
+          >
             Runtime planning (H10–H11.5, read-only)
-          </div>
+          </summary>
           {!pRt.omitFromDom ? <OverlayRuntimeTrialSection vm={runtimeTrialVm} defaultOpen={pRt.defaultOpen} /> : null}
           {!pGov.omitFromDom ? (
             <OverlayRuntimeGovernanceSection vm={runtimeGovernanceVm} defaultOpen={pGov.defaultOpen} />
@@ -270,7 +292,7 @@ export function OverlaySummaryCard({
               defaultOpen={pCEg.defaultOpen}
             />
           ) : null}
-        </div>
+        </details>
       ) : null}
       {advancedClip.hiddenCount > 0 ? (
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", padding: "4px 2px" }}>

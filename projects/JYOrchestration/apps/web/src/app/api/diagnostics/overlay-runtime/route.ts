@@ -105,7 +105,9 @@ import {
 import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
 import { serializeRuntimeEnforcementDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
 import { serializeEnforcementGovernanceDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/enforcementGovernance/serializeEnforcementGovernanceDiagnosticBundle";
-import { serializeRuntimeStabilityDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/runtimeStability/serializeRuntimeStabilityDiagnosticBundle";
+import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
+import { serializeRuntimeStabilityDiagnosticBundleFromReports } from "@/lib/harness/runtimeStability/serializeRuntimeStabilityDiagnosticBundle";
+import { serializeRuntimePriorityDiagnosticBundleFromStabilityReports } from "@/lib/harness/runtimePriority/serializeRuntimePriorityDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -352,6 +354,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimeEnforcementCandidateLayerEnabled: true,
     harnessControlledEnforcementGovernanceEnabled: true,
     harnessRuntimeStabilityPlanningEnabled: true,
+    harnessRuntimePlanningPriorityEscalationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -375,6 +378,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimeEnforcementCandidateLayer: true,
     harnessControlledEnforcementGovernanceLayer: true,
     harnessRuntimeStabilityPlanningLayer: true,
+    harnessRuntimePlanningPriorityEscalationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -443,7 +447,7 @@ export async function GET(request: NextRequest) {
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
   });
-  const runtimeStabilityDiag = serializeRuntimeStabilityDiagnosticBundleFromEnforcementPlanning({
+  const stabilityReports = buildRuntimeStabilityPlanningReports({
     baseline: harnessMaturityBaselineReport,
     releaseGate: harnessReleaseGateReadinessReport,
     governanceCtx,
@@ -451,6 +455,15 @@ export async function GET(request: NextRequest) {
     extract: lastPromptTraceOverlayExtract ?? null,
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
+    compactAndNarrowUi: false,
+  });
+  const runtimeStabilityDiag = serializeRuntimeStabilityDiagnosticBundleFromReports(stabilityReports);
+  const runtimePriorityDiag = serializeRuntimePriorityDiagnosticBundleFromStabilityReports({
+    baseline: harnessMaturityBaselineReport,
+    governanceCtx,
+    stabilityReports,
+    extract: lastPromptTraceOverlayExtract ?? null,
+    messageExplainabilityAvailable: true,
   });
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
@@ -494,6 +507,9 @@ export async function GET(request: NextRequest) {
       runtimeStabilitySummary: runtimeStabilityDiag.runtimeStabilitySummary,
       runtimeCandidateConflictReport: runtimeStabilityDiag.runtimeCandidateConflictReport,
       candidateSaturationSummary: runtimeStabilityDiag.candidateSaturationSummary,
+      runtimePlanningDependencyReport: runtimePriorityDiag.runtimePlanningDependencyReport,
+      runtimeEscalationSummary: runtimePriorityDiag.runtimeEscalationSummary,
+      runtimePlanningBottleneckSummary: runtimePriorityDiag.runtimePlanningBottleneckSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
