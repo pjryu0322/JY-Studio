@@ -23,6 +23,7 @@ export { OverlayRuntimeStabilitySection } from "./OverlayRuntimeStabilitySection
 export { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 export { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 export { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
+export { OverlayRuntimeCoherenceSection } from "./OverlayRuntimeCoherenceSection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";

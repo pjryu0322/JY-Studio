@@ -5,7 +5,7 @@
 import type { RuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
 import type { RuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
 import type { RuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
-import { buildRuntimeLifecyclePlanningReports } from "./buildRuntimeLifecyclePlanningReports";
+import { buildRuntimeLifecyclePlanningReports, type RuntimeLifecyclePlanningReports } from "./buildRuntimeLifecyclePlanningReports";
 import { serializeRuntimePlanningFreshnessSummaryForDiagnostic } from "./evaluateRuntimePlanningFreshness";
 import { serializeRuntimePlanningDriftReportForDiagnostic } from "./evaluateRuntimePlanningDrift";
 import { serializeRuntimePlanningInvalidationSummaryForDiagnostic } from "./evaluateRuntimePlanningInvalidation";
@@ -19,8 +19,16 @@ export function serializeRuntimeLifecycleDiagnosticBundleFromPlanningReports(inp
   runtimePlanningDriftReport: ReturnType<typeof serializeRuntimePlanningDriftReportForDiagnostic>;
   runtimePlanningInvalidationSummary: ReturnType<typeof serializeRuntimePlanningInvalidationSummaryForDiagnostic>;
 }> {
-  const reports = buildRuntimeLifecyclePlanningReports(input);
+  return serializeRuntimeLifecycleDiagnosticBundleFromReports(buildRuntimeLifecyclePlanningReports(input));
+}
 
+export function serializeRuntimeLifecycleDiagnosticBundleFromReports(
+  reports: RuntimeLifecyclePlanningReports
+): Readonly<{
+  runtimePlanningFreshnessSummary: ReturnType<typeof serializeRuntimePlanningFreshnessSummaryForDiagnostic>;
+  runtimePlanningDriftReport: ReturnType<typeof serializeRuntimePlanningDriftReportForDiagnostic>;
+  runtimePlanningInvalidationSummary: ReturnType<typeof serializeRuntimePlanningInvalidationSummaryForDiagnostic>;
+}> {
   return {
     runtimePlanningFreshnessSummary: serializeRuntimePlanningFreshnessSummaryForDiagnostic(
       reports.freshnessSummary

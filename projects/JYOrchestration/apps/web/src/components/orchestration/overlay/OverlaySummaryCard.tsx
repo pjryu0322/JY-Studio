@@ -24,6 +24,7 @@ import { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 import { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 import { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
+import { OverlayRuntimeCoherenceSection } from "./OverlayRuntimeCoherenceSection";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -155,6 +156,7 @@ export function OverlaySummaryCard({
     stabilityVm: runtimeStabilityVm,
     priorityVm: runtimePriorityVm,
     lifecycleVm: runtimeLifecycleVm,
+    coherenceVm: runtimeCoherenceVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -206,6 +208,10 @@ export function OverlaySummaryCard({
     d.runtimeLifecycle ||
       runtimeLifecycleVm.showStaleLifecycleBanner ||
       runtimeLifecycleVm.lifecycleStateLabel === "무효화 후보"
+  );
+  const pCoh = pol(
+    "runtime_coherence",
+    d.runtimeCoherence || runtimeCoherenceVm.operatorAttentionRequired
   );
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
@@ -280,6 +286,9 @@ export function OverlaySummaryCard({
       ) : null}
       {!pLife.omitFromDom ? (
         <OverlayRuntimeLifecycleSection vm={runtimeLifecycleVm} defaultOpen={pLife.defaultOpen} />
+      ) : null}
+      {!pCoh.omitFromDom ? (
+        <OverlayRuntimeCoherenceSection vm={runtimeCoherenceVm} defaultOpen={pCoh.defaultOpen} />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
         <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>

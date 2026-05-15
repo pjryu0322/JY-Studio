@@ -31,6 +31,7 @@ describe("resolveOverlaySectionPriority", () => {
     expect(resolveOverlaySectionPriority("runtime_stability")).toBe("important");
     expect(resolveOverlaySectionPriority("runtime_priority")).toBe("important");
     expect(resolveOverlaySectionPriority("runtime_lifecycle")).toBe("important");
+    expect(resolveOverlaySectionPriority("runtime_coherence")).toBe("important");
   });
 
   it("marks resource orchestration as normal priority", () => {

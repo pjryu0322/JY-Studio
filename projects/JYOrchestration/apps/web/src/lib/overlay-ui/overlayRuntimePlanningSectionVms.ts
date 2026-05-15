@@ -1,5 +1,5 @@
 /**
- * H12 / H12.5 / H13.5 — Overlay planning 섹션 VM 일괄 산출(stability·priority·lifecycle 1회 평가).
+ * H12 / H12.5 / H13.5 / H14 — Overlay planning 섹션 VM 일괄 산출(1회 평가).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -9,6 +9,13 @@ import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnf
 import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
 import { buildRuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
 import { buildRuntimeLifecyclePlanningReports } from "@/lib/harness/runtimeLifecycle/buildRuntimeLifecyclePlanningReports";
+import { buildRuntimeCoherencePlanningReports } from "@/lib/harness/runtimeCoherence/buildRuntimeCoherencePlanningReports";
+import {
+  RUNTIME_COHERENCE_SECTION_DISCLAIMER_KO,
+  RUNTIME_PLANNING_COHERENCE_LABEL_KO,
+  RUNTIME_PLANNING_DIVERGENCE_SEVERITY_LABEL_KO,
+  RUNTIME_PLANNING_SYNCHRONIZATION_LABEL_KO,
+} from "@/lib/harness/runtimeCoherence/runtimeCoherenceLabelsKo";
 import {
   RUNTIME_LIFECYCLE_SECTION_DISCLAIMER_KO,
   RUNTIME_PLANNING_DRIFT_SEVERITY_LABEL_KO,
@@ -27,6 +34,7 @@ import {
   RUNTIME_PLANNING_PRIORITY_LABEL_KO,
   RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
+import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
 import type { OverlayRuntimeLifecycleSectionVM } from "./overlayRuntimeLifecycleAdapter";
 import type { OverlayRuntimePrioritySectionVM } from "./overlayRuntimePriorityAdapter";
 import type { OverlayRuntimeStabilitySectionVM } from "./overlayRuntimeStabilityAdapter";
@@ -35,6 +43,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   stabilityVm: OverlayRuntimeStabilitySectionVM;
   priorityVm: OverlayRuntimePrioritySectionVM;
   lifecycleVm: OverlayRuntimeLifecycleSectionVM;
+  coherenceVm: OverlayRuntimeCoherenceSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -103,6 +112,30 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     invalidationCandidates: invalidationSummary.invalidationCandidates,
     staleDependencies: invalidationSummary.staleDependencies,
     stalePlanningAreas: invalidationSummary.stalePlanningAreas,
+  };
+
+  const coherenceReports = buildRuntimeCoherencePlanningReports({
+    stabilityReports,
+    priorityReports,
+    lifecycleReports,
+  });
+  const { coherenceSummary, synchronizationSummary, divergenceReport } = coherenceReports;
+  const operatorAttentionRequired =
+    coherenceSummary.coherenceLevel === "misaligned" ||
+    synchronizationSummary.synchronizationState === "desynchronized" ||
+    divergenceReport.divergenceSeverity === "high";
+  const coherenceVm: OverlayRuntimeCoherenceSectionVM = {
+    sectionDisclaimer: RUNTIME_COHERENCE_SECTION_DISCLAIMER_KO,
+    coherenceLabel: RUNTIME_PLANNING_COHERENCE_LABEL_KO[coherenceSummary.coherenceLevel],
+    synchronizationLabel: RUNTIME_PLANNING_SYNCHRONIZATION_LABEL_KO[synchronizationSummary.synchronizationState],
+    divergenceSeverityLabel: RUNTIME_PLANNING_DIVERGENCE_SEVERITY_LABEL_KO[divergenceReport.divergenceSeverity],
+    alignmentScoreLabel: `${coherenceSummary.alignmentScore}`,
+    operatorAttentionRequired,
+    misalignedAreas: coherenceSummary.misalignedAreas,
+    laggingLayers: synchronizationSummary.laggingLayers,
+    staleConsistencyIssues: synchronizationSummary.staleConsistencyIssues,
+    divergenceAreas: divergenceReport.divergenceAreas,
+    divergenceReasons: divergenceReport.divergenceReasons,
   };
 
   const governanceUnstable =
@@ -176,5 +209,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       escalationReasons: escalation.escalationReasons,
     },
     lifecycleVm,
+    coherenceVm,
   };
 }

@@ -54,6 +54,10 @@ describe("isOverlaySectionVisibleForAudience", () => {
     expect(isOverlaySectionVisibleForAudience("runtime_lifecycle", "user")).toBe(false);
   });
 
+  it("hides runtime coherence section for user audience", () => {
+    expect(isOverlaySectionVisibleForAudience("runtime_coherence", "user")).toBe(false);
+  });
+
   it("shows all sections for operator", () => {
     expect(isOverlaySectionVisibleForAudience("review_security", "operator")).toBe(true);
   });
