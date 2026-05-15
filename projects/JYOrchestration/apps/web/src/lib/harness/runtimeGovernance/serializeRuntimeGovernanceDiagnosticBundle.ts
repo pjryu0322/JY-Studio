@@ -7,15 +7,24 @@ import { buildRuntimeGovernancePlanningContext } from "./buildRuntimeGovernanceP
 import { serializeRollbackSafetyPlanningForDiagnostic } from "./rollbackSafetyPlanning";
 import { serializeRuntimeAuditabilitySummaryForDiagnostic } from "./runtimeAuditabilityPlanning";
 
-export function serializeRuntimeGovernanceDiagnosticBundle(input: Parameters<typeof buildRuntimeGovernancePlanningContext>[0]): Readonly<{
+export function serializeRuntimeGovernanceDiagnosticBundleFromContext(
+  ctx: ReturnType<typeof buildRuntimeGovernancePlanningContext>
+): Readonly<{
   runtimeGovernanceSummary: ReturnType<typeof serializeRuntimeGovernanceSummaryForDiagnostic>;
   rollbackSafetyPlanning: ReturnType<typeof serializeRollbackSafetyPlanningForDiagnostic>;
   runtimeAuditabilitySummary: ReturnType<typeof serializeRuntimeAuditabilitySummaryForDiagnostic>;
 }> {
-  const ctx = buildRuntimeGovernancePlanningContext(input);
   return {
     runtimeGovernanceSummary: serializeRuntimeGovernanceSummaryForDiagnostic(ctx.governance),
     rollbackSafetyPlanning: serializeRollbackSafetyPlanningForDiagnostic(ctx.rollbackSafety),
     runtimeAuditabilitySummary: serializeRuntimeAuditabilitySummaryForDiagnostic(ctx.auditability),
   };
+}
+
+export function serializeRuntimeGovernanceDiagnosticBundle(input: Parameters<typeof buildRuntimeGovernancePlanningContext>[0]): Readonly<{
+  runtimeGovernanceSummary: ReturnType<typeof serializeRuntimeGovernanceSummaryForDiagnostic>;
+  rollbackSafetyPlanning: ReturnType<typeof serializeRollbackSafetyPlanningForDiagnostic>;
+  runtimeAuditabilitySummary: ReturnType<typeof serializeRuntimeAuditabilitySummaryForDiagnostic>;
+}> {
+  return serializeRuntimeGovernanceDiagnosticBundleFromContext(buildRuntimeGovernancePlanningContext(input));
 }

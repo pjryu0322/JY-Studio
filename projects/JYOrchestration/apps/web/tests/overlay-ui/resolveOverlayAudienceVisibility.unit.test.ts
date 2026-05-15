@@ -34,6 +34,10 @@ describe("isOverlaySectionVisibleForAudience", () => {
     expect(isOverlaySectionVisibleForAudience("runtime_governance", "user")).toBe(false);
   });
 
+  it("hides runtime enforcement candidate section for user audience", () => {
+    expect(isOverlaySectionVisibleForAudience("runtime_enforcement_candidate", "user")).toBe(false);
+  });
+
   it("shows all sections for operator", () => {
     expect(isOverlaySectionVisibleForAudience("review_security", "operator")).toBe(true);
   });

@@ -17,6 +17,7 @@ export { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 export { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
 export { OverlayRuntimeTrialSection } from "./OverlayRuntimeTrialSection";
 export { OverlayRuntimeGovernanceSection } from "./OverlayRuntimeGovernanceSection";
+export { OverlayRuntimeEnforcementCandidateSection } from "./OverlayRuntimeEnforcementCandidateSection";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 export {

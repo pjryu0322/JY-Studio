@@ -98,7 +98,11 @@ import {
   buildRuntimeSimulationSummary,
   serializeRuntimeSimulationSummaryForDiagnostic,
 } from "@/lib/harness/runtimeTrial/buildRuntimeSimulationSummary";
-import { serializeRuntimeGovernanceDiagnosticBundle } from "@/lib/harness/runtimeGovernance/serializeRuntimeGovernanceDiagnosticBundle";
+import { buildRuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
+import {
+  serializeRuntimeGovernanceDiagnosticBundleFromContext,
+} from "@/lib/harness/runtimeGovernance/serializeRuntimeGovernanceDiagnosticBundle";
+import { serializeRuntimeEnforcementDiagnosticBundle } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -342,6 +346,7 @@ export async function GET(request: NextRequest) {
     harnessResourceStabilizationEnabled: true,
     harnessControlledRuntimeTrialPreparationEnabled: true,
     harnessControlledRuntimeGovernanceEnabled: true,
+    harnessRuntimeEnforcementCandidateLayerEnabled: true,
   };
 
   const overlayMaturity = {
@@ -362,6 +367,7 @@ export async function GET(request: NextRequest) {
     harnessReviewSecurityPreparationLayer: true,
     harnessReviewSecurityIssuePlanningLayer: true,
     harnessControlledRuntimeGovernanceLayer: true,
+    harnessRuntimeEnforcementCandidateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -400,10 +406,19 @@ export async function GET(request: NextRequest) {
     extract: lastPromptTraceOverlayExtract ?? null,
   });
   const runtimeTrialReadiness = serializeRuntimeTrialReadinessForDiagnostic(runtimeTrialReadinessReport);
-  const governanceDiag = serializeRuntimeGovernanceDiagnosticBundle({
+  const governanceCtx = buildRuntimeGovernancePlanningContext({
     baseline: harnessMaturityBaselineReport,
     releaseGate: harnessReleaseGateReadinessReport,
     extract: lastPromptTraceOverlayExtract ?? null,
+  });
+  const governanceDiag = serializeRuntimeGovernanceDiagnosticBundleFromContext(governanceCtx);
+  const enforcementDiag = serializeRuntimeEnforcementDiagnosticBundle({
+    baseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    governanceCtx,
+    extract: lastPromptTraceOverlayExtract ?? null,
+    messageExplainabilityAvailable: true,
+    overlayWarningCount: overlayUiForDiag.summary.warningCount,
   });
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
@@ -438,6 +453,9 @@ export async function GET(request: NextRequest) {
       runtimeGovernanceSummary: governanceDiag.runtimeGovernanceSummary,
       rollbackSafetyPlanning: governanceDiag.rollbackSafetyPlanning,
       runtimeAuditabilitySummary: governanceDiag.runtimeAuditabilitySummary,
+      runtimeEnforcementCandidate: enforcementDiag.runtimeEnforcementCandidate,
+      runtimeEnforcementRiskSummary: enforcementDiag.runtimeEnforcementRiskSummary,
+      candidateCapabilityPlanning: enforcementDiag.candidateCapabilityPlanning,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
