@@ -1,5 +1,5 @@
 /**
- * H12–H16.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H17 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -10,6 +10,7 @@ import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDepe
 import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
 import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
+import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { RUNTIME_TRACEABILITY_SECTION_DISCLAIMER_KO } from "@/lib/harness/runtimeTraceability/runtimeTraceabilityLabelsKo";
 import {
   RUNTIME_CRITICALITY_SECTION_DISCLAIMER_KO,
@@ -49,6 +50,10 @@ import {
   buildOverlayRuntimeReasoningSectionVmFromReports,
   type OverlayRuntimeReasoningSectionVM,
 } from "./overlayRuntimeReasoningSectionVm";
+import {
+  buildOverlayRuntimeSemanticSectionVmFromReports,
+  type OverlayRuntimeSemanticSectionVM,
+} from "./overlayRuntimeSemanticSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -70,6 +75,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   criticalityVm: OverlayRuntimeCriticalitySectionVM;
   traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
   reasoningVm: OverlayRuntimeReasoningSectionVM;
+  semanticVm: OverlayRuntimeSemanticSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -226,9 +232,14 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     criticalTransitionChains: reasoningChain.criticalTransitions,
   };
 
-  const reasoningVm = buildOverlayRuntimeReasoningSectionVmFromReports(
-    buildRuntimeReasoningPlanningReports(dependencyReports, criticalityReports, traceabilityReports)
+  const reasoningReports = buildRuntimeReasoningPlanningReports(
+    dependencyReports,
+    criticalityReports,
+    traceabilityReports
   );
+  const semanticReports = buildRuntimeSemanticPlanningReports(reasoningReports);
+  const reasoningVm = buildOverlayRuntimeReasoningSectionVmFromReports(reasoningReports);
+  const semanticVm = buildOverlayRuntimeSemanticSectionVmFromReports(semanticReports);
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -304,5 +315,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     criticalityVm,
     traceabilityVm,
     reasoningVm,
+    semanticVm,
   };
 }

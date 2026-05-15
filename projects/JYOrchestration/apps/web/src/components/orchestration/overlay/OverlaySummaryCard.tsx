@@ -164,6 +164,7 @@ export function OverlaySummaryCard({
     criticalityVm: runtimePlanningCriticalityVm,
     traceabilityVm: runtimePlanningTraceabilityVm,
     reasoningVm: runtimePlanningReasoningVm,
+    semanticVm: runtimePlanningSemanticVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -241,11 +242,16 @@ export function OverlaySummaryCard({
     "runtime_planning_reasoning",
     d.runtimePlanningReasoning || runtimePlanningReasoningVm.showAttention
   );
+  const pSemantic = pol(
+    "runtime_planning_semantic",
+    d.runtimePlanningSemantic || runtimePlanningSemanticVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
     !pTrace.omitFromDom ||
-    !pReason.omitFromDom;
+    !pReason.omitFromDom ||
+    !pSemantic.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -335,24 +341,35 @@ export function OverlaySummaryCard({
         />
       ) : null}
       {showDependencyCriticalityGrouped &&
-      (!pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom || !pReason.omitFromDom) ? (
+      (!pDep.omitFromDom ||
+        !pCrit.omitFromDom ||
+        !pTrace.omitFromDom ||
+        !pReason.omitFromDom ||
+        !pSemantic.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          semanticVm={runtimePlanningSemanticVm}
           reasoningVm={runtimePlanningReasoningVm}
           traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
+          semanticDefaultOpen={pSemantic.defaultOpen}
           reasoningDefaultOpen={pReason.defaultOpen}
           traceabilityDefaultOpen={pTrace.defaultOpen}
           groupOpen={
             !compactAndNarrowUi &&
-            (pDep.defaultOpen || pCrit.defaultOpen || pTrace.defaultOpen || pReason.defaultOpen)
+            (pDep.defaultOpen ||
+              pCrit.defaultOpen ||
+              pTrace.defaultOpen ||
+              pReason.defaultOpen ||
+              pSemantic.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showReasoning={!pReason.omitFromDom}
-          showTraceability={!pTrace.omitFromDom && pReason.omitFromDom}
+          showSemantic={!pSemantic.omitFromDom}
+          showReasoning={!pReason.omitFromDom && pSemantic.omitFromDom}
+          showTraceability={!pTrace.omitFromDom && pReason.omitFromDom && pSemantic.omitFromDom}
         />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (

@@ -117,7 +117,9 @@ import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCri
 import { serializeRuntimeCriticalityDiagnosticBundleFromReports } from "@/lib/harness/runtimeCriticality/serializeRuntimeCriticalityDiagnosticBundle";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
 import { serializeRuntimeTraceabilityDiagnosticBundleFromReports } from "@/lib/harness/runtimeTraceability/serializeRuntimeTraceabilityDiagnosticBundle";
-import { serializeRuntimeReasoningDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeReasoning/serializeRuntimeReasoningDiagnosticBundle";
+import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
+import { serializeRuntimeReasoningDiagnosticBundleFromReports } from "@/lib/harness/runtimeReasoning/serializeRuntimeReasoningDiagnosticBundle";
+import { serializeRuntimeSemanticDiagnosticBundleFromReports } from "@/lib/harness/runtimeSemantic/serializeRuntimeSemanticDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -372,6 +374,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningCriticalityPriorityPropagationEnabled: true,
     harnessRuntimePlanningTraceabilityReasoningChainEnabled: true,
     harnessRuntimePlanningReasoningConsolidationEnabled: true,
+    harnessRuntimePlanningSemanticCompressionEnabled: true,
   };
 
   const overlayMaturity = {
@@ -403,6 +406,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningCriticalityPriorityPropagationLayer: true,
     harnessRuntimePlanningTraceabilityReasoningChainLayer: true,
     harnessRuntimePlanningReasoningConsolidationLayer: true,
+    harnessRuntimePlanningSemanticCompressionLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -503,10 +507,16 @@ export async function GET(request: NextRequest) {
   const runtimeTraceabilityDiag = serializeRuntimeTraceabilityDiagnosticBundleFromReports(
     traceabilityPlanningReports
   );
-  const runtimeReasoningDiag = serializeRuntimeReasoningDiagnosticBundleFromPlanning(
+  const reasoningPlanningReports = buildRuntimeReasoningPlanningReports(
     dependencyPlanningReports,
     criticalityPlanningReports,
     traceabilityPlanningReports
+  );
+  const runtimeReasoningDiag = serializeRuntimeReasoningDiagnosticBundleFromReports(
+    reasoningPlanningReports
+  );
+  const runtimeSemanticDiag = serializeRuntimeSemanticDiagnosticBundleFromReports(
+    reasoningPlanningReports
   );
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
@@ -573,6 +583,10 @@ export async function GET(request: NextRequest) {
       unifiedRuntimeReasoningChain: runtimeReasoningDiag.unifiedRuntimeReasoningChain,
       runtimeReasoningRedundancySummary: runtimeReasoningDiag.runtimeReasoningRedundancySummary,
       normalizedRuntimeReasoningTrace: runtimeReasoningDiag.normalizedRuntimeReasoningTrace,
+      runtimeSemanticGroups: runtimeSemanticDiag.runtimeSemanticGroups,
+      compressedRuntimeReasoningTrace: runtimeSemanticDiag.compressedRuntimeReasoningTrace,
+      runtimeSemanticRedundancySummary: runtimeSemanticDiag.runtimeSemanticRedundancySummary,
+      stabilizedRuntimeSemanticOrdering: runtimeSemanticDiag.stabilizedRuntimeSemanticOrdering,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

@@ -198,6 +198,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningTraceability: boolean;
   /** Harness Phase H16.5 — Unified planning reasoning consolidation(기본 접힘; redundancy·transitions 시 펼침). */
   runtimePlanningReasoning: boolean;
+  /** Harness Phase H17 — Semantic compression & observability stabilization(기본 접힘; explosion·compression 시 펼침). */
+  runtimePlanningSemantic: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -466,6 +468,7 @@ function buildSectionDefaults(
     runtimePlanningCriticality: false,
     runtimePlanningTraceability: false,
     runtimePlanningReasoning: false,
+    runtimePlanningSemantic: false,
   };
 }
 

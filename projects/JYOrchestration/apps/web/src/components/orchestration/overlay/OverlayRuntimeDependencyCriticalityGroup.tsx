@@ -3,39 +3,47 @@
 import type { OverlayRuntimeCriticalitySectionVM } from "@/lib/overlay-ui/overlayRuntimeCriticalityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "@/lib/overlay-ui/overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeReasoningSectionVM } from "@/lib/overlay-ui/overlayRuntimeReasoningAdapter";
+import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
 import { OverlayRuntimeCriticalitySection } from "./OverlayRuntimeCriticalitySection";
 import { OverlayRuntimeDependencyGraphSection } from "./OverlayRuntimeDependencyGraphSection";
 import { OverlayRuntimeReasoningSection } from "./OverlayRuntimeReasoningSection";
+import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H16.5 — dependency·criticality·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
+/** H15–H17 — dependency·criticality·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
+  semanticVm,
   reasoningVm,
   traceabilityVm,
   dependencyDefaultOpen,
   criticalityDefaultOpen,
+  semanticDefaultOpen,
   reasoningDefaultOpen,
   traceabilityDefaultOpen,
   groupOpen,
   showDependency = true,
   showCriticality = true,
+  showSemantic = true,
   showReasoning = true,
   showTraceability = true,
 }: {
   readonly dependencyVm: OverlayRuntimeDependencyGraphSectionVM;
   readonly criticalityVm: OverlayRuntimeCriticalitySectionVM;
+  readonly semanticVm: OverlayRuntimeSemanticSectionVM;
   readonly reasoningVm: OverlayRuntimeReasoningSectionVM;
   readonly traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
   readonly dependencyDefaultOpen?: boolean;
   readonly criticalityDefaultOpen?: boolean;
+  readonly semanticDefaultOpen?: boolean;
   readonly reasoningDefaultOpen?: boolean;
   readonly traceabilityDefaultOpen?: boolean;
   readonly groupOpen?: boolean;
   readonly showDependency?: boolean;
   readonly showCriticality?: boolean;
+  readonly showSemantic?: boolean;
   readonly showReasoning?: boolean;
   readonly showTraceability?: boolean;
 }) {
@@ -51,8 +59,11 @@ export function OverlayRuntimeDependencyCriticalityGroup({
           listStyle: "none",
         }}
       >
-        Planning reasoning (H15–H16.5, read-only)
+        Planning observability (H15–H17, read-only)
       </summary>
+      {showSemantic ? (
+        <OverlayRuntimeSemanticSection vm={semanticVm} defaultOpen={semanticDefaultOpen} />
+      ) : null}
       {showReasoning ? (
         <OverlayRuntimeReasoningSection vm={reasoningVm} defaultOpen={reasoningDefaultOpen} />
       ) : null}
