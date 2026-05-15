@@ -6,7 +6,10 @@ import type { HarnessMaturityBaselineReport } from "@/lib/harness/maturity/harne
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 import type { RuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
 import type { RuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
-import { buildRuntimePriorityPlanningReports } from "./buildRuntimePriorityPlanningReports";
+import {
+  buildRuntimePriorityPlanningReports,
+  type RuntimePriorityPlanningReports,
+} from "./buildRuntimePriorityPlanningReports";
 import { serializeRuntimePlanningDependencyReportForDiagnostic } from "./evaluateRuntimePlanningDependencies";
 import { serializeRuntimeEscalationSummaryForDiagnostic } from "./evaluateRuntimeEscalation";
 import { serializeRuntimePlanningBottleneckSummaryForDiagnostic } from "./evaluateRuntimePlanningBottlenecks";
@@ -23,7 +26,16 @@ export function serializeRuntimePriorityDiagnosticBundleFromStabilityReports(inp
   runtimePlanningBottleneckSummary: ReturnType<typeof serializeRuntimePlanningBottleneckSummaryForDiagnostic>;
 }> {
   const reports = buildRuntimePriorityPlanningReports(input);
+  return serializeRuntimePriorityDiagnosticBundleFromReports(reports);
+}
 
+export function serializeRuntimePriorityDiagnosticBundleFromReports(
+  reports: RuntimePriorityPlanningReports
+): Readonly<{
+  runtimePlanningDependencyReport: ReturnType<typeof serializeRuntimePlanningDependencyReportForDiagnostic>;
+  runtimeEscalationSummary: ReturnType<typeof serializeRuntimeEscalationSummaryForDiagnostic>;
+  runtimePlanningBottleneckSummary: ReturnType<typeof serializeRuntimePlanningBottleneckSummaryForDiagnostic>;
+}> {
   return {
     runtimePlanningDependencyReport: serializeRuntimePlanningDependencyReportForDiagnostic(reports.dependencyReport),
     runtimeEscalationSummary: serializeRuntimeEscalationSummaryForDiagnostic(reports.escalationSummary),

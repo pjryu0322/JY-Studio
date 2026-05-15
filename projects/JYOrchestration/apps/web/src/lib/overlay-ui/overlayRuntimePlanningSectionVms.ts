@@ -1,5 +1,5 @@
 /**
- * H12 / H12.5 — Overlay planning 섹션 VM 일괄 산출(stability·priority 1회 평가).
+ * H12 / H12.5 / H13.5 — Overlay planning 섹션 VM 일괄 산출(stability·priority·lifecycle 1회 평가).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -8,6 +8,13 @@ import { buildRuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGove
 import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
 import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
 import { buildRuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
+import { buildRuntimeLifecyclePlanningReports } from "@/lib/harness/runtimeLifecycle/buildRuntimeLifecyclePlanningReports";
+import {
+  RUNTIME_LIFECYCLE_SECTION_DISCLAIMER_KO,
+  RUNTIME_PLANNING_DRIFT_SEVERITY_LABEL_KO,
+  RUNTIME_PLANNING_FRESHNESS_LABEL_KO,
+  RUNTIME_PLANNING_LIFECYCLE_STATE_LABEL_KO,
+} from "@/lib/harness/runtimeLifecycle/runtimeLifecycleLabelsKo";
 import {
   CANDIDATE_CONFLICT_SEVERITY_LABEL_KO,
   CANDIDATE_SATURATION_LEVEL_LABEL_KO,
@@ -20,12 +27,14 @@ import {
   RUNTIME_PLANNING_PRIORITY_LABEL_KO,
   RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
+import type { OverlayRuntimeLifecycleSectionVM } from "./overlayRuntimeLifecycleAdapter";
 import type { OverlayRuntimePrioritySectionVM } from "./overlayRuntimePriorityAdapter";
 import type { OverlayRuntimeStabilitySectionVM } from "./overlayRuntimeStabilityAdapter";
 
 export type OverlayRuntimePlanningSectionVms = Readonly<{
   stabilityVm: OverlayRuntimeStabilitySectionVM;
   priorityVm: OverlayRuntimePrioritySectionVM;
+  lifecycleVm: OverlayRuntimeLifecycleSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -65,6 +74,36 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     extract: input.overlay,
     messageExplainabilityAvailable: input.messageExplainabilityAvailable,
   });
+  const lifecycleReports = buildRuntimeLifecyclePlanningReports({
+    governanceCtx,
+    stabilityReports,
+    priorityReports,
+  });
+  const { freshnessSummary, driftReport, invalidationSummary } = lifecycleReports;
+  const showStaleLifecycleBanner =
+    freshnessSummary.freshnessLevel === "stale" ||
+    invalidationSummary.lifecycleState === "invalidated" ||
+    driftReport.driftSeverity === "high";
+  const lifecycleVm: OverlayRuntimeLifecycleSectionVM = {
+    sectionDisclaimer: RUNTIME_LIFECYCLE_SECTION_DISCLAIMER_KO,
+    freshnessLabel: RUNTIME_PLANNING_FRESHNESS_LABEL_KO[freshnessSummary.freshnessLevel],
+    lifecycleStateLabel: RUNTIME_PLANNING_LIFECYCLE_STATE_LABEL_KO[invalidationSummary.lifecycleState],
+    driftSeverityLabel: RUNTIME_PLANNING_DRIFT_SEVERITY_LABEL_KO[driftReport.driftSeverity],
+    showStaleLifecycleBanner,
+    staleLifecycleBannerMessage:
+      invalidationSummary.lifecycleState === "invalidated"
+        ? "Planning lifecycle 무효화 후보가 있습니다. 후보 메타를 planning_only로 유지하세요."
+        : freshnessSummary.freshnessLevel === "stale"
+          ? "Planning freshness가 오래되었습니다. H10–H11.5 세부 섹션을 재검토하세요."
+          : "Planning drift가 높습니다. dependency·escalation 메타를 확인하세요.",
+    agingFactors: freshnessSummary.agingFactors,
+    staleFactors: freshnessSummary.staleFactors,
+    driftAreas: driftReport.driftAreas,
+    driftReasons: driftReport.driftReasons,
+    invalidationCandidates: invalidationSummary.invalidationCandidates,
+    staleDependencies: invalidationSummary.staleDependencies,
+    stalePlanningAreas: invalidationSummary.stalePlanningAreas,
+  };
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -136,5 +175,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       dependencyCycles: priorityReports.dependencyReport.dependencyCycles,
       escalationReasons: escalation.escalationReasons,
     },
+    lifecycleVm,
   };
 }

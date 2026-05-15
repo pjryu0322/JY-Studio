@@ -23,6 +23,7 @@ import { OverlayRuntimeStabilitySection } from "./OverlayRuntimeStabilitySection
 import { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 import { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
+import { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -150,8 +151,11 @@ export function OverlaySummaryCard({
     messageExplainabilityAvailable,
     overlayWarningCount: vm.summary.warningCount,
   });
-  const { stabilityVm: runtimeStabilityVm, priorityVm: runtimePriorityVm } =
-    buildOverlayRuntimePlanningSectionVms({
+  const {
+    stabilityVm: runtimeStabilityVm,
+    priorityVm: runtimePriorityVm,
+    lifecycleVm: runtimeLifecycleVm,
+  } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
       releaseGate,
@@ -196,6 +200,12 @@ export function OverlaySummaryCard({
   const pPri = pol(
     "runtime_priority",
     d.runtimePriority || runtimePriorityVm.showEscalationBadge || runtimePriorityVm.operatorAttentionRequired
+  );
+  const pLife = pol(
+    "runtime_lifecycle",
+    d.runtimeLifecycle ||
+      runtimeLifecycleVm.showStaleLifecycleBanner ||
+      runtimeLifecycleVm.lifecycleStateLabel === "무효화 후보"
   );
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
@@ -264,6 +274,12 @@ export function OverlaySummaryCard({
       ) : null}
       {!pPri.omitFromDom ? (
         <OverlayRuntimePrioritySection vm={runtimePriorityVm} defaultOpen={pPri.defaultOpen} />
+      ) : null}
+      {runtimeLifecycleVm.showStaleLifecycleBanner && !pLife.omitFromDom ? (
+        <OverlaySaturationBanner message={runtimeLifecycleVm.staleLifecycleBannerMessage} />
+      ) : null}
+      {!pLife.omitFromDom ? (
+        <OverlayRuntimeLifecycleSection vm={runtimeLifecycleVm} defaultOpen={pLife.defaultOpen} />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
         <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
