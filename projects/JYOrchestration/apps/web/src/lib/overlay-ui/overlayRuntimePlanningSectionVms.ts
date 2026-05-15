@@ -239,7 +239,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   );
   const semanticReports = buildRuntimeSemanticPlanningReports(reasoningReports);
   const reasoningVm = buildOverlayRuntimeReasoningSectionVmFromReports(reasoningReports);
-  const semanticVm = buildOverlayRuntimeSemanticSectionVmFromReports(semanticReports);
+  const semanticVm = buildOverlayRuntimeSemanticSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";

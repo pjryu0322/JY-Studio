@@ -119,7 +119,8 @@ import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTr
 import { serializeRuntimeTraceabilityDiagnosticBundleFromReports } from "@/lib/harness/runtimeTraceability/serializeRuntimeTraceabilityDiagnosticBundle";
 import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import { serializeRuntimeReasoningDiagnosticBundleFromReports } from "@/lib/harness/runtimeReasoning/serializeRuntimeReasoningDiagnosticBundle";
-import { serializeRuntimeSemanticDiagnosticBundleFromReports } from "@/lib/harness/runtimeSemantic/serializeRuntimeSemanticDiagnosticBundle";
+import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
+import { serializeRuntimeSemanticDiagnosticBundleFromPlanningReports } from "@/lib/harness/runtimeSemantic/serializeRuntimeSemanticDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -375,6 +376,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningTraceabilityReasoningChainEnabled: true,
     harnessRuntimePlanningReasoningConsolidationEnabled: true,
     harnessRuntimePlanningSemanticCompressionEnabled: true,
+    harnessRuntimePlanningSemanticQualityGateEnabled: true,
   };
 
   const overlayMaturity = {
@@ -407,6 +409,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningTraceabilityReasoningChainLayer: true,
     harnessRuntimePlanningReasoningConsolidationLayer: true,
     harnessRuntimePlanningSemanticCompressionLayer: true,
+    harnessRuntimePlanningSemanticQualityGateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -515,8 +518,9 @@ export async function GET(request: NextRequest) {
   const runtimeReasoningDiag = serializeRuntimeReasoningDiagnosticBundleFromReports(
     reasoningPlanningReports
   );
-  const runtimeSemanticDiag = serializeRuntimeSemanticDiagnosticBundleFromReports(
-    reasoningPlanningReports
+  const semanticPlanningReports = buildRuntimeSemanticPlanningReports(reasoningPlanningReports);
+  const runtimeSemanticDiag = serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
+    semanticPlanningReports
   );
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
@@ -587,6 +591,9 @@ export async function GET(request: NextRequest) {
       compressedRuntimeReasoningTrace: runtimeSemanticDiag.compressedRuntimeReasoningTrace,
       runtimeSemanticRedundancySummary: runtimeSemanticDiag.runtimeSemanticRedundancySummary,
       stabilizedRuntimeSemanticOrdering: runtimeSemanticDiag.stabilizedRuntimeSemanticOrdering,
+      runtimeSemanticCompressionQualityReport: runtimeSemanticDiag.runtimeSemanticCompressionQualityReport,
+      runtimeHiddenSemanticTraceAudit: runtimeSemanticDiag.runtimeHiddenSemanticTraceAudit,
+      runtimeSemanticGroupBalanceSummary: runtimeSemanticDiag.runtimeSemanticGroupBalanceSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

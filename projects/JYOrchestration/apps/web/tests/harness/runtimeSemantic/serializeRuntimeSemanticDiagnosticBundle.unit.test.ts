@@ -42,7 +42,7 @@ describe("H17 runtime semantic compression", () => {
     expect(compressed.compressedLines.length).toBeGreaterThan(0);
   });
 
-  it("serializes four H17 diagnostic fields", () => {
+  it("serializes seven H17–H17.5 diagnostic fields", () => {
     const baseline = evaluateHarnessMaturityBaseline({
       overlayExtract: null,
       harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
@@ -68,6 +68,12 @@ describe("H17 runtime semantic compression", () => {
       compressionApplied?: boolean;
     };
     const ordering = b.stabilizedRuntimeSemanticOrdering as { mode?: string };
+    const quality = b.runtimeSemanticCompressionQualityReport as {
+      mode?: string;
+      quality?: string;
+    };
+    const hidden = b.runtimeHiddenSemanticTraceAudit as { mode?: string };
+    const balance = b.runtimeSemanticGroupBalanceSummary as { mode?: string };
     expect(groups.mode).toBe("runtime_semantic_groups_summary");
     expect(groups.actualRuntimeOrchestrationEnabled).toBe(false);
     expect(compressed.mode).toBe("compressed_runtime_reasoning_trace");
@@ -75,5 +81,9 @@ describe("H17 runtime semantic compression", () => {
     expect(redundancy.mode).toBe("runtime_semantic_redundancy_summary");
     expect(redundancy.compressionApplied).toBe(true);
     expect(ordering.mode).toBe("stabilized_runtime_semantic_ordering");
+    expect(quality.mode).toBe("runtime_semantic_compression_quality");
+    expect(quality.quality).toBeTruthy();
+    expect(hidden.mode).toBe("runtime_hidden_semantic_trace_audit");
+    expect(balance.mode).toBe("runtime_semantic_group_balance_summary");
   });
 });

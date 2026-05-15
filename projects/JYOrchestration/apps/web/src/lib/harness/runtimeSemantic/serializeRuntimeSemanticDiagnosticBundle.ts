@@ -1,5 +1,5 @@
 /**
- * H17 — 진단 API용 runtime semantic compression wire 묶음.
+ * H17–H17.5 — 진단 API용 runtime semantic wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -8,22 +8,28 @@ import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDepe
 import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
-import { buildRuntimeSemanticPlanningReports } from "./buildRuntimeSemanticPlanningReports";
+import { buildRuntimeSemanticPlanningReports, type RuntimeSemanticPlanningReports } from "./buildRuntimeSemanticPlanningReports";
+import { serializeRuntimeHiddenSemanticTraceAuditForDiagnostic } from "./auditHiddenRuntimeSemanticTrace";
 import { serializeRuntimeSemanticGroupsSummaryForDiagnostic } from "./buildRuntimeSemanticGroups";
 import { serializeCompressedRuntimeReasoningTraceForDiagnostic } from "./compressRuntimeReasoningTrace";
+import { serializeRuntimeSemanticCompressionQualityReportForDiagnostic } from "./evaluateRuntimeSemanticCompressionQuality";
+import { serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic } from "./evaluateRuntimeSemanticGroupBalance";
 import { serializeRuntimeSemanticRedundancySummaryForDiagnostic } from "./evaluateRuntimeSemanticRedundancy";
 import { serializeStabilizedRuntimeSemanticOrderingForDiagnostic } from "./stabilizeRuntimeSemanticOrdering";
 
-export function serializeRuntimeSemanticDiagnosticBundleFromReports(
-  reasoningReports: RuntimeReasoningPlanningReports
+export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
+  reports: RuntimeSemanticPlanningReports
 ): Readonly<{
   runtimeSemanticGroups: ReturnType<typeof serializeRuntimeSemanticGroupsSummaryForDiagnostic>;
   compressedRuntimeReasoningTrace: ReturnType<typeof serializeCompressedRuntimeReasoningTraceForDiagnostic>;
   runtimeSemanticRedundancySummary: ReturnType<typeof serializeRuntimeSemanticRedundancySummaryForDiagnostic>;
   stabilizedRuntimeSemanticOrdering: ReturnType<typeof serializeStabilizedRuntimeSemanticOrderingForDiagnostic>;
+  runtimeSemanticCompressionQualityReport: ReturnType<
+    typeof serializeRuntimeSemanticCompressionQualityReportForDiagnostic
+  >;
+  runtimeHiddenSemanticTraceAudit: ReturnType<typeof serializeRuntimeHiddenSemanticTraceAuditForDiagnostic>;
+  runtimeSemanticGroupBalanceSummary: ReturnType<typeof serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic>;
 }> {
-  const reports = buildRuntimeSemanticPlanningReports(reasoningReports);
-
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -35,12 +41,29 @@ export function serializeRuntimeSemanticDiagnosticBundleFromReports(
     stabilizedRuntimeSemanticOrdering: serializeStabilizedRuntimeSemanticOrderingForDiagnostic(
       reports.stabilizedSemanticOrdering
     ),
+    runtimeSemanticCompressionQualityReport: serializeRuntimeSemanticCompressionQualityReportForDiagnostic(
+      reports.compressionQualityReport
+    ),
+    runtimeHiddenSemanticTraceAudit: serializeRuntimeHiddenSemanticTraceAuditForDiagnostic(
+      reports.hiddenTraceAudit
+    ),
+    runtimeSemanticGroupBalanceSummary: serializeRuntimeSemanticGroupBalanceSummaryForDiagnostic(
+      reports.semanticGroupBalanceSummary
+    ),
   };
+}
+
+export function serializeRuntimeSemanticDiagnosticBundleFromReports(
+  reasoningReports: RuntimeReasoningPlanningReports
+): ReturnType<typeof serializeRuntimeSemanticDiagnosticBundleFromPlanningReports> {
+  return serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
+    buildRuntimeSemanticPlanningReports(reasoningReports)
+  );
 }
 
 export function serializeRuntimeSemanticDiagnosticBundleFromContext(
   ctx: NormalizedRuntimePlanningContext
-): ReturnType<typeof serializeRuntimeSemanticDiagnosticBundleFromReports> {
+): ReturnType<typeof serializeRuntimeSemanticDiagnosticBundleFromPlanningReports> {
   const dependencyReports = buildRuntimeDependencyPlanningReports(ctx);
   const criticalityReports = buildRuntimeCriticalityPlanningReports(ctx, dependencyReports);
   const traceabilityReports = buildRuntimeTraceabilityPlanningReports(
