@@ -16,6 +16,7 @@ export { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueS
 export { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 export { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
+export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 export {
   OVERLAY_INCLUDE_MODE_ORDER,
   OverlayIncludeModeBadge,

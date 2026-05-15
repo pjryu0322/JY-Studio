@@ -11,6 +11,7 @@ describe("resolveOverlaySectionPriority", () => {
   it("marks maturity and operator summary as important", () => {
     expect(resolveOverlaySectionPriority("maturity_baseline")).toBe("important");
     expect(resolveOverlaySectionPriority("operator_runtime_summary")).toBe("important");
+    expect(resolveOverlaySectionPriority("operator_resource_summary")).toBe("important");
   });
 
   it("marks resource orchestration as normal priority", () => {

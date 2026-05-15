@@ -60,7 +60,7 @@
 
 ### 상태
 
-**부분 반영** — OpenAI HTTP 래퍼, Cursor 어댑터, 실행 리뷰 순회, SingleChat 다단계 LLM 존재. **단일 Harness 인터페이스 계층은 없음**. H8에서 maturity·release gate 기준화, **H8.5에서 Prompt Timeline Overlay·진단 API의 audience/compact/budget·경고 그룹화·운영 요약**으로 관측 UX를 정리(실행·payload 비변경).
+**부분 반영** — OpenAI HTTP 래퍼, Cursor 어댑터, 실행 리뷰 순회, SingleChat 다단계 LLM 존재. **단일 Harness 인터페이스 계층은 없음**. H8에서 maturity·release gate 기준화, **H8.5에서 Prompt Timeline Overlay·진단 API의 audience/compact/budget·경고 그룹화·운영 요약**으로 관측 UX를 정리, **H9에서 자원 orchestration planning**, **H9.5에서 자원 압력 심각도·과밀 완화·Explainability 노이즈 완화·추가 진단 요약 필드**로 스케일 안정화(실행·payload·DB 비변경).
 
 ### 현재 구현 위치
 
@@ -341,7 +341,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 - **워크스페이스 카탈로그 → 계약 역할**: `overlayIdentityFromWorkspace.ts` — `validateWorkspaceAiMemberOverlayMappings` / `listUnmappedWorkspaceAiMemberKeys`로 카탈로그 키 누락 진단.
 - **프로젝트 진단 스냅샷**: `overlayProjectDiagnostic.ts` — 서비스 기획 `selectedAgents` 기준 resolve·분포.
 - **프롬프트 타임라인 추출**: `overlayPromptTraceExtract.ts` — `extractOverlayPromptTraceMetadata`가 hints·**warnings** 포함; 진단 API `?projectId=` 시 마지막 타임라인 행에 대해 호출.
-- **진단 API**: `GET /api/diagnostics/overlay-runtime` — **`overlayPolicyWarningSummary`**, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **`overlayMaturity`**, **`enforcementStatus`**, Harness·Review/Security·**H6.5** 요약 필드(`reviewSecurityIssuePlanningSummary`, `remediationLoopSummary`, `recentReviewSecurityIssueSummary` 등), `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`( **`reviewSecurityIssuePlanningReport`** · **`remediationLoopPlan`** 포함).
+- **진단 API**: `GET /api/diagnostics/overlay-runtime` — **`overlayPolicyWarningSummary`**, **`overlayWarningReport`**, **`overlayArchitecturePhase`**, **`overlayMaturity`**, **`enforcementStatus`**, Harness·Review/Security·**H6.5** 요약 필드(`reviewSecurityIssuePlanningSummary`, `remediationLoopSummary`, `recentReviewSecurityIssueSummary` 등), **`resourceOrchestrationPlanningSummary`**(H9), **`resourcePressureSummary`·`overlayOverloadSummary`·`operatorRuntimeSummary`**(H9.5), `?roles=`, `workspaceAiMemberOverlayMappings`, 선택 `?projectId=` (세션 + `canViewProject`) 시 `projectOverlay`·`lastPromptTraceOverlayExtract`( **`reviewSecurityIssuePlanningReport`** · **`remediationLoopPlan`** 포함).
 - **Review Harness**: `executionReviewWithAiMembers.ts` — 스텝에 **`overlayPolicyWarnings`**(JSON 리뷰 **판단 로직 비영향**); 반환에 **`overlayWarningCount`**·**`overlayWarningSummary`**(감사용 집계, decision 비영향). `evaluateExecutionResult`가 동일 metadata를 optional로 노출.
 - **Runtime Diagnostic / Selection Preparation (5단계, 적용됨)** — 모두 read-only optional metadata. **prompt 본문·OpenAI payload·라우팅 비변경**, **자동 orchestration / 자동 retrieval / 자동 provider 선택 없음**.
   - `overlayContextSelection.ts` — `buildOverlaySelectedContextRefs`(역할·memory scope·knowledge hint·timeline·workspace·policy refs를 priority 정렬된 selection metadata로) / `summarizeOverlaySelectedContextRefs`.

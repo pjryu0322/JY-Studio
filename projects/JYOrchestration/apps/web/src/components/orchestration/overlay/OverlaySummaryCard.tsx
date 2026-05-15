@@ -11,6 +11,7 @@ import type { HarnessPromptApplyReadinessReport } from "@/lib/harness/promptAsse
 import type { RecentMemoryRuntimeSummary } from "@/lib/harness/memoryRuntime/memoryRuntimeRecentSummary";
 import type { OverlayAudienceMode } from "@/lib/overlay-ui/overlayAudienceTypes";
 import { buildOverlayOperatorRuntimeSummaryVm } from "@/lib/overlay-ui/overlayOperatorRuntimeSummaryAdapter";
+import { buildOverlayOperatorResourceSummaryVm } from "@/lib/overlay-ui/overlayOperatorResourceSummaryAdapter";
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
 import { buildOverlayResourceOrchestrationSectionVm } from "@/lib/overlay-ui/overlayResourceOrchestrationAdapter";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
@@ -35,6 +36,7 @@ import { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueS
 import { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
 import { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
 import { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
+import { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";
 import { OverlaySummaryHeader } from "./OverlaySummaryHeader";
 import { OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 
@@ -104,6 +106,12 @@ export function OverlaySummaryCard({
     releaseGate,
     messageExplainabilityAvailable,
   });
+  const compactAndNarrowUi = compactMode && isNarrow;
+  const operatorResourceVm = buildOverlayOperatorResourceSummaryVm({
+    overlay,
+    summary: vm.summary,
+    compactAndNarrowUi,
+  });
   const resourceOrchVm = buildOverlayResourceOrchestrationSectionVm(overlay);
 
   const advancedMeta: readonly { kind: OverlaySectionKind; base: boolean }[] = [
@@ -126,7 +134,8 @@ export function OverlaySummaryCard({
 
   const showAdvanced = (kind: OverlaySectionKind) => advancedAllowed.has(kind);
 
-  const pOp = pol("operator_runtime_summary", true);
+  const pOp = pol("operator_runtime_summary", d.operatorRuntimeSummary);
+  const pOpRes = pol("operator_resource_summary", d.operatorResourceSummary);
   const pCtx = pol("context", d.context);
   const pBud = pol("budget", d.budget);
   const pRes = pol("resource_orchestration", d.resourceOrchestration);
@@ -147,6 +156,9 @@ export function OverlaySummaryCard({
       <OverlaySummaryHeader vm={vm.summary} />
       {!pOp.omitFromDom ? (
         <OverlayOperatorRuntimeSummary vm={operatorVm} defaultOpen={pOp.defaultOpen} />
+      ) : null}
+      {!pOpRes.omitFromDom ? (
+        <OverlayOperatorResourceSummary vm={operatorResourceVm} defaultOpen={pOpRes.defaultOpen} />
       ) : null}
       {!pCtx.omitFromDom ? <OverlayContextSection vm={vm.context} defaultOpen={pCtx.defaultOpen} /> : null}
       {!pBud.omitFromDom ? <OverlayBudgetSection vm={vm.budget} defaultOpen={pBud.defaultOpen} /> : null}

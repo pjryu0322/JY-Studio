@@ -85,6 +85,10 @@ import { evaluateHarnessReleaseGateReadiness } from "@/lib/harness/maturity/eval
 import type { OverlayAudienceMode } from "@/lib/overlay-ui/overlayAudienceTypes";
 import { filterOverlayRuntimeDiagnosticDataForAudience } from "@/lib/overlay/overlayRuntimeDiagnosticAudienceFilter";
 import { summarizeResourceOrchestrationPlanning } from "@/lib/harness/resourceOrchestration/summarizeResourceOrchestrationPlanning";
+import { summarizeResourcePressureForDiagnostic } from "@/lib/harness/resourceStabilization/evaluateResourcePressure";
+import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
+import { summarizeOverlayOverloadMitigation } from "@/lib/overlay-ui/overlayOverloadMitigation";
+import { serializeOperatorRuntimeSummaryForDiagnostic } from "@/lib/overlay-ui/overlayOperatorResourceSummaryAdapter";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -325,6 +329,7 @@ export async function GET(request: NextRequest) {
     harnessReviewSecurityPreparationEnabled: true,
     harnessReviewSecurityIssuePlanningEnabled: true,
     harnessResourceOrchestrationPlanningEnabled: true,
+    harnessResourceStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -362,6 +367,20 @@ export async function GET(request: NextRequest) {
   });
   const harnessReleaseGateReadinessReport = evaluateHarnessReleaseGateReadiness(harnessMaturityBaselineReport);
 
+  const overlayUiForDiag = buildOverlayUiViewModel(lastPromptTraceOverlayExtract ?? null);
+  const resourcePressureSummary = summarizeResourcePressureForDiagnostic(lastPromptTraceOverlayExtract ?? null);
+  const overlayOverloadSummary = summarizeOverlayOverloadMitigation({
+    extract: lastPromptTraceOverlayExtract ?? null,
+    compactAndNarrowUi: false,
+  });
+  const operatorRuntimeSummary = serializeOperatorRuntimeSummaryForDiagnostic({
+    overlay: lastPromptTraceOverlayExtract ?? null,
+    summary: overlayUiForDiag.summary,
+    maturityBaseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    messageExplainabilityAvailable: true,
+  });
+
   const responseData: Record<string, unknown> = {
       overlayRuntimeEnabled: true,
       registeredRoles: [...OVERLAY_REGISTRY_ROLE_KEYS],
@@ -377,6 +396,9 @@ export async function GET(request: NextRequest) {
       overlayConflictSummary,
       overlayContextBudgetSummary,
       resourceOrchestrationPlanningSummary,
+      resourcePressureSummary,
+      overlayOverloadSummary,
+      operatorRuntimeSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

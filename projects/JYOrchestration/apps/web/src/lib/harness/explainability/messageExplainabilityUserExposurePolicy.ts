@@ -5,8 +5,10 @@
  */
 
 import type { MessageExplainabilityViewModel } from "./messageExplainabilityTypes";
+import { dedupeExplainabilitySummaryLines } from "@/lib/harness/resourceStabilization/resourceNoiseReduction";
+import { RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_SUMMARY_LINES } from "@/lib/harness/resourceStabilization/resourceStabilizationPolicy";
 
-const MAX_SUMMARY_LINES = 4;
+const MAX_SUMMARY_LINES = RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_SUMMARY_LINES;
 
 export type MessageExplainabilityUserExposureCheck = Readonly<{
   ok: boolean;
@@ -19,7 +21,7 @@ export type MessageExplainabilityUserExposureCheck = Readonly<{
 export function checkMessageExplainabilityUserExposure(vm: MessageExplainabilityViewModel): MessageExplainabilityUserExposureCheck {
   const violations: string[] = [];
   if (!vm.disclaimer || !vm.disclaimer.trim()) violations.push("missing_disclaimer");
-  if (vm.summaryLines.length > MAX_SUMMARY_LINES) violations.push("summary_lines_over_limit");
+  if (dedupeExplainabilitySummaryLines(vm.summaryLines).length > MAX_SUMMARY_LINES) violations.push("summary_lines_over_limit");
   if (!vm.headline?.trim()) violations.push("missing_headline");
   return {
     ok: violations.length === 0,

@@ -7,6 +7,7 @@ export type OverlaySectionPriority = "critical" | "important" | "normal" | "adva
 /** `OverlaySummaryCard` 및 연관 섹션 식별자. */
 export type OverlaySectionKind =
   | "operator_runtime_summary"
+  | "operator_resource_summary"
   | "warning"
   | "execution_routing"
   | "maturity_baseline"
@@ -29,6 +30,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "execution_routing":
       return "critical";
     case "operator_runtime_summary":
+    case "operator_resource_summary":
     case "maturity_baseline":
       return "important";
     case "context":

@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
 import type { MessageExplainabilityViewModel } from "@/lib/harness/explainability/messageExplainabilityTypes";
 import {
   messageExplainabilityRiskLabel,
   messageExplainabilityRiskTone,
 } from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
+import { clipExplainabilitySummaryLinesForDisplay } from "@/lib/harness/resourceStabilization/resourceNoiseReduction";
+import {
+  RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_BADGES_COMPACT,
+  RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_BADGES_DEFAULT,
+} from "@/lib/harness/resourceStabilization/resourceStabilizationPolicy";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
@@ -20,7 +25,6 @@ export type MessageExplainabilityPanelProps = Readonly<{
 }>;
 
 const MAX_SECTION_PREVIEW = 3;
-const MAX_BADGE_PILLS = 3;
 
 function overlayToneToBadgeVariant(tone: OverlayUiBadgeTone): BadgeVariant {
   switch (tone) {
@@ -44,9 +48,23 @@ export function MessageExplainabilityPanel({
   connectionQualityLabel,
 }: MessageExplainabilityPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [narrowUi, setNarrowUi] = useState(false);
   const toggle = useCallback(() => setOpen((v) => !v), []);
   const panelId = useId();
   const tone = messageExplainabilityRiskTone(vm.riskLevel);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 720px)");
+    const apply = () => setNarrowUi(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  const maxBadgePills = narrowUi
+    ? RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_BADGES_COMPACT
+    : RESOURCE_STABILIZATION_MAX_EXPLAINABILITY_BADGES_DEFAULT;
 
   const showTimelineLink = Boolean(onOpenPromptTimeline && promptTimelineAvailable);
 
@@ -82,10 +100,12 @@ export function MessageExplainabilityPanel({
       ),
     });
   }
-  const displayPills = pills.slice(0, MAX_BADGE_PILLS);
+  const displayPills = pills.slice(0, maxBadgePills);
 
   const sectionPreview = vm.sections.slice(0, MAX_SECTION_PREVIEW);
   const sectionMore = vm.sections.length - sectionPreview.length;
+
+  const summaryDisplay = clipExplainabilitySummaryLinesForDisplay(vm.summaryLines);
 
   return (
     <div className="jyo-msg-explainability" style={{ marginTop: 10, width: "100%" } satisfies CSSProperties}>
@@ -185,12 +205,17 @@ export function MessageExplainabilityPanel({
                 wordBreak: "break-word",
               }}
             >
-              {vm.summaryLines.map((line, i) => (
+              {summaryDisplay.visible.map((line, i) => (
                 <li key={`${i}-${line.slice(0, 40)}`} style={{ marginBottom: 4 }}>
                   {line}
                 </li>
               ))}
             </ul>
+            {summaryDisplay.hiddenLineCount > 0 ? (
+              <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted }}>
+                추가 {summaryDisplay.hiddenLineCount}줄 숨김
+              </div>
+            ) : null}
             <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted }}>
               {sectionPreview.length}개 영역 요약
               {sectionMore > 0 ? ` · 외 ${sectionMore}개는 타임라인에서 확인` : null}

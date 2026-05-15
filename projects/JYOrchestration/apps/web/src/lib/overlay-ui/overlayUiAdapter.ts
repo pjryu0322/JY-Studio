@@ -145,6 +145,10 @@ export type OverlayUiSummaryHeaderVM = Readonly<{
  * - assemblyPlan: 항상 접힘(모바일 과밀 방지)
  */
 export type OverlayUiSectionDefaultsVM = Readonly<{
+  /** Harness Phase H8.5 — Operator runtime strip. */
+  operatorRuntimeSummary: boolean;
+  /** Harness Phase H9.5 — Operator resource·overload strip. */
+  operatorResourceSummary: boolean;
   context: boolean;
   budget: boolean;
   warning: boolean;
@@ -407,6 +411,8 @@ function buildSectionDefaults(
   hasRemediationLoop: boolean
 ): OverlayUiSectionDefaultsVM {
   return {
+    operatorRuntimeSummary: true,
+    operatorResourceSummary: true,
     context: true,
     budget: true,
     warning: warning.hasData,

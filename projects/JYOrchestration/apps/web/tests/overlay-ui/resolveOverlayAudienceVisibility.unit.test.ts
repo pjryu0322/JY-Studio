@@ -22,6 +22,10 @@ describe("isOverlaySectionVisibleForAudience", () => {
     expect(isOverlaySectionVisibleForAudience("resource_orchestration", "user")).toBe(false);
   });
 
+  it("hides operator resource summary for user audience", () => {
+    expect(isOverlaySectionVisibleForAudience("operator_resource_summary", "user")).toBe(false);
+  });
+
   it("shows all sections for operator", () => {
     expect(isOverlaySectionVisibleForAudience("review_security", "operator")).toBe(true);
   });
