@@ -638,6 +638,7 @@ export function RequirementsChatPanel({
                         ))}
                       </div>
                     ) : null}
+                    {/* H7.6: SingleChat AI explainability — workspace supplies promptTimeline + drawer opener */}
                     <RequirementsMessageExplainability
                       message={m}
                       promptTimeline={promptTimeline}

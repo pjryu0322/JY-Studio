@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMessageExplainabilityTrace } from "@/lib/harness/explainability/resolveMessageExplainabilityTrace";
+import {
+  resolveMessageExplainabilityTrace,
+  resolveMessageExplainabilityTraceWithConfidence,
+} from "@/lib/harness/explainability/resolveMessageExplainabilityTrace";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 
@@ -10,7 +13,7 @@ const baseMsg = {
   createdAt: "2026-05-15T12:00:00.000Z",
   content: "안녕하세요. 오늘 어떤 서비스를 설계할까요?",
   speakerId: VIRTUAL_AI_PLANNER_ID,
-  meta: {},
+  meta: { stage: "REQUIREMENTS" as const },
 };
 
 describe("resolveMessageExplainabilityTrace", () => {
@@ -127,5 +130,66 @@ describe("resolveMessageExplainabilityTrace", () => {
       promptTimeline: timeline,
     });
     expect(out?.overlayIdentity?.roleKey).toBe("planner");
+  });
+});
+
+describe("resolveMessageExplainabilityTraceWithConfidence", () => {
+  it("returns none when no meta extract and no promptTimeline", () => {
+    const r = resolveMessageExplainabilityTraceWithConfidence({
+      message: baseMsg,
+      promptTimeline: null,
+    });
+    expect(r.confidence).toBe("none");
+    expect(r.extract).toBeNull();
+  });
+
+  it("returns direct when messageOverlayExplainability is populated", () => {
+    const ex = {
+      overlayIdentity: { roleKey: "planner", perspective: "기획", provider: "p", capabilities: [] },
+    };
+    const r = resolveMessageExplainabilityTraceWithConfidence({
+      message: { ...baseMsg, meta: { stage: "REQUIREMENTS", messageOverlayExplainability: ex } },
+      promptTimeline: null,
+    });
+    expect(r.confidence).toBe("direct");
+    expect(r.extract?.overlayIdentity?.roleKey).toBe("planner");
+  });
+
+  it("returns response_text when unique body match", () => {
+    const body = "Unique reply for confidence.";
+    const timeline: RequirementsPromptTimelineEntry[] = [
+      {
+        stage: "ideation",
+        action: "requirementsChatOrchestration",
+        source: "llm",
+        createdAt: "2026-05-15T12:00:03.000Z",
+        responseText: body,
+        overlayIdentity: { roleKey: "planner", perspective: "기획", provider: "p", capabilities: [] },
+      },
+    ];
+    const r = resolveMessageExplainabilityTraceWithConfidence({
+      message: { ...baseMsg, content: body, meta: { stage: "REQUIREMENTS" } },
+      promptTimeline: timeline,
+    });
+    expect(r.confidence).toBe("response_text");
+    expect(r.extract?.overlayIdentity?.roleKey).toBe("planner");
+  });
+
+  it("returns role_time when orchestrator single match", () => {
+    const timeline: RequirementsPromptTimelineEntry[] = [
+      {
+        stage: "ideation",
+        action: "requirementsChatOrchestration",
+        source: "llm",
+        createdAt: "2026-05-15T12:00:02.000Z",
+        orchestratorAgent: "planner",
+        overlayIdentity: { roleKey: "planner", perspective: "기획", provider: "p", capabilities: [] },
+      },
+    ];
+    const r = resolveMessageExplainabilityTraceWithConfidence({
+      message: { ...baseMsg, content: "x", meta: { stage: "REQUIREMENTS" } },
+      promptTimeline: timeline,
+    });
+    expect(r.confidence).toBe("role_time");
   });
 });

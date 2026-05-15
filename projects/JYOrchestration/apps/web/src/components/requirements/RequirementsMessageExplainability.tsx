@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { buildMessageExplainabilityViewModel } from "@/lib/harness/explainability/buildMessageExplainabilityViewModel";
-import { resolveMessageExplainabilityTrace } from "@/lib/harness/explainability/resolveMessageExplainabilityTrace";
+import { resolveMessageExplainabilityTraceWithConfidence } from "@/lib/harness/explainability/resolveMessageExplainabilityTrace";
 import { MessageExplainabilityPanel } from "@/components/orchestration/explainability/MessageExplainabilityPanel";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { MESSAGE_EXPLAINABILITY_EMPTY_COPY } from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
@@ -23,9 +23,9 @@ export function RequirementsMessageExplainability({
 }) {
   const debug = explainabilityDebugEnabled();
 
-  const extract = useMemo(
+  const resolution = useMemo(
     () =>
-      resolveMessageExplainabilityTrace({
+      resolveMessageExplainabilityTraceWithConfidence({
         message: {
           id: message.id,
           role: message.role,
@@ -47,11 +47,16 @@ export function RequirementsMessageExplainability({
     ]
   );
 
-  const vm = useMemo(() => buildMessageExplainabilityViewModel({ overlayExtract: extract }), [extract]);
+  const vm = useMemo(
+    () => buildMessageExplainabilityViewModel({ overlayExtract: resolution.extract }),
+    [resolution.extract]
+  );
 
   if (message.role !== "ai") return null;
 
-  if (!vm.hasData) {
+  const showPanel = resolution.confidence !== "none" && vm.hasData;
+
+  if (!showPanel) {
     if (!debug) return null;
     return (
       <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8" }}>

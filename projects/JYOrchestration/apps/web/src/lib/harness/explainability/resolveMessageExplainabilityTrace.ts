@@ -5,6 +5,10 @@ import {
   type ExtractedOverlayPromptTraceMetadata,
 } from "@/lib/overlay/overlayPromptTraceExtract";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+import type {
+  MessageExplainabilityTraceConfidence,
+  MessageExplainabilityTraceResolution,
+} from "@/lib/harness/explainability/messageExplainabilityTraceResolution";
 
 /** SingleChat explainability 매핑에 쓰는 최소 메시지 shape. */
 export type SingleChatMessageLike = Readonly<
@@ -40,27 +44,36 @@ function parseTimeMs(iso: string | undefined): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
+const NONE: MessageExplainabilityTraceResolution = { extract: null, confidence: "none" };
+
+function pack(
+  ex: ExtractedOverlayPromptTraceMetadata,
+  confidence: Exclude<MessageExplainabilityTraceConfidence, "none">
+): MessageExplainabilityTraceResolution {
+  return overlayExtractHasRenderableFields(ex) ? { extract: ex, confidence } : NONE;
+}
+
 /**
- * AI 응답 메시지에 붙일 overlay+harness extract를 **안전하게** 결정한다.
+ * AI 응답 메시지에 붙일 overlay+harness extract와 **매핑 신뢰도**를 반환한다.
  *
  * 우선순위: (1) 메시지 meta 직접 보유 → (2) 타임라인 `responseText`가 본문과 일치하는 단일 후보 →
  * (3) 화자(virtual id)와 `orchestratorAgent`가 일치하고 시간창 내 단일 후보.
- * 불명확하면 `null`(억지 연결 금지).
+ * 불명확하면 `extract: null`, `confidence: "none"`.
  */
-export function resolveMessageExplainabilityTrace(input: {
+export function resolveMessageExplainabilityTraceWithConfidence(input: {
   readonly message: SingleChatMessageLike;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
-}): ExtractedOverlayPromptTraceMetadata | null {
+}): MessageExplainabilityTraceResolution {
   const { message, promptTimeline } = input;
-  if (message.role !== "ai") return null;
+  if (message.role !== "ai") return NONE;
 
   const direct = message.meta?.messageOverlayExplainability ?? null;
   if (overlayExtractHasRenderableFields(direct)) {
-    return direct;
+    return { extract: direct, confidence: "direct" };
   }
 
   const timeline = Array.isArray(promptTimeline) ? promptTimeline : [];
-  if (!timeline.length) return null;
+  if (!timeline.length) return NONE;
 
   const body = String(message.content ?? "").trim();
   if (body.length >= 8) {
@@ -73,8 +86,7 @@ export function resolveMessageExplainabilityTrace(input: {
       return Math.abs(entT - msgT) <= 120_000;
     });
     if (byResponse.length === 1) {
-      const ex = extractOverlayPromptTraceMetadata(byResponse[0]);
-      return overlayExtractHasRenderableFields(ex) ? ex : null;
+      return pack(extractOverlayPromptTraceMetadata(byResponse[0]), "response_text");
     }
   }
 
@@ -91,11 +103,20 @@ export function resolveMessageExplainabilityTrace(input: {
         return agents.some((a) => a === oa);
       });
       if (near.length === 1) {
-        const ex = extractOverlayPromptTraceMetadata(near[0]);
-        return overlayExtractHasRenderableFields(ex) ? ex : null;
+        return pack(extractOverlayPromptTraceMetadata(near[0]), "role_time");
       }
     }
   }
 
-  return null;
+  return NONE;
+}
+
+/**
+ * `resolveMessageExplainabilityTraceWithConfidence(input).extract`와 동일.
+ */
+export function resolveMessageExplainabilityTrace(input: {
+  readonly message: SingleChatMessageLike;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+}): ExtractedOverlayPromptTraceMetadata | null {
+  return resolveMessageExplainabilityTraceWithConfidence(input).extract;
 }
