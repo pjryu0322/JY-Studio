@@ -21,7 +21,8 @@ export type OverlaySectionKind =
   | "assembly_plan"
   | "pruning"
   | "harness_prompt_preview"
-  | "resource_orchestration";
+  | "resource_orchestration"
+  | "runtime_trial";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -36,6 +37,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "context":
     case "budget":
     case "resource_orchestration":
+    case "runtime_trial":
     case "knowledge_activation":
     case "memory_runtime":
       return "normal";

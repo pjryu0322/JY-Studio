@@ -14,6 +14,10 @@ describe("resolveOverlaySectionPriority", () => {
     expect(resolveOverlaySectionPriority("operator_resource_summary")).toBe("important");
   });
 
+  it("marks runtime trial as normal priority", () => {
+    expect(resolveOverlaySectionPriority("runtime_trial")).toBe("normal");
+  });
+
   it("marks resource orchestration as normal priority", () => {
     expect(resolveOverlaySectionPriority("resource_orchestration")).toBe("normal");
   });

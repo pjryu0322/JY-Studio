@@ -89,6 +89,15 @@ import { summarizeResourcePressureForDiagnostic } from "@/lib/harness/resourceSt
 import { buildOverlayUiViewModel } from "@/lib/overlay-ui/overlayUiAdapter";
 import { summarizeOverlayOverloadMitigation } from "@/lib/overlay-ui/overlayOverloadMitigation";
 import { serializeOperatorRuntimeSummaryForDiagnostic } from "@/lib/overlay-ui/overlayOperatorResourceSummaryAdapter";
+import { evaluateRuntimeTrialReadiness, serializeRuntimeTrialReadinessForDiagnostic } from "@/lib/harness/runtimeTrial/evaluateRuntimeTrialReadiness";
+import {
+  buildRuntimeRiskSummary,
+  serializeRuntimeRiskSummaryForDiagnostic,
+} from "@/lib/harness/runtimeTrial/runtimeRiskSummary";
+import {
+  buildRuntimeSimulationSummary,
+  serializeRuntimeSimulationSummaryForDiagnostic,
+} from "@/lib/harness/runtimeTrial/buildRuntimeSimulationSummary";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -330,6 +339,7 @@ export async function GET(request: NextRequest) {
     harnessReviewSecurityIssuePlanningEnabled: true,
     harnessResourceOrchestrationPlanningEnabled: true,
     harnessResourceStabilizationEnabled: true,
+    harnessControlledRuntimeTrialPreparationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -381,6 +391,21 @@ export async function GET(request: NextRequest) {
     messageExplainabilityAvailable: true,
   });
 
+  const runtimeTrialReadinessReport = evaluateRuntimeTrialReadiness({
+    baseline: harnessMaturityBaselineReport,
+    releaseGate: harnessReleaseGateReadinessReport,
+    extract: lastPromptTraceOverlayExtract ?? null,
+  });
+  const runtimeTrialReadiness = serializeRuntimeTrialReadinessForDiagnostic(runtimeTrialReadinessReport);
+  const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
+    buildRuntimeRiskSummary({
+      baseline: harnessMaturityBaselineReport,
+      releaseGate: harnessReleaseGateReadinessReport,
+      extract: lastPromptTraceOverlayExtract ?? null,
+    })
+  );
+  const runtimeSimulationSummary = serializeRuntimeSimulationSummaryForDiagnostic(buildRuntimeSimulationSummary());
+
   const responseData: Record<string, unknown> = {
       overlayRuntimeEnabled: true,
       registeredRoles: [...OVERLAY_REGISTRY_ROLE_KEYS],
@@ -399,6 +424,9 @@ export async function GET(request: NextRequest) {
       resourcePressureSummary,
       overlayOverloadSummary,
       operatorRuntimeSummary,
+      runtimeTrialReadiness,
+      runtimeRiskSummary,
+      runtimeSimulationSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
