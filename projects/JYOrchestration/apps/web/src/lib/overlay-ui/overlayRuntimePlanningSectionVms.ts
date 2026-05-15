@@ -1,15 +1,11 @@
 /**
- * H12 / H12.5 / H13.5 / H14 — Overlay planning 섹션 VM 일괄 산출(1회 평가).
+ * H12–H14.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
-import { buildRuntimeGovernancePlanningContext } from "@/lib/harness/runtimeGovernance/buildRuntimeGovernancePlanningContext";
-import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
-import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
-import { buildRuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
-import { buildRuntimeLifecyclePlanningReports } from "@/lib/harness/runtimeLifecycle/buildRuntimeLifecyclePlanningReports";
-import { buildRuntimeCoherencePlanningReports } from "@/lib/harness/runtimeCoherence/buildRuntimeCoherencePlanningReports";
+import { buildUnifiedRuntimePlanningSummary } from "@/lib/harness/runtimeConsolidation/buildUnifiedRuntimePlanningSummary";
+import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
 import {
   RUNTIME_COHERENCE_SECTION_DISCLAIMER_KO,
   RUNTIME_PLANNING_COHERENCE_LABEL_KO,
@@ -36,14 +32,19 @@ import {
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
 import type { OverlayRuntimeLifecycleSectionVM } from "./overlayRuntimeLifecycleAdapter";
+import type { OverlayRuntimePlanningConsolidatedSectionVM } from "./overlayRuntimePlanningConsolidatedAdapter";
 import type { OverlayRuntimePrioritySectionVM } from "./overlayRuntimePriorityAdapter";
 import type { OverlayRuntimeStabilitySectionVM } from "./overlayRuntimeStabilityAdapter";
+
+const CONSOLIDATED_DISCLAIMER_KO =
+  "통합 planning 요약입니다. H12–H14 세부 섹션은 동일 평가 1회 결과를 공유합니다. actual orchestration 없음.";
 
 export type OverlayRuntimePlanningSectionVms = Readonly<{
   stabilityVm: OverlayRuntimeStabilitySectionVM;
   priorityVm: OverlayRuntimePrioritySectionVM;
   lifecycleVm: OverlayRuntimeLifecycleSectionVM;
   coherenceVm: OverlayRuntimeCoherenceSectionVM;
+  consolidatedVm: OverlayRuntimePlanningConsolidatedSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -54,45 +55,17 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   readonly overlayWarningCount: number;
   readonly compactAndNarrowUi?: boolean;
 }): OverlayRuntimePlanningSectionVms {
-  const governanceCtx = buildRuntimeGovernancePlanningContext({
-    baseline: input.maturityBaseline,
-    releaseGate: input.releaseGate,
-    extract: input.overlay,
-  });
-  const enforcementPlanning = buildRuntimeEnforcementPlanningContext({
-    baseline: input.maturityBaseline,
-    releaseGate: input.releaseGate,
-    governanceCtx,
-    extract: input.overlay,
-    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
-  });
-  const stabilityReports = buildRuntimeStabilityPlanningReports({
-    baseline: input.maturityBaseline,
-    releaseGate: input.releaseGate,
-    governanceCtx,
-    enforcementPlanning,
-    extract: input.overlay,
-    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
-    overlayWarningCount: input.overlayWarningCount,
-    compactAndNarrowUi: input.compactAndNarrowUi,
-  });
-  const priorityReports = buildRuntimePriorityPlanningReports({
-    baseline: input.maturityBaseline,
-    governanceCtx,
-    stabilityReports,
-    extract: input.overlay,
-    messageExplainabilityAvailable: input.messageExplainabilityAvailable,
-  });
-  const lifecycleReports = buildRuntimeLifecyclePlanningReports({
-    governanceCtx,
-    stabilityReports,
-    priorityReports,
-  });
+  const ctx = normalizeRuntimePlanningContext(input);
+  const { governanceCtx, stabilityReports, priorityReports, lifecycleReports, coherenceReports } = ctx;
   const { freshnessSummary, driftReport, invalidationSummary } = lifecycleReports;
+  const { coherenceSummary, synchronizationSummary, divergenceReport } = coherenceReports;
+  const unified = buildUnifiedRuntimePlanningSummary(ctx);
+
   const showStaleLifecycleBanner =
     freshnessSummary.freshnessLevel === "stale" ||
     invalidationSummary.lifecycleState === "invalidated" ||
     driftReport.driftSeverity === "high";
+
   const lifecycleVm: OverlayRuntimeLifecycleSectionVM = {
     sectionDisclaimer: RUNTIME_LIFECYCLE_SECTION_DISCLAIMER_KO,
     freshnessLabel: RUNTIME_PLANNING_FRESHNESS_LABEL_KO[freshnessSummary.freshnessLevel],
@@ -114,28 +87,37 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     stalePlanningAreas: invalidationSummary.stalePlanningAreas,
   };
 
-  const coherenceReports = buildRuntimeCoherencePlanningReports({
-    stabilityReports,
-    priorityReports,
-    lifecycleReports,
-  });
-  const { coherenceSummary, synchronizationSummary, divergenceReport } = coherenceReports;
-  const operatorAttentionRequired =
+  const coherenceOperatorAttention =
     coherenceSummary.coherenceLevel === "misaligned" ||
     synchronizationSummary.synchronizationState === "desynchronized" ||
     divergenceReport.divergenceSeverity === "high";
+
   const coherenceVm: OverlayRuntimeCoherenceSectionVM = {
     sectionDisclaimer: RUNTIME_COHERENCE_SECTION_DISCLAIMER_KO,
     coherenceLabel: RUNTIME_PLANNING_COHERENCE_LABEL_KO[coherenceSummary.coherenceLevel],
     synchronizationLabel: RUNTIME_PLANNING_SYNCHRONIZATION_LABEL_KO[synchronizationSummary.synchronizationState],
     divergenceSeverityLabel: RUNTIME_PLANNING_DIVERGENCE_SEVERITY_LABEL_KO[divergenceReport.divergenceSeverity],
     alignmentScoreLabel: `${coherenceSummary.alignmentScore}`,
-    operatorAttentionRequired,
+    operatorAttentionRequired: coherenceOperatorAttention,
     misalignedAreas: coherenceSummary.misalignedAreas,
     laggingLayers: synchronizationSummary.laggingLayers,
     staleConsistencyIssues: synchronizationSummary.staleConsistencyIssues,
     divergenceAreas: divergenceReport.divergenceAreas,
     divergenceReasons: divergenceReport.divergenceReasons,
+  };
+
+  const consolidatedVm: OverlayRuntimePlanningConsolidatedSectionVM = {
+    sectionDisclaimer: CONSOLIDATED_DISCLAIMER_KO,
+    stabilityHeadline: unified.stability.headline,
+    stabilityDetail: unified.stability.detail ?? "—",
+    priorityHeadline: unified.priority.headline,
+    priorityDetail: unified.priority.detail ?? "—",
+    lifecycleHeadline: unified.lifecycle.headline,
+    lifecycleDetail: unified.lifecycle.detail ?? "—",
+    coherenceHeadline: unified.coherence.headline,
+    coherenceDetail: unified.coherence.detail ?? "—",
+    criticalIssues: unified.criticalIssues,
+    showAttention: unified.criticalIssues.length > 0,
   };
 
   const governanceUnstable =
@@ -156,8 +138,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
         : "Overlay 과밀 위험이 있습니다. compact·narrow 모드에서 일부 섹션이 숨겨질 수 있습니다.";
 
   const escalation = priorityReports.escalationSummary;
-  const showEscalationBadge =
-    escalation.escalationLevel === "escalated" || escalation.escalationLevel === "critical";
 
   return {
     stabilityVm: {
@@ -188,7 +168,8 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       overallPlanningPriorityLabel:
         RUNTIME_PLANNING_PRIORITY_LABEL_KO[priorityReports.bottleneckSummary.overallPlanningPriority],
       escalationLevelLabel: RUNTIME_ESCALATION_LEVEL_LABEL_KO[escalation.escalationLevel],
-      showEscalationBadge,
+      showEscalationBadge:
+        escalation.escalationLevel === "escalated" || escalation.escalationLevel === "critical",
       operatorAttentionRequired: escalation.operatorAttentionRequired,
       operatorAttentionLabel: escalation.operatorAttentionRequired
         ? "운영자 attention 필요(메타)"
@@ -210,5 +191,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     },
     lifecycleVm,
     coherenceVm,
+    consolidatedVm,
   };
 }

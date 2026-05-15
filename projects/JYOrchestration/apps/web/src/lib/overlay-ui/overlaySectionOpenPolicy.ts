@@ -39,7 +39,9 @@ export function resolveOverlaySectionUiPolicy(input: {
       (input.section === "runtime_trial" ||
         input.section === "runtime_governance" ||
         input.section === "runtime_enforcement_candidate" ||
-        input.section === "controlled_enforcement_governance")
+        input.section === "controlled_enforcement_governance" ||
+        input.section === "runtime_lifecycle" ||
+        input.section === "runtime_coherence")
     ) {
       omitFromDom = true;
       defaultOpen = false;

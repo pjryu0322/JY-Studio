@@ -24,6 +24,8 @@ export { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 export { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 export { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
 export { OverlayRuntimeCoherenceSection } from "./OverlayRuntimeCoherenceSection";
+export { OverlayRuntimePlanningConsolidatedSection } from "./OverlayRuntimePlanningConsolidatedSection";
+export { OverlayRuntimeLifecycleCoherenceGroup } from "./OverlayRuntimeLifecycleCoherenceGroup";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";

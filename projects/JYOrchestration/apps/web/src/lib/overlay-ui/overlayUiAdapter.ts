@@ -188,6 +188,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimeLifecycle: boolean;
   /** Harness Phase H14 — Runtime coherence & synchronization(기본 접힘; misaligned 시 SummaryCard에서 펼침). */
   runtimeCoherence: boolean;
+  /** Harness Phase H14.5 — Unified runtime planning summary(기본 접힘; critical 시 펼침). */
+  runtimePlanningConsolidated: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -451,6 +453,7 @@ function buildSectionDefaults(
     runtimePriority: false,
     runtimeLifecycle: false,
     runtimeCoherence: false,
+    runtimePlanningConsolidated: false,
   };
 }
 

@@ -105,18 +105,12 @@ import {
 import { buildRuntimeEnforcementPlanningContext } from "@/lib/harness/runtimeEnforcement/buildRuntimeEnforcementPlanningContext";
 import { serializeRuntimeEnforcementDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeEnforcement/serializeRuntimeEnforcementDiagnosticBundle";
 import { serializeEnforcementGovernanceDiagnosticBundleFromEnforcementPlanning } from "@/lib/harness/enforcementGovernance/serializeEnforcementGovernanceDiagnosticBundle";
-import { buildRuntimeStabilityPlanningReports } from "@/lib/harness/runtimeStability/buildRuntimeStabilityPlanningReports";
 import { serializeRuntimeStabilityDiagnosticBundleFromReports } from "@/lib/harness/runtimeStability/serializeRuntimeStabilityDiagnosticBundle";
-import { buildRuntimePriorityPlanningReports } from "@/lib/harness/runtimePriority/buildRuntimePriorityPlanningReports";
-import {
-  serializeRuntimePriorityDiagnosticBundleFromReports,
-} from "@/lib/harness/runtimePriority/serializeRuntimePriorityDiagnosticBundle";
-import { buildRuntimeLifecyclePlanningReports } from "@/lib/harness/runtimeLifecycle/buildRuntimeLifecyclePlanningReports";
-import {
-  serializeRuntimeLifecycleDiagnosticBundleFromReports,
-} from "@/lib/harness/runtimeLifecycle/serializeRuntimeLifecycleDiagnosticBundle";
-import { buildRuntimeCoherencePlanningReports } from "@/lib/harness/runtimeCoherence/buildRuntimeCoherencePlanningReports";
+import { serializeRuntimePriorityDiagnosticBundleFromReports } from "@/lib/harness/runtimePriority/serializeRuntimePriorityDiagnosticBundle";
+import { serializeRuntimeLifecycleDiagnosticBundleFromReports } from "@/lib/harness/runtimeLifecycle/serializeRuntimeLifecycleDiagnosticBundle";
 import { serializeRuntimeCoherenceDiagnosticBundleFromReports } from "@/lib/harness/runtimeCoherence/serializeRuntimeCoherenceDiagnosticBundle";
+import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
+import { serializeRuntimeConsolidationDiagnosticBundleFromContext } from "@/lib/harness/runtimeConsolidation/serializeRuntimeConsolidationDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -366,6 +360,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningPriorityEscalationEnabled: true,
     harnessRuntimePlanningLifecycleGovernanceEnabled: true,
     harnessRuntimePlanningCoherenceSynchronizationEnabled: true,
+    harnessRuntimePlanningConsolidationNormalizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -392,6 +387,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningPriorityEscalationLayer: true,
     harnessRuntimePlanningLifecycleGovernanceLayer: true,
     harnessRuntimePlanningCoherenceSynchronizationLayer: true,
+    harnessRuntimePlanningConsolidationNormalizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -460,37 +456,21 @@ export async function GET(request: NextRequest) {
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
   });
-  const stabilityReports = buildRuntimeStabilityPlanningReports({
-    baseline: harnessMaturityBaselineReport,
+  const planningCtx = normalizeRuntimePlanningContext({
+    overlay: lastPromptTraceOverlayExtract ?? null,
+    maturityBaseline: harnessMaturityBaselineReport,
     releaseGate: harnessReleaseGateReadinessReport,
-    governanceCtx,
-    enforcementPlanning,
-    extract: lastPromptTraceOverlayExtract ?? null,
     messageExplainabilityAvailable: true,
     overlayWarningCount: overlayUiForDiag.summary.warningCount,
     compactAndNarrowUi: false,
-  });
-  const runtimeStabilityDiag = serializeRuntimeStabilityDiagnosticBundleFromReports(stabilityReports);
-  const priorityReports = buildRuntimePriorityPlanningReports({
-    baseline: harnessMaturityBaselineReport,
     governanceCtx,
-    stabilityReports,
-    extract: lastPromptTraceOverlayExtract ?? null,
-    messageExplainabilityAvailable: true,
+    enforcementPlanning,
   });
-  const runtimePriorityDiag = serializeRuntimePriorityDiagnosticBundleFromReports(priorityReports);
-  const lifecycleReports = buildRuntimeLifecyclePlanningReports({
-    governanceCtx,
-    stabilityReports,
-    priorityReports,
-  });
-  const runtimeLifecycleDiag = serializeRuntimeLifecycleDiagnosticBundleFromReports(lifecycleReports);
-  const coherenceReports = buildRuntimeCoherencePlanningReports({
-    stabilityReports,
-    priorityReports,
-    lifecycleReports,
-  });
-  const runtimeCoherenceDiag = serializeRuntimeCoherenceDiagnosticBundleFromReports(coherenceReports);
+  const runtimeStabilityDiag = serializeRuntimeStabilityDiagnosticBundleFromReports(planningCtx.stabilityReports);
+  const runtimePriorityDiag = serializeRuntimePriorityDiagnosticBundleFromReports(planningCtx.priorityReports);
+  const runtimeLifecycleDiag = serializeRuntimeLifecycleDiagnosticBundleFromReports(planningCtx.lifecycleReports);
+  const runtimeCoherenceDiag = serializeRuntimeCoherenceDiagnosticBundleFromReports(planningCtx.coherenceReports);
+  const runtimeConsolidationDiag = serializeRuntimeConsolidationDiagnosticBundleFromContext(planningCtx);
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
       baseline: harnessMaturityBaselineReport,
@@ -542,6 +522,8 @@ export async function GET(request: NextRequest) {
       runtimePlanningCoherenceSummary: runtimeCoherenceDiag.runtimePlanningCoherenceSummary,
       runtimePlanningSynchronizationSummary: runtimeCoherenceDiag.runtimePlanningSynchronizationSummary,
       runtimePlanningDivergenceReport: runtimeCoherenceDiag.runtimePlanningDivergenceReport,
+      unifiedRuntimePlanningSummary: runtimeConsolidationDiag.unifiedRuntimePlanningSummary,
+      runtimePlanningRedundancySummary: runtimeConsolidationDiag.runtimePlanningRedundancySummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

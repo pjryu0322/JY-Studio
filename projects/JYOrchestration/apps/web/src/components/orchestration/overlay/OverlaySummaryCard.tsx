@@ -24,7 +24,8 @@ import { OverlayRuntimePrioritySection } from "./OverlayRuntimePrioritySection";
 import { OverlaySaturationBanner } from "./OverlaySaturationBanner";
 import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 import { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
-import { OverlayRuntimeCoherenceSection } from "./OverlayRuntimeCoherenceSection";
+import { OverlayRuntimePlanningConsolidatedSection } from "./OverlayRuntimePlanningConsolidatedSection";
+import { OverlayRuntimeLifecycleCoherenceGroup } from "./OverlayRuntimeLifecycleCoherenceGroup";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -157,6 +158,7 @@ export function OverlaySummaryCard({
     priorityVm: runtimePriorityVm,
     lifecycleVm: runtimeLifecycleVm,
     coherenceVm: runtimeCoherenceVm,
+    consolidatedVm: runtimePlanningConsolidatedVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -213,6 +215,11 @@ export function OverlaySummaryCard({
     "runtime_coherence",
     d.runtimeCoherence || runtimeCoherenceVm.operatorAttentionRequired
   );
+  const pCon = pol(
+    "runtime_planning_consolidated",
+    d.runtimePlanningConsolidated || runtimePlanningConsolidatedVm.showAttention
+  );
+  const showLifecycleCoherenceGrouped = !pLife.omitFromDom || !pCoh.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -275,20 +282,31 @@ export function OverlaySummaryCard({
       {runtimePriorityVm.showEscalationBadge && !pPri.omitFromDom ? (
         <OverlayEscalationBadge escalationLabel={runtimePriorityVm.escalationLevelLabel} />
       ) : null}
+      {!pCon.omitFromDom ? (
+        <OverlayRuntimePlanningConsolidatedSection
+          vm={runtimePlanningConsolidatedVm}
+          defaultOpen={pCon.defaultOpen}
+        />
+      ) : null}
       {!pStab.omitFromDom ? (
         <OverlayRuntimeStabilitySection vm={runtimeStabilityVm} defaultOpen={pStab.defaultOpen} />
       ) : null}
       {!pPri.omitFromDom ? (
         <OverlayRuntimePrioritySection vm={runtimePriorityVm} defaultOpen={pPri.defaultOpen} />
       ) : null}
-      {runtimeLifecycleVm.showStaleLifecycleBanner && !pLife.omitFromDom ? (
+      {runtimeLifecycleVm.showStaleLifecycleBanner && showLifecycleCoherenceGrouped ? (
         <OverlaySaturationBanner message={runtimeLifecycleVm.staleLifecycleBannerMessage} />
       ) : null}
-      {!pLife.omitFromDom ? (
-        <OverlayRuntimeLifecycleSection vm={runtimeLifecycleVm} defaultOpen={pLife.defaultOpen} />
-      ) : null}
-      {!pCoh.omitFromDom ? (
-        <OverlayRuntimeCoherenceSection vm={runtimeCoherenceVm} defaultOpen={pCoh.defaultOpen} />
+      {showLifecycleCoherenceGrouped && (!pLife.omitFromDom || !pCoh.omitFromDom) ? (
+        <OverlayRuntimeLifecycleCoherenceGroup
+          lifecycleVm={runtimeLifecycleVm}
+          coherenceVm={runtimeCoherenceVm}
+          lifecycleDefaultOpen={pLife.defaultOpen}
+          coherenceDefaultOpen={pCoh.defaultOpen}
+          groupOpen={!compactAndNarrowUi && (pLife.defaultOpen || pCoh.defaultOpen)}
+          showLifecycle={!pLife.omitFromDom}
+          showCoherence={!pCoh.omitFromDom}
+        />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
         <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
