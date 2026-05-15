@@ -206,6 +206,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningSemanticNarrative: boolean;
   /** Harness Phase H19 — Semantic vocabulary normalization(기본 접힘; wording drift 시 펼침). */
   runtimePlanningSemanticVocabulary: boolean;
+  /** Harness Phase H19.5 — Runtime decision intelligence(기본 접힘; coherence·recommendation 시 펼침). */
+  runtimePlanningDecision: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -478,6 +480,7 @@ function buildSectionDefaults(
     runtimePlanningSemanticGraph: false,
     runtimePlanningSemanticNarrative: false,
     runtimePlanningSemanticVocabulary: false,
+    runtimePlanningDecision: false,
   };
 }
 

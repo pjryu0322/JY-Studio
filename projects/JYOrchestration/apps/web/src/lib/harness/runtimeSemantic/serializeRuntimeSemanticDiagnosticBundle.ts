@@ -1,5 +1,5 @@
 /**
- * H17–H19 — 진단 API용 runtime semantic wire 묶음.
+ * H17–H19.5 — 진단 API용 runtime semantic·decision wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -27,6 +27,10 @@ import {
   serializeRuntimeSemanticVocabularySummaryForDiagnostic,
 } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticVocabularyDictionary";
 import { serializeRuntimeSemanticPriorityVocabularyForDiagnostic } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticPriorityVocabulary";
+import { serializeRuntimeDecisionLineageForDiagnostic } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionLineage";
+import { serializeRuntimeDecisionSnapshotForDiagnostic } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionSnapshot";
+import { serializeRuntimeRecommendationSummaryForDiagnostic } from "@/lib/harness/runtimeDecision/buildRuntimeRecommendationSummary";
+import { serializeRuntimeDecisionCoherenceForDiagnostic } from "@/lib/harness/runtimeDecision/evaluateRuntimeDecisionCoherence";
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -49,6 +53,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeSemanticVocabularySummary: ReturnType<typeof serializeRuntimeSemanticVocabularySummaryForDiagnostic>;
   runtimeSemanticNormalizedLabels: ReturnType<typeof serializeRuntimeSemanticNormalizedLabelsForDiagnostic>;
   runtimeSemanticPriorityVocabulary: ReturnType<typeof serializeRuntimeSemanticPriorityVocabularyForDiagnostic>;
+  runtimeDecisionLineage: ReturnType<typeof serializeRuntimeDecisionLineageForDiagnostic>;
+  runtimeDecisionSnapshot: ReturnType<typeof serializeRuntimeDecisionSnapshotForDiagnostic>;
+  runtimeRecommendationSummary: ReturnType<typeof serializeRuntimeRecommendationSummaryForDiagnostic>;
+  runtimeDecisionCoherence: ReturnType<typeof serializeRuntimeDecisionCoherenceForDiagnostic>;
 }> {
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
@@ -97,6 +105,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     runtimeSemanticPriorityVocabulary: serializeRuntimeSemanticPriorityVocabularyForDiagnostic(
       reports.semanticPriorityVocabulary
     ),
+    runtimeDecisionLineage: serializeRuntimeDecisionLineageForDiagnostic(reports.runtimeDecisionLineage),
+    runtimeDecisionSnapshot: serializeRuntimeDecisionSnapshotForDiagnostic(reports.runtimeDecisionSnapshot),
+    runtimeRecommendationSummary: serializeRuntimeRecommendationSummaryForDiagnostic(
+      reports.runtimeRecommendationSummary
+    ),
+    runtimeDecisionCoherence: serializeRuntimeDecisionCoherenceForDiagnostic(reports.runtimeDecisionCoherence),
   };
 }
 

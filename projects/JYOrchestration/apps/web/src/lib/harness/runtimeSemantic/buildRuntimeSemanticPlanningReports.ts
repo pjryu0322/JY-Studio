@@ -1,5 +1,5 @@
 /**
- * H17–H19 — semantic groups·compression·quality·graph·narrative·vocabulary **planning 보고서** 일괄 산출.
+ * H17–H19.5 — semantic·vocabulary·decision intelligence **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -18,6 +18,8 @@ import type {
 } from "@/lib/harness/runtimeSemanticNarrative/runtimeSemanticNarrativeTypes";
 import { buildRuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticVocabularyPlanningReports";
 import type { RuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/runtimeSemanticVocabularyTypes";
+import { buildRuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionPlanningReports";
+import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -47,7 +49,7 @@ export type RuntimeSemanticCorePlanningReports = Readonly<{
   semanticGroupBalanceSummary: RuntimeSemanticGroupBalanceSummary;
 }>;
 
-export type RuntimeSemanticPlanningReports = RuntimeSemanticCorePlanningReports &
+export type RuntimeSemanticPlanningReportsBeforeDecision = RuntimeSemanticCorePlanningReports &
   Readonly<{
     semanticExplainabilityGraph: RuntimeSemanticExplainabilityGraph;
     semanticWarningOriginSummary: RuntimeSemanticWarningOriginSummary;
@@ -55,6 +57,9 @@ export type RuntimeSemanticPlanningReports = RuntimeSemanticCorePlanningReports 
   }> &
   RuntimeSemanticNarrativePlanningReports &
   RuntimeSemanticVocabularyPlanningReports;
+
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeDecision &
+  RuntimeDecisionPlanningReports;
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -103,7 +108,15 @@ export function buildRuntimeSemanticPlanningReports(
     narrativeReports
   );
 
-  return { ...coreReports, ...graphReports, ...narrativeReports, ...vocabularyReports };
+  const semanticWithVocabulary = {
+    ...coreReports,
+    ...graphReports,
+    ...narrativeReports,
+    ...vocabularyReports,
+  };
+  const decisionReports = buildRuntimeDecisionPlanningReports(reasoningReports, semanticWithVocabulary);
+
+  return { ...semanticWithVocabulary, ...decisionReports };
 }
 
 export type {
