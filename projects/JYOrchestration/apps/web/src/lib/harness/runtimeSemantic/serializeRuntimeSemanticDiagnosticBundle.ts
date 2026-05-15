@@ -1,5 +1,5 @@
 /**
- * H17–H18.5 — 진단 API용 runtime semantic wire 묶음.
+ * H17–H19 — 진단 API용 runtime semantic wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -22,6 +22,11 @@ import { serializeRuntimeSemanticWarningOriginSummaryForDiagnostic } from "@/lib
 import { serializeRuntimeSemanticNarrativeSummaryForDiagnostic } from "@/lib/harness/runtimeSemanticNarrative/buildRuntimeSemanticNarratives";
 import { serializeRuntimeSemanticRootCauseGroupsForDiagnostic } from "@/lib/harness/runtimeSemanticNarrative/consolidateRuntimeSemanticRootCauses";
 import { serializeRuntimeSemanticGraphRelevanceSummaryForDiagnostic } from "@/lib/harness/runtimeSemanticNarrative/evaluateRuntimeSemanticGraphRelevance";
+import {
+  serializeRuntimeSemanticNormalizedLabelsForDiagnostic,
+  serializeRuntimeSemanticVocabularySummaryForDiagnostic,
+} from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticVocabularyDictionary";
+import { serializeRuntimeSemanticPriorityVocabularyForDiagnostic } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticPriorityVocabulary";
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -41,6 +46,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeSemanticNarrativeSummary: ReturnType<typeof serializeRuntimeSemanticNarrativeSummaryForDiagnostic>;
   runtimeSemanticRootCauseGroups: ReturnType<typeof serializeRuntimeSemanticRootCauseGroupsForDiagnostic>;
   runtimeSemanticGraphRelevanceSummary: ReturnType<typeof serializeRuntimeSemanticGraphRelevanceSummaryForDiagnostic>;
+  runtimeSemanticVocabularySummary: ReturnType<typeof serializeRuntimeSemanticVocabularySummaryForDiagnostic>;
+  runtimeSemanticNormalizedLabels: ReturnType<typeof serializeRuntimeSemanticNormalizedLabelsForDiagnostic>;
+  runtimeSemanticPriorityVocabulary: ReturnType<typeof serializeRuntimeSemanticPriorityVocabularyForDiagnostic>;
 }> {
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
@@ -79,6 +87,15 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ),
     runtimeSemanticGraphRelevanceSummary: serializeRuntimeSemanticGraphRelevanceSummaryForDiagnostic(
       reports.semanticGraphRelevanceSummary
+    ),
+    runtimeSemanticVocabularySummary: serializeRuntimeSemanticVocabularySummaryForDiagnostic(
+      reports.semanticVocabularySummary
+    ),
+    runtimeSemanticNormalizedLabels: serializeRuntimeSemanticNormalizedLabelsForDiagnostic(
+      reports.semanticNormalizedLabels
+    ),
+    runtimeSemanticPriorityVocabulary: serializeRuntimeSemanticPriorityVocabularyForDiagnostic(
+      reports.semanticPriorityVocabulary
     ),
   };
 }

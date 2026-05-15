@@ -5,6 +5,7 @@ import type { OverlayRuntimeDependencyGraphSectionVM } from "@/lib/overlay-ui/ov
 import type { OverlayRuntimeReasoningSectionVM } from "@/lib/overlay-ui/overlayRuntimeReasoningAdapter";
 import type { OverlayRuntimeSemanticGraphSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticGraphAdapter";
 import type { OverlayRuntimeSemanticNarrativeSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticNarrativeAdapter";
+import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
 import { OverlayRuntimeCriticalitySection } from "./OverlayRuntimeCriticalitySection";
@@ -12,13 +13,15 @@ import { OverlayRuntimeDependencyGraphSection } from "./OverlayRuntimeDependency
 import { OverlayRuntimeReasoningSection } from "./OverlayRuntimeReasoningSection";
 import { OverlayRuntimeSemanticGraphSection } from "./OverlayRuntimeSemanticGraphSection";
 import { OverlayRuntimeSemanticNarrativeSection } from "./OverlayRuntimeSemanticNarrativeSection";
+import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H18.5 — dependency·criticality·narrative·graph·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
+/** H15–H19 — dependency·criticality·vocabulary·narrative·graph·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
+  semanticVocabularyVm,
   semanticNarrativeVm,
   semanticGraphVm,
   semanticVm,
@@ -26,6 +29,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   traceabilityVm,
   dependencyDefaultOpen,
   criticalityDefaultOpen,
+  semanticVocabularyDefaultOpen,
   semanticNarrativeDefaultOpen,
   semanticGraphDefaultOpen,
   semanticDefaultOpen,
@@ -34,6 +38,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   groupOpen,
   showDependency = true,
   showCriticality = true,
+  showSemanticVocabulary = true,
   showSemanticNarrative = true,
   showSemanticGraph = true,
   showSemantic = true,
@@ -42,6 +47,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
 }: {
   readonly dependencyVm: OverlayRuntimeDependencyGraphSectionVM;
   readonly criticalityVm: OverlayRuntimeCriticalitySectionVM;
+  readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
   readonly semanticNarrativeVm: OverlayRuntimeSemanticNarrativeSectionVM;
   readonly semanticGraphVm: OverlayRuntimeSemanticGraphSectionVM;
   readonly semanticVm: OverlayRuntimeSemanticSectionVM;
@@ -49,6 +55,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
   readonly dependencyDefaultOpen?: boolean;
   readonly criticalityDefaultOpen?: boolean;
+  readonly semanticVocabularyDefaultOpen?: boolean;
   readonly semanticNarrativeDefaultOpen?: boolean;
   readonly semanticGraphDefaultOpen?: boolean;
   readonly semanticDefaultOpen?: boolean;
@@ -57,6 +64,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly groupOpen?: boolean;
   readonly showDependency?: boolean;
   readonly showCriticality?: boolean;
+  readonly showSemanticVocabulary?: boolean;
   readonly showSemanticNarrative?: boolean;
   readonly showSemanticGraph?: boolean;
   readonly showSemantic?: boolean;
@@ -75,8 +83,14 @@ export function OverlayRuntimeDependencyCriticalityGroup({
           listStyle: "none",
         }}
       >
-        Planning observability (H15–H18.5, read-only)
+        Planning observability (H15–H19, read-only)
       </summary>
+      {showSemanticVocabulary ? (
+        <OverlayRuntimeSemanticVocabularySection
+          vm={semanticVocabularyVm}
+          defaultOpen={semanticVocabularyDefaultOpen}
+        />
+      ) : null}
       {showSemanticNarrative ? (
         <OverlayRuntimeSemanticNarrativeSection
           vm={semanticNarrativeVm}

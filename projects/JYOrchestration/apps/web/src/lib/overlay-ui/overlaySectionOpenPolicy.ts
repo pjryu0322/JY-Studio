@@ -48,7 +48,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_reasoning" ||
         input.section === "runtime_planning_semantic" ||
         input.section === "runtime_planning_semantic_graph" ||
-        input.section === "runtime_planning_semantic_narrative")
+        input.section === "runtime_planning_semantic_narrative" ||
+        input.section === "runtime_planning_semantic_vocabulary")
     ) {
       omitFromDom = true;
       defaultOpen = false;

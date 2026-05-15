@@ -2,6 +2,7 @@
  * H18.5 — graph·root-cause 기반 **deterministic narrative**(read-only, LLM 없음).
  */
 
+import { normalizeSemanticPhrase } from "@/lib/harness/runtimeSemanticVocabulary/stabilizeRuntimeSemanticMeaning";
 import type {
   RuntimeSemanticGraphRelevanceSummary,
   RuntimeSemanticNarrative,
@@ -60,7 +61,7 @@ export function buildRuntimeSemanticNarratives(
   const narratives: RuntimeSemanticNarrative[] = [];
 
   for (const group of rootCauseGroups) {
-    const text = narrativeKoForGroup(group, relevance.criticalPath);
+    const text = normalizeSemanticPhrase(narrativeKoForGroup(group, relevance.criticalPath));
     if (seenNarrative.has(text)) continue;
     seenNarrative.add(text);
     narratives.push({
@@ -76,7 +77,7 @@ export function buildRuntimeSemanticNarratives(
   for (const ranked of relevance.rankedPaths) {
     if (narratives.length >= MAX_NARRATIVES) break;
     if (narratives.some((n) => n.relatedPath === ranked.path)) continue;
-    const text = `Causal path 우선순위: ${ranked.path}`;
+    const text = normalizeSemanticPhrase(`Causal path 우선순위: ${ranked.path}`);
     if (seenNarrative.has(text)) continue;
     seenNarrative.add(text);
     narratives.push({

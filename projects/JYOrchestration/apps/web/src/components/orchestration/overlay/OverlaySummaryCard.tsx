@@ -167,6 +167,7 @@ export function OverlaySummaryCard({
     semanticVm: runtimePlanningSemanticVm,
     semanticGraphVm: runtimePlanningSemanticGraphVm,
     semanticNarrativeVm: runtimePlanningSemanticNarrativeVm,
+    semanticVocabularyVm: runtimePlanningSemanticVocabularyVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -256,6 +257,10 @@ export function OverlaySummaryCard({
     "runtime_planning_semantic_narrative",
     d.runtimePlanningSemanticNarrative || runtimePlanningSemanticNarrativeVm.showAttention
   );
+  const pSemanticVocabulary = pol(
+    "runtime_planning_semantic_vocabulary",
+    d.runtimePlanningSemanticVocabulary || runtimePlanningSemanticVocabularyVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -263,7 +268,8 @@ export function OverlaySummaryCard({
     !pReason.omitFromDom ||
     !pSemantic.omitFromDom ||
     !pSemanticGraph.omitFromDom ||
-    !pSemanticNarrative.omitFromDom;
+    !pSemanticNarrative.omitFromDom ||
+    !pSemanticVocabulary.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -359,10 +365,12 @@ export function OverlaySummaryCard({
         !pReason.omitFromDom ||
         !pSemantic.omitFromDom ||
         !pSemanticGraph.omitFromDom ||
-        !pSemanticNarrative.omitFromDom) ? (
+        !pSemanticNarrative.omitFromDom ||
+        !pSemanticVocabulary.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
           semanticNarrativeVm={runtimePlanningSemanticNarrativeVm}
           semanticGraphVm={runtimePlanningSemanticGraphVm}
           semanticVm={runtimePlanningSemanticVm}
@@ -370,6 +378,7 @@ export function OverlaySummaryCard({
           traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
+          semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
           semanticNarrativeDefaultOpen={pSemanticNarrative.defaultOpen}
           semanticGraphDefaultOpen={pSemanticGraph.defaultOpen}
           semanticDefaultOpen={pSemantic.defaultOpen}
@@ -383,25 +392,36 @@ export function OverlaySummaryCard({
               pReason.defaultOpen ||
               pSemantic.defaultOpen ||
               pSemanticGraph.defaultOpen ||
-              pSemanticNarrative.defaultOpen)
+              pSemanticNarrative.defaultOpen ||
+              pSemanticVocabulary.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showSemanticNarrative={!pSemanticNarrative.omitFromDom}
-          showSemanticGraph={!pSemanticGraph.omitFromDom && pSemanticNarrative.omitFromDom}
-          showSemantic={!pSemantic.omitFromDom && pSemanticGraph.omitFromDom && pSemanticNarrative.omitFromDom}
+          showSemanticVocabulary={!pSemanticVocabulary.omitFromDom}
+          showSemanticNarrative={!pSemanticNarrative.omitFromDom && pSemanticVocabulary.omitFromDom}
+          showSemanticGraph={
+            !pSemanticGraph.omitFromDom && pSemanticNarrative.omitFromDom && pSemanticVocabulary.omitFromDom
+          }
+          showSemantic={
+            !pSemantic.omitFromDom &&
+            pSemanticGraph.omitFromDom &&
+            pSemanticNarrative.omitFromDom &&
+            pSemanticVocabulary.omitFromDom
+          }
           showReasoning={
             !pReason.omitFromDom &&
             pSemantic.omitFromDom &&
             pSemanticGraph.omitFromDom &&
-            pSemanticNarrative.omitFromDom
+            pSemanticNarrative.omitFromDom &&
+            pSemanticVocabulary.omitFromDom
           }
           showTraceability={
             !pTrace.omitFromDom &&
             pReason.omitFromDom &&
             pSemantic.omitFromDom &&
             pSemanticGraph.omitFromDom &&
-            pSemanticNarrative.omitFromDom
+            pSemanticNarrative.omitFromDom &&
+            pSemanticVocabulary.omitFromDom
           }
         />
       ) : null}

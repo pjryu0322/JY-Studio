@@ -1,5 +1,5 @@
 /**
- * H17–H18.5 — semantic groups·compression·quality·graph·narrative **planning 보고서** 일괄 산출.
+ * H17–H19 — semantic groups·compression·quality·graph·narrative·vocabulary **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -16,6 +16,8 @@ import type {
   RuntimeSemanticNarrativeSummary,
   RuntimeSemanticRootCauseGroup,
 } from "@/lib/harness/runtimeSemanticNarrative/runtimeSemanticNarrativeTypes";
+import { buildRuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticVocabularyPlanningReports";
+import type { RuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/runtimeSemanticVocabularyTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -51,7 +53,8 @@ export type RuntimeSemanticPlanningReports = RuntimeSemanticCorePlanningReports 
     semanticWarningOriginSummary: RuntimeSemanticWarningOriginSummary;
     semanticExplosionRiskSummary: RuntimeSemanticExplosionRiskSummary;
   }> &
-  RuntimeSemanticNarrativePlanningReports;
+  RuntimeSemanticNarrativePlanningReports &
+  RuntimeSemanticVocabularyPlanningReports;
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -94,8 +97,13 @@ export function buildRuntimeSemanticPlanningReports(
 
   const graphReports = buildRuntimeSemanticGraphPlanningReports(reasoningReports, coreReports);
   const narrativeReports = buildRuntimeSemanticNarrativePlanningReports(coreReports, graphReports);
+  const vocabularyReports = buildRuntimeSemanticVocabularyPlanningReports(
+    coreReports,
+    graphReports,
+    narrativeReports
+  );
 
-  return { ...coreReports, ...graphReports, ...narrativeReports };
+  return { ...coreReports, ...graphReports, ...narrativeReports, ...vocabularyReports };
 }
 
 export type {

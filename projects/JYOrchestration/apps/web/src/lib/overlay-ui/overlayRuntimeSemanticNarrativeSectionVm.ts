@@ -7,6 +7,7 @@ import {
   RUNTIME_SEMANTIC_NARRATIVE_SECTION_DISCLAIMER_KO,
   RUNTIME_SEMANTIC_NARRATIVE_SEVERITY_LABEL_KO,
 } from "@/lib/harness/runtimeSemanticNarrative/runtimeSemanticNarrativeLabelsKo";
+import { applyVocabularyToOverlayText } from "@/lib/harness/runtimeSemanticVocabulary/runtimeSemanticVocabularyUiAdapter";
 
 export type OverlayRuntimeSemanticNarrativeSectionVM = Readonly<{
   sectionDisclaimer: string;
@@ -37,13 +38,14 @@ export function buildOverlayRuntimeSemanticNarrativeSectionVmFromReports(
 
   const narrativeRows = semanticNarrativeSummary.narratives.slice(0, maxNarratives).map((n) => ({
     severityLabel: RUNTIME_SEMANTIC_NARRATIVE_SEVERITY_LABEL_KO[n.severity],
-    text: n.narrativeKo,
+    text: applyVocabularyToOverlayText(n.narrativeKo),
   }));
 
-  const rootCauseRows = semanticRootCauseGroups.slice(0, OVERLAY_MAX_ROOT_CAUSES).map(
-    (g) =>
+  const rootCauseRows = semanticRootCauseGroups.slice(0, OVERLAY_MAX_ROOT_CAUSES).map((g) =>
+    applyVocabularyToOverlayText(
       `${g.labelKo}: ${g.primaryChain.join(" → ")}` +
-      (g.collapsedWarningCount > 0 ? ` (중복 ${g.collapsedWarningCount}건 접힘)` : "")
+        (g.collapsedWarningCount > 0 ? ` (중복 ${g.collapsedWarningCount}건 접힘)` : "")
+    )
   );
 
   return {
@@ -53,9 +55,9 @@ export function buildOverlayRuntimeSemanticNarrativeSectionVmFromReports(
       semanticNarrativeSummary.collapsedDuplicateWarnings > 0 ||
       semanticGraphRelevanceSummary.rankedPaths.some((r) => r.severity === "critical_candidate"),
     showDetailSections: !compactAndNarrowUi,
-    topNarrativeKo: semanticNarrativeSummary.topNarrativeKo,
-    criticalPathLabel: semanticGraphRelevanceSummary.criticalPath,
-    warningCollapseLabel: semanticGraphRelevanceSummary.warningCollapseSummaryKo,
+    topNarrativeKo: applyVocabularyToOverlayText(semanticNarrativeSummary.topNarrativeKo),
+    criticalPathLabel: applyVocabularyToOverlayText(semanticGraphRelevanceSummary.criticalPath),
+    warningCollapseLabel: applyVocabularyToOverlayText(semanticGraphRelevanceSummary.warningCollapseSummaryKo),
     narrativeRows,
     rootCauseRows,
   };

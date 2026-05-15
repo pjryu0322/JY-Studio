@@ -1,5 +1,5 @@
 /**
- * H12–H18.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H19 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -62,6 +62,10 @@ import {
   buildOverlayRuntimeSemanticNarrativeSectionVmFromReports,
   type OverlayRuntimeSemanticNarrativeSectionVM,
 } from "./overlayRuntimeSemanticNarrativeSectionVm";
+import {
+  buildOverlayRuntimeSemanticVocabularySectionVmFromReports,
+  type OverlayRuntimeSemanticVocabularySectionVM,
+} from "./overlayRuntimeSemanticVocabularySectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -86,6 +90,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   semanticVm: OverlayRuntimeSemanticSectionVM;
   semanticGraphVm: OverlayRuntimeSemanticGraphSectionVM;
   semanticNarrativeVm: OverlayRuntimeSemanticNarrativeSectionVM;
+  semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -258,6 +263,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const semanticNarrativeVm = buildOverlayRuntimeSemanticNarrativeSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const semanticVocabularyVm = buildOverlayRuntimeSemanticVocabularySectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -336,5 +344,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     semanticVm,
     semanticGraphVm,
     semanticNarrativeVm,
+    semanticVocabularyVm,
   };
 }
