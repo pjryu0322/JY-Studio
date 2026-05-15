@@ -1,5 +1,5 @@
 /**
- * H17–H20 — 진단 API용 runtime semantic·decision·forecast wire 묶음.
+ * H17–H20.5 — 진단 API용 runtime semantic·decision·forecast·resource wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -35,6 +35,13 @@ import { serializeRuntimeForecastSummaryForDiagnostic } from "@/lib/harness/runt
 import { serializeRuntimeForecastEscalationForDiagnostic } from "@/lib/harness/runtimeForecast/predictRuntimeEscalationChains";
 import { serializeRuntimeForecastGovernanceDriftForDiagnostic } from "@/lib/harness/runtimeForecast/predictRuntimeGovernanceDrift";
 import { serializeRuntimeForecastStabilityForDiagnostic } from "@/lib/harness/runtimeForecast/evaluateRuntimeForecastStability";
+import { serializeRuntimeResourceSummaryForDiagnostic } from "@/lib/harness/runtimeResource/buildRuntimeResourceSummary";
+import {
+  serializeRuntimeResourceCapacityForDiagnostic,
+  serializeRuntimeResourceForecastForDiagnostic,
+} from "@/lib/harness/runtimeResource/forecastRuntimeResourceCapacity";
+import { serializeRuntimeMemberWorkloadForDiagnostic } from "@/lib/harness/runtimeResource/evaluateRuntimeMemberWorkload";
+import { serializeRuntimeResourceExplainabilityForDiagnostic } from "@/lib/harness/runtimeResource/buildRuntimeResourceExplainability";
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -65,6 +72,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeForecastEscalation: ReturnType<typeof serializeRuntimeForecastEscalationForDiagnostic>;
   runtimeForecastGovernanceDrift: ReturnType<typeof serializeRuntimeForecastGovernanceDriftForDiagnostic>;
   runtimeForecastStability: ReturnType<typeof serializeRuntimeForecastStabilityForDiagnostic>;
+  runtimeResourceSummary: ReturnType<typeof serializeRuntimeResourceSummaryForDiagnostic>;
+  runtimeResourceForecast: ReturnType<typeof serializeRuntimeResourceForecastForDiagnostic>;
+  runtimeResourceCapacity: ReturnType<typeof serializeRuntimeResourceCapacityForDiagnostic>;
+  runtimeMemberWorkload: ReturnType<typeof serializeRuntimeMemberWorkloadForDiagnostic>;
+  runtimeResourceExplainability: ReturnType<typeof serializeRuntimeResourceExplainabilityForDiagnostic>;
 }> {
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
@@ -125,6 +137,13 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
       reports.runtimeForecastGovernanceDrift
     ),
     runtimeForecastStability: serializeRuntimeForecastStabilityForDiagnostic(reports.runtimeForecastStability),
+    runtimeResourceSummary: serializeRuntimeResourceSummaryForDiagnostic(reports.runtimeResourceSummary),
+    runtimeResourceForecast: serializeRuntimeResourceForecastForDiagnostic(reports.runtimeResourceForecast),
+    runtimeResourceCapacity: serializeRuntimeResourceCapacityForDiagnostic(reports.runtimeResourceCapacity),
+    runtimeMemberWorkload: serializeRuntimeMemberWorkloadForDiagnostic(reports.runtimeMemberWorkload),
+    runtimeResourceExplainability: serializeRuntimeResourceExplainabilityForDiagnostic(
+      reports.runtimeResourceExplainability
+    ),
   };
 }
 

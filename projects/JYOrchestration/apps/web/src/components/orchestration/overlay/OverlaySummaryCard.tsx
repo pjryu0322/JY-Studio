@@ -170,6 +170,7 @@ export function OverlaySummaryCard({
     semanticVocabularyVm: runtimePlanningSemanticVocabularyVm,
     decisionVm: runtimePlanningDecisionVm,
     forecastVm: runtimePlanningForecastVm,
+    resourceVm: runtimePlanningResourceVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -271,6 +272,10 @@ export function OverlaySummaryCard({
     "runtime_planning_forecast",
     d.runtimePlanningForecast || runtimePlanningForecastVm.showAttention
   );
+  const pResource = pol(
+    "runtime_planning_resource",
+    d.runtimePlanningResource || runtimePlanningResourceVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -281,7 +286,8 @@ export function OverlaySummaryCard({
     !pSemanticNarrative.omitFromDom ||
     !pSemanticVocabulary.omitFromDom ||
     !pDecision.omitFromDom ||
-    !pForecast.omitFromDom;
+    !pForecast.omitFromDom ||
+    !pResource.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -380,10 +386,12 @@ export function OverlaySummaryCard({
         !pSemanticNarrative.omitFromDom ||
         !pSemanticVocabulary.omitFromDom ||
         !pDecision.omitFromDom ||
-        !pForecast.omitFromDom) ? (
+        !pForecast.omitFromDom ||
+        !pResource.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          resourceVm={runtimePlanningResourceVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -413,27 +421,34 @@ export function OverlaySummaryCard({
               pSemanticNarrative.defaultOpen ||
               pSemanticVocabulary.defaultOpen ||
               pDecision.defaultOpen ||
-              pForecast.defaultOpen)
+              pForecast.defaultOpen ||
+              pResource.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showForecast={!pForecast.omitFromDom}
-          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom}
+          showResource={!pResource.omitFromDom}
+          showForecast={!pForecast.omitFromDom && pResource.omitFromDom}
+          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom}
           showSemanticVocabulary={
-            !pSemanticVocabulary.omitFromDom && pDecision.omitFromDom && pForecast.omitFromDom
+            !pSemanticVocabulary.omitFromDom &&
+            pDecision.omitFromDom &&
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
-            pForecast.omitFromDom
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
             pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
-            pForecast.omitFromDom
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -441,7 +456,8 @@ export function OverlaySummaryCard({
             pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
-            pForecast.omitFromDom
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -450,7 +466,8 @@ export function OverlaySummaryCard({
             pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
-            pForecast.omitFromDom
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -460,7 +477,8 @@ export function OverlaySummaryCard({
             pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
-            pForecast.omitFromDom
+            pForecast.omitFromDom &&
+            pResource.omitFromDom
           }
         />
       ) : null}
