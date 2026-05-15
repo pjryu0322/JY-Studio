@@ -60,7 +60,7 @@
 
 ### 상태
 
-**부분 반영** — OpenAI HTTP 래퍼, Cursor 어댑터, 실행 리뷰 순회, SingleChat 다단계 LLM 존재. **단일 Harness 인터페이스 계층은 없음**.
+**부분 반영** — OpenAI HTTP 래퍼, Cursor 어댑터, 실행 리뷰 순회, SingleChat 다단계 LLM 존재. **단일 Harness 인터페이스 계층은 없음**. H8에서 maturity·release gate 기준화, **H8.5에서 Prompt Timeline Overlay·진단 API의 audience/compact/budget·경고 그룹화·운영 요약**으로 관측 UX를 정리(실행·payload 비변경).
 
 ### 현재 구현 위치
 

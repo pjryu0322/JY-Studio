@@ -13,6 +13,8 @@ export { OverlayExecutionRoutingSection } from "./OverlayExecutionRoutingSection
 export { OverlayReviewSecuritySection } from "./OverlayReviewSecuritySection";
 export { OverlayReviewSecurityIssueSection } from "./OverlayReviewSecurityIssueSection";
 export { OverlayRemediationLoopSection } from "./OverlayRemediationLoopSection";
+export { OverlayHarnessMaturitySection } from "./OverlayHarnessMaturitySection";
+export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export {
   OVERLAY_INCLUDE_MODE_ORDER,
   OverlayIncludeModeBadge,

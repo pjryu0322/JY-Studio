@@ -7,6 +7,7 @@ import type {
   MessageExplainabilityRiskLevel,
   MessageExplainabilitySectionType,
 } from "@/lib/harness/explainability/messageExplainabilityTypes";
+import type { MessageExplainabilityTraceConfidence } from "@/lib/harness/explainability/messageExplainabilityTraceResolution";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
 
 export const MESSAGE_EXPLAINABILITY_EMPTY_COPY =
@@ -51,4 +52,20 @@ export function messageExplainabilityRiskLabel(level: MessageExplainabilityRiskL
 
 export function messageExplainabilityRiskTone(level: MessageExplainabilityRiskLevel): OverlayUiBadgeTone {
   return RISK_TONE[level];
+}
+
+/** H8.5 — confidence enum을 사용자에게 보여줄 짧은 문구로만 변환(내부 키 비노출). */
+export function messageExplainabilityConfidenceUserLabel(
+  confidence: MessageExplainabilityTraceConfidence
+): string {
+  switch (confidence) {
+    case "direct":
+      return "저장된 AI 판단 메타와 직접 연결됨";
+    case "response_text":
+      return "관련 AI 판단 근거 연결됨";
+    case "role_time":
+      return "역할·시간 기준으로 연결됨";
+    case "none":
+      return "";
+  }
 }

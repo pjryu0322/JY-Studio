@@ -164,6 +164,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   reviewSecurityIssue: boolean;
   /** Harness Phase H6.5 — Remediation Loop Plan 섹션 펼침 정책(데이터 있을 때만 펼침). */
   remediationLoop: boolean;
+  /** Harness Phase H8 — Maturity baseline(진단 요약; 기본 접힘). */
+  harnessMaturity: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -415,6 +417,7 @@ function buildSectionDefaults(
     reviewSecurity: hasReviewSecurity,
     reviewSecurityIssue: hasReviewSecurityIssue,
     remediationLoop: hasRemediationLoop,
+    harnessMaturity: false,
   };
 }
 

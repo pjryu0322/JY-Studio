@@ -1,0 +1,40 @@
+/**
+ * H8.5 — compact / narrow / audience에 따른 **섹션 기본 펼침·DOM 생략** 정책.
+ */
+
+import type { OverlayAudienceMode } from "./overlayAudienceTypes";
+import { resolveOverlaySectionPriority, type OverlaySectionKind } from "./overlaySectionPriority";
+import { isOverlaySectionVisibleForAudience } from "./resolveOverlayAudienceVisibility";
+
+export type OverlaySectionUiPolicy = Readonly<{
+  defaultOpen: boolean;
+  /** true면 섹션 자체를 렌더하지 않음(모바일+compact에서 advanced 축소). */
+  omitFromDom: boolean;
+}>;
+
+export function resolveOverlaySectionUiPolicy(input: {
+  readonly section: OverlaySectionKind;
+  readonly baseDefaultOpen: boolean;
+  readonly compactMode: boolean;
+  readonly isNarrow: boolean;
+  readonly audience: OverlayAudienceMode;
+}): OverlaySectionUiPolicy {
+  if (!isOverlaySectionVisibleForAudience(input.section, input.audience)) {
+    return { defaultOpen: false, omitFromDom: true };
+  }
+
+  const p = resolveOverlaySectionPriority(input.section);
+  let defaultOpen = input.baseDefaultOpen;
+  let omitFromDom = false;
+
+  if (input.compactMode) {
+    if (p === "critical" || p === "important") {
+      defaultOpen = true;
+    } else if (p === "advanced" || p === "internal") {
+      defaultOpen = false;
+      if (input.isNarrow) omitFromDom = true;
+    }
+  }
+
+  return { defaultOpen, omitFromDom };
+}

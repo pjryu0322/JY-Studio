@@ -243,6 +243,6 @@ describe("buildMessageExplainabilityViewModel", () => {
         ],
       } as ExtractedOverlayPromptTraceMetadata,
     });
-    expect(vm.summaryLines.length).toBeLessThanOrEqual(5);
+    expect(vm.summaryLines.length).toBeLessThanOrEqual(4);
   });
 });

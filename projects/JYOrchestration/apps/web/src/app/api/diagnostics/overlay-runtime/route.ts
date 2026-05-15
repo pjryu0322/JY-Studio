@@ -80,13 +80,22 @@ import {
 } from "@/lib/overlay/overlayRuntimeResolver";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
+import { evaluateHarnessMaturityBaseline } from "@/lib/harness/maturity/evaluateHarnessMaturityBaseline";
+import { evaluateHarnessReleaseGateReadiness } from "@/lib/harness/maturity/evaluateHarnessReleaseGateReadiness";
+import type { OverlayAudienceMode } from "@/lib/overlay-ui/overlayAudienceTypes";
+import { filterOverlayRuntimeDiagnosticDataForAudience } from "@/lib/overlay/overlayRuntimeDiagnosticAudienceFilter";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
  * - `?roles=a,b,c` — 각 문자열에 대해 `resolveAiIdentityContract` 실패 시 `unresolvedRoleKeys`에 포함.
  * - `?projectId=` — 로그인 + `canViewProject` 필요. 서비스 기획 통합 `selectedAgents` 및 마지막 prompt 타임라인 overlay 추출(읽기).
+ * - `?audienceMode=user|operator|internal` — (H8.5) `user`일 때 내부 진단 필드 일부를 응답에서 제외(미지정·`operator`·`internal`은 기존과 동일).
  */
 export async function GET(request: NextRequest) {
+  const rawAudience = request.nextUrl.searchParams.get("audienceMode")?.trim().toLowerCase() ?? "";
+  const diagnosticAudienceMode: OverlayAudienceMode | undefined =
+    rawAudience === "user" || rawAudience === "operator" || rawAudience === "internal" ? rawAudience : undefined;
+
   const rolesParam = request.nextUrl.searchParams.get("roles");
   const sample = rolesParam?.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean) ?? [];
   const unresolvedRoleKeys = sample.filter((r) => !resolveAiIdentityContract(r));
@@ -339,9 +348,15 @@ export async function GET(request: NextRequest) {
     promptInjectionPolicyEnabled: false,
   } as const;
 
-  return NextResponse.json({
-    success: true,
-    data: {
+  const harnessMaturityBaselineReport = evaluateHarnessMaturityBaseline({
+    overlayExtract: lastPromptTraceOverlayExtract ?? null,
+    harnessPromptApplyReadinessReport: harnessReadinessForResponse,
+    recentMemoryRuntimeSummary: recentMemoryRuntimeSummaryForResponse,
+    messageExplainabilityAvailable: true,
+  });
+  const harnessReleaseGateReadinessReport = evaluateHarnessReleaseGateReadiness(harnessMaturityBaselineReport);
+
+  const responseData: Record<string, unknown> = {
       overlayRuntimeEnabled: true,
       registeredRoles: [...OVERLAY_REGISTRY_ROLE_KEYS],
       registeredProviders: [...OVERLAY_REGISTRY_PROVIDERS],
@@ -375,9 +390,17 @@ export async function GET(request: NextRequest) {
       overlayArchitecturePhase,
       overlayMaturity,
       enforcementStatus,
+      harnessMaturityBaselineReport,
+      harnessReleaseGateReadinessReport,
       promptTraceOverlayEnabled: true,
       ...(projectOverlay ? { projectOverlay } : {}),
       ...(projectId ? { lastPromptTraceOverlayExtract: lastPromptTraceOverlayExtract ?? null } : {}),
-    },
+  };
+
+  const data = filterOverlayRuntimeDiagnosticDataForAudience(responseData, diagnosticAudienceMode);
+
+  return NextResponse.json({
+    success: true,
+    data,
   });
 }

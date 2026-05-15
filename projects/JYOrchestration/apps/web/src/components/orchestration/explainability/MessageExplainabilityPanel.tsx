@@ -1,34 +1,38 @@
 "use client";
 
-import { useCallback, useId, useState, type CSSProperties } from "react";
+import { useCallback, useId, useState, type CSSProperties, type ReactNode } from "react";
 import type { MessageExplainabilityViewModel } from "@/lib/harness/explainability/messageExplainabilityTypes";
 import {
   messageExplainabilityRiskLabel,
   messageExplainabilityRiskTone,
 } from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import type { OverlayUiBadgeTone } from "@/lib/overlay-ui/overlayUiLabel";
 
 export type MessageExplainabilityPanelProps = Readonly<{
   vm: MessageExplainabilityViewModel;
   defaultOpen?: boolean;
-  /** 프롬프트 타임라인 드로어 등 상세 화면으로 이동(없으면 링크 미표시) */
   onOpenPromptTimeline?: () => void;
-  /** 타임라인 링크를 노출할지(데이터 없으면 숨김) */
   promptTimelineAvailable?: boolean;
+  /** H8.5 — 매핑 품질을 사용자 문구로만 표시(내부 confidence 키 비노출). */
+  connectionQualityLabel?: string;
 }>;
 
-function riskBadgeColors(tone: OverlayUiBadgeTone): { bg: string; fg: string; border: string } {
+const MAX_SECTION_PREVIEW = 3;
+const MAX_BADGE_PILLS = 3;
+
+function overlayToneToBadgeVariant(tone: OverlayUiBadgeTone): BadgeVariant {
   switch (tone) {
     case "danger":
-      return { bg: "#fef2f2", fg: "#991b1b", border: "#fecaca" };
+      return "danger";
     case "warning":
-      return { bg: "#fffbeb", fg: "#92400e", border: "#fde68a" };
+      return "warning";
     case "positive":
-      return { bg: "#ecfdf5", fg: "#047857", border: "#a7f3d0" };
+      return "success";
     case "info":
     default:
-      return { bg: "#eff6ff", fg: "#1d4ed8", border: "#bfdbfe" };
+      return "info";
   }
 }
 
@@ -37,14 +41,51 @@ export function MessageExplainabilityPanel({
   defaultOpen = false,
   onOpenPromptTimeline,
   promptTimelineAvailable = false,
+  connectionQualityLabel,
 }: MessageExplainabilityPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
   const toggle = useCallback(() => setOpen((v) => !v), []);
   const panelId = useId();
   const tone = messageExplainabilityRiskTone(vm.riskLevel);
-  const rc = riskBadgeColors(tone);
 
   const showTimelineLink = Boolean(onOpenPromptTimeline && promptTimelineAvailable);
+
+  const pills: { key: string; node: ReactNode }[] = [
+    {
+      key: "risk",
+      node: (
+        <Badge variant={overlayToneToBadgeVariant(tone)} title="이번 응답 기준 위험도(휴리스틱)">
+          {messageExplainabilityRiskLabel(vm.riskLevel)}
+        </Badge>
+      ),
+    },
+  ];
+  if (vm.warningCount > 0) {
+    pills.push({
+      key: "warn",
+      node: (
+        <Badge variant="neutral" title="경고 태그 수">
+          경고 {vm.warningCount}
+        </Badge>
+      ),
+    });
+  }
+  if (connectionQualityLabel?.trim()) {
+    const full = connectionQualityLabel.trim();
+    const short = full.length > 22 ? `${full.slice(0, 21)}…` : full;
+    pills.push({
+      key: "conn",
+      node: (
+        <Badge variant="info" title={full}>
+          {short}
+        </Badge>
+      ),
+    });
+  }
+  const displayPills = pills.slice(0, MAX_BADGE_PILLS);
+
+  const sectionPreview = vm.sections.slice(0, MAX_SECTION_PREVIEW);
+  const sectionMore = vm.sections.length - sectionPreview.length;
 
   return (
     <div className="jyo-msg-explainability" style={{ marginTop: 10, width: "100%" } satisfies CSSProperties}>
@@ -53,6 +94,9 @@ export function MessageExplainabilityPanel({
           .jyo-msg-explainability .jyo-explain-toggle-btn {
             width: 100%;
             max-width: 100%;
+          }
+          .jyo-msg-explainability .jyo-explain-badge-row {
+            width: 100%;
           }
         }
         @media (min-width: 721px) {
@@ -107,7 +151,18 @@ export function MessageExplainabilityPanel({
               boxSizing: "border-box",
             }}
           >
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 900,
+                color: t.textPrimary,
+                wordBreak: "break-word",
+              }}
+            >
+              {vm.headline}
+            </span>
             <div
+              className="jyo-explain-badge-row"
               style={{
                 display: "flex",
                 flexWrap: "wrap",
@@ -116,37 +171,9 @@ export function MessageExplainabilityPanel({
                 rowGap: 6,
               }}
             >
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 900,
-                  color: t.textPrimary,
-                  wordBreak: "break-word",
-                  flex: "1 1 140px",
-                  minWidth: 0,
-                }}
-              >
-                {vm.headline}
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  background: rc.bg,
-                  color: rc.fg,
-                  border: `1px solid ${rc.border}`,
-                  flexShrink: 0,
-                }}
-              >
-                {messageExplainabilityRiskLabel(vm.riskLevel)}
-              </span>
-              {vm.warningCount > 0 ? (
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, flexShrink: 0 }}>
-                  경고 {vm.warningCount}
-                </span>
-              ) : null}
+              {displayPills.map((p) => (
+                <span key={p.key}>{p.node}</span>
+              ))}
             </div>
             <ul
               style={{
@@ -164,9 +191,12 @@ export function MessageExplainabilityPanel({
                 </li>
               ))}
             </ul>
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted }}>{vm.sections.length}개 영역</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted }}>
+              {sectionPreview.length}개 영역 요약
+              {sectionMore > 0 ? ` · 외 ${sectionMore}개는 타임라인에서 확인` : null}
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {vm.sections.map((s) => (
+              {sectionPreview.map((s) => (
                 <div
                   key={s.type}
                   style={{

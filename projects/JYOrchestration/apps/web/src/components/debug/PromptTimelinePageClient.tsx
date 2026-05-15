@@ -576,7 +576,14 @@ function PromptTimelineEntryCard({
           {tab === "response" ? (
             <PromptDirectionPane entry={entry} direction="inbound" isNarrow={isNarrow} onCopy={onCopyText} />
           ) : null}
-          {tab === "overlay" ? <OverlaySummaryCard overlay={entry.overlay ?? null} /> : null}
+          {tab === "overlay" ? (
+            <OverlaySummaryCard
+              overlay={entry.overlay ?? null}
+              compactMode
+              isNarrow={isNarrow}
+              overlayAudienceMode="operator"
+            />
+          ) : null}
           {tab === "diagnostic" ? <PromptTimelineDiagnosticPane entry={entry} /> : null}
         </>
       )}

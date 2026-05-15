@@ -6,7 +6,10 @@ import { buildMessageExplainabilityViewModel } from "@/lib/harness/explainabilit
 import { resolveMessageExplainabilityTraceWithConfidence } from "@/lib/harness/explainability/resolveMessageExplainabilityTrace";
 import { MessageExplainabilityPanel } from "@/components/orchestration/explainability/MessageExplainabilityPanel";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { MESSAGE_EXPLAINABILITY_EMPTY_COPY } from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
+import {
+  MESSAGE_EXPLAINABILITY_EMPTY_COPY,
+  messageExplainabilityConfidenceUserLabel,
+} from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
 
 function explainabilityDebugEnabled(): boolean {
   return String(process.env.NEXT_PUBLIC_JY_EXPLAINABILITY_DEBUG ?? "").trim() === "1";
@@ -72,6 +75,7 @@ export function RequirementsMessageExplainability({
       vm={vm}
       onOpenPromptTimeline={onOpenPromptTimeline}
       promptTimelineAvailable={timelineAvailable}
+      connectionQualityLabel={messageExplainabilityConfidenceUserLabel(resolution.confidence)}
     />
   );
 }

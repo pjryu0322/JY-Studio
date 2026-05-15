@@ -20,6 +20,7 @@ describe("MessageExplainabilityPanel", () => {
         defaultOpen: true,
         promptTimelineAvailable: true,
         onOpenPromptTimeline: () => {},
+        connectionQualityLabel: "저장된 AI 판단 메타와 직접 연결됨",
       })
     );
     expect(html).toContain("AI 판단 보기");
@@ -27,6 +28,7 @@ describe("MessageExplainabilityPanel", () => {
     expect(html).toContain(MESSAGE_EXPLAINABILITY_DISCLAIMER.slice(0, 24));
     expect(html).toContain("프롬프트 이력에서 자세히 보기");
     expect(html).toContain("AI 역할");
+    expect(html).toContain("저장된 AI 판단 메타와 직접 연결됨");
     expect(html).not.toMatch(/knowledgePackId/);
   });
 });

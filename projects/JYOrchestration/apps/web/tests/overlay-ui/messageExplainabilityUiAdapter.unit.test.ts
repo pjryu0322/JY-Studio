@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MESSAGE_EXPLAINABILITY_DISCLAIMER,
   MESSAGE_EXPLAINABILITY_EMPTY_COPY,
+  messageExplainabilityConfidenceUserLabel,
   messageExplainabilityRiskLabel,
   messageExplainabilityRiskTone,
   messageExplainabilitySectionTitle,
@@ -20,6 +21,12 @@ describe("messageExplainabilityUiAdapter", () => {
     expect(messageExplainabilityRiskLabel("high")).toBe("위험 신호");
     expect(messageExplainabilityRiskTone("high")).toBe("danger");
     expect(messageExplainabilityRiskTone("low")).toBe("info");
+  });
+
+  it("maps confidence to user-facing labels without raw keys", () => {
+    expect(messageExplainabilityConfidenceUserLabel("response_text")).toBe("관련 AI 판단 근거 연결됨");
+    expect(messageExplainabilityConfidenceUserLabel("direct")).toContain("직접");
+    expect(messageExplainabilityConfidenceUserLabel("response_text")).not.toContain("response_text");
   });
 
   it("provides empty copy and disclaimer", () => {

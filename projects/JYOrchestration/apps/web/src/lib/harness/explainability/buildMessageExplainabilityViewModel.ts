@@ -278,7 +278,7 @@ export function buildMessageExplainabilityViewModel(input: {
   if (warningCount > 0 && !summaryLinesRaw.some((l) => l.startsWith("경고:"))) {
     summaryLinesRaw.push(`경고 태그 ${warningCount}건이 함께 기록되었습니다.`);
   }
-  const summaryLines = summaryLinesRaw.slice(0, 5);
+  const summaryLines = summaryLinesRaw.slice(0, 4);
 
   return {
     mode: MODE,
