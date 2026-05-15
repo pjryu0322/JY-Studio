@@ -1,5 +1,5 @@
 /**
- * H12–H16 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H16.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -9,6 +9,7 @@ import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidat
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
+import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import { RUNTIME_TRACEABILITY_SECTION_DISCLAIMER_KO } from "@/lib/harness/runtimeTraceability/runtimeTraceabilityLabelsKo";
 import {
   RUNTIME_CRITICALITY_SECTION_DISCLAIMER_KO,
@@ -44,6 +45,10 @@ import {
   RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
 import type { OverlayRuntimeCriticalitySectionVM } from "./overlayRuntimeCriticalityAdapter";
+import {
+  buildOverlayRuntimeReasoningSectionVmFromReports,
+  type OverlayRuntimeReasoningSectionVM,
+} from "./overlayRuntimeReasoningSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -64,6 +69,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   dependencyGraphVm: OverlayRuntimeDependencyGraphSectionVM;
   criticalityVm: OverlayRuntimeCriticalitySectionVM;
   traceabilityVm: OverlayRuntimeTraceabilitySectionVM;
+  reasoningVm: OverlayRuntimeReasoningSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -220,6 +226,10 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     criticalTransitionChains: reasoningChain.criticalTransitions,
   };
 
+  const reasoningVm = buildOverlayRuntimeReasoningSectionVmFromReports(
+    buildRuntimeReasoningPlanningReports(dependencyReports, criticalityReports, traceabilityReports)
+  );
+
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
   const explainabilityUnstable =
@@ -293,5 +303,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     dependencyGraphVm,
     criticalityVm,
     traceabilityVm,
+    reasoningVm,
   };
 }

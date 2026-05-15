@@ -163,6 +163,7 @@ export function OverlaySummaryCard({
     dependencyGraphVm: runtimePlanningDependencyVm,
     criticalityVm: runtimePlanningCriticalityVm,
     traceabilityVm: runtimePlanningTraceabilityVm,
+    reasoningVm: runtimePlanningReasoningVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -236,8 +237,15 @@ export function OverlaySummaryCard({
     "runtime_planning_traceability",
     d.runtimePlanningTraceability || runtimePlanningTraceabilityVm.showAttention
   );
+  const pReason = pol(
+    "runtime_planning_reasoning",
+    d.runtimePlanningReasoning || runtimePlanningReasoningVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
-    !pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom;
+    !pDep.omitFromDom ||
+    !pCrit.omitFromDom ||
+    !pTrace.omitFromDom ||
+    !pReason.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -327,20 +335,24 @@ export function OverlaySummaryCard({
         />
       ) : null}
       {showDependencyCriticalityGrouped &&
-      (!pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom) ? (
+      (!pDep.omitFromDom || !pCrit.omitFromDom || !pTrace.omitFromDom || !pReason.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
+          reasoningVm={runtimePlanningReasoningVm}
           traceabilityVm={runtimePlanningTraceabilityVm}
           dependencyDefaultOpen={pDep.defaultOpen}
           criticalityDefaultOpen={pCrit.defaultOpen}
+          reasoningDefaultOpen={pReason.defaultOpen}
           traceabilityDefaultOpen={pTrace.defaultOpen}
           groupOpen={
-            !compactAndNarrowUi && (pDep.defaultOpen || pCrit.defaultOpen || pTrace.defaultOpen)
+            !compactAndNarrowUi &&
+            (pDep.defaultOpen || pCrit.defaultOpen || pTrace.defaultOpen || pReason.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
-          showTraceability={!pTrace.omitFromDom}
+          showReasoning={!pReason.omitFromDom}
+          showTraceability={!pTrace.omitFromDom && pReason.omitFromDom}
         />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (

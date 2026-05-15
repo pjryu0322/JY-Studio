@@ -7,15 +7,16 @@ import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCri
 import type { RuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import type { RuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
-import { buildRuntimeTraceabilityPlanningReports } from "./buildRuntimeTraceabilityPlanningReports";
+import {
+  buildRuntimeTraceabilityPlanningReports,
+  type RuntimeTraceabilityPlanningReports,
+} from "./buildRuntimeTraceabilityPlanningReports";
 import { serializeRuntimePlanningReasoningChainForDiagnostic } from "./buildPlanningReasoningChain";
 import { serializeRuntimeDependencyReasoningTraceSummaryForDiagnostic } from "./evaluateDependencyReasoningTrace";
 import { serializeRuntimePriorityReasoningTraceSummaryForDiagnostic } from "./evaluatePriorityReasoningTrace";
 
-export function serializeRuntimeTraceabilityDiagnosticBundleFromPlanning(
-  ctx: NormalizedRuntimePlanningContext,
-  dependencyReports: RuntimeDependencyPlanningReports,
-  criticalityReports: RuntimeCriticalityPlanningReports
+export function serializeRuntimeTraceabilityDiagnosticBundleFromReports(
+  reports: RuntimeTraceabilityPlanningReports
 ): Readonly<{
   runtimePlanningReasoningChain: ReturnType<typeof serializeRuntimePlanningReasoningChainForDiagnostic>;
   runtimeDependencyReasoningTraceSummary: ReturnType<
@@ -25,8 +26,6 @@ export function serializeRuntimeTraceabilityDiagnosticBundleFromPlanning(
     typeof serializeRuntimePriorityReasoningTraceSummaryForDiagnostic
   >;
 }> {
-  const reports = buildRuntimeTraceabilityPlanningReports(ctx, dependencyReports, criticalityReports);
-
   return {
     runtimePlanningReasoningChain: serializeRuntimePlanningReasoningChainForDiagnostic(
       reports.reasoningChain
@@ -38,6 +37,15 @@ export function serializeRuntimeTraceabilityDiagnosticBundleFromPlanning(
       reports.priorityReasoningTraceSummary
     ),
   };
+}
+
+export function serializeRuntimeTraceabilityDiagnosticBundleFromPlanning(
+  ctx: NormalizedRuntimePlanningContext,
+  dependencyReports: RuntimeDependencyPlanningReports,
+  criticalityReports: RuntimeCriticalityPlanningReports
+): ReturnType<typeof serializeRuntimeTraceabilityDiagnosticBundleFromReports> {
+  const reports = buildRuntimeTraceabilityPlanningReports(ctx, dependencyReports, criticalityReports);
+  return serializeRuntimeTraceabilityDiagnosticBundleFromReports(reports);
 }
 
 export function serializeRuntimeTraceabilityDiagnosticBundleFromContext(
