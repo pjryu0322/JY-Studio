@@ -27,6 +27,8 @@ export { OverlayRuntimeCoherenceSection } from "./OverlayRuntimeCoherenceSection
 export { OverlayRuntimePlanningConsolidatedSection } from "./OverlayRuntimePlanningConsolidatedSection";
 export { OverlayRuntimeLifecycleCoherenceGroup } from "./OverlayRuntimeLifecycleCoherenceGroup";
 export { OverlayRuntimeDependencyGraphSection } from "./OverlayRuntimeDependencyGraphSection";
+export { OverlayRuntimeCriticalitySection } from "./OverlayRuntimeCriticalitySection";
+export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 export { OverlayOperatorRuntimeSummary } from "./OverlayOperatorRuntimeSummary";
 export { OverlayOperatorResourceSummary } from "./OverlayOperatorResourceSummary";

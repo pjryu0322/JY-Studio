@@ -31,7 +31,8 @@ export type OverlaySectionKind =
   | "runtime_lifecycle"
   | "runtime_coherence"
   | "runtime_planning_consolidated"
-  | "runtime_planning_dependency";
+  | "runtime_planning_dependency"
+  | "runtime_planning_criticality";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -48,6 +49,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_coherence":
     case "runtime_planning_consolidated":
     case "runtime_planning_dependency":
+    case "runtime_planning_criticality":
       return "important";
     case "context":
     case "budget":

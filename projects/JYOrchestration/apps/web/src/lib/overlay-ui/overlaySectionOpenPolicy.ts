@@ -42,7 +42,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "controlled_enforcement_governance" ||
         input.section === "runtime_lifecycle" ||
         input.section === "runtime_coherence" ||
-        input.section === "runtime_planning_dependency")
+        input.section === "runtime_planning_dependency" ||
+        input.section === "runtime_planning_criticality")
     ) {
       omitFromDom = true;
       defaultOpen = false;

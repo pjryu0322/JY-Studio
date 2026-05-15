@@ -17,19 +17,18 @@ export function OverlayRuntimeDependencyGraphSection({
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <OverlayUiKeyValueRow label="Conflict ???" value={vm.conflictSeverityLabel} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>        <OverlayUiKeyValueRow label="Conflict 심각도" value={vm.conflictSeverityLabel} />
         <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Nodes</div>
         {vm.nodeRows.length > 0 ? (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: t.textMuted, lineHeight: 1.45 }}>
             {vm.nodeRows.map((n) => (
               <li key={n.id}>
-                {n.label} ? {n.statusLabel}
+                {n.label} — {n.statusLabel}
               </li>
             ))}
           </ul>
         ) : (
-          <OverlayUiEmptyHint message="Node ??" />
+          <OverlayUiEmptyHint message="Node 없음" />
         )}
         <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Edges</div>
         {vm.edgeRows.length > 0 ? (
@@ -39,20 +38,12 @@ export function OverlayRuntimeDependencyGraphSection({
             ))}
           </ul>
         ) : (
-          <OverlayUiEmptyHint message="Edge ??" />
+          <OverlayUiEmptyHint message="Edge 없음" />
         )}
-        <OverlayUiKeyValueRow label="Critical dependency" value={vm.criticalDependencies.join(" ? ") || "?"} />
-        <OverlayUiKeyValueRow label="Dependency chain" value={vm.dependencyChains.join(" ? ") || "?"} />
-        <OverlayUiKeyValueRow
-          label="Drift propagation"
-          value={vm.driftPropagationPaths.slice(0, 2).join(" ? ") || "?"}
-        />
-        <OverlayUiKeyValueRow
-          label="Stale propagation"
-          value={vm.stalePropagationPaths.slice(0, 2).join(" ? ") || "?"}
-        />
+        <OverlayUiKeyValueRow label="Critical dependency" value={vm.criticalDependencies.join(" · ") || "—"} />
+        <OverlayUiKeyValueRow label="Dependency chain" value={vm.dependencyChains.join(" · ") || "—"} />
         <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>
-          actual runtime orchestration?enforcement?payload ??? ????.
+          actual runtime orchestration·enforcement·payload 변경은 없습니다.
         </div>
       </div>
     </OverlayUiSection>

@@ -26,7 +26,7 @@ import { OverlayEscalationBadge } from "./OverlayEscalationBadge";
 import { OverlayRuntimeLifecycleSection } from "./OverlayRuntimeLifecycleSection";
 import { OverlayRuntimePlanningConsolidatedSection } from "./OverlayRuntimePlanningConsolidatedSection";
 import { OverlayRuntimeLifecycleCoherenceGroup } from "./OverlayRuntimeLifecycleCoherenceGroup";
-import { OverlayRuntimeDependencyGraphSection } from "./OverlayRuntimeDependencyGraphSection";
+import { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 import { resolveOverlaySectionUiPolicy } from "@/lib/overlay-ui/overlaySectionOpenPolicy";
 import type { OverlaySectionKind } from "@/lib/overlay-ui/overlaySectionPriority";
 import {
@@ -161,6 +161,7 @@ export function OverlaySummaryCard({
     coherenceVm: runtimeCoherenceVm,
     consolidatedVm: runtimePlanningConsolidatedVm,
     dependencyGraphVm: runtimePlanningDependencyVm,
+    criticalityVm: runtimePlanningCriticalityVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -225,7 +226,12 @@ export function OverlaySummaryCard({
     "runtime_planning_dependency",
     d.runtimePlanningDependency || runtimePlanningDependencyVm.showAttention
   );
+  const pCrit = pol(
+    "runtime_planning_criticality",
+    d.runtimePlanningCriticality || runtimePlanningCriticalityVm.showAttention
+  );
   const showLifecycleCoherenceGrouped = !pLife.omitFromDom || !pCoh.omitFromDom;
+  const showDependencyCriticalityGrouped = !pDep.omitFromDom || !pCrit.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -314,8 +320,16 @@ export function OverlaySummaryCard({
           showCoherence={!pCoh.omitFromDom}
         />
       ) : null}
-      {!pDep.omitFromDom ? (
-        <OverlayRuntimeDependencyGraphSection vm={runtimePlanningDependencyVm} defaultOpen={pDep.defaultOpen} />
+      {showDependencyCriticalityGrouped && (!pDep.omitFromDom || !pCrit.omitFromDom) ? (
+        <OverlayRuntimeDependencyCriticalityGroup
+          dependencyVm={runtimePlanningDependencyVm}
+          criticalityVm={runtimePlanningCriticalityVm}
+          dependencyDefaultOpen={pDep.defaultOpen}
+          criticalityDefaultOpen={pCrit.defaultOpen}
+          groupOpen={!compactAndNarrowUi && (pDep.defaultOpen || pCrit.defaultOpen)}
+          showDependency={!pDep.omitFromDom}
+          showCriticality={!pCrit.omitFromDom}
+        />
       ) : null}
       {!pRt.omitFromDom || !pGov.omitFromDom || !pEnf.omitFromDom || !pCEg.omitFromDom ? (
         <details open={!compactAndNarrowUi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>

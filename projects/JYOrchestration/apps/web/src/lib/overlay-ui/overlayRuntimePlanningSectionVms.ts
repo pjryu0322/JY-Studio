@@ -1,5 +1,5 @@
 /**
- * H12–H15 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H15.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -7,6 +7,11 @@ import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayP
 import { buildUnifiedRuntimePlanningSummary } from "@/lib/harness/runtimeConsolidation/buildUnifiedRuntimePlanningSummary";
 import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
+import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
+import {
+  RUNTIME_CRITICALITY_SECTION_DISCLAIMER_KO,
+  formatRuntimePlanningCriticalityScoreLabel,
+} from "@/lib/harness/runtimeCriticality/runtimeCriticalityLabelsKo";
 import {
   RUNTIME_DEPENDENCY_SECTION_DISCLAIMER_KO,
   RUNTIME_PLANNING_DEPENDENCY_CONFLICT_SEVERITY_LABEL_KO,
@@ -36,6 +41,7 @@ import {
   RUNTIME_PLANNING_PRIORITY_LABEL_KO,
   RUNTIME_PRIORITY_SECTION_DISCLAIMER_KO,
 } from "@/lib/harness/runtimePriority/runtimePriorityLabelsKo";
+import type { OverlayRuntimeCriticalitySectionVM } from "./overlayRuntimeCriticalityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
 import type { OverlayRuntimeLifecycleSectionVM } from "./overlayRuntimeLifecycleAdapter";
@@ -53,6 +59,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   coherenceVm: OverlayRuntimeCoherenceSectionVM;
   consolidatedVm: OverlayRuntimePlanningConsolidatedSectionVM;
   dependencyGraphVm: OverlayRuntimeDependencyGraphSectionVM;
+  criticalityVm: OverlayRuntimeCriticalitySectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -128,8 +135,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     showAttention: unified.criticalIssues.length > 0,
   };
 
+  const escalation = priorityReports.escalationSummary;
   const dependencyReports = buildRuntimeDependencyPlanningReports(ctx);
-  const { dependencyGraph, impactPropagationSummary, dependencyConflictSummary } = dependencyReports;
+  const { dependencyGraph, dependencyConflictSummary } = dependencyReports;
   const dependencyGraphVm: OverlayRuntimeDependencyGraphSectionVM = {
     sectionDisclaimer: RUNTIME_DEPENDENCY_SECTION_DISCLAIMER_KO,
     conflictSeverityLabel:
@@ -147,8 +155,32 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     criticalDependencies: dependencyGraph.criticalDependencies,
     isolatedNodes: dependencyGraph.isolatedNodes,
     dependencyChains: dependencyGraph.dependencyChains,
-    driftPropagationPaths: impactPropagationSummary.driftPropagationPaths,
-    stalePropagationPaths: impactPropagationSummary.stalePropagationPaths,
+  };
+
+  const criticalityReports = buildRuntimeCriticalityPlanningReports(ctx, dependencyReports);
+  const { criticalitySummary, priorityPropagationSummary, escalationPriorityFlowSummary } =
+    criticalityReports;
+  const priorityPropagationPaths = [
+    ...priorityPropagationSummary.dependencyPriorityPaths,
+    ...priorityPropagationSummary.lifecyclePriorityPaths,
+    ...priorityPropagationSummary.escalationPriorityPaths,
+  ];
+  const escalationFlowPaths = [
+    ...escalationPriorityFlowSummary.lifecycleEscalationChains,
+    ...escalationPriorityFlowSummary.criticalDependencyEscalations,
+  ];
+  const criticalityVm: OverlayRuntimeCriticalitySectionVM = {
+    sectionDisclaimer: RUNTIME_CRITICALITY_SECTION_DISCLAIMER_KO,
+    criticalityScoreLabel: formatRuntimePlanningCriticalityScoreLabel(criticalitySummary.criticalityScore),
+    showAttention:
+      criticalitySummary.criticalityScore >= 75 ||
+      criticalitySummary.criticalNodes.length >= 2 ||
+      escalation.operatorAttentionRequired,
+    criticalNodes: criticalitySummary.criticalNodes,
+    highPriorityNodes: criticalitySummary.highPriorityNodes,
+    priorityPropagationPaths,
+    escalationFlowPaths,
+    criticalDependencyChains: dependencyGraph.dependencyChains,
   };
 
   const governanceUnstable =
@@ -167,8 +199,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       : stabilityReports.stabilitySummary.stabilityLevel === "unstable"
         ? "Planning stability가 불안정합니다. 후보 충돌·dependency를 먼저 확인하세요."
         : "Overlay 과밀 위험이 있습니다. compact·narrow 모드에서 일부 섹션이 숨겨질 수 있습니다.";
-
-  const escalation = priorityReports.escalationSummary;
 
   return {
     stabilityVm: {
@@ -224,5 +254,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     coherenceVm,
     consolidatedVm,
     dependencyGraphVm,
+    criticalityVm,
   };
 }

@@ -111,7 +111,9 @@ import { serializeRuntimeLifecycleDiagnosticBundleFromReports } from "@/lib/harn
 import { serializeRuntimeCoherenceDiagnosticBundleFromReports } from "@/lib/harness/runtimeCoherence/serializeRuntimeCoherenceDiagnosticBundle";
 import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
 import { serializeRuntimeConsolidationDiagnosticBundleFromContext } from "@/lib/harness/runtimeConsolidation/serializeRuntimeConsolidationDiagnosticBundle";
-import { serializeRuntimeDependencyDiagnosticBundleFromContext } from "@/lib/harness/runtimeDependency/serializeRuntimeDependencyDiagnosticBundle";
+import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
+import { serializeRuntimeDependencyDiagnosticBundleFromReports } from "@/lib/harness/runtimeDependency/serializeRuntimeDependencyDiagnosticBundle";
+import { serializeRuntimeCriticalityDiagnosticBundleFromPlanning } from "@/lib/harness/runtimeCriticality/serializeRuntimeCriticalityDiagnosticBundle";
 
 /**
  * Overlay 런타임·레지스트리 **읽기 전용** 진단. DB·오케스트레이션 경로에 영향 없음.
@@ -363,6 +365,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningCoherenceSynchronizationEnabled: true,
     harnessRuntimePlanningConsolidationNormalizationEnabled: true,
     harnessRuntimePlanningDependencyImpactGraphEnabled: true,
+    harnessRuntimePlanningCriticalityPriorityPropagationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -391,6 +394,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningCoherenceSynchronizationLayer: true,
     harnessRuntimePlanningConsolidationNormalizationLayer: true,
     harnessRuntimePlanningDependencyImpactGraphLayer: true,
+    harnessRuntimePlanningCriticalityPriorityPropagationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -474,7 +478,12 @@ export async function GET(request: NextRequest) {
   const runtimeLifecycleDiag = serializeRuntimeLifecycleDiagnosticBundleFromReports(planningCtx.lifecycleReports);
   const runtimeCoherenceDiag = serializeRuntimeCoherenceDiagnosticBundleFromReports(planningCtx.coherenceReports);
   const runtimeConsolidationDiag = serializeRuntimeConsolidationDiagnosticBundleFromContext(planningCtx);
-  const runtimeDependencyDiag = serializeRuntimeDependencyDiagnosticBundleFromContext(planningCtx);
+  const dependencyPlanningReports = buildRuntimeDependencyPlanningReports(planningCtx);
+  const runtimeDependencyDiag = serializeRuntimeDependencyDiagnosticBundleFromReports(dependencyPlanningReports);
+  const runtimeCriticalityDiag = serializeRuntimeCriticalityDiagnosticBundleFromPlanning(
+    planningCtx,
+    dependencyPlanningReports
+  );
   const runtimeRiskSummary = serializeRuntimeRiskSummaryForDiagnostic(
     buildRuntimeRiskSummary({
       baseline: harnessMaturityBaselineReport,
@@ -531,6 +540,9 @@ export async function GET(request: NextRequest) {
       runtimePlanningDependencyGraph: runtimeDependencyDiag.runtimePlanningDependencyGraph,
       runtimePlanningImpactPropagationSummary: runtimeDependencyDiag.runtimePlanningImpactPropagationSummary,
       runtimePlanningDependencyConflictSummary: runtimeDependencyDiag.runtimePlanningDependencyConflictSummary,
+      runtimePlanningCriticalitySummary: runtimeCriticalityDiag.runtimePlanningCriticalitySummary,
+      runtimePriorityPropagationSummary: runtimeCriticalityDiag.runtimePriorityPropagationSummary,
+      runtimeEscalationPriorityFlowSummary: runtimeCriticalityDiag.runtimeEscalationPriorityFlowSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

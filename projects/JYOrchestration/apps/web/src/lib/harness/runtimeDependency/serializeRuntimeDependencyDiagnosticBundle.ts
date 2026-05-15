@@ -3,13 +3,16 @@
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
-import { buildRuntimeDependencyPlanningReports } from "./buildRuntimeDependencyPlanningReports";
+import {
+  buildRuntimeDependencyPlanningReports,
+  type RuntimeDependencyPlanningReports,
+} from "./buildRuntimeDependencyPlanningReports";
 import { serializeRuntimePlanningDependencyGraphForDiagnostic } from "./buildRuntimePlanningDependencyGraph";
 import { serializeRuntimePlanningImpactPropagationSummaryForDiagnostic } from "./evaluateRuntimePlanningImpactPropagation";
 import { serializeRuntimePlanningDependencyConflictSummaryForDiagnostic } from "./evaluateRuntimePlanningDependencyConflicts";
 
-export function serializeRuntimeDependencyDiagnosticBundleFromContext(
-  ctx: NormalizedRuntimePlanningContext
+export function serializeRuntimeDependencyDiagnosticBundleFromReports(
+  reports: RuntimeDependencyPlanningReports
 ): Readonly<{
   runtimePlanningDependencyGraph: ReturnType<typeof serializeRuntimePlanningDependencyGraphForDiagnostic>;
   runtimePlanningImpactPropagationSummary: ReturnType<
@@ -19,8 +22,6 @@ export function serializeRuntimeDependencyDiagnosticBundleFromContext(
     typeof serializeRuntimePlanningDependencyConflictSummaryForDiagnostic
   >;
 }> {
-  const reports = buildRuntimeDependencyPlanningReports(ctx);
-
   return {
     runtimePlanningDependencyGraph: serializeRuntimePlanningDependencyGraphForDiagnostic(reports.dependencyGraph),
     runtimePlanningImpactPropagationSummary: serializeRuntimePlanningImpactPropagationSummaryForDiagnostic(
@@ -30,4 +31,10 @@ export function serializeRuntimeDependencyDiagnosticBundleFromContext(
       reports.dependencyConflictSummary
     ),
   };
+}
+
+export function serializeRuntimeDependencyDiagnosticBundleFromContext(
+  ctx: NormalizedRuntimePlanningContext
+): ReturnType<typeof serializeRuntimeDependencyDiagnosticBundleFromReports> {
+  return serializeRuntimeDependencyDiagnosticBundleFromReports(buildRuntimeDependencyPlanningReports(ctx));
 }
