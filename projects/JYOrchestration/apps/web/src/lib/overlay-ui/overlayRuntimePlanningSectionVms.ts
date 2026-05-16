@@ -1,5 +1,5 @@
 /**
- * H12–H24.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H25 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -110,6 +110,10 @@ import {
   buildOverlayRuntimePilotContractSectionVmFromReports,
   type OverlayRuntimePilotContractSectionVM,
 } from "./overlayRuntimePilotContractSectionVm";
+import {
+  buildOverlayRuntimeNoopAdapterSectionVmFromReports,
+  type OverlayRuntimeNoopAdapterSectionVM,
+} from "./overlayRuntimeNoopAdapterSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -146,6 +150,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeOperatorApprovalVm: OverlayRuntimeOperatorApprovalSectionVM;
   runtimeControlledPilotVm: OverlayRuntimeControlledPilotSectionVM;
   runtimePilotContractVm: OverlayRuntimePilotContractSectionVM;
+  runtimeNoopAdapterVm: OverlayRuntimeNoopAdapterSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -354,6 +359,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const runtimePilotContractVm = buildOverlayRuntimePilotContractSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const runtimeNoopAdapterVm = buildOverlayRuntimeNoopAdapterSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -444,5 +452,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeOperatorApprovalVm,
     runtimeControlledPilotVm,
     runtimePilotContractVm,
+    runtimeNoopAdapterVm,
   };
 }

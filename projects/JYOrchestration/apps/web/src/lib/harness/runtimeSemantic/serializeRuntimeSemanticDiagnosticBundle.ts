@@ -1,5 +1,5 @@
 /**
- * H17–H24.5 — 진단 API용 runtime semantic·…·controlled pilot·pilot contract wire 묶음.
+ * H17–H25 — 진단 API용 runtime semantic·…·pilot contract·no-op adapter wire 묶음.
  */
 
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
@@ -50,6 +50,7 @@ import { serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports } fr
 import { serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionCandidate/serializeRuntimeExecutionCandidateDiagnosticBundle";
 import { serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeOperatorApproval/serializeRuntimeOperatorApprovalDiagnosticBundle";
 import { serializeRuntimePilotContractDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotContract/serializeRuntimePilotContractDiagnosticBundle";
+import { serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopAdapter/serializeRuntimeNoopAdapterDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -74,6 +75,9 @@ type SerializedRuntimeControlledPilotDiag = ReturnType<
 >;
 type SerializedRuntimePilotContractDiag = ReturnType<
   typeof serializeRuntimePilotContractDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeNoopAdapterDiag = ReturnType<
+  typeof serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -142,6 +146,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeAdapterBoundarySummary: SerializedRuntimePilotContractDiag["runtimeAdapterBoundarySummary"];
   runtimeAdapterForbiddenOperationReport: SerializedRuntimePilotContractDiag["runtimeAdapterForbiddenOperationReport"];
   runtimePilotHandoffReadiness: SerializedRuntimePilotContractDiag["runtimePilotHandoffReadiness"];
+  runtimeNoopAdapterSummary: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterSummary"];
+  runtimeNoopAdapterSkeleton: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterSkeleton"];
+  runtimePilotContractVerificationReport: SerializedRuntimeNoopAdapterDiag["runtimePilotContractVerificationReport"];
+  runtimeNoopAdapterResultMetadata: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterResultMetadata"];
+  runtimeAdapterInvocationGuardReport: SerializedRuntimeNoopAdapterDiag["runtimeAdapterInvocationGuardReport"];
+  runtimeNoopAdapterBoundaryViolationReport: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterBoundaryViolationReport"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -151,6 +161,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const operatorApprovalDiag = serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports(reports);
   const controlledPilotDiag = serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports(reports);
   const pilotContractDiag = serializeRuntimePilotContractDiagnosticBundleFromSemanticReports(reports);
+  const noopAdapterDiag = serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -225,6 +236,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...operatorApprovalDiag,
     ...controlledPilotDiag,
     ...pilotContractDiag,
+    ...noopAdapterDiag,
   };
 }
 

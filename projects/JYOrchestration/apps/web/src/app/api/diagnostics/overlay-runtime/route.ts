@@ -391,6 +391,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningOperatorApprovalReadinessEnabled: true,
     harnessRuntimePlanningControlledOrchestrationRuntimePilotEnabled: true,
     harnessRuntimePlanningPilotContractAdapterBoundaryEnabled: true,
+    harnessRuntimePlanningNoopRuntimeAdapterEnabled: true,
   };
 
   const overlayMaturity = {
@@ -437,6 +438,8 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningExecutionCandidateLayer: true,
     harnessRuntimePlanningOperatorApprovalReadinessLayer: true,
     harnessRuntimePlanningControlledOrchestrationRuntimePilotLayer: true,
+    harnessRuntimePlanningPilotContractAdapterBoundaryLayer: true,
+    harnessRuntimePlanningNoopRuntimeAdapterLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -675,6 +678,12 @@ export async function GET(request: NextRequest) {
       runtimeAdapterBoundarySummary: runtimeSemanticDiag.runtimeAdapterBoundarySummary,
       runtimeAdapterForbiddenOperationReport: runtimeSemanticDiag.runtimeAdapterForbiddenOperationReport,
       runtimePilotHandoffReadiness: runtimeSemanticDiag.runtimePilotHandoffReadiness,
+      runtimeNoopAdapterSummary: runtimeSemanticDiag.runtimeNoopAdapterSummary,
+      runtimeNoopAdapterSkeleton: runtimeSemanticDiag.runtimeNoopAdapterSkeleton,
+      runtimePilotContractVerificationReport: runtimeSemanticDiag.runtimePilotContractVerificationReport,
+      runtimeNoopAdapterResultMetadata: runtimeSemanticDiag.runtimeNoopAdapterResultMetadata,
+      runtimeAdapterInvocationGuardReport: runtimeSemanticDiag.runtimeAdapterInvocationGuardReport,
+      runtimeNoopAdapterBoundaryViolationReport: runtimeSemanticDiag.runtimeNoopAdapterBoundaryViolationReport,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

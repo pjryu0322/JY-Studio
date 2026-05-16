@@ -16,6 +16,7 @@ import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCri
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
+import { stripRuntimeNoopAdapterLayer } from "../runtimePlanningReportStrip";
 
 function buildPlanningContext() {
   const maturityBaseline = evaluateHarnessMaturityBaseline({
@@ -39,7 +40,7 @@ function buildSemanticBeforeControlBoundary(): RuntimeSemanticPlanningReportsBef
   const crit = buildRuntimeCriticalityPlanningReports(ctx, dep);
   const trace = buildRuntimeTraceabilityPlanningReports(ctx, dep, crit);
   const reasoning = buildRuntimeReasoningPlanningReports(dep, crit, trace);
-  const semantic = buildRuntimeSemanticPlanningReports(reasoning);
+  const semantic = stripRuntimeNoopAdapterLayer(buildRuntimeSemanticPlanningReports(reasoning));
   const {
     runtimeControlBoundarySummary: _s,
     runtimeControlBoundaryViolationReport: _v,

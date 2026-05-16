@@ -12,6 +12,7 @@ import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCri
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
 import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
 import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
+import { stripRuntimeNoopAdapterLayer } from "../runtimePlanningReportStrip";
 
 function buildFullSemantic() {
   const maturityBaseline = evaluateHarnessMaturityBaseline({
@@ -50,7 +51,7 @@ describe("H23.5 runtime operator approval readiness", () => {
   });
 
   it("buildRuntimeOperatorApprovalPlanningReports merges from execution candidate layer", () => {
-    const semantic = buildFullSemantic();
+    const semantic = stripRuntimeNoopAdapterLayer(buildFullSemantic());
     const {
       runtimeOperatorApprovalSummary: _a,
       runtimeRollbackReadinessSummary: _b,

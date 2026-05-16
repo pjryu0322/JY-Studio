@@ -7,6 +7,7 @@ import type { RuntimeExecutionCandidatePlanningReports } from "@/lib/harness/run
 import type { RuntimeOperatorApprovalPlanningReports } from "@/lib/harness/runtimeOperatorApproval/runtimeOperatorApprovalTypes";
 import type { RuntimeControlledPilotPlanningReports } from "@/lib/harness/runtimeControlledPilot/runtimeControlledPilotTypes";
 import type { RuntimePilotContractPlanningReports } from "@/lib/harness/runtimePilotContract/runtimePilotContractTypes";
+import type { RuntimeNoopAdapterPlanningReports } from "@/lib/harness/runtimeNoopAdapter/runtimeNoopAdapterTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -90,6 +91,10 @@ export type RuntimeSemanticPlanningReportsBeforeControlledPilot = RuntimeSemanti
 export type RuntimeSemanticPlanningReportsBeforePilotContract = RuntimeSemanticPlanningReportsBeforeControlledPilot &
   RuntimeControlledPilotPlanningReports;
 
-/** H24.5 포함 — pilot contract·adapter boundary 메타까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforePilotContract &
+/** H24.5 포함·H25 직전(pilot contract까지 산출된 상태). */
+export type RuntimeSemanticPlanningReportsBeforeNoopAdapter = RuntimeSemanticPlanningReportsBeforePilotContract &
   RuntimePilotContractPlanningReports;
+
+/** H25 포함 — no-op adapter skeleton·contract verification까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeNoopAdapter &
+  RuntimeNoopAdapterPlanningReports;

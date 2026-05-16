@@ -6,7 +6,7 @@ import { evaluateRuntimeAdapterBoundary } from "@/lib/harness/runtimePilotContra
 import { detectRuntimeAdapterForbiddenOperations } from "@/lib/harness/runtimePilotContract/detectRuntimeAdapterForbiddenOperations";
 import { serializeRuntimePilotContractDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotContract/serializeRuntimePilotContractDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
-import type { RuntimeSemanticPlanningReportsBeforePilotContract } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
+import { stripRuntimePilotContractLayer } from "../runtimePlanningReportStrip";
 import { evaluateHarnessMaturityBaseline } from "@/lib/harness/maturity/evaluateHarnessMaturityBaseline";
 import { evaluateHarnessReleaseGateReadiness } from "@/lib/harness/maturity/evaluateHarnessReleaseGateReadiness";
 import { emptyHarnessPromptApplyReadinessReport } from "@/lib/harness/promptAssembly/harnessPromptApplyReadinessTypes";
@@ -38,19 +38,6 @@ function buildFullSemantic() {
   return buildRuntimeSemanticPlanningReports(reasoning);
 }
 
-function stripPilotContract(semantic: ReturnType<typeof buildFullSemantic>): RuntimeSemanticPlanningReportsBeforePilotContract {
-  const {
-    runtimePilotContractSummary: _a,
-    runtimePilotContractInputSchema: _b,
-    runtimePilotContractOutputSchema: _c,
-    runtimeAdapterBoundarySummary: _d,
-    runtimeAdapterForbiddenOperationReport: _e,
-    runtimePilotHandoffReadiness: _f,
-    ...before
-  } = semantic;
-  return before;
-}
-
 describe("H24.5 runtime pilot contract & adapter boundary", () => {
   it("full semantic includes pilot contract with adapter invocation false", () => {
     const semantic = buildFullSemantic();
@@ -61,7 +48,7 @@ describe("H24.5 runtime pilot contract & adapter boundary", () => {
   });
 
   it("controlledPilot blocked → contract blocked and handoff_blocked", () => {
-    const before = stripPilotContract(buildFullSemantic());
+    const before = stripRuntimePilotContractLayer(buildFullSemantic());
     const blocked = {
       ...before,
       runtimeControlledPilotSummary: {
@@ -78,7 +65,7 @@ describe("H24.5 runtime pilot contract & adapter boundary", () => {
   });
 
   it("metadata_ready + single_flow_metadata + no blockers → contract_metadata_ready", () => {
-    const before = stripPilotContract(buildFullSemantic());
+    const before = stripRuntimePilotContractLayer(buildFullSemantic());
     const ready = {
       ...before,
       runtimeControlledPilotSummary: {
@@ -94,7 +81,7 @@ describe("H24.5 runtime pilot contract & adapter boundary", () => {
   });
 
   it("detects provider routing wording in nested reports", () => {
-    const before = stripPilotContract(buildFullSemantic());
+    const before = stripRuntimePilotContractLayer(buildFullSemantic());
     const withWording = {
       ...before,
       runtimeControlBoundaryViolationReport: {
@@ -127,7 +114,7 @@ describe("H24.5 runtime pilot contract & adapter boundary", () => {
   });
 
   it("buildRuntimePilotContractPlanningReports merges from controlled pilot layer", () => {
-    const before = stripPilotContract(buildFullSemantic());
+    const before = stripRuntimePilotContractLayer(buildFullSemantic());
     const h245 = buildRuntimePilotContractPlanningReports(before);
     expect(h245.runtimePilotContractInputSchema.mode).toBe("runtime_pilot_contract_input_schema");
     expect(h245.runtimePilotContractOutputSchema.mode).toBe("runtime_pilot_contract_output_schema");

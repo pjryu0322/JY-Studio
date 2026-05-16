@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeControlledPilotPlanningReports } from "@/lib/harness/runtimeControlledPilot/buildRuntimeControlledPilotPlanningReports";
+import { stripRuntimeNoopAdapterLayer } from "../runtimePlanningReportStrip";
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { evaluateHarnessMaturityBaseline } from "@/lib/harness/maturity/evaluateHarnessMaturityBaseline";
@@ -44,7 +45,7 @@ describe("H24 runtime controlled orchestration pilot metadata", () => {
   });
 
   it("buildRuntimeControlledPilotPlanningReports merges from operator approval layer", () => {
-    const semantic = buildFullSemantic();
+    const semantic = stripRuntimeNoopAdapterLayer(buildFullSemantic());
     const {
       runtimeControlledPilotSummary: _a,
       runtimeControlledPilotSafetyEnvelope: _b,
