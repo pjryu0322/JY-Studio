@@ -1,5 +1,5 @@
 /**
- * H12–H21 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H22 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -86,6 +86,10 @@ import {
   buildOverlayRuntimeResourceAllocationSectionVmFromReports,
   type OverlayRuntimeResourceAllocationSectionVM,
 } from "./overlayRuntimeResourceAllocationSectionVm";
+import {
+  buildOverlayRuntimeResourceTrialSectionVmFromReports,
+  type OverlayRuntimeResourceTrialSectionVM,
+} from "./overlayRuntimeResourceTrialSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -116,6 +120,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   resourceVm: OverlayRuntimeResourceSectionVM;
   resourceGovernanceVm: OverlayRuntimeResourceGovernanceSectionVM;
   resourceAllocationVm: OverlayRuntimeResourceAllocationSectionVM;
+  resourceTrialVm: OverlayRuntimeResourceTrialSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -306,6 +311,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const resourceAllocationVm = buildOverlayRuntimeResourceAllocationSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const resourceTrialVm = buildOverlayRuntimeResourceTrialSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -390,5 +398,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     resourceVm,
     resourceGovernanceVm,
     resourceAllocationVm,
+    resourceTrialVm,
   };
 }

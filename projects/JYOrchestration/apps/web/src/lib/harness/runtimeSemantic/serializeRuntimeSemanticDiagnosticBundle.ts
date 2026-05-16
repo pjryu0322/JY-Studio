@@ -1,5 +1,5 @@
 /**
- * H17–H21.5 — 진단 API용 runtime semantic·decision·forecast·resource·governance·allocation planning wire 묶음.
+ * H17–H22 — 진단 API용 runtime semantic·…·allocation·trial wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -44,12 +44,16 @@ import { serializeRuntimeMemberWorkloadForDiagnostic } from "@/lib/harness/runti
 import { serializeRuntimeResourceExplainabilityForDiagnostic } from "@/lib/harness/runtimeResource/buildRuntimeResourceExplainability";
 import { serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceGovernance/serializeRuntimeResourceGovernanceDiagnosticBundle";
 import { serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceAllocation/serializeRuntimeResourceAllocationDiagnosticBundle";
+import { serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceTrial/serializeRuntimeResourceTrialDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
 >;
 type SerializedRuntimeResourceAllocationDiag = ReturnType<
   typeof serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeResourceTrialDiag = ReturnType<
+  typeof serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -93,9 +97,14 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeAllocationEligibilitySummary: SerializedRuntimeResourceAllocationDiag["runtimeAllocationEligibilitySummary"];
   runtimeProviderSlotPlan: SerializedRuntimeResourceAllocationDiag["runtimeProviderSlotPlan"];
   runtimeExecutionSlotPlan: SerializedRuntimeResourceAllocationDiag["runtimeExecutionSlotPlan"];
+  runtimeResourceAllocationTrialReport: SerializedRuntimeResourceTrialDiag["runtimeResourceAllocationTrialReport"];
+  runtimeAllocationForecastComparison: SerializedRuntimeResourceTrialDiag["runtimeAllocationForecastComparison"];
+  runtimeAllocationGovernanceComparison: SerializedRuntimeResourceTrialDiag["runtimeAllocationGovernanceComparison"];
+  runtimeAllocationTrialDriftSummary: SerializedRuntimeResourceTrialDiag["runtimeAllocationTrialDriftSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
+  const trialDiag = serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -164,6 +173,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ),
     ...governanceDiag,
     ...allocationDiag,
+    ...trialDiag,
   };
 }
 

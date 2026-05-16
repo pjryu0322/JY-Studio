@@ -1,5 +1,5 @@
 /**
- * H17–H21.5 — semantic·vocabulary·decision·forecast·resource·governance·allocation planning **planning 보고서** 일괄 산출.
+ * H17–H22 — semantic·vocabulary·decision·forecast·resource·governance·allocation·trial **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -24,6 +24,7 @@ import { buildRuntimeForecastPlanningReports } from "@/lib/harness/runtimeForeca
 import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
 import { buildRuntimeResourceGovernancePlanningReports } from "@/lib/harness/runtimeResourceGovernance/buildRuntimeResourceGovernancePlanningReports";
 import { buildRuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/buildRuntimeResourceAllocationPlanningReports";
+import { buildRuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/buildRuntimeResourceTrialPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -35,12 +36,13 @@ import { stabilizeRuntimeSemanticOrdering } from "./stabilizeRuntimeSemanticOrde
 import type {
   RuntimeSemanticPlanningReportsBeforeGovernance,
   RuntimeSemanticPlanningReportsBeforeAllocation,
+  RuntimeSemanticPlanningReportsBeforeTrial,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
-import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
+import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
 
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeAllocation &
-  RuntimeResourceAllocationPlanningReports;
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeTrial &
+  RuntimeResourceTrialPlanningReports;
 
 export type {
   RuntimeSemanticCorePlanningReports,
@@ -49,6 +51,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeResource,
   RuntimeSemanticPlanningReportsBeforeGovernance,
   RuntimeSemanticPlanningReportsBeforeAllocation,
+  RuntimeSemanticPlanningReportsBeforeTrial,
 } from "./runtimeSemanticPlanningReportStages";
 
 export function buildRuntimeSemanticPlanningReports(
@@ -123,8 +126,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...governanceReports,
   };
   const allocationReports = buildRuntimeResourceAllocationPlanningReports(semanticWithGovernance);
+  const semanticWithAllocation: RuntimeSemanticPlanningReportsBeforeTrial = {
+    ...semanticWithGovernance,
+    ...allocationReports,
+  };
+  const trialReports = buildRuntimeResourceTrialPlanningReports(semanticWithAllocation);
 
-  return { ...semanticWithGovernance, ...allocationReports };
+  return { ...semanticWithAllocation, ...trialReports };
 }
 
 export type {

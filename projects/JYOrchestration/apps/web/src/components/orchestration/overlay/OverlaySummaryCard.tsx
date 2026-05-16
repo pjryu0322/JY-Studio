@@ -173,6 +173,7 @@ export function OverlaySummaryCard({
     resourceVm: runtimePlanningResourceVm,
     resourceGovernanceVm: runtimePlanningResourceGovernanceVm,
     resourceAllocationVm: runtimePlanningResourceAllocationVm,
+    resourceTrialVm: runtimePlanningResourceTrialVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -286,6 +287,10 @@ export function OverlaySummaryCard({
     "runtime_planning_resource_allocation",
     d.runtimePlanningResourceAllocation || runtimePlanningResourceAllocationVm.showAttention
   );
+  const pResourceTrial = pol(
+    "runtime_planning_resource_trial",
+    d.runtimePlanningResourceTrial || runtimePlanningResourceTrialVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -299,7 +304,8 @@ export function OverlaySummaryCard({
     !pForecast.omitFromDom ||
     !pResource.omitFromDom ||
     !pResourceGov.omitFromDom ||
-    !pResourceAlloc.omitFromDom;
+    !pResourceAlloc.omitFromDom ||
+    !pResourceTrial.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -401,13 +407,15 @@ export function OverlaySummaryCard({
         !pForecast.omitFromDom ||
         !pResource.omitFromDom ||
         !pResourceGov.omitFromDom ||
-        !pResourceAlloc.omitFromDom) ? (
+        !pResourceAlloc.omitFromDom ||
+        !pResourceTrial.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
           resourceVm={runtimePlanningResourceVm}
           resourceGovernanceVm={runtimePlanningResourceGovernanceVm}
           resourceAllocationVm={runtimePlanningResourceAllocationVm}
+          resourceTrialVm={runtimePlanningResourceTrialVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -421,6 +429,7 @@ export function OverlaySummaryCard({
           resourceDefaultOpen={pResource.defaultOpen}
           resourceGovernanceDefaultOpen={pResourceGov.defaultOpen}
           resourceAllocationDefaultOpen={pResourceAlloc.defaultOpen}
+          resourceTrialDefaultOpen={pResourceTrial.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -443,22 +452,25 @@ export function OverlaySummaryCard({
               pForecast.defaultOpen ||
               pResource.defaultOpen ||
               pResourceGov.defaultOpen ||
-              pResourceAlloc.defaultOpen)
+              pResourceAlloc.defaultOpen ||
+              pResourceTrial.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
           showResource={!pResource.omitFromDom}
           showResourceGovernance={!pResourceGov.omitFromDom}
           showResourceAllocation={!pResourceAlloc.omitFromDom}
-          showForecast={!pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom}
-          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom}
+          showResourceTrial={!pResourceTrial.omitFromDom}
+          showForecast={!pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom}
+          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom}
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
@@ -467,7 +479,8 @@ export function OverlaySummaryCard({
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -477,7 +490,8 @@ export function OverlaySummaryCard({
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -488,7 +502,8 @@ export function OverlaySummaryCard({
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -500,7 +515,8 @@ export function OverlaySummaryCard({
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -513,7 +529,8 @@ export function OverlaySummaryCard({
             pForecast.omitFromDom &&
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom
+            pResourceAlloc.omitFromDom &&
+            pResourceTrial.omitFromDom
           }
         />
       ) : null}

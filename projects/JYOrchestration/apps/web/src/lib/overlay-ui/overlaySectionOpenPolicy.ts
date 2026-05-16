@@ -54,7 +54,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_forecast" ||
         input.section === "runtime_planning_resource" ||
         input.section === "runtime_planning_resource_governance" ||
-        input.section === "runtime_planning_resource_allocation")
+        input.section === "runtime_planning_resource_allocation" ||
+        input.section === "runtime_planning_resource_trial")
     ) {
       omitFromDom = true;
       defaultOpen = false;

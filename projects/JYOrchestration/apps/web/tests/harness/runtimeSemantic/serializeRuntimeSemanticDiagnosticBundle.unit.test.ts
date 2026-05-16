@@ -145,5 +145,20 @@ describe("H17 runtime semantic compression", () => {
     expect(allocElig.mode).toBe("runtime_allocation_eligibility_summary");
     expect(allocProv.mode).toBe("runtime_provider_slot_plan");
     expect(allocExec.mode).toBe("runtime_execution_slot_plan");
+    const trialReport = b.runtimeResourceAllocationTrialReport as {
+      mode?: string;
+      actualTrialExecutionEnabled?: boolean;
+    };
+    const trialFc = b.runtimeAllocationForecastComparison as { mode?: string; actualTrialExecutionEnabled?: boolean };
+    const trialGc = b.runtimeAllocationGovernanceComparison as { mode?: string; actualTrialExecutionEnabled?: boolean };
+    const trialDrift = b.runtimeAllocationTrialDriftSummary as { mode?: string; actualTrialExecutionEnabled?: boolean };
+    expect(trialReport.mode).toBe("runtime_resource_allocation_trial_report");
+    expect(trialReport.actualTrialExecutionEnabled).toBe(false);
+    expect(trialFc.mode).toBe("runtime_allocation_forecast_comparison");
+    expect(trialFc.actualTrialExecutionEnabled).toBe(false);
+    expect(trialGc.mode).toBe("runtime_allocation_governance_comparison");
+    expect(trialGc.actualTrialExecutionEnabled).toBe(false);
+    expect(trialDrift.mode).toBe("runtime_allocation_trial_drift_summary");
+    expect(trialDrift.actualTrialExecutionEnabled).toBe(false);
   });
 });

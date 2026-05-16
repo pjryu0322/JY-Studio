@@ -1,6 +1,8 @@
 /**
- * H17–H21.5 — semantic planning report **단계 타입**(빌더 간 순환 참조 방지).
+ * H17–H22 — semantic planning report **단계 타입**(빌더 간 순환 참조 방지).
  */
+
+import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 
 import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
 import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
@@ -57,3 +59,6 @@ export type RuntimeSemanticPlanningReportsBeforeGovernance = RuntimeSemanticPlan
 
 export type RuntimeSemanticPlanningReportsBeforeAllocation = RuntimeSemanticPlanningReportsBeforeGovernance &
   RuntimeResourceGovernancePlanningReports;
+
+export type RuntimeSemanticPlanningReportsBeforeTrial = RuntimeSemanticPlanningReportsBeforeAllocation &
+  RuntimeResourceAllocationPlanningReports;
