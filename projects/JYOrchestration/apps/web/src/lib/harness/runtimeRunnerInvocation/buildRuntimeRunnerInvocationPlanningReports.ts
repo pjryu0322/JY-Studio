@@ -1,13 +1,16 @@
 /**
- * H29 — runner invocation planning reports 일괄 산출(read-only).
+ * H29–H29.5 — runner invocation planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeRunnerInvocation } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { buildRuntimeRunnerInvocationFinalSafetyGate } from "./buildRuntimeRunnerInvocationFinalSafetyGate";
 import { buildRuntimeRunnerInvocationPolicy } from "./buildRuntimeRunnerInvocationPolicy";
 import { buildRuntimeRunnerInvocationReadinessChecklist } from "./buildRuntimeRunnerInvocationReadinessChecklist";
 import { buildRuntimeRunnerInvocationScope } from "./buildRuntimeRunnerInvocationScope";
 import { detectRuntimeRunnerInvocationBlockers } from "./detectRuntimeRunnerInvocationBlockers";
+import { detectRuntimeRunnerInvocationBoundaryViolations } from "./detectRuntimeRunnerInvocationBoundaryViolations";
+import { verifyRuntimeRunnerInvocationReadiness } from "./verifyRuntimeRunnerInvocationReadiness";
 import { evaluateRuntimeRunnerInvocationCandidate } from "./evaluateRuntimeRunnerInvocationCandidate";
 import { resolveRuntimeRunnerInvocationMode } from "./resolveRuntimeRunnerInvocationMode";
 import type {
@@ -76,11 +79,44 @@ export function buildRuntimeRunnerInvocationPlanningReports(
     ]),
   };
 
+  const runtimeRunnerInvocationBoundaryViolationReport = detectRuntimeRunnerInvocationBoundaryViolations({
+    summary: runtimeRunnerInvocationSummary,
+    scope: runtimeRunnerInvocationScope,
+    policy: runtimeRunnerInvocationPolicy,
+    checklist: runtimeRunnerInvocationReadinessChecklist,
+  });
+
+  const runtimeRunnerInvocationReadinessVerificationReport = verifyRuntimeRunnerInvocationReadiness({
+    summary: runtimeRunnerInvocationSummary,
+    scope: runtimeRunnerInvocationScope,
+    policy: runtimeRunnerInvocationPolicy,
+    checklist: runtimeRunnerInvocationReadinessChecklist,
+    blockerReport: runtimeRunnerInvocationBlockerReport,
+  });
+
+  const runtimeRunnerInvocationFinalSafetyGate = buildRuntimeRunnerInvocationFinalSafetyGate({
+    summary: runtimeRunnerInvocationSummary,
+    blockerReport: runtimeRunnerInvocationBlockerReport,
+    boundaryViolation: runtimeRunnerInvocationBoundaryViolationReport,
+    readinessVerification: runtimeRunnerInvocationReadinessVerificationReport,
+  });
+
+  const runtimeRunnerInvocationSummaryFinal: RuntimeRunnerInvocationSummary = {
+    ...runtimeRunnerInvocationSummary,
+    recommendations: mergeSortedUniqueKo([
+      ...runtimeRunnerInvocationSummary.recommendations,
+      ...runtimeRunnerInvocationFinalSafetyGate.recommendations,
+    ]),
+  };
+
   return {
-    runtimeRunnerInvocationSummary,
+    runtimeRunnerInvocationSummary: runtimeRunnerInvocationSummaryFinal,
     runtimeRunnerInvocationScope,
     runtimeRunnerInvocationPolicy,
     runtimeRunnerInvocationBlockerReport,
     runtimeRunnerInvocationReadinessChecklist,
+    runtimeRunnerInvocationFinalSafetyGate,
+    runtimeRunnerInvocationBoundaryViolationReport,
+    runtimeRunnerInvocationReadinessVerificationReport,
   };
 }

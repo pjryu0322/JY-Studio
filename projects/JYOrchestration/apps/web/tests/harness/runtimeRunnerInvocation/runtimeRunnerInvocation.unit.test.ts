@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/buildRuntimeRunnerInvocationPlanningReports";
+import { detectRuntimeRunnerInvocationBoundaryViolations } from "@/lib/harness/runtimeRunnerInvocation/detectRuntimeRunnerInvocationBoundaryViolations";
+import { verifyRuntimeRunnerInvocationReadiness } from "@/lib/harness/runtimeRunnerInvocation/verifyRuntimeRunnerInvocationReadiness";
 import { serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeRunnerInvocation/serializeRuntimeRunnerInvocationDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeRunnerInvocation } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -186,12 +188,145 @@ describe("H29 isolated dry-run runner invocation candidate", () => {
     expect(ser.runtimeRunnerInvocationReadinessChecklist.mode).toBe(
       "runtime_runner_invocation_readiness_checklist"
     );
+    expect(ser.runtimeRunnerInvocationFinalSafetyGate.mode).toBe("runtime_runner_invocation_final_safety_gate");
+    expect(ser.runtimeRunnerInvocationBoundaryViolationReport.mode).toBe(
+      "runtime_runner_invocation_boundary_violation_report"
+    );
+    expect(ser.runtimeRunnerInvocationReadinessVerificationReport.mode).toBe(
+      "runtime_runner_invocation_readiness_verification_report"
+    );
   });
 
   it("stripRuntimeRunnerInvocationLayer removes H29 fields only", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeRunnerInvocationLayer(semantic);
     expect("runtimeRunnerInvocationSummary" in stripped).toBe(false);
+    expect("runtimeRunnerInvocationFinalSafetyGate" in stripped).toBe(false);
     expect(stripped.runtimePilotSkeletonPreflightSummary.mode).toBe("runtime_pilot_skeleton_preflight_summary");
+  });
+});
+
+describe("H29.5 runner invocation stabilization & final safety gate", () => {
+  it("full semantic includes H29.5 reports", () => {
+    const semantic = buildFullSemantic();
+    expect(semantic.runtimeRunnerInvocationFinalSafetyGate.mode).toBe("runtime_runner_invocation_final_safety_gate");
+    expect(semantic.runtimeRunnerInvocationBoundaryViolationReport.mode).toBe(
+      "runtime_runner_invocation_boundary_violation_report"
+    );
+    expect(semantic.runtimeRunnerInvocationReadinessVerificationReport.mode).toBe(
+      "runtime_runner_invocation_readiness_verification_report"
+    );
+  });
+
+  it("ready candidate with verified readiness can yield final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeRunnerInvocationSummary.candidateStatus === "invocation_metadata_candidate" &&
+      semantic.runtimeRunnerInvocationSummary.invocationMode === "metadata_only" &&
+      semantic.runtimeRunnerInvocationReadinessVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimeRunnerInvocationBoundaryViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeRunnerInvocationBlockerReport.blockers.length === 0
+    ) {
+      expect(semantic.runtimeRunnerInvocationFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeRunnerInvocationFinalSafetyGate.h30EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("watch candidate yields final gate watch", () => {
+    const base = stripRuntimeRunnerInvocationLayer(buildFullSemantic());
+    const invocation = buildRunnerInvocationPlanning(
+      withH29UpstreamWatchBaseline({
+        runtimePilotSkeletonPreflightSummary: {
+          ...base.runtimePilotSkeletonPreflightSummary,
+          preflightReadiness: "watch",
+        },
+        runtimePilotRunnerContractVerificationReport: {
+          ...base.runtimePilotRunnerContractVerificationReport,
+          verificationStatus: "partial",
+        },
+        runtimePilotRunnerBoundaryViolationReport: {
+          ...base.runtimePilotRunnerBoundaryViolationReport,
+          actualFlagViolations: [],
+          wordingRiskFindings: ["wording risk"],
+        },
+        runtimePilotSkeletonBlockerReport: {
+          ...base.runtimePilotSkeletonBlockerReport,
+          blockers: [],
+        },
+      })
+    );
+    expect(invocation.runtimeRunnerInvocationSummary.candidateStatus).toBe("watch");
+    expect(invocation.runtimeRunnerInvocationFinalSafetyGate.finalGateStatus).toBe("watch");
+  });
+
+  it("blocked candidate yields final gate blocked", () => {
+    const base = stripRuntimeRunnerInvocationLayer(buildFullSemantic());
+    const invocation = buildRunnerInvocationPlanning({
+      runtimePilotSkeletonPreflightSummary: {
+        ...base.runtimePilotSkeletonPreflightSummary,
+        preflightReadiness: "blocked",
+      },
+    });
+    expect(invocation.runtimeRunnerInvocationSummary.candidateStatus).toBe("blocked");
+    expect(invocation.runtimeRunnerInvocationFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("boundary violation detects actualIsolatedRunnerInvocationEnabled true", () => {
+    const invocation = buildRunnerInvocationPlanning();
+    const badSummary = {
+      ...invocation.runtimeRunnerInvocationSummary,
+      actualIsolatedRunnerInvocationEnabled: true as unknown as false,
+    };
+    const violations = detectRuntimeRunnerInvocationBoundaryViolations({
+      summary: badSummary,
+      scope: invocation.runtimeRunnerInvocationScope,
+      policy: invocation.runtimeRunnerInvocationPolicy,
+      checklist: invocation.runtimeRunnerInvocationReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualIsolatedRunnerInvocationEnabled"))).toBe(
+      true
+    );
+  });
+
+  it("boundary violation detects actualDryRunRunnerInvocationEnabled true", () => {
+    const invocation = buildRunnerInvocationPlanning();
+    const badSummary = {
+      ...invocation.runtimeRunnerInvocationSummary,
+      actualDryRunRunnerInvocationEnabled: true as unknown as false,
+    };
+    const violations = detectRuntimeRunnerInvocationBoundaryViolations({
+      summary: badSummary,
+      scope: invocation.runtimeRunnerInvocationScope,
+      policy: invocation.runtimeRunnerInvocationPolicy,
+      checklist: invocation.runtimeRunnerInvocationReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualDryRunRunnerInvocationEnabled"))).toBe(true);
+  });
+
+  it("policy actualInvocationForbidden false is detected", () => {
+    const invocation = buildRunnerInvocationPlanning();
+    const badPolicy = {
+      ...invocation.runtimeRunnerInvocationPolicy,
+      actualInvocationForbidden: false as unknown as true,
+    };
+    const violations = detectRuntimeRunnerInvocationBoundaryViolations({
+      summary: invocation.runtimeRunnerInvocationSummary,
+      scope: invocation.runtimeRunnerInvocationScope,
+      policy: badPolicy,
+      checklist: invocation.runtimeRunnerInvocationReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualInvocationForbidden"))).toBe(true);
+  });
+
+  it("policy mode mismatch yields readiness partial or failed", () => {
+    const invocation = buildRunnerInvocationPlanning();
+    const verification = verifyRuntimeRunnerInvocationReadiness({
+      summary: { ...invocation.runtimeRunnerInvocationSummary, invocationMode: "metadata_only" },
+      scope: invocation.runtimeRunnerInvocationScope,
+      policy: { ...invocation.runtimeRunnerInvocationPolicy, invocationAllowedMode: "blocked" },
+      checklist: invocation.runtimeRunnerInvocationReadinessChecklist,
+      blockerReport: invocation.runtimeRunnerInvocationBlockerReport,
+    });
+    expect(["partial", "failed"]).toContain(verification.verificationStatus);
   });
 });

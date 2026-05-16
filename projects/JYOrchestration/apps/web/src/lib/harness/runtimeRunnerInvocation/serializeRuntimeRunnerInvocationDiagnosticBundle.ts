@@ -1,12 +1,15 @@
 /**
- * H29 — runner invocation 진단 **직렬화 전용**(report 재빌드 없음).
+ * H29–H29.5 — runner invocation 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
   RuntimeRunnerInvocationBlockerReport,
+  RuntimeRunnerInvocationBoundaryViolationReport,
+  RuntimeRunnerInvocationFinalSafetyGate,
   RuntimeRunnerInvocationPolicy,
   RuntimeRunnerInvocationReadinessChecklist,
+  RuntimeRunnerInvocationReadinessVerificationReport,
   RuntimeRunnerInvocationScope,
   RuntimeRunnerInvocationSummary,
 } from "./runtimeRunnerInvocationTypes";
@@ -127,6 +130,58 @@ function serializeChecklist(c: RuntimeRunnerInvocationReadinessChecklist): Reado
   };
 }
 
+function serializeFinalGate(g: RuntimeRunnerInvocationFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: g.actualIsolatedRunnerInvocationEnabled,
+    actualIsolatedRunnerExecutionEnabled: g.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerInvocationEnabled: g.actualDryRunRunnerInvocationEnabled,
+    actualDryRunRunnerExecutionEnabled: g.actualDryRunRunnerExecutionEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h30EntryReadiness: g.h30EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
+function serializeBoundary(
+  b: RuntimeRunnerInvocationBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: b.mode,
+    actualRuntimeOrchestrationEnabled: b.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: b.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: b.actualIsolatedRunnerInvocationEnabled,
+    actualDryRunRunnerInvocationEnabled: b.actualDryRunRunnerInvocationEnabled,
+    actualFlagViolations: sortKo(b.actualFlagViolations),
+    wordingRiskFindings: sortKo(b.wordingRiskFindings),
+    recommendations: sortKo(b.recommendations),
+  };
+}
+
+function serializeVerification(
+  v: RuntimeRunnerInvocationReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: v.actualIsolatedRunnerInvocationEnabled,
+    actualDryRunRunnerInvocationEnabled: v.actualDryRunRunnerInvocationEnabled,
+    verificationStatus: v.verificationStatus,
+    findings: sortKo(v.findings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
 export function serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -135,6 +190,9 @@ export function serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticRepo
   runtimeRunnerInvocationPolicy: ReturnType<typeof serializePolicy>;
   runtimeRunnerInvocationBlockerReport: ReturnType<typeof serializeBlockers>;
   runtimeRunnerInvocationReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeRunnerInvocationFinalSafetyGate: ReturnType<typeof serializeFinalGate>;
+  runtimeRunnerInvocationBoundaryViolationReport: ReturnType<typeof serializeBoundary>;
+  runtimeRunnerInvocationReadinessVerificationReport: ReturnType<typeof serializeVerification>;
 }> {
   return {
     runtimeRunnerInvocationSummary: serializeSummary(reports.runtimeRunnerInvocationSummary),
@@ -143,6 +201,13 @@ export function serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticRepo
     runtimeRunnerInvocationBlockerReport: serializeBlockers(reports.runtimeRunnerInvocationBlockerReport),
     runtimeRunnerInvocationReadinessChecklist: serializeChecklist(
       reports.runtimeRunnerInvocationReadinessChecklist
+    ),
+    runtimeRunnerInvocationFinalSafetyGate: serializeFinalGate(reports.runtimeRunnerInvocationFinalSafetyGate),
+    runtimeRunnerInvocationBoundaryViolationReport: serializeBoundary(
+      reports.runtimeRunnerInvocationBoundaryViolationReport
+    ),
+    runtimeRunnerInvocationReadinessVerificationReport: serializeVerification(
+      reports.runtimeRunnerInvocationReadinessVerificationReport
     ),
   };
 }

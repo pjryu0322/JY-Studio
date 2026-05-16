@@ -1,12 +1,15 @@
 /**
- * H29 — Overlay runtime **runner invocation candidate** 섹션 VM.
+ * H29 / H29.5 — Overlay runtime **runner invocation candidate** 섹션 VM.
  */
 
+import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import {
   RUNTIME_RUNNER_INVOCATION_CANDIDATE_STATUS_LABEL_KO,
+  RUNTIME_RUNNER_INVOCATION_FINAL_GATE_STATUS_LABEL_KO,
   RUNTIME_RUNNER_INVOCATION_MODE_LABEL_KO,
   RUNTIME_RUNNER_INVOCATION_SECTION_DISCLAIMER_KO,
+  runtimeRunnerInvocationReadinessVerificationStatusKo,
 } from "@/lib/harness/runtimeRunnerInvocation/runtimeRunnerInvocationLabelsKo";
 
 export type OverlayRuntimeRunnerInvocationSectionVM = Readonly<{
@@ -15,14 +18,23 @@ export type OverlayRuntimeRunnerInvocationSectionVM = Readonly<{
   showDetailSections: boolean;
   candidateStatusKo: string;
   invocationModeKo: string;
+  finalGateStatusKo: string;
+  h30EntryReadinessKo: string;
+  readinessVerificationStatusKo: string;
   topInvocationBlocker: string | null;
+  topBoundaryViolation: string | null;
+  topViolationOrBlocker: string | null;
   topForbiddenInvocationOperation: string | null;
+  topReadinessFinding: string | null;
   invocationPolicySummaryKo: string;
   scopeSummaryRows: readonly string[];
   forbiddenInvocationOperationRows: readonly string[];
   readinessChecklistRows: readonly string[];
   missingChecklistRows: readonly string[];
   invocationBlockerRows: readonly string[];
+  boundaryViolationRows: readonly string[];
+  readinessFindingRows: readonly string[];
+  finalGateChecklistRows: readonly string[];
   recommendationRows: readonly string[];
 }>;
 
@@ -36,6 +48,9 @@ export function buildOverlayRuntimeRunnerInvocationSectionVmFromReports(
   const policy = reports.runtimeRunnerInvocationPolicy;
   const blockers = reports.runtimeRunnerInvocationBlockerReport;
   const checklist = reports.runtimeRunnerInvocationReadinessChecklist;
+  const gate = reports.runtimeRunnerInvocationFinalSafetyGate;
+  const boundary = reports.runtimeRunnerInvocationBoundaryViolationReport;
+  const verification = reports.runtimeRunnerInvocationReadinessVerificationReport;
 
   const scopeSummaryRows = compactAndNarrowUi
     ? [scope.candidateSourceLayer].slice(0, 1)
@@ -56,10 +71,23 @@ export function buildOverlayRuntimeRunnerInvocationSectionVmFromReports(
     : [...checklist.missingRows];
   const invocationBlockerRows = compactAndNarrowUi
     ? [...blockers.blockers.slice(0, 1), ...s.invocationBlockers.slice(0, 1)]
-    : [...blockers.blockers, ...s.invocationBlockers];
-  const recommendationRows = compactAndNarrowUi ? s.recommendations.slice(0, 1) : [...s.recommendations];
+    : mergeSortedUniqueKo([...blockers.blockers, ...s.invocationBlockers]);
+  const boundaryViolationRows = compactAndNarrowUi
+    ? [...boundary.actualFlagViolations.slice(0, 1), ...boundary.wordingRiskFindings.slice(0, 1)]
+    : [...boundary.actualFlagViolations, ...boundary.wordingRiskFindings];
+  const readinessFindingRows = compactAndNarrowUi
+    ? verification.findings.slice(0, 1)
+    : [...verification.findings];
+  const finalGateChecklistRows = compactAndNarrowUi ? gate.checklist.slice(0, 1) : [...gate.checklist];
+  const recommendationRows = compactAndNarrowUi
+    ? mergeSortedUniqueKo([...s.recommendations, ...gate.recommendations]).slice(0, 1)
+    : mergeSortedUniqueKo([...s.recommendations, ...gate.recommendations]);
 
-  const topInvocationBlocker = blockers.blockers[0] ?? s.invocationBlockers[0] ?? checklist.blockers[0] ?? null;
+  const topBoundaryViolation =
+    boundary.actualFlagViolations[0] ?? boundary.wordingRiskFindings[0] ?? null;
+  const topInvocationBlocker = blockers.blockers[0] ?? s.invocationBlockers[0] ?? gate.blockers[0] ?? null;
+  const topReadinessFinding = verification.findings[0] ?? null;
+  const topViolationOrBlocker = topBoundaryViolation ?? topInvocationBlocker ?? topReadinessFinding;
   const topForbiddenInvocationOperation = scope.forbiddenInvocationOperations[0] ?? null;
 
   const invocationPolicySummaryKo = [
@@ -74,20 +102,34 @@ export function buildOverlayRuntimeRunnerInvocationSectionVmFromReports(
     sectionDisclaimer: RUNTIME_RUNNER_INVOCATION_SECTION_DISCLAIMER_KO,
     showAttention:
       s.candidateStatus !== "invocation_metadata_candidate" ||
+      gate.finalGateStatus !== "ready_metadata" ||
       s.invocationMode === "blocked" ||
       blockers.blockers.length > 0 ||
-      checklist.missingRows.length > 0,
+      checklist.missingRows.length > 0 ||
+      boundary.actualFlagViolations.length > 0 ||
+      verification.verificationStatus !== "verified_metadata",
     showDetailSections: !compactAndNarrowUi,
     candidateStatusKo: RUNTIME_RUNNER_INVOCATION_CANDIDATE_STATUS_LABEL_KO[s.candidateStatus],
     invocationModeKo: RUNTIME_RUNNER_INVOCATION_MODE_LABEL_KO[s.invocationMode],
+    finalGateStatusKo: RUNTIME_RUNNER_INVOCATION_FINAL_GATE_STATUS_LABEL_KO[gate.finalGateStatus],
+    h30EntryReadinessKo: RUNTIME_RUNNER_INVOCATION_FINAL_GATE_STATUS_LABEL_KO[gate.h30EntryReadiness],
+    readinessVerificationStatusKo: runtimeRunnerInvocationReadinessVerificationStatusKo(
+      verification.verificationStatus
+    ),
     topInvocationBlocker,
+    topBoundaryViolation,
+    topViolationOrBlocker,
     topForbiddenInvocationOperation,
+    topReadinessFinding,
     invocationPolicySummaryKo,
     scopeSummaryRows,
     forbiddenInvocationOperationRows,
     readinessChecklistRows,
     missingChecklistRows,
     invocationBlockerRows,
+    boundaryViolationRows,
+    readinessFindingRows,
+    finalGateChecklistRows,
     recommendationRows,
   };
 }

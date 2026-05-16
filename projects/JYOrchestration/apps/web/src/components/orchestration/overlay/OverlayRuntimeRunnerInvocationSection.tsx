@@ -17,17 +17,20 @@ export function OverlayRuntimeRunnerInvocationSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Runner Invocation Candidate (H29)"
+      title="Runtime Runner Invocation Candidate (H29.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Invocation candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Invocation mode" value={vm.invocationModeKo} />
-        {vm.topInvocationBlocker ? (
-          <OverlayUiKeyValueRow label="Top invocation blocker" value={vm.topInvocationBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H30 entry readiness" value={vm.h30EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topInvocationBlocker && vm.topForbiddenInvocationOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenInvocationOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden operation" value={vm.topForbiddenInvocationOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -111,6 +114,63 @@ export function OverlayRuntimeRunnerInvocationSection({
             ) : (
               <OverlayUiEmptyHint message={RUNTIME_RUNNER_INVOCATION_EMPTY_HINT_KO.missingRow} />
             )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Boundary violations</div>
+            {vm.boundaryViolationRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.boundaryViolationRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_RUNNER_INVOCATION_EMPTY_HINT_KO.boundaryViolation} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Readiness verification</div>
+            {vm.readinessFindingRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.readinessFindingRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_RUNNER_INVOCATION_EMPTY_HINT_KO.readinessFinding} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Final gate checklist</div>
+            {vm.finalGateChecklistRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.finalGateChecklistRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_RUNNER_INVOCATION_EMPTY_HINT_KO.finalGateChecklist} />
+            )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Invocation blockers</div>
             {vm.invocationBlockerRows.length > 0 ? (
               <ul
@@ -151,9 +211,7 @@ export function OverlayRuntimeRunnerInvocationSection({
             )}
           </>
         ) : null}
-        <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>
-          {RUNTIME_RUNNER_INVOCATION_OVERLAY_FOOTER_KO}
-        </div>
+        <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>{RUNTIME_RUNNER_INVOCATION_OVERLAY_FOOTER_KO}</div>
       </div>
     </OverlayUiSection>
   );

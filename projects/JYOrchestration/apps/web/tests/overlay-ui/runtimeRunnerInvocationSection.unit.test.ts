@@ -22,12 +22,16 @@ describe("buildOverlayRuntimeRunnerInvocationSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status and invocation mode", () => {
+  it("compact mode displays candidate status, invocation mode, and final gate", () => {
     const vm = buildOverlayRuntimeRunnerInvocationSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.invocationModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(
-      vm.topInvocationBlocker !== null || vm.topForbiddenInvocationOperation !== null || vm.showAttention
+      vm.topViolationOrBlocker !== null ||
+        vm.topInvocationBlocker !== null ||
+        vm.topForbiddenInvocationOperation !== null ||
+        vm.showAttention
     ).toBe(true);
   });
 });

@@ -201,6 +201,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeRunnerInvocationPolicy: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationPolicy"];
   runtimeRunnerInvocationBlockerReport: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationBlockerReport"];
   runtimeRunnerInvocationReadinessChecklist: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationReadinessChecklist"];
+  runtimeRunnerInvocationFinalSafetyGate: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationFinalSafetyGate"];
+  runtimeRunnerInvocationBoundaryViolationReport: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationBoundaryViolationReport"];
+  runtimeRunnerInvocationReadinessVerificationReport: SerializedRuntimeRunnerInvocationDiag["runtimeRunnerInvocationReadinessVerificationReport"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);

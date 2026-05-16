@@ -32,6 +32,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
   | "runtimeRunnerInvocationPolicy"
   | "runtimeRunnerInvocationBlockerReport"
   | "runtimeRunnerInvocationReadinessChecklist"
+  | "runtimeRunnerInvocationFinalSafetyGate"
+  | "runtimeRunnerInvocationBoundaryViolationReport"
+  | "runtimeRunnerInvocationReadinessVerificationReport"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -49,6 +52,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
     runtimeRunnerInvocationPolicy: _ri3,
     runtimeRunnerInvocationBlockerReport: _ri4,
     runtimeRunnerInvocationReadinessChecklist: _ri5,
+    runtimeRunnerInvocationFinalSafetyGate: _ri6,
+    runtimeRunnerInvocationBoundaryViolationReport: _ri7,
+    runtimeRunnerInvocationReadinessVerificationReport: _ri8,
     ...rest
   } = semantic;
   return rest;
@@ -63,6 +69,9 @@ function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>
   | "runtimeRunnerInvocationPolicy"
   | "runtimeRunnerInvocationBlockerReport"
   | "runtimeRunnerInvocationReadinessChecklist"
+  | "runtimeRunnerInvocationFinalSafetyGate"
+  | "runtimeRunnerInvocationBoundaryViolationReport"
+  | "runtimeRunnerInvocationReadinessVerificationReport"
 > {
   const {
     runtimeRunnerInvocationSummary: _ri1,
@@ -70,6 +79,9 @@ function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>
     runtimeRunnerInvocationPolicy: _ri3,
     runtimeRunnerInvocationBlockerReport: _ri4,
     runtimeRunnerInvocationReadinessChecklist: _ri5,
+    runtimeRunnerInvocationFinalSafetyGate: _ri6,
+    runtimeRunnerInvocationBoundaryViolationReport: _ri7,
+    runtimeRunnerInvocationReadinessVerificationReport: _ri8,
     ...rest
   } = semantic;
   return rest;
