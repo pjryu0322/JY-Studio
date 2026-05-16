@@ -9,6 +9,7 @@ import type { RuntimeControlledPilotPlanningReports } from "@/lib/harness/runtim
 import type { RuntimePilotContractPlanningReports } from "@/lib/harness/runtimePilotContract/runtimePilotContractTypes";
 import type { RuntimeNoopAdapterPlanningReports } from "@/lib/harness/runtimeNoopAdapter/runtimeNoopAdapterTypes";
 import type { RuntimeAdapterSandboxPlanningReports } from "@/lib/harness/runtimeAdapterSandbox/runtimeAdapterSandboxTypes";
+import type { RuntimePilotActivationPlanningReports } from "@/lib/harness/runtimePilotActivation/runtimePilotActivationTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -101,5 +102,9 @@ export type RuntimeSemanticPlanningReportsBeforeAdapterSandbox = RuntimeSemantic
   RuntimeNoopAdapterPlanningReports;
 
 /** H26 포함 — adapter sandbox readiness·envelope까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeAdapterSandbox &
+export type RuntimeSemanticPlanningReportsBeforePilotActivation = RuntimeSemanticPlanningReportsBeforeAdapterSandbox &
   RuntimeAdapterSandboxPlanningReports;
+
+/** H27 포함 — pilot activation candidate metadata까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforePilotActivation &
+  RuntimePilotActivationPlanningReports;

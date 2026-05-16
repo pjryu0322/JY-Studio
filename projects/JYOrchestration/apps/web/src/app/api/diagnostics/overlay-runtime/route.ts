@@ -395,6 +395,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningNoopRuntimeAdapterStabilizationEnabled: true,
     harnessRuntimePlanningRuntimeAdapterSandboxEnabled: true,
     harnessRuntimePlanningRuntimeAdapterSandboxStabilizationEnabled: true,
+    harnessRuntimePlanningRuntimePilotActivationCandidateEnabled: true,
   };
 
   const overlayMaturity = {
@@ -446,6 +447,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningNoopRuntimeAdapterStabilizationLayer: true,
     harnessRuntimePlanningRuntimeAdapterSandboxLayer: true,
     harnessRuntimePlanningRuntimeAdapterSandboxStabilizationLayer: true,
+    harnessRuntimePlanningRuntimePilotActivationCandidateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -702,6 +704,11 @@ export async function GET(request: NextRequest) {
       runtimeAdapterSandboxBoundaryViolationReport:
         runtimeSemanticDiag.runtimeAdapterSandboxBoundaryViolationReport,
       runtimeAdapterSandboxPreflightSummary: runtimeSemanticDiag.runtimeAdapterSandboxPreflightSummary,
+      runtimePilotActivationSummary: runtimeSemanticDiag.runtimePilotActivationSummary,
+      runtimePilotActivationScope: runtimeSemanticDiag.runtimePilotActivationScope,
+      runtimePilotActivationPolicy: runtimeSemanticDiag.runtimePilotActivationPolicy,
+      runtimePilotActivationBlockerReport: runtimeSemanticDiag.runtimePilotActivationBlockerReport,
+      runtimePilotActivationReadinessChecklist: runtimeSemanticDiag.runtimePilotActivationReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

@@ -52,6 +52,7 @@ import { serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports } f
 import { serializeRuntimePilotContractDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotContract/serializeRuntimePilotContractDiagnosticBundle";
 import { serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopAdapter/serializeRuntimeNoopAdapterDiagnosticBundle";
 import { serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeAdapterSandbox/serializeRuntimeAdapterSandboxDiagnosticBundle";
+import { serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotActivation/serializeRuntimePilotActivationDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -82,6 +83,9 @@ type SerializedRuntimeNoopAdapterDiag = ReturnType<
 >;
 type SerializedRuntimeAdapterSandboxDiag = ReturnType<
   typeof serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimePilotActivationDiag = ReturnType<
+  typeof serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -166,6 +170,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeAdapterSandboxEnvelopeVerificationReport: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxEnvelopeVerificationReport"];
   runtimeAdapterSandboxBoundaryViolationReport: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxBoundaryViolationReport"];
   runtimeAdapterSandboxPreflightSummary: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxPreflightSummary"];
+  runtimePilotActivationSummary: SerializedRuntimePilotActivationDiag["runtimePilotActivationSummary"];
+  runtimePilotActivationScope: SerializedRuntimePilotActivationDiag["runtimePilotActivationScope"];
+  runtimePilotActivationPolicy: SerializedRuntimePilotActivationDiag["runtimePilotActivationPolicy"];
+  runtimePilotActivationBlockerReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationBlockerReport"];
+  runtimePilotActivationReadinessChecklist: SerializedRuntimePilotActivationDiag["runtimePilotActivationReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -177,6 +186,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const pilotContractDiag = serializeRuntimePilotContractDiagnosticBundleFromSemanticReports(reports);
   const noopAdapterDiag = serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(reports);
   const adapterSandboxDiag = serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports(reports);
+  const pilotActivationDiag = serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -253,6 +263,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...pilotContractDiag,
     ...noopAdapterDiag,
     ...adapterSandboxDiag,
+    ...pilotActivationDiag,
   };
 }
 

@@ -181,6 +181,7 @@ export function OverlaySummaryCard({
     runtimePilotContractVm: runtimePlanningPilotContractVm,
     runtimeNoopAdapterVm: runtimePlanningNoopAdapterVm,
     runtimeAdapterSandboxVm: runtimePlanningAdapterSandboxVm,
+    runtimePilotActivationVm: runtimePlanningPilotActivationVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -326,8 +327,12 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_adapter_sandbox",
     d.runtimePlanningRuntimeAdapterSandbox || runtimePlanningAdapterSandboxVm.showAttention
   );
-  /** H20.5 resource → H26 adapter sandbox까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
-  const resourceThroughAdapterSandboxOmitted =
+  const pPilotActivation = pol(
+    "runtime_planning_runtime_pilot_activation",
+    d.runtimePlanningRuntimePilotActivation || runtimePlanningPilotActivationVm.showAttention
+  );
+  /** H20.5 resource → H27 pilot activation까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
+  const resourceThroughPilotActivationOmitted =
     pResource.omitFromDom &&
     pResourceGov.omitFromDom &&
     pResourceAlloc.omitFromDom &&
@@ -338,7 +343,8 @@ export function OverlaySummaryCard({
     pControlledPilot.omitFromDom &&
     pPilotContract.omitFromDom &&
     pNoopAdapter.omitFromDom &&
-    pAdapterSandbox.omitFromDom;
+    pAdapterSandbox.omitFromDom &&
+    pPilotActivation.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -463,6 +469,7 @@ export function OverlaySummaryCard({
           runtimePilotContractVm={runtimePlanningPilotContractVm}
           runtimeNoopAdapterVm={runtimePlanningNoopAdapterVm}
           runtimeAdapterSandboxVm={runtimePlanningAdapterSandboxVm}
+          runtimePilotActivationVm={runtimePlanningPilotActivationVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -484,6 +491,7 @@ export function OverlaySummaryCard({
           pilotContractDefaultOpen={pPilotContract.defaultOpen}
           noopAdapterDefaultOpen={pNoopAdapter.defaultOpen}
           adapterSandboxDefaultOpen={pAdapterSandbox.defaultOpen}
+          pilotActivationDefaultOpen={pPilotActivation.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -526,22 +534,24 @@ export function OverlaySummaryCard({
           showRuntimeControlledPilot={!pControlledPilot.omitFromDom}
           showRuntimePilotContract={!pPilotContract.omitFromDom}
           showRuntimeNoopAdapter={!pNoopAdapter.omitFromDom}
-          showForecast={!pForecast.omitFromDom && resourceThroughAdapterSandboxOmitted}
+          showRuntimeAdapterSandbox={!pAdapterSandbox.omitFromDom}
+          showRuntimePilotActivation={!pPilotActivation.omitFromDom}
+          showForecast={!pForecast.omitFromDom && resourceThroughPilotActivationOmitted}
           showDecision={
-            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughAdapterSandboxOmitted
+            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughPilotActivationOmitted
           }
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -549,7 +559,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -558,7 +568,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -568,7 +578,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -579,7 +589,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughAdapterSandboxOmitted
+            resourceThroughPilotActivationOmitted
           }
         />
       ) : null}

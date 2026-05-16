@@ -6,6 +6,7 @@ import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemant
 import type {
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
+  RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotContract,
 } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 
@@ -27,6 +28,14 @@ export function stripRuntimeNoopAdapterLayer(
     runtimeAdapterSandboxPolicy: _k,
     runtimeAdapterSandboxResultMetadata: _l,
     runtimeAdapterSandboxBlockerReport: _m,
+    runtimeAdapterSandboxEnvelopeVerificationReport: _m2,
+    runtimeAdapterSandboxBoundaryViolationReport: _m3,
+    runtimeAdapterSandboxPreflightSummary: _m4,
+    runtimePilotActivationSummary: _n,
+    runtimePilotActivationScope: _o,
+    runtimePilotActivationPolicy: _p,
+    runtimePilotActivationBlockerReport: _q,
+    runtimePilotActivationReadinessChecklist: _r,
     ...before
   } = semantic;
   return before;
@@ -43,6 +52,29 @@ export function stripRuntimeAdapterSandboxLayer(
     runtimeAdapterSandboxPolicy: _d,
     runtimeAdapterSandboxResultMetadata: _e,
     runtimeAdapterSandboxBlockerReport: _f,
+    runtimeAdapterSandboxEnvelopeVerificationReport: _g,
+    runtimeAdapterSandboxBoundaryViolationReport: _h,
+    runtimeAdapterSandboxPreflightSummary: _i,
+    runtimePilotActivationSummary: _j,
+    runtimePilotActivationScope: _k,
+    runtimePilotActivationPolicy: _l,
+    runtimePilotActivationBlockerReport: _m,
+    runtimePilotActivationReadinessChecklist: _n,
+    ...before
+  } = semantic;
+  return before;
+}
+
+/** H27 pilot activation reports 제거 — adapter sandbox 이하 레이어 단독 테스트용. */
+export function stripRuntimePilotActivationLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforePilotActivation {
+  const {
+    runtimePilotActivationSummary: _a,
+    runtimePilotActivationScope: _b,
+    runtimePilotActivationPolicy: _c,
+    runtimePilotActivationBlockerReport: _d,
+    runtimePilotActivationReadinessChecklist: _e,
     ...before
   } = semantic;
   return before;
