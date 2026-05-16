@@ -383,6 +383,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningDecisionIntelligenceEnabled: true,
     harnessRuntimePlanningForecastingEnabled: true,
     harnessRuntimePlanningResourceIntelligenceEnabled: true,
+    harnessRuntimePlanningResourceGovernanceEnabled: true,
   };
 
   const overlayMaturity = {
@@ -422,6 +423,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningDecisionIntelligenceLayer: true,
     harnessRuntimePlanningForecastingLayer: true,
     harnessRuntimePlanningResourceIntelligenceLayer: true,
+    harnessRuntimePlanningResourceGovernanceLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -628,6 +630,9 @@ export async function GET(request: NextRequest) {
       runtimeResourceCapacity: runtimeSemanticDiag.runtimeResourceCapacity,
       runtimeMemberWorkload: runtimeSemanticDiag.runtimeMemberWorkload,
       runtimeResourceExplainability: runtimeSemanticDiag.runtimeResourceExplainability,
+      runtimeResourceGovernanceSummary: runtimeSemanticDiag.runtimeResourceGovernanceSummary,
+      runtimeResourcePolicyFindings: runtimeSemanticDiag.runtimeResourcePolicyFindings,
+      runtimeResourceControlBoundary: runtimeSemanticDiag.runtimeResourceControlBoundary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

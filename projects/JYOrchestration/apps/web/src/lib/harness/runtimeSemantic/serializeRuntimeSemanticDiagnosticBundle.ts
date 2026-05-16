@@ -1,5 +1,5 @@
 /**
- * H17–H20.5 — 진단 API용 runtime semantic·decision·forecast·resource wire 묶음.
+ * H17–H21 — 진단 API용 runtime semantic·decision·forecast·resource·governance wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -42,6 +42,11 @@ import {
 } from "@/lib/harness/runtimeResource/forecastRuntimeResourceCapacity";
 import { serializeRuntimeMemberWorkloadForDiagnostic } from "@/lib/harness/runtimeResource/evaluateRuntimeMemberWorkload";
 import { serializeRuntimeResourceExplainabilityForDiagnostic } from "@/lib/harness/runtimeResource/buildRuntimeResourceExplainability";
+import { serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceGovernance/serializeRuntimeResourceGovernanceDiagnosticBundle";
+
+type SerializedRuntimeResourceGovernanceDiag = ReturnType<
+  typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
+>;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -77,7 +82,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeResourceCapacity: ReturnType<typeof serializeRuntimeResourceCapacityForDiagnostic>;
   runtimeMemberWorkload: ReturnType<typeof serializeRuntimeMemberWorkloadForDiagnostic>;
   runtimeResourceExplainability: ReturnType<typeof serializeRuntimeResourceExplainabilityForDiagnostic>;
+  runtimeResourceGovernanceSummary: SerializedRuntimeResourceGovernanceDiag["runtimeResourceGovernanceSummary"];
+  runtimeResourcePolicyFindings: SerializedRuntimeResourceGovernanceDiag["runtimeResourcePolicyFindings"];
+  runtimeResourceControlBoundary: SerializedRuntimeResourceGovernanceDiag["runtimeResourceControlBoundary"];
 }> {
+  const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -144,6 +153,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     runtimeResourceExplainability: serializeRuntimeResourceExplainabilityForDiagnostic(
       reports.runtimeResourceExplainability
     ),
+    ...governanceDiag,
   };
 }
 

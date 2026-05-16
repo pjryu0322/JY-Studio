@@ -7,6 +7,7 @@ import type { OverlayRuntimeSemanticGraphSectionVM } from "@/lib/overlay-ui/over
 import type { OverlayRuntimeSemanticNarrativeSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticNarrativeAdapter";
 import type { OverlayRuntimeDecisionSectionVM } from "@/lib/overlay-ui/overlayRuntimeDecisionAdapter";
 import type { OverlayRuntimeForecastSectionVM } from "@/lib/overlay-ui/overlayRuntimeForecastAdapter";
+import type { OverlayRuntimeResourceGovernanceSectionVM } from "@/lib/overlay-ui/overlayRuntimeResourceGovernanceAdapter";
 import type { OverlayRuntimeResourceSectionVM } from "@/lib/overlay-ui/overlayRuntimeResourceAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
@@ -19,15 +20,17 @@ import { OverlayRuntimeSemanticNarrativeSection } from "./OverlayRuntimeSemantic
 import { OverlayRuntimeDecisionSection } from "./OverlayRuntimeDecisionSection";
 import { OverlayRuntimeForecastSection } from "./OverlayRuntimeForecastSection";
 import { OverlayRuntimeResourceSection } from "./OverlayRuntimeResourceSection";
+import { OverlayRuntimeResourceGovernanceSection } from "./OverlayRuntimeResourceGovernanceSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H20.5 — dependency·criticality·resource·forecast·decision·vocabulary·narrative·graph·semantic·reasoning·traceability 섹션을 한 그룹으로 접어 nested collapse 감소. */
+/** H15–H21 — dependency·criticality·resource·governance·forecast·decision·… */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
   resourceVm,
+  resourceGovernanceVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -39,6 +42,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyDefaultOpen,
   criticalityDefaultOpen,
   resourceDefaultOpen,
+  resourceGovernanceDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -51,6 +55,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showDependency = true,
   showCriticality = true,
   showResource = true,
+  showResourceGovernance = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -63,6 +68,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly dependencyVm: OverlayRuntimeDependencyGraphSectionVM;
   readonly criticalityVm: OverlayRuntimeCriticalitySectionVM;
   readonly resourceVm: OverlayRuntimeResourceSectionVM;
+  readonly resourceGovernanceVm: OverlayRuntimeResourceGovernanceSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -74,6 +80,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly dependencyDefaultOpen?: boolean;
   readonly criticalityDefaultOpen?: boolean;
   readonly resourceDefaultOpen?: boolean;
+  readonly resourceGovernanceDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -86,6 +93,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showDependency?: boolean;
   readonly showCriticality?: boolean;
   readonly showResource?: boolean;
+  readonly showResourceGovernance?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -107,10 +115,16 @@ export function OverlayRuntimeDependencyCriticalityGroup({
           listStyle: "none",
         }}
       >
-        Planning observability (H15–H20.5, read-only)
+        Planning observability (H15–H21, read-only)
       </summary>
       {showResource ? (
         <OverlayRuntimeResourceSection vm={resourceVm} defaultOpen={resourceDefaultOpen} />
+      ) : null}
+      {showResourceGovernance ? (
+        <OverlayRuntimeResourceGovernanceSection
+          vm={resourceGovernanceVm}
+          defaultOpen={resourceGovernanceDefaultOpen}
+        />
       ) : null}
       {showForecast ? (
         <OverlayRuntimeForecastSection vm={forecastVm} defaultOpen={forecastDefaultOpen} />

@@ -42,7 +42,7 @@ describe("H17 runtime semantic compression", () => {
     expect(compressed.compressedLines.length).toBeGreaterThan(0);
   });
 
-  it("serializes twenty-nine H17–H20.5 diagnostic fields", () => {
+  it("serializes thirty-two H17–H21 diagnostic fields", () => {
     const baseline = evaluateHarnessMaturityBaseline({
       overlayExtract: null,
       harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
@@ -125,10 +125,16 @@ describe("H17 runtime semantic compression", () => {
     const resourceCapacity = b.runtimeResourceCapacity as { mode?: string };
     const memberWorkload = b.runtimeMemberWorkload as { mode?: string };
     const resourceExplainability = b.runtimeResourceExplainability as { mode?: string };
+    const govSummary = b.runtimeResourceGovernanceSummary as { mode?: string };
+    const govFindings = b.runtimeResourcePolicyFindings as unknown[];
+    const govBoundary = b.runtimeResourceControlBoundary as { mode?: string };
     expect(resourceSummary.mode).toBe("runtime_resource_summary");
     expect(resourceForecast.mode).toBe("runtime_resource_forecast");
     expect(resourceCapacity.mode).toBe("runtime_resource_capacity");
     expect(memberWorkload.mode).toBe("runtime_member_workload");
     expect(resourceExplainability.mode).toBe("runtime_resource_explainability");
+    expect(govSummary.mode).toBe("runtime_resource_governance_summary");
+    expect(Array.isArray(govFindings)).toBe(true);
+    expect(govBoundary.mode).toBe("runtime_resource_control_boundary");
   });
 });

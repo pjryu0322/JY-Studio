@@ -1,5 +1,5 @@
 /**
- * H17–H20.5 — semantic·vocabulary·decision·forecast·resource **planning 보고서** 일괄 산출.
+ * H17–H21 — semantic·vocabulary·decision·forecast·resource·governance **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -22,8 +22,11 @@ import { buildRuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecisi
 import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
 import { buildRuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/buildRuntimeForecastPlanningReports";
 import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
+import {
+  buildRuntimeResourceGovernancePlanningReports,
+  type RuntimeResourceGovernancePlanningReports,
+} from "@/lib/harness/runtimeResourceGovernance/buildRuntimeResourceGovernancePlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
-import type { RuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/runtimeResourceTypes";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
 import { compressRuntimeReasoningTrace } from "./compressRuntimeReasoningTrace";
@@ -32,44 +35,20 @@ import { evaluateRuntimeSemanticGroupBalance } from "./evaluateRuntimeSemanticGr
 import { evaluateRuntimeSemanticRedundancy } from "./evaluateRuntimeSemanticRedundancy";
 import { stabilizeRuntimeSemanticOrdering } from "./stabilizeRuntimeSemanticOrdering";
 import type {
-  CompressedRuntimeReasoningTrace,
-  RuntimeSemanticGroupsSummary,
-  RuntimeSemanticRedundancySummary,
-  StabilizedRuntimeSemanticOrdering,
-} from "./runtimeSemanticTypes";
-import type {
-  RuntimeHiddenSemanticTraceAudit,
-  RuntimeSemanticCompressionQualityReport,
-  RuntimeSemanticGroupBalanceSummary,
-} from "./runtimeSemanticQualityTypes";
+  RuntimeSemanticPlanningReportsBeforeGovernance,
+  RuntimeSemanticCorePlanningReports,
+} from "./runtimeSemanticPlanningReportStages";
 
-export type RuntimeSemanticCorePlanningReports = Readonly<{
-  semanticGroupsSummary: RuntimeSemanticGroupsSummary;
-  compressedReasoningTrace: CompressedRuntimeReasoningTrace;
-  semanticRedundancySummary: RuntimeSemanticRedundancySummary;
-  stabilizedSemanticOrdering: StabilizedRuntimeSemanticOrdering;
-  compressionQualityReport: RuntimeSemanticCompressionQualityReport;
-  hiddenTraceAudit: RuntimeHiddenSemanticTraceAudit;
-  semanticGroupBalanceSummary: RuntimeSemanticGroupBalanceSummary;
-}>;
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeGovernance &
+  RuntimeResourceGovernancePlanningReports;
 
-export type RuntimeSemanticPlanningReportsBeforeDecision = RuntimeSemanticCorePlanningReports &
-  Readonly<{
-    semanticExplainabilityGraph: RuntimeSemanticExplainabilityGraph;
-    semanticWarningOriginSummary: RuntimeSemanticWarningOriginSummary;
-    semanticExplosionRiskSummary: RuntimeSemanticExplosionRiskSummary;
-  }> &
-  RuntimeSemanticNarrativePlanningReports &
-  RuntimeSemanticVocabularyPlanningReports;
-
-export type RuntimeSemanticPlanningReportsBeforeForecast = RuntimeSemanticPlanningReportsBeforeDecision &
-  RuntimeDecisionPlanningReports;
-
-export type RuntimeSemanticPlanningReportsBeforeResource = RuntimeSemanticPlanningReportsBeforeForecast &
-  RuntimeForecastPlanningReports;
-
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeResource &
-  RuntimeResourcePlanningReports;
+export type {
+  RuntimeSemanticCorePlanningReports,
+  RuntimeSemanticPlanningReportsBeforeDecision,
+  RuntimeSemanticPlanningReportsBeforeForecast,
+  RuntimeSemanticPlanningReportsBeforeResource,
+  RuntimeSemanticPlanningReportsBeforeGovernance,
+} from "./runtimeSemanticPlanningReportStages";
 
 export function buildRuntimeSemanticPlanningReports(
   reasoningReports: RuntimeReasoningPlanningReports
@@ -133,8 +112,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...buildRuntimeForecastPlanningReports(semanticWithDecision),
   };
   const resourceReports = buildRuntimeResourcePlanningReports(semanticWithForecast);
+  const semanticWithResource: RuntimeSemanticPlanningReportsBeforeGovernance = {
+    ...semanticWithForecast,
+    ...resourceReports,
+  };
+  const governanceReports = buildRuntimeResourceGovernancePlanningReports(semanticWithResource);
 
-  return { ...semanticWithForecast, ...resourceReports };
+  return { ...semanticWithResource, ...governanceReports };
 }
 
 export type {
