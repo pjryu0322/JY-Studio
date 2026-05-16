@@ -1,9 +1,10 @@
 /**
- * H27 — pilot activation overlay·진단 **한국어 라벨**(read-only).
+ * H27 / H27.5 — pilot activation overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
   RuntimePilotActivationCandidateStatus,
+  RuntimePilotActivationFinalGateStatus,
   RuntimePilotActivationMode,
 } from "./runtimePilotActivationTypes";
 
@@ -28,10 +29,35 @@ export const RUNTIME_PILOT_ACTIVATION_MODE_LABEL_KO: Readonly<Record<RuntimePilo
   blocked: "차단",
 };
 
+export const RUNTIME_PILOT_ACTIVATION_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimePilotActivationFinalGateStatus, string>
+> = {
+  ready_metadata: "메타 준비",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export function runtimePilotActivationReadinessVerificationStatusKo(status: string): string {
+  switch (status) {
+    case "verified_metadata":
+      return "검증됨(메타)";
+    case "partial":
+      return "부분";
+    case "failed":
+      return "실패";
+    default:
+      return status;
+  }
+}
+
 export const RUNTIME_PILOT_ACTIVATION_EMPTY_HINT_KO = {
   scope: "activation scope 없음",
   forbiddenOperation: "금지 operation 없음",
   checklist: "readiness checklist 없음",
   blocker: "activation blocker 없음",
+  boundaryViolation: "boundary violation 없음",
+  readinessFinding: "readiness finding 없음",
+  finalGateChecklist: "final gate checklist 없음",
   recommendation: "권고 없음",
 } as const;

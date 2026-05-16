@@ -1,5 +1,5 @@
 /**
- * H27 — pilot activation planning reports 일괄 산출(read-only).
+ * H27 / H27.5 — pilot activation planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforePilotActivation } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -7,8 +7,11 @@ import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/run
 import { buildRuntimePilotActivationPolicy } from "./buildRuntimePilotActivationPolicy";
 import { buildRuntimePilotActivationReadinessChecklist } from "./buildRuntimePilotActivationReadinessChecklist";
 import { buildRuntimePilotActivationScope } from "./buildRuntimePilotActivationScope";
+import { buildRuntimePilotActivationFinalSafetyGate } from "./buildRuntimePilotActivationFinalSafetyGate";
 import { detectRuntimePilotActivationBlockers } from "./detectRuntimePilotActivationBlockers";
+import { detectRuntimePilotActivationBoundaryViolations } from "./detectRuntimePilotActivationBoundaryViolations";
 import { evaluateRuntimePilotActivationCandidate } from "./evaluateRuntimePilotActivationCandidate";
+import { verifyRuntimePilotActivationReadiness } from "./verifyRuntimePilotActivationReadiness";
 import { resolveRuntimePilotActivationMode } from "./resolveRuntimePilotActivationMode";
 import type {
   RuntimePilotActivationCandidateStatus,
@@ -74,11 +77,44 @@ export function buildRuntimePilotActivationPlanningReports(
     ]),
   };
 
+  const runtimePilotActivationBoundaryViolationReport = detectRuntimePilotActivationBoundaryViolations({
+    summary: runtimePilotActivationSummary,
+    scope: runtimePilotActivationScope,
+    policy: runtimePilotActivationPolicy,
+    checklist: runtimePilotActivationReadinessChecklist,
+  });
+
+  const runtimePilotActivationReadinessVerificationReport = verifyRuntimePilotActivationReadiness({
+    summary: runtimePilotActivationSummary,
+    scope: runtimePilotActivationScope,
+    policy: runtimePilotActivationPolicy,
+    checklist: runtimePilotActivationReadinessChecklist,
+    blockerReport: runtimePilotActivationBlockerReport,
+  });
+
+  const runtimePilotActivationFinalSafetyGate = buildRuntimePilotActivationFinalSafetyGate({
+    summary: runtimePilotActivationSummary,
+    blockerReport: runtimePilotActivationBlockerReport,
+    boundaryViolation: runtimePilotActivationBoundaryViolationReport,
+    readinessVerification: runtimePilotActivationReadinessVerificationReport,
+  });
+
+  const runtimePilotActivationSummaryFinal: RuntimePilotActivationSummary = {
+    ...runtimePilotActivationSummary,
+    recommendations: mergeSortedUniqueKo([
+      ...runtimePilotActivationSummary.recommendations,
+      ...runtimePilotActivationFinalSafetyGate.recommendations,
+    ]),
+  };
+
   return {
-    runtimePilotActivationSummary,
+    runtimePilotActivationSummary: runtimePilotActivationSummaryFinal,
     runtimePilotActivationScope,
     runtimePilotActivationPolicy,
     runtimePilotActivationBlockerReport,
     runtimePilotActivationReadinessChecklist,
+    runtimePilotActivationFinalSafetyGate,
+    runtimePilotActivationBoundaryViolationReport,
+    runtimePilotActivationReadinessVerificationReport,
   };
 }

@@ -396,6 +396,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningRuntimeAdapterSandboxEnabled: true,
     harnessRuntimePlanningRuntimeAdapterSandboxStabilizationEnabled: true,
     harnessRuntimePlanningRuntimePilotActivationCandidateEnabled: true,
+    harnessRuntimePlanningRuntimePilotActivationStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -709,6 +710,11 @@ export async function GET(request: NextRequest) {
       runtimePilotActivationPolicy: runtimeSemanticDiag.runtimePilotActivationPolicy,
       runtimePilotActivationBlockerReport: runtimeSemanticDiag.runtimePilotActivationBlockerReport,
       runtimePilotActivationReadinessChecklist: runtimeSemanticDiag.runtimePilotActivationReadinessChecklist,
+      runtimePilotActivationFinalSafetyGate: runtimeSemanticDiag.runtimePilotActivationFinalSafetyGate,
+      runtimePilotActivationBoundaryViolationReport:
+        runtimeSemanticDiag.runtimePilotActivationBoundaryViolationReport,
+      runtimePilotActivationReadinessVerificationReport:
+        runtimeSemanticDiag.runtimePilotActivationReadinessVerificationReport,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

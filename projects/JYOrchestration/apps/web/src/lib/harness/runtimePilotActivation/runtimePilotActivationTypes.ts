@@ -1,5 +1,5 @@
 /**
- * H27 — Controlled runtime **pilot activation candidate** metadata(read-only; actual activation 없음).
+ * H27 / H27.5 — Controlled runtime **pilot activation candidate** metadata(read-only; actual activation 없음).
  */
 
 export type RuntimePilotActivationCandidateStatus =
@@ -75,10 +75,53 @@ export type RuntimePilotActivationReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimePilotActivationFinalGateStatus = "ready_metadata" | "watch" | "blocked" | "not_ready";
+
+export type RuntimePilotActivationFinalSafetyGate = Readonly<{
+  mode: "runtime_pilot_activation_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimePilotActivationFinalGateStatus;
+  h28EntryReadiness: RuntimePilotActivationFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimePilotActivationBoundaryViolationReport = Readonly<{
+  mode: "runtime_pilot_activation_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimePilotActivationReadinessVerificationReport = Readonly<{
+  mode: "runtime_pilot_activation_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  verificationStatus: "verified_metadata" | "partial" | "failed";
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimePilotActivationPlanningReports = Readonly<{
   runtimePilotActivationSummary: RuntimePilotActivationSummary;
   runtimePilotActivationScope: RuntimePilotActivationScope;
   runtimePilotActivationPolicy: RuntimePilotActivationPolicy;
   runtimePilotActivationBlockerReport: RuntimePilotActivationBlockerReport;
   runtimePilotActivationReadinessChecklist: RuntimePilotActivationReadinessChecklist;
+  runtimePilotActivationFinalSafetyGate: RuntimePilotActivationFinalSafetyGate;
+  runtimePilotActivationBoundaryViolationReport: RuntimePilotActivationBoundaryViolationReport;
+  runtimePilotActivationReadinessVerificationReport: RuntimePilotActivationReadinessVerificationReport;
 }>;

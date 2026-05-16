@@ -19,14 +19,17 @@ describe("buildOverlayRuntimePilotActivationSectionVm", () => {
     expect(compact.showDetailSections).toBe(false);
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
     expect(compact.forbiddenActivationOperationRows.length).toBeLessThanOrEqual(1);
+    expect(compact.finalGateChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode keeps status, mode, and top blocker or forbidden operation", () => {
+  it("compact mode displays final gate status and candidate status", () => {
     const vm = buildOverlayRuntimePilotActivationSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.activationModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h28EntryReadinessKo).toBeTruthy();
     expect(
-      vm.topActivationBlocker !== null || vm.topForbiddenActivationOperation !== null || vm.showAttention
+      vm.topViolationOrBlocker !== null || vm.topForbiddenActivationOperation !== null || vm.showAttention
     ).toBe(true);
   });
 });

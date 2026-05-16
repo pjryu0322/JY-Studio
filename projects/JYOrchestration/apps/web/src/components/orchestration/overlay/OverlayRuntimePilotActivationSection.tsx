@@ -17,20 +17,25 @@ export function OverlayRuntimePilotActivationSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Pilot Activation Candidate (H27)"
+      title="Runtime Pilot Activation Candidate (H27.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Activation candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Activation mode" value={vm.activationModeKo} />
-        {vm.topActivationBlocker ? (
-          <OverlayUiKeyValueRow label="Top activation blocker" value={vm.topActivationBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H28 entry readiness" value={vm.h28EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topActivationBlocker && vm.topForbiddenActivationOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenActivationOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden operation" value={vm.topForbiddenActivationOperation} />
         ) : null}
-        <OverlayUiKeyValueRow label="Activation policy" value={vm.activationPolicySummaryKo} />
+        {vm.showDetailSections ? (
+          <OverlayUiKeyValueRow label="Activation policy" value={vm.activationPolicySummaryKo} />
+        ) : null}
         {vm.showDetailSections ? (
           <>
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Activation scope</div>
@@ -89,6 +94,63 @@ export function OverlayRuntimePilotActivationSection({
               </ul>
             ) : (
               <OverlayUiEmptyHint message={RUNTIME_PILOT_ACTIVATION_EMPTY_HINT_KO.checklist} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Boundary violations</div>
+            {vm.boundaryViolationRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.boundaryViolationRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_ACTIVATION_EMPTY_HINT_KO.boundaryViolation} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Readiness verification</div>
+            {vm.readinessFindingRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.readinessFindingRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_ACTIVATION_EMPTY_HINT_KO.readinessFinding} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Final gate checklist</div>
+            {vm.finalGateChecklistRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.finalGateChecklistRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_ACTIVATION_EMPTY_HINT_KO.finalGateChecklist} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Activation blockers</div>
             {vm.activationBlockerRows.length > 0 ? (

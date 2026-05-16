@@ -1,12 +1,15 @@
 /**
- * H27 — pilot activation 진단 **직렬화 전용**(report 재빌드 없음).
+ * H27 / H27.5 — pilot activation 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
   RuntimePilotActivationBlockerReport,
+  RuntimePilotActivationBoundaryViolationReport,
+  RuntimePilotActivationFinalSafetyGate,
   RuntimePilotActivationPolicy,
   RuntimePilotActivationReadinessChecklist,
+  RuntimePilotActivationReadinessVerificationReport,
   RuntimePilotActivationScope,
   RuntimePilotActivationSummary,
 } from "./runtimePilotActivationTypes";
@@ -90,6 +93,54 @@ function serializeChecklist(c: RuntimePilotActivationReadinessChecklist): Readon
   };
 }
 
+function serializeFinalGate(g: RuntimePilotActivationFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotActivationEnabled: g.actualPilotActivationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualSandboxInvocationEnabled: g.actualSandboxInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h28EntryReadiness: g.h28EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
+function serializeBoundaryViolations(
+  v: RuntimePilotActivationBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotActivationEnabled: v.actualPilotActivationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  v: RuntimePilotActivationReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotActivationEnabled: v.actualPilotActivationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    verificationStatus: v.verificationStatus,
+    findings: sortKo(v.findings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
 export function serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -98,6 +149,9 @@ export function serializeRuntimePilotActivationDiagnosticBundleFromSemanticRepor
   runtimePilotActivationPolicy: ReturnType<typeof serializePolicy>;
   runtimePilotActivationBlockerReport: ReturnType<typeof serializeBlockers>;
   runtimePilotActivationReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimePilotActivationFinalSafetyGate: ReturnType<typeof serializeFinalGate>;
+  runtimePilotActivationBoundaryViolationReport: ReturnType<typeof serializeBoundaryViolations>;
+  runtimePilotActivationReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
 }> {
   return {
     runtimePilotActivationSummary: serializeSummary(reports.runtimePilotActivationSummary),
@@ -106,6 +160,13 @@ export function serializeRuntimePilotActivationDiagnosticBundleFromSemanticRepor
     runtimePilotActivationBlockerReport: serializeBlockers(reports.runtimePilotActivationBlockerReport),
     runtimePilotActivationReadinessChecklist: serializeChecklist(
       reports.runtimePilotActivationReadinessChecklist
+    ),
+    runtimePilotActivationFinalSafetyGate: serializeFinalGate(reports.runtimePilotActivationFinalSafetyGate),
+    runtimePilotActivationBoundaryViolationReport: serializeBoundaryViolations(
+      reports.runtimePilotActivationBoundaryViolationReport
+    ),
+    runtimePilotActivationReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimePilotActivationReadinessVerificationReport
     ),
   };
 }

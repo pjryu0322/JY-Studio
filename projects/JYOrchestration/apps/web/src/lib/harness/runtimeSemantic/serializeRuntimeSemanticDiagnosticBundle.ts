@@ -175,6 +175,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimePilotActivationPolicy: SerializedRuntimePilotActivationDiag["runtimePilotActivationPolicy"];
   runtimePilotActivationBlockerReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationBlockerReport"];
   runtimePilotActivationReadinessChecklist: SerializedRuntimePilotActivationDiag["runtimePilotActivationReadinessChecklist"];
+  runtimePilotActivationFinalSafetyGate: SerializedRuntimePilotActivationDiag["runtimePilotActivationFinalSafetyGate"];
+  runtimePilotActivationBoundaryViolationReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationBoundaryViolationReport"];
+  runtimePilotActivationReadinessVerificationReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationReadinessVerificationReport"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
