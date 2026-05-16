@@ -44,6 +44,10 @@ function buildSemanticBeforeControlBoundary(): RuntimeSemanticPlanningReportsBef
     runtimeControlBoundarySummary: _s,
     runtimeControlBoundaryViolationReport: _v,
     runtimeControlScopeMatrix: _m,
+    runtimeExecutionCandidateSummary: _e1,
+    runtimeExecutionCandidateScope: _e2,
+    runtimeExecutionCandidatePreconditions: _e3,
+    runtimeExecutionCandidateBlockers: _e4,
     ...rest
   } = semantic;
   return rest as RuntimeSemanticPlanningReportsBeforeControlBoundary;

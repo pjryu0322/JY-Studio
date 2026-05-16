@@ -1,5 +1,5 @@
 /**
- * H12–H22.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H23 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -94,6 +94,10 @@ import {
   buildOverlayRuntimeControlBoundarySectionVmFromReports,
   type OverlayRuntimeControlBoundarySectionVM,
 } from "./overlayRuntimeControlBoundarySectionVm";
+import {
+  buildOverlayRuntimeExecutionCandidateSectionVmFromReports,
+  type OverlayRuntimeExecutionCandidateSectionVM,
+} from "./overlayRuntimeExecutionCandidateSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -126,6 +130,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   resourceAllocationVm: OverlayRuntimeResourceAllocationSectionVM;
   resourceTrialVm: OverlayRuntimeResourceTrialSectionVM;
   runtimeControlBoundaryVm: OverlayRuntimeControlBoundarySectionVM;
+  runtimeExecutionCandidateVm: OverlayRuntimeExecutionCandidateSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -322,6 +327,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const runtimeControlBoundaryVm = buildOverlayRuntimeControlBoundarySectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const runtimeExecutionCandidateVm = buildOverlayRuntimeExecutionCandidateSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -408,5 +416,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     resourceAllocationVm,
     resourceTrialVm,
     runtimeControlBoundaryVm,
+    runtimeExecutionCandidateVm,
   };
 }

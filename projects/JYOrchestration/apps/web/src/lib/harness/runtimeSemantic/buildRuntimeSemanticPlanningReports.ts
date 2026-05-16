@@ -1,5 +1,5 @@
 /**
- * H17–H22.5 — semantic·…·allocation·trial·control boundary **planning 보고서** 일괄 산출.
+ * H17–H23 — semantic·…·allocation·trial·control boundary·execution candidate **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -26,6 +26,7 @@ import { buildRuntimeResourceGovernancePlanningReports } from "@/lib/harness/run
 import { buildRuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/buildRuntimeResourceAllocationPlanningReports";
 import { buildRuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/buildRuntimeResourceTrialPlanningReports";
 import { buildRuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/buildRuntimeControlBoundaryPlanningReports";
+import { buildRuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/buildRuntimeExecutionCandidatePlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -39,12 +40,13 @@ import type {
   RuntimeSemanticPlanningReportsBeforeAllocation,
   RuntimeSemanticPlanningReportsBeforeTrial,
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
+  RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
-import type { RuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/runtimeControlBoundaryTypes";
+import type { RuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateTypes";
 
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeControlBoundary &
-  RuntimeControlBoundaryPlanningReports;
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeExecutionCandidate &
+  RuntimeExecutionCandidatePlanningReports;
 
 export type {
   RuntimeSemanticCorePlanningReports,
@@ -55,6 +57,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeAllocation,
   RuntimeSemanticPlanningReportsBeforeTrial,
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
+  RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
 } from "./runtimeSemanticPlanningReportStages";
 
 export function buildRuntimeSemanticPlanningReports(
@@ -139,8 +142,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...trialReports,
   };
   const controlBoundaryReports = buildRuntimeControlBoundaryPlanningReports(semanticWithTrial);
+  const semanticWithControlBoundary: RuntimeSemanticPlanningReportsBeforeExecutionCandidate = {
+    ...semanticWithTrial,
+    ...controlBoundaryReports,
+  };
+  const executionCandidateReports = buildRuntimeExecutionCandidatePlanningReports(semanticWithControlBoundary);
 
-  return { ...semanticWithTrial, ...controlBoundaryReports };
+  return { ...semanticWithControlBoundary, ...executionCandidateReports };
 }
 
 export type {

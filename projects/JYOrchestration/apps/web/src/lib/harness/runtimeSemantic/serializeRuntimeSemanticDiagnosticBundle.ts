@@ -1,5 +1,5 @@
 /**
- * H17–H22.5 — 진단 API용 runtime semantic·…·allocation·trial·control boundary wire 묶음.
+ * H17–H23 — 진단 API용 runtime semantic·…·control boundary·execution candidate wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -46,6 +46,7 @@ import { serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports }
 import { serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceAllocation/serializeRuntimeResourceAllocationDiagnosticBundle";
 import { serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceTrial/serializeRuntimeResourceTrialDiagnosticBundle";
 import { serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlBoundary/serializeRuntimeControlBoundaryDiagnosticBundle";
+import { serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionCandidate/serializeRuntimeExecutionCandidateDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -58,6 +59,9 @@ type SerializedRuntimeResourceTrialDiag = ReturnType<
 >;
 type SerializedRuntimeControlBoundaryDiag = ReturnType<
   typeof serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeExecutionCandidateDiag = ReturnType<
+  typeof serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -108,11 +112,16 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeControlBoundarySummary: SerializedRuntimeControlBoundaryDiag["runtimeControlBoundarySummary"];
   runtimeControlBoundaryViolationReport: SerializedRuntimeControlBoundaryDiag["runtimeControlBoundaryViolationReport"];
   runtimeControlScopeMatrix: SerializedRuntimeControlBoundaryDiag["runtimeControlScopeMatrix"];
+  runtimeExecutionCandidateSummary: SerializedRuntimeExecutionCandidateDiag["runtimeExecutionCandidateSummary"];
+  runtimeExecutionCandidateScope: SerializedRuntimeExecutionCandidateDiag["runtimeExecutionCandidateScope"];
+  runtimeExecutionCandidatePreconditions: SerializedRuntimeExecutionCandidateDiag["runtimeExecutionCandidatePreconditions"];
+  runtimeExecutionCandidateBlockers: SerializedRuntimeExecutionCandidateDiag["runtimeExecutionCandidateBlockers"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
   const trialDiag = serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports(reports);
   const controlBoundaryDiag = serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports(reports);
+  const executionCandidateDiag = serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -183,6 +192,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...allocationDiag,
     ...trialDiag,
     ...controlBoundaryDiag,
+    ...executionCandidateDiag,
   };
 }
 
