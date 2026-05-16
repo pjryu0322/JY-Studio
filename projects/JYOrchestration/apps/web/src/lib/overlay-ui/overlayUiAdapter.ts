@@ -230,6 +230,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningPilotContractAdapterBoundary: boolean;
   /** Harness Phase H25 — No-op runtime adapter skeleton·contract verification(기본 접힘; guard·violation 시 펼침). */
   runtimePlanningNoopRuntimeAdapter: boolean;
+  /** Harness Phase H26 — Runtime adapter sandbox readiness·envelope(기본 접힘; blocker 시 펼침). */
+  runtimePlanningRuntimeAdapterSandbox: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -514,6 +516,7 @@ function buildSectionDefaults(
     runtimePlanningControlledRuntimePilot: false,
     runtimePlanningPilotContractAdapterBoundary: false,
     runtimePlanningNoopRuntimeAdapter: false,
+    runtimePlanningRuntimeAdapterSandbox: false,
   };
 }
 

@@ -393,6 +393,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningPilotContractAdapterBoundaryEnabled: true,
     harnessRuntimePlanningNoopRuntimeAdapterEnabled: true,
     harnessRuntimePlanningNoopRuntimeAdapterStabilizationEnabled: true,
+    harnessRuntimePlanningRuntimeAdapterSandboxEnabled: true,
   };
 
   const overlayMaturity = {
@@ -442,6 +443,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningPilotContractAdapterBoundaryLayer: true,
     harnessRuntimePlanningNoopRuntimeAdapterLayer: true,
     harnessRuntimePlanningNoopRuntimeAdapterStabilizationLayer: true,
+    harnessRuntimePlanningRuntimeAdapterSandboxLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -687,6 +689,12 @@ export async function GET(request: NextRequest) {
       runtimeAdapterInvocationGuardReport: runtimeSemanticDiag.runtimeAdapterInvocationGuardReport,
       runtimeNoopAdapterBoundaryViolationReport: runtimeSemanticDiag.runtimeNoopAdapterBoundaryViolationReport,
       runtimeNoopAdapterPreflightSummary: runtimeSemanticDiag.runtimeNoopAdapterPreflightSummary,
+      runtimeAdapterSandboxSummary: runtimeSemanticDiag.runtimeAdapterSandboxSummary,
+      runtimeAdapterSandboxInputEnvelope: runtimeSemanticDiag.runtimeAdapterSandboxInputEnvelope,
+      runtimeAdapterSandboxOutputEnvelope: runtimeSemanticDiag.runtimeAdapterSandboxOutputEnvelope,
+      runtimeAdapterSandboxPolicy: runtimeSemanticDiag.runtimeAdapterSandboxPolicy,
+      runtimeAdapterSandboxResultMetadata: runtimeSemanticDiag.runtimeAdapterSandboxResultMetadata,
+      runtimeAdapterSandboxBlockerReport: runtimeSemanticDiag.runtimeAdapterSandboxBlockerReport,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

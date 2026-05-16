@@ -17,6 +17,7 @@ import type { OverlayRuntimeOperatorApprovalSectionVM } from "@/lib/overlay-ui/o
 import type { OverlayRuntimeControlledPilotSectionVM } from "@/lib/overlay-ui/overlayRuntimeControlledPilotAdapter";
 import type { OverlayRuntimePilotContractSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotContractAdapter";
 import type { OverlayRuntimeNoopAdapterSectionVM } from "@/lib/overlay-ui/overlayRuntimeNoopAdapterAdapter";
+import type { OverlayRuntimeAdapterSandboxSectionVM } from "@/lib/overlay-ui/overlayRuntimeAdapterSandboxAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -37,11 +38,12 @@ import { OverlayRuntimeOperatorApprovalSection } from "./OverlayRuntimeOperatorA
 import { OverlayRuntimeControlledPilotSection } from "./OverlayRuntimeControlledPilotSection";
 import { OverlayRuntimePilotContractSection } from "./OverlayRuntimePilotContractSection";
 import { OverlayRuntimeNoopAdapterSection } from "./OverlayRuntimeNoopAdapterSection";
+import { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSandboxSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H25 — dependency·criticality·resource·…·pilot contract·noop adapter·forecast·… */
+/** H15–H26 — dependency·criticality·resource·…·noop adapter·adapter sandbox·forecast·… */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
@@ -55,6 +57,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeControlledPilotVm,
   runtimePilotContractVm,
   runtimeNoopAdapterVm,
+  runtimeAdapterSandboxVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -75,6 +78,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   controlledPilotDefaultOpen,
   pilotContractDefaultOpen,
   noopAdapterDefaultOpen,
+  adapterSandboxDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -96,6 +100,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeControlledPilot = true,
   showRuntimePilotContract = true,
   showRuntimeNoopAdapter = true,
+  showRuntimeAdapterSandbox = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -117,6 +122,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeControlledPilotVm: OverlayRuntimeControlledPilotSectionVM;
   readonly runtimePilotContractVm: OverlayRuntimePilotContractSectionVM;
   readonly runtimeNoopAdapterVm: OverlayRuntimeNoopAdapterSectionVM;
+  readonly runtimeAdapterSandboxVm: OverlayRuntimeAdapterSandboxSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -137,6 +143,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly controlledPilotDefaultOpen?: boolean;
   readonly pilotContractDefaultOpen?: boolean;
   readonly noopAdapterDefaultOpen?: boolean;
+  readonly adapterSandboxDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -158,6 +165,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeControlledPilot?: boolean;
   readonly showRuntimePilotContract?: boolean;
   readonly showRuntimeNoopAdapter?: boolean;
+  readonly showRuntimeAdapterSandbox?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -233,6 +241,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimeNoopAdapterSection
           vm={runtimeNoopAdapterVm}
           defaultOpen={noopAdapterDefaultOpen}
+        />
+      ) : null}
+      {showRuntimeAdapterSandbox ? (
+        <OverlayRuntimeAdapterSandboxSection
+          vm={runtimeAdapterSandboxVm}
+          defaultOpen={adapterSandboxDefaultOpen}
         />
       ) : null}
       {showForecast ? (
