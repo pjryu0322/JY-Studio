@@ -238,6 +238,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimePilotSkeleton: boolean;
   /** Harness Phase H28.5 — Pilot skeleton stabilization·preflight(기본 접힘; blocker·watch 시 펼침). */
   runtimePlanningRuntimePilotSkeletonStabilization: boolean;
+  /** Harness Phase H29 — Runner invocation candidate(기본 접힘; blocker 시 펼침). */
+  runtimePlanningRuntimeRunnerInvocation: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -526,6 +528,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimePilotActivation: false,
     runtimePlanningRuntimePilotSkeleton: false,
     runtimePlanningRuntimePilotSkeletonStabilization: false,
+    runtimePlanningRuntimeRunnerInvocation: false,
   };
 }
 

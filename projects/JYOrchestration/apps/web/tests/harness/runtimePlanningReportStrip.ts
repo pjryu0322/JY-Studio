@@ -9,10 +9,11 @@ import type {
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotContract,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
+  RuntimeSemanticPlanningReportsBeforeRunnerInvocation,
 } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 
-/** H28 pilot skeleton fields (shared strip list). */
-function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
+/** H28–H29 pilot skeleton·runner invocation fields (shared strip list). */
+function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
   T,
@@ -26,6 +27,11 @@ function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
   | "runtimePilotRunnerBoundaryViolationReport"
   | "runtimePilotRunnerNoExecutionResultMetadata"
   | "runtimePilotSkeletonPreflightSummary"
+  | "runtimeRunnerInvocationSummary"
+  | "runtimeRunnerInvocationScope"
+  | "runtimeRunnerInvocationPolicy"
+  | "runtimeRunnerInvocationBlockerReport"
+  | "runtimeRunnerInvocationReadinessChecklist"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -38,6 +44,32 @@ function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
     runtimePilotRunnerBoundaryViolationReport: _ps8,
     runtimePilotRunnerNoExecutionResultMetadata: _ps9,
     runtimePilotSkeletonPreflightSummary: _ps10,
+    runtimeRunnerInvocationSummary: _ri1,
+    runtimeRunnerInvocationScope: _ri2,
+    runtimeRunnerInvocationPolicy: _ri3,
+    runtimeRunnerInvocationBlockerReport: _ri4,
+    runtimeRunnerInvocationReadinessChecklist: _ri5,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeRunnerInvocationSummary"
+  | "runtimeRunnerInvocationScope"
+  | "runtimeRunnerInvocationPolicy"
+  | "runtimeRunnerInvocationBlockerReport"
+  | "runtimeRunnerInvocationReadinessChecklist"
+> {
+  const {
+    runtimeRunnerInvocationSummary: _ri1,
+    runtimeRunnerInvocationScope: _ri2,
+    runtimeRunnerInvocationPolicy: _ri3,
+    runtimeRunnerInvocationBlockerReport: _ri4,
+    runtimeRunnerInvocationReadinessChecklist: _ri5,
     ...rest
   } = semantic;
   return rest;
@@ -47,7 +79,7 @@ function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
 export function stripRuntimeNoopAdapterLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopAdapter {
-  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
+  const withoutSkeleton = omitPilotSkeletonAndRunnerInvocationLayer(semantic);
   const {
     runtimeNoopAdapterSummary: _a,
     runtimeNoopAdapterSkeleton: _b,
@@ -82,7 +114,7 @@ export function stripRuntimeNoopAdapterLayer(
 export function stripRuntimeAdapterSandboxLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeAdapterSandbox {
-  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
+  const withoutSkeleton = omitPilotSkeletonAndRunnerInvocationLayer(semantic);
   const {
     runtimeAdapterSandboxSummary: _a,
     runtimeAdapterSandboxInputEnvelope: _b,
@@ -110,7 +142,7 @@ export function stripRuntimeAdapterSandboxLayer(
 export function stripRuntimePilotActivationLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforePilotActivation {
-  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
+  const withoutSkeleton = omitPilotSkeletonAndRunnerInvocationLayer(semantic);
   const {
     runtimePilotActivationSummary: _a,
     runtimePilotActivationScope: _b,
@@ -129,7 +161,14 @@ export function stripRuntimePilotActivationLayer(
 export function stripRuntimePilotSkeletonLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforePilotSkeleton {
-  return omitPilotSkeletonLayer(semantic);
+  return omitPilotSkeletonAndRunnerInvocationLayer(semantic);
+}
+
+/** H29 runner invocation reports 제거 — pilot skeleton 이하 레이어 단독 테스트용. */
+export function stripRuntimeRunnerInvocationLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforeRunnerInvocation {
+  return omitRunnerInvocationLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

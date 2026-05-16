@@ -399,6 +399,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningRuntimePilotActivationStabilizationEnabled: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonEnabled: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationEnabled: true,
+    harnessRuntimePlanningIsolatedDryRunRunnerInvocationCandidateEnabled: true,
   };
 
   const overlayMaturity = {
@@ -453,6 +454,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningRuntimePilotActivationCandidateLayer: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonLayer: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationLayer: true,
+    harnessRuntimePlanningIsolatedDryRunRunnerInvocationCandidateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -732,6 +734,12 @@ export async function GET(request: NextRequest) {
       runtimePilotRunnerNoExecutionResultMetadata:
         runtimeSemanticDiag.runtimePilotRunnerNoExecutionResultMetadata,
       runtimePilotSkeletonPreflightSummary: runtimeSemanticDiag.runtimePilotSkeletonPreflightSummary,
+      runtimeRunnerInvocationSummary: runtimeSemanticDiag.runtimeRunnerInvocationSummary,
+      runtimeRunnerInvocationScope: runtimeSemanticDiag.runtimeRunnerInvocationScope,
+      runtimeRunnerInvocationPolicy: runtimeSemanticDiag.runtimeRunnerInvocationPolicy,
+      runtimeRunnerInvocationBlockerReport: runtimeSemanticDiag.runtimeRunnerInvocationBlockerReport,
+      runtimeRunnerInvocationReadinessChecklist:
+        runtimeSemanticDiag.runtimeRunnerInvocationReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

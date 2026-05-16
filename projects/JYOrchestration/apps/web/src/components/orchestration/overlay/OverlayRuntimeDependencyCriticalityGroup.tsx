@@ -20,6 +20,7 @@ import type { OverlayRuntimeNoopAdapterSectionVM } from "@/lib/overlay-ui/overla
 import type { OverlayRuntimeAdapterSandboxSectionVM } from "@/lib/overlay-ui/overlayRuntimeAdapterSandboxAdapter";
 import type { OverlayRuntimePilotActivationSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotActivationAdapter";
 import type { OverlayRuntimePilotSkeletonSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotSkeletonAdapter";
+import type { OverlayRuntimeRunnerInvocationSectionVM } from "@/lib/overlay-ui/overlayRuntimeRunnerInvocationAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -43,6 +44,7 @@ import { OverlayRuntimeNoopAdapterSection } from "./OverlayRuntimeNoopAdapterSec
 import { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSandboxSection";
 import { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActivationSection";
 import { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
+import { OverlayRuntimeRunnerInvocationSection } from "./OverlayRuntimeRunnerInvocationSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -64,6 +66,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeAdapterSandboxVm,
   runtimePilotActivationVm,
   runtimePilotSkeletonVm,
+  runtimeRunnerInvocationVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -87,6 +90,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   adapterSandboxDefaultOpen,
   pilotActivationDefaultOpen,
   pilotSkeletonDefaultOpen,
+  runnerInvocationDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -111,6 +115,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeAdapterSandbox = true,
   showRuntimePilotActivation = true,
   showRuntimePilotSkeleton = true,
+  showRuntimeRunnerInvocation = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -135,6 +140,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeAdapterSandboxVm: OverlayRuntimeAdapterSandboxSectionVM;
   readonly runtimePilotActivationVm: OverlayRuntimePilotActivationSectionVM;
   readonly runtimePilotSkeletonVm: OverlayRuntimePilotSkeletonSectionVM;
+  readonly runtimeRunnerInvocationVm: OverlayRuntimeRunnerInvocationSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -158,6 +164,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly adapterSandboxDefaultOpen?: boolean;
   readonly pilotActivationDefaultOpen?: boolean;
   readonly pilotSkeletonDefaultOpen?: boolean;
+  readonly runnerInvocationDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -182,6 +189,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeAdapterSandbox?: boolean;
   readonly showRuntimePilotActivation?: boolean;
   readonly showRuntimePilotSkeleton?: boolean;
+  readonly showRuntimeRunnerInvocation?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -275,6 +283,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimePilotSkeletonSection
           vm={runtimePilotSkeletonVm}
           defaultOpen={pilotSkeletonDefaultOpen}
+        />
+      ) : null}
+      {showRuntimeRunnerInvocation ? (
+        <OverlayRuntimeRunnerInvocationSection
+          vm={runtimeRunnerInvocationVm}
+          defaultOpen={runnerInvocationDefaultOpen}
         />
       ) : null}
       {showForecast ? (
