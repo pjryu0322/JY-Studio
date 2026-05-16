@@ -42,6 +42,7 @@ export { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActiv
 export { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
 export { OverlayRuntimeRunnerInvocationSection } from "./OverlayRuntimeRunnerInvocationSection";
 export { OverlayRuntimeRunnerNoopHarnessSection } from "./OverlayRuntimeRunnerNoopHarnessSection";
+export { OverlayRuntimeNoopExecutionShellSection } from "./OverlayRuntimeNoopExecutionShellSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

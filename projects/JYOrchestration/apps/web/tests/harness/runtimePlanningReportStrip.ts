@@ -6,6 +6,7 @@ import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemant
 import type {
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
+  RuntimeSemanticPlanningReportsBeforeNoopExecutionShell,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotContract,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
@@ -13,7 +14,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
 } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 
-/** H28–H30 pilot skeleton·runner invocation·no-op harness fields (shared strip list). */
+/** H28–H31 pilot skeleton·runner invocation·no-op harness·execution shell fields (shared strip list). */
 function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -46,6 +47,11 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
   | "runtimeRunnerNoopHarnessReadinessVerificationReport"
   | "runtimeRunnerNoopHarnessAlignmentReport"
   | "runtimeRunnerNoopHarnessFinalSafetyGate"
+  | "runtimeNoopExecutionShellSummary"
+  | "runtimeNoopExecutionShellScope"
+  | "runtimeNoopExecutionShellPolicy"
+  | "runtimeNoopExecutionShellBlockerReport"
+  | "runtimeNoopExecutionShellReadinessChecklist"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -76,12 +82,17 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
     runtimeRunnerNoopHarnessReadinessVerificationReport: _nh8,
     runtimeRunnerNoopHarnessAlignmentReport: _nh9,
     runtimeRunnerNoopHarnessFinalSafetyGate: _nh10,
+    runtimeNoopExecutionShellSummary: _ns1,
+    runtimeNoopExecutionShellScope: _ns2,
+    runtimeNoopExecutionShellPolicy: _ns3,
+    runtimeNoopExecutionShellBlockerReport: _ns4,
+    runtimeNoopExecutionShellReadinessChecklist: _ns5,
     ...rest
   } = semantic;
   return rest;
 }
 
-function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports>(
+function omitRunnerNoopHarnessFieldsOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
   T,
@@ -107,6 +118,33 @@ function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports
     runtimeRunnerNoopHarnessReadinessVerificationReport: _nh8,
     runtimeRunnerNoopHarnessAlignmentReport: _nh9,
     runtimeRunnerNoopHarnessFinalSafetyGate: _nh10,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): ReturnType<typeof omitNoopExecutionShellLayerOnly<ReturnType<typeof omitRunnerNoopHarnessFieldsOnly<T>>>> {
+  return omitNoopExecutionShellLayerOnly(omitRunnerNoopHarnessFieldsOnly(semantic));
+}
+
+function omitNoopExecutionShellLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeNoopExecutionShellSummary"
+  | "runtimeNoopExecutionShellScope"
+  | "runtimeNoopExecutionShellPolicy"
+  | "runtimeNoopExecutionShellBlockerReport"
+  | "runtimeNoopExecutionShellReadinessChecklist"
+> {
+  const {
+    runtimeNoopExecutionShellSummary: _ns1,
+    runtimeNoopExecutionShellScope: _ns2,
+    runtimeNoopExecutionShellPolicy: _ns3,
+    runtimeNoopExecutionShellBlockerReport: _ns4,
+    runtimeNoopExecutionShellReadinessChecklist: _ns5,
     ...rest
   } = semantic;
   return rest;
@@ -240,6 +278,13 @@ export function stripRuntimeRunnerNoopHarnessLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness {
   return omitRunnerNoopHarnessLayerOnly(semantic);
+}
+
+/** H31 no-op execution shell reports 제거 — execution shell 이하 레이어 단독 테스트용. */
+export function stripRuntimeNoopExecutionShellLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforeNoopExecutionShell {
+  return omitNoopExecutionShellLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

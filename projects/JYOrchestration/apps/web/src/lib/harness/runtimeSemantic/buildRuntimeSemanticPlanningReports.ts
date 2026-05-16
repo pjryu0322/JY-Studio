@@ -1,5 +1,5 @@
 /**
- * H17–H30 — semantic·…·pilot skeleton·runner invocation·no-op harness **planning 보고서** 일괄 산출.
+ * H17–H31 — semantic·…·pilot skeleton·runner invocation·no-op harness·execution shell **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -32,6 +32,7 @@ import { buildRuntimePilotActivationPlanningReports } from "@/lib/harness/runtim
 import { buildRuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimePilotSkeleton/buildRuntimePilotSkeletonPlanningReports";
 import { buildRuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/buildRuntimeRunnerInvocationPlanningReports";
 import { buildRuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runtimeRunnerNoopHarness/buildRuntimeRunnerNoopHarnessPlanningReports";
+import { buildRuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/buildRuntimeNoopExecutionShellPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -212,8 +213,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...runnerInvocationReports,
   };
   const runnerNoopHarnessReports = buildRuntimeRunnerNoopHarnessPlanningReports(semanticWithRunnerInvocation);
+  const semanticWithRunnerNoopHarness = {
+    ...semanticWithRunnerInvocation,
+    ...runnerNoopHarnessReports,
+  };
+  const noopExecutionShellReports = buildRuntimeNoopExecutionShellPlanningReports(semanticWithRunnerNoopHarness);
 
-  return { ...semanticWithRunnerInvocation, ...runnerNoopHarnessReports };
+  return { ...semanticWithRunnerNoopHarness, ...noopExecutionShellReports };
 }
 
 export type {

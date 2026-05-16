@@ -403,6 +403,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationStabilizationEnabled: true,
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessEnabled: true,
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessStabilizationEnabled: true,
+    harnessRuntimePlanningIsolatedDryRunNoopExecutionShellCandidateEnabled: true,
   };
 
   const overlayMaturity = {
@@ -461,6 +462,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationStabilizationLayer: true,
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessLayer: true,
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessStabilizationLayer: true,
+    harnessRuntimePlanningIsolatedDryRunNoopExecutionShellCandidateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -764,6 +766,12 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeRunnerNoopHarnessReadinessVerificationReport,
       runtimeRunnerNoopHarnessAlignmentReport: runtimeSemanticDiag.runtimeRunnerNoopHarnessAlignmentReport,
       runtimeRunnerNoopHarnessFinalSafetyGate: runtimeSemanticDiag.runtimeRunnerNoopHarnessFinalSafetyGate,
+      runtimeNoopExecutionShellSummary: runtimeSemanticDiag.runtimeNoopExecutionShellSummary,
+      runtimeNoopExecutionShellScope: runtimeSemanticDiag.runtimeNoopExecutionShellScope,
+      runtimeNoopExecutionShellPolicy: runtimeSemanticDiag.runtimeNoopExecutionShellPolicy,
+      runtimeNoopExecutionShellBlockerReport: runtimeSemanticDiag.runtimeNoopExecutionShellBlockerReport,
+      runtimeNoopExecutionShellReadinessChecklist:
+        runtimeSemanticDiag.runtimeNoopExecutionShellReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

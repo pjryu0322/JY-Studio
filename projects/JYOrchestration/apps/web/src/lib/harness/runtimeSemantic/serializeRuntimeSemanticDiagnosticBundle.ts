@@ -1,5 +1,5 @@
 /**
- * H17–H28 — 진단 API용 runtime semantic·…·pilot skeleton wire 묶음.
+ * H17–H31 — 진단 API용 runtime semantic·…·no-op execution shell wire 묶음.
  */
 
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
@@ -56,6 +56,7 @@ import { serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports } fr
 import { serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotSkeleton/serializeRuntimePilotSkeletonDiagnosticBundle";
 import { serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeRunnerInvocation/serializeRuntimeRunnerInvocationDiagnosticBundle";
 import { serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeRunnerNoopHarness/serializeRuntimeRunnerNoopHarnessDiagnosticBundle";
+import { serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShell/serializeRuntimeNoopExecutionShellDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -98,6 +99,9 @@ type SerializedRuntimeRunnerInvocationDiag = ReturnType<
 >;
 type SerializedRuntimeRunnerNoopHarnessDiag = ReturnType<
   typeof serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeNoopExecutionShellDiag = ReturnType<
+  typeof serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -218,6 +222,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeRunnerNoopHarnessReadinessVerificationReport: SerializedRuntimeRunnerNoopHarnessDiag["runtimeRunnerNoopHarnessReadinessVerificationReport"];
   runtimeRunnerNoopHarnessAlignmentReport: SerializedRuntimeRunnerNoopHarnessDiag["runtimeRunnerNoopHarnessAlignmentReport"];
   runtimeRunnerNoopHarnessFinalSafetyGate: SerializedRuntimeRunnerNoopHarnessDiag["runtimeRunnerNoopHarnessFinalSafetyGate"];
+  runtimeNoopExecutionShellSummary: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellSummary"];
+  runtimeNoopExecutionShellScope: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellScope"];
+  runtimeNoopExecutionShellPolicy: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellPolicy"];
+  runtimeNoopExecutionShellBlockerReport: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellBlockerReport"];
+  runtimeNoopExecutionShellReadinessChecklist: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -233,6 +242,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const pilotSkeletonDiag = serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports(reports);
   const runnerInvocationDiag = serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports(reports);
   const runnerNoopHarnessDiag = serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports(reports);
+  const noopExecutionShellDiag = serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -313,6 +323,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...pilotSkeletonDiag,
     ...runnerInvocationDiag,
     ...runnerNoopHarnessDiag,
+    ...noopExecutionShellDiag,
   };
 }
 
