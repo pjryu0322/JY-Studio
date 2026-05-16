@@ -42,7 +42,7 @@ describe("H17 runtime semantic compression", () => {
     expect(compressed.compressedLines.length).toBeGreaterThan(0);
   });
 
-  it("serializes thirty-two H17–H21 diagnostic fields", () => {
+  it("serializes H17–H21.5 diagnostic fields including allocation planning", () => {
     const baseline = evaluateHarnessMaturityBaseline({
       overlayExtract: null,
       harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
@@ -136,5 +136,14 @@ describe("H17 runtime semantic compression", () => {
     expect(govSummary.mode).toBe("runtime_resource_governance_summary");
     expect(Array.isArray(govFindings)).toBe(true);
     expect(govBoundary.mode).toBe("runtime_resource_control_boundary");
+    const allocPlan = b.runtimeResourceAllocationPlan as { mode?: string; actualResourceAllocationEnabled?: boolean };
+    const allocElig = b.runtimeAllocationEligibilitySummary as { mode?: string };
+    const allocProv = b.runtimeProviderSlotPlan as { mode?: string };
+    const allocExec = b.runtimeExecutionSlotPlan as { mode?: string };
+    expect(allocPlan.mode).toBe("runtime_resource_allocation_plan");
+    expect(allocPlan.actualResourceAllocationEnabled).toBe(false);
+    expect(allocElig.mode).toBe("runtime_allocation_eligibility_summary");
+    expect(allocProv.mode).toBe("runtime_provider_slot_plan");
+    expect(allocExec.mode).toBe("runtime_execution_slot_plan");
   });
 });

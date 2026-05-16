@@ -1,5 +1,5 @@
 /**
- * H17–H21 — semantic·vocabulary·decision·forecast·resource·governance **planning 보고서** 일괄 산출.
+ * H17–H21.5 — semantic·vocabulary·decision·forecast·resource·governance·allocation planning **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -22,10 +22,8 @@ import { buildRuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecisi
 import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
 import { buildRuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/buildRuntimeForecastPlanningReports";
 import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
-import {
-  buildRuntimeResourceGovernancePlanningReports,
-  type RuntimeResourceGovernancePlanningReports,
-} from "@/lib/harness/runtimeResourceGovernance/buildRuntimeResourceGovernancePlanningReports";
+import { buildRuntimeResourceGovernancePlanningReports } from "@/lib/harness/runtimeResourceGovernance/buildRuntimeResourceGovernancePlanningReports";
+import { buildRuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/buildRuntimeResourceAllocationPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -36,11 +34,13 @@ import { evaluateRuntimeSemanticRedundancy } from "./evaluateRuntimeSemanticRedu
 import { stabilizeRuntimeSemanticOrdering } from "./stabilizeRuntimeSemanticOrdering";
 import type {
   RuntimeSemanticPlanningReportsBeforeGovernance,
+  RuntimeSemanticPlanningReportsBeforeAllocation,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
+import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeGovernance &
-  RuntimeResourceGovernancePlanningReports;
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeAllocation &
+  RuntimeResourceAllocationPlanningReports;
 
 export type {
   RuntimeSemanticCorePlanningReports,
@@ -48,6 +48,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeForecast,
   RuntimeSemanticPlanningReportsBeforeResource,
   RuntimeSemanticPlanningReportsBeforeGovernance,
+  RuntimeSemanticPlanningReportsBeforeAllocation,
 } from "./runtimeSemanticPlanningReportStages";
 
 export function buildRuntimeSemanticPlanningReports(
@@ -117,8 +118,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...resourceReports,
   };
   const governanceReports = buildRuntimeResourceGovernancePlanningReports(semanticWithResource);
+  const semanticWithGovernance: RuntimeSemanticPlanningReportsBeforeAllocation = {
+    ...semanticWithResource,
+    ...governanceReports,
+  };
+  const allocationReports = buildRuntimeResourceAllocationPlanningReports(semanticWithGovernance);
 
-  return { ...semanticWithResource, ...governanceReports };
+  return { ...semanticWithGovernance, ...allocationReports };
 }
 
 export type {

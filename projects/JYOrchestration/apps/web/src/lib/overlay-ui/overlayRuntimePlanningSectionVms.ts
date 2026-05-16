@@ -82,6 +82,10 @@ import {
   buildOverlayRuntimeResourceGovernanceSectionVmFromReports,
   type OverlayRuntimeResourceGovernanceSectionVM,
 } from "./overlayRuntimeResourceGovernanceSectionVm";
+import {
+  buildOverlayRuntimeResourceAllocationSectionVmFromReports,
+  type OverlayRuntimeResourceAllocationSectionVM,
+} from "./overlayRuntimeResourceAllocationSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -111,6 +115,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   forecastVm: OverlayRuntimeForecastSectionVM;
   resourceVm: OverlayRuntimeResourceSectionVM;
   resourceGovernanceVm: OverlayRuntimeResourceGovernanceSectionVM;
+  resourceAllocationVm: OverlayRuntimeResourceAllocationSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -298,6 +303,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const resourceGovernanceVm = buildOverlayRuntimeResourceGovernanceSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const resourceAllocationVm = buildOverlayRuntimeResourceAllocationSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -381,5 +389,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     forecastVm,
     resourceVm,
     resourceGovernanceVm,
+    resourceAllocationVm,
   };
 }

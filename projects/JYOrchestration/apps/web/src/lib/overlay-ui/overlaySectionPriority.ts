@@ -42,7 +42,8 @@ export type OverlaySectionKind =
   | "runtime_planning_decision"
   | "runtime_planning_forecast"
   | "runtime_planning_resource"
-  | "runtime_planning_resource_governance";
+  | "runtime_planning_resource_governance"
+  | "runtime_planning_resource_allocation";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -70,6 +71,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_planning_forecast":
     case "runtime_planning_resource":
     case "runtime_planning_resource_governance":
+    case "runtime_planning_resource_allocation":
       return "important";
     case "context":
     case "budget":

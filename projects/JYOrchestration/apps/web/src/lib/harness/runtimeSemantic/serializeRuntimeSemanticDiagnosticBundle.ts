@@ -1,5 +1,5 @@
 /**
- * H17–H21 — 진단 API용 runtime semantic·decision·forecast·resource·governance wire 묶음.
+ * H17–H21.5 — 진단 API용 runtime semantic·decision·forecast·resource·governance·allocation planning wire 묶음.
  */
 
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
@@ -43,9 +43,13 @@ import {
 import { serializeRuntimeMemberWorkloadForDiagnostic } from "@/lib/harness/runtimeResource/evaluateRuntimeMemberWorkload";
 import { serializeRuntimeResourceExplainabilityForDiagnostic } from "@/lib/harness/runtimeResource/buildRuntimeResourceExplainability";
 import { serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceGovernance/serializeRuntimeResourceGovernanceDiagnosticBundle";
+import { serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceAllocation/serializeRuntimeResourceAllocationDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeResourceAllocationDiag = ReturnType<
+  typeof serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -85,8 +89,13 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeResourceGovernanceSummary: SerializedRuntimeResourceGovernanceDiag["runtimeResourceGovernanceSummary"];
   runtimeResourcePolicyFindings: SerializedRuntimeResourceGovernanceDiag["runtimeResourcePolicyFindings"];
   runtimeResourceControlBoundary: SerializedRuntimeResourceGovernanceDiag["runtimeResourceControlBoundary"];
+  runtimeResourceAllocationPlan: SerializedRuntimeResourceAllocationDiag["runtimeResourceAllocationPlan"];
+  runtimeAllocationEligibilitySummary: SerializedRuntimeResourceAllocationDiag["runtimeAllocationEligibilitySummary"];
+  runtimeProviderSlotPlan: SerializedRuntimeResourceAllocationDiag["runtimeProviderSlotPlan"];
+  runtimeExecutionSlotPlan: SerializedRuntimeResourceAllocationDiag["runtimeExecutionSlotPlan"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
+  const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -154,6 +163,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
       reports.runtimeResourceExplainability
     ),
     ...governanceDiag,
+    ...allocationDiag,
   };
 }
 

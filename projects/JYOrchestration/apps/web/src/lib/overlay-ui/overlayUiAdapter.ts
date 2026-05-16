@@ -214,6 +214,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningResource: boolean;
   /** Harness Phase H21 — Runtime resource governance(기본 접힘; risk·review 시 펼침). */
   runtimePlanningResourceGovernance: boolean;
+  /** Harness Phase H21.5 — Runtime resource allocation planning(기본 접힘; eligibility·slot 힌트 시 펼침). */
+  runtimePlanningResourceAllocation: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -490,6 +492,7 @@ function buildSectionDefaults(
     runtimePlanningForecast: false,
     runtimePlanningResource: false,
     runtimePlanningResourceGovernance: false,
+    runtimePlanningResourceAllocation: false,
   };
 }
 
