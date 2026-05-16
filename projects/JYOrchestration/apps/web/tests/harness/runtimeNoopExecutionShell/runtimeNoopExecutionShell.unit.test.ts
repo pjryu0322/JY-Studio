@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/buildRuntimeNoopExecutionShellPlanningReports";
+import { detectRuntimeNoopExecutionShellBoundaryViolations } from "@/lib/harness/runtimeNoopExecutionShell/detectRuntimeNoopExecutionShellBoundaryViolations";
+import { verifyRuntimeNoopExecutionShellReadiness } from "@/lib/harness/runtimeNoopExecutionShell/verifyRuntimeNoopExecutionShellReadiness";
 import { serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShell/serializeRuntimeNoopExecutionShellDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeNoopExecutionShell } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -46,6 +48,73 @@ function buildNoopExecutionShellPlanning(
   return buildRuntimeNoopExecutionShellPlanningReports({ ...base, ...patches });
 }
 
+/** Clears upstream blocker fields so harness-watch shell paths are testable. */
+function withShellUpstreamWatchBaseline(
+  base: RuntimeSemanticPlanningReportsBeforeNoopExecutionShell,
+  extra: Partial<RuntimeSemanticPlanningReportsBeforeNoopExecutionShell> = {}
+): Partial<RuntimeSemanticPlanningReportsBeforeNoopExecutionShell> {
+  return {
+    runtimeRunnerNoopHarnessSummary: {
+      ...base.runtimeRunnerNoopHarnessSummary,
+      harnessBlockers: [],
+    },
+    runtimeRunnerNoopHarnessFinalSafetyGate: {
+      ...base.runtimeRunnerNoopHarnessFinalSafetyGate,
+      finalGateStatus: "watch",
+      h31EntryReadiness: "watch",
+      blockers: [],
+    },
+    runtimeRunnerNoopHarnessReadinessVerificationReport: {
+      ...base.runtimeRunnerNoopHarnessReadinessVerificationReport,
+      verificationStatus: "partial",
+    },
+    runtimeRunnerNoopHarnessAlignmentReport: {
+      ...base.runtimeRunnerNoopHarnessAlignmentReport,
+      alignmentStatus: "partial",
+    },
+    runtimeRunnerNoopHarnessBoundaryViolationReport: {
+      ...base.runtimeRunnerNoopHarnessBoundaryViolationReport,
+      actualFlagViolations: [],
+      wordingRiskFindings: ["wording risk"],
+    },
+    runtimeRunnerNoopHarnessPreflightSummary: {
+      ...base.runtimeRunnerNoopHarnessPreflightSummary,
+      preflightReadiness: "ready_metadata",
+      blockers: [],
+    },
+    runtimeRunnerInvocationFinalSafetyGate: {
+      ...base.runtimeRunnerInvocationFinalSafetyGate,
+      finalGateStatus: "ready_metadata",
+      blockers: [],
+    },
+    runtimeRunnerInvocationBlockerReport: {
+      ...base.runtimeRunnerInvocationBlockerReport,
+      blockers: [],
+    },
+    runtimePilotSkeletonPreflightSummary: {
+      ...base.runtimePilotSkeletonPreflightSummary,
+      preflightReadiness: "ready_metadata",
+    },
+    runtimeOperatorApprovalSummary: {
+      ...base.runtimeOperatorApprovalSummary,
+      approvalReadiness: "ready_for_review_metadata",
+    },
+    runtimeRollbackReadinessSummary: {
+      ...base.runtimeRollbackReadinessSummary,
+      rollbackReadiness: "metadata_ready",
+    },
+    runtimeAuditReadinessSummary: {
+      ...base.runtimeAuditReadinessSummary,
+      auditReadiness: "sufficient_metadata",
+    },
+    runtimeControlBoundarySummary: {
+      ...base.runtimeControlBoundarySummary,
+      boundaryRisk: "watch",
+    },
+    ...extra,
+  };
+}
+
 describe("H31 isolated dry-run no-op execution shell candidate", () => {
   it("full semantic includes execution shell with all actual execution flags false", () => {
     const semantic = buildFullSemantic();
@@ -55,6 +124,15 @@ describe("H31 isolated dry-run no-op execution shell candidate", () => {
     expect(semantic.runtimeNoopExecutionShellPolicy.actualShellExecutionForbidden).toBe(true);
     expect(semantic.runtimeNoopExecutionShellPolicy.actualRunnerInvocationForbidden).toBe(true);
     expect(semantic.runtimeNoopExecutionShellPolicy.actualExecutionForbidden).toBe(true);
+    expect(semantic.runtimeNoopExecutionShellFinalSafetyGate.mode).toBe(
+      "runtime_noop_execution_shell_final_safety_gate"
+    );
+    expect(semantic.runtimeNoopExecutionShellBoundaryViolationReport.mode).toBe(
+      "runtime_noop_execution_shell_boundary_violation_report"
+    );
+    expect(semantic.runtimeNoopExecutionShellReadinessVerificationReport.mode).toBe(
+      "runtime_noop_execution_shell_readiness_verification_report"
+    );
   });
 
   it("harness final gate ready + verified + aligned can yield shell_metadata_candidate", () => {
@@ -73,65 +151,7 @@ describe("H31 isolated dry-run no-op execution shell candidate", () => {
 
   it("harness final gate watch yields shell watch", () => {
     const base = stripRuntimeNoopExecutionShellLayer(buildFullSemantic());
-    const shell = buildNoopExecutionShellPlanning({
-      runtimeRunnerNoopHarnessSummary: {
-        ...base.runtimeRunnerNoopHarnessSummary,
-        harnessBlockers: [],
-      },
-      runtimeRunnerNoopHarnessFinalSafetyGate: {
-        ...base.runtimeRunnerNoopHarnessFinalSafetyGate,
-        finalGateStatus: "watch",
-        h31EntryReadiness: "watch",
-        blockers: [],
-      },
-      runtimeRunnerNoopHarnessReadinessVerificationReport: {
-        ...base.runtimeRunnerNoopHarnessReadinessVerificationReport,
-        verificationStatus: "partial",
-      },
-      runtimeRunnerNoopHarnessAlignmentReport: {
-        ...base.runtimeRunnerNoopHarnessAlignmentReport,
-        alignmentStatus: "partial",
-      },
-      runtimeRunnerNoopHarnessBoundaryViolationReport: {
-        ...base.runtimeRunnerNoopHarnessBoundaryViolationReport,
-        actualFlagViolations: [],
-        wordingRiskFindings: ["wording risk"],
-      },
-      runtimeRunnerInvocationFinalSafetyGate: {
-        ...base.runtimeRunnerInvocationFinalSafetyGate,
-        finalGateStatus: "ready_metadata",
-        blockers: [],
-      },
-      runtimeRunnerInvocationBlockerReport: {
-        ...base.runtimeRunnerInvocationBlockerReport,
-        blockers: [],
-      },
-      runtimeRunnerNoopHarnessPreflightSummary: {
-        ...base.runtimeRunnerNoopHarnessPreflightSummary,
-        preflightReadiness: "ready_metadata",
-        blockers: [],
-      },
-      runtimePilotSkeletonPreflightSummary: {
-        ...base.runtimePilotSkeletonPreflightSummary,
-        preflightReadiness: "ready_metadata",
-      },
-      runtimeOperatorApprovalSummary: {
-        ...base.runtimeOperatorApprovalSummary,
-        approvalReadiness: "ready_for_review_metadata",
-      },
-      runtimeRollbackReadinessSummary: {
-        ...base.runtimeRollbackReadinessSummary,
-        rollbackReadiness: "metadata_ready",
-      },
-      runtimeAuditReadinessSummary: {
-        ...base.runtimeAuditReadinessSummary,
-        auditReadiness: "sufficient_metadata",
-      },
-      runtimeControlBoundarySummary: {
-        ...base.runtimeControlBoundarySummary,
-        boundaryRisk: "watch",
-      },
-    });
+    const shell = buildNoopExecutionShellPlanning(withShellUpstreamWatchBaseline(base));
     expect(shell.runtimeNoopExecutionShellSummary.candidateStatus).toBe("watch");
     expect(shell.runtimeNoopExecutionShellSummary.shellMode).toBe("disabled");
   });
@@ -181,6 +201,12 @@ describe("H31 isolated dry-run no-op execution shell candidate", () => {
         shellMode: semantic.runtimeNoopExecutionShellSummary.shellMode,
       })
     );
+    expect(serialized.runtimeNoopExecutionShellFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeNoopExecutionShellFinalSafetyGate.finalGateStatus,
+        h32EntryReadiness: semantic.runtimeNoopExecutionShellFinalSafetyGate.h32EntryReadiness,
+      })
+    );
   });
 
   it("stripRuntimeNoopExecutionShellLayer removes H31 fields only", () => {
@@ -197,5 +223,105 @@ describe("H31 isolated dry-run no-op execution shell candidate", () => {
     const stripped = stripRuntimeRunnerNoopHarnessLayer(semantic);
     expect("runtimeRunnerNoopHarnessSummary" in stripped).toBe(false);
     expect("runtimeNoopExecutionShellSummary" in stripped).toBe(false);
+  });
+});
+
+describe("H31.5 no-op execution shell stabilization & final safety gate", () => {
+  it("shell_metadata_candidate + verified can yield final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeNoopExecutionShellSummary.candidateStatus === "shell_metadata_candidate" &&
+      semantic.runtimeNoopExecutionShellSummary.shellMode === "metadata_only" &&
+      semantic.runtimeNoopExecutionShellReadinessVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeNoopExecutionShellBoundaryViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeNoopExecutionShellBlockerReport.blockers.length === 0
+    ) {
+      expect(semantic.runtimeNoopExecutionShellFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeNoopExecutionShellFinalSafetyGate.h32EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("watch candidate yields final gate watch", () => {
+    const base = stripRuntimeNoopExecutionShellLayer(buildFullSemantic());
+    const shell = buildNoopExecutionShellPlanning(withShellUpstreamWatchBaseline(base));
+    expect(shell.runtimeNoopExecutionShellSummary.candidateStatus).toBe("watch");
+    expect(shell.runtimeNoopExecutionShellFinalSafetyGate.finalGateStatus).toBe("watch");
+  });
+
+  it("boundary violation detects actualNoopShellExecutionEnabled true on summary", () => {
+    const shell = buildNoopExecutionShellPlanning();
+    const badSummary = {
+      ...shell.runtimeNoopExecutionShellSummary,
+      actualNoopShellExecutionEnabled: true as unknown as false,
+    };
+    const violations = detectRuntimeNoopExecutionShellBoundaryViolations({
+      summary: badSummary,
+      scope: shell.runtimeNoopExecutionShellScope,
+      policy: shell.runtimeNoopExecutionShellPolicy,
+      checklist: shell.runtimeNoopExecutionShellReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualNoopShellExecutionEnabled"))).toBe(
+      true
+    );
+  });
+
+  it("boundary violation detects actualExecutionShellExecutionEnabled true on summary", () => {
+    const shell = buildNoopExecutionShellPlanning();
+    const badSummary = {
+      ...shell.runtimeNoopExecutionShellSummary,
+      actualExecutionShellExecutionEnabled: true as unknown as false,
+    };
+    const violations = detectRuntimeNoopExecutionShellBoundaryViolations({
+      summary: badSummary,
+      scope: shell.runtimeNoopExecutionShellScope,
+      policy: shell.runtimeNoopExecutionShellPolicy,
+      checklist: shell.runtimeNoopExecutionShellReadinessChecklist,
+    });
+    expect(
+      violations.actualFlagViolations.some((v) => v.includes("actualExecutionShellExecutionEnabled"))
+    ).toBe(true);
+  });
+
+  it("boundary violation detects actualExecutionEnabled true on summary", () => {
+    const shell = buildNoopExecutionShellPlanning();
+    const badSummary = {
+      ...shell.runtimeNoopExecutionShellSummary,
+      actualExecutionEnabled: true as unknown as false,
+    };
+    const violations = detectRuntimeNoopExecutionShellBoundaryViolations({
+      summary: badSummary,
+      scope: shell.runtimeNoopExecutionShellScope,
+      policy: shell.runtimeNoopExecutionShellPolicy,
+      checklist: shell.runtimeNoopExecutionShellReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualExecutionEnabled"))).toBe(true);
+  });
+
+  it("policy actualShellExecutionForbidden false is detected", () => {
+    const shell = buildNoopExecutionShellPlanning();
+    const badPolicy = {
+      ...shell.runtimeNoopExecutionShellPolicy,
+      actualShellExecutionForbidden: false as unknown as true,
+    };
+    const violations = detectRuntimeNoopExecutionShellBoundaryViolations({
+      summary: shell.runtimeNoopExecutionShellSummary,
+      scope: shell.runtimeNoopExecutionShellScope,
+      policy: badPolicy,
+      checklist: shell.runtimeNoopExecutionShellReadinessChecklist,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualShellExecutionForbidden"))).toBe(true);
+  });
+
+  it("policy shellAllowedMode mismatch yields readiness partial or failed", () => {
+    const shell = buildNoopExecutionShellPlanning();
+    const verification = verifyRuntimeNoopExecutionShellReadiness({
+      summary: { ...shell.runtimeNoopExecutionShellSummary, shellMode: "metadata_only" },
+      scope: shell.runtimeNoopExecutionShellScope,
+      policy: { ...shell.runtimeNoopExecutionShellPolicy, shellAllowedMode: "blocked" },
+      checklist: shell.runtimeNoopExecutionShellReadinessChecklist,
+      blockerReport: shell.runtimeNoopExecutionShellBlockerReport,
+    });
+    expect(["partial", "failed"]).toContain(verification.verificationStatus);
   });
 });

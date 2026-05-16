@@ -1,5 +1,5 @@
 /**
- * H31 — no-op execution shell planning reports 일괄 산출(read-only).
+ * H31 / H31.5 — no-op execution shell planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeNoopExecutionShell } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -10,11 +10,51 @@ import { buildRuntimeNoopExecutionShellScope } from "./buildRuntimeNoopExecution
 import { detectRuntimeNoopExecutionShellBlockers } from "./detectRuntimeNoopExecutionShellBlockers";
 import { evaluateRuntimeNoopExecutionShellCandidate } from "./evaluateRuntimeNoopExecutionShellCandidate";
 import { resolveRuntimeNoopExecutionShellMode } from "./resolveRuntimeNoopExecutionShellMode";
+import { detectRuntimeNoopExecutionShellBoundaryViolations } from "./detectRuntimeNoopExecutionShellBoundaryViolations";
+import { verifyRuntimeNoopExecutionShellReadiness } from "./verifyRuntimeNoopExecutionShellReadiness";
+import { buildRuntimeNoopExecutionShellFinalSafetyGate } from "./buildRuntimeNoopExecutionShellFinalSafetyGate";
 import type {
+  RuntimeNoopExecutionShellBlockerReport,
   RuntimeNoopExecutionShellCandidateStatus,
   RuntimeNoopExecutionShellPlanningReports,
+  RuntimeNoopExecutionShellPolicy,
+  RuntimeNoopExecutionShellReadinessChecklist,
+  RuntimeNoopExecutionShellScope,
   RuntimeNoopExecutionShellSummary,
 } from "./runtimeNoopExecutionShellTypes";
+
+function buildNoopExecutionShellStabilizationReports(input: {
+  readonly summary: RuntimeNoopExecutionShellSummary;
+  readonly scope: RuntimeNoopExecutionShellScope;
+  readonly policy: RuntimeNoopExecutionShellPolicy;
+  readonly checklist: RuntimeNoopExecutionShellReadinessChecklist;
+  readonly blockerReport: RuntimeNoopExecutionShellBlockerReport;
+}) {
+  const runtimeNoopExecutionShellBoundaryViolationReport = detectRuntimeNoopExecutionShellBoundaryViolations({
+    summary: input.summary,
+    scope: input.scope,
+    policy: input.policy,
+    checklist: input.checklist,
+  });
+  const runtimeNoopExecutionShellReadinessVerificationReport = verifyRuntimeNoopExecutionShellReadiness({
+    summary: input.summary,
+    scope: input.scope,
+    policy: input.policy,
+    checklist: input.checklist,
+    blockerReport: input.blockerReport,
+  });
+  const runtimeNoopExecutionShellFinalSafetyGate = buildRuntimeNoopExecutionShellFinalSafetyGate({
+    summary: input.summary,
+    blockerReport: input.blockerReport,
+    boundaryViolation: runtimeNoopExecutionShellBoundaryViolationReport,
+    readinessVerification: runtimeNoopExecutionShellReadinessVerificationReport,
+  });
+  return {
+    runtimeNoopExecutionShellBoundaryViolationReport,
+    runtimeNoopExecutionShellReadinessVerificationReport,
+    runtimeNoopExecutionShellFinalSafetyGate,
+  };
+}
 
 export type { RuntimeNoopExecutionShellPlanningReports } from "./runtimeNoopExecutionShellTypes";
 
@@ -79,11 +119,26 @@ export function buildRuntimeNoopExecutionShellPlanningReports(
     ]),
   };
 
+  const {
+    runtimeNoopExecutionShellBoundaryViolationReport,
+    runtimeNoopExecutionShellReadinessVerificationReport,
+    runtimeNoopExecutionShellFinalSafetyGate,
+  } = buildNoopExecutionShellStabilizationReports({
+    summary: runtimeNoopExecutionShellSummary,
+    scope: runtimeNoopExecutionShellScope,
+    policy: runtimeNoopExecutionShellPolicy,
+    checklist: runtimeNoopExecutionShellReadinessChecklist,
+    blockerReport: runtimeNoopExecutionShellBlockerReport,
+  });
+
   return {
     runtimeNoopExecutionShellSummary,
     runtimeNoopExecutionShellScope,
     runtimeNoopExecutionShellPolicy,
     runtimeNoopExecutionShellBlockerReport,
     runtimeNoopExecutionShellReadinessChecklist,
+    runtimeNoopExecutionShellFinalSafetyGate,
+    runtimeNoopExecutionShellBoundaryViolationReport,
+    runtimeNoopExecutionShellReadinessVerificationReport,
   };
 }

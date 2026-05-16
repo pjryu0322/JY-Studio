@@ -52,6 +52,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
   | "runtimeNoopExecutionShellPolicy"
   | "runtimeNoopExecutionShellBlockerReport"
   | "runtimeNoopExecutionShellReadinessChecklist"
+  | "runtimeNoopExecutionShellFinalSafetyGate"
+  | "runtimeNoopExecutionShellBoundaryViolationReport"
+  | "runtimeNoopExecutionShellReadinessVerificationReport"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -87,6 +90,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
     runtimeNoopExecutionShellPolicy: _ns3,
     runtimeNoopExecutionShellBlockerReport: _ns4,
     runtimeNoopExecutionShellReadinessChecklist: _ns5,
+    runtimeNoopExecutionShellFinalSafetyGate: _ns6,
+    runtimeNoopExecutionShellBoundaryViolationReport: _ns7,
+    runtimeNoopExecutionShellReadinessVerificationReport: _ns8,
     ...rest
   } = semantic;
   return rest;
@@ -138,6 +144,9 @@ function omitNoopExecutionShellLayerOnly<T extends RuntimeSemanticPlanningReport
   | "runtimeNoopExecutionShellPolicy"
   | "runtimeNoopExecutionShellBlockerReport"
   | "runtimeNoopExecutionShellReadinessChecklist"
+  | "runtimeNoopExecutionShellFinalSafetyGate"
+  | "runtimeNoopExecutionShellBoundaryViolationReport"
+  | "runtimeNoopExecutionShellReadinessVerificationReport"
 > {
   const {
     runtimeNoopExecutionShellSummary: _ns1,
@@ -145,6 +154,9 @@ function omitNoopExecutionShellLayerOnly<T extends RuntimeSemanticPlanningReport
     runtimeNoopExecutionShellPolicy: _ns3,
     runtimeNoopExecutionShellBlockerReport: _ns4,
     runtimeNoopExecutionShellReadinessChecklist: _ns5,
+    runtimeNoopExecutionShellFinalSafetyGate: _ns6,
+    runtimeNoopExecutionShellBoundaryViolationReport: _ns7,
+    runtimeNoopExecutionShellReadinessVerificationReport: _ns8,
     ...rest
   } = semantic;
   return rest;

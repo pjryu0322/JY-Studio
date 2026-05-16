@@ -10,6 +10,17 @@ export type RuntimeNoopExecutionShellCandidateStatus =
 
 export type RuntimeNoopExecutionShellMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeNoopExecutionShellFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeNoopExecutionShellReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
 export type RuntimeNoopExecutionShellSummary = Readonly<{
   mode: "runtime_noop_execution_shell_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -122,10 +133,57 @@ export type RuntimeNoopExecutionShellReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeNoopExecutionShellFinalSafetyGate = Readonly<{
+  mode: "runtime_noop_execution_shell_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimeNoopExecutionShellFinalGateStatus;
+  h32EntryReadiness: RuntimeNoopExecutionShellFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeNoopExecutionShellBoundaryViolationReport = Readonly<{
+  mode: "runtime_noop_execution_shell_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeNoopExecutionShellReadinessVerificationReport = Readonly<{
+  mode: "runtime_noop_execution_shell_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  verificationStatus: RuntimeNoopExecutionShellReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeNoopExecutionShellPlanningReports = Readonly<{
   runtimeNoopExecutionShellSummary: RuntimeNoopExecutionShellSummary;
   runtimeNoopExecutionShellScope: RuntimeNoopExecutionShellScope;
   runtimeNoopExecutionShellPolicy: RuntimeNoopExecutionShellPolicy;
   runtimeNoopExecutionShellBlockerReport: RuntimeNoopExecutionShellBlockerReport;
   runtimeNoopExecutionShellReadinessChecklist: RuntimeNoopExecutionShellReadinessChecklist;
+  runtimeNoopExecutionShellFinalSafetyGate: RuntimeNoopExecutionShellFinalSafetyGate;
+  runtimeNoopExecutionShellBoundaryViolationReport: RuntimeNoopExecutionShellBoundaryViolationReport;
+  runtimeNoopExecutionShellReadinessVerificationReport: RuntimeNoopExecutionShellReadinessVerificationReport;
 }>;

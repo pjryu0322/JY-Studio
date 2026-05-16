@@ -21,10 +21,11 @@ describe("buildOverlayRuntimeNoopExecutionShellSectionVm", () => {
     expect(compact.recommendationRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, shell mode, and top blocker or attention", () => {
+  it("compact mode displays candidate status, shell mode, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeNoopExecutionShellSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.shellModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

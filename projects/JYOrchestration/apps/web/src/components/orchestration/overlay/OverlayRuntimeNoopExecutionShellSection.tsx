@@ -17,15 +17,18 @@ export function OverlayRuntimeNoopExecutionShellSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime No-op Execution Shell Candidate (H31)"
+      title="Runtime No-op Execution Shell Candidate (H31.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Execution shell candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Shell mode" value={vm.shellModeKo} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H32 entry readiness" value={vm.h32EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
         {vm.topViolationOrBlocker ? (
-          <OverlayUiKeyValueRow label="Top shell blocker / forbidden op" value={vm.topViolationOrBlocker} />
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
         {!vm.topViolationOrBlocker && vm.topForbiddenShellOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden shell operation" value={vm.topForbiddenShellOperation} />
@@ -110,6 +113,63 @@ export function OverlayRuntimeNoopExecutionShellSection({
               </ul>
             ) : (
               <OverlayUiEmptyHint message={RUNTIME_NOOP_EXECUTION_SHELL_EMPTY_HINT_KO.missingRow} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Boundary violations</div>
+            {vm.boundaryViolationRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.boundaryViolationRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_EXECUTION_SHELL_EMPTY_HINT_KO.boundaryViolation} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Readiness verification findings</div>
+            {vm.readinessFindingRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.readinessFindingRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_EXECUTION_SHELL_EMPTY_HINT_KO.readinessFinding} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Final gate checklist</div>
+            {vm.finalGateChecklistRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.finalGateChecklistRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_EXECUTION_SHELL_EMPTY_HINT_KO.finalGateChecklist} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Shell blockers</div>
             {vm.shellBlockerRows.length > 0 ? (
