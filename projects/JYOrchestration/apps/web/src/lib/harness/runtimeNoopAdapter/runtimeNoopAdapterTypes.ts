@@ -91,6 +91,10 @@ export type RuntimeNoopAdapterPreflightSummary = Readonly<{
   mode: "runtime_noop_adapter_preflight_summary";
   actualRuntimeOrchestrationEnabled: false;
   actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
   preflightReadiness: RuntimeNoopAdapterPreflightReadiness;
   checklist: readonly string[];
   blockers: readonly string[];

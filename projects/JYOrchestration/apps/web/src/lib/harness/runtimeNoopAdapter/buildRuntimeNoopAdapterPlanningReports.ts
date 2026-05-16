@@ -105,6 +105,7 @@ export function buildRuntimeNoopAdapterPlanningReports(
   const runtimeNoopAdapterPreflightSummary = buildRuntimeNoopAdapterPreflightSummary({
     summary: runtimeNoopAdapterSummary,
     verification,
+    result: runtimeNoopAdapterResultMetadata,
     guard: runtimeAdapterInvocationGuardReport,
     violations,
   });

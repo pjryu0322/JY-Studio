@@ -18,12 +18,16 @@ export type OverlayRuntimeNoopAdapterSectionVM = Readonly<{
   invocationGuardKo: string;
   contractVerificationStatusKo: string;
   preflightReadinessKo: string;
+  topViolation: string | null;
+  topPreflightBlocker: string | null;
   topViolationOrBlocker: string | null;
   topForbiddenOperation: string | null;
   noopResultRows: readonly string[];
   skeletonInputRows: readonly string[];
   violationRows: readonly string[];
   forbiddenOperationRows: readonly string[];
+  preflightChecklistRows: readonly string[];
+  preflightBlockerRows: readonly string[];
   recommendationRows: readonly string[];
 }>;
 
@@ -51,13 +55,13 @@ export function buildOverlayRuntimeNoopAdapterSectionVmFromReports(
   const forbiddenOperationRows = compactAndNarrowUi
     ? sk.forbiddenOperations.slice(0, 1)
     : [...sk.forbiddenOperations];
+  const preflightChecklistRows = compactAndNarrowUi ? pf.checklist.slice(0, 1) : [...pf.checklist];
+  const preflightBlockerRows = compactAndNarrowUi ? pf.blockers.slice(0, 1) : [...pf.blockers];
   const recommendationRows = compactAndNarrowUi ? s.recommendations.slice(0, 1) : [...s.recommendations];
 
-  const topViolationOrBlocker =
-    v.actualFlagViolations[0] ??
-    v.wordingRiskFindings[0] ??
-    pf.blockers[0] ??
-    null;
+  const topViolation = v.actualFlagViolations[0] ?? v.wordingRiskFindings[0] ?? null;
+  const topPreflightBlocker = pf.blockers[0] ?? null;
+  const topViolationOrBlocker = topViolation ?? topPreflightBlocker;
 
   return {
     sectionDisclaimer: RUNTIME_NOOP_ADAPTER_SECTION_DISCLAIMER_KO,
@@ -73,12 +77,16 @@ export function buildOverlayRuntimeNoopAdapterSectionVmFromReports(
     contractVerificationStatusKo:
       VERIFICATION_STATUS_LABEL_KO[s.contractVerificationStatus] ?? s.contractVerificationStatus,
     preflightReadinessKo: RUNTIME_NOOP_ADAPTER_PREFLIGHT_READINESS_LABEL_KO[pf.preflightReadiness],
+    topViolation,
+    topPreflightBlocker,
     topViolationOrBlocker,
     topForbiddenOperation: sk.forbiddenOperations[0] ?? null,
     noopResultRows,
     skeletonInputRows,
     violationRows,
     forbiddenOperationRows,
+    preflightChecklistRows,
+    preflightBlockerRows,
     recommendationRows,
   };
 }

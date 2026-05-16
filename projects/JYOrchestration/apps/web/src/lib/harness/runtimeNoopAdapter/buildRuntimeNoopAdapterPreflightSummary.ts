@@ -8,6 +8,7 @@ import type {
   RuntimeNoopAdapterBoundaryViolationReport,
   RuntimeNoopAdapterPreflightReadiness,
   RuntimeNoopAdapterPreflightSummary,
+  RuntimeNoopAdapterResultMetadata,
   RuntimeNoopAdapterSummary,
   RuntimePilotContractVerificationReport,
 } from "./runtimeNoopAdapterTypes";
@@ -15,16 +16,30 @@ import type {
 export function buildRuntimeNoopAdapterPreflightSummary(input: {
   readonly summary: RuntimeNoopAdapterSummary;
   readonly verification: RuntimePilotContractVerificationReport;
+  readonly result: RuntimeNoopAdapterResultMetadata;
   readonly guard: RuntimeAdapterInvocationGuardReport;
   readonly violations: RuntimeNoopAdapterBoundaryViolationReport;
 }): RuntimeNoopAdapterPreflightSummary {
-  const { summary, verification, guard, violations } = input;
+  const { summary, verification, result, guard, violations } = input;
+
   const checklist = mergeSortedUniqueKo([
+    "no-op adapter summary exists",
+    "contract verification report exists",
+    "no-op result metadata exists",
+    "adapter invocation guard exists",
+    "boundary violation report exists",
+    "actual adapter invocation disabled",
+    "actual execution disabled",
+    "actual provider routing disabled",
+    "actual queue control disabled",
+    "actual rollback disabled",
     `noopAdapterStatus:${summary.noopAdapterStatus}`,
     `contractVerification:${verification.verificationStatus}`,
     `invocationGuard:${guard.invocationGuard}`,
     `actualFlagViolations:${violations.actualFlagViolations.length}`,
     `wordingRiskFindings:${violations.wordingRiskFindings.length}`,
+    `resultDiagnosticOnly:${result.diagnosticOnly}`,
+    `resultAdapterInvoked:${result.adapterInvoked}`,
     "overlayWordingStabilized:H25.5",
     "diagnosticBundleIncludesPreflight:metadata",
   ]);
@@ -47,22 +62,24 @@ export function buildRuntimeNoopAdapterPreflightSummary(input: {
   if (
     violations.actualFlagViolations.length > 0 ||
     summary.noopAdapterStatus === "blocked" ||
-    verification.verificationStatus === "failed"
+    verification.verificationStatus === "failed" ||
+    guard.invocationGuard === "always_blocked"
   ) {
     preflightReadiness = "blocked";
-  } else if (
-    summary.noopAdapterStatus === "contract_verified_noop" &&
-    verification.verificationStatus === "verified_noop" &&
-    guard.invocationGuard === "contract_metadata_only" &&
-    violations.wordingRiskFindings.length === 0
-  ) {
-    preflightReadiness = "ready_metadata";
   } else if (
     summary.noopAdapterStatus === "watch" ||
     violations.wordingRiskFindings.length > 0 ||
     verification.verificationStatus === "partial"
   ) {
     preflightReadiness = "watch";
+  } else if (
+    summary.noopAdapterStatus === "contract_verified_noop" &&
+    verification.verificationStatus === "verified_noop" &&
+    guard.invocationGuard === "contract_metadata_only" &&
+    violations.actualFlagViolations.length === 0 &&
+    violations.wordingRiskFindings.length === 0
+  ) {
+    preflightReadiness = "ready_metadata";
   } else {
     preflightReadiness = "not_ready";
   }
@@ -84,6 +101,10 @@ export function buildRuntimeNoopAdapterPreflightSummary(input: {
     mode: "runtime_noop_adapter_preflight_summary",
     actualRuntimeOrchestrationEnabled: false,
     actualRuntimeAdapterInvocationEnabled: false,
+    actualExecutionEnabled: false,
+    actualProviderRoutingEnabled: false,
+    actualQueueControlEnabled: false,
+    actualRollbackExecutionEnabled: false,
     preflightReadiness,
     checklist,
     blockers: mergeSortedUniqueKo(blockers),

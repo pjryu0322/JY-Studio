@@ -42,5 +42,7 @@ export const RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO = {
   skeletonInput: "Skeleton input 없음",
   boundaryViolation: "Boundary violation 없음",
   forbiddenOperation: "Forbidden operation 없음",
+  preflightChecklist: "Preflight checklist 없음",
+  preflightBlocker: "Preflight blocker 없음",
   recommendation: "Recommendation 없음",
 } as const;

@@ -20,5 +20,12 @@ describe("buildOverlayRuntimeNoopAdapterSectionVm", () => {
     expect(compact.showDetailSections).toBe(false);
     expect(full.showDetailSections).toBe(true);
     expect(compact.preflightReadinessKo.length).toBeGreaterThan(0);
+    expect(compact.topViolationOrBlocker === null || compact.topViolationOrBlocker.length > 0).toBe(true);
+  });
+
+  it("full mode exposes preflight checklist and blocker rows", () => {
+    const vm = buildOverlayRuntimeNoopAdapterSectionVm(buildDefaultOverlaySectionVmTestInput(false));
+    expect(vm.preflightChecklistRows.length).toBeGreaterThan(0);
+    expect(vm.topPreflightBlocker === null || typeof vm.topPreflightBlocker === "string").toBe(true);
   });
 });

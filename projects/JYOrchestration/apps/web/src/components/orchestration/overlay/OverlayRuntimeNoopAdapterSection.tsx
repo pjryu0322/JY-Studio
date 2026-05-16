@@ -110,6 +110,44 @@ export function OverlayRuntimeNoopAdapterSection({
             ) : (
               <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.forbiddenOperation} />
             )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Preflight checklist</div>
+            {vm.preflightChecklistRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.preflightChecklistRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.preflightChecklist} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Preflight blockers</div>
+            {vm.preflightBlockerRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.preflightBlockerRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.preflightBlocker} />
+            )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Recommendations</div>
             {vm.recommendationRows.length > 0 ? (
               <ul
