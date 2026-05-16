@@ -4,9 +4,12 @@
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
+  RuntimeRunnerNoopHarnessAlignmentReport,
   RuntimeRunnerNoopHarnessBoundaryViolationReport,
   RuntimeRunnerNoopHarnessContractVerificationReport,
+  RuntimeRunnerNoopHarnessFinalSafetyGate,
   RuntimeRunnerNoopHarnessPreflightSummary,
+  RuntimeRunnerNoopHarnessReadinessVerificationReport,
   RuntimeRunnerNoopHarnessSafetyGuard,
   RuntimeRunnerNoopHarnessSummary,
   RuntimeRunnerNoopInvocationEnvelope,
@@ -144,6 +147,56 @@ function serializeBoundary(
   };
 }
 
+function serializeReadinessVerification(
+  r: RuntimeRunnerNoopHarnessReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    actualRuntimeOrchestrationEnabled: r.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: r.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: r.actualIsolatedRunnerInvocationEnabled,
+    actualDryRunRunnerInvocationEnabled: r.actualDryRunRunnerInvocationEnabled,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignment(a: RuntimeRunnerNoopHarnessAlignmentReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    actualRuntimeOrchestrationEnabled: a.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: a.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: a.actualIsolatedRunnerInvocationEnabled,
+    actualDryRunRunnerInvocationEnabled: a.actualDryRunRunnerInvocationEnabled,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalGate(g: RuntimeRunnerNoopHarnessFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualIsolatedRunnerInvocationEnabled: g.actualIsolatedRunnerInvocationEnabled,
+    actualIsolatedRunnerExecutionEnabled: g.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerInvocationEnabled: g.actualDryRunRunnerInvocationEnabled,
+    actualDryRunRunnerExecutionEnabled: g.actualDryRunRunnerExecutionEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h31EntryReadiness: g.h31EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 function serializePreflight(p: RuntimeRunnerNoopHarnessPreflightSummary): Readonly<Record<string, unknown>> {
   return {
     mode: p.mode,
@@ -170,6 +223,9 @@ export function serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticRep
   runtimeRunnerNoopHarnessContractVerificationReport: ReturnType<typeof serializeContract>;
   runtimeRunnerNoopHarnessBoundaryViolationReport: ReturnType<typeof serializeBoundary>;
   runtimeRunnerNoopHarnessPreflightSummary: ReturnType<typeof serializePreflight>;
+  runtimeRunnerNoopHarnessReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeRunnerNoopHarnessAlignmentReport: ReturnType<typeof serializeAlignment>;
+  runtimeRunnerNoopHarnessFinalSafetyGate: ReturnType<typeof serializeFinalGate>;
 }> {
   return {
     runtimeRunnerNoopHarnessSummary: serializeSummary(reports.runtimeRunnerNoopHarnessSummary),
@@ -183,5 +239,10 @@ export function serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticRep
       reports.runtimeRunnerNoopHarnessBoundaryViolationReport
     ),
     runtimeRunnerNoopHarnessPreflightSummary: serializePreflight(reports.runtimeRunnerNoopHarnessPreflightSummary),
+    runtimeRunnerNoopHarnessReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeRunnerNoopHarnessReadinessVerificationReport
+    ),
+    runtimeRunnerNoopHarnessAlignmentReport: serializeAlignment(reports.runtimeRunnerNoopHarnessAlignmentReport),
+    runtimeRunnerNoopHarnessFinalSafetyGate: serializeFinalGate(reports.runtimeRunnerNoopHarnessFinalSafetyGate),
   };
 }

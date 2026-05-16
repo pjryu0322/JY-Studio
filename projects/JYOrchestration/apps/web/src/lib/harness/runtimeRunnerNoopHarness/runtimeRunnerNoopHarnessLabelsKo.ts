@@ -1,9 +1,10 @@
 /**
- * H30 — runner no-op harness overlay·진단 **한국어 라벨**(read-only).
+ * H30–H30.5 — runner no-op harness overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
-  RuntimeRunnerNoopHarnessContractVerificationStatus,
+  RuntimeRunnerNoopHarnessAlignmentStatus,
+  RuntimeRunnerNoopHarnessFinalGateStatus,
   RuntimeRunnerNoopHarnessMode,
   RuntimeRunnerNoopHarnessPreflightReadiness,
   RuntimeRunnerNoopHarnessReadiness,
@@ -39,7 +40,24 @@ export const RUNTIME_RUNNER_NOOP_HARNESS_PREFLIGHT_READINESS_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
-export function runtimeRunnerNoopHarnessContractVerificationStatusKo(status: string): string {
+export const RUNTIME_RUNNER_NOOP_HARNESS_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeRunnerNoopHarnessFinalGateStatus, string>
+> = {
+  ready_metadata: "메타 준비",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_RUNNER_NOOP_HARNESS_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeRunnerNoopHarnessAlignmentStatus, string>
+> = {
+  aligned_metadata: "정렬됨(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+function runtimeRunnerNoopHarnessVerificationStatusKo(status: string): string {
   switch (status) {
     case "verified_metadata":
       return "검증됨(메타)";
@@ -52,13 +70,24 @@ export function runtimeRunnerNoopHarnessContractVerificationStatusKo(status: str
   }
 }
 
+export function runtimeRunnerNoopHarnessReadinessVerificationStatusKo(status: string): string {
+  return runtimeRunnerNoopHarnessVerificationStatusKo(status);
+}
+
+export function runtimeRunnerNoopHarnessContractVerificationStatusKo(status: string): string {
+  return runtimeRunnerNoopHarnessVerificationStatusKo(status);
+}
+
 export const RUNTIME_RUNNER_NOOP_HARNESS_EMPTY_HINT_KO = {
   envelope: "invocation envelope 없음",
   result: "noop result 없음",
   guard: "safety guard 없음",
   boundaryViolation: "boundary violation 없음",
-  readinessFinding: "contract finding 없음",
+  contractFinding: "contract finding 없음",
   preflightChecklist: "preflight checklist 없음",
   blocker: "harness blocker 없음",
   recommendation: "권고 없음",
+  alignmentFinding: "alignment finding 없음",
+  harnessReadinessFinding: "readiness finding 없음",
+  finalGateChecklist: "final gate checklist 없음",
 } as const;

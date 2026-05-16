@@ -43,6 +43,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
   | "runtimeRunnerNoopHarnessContractVerificationReport"
   | "runtimeRunnerNoopHarnessBoundaryViolationReport"
   | "runtimeRunnerNoopHarnessPreflightSummary"
+  | "runtimeRunnerNoopHarnessReadinessVerificationReport"
+  | "runtimeRunnerNoopHarnessAlignmentReport"
+  | "runtimeRunnerNoopHarnessFinalSafetyGate"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -70,6 +73,9 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
     runtimeRunnerNoopHarnessContractVerificationReport: _nh5,
     runtimeRunnerNoopHarnessBoundaryViolationReport: _nh6,
     runtimeRunnerNoopHarnessPreflightSummary: _nh7,
+    runtimeRunnerNoopHarnessReadinessVerificationReport: _nh8,
+    runtimeRunnerNoopHarnessAlignmentReport: _nh9,
+    runtimeRunnerNoopHarnessFinalSafetyGate: _nh10,
     ...rest
   } = semantic;
   return rest;
@@ -86,6 +92,9 @@ function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports
   | "runtimeRunnerNoopHarnessContractVerificationReport"
   | "runtimeRunnerNoopHarnessBoundaryViolationReport"
   | "runtimeRunnerNoopHarnessPreflightSummary"
+  | "runtimeRunnerNoopHarnessReadinessVerificationReport"
+  | "runtimeRunnerNoopHarnessAlignmentReport"
+  | "runtimeRunnerNoopHarnessFinalSafetyGate"
 > {
   const {
     runtimeRunnerNoopHarnessSummary: _nh1,
@@ -95,6 +104,9 @@ function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports
     runtimeRunnerNoopHarnessContractVerificationReport: _nh5,
     runtimeRunnerNoopHarnessBoundaryViolationReport: _nh6,
     runtimeRunnerNoopHarnessPreflightSummary: _nh7,
+    runtimeRunnerNoopHarnessReadinessVerificationReport: _nh8,
+    runtimeRunnerNoopHarnessAlignmentReport: _nh9,
+    runtimeRunnerNoopHarnessFinalSafetyGate: _nh10,
     ...rest
   } = semantic;
   return rest;

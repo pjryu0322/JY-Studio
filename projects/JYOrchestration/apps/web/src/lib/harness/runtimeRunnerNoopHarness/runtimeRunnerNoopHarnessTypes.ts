@@ -132,6 +132,61 @@ export type RuntimeRunnerNoopHarnessBoundaryViolationReport = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeRunnerNoopHarnessFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeRunnerNoopHarnessReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeRunnerNoopHarnessAlignmentStatus = "aligned_metadata" | "partial" | "failed";
+
+export type RuntimeRunnerNoopHarnessFinalSafetyGate = Readonly<{
+  mode: "runtime_runner_noop_harness_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimeRunnerNoopHarnessFinalGateStatus;
+  h31EntryReadiness: RuntimeRunnerNoopHarnessFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeRunnerNoopHarnessReadinessVerificationReport = Readonly<{
+  mode: "runtime_runner_noop_harness_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  verificationStatus: RuntimeRunnerNoopHarnessReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeRunnerNoopHarnessAlignmentReport = Readonly<{
+  mode: "runtime_runner_noop_harness_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  alignmentStatus: RuntimeRunnerNoopHarnessAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeRunnerNoopHarnessPreflightSummary = Readonly<{
   mode: "runtime_runner_noop_harness_preflight_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -154,4 +209,7 @@ export type RuntimeRunnerNoopHarnessPlanningReports = Readonly<{
   runtimeRunnerNoopHarnessContractVerificationReport: RuntimeRunnerNoopHarnessContractVerificationReport;
   runtimeRunnerNoopHarnessBoundaryViolationReport: RuntimeRunnerNoopHarnessBoundaryViolationReport;
   runtimeRunnerNoopHarnessPreflightSummary: RuntimeRunnerNoopHarnessPreflightSummary;
+  runtimeRunnerNoopHarnessReadinessVerificationReport: RuntimeRunnerNoopHarnessReadinessVerificationReport;
+  runtimeRunnerNoopHarnessAlignmentReport: RuntimeRunnerNoopHarnessAlignmentReport;
+  runtimeRunnerNoopHarnessFinalSafetyGate: RuntimeRunnerNoopHarnessFinalSafetyGate;
 }>;

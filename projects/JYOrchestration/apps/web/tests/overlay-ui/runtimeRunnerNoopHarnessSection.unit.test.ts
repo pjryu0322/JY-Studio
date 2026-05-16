@@ -22,12 +22,14 @@ describe("buildOverlayRuntimeRunnerNoopHarnessSectionVm", () => {
     expect(compact.recommendationRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays harness readiness, mode, and preflight", () => {
+  it("compact mode displays harness readiness, mode, preflight, and final gate", () => {
     const vm = buildOverlayRuntimeRunnerNoopHarnessSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.harnessReadinessKo).toBeTruthy();
     expect(vm.harnessModeKo).toBeTruthy();
     expect(vm.contractVerificationStatusKo).toBeTruthy();
     expect(vm.preflightReadinessKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h31EntryReadinessKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });
