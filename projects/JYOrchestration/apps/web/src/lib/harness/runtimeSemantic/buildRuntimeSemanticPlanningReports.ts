@@ -1,5 +1,5 @@
 /**
- * H17–H24 — semantic·…·execution candidate·operator approval·controlled pilot **planning 보고서** 일괄 산출.
+ * H17–H24.5 — semantic·…·controlled pilot·pilot contract **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -25,6 +25,7 @@ import { buildRuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtim
 import { buildRuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/buildRuntimeExecutionCandidatePlanningReports";
 import { buildRuntimeOperatorApprovalPlanningReports } from "@/lib/harness/runtimeOperatorApproval/buildRuntimeOperatorApprovalPlanningReports";
 import { buildRuntimeControlledPilotPlanningReports } from "@/lib/harness/runtimeControlledPilot/buildRuntimeControlledPilotPlanningReports";
+import { buildRuntimePilotContractPlanningReports } from "@/lib/harness/runtimePilotContract/buildRuntimePilotContractPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -41,6 +42,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
   RuntimeSemanticPlanningReportsBeforeOperatorApproval,
   RuntimeSemanticPlanningReportsBeforeControlledPilot,
+  RuntimeSemanticPlanningReportsBeforePilotContract,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -57,6 +59,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
   RuntimeSemanticPlanningReportsBeforeOperatorApproval,
   RuntimeSemanticPlanningReportsBeforeControlledPilot,
+  RuntimeSemanticPlanningReportsBeforePilotContract,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -157,8 +160,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...operatorApprovalReports,
   };
   const controlledPilotReports = buildRuntimeControlledPilotPlanningReports(semanticWithOperatorApproval);
+  const semanticWithControlledPilot: RuntimeSemanticPlanningReportsBeforePilotContract = {
+    ...semanticWithOperatorApproval,
+    ...controlledPilotReports,
+  };
+  const pilotContractReports = buildRuntimePilotContractPlanningReports(semanticWithControlledPilot);
 
-  return { ...semanticWithOperatorApproval, ...controlledPilotReports };
+  return { ...semanticWithControlledPilot, ...pilotContractReports };
 }
 
 export type {

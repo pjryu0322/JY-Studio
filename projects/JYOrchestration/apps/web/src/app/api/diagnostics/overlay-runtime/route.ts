@@ -390,6 +390,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningExecutionCandidateEnabled: true,
     harnessRuntimePlanningOperatorApprovalReadinessEnabled: true,
     harnessRuntimePlanningControlledOrchestrationRuntimePilotEnabled: true,
+    harnessRuntimePlanningPilotContractAdapterBoundaryEnabled: true,
   };
 
   const overlayMaturity = {
@@ -668,6 +669,12 @@ export async function GET(request: NextRequest) {
       runtimeControlledPilotSafetyEnvelope: runtimeSemanticDiag.runtimeControlledPilotSafetyEnvelope,
       runtimeControlledPilotFallbackPlan: runtimeSemanticDiag.runtimeControlledPilotFallbackPlan,
       runtimeControlledPilotAbortConditions: runtimeSemanticDiag.runtimeControlledPilotAbortConditions,
+      runtimePilotContractSummary: runtimeSemanticDiag.runtimePilotContractSummary,
+      runtimePilotContractInputSchema: runtimeSemanticDiag.runtimePilotContractInputSchema,
+      runtimePilotContractOutputSchema: runtimeSemanticDiag.runtimePilotContractOutputSchema,
+      runtimeAdapterBoundarySummary: runtimeSemanticDiag.runtimeAdapterBoundarySummary,
+      runtimeAdapterForbiddenOperationReport: runtimeSemanticDiag.runtimeAdapterForbiddenOperationReport,
+      runtimePilotHandoffReadiness: runtimeSemanticDiag.runtimePilotHandoffReadiness,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

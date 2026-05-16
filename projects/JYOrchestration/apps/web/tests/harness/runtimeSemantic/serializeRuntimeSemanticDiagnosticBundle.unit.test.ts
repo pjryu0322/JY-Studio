@@ -216,5 +216,22 @@ describe("H17 runtime semantic compression", () => {
     expect(cpFb.mode).toBe("runtime_controlled_pilot_fallback_plan");
     expect(cpFb.actualRollbackExecutionEnabled).toBe(false);
     expect(cpAbort.mode).toBe("runtime_controlled_pilot_abort_conditions");
+    const pcSummary = b.runtimePilotContractSummary as {
+      mode?: string;
+      actualRuntimeAdapterInvocationEnabled?: boolean;
+    };
+    const pcBoundary = b.runtimeAdapterBoundarySummary as { mode?: string };
+    const pcHandoff = b.runtimePilotHandoffReadiness as { mode?: string };
+    expect(pcSummary.mode).toBe("runtime_pilot_contract_summary");
+    expect(pcSummary.actualRuntimeAdapterInvocationEnabled).toBe(false);
+    expect(pcBoundary.mode).toBe("runtime_adapter_boundary_summary");
+    expect(pcHandoff.mode).toBe("runtime_pilot_handoff_readiness");
+    expect((b.runtimePilotContractInputSchema as { mode?: string }).mode).toBe("runtime_pilot_contract_input_schema");
+    expect((b.runtimePilotContractOutputSchema as { mode?: string }).mode).toBe(
+      "runtime_pilot_contract_output_schema"
+    );
+    expect((b.runtimeAdapterForbiddenOperationReport as { mode?: string }).mode).toBe(
+      "runtime_adapter_forbidden_operation_report"
+    );
   });
 });

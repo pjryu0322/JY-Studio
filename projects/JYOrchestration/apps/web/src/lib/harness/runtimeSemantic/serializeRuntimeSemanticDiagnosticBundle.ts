@@ -1,5 +1,5 @@
 /**
- * H17–H24 — 진단 API용 runtime semantic·…·operator approval·controlled pilot wire 묶음.
+ * H17–H24.5 — 진단 API용 runtime semantic·…·controlled pilot·pilot contract wire 묶음.
  */
 
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
@@ -49,6 +49,7 @@ import { serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports } from
 import { serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlBoundary/serializeRuntimeControlBoundaryDiagnosticBundle";
 import { serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionCandidate/serializeRuntimeExecutionCandidateDiagnosticBundle";
 import { serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeOperatorApproval/serializeRuntimeOperatorApprovalDiagnosticBundle";
+import { serializeRuntimePilotContractDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotContract/serializeRuntimePilotContractDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -70,6 +71,9 @@ type SerializedRuntimeOperatorApprovalDiag = ReturnType<
 >;
 type SerializedRuntimeControlledPilotDiag = ReturnType<
   typeof serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimePilotContractDiag = ReturnType<
+  typeof serializeRuntimePilotContractDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -132,6 +136,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeControlledPilotSafetyEnvelope: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotSafetyEnvelope"];
   runtimeControlledPilotFallbackPlan: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotFallbackPlan"];
   runtimeControlledPilotAbortConditions: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotAbortConditions"];
+  runtimePilotContractSummary: SerializedRuntimePilotContractDiag["runtimePilotContractSummary"];
+  runtimePilotContractInputSchema: SerializedRuntimePilotContractDiag["runtimePilotContractInputSchema"];
+  runtimePilotContractOutputSchema: SerializedRuntimePilotContractDiag["runtimePilotContractOutputSchema"];
+  runtimeAdapterBoundarySummary: SerializedRuntimePilotContractDiag["runtimeAdapterBoundarySummary"];
+  runtimeAdapterForbiddenOperationReport: SerializedRuntimePilotContractDiag["runtimeAdapterForbiddenOperationReport"];
+  runtimePilotHandoffReadiness: SerializedRuntimePilotContractDiag["runtimePilotHandoffReadiness"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -140,6 +150,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const executionCandidateDiag = serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports(reports);
   const operatorApprovalDiag = serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports(reports);
   const controlledPilotDiag = serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports(reports);
+  const pilotContractDiag = serializeRuntimePilotContractDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -213,6 +224,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...executionCandidateDiag,
     ...operatorApprovalDiag,
     ...controlledPilotDiag,
+    ...pilotContractDiag,
   };
 }
 

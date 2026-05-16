@@ -74,6 +74,12 @@ function buildSemanticBeforeExecutionCandidate(): RuntimeSemanticPlanningReports
     runtimeControlledPilotSafetyEnvelope: _h24b,
     runtimeControlledPilotFallbackPlan: _h24c,
     runtimeControlledPilotAbortConditions: _h24d,
+    runtimePilotContractSummary: _h245a,
+    runtimePilotContractInputSchema: _h245b,
+    runtimePilotContractOutputSchema: _h245c,
+    runtimeAdapterBoundarySummary: _h245d,
+    runtimeAdapterForbiddenOperationReport: _h245e,
+    runtimePilotHandoffReadiness: _h245f,
     ...rest
   } = semantic;
   return rest as RuntimeSemanticPlanningReportsBeforeExecutionCandidate;

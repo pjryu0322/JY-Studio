@@ -178,6 +178,7 @@ export function OverlaySummaryCard({
     runtimeExecutionCandidateVm: runtimePlanningExecutionCandidateVm,
     runtimeOperatorApprovalVm: runtimePlanningOperatorApprovalVm,
     runtimeControlledPilotVm: runtimePlanningControlledPilotVm,
+    runtimePilotContractVm: runtimePlanningPilotContractVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -311,8 +312,12 @@ export function OverlaySummaryCard({
     "runtime_planning_controlled_runtime_pilot",
     d.runtimePlanningControlledRuntimePilot || runtimePlanningControlledPilotVm.showAttention
   );
-  /** H20.5 resource → H24 controlled pilot까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
-  const resourceThroughControlledPilotOmitted =
+  const pPilotContract = pol(
+    "runtime_planning_pilot_contract_adapter_boundary",
+    d.runtimePlanningPilotContractAdapterBoundary || runtimePlanningPilotContractVm.showAttention
+  );
+  /** H20.5 resource → H24.5 pilot contract까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
+  const resourceThroughPilotContractOmitted =
     pResource.omitFromDom &&
     pResourceGov.omitFromDom &&
     pResourceAlloc.omitFromDom &&
@@ -320,7 +325,8 @@ export function OverlaySummaryCard({
     pControlBoundary.omitFromDom &&
     pExecutionCandidate.omitFromDom &&
     pOperatorApproval.omitFromDom &&
-    pControlledPilot.omitFromDom;
+    pControlledPilot.omitFromDom &&
+    pPilotContract.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -339,7 +345,8 @@ export function OverlaySummaryCard({
     !pControlBoundary.omitFromDom ||
     !pExecutionCandidate.omitFromDom ||
     !pOperatorApproval.omitFromDom ||
-    !pControlledPilot.omitFromDom;
+    !pControlledPilot.omitFromDom ||
+    !pPilotContract.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -440,6 +447,7 @@ export function OverlaySummaryCard({
           runtimeExecutionCandidateVm={runtimePlanningExecutionCandidateVm}
           runtimeOperatorApprovalVm={runtimePlanningOperatorApprovalVm}
           runtimeControlledPilotVm={runtimePlanningControlledPilotVm}
+          runtimePilotContractVm={runtimePlanningPilotContractVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -458,6 +466,7 @@ export function OverlaySummaryCard({
           executionCandidateDefaultOpen={pExecutionCandidate.defaultOpen}
           operatorApprovalDefaultOpen={pOperatorApproval.defaultOpen}
           controlledPilotDefaultOpen={pControlledPilot.defaultOpen}
+          pilotContractDefaultOpen={pPilotContract.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -485,7 +494,8 @@ export function OverlaySummaryCard({
               pControlBoundary.defaultOpen ||
               pExecutionCandidate.defaultOpen ||
               pOperatorApproval.defaultOpen ||
-              pControlledPilot.defaultOpen)
+              pControlledPilot.defaultOpen ||
+              pPilotContract.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
@@ -497,22 +507,23 @@ export function OverlaySummaryCard({
           showRuntimeExecutionCandidate={!pExecutionCandidate.omitFromDom}
           showRuntimeOperatorApproval={!pOperatorApproval.omitFromDom}
           showRuntimeControlledPilot={!pControlledPilot.omitFromDom}
-          showForecast={!pForecast.omitFromDom && resourceThroughControlledPilotOmitted}
+          showRuntimePilotContract={!pPilotContract.omitFromDom}
+          showForecast={!pForecast.omitFromDom && resourceThroughPilotContractOmitted}
           showDecision={
-            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughControlledPilotOmitted
+            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughPilotContractOmitted
           }
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -520,7 +531,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -529,7 +540,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -539,7 +550,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -550,7 +561,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughControlledPilotOmitted
+            resourceThroughPilotContractOmitted
           }
         />
       ) : null}

@@ -46,6 +46,7 @@ describe("H23.5 runtime operator approval readiness", () => {
     expect(semantic.runtimeControlledPilotSafetyEnvelope.mode).toBe("runtime_controlled_pilot_safety_envelope");
     expect(semantic.runtimeControlledPilotFallbackPlan.mode).toBe("runtime_controlled_pilot_fallback_plan");
     expect(semantic.runtimeControlledPilotAbortConditions.mode).toBe("runtime_controlled_pilot_abort_conditions");
+    expect(semantic.runtimePilotContractSummary.actualRuntimeAdapterInvocationEnabled).toBe(false);
   });
 
   it("buildRuntimeOperatorApprovalPlanningReports merges from execution candidate layer", () => {
@@ -59,6 +60,12 @@ describe("H23.5 runtime operator approval readiness", () => {
       runtimeControlledPilotSafetyEnvelope: _h24b,
       runtimeControlledPilotFallbackPlan: _h24c,
       runtimeControlledPilotAbortConditions: _h24d,
+      runtimePilotContractSummary: _h245a,
+      runtimePilotContractInputSchema: _h245b,
+      runtimePilotContractOutputSchema: _h245c,
+      runtimeAdapterBoundarySummary: _h245d,
+      runtimeAdapterForbiddenOperationReport: _h245e,
+      runtimePilotHandoffReadiness: _h245f,
       ...before
     } = semantic;
     const h235 = buildRuntimeOperatorApprovalPlanningReports(before);

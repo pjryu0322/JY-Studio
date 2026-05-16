@@ -1,5 +1,5 @@
 /**
- * H12–H24 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H24.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -106,6 +106,10 @@ import {
   buildOverlayRuntimeControlledPilotSectionVmFromReports,
   type OverlayRuntimeControlledPilotSectionVM,
 } from "./overlayRuntimeControlledPilotSectionVm";
+import {
+  buildOverlayRuntimePilotContractSectionVmFromReports,
+  type OverlayRuntimePilotContractSectionVM,
+} from "./overlayRuntimePilotContractSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -141,6 +145,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeExecutionCandidateVm: OverlayRuntimeExecutionCandidateSectionVM;
   runtimeOperatorApprovalVm: OverlayRuntimeOperatorApprovalSectionVM;
   runtimeControlledPilotVm: OverlayRuntimeControlledPilotSectionVM;
+  runtimePilotContractVm: OverlayRuntimePilotContractSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -346,6 +351,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const runtimeControlledPilotVm = buildOverlayRuntimeControlledPilotSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const runtimePilotContractVm = buildOverlayRuntimePilotContractSectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -435,5 +443,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeExecutionCandidateVm,
     runtimeOperatorApprovalVm,
     runtimeControlledPilotVm,
+    runtimePilotContractVm,
   };
 }

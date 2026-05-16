@@ -35,6 +35,7 @@ export { OverlayRuntimeControlBoundarySection } from "./OverlayRuntimeControlBou
 export { OverlayRuntimeExecutionCandidateSection } from "./OverlayRuntimeExecutionCandidateSection";
 export { OverlayRuntimeOperatorApprovalSection } from "./OverlayRuntimeOperatorApprovalSection";
 export { OverlayRuntimeControlledPilotSection } from "./OverlayRuntimeControlledPilotSection";
+export { OverlayRuntimePilotContractSection } from "./OverlayRuntimePilotContractSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

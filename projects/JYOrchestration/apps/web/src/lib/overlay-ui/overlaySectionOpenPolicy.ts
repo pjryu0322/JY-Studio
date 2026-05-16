@@ -59,7 +59,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_control_boundary" ||
         input.section === "runtime_planning_execution_candidate" ||
         input.section === "runtime_planning_operator_approval_readiness" ||
-        input.section === "runtime_planning_controlled_runtime_pilot")
+        input.section === "runtime_planning_controlled_runtime_pilot" ||
+        input.section === "runtime_planning_pilot_contract_adapter_boundary")
     ) {
       omitFromDom = true;
       defaultOpen = false;

@@ -50,6 +50,12 @@ describe("H24 runtime controlled orchestration pilot metadata", () => {
       runtimeControlledPilotSafetyEnvelope: _b,
       runtimeControlledPilotFallbackPlan: _c,
       runtimeControlledPilotAbortConditions: _d,
+      runtimePilotContractSummary: _e1,
+      runtimePilotContractInputSchema: _e2,
+      runtimePilotContractOutputSchema: _e3,
+      runtimeAdapterBoundarySummary: _e4,
+      runtimeAdapterForbiddenOperationReport: _e5,
+      runtimePilotHandoffReadiness: _e6,
       ...before
     } = semantic;
     const h24 = buildRuntimeControlledPilotPlanningReports(before);
