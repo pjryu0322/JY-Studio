@@ -1,5 +1,5 @@
 /**
- * H17–H23 — semantic·…·allocation·trial·control boundary·execution candidate **planning 보고서** 일괄 산출.
+ * H17–H23.5 — semantic·…·allocation·trial·control boundary·execution candidate·operator approval **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -12,21 +12,18 @@ import type {
 import { buildRuntimeSemanticNarrativePlanningReports } from "@/lib/harness/runtimeSemanticNarrative/buildRuntimeSemanticNarrativePlanningReports";
 import type {
   RuntimeSemanticGraphRelevanceSummary,
-  RuntimeSemanticNarrativePlanningReports,
   RuntimeSemanticNarrativeSummary,
   RuntimeSemanticRootCauseGroup,
 } from "@/lib/harness/runtimeSemanticNarrative/runtimeSemanticNarrativeTypes";
 import { buildRuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/buildRuntimeSemanticVocabularyPlanningReports";
-import type { RuntimeSemanticVocabularyPlanningReports } from "@/lib/harness/runtimeSemanticVocabulary/runtimeSemanticVocabularyTypes";
 import { buildRuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/buildRuntimeDecisionPlanningReports";
-import type { RuntimeDecisionPlanningReports } from "@/lib/harness/runtimeDecision/runtimeDecisionTypes";
 import { buildRuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/buildRuntimeForecastPlanningReports";
-import type { RuntimeForecastPlanningReports } from "@/lib/harness/runtimeForecast/runtimeForecastTypes";
 import { buildRuntimeResourceGovernancePlanningReports } from "@/lib/harness/runtimeResourceGovernance/buildRuntimeResourceGovernancePlanningReports";
 import { buildRuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/buildRuntimeResourceAllocationPlanningReports";
 import { buildRuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/buildRuntimeResourceTrialPlanningReports";
 import { buildRuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/buildRuntimeControlBoundaryPlanningReports";
 import { buildRuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/buildRuntimeExecutionCandidatePlanningReports";
+import { buildRuntimeOperatorApprovalPlanningReports } from "@/lib/harness/runtimeOperatorApproval/buildRuntimeOperatorApprovalPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -41,12 +38,10 @@ import type {
   RuntimeSemanticPlanningReportsBeforeTrial,
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
+  RuntimeSemanticPlanningReportsBeforeOperatorApproval,
+  RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
-import type { RuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateTypes";
-
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeExecutionCandidate &
-  RuntimeExecutionCandidatePlanningReports;
 
 export type {
   RuntimeSemanticCorePlanningReports,
@@ -58,6 +53,8 @@ export type {
   RuntimeSemanticPlanningReportsBeforeTrial,
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
+  RuntimeSemanticPlanningReportsBeforeOperatorApproval,
+  RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
 export function buildRuntimeSemanticPlanningReports(
@@ -147,8 +144,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...controlBoundaryReports,
   };
   const executionCandidateReports = buildRuntimeExecutionCandidatePlanningReports(semanticWithControlBoundary);
+  const semanticWithExecutionCandidate: RuntimeSemanticPlanningReportsBeforeOperatorApproval = {
+    ...semanticWithControlBoundary,
+    ...executionCandidateReports,
+  };
+  const operatorApprovalReports = buildRuntimeOperatorApprovalPlanningReports(semanticWithExecutionCandidate);
 
-  return { ...semanticWithControlBoundary, ...executionCandidateReports };
+  return { ...semanticWithExecutionCandidate, ...operatorApprovalReports };
 }
 
 export type {

@@ -187,5 +187,18 @@ describe("H17 runtime semantic compression", () => {
     expect(execPre.actualExecutionEnabled).toBe(false);
     expect(execBlock.mode).toBe("runtime_execution_candidate_blockers");
     expect(execBlock.actualExecutionEnabled).toBe(false);
+    const opApproval = b.runtimeOperatorApprovalSummary as {
+      mode?: string;
+      actualApprovalEnforcementEnabled?: boolean;
+    };
+    const opRollback = b.runtimeRollbackReadinessSummary as { mode?: string; actualRollbackExecutionEnabled?: boolean };
+    const opAudit = b.runtimeAuditReadinessSummary as { mode?: string };
+    const opPilot = b.runtimePilotPreconditionSummary as { mode?: string };
+    expect(opApproval.mode).toBe("runtime_operator_approval_summary");
+    expect(opApproval.actualApprovalEnforcementEnabled).toBe(false);
+    expect(opRollback.mode).toBe("runtime_rollback_readiness_summary");
+    expect(opRollback.actualRollbackExecutionEnabled).toBe(false);
+    expect(opAudit.mode).toBe("runtime_audit_readiness_summary");
+    expect(opPilot.mode).toBe("runtime_pilot_precondition_summary");
   });
 });

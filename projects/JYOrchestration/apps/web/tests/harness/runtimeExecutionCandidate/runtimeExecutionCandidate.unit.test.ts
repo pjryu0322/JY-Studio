@@ -66,6 +66,10 @@ function buildSemanticBeforeExecutionCandidate(): RuntimeSemanticPlanningReports
     runtimeExecutionCandidateScope: _b,
     runtimeExecutionCandidatePreconditions: _c,
     runtimeExecutionCandidateBlockers: _d,
+    runtimeOperatorApprovalSummary: _o1,
+    runtimeRollbackReadinessSummary: _o2,
+    runtimeAuditReadinessSummary: _o3,
+    runtimePilotPreconditionSummary: _o4,
     ...rest
   } = semantic;
   return rest as RuntimeSemanticPlanningReportsBeforeExecutionCandidate;
@@ -83,6 +87,8 @@ describe("H23 runtime execution candidate", () => {
     expect(semantic.runtimeExecutionCandidateScope.actualExecutionEnabled).toBe(false);
     expect(semantic.runtimeExecutionCandidatePreconditions.actualExecutionEnabled).toBe(false);
     expect(semantic.runtimeExecutionCandidateBlockers.actualExecutionEnabled).toBe(false);
+    expect(semantic.runtimeOperatorApprovalSummary.actualApprovalEnforcementEnabled).toBe(false);
+    expect(semantic.runtimeRollbackReadinessSummary.actualRollbackExecutionEnabled).toBe(false);
   });
 
   it("read_only boundary → not_candidate", () => {
