@@ -1,5 +1,5 @@
 /**
- * H17–H25 — 진단 API용 runtime semantic·…·pilot contract·no-op adapter wire 묶음.
+ * H17–H28 — 진단 API용 runtime semantic·…·pilot skeleton wire 묶음.
  */
 
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
@@ -53,6 +53,7 @@ import { serializeRuntimePilotContractDiagnosticBundleFromSemanticReports } from
 import { serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopAdapter/serializeRuntimeNoopAdapterDiagnosticBundle";
 import { serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeAdapterSandbox/serializeRuntimeAdapterSandboxDiagnosticBundle";
 import { serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotActivation/serializeRuntimePilotActivationDiagnosticBundle";
+import { serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotSkeleton/serializeRuntimePilotSkeletonDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -86,6 +87,9 @@ type SerializedRuntimeAdapterSandboxDiag = ReturnType<
 >;
 type SerializedRuntimePilotActivationDiag = ReturnType<
   typeof serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimePilotSkeletonDiag = ReturnType<
+  typeof serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -178,6 +182,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimePilotActivationFinalSafetyGate: SerializedRuntimePilotActivationDiag["runtimePilotActivationFinalSafetyGate"];
   runtimePilotActivationBoundaryViolationReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationBoundaryViolationReport"];
   runtimePilotActivationReadinessVerificationReport: SerializedRuntimePilotActivationDiag["runtimePilotActivationReadinessVerificationReport"];
+  runtimePilotSkeletonSummary: SerializedRuntimePilotSkeletonDiag["runtimePilotSkeletonSummary"];
+  runtimeDryRunRunnerContract: SerializedRuntimePilotSkeletonDiag["runtimeDryRunRunnerContract"];
+  runtimePilotRunnerInputEnvelope: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerInputEnvelope"];
+  runtimePilotRunnerOutputEnvelope: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerOutputEnvelope"];
+  runtimePilotRunnerSafetyGuard: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerSafetyGuard"];
+  runtimePilotSkeletonBlockerReport: SerializedRuntimePilotSkeletonDiag["runtimePilotSkeletonBlockerReport"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -190,6 +200,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const noopAdapterDiag = serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(reports);
   const adapterSandboxDiag = serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports(reports);
   const pilotActivationDiag = serializeRuntimePilotActivationDiagnosticBundleFromSemanticReports(reports);
+  const pilotSkeletonDiag = serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -267,6 +278,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...noopAdapterDiag,
     ...adapterSandboxDiag,
     ...pilotActivationDiag,
+    ...pilotSkeletonDiag,
   };
 }
 

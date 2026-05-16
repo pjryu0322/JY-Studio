@@ -1,5 +1,5 @@
 /**
- * H17–H27 — semantic·…·adapter sandbox·pilot activation candidate **planning 보고서** 일괄 산출.
+ * H17–H28 — semantic·…·pilot activation·pilot skeleton **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -29,6 +29,7 @@ import { buildRuntimePilotContractPlanningReports } from "@/lib/harness/runtimeP
 import { buildRuntimeNoopAdapterPlanningReports } from "@/lib/harness/runtimeNoopAdapter/buildRuntimeNoopAdapterPlanningReports";
 import { buildRuntimeAdapterSandboxPlanningReports } from "@/lib/harness/runtimeAdapterSandbox/buildRuntimeAdapterSandboxPlanningReports";
 import { buildRuntimePilotActivationPlanningReports } from "@/lib/harness/runtimePilotActivation/buildRuntimePilotActivationPlanningReports";
+import { buildRuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimePilotSkeleton/buildRuntimePilotSkeletonPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -49,6 +50,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
+  RuntimeSemanticPlanningReportsBeforePilotSkeleton,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -69,6 +71,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
+  RuntimeSemanticPlanningReportsBeforePilotSkeleton,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -189,8 +192,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...adapterSandboxReports,
   };
   const pilotActivationReports = buildRuntimePilotActivationPlanningReports(semanticWithAdapterSandbox);
+  const semanticWithPilotActivation: RuntimeSemanticPlanningReportsBeforePilotSkeleton = {
+    ...semanticWithAdapterSandbox,
+    ...pilotActivationReports,
+  };
+  const pilotSkeletonReports = buildRuntimePilotSkeletonPlanningReports(semanticWithPilotActivation);
 
-  return { ...semanticWithAdapterSandbox, ...pilotActivationReports };
+  return { ...semanticWithPilotActivation, ...pilotSkeletonReports };
 }
 
 export type {

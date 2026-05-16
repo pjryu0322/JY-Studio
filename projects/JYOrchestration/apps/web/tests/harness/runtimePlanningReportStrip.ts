@@ -8,12 +8,38 @@ import type {
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotContract,
+  RuntimeSemanticPlanningReportsBeforePilotSkeleton,
 } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
+
+/** H28 pilot skeleton fields (shared strip list). */
+function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimePilotSkeletonSummary"
+  | "runtimeDryRunRunnerContract"
+  | "runtimePilotRunnerInputEnvelope"
+  | "runtimePilotRunnerOutputEnvelope"
+  | "runtimePilotRunnerSafetyGuard"
+  | "runtimePilotSkeletonBlockerReport"
+> {
+  const {
+    runtimePilotSkeletonSummary: _ps1,
+    runtimeDryRunRunnerContract: _ps2,
+    runtimePilotRunnerInputEnvelope: _ps3,
+    runtimePilotRunnerOutputEnvelope: _ps4,
+    runtimePilotRunnerSafetyGuard: _ps5,
+    runtimePilotSkeletonBlockerReport: _ps6,
+    ...rest
+  } = semantic;
+  return rest;
+}
 
 /** H25 noop adapter reports 제거 — pilot contract 이하 레이어 단독 테스트용. */
 export function stripRuntimeNoopAdapterLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopAdapter {
+  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
   const {
     runtimeNoopAdapterSummary: _a,
     runtimeNoopAdapterSkeleton: _b,
@@ -36,8 +62,11 @@ export function stripRuntimeNoopAdapterLayer(
     runtimePilotActivationPolicy: _p,
     runtimePilotActivationBlockerReport: _q,
     runtimePilotActivationReadinessChecklist: _r,
+    runtimePilotActivationFinalSafetyGate: _r2,
+    runtimePilotActivationBoundaryViolationReport: _r3,
+    runtimePilotActivationReadinessVerificationReport: _r4,
     ...before
-  } = semantic;
+  } = withoutSkeleton;
   return before;
 }
 
@@ -45,6 +74,7 @@ export function stripRuntimeNoopAdapterLayer(
 export function stripRuntimeAdapterSandboxLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeAdapterSandbox {
+  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
   const {
     runtimeAdapterSandboxSummary: _a,
     runtimeAdapterSandboxInputEnvelope: _b,
@@ -60,8 +90,11 @@ export function stripRuntimeAdapterSandboxLayer(
     runtimePilotActivationPolicy: _l,
     runtimePilotActivationBlockerReport: _m,
     runtimePilotActivationReadinessChecklist: _n,
+    runtimePilotActivationFinalSafetyGate: _n2,
+    runtimePilotActivationBoundaryViolationReport: _n3,
+    runtimePilotActivationReadinessVerificationReport: _n4,
     ...before
-  } = semantic;
+  } = withoutSkeleton;
   return before;
 }
 
@@ -69,15 +102,26 @@ export function stripRuntimeAdapterSandboxLayer(
 export function stripRuntimePilotActivationLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforePilotActivation {
+  const withoutSkeleton = omitPilotSkeletonLayer(semantic);
   const {
     runtimePilotActivationSummary: _a,
     runtimePilotActivationScope: _b,
     runtimePilotActivationPolicy: _c,
     runtimePilotActivationBlockerReport: _d,
     runtimePilotActivationReadinessChecklist: _e,
+    runtimePilotActivationFinalSafetyGate: _e2,
+    runtimePilotActivationBoundaryViolationReport: _e3,
+    runtimePilotActivationReadinessVerificationReport: _e4,
     ...before
-  } = semantic;
+  } = withoutSkeleton;
   return before;
+}
+
+/** H28 pilot skeleton reports 제거 — pilot activation 이하 레이어 단독 테스트용. */
+export function stripRuntimePilotSkeletonLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforePilotSkeleton {
+  return omitPilotSkeletonLayer(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

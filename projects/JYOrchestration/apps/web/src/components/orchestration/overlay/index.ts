@@ -39,6 +39,7 @@ export { OverlayRuntimePilotContractSection } from "./OverlayRuntimePilotContrac
 export { OverlayRuntimeNoopAdapterSection } from "./OverlayRuntimeNoopAdapterSection";
 export { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSandboxSection";
 export { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActivationSection";
+export { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

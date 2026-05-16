@@ -19,6 +19,7 @@ import type { OverlayRuntimePilotContractSectionVM } from "@/lib/overlay-ui/over
 import type { OverlayRuntimeNoopAdapterSectionVM } from "@/lib/overlay-ui/overlayRuntimeNoopAdapterAdapter";
 import type { OverlayRuntimeAdapterSandboxSectionVM } from "@/lib/overlay-ui/overlayRuntimeAdapterSandboxAdapter";
 import type { OverlayRuntimePilotActivationSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotActivationAdapter";
+import type { OverlayRuntimePilotSkeletonSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotSkeletonAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -41,6 +42,7 @@ import { OverlayRuntimePilotContractSection } from "./OverlayRuntimePilotContrac
 import { OverlayRuntimeNoopAdapterSection } from "./OverlayRuntimeNoopAdapterSection";
 import { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSandboxSection";
 import { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActivationSection";
+import { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -61,6 +63,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeNoopAdapterVm,
   runtimeAdapterSandboxVm,
   runtimePilotActivationVm,
+  runtimePilotSkeletonVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -83,6 +86,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   noopAdapterDefaultOpen,
   adapterSandboxDefaultOpen,
   pilotActivationDefaultOpen,
+  pilotSkeletonDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -106,6 +110,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeNoopAdapter = true,
   showRuntimeAdapterSandbox = true,
   showRuntimePilotActivation = true,
+  showRuntimePilotSkeleton = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -129,6 +134,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeNoopAdapterVm: OverlayRuntimeNoopAdapterSectionVM;
   readonly runtimeAdapterSandboxVm: OverlayRuntimeAdapterSandboxSectionVM;
   readonly runtimePilotActivationVm: OverlayRuntimePilotActivationSectionVM;
+  readonly runtimePilotSkeletonVm: OverlayRuntimePilotSkeletonSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -151,6 +157,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly noopAdapterDefaultOpen?: boolean;
   readonly adapterSandboxDefaultOpen?: boolean;
   readonly pilotActivationDefaultOpen?: boolean;
+  readonly pilotSkeletonDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -174,6 +181,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeNoopAdapter?: boolean;
   readonly showRuntimeAdapterSandbox?: boolean;
   readonly showRuntimePilotActivation?: boolean;
+  readonly showRuntimePilotSkeleton?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -261,6 +269,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimePilotActivationSection
           vm={runtimePilotActivationVm}
           defaultOpen={pilotActivationDefaultOpen}
+        />
+      ) : null}
+      {showRuntimePilotSkeleton ? (
+        <OverlayRuntimePilotSkeletonSection
+          vm={runtimePilotSkeletonVm}
+          defaultOpen={pilotSkeletonDefaultOpen}
         />
       ) : null}
       {showForecast ? (
