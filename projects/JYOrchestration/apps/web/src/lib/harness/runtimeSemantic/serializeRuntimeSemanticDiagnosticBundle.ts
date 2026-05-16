@@ -188,6 +188,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimePilotRunnerOutputEnvelope: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerOutputEnvelope"];
   runtimePilotRunnerSafetyGuard: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerSafetyGuard"];
   runtimePilotSkeletonBlockerReport: SerializedRuntimePilotSkeletonDiag["runtimePilotSkeletonBlockerReport"];
+  runtimePilotRunnerContractVerificationReport: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerContractVerificationReport"];
+  runtimePilotRunnerBoundaryViolationReport: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerBoundaryViolationReport"];
+  runtimePilotRunnerNoExecutionResultMetadata: SerializedRuntimePilotSkeletonDiag["runtimePilotRunnerNoExecutionResultMetadata"];
+  runtimePilotSkeletonPreflightSummary: SerializedRuntimePilotSkeletonDiag["runtimePilotSkeletonPreflightSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);

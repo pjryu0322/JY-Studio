@@ -22,6 +22,10 @@ function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
   | "runtimePilotRunnerOutputEnvelope"
   | "runtimePilotRunnerSafetyGuard"
   | "runtimePilotSkeletonBlockerReport"
+  | "runtimePilotRunnerContractVerificationReport"
+  | "runtimePilotRunnerBoundaryViolationReport"
+  | "runtimePilotRunnerNoExecutionResultMetadata"
+  | "runtimePilotSkeletonPreflightSummary"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -30,6 +34,10 @@ function omitPilotSkeletonLayer<T extends RuntimeSemanticPlanningReports>(
     runtimePilotRunnerOutputEnvelope: _ps4,
     runtimePilotRunnerSafetyGuard: _ps5,
     runtimePilotSkeletonBlockerReport: _ps6,
+    runtimePilotRunnerContractVerificationReport: _ps7,
+    runtimePilotRunnerBoundaryViolationReport: _ps8,
+    runtimePilotRunnerNoExecutionResultMetadata: _ps9,
+    runtimePilotSkeletonPreflightSummary: _ps10,
     ...rest
   } = semantic;
   return rest;

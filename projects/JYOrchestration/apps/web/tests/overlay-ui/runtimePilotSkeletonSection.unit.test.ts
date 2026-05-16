@@ -22,12 +22,14 @@ describe("buildOverlayRuntimePilotSkeletonSectionVm", () => {
     expect(compact.safetyGuardRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays skeleton readiness and runner mode", () => {
+  it("compact mode displays skeleton readiness runner mode and preflight", () => {
     const vm = buildOverlayRuntimePilotSkeletonSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.skeletonReadinessKo).toBeTruthy();
     expect(vm.runnerModeKo).toBeTruthy();
+    expect(vm.preflightReadinessKo).toBeTruthy();
+    expect(vm.contractVerificationStatusKo).toBeTruthy();
     expect(
-      vm.topSkeletonBlocker !== null || vm.topForbiddenRunnerOperation !== null || vm.showAttention
+      vm.topViolationOrBlocker !== null || vm.topForbiddenRunnerOperation !== null || vm.showAttention
     ).toBe(true);
   });
 });

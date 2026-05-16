@@ -398,6 +398,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningRuntimePilotActivationCandidateEnabled: true,
     harnessRuntimePlanningRuntimePilotActivationStabilizationEnabled: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonEnabled: true,
+    harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -451,6 +452,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningRuntimeAdapterSandboxStabilizationLayer: true,
     harnessRuntimePlanningRuntimePilotActivationCandidateLayer: true,
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonLayer: true,
+    harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -723,6 +725,13 @@ export async function GET(request: NextRequest) {
       runtimePilotRunnerOutputEnvelope: runtimeSemanticDiag.runtimePilotRunnerOutputEnvelope,
       runtimePilotRunnerSafetyGuard: runtimeSemanticDiag.runtimePilotRunnerSafetyGuard,
       runtimePilotSkeletonBlockerReport: runtimeSemanticDiag.runtimePilotSkeletonBlockerReport,
+      runtimePilotRunnerContractVerificationReport:
+        runtimeSemanticDiag.runtimePilotRunnerContractVerificationReport,
+      runtimePilotRunnerBoundaryViolationReport:
+        runtimeSemanticDiag.runtimePilotRunnerBoundaryViolationReport,
+      runtimePilotRunnerNoExecutionResultMetadata:
+        runtimeSemanticDiag.runtimePilotRunnerNoExecutionResultMetadata,
+      runtimePilotSkeletonPreflightSummary: runtimeSemanticDiag.runtimePilotSkeletonPreflightSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

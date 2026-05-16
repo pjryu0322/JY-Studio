@@ -93,6 +93,67 @@ export type RuntimePilotSkeletonBlockerReport = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimePilotSkeletonPreflightReadiness = "ready_metadata" | "watch" | "blocked" | "not_ready";
+
+export type RuntimePilotRunnerContractVerificationStatus = "verified_metadata" | "partial" | "failed";
+
+export type RuntimePilotRunnerContractVerificationReport = Readonly<{
+  mode: "runtime_pilot_runner_contract_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  verificationStatus: RuntimePilotRunnerContractVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimePilotRunnerBoundaryViolationReport = Readonly<{
+  mode: "runtime_pilot_runner_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimePilotRunnerNoExecutionResultMetadata = Readonly<{
+  mode: "runtime_pilot_runner_no_execution_result_metadata";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  runnerExecuted: false;
+  dryRunRunnerExecuted: false;
+  adapterInvoked: false;
+  executionPerformed: false;
+  providerRoutingPerformed: false;
+  queueControlPerformed: false;
+  rollbackPerformed: false;
+  diagnosticOnly: true;
+  resultRows: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimePilotSkeletonPreflightSummary = Readonly<{
+  mode: "runtime_pilot_skeleton_preflight_summary";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerExecutionEnabled: false;
+  preflightReadiness: RuntimePilotSkeletonPreflightReadiness;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimePilotSkeletonPlanningReports = Readonly<{
   runtimePilotSkeletonSummary: RuntimePilotSkeletonSummary;
   runtimeDryRunRunnerContract: RuntimeDryRunRunnerContract;
@@ -100,4 +161,8 @@ export type RuntimePilotSkeletonPlanningReports = Readonly<{
   runtimePilotRunnerOutputEnvelope: RuntimePilotRunnerOutputEnvelope;
   runtimePilotRunnerSafetyGuard: RuntimePilotRunnerSafetyGuard;
   runtimePilotSkeletonBlockerReport: RuntimePilotSkeletonBlockerReport;
+  runtimePilotRunnerContractVerificationReport: RuntimePilotRunnerContractVerificationReport;
+  runtimePilotRunnerBoundaryViolationReport: RuntimePilotRunnerBoundaryViolationReport;
+  runtimePilotRunnerNoExecutionResultMetadata: RuntimePilotRunnerNoExecutionResultMetadata;
+  runtimePilotSkeletonPreflightSummary: RuntimePilotSkeletonPreflightSummary;
 }>;

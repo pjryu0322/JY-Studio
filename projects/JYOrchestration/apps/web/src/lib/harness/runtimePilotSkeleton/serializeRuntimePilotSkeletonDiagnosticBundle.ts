@@ -1,14 +1,18 @@
 /**
- * H28 — pilot skeleton 진단 **직렬화 전용**(report 재빌드 없음).
+ * H28 / H28.5 — pilot skeleton 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
   RuntimeDryRunRunnerContract,
+  RuntimePilotRunnerBoundaryViolationReport,
+  RuntimePilotRunnerContractVerificationReport,
   RuntimePilotRunnerInputEnvelope,
+  RuntimePilotRunnerNoExecutionResultMetadata,
   RuntimePilotRunnerOutputEnvelope,
   RuntimePilotRunnerSafetyGuard,
   RuntimePilotSkeletonBlockerReport,
+  RuntimePilotSkeletonPreflightSummary,
   RuntimePilotSkeletonSummary,
 } from "./runtimePilotSkeletonTypes";
 
@@ -115,6 +119,75 @@ function serializeBlockers(b: RuntimePilotSkeletonBlockerReport): Readonly<Recor
   };
 }
 
+function serializeContractVerification(
+  v: RuntimePilotRunnerContractVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualIsolatedRunnerExecutionEnabled: v.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerExecutionEnabled: v.actualDryRunRunnerExecutionEnabled,
+    verificationStatus: v.verificationStatus,
+    findings: sortKo(v.findings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeBoundaryViolation(
+  b: RuntimePilotRunnerBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: b.mode,
+    actualRuntimeOrchestrationEnabled: b.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: b.actualPilotExecutionEnabled,
+    actualIsolatedRunnerExecutionEnabled: b.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerExecutionEnabled: b.actualDryRunRunnerExecutionEnabled,
+    actualFlagViolations: sortKo(b.actualFlagViolations),
+    wordingRiskFindings: sortKo(b.wordingRiskFindings),
+    recommendations: sortKo(b.recommendations),
+  };
+}
+
+function serializeNoExecution(r: RuntimePilotRunnerNoExecutionResultMetadata): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    actualRuntimeOrchestrationEnabled: r.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: r.actualPilotExecutionEnabled,
+    actualIsolatedRunnerExecutionEnabled: r.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerExecutionEnabled: r.actualDryRunRunnerExecutionEnabled,
+    actualRuntimeAdapterInvocationEnabled: r.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: r.actualExecutionEnabled,
+    actualProviderRoutingEnabled: r.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: r.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: r.actualRollbackExecutionEnabled,
+    runnerExecuted: r.runnerExecuted,
+    dryRunRunnerExecuted: r.dryRunRunnerExecuted,
+    adapterInvoked: r.adapterInvoked,
+    executionPerformed: r.executionPerformed,
+    providerRoutingPerformed: r.providerRoutingPerformed,
+    queueControlPerformed: r.queueControlPerformed,
+    rollbackPerformed: r.rollbackPerformed,
+    diagnosticOnly: r.diagnosticOnly,
+    resultRows: sortKo(r.resultRows),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializePreflight(p: RuntimePilotSkeletonPreflightSummary): Readonly<Record<string, unknown>> {
+  return {
+    mode: p.mode,
+    actualRuntimeOrchestrationEnabled: p.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: p.actualPilotExecutionEnabled,
+    actualIsolatedRunnerExecutionEnabled: p.actualIsolatedRunnerExecutionEnabled,
+    actualDryRunRunnerExecutionEnabled: p.actualDryRunRunnerExecutionEnabled,
+    preflightReadiness: p.preflightReadiness,
+    checklist: sortKo(p.checklist),
+    blockers: sortKo(p.blockers),
+    recommendations: sortKo(p.recommendations),
+  };
+}
+
 export function serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -124,6 +197,10 @@ export function serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports
   runtimePilotRunnerOutputEnvelope: ReturnType<typeof serializeOutput>;
   runtimePilotRunnerSafetyGuard: ReturnType<typeof serializeGuard>;
   runtimePilotSkeletonBlockerReport: ReturnType<typeof serializeBlockers>;
+  runtimePilotRunnerContractVerificationReport: ReturnType<typeof serializeContractVerification>;
+  runtimePilotRunnerBoundaryViolationReport: ReturnType<typeof serializeBoundaryViolation>;
+  runtimePilotRunnerNoExecutionResultMetadata: ReturnType<typeof serializeNoExecution>;
+  runtimePilotSkeletonPreflightSummary: ReturnType<typeof serializePreflight>;
 }> {
   return {
     runtimePilotSkeletonSummary: serializeSummary(reports.runtimePilotSkeletonSummary),
@@ -132,5 +209,15 @@ export function serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports
     runtimePilotRunnerOutputEnvelope: serializeOutput(reports.runtimePilotRunnerOutputEnvelope),
     runtimePilotRunnerSafetyGuard: serializeGuard(reports.runtimePilotRunnerSafetyGuard),
     runtimePilotSkeletonBlockerReport: serializeBlockers(reports.runtimePilotSkeletonBlockerReport),
+    runtimePilotRunnerContractVerificationReport: serializeContractVerification(
+      reports.runtimePilotRunnerContractVerificationReport
+    ),
+    runtimePilotRunnerBoundaryViolationReport: serializeBoundaryViolation(
+      reports.runtimePilotRunnerBoundaryViolationReport
+    ),
+    runtimePilotRunnerNoExecutionResultMetadata: serializeNoExecution(
+      reports.runtimePilotRunnerNoExecutionResultMetadata
+    ),
+    runtimePilotSkeletonPreflightSummary: serializePreflight(reports.runtimePilotSkeletonPreflightSummary),
   };
 }

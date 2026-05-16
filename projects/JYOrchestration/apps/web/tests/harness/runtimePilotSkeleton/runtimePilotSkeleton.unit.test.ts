@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildRuntimePilotActivationPlanningReports } from "@/lib/harness/runtimePilotActivation/buildRuntimePilotActivationPlanningReports";
 import { buildRuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimePilotSkeleton/buildRuntimePilotSkeletonPlanningReports";
+import { detectRuntimePilotRunnerBoundaryViolations } from "@/lib/harness/runtimePilotSkeleton/detectRuntimePilotRunnerBoundaryViolations";
 import { serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotSkeleton/serializeRuntimePilotSkeletonDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import {
@@ -174,8 +175,199 @@ describe("H28 runtime pilot skeleton & dry-run runner contract", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimePilotSkeletonLayer(semantic);
     expect("runtimePilotSkeletonSummary" in stripped).toBe(false);
+    expect("runtimePilotSkeletonPreflightSummary" in stripped).toBe(false);
     expect(stripped.runtimePilotActivationFinalSafetyGate.mode).toBe(
       "runtime_pilot_activation_final_safety_gate"
     );
+  });
+});
+
+describe("H28.5 pilot skeleton stabilization & runner contract verification", () => {
+  it("full semantic includes H28.5 reports with no-execution flags false", () => {
+    const semantic = buildFullSemantic();
+    expect(semantic.runtimePilotRunnerContractVerificationReport.mode).toBe(
+      "runtime_pilot_runner_contract_verification_report"
+    );
+    expect(semantic.runtimePilotRunnerBoundaryViolationReport.mode).toBe(
+      "runtime_pilot_runner_boundary_violation_report"
+    );
+    expect(semantic.runtimePilotRunnerNoExecutionResultMetadata.runnerExecuted).toBe(false);
+    expect(semantic.runtimePilotRunnerNoExecutionResultMetadata.dryRunRunnerExecuted).toBe(false);
+    expect(semantic.runtimePilotRunnerNoExecutionResultMetadata.diagnosticOnly).toBe(true);
+    expect(semantic.runtimePilotSkeletonPreflightSummary.mode).toBe("runtime_pilot_skeleton_preflight_summary");
+  });
+
+  it("skeleton_metadata_ready + verified contract can yield preflight ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimePilotSkeletonSummary.skeletonReadiness === "skeleton_metadata_ready" &&
+      semantic.runtimePilotRunnerContractVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimePilotRunnerBoundaryViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimePilotSkeletonBlockerReport.blockers.length === 0
+    ) {
+      expect(semantic.runtimePilotSkeletonPreflightSummary.preflightReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("watch skeleton yields preflight watch", () => {
+    const base = stripRuntimePilotSkeletonLayer(buildFullSemantic());
+    const activation = buildRuntimePilotActivationPlanningReports(stripRuntimePilotActivationLayer(buildFullSemantic()));
+    const skeleton = buildRuntimePilotSkeletonPlanningReports({
+      ...base,
+      ...activation,
+      runtimePilotActivationFinalSafetyGate: {
+        ...activation.runtimePilotActivationFinalSafetyGate,
+        finalGateStatus: "watch",
+        h28EntryReadiness: "watch",
+      },
+      runtimePilotActivationBoundaryViolationReport: {
+        ...activation.runtimePilotActivationBoundaryViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: [],
+      },
+      runtimePilotActivationReadinessVerificationReport: {
+        ...activation.runtimePilotActivationReadinessVerificationReport,
+        verificationStatus: "partial",
+      },
+      runtimePilotActivationBlockerReport: { ...activation.runtimePilotActivationBlockerReport, blockers: [] },
+      runtimeAdapterSandboxPreflightSummary: {
+        ...base.runtimeAdapterSandboxPreflightSummary,
+        preflightReadiness: "ready_metadata",
+      },
+      runtimeOperatorApprovalSummary: {
+        ...base.runtimeOperatorApprovalSummary,
+        approvalReadiness: "ready_for_review_metadata",
+      },
+      runtimeRollbackReadinessSummary: {
+        ...base.runtimeRollbackReadinessSummary,
+        rollbackReadiness: "metadata_ready",
+      },
+      runtimeAuditReadinessSummary: {
+        ...base.runtimeAuditReadinessSummary,
+        auditReadiness: "sufficient_metadata",
+      },
+    });
+    expect(skeleton.runtimePilotSkeletonPreflightSummary.preflightReadiness).toBe("watch");
+  });
+
+  it("blocked skeleton yields preflight blocked", () => {
+    const activation = buildRuntimePilotActivationPlanningReports(
+      stripRuntimePilotActivationLayer(buildFullSemantic())
+    );
+    const skeleton = buildRuntimePilotSkeletonPlanningReports({
+      ...stripRuntimePilotSkeletonLayer(buildFullSemantic()),
+      ...activation,
+      runtimePilotActivationFinalSafetyGate: {
+        ...activation.runtimePilotActivationFinalSafetyGate,
+        finalGateStatus: "blocked",
+        h28EntryReadiness: "blocked",
+      },
+    });
+    expect(skeleton.runtimePilotSkeletonPreflightSummary.preflightReadiness).toBe("blocked");
+  });
+
+  it("boundary violation detects actualIsolatedRunnerExecutionEnabled true", () => {
+    const semantic = buildFullSemantic();
+    const violations = detectRuntimePilotRunnerBoundaryViolations({
+      summary: {
+        ...semantic.runtimePilotSkeletonSummary,
+        actualIsolatedRunnerExecutionEnabled: true as unknown as false,
+      },
+      contract: semantic.runtimeDryRunRunnerContract,
+      inputEnvelope: semantic.runtimePilotRunnerInputEnvelope,
+      outputEnvelope: semantic.runtimePilotRunnerOutputEnvelope,
+      safetyGuard: semantic.runtimePilotRunnerSafetyGuard,
+      noExecution: semantic.runtimePilotRunnerNoExecutionResultMetadata,
+    });
+    expect(
+      violations.actualFlagViolations.some((v) => v.includes("actualIsolatedRunnerExecutionEnabled"))
+    ).toBe(true);
+  });
+
+  it("boundary violation detects actualDryRunRunnerExecutionEnabled true", () => {
+    const semantic = buildFullSemantic();
+    const violations = detectRuntimePilotRunnerBoundaryViolations({
+      summary: semantic.runtimePilotSkeletonSummary,
+      contract: {
+        ...semantic.runtimeDryRunRunnerContract,
+        actualDryRunRunnerExecutionEnabled: true as unknown as false,
+      },
+      inputEnvelope: semantic.runtimePilotRunnerInputEnvelope,
+      outputEnvelope: semantic.runtimePilotRunnerOutputEnvelope,
+      safetyGuard: semantic.runtimePilotRunnerSafetyGuard,
+      noExecution: semantic.runtimePilotRunnerNoExecutionResultMetadata,
+    });
+    expect(
+      violations.actualFlagViolations.some((v) => v.includes("actualDryRunRunnerExecutionEnabled"))
+    ).toBe(true);
+  });
+
+  it("boundary violation detects runnerExecuted=true wording risk", () => {
+    const semantic = buildFullSemantic();
+    const violations = detectRuntimePilotRunnerBoundaryViolations({
+      summary: { ...semantic.runtimePilotSkeletonSummary, rationaleKo: "runnerExecuted=true in text" },
+      contract: semantic.runtimeDryRunRunnerContract,
+      inputEnvelope: semantic.runtimePilotRunnerInputEnvelope,
+      outputEnvelope: semantic.runtimePilotRunnerOutputEnvelope,
+      safetyGuard: semantic.runtimePilotRunnerSafetyGuard,
+      noExecution: semantic.runtimePilotRunnerNoExecutionResultMetadata,
+    });
+    expect(violations.wordingRiskFindings.some((w) => w.includes("runnerExecuted"))).toBe(true);
+  });
+
+  it("boundary violation detects dryRunRunnerExecuted adapterInvoked executionPerformed wording", () => {
+    const semantic = buildFullSemantic();
+    const violations = detectRuntimePilotRunnerBoundaryViolations({
+      summary: semantic.runtimePilotSkeletonSummary,
+      contract: semantic.runtimeDryRunRunnerContract,
+      inputEnvelope: semantic.runtimePilotRunnerInputEnvelope,
+      outputEnvelope: semantic.runtimePilotRunnerOutputEnvelope,
+      safetyGuard: semantic.runtimePilotRunnerSafetyGuard,
+      noExecution: {
+        ...semantic.runtimePilotRunnerNoExecutionResultMetadata,
+        resultRows: [
+          "dryRunRunnerExecuted=true",
+          "adapterInvoked=true",
+          "executionPerformed=true",
+          "providerRoutingPerformed=true",
+          "queueControlPerformed=true",
+          "rollbackPerformed=true",
+        ],
+      },
+    });
+    expect(violations.wordingRiskFindings.some((w) => w.includes("dryRunRunnerExecuted"))).toBe(true);
+    expect(violations.wordingRiskFindings.some((w) => w.includes("adapterInvoked"))).toBe(true);
+    expect(violations.wordingRiskFindings.some((w) => w.includes("executionPerformed"))).toBe(true);
+  });
+
+  it("boundary violation detects diagnosticOnly false on no-execution metadata", () => {
+    const semantic = buildFullSemantic();
+    const violations = detectRuntimePilotRunnerBoundaryViolations({
+      summary: semantic.runtimePilotSkeletonSummary,
+      contract: semantic.runtimeDryRunRunnerContract,
+      inputEnvelope: semantic.runtimePilotRunnerInputEnvelope,
+      outputEnvelope: semantic.runtimePilotRunnerOutputEnvelope,
+      safetyGuard: semantic.runtimePilotRunnerSafetyGuard,
+      noExecution: {
+        ...semantic.runtimePilotRunnerNoExecutionResultMetadata,
+        diagnosticOnly: false as unknown as true,
+      },
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
+  });
+
+  it("serializer includes verification boundary no-execution preflight", () => {
+    const semantic = buildFullSemantic();
+    const ser = serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports(semantic);
+    expect(ser.runtimePilotRunnerContractVerificationReport.mode).toBe(
+      "runtime_pilot_runner_contract_verification_report"
+    );
+    expect(ser.runtimePilotRunnerBoundaryViolationReport.mode).toBe(
+      "runtime_pilot_runner_boundary_violation_report"
+    );
+    expect(ser.runtimePilotRunnerNoExecutionResultMetadata.mode).toBe(
+      "runtime_pilot_runner_no_execution_result_metadata"
+    );
+    expect(ser.runtimePilotSkeletonPreflightSummary.mode).toBe("runtime_pilot_skeleton_preflight_summary");
   });
 });

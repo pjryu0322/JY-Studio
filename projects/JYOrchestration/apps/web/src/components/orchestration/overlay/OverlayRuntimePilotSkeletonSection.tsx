@@ -17,19 +17,22 @@ export function OverlayRuntimePilotSkeletonSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Pilot Skeleton (H28)"
+      title="Runtime Pilot Skeleton (H28.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Pilot skeleton readiness" value={vm.skeletonReadinessKo} />
         <OverlayUiKeyValueRow label="Runner mode" value={vm.runnerModeKo} />
-        {vm.topSkeletonBlocker ? (
-          <OverlayUiKeyValueRow label="Top skeleton blocker" value={vm.topSkeletonBlocker} />
+        <OverlayUiKeyValueRow label="Contract verification" value={vm.contractVerificationStatusKo} />
+        <OverlayUiKeyValueRow label="Preflight readiness" value={vm.preflightReadinessKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topSkeletonBlocker && vm.topForbiddenRunnerOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenRunnerOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden operation" value={vm.topForbiddenRunnerOperation} />
         ) : null}
+        <OverlayUiKeyValueRow label="No-execution result" value={vm.noExecutionResultSummaryKo} />
         {vm.showDetailSections ? (
           <>
             <OverlayUiKeyValueRow label="Dry-run runner contract" value={vm.contractRunnerName} />
@@ -108,6 +111,82 @@ export function OverlayRuntimePilotSkeletonSection({
               </ul>
             ) : (
               <OverlayUiEmptyHint message={RUNTIME_PILOT_SKELETON_EMPTY_HINT_KO.safetyGuard} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Contract verification findings</div>
+            {vm.contractFindingRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.contractFindingRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_SKELETON_EMPTY_HINT_KO.contractFinding} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Boundary violations</div>
+            {vm.boundaryViolationRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.boundaryViolationRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_SKELETON_EMPTY_HINT_KO.boundaryViolation} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>No-execution result rows</div>
+            {vm.noExecutionResultRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.noExecutionResultRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_SKELETON_EMPTY_HINT_KO.noExecutionResult} />
+            )}
+            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Preflight checklist</div>
+            {vm.preflightChecklistRows.length > 0 ? (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  fontSize: 11,
+                  color: t.textMuted,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere" as const,
+                }}
+              >
+                {vm.preflightChecklistRows.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : (
+              <OverlayUiEmptyHint message={RUNTIME_PILOT_SKELETON_EMPTY_HINT_KO.preflightChecklist} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Recommendations</div>
             {vm.recommendationRows.length > 0 ? (

@@ -236,6 +236,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimePilotActivation: boolean;
   /** Harness Phase H28 — Runtime pilot skeleton·dry-run runner contract(기본 접힘; blocker 시 펼침). */
   runtimePlanningRuntimePilotSkeleton: boolean;
+  /** Harness Phase H28.5 — Pilot skeleton stabilization·preflight(기본 접힘; blocker·watch 시 펼침). */
+  runtimePlanningRuntimePilotSkeletonStabilization: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -523,6 +525,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeAdapterSandbox: false,
     runtimePlanningRuntimePilotActivation: false,
     runtimePlanningRuntimePilotSkeleton: false,
+    runtimePlanningRuntimePilotSkeletonStabilization: false,
   };
 }
 
