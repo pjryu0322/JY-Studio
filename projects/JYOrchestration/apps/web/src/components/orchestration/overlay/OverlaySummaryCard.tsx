@@ -174,6 +174,7 @@ export function OverlaySummaryCard({
     resourceGovernanceVm: runtimePlanningResourceGovernanceVm,
     resourceAllocationVm: runtimePlanningResourceAllocationVm,
     resourceTrialVm: runtimePlanningResourceTrialVm,
+    runtimeControlBoundaryVm: runtimePlanningControlBoundaryVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -291,6 +292,10 @@ export function OverlaySummaryCard({
     "runtime_planning_resource_trial",
     d.runtimePlanningResourceTrial || runtimePlanningResourceTrialVm.showAttention
   );
+  const pControlBoundary = pol(
+    "runtime_planning_control_boundary",
+    d.runtimePlanningControlBoundary || runtimePlanningControlBoundaryVm.showAttention
+  );
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -305,7 +310,8 @@ export function OverlaySummaryCard({
     !pResource.omitFromDom ||
     !pResourceGov.omitFromDom ||
     !pResourceAlloc.omitFromDom ||
-    !pResourceTrial.omitFromDom;
+    !pResourceTrial.omitFromDom ||
+    !pControlBoundary.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -408,7 +414,8 @@ export function OverlaySummaryCard({
         !pResource.omitFromDom ||
         !pResourceGov.omitFromDom ||
         !pResourceAlloc.omitFromDom ||
-        !pResourceTrial.omitFromDom) ? (
+        !pResourceTrial.omitFromDom ||
+        !pControlBoundary.omitFromDom) ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
@@ -416,6 +423,7 @@ export function OverlaySummaryCard({
           resourceGovernanceVm={runtimePlanningResourceGovernanceVm}
           resourceAllocationVm={runtimePlanningResourceAllocationVm}
           resourceTrialVm={runtimePlanningResourceTrialVm}
+          runtimeControlBoundaryVm={runtimePlanningControlBoundaryVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -430,6 +438,7 @@ export function OverlaySummaryCard({
           resourceGovernanceDefaultOpen={pResourceGov.defaultOpen}
           resourceAllocationDefaultOpen={pResourceAlloc.defaultOpen}
           resourceTrialDefaultOpen={pResourceTrial.defaultOpen}
+          controlBoundaryDefaultOpen={pControlBoundary.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -453,7 +462,8 @@ export function OverlaySummaryCard({
               pResource.defaultOpen ||
               pResourceGov.defaultOpen ||
               pResourceAlloc.defaultOpen ||
-              pResourceTrial.defaultOpen)
+              pResourceTrial.defaultOpen ||
+              pControlBoundary.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
@@ -461,8 +471,9 @@ export function OverlaySummaryCard({
           showResourceGovernance={!pResourceGov.omitFromDom}
           showResourceAllocation={!pResourceAlloc.omitFromDom}
           showResourceTrial={!pResourceTrial.omitFromDom}
-          showForecast={!pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom}
-          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom}
+          showRuntimeControlBoundary={!pControlBoundary.omitFromDom}
+          showForecast={!pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom && pControlBoundary.omitFromDom}
+          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom && pControlBoundary.omitFromDom}
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
@@ -470,7 +481,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
@@ -480,7 +492,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -491,7 +504,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -503,7 +517,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -516,7 +531,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -530,7 +546,8 @@ export function OverlaySummaryCard({
             pResource.omitFromDom &&
             pResourceGov.omitFromDom &&
             pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom
+            pResourceTrial.omitFromDom &&
+            pControlBoundary.omitFromDom
           }
         />
       ) : null}

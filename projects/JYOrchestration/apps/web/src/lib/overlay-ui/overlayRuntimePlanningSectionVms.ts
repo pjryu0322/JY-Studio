@@ -1,5 +1,5 @@
 /**
- * H12–H22 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
+ * H12–H22.5 — Overlay planning 섹션 VM 일괄 산출(normalize 1회).
  */
 
 import type { HarnessMaturityBaselineReport, HarnessReleaseGateReadinessReport } from "@/lib/harness/maturity/harnessMaturityTypes";
@@ -90,6 +90,10 @@ import {
   buildOverlayRuntimeResourceTrialSectionVmFromReports,
   type OverlayRuntimeResourceTrialSectionVM,
 } from "./overlayRuntimeResourceTrialSectionVm";
+import {
+  buildOverlayRuntimeControlBoundarySectionVmFromReports,
+  type OverlayRuntimeControlBoundarySectionVM,
+} from "./overlayRuntimeControlBoundarySectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -121,6 +125,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   resourceGovernanceVm: OverlayRuntimeResourceGovernanceSectionVM;
   resourceAllocationVm: OverlayRuntimeResourceAllocationSectionVM;
   resourceTrialVm: OverlayRuntimeResourceTrialSectionVM;
+  runtimeControlBoundaryVm: OverlayRuntimeControlBoundarySectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -314,6 +319,9 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
   const resourceTrialVm = buildOverlayRuntimeResourceTrialSectionVmFromReports(semanticReports, {
     compactAndNarrowUi: input.compactAndNarrowUi,
   });
+  const runtimeControlBoundaryVm = buildOverlayRuntimeControlBoundarySectionVmFromReports(semanticReports, {
+    compactAndNarrowUi: input.compactAndNarrowUi,
+  });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -399,5 +407,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     resourceGovernanceVm,
     resourceAllocationVm,
     resourceTrialVm,
+    runtimeControlBoundaryVm,
   };
 }

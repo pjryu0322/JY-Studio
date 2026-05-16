@@ -218,6 +218,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningResourceAllocation: boolean;
   /** Harness Phase H22 — Controlled resource allocation trial(기본 접힘; dry-run readiness 시 펼침). */
   runtimePlanningResourceTrial: boolean;
+  /** Harness Phase H22.5 — Runtime control boundary(기본 접힘; risk·위반 후보 시 펼침). */
+  runtimePlanningControlBoundary: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -496,6 +498,7 @@ function buildSectionDefaults(
     runtimePlanningResourceGovernance: false,
     runtimePlanningResourceAllocation: false,
     runtimePlanningResourceTrial: false,
+    runtimePlanningControlBoundary: false,
   };
 }
 

@@ -11,6 +11,7 @@ import type { OverlayRuntimeResourceAllocationSectionVM } from "@/lib/overlay-ui
 import type { OverlayRuntimeResourceGovernanceSectionVM } from "@/lib/overlay-ui/overlayRuntimeResourceGovernanceAdapter";
 import type { OverlayRuntimeResourceSectionVM } from "@/lib/overlay-ui/overlayRuntimeResourceAdapter";
 import type { OverlayRuntimeResourceTrialSectionVM } from "@/lib/overlay-ui/overlayRuntimeResourceTrialAdapter";
+import type { OverlayRuntimeControlBoundarySectionVM } from "@/lib/overlay-ui/overlayRuntimeControlBoundaryAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -25,11 +26,12 @@ import { OverlayRuntimeResourceSection } from "./OverlayRuntimeResourceSection";
 import { OverlayRuntimeResourceGovernanceSection } from "./OverlayRuntimeResourceGovernanceSection";
 import { OverlayRuntimeResourceAllocationSection } from "./OverlayRuntimeResourceAllocationSection";
 import { OverlayRuntimeResourceTrialSection } from "./OverlayRuntimeResourceTrialSection";
+import { OverlayRuntimeControlBoundarySection } from "./OverlayRuntimeControlBoundarySection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 
-/** H15–H22 — dependency·criticality·resource·governance·allocation·trial·forecast·decision·… */
+/** H15–H22.5 — dependency·criticality·resource·governance·allocation·trial·control boundary·forecast·decision·… */
 export function OverlayRuntimeDependencyCriticalityGroup({
   dependencyVm,
   criticalityVm,
@@ -37,6 +39,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   resourceGovernanceVm,
   resourceAllocationVm,
   resourceTrialVm,
+  runtimeControlBoundaryVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -51,6 +54,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   resourceGovernanceDefaultOpen,
   resourceAllocationDefaultOpen,
   resourceTrialDefaultOpen,
+  controlBoundaryDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -66,6 +70,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showResourceGovernance = true,
   showResourceAllocation = true,
   showResourceTrial = true,
+  showRuntimeControlBoundary = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -81,6 +86,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly resourceGovernanceVm: OverlayRuntimeResourceGovernanceSectionVM;
   readonly resourceAllocationVm: OverlayRuntimeResourceAllocationSectionVM;
   readonly resourceTrialVm: OverlayRuntimeResourceTrialSectionVM;
+  readonly runtimeControlBoundaryVm: OverlayRuntimeControlBoundarySectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -95,6 +101,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly resourceGovernanceDefaultOpen?: boolean;
   readonly resourceAllocationDefaultOpen?: boolean;
   readonly resourceTrialDefaultOpen?: boolean;
+  readonly controlBoundaryDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -110,6 +117,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showResourceGovernance?: boolean;
   readonly showResourceAllocation?: boolean;
   readonly showResourceTrial?: boolean;
+  readonly showRuntimeControlBoundary?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -131,7 +139,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
           listStyle: "none",
         }}
       >
-        Planning observability (H15–H22, read-only)
+        Planning observability (H15–H22.5, read-only)
       </summary>
       {showResource ? (
         <OverlayRuntimeResourceSection vm={resourceVm} defaultOpen={resourceDefaultOpen} />
@@ -150,6 +158,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
       ) : null}
       {showResourceTrial ? (
         <OverlayRuntimeResourceTrialSection vm={resourceTrialVm} defaultOpen={resourceTrialDefaultOpen} />
+      ) : null}
+      {showRuntimeControlBoundary ? (
+        <OverlayRuntimeControlBoundarySection
+          vm={runtimeControlBoundaryVm}
+          defaultOpen={controlBoundaryDefaultOpen}
+        />
       ) : null}
       {showForecast ? (
         <OverlayRuntimeForecastSection vm={forecastVm} defaultOpen={forecastDefaultOpen} />

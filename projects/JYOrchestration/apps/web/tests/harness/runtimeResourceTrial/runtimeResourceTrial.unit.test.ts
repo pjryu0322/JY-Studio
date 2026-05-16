@@ -7,6 +7,7 @@ import { compareRuntimeAllocationPlanWithGovernance } from "@/lib/harness/runtim
 import { evaluateRuntimeAllocationTrialDrift } from "@/lib/harness/runtimeResourceTrial/evaluateRuntimeAllocationTrialDrift";
 import { evaluateRuntimeResourceAllocationTrial } from "@/lib/harness/runtimeResourceTrial/evaluateRuntimeResourceAllocationTrial";
 import { serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeResourceTrial/serializeRuntimeResourceTrialDiagnosticBundle";
+import { buildRuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/buildRuntimeControlBoundaryPlanningReports";
 import {
   buildRuntimeSemanticPlanningReports,
   type RuntimeSemanticPlanningReports,
@@ -252,7 +253,11 @@ describe("H22 runtime resource allocation trial", () => {
   it("serializes trial bundle without mutating source trial report", () => {
     const beforeTrial = trialInput({ globalAllocationMode: "planning_only" });
     const trial = buildRuntimeResourceTrialPlanningReports(beforeTrial);
-    const full: RuntimeSemanticPlanningReports = { ...beforeTrial, ...trial };
+    const withTrial = { ...beforeTrial, ...trial };
+    const full: RuntimeSemanticPlanningReports = {
+      ...withTrial,
+      ...buildRuntimeControlBoundaryPlanningReports(withTrial),
+    };
     const beforeMode = full.runtimeResourceAllocationTrialReport.trialMode;
     const ser = serializeRuntimeResourceTrialDiagnosticBundleFromSemanticReports(full);
     expect(ser.runtimeResourceAllocationTrialReport.actualTrialExecutionEnabled).toBe(false);

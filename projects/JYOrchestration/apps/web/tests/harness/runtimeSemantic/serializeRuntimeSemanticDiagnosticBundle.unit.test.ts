@@ -160,5 +160,17 @@ describe("H17 runtime semantic compression", () => {
     expect(trialGc.actualTrialExecutionEnabled).toBe(false);
     expect(trialDrift.mode).toBe("runtime_allocation_trial_drift_summary");
     expect(trialDrift.actualTrialExecutionEnabled).toBe(false);
+    const ctrlSummary = b.runtimeControlBoundarySummary as {
+      mode?: string;
+      actualControlEnabled?: boolean;
+    };
+    const ctrlViol = b.runtimeControlBoundaryViolationReport as { mode?: string; actualControlEnabled?: boolean };
+    const ctrlMatrix = b.runtimeControlScopeMatrix as { mode?: string; actualControlEnabled?: boolean };
+    expect(ctrlSummary.mode).toBe("runtime_control_boundary_summary");
+    expect(ctrlSummary.actualControlEnabled).toBe(false);
+    expect(ctrlViol.mode).toBe("runtime_control_boundary_violation_report");
+    expect(ctrlViol.actualControlEnabled).toBe(false);
+    expect(ctrlMatrix.mode).toBe("runtime_control_scope_matrix");
+    expect(ctrlMatrix.actualControlEnabled).toBe(false);
   });
 });

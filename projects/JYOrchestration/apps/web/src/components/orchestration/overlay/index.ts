@@ -31,6 +31,7 @@ export { OverlayRuntimeCriticalitySection } from "./OverlayRuntimeCriticalitySec
 export { OverlayRuntimeResourceGovernanceSection } from "./OverlayRuntimeResourceGovernanceSection";
 export { OverlayRuntimeResourceAllocationSection } from "./OverlayRuntimeResourceAllocationSection";
 export { OverlayRuntimeResourceTrialSection } from "./OverlayRuntimeResourceTrialSection";
+export { OverlayRuntimeControlBoundarySection } from "./OverlayRuntimeControlBoundarySection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
