@@ -177,6 +177,7 @@ export function OverlaySummaryCard({
     runtimeControlBoundaryVm: runtimePlanningControlBoundaryVm,
     runtimeExecutionCandidateVm: runtimePlanningExecutionCandidateVm,
     runtimeOperatorApprovalVm: runtimePlanningOperatorApprovalVm,
+    runtimeControlledPilotVm: runtimePlanningControlledPilotVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -306,6 +307,20 @@ export function OverlaySummaryCard({
     "runtime_planning_operator_approval_readiness",
     d.runtimePlanningOperatorApprovalReadiness || runtimePlanningOperatorApprovalVm.showAttention
   );
+  const pControlledPilot = pol(
+    "runtime_planning_controlled_runtime_pilot",
+    d.runtimePlanningControlledRuntimePilot || runtimePlanningControlledPilotVm.showAttention
+  );
+  /** H20.5 resource → H24 controlled pilot까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
+  const resourceThroughControlledPilotOmitted =
+    pResource.omitFromDom &&
+    pResourceGov.omitFromDom &&
+    pResourceAlloc.omitFromDom &&
+    pResourceTrial.omitFromDom &&
+    pControlBoundary.omitFromDom &&
+    pExecutionCandidate.omitFromDom &&
+    pOperatorApproval.omitFromDom &&
+    pControlledPilot.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -323,7 +338,8 @@ export function OverlaySummaryCard({
     !pResourceTrial.omitFromDom ||
     !pControlBoundary.omitFromDom ||
     !pExecutionCandidate.omitFromDom ||
-    !pOperatorApproval.omitFromDom;
+    !pOperatorApproval.omitFromDom ||
+    !pControlledPilot.omitFromDom;
   const pKn = pol("knowledge_activation", d.knowledgeActivation);
   const pMem = pol("memory_runtime", d.memoryRuntime);
   const pRs = pol("review_security", d.reviewSecurity);
@@ -412,24 +428,7 @@ export function OverlaySummaryCard({
           showCoherence={!pCoh.omitFromDom}
         />
       ) : null}
-      {showDependencyCriticalityGrouped &&
-      (!pDep.omitFromDom ||
-        !pCrit.omitFromDom ||
-        !pTrace.omitFromDom ||
-        !pReason.omitFromDom ||
-        !pSemantic.omitFromDom ||
-        !pSemanticGraph.omitFromDom ||
-        !pSemanticNarrative.omitFromDom ||
-        !pSemanticVocabulary.omitFromDom ||
-        !pDecision.omitFromDom ||
-        !pForecast.omitFromDom ||
-        !pResource.omitFromDom ||
-        !pResourceGov.omitFromDom ||
-        !pResourceAlloc.omitFromDom ||
-        !pResourceTrial.omitFromDom ||
-        !pControlBoundary.omitFromDom ||
-        !pExecutionCandidate.omitFromDom ||
-        !pOperatorApproval.omitFromDom) ? (
+      {showDependencyCriticalityGrouped ? (
         <OverlayRuntimeDependencyCriticalityGroup
           dependencyVm={runtimePlanningDependencyVm}
           criticalityVm={runtimePlanningCriticalityVm}
@@ -440,6 +439,7 @@ export function OverlaySummaryCard({
           runtimeControlBoundaryVm={runtimePlanningControlBoundaryVm}
           runtimeExecutionCandidateVm={runtimePlanningExecutionCandidateVm}
           runtimeOperatorApprovalVm={runtimePlanningOperatorApprovalVm}
+          runtimeControlledPilotVm={runtimePlanningControlledPilotVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -457,6 +457,7 @@ export function OverlaySummaryCard({
           controlBoundaryDefaultOpen={pControlBoundary.defaultOpen}
           executionCandidateDefaultOpen={pExecutionCandidate.defaultOpen}
           operatorApprovalDefaultOpen={pOperatorApproval.defaultOpen}
+          controlledPilotDefaultOpen={pControlledPilot.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -483,7 +484,8 @@ export function OverlaySummaryCard({
               pResourceTrial.defaultOpen ||
               pControlBoundary.defaultOpen ||
               pExecutionCandidate.defaultOpen ||
-              pOperatorApproval.defaultOpen)
+              pOperatorApproval.defaultOpen ||
+              pControlledPilot.defaultOpen)
           }
           showDependency={!pDep.omitFromDom}
           showCriticality={!pCrit.omitFromDom}
@@ -494,32 +496,23 @@ export function OverlaySummaryCard({
           showRuntimeControlBoundary={!pControlBoundary.omitFromDom}
           showRuntimeExecutionCandidate={!pExecutionCandidate.omitFromDom}
           showRuntimeOperatorApproval={!pOperatorApproval.omitFromDom}
-          showForecast={!pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom && pControlBoundary.omitFromDom && pExecutionCandidate.omitFromDom && pOperatorApproval.omitFromDom}
-          showDecision={!pDecision.omitFromDom && pForecast.omitFromDom && pResource.omitFromDom && pResourceGov.omitFromDom && pResourceAlloc.omitFromDom && pResourceTrial.omitFromDom && pControlBoundary.omitFromDom && pExecutionCandidate.omitFromDom && pOperatorApproval.omitFromDom}
+          showRuntimeControlledPilot={!pControlledPilot.omitFromDom}
+          showForecast={!pForecast.omitFromDom && resourceThroughControlledPilotOmitted}
+          showDecision={
+            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughControlledPilotOmitted
+          }
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -527,13 +520,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -542,13 +529,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -558,13 +539,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -575,13 +550,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            pResource.omitFromDom &&
-            pResourceGov.omitFromDom &&
-            pResourceAlloc.omitFromDom &&
-            pResourceTrial.omitFromDom &&
-            pControlBoundary.omitFromDom &&
-            pExecutionCandidate.omitFromDom &&
-            pOperatorApproval.omitFromDom
+            resourceThroughControlledPilotOmitted
           }
         />
       ) : null}

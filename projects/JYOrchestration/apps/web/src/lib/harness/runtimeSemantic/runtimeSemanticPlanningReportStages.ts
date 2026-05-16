@@ -1,10 +1,11 @@
 /**
- * H17–H23.5 — semantic planning report **단계 타입**(빌더 간 순환 참조 방지).
+ * H17–H24 — semantic planning report **단계 타입**(빌더 간 순환 참조 방지).
  */
 
 import type { RuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/runtimeControlBoundaryTypes";
 import type { RuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateTypes";
 import type { RuntimeOperatorApprovalPlanningReports } from "@/lib/harness/runtimeOperatorApproval/runtimeOperatorApprovalTypes";
+import type { RuntimeControlledPilotPlanningReports } from "@/lib/harness/runtimeControlledPilot/runtimeControlledPilotTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -80,6 +81,10 @@ export type RuntimeSemanticPlanningReportsBeforeExecutionCandidate = RuntimeSema
 export type RuntimeSemanticPlanningReportsBeforeOperatorApproval = RuntimeSemanticPlanningReportsBeforeExecutionCandidate &
   RuntimeExecutionCandidatePlanningReports;
 
-/** H23.5 포함 — operator approval·rollback·audit·pilot precondition 메타까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeOperatorApproval &
+/** H23.5 포함·H24 직전(operator approval·rollback·audit·pilot precondition까지 산출된 상태). */
+export type RuntimeSemanticPlanningReportsBeforeControlledPilot = RuntimeSemanticPlanningReportsBeforeOperatorApproval &
   RuntimeOperatorApprovalPlanningReports;
+
+/** H24 포함 — controlled runtime pilot 메타까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeControlledPilot &
+  RuntimeControlledPilotPlanningReports;

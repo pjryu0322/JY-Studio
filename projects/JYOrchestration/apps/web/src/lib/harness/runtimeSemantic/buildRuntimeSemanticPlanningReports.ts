@@ -1,5 +1,5 @@
 /**
- * H17–H23.5 — semantic·…·allocation·trial·control boundary·execution candidate·operator approval **planning 보고서** 일괄 산출.
+ * H17–H24 — semantic·…·execution candidate·operator approval·controlled pilot **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -24,6 +24,7 @@ import { buildRuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeR
 import { buildRuntimeControlBoundaryPlanningReports } from "@/lib/harness/runtimeControlBoundary/buildRuntimeControlBoundaryPlanningReports";
 import { buildRuntimeExecutionCandidatePlanningReports } from "@/lib/harness/runtimeExecutionCandidate/buildRuntimeExecutionCandidatePlanningReports";
 import { buildRuntimeOperatorApprovalPlanningReports } from "@/lib/harness/runtimeOperatorApproval/buildRuntimeOperatorApprovalPlanningReports";
+import { buildRuntimeControlledPilotPlanningReports } from "@/lib/harness/runtimeControlledPilot/buildRuntimeControlledPilotPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -39,6 +40,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
   RuntimeSemanticPlanningReportsBeforeOperatorApproval,
+  RuntimeSemanticPlanningReportsBeforeControlledPilot,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -54,6 +56,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeControlBoundary,
   RuntimeSemanticPlanningReportsBeforeExecutionCandidate,
   RuntimeSemanticPlanningReportsBeforeOperatorApproval,
+  RuntimeSemanticPlanningReportsBeforeControlledPilot,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -149,8 +152,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...executionCandidateReports,
   };
   const operatorApprovalReports = buildRuntimeOperatorApprovalPlanningReports(semanticWithExecutionCandidate);
+  const semanticWithOperatorApproval: RuntimeSemanticPlanningReportsBeforeControlledPilot = {
+    ...semanticWithExecutionCandidate,
+    ...operatorApprovalReports,
+  };
+  const controlledPilotReports = buildRuntimeControlledPilotPlanningReports(semanticWithOperatorApproval);
 
-  return { ...semanticWithExecutionCandidate, ...operatorApprovalReports };
+  return { ...semanticWithOperatorApproval, ...controlledPilotReports };
 }
 
 export type {

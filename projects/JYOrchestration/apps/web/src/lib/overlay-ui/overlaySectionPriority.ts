@@ -47,7 +47,8 @@ export type OverlaySectionKind =
   | "runtime_planning_resource_trial"
   | "runtime_planning_control_boundary"
   | "runtime_planning_execution_candidate"
-  | "runtime_planning_operator_approval_readiness";
+  | "runtime_planning_operator_approval_readiness"
+  | "runtime_planning_controlled_runtime_pilot";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -80,6 +81,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_planning_control_boundary":
     case "runtime_planning_execution_candidate":
     case "runtime_planning_operator_approval_readiness":
+    case "runtime_planning_controlled_runtime_pilot":
       return "important";
     case "context":
     case "budget":

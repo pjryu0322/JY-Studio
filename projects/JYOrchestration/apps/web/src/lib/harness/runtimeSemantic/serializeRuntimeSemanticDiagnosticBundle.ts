@@ -1,7 +1,8 @@
 /**
- * H17–H23.5 — 진단 API용 runtime semantic·…·execution candidate·operator approval wire 묶음.
+ * H17–H24 — 진단 API용 runtime semantic·…·operator approval·controlled pilot wire 묶음.
  */
 
+import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
 import type { NormalizedRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/runtimePlanningConsolidationTypes";
 import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
 import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
@@ -67,6 +68,9 @@ type SerializedRuntimeExecutionCandidateDiag = ReturnType<
 type SerializedRuntimeOperatorApprovalDiag = ReturnType<
   typeof serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports
 >;
+type SerializedRuntimeControlledPilotDiag = ReturnType<
+  typeof serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports
+>;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   reports: RuntimeSemanticPlanningReports
@@ -124,6 +128,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeRollbackReadinessSummary: SerializedRuntimeOperatorApprovalDiag["runtimeRollbackReadinessSummary"];
   runtimeAuditReadinessSummary: SerializedRuntimeOperatorApprovalDiag["runtimeAuditReadinessSummary"];
   runtimePilotPreconditionSummary: SerializedRuntimeOperatorApprovalDiag["runtimePilotPreconditionSummary"];
+  runtimeControlledPilotSummary: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotSummary"];
+  runtimeControlledPilotSafetyEnvelope: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotSafetyEnvelope"];
+  runtimeControlledPilotFallbackPlan: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotFallbackPlan"];
+  runtimeControlledPilotAbortConditions: SerializedRuntimeControlledPilotDiag["runtimeControlledPilotAbortConditions"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -131,6 +139,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const controlBoundaryDiag = serializeRuntimeControlBoundaryDiagnosticBundleFromSemanticReports(reports);
   const executionCandidateDiag = serializeRuntimeExecutionCandidateDiagnosticBundleFromSemanticReports(reports);
   const operatorApprovalDiag = serializeRuntimeOperatorApprovalDiagnosticBundleFromSemanticReports(reports);
+  const controlledPilotDiag = serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -203,6 +212,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...controlBoundaryDiag,
     ...executionCandidateDiag,
     ...operatorApprovalDiag,
+    ...controlledPilotDiag,
   };
 }
 

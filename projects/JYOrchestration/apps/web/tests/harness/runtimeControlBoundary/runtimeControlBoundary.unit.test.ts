@@ -52,6 +52,10 @@ function buildSemanticBeforeControlBoundary(): RuntimeSemanticPlanningReportsBef
     runtimeRollbackReadinessSummary: _o2,
     runtimeAuditReadinessSummary: _o3,
     runtimePilotPreconditionSummary: _o4,
+    runtimeControlledPilotSummary: _h24a,
+    runtimeControlledPilotSafetyEnvelope: _h24b,
+    runtimeControlledPilotFallbackPlan: _h24c,
+    runtimeControlledPilotAbortConditions: _h24d,
     ...rest
   } = semantic;
   return rest as RuntimeSemanticPlanningReportsBeforeControlBoundary;

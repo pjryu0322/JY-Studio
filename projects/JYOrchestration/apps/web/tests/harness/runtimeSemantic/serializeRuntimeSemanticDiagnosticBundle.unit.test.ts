@@ -200,5 +200,21 @@ describe("H17 runtime semantic compression", () => {
     expect(opRollback.actualRollbackExecutionEnabled).toBe(false);
     expect(opAudit.mode).toBe("runtime_audit_readiness_summary");
     expect(opPilot.mode).toBe("runtime_pilot_precondition_summary");
+    const cpSummary = b.runtimeControlledPilotSummary as {
+      mode?: string;
+      actualPilotExecutionEnabled?: boolean;
+      actualProviderRoutingEnabled?: boolean;
+    };
+    const cpEnv = b.runtimeControlledPilotSafetyEnvelope as { mode?: string; actualRollbackExecutionEnabled?: boolean };
+    const cpFb = b.runtimeControlledPilotFallbackPlan as { mode?: string; actualRollbackExecutionEnabled?: boolean };
+    const cpAbort = b.runtimeControlledPilotAbortConditions as { mode?: string };
+    expect(cpSummary.mode).toBe("runtime_controlled_pilot_summary");
+    expect(cpSummary.actualPilotExecutionEnabled).toBe(false);
+    expect(cpSummary.actualProviderRoutingEnabled).toBe(false);
+    expect(cpEnv.mode).toBe("runtime_controlled_pilot_safety_envelope");
+    expect(cpEnv.actualRollbackExecutionEnabled).toBe(false);
+    expect(cpFb.mode).toBe("runtime_controlled_pilot_fallback_plan");
+    expect(cpFb.actualRollbackExecutionEnabled).toBe(false);
+    expect(cpAbort.mode).toBe("runtime_controlled_pilot_abort_conditions");
   });
 });
