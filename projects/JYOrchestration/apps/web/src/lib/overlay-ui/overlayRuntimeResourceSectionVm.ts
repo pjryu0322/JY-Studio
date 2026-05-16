@@ -14,6 +14,9 @@ export type OverlayRuntimeResourceSectionVM = Readonly<{
   showDetailSections: boolean;
   overloadSummaryKo: string;
   primaryPressureKo: string;
+  providerPressureKo: string;
+  queuePressureKo: string;
+  bottleneckPropagationKo: string;
   queueDepthLabel: string;
   capacityOutlookLabel: string;
   capacityForecastKo: string;
@@ -43,14 +46,17 @@ export function buildOverlayRuntimeResourceSectionVmFromReports(
   const maxPressures = compactAndNarrowUi ? OVERLAY_MAX_PRESSURES_COMPACT : OVERLAY_MAX_PRESSURES;
   const maxMembers = compactAndNarrowUi ? OVERLAY_MAX_MEMBERS_COMPACT : OVERLAY_MAX_MEMBERS;
 
-  const highSeverity = runtimeResourceSummary.pressures.some(
+  /** `analyzeRuntimeResourcePressure`가 심각도 내림차순으로 이미 정렬함. */
+  const pressures = runtimeResourceSummary.pressures;
+
+  const highSeverity = pressures.some(
     (p) => p.severity === "high" || p.severity === "critical_candidate"
   );
   const saturatedMembers = runtimeMemberWorkload.members.filter(
     (m) => m.workloadLevel === "saturated" || m.workloadLevel === "elevated"
   );
 
-  const pressureRows = runtimeResourceSummary.pressures
+  const pressureRows = pressures
     .filter((p) => p.severity !== "low")
     .slice(0, maxPressures)
     .map((p) => `${p.labelKo} · ${p.noteKo}`);
@@ -60,10 +66,16 @@ export function buildOverlayRuntimeResourceSectionVmFromReports(
 
   return {
     sectionDisclaimer: RUNTIME_RESOURCE_SECTION_DISCLAIMER_KO,
-    showAttention: highSeverity || saturatedMembers.length > 0,
+    showAttention:
+      highSeverity ||
+      saturatedMembers.length > 0 ||
+      runtimeResourceSummary.bottleneckPropagation.propagationSeverity !== "low",
     showDetailSections: !compactAndNarrowUi,
     overloadSummaryKo: runtimeResourceSummary.overloadSummaryKo,
     primaryPressureKo: runtimeResourceSummary.primaryPressureKo,
+    providerPressureKo: runtimeResourceSummary.providerPressure.summaryKo,
+    queuePressureKo: runtimeResourceSummary.queuePressureInsight.summaryKo,
+    bottleneckPropagationKo: runtimeResourceSummary.bottleneckPropagation.bottleneckChainKo,
     queueDepthLabel: runtimeResourceSummary.queue.queueDepthLabel,
     capacityOutlookLabel: RUNTIME_RESOURCE_CAPACITY_OUTLOOK_LABEL_KO[runtimeResourceCapacity.outlook],
     capacityForecastKo: runtimeResourceForecast.primaryPredictionKo,

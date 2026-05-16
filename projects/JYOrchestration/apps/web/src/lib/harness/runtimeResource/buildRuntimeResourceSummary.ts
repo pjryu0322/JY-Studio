@@ -2,8 +2,11 @@
  * H20.5 — resource summary·saturation·queue(read-only).
  */
 
-import type { RuntimeResourcePressure } from "./runtimeResourceTypes";
 import type {
+  RuntimeBottleneckPropagation,
+  RuntimeProviderPressure,
+  RuntimeQueuePressure,
+  RuntimeResourcePressure,
   RuntimeResourceQueue,
   RuntimeResourceSaturation,
   RuntimeResourceSummary,
@@ -41,7 +44,12 @@ function buildQueue(pressures: readonly RuntimeResourcePressure[]): RuntimeResou
 }
 
 export function buildRuntimeResourceSummary(
-  pressures: readonly RuntimeResourcePressure[]
+  pressures: readonly RuntimeResourcePressure[],
+  insight: Readonly<{
+    providerPressure: RuntimeProviderPressure;
+    queuePressureInsight: RuntimeQueuePressure;
+    bottleneckPropagation: RuntimeBottleneckPropagation;
+  }>
 ): RuntimeResourceSummary {
   const top = pressures[0];
   return {
@@ -52,6 +60,9 @@ export function buildRuntimeResourceSummary(
     primaryPressureKo: top?.labelKo ?? "Planning resource pressure 낮음",
     saturation: buildSaturation(pressures),
     queue: buildQueue(pressures),
+    providerPressure: insight.providerPressure,
+    queuePressureInsight: insight.queuePressureInsight,
+    bottleneckPropagation: insight.bottleneckPropagation,
   };
 }
 
@@ -66,5 +77,8 @@ export function serializeRuntimeResourceSummaryForDiagnostic(
     primaryPressureKo: summary.primaryPressureKo,
     saturation: { ...summary.saturation },
     queue: { ...summary.queue },
+    providerPressure: { ...summary.providerPressure },
+    queuePressureInsight: { ...summary.queuePressureInsight },
+    bottleneckPropagation: { ...summary.bottleneckPropagation },
   };
 }

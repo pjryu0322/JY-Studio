@@ -10,7 +10,10 @@ import {
   buildRuntimeResourceForecastFromCapacity,
   forecastRuntimeResourceCapacity,
 } from "./forecastRuntimeResourceCapacity";
+import { evaluateRuntimeBottleneckPropagation } from "./evaluateRuntimeBottleneckPropagation";
 import { evaluateRuntimeMemberWorkload } from "./evaluateRuntimeMemberWorkload";
+import { evaluateRuntimeProviderPressure } from "./evaluateRuntimeProviderPressure";
+import { evaluateRuntimeQueuePressure } from "./evaluateRuntimeQueuePressure";
 import type { RuntimeResourcePlanningReports } from "./runtimeResourceTypes";
 
 export type { RuntimeResourcePlanningReports } from "./runtimeResourceTypes";
@@ -19,11 +22,22 @@ export function buildRuntimeResourcePlanningReports(
   reports: RuntimeSemanticPlanningReportsBeforeResource
 ): RuntimeResourcePlanningReports {
   const pressures = analyzeRuntimeResourcePressure(reports);
-  const runtimeResourceSummary = buildRuntimeResourceSummary(pressures);
+  const providerPressure = evaluateRuntimeProviderPressure(pressures);
+  const queuePressureInsight = evaluateRuntimeQueuePressure(reports, pressures);
+  const bottleneckPropagation = evaluateRuntimeBottleneckPropagation(reports);
+  const runtimeResourceSummary = buildRuntimeResourceSummary(pressures, {
+    providerPressure,
+    queuePressureInsight,
+    bottleneckPropagation,
+  });
   const runtimeResourceCapacity = forecastRuntimeResourceCapacity(reports);
   const runtimeResourceForecast = buildRuntimeResourceForecastFromCapacity(runtimeResourceCapacity, reports);
   const runtimeMemberWorkload = evaluateRuntimeMemberWorkload(reports);
-  const runtimeResourceExplainability = buildRuntimeResourceExplainability(pressures, runtimeMemberWorkload);
+  const runtimeResourceExplainability = buildRuntimeResourceExplainability(
+    pressures,
+    runtimeMemberWorkload,
+    bottleneckPropagation
+  );
 
   return {
     runtimeResourceSummary,

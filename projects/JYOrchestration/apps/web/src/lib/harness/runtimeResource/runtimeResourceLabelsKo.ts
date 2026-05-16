@@ -3,7 +3,7 @@
  */
 
 export const RUNTIME_RESOURCE_SECTION_DISCLAIMER_KO =
-  "이 정보는 planning runtime resource orchestration intelligence 진단이며 actual execution·provider switching은 없습니다.";
+  "이 정보는 실제 resource allocation이나 runtime 제어가 아니라 read-only resource orchestration intelligence입니다. (planning metadata only)";
 
 export const RUNTIME_RESOURCE_PRESSURE_LABEL_KO: Readonly<
   Record<

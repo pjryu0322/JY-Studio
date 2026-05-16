@@ -74,6 +74,28 @@ export type RuntimeResourceExplainability = Readonly<{
   findings: readonly string[];
 }>;
 
+export type RuntimeProviderPressure = Readonly<{
+  mode: "runtime_provider_pressure";
+  actualRuntimeOrchestrationEnabled: false;
+  severity: RuntimeResourceSeverity;
+  summaryKo: string;
+}>;
+
+export type RuntimeQueuePressure = Readonly<{
+  mode: "runtime_queue_pressure";
+  actualRuntimeOrchestrationEnabled: false;
+  amplificationLevel: "low" | "medium" | "high";
+  summaryKo: string;
+}>;
+
+export type RuntimeBottleneckPropagation = Readonly<{
+  mode: "runtime_bottleneck_propagation";
+  actualRuntimeOrchestrationEnabled: false;
+  propagationSeverity: RuntimeResourceSeverity;
+  bottleneckChainKo: string;
+  slowdownRiskKo: string;
+}>;
+
 export type RuntimeResourceSummary = Readonly<{
   mode: "runtime_resource_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -82,6 +104,9 @@ export type RuntimeResourceSummary = Readonly<{
   primaryPressureKo: string;
   saturation: RuntimeResourceSaturation;
   queue: RuntimeResourceQueue;
+  providerPressure: RuntimeProviderPressure;
+  queuePressureInsight: RuntimeQueuePressure;
+  bottleneckPropagation: RuntimeBottleneckPropagation;
 }>;
 
 export type RuntimeResourcePlanningReports = Readonly<{

@@ -1,11 +1,32 @@
 /**
  * H20.5 — AI member **workload**·saturation·imbalance 평가(read-only).
+ * Semantic group kind → planner/architect/developer/reviewer/security 역할로 **결정적** 매핑(실행량·세션 제어 없음).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeResource } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
+import type { RuntimeSemanticGroupKind } from "@/lib/harness/runtimeSemantic/runtimeSemanticTypes";
 import type { RuntimeMemberWorkload, RuntimeMemberWorkloadEntry } from "./runtimeResourceTypes";
 
-const MAX_MEMBERS = 6;
+const ROLE_IDS = ["planner", "architect", "developer", "reviewer", "security"] as const;
+type RoleId = (typeof ROLE_IDS)[number];
+
+const SEMANTIC_KIND_TO_ROLE: Record<RuntimeSemanticGroupKind, RoleId> = {
+  lifecycle: "planner",
+  coherence: "planner",
+  dependency: "architect",
+  propagation: "developer",
+  other: "developer",
+  criticality: "reviewer",
+  governance: "security",
+};
+
+const ROLE_LABEL_KO: Record<RoleId, string> = {
+  planner: "Planner (AI 멤버)",
+  architect: "Architect (AI 멤버)",
+  developer: "Developer (AI 멤버)",
+  reviewer: "Reviewer (AI 멤버)",
+  security: "Security (AI 멤버)",
+};
 
 function workloadFromScore(score: number): RuntimeMemberWorkloadEntry["workloadLevel"] {
   if (score >= 4) return "saturated";
@@ -18,36 +39,31 @@ export function evaluateRuntimeMemberWorkload(
   reports: RuntimeSemanticPlanningReportsBeforeResource
 ): RuntimeMemberWorkload {
   const groupCount = reports.semanticGroupsSummary.groups.length;
-  const warningPerGroup =
-    groupCount > 0
-      ? Math.ceil(reports.semanticWarningOriginSummary.origins.length / groupCount)
-      : 0;
+  const warningShare =
+    groupCount > 0 ? Math.ceil(reports.semanticWarningOriginSummary.origins.length / groupCount) : 0;
 
-  const members: RuntimeMemberWorkloadEntry[] = reports.semanticGroupsSummary.groups
-    .slice(0, MAX_MEMBERS)
-    .map((g, i) => {
-      const score = g.compressedItems.length + (i === 0 ? warningPerGroup : 0);
-      const workloadLevel = workloadFromScore(score);
-      const saturationRisk: RuntimeMemberWorkloadEntry["saturationRisk"] =
-        workloadLevel === "saturated" ? "high" : workloadLevel === "elevated" ? "medium" : "low";
-      return {
-        memberId: g.kind,
-        labelKo: g.labelKo,
-        workloadLevel,
-        saturationRisk,
-        noteKo: `compressed items=${g.compressedItems.length}`,
-      };
-    });
+  const scoreByRole = new Map<RoleId, number>();
+  for (const role of ROLE_IDS) scoreByRole.set(role, 0);
 
-  if (members.length === 0) {
-    members.push({
-      memberId: "planning-default",
-      labelKo: "Planning default member",
-      workloadLevel: "balanced",
-      saturationRisk: "low",
-      noteKo: "semantic group 없음 — neutral workload",
-    });
+  for (const g of reports.semanticGroupsSummary.groups) {
+    const role = SEMANTIC_KIND_TO_ROLE[g.kind];
+    scoreByRole.set(role, (scoreByRole.get(role) ?? 0) + g.compressedItems.length);
   }
+
+  const members: RuntimeMemberWorkloadEntry[] = ROLE_IDS.map((roleId, index) => {
+    let score = scoreByRole.get(roleId) ?? 0;
+    if (index === 0) score += warningShare;
+    const workloadLevel = workloadFromScore(score);
+    const saturationRisk: RuntimeMemberWorkloadEntry["saturationRisk"] =
+      workloadLevel === "saturated" ? "high" : workloadLevel === "elevated" ? "medium" : "low";
+    return {
+      memberId: roleId,
+      labelKo: ROLE_LABEL_KO[roleId],
+      workloadLevel,
+      saturationRisk,
+      noteKo: `planning score=${score} (semantic compression proxy)`,
+    };
+  });
 
   const saturated = members.filter((m) => m.workloadLevel === "saturated" || m.workloadLevel === "elevated");
   const primary = [...members].sort((a, b) => {

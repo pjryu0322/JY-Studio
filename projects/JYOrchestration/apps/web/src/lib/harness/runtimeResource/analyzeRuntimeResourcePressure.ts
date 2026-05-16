@@ -5,6 +5,7 @@
 import type { RuntimeSemanticPlanningReportsBeforeResource } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { RUNTIME_RESOURCE_PRESSURE_LABEL_KO } from "./runtimeResourceLabelsKo";
 import type { RuntimeResourcePressure, RuntimeResourcePressureKind } from "./runtimeResourceTypes";
+import { compareRuntimeResourcePressureBySeverityDesc } from "./runtimeResourceSeverityOrder";
 
 const MAX_PRESSURES = 6;
 
@@ -100,10 +101,7 @@ export function analyzeRuntimeResourcePressure(
     pressures.push(pressure("orchestration_congestion", "low", "orchestration congestion 낮음"));
   }
 
-  const severityRank = { low: 0, medium: 1, high: 2, critical_candidate: 3 };
-  return pressures
-    .sort((a, b) => severityRank[b.severity] - severityRank[a.severity])
-    .slice(0, MAX_PRESSURES);
+  return pressures.sort(compareRuntimeResourcePressureBySeverityDesc).slice(0, MAX_PRESSURES);
 }
 
 export function serializeRuntimeResourcePressuresForDiagnostic(

@@ -30,6 +30,9 @@ describe("buildOverlayRuntimeResourceSectionVm", () => {
     expect(vm.sectionDisclaimer).toBe(RUNTIME_RESOURCE_SECTION_DISCLAIMER_KO);
     expect(vm.pressureRows.length).toBeGreaterThan(0);
     expect(vm.overloadSummaryKo.length).toBeGreaterThan(0);
+    expect(vm.providerPressureKo.length).toBeGreaterThan(0);
+    expect(vm.queuePressureKo.length).toBeGreaterThan(0);
+    expect(vm.bottleneckPropagationKo.length).toBeGreaterThan(0);
   });
 
   it("collapses to overload summary and member saturation in compact narrow mode", () => {

@@ -3,6 +3,7 @@
  */
 
 import type {
+  RuntimeBottleneckPropagation,
   RuntimeMemberWorkload,
   RuntimeResourceExplainability,
   RuntimeResourcePressure,
@@ -13,7 +14,8 @@ const CANONICAL_CHAIN =
 
 export function buildRuntimeResourceExplainability(
   pressures: readonly RuntimeResourcePressure[],
-  workload: RuntimeMemberWorkload
+  workload: RuntimeMemberWorkload,
+  bottleneck: RuntimeBottleneckPropagation
 ): RuntimeResourceExplainability {
   const top = pressures[0];
   const findings: string[] = [];
@@ -23,6 +25,9 @@ export function buildRuntimeResourceExplainability(
   }
   if (workload.members.some((m) => m.workloadLevel === "saturated")) {
     findings.push("특정 AI member saturation이 routing concentration을 유발할 수 있습니다.");
+  }
+  if (bottleneck.propagationSeverity !== "low") {
+    findings.push(bottleneck.bottleneckChainKo);
   }
   if (findings.length === 0) {
     findings.push("resource explainability — stable planning 경로");
