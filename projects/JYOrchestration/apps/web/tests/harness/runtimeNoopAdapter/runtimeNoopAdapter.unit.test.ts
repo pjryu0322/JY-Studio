@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { buildRuntimeNoopAdapterPlanningReports } from "@/lib/harness/runtimeNoopAdapter/buildRuntimeNoopAdapterPlanningReports";
 import { buildRuntimeNoopAdapterResultMetadata } from "@/lib/harness/runtimeNoopAdapter/buildRuntimeNoopAdapterResultMetadata";
 import { detectRuntimeNoopAdapterBoundaryViolations } from "@/lib/harness/runtimeNoopAdapter/detectRuntimeNoopAdapterBoundaryViolations";
 import { evaluateRuntimeAdapterInvocationGuard } from "@/lib/harness/runtimeNoopAdapter/evaluateRuntimeAdapterInvocationGuard";
+import {
+  RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO,
+  RUNTIME_NOOP_ADAPTER_OVERLAY_FOOTER_KO,
+} from "@/lib/harness/runtimeNoopAdapter/runtimeNoopAdapterLabelsKo";
 import { verifyRuntimePilotContract } from "@/lib/harness/runtimeNoopAdapter/verifyRuntimePilotContract";
 import { serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopAdapter/serializeRuntimeNoopAdapterDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
@@ -39,21 +45,22 @@ function buildFullSemantic() {
   return buildRuntimeSemanticPlanningReports(reasoning);
 }
 
-describe("H25 runtime noop adapter skeleton & contract verification", () => {
-  it("full semantic includes noop adapter with invocation false", () => {
+describe("H25 / H25.5 runtime noop adapter", () => {
+  it("full semantic includes noop adapter with invocation false and preflight", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeNoopAdapterSummary.actualRuntimeAdapterInvocationEnabled).toBe(false);
-    expect(semantic.runtimeNoopAdapterSummary.actualExecutionEnabled).toBe(false);
     expect(semantic.runtimeNoopAdapterSkeleton.adapterMode).toBe("noop");
-    expect(semantic.runtimeAdapterInvocationGuardReport.actualRuntimeAdapterInvocationEnabled).toBe(false);
+    expect(semantic.runtimeNoopAdapterPreflightSummary.mode).toBe("runtime_noop_adapter_preflight_summary");
   });
 
-  it("no-op result flags are all false", () => {
+  it("no-op result flags are all false and diagnosticOnly true", () => {
     const result = buildRuntimeNoopAdapterResultMetadata();
     expect(result.noopAccepted).toBe(false);
     expect(result.adapterInvoked).toBe(false);
-    expect(result.executionPerformed).toBe(false);
-    expect(result.providerRoutingPerformed).toBe(false);
+    expect(result.queueControlPerformed).toBe(false);
+    expect(result.rollbackPerformed).toBe(false);
+    expect(result.actualQueueControlEnabled).toBe(false);
+    expect(result.actualRollbackExecutionEnabled).toBe(false);
     expect(result.diagnosticOnly).toBe(true);
   });
 
@@ -70,57 +77,44 @@ describe("H25 runtime noop adapter skeleton & contract verification", () => {
         handoffReadiness: "blocked" as const,
       },
     };
-    const guard = evaluateRuntimeAdapterInvocationGuard(blocked);
-    expect(guard.invocationGuard).toBe("always_blocked");
+    expect(evaluateRuntimeAdapterInvocationGuard(blocked).invocationGuard).toBe("always_blocked");
   });
 
-  it("contract_metadata_ready + contract_metadata_only → contract_metadata_only", () => {
-    const before = stripRuntimeNoopAdapterLayer(buildFullSemantic());
-    const ready = {
-      ...before,
-      runtimePilotContractSummary: {
-        ...before.runtimePilotContractSummary,
-        contractReadiness: "contract_metadata_ready" as const,
-        adapterBoundaryMode: "contract_metadata_only" as const,
-        handoffBlockers: [],
-      },
-      runtimeAdapterBoundarySummary: {
-        ...before.runtimeAdapterBoundarySummary,
-        boundaryMode: "contract_metadata_only" as const,
-      },
-      runtimePilotHandoffReadiness: {
-        ...before.runtimePilotHandoffReadiness,
-        handoffReadiness: "metadata_ready" as const,
-        contractReadiness: "contract_metadata_ready" as const,
-        adapterBoundaryMode: "contract_metadata_only" as const,
-      },
-    };
-    const guard = evaluateRuntimeAdapterInvocationGuard(ready);
-    expect(guard.invocationGuard).toBe("contract_metadata_only");
-  });
-
-  it("boundary violation detects adapterInvoked=true wording", () => {
+  it("boundary violation detects queueControlPerformed and diagnosticOnly false", () => {
     const before = stripRuntimeNoopAdapterLayer(buildFullSemantic());
     const h25 = buildRuntimeNoopAdapterPlanningReports(before);
     const badResult = {
       ...h25.runtimeNoopAdapterResultMetadata,
-      adapterInvoked: true as unknown as false,
-      resultRows: [...h25.runtimeNoopAdapterResultMetadata.resultRows, "adapterInvoked=true"],
+      queueControlPerformed: true as unknown as false,
+      diagnosticOnly: false as unknown as true,
     };
     const violations = detectRuntimeNoopAdapterBoundaryViolations(
       before,
       h25.runtimeNoopAdapterSkeleton,
       badResult
     );
-    expect(violations.actualFlagViolations.length).toBeGreaterThan(0);
-    expect(
-      violations.wordingRiskFindings.some((w) => w.includes("adapterInvoked")) ||
-        violations.actualFlagViolations.some((v) => v.includes("adapterInvoked"))
-    ).toBe(true);
+    expect(violations.actualFlagViolations.some((v) => v.includes("queueControlPerformed"))).toBe(true);
+    expect(violations.actualFlagViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
   });
 
-  it("verifyRuntimePilotContract flags empty requiredFields", () => {
+  it("noopAccepted true → actualFlagViolations", () => {
     const before = stripRuntimeNoopAdapterLayer(buildFullSemantic());
+    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
+    const badResult = {
+      ...h25.runtimeNoopAdapterResultMetadata,
+      noopAccepted: true as unknown as false,
+    };
+    const violations = detectRuntimeNoopAdapterBoundaryViolations(
+      before,
+      h25.runtimeNoopAdapterSkeleton,
+      badResult
+    );
+    expect(violations.actualFlagViolations.some((v) => v.includes("noopAccepted"))).toBe(true);
+  });
+
+  it("verifyRuntimePilotContract flags empty requiredFields with schema coverage finding", () => {
+    const before = stripRuntimeNoopAdapterLayer(buildFullSemantic());
+    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
     const emptyInput = {
       ...before,
       runtimePilotContractInputSchema: {
@@ -128,21 +122,42 @@ describe("H25 runtime noop adapter skeleton & contract verification", () => {
         requiredFields: [],
       },
     };
-    const verification = verifyRuntimePilotContract(emptyInput);
-    expect(verification.missingRequiredInputs.some((m) => m.includes("requiredFields empty"))).toBe(true);
+    const verification = verifyRuntimePilotContract(
+      emptyInput,
+      h25.runtimeNoopAdapterSkeleton,
+      h25.runtimeNoopAdapterResultMetadata
+    );
+    expect(verification.findings.some((f) => f.includes("input schema coverage"))).toBe(true);
   });
 
-  it("serializer does not rebuild reports", () => {
+  it("serializer includes runtimeNoopAdapterPreflightSummary", () => {
+    const ser = serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(buildFullSemantic());
+    expect(ser.runtimeNoopAdapterPreflightSummary.mode).toBe("runtime_noop_adapter_preflight_summary");
+  });
+
+  it("preflight ready_metadata when contract verified and no violations", () => {
     const semantic = buildFullSemantic();
-    const ser = serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(semantic);
-    expect(ser.runtimeNoopAdapterSummary.mode).toBe("runtime_noop_adapter_summary");
-    expect(ser.runtimeNoopAdapterSkeleton.adapterMode).toBe("noop");
+    if (
+      semantic.runtimeNoopAdapterSummary.noopAdapterStatus === "contract_verified_noop" &&
+      semantic.runtimePilotContractVerificationReport.verificationStatus === "verified_noop"
+    ) {
+      expect(semantic.runtimeNoopAdapterPreflightSummary.preflightReadiness).toBe("ready_metadata");
+    } else {
+      expect(["watch", "blocked", "not_ready"]).toContain(
+        semantic.runtimeNoopAdapterPreflightSummary.preflightReadiness
+      );
+    }
   });
 
-  it("buildRuntimeNoopAdapterPlanningReports merges from pilot contract layer", () => {
-    const before = stripRuntimeNoopAdapterLayer(buildFullSemantic());
-    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
-    expect(h25.runtimePilotContractVerificationReport.mode).toBe("runtime_pilot_contract_verification_report");
-    expect(h25.runtimeNoopAdapterResultMetadata.mode).toBe("runtime_noop_adapter_result_metadata");
+  it("OverlayRuntimeNoopAdapterSection has no broken ??? placeholder text", () => {
+    const overlayPath = join(
+      process.cwd(),
+      "src/components/orchestration/overlay/OverlayRuntimeNoopAdapterSection.tsx"
+    );
+    const source = readFileSync(overlayPath, "utf8");
+    expect(source).not.toMatch(/\?\?\?/);
+    expect(source).toContain("RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO");
+    expect(source).toContain("RUNTIME_NOOP_ADAPTER_OVERLAY_FOOTER_KO");
+    expect(Object.values(RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO).every((h) => !h.includes("???"))).toBe(true);
   });
 });

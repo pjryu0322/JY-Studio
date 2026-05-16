@@ -152,6 +152,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeNoopAdapterResultMetadata: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterResultMetadata"];
   runtimeAdapterInvocationGuardReport: SerializedRuntimeNoopAdapterDiag["runtimeAdapterInvocationGuardReport"];
   runtimeNoopAdapterBoundaryViolationReport: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterBoundaryViolationReport"];
+  runtimeNoopAdapterPreflightSummary: SerializedRuntimeNoopAdapterDiag["runtimeNoopAdapterPreflightSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);

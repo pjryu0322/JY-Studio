@@ -1,5 +1,5 @@
 /**
- * H25 — no-op adapter 진단 **직렬화 전용**(report 재빌드 없음).
+ * H25 / H25.5 — no-op adapter 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
@@ -7,6 +7,7 @@ import type {
   RuntimeAdapterInvocationGuardReport,
   RuntimeNoopAdapterBoundaryViolationReport,
   RuntimeNoopAdapterResultMetadata,
+  RuntimeNoopAdapterPreflightSummary,
   RuntimeNoopAdapterSkeleton,
   RuntimeNoopAdapterSummary,
   RuntimePilotContractVerificationReport,
@@ -96,6 +97,18 @@ function serializeGuard(g: RuntimeAdapterInvocationGuardReport): Readonly<Record
   };
 }
 
+function serializePreflight(p: RuntimeNoopAdapterPreflightSummary): Readonly<Record<string, unknown>> {
+  return {
+    mode: p.mode,
+    actualRuntimeOrchestrationEnabled: p.actualRuntimeOrchestrationEnabled,
+    actualRuntimeAdapterInvocationEnabled: p.actualRuntimeAdapterInvocationEnabled,
+    preflightReadiness: p.preflightReadiness,
+    checklist: sortKo(p.checklist),
+    blockers: sortKo(p.blockers),
+    recommendations: sortKo(p.recommendations),
+  };
+}
+
 function serializeViolations(v: RuntimeNoopAdapterBoundaryViolationReport): Readonly<Record<string, unknown>> {
   return {
     mode: v.mode,
@@ -116,6 +129,7 @@ export function serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(
   runtimeNoopAdapterResultMetadata: ReturnType<typeof serializeResult>;
   runtimeAdapterInvocationGuardReport: ReturnType<typeof serializeGuard>;
   runtimeNoopAdapterBoundaryViolationReport: ReturnType<typeof serializeViolations>;
+  runtimeNoopAdapterPreflightSummary: ReturnType<typeof serializePreflight>;
 }> {
   return {
     runtimeNoopAdapterSummary: serializeSummary(reports.runtimeNoopAdapterSummary),
@@ -124,5 +138,6 @@ export function serializeRuntimeNoopAdapterDiagnosticBundleFromSemanticReports(
     runtimeNoopAdapterResultMetadata: serializeResult(reports.runtimeNoopAdapterResultMetadata),
     runtimeAdapterInvocationGuardReport: serializeGuard(reports.runtimeAdapterInvocationGuardReport),
     runtimeNoopAdapterBoundaryViolationReport: serializeViolations(reports.runtimeNoopAdapterBoundaryViolationReport),
+    runtimeNoopAdapterPreflightSummary: serializePreflight(reports.runtimeNoopAdapterPreflightSummary),
   };
 }

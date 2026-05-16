@@ -1,5 +1,5 @@
 /**
- * H25 — No-op runtime adapter skeleton & contract verification(read-only; adapter 호출 없음).
+ * H25 / H25.5 — No-op runtime adapter skeleton, contract verification, preflight(read-only; adapter 호출 없음).
  */
 
 export type RuntimeNoopAdapterStatus = "not_available" | "contract_verified_noop" | "watch" | "blocked";
@@ -85,6 +85,18 @@ export type RuntimeNoopAdapterBoundaryViolationReport = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeNoopAdapterPreflightReadiness = "ready_metadata" | "watch" | "blocked" | "not_ready";
+
+export type RuntimeNoopAdapterPreflightSummary = Readonly<{
+  mode: "runtime_noop_adapter_preflight_summary";
+  actualRuntimeOrchestrationEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  preflightReadiness: RuntimeNoopAdapterPreflightReadiness;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeNoopAdapterPlanningReports = Readonly<{
   runtimeNoopAdapterSummary: RuntimeNoopAdapterSummary;
   runtimeNoopAdapterSkeleton: RuntimeNoopAdapterSkeleton;
@@ -92,4 +104,5 @@ export type RuntimeNoopAdapterPlanningReports = Readonly<{
   runtimeNoopAdapterResultMetadata: RuntimeNoopAdapterResultMetadata;
   runtimeAdapterInvocationGuardReport: RuntimeAdapterInvocationGuardReport;
   runtimeNoopAdapterBoundaryViolationReport: RuntimeNoopAdapterBoundaryViolationReport;
+  runtimeNoopAdapterPreflightSummary: RuntimeNoopAdapterPreflightSummary;
 }>;

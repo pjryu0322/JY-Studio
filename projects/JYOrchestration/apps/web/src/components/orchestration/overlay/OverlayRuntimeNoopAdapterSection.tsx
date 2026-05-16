@@ -1,6 +1,10 @@
 "use client";
 
 import type { OverlayRuntimeNoopAdapterSectionVM } from "@/lib/overlay-ui/overlayRuntimeNoopAdapterAdapter";
+import {
+  RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO,
+  RUNTIME_NOOP_ADAPTER_OVERLAY_FOOTER_KO,
+} from "@/lib/harness/runtimeNoopAdapter/runtimeNoopAdapterLabelsKo";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { OverlayUiSection, OverlayUiKeyValueRow, OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 
@@ -13,7 +17,7 @@ export function OverlayRuntimeNoopAdapterSection({
 }) {
   return (
     <OverlayUiSection
-      title="No-op Runtime Adapter Skeleton (H25)"
+      title="No-op Runtime Adapter (H25.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
@@ -21,8 +25,11 @@ export function OverlayRuntimeNoopAdapterSection({
         <OverlayUiKeyValueRow label="No-op adapter status" value={vm.noopAdapterStatusKo} />
         <OverlayUiKeyValueRow label="Invocation guard" value={vm.invocationGuardKo} />
         <OverlayUiKeyValueRow label="Contract verification" value={vm.contractVerificationStatusKo} />
-        {vm.topViolation ? <OverlayUiKeyValueRow label="Top violation" value={vm.topViolation} /> : null}
-        {vm.topForbiddenOperation ? (
+        <OverlayUiKeyValueRow label="Preflight readiness" value={vm.preflightReadinessKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden operation" value={vm.topForbiddenOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -44,7 +51,7 @@ export function OverlayRuntimeNoopAdapterSection({
                 ))}
               </ul>
             ) : (
-              <OverlayUiEmptyHint message="No-op result ???" />
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.noopResult} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Skeleton contract inputs</div>
             {vm.skeletonInputRows.length > 0 ? (
@@ -63,7 +70,7 @@ export function OverlayRuntimeNoopAdapterSection({
                 ))}
               </ul>
             ) : (
-              <OverlayUiEmptyHint message="Skeleton input ???" />
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.skeletonInput} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Boundary violations</div>
             {vm.violationRows.length > 0 ? (
@@ -82,7 +89,7 @@ export function OverlayRuntimeNoopAdapterSection({
                 ))}
               </ul>
             ) : (
-              <OverlayUiEmptyHint message="Boundary violation ???" />
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.boundaryViolation} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Forbidden operations</div>
             {vm.forbiddenOperationRows.length > 0 ? (
@@ -101,7 +108,7 @@ export function OverlayRuntimeNoopAdapterSection({
                 ))}
               </ul>
             ) : (
-              <OverlayUiEmptyHint message="Forbidden operation ???" />
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.forbiddenOperation} />
             )}
             <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Recommendations</div>
             {vm.recommendationRows.length > 0 ? (
@@ -120,15 +127,12 @@ export function OverlayRuntimeNoopAdapterSection({
                 ))}
               </ul>
             ) : (
-              <OverlayUiEmptyHint message="Recommendation ???" />
+              <OverlayUiEmptyHint message={RUNTIME_NOOP_ADAPTER_EMPTY_HINT_KO.recommendation} />
             )}
           </>
         ) : null}
-        <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>
-          actual runtime adapter invocation?execution?routing?rollback?prompt ???? ??????.
-        </div>
+        <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>{RUNTIME_NOOP_ADAPTER_OVERLAY_FOOTER_KO}</div>
       </div>
     </OverlayUiSection>
   );
 }
-

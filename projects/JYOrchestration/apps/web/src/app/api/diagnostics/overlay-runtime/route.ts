@@ -392,6 +392,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningControlledOrchestrationRuntimePilotEnabled: true,
     harnessRuntimePlanningPilotContractAdapterBoundaryEnabled: true,
     harnessRuntimePlanningNoopRuntimeAdapterEnabled: true,
+    harnessRuntimePlanningNoopRuntimeAdapterStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -440,6 +441,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningControlledOrchestrationRuntimePilotLayer: true,
     harnessRuntimePlanningPilotContractAdapterBoundaryLayer: true,
     harnessRuntimePlanningNoopRuntimeAdapterLayer: true,
+    harnessRuntimePlanningNoopRuntimeAdapterStabilizationLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -684,6 +686,7 @@ export async function GET(request: NextRequest) {
       runtimeNoopAdapterResultMetadata: runtimeSemanticDiag.runtimeNoopAdapterResultMetadata,
       runtimeAdapterInvocationGuardReport: runtimeSemanticDiag.runtimeAdapterInvocationGuardReport,
       runtimeNoopAdapterBoundaryViolationReport: runtimeSemanticDiag.runtimeNoopAdapterBoundaryViolationReport,
+      runtimeNoopAdapterPreflightSummary: runtimeSemanticDiag.runtimeNoopAdapterPreflightSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

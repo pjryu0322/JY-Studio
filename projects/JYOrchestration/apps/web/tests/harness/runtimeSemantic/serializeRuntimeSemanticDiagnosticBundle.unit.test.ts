@@ -246,5 +246,8 @@ describe("H17 runtime semantic compression", () => {
     expect((b.runtimeAdapterInvocationGuardReport as { mode?: string }).mode).toBe(
       "runtime_adapter_invocation_guard_report"
     );
+    expect((b.runtimeNoopAdapterPreflightSummary as { mode?: string }).mode).toBe(
+      "runtime_noop_adapter_preflight_summary"
+    );
   });
 });

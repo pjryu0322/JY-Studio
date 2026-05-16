@@ -1,10 +1,11 @@
 /**
- * H25 — Overlay runtime **no-op adapter** 섹션 VM.
+ * H25 / H25.5 — Overlay runtime **no-op adapter** 섹션 VM.
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import {
   RUNTIME_NOOP_ADAPTER_INVOCATION_GUARD_LABEL_KO,
+  RUNTIME_NOOP_ADAPTER_PREFLIGHT_READINESS_LABEL_KO,
   RUNTIME_NOOP_ADAPTER_SECTION_DISCLAIMER_KO,
   RUNTIME_NOOP_ADAPTER_STATUS_LABEL_KO,
 } from "@/lib/harness/runtimeNoopAdapter/runtimeNoopAdapterLabelsKo";
@@ -16,7 +17,8 @@ export type OverlayRuntimeNoopAdapterSectionVM = Readonly<{
   noopAdapterStatusKo: string;
   invocationGuardKo: string;
   contractVerificationStatusKo: string;
-  topViolation: string | null;
+  preflightReadinessKo: string;
+  topViolationOrBlocker: string | null;
   topForbiddenOperation: string | null;
   noopResultRows: readonly string[];
   skeletonInputRows: readonly string[];
@@ -39,7 +41,7 @@ export function buildOverlayRuntimeNoopAdapterSectionVmFromReports(
   const s = reports.runtimeNoopAdapterSummary;
   const sk = reports.runtimeNoopAdapterSkeleton;
   const v = reports.runtimeNoopAdapterBoundaryViolationReport;
-  const f = reports.runtimeAdapterForbiddenOperationReport;
+  const pf = reports.runtimeNoopAdapterPreflightSummary;
 
   const noopResultRows = compactAndNarrowUi ? s.noopResultMetadata.slice(0, 1) : [...s.noopResultMetadata];
   const skeletonInputRows = compactAndNarrowUi ? sk.acceptedContractInputs.slice(0, 1) : [...sk.acceptedContractInputs];
@@ -47,15 +49,22 @@ export function buildOverlayRuntimeNoopAdapterSectionVmFromReports(
     ? [...v.actualFlagViolations.slice(0, 1), ...v.wordingRiskFindings.slice(0, 1)]
     : [...v.actualFlagViolations, ...v.wordingRiskFindings];
   const forbiddenOperationRows = compactAndNarrowUi
-    ? f.forbiddenOperations.slice(0, 1)
+    ? sk.forbiddenOperations.slice(0, 1)
     : [...sk.forbiddenOperations];
   const recommendationRows = compactAndNarrowUi ? s.recommendations.slice(0, 1) : [...s.recommendations];
+
+  const topViolationOrBlocker =
+    v.actualFlagViolations[0] ??
+    v.wordingRiskFindings[0] ??
+    pf.blockers[0] ??
+    null;
 
   return {
     sectionDisclaimer: RUNTIME_NOOP_ADAPTER_SECTION_DISCLAIMER_KO,
     showAttention:
       s.noopAdapterStatus !== "not_available" ||
       s.invocationGuard !== "noop_only" ||
+      pf.preflightReadiness !== "ready_metadata" ||
       v.actualFlagViolations.length > 0 ||
       v.wordingRiskFindings.length > 0,
     showDetailSections: !compactAndNarrowUi,
@@ -63,7 +72,8 @@ export function buildOverlayRuntimeNoopAdapterSectionVmFromReports(
     invocationGuardKo: RUNTIME_NOOP_ADAPTER_INVOCATION_GUARD_LABEL_KO[s.invocationGuard],
     contractVerificationStatusKo:
       VERIFICATION_STATUS_LABEL_KO[s.contractVerificationStatus] ?? s.contractVerificationStatus,
-    topViolation: v.actualFlagViolations[0] ?? v.wordingRiskFindings[0] ?? null,
+    preflightReadinessKo: RUNTIME_NOOP_ADAPTER_PREFLIGHT_READINESS_LABEL_KO[pf.preflightReadiness],
+    topViolationOrBlocker,
     topForbiddenOperation: sk.forbiddenOperations[0] ?? null,
     noopResultRows,
     skeletonInputRows,

@@ -19,6 +19,7 @@ export function stripRuntimeNoopAdapterLayer(
     runtimeNoopAdapterResultMetadata: _d,
     runtimeAdapterInvocationGuardReport: _e,
     runtimeNoopAdapterBoundaryViolationReport: _f,
+    runtimeNoopAdapterPreflightSummary: _g,
     ...before
   } = semantic;
   return before;

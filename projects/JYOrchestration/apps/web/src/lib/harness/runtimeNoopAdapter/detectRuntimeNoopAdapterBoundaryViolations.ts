@@ -1,5 +1,5 @@
 /**
- * H25 — no-op skeleton/result에 actual operation 혼입 **탐지**(read-only).
+ * H25 / H25.5 — no-op skeleton/result에 actual operation 혼입 **탐지**(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeNoopAdapter } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -19,6 +19,10 @@ const RISK_PHRASES: readonly { readonly phrase: string; readonly label: string }
   { phrase: "actualruntimeadapterinvocationenabled=true", label: "actualRuntimeAdapterInvocationEnabled=true" },
   { phrase: "actualexecutionenabled=true", label: "actualExecutionEnabled=true" },
   { phrase: "actualproviderroutingenabled=true", label: "actualProviderRoutingEnabled=true" },
+  { phrase: "actualqueuecontrolenabled=true", label: "actualQueueControlEnabled=true" },
+  { phrase: "actualrollbackexecutionenabled=true", label: "actualRollbackExecutionEnabled=true" },
+  { phrase: "noopaccepted=true", label: "noopAccepted=true" },
+  { phrase: "diagnosticonly=false", label: "diagnosticOnly=false" },
 ];
 
 function collectBlob(
@@ -61,6 +65,24 @@ export function detectRuntimeNoopAdapterBoundaryViolations(
   if (result.providerRoutingPerformed !== false) {
     actualFlagViolations.push("runtimeNoopAdapterResultMetadata.providerRoutingPerformed must be false");
   }
+  if (result.actualQueueControlEnabled !== false) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.actualQueueControlEnabled must be false");
+  }
+  if (result.actualRollbackExecutionEnabled !== false) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.actualRollbackExecutionEnabled must be false");
+  }
+  if (result.queueControlPerformed !== false) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.queueControlPerformed must be false");
+  }
+  if (result.rollbackPerformed !== false) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.rollbackPerformed must be false");
+  }
+  if (result.noopAccepted !== false) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.noopAccepted must be false");
+  }
+  if (result.diagnosticOnly !== true) {
+    actualFlagViolations.push("runtimeNoopAdapterResultMetadata.diagnosticOnly must be true");
+  }
 
   const blob = collectBlob(reports, skeleton, result);
   for (const { phrase, label } of RISK_PHRASES) {
@@ -71,7 +93,7 @@ export function detectRuntimeNoopAdapterBoundaryViolations(
 
   const recommendations = mergeSortedUniqueKo([
     ...(actualFlagViolations.length > 0 || wordingRiskFindings.length > 0
-      ? ["H25: no-op boundary violation 후보 — actual operation 플래그·문구 제거"]
+      ? ["H25.5: no-op boundary violation 후보 — actual operation 플래그·문구 제거"]
       : []),
   ]);
 
