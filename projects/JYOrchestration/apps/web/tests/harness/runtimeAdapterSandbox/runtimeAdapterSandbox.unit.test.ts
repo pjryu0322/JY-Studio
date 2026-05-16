@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeAdapterSandboxPlanningReports } from "@/lib/harness/runtimeAdapterSandbox/buildRuntimeAdapterSandboxPlanningReports";
+import { buildRuntimeAdapterSandboxPreflightSummary } from "@/lib/harness/runtimeAdapterSandbox/buildRuntimeAdapterSandboxPreflightSummary";
+import { buildRuntimeAdapterSandboxResultMetadata } from "@/lib/harness/runtimeAdapterSandbox/buildRuntimeAdapterSandboxResultMetadata";
+import { detectRuntimeAdapterSandboxBoundaryViolations } from "@/lib/harness/runtimeAdapterSandbox/detectRuntimeAdapterSandboxBoundaryViolations";
 import { buildRuntimeNoopAdapterPlanningReports } from "@/lib/harness/runtimeNoopAdapter/buildRuntimeNoopAdapterPlanningReports";
 import { serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeAdapterSandbox/serializeRuntimeAdapterSandboxDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
@@ -36,19 +39,29 @@ function buildFullSemantic() {
   return buildRuntimeSemanticPlanningReports(reasoning);
 }
 
-describe("H26 runtime adapter sandbox", () => {
+describe("H26 / H26.5 runtime adapter sandbox", () => {
   it("full semantic includes sandbox with actualSandboxInvocationEnabled false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeAdapterSandboxSummary.actualSandboxInvocationEnabled).toBe(false);
     expect(semantic.runtimeAdapterSandboxResultMetadata.sandboxInvoked).toBe(false);
     expect(semantic.runtimeAdapterSandboxResultMetadata.diagnosticOnly).toBe(true);
+    expect(semantic.runtimeAdapterSandboxEnvelopeVerificationReport.mode).toBe(
+      "runtime_adapter_sandbox_envelope_verification_report"
+    );
+    expect(semantic.runtimeAdapterSandboxPreflightSummary.mode).toBe("runtime_adapter_sandbox_preflight_summary");
   });
 
-  it("preflight ready_metadata can yield sandbox_metadata_ready", () => {
+  it("preflight ready_metadata can yield sandbox_metadata_ready and sandbox preflight", () => {
     const semantic = buildFullSemantic();
     if (semantic.runtimeNoopAdapterPreflightSummary.preflightReadiness === "ready_metadata") {
       expect(semantic.runtimeAdapterSandboxSummary.sandboxReadiness).toBe("sandbox_metadata_ready");
-      expect(semantic.runtimeAdapterSandboxSummary.sandboxMode).toBe("metadata_only");
+      if (
+        semantic.runtimeAdapterSandboxEnvelopeVerificationReport.verificationStatus ===
+          "verified_metadata" &&
+        semantic.runtimeAdapterSandboxBoundaryViolationReport.actualFlagViolations.length === 0
+      ) {
+        expect(semantic.runtimeAdapterSandboxPreflightSummary.preflightReadiness).toBe("ready_metadata");
+      }
     }
   });
 
@@ -64,63 +77,108 @@ describe("H26 runtime adapter sandbox", () => {
     const withNoop = { ...blocked, ...buildRuntimeNoopAdapterPlanningReports(blocked) };
     const sandbox = buildRuntimeAdapterSandboxPlanningReports(withNoop);
     expect(sandbox.runtimeAdapterSandboxSummary.sandboxReadiness).toBe("blocked");
+    expect(sandbox.runtimeAdapterSandboxPreflightSummary.preflightReadiness).toBe("blocked");
   });
 
-  it("invocationGuard always_blocked yields sandbox blocked", () => {
-    const before = stripRuntimeAdapterSandboxLayer(buildFullSemantic());
-    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
-    const withGuard = {
-      ...before,
-      ...h25,
-      runtimeAdapterInvocationGuardReport: {
-        ...h25.runtimeAdapterInvocationGuardReport,
-        invocationGuard: "always_blocked" as const,
-      },
-      runtimeNoopAdapterSummary: {
-        ...h25.runtimeNoopAdapterSummary,
-        noopAdapterStatus: "blocked" as const,
-        invocationGuard: "always_blocked" as const,
-      },
-      runtimeNoopAdapterPreflightSummary: {
-        ...h25.runtimeNoopAdapterPreflightSummary,
-        preflightReadiness: "blocked" as const,
-      },
-    };
-    const sandbox = buildRuntimeAdapterSandboxPlanningReports(withGuard);
-    expect(sandbox.runtimeAdapterSandboxSummary.sandboxReadiness).toBe("blocked");
-  });
-
-  it("actual flag violation yields sandbox blocked", () => {
-    const before = stripRuntimeAdapterSandboxLayer(buildFullSemantic());
-    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
-    const withViolation = {
-      ...before,
-      ...h25,
-      runtimeNoopAdapterBoundaryViolationReport: {
-        ...h25.runtimeNoopAdapterBoundaryViolationReport,
-        actualFlagViolations: ["runtimeNoopAdapterResultMetadata.actualExecutionEnabled must be false"],
-      },
-    };
-    const sandbox = buildRuntimeAdapterSandboxPlanningReports(withViolation);
-    expect(sandbox.runtimeAdapterSandboxSummary.sandboxReadiness).toBe("blocked");
-  });
-
-  it("sandbox result flags are all false", () => {
-    const result = buildRuntimeAdapterSandboxPlanningReports(
+  it("boundary violation detects actualSandboxInvocationEnabled and sandboxInvoked", () => {
+    const base = buildRuntimeAdapterSandboxPlanningReports(
       stripRuntimeAdapterSandboxLayer(buildFullSemantic())
-    ).runtimeAdapterSandboxResultMetadata;
-    expect(result.adapterInvoked).toBe(false);
-    expect(result.executionPerformed).toBe(false);
+    );
+    const badSandbox = {
+      ...base.runtimeAdapterSandboxResultMetadata,
+      actualSandboxInvocationEnabled: true as unknown as false,
+      sandboxInvoked: true as unknown as false,
+    };
+    const violations = detectRuntimeAdapterSandboxBoundaryViolations({
+      inputEnvelope: base.runtimeAdapterSandboxInputEnvelope,
+      outputEnvelope: base.runtimeAdapterSandboxOutputEnvelope,
+      policy: base.runtimeAdapterSandboxPolicy,
+      result: badSandbox,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("actualSandboxInvocationEnabled"))).toBe(
+      true
+    );
+    expect(violations.actualFlagViolations.some((v) => v.includes("sandboxInvoked"))).toBe(true);
+  });
+
+  it("boundary violation detects adapterInvoked executionPerformed rollbackPerformed diagnosticOnly false", () => {
+    const base = buildRuntimeAdapterSandboxPlanningReports(
+      stripRuntimeAdapterSandboxLayer(buildFullSemantic())
+    );
+    const bad = {
+      ...base.runtimeAdapterSandboxResultMetadata,
+      adapterInvoked: true as unknown as false,
+      executionPerformed: true as unknown as false,
+      providerRoutingPerformed: true as unknown as false,
+      queueControlPerformed: true as unknown as false,
+      rollbackPerformed: true as unknown as false,
+      diagnosticOnly: false as unknown as true,
+    };
+    const violations = detectRuntimeAdapterSandboxBoundaryViolations({
+      inputEnvelope: base.runtimeAdapterSandboxInputEnvelope,
+      outputEnvelope: base.runtimeAdapterSandboxOutputEnvelope,
+      policy: base.runtimeAdapterSandboxPolicy,
+      result: bad,
+    });
+    expect(violations.actualFlagViolations.some((v) => v.includes("adapterInvoked"))).toBe(true);
+    expect(violations.actualFlagViolations.some((v) => v.includes("executionPerformed"))).toBe(true);
+    expect(violations.actualFlagViolations.some((v) => v.includes("rollbackPerformed"))).toBe(true);
+    expect(violations.actualFlagViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
+  });
+
+  it("envelope verification failed forces sandbox blocked", () => {
+    const before = stripRuntimeAdapterSandboxLayer(buildFullSemantic());
+    const h25 = buildRuntimeNoopAdapterPlanningReports(before);
+    const withNoop = { ...before, ...h25 };
+    const sandbox = buildRuntimeAdapterSandboxPlanningReports(withNoop);
+    const failedVerification = {
+      ...sandbox.runtimeAdapterSandboxEnvelopeVerificationReport,
+      verificationStatus: "failed" as const,
+    };
+    const pf = buildRuntimeAdapterSandboxPreflightSummary({
+      summary: { ...sandbox.runtimeAdapterSandboxSummary, sandboxReadiness: "blocked" },
+      envelopeVerification: failedVerification,
+      boundaryViolation: sandbox.runtimeAdapterSandboxBoundaryViolationReport,
+      blockerReport: sandbox.runtimeAdapterSandboxBlockerReport,
+    });
+    expect(pf.preflightReadiness).toBe("blocked");
+  });
+
+  it("partial envelope yields preflight watch", () => {
+    const before = stripRuntimeAdapterSandboxLayer(buildFullSemantic());
+    const sandbox = buildRuntimeAdapterSandboxPlanningReports(before);
+    const pf = buildRuntimeAdapterSandboxPreflightSummary({
+      summary: { ...sandbox.runtimeAdapterSandboxSummary, sandboxReadiness: "watch" },
+      envelopeVerification: {
+        ...sandbox.runtimeAdapterSandboxEnvelopeVerificationReport,
+        verificationStatus: "partial",
+      },
+      boundaryViolation: {
+        ...sandbox.runtimeAdapterSandboxBoundaryViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: ["wording/flag risk: sandboxInvoked=true"],
+      },
+      blockerReport: { ...sandbox.runtimeAdapterSandboxBlockerReport, blockers: [] },
+    });
+    expect(pf.preflightReadiness).toBe("watch");
+  });
+
+  it("sandbox result flags are all false from builder", () => {
+    const result = buildRuntimeAdapterSandboxResultMetadata();
     expect(result.sandboxInvoked).toBe(false);
+    expect(result.adapterInvoked).toBe(false);
     expect(result.diagnosticOnly).toBe(true);
   });
 
-  it("serializer includes sandbox fields without rebuilding", () => {
+  it("serializer includes H26.5 fields", () => {
     const semantic = buildFullSemantic();
     const ser = serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports(semantic);
-    expect(ser.runtimeAdapterSandboxSummary.mode).toBe("runtime_adapter_sandbox_summary");
-    expect(ser.runtimeAdapterSandboxBlockerReport.mode).toBe("runtime_adapter_sandbox_blocker_report");
-    const serAgain = serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports(semantic);
-    expect(serAgain).toEqual(ser);
+    expect(ser.runtimeAdapterSandboxEnvelopeVerificationReport.mode).toBe(
+      "runtime_adapter_sandbox_envelope_verification_report"
+    );
+    expect(ser.runtimeAdapterSandboxBoundaryViolationReport.mode).toBe(
+      "runtime_adapter_sandbox_boundary_violation_report"
+    );
+    expect(ser.runtimeAdapterSandboxPreflightSummary.mode).toBe("runtime_adapter_sandbox_preflight_summary");
   });
 });

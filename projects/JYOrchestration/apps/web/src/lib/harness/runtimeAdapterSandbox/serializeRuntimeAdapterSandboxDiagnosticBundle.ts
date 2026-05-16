@@ -1,13 +1,16 @@
 /**
- * H26 — adapter sandbox 진단 **직렬화 전용**(report 재빌드 없음).
+ * H26 / H26.5 — adapter sandbox 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
   RuntimeAdapterSandboxBlockerReport,
+  RuntimeAdapterSandboxBoundaryViolationReport,
+  RuntimeAdapterSandboxEnvelopeVerificationReport,
   RuntimeAdapterSandboxInputEnvelope,
   RuntimeAdapterSandboxOutputEnvelope,
   RuntimeAdapterSandboxPolicy,
+  RuntimeAdapterSandboxPreflightSummary,
   RuntimeAdapterSandboxResultMetadata,
   RuntimeAdapterSandboxSummary,
 } from "./runtimeAdapterSandboxTypes";
@@ -104,6 +107,55 @@ function serializeBlockers(b: RuntimeAdapterSandboxBlockerReport): Readonly<Reco
   };
 }
 
+function serializeEnvelopeVerification(
+  v: RuntimeAdapterSandboxEnvelopeVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualRuntimeAdapterInvocationEnabled: v.actualRuntimeAdapterInvocationEnabled,
+    actualSandboxInvocationEnabled: v.actualSandboxInvocationEnabled,
+    verificationStatus: v.verificationStatus,
+    missingInputEnvelopeRefs: sortKo(v.missingInputEnvelopeRefs),
+    outputEnvelopeAligned: v.outputEnvelopeAligned,
+    policyAligned: v.policyAligned,
+    resultMetadataAligned: v.resultMetadataAligned,
+    findings: sortKo(v.findings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeBoundaryViolations(
+  v: RuntimeAdapterSandboxBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualRuntimeAdapterInvocationEnabled: v.actualRuntimeAdapterInvocationEnabled,
+    actualSandboxInvocationEnabled: v.actualSandboxInvocationEnabled,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializePreflight(p: RuntimeAdapterSandboxPreflightSummary): Readonly<Record<string, unknown>> {
+  return {
+    mode: p.mode,
+    actualRuntimeOrchestrationEnabled: p.actualRuntimeOrchestrationEnabled,
+    actualRuntimeAdapterInvocationEnabled: p.actualRuntimeAdapterInvocationEnabled,
+    actualSandboxInvocationEnabled: p.actualSandboxInvocationEnabled,
+    actualExecutionEnabled: p.actualExecutionEnabled,
+    actualProviderRoutingEnabled: p.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: p.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: p.actualRollbackExecutionEnabled,
+    preflightReadiness: p.preflightReadiness,
+    checklist: sortKo(p.checklist),
+    blockers: sortKo(p.blockers),
+    recommendations: sortKo(p.recommendations),
+  };
+}
+
 export function serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -113,6 +165,9 @@ export function serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReport
   runtimeAdapterSandboxPolicy: ReturnType<typeof serializePolicy>;
   runtimeAdapterSandboxResultMetadata: ReturnType<typeof serializeResult>;
   runtimeAdapterSandboxBlockerReport: ReturnType<typeof serializeBlockers>;
+  runtimeAdapterSandboxEnvelopeVerificationReport: ReturnType<typeof serializeEnvelopeVerification>;
+  runtimeAdapterSandboxBoundaryViolationReport: ReturnType<typeof serializeBoundaryViolations>;
+  runtimeAdapterSandboxPreflightSummary: ReturnType<typeof serializePreflight>;
 }> {
   return {
     runtimeAdapterSandboxSummary: serializeSummary(reports.runtimeAdapterSandboxSummary),
@@ -121,5 +176,12 @@ export function serializeRuntimeAdapterSandboxDiagnosticBundleFromSemanticReport
     runtimeAdapterSandboxPolicy: serializePolicy(reports.runtimeAdapterSandboxPolicy),
     runtimeAdapterSandboxResultMetadata: serializeResult(reports.runtimeAdapterSandboxResultMetadata),
     runtimeAdapterSandboxBlockerReport: serializeBlockers(reports.runtimeAdapterSandboxBlockerReport),
+    runtimeAdapterSandboxEnvelopeVerificationReport: serializeEnvelopeVerification(
+      reports.runtimeAdapterSandboxEnvelopeVerificationReport
+    ),
+    runtimeAdapterSandboxBoundaryViolationReport: serializeBoundaryViolations(
+      reports.runtimeAdapterSandboxBoundaryViolationReport
+    ),
+    runtimeAdapterSandboxPreflightSummary: serializePreflight(reports.runtimeAdapterSandboxPreflightSummary),
   };
 }

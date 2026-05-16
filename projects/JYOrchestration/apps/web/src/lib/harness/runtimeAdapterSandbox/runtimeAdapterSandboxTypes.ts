@@ -1,5 +1,5 @@
 /**
- * H26 — Controlled runtime adapter **sandbox readiness**(read-only; sandbox·adapter 호출 없음).
+ * H26 / H26.5 — Controlled runtime adapter **sandbox readiness**(read-only; sandbox·adapter 호출 없음).
  */
 
 export type RuntimeAdapterSandboxReadiness =
@@ -86,6 +86,47 @@ export type RuntimeAdapterSandboxBlockerReport = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeAdapterSandboxPreflightReadiness = "ready_metadata" | "watch" | "blocked" | "not_ready";
+
+export type RuntimeAdapterSandboxEnvelopeVerificationReport = Readonly<{
+  mode: "runtime_adapter_sandbox_envelope_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  verificationStatus: "verified_metadata" | "partial" | "failed";
+  missingInputEnvelopeRefs: readonly string[];
+  outputEnvelopeAligned: boolean;
+  policyAligned: boolean;
+  resultMetadataAligned: boolean;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeAdapterSandboxBoundaryViolationReport = Readonly<{
+  mode: "runtime_adapter_sandbox_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeAdapterSandboxPreflightSummary = Readonly<{
+  mode: "runtime_adapter_sandbox_preflight_summary";
+  actualRuntimeOrchestrationEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  preflightReadiness: RuntimeAdapterSandboxPreflightReadiness;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeAdapterSandboxPlanningReports = Readonly<{
   runtimeAdapterSandboxSummary: RuntimeAdapterSandboxSummary;
   runtimeAdapterSandboxInputEnvelope: RuntimeAdapterSandboxInputEnvelope;
@@ -93,4 +134,7 @@ export type RuntimeAdapterSandboxPlanningReports = Readonly<{
   runtimeAdapterSandboxPolicy: RuntimeAdapterSandboxPolicy;
   runtimeAdapterSandboxResultMetadata: RuntimeAdapterSandboxResultMetadata;
   runtimeAdapterSandboxBlockerReport: RuntimeAdapterSandboxBlockerReport;
+  runtimeAdapterSandboxEnvelopeVerificationReport: RuntimeAdapterSandboxEnvelopeVerificationReport;
+  runtimeAdapterSandboxBoundaryViolationReport: RuntimeAdapterSandboxBoundaryViolationReport;
+  runtimeAdapterSandboxPreflightSummary: RuntimeAdapterSandboxPreflightSummary;
 }>;

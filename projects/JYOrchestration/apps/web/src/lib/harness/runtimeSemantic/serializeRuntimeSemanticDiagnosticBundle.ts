@@ -163,6 +163,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeAdapterSandboxPolicy: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxPolicy"];
   runtimeAdapterSandboxResultMetadata: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxResultMetadata"];
   runtimeAdapterSandboxBlockerReport: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxBlockerReport"];
+  runtimeAdapterSandboxEnvelopeVerificationReport: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxEnvelopeVerificationReport"];
+  runtimeAdapterSandboxBoundaryViolationReport: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxBoundaryViolationReport"];
+  runtimeAdapterSandboxPreflightSummary: SerializedRuntimeAdapterSandboxDiag["runtimeAdapterSandboxPreflightSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
