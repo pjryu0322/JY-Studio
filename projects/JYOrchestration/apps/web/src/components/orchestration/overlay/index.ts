@@ -41,6 +41,7 @@ export { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSand
 export { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActivationSection";
 export { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
 export { OverlayRuntimeRunnerInvocationSection } from "./OverlayRuntimeRunnerInvocationSection";
+export { OverlayRuntimeRunnerNoopHarnessSection } from "./OverlayRuntimeRunnerNoopHarnessSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

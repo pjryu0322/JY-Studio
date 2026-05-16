@@ -1,5 +1,5 @@
 /**
- * H17–H29 — semantic·…·pilot skeleton·runner invocation **planning 보고서** 일괄 산출.
+ * H17–H30 — semantic·…·pilot skeleton·runner invocation·no-op harness **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -31,6 +31,7 @@ import { buildRuntimeAdapterSandboxPlanningReports } from "@/lib/harness/runtime
 import { buildRuntimePilotActivationPlanningReports } from "@/lib/harness/runtimePilotActivation/buildRuntimePilotActivationPlanningReports";
 import { buildRuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimePilotSkeleton/buildRuntimePilotSkeletonPlanningReports";
 import { buildRuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/buildRuntimeRunnerInvocationPlanningReports";
+import { buildRuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runtimeRunnerNoopHarness/buildRuntimeRunnerNoopHarnessPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -53,6 +54,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
   RuntimeSemanticPlanningReportsBeforeRunnerInvocation,
+  RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -74,6 +76,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
+  RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -204,8 +207,13 @@ export function buildRuntimeSemanticPlanningReports(
     ...pilotSkeletonReports,
   };
   const runnerInvocationReports = buildRuntimeRunnerInvocationPlanningReports(semanticWithPilotSkeleton);
+  const semanticWithRunnerInvocation: RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness = {
+    ...semanticWithPilotSkeleton,
+    ...runnerInvocationReports,
+  };
+  const runnerNoopHarnessReports = buildRuntimeRunnerNoopHarnessPlanningReports(semanticWithRunnerInvocation);
 
-  return { ...semanticWithPilotSkeleton, ...runnerInvocationReports };
+  return { ...semanticWithRunnerInvocation, ...runnerNoopHarnessReports };
 }
 
 export type {

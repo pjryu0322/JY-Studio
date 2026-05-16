@@ -184,6 +184,7 @@ export function OverlaySummaryCard({
     runtimePilotActivationVm: runtimePlanningPilotActivationVm,
     runtimePilotSkeletonVm: runtimePlanningPilotSkeletonVm,
     runtimeRunnerInvocationVm: runtimePlanningRunnerInvocationVm,
+    runtimeRunnerNoopHarnessVm: runtimePlanningRunnerNoopHarnessVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -341,8 +342,12 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_runner_invocation",
     d.runtimePlanningRuntimeRunnerInvocation || runtimePlanningRunnerInvocationVm.showAttention
   );
-  /** H20.5 resource → H29 runner invocation까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
-  const resourceThroughRunnerInvocationOmitted =
+  const pRunnerNoopHarness = pol(
+    "runtime_planning_runtime_runner_noop_harness",
+    d.runtimePlanningRuntimeRunnerNoopHarness || runtimePlanningRunnerNoopHarnessVm.showAttention
+  );
+  /** H20.5 resource → H30 runner no-op harness까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
+  const resourceThroughRunnerNoopHarnessOmitted =
     pResource.omitFromDom &&
     pResourceGov.omitFromDom &&
     pResourceAlloc.omitFromDom &&
@@ -356,7 +361,8 @@ export function OverlaySummaryCard({
     pAdapterSandbox.omitFromDom &&
     pPilotActivation.omitFromDom &&
     pPilotSkeleton.omitFromDom &&
-    pRunnerInvocation.omitFromDom;
+    pRunnerInvocation.omitFromDom &&
+    pRunnerNoopHarness.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -484,6 +490,7 @@ export function OverlaySummaryCard({
           runtimePilotActivationVm={runtimePlanningPilotActivationVm}
           runtimePilotSkeletonVm={runtimePlanningPilotSkeletonVm}
           runtimeRunnerInvocationVm={runtimePlanningRunnerInvocationVm}
+          runtimeRunnerNoopHarnessVm={runtimePlanningRunnerNoopHarnessVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -554,22 +561,23 @@ export function OverlaySummaryCard({
           showRuntimePilotActivation={!pPilotActivation.omitFromDom}
           showRuntimePilotSkeleton={!pPilotSkeleton.omitFromDom}
           showRuntimeRunnerInvocation={!pRunnerInvocation.omitFromDom}
-          showForecast={!pForecast.omitFromDom && resourceThroughRunnerInvocationOmitted}
+          showRuntimeRunnerNoopHarness={!pRunnerNoopHarness.omitFromDom}
+          showForecast={!pForecast.omitFromDom && resourceThroughRunnerNoopHarnessOmitted}
           showDecision={
-            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughRunnerInvocationOmitted
+            !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughRunnerNoopHarnessOmitted
           }
           showSemanticVocabulary={
             !pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
           showSemanticNarrative={
             !pSemanticNarrative.omitFromDom &&
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
           showSemanticGraph={
             !pSemanticGraph.omitFromDom &&
@@ -577,7 +585,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
           showSemantic={
             !pSemantic.omitFromDom &&
@@ -586,7 +594,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
           showReasoning={
             !pReason.omitFromDom &&
@@ -596,7 +604,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
           showTraceability={
             !pTrace.omitFromDom &&
@@ -607,7 +615,7 @@ export function OverlaySummaryCard({
             pSemanticVocabulary.omitFromDom &&
             pDecision.omitFromDom &&
             pForecast.omitFromDom &&
-            resourceThroughRunnerInvocationOmitted
+            resourceThroughRunnerNoopHarnessOmitted
           }
         />
       ) : null}

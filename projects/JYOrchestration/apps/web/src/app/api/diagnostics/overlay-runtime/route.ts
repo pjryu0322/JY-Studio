@@ -401,6 +401,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationEnabled: true,
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationCandidateEnabled: true,
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationStabilizationEnabled: true,
+    harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessEnabled: true,
   };
 
   const overlayMaturity = {
@@ -457,6 +458,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedRuntimePilotSkeletonStabilizationLayer: true,
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationCandidateLayer: true,
     harnessRuntimePlanningIsolatedDryRunRunnerInvocationStabilizationLayer: true,
+    harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -747,6 +749,15 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeRunnerInvocationBoundaryViolationReport,
       runtimeRunnerInvocationReadinessVerificationReport:
         runtimeSemanticDiag.runtimeRunnerInvocationReadinessVerificationReport,
+      runtimeRunnerNoopHarnessSummary: runtimeSemanticDiag.runtimeRunnerNoopHarnessSummary,
+      runtimeRunnerNoopInvocationEnvelope: runtimeSemanticDiag.runtimeRunnerNoopInvocationEnvelope,
+      runtimeRunnerNoopResultMetadata: runtimeSemanticDiag.runtimeRunnerNoopResultMetadata,
+      runtimeRunnerNoopHarnessSafetyGuard: runtimeSemanticDiag.runtimeRunnerNoopHarnessSafetyGuard,
+      runtimeRunnerNoopHarnessContractVerificationReport:
+        runtimeSemanticDiag.runtimeRunnerNoopHarnessContractVerificationReport,
+      runtimeRunnerNoopHarnessBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeRunnerNoopHarnessBoundaryViolationReport,
+      runtimeRunnerNoopHarnessPreflightSummary: runtimeSemanticDiag.runtimeRunnerNoopHarnessPreflightSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

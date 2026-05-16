@@ -21,6 +21,7 @@ import type { OverlayRuntimeAdapterSandboxSectionVM } from "@/lib/overlay-ui/ove
 import type { OverlayRuntimePilotActivationSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotActivationAdapter";
 import type { OverlayRuntimePilotSkeletonSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotSkeletonAdapter";
 import type { OverlayRuntimeRunnerInvocationSectionVM } from "@/lib/overlay-ui/overlayRuntimeRunnerInvocationAdapter";
+import type { OverlayRuntimeRunnerNoopHarnessSectionVM } from "@/lib/overlay-ui/overlayRuntimeRunnerNoopHarnessAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -45,6 +46,7 @@ import { OverlayRuntimeAdapterSandboxSection } from "./OverlayRuntimeAdapterSand
 import { OverlayRuntimePilotActivationSection } from "./OverlayRuntimePilotActivationSection";
 import { OverlayRuntimePilotSkeletonSection } from "./OverlayRuntimePilotSkeletonSection";
 import { OverlayRuntimeRunnerInvocationSection } from "./OverlayRuntimeRunnerInvocationSection";
+import { OverlayRuntimeRunnerNoopHarnessSection } from "./OverlayRuntimeRunnerNoopHarnessSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -67,6 +69,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimePilotActivationVm,
   runtimePilotSkeletonVm,
   runtimeRunnerInvocationVm,
+  runtimeRunnerNoopHarnessVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -91,6 +94,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   pilotActivationDefaultOpen,
   pilotSkeletonDefaultOpen,
   runnerInvocationDefaultOpen,
+  runnerNoopHarnessDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -116,6 +120,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimePilotActivation = true,
   showRuntimePilotSkeleton = true,
   showRuntimeRunnerInvocation = true,
+  showRuntimeRunnerNoopHarness = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -141,6 +146,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimePilotActivationVm: OverlayRuntimePilotActivationSectionVM;
   readonly runtimePilotSkeletonVm: OverlayRuntimePilotSkeletonSectionVM;
   readonly runtimeRunnerInvocationVm: OverlayRuntimeRunnerInvocationSectionVM;
+  readonly runtimeRunnerNoopHarnessVm: OverlayRuntimeRunnerNoopHarnessSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -165,6 +171,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly pilotActivationDefaultOpen?: boolean;
   readonly pilotSkeletonDefaultOpen?: boolean;
   readonly runnerInvocationDefaultOpen?: boolean;
+  readonly runnerNoopHarnessDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -190,6 +197,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimePilotActivation?: boolean;
   readonly showRuntimePilotSkeleton?: boolean;
   readonly showRuntimeRunnerInvocation?: boolean;
+  readonly showRuntimeRunnerNoopHarness?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -289,6 +297,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimeRunnerInvocationSection
           vm={runtimeRunnerInvocationVm}
           defaultOpen={runnerInvocationDefaultOpen}
+        />
+      ) : null}
+      {showRuntimeRunnerNoopHarness ? (
+        <OverlayRuntimeRunnerNoopHarnessSection
+          vm={runtimeRunnerNoopHarnessVm}
+          defaultOpen={runnerNoopHarnessDefaultOpen}
         />
       ) : null}
       {showForecast ? (

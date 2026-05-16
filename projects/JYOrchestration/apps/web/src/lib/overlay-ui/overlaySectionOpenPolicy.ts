@@ -65,7 +65,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_runtime_adapter_sandbox" ||
         input.section === "runtime_planning_runtime_pilot_activation" ||
         input.section === "runtime_planning_runtime_pilot_skeleton" ||
-        input.section === "runtime_planning_runtime_runner_invocation")
+        input.section === "runtime_planning_runtime_runner_invocation" ||
+        input.section === "runtime_planning_runtime_runner_noop_harness")
     ) {
       omitFromDom = true;
       defaultOpen = false;

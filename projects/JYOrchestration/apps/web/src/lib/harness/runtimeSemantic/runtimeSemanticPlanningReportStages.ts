@@ -12,6 +12,7 @@ import type { RuntimeAdapterSandboxPlanningReports } from "@/lib/harness/runtime
 import type { RuntimePilotActivationPlanningReports } from "@/lib/harness/runtimePilotActivation/runtimePilotActivationTypes";
 import type { RuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimePilotSkeleton/runtimePilotSkeletonTypes";
 import type { RuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/runtimeRunnerInvocationTypes";
+import type { RuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runtimeRunnerNoopHarness/runtimeRunnerNoopHarnessTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -116,5 +117,9 @@ export type RuntimeSemanticPlanningReportsBeforeRunnerInvocation = RuntimeSemant
   RuntimePilotSkeletonPlanningReports;
 
 /** H29 포함 — runner invocation candidate까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeRunnerInvocation &
-  RuntimeRunnerInvocationPlanningReports;
+export type RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness =
+  RuntimeSemanticPlanningReportsBeforeRunnerInvocation & RuntimeRunnerInvocationPlanningReports;
+
+/** H30 포함 — runner no-op harness까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness &
+  RuntimeRunnerNoopHarnessPlanningReports;
