@@ -1,10 +1,13 @@
 /**
- * H42 — limited pilot boundary overlay·진단 **한국어 라벨**(read-only).
+ * H42 / H42.5 — limited pilot boundary overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
+  RuntimeLimitedPilotBoundaryAlignmentStatus,
   RuntimeLimitedPilotBoundaryCandidateStatus,
+  RuntimeLimitedPilotBoundaryFinalGateStatus,
   RuntimeLimitedPilotBoundaryMode,
+  RuntimeLimitedPilotBoundaryVerificationStatus,
 } from "./runtimeLimitedPilotBoundaryTypes";
 
 export const RUNTIME_LIMITED_PILOT_BOUNDARY_SECTION_DISCLAIMER_KO =
@@ -30,11 +33,40 @@ export const RUNTIME_LIMITED_PILOT_BOUNDARY_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_LIMITED_PILOT_BOUNDARY_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotBoundaryFinalGateStatus, string>
+> = {
+  ready_metadata: "ready(메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_LIMITED_PILOT_BOUNDARY_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotBoundaryVerificationStatus, string>
+> = {
+  verified_metadata: "verified(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_LIMITED_PILOT_BOUNDARY_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotBoundaryAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_LIMITED_PILOT_BOUNDARY_EMPTY_HINT_KO = {
   pilotScope: "pilot boundary scope 행이 없습니다.",
   forbiddenOperation: "금지 pilot operation이 없습니다.",
   inputContract: "pilot input contract 행이 없습니다.",
   outputContract: "pilot output contract 행이 없습니다.",
+  violation: "limited pilot boundary violation이 없습니다.",
+  verification: "readiness verification finding이 없습니다.",
+  alignment: "alignment finding이 없습니다.",
+  finalGateChecklist: "final safety gate checklist 행이 없습니다.",
   checklist: "pilot readiness checklist 행이 없습니다.",
   missingChecklist: "누락 checklist 행이 없습니다.",
   blocker: "pilot boundary blocker가 없습니다.",

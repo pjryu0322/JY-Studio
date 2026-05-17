@@ -625,6 +625,10 @@ function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningRepo
   | "runtimeLimitedPilotOutputContract"
   | "runtimeLimitedPilotBoundaryBlockerReport"
   | "runtimeLimitedPilotReadinessChecklist"
+  | "runtimeLimitedPilotBoundaryViolationReport"
+  | "runtimeLimitedPilotBoundaryVerificationReport"
+  | "runtimeLimitedPilotBoundaryAlignmentReport"
+  | "runtimeLimitedPilotBoundaryFinalSafetyGate"
 > {
   const {
     runtimeLimitedPilotBoundarySummary: _p1,
@@ -634,6 +638,10 @@ function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningRepo
     runtimeLimitedPilotOutputContract: _p5,
     runtimeLimitedPilotBoundaryBlockerReport: _p6,
     runtimeLimitedPilotReadinessChecklist: _p7,
+    runtimeLimitedPilotBoundaryViolationReport: _p8,
+    runtimeLimitedPilotBoundaryVerificationReport: _p9,
+    runtimeLimitedPilotBoundaryAlignmentReport: _p10,
+    runtimeLimitedPilotBoundaryFinalSafetyGate: _p11,
     ...rest
   } = semantic;
   return rest;

@@ -1,5 +1,5 @@
 /**
- * H42 — limited pilot boundary 공통 상수(read-only).
+ * H42 / H42.5 — limited pilot boundary 공통 상수(read-only).
  */
 
 import {
@@ -32,6 +32,79 @@ export const LIMITED_PILOT_BOUNDARY_SCOPE_SOURCE_LAYER =
 
 export const LIMITED_PILOT_BOUNDARY_SCOPE_TARGET_LAYER =
   "limitedControlledRuntimePilotBoundaryCandidate" as const;
+
+export const LIMITED_PILOT_BOUNDARY_WORDING_RISK_PHRASES: readonly {
+  readonly phrase: string;
+  readonly label: string;
+}[] = [
+  { phrase: "pilotactivationperformed=true", label: "pilotActivationPerformed=true" },
+  { phrase: "pilotexecutionperformed=true", label: "pilotExecutionPerformed=true" },
+  { phrase: "isolatedrunnerinvoked=true", label: "isolatedRunnerInvoked=true" },
+  { phrase: "isolatedrunnerexecuted=true", label: "isolatedRunnerExecuted=true" },
+  { phrase: "dryrunrunnerinvoked=true", label: "dryRunRunnerInvoked=true" },
+  { phrase: "runtimeadapterinvoked=true", label: "runtimeAdapterInvoked=true" },
+  { phrase: "sandboxinvoked=true", label: "sandboxInvoked=true" },
+  { phrase: "executionperformed=true", label: "executionPerformed=true" },
+  { phrase: "releaseenforced=true", label: "releaseEnforced=true" },
+  { phrase: "approvalenforced=true", label: "approvalEnforced=true" },
+  { phrase: "actualpilotactivationforbidden=false", label: "actualPilotActivationForbidden=false" },
+  { phrase: "actualpilotexecutionforbidden=false", label: "actualPilotExecutionForbidden=false" },
+  { phrase: "actualexecutionforbidden=false", label: "actualExecutionForbidden=false" },
+];
+
+export const LIMITED_PILOT_POLICY_FORBIDDEN_MUST_BE_TRUE = [
+  "actualRuntimeOrchestrationForbidden",
+  "actualControlledActivationForbidden",
+  "actualPilotActivationForbidden",
+  "actualPilotExecutionForbidden",
+  "actualIsolatedRunnerInvocationForbidden",
+  "actualIsolatedRunnerExecutionForbidden",
+  "actualDryRunRunnerInvocationForbidden",
+  "actualNoopShellExecutionForbidden",
+  "actualExecutionShellExecutionForbidden",
+  "actualAdapterInvocationForbidden",
+  "actualSandboxInvocationForbidden",
+  "actualExecutionForbidden",
+  "actualExecutionRoutingForbidden",
+  "actualReleaseEnforcementForbidden",
+  "actualApprovalEnforcementForbidden",
+  "actualExecutionBlockingForbidden",
+  "actualMergeBlockingForbidden",
+] as const;
+
+export const LIMITED_PILOT_VERIFICATION_CHECKLIST_LABEL_ROWS = [
+  "controlled activation candidate final gate ready_metadata",
+  "h42 entry readiness ready_metadata",
+  "controlled activation verification verified_metadata",
+  "controlled activation alignment aligned_metadata",
+] as const;
+
+export const LIMITED_PILOT_VERIFICATION_CHECKLIST_ACTUAL_DISABLED_ROWS = [
+  "actual pilot activation disabled",
+  "actual pilot execution disabled",
+  "actual isolated runner invocation disabled",
+  "actual runtime adapter invocation disabled",
+  "actual sandbox invocation disabled",
+  "actual execution disabled",
+  "actual execution routing disabled",
+  "actual release enforcement disabled",
+  "actual approval enforcement disabled",
+] as const;
+
+export const LIMITED_PILOT_ALIGNMENT_CHECKLIST_LABEL_ROWS = [
+  "controlled activation candidate final gate ready_metadata",
+  "h42 entry readiness ready_metadata",
+  "controlled activation verification verified_metadata",
+  "controlled activation alignment aligned_metadata",
+  "no controlled activation actual flag violations",
+  "no controlled activation policy violations",
+] as const;
+
+export const LIMITED_PILOT_FINAL_SAFETY_CHECKLIST_STATIC_ROWS = [
+  "actualPilotActivationDisabled:true",
+  "actualPilotExecutionDisabled:true",
+  "actualSandboxInvocationDisabled:true",
+] as const;
 
 export const LIMITED_PILOT_FORBIDDEN_OPERATIONS = [
   "actual runtime orchestration",

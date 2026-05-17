@@ -962,6 +962,14 @@ export async function GET(request: NextRequest) {
       runtimeLimitedPilotBoundaryBlockerReport:
         runtimeSemanticDiag.runtimeLimitedPilotBoundaryBlockerReport,
       runtimeLimitedPilotReadinessChecklist: runtimeSemanticDiag.runtimeLimitedPilotReadinessChecklist,
+      runtimeLimitedPilotBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeLimitedPilotBoundaryViolationReport,
+      runtimeLimitedPilotBoundaryVerificationReport:
+        runtimeSemanticDiag.runtimeLimitedPilotBoundaryVerificationReport,
+      runtimeLimitedPilotBoundaryAlignmentReport:
+        runtimeSemanticDiag.runtimeLimitedPilotBoundaryAlignmentReport,
+      runtimeLimitedPilotBoundaryFinalSafetyGate:
+        runtimeSemanticDiag.runtimeLimitedPilotBoundaryFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

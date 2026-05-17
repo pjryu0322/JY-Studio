@@ -10,6 +10,22 @@ export type RuntimeLimitedPilotBoundaryCandidateStatus =
 
 export type RuntimeLimitedPilotBoundaryMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeLimitedPilotBoundaryFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeLimitedPilotBoundaryVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeLimitedPilotBoundaryAlignmentStatus =
+  | "aligned_metadata"
+  | "partial"
+  | "failed";
+
 export type RuntimeLimitedPilotBoundarySummary = Readonly<{
   mode: "runtime_limited_pilot_boundary_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -225,6 +241,97 @@ export type RuntimeLimitedPilotReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeLimitedPilotBoundaryViolationReport = Readonly<{
+  mode: "runtime_limited_pilot_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualControlledActivationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  actualFlagViolations: readonly string[];
+  policyViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeLimitedPilotBoundaryVerificationReport = Readonly<{
+  mode: "runtime_limited_pilot_boundary_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualControlledActivationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  verificationStatus: RuntimeLimitedPilotBoundaryVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeLimitedPilotBoundaryAlignmentReport = Readonly<{
+  mode: "runtime_limited_pilot_boundary_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualControlledActivationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  alignmentStatus: RuntimeLimitedPilotBoundaryAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeLimitedPilotBoundaryFinalSafetyGate = Readonly<{
+  mode: "runtime_limited_pilot_boundary_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualControlledActivationEnabled: false;
+  actualPilotActivationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualIsolatedRunnerInvocationEnabled: false;
+  actualIsolatedRunnerExecutionEnabled: false;
+  actualDryRunRunnerInvocationEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualSandboxInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  finalGateStatus: RuntimeLimitedPilotBoundaryFinalGateStatus;
+  h43EntryReadiness: RuntimeLimitedPilotBoundaryFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeLimitedPilotBoundaryPlanningReports = Readonly<{
   runtimeLimitedPilotBoundarySummary: RuntimeLimitedPilotBoundarySummary;
   runtimeLimitedPilotBoundaryScope: RuntimeLimitedPilotBoundaryScope;
@@ -233,4 +340,8 @@ export type RuntimeLimitedPilotBoundaryPlanningReports = Readonly<{
   runtimeLimitedPilotOutputContract: RuntimeLimitedPilotOutputContract;
   runtimeLimitedPilotBoundaryBlockerReport: RuntimeLimitedPilotBoundaryBlockerReport;
   runtimeLimitedPilotReadinessChecklist: RuntimeLimitedPilotReadinessChecklist;
+  runtimeLimitedPilotBoundaryViolationReport: RuntimeLimitedPilotBoundaryViolationReport;
+  runtimeLimitedPilotBoundaryVerificationReport: RuntimeLimitedPilotBoundaryVerificationReport;
+  runtimeLimitedPilotBoundaryAlignmentReport: RuntimeLimitedPilotBoundaryAlignmentReport;
+  runtimeLimitedPilotBoundaryFinalSafetyGate: RuntimeLimitedPilotBoundaryFinalSafetyGate;
 }>;

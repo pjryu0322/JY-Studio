@@ -1,14 +1,18 @@
 /**
- * H42 — limited pilot boundary 진단 **직렬화 전용**(report 재빌드 없음).
+ * H42 / H42.5 — limited pilot boundary 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { SERIALIZED_RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS } from "./runtimeLimitedPilotBoundaryConstants";
 import type {
+  RuntimeLimitedPilotBoundaryAlignmentReport,
   RuntimeLimitedPilotBoundaryBlockerReport,
+  RuntimeLimitedPilotBoundaryFinalSafetyGate,
   RuntimeLimitedPilotBoundaryPolicy,
   RuntimeLimitedPilotBoundaryScope,
   RuntimeLimitedPilotBoundarySummary,
+  RuntimeLimitedPilotBoundaryVerificationReport,
+  RuntimeLimitedPilotBoundaryViolationReport,
   RuntimeLimitedPilotInputContract,
   RuntimeLimitedPilotOutputContract,
   RuntimeLimitedPilotReadinessChecklist,
@@ -109,6 +113,57 @@ function serializeChecklist(c: RuntimeLimitedPilotReadinessChecklist): Readonly<
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeLimitedPilotBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    policyViolations: sortKo(v.policyViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeVerificationReport(
+  r: RuntimeLimitedPilotBoundaryVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeLimitedPilotBoundaryAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeLimitedPilotBoundaryFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    h43EntryReadiness: g.h43EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -119,6 +174,10 @@ export function serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemantic
   runtimeLimitedPilotOutputContract: ReturnType<typeof serializeContract>;
   runtimeLimitedPilotBoundaryBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeLimitedPilotReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeLimitedPilotBoundaryViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeLimitedPilotBoundaryVerificationReport: ReturnType<typeof serializeVerificationReport>;
+  runtimeLimitedPilotBoundaryAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeLimitedPilotBoundaryFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeLimitedPilotBoundarySummary: serializeSummary(reports.runtimeLimitedPilotBoundarySummary),
@@ -130,6 +189,18 @@ export function serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemantic
       reports.runtimeLimitedPilotBoundaryBlockerReport
     ),
     runtimeLimitedPilotReadinessChecklist: serializeChecklist(reports.runtimeLimitedPilotReadinessChecklist),
+    runtimeLimitedPilotBoundaryViolationReport: serializeViolationReport(
+      reports.runtimeLimitedPilotBoundaryViolationReport
+    ),
+    runtimeLimitedPilotBoundaryVerificationReport: serializeVerificationReport(
+      reports.runtimeLimitedPilotBoundaryVerificationReport
+    ),
+    runtimeLimitedPilotBoundaryAlignmentReport: serializeAlignmentReport(
+      reports.runtimeLimitedPilotBoundaryAlignmentReport
+    ),
+    runtimeLimitedPilotBoundaryFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeLimitedPilotBoundaryFinalSafetyGate
+    ),
   };
 }
 

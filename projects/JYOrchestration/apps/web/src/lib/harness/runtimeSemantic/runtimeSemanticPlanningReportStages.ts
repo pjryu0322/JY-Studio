@@ -185,6 +185,6 @@ export type RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary =
   RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate &
     RuntimeControlledActivationCandidatePlanningReports;
 
-/** H42 포함 — limited controlled runtime pilot boundary candidate까지 산출된 상태. */
+/** H42 / H42.5 포함 — limited pilot boundary candidate·final safety gate까지 산출된 상태. */
 export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary &
   RuntimeLimitedPilotBoundaryPlanningReports;

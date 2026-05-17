@@ -1,18 +1,22 @@
 /**
- * H42 — limited pilot boundary planning reports 일괄 산출(read-only).
+ * H42 / H42.5 — limited pilot boundary planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import { mergeRuntimeLayerRecommendations } from "@/lib/harness/runtimeShared/runtimeRecommendationHelpers";
+import { buildRuntimeLimitedPilotBoundaryAlignmentReport } from "./buildRuntimeLimitedPilotBoundaryAlignmentReport";
+import { buildRuntimeLimitedPilotBoundaryFinalSafetyGate } from "./buildRuntimeLimitedPilotBoundaryFinalSafetyGate";
 import { buildRuntimeLimitedPilotBoundaryPolicy } from "./buildRuntimeLimitedPilotBoundaryPolicy";
 import { buildRuntimeLimitedPilotBoundaryScope } from "./buildRuntimeLimitedPilotBoundaryScope";
 import { buildRuntimeLimitedPilotInputContract } from "./buildRuntimeLimitedPilotInputContract";
 import { buildRuntimeLimitedPilotOutputContract } from "./buildRuntimeLimitedPilotOutputContract";
 import { buildRuntimeLimitedPilotReadinessChecklist } from "./buildRuntimeLimitedPilotReadinessChecklist";
 import { detectRuntimeLimitedPilotBoundaryBlockers } from "./detectRuntimeLimitedPilotBoundaryBlockers";
+import { detectRuntimeLimitedPilotBoundaryViolations } from "./detectRuntimeLimitedPilotBoundaryViolations";
 import { evaluateRuntimeLimitedPilotBoundaryCandidate } from "./evaluateRuntimeLimitedPilotBoundaryCandidate";
 import { resolveRuntimeLimitedPilotBoundaryMode } from "./resolveRuntimeLimitedPilotBoundaryMode";
+import { verifyRuntimeLimitedPilotBoundaryReadiness } from "./verifyRuntimeLimitedPilotBoundaryReadiness";
 import { RUNTIME_LIMITED_PILOT_BOUNDARY_ACTUAL_FLAGS_DISABLED } from "./runtimeLimitedPilotBoundaryConstants";
 import type {
   RuntimeLimitedPilotBoundaryCandidateStatus,
@@ -79,11 +83,50 @@ export function buildRuntimeLimitedPilotBoundaryPlanningReports(
     checklist: runtimeLimitedPilotReadinessChecklist,
   });
 
+  const runtimeLimitedPilotBoundaryViolationReport = detectRuntimeLimitedPilotBoundaryViolations({
+    summary: runtimeLimitedPilotBoundarySummaryDraft,
+    policy: runtimeLimitedPilotBoundaryPolicy,
+  });
+
+  const runtimeLimitedPilotBoundaryVerificationReport = verifyRuntimeLimitedPilotBoundaryReadiness({
+    summary: runtimeLimitedPilotBoundarySummaryDraft,
+    scope: runtimeLimitedPilotBoundaryScope,
+    policy: runtimeLimitedPilotBoundaryPolicy,
+    inputContract: runtimeLimitedPilotInputContract,
+    outputContract: runtimeLimitedPilotOutputContract,
+    checklist: runtimeLimitedPilotReadinessChecklist,
+    blockerReport: runtimeLimitedPilotBoundaryBlockerReport,
+  });
+
+  const runtimeLimitedPilotBoundaryAlignmentReport = buildRuntimeLimitedPilotBoundaryAlignmentReport({
+    reports,
+    summary: runtimeLimitedPilotBoundarySummaryDraft,
+    scope: runtimeLimitedPilotBoundaryScope,
+    policy: runtimeLimitedPilotBoundaryPolicy,
+    inputContract: runtimeLimitedPilotInputContract,
+    outputContract: runtimeLimitedPilotOutputContract,
+    checklist: runtimeLimitedPilotReadinessChecklist,
+    blockerReport: runtimeLimitedPilotBoundaryBlockerReport,
+    boundaryViolation: runtimeLimitedPilotBoundaryViolationReport,
+  });
+
+  const runtimeLimitedPilotBoundaryFinalSafetyGate = buildRuntimeLimitedPilotBoundaryFinalSafetyGate({
+    summary: runtimeLimitedPilotBoundarySummaryDraft,
+    blockerReport: runtimeLimitedPilotBoundaryBlockerReport,
+    boundaryViolation: runtimeLimitedPilotBoundaryViolationReport,
+    readinessVerification: runtimeLimitedPilotBoundaryVerificationReport,
+    alignmentReport: runtimeLimitedPilotBoundaryAlignmentReport,
+  });
+
   const runtimeLimitedPilotBoundarySummary = {
     ...runtimeLimitedPilotBoundarySummaryDraft,
     recommendations: mergeRuntimeLayerRecommendations([
       runtimeLimitedPilotBoundarySummaryDraft,
       runtimeLimitedPilotOutputContract,
+      runtimeLimitedPilotBoundaryViolationReport,
+      runtimeLimitedPilotBoundaryVerificationReport,
+      runtimeLimitedPilotBoundaryAlignmentReport,
+      runtimeLimitedPilotBoundaryFinalSafetyGate,
     ]),
   };
 
@@ -95,5 +138,9 @@ export function buildRuntimeLimitedPilotBoundaryPlanningReports(
     runtimeLimitedPilotOutputContract,
     runtimeLimitedPilotBoundaryBlockerReport,
     runtimeLimitedPilotReadinessChecklist,
+    runtimeLimitedPilotBoundaryViolationReport,
+    runtimeLimitedPilotBoundaryVerificationReport,
+    runtimeLimitedPilotBoundaryAlignmentReport,
+    runtimeLimitedPilotBoundaryFinalSafetyGate,
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { detectRuntimeLimitedPilotBoundaryViolations } from "@/lib/harness/runtimeLimitedPilotBoundary/detectRuntimeLimitedPilotBoundaryViolations";
 import { serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeLimitedPilotBoundary/serializeRuntimeLimitedPilotBoundaryDiagnosticBundle";
 import {
   buildFullSemanticForLimitedPilotBoundary,
@@ -93,15 +94,44 @@ describe("H42 limited pilot boundary", () => {
     expect(pilot.runtimeLimitedPilotBoundarySummary.candidateStatus).toBe("blocked");
   });
 
-  it("serializer exposes seven H42 fields without rebuilding reports", () => {
+  it("serializer exposes eleven H42/H42.5 fields without rebuilding reports", () => {
     const semantic = buildFullSemanticForLimitedPilotBoundary();
     const serialized = serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports(semantic);
-    expect(Object.keys(serialized)).toHaveLength(7);
+    expect(Object.keys(serialized)).toHaveLength(11);
     expect(serialized.runtimeLimitedPilotBoundarySummary.candidateStatus).toBe(
       semantic.runtimeLimitedPilotBoundarySummary.candidateStatus
     );
     expect(serialized.runtimeLimitedPilotBoundaryScope.candidateSourceLayer).toBe(
       "runtimeControlledActivationCandidateFinalSafetyGate"
     );
+    expect(serialized.runtimeLimitedPilotBoundaryFinalSafetyGate).toBeDefined();
+    expect(serialized.runtimeLimitedPilotBoundaryViolationReport).toBeDefined();
+  });
+
+  it("ready candidate with verified alignment yields final gate ready_metadata when upstream aligned", () => {
+    const semantic = buildFullSemanticForLimitedPilotBoundary();
+    if (
+      semantic.runtimeLimitedPilotBoundarySummary.candidateStatus ===
+        "limited_pilot_boundary_metadata_candidate" &&
+      semantic.runtimeLimitedPilotBoundaryVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimeLimitedPilotBoundaryAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeLimitedPilotBoundaryViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeLimitedPilotBoundaryViolationReport.policyViolations.length === 0
+    ) {
+      expect(semantic.runtimeLimitedPilotBoundaryFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeLimitedPilotBoundaryFinalSafetyGate.h43EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("policy forbidden false yields policy violation", () => {
+    const semantic = buildFullSemanticForLimitedPilotBoundary();
+    const violation = detectRuntimeLimitedPilotBoundaryViolations({
+      summary: semantic.runtimeLimitedPilotBoundarySummary,
+      policy: {
+        ...semantic.runtimeLimitedPilotBoundaryPolicy,
+        actualPilotActivationForbidden: false as true,
+      },
+    });
+    expect(violation.policyViolations.length).toBeGreaterThan(0);
   });
 });
