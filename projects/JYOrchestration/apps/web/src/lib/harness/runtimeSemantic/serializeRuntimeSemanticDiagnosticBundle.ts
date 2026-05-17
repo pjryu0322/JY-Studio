@@ -70,6 +70,7 @@ import { serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports
 import { serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundle";
 import { serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotExecutionReadiness/serializeRuntimePilotExecutionReadinessDiagnosticBundle";
 import { serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundle";
+import { serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotValidation/serializeRuntimePilotValidationDiagnosticBundle";
 import { serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeUltimateGovernanceReview/serializeRuntimeUltimateGovernanceReviewDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
@@ -158,6 +159,9 @@ type SerializedRuntimePilotExecutionReadinessDiag = ReturnType<
 >;
 type SerializedRuntimeControlledPilotExecutionCandidateDiag = ReturnType<
   typeof serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimePilotValidationDiag = ReturnType<
+  typeof serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -435,6 +439,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeControlledPilotExecutionCandidateVerificationReport: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateVerificationReport"];
   runtimeControlledPilotExecutionCandidateAlignmentReport: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateAlignmentReport"];
   runtimeControlledPilotExecutionCandidateFinalSafetyGate: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateFinalSafetyGate"];
+  runtimePilotValidationReadOnlyChainSummary: SerializedRuntimePilotValidationDiag["runtimePilotValidationReadOnlyChainSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -478,6 +483,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSemanticReports(reports);
   const controlledPilotExecutionCandidateDiag =
     serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports(reports);
+  const pilotValidationDiag = serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -573,6 +579,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...limitedPilotReadinessReviewDiag,
     ...pilotExecutionReadinessDiag,
     ...controlledPilotExecutionCandidateDiag,
+    runtimePilotValidationReadOnlyChainSummary:
+      pilotValidationDiag.runtimePilotValidationReadOnlyChainSummary,
   };
 }
 

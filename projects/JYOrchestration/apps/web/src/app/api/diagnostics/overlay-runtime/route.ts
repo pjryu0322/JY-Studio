@@ -1026,6 +1026,8 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateAlignmentReport,
       runtimeControlledPilotExecutionCandidateFinalSafetyGate:
         runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateFinalSafetyGate,
+      runtimePilotValidationReadOnlyChainSummary:
+        runtimeSemanticDiag.runtimePilotValidationReadOnlyChainSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

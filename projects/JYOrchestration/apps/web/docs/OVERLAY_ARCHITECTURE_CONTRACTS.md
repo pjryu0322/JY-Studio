@@ -266,9 +266,10 @@
 76.5. **Harness Phase H44.5 — Pilot Execution Readiness Stabilization & Final Pilot Execution Safety Gate Layer** (read-only) — H44 pilot execution readiness metadata를 안정화하고 violation·verification·alignment·**`h45EntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
 77. **Harness Phase H45 — Controlled Pilot Execution Candidate & Final Runtime Handoff Boundary Layer** (read-only) — H44.5 final safety gate 기반 **controlled pilot execution candidate·final runtime handoff boundary·input/output contract·blocker·checklist** metadata만 산출. `lib/harness/runtimeControlledPilotExecutionCandidate/*`. Overlay **`OverlayRuntimeControlledPilotExecutionCandidateSection`**. 진단 8개 필드 additive. **여전히 금지**: actual pilot activation·execution·runner·adapter·sandbox·execution·routing·enforcement·blocking·prompt 변경.
 77.5. **Harness Phase H45.5 — Controlled Pilot Execution Candidate Stabilization & Final Runtime Handoff Safety Gate Layer** (read-only) — H45 controlled pilot execution candidate metadata를 안정화하고 violation·verification·alignment·**`pilotValidationEntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
-78. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+78. **Pilot Validation Phase 0 — Read-only Chain Validation & Pilot Execution UI Verification Preparation** (read-only) — H45.5 final gate 기반 **`runtimePilotValidationReadOnlyChainSummary`**·사용자용 **`PilotValidationUserSummaryVm`** contract. 진단 1개 필드 additive. Overlay **`OverlayRuntimePilotValidationReadOnlyChainSection`**. **여전히 actual pilot activation·execution·runner·adapter·sandbox 없음** (신규 harness 계층 추가 없음).
+79. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
-### H20.5~H45.5 read-only orchestration chain (정합성)
+### H20.5~H45.5 / Pilot Validation Phase 0 read-only orchestration chain (정합성)
 
 - **성격**: H20.5~H45는 실제 실행 오케스트레이션이 아니라 **read-only metadata chain**이다. actual orchestration·execution·routing·enforcement·blocking·controlled activation·pilot activation·pilot execution은 수행하지 않는다.
 - **H40 / H40.5**: ultimate governance review·final orchestration readiness boundary·final read-only chain safety gate (`h41EntryReadiness`).

@@ -626,6 +626,10 @@ function omitControlledPilotExecutionCandidateLayerOnly<T extends RuntimeSemanti
   | "runtimeControlledPilotExecutionOutputContract"
   | "runtimeControlledPilotExecutionCandidateBlockerReport"
   | "runtimeControlledPilotExecutionReadinessChecklist"
+  | "runtimeControlledPilotExecutionCandidateViolationReport"
+  | "runtimeControlledPilotExecutionCandidateVerificationReport"
+  | "runtimeControlledPilotExecutionCandidateAlignmentReport"
+  | "runtimeControlledPilotExecutionCandidateFinalSafetyGate"
 > {
   const {
     runtimeControlledPilotExecutionCandidateSummary: _h45_1,
@@ -636,16 +640,34 @@ function omitControlledPilotExecutionCandidateLayerOnly<T extends RuntimeSemanti
     runtimeControlledPilotExecutionOutputContract: _h45_6,
     runtimeControlledPilotExecutionCandidateBlockerReport: _h45_7,
     runtimeControlledPilotExecutionReadinessChecklist: _h45_8,
+    runtimeControlledPilotExecutionCandidateViolationReport: _h45_9,
+    runtimeControlledPilotExecutionCandidateVerificationReport: _h45_10,
+    runtimeControlledPilotExecutionCandidateAlignmentReport: _h45_11,
+    runtimeControlledPilotExecutionCandidateFinalSafetyGate: _h45_12,
     ...rest
   } = semantic;
   return rest;
+}
+
+function omitPilotValidationReadOnlyChainLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<T, "runtimePilotValidationReadOnlyChainSummary"> {
+  const { runtimePilotValidationReadOnlyChainSummary: _pv0, ...rest } = semantic;
+  return rest;
+}
+
+/** Pilot Validation Phase 0 summary 제거 — 단독 테스트용. */
+export function stripRuntimePilotValidationLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforePilotValidation {
+  return omitPilotValidationReadOnlyChainLayerOnly(semantic);
 }
 
 /** H45 reports 제거 — H45 단독 테스트용. */
 export function stripRuntimeControlledPilotExecutionCandidateLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeControlledPilotExecutionCandidate {
-  return omitControlledPilotExecutionCandidateLayerOnly(semantic);
+  return omitControlledPilotExecutionCandidateLayerOnly(omitPilotValidationReadOnlyChainLayerOnly(semantic));
 }
 
 function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(

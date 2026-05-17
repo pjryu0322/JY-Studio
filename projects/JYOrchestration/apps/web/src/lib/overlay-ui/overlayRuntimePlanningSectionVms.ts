@@ -194,6 +194,10 @@ import {
   buildOverlayRuntimeControlledPilotExecutionCandidateSectionVmFromReports,
   type OverlayRuntimeControlledPilotExecutionCandidateSectionVM,
 } from "./overlayRuntimeControlledPilotExecutionCandidateSectionVm";
+import {
+  buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromReports,
+  type OverlayRuntimePilotValidationReadOnlyChainSectionVM,
+} from "./overlayRuntimePilotValidationReadOnlyChainSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -251,6 +255,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeLimitedPilotReadinessReviewVm: OverlayRuntimeLimitedPilotReadinessReviewSectionVM;
   runtimePilotExecutionReadinessVm: OverlayRuntimePilotExecutionReadinessSectionVM;
   runtimeControlledPilotExecutionCandidateVm: OverlayRuntimeControlledPilotExecutionCandidateSectionVM;
+  runtimePilotValidationReadOnlyChainVm: OverlayRuntimePilotValidationReadOnlyChainSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -550,6 +555,10 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     buildOverlayRuntimeControlledPilotExecutionCandidateSectionVmFromReports(semanticReports, {
       compactAndNarrowUi: input.compactAndNarrowUi,
     });
+  const runtimePilotValidationReadOnlyChainVm =
+    buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromReports(semanticReports, {
+      compactAndNarrowUi: input.compactAndNarrowUi,
+    });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -661,5 +670,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeLimitedPilotReadinessReviewVm,
     runtimePilotExecutionReadinessVm,
     runtimeControlledPilotExecutionCandidateVm,
+    runtimePilotValidationReadOnlyChainVm,
   };
 }
