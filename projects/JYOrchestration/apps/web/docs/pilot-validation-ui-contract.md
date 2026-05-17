@@ -14,3 +14,11 @@
 - `PilotValidationReviewPanel`은 `PilotValidationUserSummaryVm`을 입력으로 받는다.
 - `파일럿 실행 검증 준비` 버튼은 adapter 호출이 아니며, 기본 동작은 dry-run 안내 문구 표시다.
 - 실제 pilot execution adapter는 Phase 2에서 별도 검토한다.
+
+## Phase 1.5 (UI wiring & action policy)
+
+- `GET /pilot-validation?projectId=` 화면에서 `PilotValidationReviewPanel`을 표시한다.
+- VM은 `GET /api/diagnostics/overlay-runtime?projectId=&audienceMode=user` 응답을 `buildPilotValidationUserSummaryVmFromDiagnosticData`로 변환한다.
+- `primaryActionEnabled`·`secondaryActionEnabled`는 상태와 무관하게 true(실제 execution 미연결).
+- secondary action은 상태별 callback/no-op·안내문만 수행한다.
+- Phase 2 Safe Echo Adapter Contract는 별도 설계한다.

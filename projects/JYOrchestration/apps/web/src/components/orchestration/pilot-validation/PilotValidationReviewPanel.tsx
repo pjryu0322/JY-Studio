@@ -42,6 +42,7 @@ export function PilotValidationReviewPanel({
   onValidationPrepareNotice,
 }: PilotValidationReviewPanelProps) {
   const [prepareNoticeVisible, setPrepareNoticeVisible] = useState(false);
+  const [actionNoticeKo, setActionNoticeKo] = useState<string | null>(null);
   const tone = statusToneStyles(vm.statusTone);
 
   const runPrimary = useCallback(() => {
@@ -57,12 +58,23 @@ export function PilotValidationReviewPanel({
       onCancel,
       onValidationPrepareNotice,
     });
+    setActionNoticeKo(null);
     switch (kind) {
       case "request_supplement":
-        onRequestSupplement?.();
+        if (onRequestSupplement) {
+          onRequestSupplement();
+        } else {
+          setActionNoticeKo(
+            "보완 요청은 담당자에게 전달됩니다. 현재 화면에서는 실제 파일럿 실행이나 소스 변경을 수행하지 않습니다."
+          );
+        }
         break;
       case "cancel":
-        onCancel?.();
+        if (onCancel) {
+          onCancel();
+        } else {
+          setActionNoticeKo("작업을 이어가려면 프로젝트 요구사항 화면으로 돌아가 주세요.");
+        }
         break;
       case "validation_prepare_notice":
         if (onValidationPrepareNotice) {
@@ -169,6 +181,24 @@ export function PilotValidationReviewPanel({
           ))}
         </ul>
       </div>
+
+      {actionNoticeKo ? (
+        <p
+          data-testid="pilot-validation-action-notice"
+          style={{
+            margin: 0,
+            padding: 10,
+            borderRadius: t.radiusSm,
+            background: t.surfaceInfoSoft,
+            border: `1px solid ${t.borderInfoSoft}`,
+            fontSize: 12,
+            color: t.info,
+            lineHeight: 1.45,
+          }}
+        >
+          {actionNoticeKo}
+        </p>
+      ) : null}
 
       {prepareNoticeVisible ? (
         <p

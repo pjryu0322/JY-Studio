@@ -41,6 +41,7 @@ describe("buildPilotValidationUserSummaryVmFromReports", () => {
     expect(vm.primaryActionLabelKo).toBe("차단 사유 보기");
     expect(vm.secondaryActionLabelKo).toBe("AI 개발자에게 보완 요청");
     expect(vm.canRequestPilotValidation).toBe(false);
+    expect(vm.secondaryActionEnabled).toBe(true);
     expect(vm.statusTone).toBe("blocked");
   });
 
@@ -52,6 +53,7 @@ describe("buildPilotValidationUserSummaryVmFromReports", () => {
     const vm = buildPilotValidationUserSummaryVmFromReports(semantic);
     expect(vm.statusKo).toBe("주의 확인 필요");
     expect(vm.secondaryActionLabelKo).toBe("보완 요청");
+    expect(vm.secondaryActionEnabled).toBe(true);
     expect(vm.statusTone).toBe("watch");
   });
 
@@ -68,6 +70,7 @@ describe("buildPilotValidationUserSummaryVmFromReports", () => {
     });
     expect(vm.statusKo).toBe("아직 준비되지 않음");
     expect(vm.secondaryActionLabelKo).toBe("작업 계속");
+    expect(vm.secondaryActionEnabled).toBe(true);
     expect(vm.statusTone).toBe("neutral");
   });
 

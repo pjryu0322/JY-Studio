@@ -34,6 +34,7 @@ export function ProjectRailSecondaryTools({
   const pathname = usePathname() || "/";
   const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
   const knowledgePacksActive = pathOnly === "/knowledge-packs" || pathOnly.startsWith("/knowledge-packs/");
+  const pilotValidationActive = pathOnly === "/pilot-validation";
   /** `/api/auth/me` 지연 시에도 지식팩 진입은 보이게(미로그인 확정 시에만 숨김). */
   const showKnowledgePacksLink = !meReady || Boolean(me);
 
@@ -58,6 +59,25 @@ export function ProjectRailSecondaryTools({
         >
           <span style={platformRailNavPrimaryText}>멤버</span>
           <ProjectRailCountBadge count={projectMembersCount} />
+        </Link>
+      ) : null}
+      {Boolean(me) ? (
+        <Link
+          href={`/pilot-validation?projectId=${encodeURIComponent(effectiveProjectId)}`}
+          prefetch={false}
+          data-testid="platform-pilot-validation-rail-project"
+          aria-label="파일럿 검증 준비 상태"
+          title="파일럿 검증 준비 상태 (read-only)"
+          style={{
+            ...platformRailNavTextCell,
+            ...(pilotValidationActive ? platformRailMessengerActiveShell : {}),
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          <span style={pilotValidationActive ? platformRailMessengerActiveText : platformRailNavPrimaryText}>
+            검증
+          </span>
         </Link>
       ) : null}
       {showKnowledgePacksLink ? (

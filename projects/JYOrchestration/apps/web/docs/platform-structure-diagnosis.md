@@ -586,6 +586,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 - **Harness Phase H45.5 — Controlled Pilot Execution Candidate Stabilization & Final Runtime Handoff Safety Gate Layer (read-only)** — H45 metadata를 안정화하고 violation·verification·alignment·**`pilotValidationEntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
 - **Pilot Validation Phase 0 — Read-only Chain Validation (read-only)** — H45.5 final gate 기반 chain validation summary·Diagnostic API·Overlay·사용자 UI ViewModel contract. 실제 pilot execution adapter는 별도 phase에서만 논의.
 - **Pilot Validation Phase 1 — User-visible Pilot Validation Review UI (read-only)** — `PilotValidationReviewPanel`로 사용자 친화 검증 상태·금지 작업·액션 표시. 실행 handler 없음. Phase 2 adapter는 별도 검토.
+- **Pilot Validation Phase 1.5 — UI wiring (read-only)** — `/pilot-validation?projectId=`·프로젝트 레일 「검증」 링크·diagnostic API 기반 VM. secondary action은 callback/no-op만. actual execution 없음.
 
 ## 관련 문서
 

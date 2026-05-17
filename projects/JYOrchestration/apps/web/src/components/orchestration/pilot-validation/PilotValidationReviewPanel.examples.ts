@@ -21,7 +21,7 @@ const baseVm: PilotValidationUserSummaryVm = {
   descriptionKo: PILOT_VALIDATION_USER_PANEL_DESCRIPTION_KO,
   statusTone: "neutral",
   primaryActionEnabled: true,
-  secondaryActionEnabled: false,
+  secondaryActionEnabled: true,
   dryRunOnlyNoticeKo: PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
 };
 
@@ -40,7 +40,7 @@ export const pilotValidationReviewPanelExampleVms = {
     statusTone: "watch",
     cannotProceedReasonKo: "주의 항목을 확인한 뒤 보완이 필요할 수 있습니다.",
     secondaryActionLabelKo: "보완 요청",
-    secondaryActionEnabled: false,
+    secondaryActionEnabled: true,
   },
   blocked: {
     ...baseVm,
@@ -49,7 +49,7 @@ export const pilotValidationReviewPanelExampleVms = {
     cannotProceedReasonKo: "파일럿 검증이 차단되었습니다.",
     primaryActionLabelKo: "차단 사유 보기",
     secondaryActionLabelKo: "AI 개발자에게 보완 요청",
-    secondaryActionEnabled: false,
+    secondaryActionEnabled: true,
   },
   not_ready: {
     ...baseVm,

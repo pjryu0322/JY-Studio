@@ -41,4 +41,23 @@ describe("PilotValidationReviewPanel", () => {
       PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO
     );
   });
+
+  it("request_supplement resolves to callback path when handler provided", () => {
+    const onRequestSupplement = vi.fn();
+    const vm = pilotValidationReviewPanelExampleVms.watch;
+    expect(
+      resolvePilotValidationReviewPanelSecondaryAction(vm, { onRequestSupplement })
+    ).toBe("request_supplement");
+  });
+
+  it("does not accept execution handler props", () => {
+    const props = {
+      vm: pilotValidationReviewPanelExampleVms.ready_for_validation,
+    } as const;
+    expect("onExecute" in props).toBe(false);
+    expect("onPilotExecution" in props).toBe(false);
+    expect("onRun" in props).toBe(false);
+    expect("onAdapterInvoke" in props).toBe(false);
+    expect("onSandboxInvoke" in props).toBe(false);
+  });
 });
