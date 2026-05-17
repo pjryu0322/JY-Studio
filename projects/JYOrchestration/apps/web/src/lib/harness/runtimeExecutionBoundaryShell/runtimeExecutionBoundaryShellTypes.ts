@@ -10,6 +10,19 @@ export type RuntimeExecutionBoundaryShellCandidateStatus =
 
 export type RuntimeExecutionBoundaryShellMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeExecutionBoundaryShellFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeExecutionBoundaryShellReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeExecutionBoundaryShellAlignmentStatus = "aligned_metadata" | "partial" | "failed";
+
 export type RuntimeExecutionBoundaryShellSummary = Readonly<{
   mode: "runtime_execution_boundary_shell_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -111,10 +124,74 @@ export type RuntimeExecutionBoundaryShellReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeExecutionBoundaryShellBoundaryViolationReport = Readonly<{
+  mode: "runtime_execution_boundary_shell_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionBoundaryShellReadinessVerificationReport = Readonly<{
+  mode: "runtime_execution_boundary_shell_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  verificationStatus: RuntimeExecutionBoundaryShellReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionBoundaryShellAlignmentReport = Readonly<{
+  mode: "runtime_execution_boundary_shell_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  alignmentStatus: RuntimeExecutionBoundaryShellAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionBoundaryShellFinalSafetyGate = Readonly<{
+  mode: "runtime_execution_boundary_shell_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimeExecutionBoundaryShellFinalGateStatus;
+  h37EntryReadiness: RuntimeExecutionBoundaryShellFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeExecutionBoundaryShellPlanningReports = Readonly<{
   runtimeExecutionBoundaryShellSummary: RuntimeExecutionBoundaryShellSummary;
   runtimeExecutionBoundaryShellScope: RuntimeExecutionBoundaryShellScope;
   runtimeExecutionBoundaryShellPolicy: RuntimeExecutionBoundaryShellPolicy;
   runtimeExecutionBoundaryShellBlockerReport: RuntimeExecutionBoundaryShellBlockerReport;
   runtimeExecutionBoundaryShellReadinessChecklist: RuntimeExecutionBoundaryShellReadinessChecklist;
+  runtimeExecutionBoundaryShellBoundaryViolationReport: RuntimeExecutionBoundaryShellBoundaryViolationReport;
+  runtimeExecutionBoundaryShellReadinessVerificationReport: RuntimeExecutionBoundaryShellReadinessVerificationReport;
+  runtimeExecutionBoundaryShellAlignmentReport: RuntimeExecutionBoundaryShellAlignmentReport;
+  runtimeExecutionBoundaryShellFinalSafetyGate: RuntimeExecutionBoundaryShellFinalSafetyGate;
 }>;

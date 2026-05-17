@@ -853,6 +853,14 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeExecutionBoundaryShellBlockerReport,
       runtimeExecutionBoundaryShellReadinessChecklist:
         runtimeSemanticDiag.runtimeExecutionBoundaryShellReadinessChecklist,
+      runtimeExecutionBoundaryShellBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeExecutionBoundaryShellBoundaryViolationReport,
+      runtimeExecutionBoundaryShellReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeExecutionBoundaryShellReadinessVerificationReport,
+      runtimeExecutionBoundaryShellAlignmentReport:
+        runtimeSemanticDiag.runtimeExecutionBoundaryShellAlignmentReport,
+      runtimeExecutionBoundaryShellFinalSafetyGate:
+        runtimeSemanticDiag.runtimeExecutionBoundaryShellFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

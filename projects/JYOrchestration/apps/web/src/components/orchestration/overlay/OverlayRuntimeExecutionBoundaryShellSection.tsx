@@ -18,17 +18,25 @@ export function OverlayRuntimeExecutionBoundaryShellSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Execution Boundary Metadata Shell (H36)"
+      title="Runtime Execution Boundary Metadata Shell (H36 / H36.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Boundary shell candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Shell mode" value={vm.shellModeKo} />
-        {vm.topShellBlocker ? (
-          <OverlayUiKeyValueRow label="Top shell blocker" value={vm.topShellBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H37 entry readiness" value={vm.h37EntryReadinessKo} />
+        {vm.showDetailSections ? (
+          <>
+            <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+            <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+          </>
         ) : null}
-        {!vm.topShellBlocker && vm.topForbiddenShellOperation ? (
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top blocker / boundary / finding" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenShellOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden shell operation" value={vm.topForbiddenShellOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -47,6 +55,21 @@ export function OverlayRuntimeExecutionBoundaryShellSection({
               emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.forbiddenOperation}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Boundary violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.boundaryViolation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.readinessFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.alignmentFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.checklist}
@@ -58,6 +81,11 @@ export function OverlayRuntimeExecutionBoundaryShellSection({
                 emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Shell blockers"
               rows={vm.shellBlockerRows}

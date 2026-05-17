@@ -4,9 +4,13 @@
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
+  RuntimeExecutionBoundaryShellAlignmentReport,
   RuntimeExecutionBoundaryShellBlockerReport,
+  RuntimeExecutionBoundaryShellBoundaryViolationReport,
+  RuntimeExecutionBoundaryShellFinalSafetyGate,
   RuntimeExecutionBoundaryShellPolicy,
   RuntimeExecutionBoundaryShellReadinessChecklist,
+  RuntimeExecutionBoundaryShellReadinessVerificationReport,
   RuntimeExecutionBoundaryShellScope,
   RuntimeExecutionBoundaryShellSummary,
 } from "./runtimeExecutionBoundaryShellTypes";
@@ -126,6 +130,78 @@ function serializeChecklist(c: RuntimeExecutionBoundaryShellReadinessChecklist):
   };
 }
 
+function serializeBoundaryViolation(
+  v: RuntimeExecutionBoundaryShellBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: v.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: v.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: v.actualReleaseEnforcementEnabled,
+    actualRuntimeAdapterInvocationEnabled: v.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: v.actualExecutionEnabled,
+    actualProviderRoutingEnabled: v.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: v.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: v.actualRollbackExecutionEnabled,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  v: RuntimeExecutionBoundaryShellReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: v.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: v.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: v.actualReleaseEnforcementEnabled,
+    verificationStatus: v.verificationStatus,
+    findings: sortKo(v.findings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeAlignment(a: RuntimeExecutionBoundaryShellAlignmentReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    actualRuntimeOrchestrationEnabled: a.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: a.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: a.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: a.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: a.actualReleaseEnforcementEnabled,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(g: RuntimeExecutionBoundaryShellFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: g.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: g.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: g.actualReleaseEnforcementEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h37EntryReadiness: g.h37EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -134,6 +210,10 @@ export function serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemant
   runtimeExecutionBoundaryShellPolicy: ReturnType<typeof serializePolicy>;
   runtimeExecutionBoundaryShellBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeExecutionBoundaryShellReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeExecutionBoundaryShellBoundaryViolationReport: ReturnType<typeof serializeBoundaryViolation>;
+  runtimeExecutionBoundaryShellReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeExecutionBoundaryShellAlignmentReport: ReturnType<typeof serializeAlignment>;
+  runtimeExecutionBoundaryShellFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeExecutionBoundaryShellSummary: serializeSummary(reports.runtimeExecutionBoundaryShellSummary),
@@ -144,6 +224,18 @@ export function serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemant
     ),
     runtimeExecutionBoundaryShellReadinessChecklist: serializeChecklist(
       reports.runtimeExecutionBoundaryShellReadinessChecklist
+    ),
+    runtimeExecutionBoundaryShellBoundaryViolationReport: serializeBoundaryViolation(
+      reports.runtimeExecutionBoundaryShellBoundaryViolationReport
+    ),
+    runtimeExecutionBoundaryShellReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeExecutionBoundaryShellReadinessVerificationReport
+    ),
+    runtimeExecutionBoundaryShellAlignmentReport: serializeAlignment(
+      reports.runtimeExecutionBoundaryShellAlignmentReport
+    ),
+    runtimeExecutionBoundaryShellFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeExecutionBoundaryShellFinalSafetyGate
     ),
   };
 }

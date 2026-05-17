@@ -343,6 +343,10 @@ function omitExecutionBoundaryShellLayerOnly<T extends RuntimeSemanticPlanningRe
   | "runtimeExecutionBoundaryShellPolicy"
   | "runtimeExecutionBoundaryShellBlockerReport"
   | "runtimeExecutionBoundaryShellReadinessChecklist"
+  | "runtimeExecutionBoundaryShellBoundaryViolationReport"
+  | "runtimeExecutionBoundaryShellReadinessVerificationReport"
+  | "runtimeExecutionBoundaryShellAlignmentReport"
+  | "runtimeExecutionBoundaryShellFinalSafetyGate"
 > {
   const {
     runtimeExecutionBoundaryShellSummary: _eb1,
@@ -350,6 +354,10 @@ function omitExecutionBoundaryShellLayerOnly<T extends RuntimeSemanticPlanningRe
     runtimeExecutionBoundaryShellPolicy: _eb3,
     runtimeExecutionBoundaryShellBlockerReport: _eb4,
     runtimeExecutionBoundaryShellReadinessChecklist: _eb5,
+    runtimeExecutionBoundaryShellBoundaryViolationReport: _eb6,
+    runtimeExecutionBoundaryShellReadinessVerificationReport: _eb7,
+    runtimeExecutionBoundaryShellAlignmentReport: _eb8,
+    runtimeExecutionBoundaryShellFinalSafetyGate: _eb9,
     ...rest
   } = semantic;
   return rest;

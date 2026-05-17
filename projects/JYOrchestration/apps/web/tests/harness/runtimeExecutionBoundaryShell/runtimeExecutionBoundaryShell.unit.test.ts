@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { buildRuntimeExecutionBoundaryShellFinalSafetyGate } from "@/lib/harness/runtimeExecutionBoundaryShell/buildRuntimeExecutionBoundaryShellFinalSafetyGate";
 import { buildRuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/buildRuntimeExecutionBoundaryShellPlanningReports";
+import { detectRuntimeExecutionBoundaryShellBoundaryViolations } from "@/lib/harness/runtimeExecutionBoundaryShell/detectRuntimeExecutionBoundaryShellBoundaryViolations";
 import { serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionBoundaryShell/serializeRuntimeExecutionBoundaryShellDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -46,7 +48,7 @@ function buildBoundaryShellPlanning(
   return buildRuntimeExecutionBoundaryShellPlanningReports({ ...base, ...patches });
 }
 
-describe("H36 / execution boundary metadata shell candidate", () => {
+describe("H36 / H36.5 execution boundary metadata shell candidate", () => {
   it("full semantic includes boundary shell with all actual execution flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeExecutionBoundaryShellSummary.mode).toBe(
@@ -58,6 +60,12 @@ describe("H36 / execution boundary metadata shell candidate", () => {
     expect(semantic.runtimeExecutionBoundaryShellPolicy.actualExecutionRoutingForbidden).toBe(true);
     expect(semantic.runtimeExecutionBoundaryShellPolicy.actualReleaseEnforcementForbidden).toBe(true);
     expect(semantic.runtimeExecutionBoundaryShellPolicy.actualShellExecutionForbidden).toBe(true);
+    expect(semantic.runtimeExecutionBoundaryShellFinalSafetyGate.mode).toBe(
+      "runtime_execution_boundary_shell_final_safety_gate"
+    );
+    expect(semantic.runtimeExecutionBoundaryShellFinalSafetyGate.h37EntryReadiness).toBe(
+      semantic.runtimeExecutionBoundaryShellFinalSafetyGate.finalGateStatus
+    );
   });
 
   it("preflight final gate ready + verified + aligned + no violations yields boundary_shell_metadata_candidate", () => {
@@ -185,6 +193,84 @@ describe("H36 / execution boundary metadata shell candidate", () => {
     expect(shell.runtimeExecutionBoundaryShellSummary.candidateStatus).toBe("blocked");
   });
 
+  it("boundary_shell_metadata_candidate + verified + aligned yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeExecutionBoundaryShellSummary.candidateStatus === "boundary_shell_metadata_candidate" &&
+      semantic.runtimeExecutionBoundaryShellSummary.shellMode === "metadata_only" &&
+      semantic.runtimeExecutionBoundaryShellReadinessVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeExecutionBoundaryShellAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeExecutionBoundaryShellBoundaryViolationReport.actualFlagViolations.length === 0
+    ) {
+      expect(semantic.runtimeExecutionBoundaryShellFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+    }
+  });
+
+  it("watch candidate with partial verification yields final gate watch when built in isolation", () => {
+    const partial = buildBoundaryShellPlanning();
+    const finalGate = buildRuntimeExecutionBoundaryShellFinalSafetyGate({
+      summary: {
+        ...partial.runtimeExecutionBoundaryShellSummary,
+        candidateStatus: "watch",
+        shellMode: "disabled",
+        shellBlockers: [],
+      },
+      blockerReport: { ...partial.runtimeExecutionBoundaryShellBlockerReport, blockers: [] },
+      boundaryViolation: {
+        ...partial.runtimeExecutionBoundaryShellBoundaryViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: ["wording risk"],
+      },
+      readinessVerification: {
+        ...partial.runtimeExecutionBoundaryShellReadinessVerificationReport,
+        verificationStatus: "partial",
+      },
+      alignmentReport: {
+        ...partial.runtimeExecutionBoundaryShellAlignmentReport,
+        alignmentStatus: "aligned_metadata",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("watch");
+    expect(finalGate.h37EntryReadiness).toBe("watch");
+  });
+
+  it("policy actualExecutionForbidden false yields boundary violation", () => {
+    const partial = buildBoundaryShellPlanning();
+    const violation = detectRuntimeExecutionBoundaryShellBoundaryViolations({
+      summary: partial.runtimeExecutionBoundaryShellSummary,
+      policy: {
+        ...partial.runtimeExecutionBoundaryShellPolicy,
+        actualExecutionForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionForbidden"))).toBe(true);
+  });
+
+  it("policy actualExecutionRoutingForbidden false yields boundary violation", () => {
+    const partial = buildBoundaryShellPlanning();
+    const violation = detectRuntimeExecutionBoundaryShellBoundaryViolations({
+      summary: partial.runtimeExecutionBoundaryShellSummary,
+      policy: {
+        ...partial.runtimeExecutionBoundaryShellPolicy,
+        actualExecutionRoutingForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionRoutingForbidden"))).toBe(true);
+  });
+
+  it("summary actualExecutionEnabled true yields boundary violation", () => {
+    const partial = buildBoundaryShellPlanning();
+    const violation = detectRuntimeExecutionBoundaryShellBoundaryViolations({
+      summary: {
+        ...partial.runtimeExecutionBoundaryShellSummary,
+        actualExecutionEnabled: true as unknown as false,
+      },
+      policy: partial.runtimeExecutionBoundaryShellPolicy,
+    });
+    expect(violation.actualFlagViolations.length).toBeGreaterThan(0);
+  });
+
   it("serializer does not rebuild reports", () => {
     const semantic = buildFullSemantic();
     const serialized = serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports(semantic);
@@ -204,9 +290,18 @@ describe("H36 / execution boundary metadata shell candidate", () => {
     expect(serialized.runtimeExecutionBoundaryShellScope.candidateSourceLayer).toBe(
       semantic.runtimeExecutionBoundaryShellScope.candidateSourceLayer
     );
+    expect(serialized.runtimeExecutionBoundaryShellFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeExecutionBoundaryShellFinalSafetyGate.finalGateStatus,
+        h37EntryReadiness: semantic.runtimeExecutionBoundaryShellFinalSafetyGate.h37EntryReadiness,
+      })
+    );
+    expect(serialized.runtimeExecutionBoundaryShellBoundaryViolationReport).toBeDefined();
+    expect(serialized.runtimeExecutionBoundaryShellReadinessVerificationReport).toBeDefined();
+    expect(serialized.runtimeExecutionBoundaryShellAlignmentReport).toBeDefined();
   });
 
-  it("stripRuntimeExecutionBoundaryShellLayer removes H36 fields only", () => {
+  it("stripRuntimeExecutionBoundaryShellLayer removes H36 and H36.5 fields only", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeExecutionBoundaryShellLayer(semantic);
     expect("runtimeExecutionBoundaryShellSummary" in stripped).toBe(false);

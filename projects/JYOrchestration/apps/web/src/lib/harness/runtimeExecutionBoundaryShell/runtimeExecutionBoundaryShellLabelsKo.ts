@@ -3,8 +3,11 @@
  */
 
 import type {
+  RuntimeExecutionBoundaryShellAlignmentStatus,
   RuntimeExecutionBoundaryShellCandidateStatus,
+  RuntimeExecutionBoundaryShellFinalGateStatus,
   RuntimeExecutionBoundaryShellMode,
+  RuntimeExecutionBoundaryShellReadinessVerificationStatus,
 } from "./runtimeExecutionBoundaryShellTypes";
 
 export const RUNTIME_EXECUTION_BOUNDARY_SHELL_SECTION_DISCLAIMER_KO =
@@ -30,6 +33,31 @@ export const RUNTIME_EXECUTION_BOUNDARY_SHELL_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_EXECUTION_BOUNDARY_SHELL_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeExecutionBoundaryShellFinalGateStatus, string>
+> = {
+  ready_metadata: "ready(메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_EXECUTION_BOUNDARY_SHELL_READINESS_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeExecutionBoundaryShellReadinessVerificationStatus, string>
+> = {
+  verified_metadata: "verified(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_EXECUTION_BOUNDARY_SHELL_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeExecutionBoundaryShellAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO = {
   scope: "shell scope 행 없음",
   forbiddenOperation: "금지 shell operation 없음",
@@ -37,4 +65,8 @@ export const RUNTIME_EXECUTION_BOUNDARY_SHELL_EMPTY_HINT_KO = {
   missingChecklist: "누락 checklist 항목 없음",
   blocker: "shell blocker 없음",
   recommendation: "recommendation 없음",
+  boundaryViolation: "boundary violation 없음",
+  readinessFinding: "readiness finding 없음",
+  alignmentFinding: "alignment finding 없음",
+  finalGateChecklist: "final gate checklist 행 없음",
 } as const;
