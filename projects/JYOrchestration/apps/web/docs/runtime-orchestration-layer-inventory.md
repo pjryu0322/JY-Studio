@@ -1,4 +1,4 @@
-# H20.5~H40 Runtime Orchestration Layer Inventory
+# H20.5~H41 Runtime Orchestration Layer Inventory
 
 Read-only orchestration safety / governance / readiness metadata chain. **No actual orchestration, execution, routing, enforcement, or blocking.**
 
@@ -6,7 +6,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 
 ## Chain order (planning)
 
-`buildRuntimeSemanticPlanningReports` — H20.5 resource → … → H40 ultimate governance review. Each step: `{ ...previousSemantic, ...layerReports }` only.
+`buildRuntimeSemanticPlanningReports` — H20.5 resource → … → H41 controlled activation candidate. Each step: `{ ...previousSemantic, ...layerReports }` only.
 
 ## Layer table
 
@@ -42,6 +42,11 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | H39.5 | Final Release Gate Stabilization | `runtimeFinalReleaseGovernanceGate/` | + violation/verification/alignment | — | yes | yes | final gate (`h40EntryReadiness`) | yes | yes | yes | yes | yes | yes |
 | H40 | Ultimate Governance Review | `runtimeUltimateGovernanceReview/` | review summary | blockers | — | — | — | yes | yes (8 fields) | yes | yes | yes | yes |
 | H40.5 | Ultimate Governance Review Stabilization | `runtimeUltimateGovernanceReview/` | + violation/verification/alignment | — | yes | yes | final gate (`h41EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
+| H41 | Controlled Activation Candidate | `runtimeControlledActivationCandidate/` | candidate summary | blockers | — | — | — | yes | yes (6 fields) | yes | yes | yes | yes |
+
+## Downstream inputs (H41 example)
+
+H41 reads (does not rebuild): `runtimeUltimateGovernanceReviewFinalSafetyGate`, verification/alignment/violation reports, ultimate governance blocker report, ultimate no-enforcement/forbidden proofs, final release governance gate final safety gate, governance release-readiness final gate, operator approval, rollback, audit, control boundary.
 
 ## Downstream inputs (H40 example)
 

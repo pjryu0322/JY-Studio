@@ -65,6 +65,7 @@ import { serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticRepor
 import { serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundle";
 import { serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle";
 import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
+import { serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledActivationCandidate/serializeRuntimeControlledActivationCandidateDiagnosticBundle";
 import { serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeUltimateGovernanceReview/serializeRuntimeUltimateGovernanceReviewDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
@@ -138,6 +139,9 @@ type SerializedRuntimeFinalReleaseGovernanceGateDiag = ReturnType<
 >;
 type SerializedRuntimeUltimateGovernanceReviewDiag = ReturnType<
   typeof serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeControlledActivationCandidateDiag = ReturnType<
+  typeof serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -358,6 +362,12 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeUltimateGovernanceReviewVerificationReport: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateGovernanceReviewVerificationReport"];
   runtimeUltimateGovernanceReviewAlignmentReport: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateGovernanceReviewAlignmentReport"];
   runtimeUltimateGovernanceReviewFinalSafetyGate: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateGovernanceReviewFinalSafetyGate"];
+  runtimeControlledActivationCandidateSummary: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlledActivationCandidateSummary"];
+  runtimeControlHandoffBoundary: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlHandoffBoundary"];
+  runtimeControlledActivationCandidateScope: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlledActivationCandidateScope"];
+  runtimeControlledActivationCandidatePolicy: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlledActivationCandidatePolicy"];
+  runtimeControlledActivationCandidateBlockerReport: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlledActivationCandidateBlockerReport"];
+  runtimeControlledActivationReadinessChecklist: SerializedRuntimeControlledActivationCandidateDiag["runtimeControlledActivationReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -391,6 +401,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports(reports);
   const ultimateGovernanceReviewDiag =
     serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports(reports);
+  const controlledActivationCandidateDiag =
+    serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -481,6 +493,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...governanceReleaseReadinessDiag,
     ...finalReleaseGovernanceGateDiag,
     ...ultimateGovernanceReviewDiag,
+    ...controlledActivationCandidateDiag,
   };
 }
 

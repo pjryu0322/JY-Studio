@@ -195,6 +195,7 @@ export function OverlaySummaryCard({
     runtimeGovernanceReleaseReadinessVm: runtimePlanningGovernanceReleaseReadinessVm,
     runtimeFinalReleaseGovernanceGateVm: runtimePlanningFinalReleaseGovernanceGateVm,
     runtimeUltimateGovernanceReviewVm: runtimePlanningUltimateGovernanceReviewVm,
+    runtimeControlledActivationCandidateVm: runtimePlanningControlledActivationCandidateVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -400,6 +401,11 @@ export function OverlaySummaryCard({
     d.runtimePlanningRuntimeUltimateGovernanceReview ||
       runtimePlanningUltimateGovernanceReviewVm.showAttention
   );
+  const pControlledActivationCandidate = pol(
+    "runtime_planning_runtime_controlled_activation_candidate",
+    d.runtimePlanningRuntimeControlledActivationCandidate ||
+      runtimePlanningControlledActivationCandidateVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -426,7 +432,8 @@ export function OverlaySummaryCard({
     pExecutionGovernanceBoundary.omitFromDom &&
     pGovernanceReleaseReadiness.omitFromDom &&
     pFinalReleaseGovernanceGate.omitFromDom &&
-    pUltimateGovernanceReview.omitFromDom;
+    pUltimateGovernanceReview.omitFromDom &&
+    pControlledActivationCandidate.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -656,6 +663,9 @@ export function OverlaySummaryCard({
           showRuntimeUltimateGovernanceReview={!pUltimateGovernanceReview.omitFromDom}
           ultimateGovernanceReviewDefaultOpen={pUltimateGovernanceReview.defaultOpen}
           runtimeUltimateGovernanceReviewVm={runtimePlanningUltimateGovernanceReviewVm}
+          showRuntimeControlledActivationCandidate={!pControlledActivationCandidate.omitFromDom}
+          controlledActivationCandidateDefaultOpen={pControlledActivationCandidate.defaultOpen}
+          runtimeControlledActivationCandidateVm={runtimePlanningControlledActivationCandidateVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

@@ -22,6 +22,7 @@ import type { RuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness
 import type { RuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/runtimeExecutionGovernanceBoundaryTypes";
 import type { RuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/runtimeGovernanceReleaseReadinessTypes";
 import type { RuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/runtimeFinalReleaseGovernanceGateTypes";
+import type { RuntimeControlledActivationCandidatePlanningReports } from "@/lib/harness/runtimeControlledActivationCandidate/runtimeControlledActivationCandidateTypes";
 import type { RuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/runtimeUltimateGovernanceReviewTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
@@ -173,6 +174,11 @@ export type RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview =
   RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate &
     RuntimeFinalReleaseGovernanceGatePlanningReports;
 
-/** H40 포함 — ultimate governance review·final orchestration readiness boundary까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview &
-  RuntimeUltimateGovernanceReviewPlanningReports;
+/** H40 / H40.5 포함 — ultimate governance review final safety gate까지 산출된 상태. */
+export type RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate =
+  RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview &
+    RuntimeUltimateGovernanceReviewPlanningReports;
+
+/** H41 포함 — controlled activation candidate·runtime control handoff boundary까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate &
+  RuntimeControlledActivationCandidatePlanningReports;

@@ -614,6 +614,36 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeControlledActivationCandidateSummary"
+  | "runtimeControlHandoffBoundary"
+  | "runtimeControlledActivationCandidateScope"
+  | "runtimeControlledActivationCandidatePolicy"
+  | "runtimeControlledActivationCandidateBlockerReport"
+  | "runtimeControlledActivationReadinessChecklist"
+> {
+  const {
+    runtimeControlledActivationCandidateSummary: _c1,
+    runtimeControlHandoffBoundary: _c2,
+    runtimeControlledActivationCandidateScope: _c3,
+    runtimeControlledActivationCandidatePolicy: _c4,
+    runtimeControlledActivationCandidateBlockerReport: _c5,
+    runtimeControlledActivationReadinessChecklist: _c6,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H41 controlled activation candidate reports 제거 — H41 단독 테스트용. */
+export function stripRuntimeControlledActivationCandidateLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate {
+  return omitControlledActivationCandidateLayerOnly(semantic);
+}
+
 function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -631,6 +661,7 @@ function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanning
   | "runtimeUltimateGovernanceReviewAlignmentReport"
   | "runtimeUltimateGovernanceReviewFinalSafetyGate"
 > {
+  const withoutH41 = omitControlledActivationCandidateLayerOnly(semantic);
   const {
     runtimeUltimateGovernanceReviewSummary: _u1,
     runtimeFinalOrchestrationReadinessBoundary: _u2,
@@ -645,7 +676,7 @@ function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanning
     runtimeUltimateGovernanceReviewAlignmentReport: _u11,
     runtimeUltimateGovernanceReviewFinalSafetyGate: _u12,
     ...rest
-  } = semantic;
+  } = withoutH41;
   return rest;
 }
 

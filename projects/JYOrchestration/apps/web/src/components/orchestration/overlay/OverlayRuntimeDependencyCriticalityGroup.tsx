@@ -67,6 +67,8 @@ import { OverlayRuntimeGovernanceReleaseReadinessSection } from "./OverlayRuntim
 import { OverlayRuntimeFinalReleaseGovernanceGateSection } from "./OverlayRuntimeFinalReleaseGovernanceGateSection";
 import type { OverlayRuntimeUltimateGovernanceReviewSectionVM } from "@/lib/overlay-ui/overlayRuntimeUltimateGovernanceReviewAdapter";
 import { OverlayRuntimeUltimateGovernanceReviewSection } from "./OverlayRuntimeUltimateGovernanceReviewSection";
+import type { OverlayRuntimeControlledActivationCandidateSectionVM } from "@/lib/overlay-ui/overlayRuntimeControlledActivationCandidateAdapter";
+import { OverlayRuntimeControlledActivationCandidateSection } from "./OverlayRuntimeControlledActivationCandidateSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -100,6 +102,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeGovernanceReleaseReadinessVm,
   runtimeFinalReleaseGovernanceGateVm,
   runtimeUltimateGovernanceReviewVm,
+  runtimeControlledActivationCandidateVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -135,6 +138,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   governanceReleaseReadinessDefaultOpen,
   finalReleaseGovernanceGateDefaultOpen,
   ultimateGovernanceReviewDefaultOpen,
+  controlledActivationCandidateDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -171,6 +175,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeGovernanceReleaseReadiness = true,
   showRuntimeFinalReleaseGovernanceGate = true,
   showRuntimeUltimateGovernanceReview = true,
+  showRuntimeControlledActivationCandidate = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -207,6 +212,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeGovernanceReleaseReadinessVm: OverlayRuntimeGovernanceReleaseReadinessSectionVM;
   readonly runtimeFinalReleaseGovernanceGateVm: OverlayRuntimeFinalReleaseGovernanceGateSectionVM;
   readonly runtimeUltimateGovernanceReviewVm: OverlayRuntimeUltimateGovernanceReviewSectionVM;
+  readonly runtimeControlledActivationCandidateVm: OverlayRuntimeControlledActivationCandidateSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -242,6 +248,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly governanceReleaseReadinessDefaultOpen?: boolean;
   readonly finalReleaseGovernanceGateDefaultOpen?: boolean;
   readonly ultimateGovernanceReviewDefaultOpen?: boolean;
+  readonly controlledActivationCandidateDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -278,6 +285,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeGovernanceReleaseReadiness?: boolean;
   readonly showRuntimeFinalReleaseGovernanceGate?: boolean;
   readonly showRuntimeUltimateGovernanceReview?: boolean;
+  readonly showRuntimeControlledActivationCandidate?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -443,6 +451,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimeUltimateGovernanceReviewSection
           vm={runtimeUltimateGovernanceReviewVm}
           defaultOpen={ultimateGovernanceReviewDefaultOpen}
+        />
+      ) : null}
+      {showRuntimeControlledActivationCandidate ? (
+        <OverlayRuntimeControlledActivationCandidateSection
+          vm={runtimeControlledActivationCandidateVm}
+          defaultOpen={controlledActivationCandidateDefaultOpen}
         />
       ) : null}
       {showForecast ? (
