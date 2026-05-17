@@ -407,6 +407,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellStabilizationEnabled: true,
     harnessRuntimePlanningControlledNoopExecutionShellHarnessEnabled: true,
     harnessRuntimePlanningIsolatedDryRunNoopShellHardeningEnabled: true,
+    harnessRuntimePlanningIsolatedDryRunNoopShellHardeningStabilizationEnabled: true,
   };
 
   const overlayMaturity = {
@@ -806,6 +807,10 @@ export async function GET(request: NextRequest) {
       runtimeNoopShellHardeningBoundaryViolationReport:
         runtimeSemanticDiag.runtimeNoopShellHardeningBoundaryViolationReport,
       runtimeNoopShellHardeningPreflightSummary: runtimeSemanticDiag.runtimeNoopShellHardeningPreflightSummary,
+      runtimeNoopShellHardeningReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeNoopShellHardeningReadinessVerificationReport,
+      runtimeNoopShellHardeningAlignmentReport: runtimeSemanticDiag.runtimeNoopShellHardeningAlignmentReport,
+      runtimeNoopShellHardeningFinalSafetyGate: runtimeSemanticDiag.runtimeNoopShellHardeningFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

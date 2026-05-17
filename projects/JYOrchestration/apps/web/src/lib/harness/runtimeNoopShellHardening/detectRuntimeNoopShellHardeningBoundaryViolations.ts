@@ -1,5 +1,5 @@
 /**
- * H32 ??shell hardening **boundary violation** ?��?(read-only).
+ * H33 — shell hardening **boundary violation** 탐지(read-only).
  */
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
@@ -119,7 +119,7 @@ export function detectRuntimeNoopShellHardeningBoundaryViolations(input: {
 
   const recommendations = mergeSortedUniqueKo([
     ...(actualFlagViolations.length > 0 || wordingRiskFindings.length > 0
-      ? ["H33: shell hardening boundary violation ??actual shell execution·routing ?�래그·문�??�거"]
+      ? ["H33: shell hardening boundary violation — actual shell execution·routing 플래그·문구 제거"]
       : []),
   ]);
 

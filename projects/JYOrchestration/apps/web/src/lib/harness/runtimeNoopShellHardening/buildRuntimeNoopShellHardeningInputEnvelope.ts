@@ -1,5 +1,5 @@
 /**
- * H32 ??shell hardening **input envelope** metadata(read-only; payload ?�성 ?�음).
+ * H33 — shell hardening **input envelope** metadata(read-only; payload 생성 없음).
  */
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
@@ -16,6 +16,9 @@ export function buildRuntimeNoopShellHardeningInputEnvelope(
   const verification = reports.runtimeNoopExecutionShellReadinessVerificationReport;
   const boundary = reports.runtimeNoopExecutionShellBoundaryViolationReport;
   const blockers = reports.runtimeNoopExecutionShellBlockerReport;
+  const harnessSummary = reports.runtimeNoopExecutionShellHarnessSummary;
+  const harnessPreflight = reports.runtimeNoopExecutionShellHarnessPreflightSummary;
+  const contractBoundary = reports.runtimeNoopExecutionShellContractBoundary;
   const harnessGate = reports.runtimeRunnerNoopHarnessFinalSafetyGate;
   const approval = reports.runtimeOperatorApprovalSummary;
   const rollback = reports.runtimeRollbackReadinessSummary;
@@ -31,6 +34,9 @@ export function buildRuntimeNoopShellHardeningInputEnvelope(
     `readinessVerification:${verification.verificationStatus}`,
     `boundaryViolations:${boundary.actualFlagViolations.length}`,
     `shellBlockers:${blockers.blockers.length}`,
+    `harnessPreflight:${harnessPreflight.preflightReadiness}`,
+    `harnessReadiness:${harnessSummary.harnessReadiness}`,
+    `contractBoundary:${contractBoundary.boundarySourceLayer}`,
     `scopeSource:${scope.candidateSourceLayer}`,
     `scopeTarget:${scope.candidateTargetLayer}`,
     `harnessFinalGate:${harnessGate.finalGateStatus}`,
@@ -56,7 +62,7 @@ export function buildRuntimeNoopShellHardeningInputEnvelope(
     actualRollbackExecutionEnabled: false,
     envelopeRows,
     recommendations: mergeSortedUniqueKo([
-      "H33: shell hardening input envelope ??execution shell·harness final gate 메�? 참조�?shell execution ?�음)",
+      "H33: shell hardening input envelope — execution shell·harness·contract boundary 메타 참조만(shell execution 없음)",
     ]),
   };
 }

@@ -1,6 +1,19 @@
 /**
- * H32 ??No-op execution shell **hardening & contract verification** metadata(read-only; actual execution ?�음).
+ * H33 — No-op execution shell **hardening & contract verification** metadata(read-only; actual execution 없음).
  */
+
+export type RuntimeNoopShellHardeningFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeNoopShellHardeningReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeNoopShellHardeningAlignmentStatus = "aligned_metadata" | "partial" | "failed";
 
 export type RuntimeNoopShellHardeningReadiness =
   | "not_ready"
@@ -169,6 +182,46 @@ export type RuntimeNoopShellHardeningPreflightSummary = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeNoopShellHardeningFinalSafetyGate = Readonly<{
+  mode: "runtime_noop_shell_hardening_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimeNoopShellHardeningFinalGateStatus;
+  h34EntryReadiness: RuntimeNoopShellHardeningFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeNoopShellHardeningReadinessVerificationReport = Readonly<{
+  mode: "runtime_noop_shell_hardening_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  verificationStatus: RuntimeNoopShellHardeningReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeNoopShellHardeningAlignmentReport = Readonly<{
+  mode: "runtime_noop_shell_hardening_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  alignmentStatus: RuntimeNoopShellHardeningAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeNoopShellHardeningPlanningReports = Readonly<{
   runtimeNoopShellHardeningSummary: RuntimeNoopShellHardeningSummary;
   runtimeNoopShellHardeningContract: RuntimeNoopShellHardeningContract;
@@ -179,4 +232,7 @@ export type RuntimeNoopShellHardeningPlanningReports = Readonly<{
   runtimeNoopShellHardeningContractVerificationReport: RuntimeNoopShellHardeningContractVerificationReport;
   runtimeNoopShellHardeningBoundaryViolationReport: RuntimeNoopShellHardeningBoundaryViolationReport;
   runtimeNoopShellHardeningPreflightSummary: RuntimeNoopShellHardeningPreflightSummary;
+  runtimeNoopShellHardeningReadinessVerificationReport: RuntimeNoopShellHardeningReadinessVerificationReport;
+  runtimeNoopShellHardeningAlignmentReport: RuntimeNoopShellHardeningAlignmentReport;
+  runtimeNoopShellHardeningFinalSafetyGate: RuntimeNoopShellHardeningFinalSafetyGate;
 }>;

@@ -1,15 +1,18 @@
 /**
- * H32 ??no-op shell hardening 진단 **직렬???�용**(report ?�빌???�음).
+ * H33 — no-op shell hardening 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
+  RuntimeNoopShellHardeningAlignmentReport,
   RuntimeNoopShellHardeningBoundaryViolationReport,
   RuntimeNoopShellHardeningContract,
   RuntimeNoopShellHardeningContractVerificationReport,
+  RuntimeNoopShellHardeningFinalSafetyGate,
   RuntimeNoopShellHardeningInputEnvelope,
   RuntimeNoopShellHardeningOutputEnvelope,
   RuntimeNoopShellHardeningPreflightSummary,
+  RuntimeNoopShellHardeningReadinessVerificationReport,
   RuntimeNoopShellHardeningSafetyGuard,
   RuntimeNoopShellHardeningSummary,
   RuntimeNoopShellNoExecutionResultMetadata,
@@ -163,6 +166,54 @@ function serializePreflight(p: RuntimeNoopShellHardeningPreflightSummary): Reado
   };
 }
 
+function serializeReadinessVerification(
+  r: RuntimeNoopShellHardeningReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    actualRuntimeOrchestrationEnabled: r.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: r.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: r.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: r.actualExecutionShellExecutionEnabled,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignment(a: RuntimeNoopShellHardeningAlignmentReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    actualRuntimeOrchestrationEnabled: a.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: a.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: a.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: a.actualExecutionShellExecutionEnabled,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalGate(g: RuntimeNoopShellHardeningFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: g.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: g.actualExecutionShellExecutionEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h34EntryReadiness: g.h34EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -175,6 +226,9 @@ export function serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticRe
   runtimeNoopShellHardeningContractVerificationReport: ReturnType<typeof serializeContractVerification>;
   runtimeNoopShellHardeningBoundaryViolationReport: ReturnType<typeof serializeBoundary>;
   runtimeNoopShellHardeningPreflightSummary: ReturnType<typeof serializePreflight>;
+  runtimeNoopShellHardeningReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeNoopShellHardeningAlignmentReport: ReturnType<typeof serializeAlignment>;
+  runtimeNoopShellHardeningFinalSafetyGate: ReturnType<typeof serializeFinalGate>;
 }> {
   return {
     runtimeNoopShellHardeningSummary: serializeSummary(reports.runtimeNoopShellHardeningSummary),
@@ -190,5 +244,10 @@ export function serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticRe
       reports.runtimeNoopShellHardeningBoundaryViolationReport
     ),
     runtimeNoopShellHardeningPreflightSummary: serializePreflight(reports.runtimeNoopShellHardeningPreflightSummary),
+    runtimeNoopShellHardeningReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeNoopShellHardeningReadinessVerificationReport
+    ),
+    runtimeNoopShellHardeningAlignmentReport: serializeAlignment(reports.runtimeNoopShellHardeningAlignmentReport),
+    runtimeNoopShellHardeningFinalSafetyGate: serializeFinalGate(reports.runtimeNoopShellHardeningFinalSafetyGate),
   };
 }

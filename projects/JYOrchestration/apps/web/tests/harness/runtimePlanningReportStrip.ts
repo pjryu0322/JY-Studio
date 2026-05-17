@@ -248,6 +248,9 @@ function omitNoopShellHardeningLayerOnly<T extends RuntimeSemanticPlanningReport
   | "runtimeNoopShellHardeningContractVerificationReport"
   | "runtimeNoopShellHardeningBoundaryViolationReport"
   | "runtimeNoopShellHardeningPreflightSummary"
+  | "runtimeNoopShellHardeningReadinessVerificationReport"
+  | "runtimeNoopShellHardeningAlignmentReport"
+  | "runtimeNoopShellHardeningFinalSafetyGate"
 > {
   const {
     runtimeNoopShellHardeningSummary: _sh1,
@@ -259,6 +262,9 @@ function omitNoopShellHardeningLayerOnly<T extends RuntimeSemanticPlanningReport
     runtimeNoopShellHardeningContractVerificationReport: _sh7,
     runtimeNoopShellHardeningBoundaryViolationReport: _sh8,
     runtimeNoopShellHardeningPreflightSummary: _sh9,
+    runtimeNoopShellHardeningReadinessVerificationReport: _sh10,
+    runtimeNoopShellHardeningAlignmentReport: _sh11,
+    runtimeNoopShellHardeningFinalSafetyGate: _sh12,
     ...rest
   } = semantic;
   return rest;

@@ -1,5 +1,5 @@
 /**
- * H32 ??shell hardening **safety guard** metadata(read-only; enforcement ?�음).
+ * H33 — shell hardening **safety guard** metadata(read-only; enforcement 없음).
  */
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
@@ -38,7 +38,7 @@ export function buildRuntimeNoopShellHardeningSafetyGuard(): RuntimeNoopShellHar
     actualPromptMutationForbidden: true,
     guardRows,
     recommendations: mergeSortedUniqueKo([
-      "H33: shell hardening safety guard ??actual shell execution·adapter·routing·rollback·prompt 변�?금�?",
+      "H33: shell hardening safety guard — actual shell execution·adapter·routing·rollback·prompt 변경 금지",
     ]),
   };
 }

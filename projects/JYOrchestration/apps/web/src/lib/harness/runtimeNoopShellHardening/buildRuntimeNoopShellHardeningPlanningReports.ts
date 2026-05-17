@@ -1,10 +1,12 @@
 /**
- * H32 ??no-op shell hardening planning reports ?�괄 ?�출(read-only).
+ * H33 / H33.5 — no-op shell hardening planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeNoopShellHardening } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { buildRuntimeNoopShellHardeningAlignmentReport } from "./buildRuntimeNoopShellHardeningAlignmentReport";
 import { buildRuntimeNoopShellHardeningContract } from "./buildRuntimeNoopShellHardeningContract";
+import { buildRuntimeNoopShellHardeningFinalSafetyGate } from "./buildRuntimeNoopShellHardeningFinalSafetyGate";
 import { buildRuntimeNoopShellHardeningInputEnvelope } from "./buildRuntimeNoopShellHardeningInputEnvelope";
 import { buildRuntimeNoopShellHardeningOutputEnvelope } from "./buildRuntimeNoopShellHardeningOutputEnvelope";
 import { buildRuntimeNoopShellHardeningPreflightSummary } from "./buildRuntimeNoopShellHardeningPreflightSummary";
@@ -13,6 +15,7 @@ import { buildRuntimeNoopShellHardeningSummary } from "./buildRuntimeNoopShellHa
 import { buildRuntimeNoopShellNoExecutionResultMetadata } from "./buildRuntimeNoopShellNoExecutionResultMetadata";
 import { detectRuntimeNoopShellHardeningBoundaryViolations } from "./detectRuntimeNoopShellHardeningBoundaryViolations";
 import { verifyRuntimeNoopShellHardeningContract } from "./verifyRuntimeNoopShellHardeningContract";
+import { verifyRuntimeNoopShellHardeningReadiness } from "./verifyRuntimeNoopShellHardeningReadiness";
 import type {
   RuntimeNoopShellHardeningPlanningReports,
   RuntimeNoopShellHardeningSummary,
@@ -56,6 +59,33 @@ export function buildRuntimeNoopShellHardeningPlanningReports(
     result: runtimeNoopShellNoExecutionResultMetadata,
   });
 
+  const runtimeNoopShellHardeningReadinessVerificationReport = verifyRuntimeNoopShellHardeningReadiness({
+    summary: runtimeNoopShellHardeningSummary,
+    preflight: runtimeNoopShellHardeningPreflightSummary,
+    contractVerification: runtimeNoopShellHardeningContractVerificationReport,
+    boundaryViolation: runtimeNoopShellHardeningBoundaryViolationReport,
+    result: runtimeNoopShellNoExecutionResultMetadata,
+    safetyGuard: runtimeNoopShellHardeningSafetyGuard,
+  });
+
+  const runtimeNoopShellHardeningAlignmentReport = buildRuntimeNoopShellHardeningAlignmentReport({
+    inputEnvelope: runtimeNoopShellHardeningInputEnvelope,
+    result: runtimeNoopShellNoExecutionResultMetadata,
+    safetyGuard: runtimeNoopShellHardeningSafetyGuard,
+    contractVerification: runtimeNoopShellHardeningContractVerificationReport,
+    boundaryViolation: runtimeNoopShellHardeningBoundaryViolationReport,
+    preflight: runtimeNoopShellHardeningPreflightSummary,
+  });
+
+  const runtimeNoopShellHardeningFinalSafetyGate = buildRuntimeNoopShellHardeningFinalSafetyGate({
+    summary: runtimeNoopShellHardeningSummary,
+    preflight: runtimeNoopShellHardeningPreflightSummary,
+    readinessVerification: runtimeNoopShellHardeningReadinessVerificationReport,
+    alignmentReport: runtimeNoopShellHardeningAlignmentReport,
+    contractVerification: runtimeNoopShellHardeningContractVerificationReport,
+    boundaryViolation: runtimeNoopShellHardeningBoundaryViolationReport,
+  });
+
   const runtimeNoopShellHardeningSummaryFinal: RuntimeNoopShellHardeningSummary = {
     ...runtimeNoopShellHardeningSummary,
     recommendations: mergeSortedUniqueKo([
@@ -68,6 +98,9 @@ export function buildRuntimeNoopShellHardeningPlanningReports(
       ...runtimeNoopShellHardeningContractVerificationReport.recommendations,
       ...runtimeNoopShellHardeningBoundaryViolationReport.recommendations,
       ...runtimeNoopShellHardeningPreflightSummary.recommendations,
+      ...runtimeNoopShellHardeningReadinessVerificationReport.recommendations,
+      ...runtimeNoopShellHardeningAlignmentReport.recommendations,
+      ...runtimeNoopShellHardeningFinalSafetyGate.recommendations,
     ]),
   };
 
@@ -81,5 +114,8 @@ export function buildRuntimeNoopShellHardeningPlanningReports(
     runtimeNoopShellHardeningContractVerificationReport,
     runtimeNoopShellHardeningBoundaryViolationReport,
     runtimeNoopShellHardeningPreflightSummary,
+    runtimeNoopShellHardeningReadinessVerificationReport,
+    runtimeNoopShellHardeningAlignmentReport,
+    runtimeNoopShellHardeningFinalSafetyGate,
   };
 }

@@ -21,11 +21,13 @@ describe("buildOverlayRuntimeNoopShellHardeningSectionVm", () => {
     expect(compact.recommendationRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays hardening readiness, mode, preflight, and top blocker or attention", () => {
+  it("compact mode displays hardening readiness, mode, preflight, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeNoopShellHardeningSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.hardeningReadinessKo).toBeTruthy();
     expect(vm.hardeningModeKo).toBeTruthy();
     expect(vm.preflightReadinessKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h34EntryReadinessKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

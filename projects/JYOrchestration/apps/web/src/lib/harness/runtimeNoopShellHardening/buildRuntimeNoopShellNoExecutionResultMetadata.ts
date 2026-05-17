@@ -41,7 +41,7 @@ export function buildRuntimeNoopShellNoExecutionResultMetadata(): RuntimeNoopShe
     diagnosticOnly: true,
     resultRows,
     recommendations: mergeSortedUniqueKo([
-      "H33: shell no-execution result ??모든 execution·routing·rollback·prompt 변�?경로 false",
+      "H33: shell no-execution result — 모든 execution·routing·rollback·prompt 변경 경로 false",
     ]),
   };
 }

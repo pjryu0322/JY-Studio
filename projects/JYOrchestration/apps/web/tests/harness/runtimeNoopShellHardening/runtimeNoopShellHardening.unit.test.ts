@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { buildRuntimeNoopShellHardeningAlignmentReport } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningAlignmentReport";
+import { buildRuntimeNoopShellHardeningFinalSafetyGate } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningFinalSafetyGate";
 import { buildRuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningPlanningReports";
+import { RUNTIME_NOOP_SHELL_HARDENING_SECTION_DISCLAIMER_KO } from "@/lib/harness/runtimeNoopShellHardening/runtimeNoopShellHardeningLabelsKo";
 import { buildRuntimeNoopShellHardeningPreflightSummary } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningPreflightSummary";
 import { detectRuntimeNoopShellHardeningBoundaryViolations } from "@/lib/harness/runtimeNoopShellHardening/detectRuntimeNoopShellHardeningBoundaryViolations";
 import { serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellHardening/serializeRuntimeNoopShellHardeningDiagnosticBundle";
@@ -188,6 +191,81 @@ describe("H33 no-op shell hardening & contract verification", () => {
       safetyGuard: hardening.runtimeNoopShellHardeningSafetyGuard,
     });
     expect(violations.actualFlagViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
+  });
+
+  it("H33.5 final gate ready_metadata mirrors h34EntryReadiness when hardening stack is healthy", () => {
+    const hardening = buildShellHardeningPlanning();
+    const gate = hardening.runtimeNoopShellHardeningFinalSafetyGate;
+    if (
+      hardening.runtimeNoopShellHardeningPreflightSummary.preflightReadiness === "ready_metadata" &&
+      hardening.runtimeNoopShellHardeningReadinessVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      hardening.runtimeNoopShellHardeningAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      hardening.runtimeNoopShellHardeningContractVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      hardening.runtimeNoopShellHardeningBoundaryViolationReport.actualFlagViolations.length === 0 &&
+      hardening.runtimeNoopShellHardeningSummary.hardeningBlockers.length === 0 &&
+      hardening.runtimeNoopShellHardeningSummary.hardeningReadiness === "hardening_metadata_ready"
+    ) {
+      expect(gate.finalGateStatus).toBe("ready_metadata");
+      expect(gate.h34EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("H33.5 alignment failed yields final gate blocked", () => {
+    const hardening = buildShellHardeningPlanning();
+    const badEnvelope = {
+      ...hardening.runtimeNoopShellHardeningInputEnvelope,
+      envelopeRows: hardening.runtimeNoopShellHardeningInputEnvelope.envelopeRows.filter(
+        (row) => !row.startsWith("contractBoundary:")
+      ),
+    };
+    const alignment = buildRuntimeNoopShellHardeningAlignmentReport({
+      inputEnvelope: badEnvelope,
+      result: hardening.runtimeNoopShellNoExecutionResultMetadata,
+      safetyGuard: hardening.runtimeNoopShellHardeningSafetyGuard,
+      contractVerification: hardening.runtimeNoopShellHardeningContractVerificationReport,
+      boundaryViolation: hardening.runtimeNoopShellHardeningBoundaryViolationReport,
+      preflight: hardening.runtimeNoopShellHardeningPreflightSummary,
+    });
+    expect(alignment.alignmentStatus).toBe("failed");
+    const gate = buildRuntimeNoopShellHardeningFinalSafetyGate({
+      summary: hardening.runtimeNoopShellHardeningSummary,
+      preflight: hardening.runtimeNoopShellHardeningPreflightSummary,
+      readinessVerification: hardening.runtimeNoopShellHardeningReadinessVerificationReport,
+      alignmentReport: alignment,
+      contractVerification: hardening.runtimeNoopShellHardeningContractVerificationReport,
+      boundaryViolation: hardening.runtimeNoopShellHardeningBoundaryViolationReport,
+    });
+    expect(gate.finalGateStatus).toBe("blocked");
+    expect(gate.h34EntryReadiness).toBe("blocked");
+  });
+
+  it("H33.5 labels do not contain mojibake question marks", () => {
+    expect(RUNTIME_NOOP_SHELL_HARDENING_SECTION_DISCLAIMER_KO).not.toMatch(/\?{2,}/);
+    expect(RUNTIME_NOOP_SHELL_HARDENING_SECTION_DISCLAIMER_KO).toContain("read-only metadata");
+  });
+
+  it("serializer includes H33.5 final gate and verification fields", () => {
+    const semantic = buildFullSemantic();
+    const serialized = serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports(semantic);
+    expect(serialized.runtimeNoopShellHardeningFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeNoopShellHardeningFinalSafetyGate.finalGateStatus,
+        h34EntryReadiness: semantic.runtimeNoopShellHardeningFinalSafetyGate.h34EntryReadiness,
+      })
+    );
+    expect(serialized.runtimeNoopShellHardeningReadinessVerificationReport).toEqual(
+      expect.objectContaining({
+        verificationStatus:
+          semantic.runtimeNoopShellHardeningReadinessVerificationReport.verificationStatus,
+      })
+    );
+    expect(serialized.runtimeNoopShellHardeningAlignmentReport).toEqual(
+      expect.objectContaining({
+        alignmentStatus: semantic.runtimeNoopShellHardeningAlignmentReport.alignmentStatus,
+      })
+    );
   });
 
   it("serializer does not rebuild reports", () => {
