@@ -1,10 +1,13 @@
 /**
- * H43 — limited pilot readiness review overlay·진단 **한국어 라벨**(read-only).
+ * H43 / H43.5 — limited pilot readiness review overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
+  RuntimeLimitedPilotReadinessReviewAlignmentStatus,
+  RuntimeLimitedPilotReadinessReviewFinalGateStatus,
   RuntimeLimitedPilotReadinessReviewMode,
   RuntimeLimitedPilotReadinessReviewStatus,
+  RuntimeLimitedPilotReadinessReviewVerificationStatus,
 } from "./runtimeLimitedPilotReadinessReviewTypes";
 
 export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_SECTION_DISCLAIMER_KO =
@@ -30,10 +33,39 @@ export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotReadinessReviewFinalGateStatus, string>
+> = {
+  ready_metadata: "ready(메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotReadinessReviewVerificationStatus, string>
+> = {
+  verified_metadata: "verified(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeLimitedPilotReadinessReviewAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO = {
   contractBoundary: "pilot contract hardening boundary 행이 없습니다.",
   inputEnvelope: "pilot readiness input envelope 행이 없습니다.",
   outputEnvelope: "pilot readiness output envelope 행이 없습니다.",
+  violation: "pilot readiness review violation이 없습니다.",
+  verification: "readiness verification finding이 없습니다.",
+  alignment: "alignment finding이 없습니다.",
+  finalGateChecklist: "final safety gate checklist 행이 없습니다.",
   noExecutionProof: "pilot no-execution proof 행이 없습니다.",
   forbiddenProof: "pilot execution-forbidden proof 행이 없습니다.",
   checklist: "pilot contract readiness checklist 행이 없습니다.",

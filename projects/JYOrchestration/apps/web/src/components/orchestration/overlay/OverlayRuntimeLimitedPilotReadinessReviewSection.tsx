@@ -18,15 +18,22 @@ export function OverlayRuntimeLimitedPilotReadinessReviewSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Limited Pilot Readiness Review (H43)"
+      title="Runtime Limited Pilot Readiness Review (H43 / H43.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Limited pilot readiness review status" value={vm.reviewStatusKo} />
         <OverlayUiKeyValueRow label="Review mode" value={vm.reviewModeKo} />
-        {vm.topBlockerOrForbidden ? (
-          <OverlayUiKeyValueRow label="Top blocker / forbidden operation" value={vm.topBlockerOrForbidden} />
+        <OverlayUiKeyValueRow label="Final safety gate status" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H44 entry readiness" value={vm.h44EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenBoundaryOperation ? (
+          <OverlayUiKeyValueRow label="Top forbidden boundary operation" value={vm.topForbiddenBoundaryOperation} />
         ) : null}
         {vm.showDetailSections ? (
           <>
@@ -52,6 +59,26 @@ export function OverlayRuntimeLimitedPilotReadinessReviewSection({
               title="Readiness output envelope"
               rows={vm.outputEnvelopeRows}
               emptyHint={RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO.outputEnvelope}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Pilot readiness violations"
+              rows={vm.readinessViolationRows}
+              emptyHint={RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO.violation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO.verification}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO.alignment}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Final safety gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_LIMITED_PILOT_READINESS_REVIEW_EMPTY_HINT_KO.finalGateChecklist}
             />
             <OverlayRuntimePlanningDetailBlock
               title="Pilot no-execution proof"

@@ -1,5 +1,5 @@
 /**
- * H43 — limited pilot readiness review 공통 상수(read-only).
+ * H43 / H43.5 — limited pilot readiness review 공통 상수(read-only).
  */
 
 import {
@@ -90,3 +90,42 @@ export const RUNTIME_PILOT_EXECUTION_FORBIDDEN_PROOF_REQUIRED_KEYS = [
 
 export type RuntimePilotExecutionForbiddenProofRequiredKey =
   (typeof RUNTIME_PILOT_EXECUTION_FORBIDDEN_PROOF_REQUIRED_KEYS)[number];
+
+export const PILOT_READINESS_REVIEW_WORDING_RISK_PHRASES: readonly {
+  readonly phrase: string;
+  readonly label: string;
+}[] = [
+  { phrase: "pilotactivated=true", label: "pilotActivated=true" },
+  { phrase: "pilotexecuted=true", label: "pilotExecuted=true" },
+  { phrase: "isolatedrunnerinvoked=true", label: "isolatedRunnerInvoked=true" },
+  { phrase: "sandboxinvoked=true", label: "sandboxInvoked=true" },
+  { phrase: "executionperformed=true", label: "executionPerformed=true" },
+  { phrase: "diagnosticonly=false", label: "diagnosticOnly=false" },
+  { phrase: "actualpilotactivationforbidden=false", label: "actualPilotActivationForbidden=false" },
+  { phrase: "actualpilotexecutionforbidden=false", label: "actualPilotExecutionForbidden=false" },
+  { phrase: "actualexecutionforbidden=false", label: "actualExecutionForbidden=false" },
+];
+
+export const PILOT_READINESS_VERIFICATION_CHECKLIST_LABEL_ROWS = [
+  "limited pilot boundary final gate ready_metadata",
+  "h43 entry readiness ready_metadata",
+  "limited pilot boundary verification verified_metadata",
+  "limited pilot boundary alignment aligned_metadata",
+] as const;
+
+export const PILOT_READINESS_ALIGNMENT_CHECKLIST_LABEL_ROWS = [
+  "limited pilot boundary final gate ready_metadata",
+  "h43 entry readiness ready_metadata",
+  "no limited pilot boundary actual flag violations",
+  "no limited pilot boundary policy violations",
+] as const;
+
+export const PILOT_READINESS_FINAL_SAFETY_CHECKLIST_STATIC_ROWS = [
+  "actualPilotActivationEnabled:false",
+  "actualPilotExecutionEnabled:false",
+  "actualIsolatedRunnerInvocationEnabled:false",
+  "actualSandboxInvocationEnabled:false",
+  "actualExecutionEnabled:false",
+  "pilotNoExecutionProof.diagnosticOnly:true",
+  "pilotExecutionForbiddenProof.complete:true",
+] as const;

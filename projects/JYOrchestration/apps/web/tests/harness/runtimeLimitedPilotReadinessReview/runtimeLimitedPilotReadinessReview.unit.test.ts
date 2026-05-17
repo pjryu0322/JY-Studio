@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { detectRuntimeLimitedPilotReadinessReviewViolations } from "@/lib/harness/runtimeLimitedPilotReadinessReview/detectRuntimeLimitedPilotReadinessReviewViolations";
 import { evaluateRuntimeLimitedPilotReadinessReviewStatus } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimeLimitedPilotReadinessReviewSummary";
 import { buildRuntimePilotNoExecutionProof } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimePilotNoExecutionProof";
 import { buildRuntimePilotExecutionForbiddenProof } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimePilotExecutionForbiddenProof";
@@ -125,15 +126,58 @@ describe("H43 limited pilot readiness review", () => {
     expect(status).toBe("blocked");
   });
 
-  it("serializer exposes eight H43 fields without rebuilding reports", () => {
+  it("serializer exposes twelve H43/H43.5 fields without rebuilding reports", () => {
     const semantic = buildFullSemanticForLimitedPilotReadinessReview();
     const serialized = serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports(semantic);
-    expect(Object.keys(serialized)).toHaveLength(8);
+    expect(Object.keys(serialized)).toHaveLength(12);
     expect(serialized.runtimeLimitedPilotReadinessReviewSummary.reviewStatus).toBe(
       semantic.runtimeLimitedPilotReadinessReviewSummary.reviewStatus
     );
     expect(serialized.runtimePilotContractHardeningBoundary.boundaryTargetLayer).toBe(
       "pilotContractHardeningBoundary"
     );
+    expect(serialized.runtimeLimitedPilotReadinessReviewFinalSafetyGate).toBeDefined();
+    expect(serialized.runtimeLimitedPilotReadinessReviewViolationReport).toBeDefined();
+  });
+
+  it("ready review with verified alignment yields final gate ready_metadata when upstream aligned", () => {
+    const semantic = buildFullSemanticForLimitedPilotReadinessReview();
+    if (
+      semantic.runtimeLimitedPilotReadinessReviewSummary.reviewStatus ===
+        "limited_pilot_readiness_metadata_ready" &&
+      semantic.runtimeLimitedPilotReadinessReviewVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeLimitedPilotReadinessReviewAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeLimitedPilotReadinessReviewViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeLimitedPilotReadinessReviewViolationReport.proofViolations.length === 0 &&
+      semantic.runtimeLimitedPilotReadinessReviewViolationReport.forbiddenProofViolations.length === 0
+    ) {
+      expect(semantic.runtimeLimitedPilotReadinessReviewFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeLimitedPilotReadinessReviewFinalSafetyGate.h44EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("readiness review verification failed yields blocked final gate", () => {
+    const base = buildLimitedPilotReadinessReviewBaseReports();
+    const review = buildLimitedPilotReadinessReviewPlanning({
+      runtimeLimitedPilotReadinessReviewVerificationReport: {
+        ...base.runtimeLimitedPilotReadinessReviewVerificationReport,
+        verificationStatus: "failed",
+      },
+    });
+    expect(review.runtimeLimitedPilotReadinessReviewFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("summary actual flag violation yields policy violation report", () => {
+    const semantic = buildFullSemanticForLimitedPilotReadinessReview();
+    const violation = detectRuntimeLimitedPilotReadinessReviewViolations({
+      summary: {
+        ...semantic.runtimeLimitedPilotReadinessReviewSummary,
+        actualPilotActivationEnabled: true as false,
+      },
+      noExecutionProof: semantic.runtimePilotNoExecutionProof,
+      forbiddenProof: semantic.runtimePilotExecutionForbiddenProof,
+    });
+    expect(violation.actualFlagViolations.length).toBeGreaterThan(0);
   });
 });

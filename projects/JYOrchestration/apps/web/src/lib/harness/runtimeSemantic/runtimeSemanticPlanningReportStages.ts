@@ -190,6 +190,6 @@ export type RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary =
 export type RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview =
   RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary & RuntimeLimitedPilotBoundaryPlanningReports;
 
-/** H43 포함 — limited runtime pilot readiness review·pilot contract hardening까지 산출된 상태. */
+/** H43 / H43.5 포함 — limited pilot readiness review·final safety gate까지 산출된 상태. */
 export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview &
   RuntimeLimitedPilotReadinessReviewPlanningReports;

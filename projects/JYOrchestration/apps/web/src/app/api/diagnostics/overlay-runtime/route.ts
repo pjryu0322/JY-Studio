@@ -979,6 +979,14 @@ export async function GET(request: NextRequest) {
       runtimePilotExecutionForbiddenProof: runtimeSemanticDiag.runtimePilotExecutionForbiddenProof,
       runtimePilotReadinessBlockerReport: runtimeSemanticDiag.runtimePilotReadinessBlockerReport,
       runtimePilotContractReadinessChecklist: runtimeSemanticDiag.runtimePilotContractReadinessChecklist,
+      runtimeLimitedPilotReadinessReviewViolationReport:
+        runtimeSemanticDiag.runtimeLimitedPilotReadinessReviewViolationReport,
+      runtimeLimitedPilotReadinessReviewVerificationReport:
+        runtimeSemanticDiag.runtimeLimitedPilotReadinessReviewVerificationReport,
+      runtimeLimitedPilotReadinessReviewAlignmentReport:
+        runtimeSemanticDiag.runtimeLimitedPilotReadinessReviewAlignmentReport,
+      runtimeLimitedPilotReadinessReviewFinalSafetyGate:
+        runtimeSemanticDiag.runtimeLimitedPilotReadinessReviewFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

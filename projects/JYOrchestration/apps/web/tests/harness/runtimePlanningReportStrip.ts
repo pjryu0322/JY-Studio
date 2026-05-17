@@ -626,6 +626,10 @@ function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlann
   | "runtimePilotExecutionForbiddenProof"
   | "runtimePilotReadinessBlockerReport"
   | "runtimePilotContractReadinessChecklist"
+  | "runtimeLimitedPilotReadinessReviewViolationReport"
+  | "runtimeLimitedPilotReadinessReviewVerificationReport"
+  | "runtimeLimitedPilotReadinessReviewAlignmentReport"
+  | "runtimeLimitedPilotReadinessReviewFinalSafetyGate"
 > {
   const {
     runtimeLimitedPilotReadinessReviewSummary: _r1,
@@ -636,6 +640,10 @@ function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlann
     runtimePilotExecutionForbiddenProof: _r6,
     runtimePilotReadinessBlockerReport: _r7,
     runtimePilotContractReadinessChecklist: _r8,
+    runtimeLimitedPilotReadinessReviewViolationReport: _r9,
+    runtimeLimitedPilotReadinessReviewVerificationReport: _r10,
+    runtimeLimitedPilotReadinessReviewAlignmentReport: _r11,
+    runtimeLimitedPilotReadinessReviewFinalSafetyGate: _r12,
     ...rest
   } = semantic;
   return rest;

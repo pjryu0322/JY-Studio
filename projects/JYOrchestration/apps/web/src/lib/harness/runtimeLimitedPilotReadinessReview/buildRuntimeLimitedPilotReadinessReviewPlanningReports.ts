@@ -1,10 +1,12 @@
 /**
- * H43 — limited pilot readiness review planning reports 일괄 산출(read-only).
+ * H43 / H43.5 — limited pilot readiness review planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import { mergeRuntimeLayerRecommendations } from "@/lib/harness/runtimeShared/runtimeRecommendationHelpers";
+import { buildRuntimeLimitedPilotReadinessReviewAlignmentReport } from "./buildRuntimeLimitedPilotReadinessReviewAlignmentReport";
+import { buildRuntimeLimitedPilotReadinessReviewFinalSafetyGate } from "./buildRuntimeLimitedPilotReadinessReviewFinalSafetyGate";
 import { buildRuntimeLimitedPilotReadinessReviewSummary } from "./buildRuntimeLimitedPilotReadinessReviewSummary";
 import { buildRuntimePilotContractHardeningBoundary } from "./buildRuntimePilotContractHardeningBoundary";
 import { buildRuntimePilotContractReadinessChecklist } from "./buildRuntimePilotContractReadinessChecklist";
@@ -12,7 +14,9 @@ import { buildRuntimePilotExecutionForbiddenProof } from "./buildRuntimePilotExe
 import { buildRuntimePilotNoExecutionProof } from "./buildRuntimePilotNoExecutionProof";
 import { buildRuntimePilotReadinessInputEnvelope } from "./buildRuntimePilotReadinessInputEnvelope";
 import { buildRuntimePilotReadinessOutputEnvelope } from "./buildRuntimePilotReadinessOutputEnvelope";
+import { detectRuntimeLimitedPilotReadinessReviewViolations } from "./detectRuntimeLimitedPilotReadinessReviewViolations";
 import { detectRuntimePilotReadinessBlockers } from "./detectRuntimePilotReadinessBlockers";
+import { verifyRuntimeLimitedPilotReadinessReview } from "./verifyRuntimeLimitedPilotReadinessReview";
 import type { RuntimeLimitedPilotReadinessReviewPlanningReports } from "./runtimeLimitedPilotReadinessReviewTypes";
 
 export type { RuntimeLimitedPilotReadinessReviewPlanningReports } from "./runtimeLimitedPilotReadinessReviewTypes";
@@ -47,6 +51,44 @@ export function buildRuntimeLimitedPilotReadinessReviewPlanningReports(
     forbiddenProof: runtimePilotExecutionForbiddenProof,
   });
 
+  const runtimeLimitedPilotReadinessReviewViolationReport = detectRuntimeLimitedPilotReadinessReviewViolations({
+    summary: runtimeLimitedPilotReadinessReviewSummaryDraft,
+    noExecutionProof: runtimePilotNoExecutionProof,
+    forbiddenProof: runtimePilotExecutionForbiddenProof,
+  });
+
+  const runtimeLimitedPilotReadinessReviewVerificationReport = verifyRuntimeLimitedPilotReadinessReview({
+    summary: runtimeLimitedPilotReadinessReviewSummaryDraft,
+    boundary: runtimePilotContractHardeningBoundary,
+    inputEnvelope: runtimePilotReadinessInputEnvelope,
+    outputEnvelope: runtimePilotReadinessOutputEnvelope,
+    noExecutionProof: runtimePilotNoExecutionProof,
+    forbiddenProof: runtimePilotExecutionForbiddenProof,
+    checklist: runtimePilotContractReadinessChecklist,
+    blockerReport: runtimePilotReadinessBlockerReport,
+  });
+
+  const runtimeLimitedPilotReadinessReviewAlignmentReport = buildRuntimeLimitedPilotReadinessReviewAlignmentReport({
+    reports,
+    summary: runtimeLimitedPilotReadinessReviewSummaryDraft,
+    boundary: runtimePilotContractHardeningBoundary,
+    inputEnvelope: runtimePilotReadinessInputEnvelope,
+    outputEnvelope: runtimePilotReadinessOutputEnvelope,
+    noExecutionProof: runtimePilotNoExecutionProof,
+    forbiddenProof: runtimePilotExecutionForbiddenProof,
+    checklist: runtimePilotContractReadinessChecklist,
+    blockerReport: runtimePilotReadinessBlockerReport,
+    reviewViolation: runtimeLimitedPilotReadinessReviewViolationReport,
+  });
+
+  const runtimeLimitedPilotReadinessReviewFinalSafetyGate = buildRuntimeLimitedPilotReadinessReviewFinalSafetyGate({
+    summary: runtimeLimitedPilotReadinessReviewSummaryDraft,
+    blockerReport: runtimePilotReadinessBlockerReport,
+    reviewViolation: runtimeLimitedPilotReadinessReviewViolationReport,
+    readinessVerification: runtimeLimitedPilotReadinessReviewVerificationReport,
+    alignmentReport: runtimeLimitedPilotReadinessReviewAlignmentReport,
+  });
+
   const runtimeLimitedPilotReadinessReviewSummary = {
     ...runtimeLimitedPilotReadinessReviewSummaryDraft,
     reviewBlockers: mergeSortedUniqueKo([
@@ -62,6 +104,10 @@ export function buildRuntimeLimitedPilotReadinessReviewPlanningReports(
       runtimePilotExecutionForbiddenProof,
       runtimePilotReadinessBlockerReport,
       runtimePilotContractReadinessChecklist,
+      runtimeLimitedPilotReadinessReviewViolationReport,
+      runtimeLimitedPilotReadinessReviewVerificationReport,
+      runtimeLimitedPilotReadinessReviewAlignmentReport,
+      runtimeLimitedPilotReadinessReviewFinalSafetyGate,
     ]),
   };
 
@@ -74,5 +120,9 @@ export function buildRuntimeLimitedPilotReadinessReviewPlanningReports(
     runtimePilotExecutionForbiddenProof,
     runtimePilotReadinessBlockerReport,
     runtimePilotContractReadinessChecklist,
+    runtimeLimitedPilotReadinessReviewViolationReport,
+    runtimeLimitedPilotReadinessReviewVerificationReport,
+    runtimeLimitedPilotReadinessReviewAlignmentReport,
+    runtimeLimitedPilotReadinessReviewFinalSafetyGate,
   };
 }

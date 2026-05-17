@@ -24,12 +24,14 @@ describe("buildOverlayRuntimeLimitedPilotReadinessReviewSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays review status, review mode, and blocker or forbidden operation", () => {
+  it("compact mode displays review status, review mode, final gate, and blocker or forbidden operation", () => {
     const vm = buildOverlayRuntimeLimitedPilotReadinessReviewSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.reviewStatusKo).toBeTruthy();
     expect(vm.reviewModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h44EntryReadinessKo).toBeTruthy();
     expect(
-      vm.topBlockerOrForbidden !== null || vm.topForbiddenBoundaryOperation !== null || vm.showAttention
+      vm.topViolationOrBlocker !== null || vm.topForbiddenBoundaryOperation !== null || vm.showAttention
     ).toBe(true);
   });
 
