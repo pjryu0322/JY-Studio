@@ -16,6 +16,7 @@ import type { RuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runt
 import type { RuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/runtimeNoopExecutionShellTypes";
 import type { RuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/runtimeNoopExecutionShellHarnessTypes";
 import type { RuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/runtimeNoopShellHardeningTypes";
+import type { RuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/runtimeNoopShellReleaseGateTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -136,5 +137,9 @@ export type RuntimeSemanticPlanningReportsBeforeNoopShellHardening =
   RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness & RuntimeNoopExecutionShellHarnessPlanningReports;
 
 /** H33 포함 — no-op shell hardening·contract verification까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeNoopShellHardening &
-  RuntimeNoopShellHardeningPlanningReports;
+export type RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate =
+  RuntimeSemanticPlanningReportsBeforeNoopShellHardening & RuntimeNoopShellHardeningPlanningReports;
+
+/** H34 포함 — release-gate candidate까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate &
+  RuntimeNoopShellReleaseGatePlanningReports;

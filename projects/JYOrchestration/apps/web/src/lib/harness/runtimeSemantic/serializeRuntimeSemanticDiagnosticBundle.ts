@@ -59,6 +59,7 @@ import { serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports } 
 import { serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShell/serializeRuntimeNoopExecutionShellDiagnosticBundle";
 import { serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/serializeRuntimeNoopExecutionShellHarnessDiagnosticBundle";
 import { serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellHardening/serializeRuntimeNoopShellHardeningDiagnosticBundle";
+import { serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellReleaseGate/serializeRuntimeNoopShellReleaseGateDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -110,6 +111,9 @@ type SerializedRuntimeNoopExecutionShellHarnessDiag = ReturnType<
 >;
 type SerializedRuntimeNoopShellHardeningDiag = ReturnType<
   typeof serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeNoopShellReleaseGateDiag = ReturnType<
+  typeof serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -258,6 +262,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeNoopShellHardeningReadinessVerificationReport: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningReadinessVerificationReport"];
   runtimeNoopShellHardeningAlignmentReport: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningAlignmentReport"];
   runtimeNoopShellHardeningFinalSafetyGate: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningFinalSafetyGate"];
+  runtimeNoopShellReleaseGateSummary: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateSummary"];
+  runtimeNoopShellReleaseGateScope: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateScope"];
+  runtimeNoopShellReleaseGatePolicy: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGatePolicy"];
+  runtimeNoopShellReleaseGateBlockerReport: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateBlockerReport"];
+  runtimeNoopShellReleaseGateReadinessChecklist: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -277,6 +286,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const noopExecutionShellHarnessDiag =
     serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports(reports);
   const noopShellHardeningDiag = serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports(reports);
+  const noopShellReleaseGateDiag =
+    serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -360,6 +371,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...noopExecutionShellDiag,
     ...noopExecutionShellHarnessDiag,
     ...noopShellHardeningDiag,
+    ...noopShellReleaseGateDiag,
   };
 }
 

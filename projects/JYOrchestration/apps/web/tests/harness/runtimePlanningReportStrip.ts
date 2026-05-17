@@ -270,6 +270,27 @@ function omitNoopShellHardeningLayerOnly<T extends RuntimeSemanticPlanningReport
   return rest;
 }
 
+function omitNoopShellReleaseGateLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeNoopShellReleaseGateSummary"
+  | "runtimeNoopShellReleaseGateScope"
+  | "runtimeNoopShellReleaseGatePolicy"
+  | "runtimeNoopShellReleaseGateBlockerReport"
+  | "runtimeNoopShellReleaseGateReadinessChecklist"
+> {
+  const {
+    runtimeNoopShellReleaseGateSummary: _rg1,
+    runtimeNoopShellReleaseGateScope: _rg2,
+    runtimeNoopShellReleaseGatePolicy: _rg3,
+    runtimeNoopShellReleaseGateBlockerReport: _rg4,
+    runtimeNoopShellReleaseGateReadinessChecklist: _rg5,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
 function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -405,7 +426,7 @@ export function stripRuntimeNoopExecutionShellLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopExecutionShell {
   return omitNoopExecutionShellHarnessLayerOnly(
-    omitNoopShellHardeningLayerOnly(omitNoopExecutionShellLayerOnly(semantic))
+    omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellLayerOnly(semantic)))
   );
 }
 
@@ -413,14 +434,21 @@ export function stripRuntimeNoopExecutionShellLayer(
 export function stripRuntimeNoopExecutionShellHarnessLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness {
-  return omitNoopShellHardeningLayerOnly(omitNoopExecutionShellHarnessLayerOnly(semantic));
+  return omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellHarnessLayerOnly(semantic)));
 }
 
 /** H33 no-op shell hardening reports 제거 — shell hardening 이하 레이어 단독 테스트용. */
 export function stripRuntimeNoopShellHardeningLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopShellHardening {
-  return omitNoopShellHardeningLayerOnly(semantic);
+  return omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(semantic));
+}
+
+/** H34 release-gate candidate reports 제거 — release-gate 이하 레이어 단독 테스트용. */
+export function stripRuntimeNoopShellReleaseGateLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate {
+  return omitNoopShellReleaseGateLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

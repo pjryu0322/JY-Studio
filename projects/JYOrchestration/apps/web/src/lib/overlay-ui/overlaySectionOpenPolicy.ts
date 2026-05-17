@@ -69,7 +69,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_runtime_runner_noop_harness" ||
         input.section === "runtime_planning_runtime_noop_execution_shell" ||
         input.section === "runtime_planning_runtime_noop_execution_shell_harness" ||
-        input.section === "runtime_planning_runtime_noop_shell_hardening")
+        input.section === "runtime_planning_runtime_noop_shell_hardening" ||
+        input.section === "runtime_planning_runtime_noop_shell_release_gate")
     ) {
       omitFromDom = true;
       defaultOpen = false;

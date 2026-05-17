@@ -1,5 +1,5 @@
 /**
- * H17–H33 — semantic·…·execution shell·shell harness·shell hardening **planning 보고서** 일괄 산출.
+ * H17–H34 — semantic·…·shell hardening·release-gate candidate **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -35,6 +35,7 @@ import { buildRuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runt
 import { buildRuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/buildRuntimeNoopExecutionShellPlanningReports";
 import { buildRuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/buildRuntimeNoopExecutionShellHarnessPlanningReports";
 import { buildRuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningPlanningReports";
+import { buildRuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/buildRuntimeNoopShellReleaseGatePlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -231,8 +232,14 @@ export function buildRuntimeSemanticPlanningReports(
     ...noopExecutionShellHarnessReports,
   };
   const noopShellHardeningReports = buildRuntimeNoopShellHardeningPlanningReports(semanticWithExecutionShellHarness);
+  const semanticWithNoopShellHardening = {
+    ...semanticWithExecutionShellHarness,
+    ...noopShellHardeningReports,
+  };
+  const noopShellReleaseGateReports =
+    buildRuntimeNoopShellReleaseGatePlanningReports(semanticWithNoopShellHardening);
 
-  return { ...semanticWithExecutionShellHarness, ...noopShellHardeningReports };
+  return { ...semanticWithNoopShellHardening, ...noopShellReleaseGateReports };
 }
 
 export type {

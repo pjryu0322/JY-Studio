@@ -246,6 +246,7 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeNoopExecutionShell: boolean;
   runtimePlanningRuntimeNoopExecutionShellHarness: boolean;
   runtimePlanningRuntimeNoopShellHardening: boolean;
+  runtimePlanningRuntimeNoopShellReleaseGate: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -539,6 +540,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeNoopExecutionShell: false,
     runtimePlanningRuntimeNoopExecutionShellHarness: false,
     runtimePlanningRuntimeNoopShellHardening: false,
+    runtimePlanningRuntimeNoopShellReleaseGate: false,
   };
 }
 

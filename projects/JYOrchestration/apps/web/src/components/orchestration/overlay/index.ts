@@ -45,6 +45,7 @@ export { OverlayRuntimeRunnerNoopHarnessSection } from "./OverlayRuntimeRunnerNo
 export { OverlayRuntimeNoopExecutionShellSection } from "./OverlayRuntimeNoopExecutionShellSection";
 export { OverlayRuntimeNoopExecutionShellHarnessSection } from "./OverlayRuntimeNoopExecutionShellHarnessSection";
 export { OverlayRuntimeNoopShellHardeningSection } from "./OverlayRuntimeNoopShellHardeningSection";
+export { OverlayRuntimeNoopShellReleaseGateSection } from "./OverlayRuntimeNoopShellReleaseGateSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

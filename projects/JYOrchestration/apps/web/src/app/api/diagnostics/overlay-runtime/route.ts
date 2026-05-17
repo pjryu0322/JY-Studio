@@ -408,6 +408,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningControlledNoopExecutionShellHarnessEnabled: true,
     harnessRuntimePlanningIsolatedDryRunNoopShellHardeningEnabled: true,
     harnessRuntimePlanningIsolatedDryRunNoopShellHardeningStabilizationEnabled: true,
+    harnessRuntimePlanningControlledNoopExecutionShellReleaseGateCandidateEnabled: true,
   };
 
   const overlayMaturity = {
@@ -470,6 +471,7 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellStabilizationLayer: true,
     harnessRuntimePlanningControlledNoopExecutionShellHarnessLayer: true,
     harnessRuntimePlanningIsolatedDryRunNoopShellHardeningLayer: true,
+    harnessRuntimePlanningControlledNoopExecutionShellReleaseGateCandidateLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -811,6 +813,12 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeNoopShellHardeningReadinessVerificationReport,
       runtimeNoopShellHardeningAlignmentReport: runtimeSemanticDiag.runtimeNoopShellHardeningAlignmentReport,
       runtimeNoopShellHardeningFinalSafetyGate: runtimeSemanticDiag.runtimeNoopShellHardeningFinalSafetyGate,
+      runtimeNoopShellReleaseGateSummary: runtimeSemanticDiag.runtimeNoopShellReleaseGateSummary,
+      runtimeNoopShellReleaseGateScope: runtimeSemanticDiag.runtimeNoopShellReleaseGateScope,
+      runtimeNoopShellReleaseGatePolicy: runtimeSemanticDiag.runtimeNoopShellReleaseGatePolicy,
+      runtimeNoopShellReleaseGateBlockerReport: runtimeSemanticDiag.runtimeNoopShellReleaseGateBlockerReport,
+      runtimeNoopShellReleaseGateReadinessChecklist:
+        runtimeSemanticDiag.runtimeNoopShellReleaseGateReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
