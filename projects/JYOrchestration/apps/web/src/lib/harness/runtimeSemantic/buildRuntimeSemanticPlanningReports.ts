@@ -1,5 +1,5 @@
 /**
- * H17–H37.5 — semantic·…·execution boundary shell·governance boundary **planning 보고서** 일괄 산출.
+ * H17–H38 — semantic·…·governance boundary·governance release-readiness **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -39,6 +39,7 @@ import { buildRuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/r
 import { buildRuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightPlanningReports";
 import { buildRuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/buildRuntimeExecutionBoundaryShellPlanningReports";
 import { buildRuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/buildRuntimeExecutionGovernanceBoundaryPlanningReports";
+import { buildRuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceReleaseReadinessPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -65,6 +66,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight,
   RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
   RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
+  RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -90,6 +92,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight,
   RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
   RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
+  RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -272,7 +275,16 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithExecutionBoundaryShell
   );
 
-  return { ...semanticWithExecutionBoundaryShell, ...executionGovernanceBoundaryReports };
+  const semanticWithExecutionGovernanceBoundary: RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness = {
+    ...semanticWithExecutionBoundaryShell,
+    ...executionGovernanceBoundaryReports,
+  };
+
+  const governanceReleaseReadinessReports = buildRuntimeGovernanceReleaseReadinessPlanningReports(
+    semanticWithExecutionGovernanceBoundary
+  );
+
+  return { ...semanticWithExecutionGovernanceBoundary, ...governanceReleaseReadinessReports };
 }
 
 export type {

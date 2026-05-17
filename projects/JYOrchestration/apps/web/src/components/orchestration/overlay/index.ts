@@ -49,6 +49,7 @@ export { OverlayRuntimeNoopShellReleaseGateSection } from "./OverlayRuntimeNoopS
 export { OverlayRuntimeReleaseGatePreflightSection } from "./OverlayRuntimeReleaseGatePreflightSection";
 export { OverlayRuntimeExecutionBoundaryShellSection } from "./OverlayRuntimeExecutionBoundaryShellSection";
 export { OverlayRuntimeExecutionGovernanceBoundarySection } from "./OverlayRuntimeExecutionGovernanceBoundarySection";
+export { OverlayRuntimeGovernanceReleaseReadinessSection } from "./OverlayRuntimeGovernanceReleaseReadinessSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

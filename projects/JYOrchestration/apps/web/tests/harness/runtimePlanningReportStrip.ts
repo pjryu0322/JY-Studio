@@ -578,11 +578,45 @@ export function stripRuntimeExecutionBoundaryShellLayer(
   return omitExecutionBoundaryShellLayerOnly(semantic);
 }
 
-/** H37 execution governance boundary reports 제거 — governance boundary 이하 레이어 단독 테스트용. */
+/** H37 execution governance boundary reports 제거 — governance boundary 이하 레이어 단독 테스트용(H38 포함). */
 export function stripRuntimeExecutionGovernanceBoundaryLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary {
-  return omitExecutionGovernanceBoundaryLayerOnly(semantic);
+  return omitGovernanceReleaseReadinessLayerOnly(omitExecutionGovernanceBoundaryLayerOnly(semantic));
+}
+
+function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeGovernanceReleaseReadinessSummary"
+  | "runtimeGovernanceReleaseReadinessBoundary"
+  | "runtimeGovernanceReleaseInputEnvelope"
+  | "runtimeGovernanceReleaseOutputEnvelope"
+  | "runtimeGovernanceNoEnforcementProof"
+  | "runtimeExecutionGovernanceForbiddenProof"
+  | "runtimeGovernanceReleaseBlockerReport"
+  | "runtimeGovernanceReleaseReadinessChecklist"
+> {
+  const {
+    runtimeGovernanceReleaseReadinessSummary: _gr1,
+    runtimeGovernanceReleaseReadinessBoundary: _gr2,
+    runtimeGovernanceReleaseInputEnvelope: _gr3,
+    runtimeGovernanceReleaseOutputEnvelope: _gr4,
+    runtimeGovernanceNoEnforcementProof: _gr5,
+    runtimeExecutionGovernanceForbiddenProof: _gr6,
+    runtimeGovernanceReleaseBlockerReport: _gr7,
+    runtimeGovernanceReleaseReadinessChecklist: _gr8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H38 governance release-readiness reports 제거 — release-readiness 이하 레이어 단독 테스트용. */
+export function stripRuntimeGovernanceReleaseReadinessLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness {
+  return omitGovernanceReleaseReadinessLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

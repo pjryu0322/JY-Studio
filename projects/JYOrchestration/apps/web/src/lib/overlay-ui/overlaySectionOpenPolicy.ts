@@ -73,7 +73,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_runtime_noop_shell_release_gate" ||
         input.section === "runtime_planning_runtime_release_gate_preflight" ||
         input.section === "runtime_planning_runtime_execution_boundary_shell" ||
-        input.section === "runtime_planning_runtime_execution_governance_boundary")
+        input.section === "runtime_planning_runtime_execution_governance_boundary" ||
+        input.section === "runtime_planning_runtime_governance_release_readiness")
     ) {
       omitFromDom = true;
       defaultOpen = false;

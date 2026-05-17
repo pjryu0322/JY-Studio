@@ -361,10 +361,11 @@ describe("H37 / H37.5 execution governance boundary candidate", () => {
     expect(serialized.runtimeExecutionGovernanceBoundaryAlignmentReport).toBeDefined();
   });
 
-  it("stripRuntimeExecutionGovernanceBoundaryLayer removes H37 and H37.5 fields only", () => {
+  it("stripRuntimeExecutionGovernanceBoundaryLayer removes H37, H37.5, and H38 fields only", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeExecutionGovernanceBoundaryLayer(semantic);
     expect("runtimeExecutionGovernanceBoundarySummary" in stripped).toBe(false);
+    expect("runtimeGovernanceReleaseReadinessSummary" in stripped).toBe(false);
     expect("runtimeExecutionBoundaryShellSummary" in stripped).toBe(true);
     expect(stripped.runtimeExecutionBoundaryShellFinalSafetyGate.mode).toBe(
       "runtime_execution_boundary_shell_final_safety_gate"
