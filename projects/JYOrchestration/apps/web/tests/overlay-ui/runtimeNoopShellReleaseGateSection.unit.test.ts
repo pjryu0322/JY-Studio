@@ -21,10 +21,11 @@ describe("buildOverlayRuntimeNoopShellReleaseGateSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, mode, and top blocker or attention", () => {
+  it("compact mode displays candidate status, mode, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeNoopShellReleaseGateSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.releaseGateModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

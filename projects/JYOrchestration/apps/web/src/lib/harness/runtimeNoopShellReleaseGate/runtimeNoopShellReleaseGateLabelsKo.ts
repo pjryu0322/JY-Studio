@@ -1,10 +1,13 @@
 /**
- * H34 — no-op shell release-gate overlay·진단 **한국어 라벨**(read-only).
+ * H34 / H34.5 — no-op shell release-gate overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
+  RuntimeNoopShellReleaseGateAlignmentStatus,
   RuntimeNoopShellReleaseGateCandidateStatus,
+  RuntimeNoopShellReleaseGateFinalGateStatus,
   RuntimeNoopShellReleaseGateMode,
+  RuntimeNoopShellReleaseGateReadinessVerificationStatus,
 } from "./runtimeNoopShellReleaseGateTypes";
 
 export const RUNTIME_NOOP_SHELL_RELEASE_GATE_SECTION_DISCLAIMER_KO =
@@ -37,4 +40,33 @@ export const RUNTIME_NOOP_SHELL_RELEASE_GATE_EMPTY_HINT_KO = {
   missingChecklist: "누락 checklist 항목 없음",
   blocker: "release-gate blocker 없음",
   recommendation: "recommendation 없음",
+  boundaryViolation: "boundary violation 없음",
+  readinessFinding: "readiness verification finding 없음",
+  alignmentFinding: "alignment finding 없음",
+  finalGateChecklist: "final gate checklist 행 없음",
 } as const;
+
+export const RUNTIME_NOOP_SHELL_RELEASE_GATE_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeNoopShellReleaseGateFinalGateStatus, string>
+> = {
+  ready_metadata: "메타 준비됨",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_NOOP_SHELL_RELEASE_GATE_READINESS_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeNoopShellReleaseGateReadinessVerificationStatus, string>
+> = {
+  verified_metadata: "검증됨(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_NOOP_SHELL_RELEASE_GATE_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeNoopShellReleaseGateAlignmentStatus, string>
+> = {
+  aligned_metadata: "정렬됨(메타)",
+  partial: "부분",
+  failed: "실패",
+};

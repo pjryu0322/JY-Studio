@@ -819,6 +819,14 @@ export async function GET(request: NextRequest) {
       runtimeNoopShellReleaseGateBlockerReport: runtimeSemanticDiag.runtimeNoopShellReleaseGateBlockerReport,
       runtimeNoopShellReleaseGateReadinessChecklist:
         runtimeSemanticDiag.runtimeNoopShellReleaseGateReadinessChecklist,
+      runtimeNoopShellReleaseGateBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeNoopShellReleaseGateBoundaryViolationReport,
+      runtimeNoopShellReleaseGateReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeNoopShellReleaseGateReadinessVerificationReport,
+      runtimeNoopShellReleaseGateAlignmentReport:
+        runtimeSemanticDiag.runtimeNoopShellReleaseGateAlignmentReport,
+      runtimeNoopShellReleaseGateFinalSafetyGate:
+        runtimeSemanticDiag.runtimeNoopShellReleaseGateFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

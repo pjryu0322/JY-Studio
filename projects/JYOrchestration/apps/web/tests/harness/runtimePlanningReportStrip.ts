@@ -279,6 +279,10 @@ function omitNoopShellReleaseGateLayerOnly<T extends RuntimeSemanticPlanningRepo
   | "runtimeNoopShellReleaseGatePolicy"
   | "runtimeNoopShellReleaseGateBlockerReport"
   | "runtimeNoopShellReleaseGateReadinessChecklist"
+  | "runtimeNoopShellReleaseGateBoundaryViolationReport"
+  | "runtimeNoopShellReleaseGateReadinessVerificationReport"
+  | "runtimeNoopShellReleaseGateAlignmentReport"
+  | "runtimeNoopShellReleaseGateFinalSafetyGate"
 > {
   const {
     runtimeNoopShellReleaseGateSummary: _rg1,
@@ -286,6 +290,10 @@ function omitNoopShellReleaseGateLayerOnly<T extends RuntimeSemanticPlanningRepo
     runtimeNoopShellReleaseGatePolicy: _rg3,
     runtimeNoopShellReleaseGateBlockerReport: _rg4,
     runtimeNoopShellReleaseGateReadinessChecklist: _rg5,
+    runtimeNoopShellReleaseGateBoundaryViolationReport: _rg6,
+    runtimeNoopShellReleaseGateReadinessVerificationReport: _rg7,
+    runtimeNoopShellReleaseGateAlignmentReport: _rg8,
+    runtimeNoopShellReleaseGateFinalSafetyGate: _rg9,
     ...rest
   } = semantic;
   return rest;

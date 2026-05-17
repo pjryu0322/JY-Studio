@@ -4,10 +4,14 @@
 
 import type { RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { buildRuntimeNoopShellReleaseGateAlignmentReport } from "./buildRuntimeNoopShellReleaseGateAlignmentReport";
+import { buildRuntimeNoopShellReleaseGateFinalSafetyGate } from "./buildRuntimeNoopShellReleaseGateFinalSafetyGate";
 import { buildRuntimeNoopShellReleaseGatePolicy } from "./buildRuntimeNoopShellReleaseGatePolicy";
 import { buildRuntimeNoopShellReleaseGateReadinessChecklist } from "./buildRuntimeNoopShellReleaseGateReadinessChecklist";
 import { buildRuntimeNoopShellReleaseGateScope } from "./buildRuntimeNoopShellReleaseGateScope";
 import { detectRuntimeNoopShellReleaseGateBlockers } from "./detectRuntimeNoopShellReleaseGateBlockers";
+import { detectRuntimeNoopShellReleaseGateBoundaryViolations } from "./detectRuntimeNoopShellReleaseGateBoundaryViolations";
+import { verifyRuntimeNoopShellReleaseGateReadiness } from "./verifyRuntimeNoopShellReleaseGateReadiness";
 import { evaluateRuntimeNoopShellReleaseGateCandidate } from "./evaluateRuntimeNoopShellReleaseGateCandidate";
 import { resolveRuntimeNoopShellReleaseGateMode } from "./resolveRuntimeNoopShellReleaseGateMode";
 import type {
@@ -74,11 +78,52 @@ export function buildRuntimeNoopShellReleaseGatePlanningReports(
     ]),
   };
 
+  const runtimeNoopShellReleaseGateBoundaryViolationReport = detectRuntimeNoopShellReleaseGateBoundaryViolations({
+    summary: runtimeNoopShellReleaseGateSummary,
+    policy: runtimeNoopShellReleaseGatePolicy,
+  });
+
+  const runtimeNoopShellReleaseGateReadinessVerificationReport = verifyRuntimeNoopShellReleaseGateReadiness({
+    summary: runtimeNoopShellReleaseGateSummary,
+    scope: runtimeNoopShellReleaseGateScope,
+    policy: runtimeNoopShellReleaseGatePolicy,
+    checklist: runtimeNoopShellReleaseGateReadinessChecklist,
+    blockerReport: runtimeNoopShellReleaseGateBlockerReport,
+  });
+
+  const runtimeNoopShellReleaseGateAlignmentReport = buildRuntimeNoopShellReleaseGateAlignmentReport({
+    summary: runtimeNoopShellReleaseGateSummary,
+    scope: runtimeNoopShellReleaseGateScope,
+    policy: runtimeNoopShellReleaseGatePolicy,
+    checklist: runtimeNoopShellReleaseGateReadinessChecklist,
+    boundaryViolation: runtimeNoopShellReleaseGateBoundaryViolationReport,
+  });
+
+  const runtimeNoopShellReleaseGateFinalSafetyGate = buildRuntimeNoopShellReleaseGateFinalSafetyGate({
+    summary: runtimeNoopShellReleaseGateSummary,
+    blockerReport: runtimeNoopShellReleaseGateBlockerReport,
+    boundaryViolation: runtimeNoopShellReleaseGateBoundaryViolationReport,
+    readinessVerification: runtimeNoopShellReleaseGateReadinessVerificationReport,
+    alignmentReport: runtimeNoopShellReleaseGateAlignmentReport,
+  });
+
+  const summaryWithFinalRecommendations = {
+    ...runtimeNoopShellReleaseGateSummary,
+    recommendations: mergeSortedUniqueKo([
+      ...runtimeNoopShellReleaseGateSummary.recommendations,
+      ...runtimeNoopShellReleaseGateFinalSafetyGate.recommendations,
+    ]),
+  };
+
   return {
-    runtimeNoopShellReleaseGateSummary,
+    runtimeNoopShellReleaseGateSummary: summaryWithFinalRecommendations,
     runtimeNoopShellReleaseGateScope,
     runtimeNoopShellReleaseGatePolicy,
     runtimeNoopShellReleaseGateBlockerReport,
     runtimeNoopShellReleaseGateReadinessChecklist,
+    runtimeNoopShellReleaseGateBoundaryViolationReport,
+    runtimeNoopShellReleaseGateReadinessVerificationReport,
+    runtimeNoopShellReleaseGateAlignmentReport,
+    runtimeNoopShellReleaseGateFinalSafetyGate,
   };
 }

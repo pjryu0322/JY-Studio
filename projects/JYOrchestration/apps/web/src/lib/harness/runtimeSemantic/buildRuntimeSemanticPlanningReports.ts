@@ -1,5 +1,5 @@
 /**
- * H17–H34 — semantic·…·shell hardening·release-gate candidate **planning 보고서** 일괄 산출.
+ * H17–H34.5 — semantic·…·shell hardening·release-gate candidate·release-gate final safety gate **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";

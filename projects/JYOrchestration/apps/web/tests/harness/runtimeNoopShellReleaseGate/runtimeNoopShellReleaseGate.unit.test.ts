@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/buildRuntimeNoopShellReleaseGatePlanningReports";
+import { buildRuntimeNoopShellReleaseGateFinalSafetyGate } from "@/lib/harness/runtimeNoopShellReleaseGate/buildRuntimeNoopShellReleaseGateFinalSafetyGate";
+import { detectRuntimeNoopShellReleaseGateBoundaryViolations } from "@/lib/harness/runtimeNoopShellReleaseGate/detectRuntimeNoopShellReleaseGateBoundaryViolations";
 import { serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellReleaseGate/serializeRuntimeNoopShellReleaseGateDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -46,7 +48,7 @@ function buildReleaseGatePlanning(
   return buildRuntimeNoopShellReleaseGatePlanningReports({ ...base, ...patches });
 }
 
-describe("H34 no-op shell release-gate candidate", () => {
+describe("H34 / H34.5 no-op shell release-gate candidate", () => {
   it("full semantic includes release-gate with all actual execution flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeNoopShellReleaseGateSummary.mode).toBe("runtime_noop_shell_release_gate_summary");
@@ -54,6 +56,12 @@ describe("H34 no-op shell release-gate candidate", () => {
     expect(semantic.runtimeNoopShellReleaseGateSummary.actualExecutionShellExecutionEnabled).toBe(false);
     expect(semantic.runtimeNoopShellReleaseGatePolicy.actualReleaseEnforcementForbidden).toBe(true);
     expect(semantic.runtimeNoopShellReleaseGatePolicy.actualShellExecutionForbidden).toBe(true);
+    expect(semantic.runtimeNoopShellReleaseGateFinalSafetyGate.mode).toBe(
+      "runtime_noop_shell_release_gate_final_safety_gate"
+    );
+    expect(semantic.runtimeNoopShellReleaseGateFinalSafetyGate.h35EntryReadiness).toBe(
+      semantic.runtimeNoopShellReleaseGateFinalSafetyGate.finalGateStatus
+    );
   });
 
   it("hardening final gate ready + verified + aligned yields release_gate_metadata_candidate", () => {
@@ -181,7 +189,103 @@ describe("H34 no-op shell release-gate candidate", () => {
     expect(releaseGate.runtimeNoopShellReleaseGateSummary.candidateStatus).toBe("blocked");
   });
 
-  it("serializer does not rebuild reports", () => {
+  it("release_gate_metadata_candidate + verified + aligned + no violations yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (semantic.runtimeNoopShellReleaseGateSummary.candidateStatus !== "release_gate_metadata_candidate") {
+      return;
+    }
+    expect(semantic.runtimeNoopShellReleaseGateSummary.releaseGateMode).toBe("metadata_only");
+    expect(semantic.runtimeNoopShellReleaseGateReadinessVerificationReport.verificationStatus).toBe(
+      "verified_metadata"
+    );
+    expect(semantic.runtimeNoopShellReleaseGateAlignmentReport.alignmentStatus).toBe("aligned_metadata");
+    expect(semantic.runtimeNoopShellReleaseGateBoundaryViolationReport.actualFlagViolations).toEqual([]);
+    expect(semantic.runtimeNoopShellReleaseGateFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+  });
+
+  it("watch candidate without release-gate blockers yields final gate watch", () => {
+    const partial = buildReleaseGatePlanning();
+    const finalGate = buildRuntimeNoopShellReleaseGateFinalSafetyGate({
+      summary: {
+        ...partial.runtimeNoopShellReleaseGateSummary,
+        candidateStatus: "watch",
+        releaseGateMode: "metadata_only",
+        releaseGateBlockers: [],
+      },
+      blockerReport: {
+        ...partial.runtimeNoopShellReleaseGateBlockerReport,
+        blockers: [],
+      },
+      boundaryViolation: {
+        ...partial.runtimeNoopShellReleaseGateBoundaryViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: ["wording risk"],
+      },
+      readinessVerification: {
+        ...partial.runtimeNoopShellReleaseGateReadinessVerificationReport,
+        verificationStatus: "partial",
+      },
+      alignmentReport: {
+        ...partial.runtimeNoopShellReleaseGateAlignmentReport,
+        alignmentStatus: "aligned_metadata",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("watch");
+    expect(finalGate.h35EntryReadiness).toBe("watch");
+  });
+
+  it("blocked candidate yields final gate blocked", () => {
+    const base = stripRuntimeNoopShellReleaseGateLayer(buildFullSemantic());
+    const releaseGate = buildReleaseGatePlanning({
+      runtimeNoopShellHardeningFinalSafetyGate: {
+        ...base.runtimeNoopShellHardeningFinalSafetyGate,
+        finalGateStatus: "blocked",
+        h34EntryReadiness: "blocked",
+      },
+    });
+    expect(releaseGate.runtimeNoopShellReleaseGateSummary.candidateStatus).toBe("blocked");
+    expect(releaseGate.runtimeNoopShellReleaseGateFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("policy actualReleaseEnforcementForbidden false yields boundary violation", () => {
+    const partial = buildReleaseGatePlanning();
+    const violation = detectRuntimeNoopShellReleaseGateBoundaryViolations({
+      summary: partial.runtimeNoopShellReleaseGateSummary,
+      policy: {
+        ...partial.runtimeNoopShellReleaseGatePolicy,
+        actualReleaseEnforcementForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualReleaseEnforcementForbidden"))).toBe(
+      true
+    );
+  });
+
+  it("summary actualNoopShellExecutionEnabled true yields boundary violation", () => {
+    const partial = buildReleaseGatePlanning();
+    const violation = detectRuntimeNoopShellReleaseGateBoundaryViolations({
+      summary: {
+        ...partial.runtimeNoopShellReleaseGateSummary,
+        actualNoopShellExecutionEnabled: true as unknown as false,
+      },
+      policy: partial.runtimeNoopShellReleaseGatePolicy,
+    });
+    expect(violation.actualFlagViolations.length).toBeGreaterThan(0);
+  });
+
+  it("alignment failed yields final gate blocked", () => {
+    const base = stripRuntimeNoopShellReleaseGateLayer(buildFullSemantic());
+    const releaseGate = buildReleaseGatePlanning({
+      runtimeNoopShellHardeningAlignmentReport: {
+        ...base.runtimeNoopShellHardeningAlignmentReport,
+        alignmentStatus: "failed",
+      },
+    });
+    expect(releaseGate.runtimeNoopShellReleaseGateSummary.candidateStatus).toBe("blocked");
+    expect(releaseGate.runtimeNoopShellReleaseGateFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("serializer does not rebuild reports and includes H34.5 fields", () => {
     const semantic = buildFullSemantic();
     const serialized = serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports(semantic);
     expect(serialized.runtimeNoopShellReleaseGateSummary).toEqual(
@@ -196,6 +300,15 @@ describe("H34 no-op shell release-gate candidate", () => {
           semantic.runtimeNoopShellReleaseGatePolicy.actualReleaseEnforcementForbidden,
       })
     );
+    expect(serialized.runtimeNoopShellReleaseGateFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeNoopShellReleaseGateFinalSafetyGate.finalGateStatus,
+        h35EntryReadiness: semantic.runtimeNoopShellReleaseGateFinalSafetyGate.h35EntryReadiness,
+      })
+    );
+    expect(serialized.runtimeNoopShellReleaseGateBoundaryViolationReport).toBeDefined();
+    expect(serialized.runtimeNoopShellReleaseGateReadinessVerificationReport).toBeDefined();
+    expect(serialized.runtimeNoopShellReleaseGateAlignmentReport).toBeDefined();
   });
 
   it("stripRuntimeNoopShellReleaseGateLayer removes H34 fields only", () => {
