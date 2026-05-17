@@ -47,6 +47,7 @@ import { buildRuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/har
 import { buildRuntimeControlledActivationCandidatePlanningReports } from "@/lib/harness/runtimeControlledActivationCandidate/buildRuntimeControlledActivationCandidatePlanningReports";
 import { buildRuntimeLimitedPilotBoundaryPlanningReports } from "@/lib/harness/runtimeLimitedPilotBoundary/buildRuntimeLimitedPilotBoundaryPlanningReports";
 import { buildRuntimeLimitedPilotReadinessReviewPlanningReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimeLimitedPilotReadinessReviewPlanningReports";
+import { buildRuntimePilotExecutionReadinessPlanningReports } from "@/lib/harness/runtimePilotExecutionReadiness/buildRuntimePilotExecutionReadinessPlanningReports";
 import { buildRuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/buildRuntimeUltimateGovernanceReviewPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
@@ -80,6 +81,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview,
   RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary,
   RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview,
+  RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -111,6 +113,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview,
   RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary,
   RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview,
+  RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -347,7 +350,16 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithLimitedPilotBoundary
   );
 
-  return { ...semanticWithLimitedPilotBoundary, ...limitedPilotReadinessReviewReports };
+  const semanticWithLimitedPilotReadinessReview: RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness = {
+    ...semanticWithLimitedPilotBoundary,
+    ...limitedPilotReadinessReviewReports,
+  };
+
+  const pilotExecutionReadinessReports = buildRuntimePilotExecutionReadinessPlanningReports(
+    semanticWithLimitedPilotReadinessReview
+  );
+
+  return { ...semanticWithLimitedPilotReadinessReview, ...pilotExecutionReadinessReports };
 }
 
 export type {

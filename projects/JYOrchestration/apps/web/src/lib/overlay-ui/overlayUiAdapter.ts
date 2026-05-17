@@ -265,6 +265,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeLimitedPilotBoundary: boolean;
   /** H43 limited runtime pilot readiness review. */
   runtimePlanningRuntimeLimitedPilotReadinessReview: boolean;
+  /** H44 pilot execution readiness boundary. */
+  runtimePlanningRuntimePilotExecutionReadiness: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -568,6 +570,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeControlledActivationCandidate: false,
     runtimePlanningRuntimeLimitedPilotBoundary: false,
     runtimePlanningRuntimeLimitedPilotReadinessReview: false,
+    runtimePlanningRuntimePilotExecutionReadiness: false,
   };
 }
 

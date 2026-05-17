@@ -614,6 +614,40 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimePilotExecutionReadinessSummary"
+  | "runtimePilotExecutionReadinessBoundary"
+  | "runtimePilotExecutionReadinessInputEnvelope"
+  | "runtimePilotExecutionReadinessOutputEnvelope"
+  | "runtimeFinalPilotNoExecutionProof"
+  | "runtimeFinalPilotExecutionForbiddenProof"
+  | "runtimePilotExecutionReadinessBlockerReport"
+  | "runtimePilotExecutionReadinessChecklist"
+> {
+  const {
+    runtimePilotExecutionReadinessSummary: _e1,
+    runtimePilotExecutionReadinessBoundary: _e2,
+    runtimePilotExecutionReadinessInputEnvelope: _e3,
+    runtimePilotExecutionReadinessOutputEnvelope: _e4,
+    runtimeFinalPilotNoExecutionProof: _e5,
+    runtimeFinalPilotExecutionForbiddenProof: _e6,
+    runtimePilotExecutionReadinessBlockerReport: _e7,
+    runtimePilotExecutionReadinessChecklist: _e8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H44 reports 제거 — H44 단독 테스트용. */
+export function stripRuntimePilotExecutionReadinessLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness {
+  return omitPilotExecutionReadinessLayerOnly(semantic);
+}
+
 function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -631,6 +665,7 @@ function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlann
   | "runtimeLimitedPilotReadinessReviewAlignmentReport"
   | "runtimeLimitedPilotReadinessReviewFinalSafetyGate"
 > {
+  const withoutH44 = omitPilotExecutionReadinessLayerOnly(semantic);
   const {
     runtimeLimitedPilotReadinessReviewSummary: _r1,
     runtimePilotContractHardeningBoundary: _r2,
@@ -645,7 +680,7 @@ function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlann
     runtimeLimitedPilotReadinessReviewAlignmentReport: _r11,
     runtimeLimitedPilotReadinessReviewFinalSafetyGate: _r12,
     ...rest
-  } = semantic;
+  } = withoutH44;
   return rest;
 }
 

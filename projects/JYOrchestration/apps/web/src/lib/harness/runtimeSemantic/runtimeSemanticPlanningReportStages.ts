@@ -25,6 +25,7 @@ import type { RuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/har
 import type { RuntimeControlledActivationCandidatePlanningReports } from "@/lib/harness/runtimeControlledActivationCandidate/runtimeControlledActivationCandidateTypes";
 import type { RuntimeLimitedPilotBoundaryPlanningReports } from "@/lib/harness/runtimeLimitedPilotBoundary/runtimeLimitedPilotBoundaryTypes";
 import type { RuntimeLimitedPilotReadinessReviewPlanningReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/runtimeLimitedPilotReadinessReviewTypes";
+import type { RuntimePilotExecutionReadinessPlanningReports } from "@/lib/harness/runtimePilotExecutionReadiness/runtimePilotExecutionReadinessTypes";
 import type { RuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/runtimeUltimateGovernanceReviewTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
@@ -191,5 +192,10 @@ export type RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview =
   RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary & RuntimeLimitedPilotBoundaryPlanningReports;
 
 /** H43 / H43.5 포함 — limited pilot readiness review·final safety gate까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview &
-  RuntimeLimitedPilotReadinessReviewPlanningReports;
+export type RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness =
+  RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview &
+    RuntimeLimitedPilotReadinessReviewPlanningReports;
+
+/** H44 포함 — pilot execution readiness boundary까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness &
+  RuntimePilotExecutionReadinessPlanningReports;
