@@ -261,6 +261,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeUltimateGovernanceReview: boolean;
   /** H41 controlled activation candidate·runtime control handoff boundary. */
   runtimePlanningRuntimeControlledActivationCandidate: boolean;
+  /** H42 limited controlled runtime pilot boundary candidate. */
+  runtimePlanningRuntimeLimitedPilotBoundary: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -562,6 +564,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeFinalReleaseGovernanceGate: false,
     runtimePlanningRuntimeUltimateGovernanceReview: false,
     runtimePlanningRuntimeControlledActivationCandidate: false,
+    runtimePlanningRuntimeLimitedPilotBoundary: false,
   };
 }
 

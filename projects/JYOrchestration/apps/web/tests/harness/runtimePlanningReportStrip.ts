@@ -614,6 +614,38 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeLimitedPilotBoundarySummary"
+  | "runtimeLimitedPilotBoundaryScope"
+  | "runtimeLimitedPilotBoundaryPolicy"
+  | "runtimeLimitedPilotInputContract"
+  | "runtimeLimitedPilotOutputContract"
+  | "runtimeLimitedPilotBoundaryBlockerReport"
+  | "runtimeLimitedPilotReadinessChecklist"
+> {
+  const {
+    runtimeLimitedPilotBoundarySummary: _p1,
+    runtimeLimitedPilotBoundaryScope: _p2,
+    runtimeLimitedPilotBoundaryPolicy: _p3,
+    runtimeLimitedPilotInputContract: _p4,
+    runtimeLimitedPilotOutputContract: _p5,
+    runtimeLimitedPilotBoundaryBlockerReport: _p6,
+    runtimeLimitedPilotReadinessChecklist: _p7,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H42 limited pilot boundary reports 제거 — H42 단독 테스트용. */
+export function stripRuntimeLimitedPilotBoundaryLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary {
+  return omitLimitedPilotBoundaryLayerOnly(semantic);
+}
+
 function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -629,6 +661,7 @@ function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPla
   | "runtimeControlledActivationCandidateAlignmentReport"
   | "runtimeControlledActivationCandidateFinalSafetyGate"
 > {
+  const withoutH42 = omitLimitedPilotBoundaryLayerOnly(semantic);
   const {
     runtimeControlledActivationCandidateSummary: _c1,
     runtimeControlHandoffBoundary: _c2,
@@ -641,7 +674,7 @@ function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPla
     runtimeControlledActivationCandidateAlignmentReport: _c9,
     runtimeControlledActivationCandidateFinalSafetyGate: _c10,
     ...rest
-  } = semantic;
+  } = withoutH42;
   return rest;
 }
 

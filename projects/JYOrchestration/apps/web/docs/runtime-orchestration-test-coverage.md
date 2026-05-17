@@ -1,10 +1,10 @@
-# H20.5~H41 Runtime Orchestration Test Coverage
+# H20.5~H42 Runtime Orchestration Test Coverage
 
 ## Coverage summary
 
 | Priority | Layers | Harness unit tests | Overlay UI tests | Notes |
 |----------|--------|-------------------|-------------------|-------|
-| P1 | H38.5, H39, H39.5, H40, H40.5, H41, H41.5 | yes | H38–H41 sections | `runtimeShared/runtimeReadOnlyInvariants.ts` + unit test |
+| P1 | H38.5, H39, H39.5, H40, H40.5, H41, H41.5, H42 | yes | H38–H42 sections | `runtimeShared/runtimeReadOnlyInvariants.ts` + unit test |
 | P2 | H36–H37.5 | yes | yes | execution boundary + governance boundary |
 | P3 | H31–H35.5 | yes (H33 harness gap) | yes | H33 overlay only |
 | P4 | H20.5–H30 | yes | yes | resource through runner harness |

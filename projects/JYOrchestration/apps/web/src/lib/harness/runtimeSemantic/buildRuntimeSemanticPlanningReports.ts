@@ -1,5 +1,5 @@
 /**
- * H17–H41 — semantic·…·controlled activation candidate **planning 보고서** 일괄 산출.
+ * H17–H42 — semantic·…·limited pilot boundary candidate **planning 보고서** 일괄 산출.
  *
  * 각 harness 계층은 `buildLayerPlanningReports(previousSemantic)` 후 spread만 수행한다.
  * 하위 builder·serializer·Overlay VM에서 상위 planning report 재빌드 금지.
@@ -45,6 +45,7 @@ import { buildRuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/ha
 import { buildRuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceReleaseReadinessPlanningReports";
 import { buildRuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/buildRuntimeFinalReleaseGovernanceGatePlanningReports";
 import { buildRuntimeControlledActivationCandidatePlanningReports } from "@/lib/harness/runtimeControlledActivationCandidate/buildRuntimeControlledActivationCandidatePlanningReports";
+import { buildRuntimeLimitedPilotBoundaryPlanningReports } from "@/lib/harness/runtimeLimitedPilotBoundary/buildRuntimeLimitedPilotBoundaryPlanningReports";
 import { buildRuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/buildRuntimeUltimateGovernanceReviewPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
@@ -76,6 +77,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate,
   RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate,
   RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview,
+  RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -105,6 +107,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate,
   RuntimeSemanticPlanningReportsBeforeControlledActivationCandidate,
   RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview,
+  RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -323,7 +326,16 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithUltimateGovernanceReview
   );
 
-  return { ...semanticWithUltimateGovernanceReview, ...controlledActivationCandidateReports };
+  const semanticWithControlledActivationCandidate: RuntimeSemanticPlanningReportsBeforeLimitedPilotBoundary = {
+    ...semanticWithUltimateGovernanceReview,
+    ...controlledActivationCandidateReports,
+  };
+
+  const limitedPilotBoundaryReports = buildRuntimeLimitedPilotBoundaryPlanningReports(
+    semanticWithControlledActivationCandidate
+  );
+
+  return { ...semanticWithControlledActivationCandidate, ...limitedPilotBoundaryReports };
 }
 
 export type {
