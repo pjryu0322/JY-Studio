@@ -597,6 +597,10 @@ function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanni
   | "runtimeExecutionGovernanceForbiddenProof"
   | "runtimeGovernanceReleaseBlockerReport"
   | "runtimeGovernanceReleaseReadinessChecklist"
+  | "runtimeGovernanceReleaseReadinessViolationReport"
+  | "runtimeGovernanceReleaseReadinessVerificationReport"
+  | "runtimeGovernanceReleaseReadinessAlignmentReport"
+  | "runtimeGovernanceReleaseReadinessFinalSafetyGate"
 > {
   const {
     runtimeGovernanceReleaseReadinessSummary: _gr1,
@@ -607,6 +611,10 @@ function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanni
     runtimeExecutionGovernanceForbiddenProof: _gr6,
     runtimeGovernanceReleaseBlockerReport: _gr7,
     runtimeGovernanceReleaseReadinessChecklist: _gr8,
+    runtimeGovernanceReleaseReadinessViolationReport: _gr9,
+    runtimeGovernanceReleaseReadinessVerificationReport: _gr10,
+    runtimeGovernanceReleaseReadinessAlignmentReport: _gr11,
+    runtimeGovernanceReleaseReadinessFinalSafetyGate: _gr12,
     ...rest
   } = semantic;
   return rest;

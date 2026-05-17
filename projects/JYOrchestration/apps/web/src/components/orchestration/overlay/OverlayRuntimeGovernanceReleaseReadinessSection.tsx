@@ -18,15 +18,23 @@ export function OverlayRuntimeGovernanceReleaseReadinessSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Governance Release-Readiness (H38)"
+      title="Runtime Governance Release-Readiness (H38 / H38.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Release readiness" value={vm.readinessStatusKo} />
         <OverlayUiKeyValueRow label="Readiness mode" value={vm.readinessModeKo} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H39 entry readiness" value={vm.h39EntryReadinessKo} />
+        {vm.showDetailSections ? (
+          <>
+            <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+            <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+          </>
+        ) : null}
         {vm.topViolationOrBlocker ? (
-          <OverlayUiKeyValueRow label="Top blocker / forbidden operation" value={vm.topViolationOrBlocker} />
+          <OverlayUiKeyValueRow label="Top blocker / violation / finding" value={vm.topViolationOrBlocker} />
         ) : null}
         {!vm.topViolationOrBlocker && vm.topForbiddenBoundaryOperation ? (
           <OverlayUiKeyValueRow
@@ -65,6 +73,21 @@ export function OverlayRuntimeGovernanceReleaseReadinessSection({
               emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.forbiddenProof}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Release-readiness violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.boundaryViolation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.readinessFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.alignmentFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.checklist}
@@ -76,6 +99,11 @@ export function OverlayRuntimeGovernanceReleaseReadinessSection({
                 emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Release blockers"
               rows={vm.releaseBlockerRows}

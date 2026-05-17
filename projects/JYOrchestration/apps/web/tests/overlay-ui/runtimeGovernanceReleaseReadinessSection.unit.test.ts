@@ -21,10 +21,11 @@ describe("buildOverlayRuntimeGovernanceReleaseReadinessSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays readiness status, mode, and top blocker or attention", () => {
+  it("compact mode displays readiness status, mode, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeGovernanceReleaseReadinessSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.readinessStatusKo).toBeTruthy();
     expect(vm.readinessModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

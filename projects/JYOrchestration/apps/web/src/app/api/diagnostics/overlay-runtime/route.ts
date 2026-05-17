@@ -889,6 +889,14 @@ export async function GET(request: NextRequest) {
       runtimeGovernanceReleaseBlockerReport: runtimeSemanticDiag.runtimeGovernanceReleaseBlockerReport,
       runtimeGovernanceReleaseReadinessChecklist:
         runtimeSemanticDiag.runtimeGovernanceReleaseReadinessChecklist,
+      runtimeGovernanceReleaseReadinessViolationReport:
+        runtimeSemanticDiag.runtimeGovernanceReleaseReadinessViolationReport,
+      runtimeGovernanceReleaseReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeGovernanceReleaseReadinessVerificationReport,
+      runtimeGovernanceReleaseReadinessAlignmentReport:
+        runtimeSemanticDiag.runtimeGovernanceReleaseReadinessAlignmentReport,
+      runtimeGovernanceReleaseReadinessFinalSafetyGate:
+        runtimeSemanticDiag.runtimeGovernanceReleaseReadinessFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

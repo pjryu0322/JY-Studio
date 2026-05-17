@@ -1,5 +1,5 @@
 /**
- * H38 — governance release-readiness 진단 **직렬화 전용**(report 재빌드 없음).
+ * H38 / H38.5 — governance release-readiness 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
@@ -9,9 +9,13 @@ import type {
   RuntimeGovernanceReleaseBlockerReport,
   RuntimeGovernanceReleaseInputEnvelope,
   RuntimeGovernanceReleaseOutputEnvelope,
+  RuntimeGovernanceReleaseReadinessAlignmentReport,
   RuntimeGovernanceReleaseReadinessBoundary,
   RuntimeGovernanceReleaseReadinessChecklist,
+  RuntimeGovernanceReleaseReadinessFinalSafetyGate,
   RuntimeGovernanceReleaseReadinessSummary,
+  RuntimeGovernanceReleaseReadinessVerificationReport,
+  RuntimeGovernanceReleaseReadinessViolationReport,
 } from "./runtimeGovernanceReleaseReadinessTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
@@ -138,6 +142,57 @@ function serializeChecklist(c: RuntimeGovernanceReleaseReadinessChecklist): Read
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeGovernanceReleaseReadinessViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    proofViolations: sortKo(v.proofViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  r: RuntimeGovernanceReleaseReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeGovernanceReleaseReadinessAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeGovernanceReleaseReadinessFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    finalGateStatus: g.finalGateStatus,
+    h39EntryReadiness: g.h39EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -149,6 +204,10 @@ export function serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSe
   runtimeExecutionGovernanceForbiddenProof: ReturnType<typeof serializeForbiddenProof>;
   runtimeGovernanceReleaseBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeGovernanceReleaseReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeGovernanceReleaseReadinessViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeGovernanceReleaseReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeGovernanceReleaseReadinessAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeGovernanceReleaseReadinessFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeGovernanceReleaseReadinessSummary: serializeSummary(reports.runtimeGovernanceReleaseReadinessSummary),
@@ -161,5 +220,17 @@ export function serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSe
     ),
     runtimeGovernanceReleaseBlockerReport: serializeBlockerReport(reports.runtimeGovernanceReleaseBlockerReport),
     runtimeGovernanceReleaseReadinessChecklist: serializeChecklist(reports.runtimeGovernanceReleaseReadinessChecklist),
+    runtimeGovernanceReleaseReadinessViolationReport: serializeViolationReport(
+      reports.runtimeGovernanceReleaseReadinessViolationReport
+    ),
+    runtimeGovernanceReleaseReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeGovernanceReleaseReadinessVerificationReport
+    ),
+    runtimeGovernanceReleaseReadinessAlignmentReport: serializeAlignmentReport(
+      reports.runtimeGovernanceReleaseReadinessAlignmentReport
+    ),
+    runtimeGovernanceReleaseReadinessFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeGovernanceReleaseReadinessFinalSafetyGate
+    ),
   };
 }

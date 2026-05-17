@@ -3,8 +3,11 @@
  */
 
 import type {
+  RuntimeGovernanceReleaseReadinessAlignmentStatus,
+  RuntimeGovernanceReleaseReadinessFinalGateStatus,
   RuntimeGovernanceReleaseReadinessMode,
   RuntimeGovernanceReleaseReadinessStatus,
+  RuntimeGovernanceReleaseReadinessVerificationStatus,
 } from "./runtimeGovernanceReleaseReadinessTypes";
 
 export const RUNTIME_GOVERNANCE_RELEASE_READINESS_SECTION_DISCLAIMER_KO =
@@ -30,6 +33,31 @@ export const RUNTIME_GOVERNANCE_RELEASE_READINESS_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_GOVERNANCE_RELEASE_READINESS_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeGovernanceReleaseReadinessFinalGateStatus, string>
+> = {
+  ready_metadata: "ready (메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_GOVERNANCE_RELEASE_READINESS_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeGovernanceReleaseReadinessVerificationStatus, string>
+> = {
+  verified_metadata: "verified (메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_GOVERNANCE_RELEASE_READINESS_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeGovernanceReleaseReadinessAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned (메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO = {
   boundary: "readiness boundary 행 없음",
   forbiddenOperation: "금지 boundary operation 없음",
@@ -41,4 +69,8 @@ export const RUNTIME_GOVERNANCE_RELEASE_READINESS_EMPTY_HINT_KO = {
   missingChecklist: "누락 checklist 항목 없음",
   blocker: "release-readiness blocker 없음",
   recommendation: "recommendation 없음",
+  boundaryViolation: "release-readiness violation 없음",
+  readinessFinding: "readiness verification finding 없음",
+  alignmentFinding: "alignment finding 없음",
+  finalGateChecklist: "final gate checklist 행 없음",
 } as const;

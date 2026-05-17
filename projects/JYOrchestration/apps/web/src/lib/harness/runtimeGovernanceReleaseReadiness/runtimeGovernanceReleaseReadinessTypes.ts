@@ -10,6 +10,19 @@ export type RuntimeGovernanceReleaseReadinessStatus =
 
 export type RuntimeGovernanceReleaseReadinessMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeGovernanceReleaseReadinessFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeGovernanceReleaseReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeGovernanceReleaseReadinessAlignmentStatus = "aligned_metadata" | "partial" | "failed";
+
 export type RuntimeGovernanceReleaseReadinessSummary = Readonly<{
   mode: "runtime_governance_release_readiness_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -194,6 +207,85 @@ export type RuntimeGovernanceReleaseReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeGovernanceReleaseReadinessViolationReport = Readonly<{
+  mode: "runtime_governance_release_readiness_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualFlagViolations: readonly string[];
+  proofViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeGovernanceReleaseReadinessVerificationReport = Readonly<{
+  mode: "runtime_governance_release_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  verificationStatus: RuntimeGovernanceReleaseReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeGovernanceReleaseReadinessAlignmentReport = Readonly<{
+  mode: "runtime_governance_release_readiness_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  alignmentStatus: RuntimeGovernanceReleaseReadinessAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeGovernanceReleaseReadinessFinalSafetyGate = Readonly<{
+  mode: "runtime_governance_release_readiness_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  finalGateStatus: RuntimeGovernanceReleaseReadinessFinalGateStatus;
+  h39EntryReadiness: RuntimeGovernanceReleaseReadinessFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeGovernanceReleaseReadinessPlanningReports = Readonly<{
   runtimeGovernanceReleaseReadinessSummary: RuntimeGovernanceReleaseReadinessSummary;
   runtimeGovernanceReleaseReadinessBoundary: RuntimeGovernanceReleaseReadinessBoundary;
@@ -203,4 +295,8 @@ export type RuntimeGovernanceReleaseReadinessPlanningReports = Readonly<{
   runtimeExecutionGovernanceForbiddenProof: RuntimeExecutionGovernanceForbiddenProof;
   runtimeGovernanceReleaseBlockerReport: RuntimeGovernanceReleaseBlockerReport;
   runtimeGovernanceReleaseReadinessChecklist: RuntimeGovernanceReleaseReadinessChecklist;
+  runtimeGovernanceReleaseReadinessViolationReport: RuntimeGovernanceReleaseReadinessViolationReport;
+  runtimeGovernanceReleaseReadinessVerificationReport: RuntimeGovernanceReleaseReadinessVerificationReport;
+  runtimeGovernanceReleaseReadinessAlignmentReport: RuntimeGovernanceReleaseReadinessAlignmentReport;
+  runtimeGovernanceReleaseReadinessFinalSafetyGate: RuntimeGovernanceReleaseReadinessFinalSafetyGate;
 }>;

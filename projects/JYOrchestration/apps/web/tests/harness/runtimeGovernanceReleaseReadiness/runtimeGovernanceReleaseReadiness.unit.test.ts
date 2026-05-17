@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import { buildRuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceReleaseReadinessPlanningReports";
 import { buildRuntimeGovernanceReleaseReadinessSummary } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceReleaseReadinessSummary";
 import { buildRuntimeGovernanceNoEnforcementProof } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceNoEnforcementProof";
-import { buildRuntimeExecutionGovernanceForbiddenProof } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeExecutionGovernanceForbiddenProof";
+import {
+  buildRuntimeExecutionGovernanceForbiddenProof,
+  isRuntimeExecutionGovernanceForbiddenProofComplete,
+} from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeExecutionGovernanceForbiddenProof";
 import { detectRuntimeGovernanceReleaseBlockers } from "@/lib/harness/runtimeGovernanceReleaseReadiness/detectRuntimeGovernanceReleaseBlockers";
+import { detectRuntimeGovernanceReleaseReadinessViolations } from "@/lib/harness/runtimeGovernanceReleaseReadiness/detectRuntimeGovernanceReleaseReadinessViolations";
 import { serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -50,7 +54,7 @@ function buildGovernanceReleasePlanning(
   return buildRuntimeGovernanceReleaseReadinessPlanningReports({ ...base, ...patches });
 }
 
-describe("H38 governance release-readiness", () => {
+describe("H38 / H38.5 governance release-readiness", () => {
   it("full semantic includes governance release-readiness with all actual flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeGovernanceReleaseReadinessSummary.mode).toBe(
@@ -61,6 +65,18 @@ describe("H38 governance release-readiness", () => {
     expect(semantic.runtimeExecutionGovernanceForbiddenProof.actualExecutionForbidden).toBe(true);
     expect(semantic.runtimeGovernanceReleaseReadinessBoundary.boundaryTargetLayer).toBe(
       "finalExecutionGovernanceReadinessBoundary"
+    );
+    expect(semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.mode).toBe(
+      "runtime_governance_release_readiness_final_safety_gate"
+    );
+    expect(semantic.runtimeGovernanceReleaseReadinessViolationReport.mode).toBe(
+      "runtime_governance_release_readiness_violation_report"
+    );
+    expect(semantic.runtimeGovernanceReleaseReadinessVerificationReport.mode).toBe(
+      "runtime_governance_release_readiness_verification_report"
+    );
+    expect(semantic.runtimeGovernanceReleaseReadinessAlignmentReport.mode).toBe(
+      "runtime_governance_release_readiness_alignment_report"
     );
   });
 
@@ -152,7 +168,63 @@ describe("H38 governance release-readiness", () => {
     expect(summary.readinessStatus).toBe("watch");
   });
 
-  it("serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle exposes eight fields", () => {
+  it("governance_release_metadata_ready + verified + aligned yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeGovernanceReleaseReadinessSummary.readinessStatus === "governance_release_metadata_ready" &&
+      semantic.runtimeGovernanceReleaseReadinessSummary.readinessMode === "metadata_only" &&
+      semantic.runtimeGovernanceReleaseReadinessVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimeGovernanceReleaseReadinessAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeGovernanceReleaseReadinessViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeGovernanceReleaseReadinessViolationReport.proofViolations.length === 0
+    ) {
+      expect(semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.h39EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("noEnforcementProof diagnosticOnly false yields proof violation", () => {
+    const partial = buildGovernanceReleasePlanning();
+    const violation = detectRuntimeGovernanceReleaseReadinessViolations({
+      summary: partial.runtimeGovernanceReleaseReadinessSummary,
+      noEnforcementProof: {
+        ...partial.runtimeGovernanceNoEnforcementProof,
+        diagnosticOnly: false as unknown as true,
+      },
+      forbiddenProof: partial.runtimeExecutionGovernanceForbiddenProof,
+    });
+    expect(violation.proofViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
+  });
+
+  it("noEnforcementProof releaseEnforced true yields proof violation", () => {
+    const partial = buildGovernanceReleasePlanning();
+    const violation = detectRuntimeGovernanceReleaseReadinessViolations({
+      summary: partial.runtimeGovernanceReleaseReadinessSummary,
+      noEnforcementProof: {
+        ...partial.runtimeGovernanceNoEnforcementProof,
+        releaseEnforced: true as unknown as false,
+      },
+      forbiddenProof: partial.runtimeExecutionGovernanceForbiddenProof,
+    });
+    expect(violation.proofViolations.some((v) => v.includes("releaseEnforced"))).toBe(true);
+  });
+
+  it("forbidden proof incomplete yields proof violation", () => {
+    const partial = buildGovernanceReleasePlanning();
+    const incomplete = {
+      ...partial.runtimeExecutionGovernanceForbiddenProof,
+      actualExecutionForbidden: false as unknown as true,
+    };
+    expect(isRuntimeExecutionGovernanceForbiddenProofComplete(incomplete)).toBe(false);
+    const violation = detectRuntimeGovernanceReleaseReadinessViolations({
+      summary: partial.runtimeGovernanceReleaseReadinessSummary,
+      noEnforcementProof: partial.runtimeGovernanceNoEnforcementProof,
+      forbiddenProof: incomplete,
+    });
+    expect(violation.proofViolations.some((v) => v.includes("incomplete"))).toBe(true);
+  });
+
+  it("serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle exposes twelve fields", () => {
     const semantic = buildFullSemantic();
     const serialized = serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports(semantic);
     expect(serialized.runtimeGovernanceReleaseReadinessSummary).toBeDefined();
@@ -160,6 +232,15 @@ describe("H38 governance release-readiness", () => {
     expect(serialized.runtimeGovernanceNoEnforcementProof.diagnosticOnly).toBe(true);
     expect(serialized.runtimeExecutionGovernanceForbiddenProof.actualExecutionForbidden).toBe(true);
     expect(serialized.runtimeGovernanceReleaseReadinessChecklist).toBeDefined();
+    expect(serialized.runtimeGovernanceReleaseReadinessViolationReport).toBeDefined();
+    expect(serialized.runtimeGovernanceReleaseReadinessVerificationReport).toBeDefined();
+    expect(serialized.runtimeGovernanceReleaseReadinessAlignmentReport).toBeDefined();
+    expect(serialized.runtimeGovernanceReleaseReadinessFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.finalGateStatus,
+        h39EntryReadiness: semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.h39EntryReadiness,
+      })
+    );
   });
 
   it("stripRuntimeGovernanceReleaseReadinessLayer removes H38 fields only", () => {
@@ -183,5 +264,11 @@ describe("H38 governance release-readiness", () => {
       "runtime_governance_release_readiness_summary"
     );
     expect(reports.runtimeGovernanceReleaseBlockerReport.mode).toBe("runtime_governance_release_blocker_report");
+    expect(reports.runtimeGovernanceReleaseReadinessFinalSafetyGate.mode).toBe(
+      "runtime_governance_release_readiness_final_safety_gate"
+    );
+    expect(reports.runtimeGovernanceReleaseReadinessViolationReport.actualFlagViolations).toBeDefined();
+    expect(reports.runtimeGovernanceReleaseReadinessVerificationReport.findings).toBeDefined();
+    expect(reports.runtimeGovernanceReleaseReadinessAlignmentReport.findings).toBeDefined();
   });
 });
