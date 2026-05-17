@@ -575,6 +575,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 
 - **Harness Phase H40.5 — Ultimate Governance Review Stabilization & Final Read-Only Chain Safety Gate Layer (read-only)** — H40 metadata를 **안정화**하고 **`detectRuntimeUltimateGovernanceReviewViolations`**, **`verifyRuntimeUltimateGovernanceReviewReadiness`**, **`buildRuntimeUltimateGovernanceReviewAlignmentReport`**, **`buildRuntimeUltimateGovernanceReviewFinalSafetyGate`**(`h41EntryReadiness`). **`runtimeShared/runtimeReadOnlyInvariants.ts`**. 진단 4개 필드 additive.
 - **Harness Phase H41 — Controlled Activation Candidate & Runtime Control Handoff Boundary Layer (read-only)** — H40.5 final safety gate를 바탕으로 **`runtimeControlledActivationCandidateSummary`**, **`runtimeControlHandoffBoundary`**, scope·policy·blocker·readiness checklist metadata만 산출. **`buildRuntimeControlledActivationCandidatePlanningReports`**. 진단 6개 필드 additive. **actual controlled activation·orchestration·execution forbidden**.
+- **Harness Phase H41.5 — Controlled Activation Candidate Stabilization & Final Safety Gate Layer (read-only)** — H41 candidate metadata를 안정화하고 violation·verification·alignment·**`h42EntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 activation·orchestration·execution 없음**.
 
 ## 관련 문서
 

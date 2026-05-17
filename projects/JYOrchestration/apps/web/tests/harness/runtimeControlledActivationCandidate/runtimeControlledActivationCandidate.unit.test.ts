@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { detectRuntimeControlledActivationCandidateViolations } from "@/lib/harness/runtimeControlledActivationCandidate/detectRuntimeControlledActivationCandidateViolations";
 import { serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledActivationCandidate/serializeRuntimeControlledActivationCandidateDiagnosticBundle";
 import {
   buildControlledActivationCandidateBaseReports,
@@ -93,15 +94,45 @@ describe("H41 controlled activation candidate", () => {
     expect(activation.runtimeControlledActivationCandidateSummary.candidateStatus).toBe("blocked");
   });
 
-  it("serializer exposes six H41 fields without rebuilding reports", () => {
+  it("serializer exposes ten H41/H41.5 fields without rebuilding reports", () => {
     const semantic = buildFullSemanticForControlledActivationCandidate();
     const serialized = serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports(semantic);
-    expect(Object.keys(serialized)).toHaveLength(6);
+    expect(Object.keys(serialized)).toHaveLength(10);
     expect(serialized.runtimeControlledActivationCandidateSummary.candidateStatus).toBe(
       semantic.runtimeControlledActivationCandidateSummary.candidateStatus
     );
     expect(serialized.runtimeControlHandoffBoundary.boundarySourceLayer).toBe(
       "runtimeUltimateGovernanceReviewFinalSafetyGate"
     );
+    expect(serialized.runtimeControlledActivationCandidateFinalSafetyGate).toBeDefined();
+    expect(serialized.runtimeControlledActivationCandidateViolationReport).toBeDefined();
+  });
+
+  it("ready candidate with verified alignment yields final gate ready_metadata when upstream aligned", () => {
+    const semantic = buildFullSemanticForControlledActivationCandidate();
+    if (
+      semantic.runtimeControlledActivationCandidateSummary.candidateStatus ===
+        "controlled_activation_metadata_candidate" &&
+      semantic.runtimeControlledActivationCandidateVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeControlledActivationCandidateAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeControlledActivationCandidateViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeControlledActivationCandidateViolationReport.policyViolations.length === 0
+    ) {
+      expect(semantic.runtimeControlledActivationCandidateFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeControlledActivationCandidateFinalSafetyGate.h42EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("policy forbidden false yields policy violation", () => {
+    const semantic = buildFullSemanticForControlledActivationCandidate();
+    const violation = detectRuntimeControlledActivationCandidateViolations({
+      summary: semantic.runtimeControlledActivationCandidateSummary,
+      policy: {
+        ...semantic.runtimeControlledActivationCandidatePolicy,
+        actualControlledActivationForbidden: false as true,
+      },
+    });
+    expect(violation.policyViolations.length).toBeGreaterThan(0);
   });
 });

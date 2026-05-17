@@ -1,14 +1,18 @@
 /**
- * H41 — controlled activation candidate 진단 **직렬화 전용**(report 재빌드 없음).
+ * H41 / H41.5 — controlled activation candidate 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { SERIALIZED_RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ACTUAL_FLAGS } from "./runtimeControlledActivationCandidateConstants";
 import type {
+  RuntimeControlledActivationCandidateAlignmentReport,
   RuntimeControlledActivationCandidateBlockerReport,
+  RuntimeControlledActivationCandidateFinalSafetyGate,
   RuntimeControlledActivationCandidatePolicy,
   RuntimeControlledActivationCandidateScope,
   RuntimeControlledActivationCandidateSummary,
+  RuntimeControlledActivationCandidateVerificationReport,
+  RuntimeControlledActivationCandidateViolationReport,
   RuntimeControlledActivationReadinessChecklist,
   RuntimeControlHandoffBoundary,
 } from "./runtimeControlledActivationCandidateTypes";
@@ -105,6 +109,57 @@ function serializeChecklist(c: RuntimeControlledActivationReadinessChecklist): R
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeControlledActivationCandidateViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    policyViolations: sortKo(v.policyViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeVerificationReport(
+  r: RuntimeControlledActivationCandidateVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeControlledActivationCandidateAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeControlledActivationCandidateFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    h42EntryReadiness: g.h42EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -114,6 +169,10 @@ export function serializeRuntimeControlledActivationCandidateDiagnosticBundleFro
   runtimeControlledActivationCandidatePolicy: ReturnType<typeof serializePolicy>;
   runtimeControlledActivationCandidateBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeControlledActivationReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeControlledActivationCandidateViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeControlledActivationCandidateVerificationReport: ReturnType<typeof serializeVerificationReport>;
+  runtimeControlledActivationCandidateAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeControlledActivationCandidateFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeControlledActivationCandidateSummary: serializeSummary(
@@ -128,5 +187,21 @@ export function serializeRuntimeControlledActivationCandidateDiagnosticBundleFro
     runtimeControlledActivationReadinessChecklist: serializeChecklist(
       reports.runtimeControlledActivationReadinessChecklist
     ),
+    runtimeControlledActivationCandidateViolationReport: serializeViolationReport(
+      reports.runtimeControlledActivationCandidateViolationReport
+    ),
+    runtimeControlledActivationCandidateVerificationReport: serializeVerificationReport(
+      reports.runtimeControlledActivationCandidateVerificationReport
+    ),
+    runtimeControlledActivationCandidateAlignmentReport: serializeAlignmentReport(
+      reports.runtimeControlledActivationCandidateAlignmentReport
+    ),
+    runtimeControlledActivationCandidateFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeControlledActivationCandidateFinalSafetyGate
+    ),
   };
 }
+
+export type SerializedRuntimeControlledActivationCandidateDiag = ReturnType<
+  typeof serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports
+>;

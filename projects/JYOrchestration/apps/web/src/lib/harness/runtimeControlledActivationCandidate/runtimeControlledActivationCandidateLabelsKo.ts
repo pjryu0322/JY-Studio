@@ -1,9 +1,12 @@
 /**
- * H41 — controlled activation candidate overlay·진단 **한국어 라벨**(read-only).
+ * H41 / H41.5 — controlled activation candidate overlay·진단 **한국어 라벨**(read-only).
  */
 
 import type {
+  RuntimeControlledActivationCandidateAlignmentStatus,
+  RuntimeControlledActivationCandidateFinalGateStatus,
   RuntimeControlledActivationCandidateStatus,
+  RuntimeControlledActivationCandidateVerificationStatus,
   RuntimeControlledActivationMode,
 } from "./runtimeControlledActivationCandidateTypes";
 
@@ -30,6 +33,31 @@ export const RUNTIME_CONTROLLED_ACTIVATION_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeControlledActivationCandidateFinalGateStatus, string>
+> = {
+  ready_metadata: "ready(메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeControlledActivationCandidateVerificationStatus, string>
+> = {
+  verified_metadata: "verified(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeControlledActivationCandidateAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO = {
   handoffBoundary: "control handoff boundary 행이 없습니다.",
   candidateScope: "activation candidate scope 행이 없습니다.",
@@ -37,5 +65,9 @@ export const RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO = {
   checklist: "activation readiness checklist 행이 없습니다.",
   missingChecklist: "누락 checklist 행이 없습니다.",
   blocker: "activation blocker가 없습니다.",
+  violation: "controlled activation violation이 없습니다.",
+  verification: "readiness verification finding이 없습니다.",
+  alignment: "alignment finding이 없습니다.",
+  finalGateChecklist: "final safety gate checklist 행이 없습니다.",
   recommendation: "권장 사항이 없습니다.",
 } as const;

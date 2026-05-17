@@ -18,17 +18,21 @@ export function OverlayRuntimeControlledActivationCandidateSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Controlled Activation Candidate (H41)"
+      title="Runtime Controlled Activation Candidate (H41 / H41.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Controlled activation candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Activation mode" value={vm.activationModeKo} />
-        {vm.topActivationBlocker ? (
-          <OverlayUiKeyValueRow label="Top activation blocker" value={vm.topActivationBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate status" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H42 entry readiness" value={vm.h42EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topActivationBlocker && vm.topForbiddenActivationOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenActivationOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden activation operation" value={vm.topForbiddenActivationOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -46,6 +50,21 @@ export function OverlayRuntimeControlledActivationCandidateSection({
               emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.forbiddenOperation}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Controlled activation violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.violation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification findings"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.verification}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment findings"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.alignment}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Activation readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.checklist}
@@ -57,6 +76,11 @@ export function OverlayRuntimeControlledActivationCandidateSection({
                 emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final safety gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_CONTROLLED_ACTIVATION_CANDIDATE_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Activation blockers"
               rows={vm.activationBlockerRows}

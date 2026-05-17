@@ -624,6 +624,10 @@ function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPla
   | "runtimeControlledActivationCandidatePolicy"
   | "runtimeControlledActivationCandidateBlockerReport"
   | "runtimeControlledActivationReadinessChecklist"
+  | "runtimeControlledActivationCandidateViolationReport"
+  | "runtimeControlledActivationCandidateVerificationReport"
+  | "runtimeControlledActivationCandidateAlignmentReport"
+  | "runtimeControlledActivationCandidateFinalSafetyGate"
 > {
   const {
     runtimeControlledActivationCandidateSummary: _c1,
@@ -632,6 +636,10 @@ function omitControlledActivationCandidateLayerOnly<T extends RuntimeSemanticPla
     runtimeControlledActivationCandidatePolicy: _c4,
     runtimeControlledActivationCandidateBlockerReport: _c5,
     runtimeControlledActivationReadinessChecklist: _c6,
+    runtimeControlledActivationCandidateViolationReport: _c7,
+    runtimeControlledActivationCandidateVerificationReport: _c8,
+    runtimeControlledActivationCandidateAlignmentReport: _c9,
+    runtimeControlledActivationCandidateFinalSafetyGate: _c10,
     ...rest
   } = semantic;
   return rest;

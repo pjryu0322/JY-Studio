@@ -43,6 +43,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | H40 | Ultimate Governance Review | `runtimeUltimateGovernanceReview/` | review summary | blockers | — | — | — | yes | yes (8 fields) | yes | yes | yes | yes |
 | H40.5 | Ultimate Governance Review Stabilization | `runtimeUltimateGovernanceReview/` | + violation/verification/alignment | — | yes | yes | final gate (`h41EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
 | H41 | Controlled Activation Candidate | `runtimeControlledActivationCandidate/` | candidate summary | blockers | — | — | — | yes | yes (6 fields) | yes | yes | yes | yes |
+| H41.5 | Controlled Activation Candidate Stabilization | `runtimeControlledActivationCandidate/` | + violation/verification/alignment | — | yes | yes | final gate (`h42EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
 
 ## Downstream inputs (H41 example)
 
@@ -75,4 +76,4 @@ Large renames deferred — see `runtime-orchestration-test-coverage.md` TODO.
 
 ## Next phase
 
-- **H41:** controlled activation **candidate** metadata only — **not** actual orchestration/execution until explicit product gate.
+- **H41 / H41.5:** controlled activation **candidate** metadata + final safety gate (`h42EntryReadiness`) — **not** actual orchestration/execution/activation until explicit product gate.

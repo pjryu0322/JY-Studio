@@ -24,13 +24,17 @@ describe("buildOverlayRuntimeControlledActivationCandidateSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, activation mode, and blocker or forbidden operation", () => {
+  it("compact mode displays candidate status, activation mode, final gate, and blocker or forbidden operation", () => {
     const vm = buildOverlayRuntimeControlledActivationCandidateSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.activationModeKo).toBeTruthy();
-    expect(vm.topActivationBlocker !== null || vm.topForbiddenActivationOperation !== null || vm.showAttention).toBe(
-      true
-    );
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h42EntryReadinessKo).toBeTruthy();
+    expect(
+      vm.topViolationOrBlocker !== null ||
+        vm.topForbiddenActivationOperation !== null ||
+        vm.showAttention
+    ).toBe(true);
   });
 
   it("overlay footer matches required no-enforcement disclaimer", () => {
