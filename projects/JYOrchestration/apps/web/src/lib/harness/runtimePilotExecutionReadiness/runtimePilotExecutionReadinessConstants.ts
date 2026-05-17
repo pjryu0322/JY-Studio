@@ -1,5 +1,5 @@
 /**
- * H44 — pilot execution readiness 공통 상수(read-only).
+ * H44 / H44.5 — pilot execution readiness 공통 상수(read-only).
  */
 
 import {
@@ -60,6 +60,46 @@ export const PILOT_EXECUTION_READINESS_FORBIDDEN_BOUNDARY_OPERATIONS = [
   "token enforcement",
   "context pruning",
   "retrieval orchestration",
+] as const;
+
+export const PILOT_EXECUTION_READINESS_WORDING_RISK_PHRASES: readonly {
+  readonly phrase: string;
+  readonly label: string;
+}[] = [
+  { phrase: "pilotactivated=true", label: "pilotActivated=true" },
+  { phrase: "pilotexecuted=true", label: "pilotExecuted=true" },
+  { phrase: "isolatedrunnerinvoked=true", label: "isolatedRunnerInvoked=true" },
+  { phrase: "isolatedrunnerexecuted=true", label: "isolatedRunnerExecuted=true" },
+  { phrase: "dryrunrunnerinvoked=true", label: "dryRunRunnerInvoked=true" },
+  { phrase: "sandboxinvoked=true", label: "sandboxInvoked=true" },
+  { phrase: "runtimeadapterinvoked=true", label: "runtimeAdapterInvoked=true" },
+  { phrase: "executionperformed=true", label: "executionPerformed=true" },
+  { phrase: "releaseenforced=true", label: "releaseEnforced=true" },
+  { phrase: "approvalenforced=true", label: "approvalEnforced=true" },
+  { phrase: "diagnosticonly=false", label: "diagnosticOnly=false" },
+  { phrase: "actualpilotactivationforbidden=false", label: "actualPilotActivationForbidden=false" },
+  { phrase: "actualpilotexecutionforbidden=false", label: "actualPilotExecutionForbidden=false" },
+  { phrase: "actualexecutionforbidden=false", label: "actualExecutionForbidden=false" },
+];
+
+export const PILOT_EXECUTION_READINESS_VERIFICATION_CHECKLIST_LABEL_ROWS = [
+  "limited pilot readiness review final gate ready_metadata",
+  "h44 entry readiness ready_metadata",
+] as const;
+
+export const PILOT_EXECUTION_READINESS_ALIGNMENT_CHECKLIST_LABEL_ROWS = [
+  "limited pilot readiness review final gate ready_metadata",
+  "h44 entry readiness ready_metadata",
+] as const;
+
+export const PILOT_EXECUTION_READINESS_FINAL_SAFETY_CHECKLIST_STATIC_ROWS = [
+  "actualPilotActivationEnabled:false",
+  "actualPilotExecutionEnabled:false",
+  "actualIsolatedRunnerInvocationEnabled:false",
+  "actualSandboxInvocationEnabled:false",
+  "actualExecutionEnabled:false",
+  "finalPilotNoExecutionProof.diagnosticOnly:true",
+  "finalPilotExecutionForbiddenProof.complete:true",
 ] as const;
 
 export const RUNTIME_FINAL_PILOT_EXECUTION_FORBIDDEN_PROOF_REQUIRED_KEYS = [

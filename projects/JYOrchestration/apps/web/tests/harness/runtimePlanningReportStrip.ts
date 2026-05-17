@@ -626,6 +626,10 @@ function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningR
   | "runtimeFinalPilotExecutionForbiddenProof"
   | "runtimePilotExecutionReadinessBlockerReport"
   | "runtimePilotExecutionReadinessChecklist"
+  | "runtimePilotExecutionReadinessViolationReport"
+  | "runtimePilotExecutionReadinessVerificationReport"
+  | "runtimePilotExecutionReadinessAlignmentReport"
+  | "runtimePilotExecutionReadinessFinalSafetyGate"
 > {
   const {
     runtimePilotExecutionReadinessSummary: _e1,
@@ -636,6 +640,10 @@ function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningR
     runtimeFinalPilotExecutionForbiddenProof: _e6,
     runtimePilotExecutionReadinessBlockerReport: _e7,
     runtimePilotExecutionReadinessChecklist: _e8,
+    runtimePilotExecutionReadinessViolationReport: _e9,
+    runtimePilotExecutionReadinessVerificationReport: _e10,
+    runtimePilotExecutionReadinessAlignmentReport: _e11,
+    runtimePilotExecutionReadinessFinalSafetyGate: _e12,
     ...rest
   } = semantic;
   return rest;

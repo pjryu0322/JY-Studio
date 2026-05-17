@@ -1,5 +1,5 @@
 /**
- * H44 — Limited runtime pilot readiness finalization & pilot execution readiness boundary(read-only).
+ * H44 / H44.5 — Limited runtime pilot readiness finalization & pilot execution readiness boundary(read-only).
  */
 
 export type RuntimePilotExecutionReadinessStatus =
@@ -10,7 +10,23 @@ export type RuntimePilotExecutionReadinessStatus =
 
 export type RuntimePilotExecutionReadinessMode = "disabled" | "metadata_only" | "blocked";
 
-type RuntimePilotExecutionReadinessActualFlagsDisabled = Readonly<{
+export type RuntimePilotExecutionReadinessFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimePilotExecutionReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimePilotExecutionReadinessAlignmentStatus =
+  | "aligned_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimePilotExecutionReadinessActualFlagsDisabled = Readonly<{
   actualRuntimeOrchestrationEnabled: false;
   actualControlledActivationEnabled: false;
   actualPilotActivationEnabled: false;
@@ -155,6 +171,46 @@ export type RuntimePilotExecutionReadinessChecklist = Readonly<
   }
 >;
 
+export type RuntimePilotExecutionReadinessViolationReport = Readonly<
+  RuntimePilotExecutionReadinessActualFlagsDisabled & {
+    mode: "runtime_pilot_execution_readiness_violation_report";
+    actualFlagViolations: readonly string[];
+    proofViolations: readonly string[];
+    forbiddenProofViolations: readonly string[];
+    wordingRiskFindings: readonly string[];
+    recommendations: readonly string[];
+  }
+>;
+
+export type RuntimePilotExecutionReadinessVerificationReport = Readonly<
+  RuntimePilotExecutionReadinessActualFlagsDisabled & {
+    mode: "runtime_pilot_execution_readiness_verification_report";
+    verificationStatus: RuntimePilotExecutionReadinessVerificationStatus;
+    findings: readonly string[];
+    recommendations: readonly string[];
+  }
+>;
+
+export type RuntimePilotExecutionReadinessAlignmentReport = Readonly<
+  RuntimePilotExecutionReadinessActualFlagsDisabled & {
+    mode: "runtime_pilot_execution_readiness_alignment_report";
+    alignmentStatus: RuntimePilotExecutionReadinessAlignmentStatus;
+    findings: readonly string[];
+    recommendations: readonly string[];
+  }
+>;
+
+export type RuntimePilotExecutionReadinessFinalSafetyGate = Readonly<
+  RuntimePilotExecutionReadinessActualFlagsDisabled & {
+    mode: "runtime_pilot_execution_readiness_final_safety_gate";
+    finalGateStatus: RuntimePilotExecutionReadinessFinalGateStatus;
+    h45EntryReadiness: RuntimePilotExecutionReadinessFinalGateStatus;
+    checklist: readonly string[];
+    blockers: readonly string[];
+    recommendations: readonly string[];
+  }
+>;
+
 export type RuntimePilotExecutionReadinessPlanningReports = Readonly<{
   runtimePilotExecutionReadinessSummary: RuntimePilotExecutionReadinessSummary;
   runtimePilotExecutionReadinessBoundary: RuntimePilotExecutionReadinessBoundary;
@@ -164,4 +220,8 @@ export type RuntimePilotExecutionReadinessPlanningReports = Readonly<{
   runtimeFinalPilotExecutionForbiddenProof: RuntimeFinalPilotExecutionForbiddenProof;
   runtimePilotExecutionReadinessBlockerReport: RuntimePilotExecutionReadinessBlockerReport;
   runtimePilotExecutionReadinessChecklist: RuntimePilotExecutionReadinessChecklist;
+  runtimePilotExecutionReadinessViolationReport: RuntimePilotExecutionReadinessViolationReport;
+  runtimePilotExecutionReadinessVerificationReport: RuntimePilotExecutionReadinessVerificationReport;
+  runtimePilotExecutionReadinessAlignmentReport: RuntimePilotExecutionReadinessAlignmentReport;
+  runtimePilotExecutionReadinessFinalSafetyGate: RuntimePilotExecutionReadinessFinalSafetyGate;
 }>;

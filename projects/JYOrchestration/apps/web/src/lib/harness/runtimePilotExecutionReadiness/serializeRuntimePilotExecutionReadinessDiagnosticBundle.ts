@@ -1,5 +1,5 @@
 /**
- * H44 — pilot execution readiness 진단 **직렬화 전용**(report 재빌드 없음).
+ * H44 / H44.5 — pilot execution readiness 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
@@ -7,12 +7,16 @@ import { SERIALIZED_RUNTIME_PILOT_EXECUTION_READINESS_ACTUAL_FLAGS } from "./run
 import type {
   RuntimeFinalPilotExecutionForbiddenProof,
   RuntimeFinalPilotNoExecutionProof,
+  RuntimePilotExecutionReadinessAlignmentReport,
   RuntimePilotExecutionReadinessBlockerReport,
   RuntimePilotExecutionReadinessBoundary,
   RuntimePilotExecutionReadinessChecklist,
+  RuntimePilotExecutionReadinessFinalSafetyGate,
   RuntimePilotExecutionReadinessInputEnvelope,
   RuntimePilotExecutionReadinessOutputEnvelope,
   RuntimePilotExecutionReadinessSummary,
+  RuntimePilotExecutionReadinessVerificationReport,
+  RuntimePilotExecutionReadinessViolationReport,
 } from "./runtimePilotExecutionReadinessTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
@@ -141,6 +145,58 @@ function serializeChecklist(c: RuntimePilotExecutionReadinessChecklist): Readonl
   };
 }
 
+function serializeViolationReport(
+  v: RuntimePilotExecutionReadinessViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_PILOT_EXECUTION_READINESS_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    proofViolations: sortKo(v.proofViolations),
+    forbiddenProofViolations: sortKo(v.forbiddenProofViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeVerificationReport(
+  r: RuntimePilotExecutionReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_PILOT_EXECUTION_READINESS_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimePilotExecutionReadinessAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_PILOT_EXECUTION_READINESS_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimePilotExecutionReadinessFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_PILOT_EXECUTION_READINESS_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    h45EntryReadiness: g.h45EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -152,6 +208,10 @@ export function serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSeman
   runtimeFinalPilotExecutionForbiddenProof: ReturnType<typeof serializeForbiddenProof>;
   runtimePilotExecutionReadinessBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimePilotExecutionReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimePilotExecutionReadinessViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimePilotExecutionReadinessVerificationReport: ReturnType<typeof serializeVerificationReport>;
+  runtimePilotExecutionReadinessAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimePilotExecutionReadinessFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimePilotExecutionReadinessSummary: serializeSummary(reports.runtimePilotExecutionReadinessSummary),
@@ -164,6 +224,18 @@ export function serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSeman
       reports.runtimePilotExecutionReadinessBlockerReport
     ),
     runtimePilotExecutionReadinessChecklist: serializeChecklist(reports.runtimePilotExecutionReadinessChecklist),
+    runtimePilotExecutionReadinessViolationReport: serializeViolationReport(
+      reports.runtimePilotExecutionReadinessViolationReport
+    ),
+    runtimePilotExecutionReadinessVerificationReport: serializeVerificationReport(
+      reports.runtimePilotExecutionReadinessVerificationReport
+    ),
+    runtimePilotExecutionReadinessAlignmentReport: serializeAlignmentReport(
+      reports.runtimePilotExecutionReadinessAlignmentReport
+    ),
+    runtimePilotExecutionReadinessFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimePilotExecutionReadinessFinalSafetyGate
+    ),
   };
 }
 

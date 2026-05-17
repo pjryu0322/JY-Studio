@@ -196,6 +196,6 @@ export type RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness =
   RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview &
     RuntimeLimitedPilotReadinessReviewPlanningReports;
 
-/** H44 포함 — pilot execution readiness boundary까지 산출된 상태. */
+/** H44 / H44.5 포함 — pilot execution readiness boundary·final safety gate까지 산출된 상태. */
 export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforePilotExecutionReadiness &
   RuntimePilotExecutionReadinessPlanningReports;
