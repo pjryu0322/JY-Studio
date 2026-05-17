@@ -594,6 +594,10 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   | "runtimeFinalReleaseGovernanceGatePolicy"
   | "runtimeFinalReleaseGovernanceGateBlockerReport"
   | "runtimeFinalReleaseGovernanceGateReadinessChecklist"
+  | "runtimeFinalReleaseGovernanceGateViolationReport"
+  | "runtimeFinalReleaseGovernanceGateVerificationReport"
+  | "runtimeFinalReleaseGovernanceGateAlignmentReport"
+  | "runtimeFinalReleaseGovernanceGateFinalSafetyGate"
 > {
   const {
     runtimeFinalReleaseGovernanceGateSummary: _fr1,
@@ -601,6 +605,10 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
     runtimeFinalReleaseGovernanceGatePolicy: _fr3,
     runtimeFinalReleaseGovernanceGateBlockerReport: _fr4,
     runtimeFinalReleaseGovernanceGateReadinessChecklist: _fr5,
+    runtimeFinalReleaseGovernanceGateViolationReport: _fr6,
+    runtimeFinalReleaseGovernanceGateVerificationReport: _fr7,
+    runtimeFinalReleaseGovernanceGateAlignmentReport: _fr8,
+    runtimeFinalReleaseGovernanceGateFinalSafetyGate: _fr9,
     ...rest
   } = semantic;
   return rest;

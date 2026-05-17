@@ -1,15 +1,19 @@
 /**
- * H39 — final release governance gate planning reports 일괄 산출(read-only).
+ * H39 / H39.5 — final release governance gate planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { buildRuntimeFinalReleaseGovernanceGateAlignmentReport } from "./buildRuntimeFinalReleaseGovernanceGateAlignmentReport";
+import { buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate } from "./buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate";
 import { buildRuntimeFinalReleaseGovernanceGatePolicy } from "./buildRuntimeFinalReleaseGovernanceGatePolicy";
 import { buildRuntimeFinalReleaseGovernanceGateReadinessChecklist } from "./buildRuntimeFinalReleaseGovernanceGateReadinessChecklist";
 import { buildRuntimeFinalReleaseGovernanceGateScope } from "./buildRuntimeFinalReleaseGovernanceGateScope";
 import { detectRuntimeFinalReleaseGovernanceGateBlockers } from "./detectRuntimeFinalReleaseGovernanceGateBlockers";
+import { detectRuntimeFinalReleaseGovernanceGateViolations } from "./detectRuntimeFinalReleaseGovernanceGateViolations";
 import { evaluateRuntimeFinalReleaseGovernanceGateCandidate } from "./evaluateRuntimeFinalReleaseGovernanceGateCandidate";
 import { resolveRuntimeFinalReleaseGovernanceGateMode } from "./resolveRuntimeFinalReleaseGovernanceGateMode";
+import { verifyRuntimeFinalReleaseGovernanceGateReadiness } from "./verifyRuntimeFinalReleaseGovernanceGateReadiness";
 import type {
   RuntimeFinalReleaseGovernanceGateCandidateStatus,
   RuntimeFinalReleaseGovernanceGatePlanningReports,
@@ -30,6 +34,12 @@ function gateRationaleKo(status: RuntimeFinalReleaseGovernanceGateCandidateStatu
   }
 }
 
+function mergeFinalReleaseGateLayerRecommendations(
+  parts: readonly { readonly recommendations: readonly string[] }[]
+): readonly string[] {
+  return mergeSortedUniqueKo(parts.flatMap((part) => [...part.recommendations]));
+}
+
 export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
   reports: RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate
 ): RuntimeFinalReleaseGovernanceGatePlanningReports {
@@ -47,7 +57,7 @@ export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
     blockerReport: runtimeFinalReleaseGovernanceGateBlockerReport,
   });
 
-  const runtimeFinalReleaseGovernanceGateSummary = {
+  const runtimeFinalReleaseGovernanceGateSummaryDraft = {
     mode: "runtime_final_release_governance_gate_summary" as const,
     actualRuntimeOrchestrationEnabled: false as const,
     actualPilotExecutionEnabled: false as const,
@@ -79,11 +89,60 @@ export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
     ]),
   };
 
+  const runtimeFinalReleaseGovernanceGateViolationReport = detectRuntimeFinalReleaseGovernanceGateViolations({
+    summary: runtimeFinalReleaseGovernanceGateSummaryDraft,
+    policy: runtimeFinalReleaseGovernanceGatePolicy,
+  });
+
+  const runtimeFinalReleaseGovernanceGateVerificationReport = verifyRuntimeFinalReleaseGovernanceGateReadiness({
+    summary: runtimeFinalReleaseGovernanceGateSummaryDraft,
+    scope: runtimeFinalReleaseGovernanceGateScope,
+    policy: runtimeFinalReleaseGovernanceGatePolicy,
+    checklist: runtimeFinalReleaseGovernanceGateReadinessChecklist,
+    blockerReport: runtimeFinalReleaseGovernanceGateBlockerReport,
+  });
+
+  const runtimeFinalReleaseGovernanceGateAlignmentReport = buildRuntimeFinalReleaseGovernanceGateAlignmentReport({
+    reports,
+    summary: runtimeFinalReleaseGovernanceGateSummaryDraft,
+    scope: runtimeFinalReleaseGovernanceGateScope,
+    policy: runtimeFinalReleaseGovernanceGatePolicy,
+    checklist: runtimeFinalReleaseGovernanceGateReadinessChecklist,
+    blockerReport: runtimeFinalReleaseGovernanceGateBlockerReport,
+    boundaryViolation: runtimeFinalReleaseGovernanceGateViolationReport,
+  });
+
+  const runtimeFinalReleaseGovernanceGateFinalSafetyGate = buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate({
+    summary: runtimeFinalReleaseGovernanceGateSummaryDraft,
+    blockerReport: runtimeFinalReleaseGovernanceGateBlockerReport,
+    boundaryViolation: runtimeFinalReleaseGovernanceGateViolationReport,
+    readinessVerification: runtimeFinalReleaseGovernanceGateVerificationReport,
+    alignmentReport: runtimeFinalReleaseGovernanceGateAlignmentReport,
+  });
+
+  const runtimeFinalReleaseGovernanceGateSummary = {
+    ...runtimeFinalReleaseGovernanceGateSummaryDraft,
+    recommendations: mergeFinalReleaseGateLayerRecommendations([
+      runtimeFinalReleaseGovernanceGateSummaryDraft,
+      runtimeFinalReleaseGovernanceGateScope,
+      runtimeFinalReleaseGovernanceGatePolicy,
+      runtimeFinalReleaseGovernanceGateReadinessChecklist,
+      runtimeFinalReleaseGovernanceGateViolationReport,
+      runtimeFinalReleaseGovernanceGateVerificationReport,
+      runtimeFinalReleaseGovernanceGateAlignmentReport,
+      runtimeFinalReleaseGovernanceGateFinalSafetyGate,
+    ]),
+  };
+
   return {
     runtimeFinalReleaseGovernanceGateSummary,
     runtimeFinalReleaseGovernanceGateScope,
     runtimeFinalReleaseGovernanceGatePolicy,
     runtimeFinalReleaseGovernanceGateBlockerReport,
     runtimeFinalReleaseGovernanceGateReadinessChecklist,
+    runtimeFinalReleaseGovernanceGateViolationReport,
+    runtimeFinalReleaseGovernanceGateVerificationReport,
+    runtimeFinalReleaseGovernanceGateAlignmentReport,
+    runtimeFinalReleaseGovernanceGateFinalSafetyGate,
   };
 }

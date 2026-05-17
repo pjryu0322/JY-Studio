@@ -3,8 +3,11 @@
  */
 
 import type {
+  RuntimeFinalReleaseGovernanceGateAlignmentStatus,
   RuntimeFinalReleaseGovernanceGateCandidateStatus,
+  RuntimeFinalReleaseGovernanceGateFinalGateStatus,
   RuntimeFinalReleaseGovernanceGateMode,
+  RuntimeFinalReleaseGovernanceGateVerificationStatus,
 } from "./runtimeFinalReleaseGovernanceGateTypes";
 
 export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_SECTION_DISCLAIMER_KO =
@@ -30,11 +33,40 @@ export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_MODE_LABEL_KO: Readonly<
   blocked: "차단",
 };
 
+export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_FINAL_GATE_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeFinalReleaseGovernanceGateFinalGateStatus, string>
+> = {
+  ready_metadata: "ready(메타)",
+  watch: "주시",
+  blocked: "차단",
+  not_ready: "미준비",
+};
+
+export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_VERIFICATION_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeFinalReleaseGovernanceGateVerificationStatus, string>
+> = {
+  verified_metadata: "verified(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
+export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ALIGNMENT_STATUS_LABEL_KO: Readonly<
+  Record<RuntimeFinalReleaseGovernanceGateAlignmentStatus, string>
+> = {
+  aligned_metadata: "aligned(메타)",
+  partial: "부분",
+  failed: "실패",
+};
+
 export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO = {
   scope: "gate scope 행 없음",
   forbiddenOperation: "금지 gate operation 없음",
   checklist: "readiness checklist 행 없음",
   missingChecklist: "누락 checklist 항목 없음",
   blocker: "final release governance gate blocker 없음",
+  boundaryViolation: "final gate violation 없음",
+  readinessFinding: "readiness verification finding 없음",
+  alignmentFinding: "alignment finding 없음",
+  finalGateChecklist: "final gate checklist 행 없음",
   recommendation: "recommendation 없음",
 };

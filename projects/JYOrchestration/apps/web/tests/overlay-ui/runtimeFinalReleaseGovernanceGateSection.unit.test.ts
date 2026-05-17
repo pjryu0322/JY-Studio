@@ -21,10 +21,11 @@ describe("buildOverlayRuntimeFinalReleaseGovernanceGateSectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, gate mode, and top blocker or attention", () => {
+  it("compact mode displays candidate status, gate mode, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeFinalReleaseGovernanceGateSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.gateModeKo).toBeTruthy();
-    expect(vm.topGateBlocker !== null || vm.showAttention).toBe(true);
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

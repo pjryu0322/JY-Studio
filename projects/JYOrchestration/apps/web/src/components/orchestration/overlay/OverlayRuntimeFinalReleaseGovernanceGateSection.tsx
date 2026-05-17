@@ -25,10 +25,18 @@ export function OverlayRuntimeFinalReleaseGovernanceGateSection({
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Final release governance gate candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Gate mode" value={vm.gateModeKo} />
-        {vm.topGateBlocker ? (
-          <OverlayUiKeyValueRow label="Top gate blocker" value={vm.topGateBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H40 entry readiness" value={vm.h40EntryReadinessKo} />
+        {vm.showDetailSections ? (
+          <>
+            <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+            <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+          </>
         ) : null}
-        {!vm.topGateBlocker && vm.topForbiddenGateOperation ? (
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top blocker / violation / finding" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenGateOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden gate operation" value={vm.topForbiddenGateOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -47,6 +55,21 @@ export function OverlayRuntimeFinalReleaseGovernanceGateSection({
               emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.forbiddenOperation}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Final gate violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.boundaryViolation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.readinessFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.alignmentFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.checklist}
@@ -58,6 +81,11 @@ export function OverlayRuntimeFinalReleaseGovernanceGateSection({
                 emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Gate blockers"
               rows={vm.gateBlockerRows}
@@ -73,7 +101,7 @@ export function OverlayRuntimeFinalReleaseGovernanceGateSection({
         <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>
           {RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO}
         </div>
-      </div>
+        </div>
     </OverlayUiSection>
   );
 }

@@ -10,6 +10,22 @@ export type RuntimeFinalReleaseGovernanceGateCandidateStatus =
 
 export type RuntimeFinalReleaseGovernanceGateMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeFinalReleaseGovernanceGateFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeFinalReleaseGovernanceGateVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeFinalReleaseGovernanceGateAlignmentStatus =
+  | "aligned_metadata"
+  | "partial"
+  | "failed";
+
 export type RuntimeFinalReleaseGovernanceGateSummary = Readonly<{
   mode: "runtime_final_release_governance_gate_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -134,10 +150,100 @@ export type RuntimeFinalReleaseGovernanceGateReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeFinalReleaseGovernanceGateViolationReport = Readonly<{
+  mode: "runtime_final_release_governance_gate_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeFinalReleaseGovernanceGateVerificationReport = Readonly<{
+  mode: "runtime_final_release_governance_gate_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  verificationStatus: RuntimeFinalReleaseGovernanceGateVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeFinalReleaseGovernanceGateAlignmentReport = Readonly<{
+  mode: "runtime_final_release_governance_gate_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  alignmentStatus: RuntimeFinalReleaseGovernanceGateAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeFinalReleaseGovernanceGateFinalSafetyGate = Readonly<{
+  mode: "runtime_final_release_governance_gate_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  finalGateStatus: RuntimeFinalReleaseGovernanceGateFinalGateStatus;
+  h40EntryReadiness: RuntimeFinalReleaseGovernanceGateFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeFinalReleaseGovernanceGatePlanningReports = Readonly<{
   runtimeFinalReleaseGovernanceGateSummary: RuntimeFinalReleaseGovernanceGateSummary;
   runtimeFinalReleaseGovernanceGateScope: RuntimeFinalReleaseGovernanceGateScope;
   runtimeFinalReleaseGovernanceGatePolicy: RuntimeFinalReleaseGovernanceGatePolicy;
   runtimeFinalReleaseGovernanceGateBlockerReport: RuntimeFinalReleaseGovernanceGateBlockerReport;
   runtimeFinalReleaseGovernanceGateReadinessChecklist: RuntimeFinalReleaseGovernanceGateReadinessChecklist;
+  runtimeFinalReleaseGovernanceGateViolationReport: RuntimeFinalReleaseGovernanceGateViolationReport;
+  runtimeFinalReleaseGovernanceGateVerificationReport: RuntimeFinalReleaseGovernanceGateVerificationReport;
+  runtimeFinalReleaseGovernanceGateAlignmentReport: RuntimeFinalReleaseGovernanceGateAlignmentReport;
+  runtimeFinalReleaseGovernanceGateFinalSafetyGate: RuntimeFinalReleaseGovernanceGateFinalSafetyGate;
 }>;

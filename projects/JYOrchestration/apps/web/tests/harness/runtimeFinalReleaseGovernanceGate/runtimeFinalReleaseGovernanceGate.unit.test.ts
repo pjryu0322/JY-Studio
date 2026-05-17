@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/buildRuntimeFinalReleaseGovernanceGatePlanningReports";
+import { detectRuntimeFinalReleaseGovernanceGateViolations } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/detectRuntimeFinalReleaseGovernanceGateViolations";
 import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -46,11 +47,26 @@ function buildFinalReleaseGatePlanning(
   return buildRuntimeFinalReleaseGovernanceGatePlanningReports({ ...base, ...patches });
 }
 
-describe("H39 final release governance gate candidate", () => {
+describe("H39 / H39.5 final release governance gate candidate", () => {
   it("full semantic includes final release governance gate with all actual flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeFinalReleaseGovernanceGateSummary.mode).toBe(
       "runtime_final_release_governance_gate_summary"
+    );
+    expect(semantic.runtimeFinalReleaseGovernanceGateViolationReport.mode).toBe(
+      "runtime_final_release_governance_gate_violation_report"
+    );
+    expect(semantic.runtimeFinalReleaseGovernanceGateVerificationReport.mode).toBe(
+      "runtime_final_release_governance_gate_verification_report"
+    );
+    expect(semantic.runtimeFinalReleaseGovernanceGateAlignmentReport.mode).toBe(
+      "runtime_final_release_governance_gate_alignment_report"
+    );
+    expect(semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.mode).toBe(
+      "runtime_final_release_governance_gate_final_safety_gate"
+    );
+    expect(semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.h40EntryReadiness).toBe(
+      semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.finalGateStatus
     );
     expect(semantic.runtimeFinalReleaseGovernanceGateSummary.actualExecutionEnabled).toBe(false);
     expect(semantic.runtimeFinalReleaseGovernanceGateSummary.actualExecutionBlockingEnabled).toBe(false);
@@ -169,7 +185,46 @@ describe("H39 final release governance gate candidate", () => {
     expect(gate.runtimeFinalReleaseGovernanceGateBlockerReport.blockers.length).toBeGreaterThan(0);
   });
 
-  it("serializer includes five H39 fields without rebuilding reports", () => {
+  it("metadata candidate + verified + aligned yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeFinalReleaseGovernanceGateSummary.candidateStatus ===
+        "final_release_governance_gate_metadata_candidate" &&
+      semantic.runtimeFinalReleaseGovernanceGateSummary.gateMode === "metadata_only" &&
+      semantic.runtimeFinalReleaseGovernanceGateVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimeFinalReleaseGovernanceGateAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeFinalReleaseGovernanceGateViolationReport.actualFlagViolations.length === 0
+    ) {
+      expect(semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.h40EntryReadiness).toBe("ready_metadata");
+    }
+  });
+
+  it("policy actualExecutionForbidden false yields violation", () => {
+    const partial = buildFinalReleaseGatePlanning();
+    const violation = detectRuntimeFinalReleaseGovernanceGateViolations({
+      summary: partial.runtimeFinalReleaseGovernanceGateSummary,
+      policy: {
+        ...partial.runtimeFinalReleaseGovernanceGatePolicy,
+        actualExecutionForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionForbidden"))).toBe(true);
+  });
+
+  it("summary actualExecutionBlockingEnabled true yields violation", () => {
+    const partial = buildFinalReleaseGatePlanning();
+    const violation = detectRuntimeFinalReleaseGovernanceGateViolations({
+      summary: {
+        ...partial.runtimeFinalReleaseGovernanceGateSummary,
+        actualExecutionBlockingEnabled: true as unknown as false,
+      },
+      policy: partial.runtimeFinalReleaseGovernanceGatePolicy,
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionBlockingEnabled"))).toBe(true);
+  });
+
+  it("serializer includes nine H39/H39.5 fields without rebuilding reports", () => {
     const semantic = buildFullSemantic();
     const bundle = serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports(semantic);
     expect(bundle.runtimeFinalReleaseGovernanceGateSummary.candidateStatus).toBe(
@@ -184,6 +239,15 @@ describe("H39 final release governance gate candidate", () => {
     );
     expect(bundle.runtimeFinalReleaseGovernanceGateReadinessChecklist.mode).toBe(
       "runtime_final_release_governance_gate_readiness_checklist"
+    );
+    expect(bundle.runtimeFinalReleaseGovernanceGateViolationReport).toBeDefined();
+    expect(bundle.runtimeFinalReleaseGovernanceGateVerificationReport).toBeDefined();
+    expect(bundle.runtimeFinalReleaseGovernanceGateAlignmentReport).toBeDefined();
+    expect(bundle.runtimeFinalReleaseGovernanceGateFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.finalGateStatus,
+        h40EntryReadiness: semantic.runtimeFinalReleaseGovernanceGateFinalSafetyGate.h40EntryReadiness,
+      })
     );
   });
 

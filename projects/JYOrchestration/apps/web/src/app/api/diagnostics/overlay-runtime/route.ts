@@ -905,6 +905,14 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateBlockerReport,
       runtimeFinalReleaseGovernanceGateReadinessChecklist:
         runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateReadinessChecklist,
+      runtimeFinalReleaseGovernanceGateViolationReport:
+        runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateViolationReport,
+      runtimeFinalReleaseGovernanceGateVerificationReport:
+        runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateVerificationReport,
+      runtimeFinalReleaseGovernanceGateAlignmentReport:
+        runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateAlignmentReport,
+      runtimeFinalReleaseGovernanceGateFinalSafetyGate:
+        runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

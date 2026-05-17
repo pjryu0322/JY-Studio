@@ -4,6 +4,11 @@
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
+import {
+  FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_SOURCE_LAYER,
+  FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_TARGET_LAYER,
+  RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
+} from "./runtimeFinalReleaseGovernanceGateConstants";
 import type { RuntimeFinalReleaseGovernanceGateScope } from "./runtimeFinalReleaseGovernanceGateTypes";
 
 const FORBIDDEN_GATE_OPERATIONS = [
@@ -62,22 +67,9 @@ export function buildRuntimeFinalReleaseGovernanceGateScope(
 
   return {
     mode: "runtime_final_release_governance_gate_scope",
-    actualRuntimeOrchestrationEnabled: false,
-    actualPilotExecutionEnabled: false,
-    actualNoopShellExecutionEnabled: false,
-    actualExecutionShellExecutionEnabled: false,
-    actualReleaseEnforcementEnabled: false,
-    actualRuntimeAdapterInvocationEnabled: false,
-    actualExecutionEnabled: false,
-    actualExecutionRoutingEnabled: false,
-    actualProviderRoutingEnabled: false,
-    actualQueueControlEnabled: false,
-    actualRollbackExecutionEnabled: false,
-    actualApprovalEnforcementEnabled: false,
-    actualExecutionBlockingEnabled: false,
-    actualMergeBlockingEnabled: false,
-    candidateSourceLayer: "runtimeGovernanceReleaseReadinessFinalSafetyGate",
-    candidateTargetLayer: "finalReleaseGovernanceGateCandidate",
+    ...RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
+    candidateSourceLayer: FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_SOURCE_LAYER,
+    candidateTargetLayer: FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_TARGET_LAYER,
     requiredInputMetadata,
     expectedOutputMetadata,
     allowedGateMetadataScopes,

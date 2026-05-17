@@ -1,14 +1,19 @@
 /**
- * H39 — final release governance gate 진단 **직렬화 전용**(report 재빌드 없음).
+ * H39 / H39.5 — final release governance gate 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
+import { SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS } from "./runtimeFinalReleaseGovernanceGateConstants";
 import type {
+  RuntimeFinalReleaseGovernanceGateAlignmentReport,
   RuntimeFinalReleaseGovernanceGateBlockerReport,
+  RuntimeFinalReleaseGovernanceGateFinalSafetyGate,
   RuntimeFinalReleaseGovernanceGatePolicy,
   RuntimeFinalReleaseGovernanceGateReadinessChecklist,
   RuntimeFinalReleaseGovernanceGateScope,
   RuntimeFinalReleaseGovernanceGateSummary,
+  RuntimeFinalReleaseGovernanceGateVerificationReport,
+  RuntimeFinalReleaseGovernanceGateViolationReport,
 } from "./runtimeFinalReleaseGovernanceGateTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
@@ -18,20 +23,7 @@ function sortKo(rows: readonly string[]): readonly string[] {
 function serializeSummary(s: RuntimeFinalReleaseGovernanceGateSummary): Readonly<Record<string, unknown>> {
   return {
     mode: s.mode,
-    actualRuntimeOrchestrationEnabled: s.actualRuntimeOrchestrationEnabled,
-    actualPilotExecutionEnabled: s.actualPilotExecutionEnabled,
-    actualNoopShellExecutionEnabled: s.actualNoopShellExecutionEnabled,
-    actualExecutionShellExecutionEnabled: s.actualExecutionShellExecutionEnabled,
-    actualReleaseEnforcementEnabled: s.actualReleaseEnforcementEnabled,
-    actualRuntimeAdapterInvocationEnabled: s.actualRuntimeAdapterInvocationEnabled,
-    actualExecutionEnabled: s.actualExecutionEnabled,
-    actualExecutionRoutingEnabled: s.actualExecutionRoutingEnabled,
-    actualProviderRoutingEnabled: s.actualProviderRoutingEnabled,
-    actualQueueControlEnabled: s.actualQueueControlEnabled,
-    actualRollbackExecutionEnabled: s.actualRollbackExecutionEnabled,
-    actualApprovalEnforcementEnabled: s.actualApprovalEnforcementEnabled,
-    actualExecutionBlockingEnabled: s.actualExecutionBlockingEnabled,
-    actualMergeBlockingEnabled: s.actualMergeBlockingEnabled,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
     candidateStatus: s.candidateStatus,
     gateMode: s.gateMode,
     rationaleKo: s.rationaleKo,
@@ -43,20 +35,7 @@ function serializeSummary(s: RuntimeFinalReleaseGovernanceGateSummary): Readonly
 function serializeScope(scope: RuntimeFinalReleaseGovernanceGateScope): Readonly<Record<string, unknown>> {
   return {
     mode: scope.mode,
-    actualRuntimeOrchestrationEnabled: scope.actualRuntimeOrchestrationEnabled,
-    actualPilotExecutionEnabled: scope.actualPilotExecutionEnabled,
-    actualNoopShellExecutionEnabled: scope.actualNoopShellExecutionEnabled,
-    actualExecutionShellExecutionEnabled: scope.actualExecutionShellExecutionEnabled,
-    actualReleaseEnforcementEnabled: scope.actualReleaseEnforcementEnabled,
-    actualRuntimeAdapterInvocationEnabled: scope.actualRuntimeAdapterInvocationEnabled,
-    actualExecutionEnabled: scope.actualExecutionEnabled,
-    actualExecutionRoutingEnabled: scope.actualExecutionRoutingEnabled,
-    actualProviderRoutingEnabled: scope.actualProviderRoutingEnabled,
-    actualQueueControlEnabled: scope.actualQueueControlEnabled,
-    actualRollbackExecutionEnabled: scope.actualRollbackExecutionEnabled,
-    actualApprovalEnforcementEnabled: scope.actualApprovalEnforcementEnabled,
-    actualExecutionBlockingEnabled: scope.actualExecutionBlockingEnabled,
-    actualMergeBlockingEnabled: scope.actualMergeBlockingEnabled,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
     candidateSourceLayer: scope.candidateSourceLayer,
     candidateTargetLayer: scope.candidateTargetLayer,
     requiredInputMetadata: sortKo(scope.requiredInputMetadata),
@@ -70,20 +49,7 @@ function serializeScope(scope: RuntimeFinalReleaseGovernanceGateScope): Readonly
 function serializePolicy(p: RuntimeFinalReleaseGovernanceGatePolicy): Readonly<Record<string, unknown>> {
   return {
     mode: p.mode,
-    actualRuntimeOrchestrationEnabled: p.actualRuntimeOrchestrationEnabled,
-    actualPilotExecutionEnabled: p.actualPilotExecutionEnabled,
-    actualNoopShellExecutionEnabled: p.actualNoopShellExecutionEnabled,
-    actualExecutionShellExecutionEnabled: p.actualExecutionShellExecutionEnabled,
-    actualReleaseEnforcementEnabled: p.actualReleaseEnforcementEnabled,
-    actualRuntimeAdapterInvocationEnabled: p.actualRuntimeAdapterInvocationEnabled,
-    actualExecutionEnabled: p.actualExecutionEnabled,
-    actualExecutionRoutingEnabled: p.actualExecutionRoutingEnabled,
-    actualProviderRoutingEnabled: p.actualProviderRoutingEnabled,
-    actualQueueControlEnabled: p.actualQueueControlEnabled,
-    actualRollbackExecutionEnabled: p.actualRollbackExecutionEnabled,
-    actualApprovalEnforcementEnabled: p.actualApprovalEnforcementEnabled,
-    actualExecutionBlockingEnabled: p.actualExecutionBlockingEnabled,
-    actualMergeBlockingEnabled: p.actualMergeBlockingEnabled,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
     gateAllowedMode: p.gateAllowedMode,
     operatorReviewBeforeFinalReleaseGate: p.operatorReviewBeforeFinalReleaseGate,
     rollbackReadinessRequired: p.rollbackReadinessRequired,
@@ -106,20 +72,7 @@ function serializePolicy(p: RuntimeFinalReleaseGovernanceGatePolicy): Readonly<R
 function serializeBlockerReport(b: RuntimeFinalReleaseGovernanceGateBlockerReport): Readonly<Record<string, unknown>> {
   return {
     mode: b.mode,
-    actualRuntimeOrchestrationEnabled: b.actualRuntimeOrchestrationEnabled,
-    actualPilotExecutionEnabled: b.actualPilotExecutionEnabled,
-    actualNoopShellExecutionEnabled: b.actualNoopShellExecutionEnabled,
-    actualExecutionShellExecutionEnabled: b.actualExecutionShellExecutionEnabled,
-    actualReleaseEnforcementEnabled: b.actualReleaseEnforcementEnabled,
-    actualRuntimeAdapterInvocationEnabled: b.actualRuntimeAdapterInvocationEnabled,
-    actualExecutionEnabled: b.actualExecutionEnabled,
-    actualExecutionRoutingEnabled: b.actualExecutionRoutingEnabled,
-    actualProviderRoutingEnabled: b.actualProviderRoutingEnabled,
-    actualQueueControlEnabled: b.actualQueueControlEnabled,
-    actualRollbackExecutionEnabled: b.actualRollbackExecutionEnabled,
-    actualApprovalEnforcementEnabled: b.actualApprovalEnforcementEnabled,
-    actualExecutionBlockingEnabled: b.actualExecutionBlockingEnabled,
-    actualMergeBlockingEnabled: b.actualMergeBlockingEnabled,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
     blockers: sortKo(b.blockers),
     recommendations: sortKo(b.recommendations),
   };
@@ -128,24 +81,55 @@ function serializeBlockerReport(b: RuntimeFinalReleaseGovernanceGateBlockerRepor
 function serializeChecklist(c: RuntimeFinalReleaseGovernanceGateReadinessChecklist): Readonly<Record<string, unknown>> {
   return {
     mode: c.mode,
-    actualRuntimeOrchestrationEnabled: c.actualRuntimeOrchestrationEnabled,
-    actualPilotExecutionEnabled: c.actualPilotExecutionEnabled,
-    actualNoopShellExecutionEnabled: c.actualNoopShellExecutionEnabled,
-    actualExecutionShellExecutionEnabled: c.actualExecutionShellExecutionEnabled,
-    actualReleaseEnforcementEnabled: c.actualReleaseEnforcementEnabled,
-    actualRuntimeAdapterInvocationEnabled: c.actualRuntimeAdapterInvocationEnabled,
-    actualExecutionEnabled: c.actualExecutionEnabled,
-    actualExecutionRoutingEnabled: c.actualExecutionRoutingEnabled,
-    actualProviderRoutingEnabled: c.actualProviderRoutingEnabled,
-    actualQueueControlEnabled: c.actualQueueControlEnabled,
-    actualRollbackExecutionEnabled: c.actualRollbackExecutionEnabled,
-    actualApprovalEnforcementEnabled: c.actualApprovalEnforcementEnabled,
-    actualExecutionBlockingEnabled: c.actualExecutionBlockingEnabled,
-    actualMergeBlockingEnabled: c.actualMergeBlockingEnabled,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
     checklist: sortKo(c.checklist),
     missingRows: sortKo(c.missingRows),
     blockers: sortKo(c.blockers),
     recommendations: sortKo(c.recommendations),
+  };
+}
+
+function serializeViolationReport(v: RuntimeFinalReleaseGovernanceGateViolationReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  r: RuntimeFinalReleaseGovernanceGateVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(a: RuntimeFinalReleaseGovernanceGateAlignmentReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(g: RuntimeFinalReleaseGovernanceGateFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    h40EntryReadiness: g.h40EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
   };
 }
 
@@ -157,6 +141,10 @@ export function serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSe
   runtimeFinalReleaseGovernanceGatePolicy: ReturnType<typeof serializePolicy>;
   runtimeFinalReleaseGovernanceGateBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeFinalReleaseGovernanceGateReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeFinalReleaseGovernanceGateViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeFinalReleaseGovernanceGateVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeFinalReleaseGovernanceGateAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeFinalReleaseGovernanceGateFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeFinalReleaseGovernanceGateSummary: serializeSummary(reports.runtimeFinalReleaseGovernanceGateSummary),
@@ -167,6 +155,18 @@ export function serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSe
     ),
     runtimeFinalReleaseGovernanceGateReadinessChecklist: serializeChecklist(
       reports.runtimeFinalReleaseGovernanceGateReadinessChecklist
+    ),
+    runtimeFinalReleaseGovernanceGateViolationReport: serializeViolationReport(
+      reports.runtimeFinalReleaseGovernanceGateViolationReport
+    ),
+    runtimeFinalReleaseGovernanceGateVerificationReport: serializeReadinessVerification(
+      reports.runtimeFinalReleaseGovernanceGateVerificationReport
+    ),
+    runtimeFinalReleaseGovernanceGateAlignmentReport: serializeAlignmentReport(
+      reports.runtimeFinalReleaseGovernanceGateAlignmentReport
+    ),
+    runtimeFinalReleaseGovernanceGateFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeFinalReleaseGovernanceGateFinalSafetyGate
     ),
   };
 }
