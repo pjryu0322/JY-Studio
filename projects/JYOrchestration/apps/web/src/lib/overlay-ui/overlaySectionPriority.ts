@@ -59,7 +59,8 @@ export type OverlaySectionKind =
   | "runtime_planning_runtime_noop_execution_shell"
   | "runtime_planning_runtime_noop_execution_shell_harness"
   | "runtime_planning_runtime_noop_shell_hardening"
-  | "runtime_planning_runtime_noop_shell_release_gate";
+  | "runtime_planning_runtime_noop_shell_release_gate"
+  | "runtime_planning_runtime_release_gate_preflight";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -104,6 +105,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_planning_runtime_noop_execution_shell_harness":
     case "runtime_planning_runtime_noop_shell_hardening":
     case "runtime_planning_runtime_noop_shell_release_gate":
+    case "runtime_planning_runtime_release_gate_preflight":
       return "important";
     case "context":
     case "budget":

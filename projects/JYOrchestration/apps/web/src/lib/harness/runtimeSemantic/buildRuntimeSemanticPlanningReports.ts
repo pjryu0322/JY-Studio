@@ -1,5 +1,5 @@
 /**
- * H17–H34.5 — semantic·…·shell hardening·release-gate candidate·release-gate final safety gate **planning 보고서** 일괄 산출.
+ * H17–H35 — semantic·…·release-gate final safety gate·release-gate final preflight **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -36,6 +36,7 @@ import { buildRuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/run
 import { buildRuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/buildRuntimeNoopExecutionShellHarnessPlanningReports";
 import { buildRuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningPlanningReports";
 import { buildRuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/buildRuntimeNoopShellReleaseGatePlanningReports";
+import { buildRuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -81,6 +82,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
   RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
+  RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -238,8 +240,14 @@ export function buildRuntimeSemanticPlanningReports(
   };
   const noopShellReleaseGateReports =
     buildRuntimeNoopShellReleaseGatePlanningReports(semanticWithNoopShellHardening);
+  const semanticWithNoopShellReleaseGate = {
+    ...semanticWithNoopShellHardening,
+    ...noopShellReleaseGateReports,
+  };
+  const releaseGatePreflightReports =
+    buildRuntimeReleaseGatePreflightPlanningReports(semanticWithNoopShellReleaseGate);
 
-  return { ...semanticWithNoopShellHardening, ...noopShellReleaseGateReports };
+  return { ...semanticWithNoopShellReleaseGate, ...releaseGatePreflightReports };
 }
 
 export type {

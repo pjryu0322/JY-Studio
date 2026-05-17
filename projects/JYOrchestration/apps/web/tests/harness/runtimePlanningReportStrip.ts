@@ -299,6 +299,39 @@ function omitNoopShellReleaseGateLayerOnly<T extends RuntimeSemanticPlanningRepo
   return rest;
 }
 
+function omitReleaseGatePreflightLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeReleaseGatePreflightSummary"
+  | "runtimeReleaseGateExecutionReadinessBoundary"
+  | "runtimeReleaseGateInputEnvelope"
+  | "runtimeReleaseGateOutputEnvelope"
+  | "runtimeReleaseGateNoExecutionProof"
+  | "runtimeReleaseGateOperationForbiddenProof"
+  | "runtimeReleaseGatePreflightBlockerReport"
+  | "runtimeReleaseGatePreflightChecklist"
+> {
+  const {
+    runtimeReleaseGatePreflightSummary: _pf1,
+    runtimeReleaseGateExecutionReadinessBoundary: _pf2,
+    runtimeReleaseGateInputEnvelope: _pf3,
+    runtimeReleaseGateOutputEnvelope: _pf4,
+    runtimeReleaseGateNoExecutionProof: _pf5,
+    runtimeReleaseGateOperationForbiddenProof: _pf6,
+    runtimeReleaseGatePreflightBlockerReport: _pf7,
+    runtimeReleaseGatePreflightChecklist: _pf8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+function omitNoopShellReleaseGateStackLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): ReturnType<typeof omitReleaseGatePreflightLayerOnly<ReturnType<typeof omitNoopShellReleaseGateLayerOnly<T>>>> {
+  return omitReleaseGatePreflightLayerOnly(omitNoopShellReleaseGateLayerOnly(semantic));
+}
+
 function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -434,7 +467,7 @@ export function stripRuntimeNoopExecutionShellLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopExecutionShell {
   return omitNoopExecutionShellHarnessLayerOnly(
-    omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellLayerOnly(semantic)))
+    omitNoopShellReleaseGateStackLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellLayerOnly(semantic)))
   );
 }
 
@@ -442,21 +475,28 @@ export function stripRuntimeNoopExecutionShellLayer(
 export function stripRuntimeNoopExecutionShellHarnessLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness {
-  return omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellHarnessLayerOnly(semantic)));
+  return omitNoopShellReleaseGateStackLayerOnly(omitNoopShellHardeningLayerOnly(omitNoopExecutionShellHarnessLayerOnly(semantic)));
 }
 
 /** H33 no-op shell hardening reports 제거 — shell hardening 이하 레이어 단독 테스트용. */
 export function stripRuntimeNoopShellHardeningLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopShellHardening {
-  return omitNoopShellReleaseGateLayerOnly(omitNoopShellHardeningLayerOnly(semantic));
+  return omitNoopShellReleaseGateStackLayerOnly(omitNoopShellHardeningLayerOnly(semantic));
 }
 
-/** H34 release-gate candidate reports 제거 — release-gate 이하 레이어 단독 테스트용. */
+/** H34 / H34.5 release-gate reports 제거 — release-gate 이하 레이어 단독 테스트용. */
 export function stripRuntimeNoopShellReleaseGateLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate {
-  return omitNoopShellReleaseGateLayerOnly(semantic);
+  return omitNoopShellReleaseGateStackLayerOnly(semantic);
+}
+
+/** H35 release-gate preflight reports 제거 — preflight 이하 레이어 단독 테스트용. */
+export function stripRuntimeReleaseGatePreflightLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight {
+  return omitReleaseGatePreflightLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

@@ -60,6 +60,7 @@ import { serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports }
 import { serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/serializeRuntimeNoopExecutionShellHarnessDiagnosticBundle";
 import { serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellHardening/serializeRuntimeNoopShellHardeningDiagnosticBundle";
 import { serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellReleaseGate/serializeRuntimeNoopShellReleaseGateDiagnosticBundle";
+import { serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeReleaseGatePreflight/serializeRuntimeReleaseGatePreflightDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -114,6 +115,9 @@ type SerializedRuntimeNoopShellHardeningDiag = ReturnType<
 >;
 type SerializedRuntimeNoopShellReleaseGateDiag = ReturnType<
   typeof serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeReleaseGatePreflightDiag = ReturnType<
+  typeof serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -271,6 +275,14 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeNoopShellReleaseGateReadinessVerificationReport: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateReadinessVerificationReport"];
   runtimeNoopShellReleaseGateAlignmentReport: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateAlignmentReport"];
   runtimeNoopShellReleaseGateFinalSafetyGate: SerializedRuntimeNoopShellReleaseGateDiag["runtimeNoopShellReleaseGateFinalSafetyGate"];
+  runtimeReleaseGatePreflightSummary: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGatePreflightSummary"];
+  runtimeReleaseGateExecutionReadinessBoundary: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGateExecutionReadinessBoundary"];
+  runtimeReleaseGateInputEnvelope: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGateInputEnvelope"];
+  runtimeReleaseGateOutputEnvelope: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGateOutputEnvelope"];
+  runtimeReleaseGateNoExecutionProof: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGateNoExecutionProof"];
+  runtimeReleaseGateOperationForbiddenProof: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGateOperationForbiddenProof"];
+  runtimeReleaseGatePreflightBlockerReport: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGatePreflightBlockerReport"];
+  runtimeReleaseGatePreflightChecklist: SerializedRuntimeReleaseGatePreflightDiag["runtimeReleaseGatePreflightChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -292,6 +304,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const noopShellHardeningDiag = serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports(reports);
   const noopShellReleaseGateDiag =
     serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports(reports);
+  const releaseGatePreflightDiag =
+    serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -376,6 +390,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...noopExecutionShellHarnessDiag,
     ...noopShellHardeningDiag,
     ...noopShellReleaseGateDiag,
+    ...releaseGatePreflightDiag,
   };
 }
 

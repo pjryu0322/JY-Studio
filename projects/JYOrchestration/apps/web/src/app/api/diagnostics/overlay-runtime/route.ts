@@ -827,6 +827,17 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeNoopShellReleaseGateAlignmentReport,
       runtimeNoopShellReleaseGateFinalSafetyGate:
         runtimeSemanticDiag.runtimeNoopShellReleaseGateFinalSafetyGate,
+      runtimeReleaseGatePreflightSummary: runtimeSemanticDiag.runtimeReleaseGatePreflightSummary,
+      runtimeReleaseGateExecutionReadinessBoundary:
+        runtimeSemanticDiag.runtimeReleaseGateExecutionReadinessBoundary,
+      runtimeReleaseGateInputEnvelope: runtimeSemanticDiag.runtimeReleaseGateInputEnvelope,
+      runtimeReleaseGateOutputEnvelope: runtimeSemanticDiag.runtimeReleaseGateOutputEnvelope,
+      runtimeReleaseGateNoExecutionProof: runtimeSemanticDiag.runtimeReleaseGateNoExecutionProof,
+      runtimeReleaseGateOperationForbiddenProof:
+        runtimeSemanticDiag.runtimeReleaseGateOperationForbiddenProof,
+      runtimeReleaseGatePreflightBlockerReport:
+        runtimeSemanticDiag.runtimeReleaseGatePreflightBlockerReport,
+      runtimeReleaseGatePreflightChecklist: runtimeSemanticDiag.runtimeReleaseGatePreflightChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

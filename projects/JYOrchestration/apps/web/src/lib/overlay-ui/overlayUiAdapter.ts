@@ -247,6 +247,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeNoopExecutionShellHarness: boolean;
   runtimePlanningRuntimeNoopShellHardening: boolean;
   runtimePlanningRuntimeNoopShellReleaseGate: boolean;
+  /** Harness Phase H35 — Release-gate final preflight·execution readiness boundary(기본 접힘; blocker 시 펼침). */
+  runtimePlanningRuntimeReleaseGatePreflight: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -541,6 +543,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeNoopExecutionShellHarness: false,
     runtimePlanningRuntimeNoopShellHardening: false,
     runtimePlanningRuntimeNoopShellReleaseGate: false,
+    runtimePlanningRuntimeReleaseGatePreflight: false,
   };
 }
 
