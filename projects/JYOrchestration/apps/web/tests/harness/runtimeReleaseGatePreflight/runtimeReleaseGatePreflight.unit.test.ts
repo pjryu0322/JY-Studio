@@ -163,10 +163,11 @@ describe("H35 / H35.5 release-gate final preflight", () => {
     expect(stripped.runtimeNoopShellReleaseGateSummary.mode).toBe("runtime_noop_shell_release_gate_summary");
   });
 
-  it("stripRuntimeNoopShellReleaseGateLayer removes H34 and H35 fields", () => {
+  it("stripRuntimeNoopShellReleaseGateLayer removes H34, H35, and H36 fields", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeNoopShellReleaseGateLayer(semantic);
     expect("runtimeReleaseGatePreflightSummary" in stripped).toBe(false);
+    expect("runtimeExecutionBoundaryShellSummary" in stripped).toBe(false);
     expect("runtimeNoopShellReleaseGateSummary" in stripped).toBe(false);
   });
 

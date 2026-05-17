@@ -6,41 +6,8 @@ import {
   RUNTIME_RELEASE_GATE_PREFLIGHT_OVERLAY_FOOTER_KO,
 } from "@/lib/harness/runtimeReleaseGatePreflight/runtimeReleaseGatePreflightLabelsKo";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { OverlayUiSection, OverlayUiKeyValueRow, OverlayUiEmptyHint } from "./OverlayUiPrimitives";
-
-const OVERLAY_PREFLIGHT_ROW_LIST_STYLE = {
-  margin: 0,
-  paddingLeft: 18,
-  fontSize: 11,
-  color: t.textMuted,
-  lineHeight: 1.45,
-  overflowWrap: "anywhere" as const,
-} as const;
-
-function OverlayPreflightDetailBlock({
-  title,
-  rows,
-  emptyHint,
-}: {
-  readonly title: string;
-  readonly rows: readonly string[];
-  readonly emptyHint: string;
-}) {
-  return (
-    <>
-      <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>{title}</div>
-      {rows.length > 0 ? (
-        <ul style={OVERLAY_PREFLIGHT_ROW_LIST_STYLE}>
-          {rows.map((row) => (
-            <li key={row}>{row}</li>
-          ))}
-        </ul>
-      ) : (
-        <OverlayUiEmptyHint message={emptyHint} />
-      )}
-    </>
-  );
-}
+import { OverlayUiSection, OverlayUiKeyValueRow } from "./OverlayUiPrimitives";
+import { OverlayRuntimePlanningDetailBlock } from "./OverlayRuntimePlanningDetailBlock";
 
 export function OverlayRuntimeReleaseGatePreflightSection({
   vm,
@@ -80,69 +47,69 @@ export function OverlayRuntimeReleaseGatePreflightSection({
         ) : null}
         {vm.showDetailSections ? (
           <>
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Input envelope"
               rows={vm.inputEnvelopeRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.inputEnvelope}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Output envelope"
               rows={vm.outputEnvelopeRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.outputEnvelope}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Forbidden boundary operations"
               rows={vm.forbiddenBoundaryOperationRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.forbiddenOperation}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="No-execution proof"
               rows={vm.noExecutionProofRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Operation-forbidden proof"
               rows={vm.operationForbiddenProofRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Boundary violations"
               rows={vm.boundaryViolationRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.boundaryViolation}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Readiness verification"
               rows={vm.readinessFindingRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.readinessFinding}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Alignment report"
               rows={vm.alignmentFindingRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.alignmentFinding}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Final gate checklist"
               rows={vm.finalGateChecklistRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.finalGateChecklist}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Preflight checklist"
               rows={vm.preflightChecklistRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.checklist}
             />
             {vm.missingChecklistRows.length > 0 ? (
-              <OverlayPreflightDetailBlock
+              <OverlayRuntimePlanningDetailBlock
                 title="Missing checklist"
                 rows={vm.missingChecklistRows}
                 emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Preflight blockers"
               rows={vm.preflightBlockerRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.blocker}
             />
-            <OverlayPreflightDetailBlock
+            <OverlayRuntimePlanningDetailBlock
               title="Recommendations"
               rows={vm.recommendationRows}
               emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.recommendation}

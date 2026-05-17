@@ -334,10 +334,37 @@ function omitReleaseGatePreflightLayerOnly<T extends RuntimeSemanticPlanningRepo
   return rest;
 }
 
+function omitExecutionBoundaryShellLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeExecutionBoundaryShellSummary"
+  | "runtimeExecutionBoundaryShellScope"
+  | "runtimeExecutionBoundaryShellPolicy"
+  | "runtimeExecutionBoundaryShellBlockerReport"
+  | "runtimeExecutionBoundaryShellReadinessChecklist"
+> {
+  const {
+    runtimeExecutionBoundaryShellSummary: _eb1,
+    runtimeExecutionBoundaryShellScope: _eb2,
+    runtimeExecutionBoundaryShellPolicy: _eb3,
+    runtimeExecutionBoundaryShellBlockerReport: _eb4,
+    runtimeExecutionBoundaryShellReadinessChecklist: _eb5,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
 function omitNoopShellReleaseGateStackLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
-): ReturnType<typeof omitReleaseGatePreflightLayerOnly<ReturnType<typeof omitNoopShellReleaseGateLayerOnly<T>>>> {
-  return omitReleaseGatePreflightLayerOnly(omitNoopShellReleaseGateLayerOnly(semantic));
+): ReturnType<
+  typeof omitExecutionBoundaryShellLayerOnly<
+    ReturnType<typeof omitReleaseGatePreflightLayerOnly<ReturnType<typeof omitNoopShellReleaseGateLayerOnly<T>>>>
+  >
+> {
+  return omitExecutionBoundaryShellLayerOnly(
+    omitReleaseGatePreflightLayerOnly(omitNoopShellReleaseGateLayerOnly(semantic))
+  );
 }
 
 function omitRunnerInvocationLayerOnly<T extends RuntimeSemanticPlanningReports>(
@@ -500,11 +527,18 @@ export function stripRuntimeNoopShellReleaseGateLayer(
   return omitNoopShellReleaseGateStackLayerOnly(semantic);
 }
 
-/** H35 release-gate preflight reports 제거 — preflight 이하 레이어 단독 테스트용. */
+/** H35 / H35.5 release-gate preflight reports 제거 — preflight 이하 레이어 단독 테스트용. */
 export function stripRuntimeReleaseGatePreflightLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight {
   return omitReleaseGatePreflightLayerOnly(semantic);
+}
+
+/** H36 execution boundary shell reports 제거 — boundary shell 이하 레이어 단독 테스트용. */
+export function stripRuntimeExecutionBoundaryShellLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell {
+  return omitExecutionBoundaryShellLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

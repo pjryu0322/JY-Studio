@@ -190,6 +190,7 @@ export function OverlaySummaryCard({
     runtimeNoopShellHardeningVm: runtimePlanningNoopShellHardeningVm,
     runtimeNoopShellReleaseGateVm: runtimePlanningNoopShellReleaseGateVm,
     runtimeReleaseGatePreflightVm: runtimePlanningReleaseGatePreflightVm,
+    runtimeExecutionBoundaryShellVm: runtimePlanningExecutionBoundaryShellVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -371,6 +372,10 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_release_gate_preflight",
     d.runtimePlanningRuntimeReleaseGatePreflight || runtimePlanningReleaseGatePreflightVm.showAttention
   );
+  const pExecutionBoundaryShell = pol(
+    "runtime_planning_runtime_execution_boundary_shell",
+    d.runtimePlanningRuntimeExecutionBoundaryShell || runtimePlanningExecutionBoundaryShellVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -392,7 +397,8 @@ export function OverlaySummaryCard({
     pNoopExecutionShellHarness.omitFromDom &&
     pNoopShellHardening.omitFromDom &&
     pNoopShellReleaseGate.omitFromDom &&
-    pReleaseGatePreflight.omitFromDom;
+    pReleaseGatePreflight.omitFromDom &&
+    pExecutionBoundaryShell.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -607,6 +613,9 @@ export function OverlaySummaryCard({
           showRuntimeNoopShellReleaseGate={!pNoopShellReleaseGate.omitFromDom}
           showRuntimeReleaseGatePreflight={!pReleaseGatePreflight.omitFromDom}
           releaseGatePreflightDefaultOpen={pReleaseGatePreflight.defaultOpen}
+          showRuntimeExecutionBoundaryShell={!pExecutionBoundaryShell.omitFromDom}
+          executionBoundaryShellDefaultOpen={pExecutionBoundaryShell.defaultOpen}
+          runtimeExecutionBoundaryShellVm={runtimePlanningExecutionBoundaryShellVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

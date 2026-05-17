@@ -27,6 +27,7 @@ import type { OverlayRuntimeNoopExecutionShellHarnessSectionVM } from "@/lib/ove
 import type { OverlayRuntimeNoopShellHardeningSectionVM } from "@/lib/overlay-ui/overlayRuntimeNoopShellHardeningAdapter";
 import type { OverlayRuntimeNoopShellReleaseGateSectionVM } from "@/lib/overlay-ui/overlayRuntimeNoopShellReleaseGateAdapter";
 import type { OverlayRuntimeReleaseGatePreflightSectionVM } from "@/lib/overlay-ui/overlayRuntimeReleaseGatePreflightAdapter";
+import type { OverlayRuntimeExecutionBoundaryShellSectionVM } from "@/lib/overlay-ui/overlayRuntimeExecutionBoundaryShellAdapter";
 import type { OverlayRuntimeSemanticVocabularySectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticVocabularyAdapter";
 import type { OverlayRuntimeSemanticSectionVM } from "@/lib/overlay-ui/overlayRuntimeSemanticAdapter";
 import type { OverlayRuntimeTraceabilitySectionVM } from "@/lib/overlay-ui/overlayRuntimeTraceabilityAdapter";
@@ -57,6 +58,7 @@ import { OverlayRuntimeNoopExecutionShellHarnessSection } from "./OverlayRuntime
 import { OverlayRuntimeNoopShellHardeningSection } from "./OverlayRuntimeNoopShellHardeningSection";
 import { OverlayRuntimeNoopShellReleaseGateSection } from "./OverlayRuntimeNoopShellReleaseGateSection";
 import { OverlayRuntimeReleaseGatePreflightSection } from "./OverlayRuntimeReleaseGatePreflightSection";
+import { OverlayRuntimeExecutionBoundaryShellSection } from "./OverlayRuntimeExecutionBoundaryShellSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -85,6 +87,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeNoopShellHardeningVm,
   runtimeNoopShellReleaseGateVm,
   runtimeReleaseGatePreflightVm,
+  runtimeExecutionBoundaryShellVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -115,6 +118,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   noopShellHardeningDefaultOpen,
   noopShellReleaseGateDefaultOpen,
   releaseGatePreflightDefaultOpen,
+  executionBoundaryShellDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -146,6 +150,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeNoopShellHardening = true,
   showRuntimeNoopShellReleaseGate = true,
   showRuntimeReleaseGatePreflight = true,
+  showRuntimeExecutionBoundaryShell = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -177,6 +182,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeNoopShellHardeningVm: OverlayRuntimeNoopShellHardeningSectionVM;
   readonly runtimeNoopShellReleaseGateVm: OverlayRuntimeNoopShellReleaseGateSectionVM;
   readonly runtimeReleaseGatePreflightVm: OverlayRuntimeReleaseGatePreflightSectionVM;
+  readonly runtimeExecutionBoundaryShellVm: OverlayRuntimeExecutionBoundaryShellSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -207,6 +213,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly noopShellHardeningDefaultOpen?: boolean;
   readonly noopShellReleaseGateDefaultOpen?: boolean;
   readonly releaseGatePreflightDefaultOpen?: boolean;
+  readonly executionBoundaryShellDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -238,6 +245,7 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeNoopShellHardening?: boolean;
   readonly showRuntimeNoopShellReleaseGate?: boolean;
   readonly showRuntimeReleaseGatePreflight?: boolean;
+  readonly showRuntimeExecutionBoundaryShell?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -373,6 +381,12 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimeReleaseGatePreflightSection
           vm={runtimeReleaseGatePreflightVm}
           defaultOpen={releaseGatePreflightDefaultOpen}
+        />
+      ) : null}
+      {showRuntimeExecutionBoundaryShell ? (
+        <OverlayRuntimeExecutionBoundaryShellSection
+          vm={runtimeExecutionBoundaryShellVm}
+          defaultOpen={executionBoundaryShellDefaultOpen}
         />
       ) : null}
       {showForecast ? (

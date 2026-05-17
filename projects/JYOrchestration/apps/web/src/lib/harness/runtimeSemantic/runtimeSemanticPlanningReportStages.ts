@@ -18,6 +18,7 @@ import type { RuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harn
 import type { RuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/runtimeNoopShellHardeningTypes";
 import type { RuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/runtimeNoopShellReleaseGateTypes";
 import type { RuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/runtimeReleaseGatePreflight/runtimeReleaseGatePreflightTypes";
+import type { RuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/runtimeExecutionBoundaryShellTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -145,6 +146,10 @@ export type RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate =
 export type RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight =
   RuntimeSemanticPlanningReportsBeforeNoopShellReleaseGate & RuntimeNoopShellReleaseGatePlanningReports;
 
-/** H35 포함 — release-gate final preflight까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight &
-  RuntimeReleaseGatePreflightPlanningReports;
+/** H35 / H35.5 포함 — release-gate final preflight까지 산출된 상태. */
+export type RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell =
+  RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight & RuntimeReleaseGatePreflightPlanningReports;
+
+/** H36 포함 — execution boundary metadata shell candidate까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell &
+  RuntimeExecutionBoundaryShellPlanningReports;
