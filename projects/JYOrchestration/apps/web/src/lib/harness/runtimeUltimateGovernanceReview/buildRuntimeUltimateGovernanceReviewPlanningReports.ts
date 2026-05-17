@@ -4,7 +4,7 @@
 
 import type { RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { buildRuntimeFinalOrchestrationReadinessBoundary } from "./buildRuntimeFinalOrchestrationReadinessBoundary";
-import { mergeUltimateGovernanceLayerRecommendations } from "./runtimeUltimateGovernanceReviewPlanningHelpers";
+import { mergeRuntimeLayerRecommendations } from "@/lib/harness/runtimeShared/runtimeRecommendationHelpers";
 import { buildRuntimeFinalOrchestrationReadinessChecklist } from "./buildRuntimeFinalOrchestrationReadinessChecklist";
 import { buildRuntimeOrchestrationForbiddenProof } from "./buildRuntimeOrchestrationForbiddenProof";
 import { buildRuntimeOrchestrationReadinessInputEnvelope } from "./buildRuntimeOrchestrationReadinessInputEnvelope";
@@ -48,7 +48,7 @@ export function buildRuntimeUltimateGovernanceReviewPlanningReports(
 
   const runtimeUltimateGovernanceReviewSummary = {
     ...runtimeUltimateGovernanceReviewSummaryDraft,
-    recommendations: mergeUltimateGovernanceLayerRecommendations([
+    recommendations: mergeRuntimeLayerRecommendations([
       runtimeUltimateGovernanceReviewSummaryDraft,
       runtimeFinalOrchestrationReadinessBoundary,
       runtimeOrchestrationReadinessInputEnvelope,

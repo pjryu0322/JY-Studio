@@ -2,31 +2,20 @@
  * H39 / H39.5 — final release governance gate 공통 상수(read-only).
  */
 
+import {
+  RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS_DISABLED,
+  SERIALIZED_RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS,
+} from "@/lib/harness/runtimeShared/runtimeReadOnlyActualFlags";
 import type {
   RuntimeFinalReleaseGovernanceGatePolicy,
   RuntimeFinalReleaseGovernanceGateSummary,
 } from "./runtimeFinalReleaseGovernanceGateTypes";
 
-export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED = {
-  actualRuntimeOrchestrationEnabled: false,
-  actualPilotExecutionEnabled: false,
-  actualNoopShellExecutionEnabled: false,
-  actualExecutionShellExecutionEnabled: false,
-  actualReleaseEnforcementEnabled: false,
-  actualRuntimeAdapterInvocationEnabled: false,
-  actualExecutionEnabled: false,
-  actualExecutionRoutingEnabled: false,
-  actualProviderRoutingEnabled: false,
-  actualQueueControlEnabled: false,
-  actualRollbackExecutionEnabled: false,
-  actualApprovalEnforcementEnabled: false,
-  actualExecutionBlockingEnabled: false,
-  actualMergeBlockingEnabled: false,
-} as const;
+export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED =
+  RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS_DISABLED;
 
-export const SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS = {
-  ...RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
-};
+export const SERIALIZED_RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS =
+  SERIALIZED_RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS;
 
 export const FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_SOURCE_LAYER =
   "runtimeGovernanceReleaseReadinessFinalSafetyGate" as const;

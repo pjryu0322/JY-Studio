@@ -1,5 +1,8 @@
 /**
- * H17–H38.5 — semantic·…·governance boundary·governance release-readiness **planning 보고서** 일괄 산출.
+ * H17–H40 — semantic·…·ultimate governance review **planning 보고서** 일괄 산출.
+ *
+ * 각 harness 계층은 `buildLayerPlanningReports(previousSemantic)` 후 spread만 수행한다.
+ * 하위 builder·serializer·Overlay VM에서 상위 planning report 재빌드 금지.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";

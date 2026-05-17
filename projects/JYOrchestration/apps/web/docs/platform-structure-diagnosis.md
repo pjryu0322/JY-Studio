@@ -565,10 +565,20 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 
 - **Harness Phase H40 — Ultimate Governance Review & Final Orchestration Readiness Boundary Layer (read-only)** — H39.5 final safety gate를 바탕으로 **ultimate governance review**·**final orchestration readiness boundary**·**orchestration readiness input/output envelope**·**ultimate no-enforcement proof**·**orchestration-forbidden proof**·**ultimate governance blocker report**·**final orchestration readiness checklist** metadata만 산출한다. **`buildRuntimeUltimateGovernanceReviewSummary`**, **`buildRuntimeFinalOrchestrationReadinessBoundary`**, **`buildRuntimeOrchestrationReadinessInputEnvelope`**, **`buildRuntimeOrchestrationReadinessOutputEnvelope`**, **`buildRuntimeUltimateNoEnforcementProof`**, **`buildRuntimeOrchestrationForbiddenProof`**, **`detectRuntimeUltimateGovernanceBlockers`**, **`buildRuntimeFinalOrchestrationReadinessChecklist`**, **`buildRuntimeUltimateGovernanceReviewPlanningReports`**. 진단 8개 필드 additive. **actual orchestration forbidden**·**actual execution forbidden**·**actual release/approval enforcement forbidden**·**actual execution/merge blocking forbidden** 유지. **여전히 금지**: actual orchestration·execution·routing·enforcement·blocking·prompt 변경.
 
+### H20.5~H40 정합성 점검 (read-only chain audit)
+
+- **결론**: H20.5~H40은 실제 실행 오케스트레이션이 아니라 read-only metadata chain이다. H40은 ultimate governance review·final orchestration readiness boundary metadata이며, 실제 제어 runtime 진입은 **H41 이후 controlled activation candidate**가 필요하다.
+- **Planning chain**: `buildRuntimeSemanticPlanningReports` — 계층별 `{ ...previous, ...layerReports }`만 수행; 하위 serializer·Overlay VM·Diagnostic API는 report 재빌드 없음.
+- **공통화 (안전 범위)**: `runtimeShared/runtimeReadOnlyActualFlags.ts`, `runtimeForbiddenProofFlags.ts`, `runtimeRecommendationHelpers.ts`, `runtimeChecklistHelpers.ts` — H39.5·H40 상수·merge helper 정렬.
+- **문서**: `runtime-orchestration-layer-inventory.md`, `runtime-orchestration-test-coverage.md`.
+- **보류**: 대규모 rename·Diagnostic API 구조 분리·Overlay 레이아웃 그룹 개편·H20.5~H37 전 계층 상수 일괄 교체.
+
 ## 관련 문서
 
 - 단계 계획: `apps/web/docs/OVERLAY_ARCHITECTURE_STEP_PLAN.md`
 - 매핑표·모듈 인덱스: `apps/web/docs/OVERLAY_ARCHITECTURE_CONTRACTS.md`
+- H20.5~H40 인벤토리: `apps/web/docs/runtime-orchestration-layer-inventory.md`
+- H20.5~H40 테스트 커버리지: `apps/web/docs/runtime-orchestration-test-coverage.md`
 
 ---
 

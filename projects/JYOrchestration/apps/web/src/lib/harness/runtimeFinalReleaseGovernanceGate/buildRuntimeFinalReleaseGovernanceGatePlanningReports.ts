@@ -4,6 +4,7 @@
 
 import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { mergeRuntimeLayerRecommendations } from "@/lib/harness/runtimeShared/runtimeRecommendationHelpers";
 import { buildRuntimeFinalReleaseGovernanceGateAlignmentReport } from "./buildRuntimeFinalReleaseGovernanceGateAlignmentReport";
 import { buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate } from "./buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate";
 import { buildRuntimeFinalReleaseGovernanceGatePolicy } from "./buildRuntimeFinalReleaseGovernanceGatePolicy";
@@ -33,12 +34,6 @@ function gateRationaleKo(status: RuntimeFinalReleaseGovernanceGateCandidateStatu
     default:
       return "final release governance gate 미후보 — governance release-readiness final safety gate 선행.";
   }
-}
-
-function mergeFinalReleaseGateLayerRecommendations(
-  parts: readonly { readonly recommendations: readonly string[] }[]
-): readonly string[] {
-  return mergeSortedUniqueKo(parts.flatMap((part) => [...part.recommendations]));
 }
 
 export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
@@ -110,7 +105,7 @@ export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
 
   const runtimeFinalReleaseGovernanceGateSummary = {
     ...runtimeFinalReleaseGovernanceGateSummaryDraft,
-    recommendations: mergeFinalReleaseGateLayerRecommendations([
+    recommendations: mergeRuntimeLayerRecommendations([
       runtimeFinalReleaseGovernanceGateSummaryDraft,
       runtimeFinalReleaseGovernanceGateScope,
       runtimeFinalReleaseGovernanceGatePolicy,

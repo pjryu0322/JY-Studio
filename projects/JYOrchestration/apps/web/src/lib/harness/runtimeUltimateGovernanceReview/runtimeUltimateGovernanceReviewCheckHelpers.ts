@@ -3,27 +3,14 @@
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
+import {
+  RUNTIME_ORCHESTRATION_FORBIDDEN_PROOF_REQUIRED_KEYS,
+  isRuntimeOrchestrationForbiddenProofRecordComplete,
+} from "@/lib/harness/runtimeShared/runtimeForbiddenProofFlags";
 import type { RuntimeOrchestrationForbiddenProof, RuntimeUltimateNoEnforcementProof } from "./runtimeUltimateGovernanceReviewTypes";
 import type { RuntimeUltimateGovernanceReviewStatus } from "./runtimeUltimateGovernanceReviewTypes";
 
-export const RUNTIME_ORCHESTRATION_FORBIDDEN_PROOF_REQUIRED_KEYS = [
-  "actualOrchestrationForbidden",
-  "actualExecutionForbidden",
-  "actualExecutionRoutingForbidden",
-  "actualReleaseEnforcementForbidden",
-  "actualApprovalEnforcementForbidden",
-  "actualShellExecutionForbidden",
-  "actualAdapterInvocationForbidden",
-  "actualProviderRoutingForbidden",
-  "actualQueueControlForbidden",
-  "actualRollbackForbidden",
-  "actualExecutionBlockingForbidden",
-  "actualMergeBlockingForbidden",
-  "actualPromptMutationForbidden",
-  "actualTokenEnforcementForbidden",
-  "actualContextPruningForbidden",
-  "actualRetrievalOrchestrationForbidden",
-] as const satisfies readonly (keyof RuntimeOrchestrationForbiddenProof)[];
+export { RUNTIME_ORCHESTRATION_FORBIDDEN_PROOF_REQUIRED_KEYS };
 
 export function readUltimateGovernanceUpstreamContext(
   reports: RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview
@@ -53,7 +40,7 @@ export function isRuntimeUltimateNoEnforcementProofValid(
 export function isRuntimeOrchestrationForbiddenProofComplete(
   proof: RuntimeOrchestrationForbiddenProof
 ): boolean {
-  return RUNTIME_ORCHESTRATION_FORBIDDEN_PROOF_REQUIRED_KEYS.every((key) => proof[key] === true);
+  return isRuntimeOrchestrationForbiddenProofRecordComplete(proof);
 }
 
 export function resolveRuntimeUltimateGovernanceReviewStatus(input: {

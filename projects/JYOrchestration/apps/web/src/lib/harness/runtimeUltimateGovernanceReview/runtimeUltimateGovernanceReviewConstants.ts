@@ -2,26 +2,16 @@
  * H40 — ultimate governance review 공통 상수(read-only).
  */
 
-export const RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS_DISABLED = {
-  actualRuntimeOrchestrationEnabled: false,
-  actualPilotExecutionEnabled: false,
-  actualNoopShellExecutionEnabled: false,
-  actualExecutionShellExecutionEnabled: false,
-  actualReleaseEnforcementEnabled: false,
-  actualRuntimeAdapterInvocationEnabled: false,
-  actualExecutionEnabled: false,
-  actualExecutionRoutingEnabled: false,
-  actualProviderRoutingEnabled: false,
-  actualQueueControlEnabled: false,
-  actualRollbackExecutionEnabled: false,
-  actualApprovalEnforcementEnabled: false,
-  actualExecutionBlockingEnabled: false,
-  actualMergeBlockingEnabled: false,
-} as const;
+import {
+  RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS_DISABLED,
+  SERIALIZED_RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS,
+} from "@/lib/harness/runtimeShared/runtimeReadOnlyActualFlags";
 
-export const SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS = {
-  ...RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS_DISABLED,
-};
+export const RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS_DISABLED =
+  RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS_DISABLED;
+
+export const SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS =
+  SERIALIZED_RUNTIME_READ_ONLY_ORCHESTRATION_ACTUAL_FLAGS;
 
 export const FINAL_ORCHESTRATION_READINESS_BOUNDARY_SOURCE_LAYER =
   "runtimeFinalReleaseGovernanceGateFinalSafetyGate" as const;

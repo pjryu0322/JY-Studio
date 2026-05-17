@@ -1,11 +1,5 @@
 /**
- * H40 — planning reports 산출 공통 헬퍼(read-only).
+ * H40 — planning helpers (shared 모듈 재export).
  */
 
-import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
-
-export function mergeUltimateGovernanceLayerRecommendations(
-  parts: readonly { readonly recommendations: readonly string[] }[]
-): readonly string[] {
-  return mergeSortedUniqueKo(parts.flatMap((part) => [...part.recommendations]));
-}
+export { mergeRuntimeLayerRecommendations as mergeUltimateGovernanceLayerRecommendations } from "@/lib/harness/runtimeShared/runtimeRecommendationHelpers";
