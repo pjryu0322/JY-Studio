@@ -1,4 +1,4 @@
-# H20.5~H44.5 Runtime Orchestration Layer Inventory
+# H20.5~H45 Runtime Orchestration Layer Inventory
 
 Read-only orchestration safety / governance / readiness metadata chain. **No actual orchestration, execution, routing, enforcement, or blocking.**
 
@@ -50,6 +50,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | H43.5 | Pilot Readiness Review Stabilization | `runtimeLimitedPilotReadinessReview/` | + violation/verification/alignment | — | yes | yes | final gate (`h44EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
 | H44 | Pilot Execution Readiness Boundary | `runtimePilotExecutionReadiness/` | execution readiness summary | blockers | input envelope | output envelope | final no-exec/forbidden proof | yes | yes (8 fields) | yes | yes | yes | yes |
 | H44.5 | Pilot Execution Readiness Stabilization | `runtimePilotExecutionReadiness/` | + violation/verification/alignment | — | yes | yes | final gate (`h45EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
+| H45 | Controlled Pilot Execution Candidate | `runtimeControlledPilotExecutionCandidate/` | execution candidate summary | blockers | input contract | output contract | final runtime handoff boundary | yes | yes (8 fields) | yes | yes | yes | yes |
 
 ## Downstream inputs (H43 example)
 

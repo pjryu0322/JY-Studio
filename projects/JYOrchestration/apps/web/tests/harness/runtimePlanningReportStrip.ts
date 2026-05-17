@@ -614,6 +614,40 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitControlledPilotExecutionCandidateLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeControlledPilotExecutionCandidateSummary"
+  | "runtimeFinalRuntimeHandoffBoundary"
+  | "runtimeControlledPilotExecutionCandidateScope"
+  | "runtimeControlledPilotExecutionCandidatePolicy"
+  | "runtimeControlledPilotExecutionInputContract"
+  | "runtimeControlledPilotExecutionOutputContract"
+  | "runtimeControlledPilotExecutionCandidateBlockerReport"
+  | "runtimeControlledPilotExecutionReadinessChecklist"
+> {
+  const {
+    runtimeControlledPilotExecutionCandidateSummary: _h45_1,
+    runtimeFinalRuntimeHandoffBoundary: _h45_2,
+    runtimeControlledPilotExecutionCandidateScope: _h45_3,
+    runtimeControlledPilotExecutionCandidatePolicy: _h45_4,
+    runtimeControlledPilotExecutionInputContract: _h45_5,
+    runtimeControlledPilotExecutionOutputContract: _h45_6,
+    runtimeControlledPilotExecutionCandidateBlockerReport: _h45_7,
+    runtimeControlledPilotExecutionReadinessChecklist: _h45_8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H45 reports 제거 — H45 단독 테스트용. */
+export function stripRuntimeControlledPilotExecutionCandidateLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeControlledPilotExecutionCandidate {
+  return omitControlledPilotExecutionCandidateLayerOnly(semantic);
+}
+
 function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -631,6 +665,7 @@ function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningR
   | "runtimePilotExecutionReadinessAlignmentReport"
   | "runtimePilotExecutionReadinessFinalSafetyGate"
 > {
+  const withoutH45 = omitControlledPilotExecutionCandidateLayerOnly(semantic);
   const {
     runtimePilotExecutionReadinessSummary: _e1,
     runtimePilotExecutionReadinessBoundary: _e2,
@@ -645,7 +680,7 @@ function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningR
     runtimePilotExecutionReadinessAlignmentReport: _e11,
     runtimePilotExecutionReadinessFinalSafetyGate: _e12,
     ...rest
-  } = semantic;
+  } = withoutH45;
   return rest;
 }
 

@@ -199,6 +199,7 @@ export function OverlaySummaryCard({
     runtimeLimitedPilotBoundaryVm: runtimePlanningLimitedPilotBoundaryVm,
     runtimeLimitedPilotReadinessReviewVm: runtimePlanningLimitedPilotReadinessReviewVm,
     runtimePilotExecutionReadinessVm: runtimePlanningPilotExecutionReadinessVm,
+    runtimeControlledPilotExecutionCandidateVm: runtimePlanningControlledPilotExecutionCandidateVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -422,6 +423,11 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_pilot_execution_readiness",
     d.runtimePlanningRuntimePilotExecutionReadiness || runtimePlanningPilotExecutionReadinessVm.showAttention
   );
+  const pControlledPilotExecutionCandidate = pol(
+    "runtime_planning_runtime_controlled_pilot_execution_candidate",
+    d.runtimePlanningRuntimeControlledPilotExecutionCandidate ||
+      runtimePlanningControlledPilotExecutionCandidateVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -452,7 +458,8 @@ export function OverlaySummaryCard({
     pControlledActivationCandidate.omitFromDom &&
     pLimitedPilotBoundary.omitFromDom &&
     pLimitedPilotReadinessReview.omitFromDom &&
-    pPilotExecutionReadiness.omitFromDom;
+    pPilotExecutionReadiness.omitFromDom &&
+    pControlledPilotExecutionCandidate.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -694,6 +701,9 @@ export function OverlaySummaryCard({
           showRuntimePilotExecutionReadiness={!pPilotExecutionReadiness.omitFromDom}
           pilotExecutionReadinessDefaultOpen={pPilotExecutionReadiness.defaultOpen}
           runtimePilotExecutionReadinessVm={runtimePlanningPilotExecutionReadinessVm}
+          showRuntimeControlledPilotExecutionCandidate={!pControlledPilotExecutionCandidate.omitFromDom}
+          controlledPilotExecutionCandidateDefaultOpen={pControlledPilotExecutionCandidate.defaultOpen}
+          runtimeControlledPilotExecutionCandidateVm={runtimePlanningControlledPilotExecutionCandidateVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

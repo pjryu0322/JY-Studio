@@ -264,11 +264,12 @@
 75.5. **Harness Phase H43.5 — Limited Pilot Readiness Review Stabilization & Final Pilot Contract Safety Gate Layer** (read-only) — H43 limited pilot readiness review metadata를 **안정화**하고 violation detection·readiness verification·alignment report·**H44 entry readiness**(`h44EntryReadiness` = `finalGateStatus`) final safety gate를 산출한다. **`detectRuntimeLimitedPilotReadinessReviewViolations`**, **`verifyRuntimeLimitedPilotReadinessReview`**, **`buildRuntimeLimitedPilotReadinessReviewAlignmentReport`**, **`buildRuntimeLimitedPilotReadinessReviewFinalSafetyGate`**. 진단 4개 필드 additive. **여전히 금지**: actual pilot activation·execution·runner·adapter·sandbox·prompt 변경.
 76. **Harness Phase H44 — Limited Runtime Pilot Readiness Finalization & Pilot Execution Readiness Boundary Layer** (read-only) — H43.5 final safety gate 기반 **pilot execution readiness summary·boundary·input/output envelope·final pilot no-execution/forbidden proof·blocker·checklist** metadata만 산출. `lib/harness/runtimePilotExecutionReadiness/*`. Overlay **`OverlayRuntimePilotExecutionReadinessSection`**. 진단 8개 필드 additive. **여전히 금지**: actual pilot activation·execution·runner·adapter·sandbox·prompt 변경.
 76.5. **Harness Phase H44.5 — Pilot Execution Readiness Stabilization & Final Pilot Execution Safety Gate Layer** (read-only) — H44 pilot execution readiness metadata를 안정화하고 violation·verification·alignment·**`h45EntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
-77. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
+77. **Harness Phase H45 — Controlled Pilot Execution Candidate & Final Runtime Handoff Boundary Layer** (read-only) — H44.5 final safety gate 기반 **controlled pilot execution candidate·final runtime handoff boundary·input/output contract·blocker·checklist** metadata만 산출. `lib/harness/runtimeControlledPilotExecutionCandidate/*`. Overlay **`OverlayRuntimeControlledPilotExecutionCandidateSection`**. 진단 8개 필드 additive. **여전히 금지**: actual pilot activation·execution·runner·adapter·sandbox·execution·routing·enforcement·blocking·prompt 변경.
+78. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
-### H20.5~H44.5 read-only orchestration chain (정합성)
+### H20.5~H45 read-only orchestration chain (정합성)
 
-- **성격**: H20.5~H44.5는 실제 실행 오케스트레이션이 아니라 **read-only metadata chain**이다. actual orchestration·execution·routing·enforcement·blocking·controlled activation·pilot activation은 수행하지 않는다.
+- **성격**: H20.5~H45는 실제 실행 오케스트레이션이 아니라 **read-only metadata chain**이다. actual orchestration·execution·routing·enforcement·blocking·controlled activation·pilot activation·pilot execution은 수행하지 않는다.
 - **H40 / H40.5**: ultimate governance review·final orchestration readiness boundary·final read-only chain safety gate (`h41EntryReadiness`).
 - **H41 / H41.5**: controlled activation **candidate**·runtime control **handoff boundary**·final safety gate (`h42EntryReadiness`) metadata만(실제 activation 없음).
 - **H42**: limited controlled runtime **pilot boundary candidate**·input/output contract metadata만(실제 pilot activation·execution 없음).

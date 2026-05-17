@@ -48,6 +48,7 @@ import { buildRuntimeControlledActivationCandidatePlanningReports } from "@/lib/
 import { buildRuntimeLimitedPilotBoundaryPlanningReports } from "@/lib/harness/runtimeLimitedPilotBoundary/buildRuntimeLimitedPilotBoundaryPlanningReports";
 import { buildRuntimeLimitedPilotReadinessReviewPlanningReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimeLimitedPilotReadinessReviewPlanningReports";
 import { buildRuntimePilotExecutionReadinessPlanningReports } from "@/lib/harness/runtimePilotExecutionReadiness/buildRuntimePilotExecutionReadinessPlanningReports";
+import { buildRuntimeControlledPilotExecutionCandidatePlanningReports } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/buildRuntimeControlledPilotExecutionCandidatePlanningReports";
 import { buildRuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/buildRuntimeUltimateGovernanceReviewPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
@@ -359,7 +360,19 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithLimitedPilotReadinessReview
   );
 
-  return { ...semanticWithLimitedPilotReadinessReview, ...pilotExecutionReadinessReports };
+  const semanticWithPilotExecutionReadiness = {
+    ...semanticWithLimitedPilotReadinessReview,
+    ...pilotExecutionReadinessReports,
+  };
+
+  const controlledPilotExecutionCandidateReports = buildRuntimeControlledPilotExecutionCandidatePlanningReports(
+    semanticWithPilotExecutionReadiness
+  );
+
+  return {
+    ...semanticWithPilotExecutionReadiness,
+    ...controlledPilotExecutionCandidateReports,
+  };
 }
 
 export type {

@@ -1003,6 +1003,21 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimePilotExecutionReadinessAlignmentReport,
       runtimePilotExecutionReadinessFinalSafetyGate:
         runtimeSemanticDiag.runtimePilotExecutionReadinessFinalSafetyGate,
+      runtimeControlledPilotExecutionCandidateSummary:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateSummary,
+      runtimeFinalRuntimeHandoffBoundary: runtimeSemanticDiag.runtimeFinalRuntimeHandoffBoundary,
+      runtimeControlledPilotExecutionCandidateScope:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateScope,
+      runtimeControlledPilotExecutionCandidatePolicy:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionCandidatePolicy,
+      runtimeControlledPilotExecutionInputContract:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionInputContract,
+      runtimeControlledPilotExecutionOutputContract:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionOutputContract,
+      runtimeControlledPilotExecutionCandidateBlockerReport:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateBlockerReport,
+      runtimeControlledPilotExecutionReadinessChecklist:
+        runtimeSemanticDiag.runtimeControlledPilotExecutionReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

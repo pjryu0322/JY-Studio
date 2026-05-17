@@ -56,6 +56,7 @@ export { OverlayRuntimeControlledActivationCandidateSection } from "./OverlayRun
 export { OverlayRuntimeLimitedPilotBoundarySection } from "./OverlayRuntimeLimitedPilotBoundarySection";
 export { OverlayRuntimeLimitedPilotReadinessReviewSection } from "./OverlayRuntimeLimitedPilotReadinessReviewSection";
 export { OverlayRuntimePilotExecutionReadinessSection } from "./OverlayRuntimePilotExecutionReadinessSection";
+export { OverlayRuntimeControlledPilotExecutionCandidateSection } from "./OverlayRuntimeControlledPilotExecutionCandidateSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";
