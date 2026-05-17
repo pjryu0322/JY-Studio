@@ -191,6 +191,7 @@ export function OverlaySummaryCard({
     runtimeNoopShellReleaseGateVm: runtimePlanningNoopShellReleaseGateVm,
     runtimeReleaseGatePreflightVm: runtimePlanningReleaseGatePreflightVm,
     runtimeExecutionBoundaryShellVm: runtimePlanningExecutionBoundaryShellVm,
+    runtimeExecutionGovernanceBoundaryVm: runtimePlanningExecutionGovernanceBoundaryVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -376,6 +377,11 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_execution_boundary_shell",
     d.runtimePlanningRuntimeExecutionBoundaryShell || runtimePlanningExecutionBoundaryShellVm.showAttention
   );
+  const pExecutionGovernanceBoundary = pol(
+    "runtime_planning_runtime_execution_governance_boundary",
+    d.runtimePlanningRuntimeExecutionGovernanceBoundary ||
+      runtimePlanningExecutionGovernanceBoundaryVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -398,7 +404,8 @@ export function OverlaySummaryCard({
     pNoopShellHardening.omitFromDom &&
     pNoopShellReleaseGate.omitFromDom &&
     pReleaseGatePreflight.omitFromDom &&
-    pExecutionBoundaryShell.omitFromDom;
+    pExecutionBoundaryShell.omitFromDom &&
+    pExecutionGovernanceBoundary.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -616,6 +623,9 @@ export function OverlaySummaryCard({
           showRuntimeExecutionBoundaryShell={!pExecutionBoundaryShell.omitFromDom}
           executionBoundaryShellDefaultOpen={pExecutionBoundaryShell.defaultOpen}
           runtimeExecutionBoundaryShellVm={runtimePlanningExecutionBoundaryShellVm}
+          showRuntimeExecutionGovernanceBoundary={!pExecutionGovernanceBoundary.omitFromDom}
+          executionGovernanceBoundaryDefaultOpen={pExecutionGovernanceBoundary.defaultOpen}
+          runtimeExecutionGovernanceBoundaryVm={runtimePlanningExecutionGovernanceBoundaryVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

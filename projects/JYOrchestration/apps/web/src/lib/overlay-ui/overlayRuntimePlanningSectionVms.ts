@@ -158,6 +158,10 @@ import {
   buildOverlayRuntimeExecutionBoundaryShellSectionVmFromReports,
   type OverlayRuntimeExecutionBoundaryShellSectionVM,
 } from "./overlayRuntimeExecutionBoundaryShellSectionVm";
+import {
+  buildOverlayRuntimeExecutionGovernanceBoundarySectionVmFromReports,
+  type OverlayRuntimeExecutionGovernanceBoundarySectionVM,
+} from "./overlayRuntimeExecutionGovernanceBoundarySectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -206,6 +210,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeNoopShellReleaseGateVm: OverlayRuntimeNoopShellReleaseGateSectionVM;
   runtimeReleaseGatePreflightVm: OverlayRuntimeReleaseGatePreflightSectionVM;
   runtimeExecutionBoundaryShellVm: OverlayRuntimeExecutionBoundaryShellSectionVM;
+  runtimeExecutionGovernanceBoundaryVm: OverlayRuntimeExecutionGovernanceBoundarySectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -459,6 +464,12 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       compactAndNarrowUi: input.compactAndNarrowUi,
     }
   );
+  const runtimeExecutionGovernanceBoundaryVm = buildOverlayRuntimeExecutionGovernanceBoundarySectionVmFromReports(
+    semanticReports,
+    {
+      compactAndNarrowUi: input.compactAndNarrowUi,
+    }
+  );
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -561,5 +572,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeNoopShellReleaseGateVm,
     runtimeReleaseGatePreflightVm,
     runtimeExecutionBoundaryShellVm,
+    runtimeExecutionGovernanceBoundaryVm,
   };
 }

@@ -1,5 +1,5 @@
 /**
- * H17–H36 — semantic·…·release-gate final preflight·execution boundary shell **planning 보고서** 일괄 산출.
+ * H17–H37 — semantic·…·execution boundary shell·governance boundary **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -38,6 +38,7 @@ import { buildRuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/run
 import { buildRuntimeNoopShellReleaseGatePlanningReports } from "@/lib/harness/runtimeNoopShellReleaseGate/buildRuntimeNoopShellReleaseGatePlanningReports";
 import { buildRuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightPlanningReports";
 import { buildRuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/buildRuntimeExecutionBoundaryShellPlanningReports";
+import { buildRuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/buildRuntimeExecutionGovernanceBoundaryPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -61,6 +62,9 @@ import type {
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
   RuntimeSemanticPlanningReportsBeforeRunnerInvocation,
   RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
+  RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight,
+  RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
+  RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -85,6 +89,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness,
   RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight,
   RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
+  RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -258,7 +263,16 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithReleaseGatePreflight
   );
 
-  return { ...semanticWithReleaseGatePreflight, ...executionBoundaryShellReports };
+  const semanticWithExecutionBoundaryShell: RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary = {
+    ...semanticWithReleaseGatePreflight,
+    ...executionBoundaryShellReports,
+  };
+
+  const executionGovernanceBoundaryReports = buildRuntimeExecutionGovernanceBoundaryPlanningReports(
+    semanticWithExecutionBoundaryShell
+  );
+
+  return { ...semanticWithExecutionBoundaryShell, ...executionGovernanceBoundaryReports };
 }
 
 export type {

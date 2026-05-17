@@ -62,6 +62,7 @@ import { serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports }
 import { serializeRuntimeNoopShellReleaseGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellReleaseGate/serializeRuntimeNoopShellReleaseGateDiagnosticBundle";
 import { serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeReleaseGatePreflight/serializeRuntimeReleaseGatePreflightDiagnosticBundle";
 import { serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionBoundaryShell/serializeRuntimeExecutionBoundaryShellDiagnosticBundle";
+import { serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -122,6 +123,9 @@ type SerializedRuntimeReleaseGatePreflightDiag = ReturnType<
 >;
 type SerializedRuntimeExecutionBoundaryShellDiag = ReturnType<
   typeof serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeExecutionGovernanceBoundaryDiag = ReturnType<
+  typeof serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -300,6 +304,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeExecutionBoundaryShellReadinessVerificationReport: SerializedRuntimeExecutionBoundaryShellDiag["runtimeExecutionBoundaryShellReadinessVerificationReport"];
   runtimeExecutionBoundaryShellAlignmentReport: SerializedRuntimeExecutionBoundaryShellDiag["runtimeExecutionBoundaryShellAlignmentReport"];
   runtimeExecutionBoundaryShellFinalSafetyGate: SerializedRuntimeExecutionBoundaryShellDiag["runtimeExecutionBoundaryShellFinalSafetyGate"];
+  runtimeExecutionGovernanceBoundarySummary: SerializedRuntimeExecutionGovernanceBoundaryDiag["runtimeExecutionGovernanceBoundarySummary"];
+  runtimeExecutionGovernanceBoundaryScope: SerializedRuntimeExecutionGovernanceBoundaryDiag["runtimeExecutionGovernanceBoundaryScope"];
+  runtimeExecutionGovernanceBoundaryPolicy: SerializedRuntimeExecutionGovernanceBoundaryDiag["runtimeExecutionGovernanceBoundaryPolicy"];
+  runtimeExecutionGovernanceBoundaryBlockerReport: SerializedRuntimeExecutionGovernanceBoundaryDiag["runtimeExecutionGovernanceBoundaryBlockerReport"];
+  runtimeExecutionGovernanceBoundaryReadinessChecklist: SerializedRuntimeExecutionGovernanceBoundaryDiag["runtimeExecutionGovernanceBoundaryReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -325,6 +334,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports(reports);
   const executionBoundaryShellDiag =
     serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports(reports);
+  const executionGovernanceBoundaryDiag =
+    serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -411,6 +422,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...noopShellReleaseGateDiag,
     ...releaseGatePreflightDiag,
     ...executionBoundaryShellDiag,
+    ...executionGovernanceBoundaryDiag,
   };
 }
 

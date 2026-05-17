@@ -542,11 +542,39 @@ export function stripRuntimeReleaseGatePreflightLayer(
   return omitReleaseGatePreflightLayerOnly(semantic);
 }
 
+function omitExecutionGovernanceBoundaryLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeExecutionGovernanceBoundarySummary"
+  | "runtimeExecutionGovernanceBoundaryScope"
+  | "runtimeExecutionGovernanceBoundaryPolicy"
+  | "runtimeExecutionGovernanceBoundaryBlockerReport"
+  | "runtimeExecutionGovernanceBoundaryReadinessChecklist"
+> {
+  const {
+    runtimeExecutionGovernanceBoundarySummary: _eg1,
+    runtimeExecutionGovernanceBoundaryScope: _eg2,
+    runtimeExecutionGovernanceBoundaryPolicy: _eg3,
+    runtimeExecutionGovernanceBoundaryBlockerReport: _eg4,
+    runtimeExecutionGovernanceBoundaryReadinessChecklist: _eg5,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
 /** H36 execution boundary shell reports 제거 — boundary shell 이하 레이어 단독 테스트용. */
 export function stripRuntimeExecutionBoundaryShellLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell {
   return omitExecutionBoundaryShellLayerOnly(semantic);
+}
+
+/** H37 execution governance boundary reports 제거 — governance boundary 이하 레이어 단독 테스트용. */
+export function stripRuntimeExecutionGovernanceBoundaryLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary {
+  return omitExecutionGovernanceBoundaryLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

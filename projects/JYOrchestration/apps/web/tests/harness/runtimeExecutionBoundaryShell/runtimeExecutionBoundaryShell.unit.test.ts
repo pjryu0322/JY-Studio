@@ -305,6 +305,7 @@ describe("H36 / H36.5 execution boundary metadata shell candidate", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeExecutionBoundaryShellLayer(semantic);
     expect("runtimeExecutionBoundaryShellSummary" in stripped).toBe(false);
+    expect("runtimeExecutionGovernanceBoundarySummary" in stripped).toBe(true);
     expect(stripped.runtimeReleaseGatePreflightSummary.mode).toBe("runtime_release_gate_preflight_summary");
   });
 
