@@ -9,6 +9,7 @@ export default defineConfig({
       "tests/harness/**/*.test.ts",
       "tests/overlay/**/*.test.ts",
       "tests/overlay-ui/**/*.test.ts",
+      "tests/components/**/*.test.tsx",
     ],
     fileParallelism: false,
     maxConcurrency: 1,

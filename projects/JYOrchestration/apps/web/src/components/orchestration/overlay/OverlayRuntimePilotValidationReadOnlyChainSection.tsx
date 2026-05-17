@@ -35,10 +35,19 @@ export function OverlayRuntimePilotValidationReadOnlyChainSection({
             <OverlayUiKeyValueRow label="User visible summary" value={vm.userVisibleSummaryKo} />
             <OverlayUiKeyValueRow label="Operator visible summary" value={vm.operatorVisibleSummaryKo} />
             <OverlayUiKeyValueRow label="User status (UI contract)" value={vm.userSummaryVm.statusKo} />
+            <OverlayUiKeyValueRow label="User primary action" value={vm.userSummaryVm.primaryActionLabelKo} />
+            <OverlayUiKeyValueRow label="User secondary action" value={vm.userSummaryVm.secondaryActionLabelKo} />
+            <OverlayUiKeyValueRow
+              label="User approval required"
+              value={vm.userSummaryVm.isUserApprovalRequired ? "yes" : "no"}
+            />
             <OverlayUiKeyValueRow
               label="Can request pilot validation"
               value={vm.userSummaryVm.canRequestPilotValidation ? "yes" : "no"}
             />
+            {vm.userSummaryVm.cannotProceedReasonKo ? (
+              <OverlayUiKeyValueRow label="Cannot proceed reason" value={vm.userSummaryVm.cannotProceedReasonKo} />
+            ) : null}
             <OverlayRuntimePlanningDetailBlock
               title="Final proof summary"
               rows={vm.finalProofSummaryRows}
