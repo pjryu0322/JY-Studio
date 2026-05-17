@@ -182,6 +182,10 @@ import {
   buildOverlayRuntimeLimitedPilotBoundarySectionVmFromReports,
   type OverlayRuntimeLimitedPilotBoundarySectionVM,
 } from "./overlayRuntimeLimitedPilotBoundarySectionVm";
+import {
+  buildOverlayRuntimeLimitedPilotReadinessReviewSectionVmFromReports,
+  type OverlayRuntimeLimitedPilotReadinessReviewSectionVM,
+} from "./overlayRuntimeLimitedPilotReadinessReviewSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -236,6 +240,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeUltimateGovernanceReviewVm: OverlayRuntimeUltimateGovernanceReviewSectionVM;
   runtimeControlledActivationCandidateVm: OverlayRuntimeControlledActivationCandidateSectionVM;
   runtimeLimitedPilotBoundaryVm: OverlayRuntimeLimitedPilotBoundarySectionVM;
+  runtimeLimitedPilotReadinessReviewVm: OverlayRuntimeLimitedPilotReadinessReviewSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -523,6 +528,10 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       compactAndNarrowUi: input.compactAndNarrowUi,
     }
   );
+  const runtimeLimitedPilotReadinessReviewVm =
+    buildOverlayRuntimeLimitedPilotReadinessReviewSectionVmFromReports(semanticReports, {
+      compactAndNarrowUi: input.compactAndNarrowUi,
+    });
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -631,5 +640,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeUltimateGovernanceReviewVm,
     runtimeControlledActivationCandidateVm,
     runtimeLimitedPilotBoundaryVm,
+    runtimeLimitedPilotReadinessReviewVm,
   };
 }

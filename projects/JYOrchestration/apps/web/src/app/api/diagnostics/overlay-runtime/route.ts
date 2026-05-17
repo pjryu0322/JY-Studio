@@ -970,6 +970,15 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeLimitedPilotBoundaryAlignmentReport,
       runtimeLimitedPilotBoundaryFinalSafetyGate:
         runtimeSemanticDiag.runtimeLimitedPilotBoundaryFinalSafetyGate,
+      runtimeLimitedPilotReadinessReviewSummary:
+        runtimeSemanticDiag.runtimeLimitedPilotReadinessReviewSummary,
+      runtimePilotContractHardeningBoundary: runtimeSemanticDiag.runtimePilotContractHardeningBoundary,
+      runtimePilotReadinessInputEnvelope: runtimeSemanticDiag.runtimePilotReadinessInputEnvelope,
+      runtimePilotReadinessOutputEnvelope: runtimeSemanticDiag.runtimePilotReadinessOutputEnvelope,
+      runtimePilotNoExecutionProof: runtimeSemanticDiag.runtimePilotNoExecutionProof,
+      runtimePilotExecutionForbiddenProof: runtimeSemanticDiag.runtimePilotExecutionForbiddenProof,
+      runtimePilotReadinessBlockerReport: runtimeSemanticDiag.runtimePilotReadinessBlockerReport,
+      runtimePilotContractReadinessChecklist: runtimeSemanticDiag.runtimePilotContractReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

@@ -197,6 +197,7 @@ export function OverlaySummaryCard({
     runtimeUltimateGovernanceReviewVm: runtimePlanningUltimateGovernanceReviewVm,
     runtimeControlledActivationCandidateVm: runtimePlanningControlledActivationCandidateVm,
     runtimeLimitedPilotBoundaryVm: runtimePlanningLimitedPilotBoundaryVm,
+    runtimeLimitedPilotReadinessReviewVm: runtimePlanningLimitedPilotReadinessReviewVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -411,6 +412,11 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_limited_pilot_boundary",
     d.runtimePlanningRuntimeLimitedPilotBoundary || runtimePlanningLimitedPilotBoundaryVm.showAttention
   );
+  const pLimitedPilotReadinessReview = pol(
+    "runtime_planning_runtime_limited_pilot_readiness_review",
+    d.runtimePlanningRuntimeLimitedPilotReadinessReview ||
+      runtimePlanningLimitedPilotReadinessReviewVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -439,7 +445,8 @@ export function OverlaySummaryCard({
     pFinalReleaseGovernanceGate.omitFromDom &&
     pUltimateGovernanceReview.omitFromDom &&
     pControlledActivationCandidate.omitFromDom &&
-    pLimitedPilotBoundary.omitFromDom;
+    pLimitedPilotBoundary.omitFromDom &&
+    pLimitedPilotReadinessReview.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -675,6 +682,9 @@ export function OverlaySummaryCard({
           showRuntimeLimitedPilotBoundary={!pLimitedPilotBoundary.omitFromDom}
           limitedPilotBoundaryDefaultOpen={pLimitedPilotBoundary.defaultOpen}
           runtimeLimitedPilotBoundaryVm={runtimePlanningLimitedPilotBoundaryVm}
+          showRuntimeLimitedPilotReadinessReview={!pLimitedPilotReadinessReview.omitFromDom}
+          limitedPilotReadinessReviewDefaultOpen={pLimitedPilotReadinessReview.defaultOpen}
+          runtimeLimitedPilotReadinessReviewVm={runtimePlanningLimitedPilotReadinessReviewVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

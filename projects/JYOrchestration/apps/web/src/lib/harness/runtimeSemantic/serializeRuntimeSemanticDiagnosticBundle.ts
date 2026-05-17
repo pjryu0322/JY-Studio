@@ -67,6 +67,7 @@ import { serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticR
 import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
 import { serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledActivationCandidate/serializeRuntimeControlledActivationCandidateDiagnosticBundle";
 import { serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeLimitedPilotBoundary/serializeRuntimeLimitedPilotBoundaryDiagnosticBundle";
+import { serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundle";
 import { serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeUltimateGovernanceReview/serializeRuntimeUltimateGovernanceReviewDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
@@ -146,6 +147,9 @@ type SerializedRuntimeControlledActivationCandidateDiag = ReturnType<
 >;
 type SerializedRuntimeLimitedPilotBoundaryDiag = ReturnType<
   typeof serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeLimitedPilotReadinessReviewDiag = ReturnType<
+  typeof serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -387,6 +391,14 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeLimitedPilotBoundaryVerificationReport: SerializedRuntimeLimitedPilotBoundaryDiag["runtimeLimitedPilotBoundaryVerificationReport"];
   runtimeLimitedPilotBoundaryAlignmentReport: SerializedRuntimeLimitedPilotBoundaryDiag["runtimeLimitedPilotBoundaryAlignmentReport"];
   runtimeLimitedPilotBoundaryFinalSafetyGate: SerializedRuntimeLimitedPilotBoundaryDiag["runtimeLimitedPilotBoundaryFinalSafetyGate"];
+  runtimeLimitedPilotReadinessReviewSummary: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimeLimitedPilotReadinessReviewSummary"];
+  runtimePilotContractHardeningBoundary: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotContractHardeningBoundary"];
+  runtimePilotReadinessInputEnvelope: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotReadinessInputEnvelope"];
+  runtimePilotReadinessOutputEnvelope: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotReadinessOutputEnvelope"];
+  runtimePilotNoExecutionProof: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotNoExecutionProof"];
+  runtimePilotExecutionForbiddenProof: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotExecutionForbiddenProof"];
+  runtimePilotReadinessBlockerReport: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotReadinessBlockerReport"];
+  runtimePilotContractReadinessChecklist: SerializedRuntimeLimitedPilotReadinessReviewDiag["runtimePilotContractReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -424,6 +436,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimeControlledActivationCandidateDiagnosticBundleFromSemanticReports(reports);
   const limitedPilotBoundaryDiag =
     serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports(reports);
+  const limitedPilotReadinessReviewDiag =
+    serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -516,6 +530,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...ultimateGovernanceReviewDiag,
     ...controlledActivationCandidateDiag,
     ...limitedPilotBoundaryDiag,
+    ...limitedPilotReadinessReviewDiag,
   };
 }
 

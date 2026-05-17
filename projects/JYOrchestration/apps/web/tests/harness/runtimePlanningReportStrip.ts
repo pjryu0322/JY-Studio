@@ -614,6 +614,40 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitLimitedPilotReadinessReviewLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeLimitedPilotReadinessReviewSummary"
+  | "runtimePilotContractHardeningBoundary"
+  | "runtimePilotReadinessInputEnvelope"
+  | "runtimePilotReadinessOutputEnvelope"
+  | "runtimePilotNoExecutionProof"
+  | "runtimePilotExecutionForbiddenProof"
+  | "runtimePilotReadinessBlockerReport"
+  | "runtimePilotContractReadinessChecklist"
+> {
+  const {
+    runtimeLimitedPilotReadinessReviewSummary: _r1,
+    runtimePilotContractHardeningBoundary: _r2,
+    runtimePilotReadinessInputEnvelope: _r3,
+    runtimePilotReadinessOutputEnvelope: _r4,
+    runtimePilotNoExecutionProof: _r5,
+    runtimePilotExecutionForbiddenProof: _r6,
+    runtimePilotReadinessBlockerReport: _r7,
+    runtimePilotContractReadinessChecklist: _r8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H43 reports 제거 — H43 단독 테스트용. */
+export function stripRuntimeLimitedPilotReadinessReviewLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeLimitedPilotReadinessReview {
+  return omitLimitedPilotReadinessReviewLayerOnly(semantic);
+}
+
 function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -630,6 +664,7 @@ function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningRepo
   | "runtimeLimitedPilotBoundaryAlignmentReport"
   | "runtimeLimitedPilotBoundaryFinalSafetyGate"
 > {
+  const withoutH43 = omitLimitedPilotReadinessReviewLayerOnly(semantic);
   const {
     runtimeLimitedPilotBoundarySummary: _p1,
     runtimeLimitedPilotBoundaryScope: _p2,
@@ -643,7 +678,7 @@ function omitLimitedPilotBoundaryLayerOnly<T extends RuntimeSemanticPlanningRepo
     runtimeLimitedPilotBoundaryAlignmentReport: _p10,
     runtimeLimitedPilotBoundaryFinalSafetyGate: _p11,
     ...rest
-  } = semantic;
+  } = withoutH43;
   return rest;
 }
 

@@ -1,4 +1,4 @@
-# H20.5~H42.5 Runtime Orchestration Layer Inventory
+# H20.5~H43 Runtime Orchestration Layer Inventory
 
 Read-only orchestration safety / governance / readiness metadata chain. **No actual orchestration, execution, routing, enforcement, or blocking.**
 
@@ -6,7 +6,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 
 ## Chain order (planning)
 
-`buildRuntimeSemanticPlanningReports` — H20.5 resource → … → H42 limited pilot boundary candidate → H42.5 stabilization. Each step: `{ ...previousSemantic, ...layerReports }` only.
+`buildRuntimeSemanticPlanningReports` — H20.5 resource → … → H42 limited pilot boundary → H42.5 stabilization → H43 readiness review. Each step: `{ ...previousSemantic, ...layerReports }` only.
 
 ## Layer table
 
@@ -46,6 +46,11 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | H41.5 | Controlled Activation Candidate Stabilization | `runtimeControlledActivationCandidate/` | + violation/verification/alignment | — | yes | yes | final gate (`h42EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
 | H42 | Limited Pilot Boundary Candidate | `runtimeLimitedPilotBoundary/` | pilot boundary summary | blockers | input contract | output contract | — | yes | yes (7 fields) | yes | yes | yes | yes |
 | H42.5 | Limited Pilot Boundary Stabilization | `runtimeLimitedPilotBoundary/` | + violation/verification/alignment | — | yes | yes | final gate (`h43EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
+| H43 | Limited Pilot Readiness Review | `runtimeLimitedPilotReadinessReview/` | readiness review summary | blockers | input envelope | output envelope | no-exec/forbidden proof | yes | yes (8 fields) | yes | yes | yes | yes |
+
+## Downstream inputs (H43 example)
+
+H43 reads (does not rebuild): `runtimeLimitedPilotBoundaryFinalSafetyGate`, limited pilot boundary verification/alignment/violation reports, limited pilot input/output contracts, controlled activation final gate, ultimate governance final gate, operator approval, rollback, audit.
 
 ## Downstream inputs (H42 example)
 
