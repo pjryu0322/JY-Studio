@@ -1,5 +1,5 @@
 /**
- * H17–H31 — semantic·…·pilot skeleton·runner invocation·no-op harness·execution shell **planning 보고서** 일괄 산출.
+ * H17–H33 — semantic·…·execution shell·shell harness·shell hardening **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
@@ -33,6 +33,8 @@ import { buildRuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimeP
 import { buildRuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/buildRuntimeRunnerInvocationPlanningReports";
 import { buildRuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runtimeRunnerNoopHarness/buildRuntimeRunnerNoopHarnessPlanningReports";
 import { buildRuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/buildRuntimeNoopExecutionShellPlanningReports";
+import { buildRuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/buildRuntimeNoopExecutionShellHarnessPlanningReports";
+import { buildRuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/buildRuntimeNoopShellHardeningPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -218,8 +220,19 @@ export function buildRuntimeSemanticPlanningReports(
     ...runnerNoopHarnessReports,
   };
   const noopExecutionShellReports = buildRuntimeNoopExecutionShellPlanningReports(semanticWithRunnerNoopHarness);
+  const semanticWithNoopExecutionShell = {
+    ...semanticWithRunnerNoopHarness,
+    ...noopExecutionShellReports,
+  };
+  const noopExecutionShellHarnessReports =
+    buildRuntimeNoopExecutionShellHarnessPlanningReports(semanticWithNoopExecutionShell);
+  const semanticWithExecutionShellHarness = {
+    ...semanticWithNoopExecutionShell,
+    ...noopExecutionShellHarnessReports,
+  };
+  const noopShellHardeningReports = buildRuntimeNoopShellHardeningPlanningReports(semanticWithExecutionShellHarness);
 
-  return { ...semanticWithRunnerNoopHarness, ...noopExecutionShellReports };
+  return { ...semanticWithExecutionShellHarness, ...noopShellHardeningReports };
 }
 
 export type {

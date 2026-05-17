@@ -405,6 +405,8 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessStabilizationEnabled: true,
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellCandidateEnabled: true,
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellStabilizationEnabled: true,
+    harnessRuntimePlanningControlledNoopExecutionShellHarnessEnabled: true,
+    harnessRuntimePlanningIsolatedDryRunNoopShellHardeningEnabled: true,
   };
 
   const overlayMaturity = {
@@ -465,6 +467,8 @@ export async function GET(request: NextRequest) {
     harnessRuntimePlanningIsolatedDryRunRunnerNoopHarnessStabilizationLayer: true,
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellCandidateLayer: true,
     harnessRuntimePlanningIsolatedDryRunNoopExecutionShellStabilizationLayer: true,
+    harnessRuntimePlanningControlledNoopExecutionShellHarnessLayer: true,
+    harnessRuntimePlanningIsolatedDryRunNoopShellHardeningLayer: true,
     runtimePolicyEnforcementLayer: false,
   } as const;
 
@@ -779,6 +783,29 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeNoopExecutionShellBoundaryViolationReport,
       runtimeNoopExecutionShellReadinessVerificationReport:
         runtimeSemanticDiag.runtimeNoopExecutionShellReadinessVerificationReport,
+      runtimeNoopExecutionShellHarnessSummary: runtimeSemanticDiag.runtimeNoopExecutionShellHarnessSummary,
+      runtimeNoopExecutionShellContractBoundary: runtimeSemanticDiag.runtimeNoopExecutionShellContractBoundary,
+      runtimeNoopExecutionShellHarnessInputEnvelope:
+        runtimeSemanticDiag.runtimeNoopExecutionShellHarnessInputEnvelope,
+      runtimeNoopExecutionShellHarnessOutputEnvelope:
+        runtimeSemanticDiag.runtimeNoopExecutionShellHarnessOutputEnvelope,
+      runtimeNoopExecutionShellNoopResultMetadata: runtimeSemanticDiag.runtimeNoopExecutionShellNoopResultMetadata,
+      runtimeNoopExecutionShellHarnessSafetyGuard: runtimeSemanticDiag.runtimeNoopExecutionShellHarnessSafetyGuard,
+      runtimeNoopExecutionShellHarnessBlockerReport:
+        runtimeSemanticDiag.runtimeNoopExecutionShellHarnessBlockerReport,
+      runtimeNoopExecutionShellHarnessPreflightSummary:
+        runtimeSemanticDiag.runtimeNoopExecutionShellHarnessPreflightSummary,
+      runtimeNoopShellHardeningSummary: runtimeSemanticDiag.runtimeNoopShellHardeningSummary,
+      runtimeNoopShellHardeningContract: runtimeSemanticDiag.runtimeNoopShellHardeningContract,
+      runtimeNoopShellHardeningInputEnvelope: runtimeSemanticDiag.runtimeNoopShellHardeningInputEnvelope,
+      runtimeNoopShellHardeningOutputEnvelope: runtimeSemanticDiag.runtimeNoopShellHardeningOutputEnvelope,
+      runtimeNoopShellNoExecutionResultMetadata: runtimeSemanticDiag.runtimeNoopShellNoExecutionResultMetadata,
+      runtimeNoopShellHardeningSafetyGuard: runtimeSemanticDiag.runtimeNoopShellHardeningSafetyGuard,
+      runtimeNoopShellHardeningContractVerificationReport:
+        runtimeSemanticDiag.runtimeNoopShellHardeningContractVerificationReport,
+      runtimeNoopShellHardeningBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeNoopShellHardeningBoundaryViolationReport,
+      runtimeNoopShellHardeningPreflightSummary: runtimeSemanticDiag.runtimeNoopShellHardeningPreflightSummary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

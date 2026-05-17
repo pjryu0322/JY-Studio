@@ -7,6 +7,8 @@ import type {
   RuntimeSemanticPlanningReportsBeforeAdapterSandbox,
   RuntimeSemanticPlanningReportsBeforeNoopAdapter,
   RuntimeSemanticPlanningReportsBeforeNoopExecutionShell,
+  RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness,
+  RuntimeSemanticPlanningReportsBeforeNoopShellHardening,
   RuntimeSemanticPlanningReportsBeforePilotActivation,
   RuntimeSemanticPlanningReportsBeforePilotContract,
   RuntimeSemanticPlanningReportsBeforePilotSkeleton,
@@ -55,6 +57,23 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
   | "runtimeNoopExecutionShellFinalSafetyGate"
   | "runtimeNoopExecutionShellBoundaryViolationReport"
   | "runtimeNoopExecutionShellReadinessVerificationReport"
+  | "runtimeNoopExecutionShellHarnessSummary"
+  | "runtimeNoopExecutionShellContractBoundary"
+  | "runtimeNoopExecutionShellHarnessInputEnvelope"
+  | "runtimeNoopExecutionShellHarnessOutputEnvelope"
+  | "runtimeNoopExecutionShellNoopResultMetadata"
+  | "runtimeNoopExecutionShellHarnessSafetyGuard"
+  | "runtimeNoopExecutionShellHarnessBlockerReport"
+  | "runtimeNoopExecutionShellHarnessPreflightSummary"
+  | "runtimeNoopShellHardeningSummary"
+  | "runtimeNoopShellHardeningContract"
+  | "runtimeNoopShellHardeningInputEnvelope"
+  | "runtimeNoopShellHardeningOutputEnvelope"
+  | "runtimeNoopShellNoExecutionResultMetadata"
+  | "runtimeNoopShellHardeningSafetyGuard"
+  | "runtimeNoopShellHardeningContractVerificationReport"
+  | "runtimeNoopShellHardeningBoundaryViolationReport"
+  | "runtimeNoopShellHardeningPreflightSummary"
 > {
   const {
     runtimePilotSkeletonSummary: _ps1,
@@ -93,6 +112,23 @@ function omitPilotSkeletonAndRunnerInvocationLayer<T extends RuntimeSemanticPlan
     runtimeNoopExecutionShellFinalSafetyGate: _ns6,
     runtimeNoopExecutionShellBoundaryViolationReport: _ns7,
     runtimeNoopExecutionShellReadinessVerificationReport: _ns8,
+    runtimeNoopExecutionShellHarnessSummary: _eh1,
+    runtimeNoopExecutionShellContractBoundary: _eh2,
+    runtimeNoopExecutionShellHarnessInputEnvelope: _eh3,
+    runtimeNoopExecutionShellHarnessOutputEnvelope: _eh4,
+    runtimeNoopExecutionShellNoopResultMetadata: _eh5,
+    runtimeNoopExecutionShellHarnessSafetyGuard: _eh6,
+    runtimeNoopExecutionShellHarnessBlockerReport: _eh7,
+    runtimeNoopExecutionShellHarnessPreflightSummary: _eh8,
+    runtimeNoopShellHardeningSummary: _sh1,
+    runtimeNoopShellHardeningContract: _sh2,
+    runtimeNoopShellHardeningInputEnvelope: _sh3,
+    runtimeNoopShellHardeningOutputEnvelope: _sh4,
+    runtimeNoopShellNoExecutionResultMetadata: _sh5,
+    runtimeNoopShellHardeningSafetyGuard: _sh6,
+    runtimeNoopShellHardeningContractVerificationReport: _sh7,
+    runtimeNoopShellHardeningBoundaryViolationReport: _sh8,
+    runtimeNoopShellHardeningPreflightSummary: _sh9,
     ...rest
   } = semantic;
   return rest;
@@ -129,10 +165,47 @@ function omitRunnerNoopHarnessFieldsOnly<T extends RuntimeSemanticPlanningReport
   return rest;
 }
 
+function omitNoopExecutionShellHarnessLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeNoopExecutionShellHarnessSummary"
+  | "runtimeNoopExecutionShellContractBoundary"
+  | "runtimeNoopExecutionShellHarnessInputEnvelope"
+  | "runtimeNoopExecutionShellHarnessOutputEnvelope"
+  | "runtimeNoopExecutionShellNoopResultMetadata"
+  | "runtimeNoopExecutionShellHarnessSafetyGuard"
+  | "runtimeNoopExecutionShellHarnessBlockerReport"
+  | "runtimeNoopExecutionShellHarnessPreflightSummary"
+> {
+  const {
+    runtimeNoopExecutionShellHarnessSummary: _eh1,
+    runtimeNoopExecutionShellContractBoundary: _eh2,
+    runtimeNoopExecutionShellHarnessInputEnvelope: _eh3,
+    runtimeNoopExecutionShellHarnessOutputEnvelope: _eh4,
+    runtimeNoopExecutionShellNoopResultMetadata: _eh5,
+    runtimeNoopExecutionShellHarnessSafetyGuard: _eh6,
+    runtimeNoopExecutionShellHarnessBlockerReport: _eh7,
+    runtimeNoopExecutionShellHarnessPreflightSummary: _eh8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
 function omitRunnerNoopHarnessLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
-): ReturnType<typeof omitNoopExecutionShellLayerOnly<ReturnType<typeof omitRunnerNoopHarnessFieldsOnly<T>>>> {
-  return omitNoopExecutionShellLayerOnly(omitRunnerNoopHarnessFieldsOnly(semantic));
+): ReturnType<
+  typeof omitNoopShellHardeningLayerOnly<
+    ReturnType<
+      typeof omitNoopExecutionShellHarnessLayerOnly<
+        ReturnType<typeof omitNoopExecutionShellLayerOnly<ReturnType<typeof omitRunnerNoopHarnessFieldsOnly<T>>>>
+      >
+    >
+  >
+> {
+  return omitNoopShellHardeningLayerOnly(
+    omitNoopExecutionShellHarnessLayerOnly(omitNoopExecutionShellLayerOnly(omitRunnerNoopHarnessFieldsOnly(semantic)))
+  );
 }
 
 function omitNoopExecutionShellLayerOnly<T extends RuntimeSemanticPlanningReports>(
@@ -157,6 +230,35 @@ function omitNoopExecutionShellLayerOnly<T extends RuntimeSemanticPlanningReport
     runtimeNoopExecutionShellFinalSafetyGate: _ns6,
     runtimeNoopExecutionShellBoundaryViolationReport: _ns7,
     runtimeNoopExecutionShellReadinessVerificationReport: _ns8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+function omitNoopShellHardeningLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeNoopShellHardeningSummary"
+  | "runtimeNoopShellHardeningContract"
+  | "runtimeNoopShellHardeningInputEnvelope"
+  | "runtimeNoopShellHardeningOutputEnvelope"
+  | "runtimeNoopShellNoExecutionResultMetadata"
+  | "runtimeNoopShellHardeningSafetyGuard"
+  | "runtimeNoopShellHardeningContractVerificationReport"
+  | "runtimeNoopShellHardeningBoundaryViolationReport"
+  | "runtimeNoopShellHardeningPreflightSummary"
+> {
+  const {
+    runtimeNoopShellHardeningSummary: _sh1,
+    runtimeNoopShellHardeningContract: _sh2,
+    runtimeNoopShellHardeningInputEnvelope: _sh3,
+    runtimeNoopShellHardeningOutputEnvelope: _sh4,
+    runtimeNoopShellNoExecutionResultMetadata: _sh5,
+    runtimeNoopShellHardeningSafetyGuard: _sh6,
+    runtimeNoopShellHardeningContractVerificationReport: _sh7,
+    runtimeNoopShellHardeningBoundaryViolationReport: _sh8,
+    runtimeNoopShellHardeningPreflightSummary: _sh9,
     ...rest
   } = semantic;
   return rest;
@@ -296,7 +398,23 @@ export function stripRuntimeRunnerNoopHarnessLayer(
 export function stripRuntimeNoopExecutionShellLayer(
   semantic: RuntimeSemanticPlanningReports
 ): RuntimeSemanticPlanningReportsBeforeNoopExecutionShell {
-  return omitNoopExecutionShellLayerOnly(semantic);
+  return omitNoopExecutionShellHarnessLayerOnly(
+    omitNoopShellHardeningLayerOnly(omitNoopExecutionShellLayerOnly(semantic))
+  );
+}
+
+/** H32 controlled execution shell harness reports 제거 — harness 이하 레이어 단독 테스트용. */
+export function stripRuntimeNoopExecutionShellHarnessLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness {
+  return omitNoopShellHardeningLayerOnly(omitNoopExecutionShellHarnessLayerOnly(semantic));
+}
+
+/** H33 no-op shell hardening reports 제거 — shell hardening 이하 레이어 단독 테스트용. */
+export function stripRuntimeNoopShellHardeningLayer(
+  semantic: RuntimeSemanticPlanningReports
+): RuntimeSemanticPlanningReportsBeforeNoopShellHardening {
+  return omitNoopShellHardeningLayerOnly(semantic);
 }
 
 /** H24.5 pilot contract + H25 noop adapter reports 제거. */

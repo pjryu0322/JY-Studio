@@ -14,6 +14,8 @@ import type { RuntimePilotSkeletonPlanningReports } from "@/lib/harness/runtimeP
 import type { RuntimeRunnerInvocationPlanningReports } from "@/lib/harness/runtimeRunnerInvocation/runtimeRunnerInvocationTypes";
 import type { RuntimeRunnerNoopHarnessPlanningReports } from "@/lib/harness/runtimeRunnerNoopHarness/runtimeRunnerNoopHarnessTypes";
 import type { RuntimeNoopExecutionShellPlanningReports } from "@/lib/harness/runtimeNoopExecutionShell/runtimeNoopExecutionShellTypes";
+import type { RuntimeNoopExecutionShellHarnessPlanningReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/runtimeNoopExecutionShellHarnessTypes";
+import type { RuntimeNoopShellHardeningPlanningReports } from "@/lib/harness/runtimeNoopShellHardening/runtimeNoopShellHardeningTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -126,5 +128,13 @@ export type RuntimeSemanticPlanningReportsBeforeNoopExecutionShell =
   RuntimeSemanticPlanningReportsBeforeRunnerNoopHarness & RuntimeRunnerNoopHarnessPlanningReports;
 
 /** H31 포함 — no-op execution shell candidate까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeNoopExecutionShell &
-  RuntimeNoopExecutionShellPlanningReports;
+export type RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness =
+  RuntimeSemanticPlanningReportsBeforeNoopExecutionShell & RuntimeNoopExecutionShellPlanningReports;
+
+/** H32 포함 — controlled execution shell harness까지 산출된 상태. */
+export type RuntimeSemanticPlanningReportsBeforeNoopShellHardening =
+  RuntimeSemanticPlanningReportsBeforeNoopExecutionShellHarness & RuntimeNoopExecutionShellHarnessPlanningReports;
+
+/** H33 포함 — no-op shell hardening·contract verification까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeNoopShellHardening &
+  RuntimeNoopShellHardeningPlanningReports;

@@ -244,6 +244,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeRunnerNoopHarness: boolean;
   /** Harness Phase H31 — No-op execution shell candidate(기본 접힘; blocker 시 펼침). */
   runtimePlanningRuntimeNoopExecutionShell: boolean;
+  runtimePlanningRuntimeNoopExecutionShellHarness: boolean;
+  runtimePlanningRuntimeNoopShellHardening: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -535,6 +537,8 @@ function buildSectionDefaults(
     runtimePlanningRuntimeRunnerInvocation: false,
     runtimePlanningRuntimeRunnerNoopHarness: false,
     runtimePlanningRuntimeNoopExecutionShell: false,
+    runtimePlanningRuntimeNoopExecutionShellHarness: false,
+    runtimePlanningRuntimeNoopShellHardening: false,
   };
 }
 

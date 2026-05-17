@@ -186,6 +186,8 @@ export function OverlaySummaryCard({
     runtimeRunnerInvocationVm: runtimePlanningRunnerInvocationVm,
     runtimeRunnerNoopHarnessVm: runtimePlanningRunnerNoopHarnessVm,
     runtimeNoopExecutionShellVm: runtimePlanningNoopExecutionShellVm,
+    runtimeNoopExecutionShellHarnessVm: runtimePlanningNoopExecutionShellHarnessVm,
+    runtimeNoopShellHardeningVm: runtimePlanningNoopShellHardeningVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -351,7 +353,15 @@ export function OverlaySummaryCard({
     "runtime_planning_runtime_noop_execution_shell",
     d.runtimePlanningRuntimeNoopExecutionShell || runtimePlanningNoopExecutionShellVm.showAttention
   );
-  /** H20.5 resource → H31 no-op execution shell까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
+  const pNoopExecutionShellHarness = pol(
+    "runtime_planning_runtime_noop_execution_shell_harness",
+    d.runtimePlanningRuntimeNoopExecutionShellHarness || runtimePlanningNoopExecutionShellHarnessVm.showAttention
+  );
+  const pNoopShellHardening = pol(
+    "runtime_planning_runtime_noop_shell_hardening",
+    d.runtimePlanningRuntimeNoopShellHardening || runtimePlanningNoopShellHardeningVm.showAttention
+  );
+  /** H20.5 resource → H33 shell hardening까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
     pResourceGov.omitFromDom &&
@@ -368,7 +378,9 @@ export function OverlaySummaryCard({
     pPilotSkeleton.omitFromDom &&
     pRunnerInvocation.omitFromDom &&
     pRunnerNoopHarness.omitFromDom &&
-    pNoopExecutionShell.omitFromDom;
+    pNoopExecutionShell.omitFromDom &&
+    pNoopExecutionShellHarness.omitFromDom &&
+    pNoopShellHardening.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -498,6 +510,8 @@ export function OverlaySummaryCard({
           runtimeRunnerInvocationVm={runtimePlanningRunnerInvocationVm}
           runtimeRunnerNoopHarnessVm={runtimePlanningRunnerNoopHarnessVm}
           runtimeNoopExecutionShellVm={runtimePlanningNoopExecutionShellVm}
+          runtimeNoopExecutionShellHarnessVm={runtimePlanningNoopExecutionShellHarnessVm}
+          runtimeNoopShellHardeningVm={runtimePlanningNoopShellHardeningVm}
           forecastVm={runtimePlanningForecastVm}
           decisionVm={runtimePlanningDecisionVm}
           semanticVocabularyVm={runtimePlanningSemanticVocabularyVm}
@@ -524,6 +538,8 @@ export function OverlaySummaryCard({
           runnerInvocationDefaultOpen={pRunnerInvocation.defaultOpen}
           runnerNoopHarnessDefaultOpen={pRunnerNoopHarness.defaultOpen}
           noopExecutionShellDefaultOpen={pNoopExecutionShell.defaultOpen}
+          noopExecutionShellHarnessDefaultOpen={pNoopExecutionShellHarness.defaultOpen}
+          noopShellHardeningDefaultOpen={pNoopShellHardening.defaultOpen}
           forecastDefaultOpen={pForecast.defaultOpen}
           decisionDefaultOpen={pDecision.defaultOpen}
           semanticVocabularyDefaultOpen={pSemanticVocabulary.defaultOpen}
@@ -572,6 +588,8 @@ export function OverlaySummaryCard({
           showRuntimeRunnerInvocation={!pRunnerInvocation.omitFromDom}
           showRuntimeRunnerNoopHarness={!pRunnerNoopHarness.omitFromDom}
           showRuntimeNoopExecutionShell={!pNoopExecutionShell.omitFromDom}
+          showRuntimeNoopExecutionShellHarness={!pNoopExecutionShellHarness.omitFromDom}
+          showRuntimeNoopShellHardening={!pNoopShellHardening.omitFromDom}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

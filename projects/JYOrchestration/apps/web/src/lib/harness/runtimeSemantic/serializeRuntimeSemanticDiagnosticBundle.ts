@@ -1,5 +1,5 @@
 /**
- * H17–H31 — 진단 API용 runtime semantic·…·no-op execution shell wire 묶음.
+ * H17–H33 — 진단 API용 runtime semantic·…·execution shell·shell harness·shell hardening wire 묶음.
  */
 
 import { serializeRuntimeControlledPilotDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilot/serializeRuntimeControlledPilotDiagnosticBundle";
@@ -57,6 +57,8 @@ import { serializeRuntimePilotSkeletonDiagnosticBundleFromSemanticReports } from
 import { serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeRunnerInvocation/serializeRuntimeRunnerInvocationDiagnosticBundle";
 import { serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeRunnerNoopHarness/serializeRuntimeRunnerNoopHarnessDiagnosticBundle";
 import { serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShell/serializeRuntimeNoopExecutionShellDiagnosticBundle";
+import { serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopExecutionShellHarness/serializeRuntimeNoopExecutionShellHarnessDiagnosticBundle";
+import { serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeNoopShellHardening/serializeRuntimeNoopShellHardeningDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -102,6 +104,12 @@ type SerializedRuntimeRunnerNoopHarnessDiag = ReturnType<
 >;
 type SerializedRuntimeNoopExecutionShellDiag = ReturnType<
   typeof serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeNoopExecutionShellHarnessDiag = ReturnType<
+  typeof serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeNoopShellHardeningDiag = ReturnType<
+  typeof serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -230,6 +238,23 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeNoopExecutionShellFinalSafetyGate: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellFinalSafetyGate"];
   runtimeNoopExecutionShellBoundaryViolationReport: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellBoundaryViolationReport"];
   runtimeNoopExecutionShellReadinessVerificationReport: SerializedRuntimeNoopExecutionShellDiag["runtimeNoopExecutionShellReadinessVerificationReport"];
+  runtimeNoopExecutionShellHarnessSummary: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessSummary"];
+  runtimeNoopExecutionShellContractBoundary: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellContractBoundary"];
+  runtimeNoopExecutionShellHarnessInputEnvelope: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessInputEnvelope"];
+  runtimeNoopExecutionShellHarnessOutputEnvelope: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessOutputEnvelope"];
+  runtimeNoopExecutionShellNoopResultMetadata: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellNoopResultMetadata"];
+  runtimeNoopExecutionShellHarnessSafetyGuard: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessSafetyGuard"];
+  runtimeNoopExecutionShellHarnessBlockerReport: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessBlockerReport"];
+  runtimeNoopExecutionShellHarnessPreflightSummary: SerializedRuntimeNoopExecutionShellHarnessDiag["runtimeNoopExecutionShellHarnessPreflightSummary"];
+  runtimeNoopShellHardeningSummary: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningSummary"];
+  runtimeNoopShellHardeningContract: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningContract"];
+  runtimeNoopShellHardeningInputEnvelope: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningInputEnvelope"];
+  runtimeNoopShellHardeningOutputEnvelope: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningOutputEnvelope"];
+  runtimeNoopShellNoExecutionResultMetadata: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellNoExecutionResultMetadata"];
+  runtimeNoopShellHardeningSafetyGuard: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningSafetyGuard"];
+  runtimeNoopShellHardeningContractVerificationReport: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningContractVerificationReport"];
+  runtimeNoopShellHardeningBoundaryViolationReport: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningBoundaryViolationReport"];
+  runtimeNoopShellHardeningPreflightSummary: SerializedRuntimeNoopShellHardeningDiag["runtimeNoopShellHardeningPreflightSummary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -246,6 +271,9 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   const runnerInvocationDiag = serializeRuntimeRunnerInvocationDiagnosticBundleFromSemanticReports(reports);
   const runnerNoopHarnessDiag = serializeRuntimeRunnerNoopHarnessDiagnosticBundleFromSemanticReports(reports);
   const noopExecutionShellDiag = serializeRuntimeNoopExecutionShellDiagnosticBundleFromSemanticReports(reports);
+  const noopExecutionShellHarnessDiag =
+    serializeRuntimeNoopExecutionShellHarnessDiagnosticBundleFromSemanticReports(reports);
+  const noopShellHardeningDiag = serializeRuntimeNoopShellHardeningDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -327,6 +355,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...runnerInvocationDiag,
     ...runnerNoopHarnessDiag,
     ...noopExecutionShellDiag,
+    ...noopExecutionShellHarnessDiag,
+    ...noopShellHardeningDiag,
   };
 }
 
