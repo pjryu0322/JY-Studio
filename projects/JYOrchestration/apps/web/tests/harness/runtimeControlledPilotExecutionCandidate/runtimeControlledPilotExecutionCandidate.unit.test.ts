@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { detectRuntimeControlledPilotExecutionCandidateViolations } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/detectRuntimeControlledPilotExecutionCandidateViolations";
 import { serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundle";
 import {
   buildControlledPilotExecutionCandidateBaseReports,
@@ -105,15 +106,74 @@ describe("H45 controlled pilot execution candidate", () => {
     expect(candidate.runtimeControlledPilotExecutionCandidateSummary.candidateStatus).toBe("blocked");
   });
 
-  it("serializer exposes eight H45 keys without rebuilding reports", () => {
+  it("controlled_pilot_execution_metadata_candidate + verified + aligned yields final gate ready_metadata when aligned", () => {
+    const semantic = buildFullSemanticForControlledPilotExecutionCandidate();
+    if (
+      semantic.runtimeControlledPilotExecutionCandidateSummary.candidateStatus ===
+        "controlled_pilot_execution_metadata_candidate" &&
+      semantic.runtimeControlledPilotExecutionCandidateVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeControlledPilotExecutionCandidateAlignmentReport.alignmentStatus ===
+        "aligned_metadata" &&
+      semantic.runtimeControlledPilotExecutionCandidateViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeControlledPilotExecutionCandidateViolationReport.policyViolations.length === 0
+    ) {
+      expect(semantic.runtimeControlledPilotExecutionCandidateFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeControlledPilotExecutionCandidateFinalSafetyGate.pilotValidationEntryReadiness).toBe(
+        "ready_metadata"
+      );
+    }
+  });
+
+  it("watch candidate yields final gate watch", () => {
+    const base = buildControlledPilotExecutionCandidateBaseReports();
+    const candidate = buildControlledPilotExecutionCandidatePlanning(
+      buildControlledPilotExecutionWatchScenarioPatches(base)
+    );
+    expect(candidate.runtimeControlledPilotExecutionCandidateSummary.candidateStatus).toBe("watch");
+    expect(candidate.runtimeControlledPilotExecutionCandidateFinalSafetyGate.finalGateStatus).toBe("watch");
+    expect(candidate.runtimeControlledPilotExecutionCandidateFinalSafetyGate.pilotValidationEntryReadiness).toBe(
+      "watch"
+    );
+  });
+
+  it("policy actualPilotActivationForbidden false yields violation", () => {
+    const semantic = buildFullSemanticForControlledPilotExecutionCandidate();
+    const violation = detectRuntimeControlledPilotExecutionCandidateViolations({
+      summary: semantic.runtimeControlledPilotExecutionCandidateSummary,
+      policy: {
+        ...semantic.runtimeControlledPilotExecutionCandidatePolicy,
+        actualPilotActivationForbidden: false as true,
+      },
+    });
+    expect(violation.policyViolations.length).toBeGreaterThan(0);
+  });
+
+  it("policy actualPilotExecutionForbidden false yields violation", () => {
+    const semantic = buildFullSemanticForControlledPilotExecutionCandidate();
+    const violation = detectRuntimeControlledPilotExecutionCandidateViolations({
+      summary: semantic.runtimeControlledPilotExecutionCandidateSummary,
+      policy: {
+        ...semantic.runtimeControlledPilotExecutionCandidatePolicy,
+        actualPilotExecutionForbidden: false as true,
+      },
+    });
+    expect(violation.policyViolations.length).toBeGreaterThan(0);
+  });
+
+  it("serializer exposes twelve H45/H45.5 keys without rebuilding reports", () => {
     const semantic = buildFullSemanticForControlledPilotExecutionCandidate();
     const serialized = serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports(semantic);
     expect(Object.keys(serialized).sort()).toEqual(
       [
+        "runtimeControlledPilotExecutionCandidateAlignmentReport",
         "runtimeControlledPilotExecutionCandidateBlockerReport",
+        "runtimeControlledPilotExecutionCandidateFinalSafetyGate",
         "runtimeControlledPilotExecutionCandidatePolicy",
         "runtimeControlledPilotExecutionCandidateScope",
         "runtimeControlledPilotExecutionCandidateSummary",
+        "runtimeControlledPilotExecutionCandidateVerificationReport",
+        "runtimeControlledPilotExecutionCandidateViolationReport",
         "runtimeControlledPilotExecutionInputContract",
         "runtimeControlledPilotExecutionOutputContract",
         "runtimeControlledPilotExecutionReadinessChecklist",

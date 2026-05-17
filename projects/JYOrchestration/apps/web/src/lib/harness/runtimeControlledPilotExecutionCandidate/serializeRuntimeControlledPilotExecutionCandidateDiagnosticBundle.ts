@@ -1,14 +1,18 @@
 /**
- * H45 — controlled pilot execution candidate 진단 **직렬화 전용**(report 재빌드 없음).
+ * H45 / H45.5 — controlled pilot execution candidate 진단 **직렬화 전용**(report 재빌드 없음).
  */
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import { SERIALIZED_RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS } from "./runtimeControlledPilotExecutionCandidateConstants";
 import type {
+  RuntimeControlledPilotExecutionCandidateAlignmentReport,
   RuntimeControlledPilotExecutionCandidateBlockerReport,
+  RuntimeControlledPilotExecutionCandidateFinalSafetyGate,
   RuntimeControlledPilotExecutionCandidatePolicy,
   RuntimeControlledPilotExecutionCandidateScope,
   RuntimeControlledPilotExecutionCandidateSummary,
+  RuntimeControlledPilotExecutionCandidateVerificationReport,
+  RuntimeControlledPilotExecutionCandidateViolationReport,
   RuntimeControlledPilotExecutionInputContract,
   RuntimeControlledPilotExecutionOutputContract,
   RuntimeControlledPilotExecutionReadinessChecklist,
@@ -125,6 +129,57 @@ function serializeChecklist(c: RuntimeControlledPilotExecutionReadinessChecklist
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeControlledPilotExecutionCandidateViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    policyViolations: sortKo(v.policyViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeVerificationReport(
+  r: RuntimeControlledPilotExecutionCandidateVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeControlledPilotExecutionCandidateAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeControlledPilotExecutionCandidateFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    pilotValidationEntryReadiness: g.pilotValidationEntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -136,6 +191,10 @@ export function serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundl
   runtimeControlledPilotExecutionOutputContract: ReturnType<typeof serializeContract>;
   runtimeControlledPilotExecutionCandidateBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeControlledPilotExecutionReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeControlledPilotExecutionCandidateViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeControlledPilotExecutionCandidateVerificationReport: ReturnType<typeof serializeVerificationReport>;
+  runtimeControlledPilotExecutionCandidateAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeControlledPilotExecutionCandidateFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeControlledPilotExecutionCandidateSummary: serializeSummary(
@@ -159,6 +218,18 @@ export function serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundl
     ),
     runtimeControlledPilotExecutionReadinessChecklist: serializeChecklist(
       reports.runtimeControlledPilotExecutionReadinessChecklist
+    ),
+    runtimeControlledPilotExecutionCandidateViolationReport: serializeViolationReport(
+      reports.runtimeControlledPilotExecutionCandidateViolationReport
+    ),
+    runtimeControlledPilotExecutionCandidateVerificationReport: serializeVerificationReport(
+      reports.runtimeControlledPilotExecutionCandidateVerificationReport
+    ),
+    runtimeControlledPilotExecutionCandidateAlignmentReport: serializeAlignmentReport(
+      reports.runtimeControlledPilotExecutionCandidateAlignmentReport
+    ),
+    runtimeControlledPilotExecutionCandidateFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeControlledPilotExecutionCandidateFinalSafetyGate
     ),
   };
 }

@@ -30,14 +30,17 @@ describe("buildOverlayRuntimeControlledPilotExecutionCandidateSectionVm", () => 
     expect(compact.outputContractRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, execution mode, and blocker or forbidden operation", () => {
+  it("compact mode displays candidate status, execution mode, final gate, and blocker or forbidden operation", () => {
     const vm = buildOverlayRuntimeControlledPilotExecutionCandidateSectionVm(
       buildDefaultOverlaySectionVmTestInput(true)
     );
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.executionModeKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(
-      vm.topExecutionBlocker !== null || vm.topForbiddenExecutionOperation !== null || vm.showAttention
+      vm.topViolationOrBlocker !== null ||
+        vm.topForbiddenExecutionOperation !== null ||
+        vm.showAttention
     ).toBe(true);
   });
 

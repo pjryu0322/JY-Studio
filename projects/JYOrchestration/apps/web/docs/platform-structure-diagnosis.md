@@ -583,6 +583,7 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 - **Harness Phase H44 — Limited Runtime Pilot Readiness Finalization & Pilot Execution Readiness Boundary Layer (read-only)** — H43.5 final gate 기반 pilot execution readiness finalization·boundary·envelope·final proof·checklist metadata만 산출. 진단 8개 필드 additive. **여전히 pilot activation·execution 없음**.
 - **Harness Phase H44.5 — Pilot Execution Readiness Stabilization & Final Pilot Execution Safety Gate Layer (read-only)** — H44 metadata를 안정화하고 violation·verification·alignment·**`h45EntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
 - **Harness Phase H45 — Controlled Pilot Execution Candidate & Final Runtime Handoff Boundary Layer (read-only)** — H44.5 final gate 기반 controlled pilot execution candidate·final runtime handoff boundary·input/output contract metadata만 산출. 진단 8개 필드 additive. **여전히 pilot activation·execution·runner·adapter·sandbox 없음**.
+- **Harness Phase H45.5 — Controlled Pilot Execution Candidate Stabilization & Final Runtime Handoff Safety Gate Layer (read-only)** — H45 metadata를 안정화하고 violation·verification·alignment·**`pilotValidationEntryReadiness`** final safety gate 산출. 진단 4개 필드 additive. **여전히 pilot activation·execution 없음**.
 
 ## 관련 문서
 

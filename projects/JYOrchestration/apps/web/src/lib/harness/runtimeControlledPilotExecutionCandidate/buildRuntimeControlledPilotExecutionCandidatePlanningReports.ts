@@ -11,8 +11,12 @@ import { buildRuntimeControlledPilotExecutionCandidateScope } from "./buildRunti
 import { buildRuntimeControlledPilotExecutionInputContract } from "./buildRuntimeControlledPilotExecutionInputContract";
 import { buildRuntimeControlledPilotExecutionOutputContract } from "./buildRuntimeControlledPilotExecutionOutputContract";
 import { buildRuntimeControlledPilotExecutionReadinessChecklist } from "./buildRuntimeControlledPilotExecutionReadinessChecklist";
+import { buildRuntimeControlledPilotExecutionCandidateAlignmentReport } from "./buildRuntimeControlledPilotExecutionCandidateAlignmentReport";
+import { buildRuntimeControlledPilotExecutionCandidateFinalSafetyGate } from "./buildRuntimeControlledPilotExecutionCandidateFinalSafetyGate";
 import { detectRuntimeControlledPilotExecutionCandidateBlockers } from "./detectRuntimeControlledPilotExecutionCandidateBlockers";
+import { detectRuntimeControlledPilotExecutionCandidateViolations } from "./detectRuntimeControlledPilotExecutionCandidateViolations";
 import { evaluateRuntimeControlledPilotExecutionCandidate } from "./evaluateRuntimeControlledPilotExecutionCandidate";
+import { verifyRuntimeControlledPilotExecutionCandidateReadiness } from "./verifyRuntimeControlledPilotExecutionCandidateReadiness";
 import { resolveRuntimeControlledPilotExecutionMode } from "./resolveRuntimeControlledPilotExecutionMode";
 import { RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS_DISABLED } from "./runtimeControlledPilotExecutionCandidateConstants";
 import type {
@@ -85,6 +89,47 @@ export function buildRuntimeControlledPilotExecutionCandidatePlanningReports(
     checklist: runtimeControlledPilotExecutionReadinessChecklist,
   });
 
+  const runtimeControlledPilotExecutionCandidateViolationReport =
+    detectRuntimeControlledPilotExecutionCandidateViolations({
+      summary: runtimeControlledPilotExecutionCandidateSummaryDraft,
+      policy: runtimeControlledPilotExecutionCandidatePolicy,
+    });
+
+  const runtimeControlledPilotExecutionCandidateVerificationReport =
+    verifyRuntimeControlledPilotExecutionCandidateReadiness({
+      summary: runtimeControlledPilotExecutionCandidateSummaryDraft,
+      handoff: runtimeFinalRuntimeHandoffBoundary,
+      scope: runtimeControlledPilotExecutionCandidateScope,
+      policy: runtimeControlledPilotExecutionCandidatePolicy,
+      inputContract: runtimeControlledPilotExecutionInputContract,
+      outputContract: runtimeControlledPilotExecutionOutputContract,
+      checklist: runtimeControlledPilotExecutionReadinessChecklist,
+      blockerReport: runtimeControlledPilotExecutionCandidateBlockerReport,
+    });
+
+  const runtimeControlledPilotExecutionCandidateAlignmentReport =
+    buildRuntimeControlledPilotExecutionCandidateAlignmentReport({
+      reports,
+      summary: runtimeControlledPilotExecutionCandidateSummaryDraft,
+      handoff: runtimeFinalRuntimeHandoffBoundary,
+      scope: runtimeControlledPilotExecutionCandidateScope,
+      policy: runtimeControlledPilotExecutionCandidatePolicy,
+      inputContract: runtimeControlledPilotExecutionInputContract,
+      outputContract: runtimeControlledPilotExecutionOutputContract,
+      checklist: runtimeControlledPilotExecutionReadinessChecklist,
+      blockerReport: runtimeControlledPilotExecutionCandidateBlockerReport,
+      boundaryViolation: runtimeControlledPilotExecutionCandidateViolationReport,
+    });
+
+  const runtimeControlledPilotExecutionCandidateFinalSafetyGate =
+    buildRuntimeControlledPilotExecutionCandidateFinalSafetyGate({
+      summary: runtimeControlledPilotExecutionCandidateSummaryDraft,
+      blockerReport: runtimeControlledPilotExecutionCandidateBlockerReport,
+      boundaryViolation: runtimeControlledPilotExecutionCandidateViolationReport,
+      readinessVerification: runtimeControlledPilotExecutionCandidateVerificationReport,
+      alignmentReport: runtimeControlledPilotExecutionCandidateAlignmentReport,
+    });
+
   const runtimeControlledPilotExecutionCandidateSummary = {
     ...runtimeControlledPilotExecutionCandidateSummaryDraft,
     recommendations: mergeRuntimeLayerRecommendations([
@@ -95,6 +140,10 @@ export function buildRuntimeControlledPilotExecutionCandidatePlanningReports(
       runtimeControlledPilotExecutionInputContract,
       runtimeControlledPilotExecutionOutputContract,
       runtimeControlledPilotExecutionReadinessChecklist,
+      runtimeControlledPilotExecutionCandidateViolationReport,
+      runtimeControlledPilotExecutionCandidateVerificationReport,
+      runtimeControlledPilotExecutionCandidateAlignmentReport,
+      runtimeControlledPilotExecutionCandidateFinalSafetyGate,
     ]),
   };
 
@@ -107,5 +156,9 @@ export function buildRuntimeControlledPilotExecutionCandidatePlanningReports(
     runtimeControlledPilotExecutionOutputContract,
     runtimeControlledPilotExecutionCandidateBlockerReport,
     runtimeControlledPilotExecutionReadinessChecklist,
+    runtimeControlledPilotExecutionCandidateViolationReport,
+    runtimeControlledPilotExecutionCandidateVerificationReport,
+    runtimeControlledPilotExecutionCandidateAlignmentReport,
+    runtimeControlledPilotExecutionCandidateFinalSafetyGate,
   };
 }

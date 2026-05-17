@@ -18,17 +18,21 @@ export function OverlayRuntimeControlledPilotExecutionCandidateSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Controlled Pilot Execution Candidate (H45)"
+      title="Runtime Controlled Pilot Execution Candidate (H45 / H45.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Controlled pilot execution candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Execution mode" value={vm.executionModeKo} />
-        {vm.topExecutionBlocker ? (
-          <OverlayUiKeyValueRow label="Top execution blocker" value={vm.topExecutionBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate status" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="Pilot validation entry readiness" value={vm.pilotValidationEntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topExecutionBlocker && vm.topForbiddenExecutionOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenExecutionOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden execution operation" value={vm.topForbiddenExecutionOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -47,6 +51,21 @@ export function OverlayRuntimeControlledPilotExecutionCandidateSection({
               title="Forbidden execution operations"
               rows={vm.forbiddenExecutionOperationRows}
               emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.forbiddenOperation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Controlled pilot execution violations"
+              rows={vm.controlledPilotExecutionViolationRows}
+              emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.violation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.verification}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.alignment}
             />
             <OverlayRuntimePlanningDetailBlock
               title="Input contract"
@@ -70,6 +89,11 @@ export function OverlayRuntimeControlledPilotExecutionCandidateSection({
                 emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final safety gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Execution blockers"
               rows={vm.executionBlockerRows}

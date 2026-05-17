@@ -7,8 +7,8 @@ import type { RuntimeSemanticPlanningReportsBeforeControlledPilotExecutionCandid
 import {
   isRuntimeFinalPilotExecutionForbiddenProofComplete,
   isRuntimeFinalPilotNoExecutionProofValid,
-  readControlledPilotExecutionUpstreamContext,
-} from "./runtimeControlledPilotExecutionCandidateCheckHelpers";
+} from "@/lib/harness/runtimePilotExecutionReadiness/runtimePilotExecutionReadinessCheckHelpers";
+import { readControlledPilotExecutionUpstreamContext } from "./runtimeControlledPilotExecutionCandidateCheckHelpers";
 import { RUNTIME_CONTROLLED_PILOT_EXECUTION_CANDIDATE_ACTUAL_FLAGS_DISABLED } from "./runtimeControlledPilotExecutionCandidateConstants";
 import type {
   RuntimeControlledPilotExecutionCandidateBlockerReport,
