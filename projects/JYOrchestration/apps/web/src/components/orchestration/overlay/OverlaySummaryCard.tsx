@@ -193,6 +193,7 @@ export function OverlaySummaryCard({
     runtimeExecutionBoundaryShellVm: runtimePlanningExecutionBoundaryShellVm,
     runtimeExecutionGovernanceBoundaryVm: runtimePlanningExecutionGovernanceBoundaryVm,
     runtimeGovernanceReleaseReadinessVm: runtimePlanningGovernanceReleaseReadinessVm,
+    runtimeFinalReleaseGovernanceGateVm: runtimePlanningFinalReleaseGovernanceGateVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -388,6 +389,11 @@ export function OverlaySummaryCard({
     d.runtimePlanningRuntimeGovernanceReleaseReadiness ||
       runtimePlanningGovernanceReleaseReadinessVm.showAttention
   );
+  const pFinalReleaseGovernanceGate = pol(
+    "runtime_planning_runtime_final_release_governance_gate",
+    d.runtimePlanningRuntimeFinalReleaseGovernanceGate ||
+      runtimePlanningFinalReleaseGovernanceGateVm.showAttention
+  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -412,7 +418,8 @@ export function OverlaySummaryCard({
     pReleaseGatePreflight.omitFromDom &&
     pExecutionBoundaryShell.omitFromDom &&
     pExecutionGovernanceBoundary.omitFromDom &&
-    pGovernanceReleaseReadiness.omitFromDom;
+    pGovernanceReleaseReadiness.omitFromDom &&
+    pFinalReleaseGovernanceGate.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -636,6 +643,9 @@ export function OverlaySummaryCard({
           showRuntimeGovernanceReleaseReadiness={!pGovernanceReleaseReadiness.omitFromDom}
           governanceReleaseReadinessDefaultOpen={pGovernanceReleaseReadiness.defaultOpen}
           runtimeGovernanceReleaseReadinessVm={runtimePlanningGovernanceReleaseReadinessVm}
+          showRuntimeFinalReleaseGovernanceGate={!pFinalReleaseGovernanceGate.omitFromDom}
+          finalReleaseGovernanceGateDefaultOpen={pFinalReleaseGovernanceGate.defaultOpen}
+          runtimeFinalReleaseGovernanceGateVm={runtimePlanningFinalReleaseGovernanceGateVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

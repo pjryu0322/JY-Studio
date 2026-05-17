@@ -74,7 +74,8 @@ export function resolveOverlaySectionUiPolicy(input: {
         input.section === "runtime_planning_runtime_release_gate_preflight" ||
         input.section === "runtime_planning_runtime_execution_boundary_shell" ||
         input.section === "runtime_planning_runtime_execution_governance_boundary" ||
-        input.section === "runtime_planning_runtime_governance_release_readiness")
+        input.section === "runtime_planning_runtime_governance_release_readiness" ||
+        input.section === "runtime_planning_runtime_final_release_governance_gate")
     ) {
       omitFromDom = true;
       defaultOpen = false;

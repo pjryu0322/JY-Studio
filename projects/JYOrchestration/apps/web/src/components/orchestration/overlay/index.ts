@@ -50,6 +50,7 @@ export { OverlayRuntimeReleaseGatePreflightSection } from "./OverlayRuntimeRelea
 export { OverlayRuntimeExecutionBoundaryShellSection } from "./OverlayRuntimeExecutionBoundaryShellSection";
 export { OverlayRuntimeExecutionGovernanceBoundarySection } from "./OverlayRuntimeExecutionGovernanceBoundarySection";
 export { OverlayRuntimeGovernanceReleaseReadinessSection } from "./OverlayRuntimeGovernanceReleaseReadinessSection";
+export { OverlayRuntimeFinalReleaseGovernanceGateSection } from "./OverlayRuntimeFinalReleaseGovernanceGateSection";
 export { OverlayRuntimeDependencyCriticalityGroup } from "./OverlayRuntimeDependencyCriticalityGroup";
 export { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
 export { OverlayEscalationBadge } from "./OverlayEscalationBadge";

@@ -40,6 +40,7 @@ import { buildRuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/r
 import { buildRuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/buildRuntimeExecutionBoundaryShellPlanningReports";
 import { buildRuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/buildRuntimeExecutionGovernanceBoundaryPlanningReports";
 import { buildRuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/buildRuntimeGovernanceReleaseReadinessPlanningReports";
+import { buildRuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/buildRuntimeFinalReleaseGovernanceGatePlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
 import { buildRuntimeSemanticGroups } from "./buildRuntimeSemanticGroups";
@@ -67,6 +68,7 @@ import type {
   RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
   RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
   RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness,
+  RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate,
   RuntimeSemanticPlanningReports,
   RuntimeSemanticCorePlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
@@ -93,6 +95,7 @@ export type {
   RuntimeSemanticPlanningReportsBeforeExecutionBoundaryShell,
   RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary,
   RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness,
+  RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate,
   RuntimeSemanticPlanningReports,
 } from "./runtimeSemanticPlanningReportStages";
 
@@ -284,7 +287,16 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithExecutionGovernanceBoundary
   );
 
-  return { ...semanticWithExecutionGovernanceBoundary, ...governanceReleaseReadinessReports };
+  const semanticWithGovernanceReleaseReadiness: RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate = {
+    ...semanticWithExecutionGovernanceBoundary,
+    ...governanceReleaseReadinessReports,
+  };
+
+  const finalReleaseGovernanceGateReports = buildRuntimeFinalReleaseGovernanceGatePlanningReports(
+    semanticWithGovernanceReleaseReadiness
+  );
+
+  return { ...semanticWithGovernanceReleaseReadiness, ...finalReleaseGovernanceGateReports };
 }
 
 export type {

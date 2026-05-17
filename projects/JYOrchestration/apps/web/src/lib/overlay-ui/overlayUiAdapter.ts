@@ -255,6 +255,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeExecutionGovernanceBoundary: boolean;
   /** Harness Phase H38 — Governance release-readiness·final execution governance readiness boundary(기본 접힘; blocker 시 펼침). */
   runtimePlanningRuntimeGovernanceReleaseReadiness: boolean;
+  /** Harness Phase H39 — Final release governance gate candidate(기본 접힘; blocker 시 펼침). */
+  runtimePlanningRuntimeFinalReleaseGovernanceGate: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -553,6 +555,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeExecutionBoundaryShell: false,
     runtimePlanningRuntimeExecutionGovernanceBoundary: false,
     runtimePlanningRuntimeGovernanceReleaseReadiness: false,
+    runtimePlanningRuntimeFinalReleaseGovernanceGate: false,
   };
 }
 

@@ -21,6 +21,7 @@ import type { RuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/r
 import type { RuntimeExecutionBoundaryShellPlanningReports } from "@/lib/harness/runtimeExecutionBoundaryShell/runtimeExecutionBoundaryShellTypes";
 import type { RuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/runtimeExecutionGovernanceBoundaryTypes";
 import type { RuntimeGovernanceReleaseReadinessPlanningReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/runtimeGovernanceReleaseReadinessTypes";
+import type { RuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/runtimeFinalReleaseGovernanceGateTypes";
 
 import type { RuntimeResourceAllocationPlanningReports } from "@/lib/harness/runtimeResourceAllocation/runtimeResourceAllocationTypes";
 import type { RuntimeResourceTrialPlanningReports } from "@/lib/harness/runtimeResourceTrial/runtimeResourceTrialTypes";
@@ -161,6 +162,11 @@ export type RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness =
   RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary &
     RuntimeExecutionGovernanceBoundaryPlanningReports;
 
-/** H38 포함 — governance release-readiness까지 산출된 상태. */
-export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness &
-  RuntimeGovernanceReleaseReadinessPlanningReports;
+/** H38 / H38.5 포함 — governance release-readiness final safety gate까지 산출된 상태. */
+export type RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate =
+  RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness &
+    RuntimeGovernanceReleaseReadinessPlanningReports;
+
+/** H39 포함 — final release governance gate candidate까지 산출된 상태. */
+export type RuntimeSemanticPlanningReports = RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate &
+  RuntimeFinalReleaseGovernanceGatePlanningReports;

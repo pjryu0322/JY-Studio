@@ -64,6 +64,7 @@ import { serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports
 import { serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionBoundaryShell/serializeRuntimeExecutionBoundaryShellDiagnosticBundle";
 import { serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundle";
 import { serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle";
+import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -130,6 +131,9 @@ type SerializedRuntimeExecutionGovernanceBoundaryDiag = ReturnType<
 >;
 type SerializedRuntimeGovernanceReleaseReadinessDiag = ReturnType<
   typeof serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeFinalReleaseGovernanceGateDiag = ReturnType<
+  typeof serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -329,6 +333,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeGovernanceReleaseReadinessVerificationReport: SerializedRuntimeGovernanceReleaseReadinessDiag["runtimeGovernanceReleaseReadinessVerificationReport"];
   runtimeGovernanceReleaseReadinessAlignmentReport: SerializedRuntimeGovernanceReleaseReadinessDiag["runtimeGovernanceReleaseReadinessAlignmentReport"];
   runtimeGovernanceReleaseReadinessFinalSafetyGate: SerializedRuntimeGovernanceReleaseReadinessDiag["runtimeGovernanceReleaseReadinessFinalSafetyGate"];
+  runtimeFinalReleaseGovernanceGateSummary: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateSummary"];
+  runtimeFinalReleaseGovernanceGateScope: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateScope"];
+  runtimeFinalReleaseGovernanceGatePolicy: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGatePolicy"];
+  runtimeFinalReleaseGovernanceGateBlockerReport: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateBlockerReport"];
+  runtimeFinalReleaseGovernanceGateReadinessChecklist: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -358,6 +367,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports(reports);
   const governanceReleaseReadinessDiag =
     serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports(reports);
+  const finalReleaseGovernanceGateDiag =
+    serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -446,6 +457,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...executionBoundaryShellDiag,
     ...executionGovernanceBoundaryDiag,
     ...governanceReleaseReadinessDiag,
+    ...finalReleaseGovernanceGateDiag,
   };
 }
 

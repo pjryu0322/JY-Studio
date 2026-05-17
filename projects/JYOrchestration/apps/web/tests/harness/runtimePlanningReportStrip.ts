@@ -585,6 +585,34 @@ export function stripRuntimeExecutionGovernanceBoundaryLayer(
   return omitGovernanceReleaseReadinessLayerOnly(omitExecutionGovernanceBoundaryLayerOnly(semantic));
 }
 
+function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeFinalReleaseGovernanceGateSummary"
+  | "runtimeFinalReleaseGovernanceGateScope"
+  | "runtimeFinalReleaseGovernanceGatePolicy"
+  | "runtimeFinalReleaseGovernanceGateBlockerReport"
+  | "runtimeFinalReleaseGovernanceGateReadinessChecklist"
+> {
+  const {
+    runtimeFinalReleaseGovernanceGateSummary: _fr1,
+    runtimeFinalReleaseGovernanceGateScope: _fr2,
+    runtimeFinalReleaseGovernanceGatePolicy: _fr3,
+    runtimeFinalReleaseGovernanceGateBlockerReport: _fr4,
+    runtimeFinalReleaseGovernanceGateReadinessChecklist: _fr5,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H39 final release governance gate reports 제거 — H39 단독 테스트용. */
+export function stripRuntimeFinalReleaseGovernanceGateLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate {
+  return omitFinalReleaseGovernanceGateLayerOnly(semantic);
+}
+
 function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
 ): Omit<
@@ -602,6 +630,7 @@ function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanni
   | "runtimeGovernanceReleaseReadinessAlignmentReport"
   | "runtimeGovernanceReleaseReadinessFinalSafetyGate"
 > {
+  const withoutH39 = omitFinalReleaseGovernanceGateLayerOnly(semantic);
   const {
     runtimeGovernanceReleaseReadinessSummary: _gr1,
     runtimeGovernanceReleaseReadinessBoundary: _gr2,
@@ -616,11 +645,11 @@ function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanni
     runtimeGovernanceReleaseReadinessAlignmentReport: _gr11,
     runtimeGovernanceReleaseReadinessFinalSafetyGate: _gr12,
     ...rest
-  } = semantic;
+  } = withoutH39;
   return rest;
 }
 
-/** H38 governance release-readiness reports 제거 — release-readiness 이하 레이어 단독 테스트용. */
+/** H38 governance release-readiness reports 제거 — release-readiness 이하 레이어 단독 테스트용(H39 포함). */
 export function stripRuntimeGovernanceReleaseReadinessLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeGovernanceReleaseReadiness {
