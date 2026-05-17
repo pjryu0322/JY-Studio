@@ -125,3 +125,55 @@ export const FINAL_RELEASE_GATE_POLICY_FORBIDDEN_MUST_BE_TRUE: readonly {
   { key: "actualExecutionBlockingForbidden", reportPrefix: "runtimeFinalReleaseGovernanceGatePolicy" },
   { key: "actualMergeBlockingForbidden", reportPrefix: "runtimeFinalReleaseGovernanceGatePolicy" },
 ];
+
+/** H39.5 verification — policy forbidden 플래그(verifyRuntimeFinalReleaseGovernanceGateReadiness). */
+export const FINAL_RELEASE_GATE_VERIFICATION_POLICY_FORBIDDEN_MUST_BE_TRUE: readonly {
+  readonly key: PolicyForbiddenFlagKey;
+}[] = [
+  { key: "actualExecutionForbidden" },
+  { key: "actualExecutionRoutingForbidden" },
+  { key: "actualReleaseEnforcementForbidden" },
+  { key: "actualApprovalEnforcementForbidden" },
+  { key: "actualExecutionBlockingForbidden" },
+  { key: "actualMergeBlockingForbidden" },
+];
+
+/** H39.5 alignment — policy forbidden 플래그(buildRuntimeFinalReleaseGovernanceGateAlignmentReport). */
+export const FINAL_RELEASE_GATE_ALIGNMENT_POLICY_FORBIDDEN_MUST_BE_TRUE: readonly {
+  readonly key: PolicyForbiddenFlagKey;
+}[] = [
+  { key: "actualExecutionForbidden" },
+  { key: "actualApprovalEnforcementForbidden" },
+  { key: "actualExecutionBlockingForbidden" },
+  { key: "actualMergeBlockingForbidden" },
+];
+
+export const FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_LABEL_ROWS = [
+  "governance release-readiness final gate ready_metadata",
+  "h39 entry readiness ready_metadata",
+  "governance release-readiness verification verified_metadata",
+  "governance release-readiness alignment aligned_metadata",
+] as const;
+
+export const FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_ACTUAL_DISABLED_ROWS = [
+  "actual execution disabled",
+  "actual release enforcement disabled",
+  "actual approval enforcement disabled",
+  "actual execution blocking disabled",
+  "actual merge blocking disabled",
+] as const;
+
+export const FINAL_RELEASE_GATE_ALIGNMENT_CHECKLIST_LABEL_ROWS = [
+  "governance release-readiness final gate ready_metadata",
+  "no release-readiness actual flag violations",
+  "no release-readiness proof violations",
+] as const;
+
+export const FINAL_RELEASE_GOVERNANCE_GATE_FINAL_SAFETY_CHECKLIST_STATIC_ROWS = [
+  "h40EntryReadiness:metadata_only_gate",
+  "actualExecutionForbidden:true",
+  "actualReleaseEnforcementForbidden:true",
+  "actualApprovalEnforcementForbidden:true",
+  "actualExecutionBlockingForbidden:true",
+  "actualMergeBlockingForbidden:true",
+] as const;

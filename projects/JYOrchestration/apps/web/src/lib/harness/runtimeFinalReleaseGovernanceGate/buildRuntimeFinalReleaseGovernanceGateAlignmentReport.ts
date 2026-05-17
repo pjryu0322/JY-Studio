@@ -5,12 +5,15 @@
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import {
+  FINAL_RELEASE_GATE_ALIGNMENT_CHECKLIST_LABEL_ROWS,
+  FINAL_RELEASE_GATE_ALIGNMENT_POLICY_FORBIDDEN_MUST_BE_TRUE,
   FINAL_RELEASE_GOVERNANCE_GATE_REQUIRED_FORBIDDEN_SCOPE_FRAGMENTS,
   FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_SOURCE_LAYER,
   FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_TARGET_LAYER,
   RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
 } from "./runtimeFinalReleaseGovernanceGateConstants";
 import {
+  collectFinalReleaseGovernanceGatePolicyForbiddenFindings,
   gateBlockersAligned,
   gateChecklistHasLabel,
   gateForbiddenIncludes,
@@ -60,26 +63,16 @@ export function buildRuntimeFinalReleaseGovernanceGateAlignmentReport(input: {
   if (policy.gateAllowedMode !== summary.gateMode) {
     findings.push("policy.gateAllowedMode misaligned with summary.gateMode");
   }
-  if (policy.actualExecutionForbidden !== true) {
-    findings.push("policy.actualExecutionForbidden must be true");
-  }
-  if (policy.actualApprovalEnforcementForbidden !== true) {
-    findings.push("policy.actualApprovalEnforcementForbidden must be true");
-  }
-  if (policy.actualExecutionBlockingForbidden !== true) {
-    findings.push("policy.actualExecutionBlockingForbidden must be true");
-  }
-  if (policy.actualMergeBlockingForbidden !== true) {
-    findings.push("policy.actualMergeBlockingForbidden must be true");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "governance release-readiness final gate ready_metadata")) {
-    findings.push("readiness checklist missing governance release-readiness final gate row");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "no release-readiness actual flag violations")) {
-    findings.push("readiness checklist missing no release-readiness actual flag violations row");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "no release-readiness proof violations")) {
-    findings.push("readiness checklist missing no release-readiness proof violations row");
+  findings.push(
+    ...collectFinalReleaseGovernanceGatePolicyForbiddenFindings(
+      policy,
+      FINAL_RELEASE_GATE_ALIGNMENT_POLICY_FORBIDDEN_MUST_BE_TRUE
+    )
+  );
+  for (const label of FINAL_RELEASE_GATE_ALIGNMENT_CHECKLIST_LABEL_ROWS) {
+    if (!gateChecklistHasLabel(checklist.checklist, label)) {
+      findings.push(`readiness checklist missing ${label} row`);
+    }
   }
   if (!gateBlockersAligned(blockerReport.blockers, summary.gateBlockers)) {
     findings.push("blocker report misaligned with summary.gateBlockers");

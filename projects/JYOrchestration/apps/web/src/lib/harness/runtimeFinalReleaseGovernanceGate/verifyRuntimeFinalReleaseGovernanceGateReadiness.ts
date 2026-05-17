@@ -4,11 +4,15 @@
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
 import {
+  FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_ACTUAL_DISABLED_ROWS,
+  FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_LABEL_ROWS,
+  FINAL_RELEASE_GATE_VERIFICATION_POLICY_FORBIDDEN_MUST_BE_TRUE,
   FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_SOURCE_LAYER,
   FINAL_RELEASE_GOVERNANCE_GATE_SCOPE_TARGET_LAYER,
   RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
 } from "./runtimeFinalReleaseGovernanceGateConstants";
 import {
+  collectFinalReleaseGovernanceGatePolicyForbiddenFindings,
   gateBlockersAligned,
   gateChecklistHas,
   gateChecklistHasLabel,
@@ -55,50 +59,21 @@ export function verifyRuntimeFinalReleaseGovernanceGateReadiness(input: {
   if (policy.gateAllowedMode !== summary.gateMode) {
     findings.push("policy.gateAllowedMode must match summary.gateMode");
   }
-  if (policy.actualExecutionForbidden !== true) {
-    findings.push("policy.actualExecutionForbidden must be true");
+  findings.push(
+    ...collectFinalReleaseGovernanceGatePolicyForbiddenFindings(
+      policy,
+      FINAL_RELEASE_GATE_VERIFICATION_POLICY_FORBIDDEN_MUST_BE_TRUE
+    )
+  );
+  for (const label of FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_LABEL_ROWS) {
+    if (!gateChecklistHasLabel(checklist.checklist, label)) {
+      findings.push(`checklist missing ${label}`);
+    }
   }
-  if (policy.actualExecutionRoutingForbidden !== true) {
-    findings.push("policy.actualExecutionRoutingForbidden must be true");
-  }
-  if (policy.actualReleaseEnforcementForbidden !== true) {
-    findings.push("policy.actualReleaseEnforcementForbidden must be true");
-  }
-  if (policy.actualApprovalEnforcementForbidden !== true) {
-    findings.push("policy.actualApprovalEnforcementForbidden must be true");
-  }
-  if (policy.actualExecutionBlockingForbidden !== true) {
-    findings.push("policy.actualExecutionBlockingForbidden must be true");
-  }
-  if (policy.actualMergeBlockingForbidden !== true) {
-    findings.push("policy.actualMergeBlockingForbidden must be true");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "governance release-readiness final gate ready_metadata")) {
-    findings.push("checklist missing governance release-readiness final gate ready_metadata");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "h39 entry readiness ready_metadata")) {
-    findings.push("checklist missing h39 entry readiness ready_metadata");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "governance release-readiness verification verified_metadata")) {
-    findings.push("checklist missing governance release-readiness verification verified_metadata");
-  }
-  if (!gateChecklistHasLabel(checklist.checklist, "governance release-readiness alignment aligned_metadata")) {
-    findings.push("checklist missing governance release-readiness alignment aligned_metadata");
-  }
-  if (!gateChecklistHas(checklist.checklist, "actual execution disabled", true)) {
-    findings.push("checklist missing actual execution disabled");
-  }
-  if (!gateChecklistHas(checklist.checklist, "actual release enforcement disabled", true)) {
-    findings.push("checklist missing actual release enforcement disabled");
-  }
-  if (!gateChecklistHas(checklist.checklist, "actual approval enforcement disabled", true)) {
-    findings.push("checklist missing actual approval enforcement disabled");
-  }
-  if (!gateChecklistHas(checklist.checklist, "actual execution blocking disabled", true)) {
-    findings.push("checklist missing actual execution blocking disabled");
-  }
-  if (!gateChecklistHas(checklist.checklist, "actual merge blocking disabled", true)) {
-    findings.push("checklist missing actual merge blocking disabled");
+  for (const label of FINAL_RELEASE_GATE_VERIFICATION_CHECKLIST_ACTUAL_DISABLED_ROWS) {
+    if (!gateChecklistHas(checklist.checklist, label, true)) {
+      findings.push(`checklist missing ${label}`);
+    }
   }
   if (!gateBlockersAligned(blockerReport.blockers, summary.gateBlockers)) {
     findings.push("blocker report and summary.gateBlockers misaligned");

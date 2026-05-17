@@ -3,11 +3,17 @@
  */
 
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
-import { RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED } from "./runtimeFinalReleaseGovernanceGateConstants";
+import {
+  FINAL_RELEASE_GOVERNANCE_GATE_FINAL_SAFETY_CHECKLIST_STATIC_ROWS,
+  RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
+} from "./runtimeFinalReleaseGovernanceGateConstants";
+import {
+  collectFinalReleaseGovernanceGateFinalSafetyBlockers,
+  resolveFinalReleaseGovernanceGateFinalGateStatus,
+} from "./runtimeFinalReleaseGovernanceGateCheckHelpers";
 import type {
   RuntimeFinalReleaseGovernanceGateAlignmentReport,
   RuntimeFinalReleaseGovernanceGateBlockerReport,
-  RuntimeFinalReleaseGovernanceGateFinalGateStatus,
   RuntimeFinalReleaseGovernanceGateFinalSafetyGate,
   RuntimeFinalReleaseGovernanceGateSummary,
   RuntimeFinalReleaseGovernanceGateVerificationReport,
@@ -23,54 +29,21 @@ export function buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate(input: {
 }): RuntimeFinalReleaseGovernanceGateFinalSafetyGate {
   const { summary, blockerReport, boundaryViolation, readinessVerification, alignmentReport } = input;
 
-  const blockers: string[] = [];
-  if (blockerReport.blockers.length > 0) {
-    blockers.push(...blockerReport.blockers.slice(0, 3));
-  }
-  if (summary.gateBlockers.length > 0) {
-    blockers.push(...summary.gateBlockers.slice(0, 3));
-  }
-  if (boundaryViolation.actualFlagViolations.length > 0) {
-    blockers.push(...boundaryViolation.actualFlagViolations.slice(0, 3));
-  }
-  if (readinessVerification.verificationStatus === "failed") {
-    blockers.push("final release governance gate readiness verification failed");
-  }
-  if (alignmentReport.alignmentStatus === "failed") {
-    blockers.push("final release governance gate alignment failed");
-  }
+  const finalGateStatus = resolveFinalReleaseGovernanceGateFinalGateStatus({
+    summary,
+    blockerReport,
+    boundaryViolation,
+    readinessVerification,
+    alignmentReport,
+  });
 
-  let finalGateStatus: RuntimeFinalReleaseGovernanceGateFinalGateStatus;
-  if (
-    summary.candidateStatus === "blocked" ||
-    readinessVerification.verificationStatus === "failed" ||
-    alignmentReport.alignmentStatus === "failed" ||
-    boundaryViolation.actualFlagViolations.length > 0 ||
-    blockerReport.blockers.length > 0 ||
-    summary.gateBlockers.length > 0
-  ) {
-    finalGateStatus = "blocked";
-  } else if (
-    summary.candidateStatus === "watch" ||
-    readinessVerification.verificationStatus === "partial" ||
-    alignmentReport.alignmentStatus === "partial" ||
-    boundaryViolation.wordingRiskFindings.length > 0
-  ) {
-    finalGateStatus = "watch";
-  } else if (
-    summary.candidateStatus === "final_release_governance_gate_metadata_candidate" &&
-    summary.gateMode === "metadata_only" &&
-    readinessVerification.verificationStatus === "verified_metadata" &&
-    alignmentReport.alignmentStatus === "aligned_metadata" &&
-    boundaryViolation.actualFlagViolations.length === 0 &&
-    boundaryViolation.wordingRiskFindings.length === 0 &&
-    blockerReport.blockers.length === 0 &&
-    summary.gateBlockers.length === 0
-  ) {
-    finalGateStatus = "ready_metadata";
-  } else {
-    finalGateStatus = "not_ready";
-  }
+  const blockers = collectFinalReleaseGovernanceGateFinalSafetyBlockers({
+    blockerReport,
+    summary,
+    boundaryViolation,
+    readinessVerification,
+    alignmentReport,
+  });
 
   const checklist = mergeSortedUniqueKo([
     `candidateStatus:${summary.candidateStatus}`,
@@ -81,12 +54,7 @@ export function buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate(input: {
     `wordingRiskFindings:${boundaryViolation.wordingRiskFindings.length}`,
     `gateBlockers:${summary.gateBlockers.length}`,
     `finalGateStatus:${finalGateStatus}`,
-    "h40EntryReadiness:metadata_only_gate",
-    "actualExecutionForbidden:true",
-    "actualReleaseEnforcementForbidden:true",
-    "actualApprovalEnforcementForbidden:true",
-    "actualExecutionBlockingForbidden:true",
-    "actualMergeBlockingForbidden:true",
+    ...FINAL_RELEASE_GOVERNANCE_GATE_FINAL_SAFETY_CHECKLIST_STATIC_ROWS,
   ]);
 
   const recommendations = mergeSortedUniqueKo([

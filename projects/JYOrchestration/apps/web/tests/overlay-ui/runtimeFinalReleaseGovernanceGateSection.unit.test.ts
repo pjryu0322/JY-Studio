@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { buildOverlayRuntimeFinalReleaseGovernanceGateSectionVm } from "@/lib/overlay-ui/overlayRuntimeFinalReleaseGovernanceGateAdapter";
-import { RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_SECTION_DISCLAIMER_KO } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/runtimeFinalReleaseGovernanceGateLabelsKo";
+import {
+  RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO,
+  RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_SECTION_DISCLAIMER_KO,
+} from "@/lib/harness/runtimeFinalReleaseGovernanceGate/runtimeFinalReleaseGovernanceGateLabelsKo";
 import { buildDefaultOverlaySectionVmTestInput } from "./overlaySectionVmTestInput";
 
 describe("buildOverlayRuntimeFinalReleaseGovernanceGateSectionVm", () => {
@@ -26,6 +29,14 @@ describe("buildOverlayRuntimeFinalReleaseGovernanceGateSectionVm", () => {
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.gateModeKo).toBeTruthy();
     expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.h40EntryReadinessKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
+  });
+
+  it("overlay footer matches required no-enforcement disclaimer", () => {
+    expect(RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO).toContain("actual execution");
+    expect(RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO).toContain("execution blocking");
+    expect(RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO).toContain("merge blocking");
+    expect(RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO).toContain("prompt 변경은 없습니다");
   });
 });

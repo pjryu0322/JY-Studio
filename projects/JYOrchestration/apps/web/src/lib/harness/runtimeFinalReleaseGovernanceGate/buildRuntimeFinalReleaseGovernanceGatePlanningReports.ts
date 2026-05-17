@@ -13,6 +13,7 @@ import { detectRuntimeFinalReleaseGovernanceGateBlockers } from "./detectRuntime
 import { detectRuntimeFinalReleaseGovernanceGateViolations } from "./detectRuntimeFinalReleaseGovernanceGateViolations";
 import { evaluateRuntimeFinalReleaseGovernanceGateCandidate } from "./evaluateRuntimeFinalReleaseGovernanceGateCandidate";
 import { resolveRuntimeFinalReleaseGovernanceGateMode } from "./resolveRuntimeFinalReleaseGovernanceGateMode";
+import { RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED } from "./runtimeFinalReleaseGovernanceGateConstants";
 import { verifyRuntimeFinalReleaseGovernanceGateReadiness } from "./verifyRuntimeFinalReleaseGovernanceGateReadiness";
 import type {
   RuntimeFinalReleaseGovernanceGateCandidateStatus,
@@ -59,20 +60,7 @@ export function buildRuntimeFinalReleaseGovernanceGatePlanningReports(
 
   const runtimeFinalReleaseGovernanceGateSummaryDraft = {
     mode: "runtime_final_release_governance_gate_summary" as const,
-    actualRuntimeOrchestrationEnabled: false as const,
-    actualPilotExecutionEnabled: false as const,
-    actualNoopShellExecutionEnabled: false as const,
-    actualExecutionShellExecutionEnabled: false as const,
-    actualReleaseEnforcementEnabled: false as const,
-    actualRuntimeAdapterInvocationEnabled: false as const,
-    actualExecutionEnabled: false as const,
-    actualExecutionRoutingEnabled: false as const,
-    actualProviderRoutingEnabled: false as const,
-    actualQueueControlEnabled: false as const,
-    actualRollbackExecutionEnabled: false as const,
-    actualApprovalEnforcementEnabled: false as const,
-    actualExecutionBlockingEnabled: false as const,
-    actualMergeBlockingEnabled: false as const,
+    ...RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_ACTUAL_FLAGS_DISABLED,
     candidateStatus,
     gateMode,
     rationaleKo: gateRationaleKo(candidateStatus),

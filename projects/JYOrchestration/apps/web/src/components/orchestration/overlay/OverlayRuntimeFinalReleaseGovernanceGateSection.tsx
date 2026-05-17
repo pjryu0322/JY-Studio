@@ -18,7 +18,7 @@ export function OverlayRuntimeFinalReleaseGovernanceGateSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Final Release Governance Gate (H39)"
+      title="Runtime Final Release Governance Gate (H39 / H39.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >

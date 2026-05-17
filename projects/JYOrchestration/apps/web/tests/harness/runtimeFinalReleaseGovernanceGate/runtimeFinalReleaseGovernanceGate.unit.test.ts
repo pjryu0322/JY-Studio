@@ -1,55 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRuntimeFinalReleaseGovernanceGatePlanningReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/buildRuntimeFinalReleaseGovernanceGatePlanningReports";
-import { detectRuntimeFinalReleaseGovernanceGateViolations } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/detectRuntimeFinalReleaseGovernanceGateViolations";
+import { buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate";
+import { verifyRuntimeFinalReleaseGovernanceGateReadiness } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/verifyRuntimeFinalReleaseGovernanceGateReadiness";
 import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
-import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
-import type { RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import {
   stripRuntimeFinalReleaseGovernanceGateLayer,
   stripRuntimeGovernanceReleaseReadinessLayer,
 } from "../runtimePlanningReportStrip";
-import { evaluateHarnessMaturityBaseline } from "@/lib/harness/maturity/evaluateHarnessMaturityBaseline";
-import { evaluateHarnessReleaseGateReadiness } from "@/lib/harness/maturity/evaluateHarnessReleaseGateReadiness";
-import { emptyHarnessPromptApplyReadinessReport } from "@/lib/harness/promptAssembly/harnessPromptApplyReadinessTypes";
-import { emptyRecentMemoryRuntimeSummary } from "@/lib/harness/memoryRuntime/memoryRuntimeRecentSummary";
-import { normalizeRuntimePlanningContext } from "@/lib/harness/runtimeConsolidation/normalizeRuntimePlanningContext";
-import { buildRuntimeCriticalityPlanningReports } from "@/lib/harness/runtimeCriticality/buildRuntimeCriticalityPlanningReports";
-import { buildRuntimeDependencyPlanningReports } from "@/lib/harness/runtimeDependency/buildRuntimeDependencyPlanningReports";
-import { buildRuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";
-import { buildRuntimeTraceabilityPlanningReports } from "@/lib/harness/runtimeTraceability/buildRuntimeTraceabilityPlanningReports";
-
-function buildFullSemantic() {
-  const maturityBaseline = evaluateHarnessMaturityBaseline({
-    overlayExtract: null,
-    harnessPromptApplyReadinessReport: emptyHarnessPromptApplyReadinessReport(),
-    recentMemoryRuntimeSummary: emptyRecentMemoryRuntimeSummary(),
-    messageExplainabilityAvailable: true,
-  });
-  const ctx = normalizeRuntimePlanningContext({
-    overlay: null,
-    maturityBaseline,
-    releaseGate: evaluateHarnessReleaseGateReadiness(maturityBaseline),
-    messageExplainabilityAvailable: true,
-    overlayWarningCount: 0,
-  });
-  const dep = buildRuntimeDependencyPlanningReports(ctx);
-  const crit = buildRuntimeCriticalityPlanningReports(ctx, dep);
-  const trace = buildRuntimeTraceabilityPlanningReports(ctx, dep, crit);
-  const reasoning = buildRuntimeReasoningPlanningReports(dep, crit, trace);
-  return buildRuntimeSemanticPlanningReports(reasoning);
-}
-
-function buildFinalReleaseGatePlanning(
-  patches: Partial<RuntimeSemanticPlanningReportsBeforeFinalReleaseGovernanceGate> = {}
-) {
-  const base = stripRuntimeFinalReleaseGovernanceGateLayer(buildFullSemantic());
-  return buildRuntimeFinalReleaseGovernanceGatePlanningReports({ ...base, ...patches });
-}
+import {
+  buildFinalReleaseGatePlanningReports,
+  buildFinalReleaseGovernanceGateBaseReports,
+  buildFullSemanticForFinalReleaseGovernanceGate,
+  detectFinalReleaseGatePolicyViolation,
+  detectFinalReleaseGateSummaryViolation,
+  releaseReadinessBlockedUpstreamPatches,
+  releaseReadinessWatchUpstreamPatches,
+} from "./runtimeFinalReleaseGovernanceGateTestFixtures";
 
 describe("H39 / H39.5 final release governance gate candidate", () => {
   it("full semantic includes final release governance gate with all actual flags false", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     expect(semantic.runtimeFinalReleaseGovernanceGateSummary.mode).toBe(
       "runtime_final_release_governance_gate_summary"
     );
@@ -83,7 +53,7 @@ describe("H39 / H39.5 final release governance gate candidate", () => {
   });
 
   it("release final gate ready yields final_release_governance_gate_metadata_candidate when aligned", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     if (
       semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.finalGateStatus === "ready_metadata" &&
       semantic.runtimeGovernanceReleaseReadinessFinalSafetyGate.h39EntryReadiness === "ready_metadata" &&
@@ -101,92 +71,22 @@ describe("H39 / H39.5 final release governance gate candidate", () => {
   });
 
   it("release final gate watch yields gate watch when built in isolation", () => {
-    const base = stripRuntimeFinalReleaseGovernanceGateLayer(buildFullSemantic());
-    const gate = buildFinalReleaseGatePlanning({
-      runtimeExecutionGovernanceBoundaryFinalSafetyGate: {
-        ...base.runtimeExecutionGovernanceBoundaryFinalSafetyGate,
-        finalGateStatus: "ready_metadata",
-        h38EntryReadiness: "ready_metadata",
-        blockers: [],
-      },
-      runtimeExecutionGovernanceBoundaryBlockerReport: {
-        ...base.runtimeExecutionGovernanceBoundaryBlockerReport,
-        blockers: [],
-      },
-      runtimeExecutionBoundaryShellFinalSafetyGate: {
-        ...base.runtimeExecutionBoundaryShellFinalSafetyGate,
-        finalGateStatus: "ready_metadata",
-        blockers: [],
-      },
-      runtimeGovernanceReleaseReadinessFinalSafetyGate: {
-        ...base.runtimeGovernanceReleaseReadinessFinalSafetyGate,
-        finalGateStatus: "watch",
-        h39EntryReadiness: "watch",
-        blockers: [],
-      },
-      runtimeGovernanceReleaseReadinessSummary: {
-        ...base.runtimeGovernanceReleaseReadinessSummary,
-        readinessBlockers: [],
-      },
-      runtimeGovernanceReleaseReadinessVerificationReport: {
-        ...base.runtimeGovernanceReleaseReadinessVerificationReport,
-        verificationStatus: "partial",
-      },
-      runtimeGovernanceReleaseReadinessAlignmentReport: {
-        ...base.runtimeGovernanceReleaseReadinessAlignmentReport,
-        alignmentStatus: "partial",
-      },
-      runtimeGovernanceReleaseReadinessViolationReport: {
-        ...base.runtimeGovernanceReleaseReadinessViolationReport,
-        actualFlagViolations: [],
-        proofViolations: [],
-        wordingRiskFindings: ["wording risk sample"],
-      },
-      runtimeGovernanceReleaseBlockerReport: {
-        ...base.runtimeGovernanceReleaseBlockerReport,
-        blockers: [],
-      },
-      runtimeOperatorApprovalSummary: {
-        ...base.runtimeOperatorApprovalSummary,
-        approvalReadiness: "ready_for_review_metadata",
-      },
-      runtimeRollbackReadinessSummary: {
-        ...base.runtimeRollbackReadinessSummary,
-        rollbackReadiness: "metadata_ready",
-      },
-      runtimeAuditReadinessSummary: {
-        ...base.runtimeAuditReadinessSummary,
-        auditReadiness: "sufficient_metadata",
-      },
-      runtimeControlBoundarySummary: {
-        ...base.runtimeControlBoundarySummary,
-        boundaryRisk: "low",
-      },
-    });
+    const base = buildFinalReleaseGovernanceGateBaseReports();
+    const gate = buildFinalReleaseGatePlanningReports(releaseReadinessWatchUpstreamPatches(base));
     expect(gate.runtimeFinalReleaseGovernanceGateSummary.candidateStatus).toBe("watch");
     expect(gate.runtimeFinalReleaseGovernanceGateSummary.gateMode).toBe("disabled");
   });
 
   it("blocked release readiness yields gate blocked", () => {
-    const base = stripRuntimeFinalReleaseGovernanceGateLayer(buildFullSemantic());
-    const gate = buildFinalReleaseGatePlanning({
-      runtimeGovernanceReleaseReadinessFinalSafetyGate: {
-        ...base.runtimeGovernanceReleaseReadinessFinalSafetyGate,
-        finalGateStatus: "blocked",
-        h39EntryReadiness: "blocked",
-      },
-      runtimeGovernanceReleaseReadinessVerificationReport: {
-        ...base.runtimeGovernanceReleaseReadinessVerificationReport,
-        verificationStatus: "failed",
-      },
-    });
+    const base = buildFinalReleaseGovernanceGateBaseReports();
+    const gate = buildFinalReleaseGatePlanningReports(releaseReadinessBlockedUpstreamPatches(base));
     expect(gate.runtimeFinalReleaseGovernanceGateSummary.candidateStatus).toBe("blocked");
     expect(gate.runtimeFinalReleaseGovernanceGateSummary.gateMode).toBe("blocked");
     expect(gate.runtimeFinalReleaseGovernanceGateBlockerReport.blockers.length).toBeGreaterThan(0);
   });
 
   it("metadata candidate + verified + aligned yields final gate ready_metadata", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     if (
       semantic.runtimeFinalReleaseGovernanceGateSummary.candidateStatus ===
         "final_release_governance_gate_metadata_candidate" &&
@@ -200,32 +100,107 @@ describe("H39 / H39.5 final release governance gate candidate", () => {
     }
   });
 
-  it("policy actualExecutionForbidden false yields violation", () => {
-    const partial = buildFinalReleaseGatePlanning();
-    const violation = detectRuntimeFinalReleaseGovernanceGateViolations({
-      summary: partial.runtimeFinalReleaseGovernanceGateSummary,
-      policy: {
-        ...partial.runtimeFinalReleaseGovernanceGatePolicy,
-        actualExecutionForbidden: false as unknown as true,
-      },
-    });
-    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionForbidden"))).toBe(true);
+  it.each([
+    ["actualExecutionForbidden", { actualExecutionForbidden: false as unknown as true }],
+    ["actualApprovalEnforcementForbidden", { actualApprovalEnforcementForbidden: false as unknown as true }],
+    ["actualExecutionBlockingForbidden", { actualExecutionBlockingForbidden: false as unknown as true }],
+    ["actualMergeBlockingForbidden", { actualMergeBlockingForbidden: false as unknown as true }],
+  ] as const)("policy %s false yields violation", (needle, policyPatch) => {
+    const partial = buildFinalReleaseGatePlanningReports();
+    const violation = detectFinalReleaseGatePolicyViolation(partial, policyPatch);
+    expect(violation.actualFlagViolations.some((v) => v.includes(needle))).toBe(true);
   });
 
-  it("summary actualExecutionBlockingEnabled true yields violation", () => {
-    const partial = buildFinalReleaseGatePlanning();
-    const violation = detectRuntimeFinalReleaseGovernanceGateViolations({
+  it.each([
+    ["actualExecutionEnabled", { actualExecutionEnabled: true as unknown as false }],
+    ["actualExecutionBlockingEnabled", { actualExecutionBlockingEnabled: true as unknown as false }],
+    ["actualMergeBlockingEnabled", { actualMergeBlockingEnabled: true as unknown as false }],
+  ] as const)("summary %s true yields violation", (needle, summaryPatch) => {
+    const partial = buildFinalReleaseGatePlanningReports();
+    const violation = detectFinalReleaseGateSummaryViolation(partial, summaryPatch);
+    expect(violation.actualFlagViolations.some((v) => v.includes(needle))).toBe(true);
+  });
+
+  it("gateMode and policy mismatch yields verification partial or failed", () => {
+    const partial = buildFinalReleaseGatePlanningReports();
+    const verification = verifyRuntimeFinalReleaseGovernanceGateReadiness({
       summary: {
         ...partial.runtimeFinalReleaseGovernanceGateSummary,
-        actualExecutionBlockingEnabled: true as unknown as false,
+        candidateStatus: "final_release_governance_gate_metadata_candidate",
+        gateMode: "metadata_only",
       },
-      policy: partial.runtimeFinalReleaseGovernanceGatePolicy,
+      scope: partial.runtimeFinalReleaseGovernanceGateScope,
+      policy: {
+        ...partial.runtimeFinalReleaseGovernanceGatePolicy,
+        gateAllowedMode: "disabled",
+      },
+      checklist: partial.runtimeFinalReleaseGovernanceGateReadinessChecklist,
+      blockerReport: partial.runtimeFinalReleaseGovernanceGateBlockerReport,
     });
-    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionBlockingEnabled"))).toBe(true);
+    expect(["partial", "failed"]).toContain(verification.verificationStatus);
+    expect(verification.findings.some((f) => f.includes("gateAllowedMode"))).toBe(true);
+  });
+
+  it("alignment failed yields final gate blocked", () => {
+    const partial = buildFinalReleaseGatePlanningReports();
+    const finalGate = buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate({
+      summary: partial.runtimeFinalReleaseGovernanceGateSummary,
+      blockerReport: partial.runtimeFinalReleaseGovernanceGateBlockerReport,
+      boundaryViolation: partial.runtimeFinalReleaseGovernanceGateViolationReport,
+      readinessVerification: {
+        ...partial.runtimeFinalReleaseGovernanceGateVerificationReport,
+        verificationStatus: "verified_metadata",
+      },
+      alignmentReport: {
+        ...partial.runtimeFinalReleaseGovernanceGateAlignmentReport,
+        alignmentStatus: "failed",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("blocked");
+    expect(finalGate.h40EntryReadiness).toBe("blocked");
+  });
+
+  it("blocked candidate yields final gate blocked", () => {
+    const gate = buildFinalReleaseGatePlanningReports(
+      releaseReadinessBlockedUpstreamPatches(buildFinalReleaseGovernanceGateBaseReports())
+    );
+    expect(gate.runtimeFinalReleaseGovernanceGateSummary.candidateStatus).toBe("blocked");
+    expect(gate.runtimeFinalReleaseGovernanceGateFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("watch candidate with partial verification yields final gate watch", () => {
+    const partial = buildFinalReleaseGatePlanningReports();
+    const finalGate = buildRuntimeFinalReleaseGovernanceGateFinalSafetyGate({
+      summary: {
+        ...partial.runtimeFinalReleaseGovernanceGateSummary,
+        candidateStatus: "watch",
+        gateMode: "disabled",
+        gateBlockers: [],
+      },
+      blockerReport: {
+        ...partial.runtimeFinalReleaseGovernanceGateBlockerReport,
+        blockers: [],
+      },
+      boundaryViolation: {
+        ...partial.runtimeFinalReleaseGovernanceGateViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: [],
+      },
+      readinessVerification: {
+        ...partial.runtimeFinalReleaseGovernanceGateVerificationReport,
+        verificationStatus: "partial",
+      },
+      alignmentReport: {
+        ...partial.runtimeFinalReleaseGovernanceGateAlignmentReport,
+        alignmentStatus: "partial",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("watch");
+    expect(finalGate.h40EntryReadiness).toBe("watch");
   });
 
   it("serializer includes nine H39/H39.5 fields without rebuilding reports", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     const bundle = serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports(semantic);
     expect(bundle.runtimeFinalReleaseGovernanceGateSummary.candidateStatus).toBe(
       semantic.runtimeFinalReleaseGovernanceGateSummary.candidateStatus
@@ -252,7 +227,7 @@ describe("H39 / H39.5 final release governance gate candidate", () => {
   });
 
   it("stripRuntimeFinalReleaseGovernanceGateLayer removes H39 fields only", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     const stripped = stripRuntimeFinalReleaseGovernanceGateLayer(semantic);
     expect("runtimeFinalReleaseGovernanceGateSummary" in stripped).toBe(false);
     expect(stripped.runtimeGovernanceReleaseReadinessSummary.mode).toBe(
@@ -261,7 +236,7 @@ describe("H39 / H39.5 final release governance gate candidate", () => {
   });
 
   it("stripRuntimeGovernanceReleaseReadinessLayer removes H38 and H39 fields", () => {
-    const semantic = buildFullSemantic();
+    const semantic = buildFullSemanticForFinalReleaseGovernanceGate();
     const stripped = stripRuntimeGovernanceReleaseReadinessLayer(semantic);
     expect("runtimeFinalReleaseGovernanceGateSummary" in stripped).toBe(false);
     expect("runtimeGovernanceReleaseReadinessSummary" in stripped).toBe(false);

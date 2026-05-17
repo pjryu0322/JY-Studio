@@ -14,7 +14,7 @@ export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_SECTION_DISCLAIMER_KO =
   "이 정보는 실제 release/execution/approval enforcement가 아니라, final release governance gate 후보를 설명하는 read-only metadata입니다.";
 
 export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_OVERLAY_FOOTER_KO =
-  "actual execution·execution routing·release enforcement·approval enforcement·shell execution·adapter invocation·routing·queue control·rollback·execution blocking·merge blocking·prompt 변경은 없습니다.";
+  "actual execution·execution routing·release enforcement·approval enforcement·execution blocking·merge blocking·routing·queue control·rollback·prompt 변경은 없습니다.";
 
 export const RUNTIME_FINAL_RELEASE_GOVERNANCE_GATE_CANDIDATE_STATUS_LABEL_KO: Readonly<
   Record<RuntimeFinalReleaseGovernanceGateCandidateStatus, string>
