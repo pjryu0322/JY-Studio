@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { buildRuntimeReleaseGatePreflightPlanningReports } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightPlanningReports";
 import { buildRuntimeReleaseGatePreflightSummary } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightSummary";
+import { buildRuntimeReleaseGatePreflightFinalSafetyGate } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGatePreflightFinalSafetyGate";
 import { buildRuntimeReleaseGateNoExecutionProof } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGateNoExecutionProof";
 import { buildRuntimeReleaseGateOperationForbiddenProof } from "@/lib/harness/runtimeReleaseGatePreflight/buildRuntimeReleaseGateOperationForbiddenProof";
 import { detectRuntimeReleaseGatePreflightBlockers } from "@/lib/harness/runtimeReleaseGatePreflight/detectRuntimeReleaseGatePreflightBlockers";
+import { detectRuntimeReleaseGatePreflightBoundaryViolations } from "@/lib/harness/runtimeReleaseGatePreflight/detectRuntimeReleaseGatePreflightBoundaryViolations";
 import { serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeReleaseGatePreflight/serializeRuntimeReleaseGatePreflightDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -50,7 +52,7 @@ function buildPreflightPlanning(
   return buildRuntimeReleaseGatePreflightPlanningReports({ ...base, ...patches });
 }
 
-describe("H35 release-gate final preflight", () => {
+describe("H35 / H35.5 release-gate final preflight", () => {
   it("full semantic includes preflight with all actual execution flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeReleaseGatePreflightSummary.mode).toBe("runtime_release_gate_preflight_summary");
@@ -168,11 +170,116 @@ describe("H35 release-gate final preflight", () => {
     expect("runtimeNoopShellReleaseGateSummary" in stripped).toBe(false);
   });
 
-  it("buildPreflightPlanning returns eight reports", () => {
+  it("buildPreflightPlanning returns twelve reports including H35.5", () => {
     const reports = buildPreflightPlanning();
     expect(reports.runtimeReleaseGatePreflightSummary.mode).toBe("runtime_release_gate_preflight_summary");
     expect(reports.runtimeReleaseGateInputEnvelope.envelopeRows.length).toBeGreaterThan(0);
     expect(reports.runtimeReleaseGateOutputEnvelope.envelopeRows.length).toBeGreaterThan(0);
     expect(reports.runtimeReleaseGatePreflightChecklist.checklist.length).toBeGreaterThan(0);
+    expect(reports.runtimeReleaseGatePreflightFinalSafetyGate.mode).toBe(
+      "runtime_release_gate_preflight_final_safety_gate"
+    );
+  });
+
+  it("preflight_metadata_ready + verified + aligned + no violations yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (semantic.runtimeReleaseGatePreflightSummary.preflightReadiness !== "preflight_metadata_ready") {
+      return;
+    }
+    expect(semantic.runtimeReleaseGatePreflightSummary.preflightMode).toBe("metadata_only");
+    expect(semantic.runtimeReleaseGatePreflightReadinessVerificationReport.verificationStatus).toBe(
+      "verified_metadata"
+    );
+    expect(semantic.runtimeReleaseGatePreflightAlignmentReport.alignmentStatus).toBe("aligned_metadata");
+    expect(semantic.runtimeReleaseGatePreflightBoundaryViolationReport.actualFlagViolations).toEqual([]);
+    expect(semantic.runtimeReleaseGatePreflightBoundaryViolationReport.proofViolations).toEqual([]);
+    expect(semantic.runtimeReleaseGatePreflightFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+    expect(semantic.runtimeReleaseGatePreflightFinalSafetyGate.h36EntryReadiness).toBe("ready_metadata");
+  });
+
+  it("watch preflight yields final gate watch when built in isolation", () => {
+    const partial = buildPreflightPlanning();
+    const finalGate = buildRuntimeReleaseGatePreflightFinalSafetyGate({
+      summary: {
+        ...partial.runtimeReleaseGatePreflightSummary,
+        preflightReadiness: "watch",
+        preflightMode: "metadata_only",
+        preflightBlockers: [],
+      },
+      blockerReport: {
+        ...partial.runtimeReleaseGatePreflightBlockerReport,
+        blockers: [],
+      },
+      boundaryViolation: {
+        ...partial.runtimeReleaseGatePreflightBoundaryViolationReport,
+        actualFlagViolations: [],
+        proofViolations: [],
+        wordingRiskFindings: ["wording risk"],
+      },
+      readinessVerification: {
+        ...partial.runtimeReleaseGatePreflightReadinessVerificationReport,
+        verificationStatus: "partial",
+      },
+      alignmentReport: {
+        ...partial.runtimeReleaseGatePreflightAlignmentReport,
+        alignmentStatus: "aligned_metadata",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("watch");
+    expect(finalGate.h36EntryReadiness).toBe("watch");
+  });
+
+  it("blocked preflight yields final gate blocked", () => {
+    const base = stripRuntimeReleaseGatePreflightLayer(buildFullSemantic());
+    const preflight = buildPreflightPlanning({
+      runtimeNoopShellReleaseGateFinalSafetyGate: {
+        ...base.runtimeNoopShellReleaseGateFinalSafetyGate,
+        finalGateStatus: "blocked",
+        h35EntryReadiness: "blocked",
+      },
+    });
+    expect(preflight.runtimeReleaseGatePreflightSummary.preflightReadiness).toBe("blocked");
+    expect(preflight.runtimeReleaseGatePreflightFinalSafetyGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("noExecutionProof diagnosticOnly false yields boundary proof violation", () => {
+    const partial = buildPreflightPlanning();
+    const noExecutionProof = {
+      ...partial.runtimeReleaseGateNoExecutionProof,
+      diagnosticOnly: false as unknown as true,
+    };
+    const violation = detectRuntimeReleaseGatePreflightBoundaryViolations({
+      summary: partial.runtimeReleaseGatePreflightSummary,
+      noExecutionProof,
+      operationForbiddenProof: partial.runtimeReleaseGateOperationForbiddenProof,
+    });
+    expect(violation.proofViolations.some((v) => v.includes("diagnosticOnly"))).toBe(true);
+  });
+
+  it("releaseEnforced true yields boundary proof violation", () => {
+    const partial = buildPreflightPlanning();
+    const violation = detectRuntimeReleaseGatePreflightBoundaryViolations({
+      summary: partial.runtimeReleaseGatePreflightSummary,
+      noExecutionProof: {
+        ...partial.runtimeReleaseGateNoExecutionProof,
+        releaseEnforced: true as unknown as false,
+      },
+      operationForbiddenProof: partial.runtimeReleaseGateOperationForbiddenProof,
+    });
+    expect(violation.proofViolations.some((v) => v.includes("releaseEnforced"))).toBe(true);
+  });
+
+  it("serializer includes H35.5 fields", () => {
+    const semantic = buildFullSemantic();
+    const diag = serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemanticReports(semantic);
+    expect(diag.runtimeReleaseGatePreflightFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeReleaseGatePreflightFinalSafetyGate.finalGateStatus,
+        h36EntryReadiness: semantic.runtimeReleaseGatePreflightFinalSafetyGate.h36EntryReadiness,
+      })
+    );
+    expect(diag.runtimeReleaseGatePreflightBoundaryViolationReport).toBeDefined();
+    expect(diag.runtimeReleaseGatePreflightReadinessVerificationReport).toBeDefined();
+    expect(diag.runtimeReleaseGatePreflightAlignmentReport).toBeDefined();
   });
 });

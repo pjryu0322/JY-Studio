@@ -838,6 +838,14 @@ export async function GET(request: NextRequest) {
       runtimeReleaseGatePreflightBlockerReport:
         runtimeSemanticDiag.runtimeReleaseGatePreflightBlockerReport,
       runtimeReleaseGatePreflightChecklist: runtimeSemanticDiag.runtimeReleaseGatePreflightChecklist,
+      runtimeReleaseGatePreflightBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeReleaseGatePreflightBoundaryViolationReport,
+      runtimeReleaseGatePreflightReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeReleaseGatePreflightReadinessVerificationReport,
+      runtimeReleaseGatePreflightAlignmentReport:
+        runtimeSemanticDiag.runtimeReleaseGatePreflightAlignmentReport,
+      runtimeReleaseGatePreflightFinalSafetyGate:
+        runtimeSemanticDiag.runtimeReleaseGatePreflightFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

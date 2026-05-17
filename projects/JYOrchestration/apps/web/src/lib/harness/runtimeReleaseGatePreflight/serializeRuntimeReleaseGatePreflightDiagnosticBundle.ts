@@ -9,8 +9,12 @@ import type {
   RuntimeReleaseGateNoExecutionProof,
   RuntimeReleaseGateOperationForbiddenProof,
   RuntimeReleaseGateOutputEnvelope,
+  RuntimeReleaseGatePreflightAlignmentReport,
   RuntimeReleaseGatePreflightBlockerReport,
+  RuntimeReleaseGatePreflightBoundaryViolationReport,
   RuntimeReleaseGatePreflightChecklist,
+  RuntimeReleaseGatePreflightFinalSafetyGate,
+  RuntimeReleaseGatePreflightReadinessVerificationReport,
   RuntimeReleaseGatePreflightSummary,
 } from "./runtimeReleaseGatePreflightTypes";
 
@@ -132,6 +136,61 @@ function serializeBlockerReport(b: RuntimeReleaseGatePreflightBlockerReport): Re
   };
 }
 
+function serializeBoundaryViolation(
+  b: RuntimeReleaseGatePreflightBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: b.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    actualFlagViolations: sortKo(b.actualFlagViolations),
+    proofViolations: sortKo(b.proofViolations),
+    wordingRiskFindings: sortKo(b.wordingRiskFindings),
+    recommendations: sortKo(b.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  r: RuntimeReleaseGatePreflightReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    actualRuntimeOrchestrationEnabled: r.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: r.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: r.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: r.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: r.actualReleaseEnforcementEnabled,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(a: RuntimeReleaseGatePreflightAlignmentReport): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    actualRuntimeOrchestrationEnabled: a.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: a.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: a.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: a.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: a.actualReleaseEnforcementEnabled,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(g: RuntimeReleaseGatePreflightFinalSafetyGate): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_ACTUAL_FLAGS_DISABLED,
+    finalGateStatus: g.finalGateStatus,
+    h36EntryReadiness: g.h36EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 function serializeChecklist(c: RuntimeReleaseGatePreflightChecklist): Readonly<Record<string, unknown>> {
   return {
     mode: c.mode,
@@ -154,6 +213,10 @@ export function serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemantic
   runtimeReleaseGateOperationForbiddenProof: ReturnType<typeof serializeOperationForbiddenProof>;
   runtimeReleaseGatePreflightBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeReleaseGatePreflightChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeReleaseGatePreflightBoundaryViolationReport: ReturnType<typeof serializeBoundaryViolation>;
+  runtimeReleaseGatePreflightReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeReleaseGatePreflightAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeReleaseGatePreflightFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeReleaseGatePreflightSummary: serializePreflightSummary(reports.runtimeReleaseGatePreflightSummary),
@@ -170,5 +233,17 @@ export function serializeRuntimeReleaseGatePreflightDiagnosticBundleFromSemantic
       reports.runtimeReleaseGatePreflightBlockerReport
     ),
     runtimeReleaseGatePreflightChecklist: serializeChecklist(reports.runtimeReleaseGatePreflightChecklist),
+    runtimeReleaseGatePreflightBoundaryViolationReport: serializeBoundaryViolation(
+      reports.runtimeReleaseGatePreflightBoundaryViolationReport
+    ),
+    runtimeReleaseGatePreflightReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeReleaseGatePreflightReadinessVerificationReport
+    ),
+    runtimeReleaseGatePreflightAlignmentReport: serializeAlignmentReport(
+      reports.runtimeReleaseGatePreflightAlignmentReport
+    ),
+    runtimeReleaseGatePreflightFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeReleaseGatePreflightFinalSafetyGate
+    ),
   };
 }

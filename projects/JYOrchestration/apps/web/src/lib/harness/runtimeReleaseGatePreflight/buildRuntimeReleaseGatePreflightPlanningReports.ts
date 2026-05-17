@@ -1,5 +1,5 @@
 /**
- * H35 — release-gate final preflight planning reports 일괄 산출(read-only).
+ * H35 / H35.5 — release-gate final preflight planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeReleaseGatePreflight } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -9,9 +9,13 @@ import { buildRuntimeReleaseGateInputEnvelope } from "./buildRuntimeReleaseGateI
 import { buildRuntimeReleaseGateNoExecutionProof } from "./buildRuntimeReleaseGateNoExecutionProof";
 import { buildRuntimeReleaseGateOperationForbiddenProof } from "./buildRuntimeReleaseGateOperationForbiddenProof";
 import { buildRuntimeReleaseGateOutputEnvelope } from "./buildRuntimeReleaseGateOutputEnvelope";
+import { buildRuntimeReleaseGatePreflightAlignmentReport } from "./buildRuntimeReleaseGatePreflightAlignmentReport";
 import { buildRuntimeReleaseGatePreflightChecklist } from "./buildRuntimeReleaseGatePreflightChecklist";
+import { buildRuntimeReleaseGatePreflightFinalSafetyGate } from "./buildRuntimeReleaseGatePreflightFinalSafetyGate";
 import { buildRuntimeReleaseGatePreflightSummary } from "./buildRuntimeReleaseGatePreflightSummary";
 import { detectRuntimeReleaseGatePreflightBlockers } from "./detectRuntimeReleaseGatePreflightBlockers";
+import { detectRuntimeReleaseGatePreflightBoundaryViolations } from "./detectRuntimeReleaseGatePreflightBoundaryViolations";
+import { verifyRuntimeReleaseGatePreflightReadiness } from "./verifyRuntimeReleaseGatePreflightReadiness";
 import type { RuntimeReleaseGatePreflightPlanningReports } from "./runtimeReleaseGatePreflightTypes";
 
 export type { RuntimeReleaseGatePreflightPlanningReports } from "./runtimeReleaseGatePreflightTypes";
@@ -52,6 +56,44 @@ export function buildRuntimeReleaseGatePreflightPlanningReports(
     operationForbiddenProof: runtimeReleaseGateOperationForbiddenProof,
   });
 
+  const runtimeReleaseGatePreflightBoundaryViolationReport = detectRuntimeReleaseGatePreflightBoundaryViolations({
+    summary: runtimeReleaseGatePreflightSummary,
+    noExecutionProof: runtimeReleaseGateNoExecutionProof,
+    operationForbiddenProof: runtimeReleaseGateOperationForbiddenProof,
+  });
+
+  const runtimeReleaseGatePreflightReadinessVerificationReport = verifyRuntimeReleaseGatePreflightReadiness({
+    summary: runtimeReleaseGatePreflightSummary,
+    boundary: runtimeReleaseGateExecutionReadinessBoundary,
+    inputEnvelope: runtimeReleaseGateInputEnvelope,
+    outputEnvelope: runtimeReleaseGateOutputEnvelope,
+    noExecutionProof: runtimeReleaseGateNoExecutionProof,
+    operationForbiddenProof: runtimeReleaseGateOperationForbiddenProof,
+    checklist: runtimeReleaseGatePreflightChecklist,
+    blockerReport: runtimeReleaseGatePreflightBlockerReport,
+  });
+
+  const runtimeReleaseGatePreflightAlignmentReport = buildRuntimeReleaseGatePreflightAlignmentReport({
+    reports,
+    summary: runtimeReleaseGatePreflightSummary,
+    boundary: runtimeReleaseGateExecutionReadinessBoundary,
+    inputEnvelope: runtimeReleaseGateInputEnvelope,
+    outputEnvelope: runtimeReleaseGateOutputEnvelope,
+    noExecutionProof: runtimeReleaseGateNoExecutionProof,
+    operationForbiddenProof: runtimeReleaseGateOperationForbiddenProof,
+    checklist: runtimeReleaseGatePreflightChecklist,
+    blockerReport: runtimeReleaseGatePreflightBlockerReport,
+    boundaryViolation: runtimeReleaseGatePreflightBoundaryViolationReport,
+  });
+
+  const runtimeReleaseGatePreflightFinalSafetyGate = buildRuntimeReleaseGatePreflightFinalSafetyGate({
+    summary: runtimeReleaseGatePreflightSummary,
+    blockerReport: runtimeReleaseGatePreflightBlockerReport,
+    boundaryViolation: runtimeReleaseGatePreflightBoundaryViolationReport,
+    readinessVerification: runtimeReleaseGatePreflightReadinessVerificationReport,
+    alignmentReport: runtimeReleaseGatePreflightAlignmentReport,
+  });
+
   const runtimeReleaseGatePreflightSummaryFinal = {
     ...runtimeReleaseGatePreflightSummary,
     recommendations: mergePreflightLayerRecommendations([
@@ -62,6 +104,10 @@ export function buildRuntimeReleaseGatePreflightPlanningReports(
       runtimeReleaseGateNoExecutionProof,
       runtimeReleaseGateOperationForbiddenProof,
       runtimeReleaseGatePreflightChecklist,
+      runtimeReleaseGatePreflightBoundaryViolationReport,
+      runtimeReleaseGatePreflightReadinessVerificationReport,
+      runtimeReleaseGatePreflightAlignmentReport,
+      runtimeReleaseGatePreflightFinalSafetyGate,
     ]),
   };
 
@@ -74,5 +120,9 @@ export function buildRuntimeReleaseGatePreflightPlanningReports(
     runtimeReleaseGateOperationForbiddenProof,
     runtimeReleaseGatePreflightBlockerReport,
     runtimeReleaseGatePreflightChecklist,
+    runtimeReleaseGatePreflightBoundaryViolationReport,
+    runtimeReleaseGatePreflightReadinessVerificationReport,
+    runtimeReleaseGatePreflightAlignmentReport,
+    runtimeReleaseGatePreflightFinalSafetyGate,
   };
 }

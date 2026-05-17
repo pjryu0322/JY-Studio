@@ -311,6 +311,10 @@ function omitReleaseGatePreflightLayerOnly<T extends RuntimeSemanticPlanningRepo
   | "runtimeReleaseGateOperationForbiddenProof"
   | "runtimeReleaseGatePreflightBlockerReport"
   | "runtimeReleaseGatePreflightChecklist"
+  | "runtimeReleaseGatePreflightBoundaryViolationReport"
+  | "runtimeReleaseGatePreflightReadinessVerificationReport"
+  | "runtimeReleaseGatePreflightAlignmentReport"
+  | "runtimeReleaseGatePreflightFinalSafetyGate"
 > {
   const {
     runtimeReleaseGatePreflightSummary: _pf1,
@@ -321,6 +325,10 @@ function omitReleaseGatePreflightLayerOnly<T extends RuntimeSemanticPlanningRepo
     runtimeReleaseGateOperationForbiddenProof: _pf6,
     runtimeReleaseGatePreflightBlockerReport: _pf7,
     runtimeReleaseGatePreflightChecklist: _pf8,
+    runtimeReleaseGatePreflightBoundaryViolationReport: _pf9,
+    runtimeReleaseGatePreflightReadinessVerificationReport: _pf10,
+    runtimeReleaseGatePreflightAlignmentReport: _pf11,
+    runtimeReleaseGatePreflightFinalSafetyGate: _pf12,
     ...rest
   } = semantic;
   return rest;

@@ -154,6 +154,83 @@ export type RuntimeReleaseGatePreflightBlockerReport = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeReleaseGatePreflightFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeReleaseGatePreflightReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeReleaseGatePreflightAlignmentStatus =
+  | "aligned_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeReleaseGatePreflightBoundaryViolationReport = Readonly<{
+  mode: "runtime_release_gate_preflight_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualFlagViolations: readonly string[];
+  proofViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeReleaseGatePreflightReadinessVerificationReport = Readonly<{
+  mode: "runtime_release_gate_preflight_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  verificationStatus: RuntimeReleaseGatePreflightReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeReleaseGatePreflightAlignmentReport = Readonly<{
+  mode: "runtime_release_gate_preflight_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  alignmentStatus: RuntimeReleaseGatePreflightAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeReleaseGatePreflightFinalSafetyGate = Readonly<{
+  mode: "runtime_release_gate_preflight_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  finalGateStatus: RuntimeReleaseGatePreflightFinalGateStatus;
+  h36EntryReadiness: RuntimeReleaseGatePreflightFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeReleaseGatePreflightChecklist = Readonly<{
   mode: "runtime_release_gate_preflight_checklist";
   actualRuntimeOrchestrationEnabled: false;
@@ -181,4 +258,8 @@ export type RuntimeReleaseGatePreflightPlanningReports = Readonly<{
   runtimeReleaseGateOperationForbiddenProof: RuntimeReleaseGateOperationForbiddenProof;
   runtimeReleaseGatePreflightBlockerReport: RuntimeReleaseGatePreflightBlockerReport;
   runtimeReleaseGatePreflightChecklist: RuntimeReleaseGatePreflightChecklist;
+  runtimeReleaseGatePreflightBoundaryViolationReport: RuntimeReleaseGatePreflightBoundaryViolationReport;
+  runtimeReleaseGatePreflightReadinessVerificationReport: RuntimeReleaseGatePreflightReadinessVerificationReport;
+  runtimeReleaseGatePreflightAlignmentReport: RuntimeReleaseGatePreflightAlignmentReport;
+  runtimeReleaseGatePreflightFinalSafetyGate: RuntimeReleaseGatePreflightFinalSafetyGate;
 }>;

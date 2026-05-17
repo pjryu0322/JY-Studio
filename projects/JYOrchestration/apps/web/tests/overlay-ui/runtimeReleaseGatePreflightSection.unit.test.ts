@@ -21,10 +21,11 @@ describe("buildOverlayRuntimeReleaseGatePreflightSectionVm", () => {
     expect(compact.preflightChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays preflight readiness, mode, and top blocker or attention", () => {
+  it("compact mode displays preflight readiness, mode, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeReleaseGatePreflightSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.preflightReadinessKo).toBeTruthy();
     expect(vm.preflightModeKo).toBeTruthy();
-    expect(vm.topPreflightBlocker !== null || vm.showAttention).toBe(true);
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

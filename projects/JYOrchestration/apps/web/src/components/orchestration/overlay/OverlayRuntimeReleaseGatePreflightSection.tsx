@@ -8,6 +8,40 @@ import {
 import { uiTokens as t } from "@/components/ui/tokens";
 import { OverlayUiSection, OverlayUiKeyValueRow, OverlayUiEmptyHint } from "./OverlayUiPrimitives";
 
+const OVERLAY_PREFLIGHT_ROW_LIST_STYLE = {
+  margin: 0,
+  paddingLeft: 18,
+  fontSize: 11,
+  color: t.textMuted,
+  lineHeight: 1.45,
+  overflowWrap: "anywhere" as const,
+} as const;
+
+function OverlayPreflightDetailBlock({
+  title,
+  rows,
+  emptyHint,
+}: {
+  readonly title: string;
+  readonly rows: readonly string[];
+  readonly emptyHint: string;
+}) {
+  return (
+    <>
+      <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>{title}</div>
+      {rows.length > 0 ? (
+        <ul style={OVERLAY_PREFLIGHT_ROW_LIST_STYLE}>
+          {rows.map((row) => (
+            <li key={row}>{row}</li>
+          ))}
+        </ul>
+      ) : (
+        <OverlayUiEmptyHint message={emptyHint} />
+      )}
+    </>
+  );
+}
+
 export function OverlayRuntimeReleaseGatePreflightSection({
   vm,
   defaultOpen,
@@ -17,17 +51,25 @@ export function OverlayRuntimeReleaseGatePreflightSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Release-Gate Final Preflight (H35)"
+      title="Runtime Release-Gate Final Preflight (H35 / H35.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
         <OverlayUiKeyValueRow label="Preflight readiness" value={vm.preflightReadinessKo} />
         <OverlayUiKeyValueRow label="Preflight mode" value={vm.preflightModeKo} />
-        {vm.topPreflightBlocker ? (
-          <OverlayUiKeyValueRow label="Top preflight blocker" value={vm.topPreflightBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H36 entry readiness" value={vm.h36EntryReadinessKo} />
+        {vm.showDetailSections ? (
+          <>
+            <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+            <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+          </>
         ) : null}
-        {!vm.topPreflightBlocker && vm.topForbiddenBoundaryOperation ? (
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top blocker / boundary / finding" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenBoundaryOperation ? (
           <OverlayUiKeyValueRow
             label="Top forbidden boundary operation"
             value={vm.topForbiddenBoundaryOperation}
@@ -38,181 +80,73 @@ export function OverlayRuntimeReleaseGatePreflightSection({
         ) : null}
         {vm.showDetailSections ? (
           <>
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Input envelope</div>
-            {vm.inputEnvelopeRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.inputEnvelopeRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.inputEnvelope} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Output envelope</div>
-            {vm.outputEnvelopeRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.outputEnvelopeRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.outputEnvelope} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>
-              Forbidden boundary operations
-            </div>
-            {vm.forbiddenBoundaryOperationRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.forbiddenBoundaryOperationRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.forbiddenOperation} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>No-execution proof</div>
-            {vm.noExecutionProofRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.noExecutionProofRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>
-              Operation-forbidden proof
-            </div>
-            {vm.operationForbiddenProofRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.operationForbiddenProofRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Preflight checklist</div>
-            {vm.preflightChecklistRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.preflightChecklistRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.checklist} />
-            )}
+            <OverlayPreflightDetailBlock
+              title="Input envelope"
+              rows={vm.inputEnvelopeRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.inputEnvelope}
+            />
+            <OverlayPreflightDetailBlock
+              title="Output envelope"
+              rows={vm.outputEnvelopeRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.outputEnvelope}
+            />
+            <OverlayPreflightDetailBlock
+              title="Forbidden boundary operations"
+              rows={vm.forbiddenBoundaryOperationRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.forbiddenOperation}
+            />
+            <OverlayPreflightDetailBlock
+              title="No-execution proof"
+              rows={vm.noExecutionProofRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof}
+            />
+            <OverlayPreflightDetailBlock
+              title="Operation-forbidden proof"
+              rows={vm.operationForbiddenProofRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.proof}
+            />
+            <OverlayPreflightDetailBlock
+              title="Boundary violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.boundaryViolation}
+            />
+            <OverlayPreflightDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.readinessFinding}
+            />
+            <OverlayPreflightDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.alignmentFinding}
+            />
+            <OverlayPreflightDetailBlock
+              title="Final gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.finalGateChecklist}
+            />
+            <OverlayPreflightDetailBlock
+              title="Preflight checklist"
+              rows={vm.preflightChecklistRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.checklist}
+            />
             {vm.missingChecklistRows.length > 0 ? (
-              <>
-                <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Missing checklist</div>
-                <ul
-                  style={{
-                    margin: 0,
-                    paddingLeft: 18,
-                    fontSize: 11,
-                    color: t.textMuted,
-                    lineHeight: 1.45,
-                    overflowWrap: "anywhere" as const,
-                  }}
-                >
-                  {vm.missingChecklistRows.map((row) => (
-                    <li key={row}>{row}</li>
-                  ))}
-                </ul>
-              </>
+              <OverlayPreflightDetailBlock
+                title="Missing checklist"
+                rows={vm.missingChecklistRows}
+                emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.missingChecklist}
+              />
             ) : null}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Preflight blockers</div>
-            {vm.preflightBlockerRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.preflightBlockerRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.blocker} />
-            )}
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary }}>Recommendations</div>
-            {vm.recommendationRows.length > 0 ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 11,
-                  color: t.textMuted,
-                  lineHeight: 1.45,
-                  overflowWrap: "anywhere" as const,
-                }}
-              >
-                {vm.recommendationRows.map((row) => (
-                  <li key={row}>{row}</li>
-                ))}
-              </ul>
-            ) : (
-              <OverlayUiEmptyHint message={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.recommendation} />
-            )}
+            <OverlayPreflightDetailBlock
+              title="Preflight blockers"
+              rows={vm.preflightBlockerRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.blocker}
+            />
+            <OverlayPreflightDetailBlock
+              title="Recommendations"
+              rows={vm.recommendationRows}
+              emptyHint={RUNTIME_RELEASE_GATE_PREFLIGHT_EMPTY_HINT_KO.recommendation}
+            />
           </>
         ) : null}
         <div style={{ fontSize: 10, color: t.textMuted, lineHeight: 1.4 }}>
