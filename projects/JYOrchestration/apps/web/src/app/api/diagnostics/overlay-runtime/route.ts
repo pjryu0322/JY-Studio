@@ -927,6 +927,14 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeUltimateGovernanceBlockerReport,
       runtimeFinalOrchestrationReadinessChecklist:
         runtimeSemanticDiag.runtimeFinalOrchestrationReadinessChecklist,
+      runtimeUltimateGovernanceReviewViolationReport:
+        runtimeSemanticDiag.runtimeUltimateGovernanceReviewViolationReport,
+      runtimeUltimateGovernanceReviewVerificationReport:
+        runtimeSemanticDiag.runtimeUltimateGovernanceReviewVerificationReport,
+      runtimeUltimateGovernanceReviewAlignmentReport:
+        runtimeSemanticDiag.runtimeUltimateGovernanceReviewAlignmentReport,
+      runtimeUltimateGovernanceReviewFinalSafetyGate:
+        runtimeSemanticDiag.runtimeUltimateGovernanceReviewFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

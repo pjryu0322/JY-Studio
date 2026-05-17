@@ -18,17 +18,21 @@ export function OverlayRuntimeUltimateGovernanceReviewSection({
 }) {
   return (
     <OverlayUiSection
-      title="Runtime Ultimate Governance Review (H40)"
+      title="Runtime Ultimate Governance Review (H40 / H40.5)"
       description={vm.sectionDisclaimer}
       defaultOpen={defaultOpen}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" as const }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowWrap: "anywhere" }}>
         <OverlayUiKeyValueRow label="Ultimate governance review status" value={vm.reviewStatusKo} />
         <OverlayUiKeyValueRow label="Review mode" value={vm.reviewModeKo} />
-        {vm.topReviewBlocker ? (
-          <OverlayUiKeyValueRow label="Top review blocker" value={vm.topReviewBlocker} />
+        <OverlayUiKeyValueRow label="Final safety gate status" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H41 entry readiness" value={vm.h41EntryReadinessKo} />
+        <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+        <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+        {vm.topViolationOrBlocker ? (
+          <OverlayUiKeyValueRow label="Top violation / blocker" value={vm.topViolationOrBlocker} />
         ) : null}
-        {!vm.topReviewBlocker && vm.topForbiddenBoundaryOperation ? (
+        {!vm.topViolationOrBlocker && vm.topForbiddenBoundaryOperation ? (
           <OverlayUiKeyValueRow label="Top forbidden operation" value={vm.topForbiddenBoundaryOperation} />
         ) : null}
         {vm.showDetailSections ? (
@@ -65,6 +69,21 @@ export function OverlayRuntimeUltimateGovernanceReviewSection({
               emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.forbiddenProof}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Ultimate governance violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.violation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification findings"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.verification}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment findings"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.alignment}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Final orchestration readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.checklist}
@@ -76,6 +95,11 @@ export function OverlayRuntimeUltimateGovernanceReviewSection({
                 emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final safety gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Ultimate governance blockers"
               rows={vm.reviewBlockerRows}

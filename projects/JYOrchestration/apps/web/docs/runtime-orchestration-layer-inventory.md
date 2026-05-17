@@ -41,6 +41,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | H39 | Final Release Governance Gate | `runtimeFinalReleaseGovernanceGate/` | gate summary | blockers | — | — | — | yes | yes | yes | yes | yes | yes |
 | H39.5 | Final Release Gate Stabilization | `runtimeFinalReleaseGovernanceGate/` | + violation/verification/alignment | — | yes | yes | final gate (`h40EntryReadiness`) | yes | yes | yes | yes | yes | yes |
 | H40 | Ultimate Governance Review | `runtimeUltimateGovernanceReview/` | review summary | blockers | — | — | — | yes | yes (8 fields) | yes | yes | yes | yes |
+| H40.5 | Ultimate Governance Review Stabilization | `runtimeUltimateGovernanceReview/` | + violation/verification/alignment | — | yes | yes | final gate (`h41EntryReadiness`) | yes | yes (+4 fields) | yes | yes | yes | yes |
 
 ## Downstream inputs (H40 example)
 
@@ -58,7 +59,15 @@ H40 reads (does not rebuild): `runtimeFinalReleaseGovernanceGateFinalSafetyGate`
 
 Large renames deferred — see `runtime-orchestration-test-coverage.md` TODO.
 
+## Shared utilities
+
+| Path | Role |
+|------|------|
+| `runtimeShared/runtimeReadOnlyActualFlags.ts` | Canonical `actual*Enabled: false` |
+| `runtimeShared/runtimeForbiddenProofFlags.ts` | Forbidden proof required keys |
+| `runtimeShared/runtimeReadOnlyInvariants.ts` | `assertRuntimeActualFlagsDisabled` / `assertRuntimeForbiddenFlagsTrue` (test/diagnostic only) |
+| `tests/harness/runtimeShared/runtimeReadOnlyInvariants.unit.test.ts` | Invariant tests |
+
 ## Next phase
 
-- **H40.5 (recommended):** metadata stabilization / cross-layer invariant test pack expansion.
-- **H41:** controlled activation **candidate** only — still no actual orchestration until explicit product gate.
+- **H41:** controlled activation **candidate** metadata only — **not** actual orchestration/execution until explicit product gate.

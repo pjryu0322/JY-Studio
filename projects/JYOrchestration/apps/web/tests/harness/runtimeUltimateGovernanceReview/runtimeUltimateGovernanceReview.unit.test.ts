@@ -107,7 +107,7 @@ describe("H40 ultimate governance review", () => {
     expect(summary.reviewStatus).toBe("blocked");
   });
 
-  it("serializer includes eight H40 fields without rebuilding reports", () => {
+  it("serializer includes twelve H40/H40.5 fields without rebuilding reports", () => {
     const semantic = buildFullSemanticForUltimateGovernanceReview();
     const bundle = serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports(semantic);
     expect(bundle.runtimeUltimateGovernanceReviewSummary.reviewStatus).toBe(
@@ -118,6 +118,22 @@ describe("H40 ultimate governance review", () => {
     );
     expect(bundle.runtimeUltimateNoEnforcementProof.diagnosticOnly).toBe(true);
     expect(bundle.runtimeOrchestrationForbiddenProof.actualExecutionForbidden).toBe(true);
+    expect(bundle.runtimeUltimateGovernanceReviewFinalSafetyGate).toBeDefined();
+    expect(bundle.runtimeUltimateGovernanceReviewViolationReport).toBeDefined();
+  });
+
+  it("ready review with verified alignment yields final gate ready_metadata when upstream aligned", () => {
+    const semantic = buildFullSemanticForUltimateGovernanceReview();
+    if (
+      semantic.runtimeUltimateGovernanceReviewSummary.reviewStatus === "ultimate_governance_metadata_ready" &&
+      semantic.runtimeUltimateGovernanceReviewVerificationReport.verificationStatus === "verified_metadata" &&
+      semantic.runtimeUltimateGovernanceReviewAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeUltimateGovernanceReviewViolationReport.actualFlagViolations.length === 0 &&
+      semantic.runtimeUltimateGovernanceReviewViolationReport.proofViolations.length === 0
+    ) {
+      expect(semantic.runtimeUltimateGovernanceReviewFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+      expect(semantic.runtimeUltimateGovernanceReviewFinalSafetyGate.h41EntryReadiness).toBe("ready_metadata");
+    }
   });
 
   it("stripRuntimeUltimateGovernanceReviewLayer removes H40 fields only", () => {

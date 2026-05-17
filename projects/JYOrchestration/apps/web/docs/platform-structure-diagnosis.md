@@ -573,6 +573,8 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 - **문서**: `runtime-orchestration-layer-inventory.md`, `runtime-orchestration-test-coverage.md`.
 - **보류**: 대규모 rename·Diagnostic API 구조 분리·Overlay 레이아웃 그룹 개편·H20.5~H37 전 계층 상수 일괄 교체.
 
+- **Harness Phase H40.5 — Ultimate Governance Review Stabilization & Final Read-Only Chain Safety Gate Layer (read-only)** — H40 metadata를 **안정화**하고 **`detectRuntimeUltimateGovernanceReviewViolations`**, **`verifyRuntimeUltimateGovernanceReviewReadiness`**, **`buildRuntimeUltimateGovernanceReviewAlignmentReport`**, **`buildRuntimeUltimateGovernanceReviewFinalSafetyGate`**(`h41EntryReadiness`). **`runtimeShared/runtimeReadOnlyInvariants.ts`**. 진단 4개 필드 additive. **H41**은 controlled activation candidate(실행 없음).
+
 ## 관련 문서
 
 - 단계 계획: `apps/web/docs/OVERLAY_ARCHITECTURE_STEP_PLAN.md`

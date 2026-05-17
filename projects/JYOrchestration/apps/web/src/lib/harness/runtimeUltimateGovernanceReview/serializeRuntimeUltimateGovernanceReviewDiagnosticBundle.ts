@@ -11,7 +11,11 @@ import type {
   RuntimeOrchestrationReadinessInputEnvelope,
   RuntimeOrchestrationReadinessOutputEnvelope,
   RuntimeUltimateGovernanceBlockerReport,
+  RuntimeUltimateGovernanceReviewAlignmentReport,
+  RuntimeUltimateGovernanceReviewFinalSafetyGate,
   RuntimeUltimateGovernanceReviewSummary,
+  RuntimeUltimateGovernanceReviewVerificationReport,
+  RuntimeUltimateGovernanceReviewViolationReport,
   RuntimeUltimateNoEnforcementProof,
 } from "./runtimeUltimateGovernanceReviewTypes";
 
@@ -128,6 +132,57 @@ function serializeChecklist(c: RuntimeFinalOrchestrationReadinessChecklist): Rea
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeUltimateGovernanceReviewViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    ...SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    proofViolations: sortKo(v.proofViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeVerificationReport(
+  r: RuntimeUltimateGovernanceReviewVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    ...SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeUltimateGovernanceReviewAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    ...SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeUltimateGovernanceReviewFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    ...SERIALIZED_RUNTIME_ULTIMATE_GOVERNANCE_REVIEW_ACTUAL_FLAGS,
+    finalGateStatus: g.finalGateStatus,
+    h41EntryReadiness: g.h41EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ) {
@@ -142,6 +197,18 @@ export function serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSema
     runtimeOrchestrationForbiddenProof: serializeForbiddenProof(reports.runtimeOrchestrationForbiddenProof),
     runtimeUltimateGovernanceBlockerReport: serializeBlockerReport(reports.runtimeUltimateGovernanceBlockerReport),
     runtimeFinalOrchestrationReadinessChecklist: serializeChecklist(reports.runtimeFinalOrchestrationReadinessChecklist),
+    runtimeUltimateGovernanceReviewViolationReport: serializeViolationReport(
+      reports.runtimeUltimateGovernanceReviewViolationReport
+    ),
+    runtimeUltimateGovernanceReviewVerificationReport: serializeVerificationReport(
+      reports.runtimeUltimateGovernanceReviewVerificationReport
+    ),
+    runtimeUltimateGovernanceReviewAlignmentReport: serializeAlignmentReport(
+      reports.runtimeUltimateGovernanceReviewAlignmentReport
+    ),
+    runtimeUltimateGovernanceReviewFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeUltimateGovernanceReviewFinalSafetyGate
+    ),
   };
 }
 

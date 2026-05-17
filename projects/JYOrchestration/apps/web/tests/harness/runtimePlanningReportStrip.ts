@@ -626,6 +626,10 @@ function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanning
   | "runtimeOrchestrationForbiddenProof"
   | "runtimeUltimateGovernanceBlockerReport"
   | "runtimeFinalOrchestrationReadinessChecklist"
+  | "runtimeUltimateGovernanceReviewViolationReport"
+  | "runtimeUltimateGovernanceReviewVerificationReport"
+  | "runtimeUltimateGovernanceReviewAlignmentReport"
+  | "runtimeUltimateGovernanceReviewFinalSafetyGate"
 > {
   const {
     runtimeUltimateGovernanceReviewSummary: _u1,
@@ -636,6 +640,10 @@ function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanning
     runtimeOrchestrationForbiddenProof: _u6,
     runtimeUltimateGovernanceBlockerReport: _u7,
     runtimeFinalOrchestrationReadinessChecklist: _u8,
+    runtimeUltimateGovernanceReviewViolationReport: _u9,
+    runtimeUltimateGovernanceReviewVerificationReport: _u10,
+    runtimeUltimateGovernanceReviewAlignmentReport: _u11,
+    runtimeUltimateGovernanceReviewFinalSafetyGate: _u12,
     ...rest
   } = semantic;
   return rest;

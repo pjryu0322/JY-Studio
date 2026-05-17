@@ -4,7 +4,7 @@
 
 | Priority | Layers | Harness unit tests | Overlay UI tests | Notes |
 |----------|--------|-------------------|-------------------|-------|
-| P1 | H38.5, H39, H39.5, H40 | yes | H38–H40 sections | + `runtimeShared/runtimeReadOnlyInvariants` |
+| P1 | H38.5, H39, H39.5, H40, H40.5 | yes | H38–H40 sections | `runtimeShared/runtimeReadOnlyInvariants.ts` + unit test |
 | P2 | H36–H37.5 | yes | yes | execution boundary + governance boundary |
 | P3 | H31–H35.5 | yes (H33 harness gap) | yes | H33 overlay only |
 | P4 | H20.5–H30 | yes | yes | resource through runner harness |
@@ -14,14 +14,14 @@
 | Axis | H38.5+ | H20.5–H37 |
 |------|--------|-----------|
 | ready / `*_metadata_ready` | covered | partial |
-| watch | covered (H39.5, H40) | partial |
+| watch | covered (H39.5, H40, H40.5) | partial |
 | blocked | covered | partial |
-| violation → blocked | covered | partial |
-| proof `diagnosticOnly=false` → blocked | H40 | rare |
-| forbidden flag incomplete | H40 | rare |
-| serializer no rebuild | H40, semantic bundle test | implicit |
-| diagnostic API additive fields | manual + integration | manual |
-| overlay compact mode | H40 overlay test | most sections |
+| violation → blocked | covered (H40.5) | partial |
+| proof `diagnosticOnly=false` → blocked | H40.5 | rare |
+| forbidden flag incomplete | H40.5 | rare |
+| serializer no rebuild | H40/H40.5, semantic bundle test | implicit |
+| diagnostic API additive fields | H40.5 (+4 fields) | manual |
+| overlay compact mode + final gate | H40.5 overlay test | most sections |
 
 ## Gaps / TODO (no blockers for H40.5 entry)
 

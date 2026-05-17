@@ -23,11 +23,12 @@ describe("buildOverlayRuntimeUltimateGovernanceReviewSectionVm", () => {
     expect(compact.inputEnvelopeRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays review status, mode, and blocker or attention", () => {
+  it("compact mode displays review status, mode, final gate, and blocker or attention", () => {
     const vm = buildOverlayRuntimeUltimateGovernanceReviewSectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.reviewStatusKo).toBeTruthy();
     expect(vm.reviewModeKo).toBeTruthy();
-    expect(vm.topReviewBlocker !== null || vm.showAttention).toBe(true);
+    expect(vm.finalGateStatusKo).toBeTruthy();
+    expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 
   it("overlay footer matches required no-enforcement disclaimer", () => {

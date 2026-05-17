@@ -10,6 +10,22 @@ export type RuntimeUltimateGovernanceReviewStatus =
 
 export type RuntimeUltimateGovernanceReviewMode = "disabled" | "metadata_only" | "blocked";
 
+export type RuntimeUltimateGovernanceReviewFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeUltimateGovernanceReviewVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeUltimateGovernanceReviewAlignmentStatus =
+  | "aligned_metadata"
+  | "partial"
+  | "failed";
+
 export type RuntimeUltimateGovernanceReviewSummary = Readonly<{
   mode: "runtime_ultimate_governance_review_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -214,6 +230,81 @@ export type RuntimeFinalOrchestrationReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeUltimateGovernanceReviewViolationReport = Readonly<{
+  mode: "runtime_ultimate_governance_review_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  actualFlagViolations: readonly string[];
+  proofViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeUltimateGovernanceReviewVerificationReport = Readonly<{
+  mode: "runtime_ultimate_governance_review_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  verificationStatus: RuntimeUltimateGovernanceReviewVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeUltimateGovernanceReviewAlignmentReport = Readonly<{
+  mode: "runtime_ultimate_governance_review_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  alignmentStatus: RuntimeUltimateGovernanceReviewAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeUltimateGovernanceReviewFinalSafetyGate = Readonly<{
+  mode: "runtime_ultimate_governance_review_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualExecutionBlockingEnabled: false;
+  actualMergeBlockingEnabled: false;
+  finalGateStatus: RuntimeUltimateGovernanceReviewFinalGateStatus;
+  h41EntryReadiness: RuntimeUltimateGovernanceReviewFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeUltimateGovernanceReviewPlanningReports = Readonly<{
   runtimeUltimateGovernanceReviewSummary: RuntimeUltimateGovernanceReviewSummary;
   runtimeFinalOrchestrationReadinessBoundary: RuntimeFinalOrchestrationReadinessBoundary;
@@ -223,4 +314,8 @@ export type RuntimeUltimateGovernanceReviewPlanningReports = Readonly<{
   runtimeOrchestrationForbiddenProof: RuntimeOrchestrationForbiddenProof;
   runtimeUltimateGovernanceBlockerReport: RuntimeUltimateGovernanceBlockerReport;
   runtimeFinalOrchestrationReadinessChecklist: RuntimeFinalOrchestrationReadinessChecklist;
+  runtimeUltimateGovernanceReviewViolationReport: RuntimeUltimateGovernanceReviewViolationReport;
+  runtimeUltimateGovernanceReviewVerificationReport: RuntimeUltimateGovernanceReviewVerificationReport;
+  runtimeUltimateGovernanceReviewAlignmentReport: RuntimeUltimateGovernanceReviewAlignmentReport;
+  runtimeUltimateGovernanceReviewFinalSafetyGate: RuntimeUltimateGovernanceReviewFinalSafetyGate;
 }>;
