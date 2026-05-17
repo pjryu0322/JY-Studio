@@ -11,6 +11,8 @@ describe("buildOverlayRuntimeExecutionGovernanceBoundarySectionVm", () => {
     expect(vm.candidateStatusKo.length).toBeGreaterThan(0);
     expect(vm.governanceModeKo.length).toBeGreaterThan(0);
     expect(vm.hardeningReadinessKo.length).toBeGreaterThan(0);
+    expect(vm.finalGateStatusKo.length).toBeGreaterThan(0);
+    expect(vm.h38EntryReadinessKo.length).toBeGreaterThan(0);
   });
 
   it("compact mode hides detail sections", () => {
@@ -22,11 +24,12 @@ describe("buildOverlayRuntimeExecutionGovernanceBoundarySectionVm", () => {
     expect(compact.readinessChecklistRows.length).toBeLessThanOrEqual(1);
   });
 
-  it("compact mode displays candidate status, governance mode, hardening readiness, and top blocker or attention", () => {
+  it("compact mode displays candidate status, governance mode, hardening readiness, final gate, and top blocker or attention", () => {
     const vm = buildOverlayRuntimeExecutionGovernanceBoundarySectionVm(buildDefaultOverlaySectionVmTestInput(true));
     expect(vm.candidateStatusKo).toBeTruthy();
     expect(vm.governanceModeKo).toBeTruthy();
     expect(vm.hardeningReadinessKo).toBeTruthy();
+    expect(vm.finalGateStatusKo).toBeTruthy();
     expect(vm.topViolationOrBlocker !== null || vm.showAttention).toBe(true);
   });
 });

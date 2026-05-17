@@ -1,16 +1,20 @@
 /**
- * H37 — execution governance boundary planning reports 일괄 산출(read-only).
+ * H37 / H37.5 — execution governance boundary planning reports 일괄 산출(read-only).
  */
 
 import type { RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { mergeSortedUniqueKo } from "@/lib/harness/runtimeExecutionCandidate/runtimeExecutionCandidateMerge";
+import { buildRuntimeExecutionGovernanceBoundaryAlignmentReport } from "./buildRuntimeExecutionGovernanceBoundaryAlignmentReport";
+import { buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate } from "./buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate";
 import { buildRuntimeExecutionGovernanceBoundaryPolicy } from "./buildRuntimeExecutionGovernanceBoundaryPolicy";
 import { buildRuntimeExecutionGovernanceBoundaryReadinessChecklist } from "./buildRuntimeExecutionGovernanceBoundaryReadinessChecklist";
 import { buildRuntimeExecutionGovernanceBoundaryScope } from "./buildRuntimeExecutionGovernanceBoundaryScope";
 import { detectRuntimeExecutionGovernanceBoundaryBlockers } from "./detectRuntimeExecutionGovernanceBoundaryBlockers";
+import { detectRuntimeExecutionGovernanceBoundaryViolations } from "./detectRuntimeExecutionGovernanceBoundaryViolations";
 import { evaluateRuntimeExecutionGovernanceBoundaryCandidate } from "./evaluateRuntimeExecutionGovernanceBoundaryCandidate";
 import { resolveRuntimeExecutionGovernanceBoundaryHardeningReadiness } from "./resolveRuntimeExecutionGovernanceBoundaryHardeningReadiness";
 import { resolveRuntimeExecutionGovernanceBoundaryMode } from "./resolveRuntimeExecutionGovernanceBoundaryMode";
+import { verifyRuntimeExecutionGovernanceBoundaryReadiness } from "./verifyRuntimeExecutionGovernanceBoundaryReadiness";
 import type {
   RuntimeExecutionGovernanceBoundaryCandidateStatus,
   RuntimeExecutionGovernanceBoundaryPlanningReports,
@@ -31,6 +35,12 @@ function governanceRationaleKo(status: RuntimeExecutionGovernanceBoundaryCandida
   }
 }
 
+function mergeGovernanceLayerRecommendations(
+  parts: readonly { readonly recommendations: readonly string[] }[]
+): readonly string[] {
+  return mergeSortedUniqueKo(parts.flatMap((part) => [...part.recommendations]));
+}
+
 export function buildRuntimeExecutionGovernanceBoundaryPlanningReports(
   reports: RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary
 ): RuntimeExecutionGovernanceBoundaryPlanningReports {
@@ -49,7 +59,7 @@ export function buildRuntimeExecutionGovernanceBoundaryPlanningReports(
     blockerReport: runtimeExecutionGovernanceBoundaryBlockerReport,
   });
 
-  const runtimeExecutionGovernanceBoundarySummary = {
+  const runtimeExecutionGovernanceBoundarySummaryDraft = {
     mode: "runtime_execution_governance_boundary_summary" as const,
     actualRuntimeOrchestrationEnabled: false as const,
     actualPilotExecutionEnabled: false as const,
@@ -80,11 +90,57 @@ export function buildRuntimeExecutionGovernanceBoundaryPlanningReports(
     ]),
   };
 
+  const runtimeExecutionGovernanceBoundaryViolationReport = detectRuntimeExecutionGovernanceBoundaryViolations({
+    summary: runtimeExecutionGovernanceBoundarySummaryDraft,
+    policy: runtimeExecutionGovernanceBoundaryPolicy,
+  });
+
+  const runtimeExecutionGovernanceBoundaryReadinessVerificationReport =
+    verifyRuntimeExecutionGovernanceBoundaryReadiness({
+      summary: runtimeExecutionGovernanceBoundarySummaryDraft,
+      scope: runtimeExecutionGovernanceBoundaryScope,
+      policy: runtimeExecutionGovernanceBoundaryPolicy,
+      checklist: runtimeExecutionGovernanceBoundaryReadinessChecklist,
+      blockerReport: runtimeExecutionGovernanceBoundaryBlockerReport,
+    });
+
+  const runtimeExecutionGovernanceBoundaryAlignmentReport = buildRuntimeExecutionGovernanceBoundaryAlignmentReport({
+    summary: runtimeExecutionGovernanceBoundarySummaryDraft,
+    scope: runtimeExecutionGovernanceBoundaryScope,
+    policy: runtimeExecutionGovernanceBoundaryPolicy,
+    checklist: runtimeExecutionGovernanceBoundaryReadinessChecklist,
+    blockerReport: runtimeExecutionGovernanceBoundaryBlockerReport,
+    boundaryViolation: runtimeExecutionGovernanceBoundaryViolationReport,
+  });
+
+  const runtimeExecutionGovernanceBoundaryFinalSafetyGate = buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate({
+    summary: runtimeExecutionGovernanceBoundarySummaryDraft,
+    blockerReport: runtimeExecutionGovernanceBoundaryBlockerReport,
+    boundaryViolation: runtimeExecutionGovernanceBoundaryViolationReport,
+    readinessVerification: runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+    alignmentReport: runtimeExecutionGovernanceBoundaryAlignmentReport,
+  });
+
+  const runtimeExecutionGovernanceBoundarySummary = {
+    ...runtimeExecutionGovernanceBoundarySummaryDraft,
+    recommendations: mergeGovernanceLayerRecommendations([
+      runtimeExecutionGovernanceBoundarySummaryDraft,
+      runtimeExecutionGovernanceBoundaryViolationReport,
+      runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+      runtimeExecutionGovernanceBoundaryAlignmentReport,
+      runtimeExecutionGovernanceBoundaryFinalSafetyGate,
+    ]),
+  };
+
   return {
     runtimeExecutionGovernanceBoundarySummary,
     runtimeExecutionGovernanceBoundaryScope,
     runtimeExecutionGovernanceBoundaryPolicy,
     runtimeExecutionGovernanceBoundaryBlockerReport,
     runtimeExecutionGovernanceBoundaryReadinessChecklist,
+    runtimeExecutionGovernanceBoundaryViolationReport,
+    runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+    runtimeExecutionGovernanceBoundaryAlignmentReport,
+    runtimeExecutionGovernanceBoundaryFinalSafetyGate,
   };
 }

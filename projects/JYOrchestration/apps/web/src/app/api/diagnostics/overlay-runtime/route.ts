@@ -869,6 +869,14 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryBlockerReport,
       runtimeExecutionGovernanceBoundaryReadinessChecklist:
         runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryReadinessChecklist,
+      runtimeExecutionGovernanceBoundaryViolationReport:
+        runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryViolationReport,
+      runtimeExecutionGovernanceBoundaryReadinessVerificationReport:
+        runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+      runtimeExecutionGovernanceBoundaryAlignmentReport:
+        runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryAlignmentReport,
+      runtimeExecutionGovernanceBoundaryFinalSafetyGate:
+        runtimeSemanticDiag.runtimeExecutionGovernanceBoundaryFinalSafetyGate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

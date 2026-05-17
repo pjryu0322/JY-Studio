@@ -1,5 +1,5 @@
 /**
- * H17–H37 — semantic·…·execution boundary shell·governance boundary **planning 보고서** 일괄 산출.
+ * H17–H37.5 — semantic·…·execution boundary shell·governance boundary **planning 보고서** 일괄 산출.
  */
 
 import type { RuntimeReasoningPlanningReports } from "@/lib/harness/runtimeReasoning/buildRuntimeReasoningPlanningReports";

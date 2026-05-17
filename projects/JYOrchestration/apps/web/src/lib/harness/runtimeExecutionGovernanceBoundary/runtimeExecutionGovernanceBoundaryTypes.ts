@@ -16,6 +16,19 @@ export type RuntimeExecutionGovernanceBoundaryHardeningReadiness =
   | "watch"
   | "blocked";
 
+export type RuntimeExecutionGovernanceBoundaryFinalGateStatus =
+  | "ready_metadata"
+  | "watch"
+  | "blocked"
+  | "not_ready";
+
+export type RuntimeExecutionGovernanceBoundaryReadinessVerificationStatus =
+  | "verified_metadata"
+  | "partial"
+  | "failed";
+
+export type RuntimeExecutionGovernanceBoundaryAlignmentStatus = "aligned_metadata" | "partial" | "failed";
+
 export type RuntimeExecutionGovernanceBoundarySummary = Readonly<{
   mode: "runtime_execution_governance_boundary_summary";
   actualRuntimeOrchestrationEnabled: false;
@@ -129,10 +142,80 @@ export type RuntimeExecutionGovernanceBoundaryReadinessChecklist = Readonly<{
   recommendations: readonly string[];
 }>;
 
+export type RuntimeExecutionGovernanceBoundaryViolationReport = Readonly<{
+  mode: "runtime_execution_governance_boundary_violation_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  actualFlagViolations: readonly string[];
+  wordingRiskFindings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionGovernanceBoundaryReadinessVerificationReport = Readonly<{
+  mode: "runtime_execution_governance_boundary_readiness_verification_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  verificationStatus: RuntimeExecutionGovernanceBoundaryReadinessVerificationStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionGovernanceBoundaryAlignmentReport = Readonly<{
+  mode: "runtime_execution_governance_boundary_alignment_report";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  alignmentStatus: RuntimeExecutionGovernanceBoundaryAlignmentStatus;
+  findings: readonly string[];
+  recommendations: readonly string[];
+}>;
+
+export type RuntimeExecutionGovernanceBoundaryFinalSafetyGate = Readonly<{
+  mode: "runtime_execution_governance_boundary_final_safety_gate";
+  actualRuntimeOrchestrationEnabled: false;
+  actualPilotExecutionEnabled: false;
+  actualNoopShellExecutionEnabled: false;
+  actualExecutionShellExecutionEnabled: false;
+  actualReleaseEnforcementEnabled: false;
+  actualRuntimeAdapterInvocationEnabled: false;
+  actualExecutionEnabled: false;
+  actualExecutionRoutingEnabled: false;
+  actualProviderRoutingEnabled: false;
+  actualQueueControlEnabled: false;
+  actualRollbackExecutionEnabled: false;
+  actualApprovalEnforcementEnabled: false;
+  finalGateStatus: RuntimeExecutionGovernanceBoundaryFinalGateStatus;
+  h38EntryReadiness: RuntimeExecutionGovernanceBoundaryFinalGateStatus;
+  checklist: readonly string[];
+  blockers: readonly string[];
+  recommendations: readonly string[];
+}>;
+
 export type RuntimeExecutionGovernanceBoundaryPlanningReports = Readonly<{
   runtimeExecutionGovernanceBoundarySummary: RuntimeExecutionGovernanceBoundarySummary;
   runtimeExecutionGovernanceBoundaryScope: RuntimeExecutionGovernanceBoundaryScope;
   runtimeExecutionGovernanceBoundaryPolicy: RuntimeExecutionGovernanceBoundaryPolicy;
   runtimeExecutionGovernanceBoundaryBlockerReport: RuntimeExecutionGovernanceBoundaryBlockerReport;
   runtimeExecutionGovernanceBoundaryReadinessChecklist: RuntimeExecutionGovernanceBoundaryReadinessChecklist;
+  runtimeExecutionGovernanceBoundaryViolationReport: RuntimeExecutionGovernanceBoundaryViolationReport;
+  runtimeExecutionGovernanceBoundaryReadinessVerificationReport: RuntimeExecutionGovernanceBoundaryReadinessVerificationReport;
+  runtimeExecutionGovernanceBoundaryAlignmentReport: RuntimeExecutionGovernanceBoundaryAlignmentReport;
+  runtimeExecutionGovernanceBoundaryFinalSafetyGate: RuntimeExecutionGovernanceBoundaryFinalSafetyGate;
 }>;

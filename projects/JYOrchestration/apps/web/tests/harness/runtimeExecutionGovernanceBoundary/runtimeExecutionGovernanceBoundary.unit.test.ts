@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate } from "@/lib/harness/runtimeExecutionGovernanceBoundary/buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate";
 import { buildRuntimeExecutionGovernanceBoundaryPlanningReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/buildRuntimeExecutionGovernanceBoundaryPlanningReports";
+import { detectRuntimeExecutionGovernanceBoundaryViolations } from "@/lib/harness/runtimeExecutionGovernanceBoundary/detectRuntimeExecutionGovernanceBoundaryViolations";
 import { serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundle";
 import { buildRuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type { RuntimeSemanticPlanningReportsBeforeExecutionGovernanceBoundary } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
@@ -46,7 +48,7 @@ function buildGovernancePlanning(
   return buildRuntimeExecutionGovernanceBoundaryPlanningReports({ ...base, ...patches });
 }
 
-describe("H37 execution governance boundary candidate", () => {
+describe("H37 / H37.5 execution governance boundary candidate", () => {
   it("full semantic includes governance boundary with all actual execution flags false", () => {
     const semantic = buildFullSemantic();
     expect(semantic.runtimeExecutionGovernanceBoundarySummary.mode).toBe(
@@ -58,6 +60,12 @@ describe("H37 execution governance boundary candidate", () => {
     expect(semantic.runtimeExecutionGovernanceBoundaryPolicy.actualExecutionForbidden).toBe(true);
     expect(semantic.runtimeExecutionGovernanceBoundaryPolicy.actualExecutionRoutingForbidden).toBe(true);
     expect(semantic.runtimeExecutionGovernanceBoundaryPolicy.actualApprovalEnforcementForbidden).toBe(true);
+    expect(semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.mode).toBe(
+      "runtime_execution_governance_boundary_final_safety_gate"
+    );
+    expect(semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.h38EntryReadiness).toBe(
+      semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.finalGateStatus
+    );
   });
 
   it("shell final gate ready + verified + aligned + no violations yields governance_boundary_metadata_candidate", () => {
@@ -193,6 +201,131 @@ describe("H37 execution governance boundary candidate", () => {
     expect(governance.runtimeExecutionGovernanceBoundarySummary.candidateStatus).toBe("blocked");
   });
 
+  it("governance_boundary_metadata_candidate + verified + aligned yields final gate ready_metadata", () => {
+    const semantic = buildFullSemantic();
+    if (
+      semantic.runtimeExecutionGovernanceBoundarySummary.candidateStatus ===
+        "governance_boundary_metadata_candidate" &&
+      semantic.runtimeExecutionGovernanceBoundarySummary.governanceMode === "metadata_only" &&
+      semantic.runtimeExecutionGovernanceBoundaryReadinessVerificationReport.verificationStatus ===
+        "verified_metadata" &&
+      semantic.runtimeExecutionGovernanceBoundaryAlignmentReport.alignmentStatus === "aligned_metadata" &&
+      semantic.runtimeExecutionGovernanceBoundaryViolationReport.actualFlagViolations.length === 0
+    ) {
+      expect(semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.finalGateStatus).toBe("ready_metadata");
+    }
+  });
+
+  it("watch candidate with partial verification yields final gate watch when built in isolation", () => {
+    const partial = buildGovernancePlanning();
+    const finalGate = buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate({
+      summary: {
+        ...partial.runtimeExecutionGovernanceBoundarySummary,
+        candidateStatus: "watch",
+        governanceMode: "disabled",
+        governanceBlockers: [],
+      },
+      blockerReport: { ...partial.runtimeExecutionGovernanceBoundaryBlockerReport, blockers: [] },
+      boundaryViolation: {
+        ...partial.runtimeExecutionGovernanceBoundaryViolationReport,
+        actualFlagViolations: [],
+        wordingRiskFindings: ["wording risk"],
+      },
+      readinessVerification: {
+        ...partial.runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+        verificationStatus: "partial",
+      },
+      alignmentReport: {
+        ...partial.runtimeExecutionGovernanceBoundaryAlignmentReport,
+        alignmentStatus: "aligned_metadata",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("watch");
+    expect(finalGate.h38EntryReadiness).toBe("watch");
+  });
+
+  it("blocked candidate yields final gate blocked", () => {
+    const partial = buildGovernancePlanning();
+    const finalGate = buildRuntimeExecutionGovernanceBoundaryFinalSafetyGate({
+      summary: {
+        ...partial.runtimeExecutionGovernanceBoundarySummary,
+        candidateStatus: "blocked",
+        governanceMode: "blocked",
+      },
+      blockerReport: partial.runtimeExecutionGovernanceBoundaryBlockerReport,
+      boundaryViolation: partial.runtimeExecutionGovernanceBoundaryViolationReport,
+      readinessVerification: {
+        ...partial.runtimeExecutionGovernanceBoundaryReadinessVerificationReport,
+        verificationStatus: "failed",
+      },
+      alignmentReport: {
+        ...partial.runtimeExecutionGovernanceBoundaryAlignmentReport,
+        alignmentStatus: "failed",
+      },
+    });
+    expect(finalGate.finalGateStatus).toBe("blocked");
+  });
+
+  it("policy actualExecutionForbidden false yields boundary violation", () => {
+    const partial = buildGovernancePlanning();
+    const violation = detectRuntimeExecutionGovernanceBoundaryViolations({
+      summary: partial.runtimeExecutionGovernanceBoundarySummary,
+      policy: {
+        ...partial.runtimeExecutionGovernanceBoundaryPolicy,
+        actualExecutionForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionForbidden"))).toBe(true);
+  });
+
+  it("policy actualExecutionRoutingForbidden false yields boundary violation", () => {
+    const partial = buildGovernancePlanning();
+    const violation = detectRuntimeExecutionGovernanceBoundaryViolations({
+      summary: partial.runtimeExecutionGovernanceBoundarySummary,
+      policy: {
+        ...partial.runtimeExecutionGovernanceBoundaryPolicy,
+        actualExecutionRoutingForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualExecutionRoutingForbidden"))).toBe(true);
+  });
+
+  it("policy actualApprovalEnforcementForbidden false yields boundary violation", () => {
+    const partial = buildGovernancePlanning();
+    const violation = detectRuntimeExecutionGovernanceBoundaryViolations({
+      summary: partial.runtimeExecutionGovernanceBoundarySummary,
+      policy: {
+        ...partial.runtimeExecutionGovernanceBoundaryPolicy,
+        actualApprovalEnforcementForbidden: false as unknown as true,
+      },
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualApprovalEnforcementForbidden"))).toBe(true);
+  });
+
+  it("summary actualExecutionEnabled true yields boundary violation", () => {
+    const partial = buildGovernancePlanning();
+    const violation = detectRuntimeExecutionGovernanceBoundaryViolations({
+      summary: {
+        ...partial.runtimeExecutionGovernanceBoundarySummary,
+        actualExecutionEnabled: true as unknown as false,
+      },
+      policy: partial.runtimeExecutionGovernanceBoundaryPolicy,
+    });
+    expect(violation.actualFlagViolations.length).toBeGreaterThan(0);
+  });
+
+  it("summary actualApprovalEnforcementEnabled true yields boundary violation", () => {
+    const partial = buildGovernancePlanning();
+    const violation = detectRuntimeExecutionGovernanceBoundaryViolations({
+      summary: {
+        ...partial.runtimeExecutionGovernanceBoundarySummary,
+        actualApprovalEnforcementEnabled: true as unknown as false,
+      },
+      policy: partial.runtimeExecutionGovernanceBoundaryPolicy,
+    });
+    expect(violation.actualFlagViolations.some((v) => v.includes("actualApprovalEnforcementEnabled"))).toBe(true);
+  });
+
   it("serializer does not rebuild reports", () => {
     const semantic = buildFullSemantic();
     const serialized = serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports(semantic);
@@ -217,9 +350,18 @@ describe("H37 execution governance boundary candidate", () => {
     expect(serialized.runtimeExecutionGovernanceBoundaryScope.candidateSourceLayer).toBe(
       semantic.runtimeExecutionGovernanceBoundaryScope.candidateSourceLayer
     );
+    expect(serialized.runtimeExecutionGovernanceBoundaryFinalSafetyGate).toEqual(
+      expect.objectContaining({
+        finalGateStatus: semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.finalGateStatus,
+        h38EntryReadiness: semantic.runtimeExecutionGovernanceBoundaryFinalSafetyGate.h38EntryReadiness,
+      })
+    );
+    expect(serialized.runtimeExecutionGovernanceBoundaryViolationReport).toBeDefined();
+    expect(serialized.runtimeExecutionGovernanceBoundaryReadinessVerificationReport).toBeDefined();
+    expect(serialized.runtimeExecutionGovernanceBoundaryAlignmentReport).toBeDefined();
   });
 
-  it("stripRuntimeExecutionGovernanceBoundaryLayer removes H37 fields only", () => {
+  it("stripRuntimeExecutionGovernanceBoundaryLayer removes H37 and H37.5 fields only", () => {
     const semantic = buildFullSemantic();
     const stripped = stripRuntimeExecutionGovernanceBoundaryLayer(semantic);
     expect("runtimeExecutionGovernanceBoundarySummary" in stripped).toBe(false);

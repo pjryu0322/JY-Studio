@@ -26,8 +26,19 @@ export function OverlayRuntimeExecutionGovernanceBoundarySection({
         <OverlayUiKeyValueRow label="Governance boundary candidate status" value={vm.candidateStatusKo} />
         <OverlayUiKeyValueRow label="Governance mode" value={vm.governanceModeKo} />
         <OverlayUiKeyValueRow label="Hardening readiness" value={vm.hardeningReadinessKo} />
+        <OverlayUiKeyValueRow label="Final safety gate" value={vm.finalGateStatusKo} />
+        <OverlayUiKeyValueRow label="H38 entry readiness" value={vm.h38EntryReadinessKo} />
+        {vm.showDetailSections ? (
+          <>
+            <OverlayUiKeyValueRow label="Readiness verification" value={vm.readinessVerificationStatusKo} />
+            <OverlayUiKeyValueRow label="Alignment report" value={vm.alignmentStatusKo} />
+          </>
+        ) : null}
         {vm.topViolationOrBlocker ? (
-          <OverlayUiKeyValueRow label="Top blocker / forbidden operation" value={vm.topViolationOrBlocker} />
+          <OverlayUiKeyValueRow label="Top blocker / violation / finding" value={vm.topViolationOrBlocker} />
+        ) : null}
+        {!vm.topViolationOrBlocker && vm.topForbiddenGovernanceOperation ? (
+          <OverlayUiKeyValueRow label="Top forbidden governance operation" value={vm.topForbiddenGovernanceOperation} />
         ) : null}
         {vm.showDetailSections ? (
           <OverlayUiKeyValueRow label="Governance policy" value={vm.governancePolicySummaryKo} />
@@ -45,6 +56,21 @@ export function OverlayRuntimeExecutionGovernanceBoundarySection({
               emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.forbiddenOperation}
             />
             <OverlayRuntimePlanningDetailBlock
+              title="Governance violations"
+              rows={vm.boundaryViolationRows}
+              emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.boundaryViolation}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Readiness verification"
+              rows={vm.readinessFindingRows}
+              emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.readinessFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
+              title="Alignment report"
+              rows={vm.alignmentFindingRows}
+              emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.alignmentFinding}
+            />
+            <OverlayRuntimePlanningDetailBlock
               title="Readiness checklist"
               rows={vm.readinessChecklistRows}
               emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.checklist}
@@ -56,6 +82,11 @@ export function OverlayRuntimeExecutionGovernanceBoundarySection({
                 emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.missingChecklist}
               />
             ) : null}
+            <OverlayRuntimePlanningDetailBlock
+              title="Final gate checklist"
+              rows={vm.finalGateChecklistRows}
+              emptyHint={RUNTIME_EXECUTION_GOVERNANCE_BOUNDARY_EMPTY_HINT_KO.finalGateChecklist}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Governance blockers"
               rows={vm.governanceBlockerRows}

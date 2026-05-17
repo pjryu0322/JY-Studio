@@ -551,6 +551,10 @@ function omitExecutionGovernanceBoundaryLayerOnly<T extends RuntimeSemanticPlann
   | "runtimeExecutionGovernanceBoundaryPolicy"
   | "runtimeExecutionGovernanceBoundaryBlockerReport"
   | "runtimeExecutionGovernanceBoundaryReadinessChecklist"
+  | "runtimeExecutionGovernanceBoundaryViolationReport"
+  | "runtimeExecutionGovernanceBoundaryReadinessVerificationReport"
+  | "runtimeExecutionGovernanceBoundaryAlignmentReport"
+  | "runtimeExecutionGovernanceBoundaryFinalSafetyGate"
 > {
   const {
     runtimeExecutionGovernanceBoundarySummary: _eg1,
@@ -558,6 +562,10 @@ function omitExecutionGovernanceBoundaryLayerOnly<T extends RuntimeSemanticPlann
     runtimeExecutionGovernanceBoundaryPolicy: _eg3,
     runtimeExecutionGovernanceBoundaryBlockerReport: _eg4,
     runtimeExecutionGovernanceBoundaryReadinessChecklist: _eg5,
+    runtimeExecutionGovernanceBoundaryViolationReport: _eg6,
+    runtimeExecutionGovernanceBoundaryReadinessVerificationReport: _eg7,
+    runtimeExecutionGovernanceBoundaryAlignmentReport: _eg8,
+    runtimeExecutionGovernanceBoundaryFinalSafetyGate: _eg9,
     ...rest
   } = semantic;
   return rest;

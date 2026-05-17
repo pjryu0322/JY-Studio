@@ -4,11 +4,15 @@
 
 import type { RuntimeSemanticPlanningReports } from "@/lib/harness/runtimeSemantic/buildRuntimeSemanticPlanningReports";
 import type {
+  RuntimeExecutionGovernanceBoundaryAlignmentReport,
   RuntimeExecutionGovernanceBoundaryBlockerReport,
+  RuntimeExecutionGovernanceBoundaryFinalSafetyGate,
   RuntimeExecutionGovernanceBoundaryPolicy,
   RuntimeExecutionGovernanceBoundaryReadinessChecklist,
+  RuntimeExecutionGovernanceBoundaryReadinessVerificationReport,
   RuntimeExecutionGovernanceBoundaryScope,
   RuntimeExecutionGovernanceBoundarySummary,
+  RuntimeExecutionGovernanceBoundaryViolationReport,
 } from "./runtimeExecutionGovernanceBoundaryTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
@@ -138,6 +142,88 @@ function serializeChecklist(c: RuntimeExecutionGovernanceBoundaryReadinessCheckl
   };
 }
 
+function serializeViolationReport(
+  v: RuntimeExecutionGovernanceBoundaryViolationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: v.mode,
+    actualRuntimeOrchestrationEnabled: v.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: v.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: v.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: v.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: v.actualReleaseEnforcementEnabled,
+    actualRuntimeAdapterInvocationEnabled: v.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: v.actualExecutionEnabled,
+    actualExecutionRoutingEnabled: v.actualExecutionRoutingEnabled,
+    actualProviderRoutingEnabled: v.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: v.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: v.actualRollbackExecutionEnabled,
+    actualApprovalEnforcementEnabled: v.actualApprovalEnforcementEnabled,
+    actualFlagViolations: sortKo(v.actualFlagViolations),
+    wordingRiskFindings: sortKo(v.wordingRiskFindings),
+    recommendations: sortKo(v.recommendations),
+  };
+}
+
+function serializeReadinessVerification(
+  r: RuntimeExecutionGovernanceBoundaryReadinessVerificationReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: r.mode,
+    actualRuntimeOrchestrationEnabled: r.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: r.actualPilotExecutionEnabled,
+    actualExecutionEnabled: r.actualExecutionEnabled,
+    actualExecutionRoutingEnabled: r.actualExecutionRoutingEnabled,
+    actualReleaseEnforcementEnabled: r.actualReleaseEnforcementEnabled,
+    actualApprovalEnforcementEnabled: r.actualApprovalEnforcementEnabled,
+    verificationStatus: r.verificationStatus,
+    findings: sortKo(r.findings),
+    recommendations: sortKo(r.recommendations),
+  };
+}
+
+function serializeAlignmentReport(
+  a: RuntimeExecutionGovernanceBoundaryAlignmentReport
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: a.mode,
+    actualRuntimeOrchestrationEnabled: a.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: a.actualPilotExecutionEnabled,
+    actualExecutionEnabled: a.actualExecutionEnabled,
+    actualExecutionRoutingEnabled: a.actualExecutionRoutingEnabled,
+    actualReleaseEnforcementEnabled: a.actualReleaseEnforcementEnabled,
+    actualApprovalEnforcementEnabled: a.actualApprovalEnforcementEnabled,
+    alignmentStatus: a.alignmentStatus,
+    findings: sortKo(a.findings),
+    recommendations: sortKo(a.recommendations),
+  };
+}
+
+function serializeFinalSafetyGate(
+  g: RuntimeExecutionGovernanceBoundaryFinalSafetyGate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: g.mode,
+    actualRuntimeOrchestrationEnabled: g.actualRuntimeOrchestrationEnabled,
+    actualPilotExecutionEnabled: g.actualPilotExecutionEnabled,
+    actualNoopShellExecutionEnabled: g.actualNoopShellExecutionEnabled,
+    actualExecutionShellExecutionEnabled: g.actualExecutionShellExecutionEnabled,
+    actualReleaseEnforcementEnabled: g.actualReleaseEnforcementEnabled,
+    actualRuntimeAdapterInvocationEnabled: g.actualRuntimeAdapterInvocationEnabled,
+    actualExecutionEnabled: g.actualExecutionEnabled,
+    actualExecutionRoutingEnabled: g.actualExecutionRoutingEnabled,
+    actualProviderRoutingEnabled: g.actualProviderRoutingEnabled,
+    actualQueueControlEnabled: g.actualQueueControlEnabled,
+    actualRollbackExecutionEnabled: g.actualRollbackExecutionEnabled,
+    actualApprovalEnforcementEnabled: g.actualApprovalEnforcementEnabled,
+    finalGateStatus: g.finalGateStatus,
+    h38EntryReadiness: g.h38EntryReadiness,
+    checklist: sortKo(g.checklist),
+    blockers: sortKo(g.blockers),
+    recommendations: sortKo(g.recommendations),
+  };
+}
+
 export function serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<{
@@ -146,6 +232,10 @@ export function serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromS
   runtimeExecutionGovernanceBoundaryPolicy: ReturnType<typeof serializePolicy>;
   runtimeExecutionGovernanceBoundaryBlockerReport: ReturnType<typeof serializeBlockerReport>;
   runtimeExecutionGovernanceBoundaryReadinessChecklist: ReturnType<typeof serializeChecklist>;
+  runtimeExecutionGovernanceBoundaryViolationReport: ReturnType<typeof serializeViolationReport>;
+  runtimeExecutionGovernanceBoundaryReadinessVerificationReport: ReturnType<typeof serializeReadinessVerification>;
+  runtimeExecutionGovernanceBoundaryAlignmentReport: ReturnType<typeof serializeAlignmentReport>;
+  runtimeExecutionGovernanceBoundaryFinalSafetyGate: ReturnType<typeof serializeFinalSafetyGate>;
 }> {
   return {
     runtimeExecutionGovernanceBoundarySummary: serializeSummary(reports.runtimeExecutionGovernanceBoundarySummary),
@@ -156,6 +246,18 @@ export function serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromS
     ),
     runtimeExecutionGovernanceBoundaryReadinessChecklist: serializeChecklist(
       reports.runtimeExecutionGovernanceBoundaryReadinessChecklist
+    ),
+    runtimeExecutionGovernanceBoundaryViolationReport: serializeViolationReport(
+      reports.runtimeExecutionGovernanceBoundaryViolationReport
+    ),
+    runtimeExecutionGovernanceBoundaryReadinessVerificationReport: serializeReadinessVerification(
+      reports.runtimeExecutionGovernanceBoundaryReadinessVerificationReport
+    ),
+    runtimeExecutionGovernanceBoundaryAlignmentReport: serializeAlignmentReport(
+      reports.runtimeExecutionGovernanceBoundaryAlignmentReport
+    ),
+    runtimeExecutionGovernanceBoundaryFinalSafetyGate: serializeFinalSafetyGate(
+      reports.runtimeExecutionGovernanceBoundaryFinalSafetyGate
     ),
   };
 }
