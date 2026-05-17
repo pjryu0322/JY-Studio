@@ -614,6 +614,40 @@ function omitFinalReleaseGovernanceGateLayerOnly<T extends RuntimeSemanticPlanni
   return rest;
 }
 
+function omitUltimateGovernanceReviewLayerOnly<T extends RuntimeSemanticPlanningReports>(
+  semantic: T
+): Omit<
+  T,
+  | "runtimeUltimateGovernanceReviewSummary"
+  | "runtimeFinalOrchestrationReadinessBoundary"
+  | "runtimeOrchestrationReadinessInputEnvelope"
+  | "runtimeOrchestrationReadinessOutputEnvelope"
+  | "runtimeUltimateNoEnforcementProof"
+  | "runtimeOrchestrationForbiddenProof"
+  | "runtimeUltimateGovernanceBlockerReport"
+  | "runtimeFinalOrchestrationReadinessChecklist"
+> {
+  const {
+    runtimeUltimateGovernanceReviewSummary: _u1,
+    runtimeFinalOrchestrationReadinessBoundary: _u2,
+    runtimeOrchestrationReadinessInputEnvelope: _u3,
+    runtimeOrchestrationReadinessOutputEnvelope: _u4,
+    runtimeUltimateNoEnforcementProof: _u5,
+    runtimeOrchestrationForbiddenProof: _u6,
+    runtimeUltimateGovernanceBlockerReport: _u7,
+    runtimeFinalOrchestrationReadinessChecklist: _u8,
+    ...rest
+  } = semantic;
+  return rest;
+}
+
+/** H40 ultimate governance review reports 제거 — H40 단독 테스트용. */
+export function stripRuntimeUltimateGovernanceReviewLayer(
+  semantic: RuntimeSemanticPlanningReports
+): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeUltimateGovernanceReview {
+  return omitUltimateGovernanceReviewLayerOnly(semantic);
+}
+
 /** H39 final release governance gate reports 제거 — H39 단독 테스트용. */
 export function stripRuntimeFinalReleaseGovernanceGateLayer(
   semantic: RuntimeSemanticPlanningReports
@@ -638,7 +672,8 @@ function omitGovernanceReleaseReadinessLayerOnly<T extends RuntimeSemanticPlanni
   | "runtimeGovernanceReleaseReadinessAlignmentReport"
   | "runtimeGovernanceReleaseReadinessFinalSafetyGate"
 > {
-  const withoutH39 = omitFinalReleaseGovernanceGateLayerOnly(semantic);
+  const withoutH40 = omitUltimateGovernanceReviewLayerOnly(semantic);
+  const withoutH39 = omitFinalReleaseGovernanceGateLayerOnly(withoutH40);
   const {
     runtimeGovernanceReleaseReadinessSummary: _gr1,
     runtimeGovernanceReleaseReadinessBoundary: _gr2,

@@ -913,6 +913,20 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateAlignmentReport,
       runtimeFinalReleaseGovernanceGateFinalSafetyGate:
         runtimeSemanticDiag.runtimeFinalReleaseGovernanceGateFinalSafetyGate,
+      runtimeUltimateGovernanceReviewSummary:
+        runtimeSemanticDiag.runtimeUltimateGovernanceReviewSummary,
+      runtimeFinalOrchestrationReadinessBoundary:
+        runtimeSemanticDiag.runtimeFinalOrchestrationReadinessBoundary,
+      runtimeOrchestrationReadinessInputEnvelope:
+        runtimeSemanticDiag.runtimeOrchestrationReadinessInputEnvelope,
+      runtimeOrchestrationReadinessOutputEnvelope:
+        runtimeSemanticDiag.runtimeOrchestrationReadinessOutputEnvelope,
+      runtimeUltimateNoEnforcementProof: runtimeSemanticDiag.runtimeUltimateNoEnforcementProof,
+      runtimeOrchestrationForbiddenProof: runtimeSemanticDiag.runtimeOrchestrationForbiddenProof,
+      runtimeUltimateGovernanceBlockerReport:
+        runtimeSemanticDiag.runtimeUltimateGovernanceBlockerReport,
+      runtimeFinalOrchestrationReadinessChecklist:
+        runtimeSemanticDiag.runtimeFinalOrchestrationReadinessChecklist,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

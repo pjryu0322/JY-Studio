@@ -64,7 +64,8 @@ export type OverlaySectionKind =
   | "runtime_planning_runtime_execution_boundary_shell"
   | "runtime_planning_runtime_execution_governance_boundary"
   | "runtime_planning_runtime_governance_release_readiness"
-  | "runtime_planning_runtime_final_release_governance_gate";
+  | "runtime_planning_runtime_final_release_governance_gate"
+  | "runtime_planning_runtime_ultimate_governance_review";
 
 export function resolveOverlaySectionPriority(section: OverlaySectionKind): OverlaySectionPriority {
   switch (section) {
@@ -114,6 +115,7 @@ export function resolveOverlaySectionPriority(section: OverlaySectionKind): Over
     case "runtime_planning_runtime_execution_governance_boundary":
     case "runtime_planning_runtime_governance_release_readiness":
     case "runtime_planning_runtime_final_release_governance_gate":
+    case "runtime_planning_runtime_ultimate_governance_review":
       return "important";
     case "context":
     case "budget":

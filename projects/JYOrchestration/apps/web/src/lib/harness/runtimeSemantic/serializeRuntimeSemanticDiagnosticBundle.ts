@@ -65,6 +65,7 @@ import { serializeRuntimeExecutionBoundaryShellDiagnosticBundleFromSemanticRepor
 import { serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeExecutionGovernanceBoundary/serializeRuntimeExecutionGovernanceBoundaryDiagnosticBundle";
 import { serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeGovernanceReleaseReadiness/serializeRuntimeGovernanceReleaseReadinessDiagnosticBundle";
 import { serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeFinalReleaseGovernanceGate/serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundle";
+import { serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeUltimateGovernanceReview/serializeRuntimeUltimateGovernanceReviewDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
   typeof serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports
@@ -134,6 +135,9 @@ type SerializedRuntimeGovernanceReleaseReadinessDiag = ReturnType<
 >;
 type SerializedRuntimeFinalReleaseGovernanceGateDiag = ReturnType<
   typeof serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports
+>;
+type SerializedRuntimeUltimateGovernanceReviewDiag = ReturnType<
+  typeof serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -342,6 +346,14 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeFinalReleaseGovernanceGateVerificationReport: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateVerificationReport"];
   runtimeFinalReleaseGovernanceGateAlignmentReport: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateAlignmentReport"];
   runtimeFinalReleaseGovernanceGateFinalSafetyGate: SerializedRuntimeFinalReleaseGovernanceGateDiag["runtimeFinalReleaseGovernanceGateFinalSafetyGate"];
+  runtimeUltimateGovernanceReviewSummary: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateGovernanceReviewSummary"];
+  runtimeFinalOrchestrationReadinessBoundary: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeFinalOrchestrationReadinessBoundary"];
+  runtimeOrchestrationReadinessInputEnvelope: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeOrchestrationReadinessInputEnvelope"];
+  runtimeOrchestrationReadinessOutputEnvelope: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeOrchestrationReadinessOutputEnvelope"];
+  runtimeUltimateNoEnforcementProof: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateNoEnforcementProof"];
+  runtimeOrchestrationForbiddenProof: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeOrchestrationForbiddenProof"];
+  runtimeUltimateGovernanceBlockerReport: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeUltimateGovernanceBlockerReport"];
+  runtimeFinalOrchestrationReadinessChecklist: SerializedRuntimeUltimateGovernanceReviewDiag["runtimeFinalOrchestrationReadinessChecklist"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -373,6 +385,8 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimeGovernanceReleaseReadinessDiagnosticBundleFromSemanticReports(reports);
   const finalReleaseGovernanceGateDiag =
     serializeRuntimeFinalReleaseGovernanceGateDiagnosticBundleFromSemanticReports(reports);
+  const ultimateGovernanceReviewDiag =
+    serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -462,6 +476,7 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...executionGovernanceBoundaryDiag,
     ...governanceReleaseReadinessDiag,
     ...finalReleaseGovernanceGateDiag,
+    ...ultimateGovernanceReviewDiag,
   };
 }
 

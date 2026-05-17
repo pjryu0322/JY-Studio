@@ -170,6 +170,10 @@ import {
   buildOverlayRuntimeFinalReleaseGovernanceGateSectionVmFromReports,
   type OverlayRuntimeFinalReleaseGovernanceGateSectionVM,
 } from "./overlayRuntimeFinalReleaseGovernanceGateSectionVm";
+import {
+  buildOverlayRuntimeUltimateGovernanceReviewSectionVmFromReports,
+  type OverlayRuntimeUltimateGovernanceReviewSectionVM,
+} from "./overlayRuntimeUltimateGovernanceReviewSectionVm";
 import type { OverlayRuntimeTraceabilitySectionVM } from "./overlayRuntimeTraceabilityAdapter";
 import type { OverlayRuntimeDependencyGraphSectionVM } from "./overlayRuntimeDependencyAdapter";
 import type { OverlayRuntimeCoherenceSectionVM } from "./overlayRuntimeCoherenceAdapter";
@@ -221,6 +225,7 @@ export type OverlayRuntimePlanningSectionVms = Readonly<{
   runtimeExecutionGovernanceBoundaryVm: OverlayRuntimeExecutionGovernanceBoundarySectionVM;
   runtimeGovernanceReleaseReadinessVm: OverlayRuntimeGovernanceReleaseReadinessSectionVM;
   runtimeFinalReleaseGovernanceGateVm: OverlayRuntimeFinalReleaseGovernanceGateSectionVM;
+  runtimeUltimateGovernanceReviewVm: OverlayRuntimeUltimateGovernanceReviewSectionVM;
 }>;
 
 export function buildOverlayRuntimePlanningSectionVms(input: {
@@ -492,6 +497,12 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
       compactAndNarrowUi: input.compactAndNarrowUi,
     }
   );
+  const runtimeUltimateGovernanceReviewVm = buildOverlayRuntimeUltimateGovernanceReviewSectionVmFromReports(
+    semanticReports,
+    {
+      compactAndNarrowUi: input.compactAndNarrowUi,
+    }
+  );
 
   const governanceUnstable =
     governanceCtx.governance.governanceRisk === "high" || governanceCtx.governance.governanceRisk === "medium";
@@ -597,5 +608,6 @@ export function buildOverlayRuntimePlanningSectionVms(input: {
     runtimeExecutionGovernanceBoundaryVm,
     runtimeGovernanceReleaseReadinessVm,
     runtimeFinalReleaseGovernanceGateVm,
+    runtimeUltimateGovernanceReviewVm,
   };
 }

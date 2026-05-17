@@ -257,6 +257,8 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimeGovernanceReleaseReadiness: boolean;
   /** Harness Phase H39 — Final release governance gate candidate(기본 접힘; blocker 시 펼침). */
   runtimePlanningRuntimeFinalReleaseGovernanceGate: boolean;
+  /** H40 ultimate governance review·final orchestration readiness boundary. */
+  runtimePlanningRuntimeUltimateGovernanceReview: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -556,6 +558,7 @@ function buildSectionDefaults(
     runtimePlanningRuntimeExecutionGovernanceBoundary: false,
     runtimePlanningRuntimeGovernanceReleaseReadiness: false,
     runtimePlanningRuntimeFinalReleaseGovernanceGate: false,
+    runtimePlanningRuntimeUltimateGovernanceReview: false,
   };
 }
 
