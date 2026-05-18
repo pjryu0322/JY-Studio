@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { parseOpenPrStatus, parsePrStatusForTeamRuntime } from "@/lib/ai-team-runtime/prStatusParse";
+import { canResumeTeamRuntimeMerge } from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import {
   assertTeamExecutionTransition,
@@ -27,7 +29,13 @@ describe("ai-team-runtime transitions", () => {
       )
     ).toBe(true);
     expect(
-      canTeamExecutionTransition(AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING, AI_TEAM_EXECUTION_STATUS.COMPLETED)
+      canTeamExecutionTransition(
+        AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+        AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING
+      )
+    ).toBe(true);
+    expect(
+      canTeamExecutionTransition(AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING, AI_TEAM_EXECUTION_STATUS.COMPLETED)
     ).toBe(true);
   });
 
@@ -52,6 +60,12 @@ describe("ai-team-runtime transitions", () => {
     ).toBe(false);
     expect(
       canTeamExecutionTransition(
+        AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+        AI_TEAM_EXECUTION_STATUS.COMPLETED
+      )
+    ).toBe(false);
+    expect(
+      canTeamExecutionTransition(
         AI_TEAM_EXECUTION_STATUS.REQUESTED,
         "not_a_real_status" as typeof AI_TEAM_EXECUTION_STATUS.REQUESTED
       )
@@ -62,5 +76,49 @@ describe("ai-team-runtime transitions", () => {
     expect(() =>
       assertTeamExecutionTransition(AI_TEAM_EXECUTION_STATUS.DEVELOPER_RUNNING, AI_TEAM_EXECUTION_STATUS.COMPLETED)
     ).toThrow(/invalid_transition/);
+  });
+});
+
+describe("ai-team-runtime fourth fix helpers", () => {
+  it("parseOpenPrStatus extracts url and number", () => {
+    const open = parseOpenPrStatus("open:13:https://github.com/a/b/pull/13");
+    expect(open?.pullRequestNumber).toBe(13);
+    expect(open?.pullRequestUrl).toBe("https://github.com/a/b/pull/13");
+    expect(parsePrStatusForTeamRuntime("merged")?.pullRequestState).toBe("MERGED");
+  });
+
+  it("canResumeTeamRuntimeMerge requires merge_pending and merge_running", () => {
+    expect(
+      canResumeTeamRuntimeMerge({
+        singleTaskId: "task1",
+        isEnvTestTask: false,
+        workflowStatus: "merge_pending",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
+      })
+    ).toBe(true);
+    expect(
+      canResumeTeamRuntimeMerge({
+        singleTaskId: "task1",
+        isEnvTestTask: false,
+        workflowStatus: "merge_pending",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+      })
+    ).toBe(false);
+    expect(
+      canResumeTeamRuntimeMerge({
+        singleTaskId: "task1",
+        isEnvTestTask: true,
+        workflowStatus: "merge_pending",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
+      })
+    ).toBe(false);
+    expect(
+      canResumeTeamRuntimeMerge({
+        singleTaskId: null,
+        isEnvTestTask: false,
+        workflowStatus: "merge_pending",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
+      })
+    ).toBe(false);
   });
 });

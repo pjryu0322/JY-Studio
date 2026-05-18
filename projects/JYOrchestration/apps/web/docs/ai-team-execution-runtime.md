@@ -35,7 +35,9 @@ See `apps/web/src/lib/ai-team-runtime/status.ts` — `requested` through `comple
 
 Reuses `ExecutionSetup.requireApprovalBeforeApply`. When true, review/security pass sets `approval_waiting` and **stops** the loop (`AWAITING_HUMAN`) before SCM/merge.
 
-Resume: `POST /api/task/control` with `action: workflow-approve-ai-team-runtime`, then re-run execution-loop for the same Task (`singleTaskId`) to enter SCM merge (`merge_running`).
+Resume: `POST /api/task/control` with `action: workflow-approve-ai-team-runtime` (or **AI팀 Runtime 승인** in latest-run panel), then re-run execution-loop for the same Task (`singleTaskId`) when `merge_pending` + `merge_running`.
+
+SCM reuses existing PR from `prStatus` (`open:N:url`) or `findOpenPullRequestByHeadBranch` before creating a new PR.
 
 ## PR detection (normal Task)
 

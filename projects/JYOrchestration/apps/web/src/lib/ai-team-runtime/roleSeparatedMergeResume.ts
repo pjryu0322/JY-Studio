@@ -51,3 +51,18 @@ export function buildEvalPackFromExecutionRun(run: ExecutionRunResumeRow): Reado
 export function isMergeRunningResumeStatus(teamExecutionStatus: string | null | undefined): boolean {
   return teamExecutionStatus?.trim() === AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING;
 }
+
+/** Single-task execution may resume SCM when user approved AI team runtime (merge_running + merge_pending). */
+export function canResumeTeamRuntimeMerge(input: Readonly<{
+  singleTaskId?: string | null;
+  isEnvTestTask: boolean;
+  workflowStatus?: string | null;
+  teamExecutionStatus?: string | null;
+}>): boolean {
+  return (
+    Boolean(input.singleTaskId?.trim()) &&
+    !input.isEnvTestTask &&
+    input.workflowStatus === "merge_pending" &&
+    input.teamExecutionStatus === AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING
+  );
+}

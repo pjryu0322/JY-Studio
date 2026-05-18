@@ -1,5 +1,24 @@
 import type { TeamRuntimeSummary } from "./serialize";
 
+export type OpenPrFromStatus = Readonly<{
+  pullRequestNumber: number | null;
+  pullRequestUrl: string | null;
+}>;
+
+/** Parse `open:<number>:<url>` from `TaskExecutionRun.prStatus` for SCM merge reuse. */
+export function parseOpenPrStatus(
+  prStatus: string | null | undefined
+): OpenPrFromStatus | null {
+  const parsed = parsePrStatusForTeamRuntime(prStatus);
+  if (!parsed || parsed.pullRequestState !== "OPEN" || !parsed.pullRequestUrl) {
+    return null;
+  }
+  return {
+    pullRequestNumber: parsed.pullRequestNumber ?? null,
+    pullRequestUrl: parsed.pullRequestUrl,
+  };
+}
+
 /** Parse `TaskExecutionRun.prStatus` without new DB columns. */
 export function parsePrStatusForTeamRuntime(
   prStatus: string | null | undefined

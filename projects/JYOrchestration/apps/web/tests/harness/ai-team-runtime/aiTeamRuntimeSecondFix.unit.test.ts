@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePrStatusForTeamRuntime } from "@/lib/ai-team-runtime/prStatusParse";
+import { parseOpenPrStatus, parsePrStatusForTeamRuntime } from "@/lib/ai-team-runtime/prStatusParse";
+import { canResumeTeamRuntimeMerge } from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
 import { buildTeamRuntimeSummaryFromRun } from "@/lib/ai-team-runtime/serialize";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import { canTeamExecutionTransition } from "@/lib/ai-team-runtime/transition";
@@ -35,7 +36,13 @@ describe("ai-team-runtime second fix", () => {
     ).toBe(true);
   });
 
-  it("allows approval_waiting to merge_running only after explicit approval path", () => {
+  it("forbids approval_waiting to completed shortcut", () => {
+    expect(
+      canTeamExecutionTransition(
+        AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+        AI_TEAM_EXECUTION_STATUS.COMPLETED
+      )
+    ).toBe(false);
     expect(
       canTeamExecutionTransition(
         AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
@@ -43,11 +50,23 @@ describe("ai-team-runtime second fix", () => {
       )
     ).toBe(true);
     expect(
-      canTeamExecutionTransition(
-        AI_TEAM_EXECUTION_STATUS.REVIEW_RUNNING,
-        AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING
-      )
-    ).toBe(false);
+      canTeamExecutionTransition(AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING, AI_TEAM_EXECUTION_STATUS.COMPLETED)
+    ).toBe(true);
+  });
+
+  it("parseOpenPrStatus for SCM reuse", () => {
+    expect(parseOpenPrStatus("open:13:https://github.com/a/b/pull/13")?.pullRequestNumber).toBe(13);
+  });
+
+  it("canResumeTeamRuntimeMerge guards", () => {
+    expect(
+      canResumeTeamRuntimeMerge({
+        singleTaskId: "t1",
+        isEnvTestTask: false,
+        workflowStatus: "merge_pending",
+        teamExecutionStatus: "merge_running",
+      })
+    ).toBe(true);
   });
 
   it("maps merged prStatus", () => {

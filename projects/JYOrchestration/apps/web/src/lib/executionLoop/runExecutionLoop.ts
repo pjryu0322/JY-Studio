@@ -54,8 +54,10 @@ import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
 import {
   buildCursorResultFromExecutionRun,
   buildEvalPackFromExecutionRun,
+  canResumeTeamRuntimeMerge,
   isMergeRunningResumeStatus,
 } from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
+import { formatOpenPrStatusValue, resolvePrForScmMerge } from "@/lib/ai-team-runtime/scmPrResolve";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import {
   applyTeamRuntimeAfterReviewHarness,
@@ -384,18 +386,29 @@ export async function runExecutionLoop(params: {
           return { ok: false, steps, message: "지정한 Task를 찾을 수 없거나 TODO가 아닙니다." };
         }
         const forcedWf = forced.executionWorkflowStatus;
+        const latestRunForForced = await prisma.taskExecutionRun.findFirst({
+          where: { projectId, taskId: forced.id, archivedAt: null },
+          orderBy: { createdAt: "desc" },
+        });
+        const latestTeamStatusForForced = latestRunForForced
+          ? await readTeamExecutionStatus(latestRunForForced.id)
+          : null;
+        const canResumeAiTeamMerge = canResumeTeamRuntimeMerge({
+          singleTaskId,
+          isEnvTestTask: isEnvTestFamilyTaskKind(forced.taskKind),
+          workflowStatus: forcedWf,
+          teamExecutionStatus: latestTeamStatusForForced,
+        });
         const forcedResumable =
           forcedWf === EXECUTION_WORKFLOW.READY ||
           forcedWf === EXECUTION_WORKFLOW.PENDING_APPLY ||
-          forcedWf === EXECUTION_WORKFLOW.MERGE_PENDING ||
-          forcedWf === EXECUTION_WORKFLOW.REVIEW_APPROVED ||
-          forcedWf === EXECUTION_WORKFLOW.AWAITING_HUMAN;
+          canResumeAiTeamMerge;
         if (!forcedResumable) {
           return {
             ok: false,
             steps,
             message:
-              "지정한 Task가 ready, pending_apply, merge 대기, review 승인, 또는 승인 대기 상태가 아닙니다.",
+              "지정한 Task가 ready, pending_apply, 또는 승인 후 merge 재개(merge_pending+merge_running) 상태가 아닙니다.",
           };
         }
         next = forced;
@@ -552,6 +565,30 @@ export async function runExecutionLoop(params: {
         orderBy: { createdAt: "desc" },
       });
       let resumeScmAfterApproval = false;
+      let mergeResumeExecRun: typeof existingActiveRun = null;
+      if (singleTaskId && !isEnvTestTask) {
+        const wfRow = await prisma.task.findUnique({
+          where: { id: taskId },
+          select: { executionWorkflowStatus: true },
+        });
+        const latestRun = await prisma.taskExecutionRun.findFirst({
+          where: { projectId, taskId, archivedAt: null },
+          orderBy: { createdAt: "desc" },
+        });
+        const latestTeamStatus = latestRun ? await readTeamExecutionStatus(latestRun.id) : null;
+        if (
+          canResumeTeamRuntimeMerge({
+            singleTaskId,
+            isEnvTestTask: false,
+            workflowStatus: wfRow?.executionWorkflowStatus,
+            teamExecutionStatus: latestTeamStatus,
+          })
+        ) {
+          resumeScmAfterApproval = true;
+          mergeResumeExecRun = latestRun;
+        }
+      }
+
       if (existingActiveRun) {
         const existingTeamStatus =
           !isEnvTestTask ? await readTeamExecutionStatus(existingActiveRun.id) : null;
@@ -570,10 +607,13 @@ export async function runExecutionLoop(params: {
         if (
           singleTaskId &&
           !isEnvTestTask &&
-          isMergeRunningResumeStatus(existingTeamStatus)
+          (resumeScmAfterApproval || isMergeRunningResumeStatus(existingTeamStatus))
         ) {
           resumeScmAfterApproval = true;
-        } else {
+          if (!mergeResumeExecRun) {
+            mergeResumeExecRun = existingActiveRun;
+          }
+        } else if (!resumeScmAfterApproval) {
           appendTaskProgressLog({
             kind: "execution",
             phase: "repick_blocked_existing_active_run",
@@ -605,9 +645,10 @@ export async function runExecutionLoop(params: {
         }
       }
 
-      const execRun = resumeScmAfterApproval && existingActiveRun
-        ? existingActiveRun
-        : await prisma.taskExecutionRun.create({
+      const execRun =
+        resumeScmAfterApproval && (mergeResumeExecRun ?? existingActiveRun)
+          ? (mergeResumeExecRun ?? existingActiveRun)!
+          : await prisma.taskExecutionRun.create({
         data: {
           projectId,
           taskId,
@@ -1567,6 +1608,7 @@ export async function runExecutionLoop(params: {
           },
         });
       }
+      const prDetectedForLog = Boolean(prUrl && prNumber != null);
       appendTaskProgressLog({
         kind: "execution",
         phase: "review_pending",
@@ -1579,7 +1621,9 @@ export async function runExecutionLoop(params: {
           changedFileCount: gitEvidence?.changedFiles.length ?? null,
           compareOk: compare.ok,
           compareError: compare.ok ? null : `${compare.code}:${compare.message}`.slice(0, 400),
-          prDetected: false,
+          prDetected: prDetectedForLog,
+          prUrl: prUrl ?? null,
+          prNumber: prNumber ?? null,
         },
       });
 
@@ -1784,52 +1828,94 @@ export async function runExecutionLoop(params: {
         detail: { branch: cr.branchName },
       });
 
-      const prCreate = await createGithubPullRequestFromBranch({
+      let prForMerge = await resolvePrForScmMerge({
+        execRunPrStatus: execRun.prStatus,
         repoUrl,
-        baseBranch: setup.baseBranch,
         headBranch: cr.branchName,
-        title: `[auto] ${taskRow.name}`.slice(0, 240),
-        body: `Automated by JYOrchestration SCM Manager.\n\nTask: ${taskId}\nBranch: ${cr.branchName}\n\nReviewer: approved\n\nSummary:\n${evalPack.result.reason}`.slice(0, 6000),
         githubAccessToken: setup.githubAccessToken ?? null,
         projectId,
       });
-      if (!prCreate.ok) {
+
+      if (prForMerge) {
         await prisma.taskExecutionRun.update({
           where: { id: execRun.id },
-          data: { prStatus: `pr_create_failed:${prCreate.code}`.slice(0, 80) },
+          data: {
+            prStatus: formatOpenPrStatusValue(prForMerge).slice(0, 500),
+            pushStatus: "pr_opened",
+          },
         });
-        await prisma.task.update({
-          where: { id: taskId },
-          data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: prCreate.message },
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "pr_reused",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            prUrl: prForMerge.pullRequestUrl,
+            prNumber: prForMerge.pullRequestNumber,
+            branch: cr.branchName,
+          },
         });
-        await refreshWorkflowStates(projectId);
-        return { ok: false, steps, message: prCreate.message };
-      }
+      } else {
+        const prCreate = await createGithubPullRequestFromBranch({
+          repoUrl,
+          baseBranch: setup.baseBranch,
+          headBranch: cr.branchName,
+          title: `[auto] ${taskRow.name}`.slice(0, 240),
+          body: `Automated by JYOrchestration SCM Manager.\n\nTask: ${taskId}\nBranch: ${cr.branchName}\n\nReviewer: approved\n\nSummary:\n${evalPack.result.reason}`.slice(0, 6000),
+          githubAccessToken: setup.githubAccessToken ?? null,
+          projectId,
+        });
+        if (!prCreate.ok) {
+          await prisma.taskExecutionRun.update({
+            where: { id: execRun.id },
+            data: { prStatus: `pr_create_failed:${prCreate.code}`.slice(0, 80) },
+          });
+          await prisma.task.update({
+            where: { id: taskId },
+            data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: prCreate.message },
+          });
+          await refreshWorkflowStates(projectId);
+          return { ok: false, steps, message: prCreate.message };
+        }
 
-      await prisma.taskExecutionRun.update({
-        where: { id: execRun.id },
-        data: { prStatus: "open", pushStatus: "pushed_by_cursor" },
-      });
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "pr_created",
-        projectId,
-        taskId,
-        userId: actorUserId,
-        detail: { prUrl: prCreate.data.pullRequestUrl, prNumber: prCreate.data.pullRequestNumber },
-      });
+        prForMerge = {
+          pullRequestUrl: prCreate.data.pullRequestUrl,
+          pullRequestNumber: prCreate.data.pullRequestNumber,
+        };
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            prStatus: formatOpenPrStatusValue(prForMerge).slice(0, 500),
+            pushStatus: "pushed_by_cursor",
+          },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "pr_created",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { prUrl: prForMerge.pullRequestUrl, prNumber: prForMerge.pullRequestNumber },
+        });
+      }
 
       if (!isAutoMergeEnabled()) {
         await prisma.task.update({
           where: { id: taskId },
-          data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: "PR 생성 완료. 자동 merge 비활성화." },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
+            lastEvalSummary: prForMerge
+              ? "PR 준비 완료. 자동 merge 비활성화."
+              : "PR 생성 완료. 자동 merge 비활성화.",
+          },
         });
         await refreshWorkflowStates(projectId);
-        return { ok: true, steps, message: "PR created; merge pending" };
+        return { ok: true, steps, message: "PR ready; merge pending" };
       }
 
       const mr = await autoMergePullRequest({
-        prUrl: prCreate.data.pullRequestUrl,
+        prUrl: prForMerge.pullRequestUrl,
         githubAccessToken: setup.githubAccessToken ?? null,
         commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240),
       });
@@ -1848,7 +1934,13 @@ export async function runExecutionLoop(params: {
           projectId,
           taskId,
           userId: actorUserId,
-          detail: { prUrl: prCreate.data.pullRequestUrl, code: mr.code, message: mr.message, httpStatus: mr.httpStatus, ...(mr.detail ?? {}) },
+          detail: {
+            prUrl: prForMerge.pullRequestUrl,
+            code: mr.code,
+            message: mr.message,
+            httpStatus: mr.httpStatus,
+            ...(mr.detail ?? {}),
+          },
         });
         await refreshWorkflowStates(projectId);
         return { ok: false, steps, message: mr.message };
@@ -1871,7 +1963,7 @@ export async function runExecutionLoop(params: {
         projectId,
         taskId,
         userId: actorUserId,
-        detail: { prUrl: prCreate.data.pullRequestUrl },
+        detail: { prUrl: prForMerge.pullRequestUrl },
       });
       await refreshWorkflowStates(projectId);
 
