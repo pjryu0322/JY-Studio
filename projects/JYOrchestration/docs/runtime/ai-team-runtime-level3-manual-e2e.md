@@ -12,7 +12,7 @@
 
 | 명령 | 결과 | 비고 |
 |---|---|---|
-| `npx tsc --noEmit` | PASS | main @ `accd2b0f` |
+| `npx tsc --noEmit` | PASS | main @ `32af299a` |
 | `aiTeamRuntimeTimeline.unit.test.ts` | PASS | 14 tests |
 | `aiTeamApiTeamRuntime.unit.test.ts` | PASS | 3 tests |
 | `tests/harness/ai-team-runtime/` | PASS | 27 tests |

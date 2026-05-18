@@ -2,8 +2,10 @@ import type { TaskExecutionRun } from "@prisma/client";
 
 import {
   buildTeamRuntimeAdditiveFields,
+  loadRequireApprovalBeforeApply,
   type TeamRuntimeTaskContext,
 } from "./apiTeamRuntime";
+import { loadTeamRuntimeTaskContextMap } from "./teamRuntimeTaskContext";
 
 export function toTaskExecutionRunListItem(
   run: TaskExecutionRun,
@@ -40,4 +42,21 @@ export function toTaskExecutionRunListItem(
     updatedAt: run.updatedAt.toISOString(),
     archivedAt: run.archivedAt ? run.archivedAt.toISOString() : null,
   };
+}
+
+export async function mapTaskExecutionRunsToListItems(
+  projectId: string,
+  runs: readonly TaskExecutionRun[]
+) {
+  const [requireApproval, taskById] = await Promise.all([
+    loadRequireApprovalBeforeApply(projectId),
+    loadTeamRuntimeTaskContextMap(
+      projectId,
+      runs.map((run) => run.taskId)
+    ),
+  ]);
+
+  return runs.map((run) =>
+    toTaskExecutionRunListItem(run, requireApproval, taskById.get(run.taskId) ?? null)
+  );
 }

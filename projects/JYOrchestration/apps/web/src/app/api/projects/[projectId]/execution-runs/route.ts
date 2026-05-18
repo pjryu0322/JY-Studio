@@ -3,11 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-import { toTaskExecutionRunListItem } from "@/lib/ai-team-runtime/executionRunListItem";
-import {
-  loadRequireApprovalBeforeApply,
-  loadTeamRuntimeTaskContextMap,
-} from "@/lib/ai-team-runtime/apiTeamRuntime";
+import { mapTaskExecutionRunsToListItems } from "@/lib/ai-team-runtime/executionRunListItem";
 
 export async function GET(
   request: NextRequest,
@@ -40,19 +36,9 @@ export async function GET(
       take,
     });
 
-    const [requireApproval, taskById] = await Promise.all([
-      loadRequireApprovalBeforeApply(pid),
-      loadTeamRuntimeTaskContextMap(
-        pid,
-        rows.map((r) => r.taskId)
-      ),
-    ]);
-
     return NextResponse.json({
       success: true,
-      data: rows.map((r) =>
-        toTaskExecutionRunListItem(r, requireApproval, taskById.get(r.taskId) ?? null)
-      ),
+      data: await mapTaskExecutionRunsToListItems(pid, rows),
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
