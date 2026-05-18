@@ -55,7 +55,7 @@
 
 ## 다음 작업
 
-1. Level 3 Runtime Manual E2E (post-merge 검증 문서: `ai-team-runtime-level3-timeline-post-merge.md`)
+1. Level 3 Runtime Manual E2E live (`ai-team-runtime-level3-manual-e2e.md` — 자동/소스 검증 완료)
 2. Role Run 분리 설계
 3. Retry / Cancel / Resume 정책 설계
 4. Queue/Worker 구조
