@@ -55,9 +55,8 @@
 
 ## 다음 작업
 
-1. PR #14 병합 및 main 기준 Timeline post-merge 검증
-2. 수동 E2E (approval → merge resume, ENV_TEST 회귀 없음 확인)
-3. Role Run 분리 설계
-4. Retry / Cancel / Resume 정책 설계
-5. Queue/Worker 구조
-6. Runtime Timeline UI — TaskHistory 이벤트 병합
+1. Level 3 Runtime Manual E2E (post-merge 검증 문서: `ai-team-runtime-level3-timeline-post-merge.md`)
+2. Role Run 분리 설계
+3. Retry / Cancel / Resume 정책 설계
+4. Queue/Worker 구조
+5. Runtime Timeline UI — TaskHistory 이벤트 병합
