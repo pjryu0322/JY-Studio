@@ -91,7 +91,6 @@ export function AiTeamRuntimeTimelineList({
               borderBottom: "1px solid #f1f5f9",
             }}
           >
-            
             <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
               <span style={timelineStatusBadgeStyle(item.status)}>{timelineStatusLabel(item.status)}</span>
               {item.titleKo}

@@ -6,6 +6,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import {
   buildTeamRuntimeAdditiveFields,
   loadRequireApprovalBeforeApply,
+  loadTeamRuntimeTaskContextMap,
 } from "@/lib/ai-team-runtime/apiTeamRuntime";
 
 export async function GET(
@@ -41,20 +42,10 @@ export async function GET(
 
     const requireApproval = await loadRequireApprovalBeforeApply(pid);
 
-    const taskIds = Array.from(new Set(rows.map((r) => r.taskId).filter(Boolean)));
-    const taskRows =
-      taskIds.length > 0
-        ? await prisma.task.findMany({
-            where: { projectId: pid, id: { in: taskIds } },
-            select: {
-              id: true,
-              executionWorkflowStatus: true,
-              lastEvalResult: true,
-              lastEvalSummary: true,
-            },
-          })
-        : [];
-    const taskById = new Map(taskRows.map((t) => [t.id, t]));
+    const taskById = await loadTeamRuntimeTaskContextMap(
+      pid,
+      rows.map((r) => r.taskId)
+    );
 
     return NextResponse.json({
       success: true,

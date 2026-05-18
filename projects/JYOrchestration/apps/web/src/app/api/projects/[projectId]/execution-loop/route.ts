@@ -11,6 +11,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import {
   buildTeamRuntimeAdditiveFields,
   loadRequireApprovalBeforeApply,
+  loadTeamRuntimeTaskContext,
 } from "@/lib/ai-team-runtime/apiTeamRuntime";
 import { prisma } from "@/lib/prisma";
 
@@ -109,16 +110,7 @@ export async function POST(
       orderBy: { createdAt: "desc" },
     });
     const requireApproval = await loadRequireApprovalBeforeApply(pid);
-    const taskContext = latestRun?.taskId
-      ? await prisma.task.findFirst({
-          where: { id: latestRun.taskId, projectId: pid },
-          select: {
-            executionWorkflowStatus: true,
-            lastEvalResult: true,
-            lastEvalSummary: true,
-          },
-        })
-      : null;
+    const taskContext = await loadTeamRuntimeTaskContext(pid, latestRun?.taskId);
     const teamRuntime = latestRun
       ? buildTeamRuntimeAdditiveFields(latestRun, requireApproval, taskContext).teamRuntime
       : null;
