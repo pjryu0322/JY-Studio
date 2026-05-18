@@ -662,6 +662,10 @@ function omitPilotValidationReadOnlyChainLayerOnly<T extends RuntimeSemanticPlan
   | "runtimePilotValidationOperatorApprovalSnapshot"
   | "runtimePilotValidationAuditTraceCandidate"
   | "runtimePilotValidationRollbackPlanCandidate"
+  | "runtimeSafeEchoInvocationSimulatorSummary"
+  | "runtimeSafeEchoInvocationSimulatorInput"
+  | "runtimeSafeEchoInvocationSimulatorOutput"
+  | "runtimeSafeEchoInvocationSimulatorBoundary"
 > {
   const {
     runtimePilotValidationReadOnlyChainSummary: _pv0,
@@ -673,6 +677,10 @@ function omitPilotValidationReadOnlyChainLayerOnly<T extends RuntimeSemanticPlan
     runtimePilotValidationOperatorApprovalSnapshot: _pv6,
     runtimePilotValidationAuditTraceCandidate: _pv7,
     runtimePilotValidationRollbackPlanCandidate: _pv8,
+    runtimeSafeEchoInvocationSimulatorSummary: _pv9,
+    runtimeSafeEchoInvocationSimulatorInput: _pv10,
+    runtimeSafeEchoInvocationSimulatorOutput: _pv11,
+    runtimeSafeEchoInvocationSimulatorBoundary: _pv12,
     ...rest
   } = semantic;
   return rest;

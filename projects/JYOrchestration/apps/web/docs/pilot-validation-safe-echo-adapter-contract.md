@@ -30,4 +30,4 @@ All contract objects set `actualAdapterInvocationEnabled`, `actualSandboxInvocat
 
 ## Next phase
 
-Phase 4 — Safe Echo Adapter Invocation Simulator Contract (still no actual invocation at first).
+Phase 4 — Safe Echo Adapter Invocation Simulator Contract. See `pilot-validation-safe-echo-simulator-contract.md`.

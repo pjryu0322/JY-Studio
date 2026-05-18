@@ -25,6 +25,15 @@ import type {
   RuntimePilotValidationRollbackPlanCandidateStatus,
 } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftTypes";
 import {
+  PILOT_VALIDATION_SIMULATOR_NO_INVOCATION_NOTICE_KO,
+  RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_MODE_LABEL_KO,
+  RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_STATUS_LABEL_KO,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoInvocationSimulatorLabelsKo";
+import type {
+  RuntimeSafeEchoInvocationSimulatorMode,
+  RuntimeSafeEchoInvocationSimulatorStatus,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoInvocationSimulatorTypes";
+import {
   PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
   PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO,
   PILOT_VALIDATION_USER_EXECUTION_SCOPE_KO,
@@ -51,6 +60,8 @@ export type PilotValidationUserSummaryBuildInput = Readonly<{
   auditTraceCandidateStatus: RuntimePilotValidationAuditTraceCandidateStatus;
   rollbackPlanCandidateStatus: RuntimePilotValidationRollbackPlanCandidateStatus;
   validationRequestIdCandidate: string;
+  simulatorStatus: RuntimeSafeEchoInvocationSimulatorStatus;
+  simulatorMode: RuntimeSafeEchoInvocationSimulatorMode;
 }>;
 
 export type PilotValidationUserSummaryVm = Readonly<{
@@ -77,6 +88,9 @@ export type PilotValidationUserSummaryVm = Readonly<{
   auditTraceCandidateStatusKo: string;
   rollbackPlanCandidateStatusKo: string;
   validationRequestIdCandidateKo: string;
+  simulatorContractStatusKo: string;
+  simulatorModeKo: string;
+  simulatorNoInvocationNoticeKo: string;
 }>;
 
 function actionLabelsForStatus(status: RuntimePilotValidationReadOnlyChainStatus): Readonly<{
@@ -191,6 +205,9 @@ export function buildPilotValidationUserSummaryVmFromInput(
     rollbackPlanCandidateStatusKo:
       RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO[input.rollbackPlanCandidateStatus],
     validationRequestIdCandidateKo: input.validationRequestIdCandidate,
+    simulatorContractStatusKo: RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_STATUS_LABEL_KO[input.simulatorStatus],
+    simulatorModeKo: RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_MODE_LABEL_KO[input.simulatorMode],
+    simulatorNoInvocationNoticeKo: PILOT_VALIDATION_SIMULATOR_NO_INVOCATION_NOTICE_KO,
   };
 }
 
@@ -208,6 +225,7 @@ export function buildPilotValidationUserSummaryVmFromReports(
   const approvalSnapshot = reports.runtimePilotValidationOperatorApprovalSnapshot;
   const auditTrace = reports.runtimePilotValidationAuditTraceCandidate;
   const rollbackPlan = reports.runtimePilotValidationRollbackPlanCandidate;
+  const simulator = reports.runtimeSafeEchoInvocationSimulatorSummary;
 
   return buildPilotValidationUserSummaryVmFromInput({
     validationStatus: summary.validationStatus,
@@ -226,5 +244,7 @@ export function buildPilotValidationUserSummaryVmFromReports(
     auditTraceCandidateStatus: auditTrace.auditTraceStatus,
     rollbackPlanCandidateStatus: rollbackPlan.rollbackPlanStatus,
     validationRequestIdCandidate: draft.validationRequestIdCandidate,
+    simulatorStatus: simulator.simulatorStatus,
+    simulatorMode: simulator.simulatorMode,
   });
 }

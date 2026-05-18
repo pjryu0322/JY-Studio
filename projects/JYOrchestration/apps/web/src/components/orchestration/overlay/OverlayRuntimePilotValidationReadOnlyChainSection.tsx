@@ -81,6 +81,25 @@ export function OverlayRuntimePilotValidationReadOnlyChainSection({
               label="Validation Request ID Candidate"
               value={vm.validationRequestIdCandidate}
             />
+            <OverlayUiKeyValueRow
+              label="Safe Echo Invocation Simulator status"
+              value={vm.simulatorStatusKo}
+            />
+            <OverlayUiKeyValueRow label="Simulator mode" value={vm.simulatorModeKo} />
+            {vm.simulatorTopBlocker ? (
+              <OverlayUiKeyValueRow label="Simulator top blocker" value={vm.simulatorTopBlocker} />
+            ) : null}
+            {!vm.simulatorTopBlocker && vm.simulatorTopWarning ? (
+              <OverlayUiKeyValueRow label="Simulator top warning" value={vm.simulatorTopWarning} />
+            ) : null}
+            {vm.simulatorBoundaryTopForbiddenKo ? (
+              <OverlayUiKeyValueRow
+                label="Simulator boundary top forbidden operation"
+                value={vm.simulatorBoundaryTopForbiddenKo}
+              />
+            ) : null}
+            <OverlayUiKeyValueRow label="Simulator input summary" value={vm.simulatorInputSummaryKo} />
+            <OverlayUiKeyValueRow label="Simulator output summary" value={vm.simulatorOutputSummaryKo} />
             <OverlayRuntimePlanningDetailBlock
               title="Final proof summary"
               rows={vm.finalProofSummaryRows}

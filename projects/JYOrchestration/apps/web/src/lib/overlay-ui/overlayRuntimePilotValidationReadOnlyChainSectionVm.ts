@@ -21,6 +21,10 @@ import {
   RUNTIME_PILOT_VALIDATION_REQUEST_DRAFT_STATUS_LABEL_KO,
   RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO,
 } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftLabelsKo";
+import {
+  RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_MODE_LABEL_KO,
+  RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_STATUS_LABEL_KO,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoInvocationSimulatorLabelsKo";
 import { sliceOverlayRows } from "@/lib/harness/runtimeReleaseGatePreflight/runtimeReleaseGatePreflightCheckHelpers";
 import { buildPilotValidationUserSummaryVmFromReports } from "./pilotValidationUserSummaryVm";
 import type { PilotValidationUserSummaryVm } from "./pilotValidationUserSummaryVm";
@@ -49,6 +53,13 @@ export type OverlayRuntimePilotValidationReadOnlyChainSectionVM = Readonly<{
   auditTraceCandidateStatusKo: string;
   rollbackPlanCandidateStatusKo: string;
   validationRequestIdCandidate: string;
+  simulatorStatusKo: string;
+  simulatorModeKo: string;
+  simulatorTopBlocker: string | null;
+  simulatorTopWarning: string | null;
+  simulatorBoundaryTopForbiddenKo: string | null;
+  simulatorInputSummaryKo: string;
+  simulatorOutputSummaryKo: string;
 }>;
 
 export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromReports(
@@ -63,6 +74,10 @@ export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromRepo
   const boundary = reports.runtimeSandboxDryRunBoundary;
   const inputContract = reports.runtimeSafeEchoAdapterInputContract;
   const outputContract = reports.runtimeSafeEchoAdapterOutputContract;
+  const simulator = reports.runtimeSafeEchoInvocationSimulatorSummary;
+  const simulatorInput = reports.runtimeSafeEchoInvocationSimulatorInput;
+  const simulatorOutput = reports.runtimeSafeEchoInvocationSimulatorOutput;
+  const simulatorBoundary = reports.runtimeSafeEchoInvocationSimulatorBoundary;
 
   const showAttention =
     summary.validationStatus === "watch" ||
@@ -114,5 +129,12 @@ export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromRepo
         reports.runtimePilotValidationRollbackPlanCandidate.rollbackPlanStatus
       ],
     validationRequestIdCandidate: reports.runtimePilotValidationRequestDraft.validationRequestIdCandidate,
+    simulatorStatusKo: RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_STATUS_LABEL_KO[simulator.simulatorStatus],
+    simulatorModeKo: RUNTIME_SAFE_ECHO_INVOCATION_SIMULATOR_MODE_LABEL_KO[simulator.simulatorMode],
+    simulatorTopBlocker: simulator.blockers[0] ?? null,
+    simulatorTopWarning: simulator.warnings[0] ?? null,
+    simulatorBoundaryTopForbiddenKo: simulatorBoundary.forbiddenSimulatorOperations[0] ?? null,
+    simulatorInputSummaryKo: `accepted:${simulatorInput.acceptedInputRows.length}; rejected:${simulatorInput.rejectedInputRows.length}`,
+    simulatorOutputSummaryKo: `expected:${simulatorOutput.expectedSimulationOutputs.length}; prohibited:${simulatorOutput.prohibitedSimulationOutputs.length}`,
   };
 }

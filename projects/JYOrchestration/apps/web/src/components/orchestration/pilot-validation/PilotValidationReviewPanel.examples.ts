@@ -6,6 +6,7 @@ import {
   PILOT_VALIDATION_USER_STATUS_LABEL_KO,
 } from "@/lib/overlay-ui/pilotValidationUserUiLabelsKo";
 import { PILOT_VALIDATION_PROHIBITED_OPERATION_ROWS_KO } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationConstants";
+import { PILOT_VALIDATION_SIMULATOR_NO_INVOCATION_NOTICE_KO } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoInvocationSimulatorLabelsKo";
 
 const baseVm: PilotValidationUserSummaryVm = {
   statusKo: "",
@@ -31,6 +32,9 @@ const baseVm: PilotValidationUserSummaryVm = {
   auditTraceCandidateStatusKo: "감사 추적 후보 준비되지 않음",
   rollbackPlanCandidateStatusKo: "롤백 계획 후보 준비되지 않음",
   validationRequestIdCandidateKo: "pilot-validation:not_ready:not_ready",
+  simulatorContractStatusKo: "시뮬레이터 계약 준비되지 않음",
+  simulatorModeKo: "Simulator contract only",
+  simulatorNoInvocationNoticeKo: PILOT_VALIDATION_SIMULATOR_NO_INVOCATION_NOTICE_KO,
 };
 
 export const pilotValidationReviewPanelExampleVms = {
@@ -48,6 +52,8 @@ export const pilotValidationReviewPanelExampleVms = {
     auditTraceCandidateStatusKo: "감사 추적 후보 준비됨",
     rollbackPlanCandidateStatusKo: "롤백 계획 후보 준비됨",
     validationRequestIdCandidateKo: "pilot-validation:contract_ready:ready_for_validation",
+    simulatorContractStatusKo: "시뮬레이터 계약 준비됨",
+    simulatorModeKo: "읽기 전용 Echo Simulation 계약",
   },
   watch: {
     ...baseVm,

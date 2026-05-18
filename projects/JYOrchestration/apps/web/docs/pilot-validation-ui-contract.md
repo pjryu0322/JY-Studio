@@ -36,3 +36,10 @@
 - `primaryActionEnabled`·`secondaryActionEnabled`는 상태와 무관하게 true(실제 execution 미연결).
 - secondary action은 상태별 callback/no-op·안내문만 수행한다.
 - Phase 2 Safe Echo Adapter Contract는 별도 설계한다.
+
+## Phase 4 (Safe Echo Invocation Simulator Contract)
+
+- `runtimeSafeEchoInvocationSimulatorSummary`·input·output·boundary metadata only.
+- simulator는 actual adapter/sandbox/runner invocation 없음.
+- 사용자 UI: 시뮬레이터 계약 상태·mode·no-invocation notice (`simulatorContractStatusKo`, `simulatorModeKo`, `simulatorNoInvocationNoticeKo`).
+- 금지 문구: 「시뮬레이터 실행됨」「Dry-run 실행됨」「Sandbox 실행됨」「Adapter 호출됨」.

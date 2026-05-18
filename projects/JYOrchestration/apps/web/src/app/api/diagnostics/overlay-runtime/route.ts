@@ -1038,6 +1038,12 @@ export async function GET(request: NextRequest) {
       runtimePilotValidationAuditTraceCandidate: runtimeSemanticDiag.runtimePilotValidationAuditTraceCandidate,
       runtimePilotValidationRollbackPlanCandidate:
         runtimeSemanticDiag.runtimePilotValidationRollbackPlanCandidate,
+      runtimeSafeEchoInvocationSimulatorSummary:
+        runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorSummary,
+      runtimeSafeEchoInvocationSimulatorInput: runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorInput,
+      runtimeSafeEchoInvocationSimulatorOutput: runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorOutput,
+      runtimeSafeEchoInvocationSimulatorBoundary:
+        runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorBoundary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

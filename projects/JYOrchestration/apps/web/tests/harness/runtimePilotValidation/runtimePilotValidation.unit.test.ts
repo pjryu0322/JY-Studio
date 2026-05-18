@@ -136,6 +136,10 @@ describe("Pilot Validation Phase 0 read-only chain", () => {
         "runtimeSafeEchoAdapterInputContract",
         "runtimeSafeEchoAdapterOutputContract",
         "runtimeSandboxDryRunBoundary",
+        "runtimeSafeEchoInvocationSimulatorSummary",
+        "runtimeSafeEchoInvocationSimulatorInput",
+        "runtimeSafeEchoInvocationSimulatorOutput",
+        "runtimeSafeEchoInvocationSimulatorBoundary",
       ].sort()
     );
     expect((diag.runtimePilotValidationReadOnlyChainSummary as { mode: string }).mode).toBe(

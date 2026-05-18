@@ -18,6 +18,12 @@ import type {
   RuntimePilotValidationRequestDraft,
   RuntimePilotValidationRollbackPlanCandidate,
 } from "./runtimePilotValidationRequestDraftTypes";
+import type {
+  RuntimeSafeEchoInvocationSimulatorBoundary,
+  RuntimeSafeEchoInvocationSimulatorInput,
+  RuntimeSafeEchoInvocationSimulatorOutput,
+  RuntimeSafeEchoInvocationSimulatorSummary,
+} from "./runtimeSafeEchoInvocationSimulatorTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
   return [...rows].sort((a, b) => a.localeCompare(b, "ko"));
@@ -160,6 +166,58 @@ function serializeRollbackPlanCandidate(
   };
 }
 
+function serializeSimulatorSummary(s: RuntimeSafeEchoInvocationSimulatorSummary): Readonly<Record<string, unknown>> {
+  return {
+    mode: s.mode,
+    ...SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS,
+    simulatorStatus: s.simulatorStatus,
+    simulatorMode: s.simulatorMode,
+    rationaleKo: s.rationaleKo,
+    blockers: sortKo(s.blockers),
+    warnings: sortKo(s.warnings),
+    recommendations: sortKo(s.recommendations),
+  };
+}
+
+function serializeSimulatorInput(i: RuntimeSafeEchoInvocationSimulatorInput): Readonly<Record<string, unknown>> {
+  return {
+    mode: i.mode,
+    ...SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS,
+    sourceRequestDraftIdCandidate: i.sourceRequestDraftIdCandidate,
+    acceptedInputRows: sortKo(i.acceptedInputRows),
+    rejectedInputRows: sortKo(i.rejectedInputRows),
+    requiredApprovalRows: sortKo(i.requiredApprovalRows),
+    requiredAuditRows: sortKo(i.requiredAuditRows),
+    requiredRollbackRows: sortKo(i.requiredRollbackRows),
+  };
+}
+
+function serializeSimulatorOutput(o: RuntimeSafeEchoInvocationSimulatorOutput): Readonly<Record<string, unknown>> {
+  return {
+    mode: o.mode,
+    ...SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS,
+    expectedSimulationOutputs: sortKo(o.expectedSimulationOutputs),
+    prohibitedSimulationOutputs: sortKo(o.prohibitedSimulationOutputs),
+    auditEchoRows: sortKo(o.auditEchoRows),
+    rollbackEchoRows: sortKo(o.rollbackEchoRows),
+  };
+}
+
+function serializeSimulatorBoundary(b: RuntimeSafeEchoInvocationSimulatorBoundary): Readonly<Record<string, unknown>> {
+  return {
+    mode: b.mode,
+    ...SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS,
+    boundarySourceLayer: b.boundarySourceLayer,
+    boundaryTargetLayer: b.boundaryTargetLayer,
+    allowedSimulatorScopes: sortKo(b.allowedSimulatorScopes),
+    forbiddenSimulatorOperations: sortKo(b.forbiddenSimulatorOperations),
+    simulationDoesNotInvokeAdapter: b.simulationDoesNotInvokeAdapter,
+    simulationDoesNotInvokeSandbox: b.simulationDoesNotInvokeSandbox,
+    simulationDoesNotInvokeRunner: b.simulationDoesNotInvokeRunner,
+    simulationDoesNotModifySource: b.simulationDoesNotModifySource,
+  };
+}
+
 export function serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<Record<string, unknown>> {
@@ -182,6 +240,18 @@ export function serializeRuntimePilotValidationDiagnosticBundleFromSemanticRepor
     ),
     runtimePilotValidationRollbackPlanCandidate: serializeRollbackPlanCandidate(
       reports.runtimePilotValidationRollbackPlanCandidate
+    ),
+    runtimeSafeEchoInvocationSimulatorSummary: serializeSimulatorSummary(
+      reports.runtimeSafeEchoInvocationSimulatorSummary
+    ),
+    runtimeSafeEchoInvocationSimulatorInput: serializeSimulatorInput(
+      reports.runtimeSafeEchoInvocationSimulatorInput
+    ),
+    runtimeSafeEchoInvocationSimulatorOutput: serializeSimulatorOutput(
+      reports.runtimeSafeEchoInvocationSimulatorOutput
+    ),
+    runtimeSafeEchoInvocationSimulatorBoundary: serializeSimulatorBoundary(
+      reports.runtimeSafeEchoInvocationSimulatorBoundary
     ),
   };
 }

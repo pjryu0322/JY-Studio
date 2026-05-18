@@ -192,6 +192,18 @@ export function PilotValidationReviewPanel({
             {vm.validationRequestIdCandidateKo}
           </dd>
         </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Safe Echo Simulator Contract"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-simulator-contract">
+            {vm.simulatorContractStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Simulator mode"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-simulator-mode">
+            {vm.simulatorModeKo}
+          </dd>
+        </div>
         {vm.cannotProceedReasonKo ? (
           <div>
             <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"\ucc28\ub2e8/\uc8fc\uc758 \uc0ac\uc720"}</dt>
@@ -201,6 +213,13 @@ export function PilotValidationReviewPanel({
           </div>
         ) : null}
       </dl>
+
+      <p
+        data-testid="pilot-validation-simulator-no-invocation-notice"
+        style={{ margin: 0, fontSize: 12, color: t.textMuted, lineHeight: 1.45 }}
+      >
+        {vm.simulatorNoInvocationNoticeKo}
+      </p>
 
       {vm.safetySummaryRows.length > 0 ? (
         <div>

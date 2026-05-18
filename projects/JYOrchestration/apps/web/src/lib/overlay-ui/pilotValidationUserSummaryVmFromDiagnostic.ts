@@ -13,6 +13,10 @@ import type {
   RuntimePilotValidationRequestDraftStatus,
   RuntimePilotValidationRollbackPlanCandidateStatus,
 } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftTypes";
+import type {
+  RuntimeSafeEchoInvocationSimulatorMode,
+  RuntimeSafeEchoInvocationSimulatorStatus,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoInvocationSimulatorTypes";
 import {
   buildPilotValidationUserSummaryVmFromInput,
   type PilotValidationUserSummaryBuildInput,
@@ -65,6 +69,19 @@ const ROLLBACK_PLAN_STATUSES = new Set<RuntimePilotValidationRollbackPlanCandida
   "watch",
   "blocked",
   "not_ready",
+]);
+
+const SIMULATOR_STATUSES = new Set<RuntimeSafeEchoInvocationSimulatorStatus>([
+  "simulator_contract_ready",
+  "watch",
+  "blocked",
+  "not_ready",
+]);
+
+const SIMULATOR_MODES = new Set<RuntimeSafeEchoInvocationSimulatorMode>([
+  "simulator_contract_only",
+  "read_only_echo_simulation_contract",
+  "blocked",
 ]);
 
 function readEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
@@ -134,6 +151,7 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
   const approvalSnapshotRaw = data.runtimePilotValidationOperatorApprovalSnapshot;
   const auditTraceRaw = data.runtimePilotValidationAuditTraceCandidate;
   const rollbackPlanRaw = data.runtimePilotValidationRollbackPlanCandidate;
+  const simulatorRaw = data.runtimeSafeEchoInvocationSimulatorSummary;
 
   if (
     !isRecord(summaryRaw) ||
@@ -145,7 +163,8 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     !isRecord(draftRaw) ||
     !isRecord(approvalSnapshotRaw) ||
     !isRecord(auditTraceRaw) ||
-    !isRecord(rollbackPlanRaw)
+    !isRecord(rollbackPlanRaw) ||
+    !isRecord(simulatorRaw)
   ) {
     return null;
   }
@@ -174,6 +193,8 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
   const auditTraceCandidateStatus = readEnum(auditTraceRaw.auditTraceStatus, AUDIT_TRACE_STATUSES);
   const rollbackPlanCandidateStatus = readEnum(rollbackPlanRaw.rollbackPlanStatus, ROLLBACK_PLAN_STATUSES);
   const validationRequestIdCandidate = readString(draftRaw.validationRequestIdCandidate);
+  const simulatorStatus = readEnum(simulatorRaw.simulatorStatus, SIMULATOR_STATUSES);
+  const simulatorMode = readEnum(simulatorRaw.simulatorMode, SIMULATOR_MODES);
 
   if (
     !validationStatus ||
@@ -187,7 +208,9 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     !operatorApprovalSnapshotStatus ||
     !auditTraceCandidateStatus ||
     !rollbackPlanCandidateStatus ||
-    !validationRequestIdCandidate
+    !validationRequestIdCandidate ||
+    !simulatorStatus ||
+    !simulatorMode
   ) {
     return null;
   }
@@ -209,6 +232,8 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     auditTraceCandidateStatus,
     rollbackPlanCandidateStatus,
     validationRequestIdCandidate,
+    simulatorStatus,
+    simulatorMode,
   };
 
   return buildPilotValidationUserSummaryVmFromInput(input);

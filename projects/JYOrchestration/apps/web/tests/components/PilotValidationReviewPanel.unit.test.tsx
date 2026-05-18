@@ -23,6 +23,10 @@ describe("PilotValidationReviewPanel", () => {
     expect(html).toContain("Safe Echo Contract only");
     expect(html).toContain("pilot-validation-request-draft");
     expect(html).toContain("요청 초안 준비됨");
+    expect(html).toContain("pilot-validation-simulator-contract");
+    expect(html).toContain("시뮬레이터 계약 준비됨");
+    expect(html).toContain("pilot-validation-simulator-no-invocation-notice");
+    expect(html).toContain("실제 Adapter/Sandbox/Runner 호출 없음");
   });
 
   it("does not invoke execution handlers on prepare secondary click without callback", () => {

@@ -6,6 +6,7 @@ import type { RuntimeSemanticPlanningReportsBeforePilotValidation } from "@/lib/
 import { buildRuntimePilotValidationReadOnlyChainSummary } from "./buildRuntimePilotValidationReadOnlyChainSummary";
 import { buildRuntimeSafeEchoAdapterContractReports } from "./buildRuntimeSafeEchoAdapterContractReports";
 import { buildRuntimePilotValidationRequestDraftReports } from "./buildRuntimePilotValidationRequestDraftReports";
+import { buildRuntimeSafeEchoInvocationSimulatorReports } from "./buildRuntimeSafeEchoInvocationSimulatorReports";
 import type { RuntimePilotValidationPlanningReports } from "./runtimePilotValidationTypes";
 
 export function buildRuntimePilotValidationReadOnlyChainPlanningReports(
@@ -16,13 +17,20 @@ export function buildRuntimePilotValidationReadOnlyChainPlanningReports(
     reports,
     runtimePilotValidationReadOnlyChainSummary
   );
+  const requestDraftReports = buildRuntimePilotValidationRequestDraftReports(
+    reports,
+    runtimePilotValidationReadOnlyChainSummary,
+    safeEchoReports
+  );
   return {
     runtimePilotValidationReadOnlyChainSummary,
     ...safeEchoReports,
-    ...buildRuntimePilotValidationRequestDraftReports(
+    ...requestDraftReports,
+    ...buildRuntimeSafeEchoInvocationSimulatorReports(
       reports,
       runtimePilotValidationReadOnlyChainSummary,
-      safeEchoReports
+      safeEchoReports,
+      requestDraftReports
     ),
   };
 }

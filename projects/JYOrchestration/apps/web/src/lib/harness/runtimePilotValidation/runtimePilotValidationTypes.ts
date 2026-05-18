@@ -15,6 +15,12 @@ import type {
   RuntimePilotValidationRequestDraft,
   RuntimePilotValidationRollbackPlanCandidate,
 } from "./runtimePilotValidationRequestDraftTypes";
+import type {
+  RuntimeSafeEchoInvocationSimulatorBoundary,
+  RuntimeSafeEchoInvocationSimulatorInput,
+  RuntimeSafeEchoInvocationSimulatorOutput,
+  RuntimeSafeEchoInvocationSimulatorSummary,
+} from "./runtimeSafeEchoInvocationSimulatorTypes";
 
 export type RuntimePilotValidationReadOnlyChainStatus =
   | "ready_for_validation"
@@ -47,4 +53,8 @@ export type RuntimePilotValidationPlanningReports = Readonly<{
   runtimePilotValidationOperatorApprovalSnapshot: RuntimePilotValidationOperatorApprovalSnapshot;
   runtimePilotValidationAuditTraceCandidate: RuntimePilotValidationAuditTraceCandidate;
   runtimePilotValidationRollbackPlanCandidate: RuntimePilotValidationRollbackPlanCandidate;
+  runtimeSafeEchoInvocationSimulatorSummary: RuntimeSafeEchoInvocationSimulatorSummary;
+  runtimeSafeEchoInvocationSimulatorInput: RuntimeSafeEchoInvocationSimulatorInput;
+  runtimeSafeEchoInvocationSimulatorOutput: RuntimeSafeEchoInvocationSimulatorOutput;
+  runtimeSafeEchoInvocationSimulatorBoundary: RuntimeSafeEchoInvocationSimulatorBoundary;
 }>;

@@ -448,6 +448,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimePilotValidationOperatorApprovalSnapshot: SerializedRuntimePilotValidationDiag["runtimePilotValidationOperatorApprovalSnapshot"];
   runtimePilotValidationAuditTraceCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationAuditTraceCandidate"];
   runtimePilotValidationRollbackPlanCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationRollbackPlanCandidate"];
+  runtimeSafeEchoInvocationSimulatorSummary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorSummary"];
+  runtimeSafeEchoInvocationSimulatorInput: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorInput"];
+  runtimeSafeEchoInvocationSimulatorOutput: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorOutput"];
+  runtimeSafeEchoInvocationSimulatorBoundary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorBoundary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -598,6 +602,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
       pilotValidationDiag.runtimePilotValidationOperatorApprovalSnapshot,
     runtimePilotValidationAuditTraceCandidate: pilotValidationDiag.runtimePilotValidationAuditTraceCandidate,
     runtimePilotValidationRollbackPlanCandidate: pilotValidationDiag.runtimePilotValidationRollbackPlanCandidate,
+    runtimeSafeEchoInvocationSimulatorSummary:
+      pilotValidationDiag.runtimeSafeEchoInvocationSimulatorSummary,
+    runtimeSafeEchoInvocationSimulatorInput: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorInput,
+    runtimeSafeEchoInvocationSimulatorOutput: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorOutput,
+    runtimeSafeEchoInvocationSimulatorBoundary: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorBoundary,
   };
 }
 

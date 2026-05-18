@@ -33,6 +33,8 @@ describe("buildPilotValidationUserSummaryVmFromDiagnosticData", () => {
     expect(vm?.prohibitedOperationRows).toEqual(fromReports.prohibitedOperationRows);
     expect(vm?.safeEchoContractStatusKo).toBe(fromReports.safeEchoContractStatusKo);
     expect(vm?.safeEchoValidationModeKo).toContain("Safe Echo Contract only");
+    expect(vm?.simulatorContractStatusKo).toBe(fromReports.simulatorContractStatusKo);
+    expect(vm?.simulatorNoInvocationNoticeKo).toContain("실제 Adapter/Sandbox/Runner 호출 없음");
   });
 
   it("watch status enables secondary action", () => {
