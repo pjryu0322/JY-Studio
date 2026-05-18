@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   buildTeamRuntimeSummaryFromRun,
-  type TaskExecutionRunTeamRuntimeSource,
+  type TaskExecutionRunForTeamRuntime,
   type TeamRuntimeSummary,
 } from "./serialize";
 import { buildAiTeamRuntimeTimelineSafe } from "./timeline";
@@ -15,7 +15,7 @@ export async function loadRequireApprovalBeforeApply(projectId: string): Promise
 }
 
 export function buildTeamRuntimeAdditiveFields(
-  run: TaskExecutionRunTeamRuntimeSource & { teamExecutionStatus?: string | null; id: string },
+  run: TaskExecutionRunForTeamRuntime,
   requireApproval: boolean
 ): Readonly<{
   teamExecutionStatus: string | null | undefined;
@@ -23,15 +23,7 @@ export function buildTeamRuntimeAdditiveFields(
   teamRuntime: TeamRuntimeSummary;
 }> {
   const summary = buildTeamRuntimeSummaryFromRun(run, { requireApproval });
-  const timeline = buildAiTeamRuntimeTimelineSafe({
-    run: {
-      ...run,
-      id: run.id,
-      createdAt: (run as { createdAt?: Date | string | null }).createdAt ?? null,
-      updatedAt: (run as { updatedAt?: Date | string | null }).updatedAt ?? null,
-    },
-    requireApproval,
-  });
+  const timeline = buildAiTeamRuntimeTimelineSafe({ run, requireApproval });
   const teamRuntime: TeamRuntimeSummary = { ...summary, timeline };
   return {
     teamExecutionStatus: run.teamExecutionStatus,
