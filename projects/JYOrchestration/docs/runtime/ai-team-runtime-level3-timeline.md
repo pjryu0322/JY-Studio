@@ -55,8 +55,8 @@
 
 ## 다음 작업
 
-1. Runtime Timeline PR 생성 및 병합
-2. main 기준 Timeline post-merge 검증
+1. PR #14 병합 및 main 기준 Timeline post-merge 검증
+2. 수동 E2E (approval → merge resume, ENV_TEST 회귀 없음 확인)
 3. Role Run 분리 설계
 4. Retry / Cancel / Resume 정책 설계
 5. Queue/Worker 구조
