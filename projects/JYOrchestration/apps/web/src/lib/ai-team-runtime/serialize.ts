@@ -5,6 +5,7 @@ import {
   type AiTeamExecutionStatus,
   isAiTeamExecutionStatus,
 } from "./status";
+import { parsePrStatusForTeamRuntime } from "./prStatusParse";
 import { parseTeamReviewPhasesFromReviewerSteps, type TeamRuntimePhaseStatus } from "./reviewerSteps";
 
 export type TeamRuntimePhaseSummary = Readonly<{
@@ -139,7 +140,7 @@ export function buildTeamRuntimeSummaryFromRun(
           : "skipped";
 
   const gcr = options?.gitChangeRequest;
-  const pr =
+  const prFromGcr =
     gcr && (gcr.pullRequestUrl || gcr.pullRequestNumber != null)
       ? {
           pullRequestUrl: gcr.pullRequestUrl ?? null,
@@ -153,6 +154,11 @@ export function buildTeamRuntimeSummaryFromRun(
                 : null,
         }
       : undefined;
+  const prFromStatus = parsePrStatusForTeamRuntime(run.prStatus);
+  const pr =
+    prFromGcr && prFromStatus
+      ? { ...prFromStatus, ...prFromGcr }
+      : prFromGcr ?? prFromStatus;
 
   return {
     status: teamStatus,

@@ -49,6 +49,13 @@ import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipelin
 import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
+import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
+import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
+import {
+  buildCursorResultFromExecutionRun,
+  buildEvalPackFromExecutionRun,
+  isMergeRunningResumeStatus,
+} from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import {
   applyTeamRuntimeAfterReviewHarness,
@@ -376,15 +383,19 @@ export async function runExecutionLoop(params: {
         if (!forced || forced.status !== "TODO") {
           return { ok: false, steps, message: "지정한 Task를 찾을 수 없거나 TODO가 아닙니다." };
         }
-        if (
-          forced.executionWorkflowStatus !== EXECUTION_WORKFLOW.READY &&
-          forced.executionWorkflowStatus !== EXECUTION_WORKFLOW.PENDING_APPLY
-        ) {
+        const forcedWf = forced.executionWorkflowStatus;
+        const forcedResumable =
+          forcedWf === EXECUTION_WORKFLOW.READY ||
+          forcedWf === EXECUTION_WORKFLOW.PENDING_APPLY ||
+          forcedWf === EXECUTION_WORKFLOW.MERGE_PENDING ||
+          forcedWf === EXECUTION_WORKFLOW.REVIEW_APPROVED ||
+          forcedWf === EXECUTION_WORKFLOW.AWAITING_HUMAN;
+        if (!forcedResumable) {
           return {
             ok: false,
             steps,
             message:
-              "지정한 Task가 ready 또는 Git 반영 대기(pending_apply) 상태가 아닙니다. 선행 Task를 완료하세요.",
+              "지정한 Task가 ready, pending_apply, merge 대기, review 승인, 또는 승인 대기 상태가 아닙니다.",
           };
         }
         next = forced;
@@ -540,38 +551,63 @@ export async function runExecutionLoop(params: {
         },
         orderBy: { createdAt: "desc" },
       });
+      let resumeScmAfterApproval = false;
       if (existingActiveRun) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "repick_blocked_existing_active_run",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            existingRunId: existingActiveRun.id,
-            existingStatus: existingActiveRun.status,
-            branch: existingActiveRun.branchName ?? null,
-            singleTaskId: singleTaskId ?? null,
-          },
-        });
-        steps.push({
-          phase: "stop",
-          reason: "existing_active_run",
-        });
-        const blockedMsg =
-          singleTaskId && isEnvTestTask
-            ? `연결 테스트를 시작할 수 없습니다. 이전 실행이 아직 끝나지 않았습니다(상태: ${existingActiveRun.status}). 잠시 후 다시 시도하세요.`
-            : singleTaskId
-              ? `이 Task에 대해 아직 진행 중인 실행이 있습니다(상태: ${existingActiveRun.status}). 끝난 뒤 다시 실행하세요.`
-              : "이 Task에 대해 아직 진행 중인 실행이 있습니다. 해당 실행이 끝난 뒤 다시 루프를 실행하세요.";
-        return {
-          ok: singleTaskId ? false : true,
-          steps,
-          message: blockedMsg,
-        };
+        const existingTeamStatus =
+          !isEnvTestTask ? await readTeamExecutionStatus(existingActiveRun.id) : null;
+        if (
+          singleTaskId &&
+          !isEnvTestTask &&
+          existingTeamStatus === AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING
+        ) {
+          return {
+            ok: false,
+            steps,
+            message:
+              "AI팀 Runtime 사용자 승인 대기 중입니다. Task 제어에서 workflow-approve-ai-team-runtime 승인 후 다시 실행하세요.",
+          };
+        }
+        if (
+          singleTaskId &&
+          !isEnvTestTask &&
+          isMergeRunningResumeStatus(existingTeamStatus)
+        ) {
+          resumeScmAfterApproval = true;
+        } else {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "repick_blocked_existing_active_run",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: {
+              existingRunId: existingActiveRun.id,
+              existingStatus: existingActiveRun.status,
+              branch: existingActiveRun.branchName ?? null,
+              singleTaskId: singleTaskId ?? null,
+            },
+          });
+          steps.push({
+            phase: "stop",
+            reason: "existing_active_run",
+          });
+          const blockedMsg =
+            singleTaskId && isEnvTestTask
+              ? `연결 테스트를 시작할 수 없습니다. 이전 실행이 아직 끝나지 않았습니다(상태: ${existingActiveRun.status}). 잠시 후 다시 시도하세요.`
+              : singleTaskId
+                ? `이 Task에 대해 아직 진행 중인 실행이 있습니다(상태: ${existingActiveRun.status}). 끝난 뒤 다시 실행하세요.`
+                : "이 Task에 대해 아직 진행 중인 실행이 있습니다. 해당 실행이 끝난 뒤 다시 루프를 실행하세요.";
+          return {
+            ok: singleTaskId ? false : true,
+            steps,
+            message: blockedMsg,
+          };
+        }
       }
 
-      const execRun = await prisma.taskExecutionRun.create({
+      const execRun = resumeScmAfterApproval && existingActiveRun
+        ? existingActiveRun
+        : await prisma.taskExecutionRun.create({
         data: {
           projectId,
           taskId,
@@ -588,6 +624,24 @@ export async function runExecutionLoop(params: {
       });
 
       const teamCtx = { execRunId: execRun.id, projectId, taskId, actorUserId };
+
+      let cr!: Awaited<ReturnType<typeof buildCursorResultFromExecutionRun>>;
+      let evalPack!: Awaited<ReturnType<typeof buildEvalPackFromExecutionRun>>;
+      let reviewerVerdict = "done";
+
+      if (resumeScmAfterApproval) {
+        cr = buildCursorResultFromExecutionRun(execRun);
+        evalPack = buildEvalPackFromExecutionRun(execRun);
+        reviewerVerdict = evalPack.result.decision;
+        steps.push({
+          phase: "evaluate",
+          taskId,
+          verdict: "resume_scm_after_runtime_approval",
+          summary: "AI팀 Runtime 승인 후 SCM merge 재개",
+        });
+      }
+
+      if (!resumeScmAfterApproval) {
       if (!isEnvTestTask) {
         await runTeamRuntimeSafe("developer_running", () => markTeamRuntimeDeveloperRunning(teamCtx));
       }
@@ -1127,7 +1181,7 @@ export async function runExecutionLoop(params: {
       if (!isCursorRunSuccessWithResult(cursorOutcome)) {
         break;
       }
-      const { result: cr } = cursorOutcome;
+      cr = cursorOutcome.result;
 
       if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
         const envOutStage1 = await runStage1SmokePipeline({
@@ -1437,62 +1491,82 @@ export async function runExecutionLoop(params: {
           userId: actorUserId,
           detail: { prUrl, prNumber, branch: cr.branchName },
         });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "state_transition: COMMITTED → PR_OPENED",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { prUrl, prNumber, branch: cr.branchName },
-        });
 
         await prisma.taskExecutionRun.update({
           where: { id: execRun.id },
           data: {
-            status: "done",
-            evaluationDecision: "done",
             prStatus: `open:${prNumber}:${prUrl}`,
             pushStatus: "pr_opened",
           },
         });
 
+        if (isEnvTestTask) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "state_transition: COMMITTED → PR_OPENED",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: { prUrl, prNumber, branch: cr.branchName },
+          });
+
+          await prisma.taskExecutionRun.update({
+            where: { id: execRun.id },
+            data: {
+              status: "done",
+              evaluationDecision: "done",
+            },
+          });
+
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
+              status: "DONE",
+              lastEvalResult: "pr_opened",
+              lastEvalSummary: "PR이 생성/열림. ENV_TEST terminal success(PR_OPENED).",
+              loopRetryCount: 0,
+            },
+          });
+
+          await updateTaskOrchestrationSnapshot(taskId, {
+            branch: cr.branchName,
+            commitStatus: commitDetected ? "pushed_commit_detected" : "pushed_commit_unknown",
+            pushStatus: "pr_opened",
+            commitSha: (gitEvidence?.headSha ?? cr.commitHash ?? null) as string | null,
+            changedFileCount: (gitEvidence?.changedFiles.length ?? null) as number | null,
+          });
+
+          await refreshWorkflowStates(projectId);
+
+          if (singleTaskId || !effectiveAutoAdvance) {
+            return { ok: true, steps, message: "PR이 열렸습니다(PR_OPENED). 자동 진행이 꺼져 루프를 종료합니다." };
+          }
+          continue;
+        }
+
         await prisma.task.update({
           where: { id: taskId },
           data: {
-            executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
-            status: "DONE",
-            lastEvalResult: "pr_opened",
-            lastEvalSummary: "PR이 생성/열림. 머지/리뷰 대기 없이 다음 Task로 진행합니다.",
-            loopRetryCount: 0,
+            executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_PENDING,
+            lastEvalResult: "pr_detected",
+            lastEvalSummary:
+              "PR이 감지되었습니다. AI 검수·보안 검토 후 승인/merge 단계로 진행합니다.",
           },
         });
-
-        await updateTaskOrchestrationSnapshot(taskId, {
-          branch: cr.branchName,
-          commitStatus: commitDetected ? "pushed_commit_detected" : "pushed_commit_unknown",
-          pushStatus: "pr_opened",
-          commitSha: (gitEvidence?.headSha ?? cr.commitHash ?? null) as string | null,
-          changedFileCount: (gitEvidence?.changedFiles.length ?? null) as number | null,
+      } else {
+        /* 보조 경로(일반 Task만): PR(Open)이 URL/HEAD 조회로도 없을 때 execution-review → SCM 폴백.
+           ENV_TEST canonical 경로는 상위에서 이미 종료되며 이 블록에 진입하지 않는다. */
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_PENDING,
+            lastEvalResult: "review_pending",
+            lastEvalSummary:
+              "Cursor 구현 완료. PR(Open) 감지 실패: GitHub의 실제 변경분 기준으로 AI 리뷰 대기 중입니다.",
+          },
         });
-
-        await refreshWorkflowStates(projectId);
-
-        if (singleTaskId || !effectiveAutoAdvance) {
-          return { ok: true, steps, message: "PR이 열렸습니다(PR_OPENED). 자동 진행이 꺼져 루프를 종료합니다." };
-        }
-        continue;
       }
-
-      /* 보조 경로(일반 Task만): PR(Open)이 URL/HEAD 조회로도 없을 때 execution-review → SCM 폴백.
-         ENV_TEST canonical 경로는 상위에서 이미 종료되며 이 블록에 진입하지 않는다. */
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_PENDING,
-          lastEvalResult: "review_pending",
-          lastEvalSummary: "Cursor 구현 완료. PR(Open) 감지 실패: GitHub의 실제 변경분 기준으로 AI 리뷰 대기 중입니다.",
-        },
-      });
       appendTaskProgressLog({
         kind: "execution",
         phase: "review_pending",
@@ -1528,7 +1602,6 @@ export async function runExecutionLoop(params: {
       if (!isEnvTestTask) {
         await runTeamRuntimeSafe("review_running", () => markTeamRuntimeReviewRunning(teamCtx));
       }
-      let evalPack: Awaited<ReturnType<typeof evaluateExecutionResult>>;
       try {
         evalPack = await evaluateExecutionResult({
           projectId,
@@ -1571,7 +1644,7 @@ export async function runExecutionLoop(params: {
         return { ok: false, steps, message: errMsg };
       }
 
-      const reviewerVerdict = evalPack.result.decision;
+      reviewerVerdict = evalPack.result.decision;
       await prisma.taskExecutionRun.update({
         where: { id: execRun.id },
         data: {
@@ -1627,6 +1700,13 @@ export async function runExecutionLoop(params: {
           await refreshWorkflowStates(projectId);
           return { ok: false, steps, message: `AI team runtime blocked: ${teamAfterReview.reason}` };
         }
+
+        if (setup.requireApprovalBeforeApply === true) {
+          await haltTaskForTeamRuntimeApproval({ execRunId: execRun.id, taskId });
+          await refreshWorkflowStates(projectId);
+          steps.push({ phase: "stop", reason: "approval_waiting" });
+          return { ok: true, steps, message: "사용자 승인 대기" };
+        }
       }
 
       await prisma.task.update({
@@ -1645,6 +1725,8 @@ export async function runExecutionLoop(params: {
         userId: actorUserId,
         detail: { reason: evalPack.result.reason.slice(0, 1200) },
       });
+
+      } // !resumeScmAfterApproval
 
       // 3) SCM Manager 단계: PR 생성 + merge (Cursor는 절대 PR/merge 하지 않음)
       const scmCount = await countScmManagerAiMembers(projectId);
@@ -1793,7 +1875,19 @@ export async function runExecutionLoop(params: {
       });
       await refreshWorkflowStates(projectId);
 
-      // merge 완료 이후에만 다음 Task를 진행할 수 있으므로, 루프는 계속 진행 가능
+      // 역할 분리(일반 Task): SCM merge 완료 후 레거시 Cursor-only 평가 블록으로 fall-through 하지 않음
+      if (!isEnvTestTask) {
+        steps.push({
+          phase: "evaluate",
+          taskId,
+          verdict: "merged",
+          summary: "SCM merge completed (role-separated path)",
+        });
+        if (singleTaskId || !effectiveAutoAdvance) {
+          return { ok: true, steps, message: "Merged to main." };
+        }
+        continue;
+      }
 
       if (noExecutionReviewers) {
         console.info("[execution-loop] review skipped (cursor-only path)", {

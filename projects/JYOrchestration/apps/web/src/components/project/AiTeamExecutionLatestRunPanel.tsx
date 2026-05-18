@@ -83,6 +83,23 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
           <dd style={{ margin: 0 }}>
             {team.approval.required ? team.approval.status : "불필요"}
           </dd>
+          {team.pr ? (
+            <>
+              <dt style={{ color: "#64748b" }}>PR</dt>
+              <dd style={{ margin: 0 }}>
+                {team.pr.pullRequestState ?? "—"}
+                {team.pr.pullRequestNumber != null ? ` #${team.pr.pullRequestNumber}` : ""}
+                {team.pr.pullRequestUrl ? (
+                  <>
+                    {" "}
+                    <a href={team.pr.pullRequestUrl} target="_blank" rel="noreferrer">
+                      링크
+                    </a>
+                  </>
+                ) : null}
+              </dd>
+            </>
+          ) : null}
           {team.blockReason ? (
             <>
               <dt style={{ color: "#64748b" }}>차단 사유</dt>

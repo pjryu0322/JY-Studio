@@ -33,4 +33,10 @@ See `apps/web/src/lib/ai-team-runtime/status.ts` — `requested` through `comple
 
 ## Approval policy
 
-Reuses `ExecutionSetup.requireApprovalBeforeApply` for `approval_waiting` metadata when review/security pass (does not block existing auto-merge unless review/security fails).
+Reuses `ExecutionSetup.requireApprovalBeforeApply`. When true, review/security pass sets `approval_waiting` and **stops** the loop (`AWAITING_HUMAN`) before SCM/merge.
+
+Resume: `POST /api/task/control` with `action: workflow-approve-ai-team-runtime`, then re-run execution-loop for the same Task (`singleTaskId`) to enter SCM merge (`merge_running`).
+
+## PR detection (normal Task)
+
+PR detected after Cursor is recorded on `TaskExecutionRun.prStatus` only; flow continues to review/security (no `PR_OPENED` terminal). ENV_TEST family keeps `PR_OPENED` terminal success.

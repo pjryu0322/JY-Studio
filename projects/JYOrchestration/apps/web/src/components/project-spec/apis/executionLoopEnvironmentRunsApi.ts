@@ -175,6 +175,12 @@ export type TeamRuntimeSummaryDto = Readonly<{
   review: Readonly<{ status: string; issues?: readonly string[] }>;
   security: Readonly<{ status: string; issues?: readonly string[] }>;
   approval: Readonly<{ required: boolean; status: string }>;
+  pr?: Readonly<{
+    pullRequestUrl?: string | null;
+    pullRequestNumber?: number | null;
+    pullRequestState?: string | null;
+    mergedAt?: string | null;
+  }>;
   blockReason?: string | null;
 }>;
 

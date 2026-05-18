@@ -6,6 +6,9 @@ import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHi
 import { prisma } from "@/lib/prisma";
 import { requireTaskPermission } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
+import { patchTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
+import { resolveTeamExecutionStatusFromRun } from "@/lib/ai-team-runtime/serialize";
+import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
 
@@ -144,6 +147,96 @@ export async function POST(request: NextRequest) {
         success: true,
         data: { task: serializeTask(updated) },
         message: "Task 차단???�제?�었?�니??",
+      });
+    }
+
+    if (action === "workflow-approve-ai-team-runtime") {
+      const full = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          projectId: true,
+          executionWorkflowStatus: true,
+          lastEvalSummary: true,
+        },
+      });
+      if (!full) {
+        return NextResponse.json({ success: false, message: "Task를 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (full.executionWorkflowStatus !== EXECUTION_WORKFLOW.AWAITING_HUMAN) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "awaiting_human 상태의 Task만 AI팀 Runtime 승인을 적용할 수 있습니다.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const latestRun = await prisma.taskExecutionRun.findFirst({
+        where: { taskId: task.id, archivedAt: null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!latestRun) {
+        return NextResponse.json(
+          { success: false, message: "승인할 TaskExecutionRun이 없습니다." },
+          { status: 404 }
+        );
+      }
+      const teamStatus = resolveTeamExecutionStatusFromRun(latestRun);
+      if (teamStatus !== AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `AI팀 Runtime 승인 대기 상태가 아닙니다(현재: ${teamStatus}).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      await patchTeamExecutionStatus({
+        execRunId: latestRun.id,
+        projectId: full.projectId,
+        taskId: task.id,
+        actorUserId: userId,
+        to: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
+        historySummaryKo: "사용자 승인 완료 — PR/Merge 진행 허용",
+      });
+
+      const prevSummary = full.lastEvalSummary?.trim() ?? "";
+      const updated = await prisma.task.update({
+        where: { id: task.id },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
+          lastEvalResult: "approval_approved",
+          lastEvalSummary: prevSummary
+            ? `${prevSummary}\n(사용자 AI팀 Runtime 승인 — merge 단계 재개 가능)`
+            : "사용자 AI팀 Runtime 승인 — merge 단계 재개 가능",
+        },
+        select: taskSelect,
+      });
+
+      await refreshWorkflowStates(projectId);
+
+      try {
+        await appendTaskHistory({
+          projectId,
+          taskId: task.id,
+          actorType: TaskHistoryActorType.USER,
+          actorId: userId,
+          eventType: TaskHistoryEventType.MANUAL_APPROVED,
+          summary: "AI팀 Runtime 사용자 승인 — merge/deploy 재개",
+          detailJson: { taskExecutionRunId: latestRun.id, action: "workflow-approve-ai-team-runtime" },
+        });
+      } catch (historyError) {
+        console.error("workflow-approve-ai-team-runtime history append failed:", historyError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { task: serializeTask(updated) },
+        message:
+          "AI팀 Runtime 승인이 완료되었습니다. 동일 Task로 실행 루프를 다시 실행하면 merge 단계로 진행합니다.",
       });
     }
 
