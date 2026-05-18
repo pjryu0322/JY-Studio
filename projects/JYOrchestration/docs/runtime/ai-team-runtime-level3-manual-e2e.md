@@ -6,13 +6,13 @@
 - Date: 2026-05-18
 - Scope: `projects/JYOrchestration/**`
 - PR baseline: #13 (Runtime execution connection), #14 (Level 3 Timeline)
-- Related: `ai-team-runtime-level3-timeline-post-merge.md`, `ai-team-runtime-level3-evidence-review.md`, `ai-team-runtime-level3-live-e2e-execution-only.md`
+- Related: `ai-team-runtime-level3-timeline-post-merge.md`, `ai-team-runtime-level3-evidence-review.md`, `ai-team-runtime-level3-final-live-e2e-execution.md`
 
 ## 자동 검증 결과
 
 | 명령 | 결과 | 비고 |
 |---|---|---|
-| `npx tsc --noEmit` | PASS | main @ `9b91b8a2` |
+| `npx tsc --noEmit` | PASS | main @ `9814aa54` |
 | `aiTeamRuntimeTimeline.unit.test.ts` | PASS | 14 tests |
 | `aiTeamApiTeamRuntime.unit.test.ts` | PASS | 3 tests |
 | `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS | 13 tests |
@@ -119,8 +119,9 @@ curl -X POST "http://localhost:3000/api/task/control" \
 | execution-runs API (live) | 미확인 |
 | Timeline length/order (live) | 미확인 |
 | Approval/SCM transition (live) | 미확인 |
+| Sensitive pattern hits (scan) | 미확인 |
 
-운영자가 `ai-team-runtime-level3-live-e2e-execution-only.md` · `ai-team-runtime-level3-live-e2e-runbook.md`에 따라 helper를 실행한 뒤 evidence Markdown을 생성하면, 본 절과 E2E A/B 표를 **요약만** 갱신한다 (session cookie 등 민감정보는 커밋·문서에 포함하지 않음). PASS/FAIL/PARTIAL 템플릿은 execution-only §8.
+운영자가 `ai-team-runtime-level3-final-live-e2e-execution.md` · runbook에 따라 helper → `scan-live-e2e-evidence.mjs` 후 본 절·E2E 표를 **요약만** 갱신한다 (cookie·evidence 원문 커밋 금지). 템플릿: final execution doc §9.
 
 ### Evidence PASS 시 갱신 템플릿 (운영자)
 
@@ -134,6 +135,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 - Timeline length/order: PASS
 - Approval/SCM transition: PASS
 - ENV_TEST preservation: PASS/PARTIAL
+- Sensitive pattern hits: 0
 
 ## 결론
 
@@ -160,7 +162,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 운영자는 `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`(검증 로직: `scripts/lib/ai-team-runtime-live-e2e-lib.mjs`)로 `GET /api/projects/{projectId}/execution-runs` 응답의 `teamRuntime.timeline`을 검증하고 Markdown evidence를 저장할 수 있다.
 
-- 실행 SSOT: `ai-team-runtime-level3-live-e2e-execution-only.md`
+- 실행 SSOT: `ai-team-runtime-level3-final-live-e2e-execution.md`
 - API·env: `ai-team-runtime-level3-live-e2e-runbook.md`
 - evidence 기본 경로: `docs/runtime/evidence/ai-team-runtime-live-e2e-<timestamp>.md`
 - 로컬 점검: `node scripts/scan-live-e2e-evidence.mjs`
@@ -168,7 +170,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 ## 운영자 결과 보고 템플릿 (채팅/이슈)
 
-evidence 생성 후 execution-only §10 형식으로 보고 (cookie·token 원문 금지).
+evidence·scan 후 final execution doc §11 형식으로 보고 (`scan 결과` 포함, cookie·token 원문 금지).
 
 ## 운영자 Manual E2E 체크리스트 (요약)
 
@@ -181,7 +183,7 @@ evidence 생성 후 execution-only §10 형식으로 보고 (cookie·token 원�
 
 ## 다음 작업
 
-1. **(필수)** `ai-team-runtime-level3-live-e2e-execution-only.md` + Evidence Helper로 live Manual E2E → evidence 생성 → `scan-live-e2e-evidence.mjs` → 본 문서 「Live Evidence 반영」갱신
+1. **(필수)** `ai-team-runtime-level3-final-live-e2e-execution.md` — helper → scan (Sensitive hits: 0) → 본 문서 「Live Evidence 반영」갱신
 2. evidence PASS 후: TaskHistory / `appendTaskProgressLog` Timeline 통합 (A안)
 3. evidence 미제공 시: Live E2E 환경·Runbook 보강 (B안)
 4. Role Run 분리 설계

@@ -8,6 +8,7 @@ import {
   formatLiveE2eEvidenceFilename,
   formatLiveE2eCheckLines,
   formatMissingEnvMessage,
+  formatScanLiveE2eReport,
   jyoOrchestrationRoot,
   liveE2eHttpErrorMessage,
   missingRequiredLiveE2eEnv,
@@ -101,5 +102,32 @@ describe("ai-team-runtime-live-e2e-lib", () => {
   it("liveE2eHttpErrorMessage maps auth failures", () => {
     const msg = liveE2eHttpErrorMessage({ res: { status: 401, ok: false }, json: {} }, "execution-runs");
     expect(msg).toContain("JYO_SESSION_COOKIE");
+  });
+
+  it("formatScanLiveE2eReport handles empty evidence dir", () => {
+    const report = formatScanLiveE2eReport({
+      evidenceDir: "/tmp/empty-evidence",
+      files: [],
+      latest: null,
+      conclusion: null,
+      sensitive: [],
+    });
+    expect(report.exitCode).toBe(0);
+    expect(report.scanOk).toBe(false);
+    expect(report.lines.join("\n")).toContain("Evidence files: 0");
+    expect(report.lines.join("\n")).toContain("final-live-e2e-execution");
+  });
+
+  it("formatScanLiveE2eReport flags sensitive hits", () => {
+    const report = formatScanLiveE2eReport({
+      evidenceDir: "/tmp/ev",
+      files: [{ name: "ai-team-runtime-live-e2e-2026-01-01-120000.md", path: "/tmp/ev/x.md", mtimeMs: 1 }],
+      latest: { name: "ai-team-runtime-live-e2e-2026-01-01-120000.md", path: "/tmp/ev/x.md", mtimeMs: 1 },
+      conclusion: "PASS",
+      sensitive: [{ line: 1, text: "session-token=secret" }],
+    });
+    expect(report.exitCode).toBe(1);
+    expect(report.scanOk).toBe(false);
+    expect(report.lines.join("\n")).toContain("Sensitive pattern hits: 1");
   });
 });

@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
-  LIVE_E2E_EXECUTION_ONLY_DOC,
+  LIVE_E2E_FINAL_EXECUTION_DOC,
   buildLiveE2eEvidenceMarkdown,
   createLiveE2eApiClient,
   formatApproveEvidenceSection,
@@ -32,7 +32,7 @@ function fail(message, code = 1) {
 function printUsage() {
   console.log(`Level 3 Live E2E evidence helper (operator-only; does not run Runtime).
 
-Docs: projects/JYOrchestration/${LIVE_E2E_EXECUTION_ONLY_DOC}
+Docs: projects/JYOrchestration/${LIVE_E2E_FINAL_EXECUTION_DOC}
 
 Usage:
   JYO_PROJECT_ID=<id> JYO_TASK_ID=<id> JYO_SESSION_COOKIE='<cookie>' \\

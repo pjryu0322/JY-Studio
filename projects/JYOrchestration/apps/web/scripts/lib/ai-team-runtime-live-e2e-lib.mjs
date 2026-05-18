@@ -7,8 +7,11 @@ const _LIB_DIR = dirname(fileURLToPath(import.meta.url));
 
 export const LIVE_E2E_EVIDENCE_FILENAME_PREFIX = "ai-team-runtime-live-e2e-";
 
-export const LIVE_E2E_EXECUTION_ONLY_DOC =
-  "docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md";
+export const LIVE_E2E_FINAL_EXECUTION_DOC =
+  "docs/runtime/ai-team-runtime-level3-final-live-e2e-execution.md";
+
+/** @deprecated Prefer {@link LIVE_E2E_FINAL_EXECUTION_DOC} */
+export const LIVE_E2E_EXECUTION_ONLY_DOC = LIVE_E2E_FINAL_EXECUTION_DOC;
 
 /** @typedef {{ name: string; ok: boolean; note: string }} LiveE2eCheck */
 /** @typedef {{ line: number; text: string }} SensitiveLineHit */
@@ -198,6 +201,61 @@ export function liveE2eHttpErrorMessage({ res, json }, label) {
     return `HTTP ${res.status} (${label}): ${JSON.stringify(json)?.slice(0, 400)}`;
   }
   return null;
+}
+
+/**
+ * Console lines for `scan-live-e2e-evidence.mjs` (matches final execution doc §7).
+ * @param {ReturnType<typeof scanLiveE2eEvidence>} result
+ */
+export function formatScanLiveE2eReport(result) {
+  const lines = [
+    `Evidence directory: ${result.evidenceDir}`,
+    `Evidence files: ${result.files.length}`,
+  ];
+
+  if (!result.latest) {
+    lines.push("", "No operator evidence found.", `See ${LIVE_E2E_FINAL_EXECUTION_DOC}`);
+    lines.push("Then: node scripts/ai-team-runtime-live-e2e-check.mjs");
+    return { lines, exitCode: 0, scanOk: false };
+  }
+
+  const sensitiveCount = result.sensitive.length;
+  const scanOk = sensitiveCount === 0;
+
+  lines.push(
+    "",
+    `Latest: ${result.latest.name}`,
+    `Live E2E conclusion: ${result.conclusion ?? "(not found)"}`,
+    `Sensitive pattern hits: ${sensitiveCount}`,
+    `Scan result: ${scanOk ? "OK (no sensitive patterns)" : "BLOCKED (sensitive patterns)"}`
+  );
+
+  if (sensitiveCount) {
+    lines.push("", "WARNING: possible secrets in evidence — do not commit this file.");
+    for (const hit of result.sensitive.slice(0, 5)) {
+      lines.push(`  line ${hit.line}: ${hit.text}`);
+    }
+    if (sensitiveCount > 5) lines.push(`  ... and ${sensitiveCount - 5} more`);
+    lines.push("", "Gate: Level 3 next step BLOCKED until evidence is redacted and re-generated.");
+    return { lines, exitCode: 1, scanOk: false };
+  }
+
+  lines.push("", "No obvious sensitive patterns detected (manual review still recommended).");
+  lines.push(
+    "",
+    "Next: summarize into docs/runtime/ai-team-runtime-level3-manual-e2e.md (templates in final execution doc §9)."
+  );
+  lines.push("Never commit docs/runtime/evidence/*.md");
+
+  if (result.conclusion === "PASS") {
+    lines.push(
+      "Gate: evidence PASS — operator may update manual-e2e and proceed to TaskHistory integration (§10)."
+    );
+  } else if (result.conclusion) {
+    lines.push(`Gate: evidence ${result.conclusion} — next step held per final execution doc §10.`);
+  }
+
+  return { lines, exitCode: 0, scanOk: true };
 }
 
 export function snapshotFromExecutionRunsResponse(json) {
