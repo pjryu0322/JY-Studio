@@ -444,6 +444,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeSafeEchoAdapterInputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterInputContract"];
   runtimeSafeEchoAdapterOutputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterOutputContract"];
   runtimeSandboxDryRunBoundary: SerializedRuntimePilotValidationDiag["runtimeSandboxDryRunBoundary"];
+  runtimePilotValidationRequestDraft: SerializedRuntimePilotValidationDiag["runtimePilotValidationRequestDraft"];
+  runtimePilotValidationOperatorApprovalSnapshot: SerializedRuntimePilotValidationDiag["runtimePilotValidationOperatorApprovalSnapshot"];
+  runtimePilotValidationAuditTraceCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationAuditTraceCandidate"];
+  runtimePilotValidationRollbackPlanCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationRollbackPlanCandidate"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -589,6 +593,11 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     runtimeSafeEchoAdapterInputContract: pilotValidationDiag.runtimeSafeEchoAdapterInputContract,
     runtimeSafeEchoAdapterOutputContract: pilotValidationDiag.runtimeSafeEchoAdapterOutputContract,
     runtimeSandboxDryRunBoundary: pilotValidationDiag.runtimeSandboxDryRunBoundary,
+    runtimePilotValidationRequestDraft: pilotValidationDiag.runtimePilotValidationRequestDraft,
+    runtimePilotValidationOperatorApprovalSnapshot:
+      pilotValidationDiag.runtimePilotValidationOperatorApprovalSnapshot,
+    runtimePilotValidationAuditTraceCandidate: pilotValidationDiag.runtimePilotValidationAuditTraceCandidate,
+    runtimePilotValidationRollbackPlanCandidate: pilotValidationDiag.runtimePilotValidationRollbackPlanCandidate,
   };
 }
 

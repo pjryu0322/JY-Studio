@@ -15,6 +15,13 @@
 - `파일럿 실행 검증 준비` 버튼은 adapter 호출이 아니며, 기본 동작은 dry-run 안내 문구 표시다.
 - 실제 pilot execution adapter는 Phase 2에서 별도 검토한다.
 
+## Phase 3 (Validation Request Draft & Operator Approval UI Contract)
+
+- `runtimePilotValidationRequestDraft`·operator approval snapshot·audit trace·rollback plan candidate metadata.
+- 승인 정보는 snapshot이며 actual approval enforcement가 아니다.
+- audit/rollback은 candidate metadata이며 실행되지 않는다.
+- `validationRequestIdCandidate`는 deterministic string이다.
+
 ## Phase 2 (Safe Echo Adapter Contract)
 
 - `runtimeSafeEchoAdapterContractSummary`·input/output·`runtimeSandboxDryRunBoundary` metadata only.

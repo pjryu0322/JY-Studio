@@ -162,6 +162,36 @@ export function PilotValidationReviewPanel({
           <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"\ud5c8\uc6a9 \uac80\uc99d \ubc29\uc2dd"}</dt>
           <dd style={{ margin: 0, color: t.textPrimary }}>{vm.safeEchoValidationModeKo}</dd>
         </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Validation Request Draft"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-request-draft">
+            {vm.requestDraftStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Operator Approval Snapshot"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-approval-snapshot">
+            {vm.operatorApprovalSnapshotStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Audit Trace Candidate"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-audit-trace">
+            {vm.auditTraceCandidateStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Rollback Plan Candidate"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-rollback-plan">
+            {vm.rollbackPlanCandidateStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Validation Request ID (candidate)"}</dt>
+          <dd style={{ margin: 0, color: t.textSecondary, fontSize: 12 }} data-testid="pilot-validation-request-id">
+            {vm.validationRequestIdCandidateKo}
+          </dd>
+        </div>
         {vm.cannotProceedReasonKo ? (
           <div>
             <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"\ucc28\ub2e8/\uc8fc\uc758 \uc0ac\uc720"}</dt>

@@ -67,6 +67,20 @@ export function OverlayRuntimePilotValidationReadOnlyChainSection({
               label="Output contract summary"
               value={vm.safeEchoOutputContractSummaryKo}
             />
+            <OverlayUiKeyValueRow label="Validation Request Draft status" value={vm.requestDraftStatusKo} />
+            <OverlayUiKeyValueRow
+              label="Operator Approval Snapshot status"
+              value={vm.operatorApprovalSnapshotStatusKo}
+            />
+            <OverlayUiKeyValueRow label="Audit Trace Candidate status" value={vm.auditTraceCandidateStatusKo} />
+            <OverlayUiKeyValueRow
+              label="Rollback Plan Candidate status"
+              value={vm.rollbackPlanCandidateStatusKo}
+            />
+            <OverlayUiKeyValueRow
+              label="Validation Request ID Candidate"
+              value={vm.validationRequestIdCandidate}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Final proof summary"
               rows={vm.finalProofSummaryRows}

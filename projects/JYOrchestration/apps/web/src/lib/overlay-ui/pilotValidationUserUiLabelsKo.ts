@@ -22,7 +22,7 @@ export const PILOT_VALIDATION_USER_EXECUTION_SCOPE_KO =
   "제한된 파일럿 검증(메타데이터만, 실제 pilot activation·execution 없음)";
 
 export const PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO =
-  "아직 실제 파일럿 실행은 연결되지 않았습니다. 현재는 Safe Echo 검증 계약(metadata) 준비 상태만 확인합니다.";
+  "현재는 파일럿 검증 요청 초안만 준비되었습니다. 실제 Safe Echo Adapter, Sandbox, Runner, Git, 배포, DB 변경은 실행되지 않습니다.";
 
 export const PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO =
   "Safe Echo Contract only (실제 adapter/sandbox/runner 호출 없음)";

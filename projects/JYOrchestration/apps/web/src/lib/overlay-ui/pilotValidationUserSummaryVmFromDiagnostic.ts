@@ -7,6 +7,12 @@ import type {
   RuntimeSafeEchoAdapterContractStatus,
   RuntimeSafeEchoAdapterMode,
 } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractTypes";
+import type {
+  RuntimePilotValidationAuditTraceCandidateStatus,
+  RuntimePilotValidationOperatorApprovalSnapshotStatus,
+  RuntimePilotValidationRequestDraftStatus,
+  RuntimePilotValidationRollbackPlanCandidateStatus,
+} from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftTypes";
 import {
   buildPilotValidationUserSummaryVmFromInput,
   type PilotValidationUserSummaryBuildInput,
@@ -32,6 +38,42 @@ const SAFE_ECHO_ADAPTER_MODES = new Set<RuntimeSafeEchoAdapterMode>([
   "sandbox_dry_run_contract",
   "blocked",
 ]);
+
+const REQUEST_DRAFT_STATUSES = new Set<RuntimePilotValidationRequestDraftStatus>([
+  "draft_ready",
+  "watch",
+  "blocked",
+  "not_ready",
+]);
+
+const APPROVAL_SNAPSHOT_STATUSES = new Set<RuntimePilotValidationOperatorApprovalSnapshotStatus>([
+  "approval_snapshot_ready",
+  "review_required",
+  "blocked",
+  "not_ready",
+]);
+
+const AUDIT_TRACE_STATUSES = new Set<RuntimePilotValidationAuditTraceCandidateStatus>([
+  "audit_trace_candidate_ready",
+  "watch",
+  "blocked",
+  "not_ready",
+]);
+
+const ROLLBACK_PLAN_STATUSES = new Set<RuntimePilotValidationRollbackPlanCandidateStatus>([
+  "rollback_plan_candidate_ready",
+  "watch",
+  "blocked",
+  "not_ready",
+]);
+
+function readEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
+  const s = readString(value);
+  if (!s || !allowed.has(s as T)) {
+    return null;
+  }
+  return s as T;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -88,6 +130,10 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
   const approvalRaw = data.runtimeOperatorApprovalSummary;
   const safeEchoRaw = data.runtimeSafeEchoAdapterContractSummary;
   const boundaryRaw = data.runtimeSandboxDryRunBoundary;
+  const draftRaw = data.runtimePilotValidationRequestDraft;
+  const approvalSnapshotRaw = data.runtimePilotValidationOperatorApprovalSnapshot;
+  const auditTraceRaw = data.runtimePilotValidationAuditTraceCandidate;
+  const rollbackPlanRaw = data.runtimePilotValidationRollbackPlanCandidate;
 
   if (
     !isRecord(summaryRaw) ||
@@ -95,7 +141,11 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     !isRecord(policyRaw) ||
     !isRecord(approvalRaw) ||
     !isRecord(safeEchoRaw) ||
-    !isRecord(boundaryRaw)
+    !isRecord(boundaryRaw) ||
+    !isRecord(draftRaw) ||
+    !isRecord(approvalSnapshotRaw) ||
+    !isRecord(auditTraceRaw) ||
+    !isRecord(rollbackPlanRaw)
   ) {
     return null;
   }
@@ -116,6 +166,15 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
       ? (adapterMode as RuntimeSafeEchoAdapterMode)
       : null;
 
+  const requestDraftStatus = readEnum(draftRaw.draftStatus, REQUEST_DRAFT_STATUSES);
+  const operatorApprovalSnapshotStatus = readEnum(
+    approvalSnapshotRaw.approvalSnapshotStatus,
+    APPROVAL_SNAPSHOT_STATUSES
+  );
+  const auditTraceCandidateStatus = readEnum(auditTraceRaw.auditTraceStatus, AUDIT_TRACE_STATUSES);
+  const rollbackPlanCandidateStatus = readEnum(rollbackPlanRaw.rollbackPlanStatus, ROLLBACK_PLAN_STATUSES);
+  const validationRequestIdCandidate = readString(draftRaw.validationRequestIdCandidate);
+
   if (
     !validationStatus ||
     !executionMode ||
@@ -123,7 +182,12 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     !approvalReadiness ||
     !userVisibleSummaryKo ||
     !safeEchoContractStatus ||
-    !safeEchoAdapterMode
+    !safeEchoAdapterMode ||
+    !requestDraftStatus ||
+    !operatorApprovalSnapshotStatus ||
+    !auditTraceCandidateStatus ||
+    !rollbackPlanCandidateStatus ||
+    !validationRequestIdCandidate
   ) {
     return null;
   }
@@ -140,6 +204,11 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     safeEchoContractStatus,
     safeEchoAdapterMode,
     sandboxBoundaryTopForbiddenKo: readStringArray(boundaryRaw.forbiddenBoundaryOperations)[0] ?? null,
+    requestDraftStatus,
+    operatorApprovalSnapshotStatus,
+    auditTraceCandidateStatus,
+    rollbackPlanCandidateStatus,
+    validationRequestIdCandidate,
   };
 
   return buildPilotValidationUserSummaryVmFromInput(input);

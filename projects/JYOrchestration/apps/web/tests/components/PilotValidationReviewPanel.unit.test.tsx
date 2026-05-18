@@ -21,6 +21,8 @@ describe("PilotValidationReviewPanel", () => {
     expect(html).toContain("배포 없음");
     expect(html).toContain("pilot-validation-safe-echo-contract");
     expect(html).toContain("Safe Echo Contract only");
+    expect(html).toContain("pilot-validation-request-draft");
+    expect(html).toContain("요청 초안 준비됨");
   });
 
   it("does not invoke execution handlers on prepare secondary click without callback", () => {
@@ -42,6 +44,7 @@ describe("PilotValidationReviewPanel", () => {
     expect(pilotValidationReviewPanelExampleVms.ready_for_validation.dryRunOnlyNoticeKo).toBe(
       PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO
     );
+    expect(pilotValidationReviewPanelExampleVms.ready_for_validation.dryRunOnlyNoticeKo).toContain("요청 초안");
   });
 
   it("request_supplement resolves to callback path when handler provided", () => {

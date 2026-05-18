@@ -56,6 +56,7 @@ Canonical actual-disabled flags: `lib/harness/runtimeShared/runtimeReadOnlyActua
 | Pilot Validation Phase 1 | User-visible Review UI | `pilot-validation/`, `pilotValidationUserSummaryVm.ts` | `PilotValidationReviewPanel` | — | — | — | user VM only (no execution) | — | — | — | — | — | — |
 | Pilot Validation Phase 1.5 | UI wiring | `app/pilot-validation/`, `pilotValidationUserSummaryVmFromDiagnostic.ts` | `/pilot-validation` page + rail link | — | — | — | diagnostic → user VM | — | — | — | — | — | — |
 | Pilot Validation Phase 2 | Safe Echo contract | `runtimePilotValidation/` (safe echo) | contract summary + I/O + boundary | — | — | — | `contractStatus` | yes | yes (+4 fields) | yes | yes | yes | yes |
+| Pilot Validation Phase 3 | Request draft & approval | `runtimePilotValidation/` (request draft) | draft + approval snapshot + audit/rollback candidates | — | — | — | `draftStatus` | yes | yes (+4 fields) | yes | yes | yes | yes |
 
 ## Downstream inputs (H43 example)
 

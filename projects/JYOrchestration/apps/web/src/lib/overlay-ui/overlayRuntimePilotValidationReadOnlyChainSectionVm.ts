@@ -15,6 +15,12 @@ import {
   RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO,
   RUNTIME_SAFE_ECHO_ADAPTER_MODE_LABEL_KO,
 } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractLabelsKo";
+import {
+  RUNTIME_PILOT_VALIDATION_AUDIT_TRACE_CANDIDATE_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_OPERATOR_APPROVAL_SNAPSHOT_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_REQUEST_DRAFT_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO,
+} from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftLabelsKo";
 import { sliceOverlayRows } from "@/lib/harness/runtimeReleaseGatePreflight/runtimeReleaseGatePreflightCheckHelpers";
 import { buildPilotValidationUserSummaryVmFromReports } from "./pilotValidationUserSummaryVm";
 import type { PilotValidationUserSummaryVm } from "./pilotValidationUserSummaryVm";
@@ -38,6 +44,11 @@ export type OverlayRuntimePilotValidationReadOnlyChainSectionVM = Readonly<{
   sandboxBoundaryTopForbiddenKo: string | null;
   safeEchoInputContractSummaryKo: string;
   safeEchoOutputContractSummaryKo: string;
+  requestDraftStatusKo: string;
+  operatorApprovalSnapshotStatusKo: string;
+  auditTraceCandidateStatusKo: string;
+  rollbackPlanCandidateStatusKo: string;
+  validationRequestIdCandidate: string;
 }>;
 
 export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromReports(
@@ -88,5 +99,20 @@ export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromRepo
     sandboxBoundaryTopForbiddenKo: boundary.forbiddenBoundaryOperations[0] ?? null,
     safeEchoInputContractSummaryKo: `requiredInputs:${inputContract.requiredInputs.length}; prohibited:${inputContract.prohibitedInputPayloads.length}`,
     safeEchoOutputContractSummaryKo: `expectedOutputs:${outputContract.expectedOutputs.length}; prohibited:${outputContract.prohibitedOutputs.length}`,
+    requestDraftStatusKo:
+      RUNTIME_PILOT_VALIDATION_REQUEST_DRAFT_STATUS_LABEL_KO[reports.runtimePilotValidationRequestDraft.draftStatus],
+    operatorApprovalSnapshotStatusKo:
+      RUNTIME_PILOT_VALIDATION_OPERATOR_APPROVAL_SNAPSHOT_STATUS_LABEL_KO[
+        reports.runtimePilotValidationOperatorApprovalSnapshot.approvalSnapshotStatus
+      ],
+    auditTraceCandidateStatusKo:
+      RUNTIME_PILOT_VALIDATION_AUDIT_TRACE_CANDIDATE_STATUS_LABEL_KO[
+        reports.runtimePilotValidationAuditTraceCandidate.auditTraceStatus
+      ],
+    rollbackPlanCandidateStatusKo:
+      RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO[
+        reports.runtimePilotValidationRollbackPlanCandidate.rollbackPlanStatus
+      ],
+    validationRequestIdCandidate: reports.runtimePilotValidationRequestDraft.validationRequestIdCandidate,
   };
 }

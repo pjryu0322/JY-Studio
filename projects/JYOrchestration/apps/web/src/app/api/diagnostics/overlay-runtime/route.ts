@@ -1032,6 +1032,12 @@ export async function GET(request: NextRequest) {
       runtimeSafeEchoAdapterInputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterInputContract,
       runtimeSafeEchoAdapterOutputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterOutputContract,
       runtimeSandboxDryRunBoundary: runtimeSemanticDiag.runtimeSandboxDryRunBoundary,
+      runtimePilotValidationRequestDraft: runtimeSemanticDiag.runtimePilotValidationRequestDraft,
+      runtimePilotValidationOperatorApprovalSnapshot:
+        runtimeSemanticDiag.runtimePilotValidationOperatorApprovalSnapshot,
+      runtimePilotValidationAuditTraceCandidate: runtimeSemanticDiag.runtimePilotValidationAuditTraceCandidate,
+      runtimePilotValidationRollbackPlanCandidate:
+        runtimeSemanticDiag.runtimePilotValidationRollbackPlanCandidate,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

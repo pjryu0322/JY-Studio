@@ -128,6 +128,10 @@ describe("Pilot Validation Phase 0 read-only chain", () => {
     expect(Object.keys(diag).sort()).toEqual(
       [
         "runtimePilotValidationReadOnlyChainSummary",
+        "runtimePilotValidationRequestDraft",
+        "runtimePilotValidationOperatorApprovalSnapshot",
+        "runtimePilotValidationAuditTraceCandidate",
+        "runtimePilotValidationRollbackPlanCandidate",
         "runtimeSafeEchoAdapterContractSummary",
         "runtimeSafeEchoAdapterInputContract",
         "runtimeSafeEchoAdapterOutputContract",

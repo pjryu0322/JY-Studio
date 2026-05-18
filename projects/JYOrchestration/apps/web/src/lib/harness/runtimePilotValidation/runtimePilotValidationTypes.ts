@@ -9,6 +9,12 @@ import type {
   RuntimeSafeEchoAdapterOutputContract,
   RuntimeSandboxDryRunBoundary,
 } from "./runtimeSafeEchoAdapterContractTypes";
+import type {
+  RuntimePilotValidationAuditTraceCandidate,
+  RuntimePilotValidationOperatorApprovalSnapshot,
+  RuntimePilotValidationRequestDraft,
+  RuntimePilotValidationRollbackPlanCandidate,
+} from "./runtimePilotValidationRequestDraftTypes";
 
 export type RuntimePilotValidationReadOnlyChainStatus =
   | "ready_for_validation"
@@ -37,4 +43,8 @@ export type RuntimePilotValidationPlanningReports = Readonly<{
   runtimeSafeEchoAdapterInputContract: RuntimeSafeEchoAdapterInputContract;
   runtimeSafeEchoAdapterOutputContract: RuntimeSafeEchoAdapterOutputContract;
   runtimeSandboxDryRunBoundary: RuntimeSandboxDryRunBoundary;
+  runtimePilotValidationRequestDraft: RuntimePilotValidationRequestDraft;
+  runtimePilotValidationOperatorApprovalSnapshot: RuntimePilotValidationOperatorApprovalSnapshot;
+  runtimePilotValidationAuditTraceCandidate: RuntimePilotValidationAuditTraceCandidate;
+  runtimePilotValidationRollbackPlanCandidate: RuntimePilotValidationRollbackPlanCandidate;
 }>;

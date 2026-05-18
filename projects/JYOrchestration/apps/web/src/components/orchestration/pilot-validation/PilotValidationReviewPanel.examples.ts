@@ -26,6 +26,11 @@ const baseVm: PilotValidationUserSummaryVm = {
   safeEchoContractStatusKo: "계약 준비되지 않음",
   sandboxDryRunBoundaryStatusKo: "Sandbox dry-run 경계 metadata만 정의(호출 불가)",
   safeEchoValidationModeKo: "Safe Echo Contract only (실제 adapter/sandbox/runner 호출 없음)",
+  requestDraftStatusKo: "요청 초안 준비되지 않음",
+  operatorApprovalSnapshotStatusKo: "운영자 승인 정보 준비되지 않음",
+  auditTraceCandidateStatusKo: "감사 추적 후보 준비되지 않음",
+  rollbackPlanCandidateStatusKo: "롤백 계획 후보 준비되지 않음",
+  validationRequestIdCandidateKo: "pilot-validation:not_ready:not_ready",
 };
 
 export const pilotValidationReviewPanelExampleVms = {
@@ -38,6 +43,11 @@ export const pilotValidationReviewPanelExampleVms = {
     secondaryActionLabelKo: "파일럿 실행 검증 준비",
     safeEchoContractStatusKo: "파일럿 검증 계약 준비됨",
     sandboxDryRunBoundaryStatusKo: "Sandbox dry-run 경계 metadata 정의됨(실제 sandbox 호출 없음)",
+    requestDraftStatusKo: "요청 초안 준비됨",
+    operatorApprovalSnapshotStatusKo: "운영자 승인 정보 준비됨",
+    auditTraceCandidateStatusKo: "감사 추적 후보 준비됨",
+    rollbackPlanCandidateStatusKo: "롤백 계획 후보 준비됨",
+    validationRequestIdCandidateKo: "pilot-validation:contract_ready:ready_for_validation",
   },
   watch: {
     ...baseVm,

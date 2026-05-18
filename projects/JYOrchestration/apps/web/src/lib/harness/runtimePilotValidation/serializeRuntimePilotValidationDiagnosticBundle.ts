@@ -12,6 +12,12 @@ import type {
   RuntimeSandboxDryRunBoundary,
 } from "./runtimeSafeEchoAdapterContractTypes";
 import { SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS } from "./runtimeSafeEchoAdapterContractConstants";
+import type {
+  RuntimePilotValidationAuditTraceCandidate,
+  RuntimePilotValidationOperatorApprovalSnapshot,
+  RuntimePilotValidationRequestDraft,
+  RuntimePilotValidationRollbackPlanCandidate,
+} from "./runtimePilotValidationRequestDraftTypes";
 
 function sortKo(rows: readonly string[]): readonly string[] {
   return [...rows].sort((a, b) => a.localeCompare(b, "ko"));
@@ -81,6 +87,79 @@ function serializeSandboxBoundary(b: RuntimeSandboxDryRunBoundary): Readonly<Rec
   };
 }
 
+function serializeRequestDraft(d: RuntimePilotValidationRequestDraft): Readonly<Record<string, unknown>> {
+  return {
+    mode: d.mode,
+    ...SERIALIZED_RUNTIME_SAFE_ECHO_ADAPTER_ACTUAL_FLAGS,
+    draftStatus: d.draftStatus,
+    draftMode: d.draftMode,
+    validationRequestIdCandidate: d.validationRequestIdCandidate,
+    requestedValidationMode: d.requestedValidationMode,
+    projectIdRequired: d.projectIdRequired,
+    taskIdOptional: d.taskIdOptional,
+    userApprovalRequired: d.userApprovalRequired,
+    operatorApprovalRequired: d.operatorApprovalRequired,
+    auditTraceRequired: d.auditTraceRequired,
+    rollbackPlanRequired: d.rollbackPlanRequired,
+    sourceSummaryRows: sortKo(d.sourceSummaryRows),
+    prohibitedOperationRows: sortKo(d.prohibitedOperationRows),
+    blockers: sortKo(d.blockers),
+    warnings: sortKo(d.warnings),
+    recommendations: sortKo(d.recommendations),
+  };
+}
+
+function serializeOperatorApprovalSnapshot(
+  s: RuntimePilotValidationOperatorApprovalSnapshot
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: s.mode,
+    actualApprovalEnforcementEnabled: s.actualApprovalEnforcementEnabled,
+    actualExecutionBlockingEnabled: s.actualExecutionBlockingEnabled,
+    actualMergeBlockingEnabled: s.actualMergeBlockingEnabled,
+    approvalSnapshotStatus: s.approvalSnapshotStatus,
+    approvalSourceLayer: s.approvalSourceLayer,
+    approvalRequiredBeforeAnyInvocation: s.approvalRequiredBeforeAnyInvocation,
+    approvalDoesNotTriggerExecution: s.approvalDoesNotTriggerExecution,
+    approvalRows: sortKo(s.approvalRows),
+    missingApprovalRows: sortKo(s.missingApprovalRows),
+    recommendations: sortKo(s.recommendations),
+  };
+}
+
+function serializeAuditTraceCandidate(
+  c: RuntimePilotValidationAuditTraceCandidate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: c.mode,
+    actualExecutionEnabled: c.actualExecutionEnabled,
+    actualAdapterInvocationEnabled: c.actualAdapterInvocationEnabled,
+    auditTraceStatus: c.auditTraceStatus,
+    auditTraceIdCandidate: c.auditTraceIdCandidate,
+    traceSourceLayers: sortKo(c.traceSourceLayers),
+    traceRows: sortKo(c.traceRows),
+    missingTraceRows: sortKo(c.missingTraceRows),
+    recommendations: sortKo(c.recommendations),
+  };
+}
+
+function serializeRollbackPlanCandidate(
+  c: RuntimePilotValidationRollbackPlanCandidate
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: c.mode,
+    actualRollbackExecutionEnabled: c.actualRollbackExecutionEnabled,
+    actualExecutionEnabled: c.actualExecutionEnabled,
+    rollbackPlanStatus: c.rollbackPlanStatus,
+    rollbackPlanCandidateId: c.rollbackPlanCandidateId,
+    rollbackScope: c.rollbackScope,
+    rollbackDoesNotExecute: c.rollbackDoesNotExecute,
+    rollbackRows: sortKo(c.rollbackRows),
+    missingRollbackRows: sortKo(c.missingRollbackRows),
+    recommendations: sortKo(c.recommendations),
+  };
+}
+
 export function serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports(
   reports: RuntimeSemanticPlanningReports
 ): Readonly<Record<string, unknown>> {
@@ -94,5 +173,15 @@ export function serializeRuntimePilotValidationDiagnosticBundleFromSemanticRepor
     runtimeSafeEchoAdapterInputContract: serializeInputContract(reports.runtimeSafeEchoAdapterInputContract),
     runtimeSafeEchoAdapterOutputContract: serializeOutputContract(reports.runtimeSafeEchoAdapterOutputContract),
     runtimeSandboxDryRunBoundary: serializeSandboxBoundary(reports.runtimeSandboxDryRunBoundary),
+    runtimePilotValidationRequestDraft: serializeRequestDraft(reports.runtimePilotValidationRequestDraft),
+    runtimePilotValidationOperatorApprovalSnapshot: serializeOperatorApprovalSnapshot(
+      reports.runtimePilotValidationOperatorApprovalSnapshot
+    ),
+    runtimePilotValidationAuditTraceCandidate: serializeAuditTraceCandidate(
+      reports.runtimePilotValidationAuditTraceCandidate
+    ),
+    runtimePilotValidationRollbackPlanCandidate: serializeRollbackPlanCandidate(
+      reports.runtimePilotValidationRollbackPlanCandidate
+    ),
   };
 }

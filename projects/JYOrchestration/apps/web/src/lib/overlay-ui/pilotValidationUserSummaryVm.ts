@@ -13,6 +13,18 @@ import type {
 } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractTypes";
 import { RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractLabelsKo";
 import {
+  RUNTIME_PILOT_VALIDATION_AUDIT_TRACE_CANDIDATE_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_OPERATOR_APPROVAL_SNAPSHOT_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_REQUEST_DRAFT_STATUS_LABEL_KO,
+  RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO,
+} from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftLabelsKo";
+import type {
+  RuntimePilotValidationAuditTraceCandidateStatus,
+  RuntimePilotValidationOperatorApprovalSnapshotStatus,
+  RuntimePilotValidationRequestDraftStatus,
+  RuntimePilotValidationRollbackPlanCandidateStatus,
+} from "@/lib/harness/runtimePilotValidation/runtimePilotValidationRequestDraftTypes";
+import {
   PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
   PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO,
   PILOT_VALIDATION_USER_EXECUTION_SCOPE_KO,
@@ -34,6 +46,11 @@ export type PilotValidationUserSummaryBuildInput = Readonly<{
   safeEchoContractStatus: RuntimeSafeEchoAdapterContractStatus;
   safeEchoAdapterMode: RuntimeSafeEchoAdapterMode;
   sandboxBoundaryTopForbiddenKo: string | null;
+  requestDraftStatus: RuntimePilotValidationRequestDraftStatus;
+  operatorApprovalSnapshotStatus: RuntimePilotValidationOperatorApprovalSnapshotStatus;
+  auditTraceCandidateStatus: RuntimePilotValidationAuditTraceCandidateStatus;
+  rollbackPlanCandidateStatus: RuntimePilotValidationRollbackPlanCandidateStatus;
+  validationRequestIdCandidate: string;
 }>;
 
 export type PilotValidationUserSummaryVm = Readonly<{
@@ -55,6 +72,11 @@ export type PilotValidationUserSummaryVm = Readonly<{
   safeEchoContractStatusKo: string;
   sandboxDryRunBoundaryStatusKo: string;
   safeEchoValidationModeKo: string;
+  requestDraftStatusKo: string;
+  operatorApprovalSnapshotStatusKo: string;
+  auditTraceCandidateStatusKo: string;
+  rollbackPlanCandidateStatusKo: string;
+  validationRequestIdCandidateKo: string;
 }>;
 
 function actionLabelsForStatus(status: RuntimePilotValidationReadOnlyChainStatus): Readonly<{
@@ -161,6 +183,14 @@ export function buildPilotValidationUserSummaryVmFromInput(
         ? "Sandbox dry-run 경계 metadata 정의됨(실제 sandbox 호출 없음)"
         : "Sandbox dry-run 경계 metadata만 정의(호출 불가)",
     safeEchoValidationModeKo: PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO,
+    requestDraftStatusKo: RUNTIME_PILOT_VALIDATION_REQUEST_DRAFT_STATUS_LABEL_KO[input.requestDraftStatus],
+    operatorApprovalSnapshotStatusKo:
+      RUNTIME_PILOT_VALIDATION_OPERATOR_APPROVAL_SNAPSHOT_STATUS_LABEL_KO[input.operatorApprovalSnapshotStatus],
+    auditTraceCandidateStatusKo:
+      RUNTIME_PILOT_VALIDATION_AUDIT_TRACE_CANDIDATE_STATUS_LABEL_KO[input.auditTraceCandidateStatus],
+    rollbackPlanCandidateStatusKo:
+      RUNTIME_PILOT_VALIDATION_ROLLBACK_PLAN_CANDIDATE_STATUS_LABEL_KO[input.rollbackPlanCandidateStatus],
+    validationRequestIdCandidateKo: input.validationRequestIdCandidate,
   };
 }
 
@@ -174,6 +204,10 @@ export function buildPilotValidationUserSummaryVmFromReports(
 
   const safeEcho = reports.runtimeSafeEchoAdapterContractSummary;
   const boundary = reports.runtimeSandboxDryRunBoundary;
+  const draft = reports.runtimePilotValidationRequestDraft;
+  const approvalSnapshot = reports.runtimePilotValidationOperatorApprovalSnapshot;
+  const auditTrace = reports.runtimePilotValidationAuditTraceCandidate;
+  const rollbackPlan = reports.runtimePilotValidationRollbackPlanCandidate;
 
   return buildPilotValidationUserSummaryVmFromInput({
     validationStatus: summary.validationStatus,
@@ -187,5 +221,10 @@ export function buildPilotValidationUserSummaryVmFromReports(
     safeEchoContractStatus: safeEcho.contractStatus,
     safeEchoAdapterMode: safeEcho.adapterMode,
     sandboxBoundaryTopForbiddenKo: boundary.forbiddenBoundaryOperations[0] ?? null,
+    requestDraftStatus: draft.draftStatus,
+    operatorApprovalSnapshotStatus: approvalSnapshot.approvalSnapshotStatus,
+    auditTraceCandidateStatus: auditTrace.auditTraceStatus,
+    rollbackPlanCandidateStatus: rollbackPlan.rollbackPlanStatus,
+    validationRequestIdCandidate: draft.validationRequestIdCandidate,
   });
 }

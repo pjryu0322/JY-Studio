@@ -30,4 +30,4 @@ All contract objects set `actualAdapterInvocationEnabled`, `actualSandboxInvocat
 
 ## Next phase
 
-Phase 3 — validation request draft & operator approval UI contract (still no actual execution).
+Phase 4 — Safe Echo Adapter Invocation Simulator Contract (still no actual invocation at first).
