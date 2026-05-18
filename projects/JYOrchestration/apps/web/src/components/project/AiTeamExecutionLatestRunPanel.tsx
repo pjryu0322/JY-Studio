@@ -6,6 +6,7 @@ import {
   type TaskExecutionRunDto,
 } from "@/components/project-spec/apis/executionLoopEnvironmentRunsApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { AiTeamRuntimeTimelineList } from "@/components/project/AiTeamRuntimeTimelineList";
 
 export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string }) {
   const [run, setRun] = useState<TaskExecutionRunDto | null>(null);
@@ -68,6 +69,7 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
   if (!projectId.trim()) return null;
 
   const team = run?.teamRuntime;
+  const timeline = team?.timeline ?? [];
   const showApproveButton = team?.status === "approval_waiting" && Boolean(run?.taskId);
 
   return (
@@ -170,6 +172,13 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
               ) : null}
             </div>
           ) : null}
+
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+              AI팀 실행 타임라인
+            </h4>
+            <AiTeamRuntimeTimelineList items={timeline} />
+          </div>
         </>
       )}
     </section>

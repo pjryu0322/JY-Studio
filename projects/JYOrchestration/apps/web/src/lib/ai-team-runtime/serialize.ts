@@ -7,6 +7,7 @@ import {
 } from "./status";
 import { parsePrStatusForTeamRuntime } from "./prStatusParse";
 import { parseTeamReviewPhasesFromReviewerSteps, type TeamRuntimePhaseStatus } from "./reviewerSteps";
+import type { AiTeamRuntimeTimelineItem } from "./timeline";
 
 export type TeamRuntimePhaseSummary = Readonly<{
   status: TeamRuntimePhaseStatus | "waiting";
@@ -33,21 +34,33 @@ export type TeamRuntimeSummary = Readonly<{
     mergedAt?: string | null;
   }>;
   blockReason?: string | null;
+  timeline?: readonly AiTeamRuntimeTimelineItem[];
 }>;
 
 export type TaskExecutionRunTeamRuntimeSource = Readonly<{
+  id?: string;
   status: string;
   teamExecutionStatus?: string | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
   cursorRunId?: string | null;
+  cursorSummary?: string | null;
   branchName?: string | null;
   commitSha?: string | null;
   changedFiles?: unknown;
+  gitSummary?: string | null;
   evaluationReason?: string | null;
   evaluationDecision?: string | null;
   evaluationReviewerSteps?: unknown;
   runError?: string | null;
   prStatus?: string | null;
 }>;
+
+export type TaskExecutionRunForTeamRuntime = TaskExecutionRunTeamRuntimeSource &
+  Readonly<{
+    id: string;
+    teamExecutionStatus?: string | null;
+  }>;
 
 export type GitChangeRequestTeamRuntimeSource = Readonly<{
   pullRequestUrl?: string | null;
