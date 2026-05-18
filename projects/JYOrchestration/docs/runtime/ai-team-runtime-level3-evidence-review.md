@@ -14,8 +14,9 @@
 |------|------|
 | `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs` | 존재 |
 | `apps/web/scripts/lib/ai-team-runtime-live-e2e-lib.mjs` | 존재 |
-| `apps/web/scripts/scan-live-e2e-evidence.mjs` | 존재 (`formatScanLiveE2eReport`) |
-| `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts` | 존재 (13+ tests) |
+| `apps/web/scripts/lib/ai-team-runtime-live-e2e-runner.mjs` | 존재 (CLI orchestration) |
+| `apps/web/scripts/scan-live-e2e-evidence.mjs` | 존재 |
+| `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts` | 존재 (17 tests) |
 | `docs/runtime/ai-team-runtime-level3-live-e2e-runbook.md` | 존재 |
 | `docs/runtime/ai-team-runtime-level3-final-live-e2e-execution.md` | 존재 |
 | `docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md` | 리다이렉트 |

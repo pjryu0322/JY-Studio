@@ -14,10 +14,15 @@ import {
   missingRequiredLiveE2eEnv,
   overallResultFromChecks,
   parseEvidenceConclusionFromMarkdown,
+  parseExpectTimelineFlag,
   parseLiveE2eEnv,
   resolveLiveE2eEvidenceDir,
   validateExecutionRunsResponse,
 } from "../../../scripts/lib/ai-team-runtime-live-e2e-lib.mjs";
+import {
+  LiveE2eCliError,
+  runLiveE2eEvidenceCheck,
+} from "../../../scripts/lib/ai-team-runtime-live-e2e-runner.mjs";
 
 describe("ai-team-runtime-live-e2e-lib", () => {
   it("reports missing required env fields", () => {
@@ -72,6 +77,16 @@ describe("ai-team-runtime-live-e2e-lib", () => {
     });
     expect(config.projectId).toBe("p1");
     expect(config.doApprove).toBe(true);
+  });
+
+  it("parseExpectTimelineFlag defaults true and respects 0/false", () => {
+    expect(parseExpectTimelineFlag({})).toBe(true);
+    expect(parseExpectTimelineFlag({ JYO_EXPECT_TIMELINE: "0" })).toBe(false);
+    expect(parseExpectTimelineFlag({ JYO_EXPECT_TIMELINE: "false" })).toBe(false);
+  });
+
+  it("runLiveE2eEvidenceCheck rejects missing env", async () => {
+    await expect(runLiveE2eEvidenceCheck({})).rejects.toBeInstanceOf(LiveE2eCliError);
   });
 
   it("defaultLiveE2eEvidenceDir resolves under JYOrchestration docs", () => {

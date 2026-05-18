@@ -10,9 +10,6 @@ export const LIVE_E2E_EVIDENCE_FILENAME_PREFIX = "ai-team-runtime-live-e2e-";
 export const LIVE_E2E_FINAL_EXECUTION_DOC =
   "docs/runtime/ai-team-runtime-level3-final-live-e2e-execution.md";
 
-/** @deprecated Prefer {@link LIVE_E2E_FINAL_EXECUTION_DOC} */
-export const LIVE_E2E_EXECUTION_ONLY_DOC = LIVE_E2E_FINAL_EXECUTION_DOC;
-
 /** @typedef {{ name: string; ok: boolean; note: string }} LiveE2eCheck */
 /** @typedef {{ line: number; text: string }} SensitiveLineHit */
 
@@ -32,6 +29,14 @@ export const EXPECTED_TIMELINE_STAGES = Object.freeze([
   "completion",
 ]);
 
+/** @param {NodeJS.ProcessEnv} processEnv */
+export function parseExpectTimelineFlag(processEnv) {
+  const raw = processEnv.JYO_EXPECT_TIMELINE;
+  if (raw === undefined || raw === "") return true;
+  const v = String(raw).trim().toLowerCase();
+  return v !== "0" && v !== "false";
+}
+
 export function parseLiveE2eEnv(processEnv = process.env) {
   const env = (name, fallback = "") => String(processEnv[name] ?? fallback).trim();
   const envFlag = (name) => env(name) === "1" || env(name).toLowerCase() === "true";
@@ -41,7 +46,7 @@ export function parseLiveE2eEnv(processEnv = process.env) {
     projectId: env("JYO_PROJECT_ID"),
     taskId: env("JYO_TASK_ID"),
     sessionCookie: env("JYO_SESSION_COOKIE"),
-    expectTimeline: envFlag("JYO_EXPECT_TIMELINE") || !processEnv.JYO_EXPECT_TIMELINE,
+    expectTimeline: parseExpectTimelineFlag(processEnv),
     doApprove: envFlag("JYO_APPROVE"),
     outputPath: env("JYO_OUTPUT_MD"),
   };
