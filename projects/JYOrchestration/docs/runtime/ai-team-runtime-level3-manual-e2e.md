@@ -114,6 +114,14 @@ curl -X POST "http://localhost:3000/api/task/control" \
 - **Level 3 다음 단계 진입 가능 여부:** **보류** (Manual E2E A/B live PASS 후 가능)
 - **보류 사유:** dev server·DB·Cursor·GitHub·session이 검증 시점에 기동·설정되지 않아 end-to-end 관찰 불가. Timeline 표시/API는 단위 테스트·코드 리뷰로 확인됨.
 
+## Live Evidence Helper
+
+운영자는 `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`로 `GET /api/projects/{projectId}/execution-runs` 응답의 `teamRuntime.timeline`을 검증하고 Markdown evidence를 저장할 수 있다.
+
+- 절차: `ai-team-runtime-level3-live-e2e-runbook.md`
+- evidence 기본 경로: `docs/runtime/evidence/ai-team-runtime-live-e2e-<timestamp>.md`
+- **주의:** helper를 실행·PASS 확인하기 전까지 본 문서의 live E2E 결과는 **미실행 / PARTIAL** 로 유지한다.
+
 ## 운영자 Manual E2E 체크리스트 (요약)
 
 1. `cd projects/JYOrchestration/apps/web && npm run dev`
@@ -125,7 +133,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 ## 다음 작업
 
-1. 위 체크리스트로 live Manual E2E 수행 후 본 문서 결과 열 갱신
+1. Runbook + Evidence Helper로 live Manual E2E 수행 → evidence 파일 생성 후 본 문서 결과 열 갱신
 2. TaskHistory / `appendTaskProgressLog` Timeline 통합
 3. Role Run 분리 설계
 4. Retry / Cancel / Resume 정책

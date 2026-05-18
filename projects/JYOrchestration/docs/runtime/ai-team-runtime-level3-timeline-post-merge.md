@@ -69,6 +69,6 @@ docs/runtime/ai-team-runtime-level3-timeline.md
 
 ## 다음 작업
 
-1. Level 3 Runtime Manual E2E live — `ai-team-runtime-level3-manual-e2e.md`
+1. Level 3 Runtime Manual E2E live — `ai-team-runtime-level3-live-e2e-runbook.md` + `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`
 2. Role Run 분리 설계
 3. Retry / Cancel / Resume 정책 설계
