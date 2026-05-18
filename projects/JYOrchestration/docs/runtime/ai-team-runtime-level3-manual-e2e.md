@@ -15,7 +15,7 @@
 | `npx tsc --noEmit` | PASS | main @ `9b91b8a2` |
 | `aiTeamRuntimeTimeline.unit.test.ts` | PASS | 14 tests |
 | `aiTeamApiTeamRuntime.unit.test.ts` | PASS | 3 tests |
-| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS | 7 tests |
+| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS | 13 tests |
 | `tests/harness/ai-team-runtime/` | PASS | 30+ tests |
 | `node scripts/scan-live-e2e-evidence.mjs` | PASS | evidence 0건 (운영자 미생성) |
 | `planningExecutionRunStatusPresentation.unit.test.ts` | PASS | 3 tests |

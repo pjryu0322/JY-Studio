@@ -15,7 +15,7 @@
 | `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs` | 존재 |
 | `apps/web/scripts/lib/ai-team-runtime-live-e2e-lib.mjs` | 존재 |
 | `apps/web/scripts/scan-live-e2e-evidence.mjs` | 존재 |
-| `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts` | 존재 (7 tests) |
+| `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts` | 존재 (13 tests) |
 | `docs/runtime/ai-team-runtime-level3-live-e2e-runbook.md` | 존재 |
 | `docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md` | 존재 |
 | `docs/runtime/evidence/.gitignore` | 존재 (`*.md` 커밋 제외) |
@@ -35,7 +35,7 @@ Helper 동작 (소스·자동 검증):
 | `node scripts/ai-team-runtime-live-e2e-check.mjs` (env 없음) | PASS — 기대 오류 메시지 |
 | `node scripts/scan-live-e2e-evidence.mjs` | PASS — evidence 0건, 경로 정상 |
 | `npx tsc --noEmit` | PASS |
-| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS (7) |
+| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS (13) |
 | `tests/harness/ai-team-runtime/` | PASS |
 
 ## 운영자 Evidence 파일

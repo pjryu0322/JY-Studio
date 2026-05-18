@@ -1,7 +1,14 @@
+import { execSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const _LIB_DIR = dirname(fileURLToPath(import.meta.url));
+
+export const LIVE_E2E_EVIDENCE_FILENAME_PREFIX = "ai-team-runtime-live-e2e-";
+
+export const LIVE_E2E_EXECUTION_ONLY_DOC =
+  "docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md";
 
 /** @typedef {{ name: string; ok: boolean; note: string }} LiveE2eCheck */
 /** @typedef {{ line: number; text: string }} SensitiveLineHit */
@@ -87,10 +94,110 @@ export function parseEvidenceConclusionFromMarkdown(markdown) {
   return match?.[1] ?? null;
 }
 
+/** `projects/JYOrchestration` root (from `apps/web/scripts/lib`). */
+export function jyoOrchestrationRoot() {
+  return join(_LIB_DIR, "..", "..", "..", "..");
+}
+
 /** Default evidence output dir under `projects/JYOrchestration/docs/runtime/evidence`. */
 export function defaultLiveE2eEvidenceDir() {
-  const jyoRoot = join(_LIB_DIR, "..", "..", "..", "..");
-  return join(jyoRoot, "docs", "runtime", "evidence");
+  return join(jyoOrchestrationRoot(), "docs", "runtime", "evidence");
+}
+
+/** @param {NodeJS.ProcessEnv} [processEnv] */
+export function resolveLiveE2eEvidenceDir(processEnv = process.env) {
+  const override = String(processEnv.JYO_EVIDENCE_DIR ?? "").trim();
+  return override || defaultLiveE2eEvidenceDir();
+}
+
+/** @param {Date} [d] */
+export function formatLiveE2eEvidenceFilename(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `${LIVE_E2E_EVIDENCE_FILENAME_PREFIX}${stamp}.md`;
+}
+
+/**
+ * @param {{ outputPath?: string }} config
+ * @param {Date} [d]
+ */
+export function resolveLiveE2eOutputPath(config, d = new Date()) {
+  if (config.outputPath) return config.outputPath;
+  return join(defaultLiveE2eEvidenceDir(), formatLiveE2eEvidenceFilename(d));
+}
+
+export function readGitMetaForLiveE2e(cwd = jyoOrchestrationRoot()) {
+  try {
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd, encoding: "utf8" }).trim();
+    const commit = execSync("git rev-parse HEAD", { cwd, encoding: "utf8" }).trim();
+    return { branch, commit };
+  } catch {
+    return { branch: "(unknown)", commit: "(unknown)" };
+  }
+}
+
+/** @param {string} dir */
+export function listLiveE2eEvidenceFiles(dir) {
+  try {
+    return readdirSync(dir)
+      .filter((name) => name.endsWith(".md") && name.startsWith(LIVE_E2E_EVIDENCE_FILENAME_PREFIX))
+      .map((name) => {
+        const path = join(dir, name);
+        return { name, path, mtimeMs: statSync(path).mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * @param {string} [evidenceDir]
+ * @returns {{
+ *   evidenceDir: string;
+ *   files: { name: string; path: string; mtimeMs: number }[];
+ *   latest: { name: string; path: string; mtimeMs: number } | null;
+ *   conclusion: string | null;
+ *   sensitive: SensitiveLineHit[];
+ * }}
+ */
+export function scanLiveE2eEvidence(evidenceDir = resolveLiveE2eEvidenceDir()) {
+  const files = listLiveE2eEvidenceFiles(evidenceDir);
+  if (!files.length) {
+    return { evidenceDir, files, latest: null, conclusion: null, sensitive: [] };
+  }
+  const latest = files[0];
+  const content = readFileSync(latest.path, "utf8");
+  return {
+    evidenceDir,
+    files,
+    latest,
+    conclusion: parseEvidenceConclusionFromMarkdown(content),
+    sensitive: findSensitiveEvidenceLines(content),
+  };
+}
+
+/** @param {LiveE2eCheck[]} checks */
+export function formatLiveE2eCheckLines(checks) {
+  return checks.map((c) => `${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.note ? ` — ${c.note}` : ""}`);
+}
+
+/**
+ * @param {{ res: Response; json: unknown }} payload
+ * @param {string} label
+ * @returns {string | null}
+ */
+export function liveE2eHttpErrorMessage({ res, json }, label) {
+  if (res.status === 401 || res.status === 403) {
+    return `Session/RBAC issue (${label}): HTTP ${res.status} — check JYO_SESSION_COOKIE.`;
+  }
+  if (res.status >= 500) {
+    return `API error (${label}): HTTP ${res.status} — ${JSON.stringify(json)?.slice(0, 400)}`;
+  }
+  if (!res.ok) {
+    return `HTTP ${res.status} (${label}): ${JSON.stringify(json)?.slice(0, 400)}`;
+  }
+  return null;
 }
 
 export function snapshotFromExecutionRunsResponse(json) {

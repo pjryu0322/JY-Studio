@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXPECTED_TIMELINE_STAGES,
+  LIVE_E2E_EVIDENCE_FILENAME_PREFIX,
   defaultLiveE2eEvidenceDir,
   findSensitiveEvidenceLines,
+  formatLiveE2eEvidenceFilename,
+  formatLiveE2eCheckLines,
   formatMissingEnvMessage,
+  jyoOrchestrationRoot,
+  liveE2eHttpErrorMessage,
   missingRequiredLiveE2eEnv,
   overallResultFromChecks,
   parseEvidenceConclusionFromMarkdown,
   parseLiveE2eEnv,
+  resolveLiveE2eEvidenceDir,
   validateExecutionRunsResponse,
 } from "../../../scripts/lib/ai-team-runtime-live-e2e-lib.mjs";
 
@@ -70,5 +76,30 @@ describe("ai-team-runtime-live-e2e-lib", () => {
   it("defaultLiveE2eEvidenceDir resolves under JYOrchestration docs", () => {
     const dir = defaultLiveE2eEvidenceDir();
     expect(dir.replace(/\\/g, "/")).toMatch(/JYOrchestration\/docs\/runtime\/evidence$/);
+  });
+
+  it("jyoOrchestrationRoot matches evidence dir parent chain", () => {
+    const root = jyoOrchestrationRoot().replace(/\\/g, "/");
+    const evidence = defaultLiveE2eEvidenceDir().replace(/\\/g, "/");
+    expect(evidence).toBe(`${root}/docs/runtime/evidence`);
+  });
+
+  it("formatLiveE2eEvidenceFilename uses expected prefix", () => {
+    const name = formatLiveE2eEvidenceFilename(new Date("2026-05-18T10:11:12Z"));
+    expect(name).toMatch(new RegExp(`^${LIVE_E2E_EVIDENCE_FILENAME_PREFIX}\\d{4}-\\d{2}-\\d{2}-\\d{6}\\.md$`));
+  });
+
+  it("resolveLiveE2eEvidenceDir honors JYO_EVIDENCE_DIR", () => {
+    expect(resolveLiveE2eEvidenceDir({ JYO_EVIDENCE_DIR: "/tmp/evidence" })).toBe("/tmp/evidence");
+  });
+
+  it("formatLiveE2eCheckLines renders PASS/FAIL", () => {
+    const lines = formatLiveE2eCheckLines([{ name: "timeline exists", ok: true, note: "" }]);
+    expect(lines[0]).toBe("PASS  timeline exists");
+  });
+
+  it("liveE2eHttpErrorMessage maps auth failures", () => {
+    const msg = liveE2eHttpErrorMessage({ res: { status: 401, ok: false }, json: {} }, "execution-runs");
+    expect(msg).toContain("JYO_SESSION_COOKIE");
   });
 });

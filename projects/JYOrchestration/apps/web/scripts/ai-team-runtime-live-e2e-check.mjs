@@ -3,28 +3,26 @@
  * Level 3 AI Team Runtime live E2E evidence helper (CLI).
  * @see scripts/lib/ai-team-runtime-live-e2e-lib.mjs
  */
-import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
 import {
+  LIVE_E2E_EXECUTION_ONLY_DOC,
   buildLiveE2eEvidenceMarkdown,
   createLiveE2eApiClient,
-  defaultLiveE2eEvidenceDir,
   formatApproveEvidenceSection,
+  formatLiveE2eCheckLines,
   formatMissingEnvMessage,
+  liveE2eHttpErrorMessage,
   missingRequiredLiveE2eEnv,
   overallResultFromChecks,
   parseLiveE2eEnv,
+  readGitMetaForLiveE2e,
+  resolveLiveE2eOutputPath,
   snapshotFromExecutionRunsResponse,
   stageStatusesFromTimeline,
   validateExecutionRunsResponse,
 } from "./lib/ai-team-runtime-live-e2e-lib.mjs";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const JYO_ROOT = join(__dirname, "..", "..", "..");
-const DEFAULT_EVIDENCE_DIR = defaultLiveE2eEvidenceDir();
 
 function fail(message, code = 1) {
   console.error(message);
@@ -34,7 +32,7 @@ function fail(message, code = 1) {
 function printUsage() {
   console.log(`Level 3 Live E2E evidence helper (operator-only; does not run Runtime).
 
-Docs: projects/JYOrchestration/docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md
+Docs: projects/JYOrchestration/${LIVE_E2E_EXECUTION_ONLY_DOC}
 
 Usage:
   JYO_PROJECT_ID=<id> JYO_TASK_ID=<id> JYO_SESSION_COOKIE='<cookie>' \\
@@ -50,40 +48,18 @@ After run: node scripts/scan-live-e2e-evidence.mjs
 `);
 }
 
-function formatTimestampForFile(d = new Date()) {
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+function assertHttpOk(payload, label) {
+  const message = liveE2eHttpErrorMessage(payload, label);
+  if (message) fail(message);
 }
 
-function tryGitMeta() {
-  try {
-    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
-      cwd: JYO_ROOT,
-      encoding: "utf8",
-    }).trim();
-    const commit = execSync("git rev-parse HEAD", { cwd: JYO_ROOT, encoding: "utf8" }).trim();
-    return { branch, commit };
-  } catch {
-    return { branch: "(unknown)", commit: "(unknown)" };
-  }
-}
-
-function printChecks(checks) {
-  for (const c of checks) {
-    console.log(`${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.note ? ` — ${c.note}` : ""}`);
-  }
-}
-
-function assertHttpOk({ res, json }, label) {
-  if (res.status === 401 || res.status === 403) {
-    fail(`Session/RBAC issue (${label}): HTTP ${res.status} — check JYO_SESSION_COOKIE.`);
-  }
-  if (res.status >= 500) {
-    fail(`API error (${label}): HTTP ${res.status} — ${JSON.stringify(json)?.slice(0, 400)}`);
-  }
-  if (!res.ok) {
-    fail(`HTTP ${res.status} (${label}): ${JSON.stringify(json)?.slice(0, 400)}`);
-  }
+async function fetchRunsValidated(client, projectId, taskId, expectTimeline, label) {
+  const runs = await client.fetchExecutionRuns(projectId, taskId);
+  assertHttpOk(runs, label);
+  return {
+    snapshot: snapshotFromExecutionRunsResponse(runs.json),
+    checks: validateExecutionRunsResponse(runs.json, { expectTimeline }),
+  };
 }
 
 async function main() {
@@ -97,7 +73,7 @@ async function main() {
   if (missing.length) fail(formatMissingEnvMessage(missing));
 
   const client = createLiveE2eApiClient(config);
-  const git = tryGitMeta();
+  const git = readGitMetaForLiveE2e();
 
   console.log(`Base URL: ${config.baseUrl}`);
   console.log(`Project: ${config.projectId}`);
@@ -105,15 +81,19 @@ async function main() {
   console.log(`Expect timeline: ${config.expectTimeline}`);
   console.log("");
 
-  let snapshot;
-  let checks;
   let approveSection = `- JYO_APPROVE: ${config.doApprove ? "1" : "0"}\n- 실행 여부: no\n`;
 
+  let snapshot;
+  let checks;
+
   try {
-    const runs = await client.fetchExecutionRuns(config.projectId, config.taskId);
-    assertHttpOk(runs, "execution-runs");
-    snapshot = snapshotFromExecutionRunsResponse(runs.json);
-    checks = validateExecutionRunsResponse(runs.json, { expectTimeline: config.expectTimeline });
+    ({ snapshot, checks } = await fetchRunsValidated(
+      client,
+      config.projectId,
+      config.taskId,
+      config.expectTimeline,
+      "execution-runs"
+    ));
   } catch (e) {
     if (e?.code === "ENV") {
       fail(`Environment issue: cannot reach ${config.baseUrl} (${e.message})`);
@@ -121,7 +101,7 @@ async function main() {
     throw e;
   }
 
-  printChecks(checks);
+  for (const line of formatLiveE2eCheckLines(checks)) console.log(line);
 
   if (config.doApprove) {
     console.log("\nWARNING: this will mutate task workflow status.\n");
@@ -132,10 +112,13 @@ async function main() {
     const approveOk = approve.res.ok && approve.json?.success === true;
     console.log(`Approve API: ${approveOk ? "PASS" : "FAIL"} HTTP ${approve.res.status}`);
 
-    const runsAfter = await client.fetchExecutionRuns(config.projectId, config.taskId);
-    assertHttpOk(runsAfter, "execution-runs (after approve)");
-    snapshot = snapshotFromExecutionRunsResponse(runsAfter.json);
-    checks = validateExecutionRunsResponse(runsAfter.json, { expectTimeline: config.expectTimeline });
+    ({ snapshot, checks } = await fetchRunsValidated(
+      client,
+      config.projectId,
+      config.taskId,
+      config.expectTimeline,
+      "execution-runs (after approve)"
+    ));
 
     approveSection = formatApproveEvidenceSection({
       approveOk,
@@ -147,10 +130,7 @@ async function main() {
     });
   }
 
-  const outputPath =
-    config.outputPath ||
-    join(DEFAULT_EVIDENCE_DIR, `ai-team-runtime-live-e2e-${formatTimestampForFile()}.md`);
-
+  const outputPath = resolveLiveE2eOutputPath(config);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(
     outputPath,
