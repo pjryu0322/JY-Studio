@@ -7,6 +7,10 @@ import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowSt
 import { PilotValidationReviewPanel } from "@/components/orchestration/pilot-validation";
 import { buildPilotValidationUserSummaryVmFromDiagnosticData } from "@/lib/overlay-ui/pilotValidationUserSummaryVmFromDiagnostic";
 import { uiTokens as t } from "@/components/ui/tokens";
+import {
+  buildPilotValidationOverlayRuntimeDiagnosticUrl,
+  resolvePilotValidationPageViewState,
+} from "@/app/pilot-validation/pilotValidationPageViewState";
 
 type OverlayRuntimeDiagnosticResponse =
   | { success: true; data: Record<string, unknown> }
@@ -29,11 +33,7 @@ export function PilotValidationPageClient() {
     setError(null);
     setDiagnosticData(null);
     try {
-      const qs = new URLSearchParams({
-        projectId: pid,
-        audienceMode: "user",
-      });
-      const res = await fetch(`/api/diagnostics/overlay-runtime?${qs.toString()}`, {
+      const res = await fetch(buildPilotValidationOverlayRuntimeDiagnosticUrl(pid), {
         credentials: "include",
       });
       const json = (await res.json()) as OverlayRuntimeDiagnosticResponse;
@@ -66,6 +66,13 @@ export function PilotValidationPageClient() {
     ? `/requirements?projectId=${encodeURIComponent(projectId)}`
     : "/requirements";
 
+  const viewState = resolvePilotValidationPageViewState({
+    projectId,
+    loading,
+    error,
+    vm,
+  });
+
   return (
     <WorkflowStageChrome title={null} subtitle={undefined}>
       <div
@@ -82,20 +89,20 @@ export function PilotValidationPageClient() {
           width: "100%",
         }}
       >
-        {!projectId ? (
+        {viewState === "missing_project" ? (
           <EmptyState
             title="프로젝트가 지정되지 않았습니다."
             description="URL에 ?projectId= 를 붙여 다시 열어 주세요."
           />
-        ) : loading ? (
+        ) : viewState === "loading" ? (
           <LoadingState />
-        ) : error ? (
+        ) : viewState === "error" ? (
           <InlineAlert variant="danger">{error}</InlineAlert>
-        ) : !vm ? (
+        ) : viewState === "no_vm" ? (
           <InlineAlert variant="warning">
             파일럿 검증 준비 데이터가 아직 없습니다. 프로젝트 오케스트레이션 진단이 생성된 뒤 다시 확인해 주세요.
           </InlineAlert>
-        ) : (
+        ) : vm ? (
           <>
             <PilotValidationReviewPanel
               vm={vm}
@@ -124,6 +131,10 @@ export function PilotValidationPageClient() {
               </section>
             ) : null}
           </>
+        ) : (
+          <InlineAlert variant="warning">
+            파일럿 검증 준비 데이터가 아직 없습니다. 프로젝트 오케스트레이션 진단이 생성된 뒤 다시 확인해 주세요.
+          </InlineAlert>
         )}
       </div>
     </WorkflowStageChrome>

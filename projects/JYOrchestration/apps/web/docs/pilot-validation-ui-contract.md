@@ -1,5 +1,9 @@
 # Pilot Validation UI Contract
 
+## Phase 3 completion milestone (orchestration)
+
+Phase 3 is the **first completion line** for read-only orchestration validation request draft metadata. Phase 4+ (simulator contract, etc.) are optional extensions—not required for this milestone. There is still no actual adapter/sandbox/runner invocation. Users open `/pilot-validation?projectId=` to review readiness. See `pilot-validation-phase3-completion.md`.
+
 ## Phase 0 (read-only chain validation)
 
 - H20.5~H45.5 read-only metadata chain을 종합해 `runtimePilotValidationReadOnlyChainSummary`를 산출한다.

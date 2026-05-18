@@ -588,8 +588,8 @@ platform vs project 구분 필드(`scope`, `projectId`, `isSystem`)는 있으나
 - **Pilot Validation Phase 1 — User-visible Pilot Validation Review UI (read-only)** — `PilotValidationReviewPanel`로 사용자 친화 검증 상태·금지 작업·액션 표시. 실행 handler 없음. Phase 2 adapter는 별도 검토.
 - **Pilot Validation Phase 1.5 — UI wiring (read-only)** — `/pilot-validation?projectId=`·프로젝트 레일 「검증」 링크·diagnostic API 기반 VM. secondary action은 callback/no-op만. actual execution 없음.
 - **Pilot Validation Phase 2 — Safe Echo Adapter Contract (read-only)** — input/output·sandbox dry-run boundary metadata. diagnostic API additive 4 fields. actual adapter/sandbox invocation 없음.
-- **Pilot Validation Phase 3 — Validation Request Draft & Operator Approval UI Contract (read-only)** — request draft·approval snapshot·audit/rollback candidates. actual enforcement/rollback/invocation 없음.
-- **Pilot Validation Phase 4 — Safe Echo Invocation Simulator Contract (read-only)** — simulator summary/input/output/boundary metadata. diagnostic API additive 4 fields. actual adapter/sandbox/runner invocation 없음.
+- **Pilot Validation Phase 3 — Validation Request Draft & Operator Approval UI Contract (read-only, 1차 완료선)** — request draft·approval snapshot·audit/rollback candidates. `/pilot-validation?projectId=` 사용자 검증 준비 화면. actual enforcement/rollback/invocation 없음. 완료 검증: `pilot-validation-phase3-completion.md`, `runtimePilotValidationPhase3CompletionVerification.unit.test.ts`.
+- **Pilot Validation Phase 4 — Safe Echo Invocation Simulator Contract (read-only, 선택 확장)** — simulator summary/input/output/boundary metadata. diagnostic API additive 4 fields. actual adapter/sandbox/runner invocation 없음. Phase 3 완료선 이후 optional extension.
 
 ## 관련 문서
 

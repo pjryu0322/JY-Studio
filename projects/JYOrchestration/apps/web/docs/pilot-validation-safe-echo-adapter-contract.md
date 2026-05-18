@@ -1,5 +1,7 @@
 # Pilot Validation — Safe Echo Adapter Contract (Phase 2)
 
+Phase 2 is part of the Phase 3 orchestration completion line (read-only). Phase 4+ simulator metadata is optional. See `pilot-validation-phase3-completion.md`.
+
 ## Purpose
 
 Phase 2 defines **read-only** Safe Echo Adapter input/output contracts and Sandbox dry-run boundary metadata. No actual adapter, sandbox, runner, or pilot execution occurs.
