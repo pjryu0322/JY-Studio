@@ -50,6 +50,7 @@ import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2En
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
+import { persistScmBlockReasonOnRun } from "@/lib/ai-team-runtime/scmBlockReason";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
 import {
   buildCursorResultFromExecutionRun,
@@ -85,18 +86,6 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;
-}
-
-async function persistScmBlockReasonOnRun(execRunId: string, reason: string): Promise<void> {
-  const normalized = String(reason ?? "").trim();
-  if (!normalized) return;
-
-  await prisma.taskExecutionRun.update({
-    where: { id: execRunId },
-    data: {
-      evaluationReason: normalized.slice(0, 8000),
-    },
-  });
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOpenPrStatus, parsePrStatusForTeamRuntime } from "@/lib/ai-team-runtime/prStatusParse";
 import { canResumeTeamRuntimeMerge } from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
+import { buildTeamRuntimeSummaryFromRun } from "@/lib/ai-team-runtime/serialize";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
 import {
   assertTeamExecutionTransition,
@@ -131,5 +132,15 @@ describe("ai-team-runtime fourth fix helpers", () => {
         teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
       })
     ).toBe(false);
+  });
+
+  it("buildTeamRuntimeSummaryFromRun includes pr from prStatus", () => {
+    const summary = buildTeamRuntimeSummaryFromRun({
+      status: "reviewing",
+      teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+      prStatus: "open:42:https://github.com/a/b/pull/42",
+    });
+    expect(summary.pr?.pullRequestNumber).toBe(42);
+    expect(summary.approval.status).toBe("waiting");
   });
 });
