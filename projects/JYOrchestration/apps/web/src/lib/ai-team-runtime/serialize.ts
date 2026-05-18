@@ -7,6 +7,7 @@ import {
 } from "./status";
 import { parsePrStatusForTeamRuntime } from "./prStatusParse";
 import { parseTeamReviewPhasesFromReviewerSteps, type TeamRuntimePhaseStatus } from "./reviewerSteps";
+import type { AiTeamRuntimeTimelineItem } from "./timeline";
 
 export type TeamRuntimePhaseSummary = Readonly<{
   status: TeamRuntimePhaseStatus | "waiting";
@@ -33,6 +34,7 @@ export type TeamRuntimeSummary = Readonly<{
     mergedAt?: string | null;
   }>;
   blockReason?: string | null;
+  timeline?: readonly AiTeamRuntimeTimelineItem[];
 }>;
 
 export type TaskExecutionRunTeamRuntimeSource = Readonly<{

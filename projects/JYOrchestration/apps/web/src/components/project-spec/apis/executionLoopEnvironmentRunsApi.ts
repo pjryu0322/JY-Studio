@@ -182,6 +182,23 @@ export type TeamRuntimeSummaryDto = Readonly<{
     mergedAt?: string | null;
   }>;
   blockReason?: string | null;
+  timeline?: readonly TeamRuntimeTimelineItemDto[];
+}>;
+
+export type TeamRuntimeTimelineItemDto = Readonly<{
+  id: string;
+  stage: string;
+  titleKo: string;
+  status: string;
+  summaryKo?: string | null;
+  detailKo?: string | null;
+  actorKo?: string | null;
+  prUrl?: string | null;
+  prNumber?: number | null;
+  branchName?: string | null;
+  commitSha?: string | null;
+  changedFileCount?: number | null;
+  blockReason?: string | null;
 }>;
 
 export type TaskExecutionRunDto = {
