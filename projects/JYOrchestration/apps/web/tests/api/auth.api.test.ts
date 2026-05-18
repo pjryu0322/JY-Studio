@@ -17,7 +17,7 @@ describe("auth API", () => {
       body: JSON.stringify({
         name: "Vitest User",
         email,
-        password: "JyoTest!123",
+        password: SEED_OWNER_PASSWORD,
       }),
     });
     expect(res.status).toBe(201);
@@ -33,7 +33,7 @@ describe("auth API", () => {
       body: JSON.stringify({
         name: "Dup",
         email: SEED_OWNER_EMAIL,
-        password: "JyoTest!123",
+        password: SEED_OWNER_PASSWORD,
       }),
     });
     expect(res.status).toBe(409);
@@ -73,7 +73,7 @@ describe("auth API", () => {
       body: JSON.stringify({
         name: "Cookie User",
         email,
-        password: "JyoTest!123",
+        password: SEED_OWNER_PASSWORD,
       }),
     });
     expect(res.status).toBe(201);
