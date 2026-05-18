@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { E2E_SEED_PASSWORD } from "./seedCredentials";
+import { E2E_SEED_OWNER_EMAIL, E2E_SEED_PASSWORD } from "./seedCredentials";
 
 test.describe("E2E AI action", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.getByTestId("login-email").fill("owner@jyo.local");
+    await page.getByTestId("login-email").fill(E2E_SEED_OWNER_EMAIL);
     await page.getByTestId("login-password").fill(E2E_SEED_PASSWORD);
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
