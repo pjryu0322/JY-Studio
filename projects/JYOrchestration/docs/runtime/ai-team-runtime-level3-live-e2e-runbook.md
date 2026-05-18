@@ -59,6 +59,14 @@ JYO_SESSION_COOKIE='next-auth.session-token=...; ...' \
 node scripts/ai-team-runtime-live-e2e-check.mjs
 ```
 
+`--help`로 사용법 확인:
+
+```bash
+node scripts/ai-team-runtime-live-e2e-check.mjs --help
+```
+
+검증 로직은 `scripts/lib/ai-team-runtime-live-e2e-lib.mjs`에 있으며, `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts`로 단위 검증한다.
+
 브라우저에서 cookie 복사: DevTools → Application → Cookies → 요청 헤더의 `Cookie` 전체 문자열.
 
 ### 환경 변수

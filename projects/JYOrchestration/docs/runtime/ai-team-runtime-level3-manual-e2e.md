@@ -116,7 +116,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 ## Live Evidence Helper
 
-운영자는 `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`로 `GET /api/projects/{projectId}/execution-runs` 응답의 `teamRuntime.timeline`을 검증하고 Markdown evidence를 저장할 수 있다.
+운영자는 `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`(검증 로직: `scripts/lib/ai-team-runtime-live-e2e-lib.mjs`)로 `GET /api/projects/{projectId}/execution-runs` 응답의 `teamRuntime.timeline`을 검증하고 Markdown evidence를 저장할 수 있다.
 
 - 절차: `ai-team-runtime-level3-live-e2e-runbook.md`
 - evidence 기본 경로: `docs/runtime/evidence/ai-team-runtime-live-e2e-<timestamp>.md`
