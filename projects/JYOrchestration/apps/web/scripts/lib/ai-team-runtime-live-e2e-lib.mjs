@@ -1,4 +1,16 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const _LIB_DIR = dirname(fileURLToPath(import.meta.url));
+
 /** @typedef {{ name: string; ok: boolean; note: string }} LiveE2eCheck */
+/** @typedef {{ line: number; text: string }} SensitiveLineHit */
+
+export const REQUIRED_LIVE_E2E_ENV_VARS = Object.freeze([
+  "JYO_PROJECT_ID",
+  "JYO_TASK_ID",
+  "JYO_SESSION_COOKIE",
+]);
 
 export const EXPECTED_TIMELINE_STAGES = Object.freeze([
   "developer",
@@ -31,6 +43,51 @@ export function missingRequiredLiveE2eEnv(config) {
   if (!config.taskId) missing.push("JYO_TASK_ID");
   if (!config.sessionCookie) missing.push("JYO_SESSION_COOKIE");
   return missing;
+}
+
+export function formatMissingEnvMessage(missing = REQUIRED_LIVE_E2E_ENV_VARS) {
+  return (
+    `Missing required env: ${missing.join(", ")}\n` +
+    "Set JYO_BASE_URL (default http://localhost:3000), JYO_PROJECT_ID, JYO_TASK_ID, JYO_SESSION_COOKIE.\n" +
+    "Run with --help for usage."
+  );
+}
+
+const SENSITIVE_EVIDENCE_PATTERNS = [
+  /session-token=/i,
+  /next-auth\.session/i,
+  /\bpassword\s*[:=]/i,
+  /authorization:\s*bearer/i,
+  /\bgithub_pat_/i,
+  /\bghp_[a-z0-9]{20,}/i,
+];
+
+/** @param {string} text */
+export function findSensitiveEvidenceLines(text) {
+  /** @type {SensitiveLineHit[]} */
+  const hits = [];
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    for (const pattern of SENSITIVE_EVIDENCE_PATTERNS) {
+      if (pattern.test(lines[i])) {
+        hits.push({ line: i + 1, text: lines[i].trim().slice(0, 120) });
+        break;
+      }
+    }
+  }
+  return hits;
+}
+
+/** @param {string} markdown */
+export function parseEvidenceConclusionFromMarkdown(markdown) {
+  const match = markdown.match(/Live E2E 결과:\s*\*\*(PASS|FAIL|PARTIAL)\*\*/);
+  return match?.[1] ?? null;
+}
+
+/** Default evidence output dir under `projects/JYOrchestration/docs/runtime/evidence`. */
+export function defaultLiveE2eEvidenceDir() {
+  const jyoRoot = join(_LIB_DIR, "..", "..", "..", "..");
+  return join(jyoRoot, "docs", "runtime", "evidence");
 }
 
 export function snapshotFromExecutionRunsResponse(json) {

@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXPECTED_TIMELINE_STAGES,
+  defaultLiveE2eEvidenceDir,
+  findSensitiveEvidenceLines,
+  formatMissingEnvMessage,
   missingRequiredLiveE2eEnv,
   overallResultFromChecks,
+  parseEvidenceConclusionFromMarkdown,
   parseLiveE2eEnv,
   validateExecutionRunsResponse,
 } from "../../../scripts/lib/ai-team-runtime-live-e2e-lib.mjs";
@@ -33,6 +37,20 @@ describe("ai-team-runtime-live-e2e-lib", () => {
     expect(overallResultFromChecks(checks)).toBe("PASS");
   });
 
+  it("formatMissingEnvMessage lists missing vars", () => {
+    expect(formatMissingEnvMessage(["JYO_TASK_ID"])).toContain("JYO_TASK_ID");
+  });
+
+  it("parseEvidenceConclusionFromMarkdown extracts result", () => {
+    const md = "## 결론\n\n- Live E2E 결과: **PASS**\n";
+    expect(parseEvidenceConclusionFromMarkdown(md)).toBe("PASS");
+  });
+
+  it("findSensitiveEvidenceLines flags session cookie patterns", () => {
+    const hits = findSensitiveEvidenceLines("Cookie: next-auth.session-token=abc");
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
   it("parseLiveE2eEnv reads flags", () => {
     const config = parseLiveE2eEnv({
       JYO_PROJECT_ID: "p1",
@@ -42,5 +60,10 @@ describe("ai-team-runtime-live-e2e-lib", () => {
     });
     expect(config.projectId).toBe("p1");
     expect(config.doApprove).toBe(true);
+  });
+
+  it("defaultLiveE2eEvidenceDir resolves under JYOrchestration docs", () => {
+    const dir = defaultLiveE2eEvidenceDir();
+    expect(dir.replace(/\\/g, "/")).toMatch(/JYOrchestration\/docs\/runtime\/evidence$/);
   });
 });

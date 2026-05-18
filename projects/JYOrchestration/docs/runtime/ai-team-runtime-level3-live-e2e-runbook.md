@@ -67,6 +67,12 @@ node scripts/ai-team-runtime-live-e2e-check.mjs --help
 
 검증 로직은 `scripts/lib/ai-team-runtime-live-e2e-lib.mjs`에 있으며, `tests/harness/ai-team-runtime/aiTeamRuntimeLiveE2eLib.unit.test.ts`로 단위 검증한다.
 
+evidence 생성 후 로컬 파일 점검(커밋 금지):
+
+```bash
+node scripts/scan-live-e2e-evidence.mjs
+```
+
 브라우저에서 cookie 복사: DevTools → Application → Cookies → 요청 헤더의 `Cookie` 전체 문자열.
 
 ### 환경 변수

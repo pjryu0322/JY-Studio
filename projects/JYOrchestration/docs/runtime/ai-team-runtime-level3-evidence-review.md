@@ -4,7 +4,7 @@
 
 - Branch: `main`
 - Review date: 2026-05-18
-- Commit: `a9e373b9` (at review time)
+- Commit: `12945f02` (evidence review doc)
 - Scope: `projects/JYOrchestration/**`
 
 ## Evidence Helper 소스 확인

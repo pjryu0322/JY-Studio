@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildLiveE2eEvidenceMarkdown,
   createLiveE2eApiClient,
+  defaultLiveE2eEvidenceDir,
   formatApproveEvidenceSection,
+  formatMissingEnvMessage,
   missingRequiredLiveE2eEnv,
   overallResultFromChecks,
   parseLiveE2eEnv,
@@ -21,9 +23,8 @@ import {
 } from "./lib/ai-team-runtime-live-e2e-lib.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const WEB_ROOT = join(__dirname, "..");
-const JYO_ROOT = join(WEB_ROOT, "..", "..");
-const DEFAULT_EVIDENCE_DIR = join(JYO_ROOT, "docs", "runtime", "evidence");
+const JYO_ROOT = join(__dirname, "..", "..", "..");
+const DEFAULT_EVIDENCE_DIR = defaultLiveE2eEvidenceDir();
 
 function fail(message, code = 1) {
   console.error(message);
@@ -87,13 +88,7 @@ async function main() {
 
   const config = parseLiveE2eEnv();
   const missing = missingRequiredLiveE2eEnv(config);
-  if (missing.length) {
-    fail(
-      `Missing required env: ${missing.join(", ")}\n` +
-        "Set JYO_BASE_URL (default http://localhost:3000), JYO_PROJECT_ID, JYO_TASK_ID, JYO_SESSION_COOKIE.\n" +
-        "Run with --help for usage."
-    );
-  }
+  if (missing.length) fail(formatMissingEnvMessage(missing));
 
   const client = createLiveE2eApiClient(config);
   const git = tryGitMeta();
