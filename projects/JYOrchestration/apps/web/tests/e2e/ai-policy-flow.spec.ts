@@ -1,15 +1,21 @@
 import { expect, test } from "@playwright/test";
 
+import { E2E_SEED_OWNER_EMAIL, E2E_SEED_PASSWORD } from "./seedCredentials";
+
 test.describe("E2E AI policy", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.getByTestId("login-email").fill("owner@jyo.local");
-    await page.getByTestId("login-password").fill("JyoTest!123");
+    await page.getByTestId("login-email").fill(E2E_SEED_OWNER_EMAIL);
+    await page.getByTestId("login-password").fill(E2E_SEED_PASSWORD);
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
+    await page.getByRole("link", { name: "설정으로 이동" }).click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-ai-members").click();
+    await page.getByRole("link", { name: "멤버 관리로 이동" }).click();
+    await page.waitForURL(/\/project-admin\/members/, { timeout: 30_000 });
+    await page.getByTestId("project-unified-members-table-wrap").getByRole("button", { name: "AI" }).click();
+    await page.getByTestId("project-unified-members-row").filter({ hasText: "OpenAI Reviewer" }).click();
     await expect(page.getByTestId("ai-reviewer-policy-section").first()).toBeVisible();
   });
 

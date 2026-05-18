@@ -1,5 +1,5 @@
 /**
- * GitHub compare / PR 수동 개입 안내 (토큰·저장소는 env만 사용).
+ * CI/로컬 힌트용: 저장소 owner/repo 식별(env). 앱 런타임 GitHub API 인증(PAT)은 사용하지 않는다.
  * 저장소 식별: GITHUB_REPOSITORY, GITHUB_REPO(owner/repo), GITHUB_OWNER+GITHUB_REPO(짧은 이름),
  * GITHUB_REPO_URL(https://github.com/owner/repo).
  */

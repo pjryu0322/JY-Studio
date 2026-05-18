@@ -1,0 +1,122 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import type { RequirementsSingleChatOrchestrationStateV1, SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
+import {
+  formatSlotDefinitionRowForOrchestrationLlm,
+  type SlotExpansionPhase,
+  type SlotPatchInput,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { parseUpdatedSlotsRows, safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+
+export async function runSpecialistGroupTurnOpenAI(input: {
+  readonly groupLabel: "flow-analyst" | "feature-designer" | "security-reviewer";
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly userMessage: string;
+  readonly dialogueExcerpt: string;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly state: RequirementsSingleChatOrchestrationStateV1;
+  readonly activeRoles: Set<string>;
+  readonly allowedOwners: Set<string>;
+  /** phase&lt;3 이면 [대상 슬롯]에서 dependsOn 생략 */
+  readonly slotExpansionPhase?: SlotExpansionPhase;
+}): Promise<
+  Readonly<{
+    ok: boolean;
+    patches: SlotPatchInput[];
+    promptText: string;
+    executedRoles: string[];
+  }>
+> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, patches: [], promptText: "[specialist:skip_no_key]", executedRoles: [] };
+  }
+
+  const model = resolveOpenAiModelFromEnv();
+  const allKeys = new Set(input.definitions.map((d) => d.slotKey));
+  const targetDefs = input.definitions.filter((d) => input.allowedOwners.has(d.ownerAgent));
+  if (!targetDefs.length) {
+    return { ok: true, patches: [], promptText: "[specialist:skip_no_defs]", executedRoles: [] };
+  }
+
+  const slotsJson = JSON.stringify(input.state.slots, null, 0).slice(0, 18_000);
+  const expansionPhase: SlotExpansionPhase = input.slotExpansionPhase ?? 3;
+  const includeDepends = expansionPhase >= 3;
+  const targetCatalog = JSON.stringify(
+    targetDefs.map((d) => formatSlotDefinitionRowForOrchestrationLlm(d, { includeDependsOn: includeDepends })),
+    null,
+    0
+  );
+
+  const persona =
+    input.groupLabel === "flow-analyst"
+      ? "service-designer 및 domain-expert — 액터·흐름·예외·시나리오 슬롯만 다룹니다."
+      : input.groupLabel === "feature-designer"
+        ? "solution-architect 및 task-reviewer 및 ui-designer — 기능·우선순위·화면·프로토·UI 슬롯만 다룹니다."
+        : "security-reviewer — 보안·프라이버시·인증/권한 슬롯만 다룹니다.";
+
+  const system = `${workspaceAiMemberSystemPrefix(input.groupLabel === "security-reviewer" ? "security_reviewer" : "ideation")}
+당신은 SingleChat 내부 **${persona}**
+사용자에게 직접 말하지 않습니다. JSON만 출력.
+규칙:
+- [사용자]에 '[QuickAction 선택]'이 있으면 버튼 의도를 반영해 관련 슬롯만 갱신한다(추천안 적용=직전 assistant 추천을 value에 반영).
+- 오직 위 목록의 슬롯만 updatedSlots에 포함.
+- status는 반드시 "candidate" (planner 확정 전). 값·근거를 value에 한국어로 짧게.
+- planner 슬롯은 수정 금지.
+
+출력: { "updatedSlots": [ { "slotKey", "status": "candidate", "value", "confidence", "ownerAgent" } ] }`;
+
+  const user = `[프로젝트] ${input.projectName.trim()}
+[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
+[사용자] ${input.userMessage.trim()}
+[대상 슬롯] ${targetCatalog}
+[현재 상태] ${slotsJson}`;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.25,
+    responseFormatJsonObject: true,
+  });
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      patches: [],
+      promptText: `[specialist:${input.groupLabel}:fail:${res.code}]`,
+      executedRoles: [],
+    };
+  }
+
+  const parsed = safeJsonParse(res.text ?? "") as Record<string, unknown> | null;
+  const rawPatches = parseUpdatedSlotsRows(parsed?.updatedSlots, allKeys, input.allowedOwners, input.definitions);
+  const patches: SlotPatchInput[] = rawPatches.map((p) => ({
+    ...p,
+    status: "candidate",
+    derivedFrom: `specialist:${input.groupLabel}`,
+    staleReason: null,
+  }));
+
+  const defByKey = new Map(input.definitions.map((d) => [d.slotKey, d]));
+  const executedRoles = [
+    ...new Set(
+      patches
+        .map((p) => defByKey.get(p.slotKey)?.ownerAgent ?? "")
+        .filter((o) => o && input.activeRoles.has(o) && input.allowedOwners.has(o))
+    ),
+  ];
+
+  return {
+    ok: true,
+    patches,
+    promptText: `[specialist:${input.groupLabel}]\n[system]\n${system}\n\n[user]\n${user}`,
+    executedRoles,
+  };
+}
+

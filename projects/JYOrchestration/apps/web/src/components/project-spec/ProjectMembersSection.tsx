@@ -6,29 +6,28 @@ import type { GitChangeRequestItem, TaskPromptItem } from "@/components/task/Tas
 import type { ProjectRole } from "@/lib/auth/roles";
 import type { AiMemberActionTypeId } from "@/lib/ai-member/aiMemberActionTypes";
 import {
+  mapInviteOrchestrationUiStageToDbStage,
+  orchestrationStageDbToUiSelectValue,
+  orchestrationStageUiSelectToDbForSave,
+  orchestrationStageUserFacingLabel,
+  ORCHESTRATION_STAGE_UI_SERVICE_PLANNING,
   parseAiMemberRole,
   resolveEffectiveReviewerModel,
   reviewerModelDisplayLabel,
   isLowCapabilityReviewerModel,
   REVIEW_MODEL_PRESETS,
 } from "@/lib/ai-member/aiMemberOrchestration";
+import { AiMembersPage } from "@/components/project-spec/ai-members/AiMembersPage";
+import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import {
+  memberRowToUnified,
+  memberTypeLabelKr,
+  projectRoleLabelKr,
+} from "@/lib/project/unifiedMemberPresentation";
 
-export type ProjectMemberUiRow = {
-  memberId: string;
-  userId: string | null;
-  displayName: string;
-  role: ProjectRole;
-  memberType: "HUMAN" | "AI";
-  aiProvider: string | null;
-  aiOrchestrationRole?: string | null;
-  orchestrationStage?: string | null;
-  aiModelOverride?: string | null;
-  orchestrationEnabled?: boolean;
-  /** 실행 리뷰어 등 전용 오버라이드; null/미설정이면 프로젝트 기본 정책 */
-  aiActionApprovalModeOverride?: string | null;
-  aiActionApplyModeOverride?: string | null;
-  isOwner: boolean;
-};
+export type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 
 type AiActionRow = {
   id: string;
@@ -83,8 +82,12 @@ type ProjectMembersSectionProps = {
   /** 액션 수정(스텁/완료) 권한 판별용 */
   currentProjectRole?: ProjectRole | null;
   currentUserId?: string | null;
-  /** 탭 분리: 사람 멤버만 / AI만 / 전체 */
-  memberSurface?: "all" | "human" | "ai";
+  /** 탭 분리: 사람 멤버만 / AI만 / 전체 / 통합(사용자+AI 한 화면) */
+  memberSurface?: "all" | "human" | "ai" | "unified";
+  /** AI Members: 역할 분리 환경 검증 실행(프로젝트 편집 권한) */
+  canRunStage2EnvTest?: boolean;
+  /** AI Members: 기본 역할 분리용 AI 멤버 일괄 추가(OWNER 전용 API) */
+  isProjectOwner?: boolean;
 };
 
 const ROLE_OPTIONS: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
@@ -92,18 +95,33 @@ const ROLE_OPTIONS: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
 const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "(오케스트레이션 역할 없음)" },
   { value: "planner", label: "planner" },
+  { value: "service-designer", label: "service-designer (서비스 설계)" },
+  { value: "domain-expert", label: "domain-expert (업무 전문가)" },
   { value: "reviewer", label: "reviewer (실행 리뷰)" },
   { value: "security-reviewer", label: "security-reviewer (보안)" },
   { value: "quality-reviewer", label: "quality-reviewer (품질)" },
   { value: "spec-reviewer", label: "spec-reviewer" },
   { value: "task-reviewer", label: "task-reviewer" },
+  { value: "scm-manager", label: "scm-manager (PR/merge)" },
 ];
 
-const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
+/** 오케스트레이션 단계 UI — DB 값은 spec/service-flow/task·execution-review·scm-manager 유지 */
+const ORCHESTRATION_STAGE_UI_SELECT_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "(스테이지 없음)" },
+  { value: ORCHESTRATION_STAGE_UI_SERVICE_PLANNING, label: "서비스 기획" },
+  { value: "execution-review", label: orchestrationStageUserFacingLabel("execution-review") },
+  { value: "scm-manager", label: orchestrationStageUserFacingLabel("scm-manager") },
+];
+
+/** 역할 카드 · 고급 설정(details) 안에서만 spec/service-flow/task 등 내부 값을 직접 고를 때 */
+const ORCHESTRATION_STAGE_ADVANCED_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "(스테이지 없음)" },
+  { value: ORCHESTRATION_STAGE_UI_SERVICE_PLANNING, label: "서비스 기획 (통합)" },
   { value: "spec", label: "spec" },
+  { value: "service-flow", label: "service-flow" },
   { value: "task", label: "task" },
-  { value: "execution-review", label: "execution-review (Cursor 실행 후)" },
+  { value: "execution-review", label: "execution-review" },
+  { value: "scm-manager", label: "scm-manager" },
 ];
 
 const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> = {
@@ -121,7 +139,7 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
   },
   "spec-reviewer": {
     title: "Spec 리뷰어",
-    description: "스펙·요구 정합성을 검토합니다.",
+    description: "실행 계획·요구 정합성을 검토합니다.",
   },
   "task-reviewer": {
     title: "Task 리뷰어",
@@ -129,7 +147,19 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
   },
   planner: {
     title: "Planner",
-    description: "기획·분해 단계(스펙/태스크)에 참여하는 역할입니다.",
+    description: "기획·분해 단계(실행 계획·태스크)에 참여하는 역할입니다.",
+  },
+  "service-designer": {
+    title: "AI 서비스 설계자",
+    description: "액터와 서비스 흐름 초안을 구조화하는 역할입니다.",
+  },
+  "domain-expert": {
+    title: "업무 전문가",
+    description: "현업 절차·예외 흐름을 검토하는 역할입니다.",
+  },
+  "scm-manager": {
+    title: "SCM Manager",
+    description: "Reviewer 승인 후 PR 생성·merge를 담당합니다.",
   },
 };
 
@@ -137,9 +167,8 @@ const EXECUTION_REVIEW_ROLES_UI = ["reviewer", "security-reviewer", "quality-rev
 const PLANNING_ROLES_UI = ["planner", "spec-reviewer", "task-reviewer"] as const;
 
 function stageLabel(v: string | null | undefined): string {
-  if (!v?.trim()) return "—";
-  const o = ORCHESTRATION_STAGE_OPTIONS.find((x) => x.value === v);
-  return o?.label ?? v;
+  if (!String(v ?? "").trim()) return "—";
+  return orchestrationStageUserFacingLabel(v);
 }
 
 const ACTIVE_ORCH_HINT = (
@@ -293,6 +322,7 @@ function AiOrchestrationControls({
   layout = "inline",
   canRemove = false,
   onRemove,
+  orchestrationStageSelectVariant = "public",
 }: {
   member: ProjectMemberUiRow;
   disabled: boolean;
@@ -302,18 +332,29 @@ function AiOrchestrationControls({
   layout?: "inline" | "card";
   canRemove?: boolean;
   onRemove?: () => void;
+  /** public: 서비스 기획·실행 검토 등 사용자 라벨만. advanced: 내부 stage 문자열 선택 가능 */
+  orchestrationStageSelectVariant?: "public" | "advanced";
 }) {
   const [role, setRole] = useState(member.aiOrchestrationRole ?? "");
-  const [stage, setStage] = useState(member.orchestrationStage ?? "");
+  const [stage, setStage] = useState("");
   const [model, setModel] = useState(member.aiModelOverride ?? "");
   const [enabled, setEnabled] = useState(member.orchestrationEnabled !== false);
   const [saving, setSaving] = useState(false);
   const [modelPanelOpen, setModelPanelOpen] = useState(false);
   const [customModelPicked, setCustomModelPicked] = useState(false);
 
+  const stageSelectOptions =
+    orchestrationStageSelectVariant === "advanced"
+      ? ORCHESTRATION_STAGE_ADVANCED_OPTIONS
+      : ORCHESTRATION_STAGE_UI_SELECT_OPTIONS;
+
   useEffect(() => {
     setRole(member.aiOrchestrationRole ?? "");
-    setStage(member.orchestrationStage ?? "");
+    setStage(
+      orchestrationStageSelectVariant === "advanced"
+        ? String(member.orchestrationStage ?? "").trim()
+        : orchestrationStageDbToUiSelectValue(member.orchestrationStage)
+    );
     setModel(member.aiModelOverride ?? "");
     setEnabled(member.orchestrationEnabled !== false);
     setCustomModelPicked(false);
@@ -323,6 +364,7 @@ function AiOrchestrationControls({
     member.orchestrationStage,
     member.aiModelOverride,
     member.orchestrationEnabled,
+    orchestrationStageSelectVariant,
   ]);
 
   const orchRole = parseAiMemberRole(role);
@@ -352,7 +394,7 @@ function AiOrchestrationControls({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aiOrchestrationRole: role.trim() ? role : null,
-          orchestrationStage: stage.trim() ? stage : null,
+          orchestrationStage: orchestrationStageUiSelectToDbForSave(stage, member.orchestrationStage),
           aiModelOverride: trimModel ? trimModel : null,
           orchestrationEnabled: enabled,
         }),
@@ -598,7 +640,7 @@ function AiOrchestrationControls({
             style={{ fontSize: 12, padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }}
             aria-label="orchestration-stage"
           >
-            {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+            {stageSelectOptions.map((o) => (
               <option key={o.value || "none"} value={o.value}>
                 {o.label}
               </option>
@@ -663,7 +705,7 @@ function AiOrchestrationControls({
         style={{ fontSize: 12 }}
         aria-label="orchestration-stage"
       >
-        {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+        {stageSelectOptions.map((o) => (
           <option key={o.value || "none"} value={o.value}>
             {o.label}
           </option>
@@ -743,6 +785,8 @@ export function ProjectMembersSection({
   currentProjectRole = null,
   currentUserId = null,
   memberSurface = "all",
+  canRunStage2EnvTest = false,
+  isProjectOwner = false,
 }: ProjectMembersSectionProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteType, setInviteType] = useState<"HUMAN" | "AI">(
@@ -778,6 +822,10 @@ export function ProjectMembersSection({
   const [requestGitId, setRequestGitId] = useState("");
   const [requestPromptId, setRequestPromptId] = useState("");
   const [requestBusy, setRequestBusy] = useState(false);
+
+  const showScreenLabels = useShowScreenLabels();
+  const [unifiedMemberTab, setUnifiedMemberTab] = useState<"all" | "human" | "ai">("all");
+  const [unifiedSelectedId, setUnifiedSelectedId] = useState<string | null>(null);
 
   const canAnyAiRequest = canRequestAiMemberAction || canRequestAiReviewAction;
 
@@ -830,6 +878,7 @@ export function ProjectMembersSection({
   useEffect(() => {
     if (memberSurface === "human") setInviteType("HUMAN");
     if (memberSurface === "ai") setInviteType("AI");
+    if (memberSurface === "unified") setInviteType("HUMAN");
   }, [memberSurface]);
 
   const sortedMembers = useMemo(
@@ -846,8 +895,25 @@ export function ProjectMembersSection({
   const displayMembers = useMemo(() => {
     if (memberSurface === "human") return sortedMembers.filter((m) => m.memberType === "HUMAN");
     if (memberSurface === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
+    if (memberSurface === "unified") {
+      if (unifiedMemberTab === "human") return sortedMembers.filter((m) => m.memberType === "HUMAN");
+      if (unifiedMemberTab === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
+      return sortedMembers;
+    }
     return sortedMembers;
-  }, [sortedMembers, memberSurface]);
+  }, [sortedMembers, memberSurface, unifiedMemberTab]);
+
+  const unifiedSelectedMember = useMemo(
+    () => sortedMembers.find((m) => m.memberId === unifiedSelectedId) ?? null,
+    [sortedMembers, unifiedSelectedId]
+  );
+
+  useEffect(() => {
+    if (memberSurface !== "unified" || !unifiedSelectedId) return;
+    if (!displayMembers.some((m) => m.memberId === unifiedSelectedId)) {
+      setUnifiedSelectedId(null);
+    }
+  }, [memberSurface, displayMembers, unifiedSelectedId]);
 
   const aiOrchestrationSplit = useMemo(() => {
     const ai = sortedMembers.filter((m) => m.memberType === "AI");
@@ -1139,7 +1205,15 @@ export function ProjectMembersSection({
               aiProvider: inviteAiProvider.trim() || null,
               aiAgentKey: inviteAiAgentKey.trim() || null,
               ...(inviteOrchRole.trim()
-                ? { aiOrchestrationRole: inviteOrchRole.trim(), orchestrationStage: inviteOrchStage.trim() || undefined }
+                ? {
+                    aiOrchestrationRole: inviteOrchRole.trim(),
+                    orchestrationStage: (() => {
+                      const ui = inviteOrchStage.trim();
+                      if (!ui) return undefined;
+                      const db = mapInviteOrchestrationUiStageToDbStage(ui, inviteOrchRole.trim());
+                      return db || undefined;
+                    })(),
+                  }
                 : {}),
               ...(inviteOrchModel.trim() ? { aiModelOverride: inviteOrchModel.trim() } : {}),
               orchestrationEnabled: inviteOrchEnabled,
@@ -1226,13 +1300,21 @@ export function ProjectMembersSection({
   }, [taskPrompts, requestTaskId]);
 
   const title =
-    memberSurface === "human" ? "사람 멤버" : memberSurface === "ai" ? "AI 멤버 · 오케스트레이션" : "멤버 관리";
+    memberSurface === "human"
+      ? "사람 멤버"
+      : memberSurface === "ai"
+        ? "AI 멤버 · 오케스트레이션"
+        : memberSurface === "unified"
+          ? "멤버"
+          : "멤버 관리";
   const subtitle =
     memberSurface === "human"
       ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
       : memberSurface === "ai"
-        ? "실행은 Cursor가 필수입니다. 검토용 AI 멤버(역할·모델·단계)는 선택이며, 없으면 리뷰 단계가 생략됩니다."
-        : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
+        ? "역할 분리 환경 검증에 쓰는 역할을 카드로 관리합니다. 상단에서 기본 멤버 추가와 역할 테스트를 실행할 수 있습니다."
+        : memberSurface === "unified"
+          ? "사람과 AI가 같은 멤버 목록에 표시됩니다. 역할은 동일하게 적용되며, AI만 모델·오케스트레이션 설정이 추가됩니다."
+          : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
 
   const collabSurfaceVisible = memberSurface !== "human";
   const showCollaborationQueuePanel =
@@ -1251,10 +1333,12 @@ export function ProjectMembersSection({
     const st =
       orchKey === "reviewer" || orchKey === "security-reviewer" || orchKey === "quality-reviewer"
         ? "execution-review"
+        : orchKey === "scm-manager"
+          ? "scm-manager"
         : orchKey === "task-reviewer"
           ? "task"
           : "spec";
-    setInviteOrchStage(st);
+    setInviteOrchStage(orchestrationStageDbToUiSelectValue(st));
     const label = ORCH_ROLE_LABELS[orchKey]?.title ?? orchKey;
     setInviteDisplayName((prev) => (prev.trim() ? prev : label));
   }
@@ -1387,7 +1471,8 @@ export function ProjectMembersSection({
     );
   }
 
-  function renderOrchestrationRoleCard(orchKey: string) {
+  function renderOrchestrationRoleCard(orchKey: string, opts?: { compact?: boolean }) {
+    const compact = opts?.compact === true;
     const meta = ORCH_ROLE_LABELS[orchKey];
     if (!meta) return null;
     const cardOrchRole = parseAiMemberRole(orchKey);
@@ -1403,11 +1488,38 @@ export function ProjectMembersSection({
         }}
       >
         <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{meta.title}</div>
+        {compact ? (
+          <div style={{ fontSize: 10, color: "#6d28d9", fontWeight: 800, margin: "4px 0 4px 0" }}>역할 분리 검증 역할</div>
+        ) : null}
+        {orchKey === "reviewer" && compact ? (
+          <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#b45309", lineHeight: 1.45 }}>
+            멤버 없음/비활성 시 플랫폼이 리뷰를 대신하지 않습니다(MISSING/DISABLED 기록).
+          </p>
+        ) : null}
+        {orchKey === "security-reviewer" && compact ? (
+          <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#b45309", lineHeight: 1.45 }}>
+            멤버 없음/비활성 시 플랫폼이 보안 검증을 대신하지 않습니다(MISSING/DISABLED 기록).
+          </p>
+        ) : null}
+        {orchKey === "scm-manager" && compact ? (
+          <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b", lineHeight: 1.45 }}>
+            미등록 시 플랫폼이 merge·verify를 수행합니다.
+          </p>
+        ) : null}
         <p style={{ margin: "4px 0 10px", fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>{meta.description}</p>
-        {cardOrchRole ? (
+        {cardOrchRole && !compact ? (
           <div style={{ fontSize: 12, color: "#334155", marginBottom: 10 }}>
             <span style={{ color: "#64748b" }}>역할 기본 모델:</span>{" "}
             <strong>{reviewerModelDisplayLabel(cardOrchRole, null)}</strong>
+          </div>
+        ) : null}
+        {compact && cardOrchRole ? (
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+            <span style={{ color: "#64748b" }}>모델:</span> openai · 역할 분리 기본{" "}
+            <span style={{ fontFamily: "monospace" }}>gpt-4o-mini</span>
+            {assigned[0]
+              ? ` · 멤버 지정: ${reviewerModelDisplayLabel(cardOrchRole, assigned[0].aiModelOverride)}`
+              : null}
           </div>
         ) : null}
         {assigned.length === 0 ? (
@@ -1440,13 +1552,66 @@ export function ProjectMembersSection({
                     프로젝트 역할 {m.role}
                   </span>
                 ) : null}
-                {canAnyAiRequest && actionOptionsForModal.length > 0 ? (
+                {canAnyAiRequest && actionOptionsForModal.length > 0 && !compact ? (
                   <button type="button" onClick={() => openRequestModal(m.memberId, "SUMMARY_REQUEST")}>
                     AI 요청…
                   </button>
                 ) : null}
               </div>
-              {canManageMembers ? (
+              {compact && canManageMembers ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8 }}>
+                  <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+                    <input
+                      type="checkbox"
+                      checked={m.orchestrationEnabled !== false}
+                      disabled={busyMemberId === m.memberId}
+                      onChange={async (e) => {
+                        setBusyMemberId(m.memberId);
+                        setError(null);
+                        try {
+                          const res = await fetch(`/api/project/members/${encodeURIComponent(m.memberId)}`, {
+                            method: "PATCH",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ orchestrationEnabled: e.target.checked }),
+                          });
+                          const json = (await res.json()) as { success?: boolean; message?: string };
+                          if (!res.ok || !json.success) {
+                            throw new Error(json.message || "저장에 실패했습니다.");
+                          }
+                          setMessage("활성 상태를 저장했습니다.");
+                          await onChanged();
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "저장 중 오류입니다.");
+                        } finally {
+                          setBusyMemberId(null);
+                        }
+                      }}
+                    />
+                    활성
+                  </label>
+                  {!m.isOwner ? (
+                    <button
+                      type="button"
+                      disabled={busyMemberId === m.memberId}
+                      onClick={() => handleRemove(m.memberId)}
+                      style={{
+                        fontSize: 12,
+                        border: "1px solid #dc2626",
+                        background: "#fff",
+                        color: "#b91c1c",
+                        fontWeight: 600,
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        cursor: busyMemberId === m.memberId ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      삭제
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {!compact && canManageMembers ? (
                 <label
                   style={{
                     display: "grid",
@@ -1472,16 +1637,37 @@ export function ProjectMembersSection({
                 </label>
               ) : null}
               {canManageMembers ? (
-                <AiOrchestrationControls
-                  layout="card"
-                  member={m}
-                  disabled={busyMemberId === m.memberId}
-                  onError={(msg) => setError(msg)}
-                  onMessage={(msg) => setMessage(msg)}
-                  onSaved={onChanged}
-                  canRemove={!m.isOwner}
-                  onRemove={() => handleRemove(m.memberId)}
-                />
+                compact ? (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#4338ca" }}>
+                      고급 설정 (역할·단계·모델)
+                    </summary>
+                    <div style={{ marginTop: 8 }}>
+                      <AiOrchestrationControls
+                        layout="card"
+                        orchestrationStageSelectVariant="advanced"
+                        member={m}
+                        disabled={busyMemberId === m.memberId}
+                        onError={(msg) => setError(msg)}
+                        onMessage={(msg) => setMessage(msg)}
+                        onSaved={onChanged}
+                        canRemove={!m.isOwner}
+                        onRemove={() => handleRemove(m.memberId)}
+                      />
+                    </div>
+                  </details>
+                ) : (
+                  <AiOrchestrationControls
+                    layout="card"
+                    member={m}
+                    disabled={busyMemberId === m.memberId}
+                    onError={(msg) => setError(msg)}
+                    onMessage={(msg) => setMessage(msg)}
+                    onSaved={onChanged}
+                    canRemove={!m.isOwner}
+                    onRemove={() => handleRemove(m.memberId)}
+                  />
+                )
               ) : (
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 8, lineHeight: 1.5 }}>
                   <span style={{ color: "#64748b" }}>모델:</span>{" "}
@@ -1493,7 +1679,7 @@ export function ProjectMembersSection({
                   {m.orchestrationEnabled !== false ? "예" : "아니오"}
                 </div>
               )}
-              {isExecutionReviewerOrchRole(m.aiOrchestrationRole) ? (
+              {isExecutionReviewerOrchRole(m.aiOrchestrationRole) && !compact ? (
                 <AiExecutionReviewerPolicyOverrides
                   member={m}
                   disabled={busyMemberId === m.memberId}
@@ -1536,14 +1722,18 @@ export function ProjectMembersSection({
           ? "project-members-human-section"
           : memberSurface === "ai"
             ? "project-members-ai-section"
-            : "project-members-section"
+            : memberSurface === "unified"
+              ? "project-unified-members-section"
+              : "project-members-section"
       }
       data-ui-label={
         memberSurface === "human"
           ? "[P-6-1] Members Surface — Human"
           : memberSurface === "ai"
             ? "[P-6-2] Members Surface — AI"
-            : "[P-6-0] Members Surface — All"
+            : memberSurface === "unified"
+              ? "[P-6-3] Members Surface — Unified"
+              : "[P-6-0] Members Surface — All"
       }
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >
@@ -1559,7 +1749,7 @@ export function ProjectMembersSection({
       {inviteOpen && canManageMembers ? (
         <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            {memberSurface === "all" ? (
+            {memberSurface === "all" || memberSurface === "unified" ? (
               <select value={inviteType} onChange={(e) => setInviteType(e.target.value as "HUMAN" | "AI")}>
                 <option value="HUMAN">HUMAN</option>
                 <option value="AI">AI</option>
@@ -1664,7 +1854,7 @@ export function ProjectMembersSection({
                     onChange={(e) => setInviteOrchStage(e.target.value)}
                     style={{ fontSize: 12 }}
                   >
-                    {ORCHESTRATION_STAGE_OPTIONS.filter((o) => o.value).map((o) => (
+                    {ORCHESTRATION_STAGE_UI_SELECT_OPTIONS.filter((o) => o.value).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
                       </option>
@@ -1716,38 +1906,205 @@ export function ProjectMembersSection({
       {message ? <p style={{ color: "#0b6b0b", fontSize: 13 }}>{message}</p> : null}
       {error ? <p style={{ color: "#b42318", fontSize: 13 }}>{error}</p> : null}
 
-      {memberSurface === "ai" ? (
-        <div style={{ display: "grid", gap: 16 }}>
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>실행 담당</h3>
-            <div
-              style={{
-                border: "2px solid #0ea5e9",
-                borderRadius: 12,
-                padding: 14,
-                background: "linear-gradient(180deg, #f0f9ff 0%, #fff 100%)",
-              }}
-            >
-              <div style={{ fontWeight: 900, fontSize: 16, color: "#0369a1" }}>Cursor</div>
-              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
-                코드 수정 및 저장소 반영을 담당하는 <strong>고정 실행기</strong>입니다. AI 멤버와 동일한 목록에 넣지
-                않습니다.
-              </p>
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#64748b" }}>
-                실행 API·정책은 프로젝트 <strong>실행 환경</strong> 탭에서 연결합니다.
-              </p>
+      {memberSurface === "ai" || memberSurface === "unified" ? (
+        <>
+          {memberSurface === "unified" ? (
+            <div data-testid="project-unified-members-table-wrap" style={{ marginBottom: 20 }}>
+              <ScreenLabel label="프로젝트관리-멤버-탭-구역" visible={showScreenLabels} />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                {(["all", "human", "ai"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => {
+                      setUnifiedMemberTab(tab);
+                      setUnifiedSelectedId(null);
+                    }}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: unifiedMemberTab === tab ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                      background: unifiedMemberTab === tab ? "#eff6ff" : "#fff",
+                      fontWeight: unifiedMemberTab === tab ? 800 : 600,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tab === "all" ? "전체" : tab === "human" ? "사용자" : "AI"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+                <div data-testid="project-unified-members-list-column" style={{ flex: "1 1 320px", minWidth: 0 }}>
+                  <ScreenLabel label="프로젝트관리-멤버-목록-테이블" visible={showScreenLabels} />
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>이름</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>유형</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>역할</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayMembers.map((m) => {
+                          const u = memberRowToUnified(m);
+                          const sel = unifiedSelectedId === m.memberId;
+                          return (
+                            <tr
+                              key={m.memberId}
+                              data-testid="project-unified-members-row"
+                              onClick={() => setUnifiedSelectedId(m.memberId)}
+                              style={{
+                                cursor: "pointer",
+                                background: sel ? "#eff6ff" : "#fff",
+                                borderBottom: "1px solid #f1f5f9",
+                              }}
+                            >
+                              <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                                  <ScreenLabel label="프로젝트관리-멤버-행-컨테이너" visible={showScreenLabels} />
+                                  <span style={{ fontWeight: 700 }}>{u.name}</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: "10px 12px" }}>
+                                <ScreenLabel label="프로젝트관리-멤버-행-유형배지" visible={showScreenLabels} />
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    padding: "2px 8px",
+                                    borderRadius: 999,
+                                    background: u.type === "AI" ? "#ede9fe" : "#eef2ff",
+                                    color: u.type === "AI" ? "#5b21b6" : "#1d4ed8",
+                                  }}
+                                >
+                                  {memberTypeLabelKr(u.type)}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 12px", color: "#334155" }}>{u.roles.join(" · ")}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <aside
+                  data-testid="project-unified-members-detail"
+                  style={{
+                    flex: "1 1 280px",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 10,
+                    padding: 14,
+                    background: "#fafafa",
+                    minHeight: 200,
+                  }}
+                >
+                  <ScreenLabel label="프로젝트관리-멤버-상세-패널" visible={showScreenLabels} />
+                  {!unifiedSelectedMember ? (
+                    <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>목록에서 멤버를 선택하세요.</p>
+                  ) : unifiedSelectedMember.memberType === "HUMAN" ? (
+                    <div>
+                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>멤버 상세</h3>
+                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>이름</span> {unifiedSelectedMember.displayName}
+                      </p>
+                      <label style={{ display: "grid", gap: 6, marginTop: 12, fontSize: 13 }}>
+                        <span style={{ fontWeight: 700 }}>역할</span>
+                        <select
+                          disabled={
+                            !canManageMembers ||
+                            busyMemberId === unifiedSelectedMember.memberId ||
+                            unifiedSelectedMember.isOwner
+                          }
+                          value={unifiedSelectedMember.role}
+                          onChange={(e) =>
+                            handleRoleChange(unifiedSelectedMember.memberId, e.target.value as ProjectRole)
+                          }
+                          style={{ padding: 8, borderRadius: 8, border: "1px solid #cbd5e1" }}
+                        >
+                          {ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>
+                              {projectRoleLabelKr(role)} ({role})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {canManageMembers && !unifiedSelectedMember.isOwner ? (
+                        <button
+                          type="button"
+                          style={{ marginTop: 14, padding: "8px 12px", borderRadius: 8 }}
+                          onClick={() => void handleRemove(unifiedSelectedMember.memberId)}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                        >
+                          제거
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div>
+                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>AI 멤버 상세</h3>
+                      <ScreenLabel label="프로젝트관리-멤버-상세-AI설정" visible={showScreenLabels} />
+                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>이름</span> {unifiedSelectedMember.displayName}
+                      </p>
+                      <p style={{ margin: "0 0 12px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>프로젝트 역할</span>{" "}
+                        {projectRoleLabelKr(unifiedSelectedMember.role)} ({unifiedSelectedMember.role})
+                      </p>
+                      {canManageMembers ? (
+                        <AiOrchestrationControls
+                          member={unifiedSelectedMember}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                          onError={(msg) => setError(msg)}
+                          onMessage={(msg) => setMessage(msg)}
+                          onSaved={onChanged}
+                          canRemove={!unifiedSelectedMember.isOwner}
+                          onRemove={() => void handleRemove(unifiedSelectedMember.memberId)}
+                        />
+                      ) : null}
+                      {isExecutionReviewerOrchRole(unifiedSelectedMember.aiOrchestrationRole) ? (
+                        <AiExecutionReviewerPolicyOverrides
+                          member={unifiedSelectedMember}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                          canEdit={canManageMembers}
+                          onError={(msg) => setError(msg)}
+                          onMessage={(msg) => setMessage(msg)}
+                          onSaved={onChanged}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </aside>
+              </div>
             </div>
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>검토 담당</h3>
-            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
-              Cursor 실행 후 단계적으로 검토합니다. 실행 기록에는 리뷰어명·모델·판단이 남습니다.
+          ) : null}
+          <AiMembersPage
+          projectId={projectId}
+          members={sortedMembers}
+          canManageMembers={canManageMembers}
+          canRunStage2EnvTest={canRunStage2EnvTest}
+          isProjectOwner={isProjectOwner}
+          onMembersChanged={onChanged}
+          onOpenPresetInvite={openPresetInviteForOrchRole}
+          onRemoveMember={(memberId) => void handleRemove(memberId)}
+          setMessage={(msg) => setMessage(msg)}
+          setError={setError}
+        >
+          <details
+            style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", background: "#fafafa" }}
+          >
+            <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 13, color: "#334155" }}>
+              고급 · 품질 리뷰어 및 기획 역할
+            </summary>
+            <p style={{ margin: "10px 0 10px 0", fontSize: 12, color: "#64748b" }}>
+              역할 분리 기본 역할 카드에 포함되지 않는 오케스트레이션 역할입니다.
             </p>
             <div style={{ display: "grid", gap: 12 }}>
-              {EXECUTION_REVIEW_ROLES_UI.map((k) => renderOrchestrationRoleCard(k))}
+              {renderOrchestrationRoleCard("quality-reviewer")}
             </div>
-          </div>
+          </details>
 
           {PLANNING_ROLES_UI.some((k) => (aiOrchestrationSplit.byRole.get(k) ?? []).length > 0) ? (
             <div>
@@ -1766,7 +2123,7 @@ export function ProjectMembersSection({
             추적: Task 실행 기록 화면에서 리뷰어별 요약·모델·판단을 확인할 수 있습니다.
           </p>
 
-          {aiOrchestrationSplit.others.length > 0 ? (
+          {aiOrchestrationSplit.others.length > 0 && memberSurface !== "unified" ? (
             <div>
               <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>
                 기타 AI 멤버
@@ -1779,7 +2136,8 @@ export function ProjectMembersSection({
               </ul>
             </div>
           ) : null}
-        </div>
+        </AiMembersPage>
+        </>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
           {displayMembers.map((m) => renderStandardMemberRow(m))}
@@ -1880,7 +2238,7 @@ export function ProjectMembersSection({
           }}
         >
           <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: "#0f172a" }}>
-            {memberSurface === "ai" ? "협업 액션 큐" : "AI 멤버 액션"}
+            {memberSurface === "ai" || memberSurface === "unified" ? "협업 액션 큐" : "AI 멤버 액션"}
           </h3>
           {canDispatchAiMemberAction ? (
             <button
@@ -1894,7 +2252,7 @@ export function ProjectMembersSection({
           ) : null}
         </div>
         <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px 0" }}>
-          {memberSurface === "ai"
+          {memberSurface === "ai" || memberSurface === "unified"
             ? "요청·디스패치·사람 검토·적용 워크플로입니다. 실행 루프(Cursor) 검토와는 별도입니다."
             : "백그라운드 처리는 환경 변수 AI_ACTION_WORKER_ENABLED=true 로 켤 수 있습니다. 결과는 자동 반영되지 않으며 사람 검토·적용이 필요합니다."}
         </p>

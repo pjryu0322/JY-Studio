@@ -1,0 +1,421 @@
+/** GitHub REST compare — 호출 시점·스코프는 실행 루프/어댑터가 결정(함수 자체는 ENV_TEST 전용 아님). */
+import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
+import { GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS } from "@/lib/integration/githubProjectDbToken";
+import {
+  GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+  resolveGithubRestTokenAndLog,
+} from "@/lib/integration/githubRestCommon";
+
+async function fetchBranchTipCommitSha(input: {
+  api: string;
+  token: string;
+  owner: string;
+  repo: string;
+  headRef: string;
+}): Promise<string | null> {
+  const ref = String(input.headRef ?? "").trim();
+  if (!ref) return null;
+  const url = `${input.api}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/commits/${encodeURIComponent(ref)}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${input.token}`,
+        "User-Agent": "JYOrchestration/github-compare",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    const txt = await res.text();
+    if (!res.ok) return null;
+    const json = JSON.parse(txt) as { sha?: string };
+    const sha = String(json.sha ?? "").trim();
+    return sha || null;
+  } catch {
+    return null;
+  }
+}
+
+function githubApiBase(): string {
+  const b = process.env.GITHUB_API_URL?.trim();
+  if (b) return b.replace(/\/$/, "");
+  return "https://api.github.com";
+}
+
+/** `refs/heads/foo/bar` → `foo/bar` (REST 브랜치·ref 경로에 동일하게 사용). */
+export function normalizeGithubBranchNameForRestApi(branch: string): string {
+  const t = String(branch ?? "").trim();
+  if (!t) return t;
+  const prefix = "refs/heads/";
+  if (t.length >= prefix.length && t.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase()) {
+    return t.slice(prefix.length);
+  }
+  return t;
+}
+
+export type GithubBranchHeadProbePlan = {
+  repoUrl: string;
+  headBranchRaw: string;
+  headBranchNormalized: string;
+  /** `/branches/{branch}` 경로 세그먼트용(슬래시 → %2F). */
+  headBranchEncodedForBranchesPath: string;
+  /** `/git/ref/{ref}` 한 세그먼트: `heads%2F...` */
+  refsHeadPathEncoded: string;
+  branchesRequestUrl: string;
+  gitRefRequestUrl: string;
+  /** 슬래시 포함 브랜치는 git ref API를 먼저 시도(일부 환경에서 branches 경로가 잘못 해석되는 경우 대비). */
+  tryGitRefFirst: boolean;
+};
+
+export type GithubBranchHeadExistsDiagnostics = {
+  headBranchRaw: string;
+  headBranchNormalized: string;
+  headBranchEncodedForBranchesPath: string;
+  refsHeadPathEncoded: string;
+  requestUrlsTried: string[];
+  resolvedVia: "branches_rest" | "git_ref" | null;
+  repoUrl: string;
+  winningRequestUrl: string | null;
+};
+
+/**
+ * 로그·프로브 계획용: 실제 호출 전 URL/인코딩을 한곳에서 계산한다.
+ */
+export function buildGithubBranchHeadProbePlan(params: {
+  repoUrl: string;
+  branch: string;
+}): GithubBranchHeadProbePlan | null {
+  const parsed = parseGithubRepoFullNameFromUrl(params.repoUrl) ?? resolveGithubRepositoryFromEnv();
+  if (!parsed) return null;
+  const { owner, repo } = parsed;
+  const api = githubApiBase();
+  const base = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  const headBranchRaw = String(params.branch ?? "").trim();
+  const headBranchNormalized = normalizeGithubBranchNameForRestApi(headBranchRaw);
+  const headBranchEncodedForBranchesPath = encodeURIComponent(headBranchNormalized);
+  const refsHeadPathEncoded = encodeURIComponent(`heads/${headBranchNormalized}`);
+  return {
+    repoUrl: params.repoUrl,
+    headBranchRaw,
+    headBranchNormalized,
+    headBranchEncodedForBranchesPath,
+    refsHeadPathEncoded,
+    branchesRequestUrl: `${base}/branches/${headBranchEncodedForBranchesPath}`,
+    gitRefRequestUrl: `${base}/git/ref/${refsHeadPathEncoded}`,
+    tryGitRefFirst: headBranchNormalized.includes("/"),
+  };
+}
+
+function parseGithubRepoFullNameFromUrl(repoUrl: string): { owner: string; repo: string } | null {
+  const url = String(repoUrl ?? "").trim();
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host !== "github.com") return null;
+    const seg = u.pathname.replace(/^\/+|\/+$/g, "").split("/");
+    if (seg.length < 2) return null;
+    const owner = seg[0];
+    let repo = seg[1];
+    if (repo.endsWith(".git")) repo = repo.slice(0, -4);
+    if (!owner || !repo) return null;
+    return { owner, repo };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 원격에 브랜치 ref가 있는지(compare 전 선검사). 호출 스코프는 ENV_TEST 어댑터가 제한.
+ * GitHub GET /repos/.../branches/{branch}
+ */
+export async function fetchGithubBranchHeadExists(params: {
+  repoUrl: string;
+  branch: string;
+  githubAccessToken?: string | null;
+  /** 진단 로그용 */
+  projectId?: string | null;
+  allowUnauthenticated?: boolean;
+}): Promise<
+  | { ok: true; headSha: string | null; requestDiagnostics: GithubBranchHeadExistsDiagnostics }
+  | { ok: false; code: string; message: string; httpStatus?: number; requestDiagnostics?: GithubBranchHeadExistsDiagnostics }
+> {
+  const branchRaw = String(params.branch ?? "").trim();
+  if (!branchRaw) {
+    return { ok: false, code: "BRANCH_EMPTY", message: "branch 이름이 없습니다." };
+  }
+  const plan = buildGithubBranchHeadProbePlan({ repoUrl: params.repoUrl, branch: branchRaw });
+  if (!plan) {
+    return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
+  }
+  const { token } = resolveGithubRestTokenAndLog("github_branch_head_exists", params.githubAccessToken ?? null, {
+    throttleKey: "github_branch_exists",
+    projectId: params.projectId,
+  });
+  if (!token && params.allowUnauthenticated !== true) {
+    return {
+      ok: false,
+      code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+      message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      httpStatus: 503,
+      requestDiagnostics: {
+        headBranchRaw: plan.headBranchRaw,
+        headBranchNormalized: plan.headBranchNormalized,
+        headBranchEncodedForBranchesPath: plan.headBranchEncodedForBranchesPath,
+        refsHeadPathEncoded: plan.refsHeadPathEncoded,
+        requestUrlsTried: [],
+        resolvedVia: null,
+        repoUrl: plan.repoUrl,
+        winningRequestUrl: null,
+      },
+    };
+  }
+
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "User-Agent": "JYOrchestration/github-branch-exists",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  const urlsToTry = plan.tryGitRefFirst
+    ? [plan.gitRefRequestUrl, plan.branchesRequestUrl]
+    : [plan.branchesRequestUrl];
+
+  const requestUrlsTried: string[] = [];
+  const baseDiagnostics: Omit<GithubBranchHeadExistsDiagnostics, "requestUrlsTried" | "resolvedVia" | "winningRequestUrl"> =
+    {
+      headBranchRaw: plan.headBranchRaw,
+      headBranchNormalized: plan.headBranchNormalized,
+      headBranchEncodedForBranchesPath: plan.headBranchEncodedForBranchesPath,
+      refsHeadPathEncoded: plan.refsHeadPathEncoded,
+      repoUrl: plan.repoUrl,
+    };
+
+  function parseSuccessfulBody(txt: string, url: string): string | null {
+    try {
+      const j = JSON.parse(txt) as {
+        commit?: { sha?: string };
+        object?: { sha?: string; type?: string };
+      };
+      if (url.includes("/git/ref/")) {
+        const s = String(j?.object?.sha ?? "").trim();
+        return s || null;
+      }
+      const s = String(j?.commit?.sha ?? "").trim();
+      return s || null;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    let lastStatus = 404;
+    for (const url of urlsToTry) {
+      requestUrlsTried.push(url);
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const txt = await res.text();
+        const headSha = parseSuccessfulBody(txt, url);
+        const resolvedVia: "branches_rest" | "git_ref" = url.includes("/git/ref/") ? "git_ref" : "branches_rest";
+        return {
+          ok: true,
+          headSha,
+          requestDiagnostics: {
+            ...baseDiagnostics,
+            requestUrlsTried: [...requestUrlsTried],
+            resolvedVia,
+            winningRequestUrl: url,
+          },
+        };
+      }
+      await res.text().catch(() => {});
+      lastStatus = res.status;
+    }
+
+    const requestDiagnostics: GithubBranchHeadExistsDiagnostics = {
+      ...baseDiagnostics,
+      requestUrlsTried: [...requestUrlsTried],
+      resolvedVia: null,
+      winningRequestUrl: null,
+    };
+
+    if (lastStatus === 404) {
+      return {
+        ok: false,
+        code: "GITHUB_BRANCH_NOT_FOUND",
+        message: "브랜치 없음 또는 아직 원격에 반영되지 않음",
+        httpStatus: 404,
+        requestDiagnostics,
+      };
+    }
+    return {
+      ok: false,
+      code: "GITHUB_BRANCH_ERROR",
+      message: `브랜치 조회 실패 HTTP ${lastStatus}`,
+      httpStatus: lastStatus,
+      requestDiagnostics,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      code: "GITHUB_BRANCH_EXCEPTION",
+      message: msg,
+      httpStatus: 502,
+      requestDiagnostics: {
+        ...baseDiagnostics,
+        requestUrlsTried: [...requestUrlsTried],
+        resolvedVia: null,
+        winningRequestUrl: null,
+      },
+    };
+  }
+}
+
+type CompareJson = {
+  status?: string;
+  ahead_by?: number;
+  behind_by?: number;
+  total_commits?: number;
+  merge_base_commit?: { sha?: string };
+  commits?: Array<{ sha?: string; commit?: { message?: string } }>;
+  files?: Array<{ filename?: string; status?: string; additions?: number; deletions?: number; changes?: number; patch?: string }>;
+};
+
+export async function fetchGithubCompareSnapshot(params: {
+  repoUrl: string;
+  base: string;
+  head: string;
+  maxPatchCharsPerFile?: number;
+  maxFiles?: number;
+  /** Execution setup(DB) GitHub 토큰만. 없으면 인증 호출 안 함(allowUnauthenticated 시 공개 compare만). */
+  githubAccessToken?: string | null;
+  projectId?: string | null;
+  /**
+   * 토큰이 없을 때(공개 저장소) unauthenticated compare를 시도할지.
+   * ENV_TEST 전용 폴백에만 사용한다.
+   */
+  allowUnauthenticated?: boolean;
+}): Promise<
+  | {
+      ok: true;
+      data: {
+        owner: string;
+        repo: string;
+        base: string;
+        head: string;
+        headSha: string | null;
+        changedFiles: string[];
+        diffSummary: string;
+        aheadBy: number;
+        behindBy: number;
+        compareStatus: string;
+      };
+    }
+  | { ok: false; code: string; message: string; httpStatus?: number; detail?: Record<string, unknown> }
+> {
+  const { token } = resolveGithubRestTokenAndLog("github_compare_snapshot", params.githubAccessToken ?? null, {
+    throttleKey: "github_compare",
+    projectId: params.projectId,
+  });
+  // 웹 앱(플랫폼)에서는 execution setup의 repoUrl이 진실이다.
+  // CI/런타임 env의 GITHUB_REPOSITORY 힌트가 다른 저장소를 가리키면 compare 결과가 틀어질 수 있어
+  // repoUrl parse 실패 시에만 env 힌트를 사용한다.
+  const parsed = parseGithubRepoFullNameFromUrl(params.repoUrl) ?? resolveGithubRepositoryFromEnv();
+  if (!parsed) {
+    return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
+  }
+  const { owner, repo } = parsed;
+  const api = githubApiBase();
+  const url = `${api}/repos/${owner}/${repo}/compare/${encodeURIComponent(params.base)}...${encodeURIComponent(params.head)}`;
+  try {
+    if (!token && params.allowUnauthenticated !== true) {
+      return {
+        ok: false,
+        code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+        httpStatus: 503,
+      };
+    }
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "User-Agent": "JYOrchestration/github-compare",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    const txt = await res.text();
+    if (!res.ok) {
+      // 공개 저장소 폴백을 켰지만 실패한 경우는 “토큰 부재”를 명시적으로 드러내준다.
+      if (!token && params.allowUnauthenticated === true) {
+        return {
+          ok: false,
+          code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+          message: `${GITHUB_REST_MISSING_TOKEN_USER_MESSAGE} (공개 저장소 무토큰 compare도 HTTP ${res.status}으로 실패했습니다.)`,
+          httpStatus: res.status,
+          detail: { body: txt.slice(0, 2000) },
+        };
+      }
+      return { ok: false, code: "GITHUB_COMPARE_ERROR", message: `compare 실패 (HTTP ${res.status})`, httpStatus: res.status, detail: { body: txt.slice(0, 2000) } };
+    }
+    const json = JSON.parse(txt) as CompareJson;
+    const aheadBy = Number(json.ahead_by ?? 0);
+    const behindBy = Number(json.behind_by ?? 0);
+    const compareStatus = String(json.status ?? "").trim() || "unknown";
+    const files = Array.isArray(json.files) ? json.files : [];
+    const maxFiles = Math.min(200, Math.max(1, params.maxFiles ?? 80));
+    const sliced = files.slice(0, maxFiles);
+    const changedFiles = sliced.map((f) => String(f.filename ?? "").trim()).filter(Boolean);
+    let headSha = json.commits?.length
+      ? String(json.commits[json.commits.length - 1]?.sha ?? "").trim() || null
+      : null;
+    if (!headSha && aheadBy > 0) {
+      headSha = await fetchBranchTipCommitSha({
+        api,
+        token: token ?? "",
+        owner,
+        repo,
+        headRef: params.head,
+      });
+    }
+
+    const maxPatch = Math.min(10_000, Math.max(200, params.maxPatchCharsPerFile ?? 2500));
+    const fileLines = sliced.map((f) => {
+      const fn = String(f.filename ?? "").trim() || "(unknown)";
+      const st = String(f.status ?? "").trim() || "modified";
+      const delta = `+${f.additions ?? 0}/-${f.deletions ?? 0} (Δ${f.changes ?? 0})`;
+      const patch = String(f.patch ?? "").trim();
+      const patchPreview = patch ? patch.slice(0, maxPatch) + (patch.length > maxPatch ? "\n…(truncated)" : "") : "(patch 없음)";
+      return `--- ${fn} [${st}] ${delta}\n${patchPreview}`;
+    });
+
+    const meta = [
+      `status=${compareStatus}`,
+      `ahead_by=${aheadBy}`,
+      `behind_by=${behindBy}`,
+      `total_commits=${json.total_commits ?? null}`,
+      `merge_base=${json.merge_base_commit?.sha ?? null}`,
+    ].join(" ");
+
+    return {
+      ok: true,
+      data: {
+        owner,
+        repo,
+        base: params.base,
+        head: params.head,
+        headSha,
+        changedFiles,
+        diffSummary: `[GitHub compare ${owner}/${repo}] ${meta}\n\n${fileLines.join("\n\n")}`,
+        aheadBy,
+        behindBy,
+        compareStatus,
+      },
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, code: "GITHUB_COMPARE_EXCEPTION", message: msg, httpStatus: 502 };
+  }
+}
+

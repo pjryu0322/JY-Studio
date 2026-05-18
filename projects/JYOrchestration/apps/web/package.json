@@ -8,6 +8,9 @@
     "db:migrate": "dotenv -e ../../.env -e .env.local -- prisma migrate deploy --schema=../../packages/db/schema.prisma",
     "db:migrate:status": "dotenv -e ../../.env -e .env.local -- prisma migrate status --schema=../../packages/db/schema.prisma",
     "db:fix:execution-setup-columns": "dotenv -e ../../.env -e .env.local -- prisma db execute --file ../../scripts/ensure-execution-setup-split-columns.sql --schema ../../packages/db/schema.prisma",
+    "db:fix:task-execution-run-columns": "dotenv -e ../../.env -e .env.local -- prisma db execute --file ../../scripts/ensure-task-execution-run-columns.sql --schema ../../packages/db/schema.prisma",
+    "db:fix:user-openai-key-columns": "dotenv -e ../../.env -e .env.local -- prisma db execute --file ../../scripts/ensure-user-openai-key-columns.sql --schema ../../packages/db/schema.prisma",
+    "db:seed:test-users": "dotenv -e ../../.env -e .env.local -- prisma db execute --file ../../packages/db/migrations/20260518120000_seed_platform_test_users/migration.sql --schema ../../packages/db/schema.prisma",
     "postinstall": "prisma generate --schema=../../packages/db/schema.prisma",
     "build": "next build",
     "start": "next start",
@@ -23,10 +26,10 @@
     "jose": "^6.2.2",
     "next": "16.2.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
-    "dotenv-cli": "^8.0.0",
     "@playwright/test": "^1.49.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
@@ -34,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^8.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "prisma": "6.16.0",

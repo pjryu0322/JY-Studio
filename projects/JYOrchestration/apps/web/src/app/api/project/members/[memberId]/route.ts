@@ -17,6 +17,7 @@ import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMe
 type PatchBody = {
   role?: ProjectRole;
   displayName?: string;
+  aiProvider?: string | null;
   aiOrchestrationRole?: string | null;
   orchestrationStage?: string | null;
   aiModelOverride?: string | null;
@@ -80,6 +81,7 @@ export async function PATCH(
 
     if (target.memberType !== "AI") {
       if (
+        body.aiProvider !== undefined ||
         body.aiOrchestrationRole !== undefined ||
         body.orchestrationStage !== undefined ||
         body.aiModelOverride !== undefined ||
@@ -166,6 +168,14 @@ export async function PATCH(
       displayName: body.displayName,
       ...(target.memberType === "AI"
         ? {
+            ...(body.aiProvider !== undefined
+              ? {
+                  aiProvider:
+                    body.aiProvider === null || !String(body.aiProvider).trim()
+                      ? null
+                      : String(body.aiProvider).trim(),
+                }
+              : {}),
             ...(aiOrchestrationRole !== undefined ? { aiOrchestrationRole } : {}),
             ...(orchestrationStage !== undefined ? { orchestrationStage } : {}),
             ...(body.aiModelOverride !== undefined

@@ -10,11 +10,9 @@ import {
   SEED_VIEWER_EMAIL,
 } from "./helpers";
 
-const PW = "JyoTest!123";
-
 describe("RBAC API", () => {
   it("[RBAC-001] EDITOR는 git 정책 PATCH 불가", async () => {
-    const cookie = await apiLogin(SEED_EDITOR_EMAIL, PW);
+    const cookie = await apiLogin(SEED_EDITOR_EMAIL, SEED_OWNER_PASSWORD);
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
     const res = await apiFetch(`/api/projects/${projectId}`, {
@@ -27,7 +25,7 @@ describe("RBAC API", () => {
   });
 
   it("[RBAC-002] REVIEWER는 프로젝트 세션 컨텍스트 조회 가능", async () => {
-    const cookie = await apiLogin(SEED_REVIEWER_EMAIL, PW);
+    const cookie = await apiLogin(SEED_REVIEWER_EMAIL, SEED_OWNER_PASSWORD);
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
     const res = await apiFetch(`/api/project/session-context?projectId=${encodeURIComponent(projectId)}`, {
@@ -39,7 +37,7 @@ describe("RBAC API", () => {
   });
 
   it("[RBAC-003] VIEWER는 session-context 조회만 가능(역할 VIEWER)", async () => {
-    const cookie = await apiLogin(SEED_VIEWER_EMAIL, PW);
+    const cookie = await apiLogin(SEED_VIEWER_EMAIL, SEED_OWNER_PASSWORD);
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
     const res = await apiFetch(`/api/project/session-context?projectId=${encodeURIComponent(projectId)}`, {
@@ -51,7 +49,7 @@ describe("RBAC API", () => {
   });
 
   it("[RBAC-004] VIEWER는 AI 액션 생성 불가", async () => {
-    const cookie = await apiLogin(SEED_VIEWER_EMAIL, PW);
+    const cookie = await apiLogin(SEED_VIEWER_EMAIL, SEED_OWNER_PASSWORD);
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
     const members = await apiFetch(`/api/project/members?projectId=${encodeURIComponent(projectId)}`, {
@@ -93,7 +91,7 @@ describe("RBAC API", () => {
     const cj = (await create.json()) as { data?: { id: string } };
     const isolatedId = cj.data!.id;
 
-    const viewerCookie = await apiLogin(SEED_VIEWER_EMAIL, PW);
+    const viewerCookie = await apiLogin(SEED_VIEWER_EMAIL, SEED_OWNER_PASSWORD);
     const res = await apiFetch(`/api/project/session-context?projectId=${encodeURIComponent(isolatedId)}`, {
       cookie: viewerCookie,
     });

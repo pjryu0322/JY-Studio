@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserIdFromRequest } from "@/lib/auth/requestUser";
+import { projectPrototypeCardMeta } from "@/lib/project/projectPrototypeCardMeta";
 import {
   createProject,
   listProjectsOrderedByCreatedDesc,
@@ -43,8 +44,12 @@ export async function GET(request: NextRequest) {
     const includeDeleted =
       sp.get("includeDeleted") === "1" || sp.get("includeDeleted")?.toLowerCase() === "true";
     const projects = await listProjectsOrderedByCreatedDesc(userId, { includeDeleted });
+    const enriched = projects.map((p) => ({
+      ...p,
+      ...projectPrototypeCardMeta(p.id),
+    }));
 
-    return ok("프로젝트 목록 조회에 성공했습니다.", projects);
+    return ok("프로젝트 목록 조회에 성공했습니다.", enriched);
   } catch (error) {
     console.error("GET /api/projects error:", error);
     return fail("프로젝트 목록 조회 중 오류가 발생했습니다.", 500, []);
@@ -73,6 +78,10 @@ export async function POST(request: NextRequest) {
     const projectType = String(payload.projectType ?? "web-service").trim();
     const repoUrl = String(payload.repoUrl ?? "").trim() || null;
     const defaultBranch = String(payload.defaultBranch ?? "main").trim() || "main";
+    const includeDefaultAiPlanner =
+      payload.includeDefaultAiPlanner === false || String(payload.includeDefaultAiPlanner).toLowerCase() === "false"
+        ? false
+        : true;
 
     if (!name) {
       return fail("프로젝트명은 필수입니다.", 400);
@@ -85,6 +94,7 @@ export async function POST(request: NextRequest) {
       repoUrl,
       defaultBranch,
       ownerUserId: userId,
+      includeDefaultAiPlanner,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);

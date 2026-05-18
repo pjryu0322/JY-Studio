@@ -7,8 +7,7 @@
  *
  * DATABASE_URL은 .env(루트)에서 읽습니다.
  *
- * 프로젝트명·소유자 이메일·correlation 접두어는
- * apps/web/src/lib/dev/testSeedConstants.ts 와 맞출 것.
+ * 프로젝트명·소유자 이메일·correlation 접두어는 이 파일의 상수를 단일 출처로 유지합니다.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -119,8 +118,10 @@ async function ensureUser(prisma, stats, email, name, passwordHash) {
 }
 
 async function ensureProject(prisma, stats, ownerUserId) {
+  /** 전체 스칼라를 읽으면 DB에 아직 없는 컬럼이 있을 때 P2022가 납니다. 시드는 id만 필요합니다. */
   const existing = await prisma.project.findFirst({
     where: { name: PROJECT_NAME, ownerUserId },
+    select: { id: true },
   });
   if (existing) {
     bump(stats, "project", "skipped");
@@ -157,6 +158,7 @@ async function ensureProject(prisma, stats, ownerUserId) {
 async function ensureHumanMember(prisma, stats, projectId, userId, role, invitedByUserId) {
   const existing = await prisma.projectMember.findFirst({
     where: { projectId, userId },
+    select: { id: true, role: true },
   });
   if (existing) {
     if (existing.role !== role) {
@@ -186,6 +188,14 @@ async function ensureAiMember(prisma, stats, projectId, spec, invitedByUserId) {
       projectId,
       memberType: "AI",
       aiAgentKey: spec.aiAgentKey,
+    },
+    select: {
+      id: true,
+      displayName: true,
+      aiProvider: true,
+      role: true,
+      aiOrchestrationRole: true,
+      orchestrationStage: true,
     },
   });
   const orchRole = spec.aiOrchestrationRole ?? null;
@@ -234,6 +244,7 @@ async function ensureSeedAction(prisma, stats, projectId, ownerUserId, aiByKey, 
   const correlationKey = `${SEED_CORRELATION_PREFIX}:${spec.actionType}`;
   const existing = await prisma.projectMemberAction.findFirst({
     where: { projectId, correlationKey },
+    select: { id: true },
   });
   if (existing) {
     bump(stats, "aiActions", "skipped");
@@ -301,6 +312,7 @@ async function main() {
 
     const ownerMember = await prisma.projectMember.findFirst({
       where: { projectId: project.id, userId: owner.id },
+      select: { id: true },
     });
     if (!ownerMember) {
       await prisma.projectMember.create({

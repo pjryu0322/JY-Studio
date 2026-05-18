@@ -27,6 +27,13 @@ enum ProjectMemberType {
   AI
 }
 
+/// 사람 멤버 초대(수락 전)
+enum ProjectMemberInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 /// AI(또는 멤버) 액션 유형
 enum AiMemberActionType {
   /// 코드/변경 리뷰 요청
@@ -110,6 +117,38 @@ enum ProjectAiActionApplyMode {
   MANUAL_APPLY
 }
 
+/// 플랫폼 계정(로그인) 상태 — 프로젝트 멤버십과 별개
+enum PlatformAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// 외부 연동이 충족하는 플랫폼 역할(LLM·코드 에이전트·SCM·배포)
+enum IntegrationCapability {
+  LLM
+  CODE_AGENT
+  SCM
+  DEPLOY
+}
+
+enum IntegrationProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE_AI
+  GEMINI
+  AZURE_OPENAI
+  LOCAL_LLM
+  CURSOR
+  GITHUB
+  VERCEL
+}
+
+enum UserIntegrationStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
 model User {
   /// 사용자 ID
   id           String   @id @default(cuid())
@@ -119,8 +158,18 @@ model User {
   passwordHash String
   /// 사용자 이름
   name         String
-  /// 전역 권한
+  /// 플랫폼 UI 표시용 닉네임(비우면 이름 사용)
+  nickname     String?
+  /// 프로필 사진 URL(앱 `public` 기준 경로, 예: /user-avatars/…)
+  avatarUrl    String?
+  /// 전역 권한(USER | ADMIN | SUPER_ADMIN)
   globalRole   String   @default("USER")
+  /// 플랫폼 계정 상태(정지 시 로그인 차단)
+  accountStatus PlatformAccountStatus @default(ACTIVE)
+  /// 요금제/플랜 식별자(표시·쿼터용 스텁)
+  planTier     String   @default("free")
+  /// 마지막 성공 로그인 시각
+  lastLoginAt  DateTime?
   /// 생성일시
   createdAt    DateTime @default(now())
   /// 수정일시
@@ -132,6 +181,12 @@ model User {
   memberships   ProjectMember[]
   /// 초대한 프로젝트 멤버 목록
   invitedProjectMembers ProjectMember[] @relation("ProjectMemberInvitedBy")
+  /// 받은 프로젝트 멤버 초대
+  receivedProjectMemberInvites ProjectMemberInvite[] @relation("ProjectMemberInvitee")
+  /// 보낸 프로젝트 멤버 초대
+  sentProjectMemberInvites ProjectMemberInvite[] @relation("ProjectMemberInviteInvitedBy")
+  /// 플랫폼 알림(인앱)
+  platformNotifications PlatformNotification[]
   /// 요청한 AI 멤버 액션 목록
   requestedMemberActions ProjectMemberAction[] @relation("ProjectMemberActionRequestedBy")
   /// 검토 완료로 표시한 AI 멤버 액션
@@ -144,8 +199,251 @@ model User {
   ownedTasks      Task[]         @relation("TaskOwner")
   /// 소프트 삭제를 수행한 프로젝트(감사)
   softDeletedProjects Project[] @relation("ProjectSoftDeletedBy")
+  /// 단계별 개인 작업 메모(채팅과 분리)
+  workNotes WorkNote[]
+
+  /// 기본 OpenAI API 키(프로토타입 플래너 등). API 응답 마스킹만.
+  defaultOpenaiApiKey       String? @db.Text
+  defaultOpenaiApiKeyMasked String?
+
+  userIntegrations UserIntegration[]
+  /// 메신저형 사전 대화방(소유)
+  ownedChatRooms ChatRoom[] @relation("ChatRoomOwner")
+  /// 대화방 멤버십(사람)
+  chatRoomMemberships ChatRoomMember[]
+  passwordResetTokens PasswordResetToken[]
+  /// 메신저 등 LLM 호출 프롬프트 타임라인(감사·재현)
+  messengerPromptTimelineLogs MessengerPromptTimelineLog[]
 
   @@map("users")
+}
+
+/// 비밀번호 재설정 링크용 일회성 토큰(평문은 URL에만, DB에는 해시만 저장)
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
+}
+
+/// 프로젝트 생성 전 메신저 대화방 유형
+enum ChatRoomType {
+  SOLO
+  DIRECT
+  GROUP
+  PROJECT
+}
+
+/// 메신저 대화방에서 AI 기획자가 사용자 메시지에 어떻게 반응할지
+enum MessengerAiParticipationMode {
+  NONE
+  AUTO
+  MENTION_ONLY
+}
+
+enum ChatRoomMemberKind {
+  USER
+  AI
+}
+
+enum ChatMessageSenderKind {
+  USER
+  AI
+  SYSTEM
+}
+
+/// 프로젝트 전 일반 대화방 + 승격 후 프로젝트 연결
+model ChatRoom {
+  id                  String       @id @default(cuid())
+  title               String
+  type                ChatRoomType @default(SOLO)
+  /// AI 기획자(메신저 LLM) 참여 방식
+  aiParticipationMode MessengerAiParticipationMode @default(AUTO)
+  ownerUserId         String
+  owner               User         @relation("ChatRoomOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  projectId           String?
+  project             Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lastMessagePreview  String?      @db.Text
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  members             ChatRoomMember[]
+  messages            ChatMessage[]
+  projectDrafts       ProjectFromChatDraft[]
+
+  @@index([ownerUserId, updatedAt])
+  @@index([projectId])
+  @@map("chat_rooms")
+}
+
+model ChatRoomMember {
+  id          String             @id @default(cuid())
+  chatRoomId  String
+  chatRoom    ChatRoom           @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  memberType  ChatRoomMemberKind
+  userId      String?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 플랫폼 AI 카탈로그 키(예: ideation)
+  aiMemberId  String?
+  displayName String
+  role        String?
+  joinedAt    DateTime           @default(now())
+
+  @@index([chatRoomId])
+  @@index([userId])
+  @@map("chat_room_members")
+}
+
+model ChatMessage {
+  id         String               @id @default(cuid())
+  chatRoomId String
+  chatRoom   ChatRoom             @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  projectId  String?
+  senderType ChatMessageSenderKind
+  senderId   String?
+  senderName String
+  content    String               @db.Text
+  metadata   Json?
+  createdAt  DateTime             @default(now())
+
+  @@index([chatRoomId, createdAt])
+  @@map("chat_messages")
+}
+
+/// 대화 기반 프로젝트 초안(감사·재현)
+model ProjectFromChatDraft {
+  id         String   @id @default(cuid())
+  chatRoomId String
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  /// DRAFT | CONFIRMED | FAILED
+  status     String   @default("DRAFT")
+  payloadJson Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([chatRoomId, status])
+  @@map("project_from_chat_drafts")
+}
+
+/// 메신저(일반·AI) 등 Chat Completions 호출 로그 — 인메모리가 아닌 DB에 두어 HMR·멀티 워커에서도 타임라인이 유지된다.
+model MessengerPromptTimelineLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomId       String?
+  /// 방이 프로젝트에 연결된 경우(프로젝트 타임라인 병합용)
+  projectId    String?
+  /// messenger_chat | messenger_project_draft
+  kind         String
+  label        String
+  channel      String   @default("openai")
+  model        String?
+  outbound     String   @db.Text
+  inbound      String   @db.Text
+  status       String?
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@map("messenger_prompt_timeline_logs")
+}
+
+/// 암호화된 자격 증명 원문(IV·알고리즘 포함 메타)
+model IntegrationCredential {
+  id            String   @id @default(cuid())
+  ciphertext    String   @db.Text
+  iv            String
+  algorithm     String   @default("aes-256-gcm")
+  maskedPreview String?
+  createdAt     DateTime @default(now())
+
+  userIntegrations UserIntegration[]
+
+  @@map("integration_credentials")
+}
+
+/// 사용자 단위 등록된 연동(제공자·역할·암호화 자격 참조)
+model UserIntegration {
+  id            String                  @id @default(cuid())
+  userId        String
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider      IntegrationProvider
+  capability    IntegrationCapability
+  credentialRef String
+  credential    IntegrationCredential   @relation(fields: [credentialRef], references: [id], onDelete: Restrict)
+  /// UI 표시용 이름(비우면 provider·capability 조합 표시)
+  displayName   String?
+  /// 동일 capability에서 기본으로 쓸 연동(사용자당 capability별 하나 권장 — 앱에서 검증)
+  isDefault     Boolean                 @default(false)
+  meta          Json?
+  status        UserIntegrationStatus   @default(ACTIVE)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  projectIntegrationOverrides  ProjectIntegration[]
+  workspaceIntegrationBindings WorkspaceIntegration[]
+  aiMemberProviderPins           AiMemberProvider[]
+
+  @@unique([userId, provider, capability])
+  @@index([userId])
+  @@index([userId, capability, isDefault])
+  @@map("user_integrations")
+}
+
+/// 워크스페이스(현 제품에선 Project와 1:1) 단위 capability → 사용자 연동 선택
+model WorkspaceIntegration {
+  id                String                  @id @default(cuid())
+  projectId         String
+  project           Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  capability        IntegrationCapability
+  userIntegrationId String?
+  userIntegration    UserIntegration?       @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([projectId, capability])
+  @@index([projectId])
+  @@map("workspace_integrations")
+}
+
+/// 프로젝트 단위 capability override(우선 `project_integrations` 조회)
+model ProjectIntegration {
+  id                 String                  @id @default(cuid())
+  projectId          String
+  project            Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  capability         IntegrationCapability
+  userIntegrationId  String?
+  userIntegration     UserIntegration?       @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  /// 프로젝트 전용 메타(자격은 userIntegrationId로만 참조)
+  metaOverride       Json?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@unique([projectId, capability])
+  @@index([projectId])
+  @@map("project_integrations")
+}
+
+/// 플랫폼 AI 멤버(카탈로그 행) ↔ capability 및 선택적 연동 핀 (논리명: project_ai_member_bindings)
+model AiMemberProvider {
+  id                  String            @id @default(cuid())
+  workspaceAiMemberId String
+  workspaceAiMember   WorkspaceAiMember @relation(fields: [workspaceAiMemberId], references: [id], onDelete: Cascade)
+  capability          IntegrationCapability
+  userIntegrationId   String?
+  userIntegration     UserIntegration?  @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([workspaceAiMemberId, capability])
+  @@index([workspaceAiMemberId])
+  @@map("ai_member_providers")
 }
 
 model Project {
@@ -167,6 +465,8 @@ model Project {
   defaultBranch String?
   /// 프로젝트 생명주기: ACTIVE | DELETED (소프트 삭제)
   status        String
+  /// 워크플로 단계: null=기존·제한 없음, REQUIREMENTS_PENDING=신규 생성 후 요구사항 단계 필수(실행 계획 진입 전)
+  workflowStatus String?
   /// 소프트 삭제 시각
   deletedAt     DateTime?
   /// 소프트 삭제 수행 사용자
@@ -243,11 +543,91 @@ model Project {
   specPromptConfig SpecPromptConfig?
   /// Task 생성(요구사항 추출)용 사용자 프롬프트 템플릿 (editable, null이면 기본값 사용)
   taskPrompt       String?           @db.Text
+  /// F-1-3-5 단일 호출 Task 생성용 사용자 프롬프트 템플릿 (null이면 기본값)
+  taskGenerationPrompt String?       @db.Text
   /// 오케스트레이션 실행 루프 시도 기록
   taskExecutionRuns TaskExecutionRun[]
+  /// 요구사항 협의실: 채팅·회의록 등(JSON, 클라이언트 스키마 v1)
+  requirementsRoomState Json?
+
+  /// 요구사항 협의실: Raw conversation(운영 원본)
+  requirementsConversationJson Json?
+  /// 요구사항 협의실: Derived draft / organized requirements(운영 원본)
+  requirementsDraftJson Json?
+  /// 요구사항 협의실: UI/흐름 상태 메타(운영 원본)
+  requirementsStateJson Json?
+  /// 멤버별·단계별 개인 작업 메모
+  workNotes WorkNote[]
+  /// 플랫폼 AI(카탈로그 키) — 화면 참여 M:N 상위 행
+  workspaceAiMembers WorkspaceAiMember[]
+  workspaceIntegrations WorkspaceIntegration[]
+  projectIntegrations   ProjectIntegration[]
+  /// 대기 중인 사람 멤버 초대
+  memberInvites ProjectMemberInvite[]
+  /// 메신저 대화방에서 승격되어 연결된 룸
+  chatRooms ChatRoom[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// 프로젝트별 플랫폼 AI(카탈로그 키). `workspace_screen_ai_mapping`으로 화면과 M:N.
+model WorkspaceAiMember {
+  id         String   @id @default(cuid())
+  projectId  String
+  /// ideation | actor_flow | feature_planning | prototype_build | prototype_review | memo
+  catalogKey String
+  enabled    Boolean  @default(true)
+  /// USER_DEFAULT | OPENAI | ANTHROPIC | GEMINI | CURSOR — null/비움은 사용자 기본 연동 사용
+  enginePreference String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  screenMappings WorkspaceScreenAiMapping[]
+  aiMemberProviders AiMemberProvider[]
+
+  @@unique([projectId, catalogKey])
+  @@index([projectId])
+  @@map("workspace_ai_member")
+}
+
+/// 화면 ↔ 플랫폼 AI 참여(M:N)
+model WorkspaceScreenAiMapping {
+  id                  String            @id @default(cuid())
+  workspaceAiMemberId String
+  /// requirements_ideation | requirements_service_flow | feature_planning | prototype_build | prototype_review | work_note
+  screenKey           String
+  /// 해당 단계에서 오케스트레이션 자동 실행 허용(참여와 별개로 저장)
+  autoRun             Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  workspaceAiMember   WorkspaceAiMember @relation(fields: [workspaceAiMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceAiMemberId, screenKey])
+  @@index([screenKey])
+  @@map("workspace_screen_ai_mapping")
+}
+
+/// 작업 메모 공개 범위(기본 비공개)
+enum WorkNoteVisibility {
+  PRIVATE
+}
+
+/// 개인 작업 메모 — `projectId`가 있으면 프로젝트 범위, 없으면 계정 전용(프로젝트 생성 전)
+model WorkNote {
+  id         String             @id @default(cuid())
+  projectId  String?
+  project    Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String             @default("") @db.Text
+  content    String             @default("") @db.Text
+  visibility WorkNoteVisibility @default(PRIVATE)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([projectId, userId])
+  @@index([userId, updatedAt])
+  @@map("work_notes")
 }
 
 /// Project Spec AI 생성 — 사용자에게 노출되는 템플릿 레이어 + 프리셋
@@ -279,6 +659,21 @@ model ExecutionSetup {
   /// feature-per-workflow | feature-per-task | manual
   branchStrategy  String
   branchPrefix    String?
+
+  /// GitHub auth (platform-managed)
+  /// 평문 DB 저장(백업·접근 통제). 일반 GET/PATCH 응답에는 미포함·마스킹만. 소유자 일시 확인은 전용 reveal 엔드포인트로만.
+  githubAccessToken String? @db.Text
+  githubAccessTokenMasked String?
+  /// GitHub 토큰으로 API 접근이 가능한지 — null이면 아직 검증 안 함
+  githubAuthConnectionOk Boolean?
+  githubAuthValidatedAt DateTime?
+  githubAuthValidationError String? @db.Text
+  /// GitHub PAT 단계별 권한 프로브 결과(JSON): repo/prRead/prCreate/prMerge/operable, HTTP, X-Accepted-GitHub-Permissions
+  githubCapabilityValidation Json?
+
+  /// OpenAI API 키(프로토타입 작업계획·LLM 전용). 일반 API 응답에는 미포함·마스킹만.
+  openaiPlannerApiKey String? @db.Text
+  openaiPlannerApiKeyMasked String?
 
   /// Cursor executor
   cursorApiUrl    String
@@ -355,6 +750,8 @@ model TaskExecutionRun {
   repoUrlSnapshot String?
   /// running | reviewing | done | retry_needed | failed | paused
   status    String
+  /// AI Team Execution Runtime phase (Option B — legacy `status` preserved). See `apps/web/src/lib/ai-team-runtime/`.
+  teamExecutionStatus String?
   branchName       String?
   cursorRunId      String?
   promptSnapshot   String?  @db.Text
@@ -377,6 +774,18 @@ model TaskExecutionRun {
   retryCount       Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  /// 터미널 성공/실패 등 확정 시각(ENV_TEST PR_OPENED 등)
+  completedAt      DateTime?
+  /// ENV_TEST 스모크: GitHub PR squash 머지 후 merge commit SHA
+  mergeCommitSha   String?
+  /// ENV_TEST 스모크: 머지 확정 시각
+  mergedAt         DateTime?
+  /// ENV_TEST 스모크: 원격 테스트 브랜치 삭제 완료 시각(옵션)
+  envTestRemoteBranchDeletedAt DateTime?
+  /// ENV_TEST 머지 스모크: 머지 차단(가드 실패 등) 사유
+  envTestMergeBlockedReason String?
+  /// ENV_TEST 머지 스모크: 머지 안전 가드 시작 시각(머지 진행 중 UI 표시에 사용)
+  envTestMergeStartedAt DateTime?
   /// 스펙 전환 등으로 소속 Task가 보관되면 함께 보관(현재 스펙 실행·관측 분리)
   archivedAt       DateTime?
 
@@ -655,6 +1064,46 @@ model ProjectMember {
   @@index([projectId, memberType])
   @@index([projectId, role])
   @@map("project_members")
+}
+
+/// 사람 멤버 초대(수락 시 project_members 행 생성)
+model ProjectMemberInvite {
+  id              String                  @id @default(cuid())
+  projectId       String
+  inviteeUserId   String
+  invitedByUserId String
+  role            ProjectMemberRole
+  status          ProjectMemberInviteStatus @default(PENDING)
+  createdAt       DateTime                @default(now())
+  respondedAt     DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitee   User    @relation("ProjectMemberInvitee", fields: [inviteeUserId], references: [id], onDelete: Cascade)
+  invitedBy User  @relation("ProjectMemberInviteInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, inviteeUserId])
+  @@index([inviteeUserId, status])
+  @@map("project_member_invites")
+}
+
+/// 플랫폼 인앱 알림
+model PlatformNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  /// 확장 데이터(초대 ID 등). inviteId가 있으면 조회·일괄 읽음에 사용
+  data      Json?
+  inviteId  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, inviteId])
+  @@map("platform_notifications")
 }
 
 /// 프로젝트 멤버(주로 AI)에 대한 협업 액션 요청
@@ -1053,4 +1502,166 @@ model TaskHistory {
 
   @@index([projectId, taskId, createdAt])
   @@map("task_histories")
+}
+
+// --- 지식팩 관리 (DB + 정적 seed 병행) — 테이블 접두사 kp_
+
+model KpKnowledgePack {
+  id               String   @id
+  scope            String
+  category         String
+  name             String
+  summary          String   @db.Text
+  description      String   @default("") @db.Text
+  vendor           String   @default("")
+  licenseType      String
+  status           String
+  currentVersionId String?
+  ownerUserId      String
+  organizationId   String?
+  projectId        String?
+  isSystem         Boolean  @default(false)
+  /// JSON 배열 문자열, 예: ["AI_DEVELOPER"] — 목록 필터용
+  agentsJson       String   @default("[\"AI_DEVELOPER\"]")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  versions  KpKnowledgePackVersion[]
+  histories KpKnowledgePackHistory[]
+  sources   KpKnowledgePackSource[]
+
+  @@index([ownerUserId])
+  @@index([scope, category])
+  @@map("kp_knowledge_packs")
+}
+
+/// 지식팩 원천자료 (RAG 1단계)
+model KpKnowledgePackSource {
+  id               String    @id @default(cuid())
+  knowledgePackId  String
+  knowledgePack    KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  sourceType       String
+  title            String
+  url              String?   @db.Text
+  rawText          String?   @db.Text
+  description      String    @default("") @db.Text
+  version          String    @default("")
+  isOfficial       Boolean   @default(false)
+  ragEnabled       Boolean   @default(true)
+  status           String
+  lastCollectedAt  DateTime?
+  lastError        String?   @db.Text
+  /// 수집·파싱 후 평문(재청크 시 재사용)
+  lastCollectedText String?  @db.Text
+  lastContentType  String?
+
+  chunks    KpKnowledgePackChunk[]
+  indexJobs KpKnowledgePackIndexJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgePackId])
+  @@index([knowledgePackId, status])
+  @@map("kp_knowledge_pack_sources")
+}
+
+model KpKnowledgePackChunk {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  sourceId       String
+  source         KpKnowledgePackSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  chunkText      String   @db.Text
+  chunkOrder     Int
+  tokenEstimate  Int      @default(0)
+  contentHash    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgePackId])
+  @@index([sourceId])
+  @@index([contentHash])
+  @@map("kp_knowledge_pack_chunks")
+}
+
+model KpKnowledgePackIndexJob {
+  id              String    @id @default(cuid())
+  knowledgePackId String
+  sourceId        String
+  source          KpKnowledgePackSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status          String
+  step            String
+  message         String    @db.Text
+  createdBy       String
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceId, createdAt])
+  @@map("kp_knowledge_pack_index_jobs")
+}
+
+model KpKnowledgePackVersion {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  knowledgePack   KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  version         String
+  changeSummary   String   @default("") @db.Text
+  sourceType      String
+  status          String
+  createdBy       String
+  createdAt       DateTime @default(now())
+
+  sections  KpKnowledgePackSection[]
+  histories KpKnowledgePackHistory[]
+
+  @@index([knowledgePackId, createdAt])
+  @@map("kp_knowledge_pack_versions")
+}
+
+model KpKnowledgePackSection {
+  id         String   @id @default(cuid())
+  versionId  String
+  version    KpKnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sectionKey String
+  content    String   @db.Text
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([versionId, sectionKey])
+  @@map("kp_knowledge_pack_sections")
+}
+
+model KpKnowledgePackHistory {
+  id              String   @id @default(cuid())
+  knowledgePackId String
+  knowledgePack   KpKnowledgePack @relation(fields: [knowledgePackId], references: [id], onDelete: Cascade)
+  versionId       String?
+  version         KpKnowledgePackVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  action          String
+  actorId         String
+  actorType       String
+  summary         String   @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([knowledgePackId, createdAt])
+  @@map("kp_knowledge_pack_histories")
+}
+
+model KpAgentCategoryMapping {
+  id        String   @id @default(cuid())
+  agentRole String
+  category  String
+  enabled   Boolean  @default(true)
+  usageMode String
+  priority  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([agentRole, category])
+  @@map("kp_agent_category_mappings")
 }

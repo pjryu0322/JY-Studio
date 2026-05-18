@@ -1,22 +1,21 @@
 import { parseGitHubRepoFullName, probeGitBaseBranchReachable } from "@/lib/executionSetup/hardening";
 import { formatGitBaseBranchConfigError, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
-
-function githubToken(): string | null {
-  const t = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
-  return t || null;
-}
+import { resolveGithubRestTokenAndLog } from "@/lib/integration/githubRestCommon";
 
 const GITHUB_FETCH_MS = 15_000;
 
 /**
  * Cursor API 호출 전 base branch 존재 여부를 확인합니다.
- * - github.com + GITHUB_TOKEN: REST GET /repos/.../branches/{branch}
+ * - github.com + DB 저장 GitHub 토큰: REST GET /repos/.../branches/{branch}
  * - 그 외: git smart HTTP info/refs (공개 저장소·도달 가능 시)
  * - 비공개 저장소이고 토큰이 없으면 info/refs가 401이면 검증 생략(Cursor에 위임).
  */
 export async function verifyBaseBranchBeforeCursorExecution(params: {
   gitRepoUrl: string;
   baseBranch: string;
+  /** Execution setup(DB)에 저장된 GitHub 토큰 */
+  githubAccessToken?: string | null;
+  projectId?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const gitRepoUrl = params.gitRepoUrl.trim();
   const baseBranch = params.baseBranch.trim();
@@ -30,7 +29,11 @@ export async function verifyBaseBranchBeforeCursorExecution(params: {
   }
 
   const fullName = parseGitHubRepoFullName(gitRepoUrl);
-  const token = githubToken();
+  const { token } = resolveGithubRestTokenAndLog(
+    "verify_base_branch_before_cursor",
+    params.githubAccessToken ?? null,
+    { projectId: params.projectId }
+  );
 
   if (fullName && token) {
     const [owner, repo] = fullName.split("/");

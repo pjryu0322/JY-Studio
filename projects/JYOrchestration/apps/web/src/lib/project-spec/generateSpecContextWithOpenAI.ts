@@ -1,10 +1,10 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import {
   formatListFieldAsBullets,
   normalizeSpecContextFromUnknown,
   type SpecContextGenerateResult,
 } from "@/lib/project-spec/specContextTypes";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 function buildUserPrompt(name: string, description: string, projectType: string): string {
   return `다음 프로젝트 메타 정보를 바탕으로 Project Spec 초안 필드를 채워라.
@@ -45,41 +45,31 @@ export async function generateSpecContextWithOpenAI(input: {
     throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior product manager and software architect. You output only valid JSON objects matching the user's schema. No markdown fences.",
-        },
-        {
-          role: "user",
-          content: buildUserPrompt(input.name, input.description, input.projectType),
-        },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior product manager and software architect. You output only valid JSON objects matching the user's schema. No markdown fences.",
+      },
+      {
+        role: "user",
+        content: buildUserPrompt(input.name, input.description, input.projectType),
+      },
+    ],
+    temperature: 0.4,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
@@ -155,52 +145,39 @@ export async function completeWorkspaceSpecMarkdown(
     "tables and bullets where requested, IDs like FR-01/UC-01, testable acceptance criteria. " +
     "No narrative-only blobs. No markdown code fence wrapping the entire document. No preamble or epilogue.";
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: workspaceSpecTemperature(model),
-      messages: [
-        {
-          role: "system",
-          content: system,
-        },
-        { role: "user", content: promptText.trim() },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: system,
+      },
+      { role: "user", content: promptText.trim() },
+    ],
+    temperature: workspaceSpecTemperature(model),
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  const markdown = body.choices?.[0]?.message?.content?.trim();
+  const markdown = res.text;
   if (!markdown) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 
@@ -233,53 +210,40 @@ export async function refineWorkspaceSpecMarkdown(
 ${currentMarkdown.trim()}
 ---`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.35,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior software architect. Refine the given Project Spec in place: preserve section structure and headings; improve clarity and consistency only. Output only the full Markdown body (Korean if the input is Korean). No markdown code fences wrapping the whole document, no preamble or epilogue.",
-        },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior software architect. Refine the given Project Spec in place: preserve section structure and headings; improve clarity and consistency only. Output only the full Markdown body (Korean if the input is Korean). No markdown code fences wrapping the whole document, no preamble or epilogue.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    temperature: 0.35,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  const markdown = body.choices?.[0]?.message?.content?.trim();
+  const markdown = res.text;
   if (!markdown) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 
@@ -342,53 +306,40 @@ ${lens}
 - 서론·요약 한 줄 없이 본문부터.
 - 한국어로 작성.`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: model === "gpt-4.1" ? 0.48 : model === "gpt-4o-mini" ? 0.36 : 0.42,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior software architect and technical lead. Write a single coherent Markdown document. Be concrete and implementation-oriented. No fluff.",
-        },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior software architect and technical lead. Write a single coherent Markdown document. Be concrete and implementation-oriented. No fluff.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    temperature: model === "gpt-4.1" ? 0.48 : model === "gpt-4o-mini" ? 0.36 : 0.42,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  const markdown = body.choices?.[0]?.message?.content?.trim();
+  const markdown = res.text;
   if (!markdown) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 
@@ -421,53 +372,40 @@ ${input.document.trim()}
 
 위 문서 전체를 기준으로 개선된 **전체** 마크다운 버전을 제안하라. 구조는 유지하되 실행·구현 관점에서 구체화하라. 출력은 제안 본문만. 한국어. 코드펜스 금지.`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.35,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior software architect. Output only the full revised Markdown document. No preamble or explanation.",
-        },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior software architect. Output only the full revised Markdown document. No preamble or explanation.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    temperature: 0.35,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  const markdown = body.choices?.[0]?.message?.content?.trim();
+  const markdown = res.text;
   if (!markdown) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 

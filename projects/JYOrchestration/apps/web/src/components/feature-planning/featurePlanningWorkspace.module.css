@@ -1,0 +1,219 @@
+/**
+ * 기능 정리: 채팅 전면 — 개요·산출물 드로어는 하단 + 메뉴에서만 연다(헤더 토글 없음).
+ */
+.root {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shellCard {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px -24px rgba(15, 23, 42, 0.12);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.mainStack {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.headerLeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.labeledStack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.structHint {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.structHintText {
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #78350f;
+}
+
+.structHintBtn {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #b45309;
+  background: #fff;
+  color: #92400e;
+  cursor: pointer;
+}
+
+.structHintBtn:hover {
+  background: #fff7ed;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+.drawerBase {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: min(92vw, 300px);
+  max-width: 100%;
+  z-index: 41;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawerLeft {
+  left: 0;
+  border-right: 1px solid #e2e8f0;
+}
+
+.drawerRight {
+  right: 0;
+  border-left: 1px solid #e2e8f0;
+}
+
+/* + 메뉴에서 연 개요·산출물 전용 캔버스(전면 오버레이) */
+.canvasRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.canvasBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.canvasPanel {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 12px;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(1200px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  pointer-events: auto;
+}
+
+.canvasHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.canvasTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  min-width: 0;
+}
+
+.canvasClose {
+  flex-shrink: 0;
+}
+
+.canvasBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvasFooter {
+  flex-shrink: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 11px;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.notice {
+  position: absolute;
+  z-index: 50;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  max-width: min(92vw, 420px);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+}

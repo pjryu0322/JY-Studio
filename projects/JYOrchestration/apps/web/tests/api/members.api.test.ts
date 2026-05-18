@@ -9,8 +9,6 @@ import {
   SEED_VIEWER_EMAIL,
 } from "./helpers";
 
-const SEED_PASSWORD = "JyoTest!123";
-
 describe("members API", () => {
   it("[MEM-001] OWNER HUMAN 멤버 초대(기존 사용자 upsert)", async () => {
     const cookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
@@ -57,7 +55,7 @@ describe("members API", () => {
   it("[MEM-003] EDITOR는 멤버 초대 불가(OWNER 전용)", async () => {
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
-    const cookie = await apiLogin(SEED_EDITOR_EMAIL, SEED_PASSWORD);
+    const cookie = await apiLogin(SEED_EDITOR_EMAIL, SEED_OWNER_PASSWORD);
     const res = await apiFetch("/api/project/members/invite", {
       method: "POST",
       cookie,
@@ -73,7 +71,7 @@ describe("members API", () => {
   });
 
   it("[MEM-004] VIEWER는 멤버 초대 불가", async () => {
-    const cookie = await apiLogin(SEED_VIEWER_EMAIL, SEED_PASSWORD);
+    const cookie = await apiLogin(SEED_VIEWER_EMAIL, SEED_OWNER_PASSWORD);
     const ownerCookie = await apiLogin(SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
     const projectId = await getSeedProjectId(ownerCookie);
     const res = await apiFetch("/api/project/members/invite", {

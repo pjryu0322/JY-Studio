@@ -1,8 +1,10 @@
 /**
- * 확정 Project Spec을 R->D->F->T 계층으로 분해해 생성한다.
- * Task 행은 Feature별로만 생성·검증한다 (Feature → Task).
+ * 레거시: 확정 Project Spec을 R->D->F->T 계층으로 분해해 생성한다 (OpenAI 다회 호출).
+ * 기본 Task 생성 경로는 `singlePassGenerateTaskDraftsWithOpenAI` + `singlePassSyncTaskDraftsForProjectSpecVersion`.
  */
 
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import type { TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
 import {
   EXECUTION_TASK_KINDS,
@@ -47,7 +49,6 @@ export type TaskDraftOpenAiUsage = {
   totalTokens: number;
 };
 
-const DEFAULT_MODEL = "gpt-4o-mini";
 const MAX_SPEC_CHARS = 48_000;
 
 function clipSpec(md: string): string {
@@ -261,12 +262,23 @@ async function generateValidatedExecutionTasksForFeature(params: {
   const MAX = 3;
   let lastUsage: TaskDraftOpenAiUsage | null = null;
   for (let attempt = 0; attempt < MAX; attempt++) {
+    console.info("[task-drafts] openai execution tasks attempt start", {
+      featureTitle: feature.title,
+      attempt: attempt + 1,
+      model,
+    });
     const res = await completeJson({
       apiKey,
       model,
       userMessage: buildExecutionTasksForSingleFeaturePrompt(feature),
     });
     lastUsage = res.usage;
+    console.info("[task-drafts] openai execution tasks attempt done", {
+      featureTitle: feature.title,
+      attempt: attempt + 1,
+      usage: res.usage,
+      textLen: res.text.length,
+    });
     let parsed: GeneratedExecutionTask[];
     try {
       const root = parseJson(res.text);
@@ -277,6 +289,11 @@ async function generateValidatedExecutionTasksForFeature(params: {
     const cleaned = filterExecutionTasksExcludingNonFunctional(parsed);
     const v = validateGeneratedExecutionTasks(cleaned);
     if (v.ok) {
+      console.info("[task-drafts] openai execution tasks validated", {
+        featureTitle: feature.title,
+        attempt: attempt + 1,
+        taskCount: cleaned.length,
+      });
       return { tasks: cleaned, usage: res.usage };
     }
   }
@@ -572,49 +589,41 @@ async function completeJson(params: {
   text: string;
   usage: TaskDraftOpenAiUsage | null;
 }> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: params.model,
-      temperature: 0.35,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior product/engineering lead. Output only valid JSON matching the user's schema.",
-        },
-        { role: "user", content: params.userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: params.apiKey,
+    model: params.model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior product/engineering lead. Output only valid JSON matching the user's schema.",
+      },
+      { role: "user", content: params.userMessage },
+    ],
+    temperature: 0.35,
+    responseFormatJsonObject: true,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) throw new Error("OPENAI_EMPTY_RESPONSE");
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
-      ? { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens, totalTokens: u.total_tokens }
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
+      ? { promptTokens: u.promptTokens, completionTokens: u.completionTokens, totalTokens: u.totalTokens }
       : null;
   return { text, usage };
 }
 
-export async function generateTaskDraftsWithOpenAI(input: {
+/** 레거시 다단계 파이프라인 (요구→설계→기능→실행). 기본 생성 경로에서는 사용하지 않는다. */
+export async function legacyPipelineGenerateTaskDraftsWithOpenAI(input: {
   projectName: string;
   projectDescription: string | null;
   projectType: string;
@@ -641,20 +650,25 @@ export async function generateTaskDraftsWithOpenAI(input: {
 
   const trimmed = input.modelFromRequest?.trim();
   const model =
-    trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+    trimmed && trimmed.length > 0 ? trimmed : resolveOpenAiModelFromEnv();
 
+  console.info("[task-drafts] openai requirements extraction start", { model });
   const reqRes = await completeJson({
     apiKey,
     model,
     userMessage: buildRequirementsPrompt(
       {
-      projectName: input.projectName,
-      projectDescription: input.projectDescription,
-      projectType: input.projectType,
-      specMarkdown: input.specMarkdown,
+        projectName: input.projectName,
+        projectDescription: input.projectDescription,
+        projectType: input.projectType,
+        specMarkdown: input.specMarkdown,
       },
       input.taskPromptTemplate
     ),
+  });
+  console.info("[task-drafts] openai requirements extraction done", {
+    usage: reqRes.usage,
+    textLen: reqRes.text.length,
   });
   void input.includeNonFunctionalInExecutionPipeline;
 
@@ -672,6 +686,7 @@ export async function generateTaskDraftsWithOpenAI(input: {
 
   const hierarchyRequirementItems = parsedRequirements.map(parsedRowToHierarchyItem);
 
+  console.info("[task-drafts] openai design decomposition start", { reqCount: reqsForPipeline.length, model });
   const designRes = await completeJson({
     apiKey,
     model,
@@ -682,6 +697,7 @@ export async function generateTaskDraftsWithOpenAI(input: {
       }))
     ),
   });
+  console.info("[task-drafts] openai design decomposition done", { usage: designRes.usage, textLen: designRes.text.length });
   const designJson = parseJson(designRes.text);
   const reqTitleSet = new Set(reqsForPipeline.map((r) => r.title));
   const designTargets = parseRows(designJson.designTargets, (o) => {
@@ -698,11 +714,13 @@ export async function generateTaskDraftsWithOpenAI(input: {
     };
   });
 
+  console.info("[task-drafts] openai feature decomposition start", { designTargets: designTargets.length, model });
   const featureRes = await completeJson({
     apiKey,
     model,
     userMessage: buildFeaturePrompt(designTargets),
   });
+  console.info("[task-drafts] openai feature decomposition done", { usage: featureRes.usage, textLen: featureRes.text.length });
   const featureJson = parseJson(featureRes.text);
   const designTitleSet = new Set(designTargets.map((d) => d.title));
   const features = parseRows(featureJson.features, (o) => {
@@ -723,7 +741,14 @@ export async function generateTaskDraftsWithOpenAI(input: {
   let featureGenPrompt = 0;
   let featureGenCompletion = 0;
   let featureGenTotal = 0;
-  for (const f of features) {
+  for (let featureIndex = 0; featureIndex < features.length; featureIndex++) {
+    const f = features[featureIndex];
+    console.info("[task-drafts] openai execution tasks start", {
+      featureIndex: featureIndex + 1,
+      featureCount: features.length,
+      featureTitle: f.title,
+      model,
+    });
     const { tasks: execTasks, usage: fu } = await generateValidatedExecutionTasksForFeature({
       apiKey,
       model,
@@ -732,6 +757,11 @@ export async function generateTaskDraftsWithOpenAI(input: {
         description: f.description,
         priority: f.priority,
       },
+    });
+    console.info("[task-drafts] openai execution tasks done", {
+      featureIndex: featureIndex + 1,
+      generatedTaskDrafts: execTasks.length,
+      usage: fu,
     });
     executionTaskItems.push(...executionTasksToAiItems(f.title, execTasks));
     if (fu) {

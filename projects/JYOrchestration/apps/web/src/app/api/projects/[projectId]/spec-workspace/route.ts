@@ -23,7 +23,217 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import type { Project } from "@/components/project-spec/types";
+
+type ProjectColumnName = string;
+
+/**
+ * JSONB PATCH 값 정규화.
+ *
+ * Next.js `request.json()`은 JSON을 JS 값으로 파싱하므로, 클라이언트가 JSON 문자열을내면
+ * 여기서는 `string`으로 들어올 수 있습니다. 이 상태를 `JSON.stringify`로 한 번 더 감싸면
+ * PG `::jsonb` 캐스팅이 깨질 수 있어(22P02), 가능하면 `JSON.parse`로 "진짜 JSON 값"으로 복원합니다.
+ */
+function normalizeJsonbPatchValue(v: unknown): Prisma.InputJsonValue | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    // 객체/배열 JSON 문자열이면 parse (이중 stringify 방지)
+    if (s.startsWith("{") || s.startsWith("[")) {
+      try {
+        return JSON.parse(s) as Prisma.InputJsonValue;
+      } catch {
+        throw new Error("INVALID_JSON_STRING");
+      }
+    }
+    // JSON literal (boolean/null/number/quoted string)
+    try {
+      return JSON.parse(s) as Prisma.InputJsonValue;
+    } catch {
+      // 일반 텍스트는 JSON 문자열로 저장
+      return s;
+    }
+  }
+  return v as Prisma.InputJsonValue;
+}
+
+/**
+ * Prisma/PostgreSQL는 camelCase 컬럼을 따옴표로 생성합니다.
+ * information_schema.columns.column_name 은 소문자만 주는 경우가 있어 UPDATE 식별자와 불일치할 수 있으므로
+ * pg_attribute.attname 으로 실제 이름을 가져옵니다.
+ */
+let cachedProjectColumnMap: Map<string, ProjectColumnName> | null = null;
+
+async function getProjectColumnMap(): Promise<Map<string, ProjectColumnName>> {
+  if (cachedProjectColumnMap) return cachedProjectColumnMap;
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>`
+    SELECT a.attname AS name
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND c.relname = 'projects'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  `;
+  const m = new Map<string, ProjectColumnName>();
+  for (const r of rows) {
+    const actual = String(r.name ?? "").trim();
+    if (!actual) continue;
+    m.set(actual.toLowerCase(), actual);
+  }
+  cachedProjectColumnMap = m;
+  return cachedProjectColumnMap;
+}
+
+/** pg 식별자 (컬럼명은 pg_attribute 에서 온 값만 사용) */
+function pgQuoteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+/** Prisma.sql 에 넣을 스칼라만 허용 (객체가 들어가면 PG 구문 오류가 날 수 있음) */
+function scalarForRawUpdate(v: unknown): string | number | boolean | Date | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (v instanceof Date) return v;
+  return String(v);
+}
+
+/** jsonb 컬럼은 반드시 텍스트로 직렬화해 바인딩 (객체를 Prisma.sql에 넣으면 42601 구문 오류가 남) */
+function jsonbTextOrNull(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "{}";
+  }
+}
+
+function pgQuoteStringLiteral(s: string): string {
+  return `'${s.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
+/**
+ * JSON 텍스트를 UPDATE에 넣을 때 SQL 단일인용부(`'`) 이스케이프로는 깨질 수 있어
+ * PostgreSQL dollar-quoted string을 사용한다(본문 내 `'`·`\` 그대로 허용).
+ */
+function pgDollarQuotedForJsonBody(body: string): string {
+  let tag = "JwReqJson";
+  for (let i = 0; i < 64; i++) {
+    const open = `$${tag}$`;
+    if (!body.includes(open)) {
+      return `${open}${body}${open}`;
+    }
+    tag = `JwReqJson_${i}_${Math.random().toString(36).slice(2, 11)}`;
+  }
+  throw new Error("JSON dollar-quote delimiter collision");
+}
+
+function scalarSqlRhs(value: ReturnType<typeof scalarForRawUpdate>): string {
+  if (value === null) return "NULL";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "NULL";
+    return String(value);
+  }
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (value instanceof Date) return `${pgQuoteStringLiteral(value.toISOString())}::timestamptz`;
+  return pgQuoteStringLiteral(String(value));
+}
+
+async function rawUpdateProjectByIdSafe(
+  projectId: string,
+  patch: Record<string, unknown>
+): Promise<{ ok: true; applied: boolean; degraded?: { code: string; message: string } } | { ok: false; message: string }> {
+  // Guard: do not build multi-megabyte SQL strings (can crash with "Invalid string length")
+  // We degrade by skipping oversized JSONB patches rather than failing the entire save.
+  const MAX_JSONB_TEXT_CHARS = 1_500_000;
+  const MAX_SCALAR_TEXT_CHARS = 300_000;
+
+  const colMap = await getProjectColumnMap();
+  const entries: Array<
+    | { col: string; kind: "jsonb"; jsonText: string | null }
+    | { col: string; kind: "scalar"; value: ReturnType<typeof scalarForRawUpdate> }
+  > = [];
+  let degraded: { code: string; message: string } | null = null;
+
+  for (const [k, v] of Object.entries(patch)) {
+    const actualCol = colMap.get(k.toLowerCase());
+    if (!actualCol) continue;
+    const lower = actualCol.toLowerCase();
+    if (
+      lower === "requirementsroomstate" ||
+      lower === "requirementsconversationjson" ||
+      lower === "requirementsdraftjson" ||
+      lower === "requirementsstatejson"
+    ) {
+      const jsonText = jsonbTextOrNull(v);
+      if (jsonText && jsonText.length > MAX_JSONB_TEXT_CHARS) {
+        degraded = {
+          code: "PAYLOAD_TOO_LARGE",
+          message: "저장할 데이터가 너무 커 일부 내용은 저장되지 않았습니다. 대화가 길다면 새 프로젝트로 분리해 주세요.",
+        };
+        continue;
+      }
+      if (jsonText) {
+        try {
+          JSON.parse(jsonText);
+        } catch {
+          return {
+            ok: false,
+            message: "요구사항 JSON 직렬화가 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.",
+          };
+        }
+      }
+      entries.push({ col: actualCol, kind: "jsonb", jsonText });
+      continue;
+    }
+    const scalar = scalarForRawUpdate(v);
+    if (typeof scalar === "string" && scalar.length > MAX_SCALAR_TEXT_CHARS) {
+      degraded = degraded ?? {
+        code: "PAYLOAD_TOO_LARGE",
+        message: "저장할 데이터가 너무 커 일부 내용은 저장되지 않았습니다. 대화가 길다면 새 프로젝트로 분리해 주세요.",
+      };
+      entries.push({ col: actualCol, kind: "scalar", value: scalar.slice(0, MAX_SCALAR_TEXT_CHARS) });
+    } else {
+      entries.push({ col: actualCol, kind: "scalar", value: scalar });
+    }
+  }
+
+  if (entries.length === 0) {
+    cachedProjectColumnMap = null;
+    return {
+      ok: true,
+      applied: false,
+      degraded: {
+        code: "DB_SCHEMA_OUT_OF_DATE",
+        message: "DB 스키마가 최신이 아니어서 저장할 컬럼을 찾지 못했습니다. 마이그레이션 적용 후 다시 시도하세요.",
+      },
+    };
+  }
+
+  const setParts: string[] = [];
+  for (const e of entries) {
+    const colQ = pgQuoteIdent(e.col);
+    if (e.kind === "jsonb") {
+      if (e.jsonText === null) setParts.push(`${colQ} = NULL`);
+      else setParts.push(`${colQ} = ${pgDollarQuotedForJsonBody(e.jsonText)}::jsonb`);
+    } else {
+      setParts.push(`${colQ} = ${scalarSqlRhs(e.value)}`);
+    }
+  }
+
+  const sql = `UPDATE "projects" SET ${setParts.join(", ")} WHERE "id" = ${pgQuoteStringLiteral(projectId)}`;
+
+  try {
+    await prisma.$executeRawUnsafe(sql);
+    return { ok: true, applied: true, ...(degraded ? { degraded } : {}) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
 
 async function getOrCreateSpecPromptConfig(projectId: string) {
   const existing = await prisma.specPromptConfig.findUnique({ where: { projectId } });
@@ -110,24 +320,6 @@ function mapResponseRow(r: {
   };
 }
 
-const PROJECT_MAP_SELECT = {
-  id: true,
-  name: true,
-  description: true,
-  projectType: true,
-  specCoreGoals: true,
-  specScopeIn: true,
-  specScopeOut: true,
-  specTargetUsers: true,
-  specSuccessCriteria: true,
-  executionPlanMarkdown: true,
-  selectedPlanCandidateId: true,
-  confirmedSpecMarkdown: true,
-  confirmedSpecResponseId: true,
-  confirmedSpecAt: true,
-  currentSpecVersionId: true,
-} as const;
-
 function mapProject(row: {
   id: string;
   name: string;
@@ -144,6 +336,10 @@ function mapProject(row: {
   confirmedSpecResponseId: string | null;
   confirmedSpecAt: Date | null;
   currentSpecVersionId: string | null;
+  requirementsRoomState: unknown | null;
+  requirementsConversationJson?: unknown | null;
+  requirementsDraftJson?: unknown | null;
+  requirementsStateJson?: unknown | null;
 }): Pick<
   Project,
   | "id"
@@ -161,6 +357,10 @@ function mapProject(row: {
   | "confirmedSpecResponseId"
   | "confirmedSpecAt"
   | "currentSpecVersionId"
+  | "requirementsRoomState"
+  | "requirementsConversationJson"
+  | "requirementsDraftJson"
+  | "requirementsStateJson"
 > {
   return {
     id: row.id,
@@ -178,7 +378,38 @@ function mapProject(row: {
     confirmedSpecResponseId: row.confirmedSpecResponseId,
     confirmedSpecAt: row.confirmedSpecAt?.toISOString() ?? null,
     currentSpecVersionId: row.currentSpecVersionId,
+    requirementsRoomState: row.requirementsRoomState ?? null,
+    requirementsConversationJson: row.requirementsConversationJson ?? null,
+    requirementsDraftJson: row.requirementsDraftJson ?? null,
+    requirementsStateJson: row.requirementsStateJson ?? null,
   };
+}
+
+type ProjectSafeRow = NonNullable<Awaited<ReturnType<typeof findProjectScalarsByIdSafe>>>;
+
+/** findProjectScalarsByIdSafe 결과 → mapProject 입력(DB에 없는 컬럼은 null로 채워짐). */
+function toProjectMapRow(row: ProjectSafeRow) {
+  return mapProject({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    projectType: row.projectType,
+    specCoreGoals: row.specCoreGoals,
+    specScopeIn: row.specScopeIn,
+    specScopeOut: row.specScopeOut,
+    specTargetUsers: row.specTargetUsers,
+    specSuccessCriteria: row.specSuccessCriteria,
+    executionPlanMarkdown: row.executionPlanMarkdown,
+    selectedPlanCandidateId: row.selectedPlanCandidateId,
+    confirmedSpecMarkdown: row.confirmedSpecMarkdown,
+    confirmedSpecResponseId: row.confirmedSpecResponseId,
+    confirmedSpecAt: row.confirmedSpecAt,
+    currentSpecVersionId: row.currentSpecVersionId,
+    requirementsRoomState: row.requirementsRoomState,
+    requirementsConversationJson: row.requirementsConversationJson ?? null,
+    requirementsDraftJson: row.requirementsDraftJson ?? null,
+    requirementsStateJson: row.requirementsStateJson ?? null,
+  });
 }
 
 export async function GET(
@@ -207,10 +438,7 @@ export async function GET(
       throw error;
     }
 
-    const projectRow = await prisma.project.findUnique({
-      where: { id },
-      select: PROJECT_MAP_SELECT,
-    });
+    const projectRow = await findProjectScalarsByIdSafe(id);
     if (!projectRow) {
       return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
     }
@@ -245,9 +473,9 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      message: "Spec 워크스페이스를 불러왔습니다.",
+      message: "실행 계획 워크스페이스를 불러왔습니다.",
       data: {
-        project: mapProject(projectRow),
+        project: toProjectMapRow(projectRow),
         specVersions: specVersions.map((v) => ({
           id: v.id,
           projectId: v.projectId,
@@ -282,7 +510,7 @@ export async function GET(
       );
     }
     return NextResponse.json(
-      { success: false, message: "Spec 워크스페이스 조회 중 오류가 발생했습니다." },
+      { success: false, message: "실행 계획 워크스페이스 조회 중 오류가 발생했습니다." },
       { status: 500 }
     );
   }
@@ -297,10 +525,16 @@ type PatchBody = {
   specScopeOut?: string | null;
   specTargetUsers?: string | null;
   specSuccessCriteria?: string | null;
+  confirmedSpecMarkdown?: string | null;
   executionPlanMarkdown?: string | null;
   selectedPlanCandidateId?: string | null;
+  workflowStatus?: string | null;
   specPromptTemplate?: string | null;
   specPromptPreset?: string | null;
+  requirementsRoomState?: unknown | null;
+  requirementsConversationJson?: unknown | null;
+  requirementsDraftJson?: unknown | null;
+  requirementsStateJson?: unknown | null;
 };
 
 export async function PATCH(
@@ -374,14 +608,47 @@ export async function PATCH(
     if (body.specSuccessCriteria !== undefined) {
       data.specSuccessCriteria = body.specSuccessCriteria === null ? null : String(body.specSuccessCriteria);
     }
+    if (body.confirmedSpecMarkdown !== undefined) {
+      data.confirmedSpecMarkdown = body.confirmedSpecMarkdown === null ? null : String(body.confirmedSpecMarkdown);
+    }
     if (body.executionPlanMarkdown !== undefined) {
       data.executionPlanMarkdown = body.executionPlanMarkdown === null ? null : String(body.executionPlanMarkdown);
+    }
+    if (body.workflowStatus !== undefined) {
+      data.workflowStatus = body.workflowStatus === null ? null : String(body.workflowStatus);
     }
     if (body.selectedPlanCandidateId !== undefined) {
       data.selectedPlanCandidateId =
         body.selectedPlanCandidateId === null || body.selectedPlanCandidateId === ""
           ? null
           : String(body.selectedPlanCandidateId);
+    }
+    try {
+      if (body.requirementsRoomState !== undefined) {
+        data.requirementsRoomState =
+          body.requirementsRoomState === null ? null : normalizeJsonbPatchValue(body.requirementsRoomState);
+      }
+      if (body.requirementsConversationJson !== undefined) {
+        data.requirementsConversationJson =
+          body.requirementsConversationJson === null ? null : normalizeJsonbPatchValue(body.requirementsConversationJson);
+      }
+      if (body.requirementsDraftJson !== undefined) {
+        data.requirementsDraftJson =
+          body.requirementsDraftJson === null ? null : normalizeJsonbPatchValue(body.requirementsDraftJson);
+      }
+      if (body.requirementsStateJson !== undefined) {
+        data.requirementsStateJson =
+          body.requirementsStateJson === null ? null : normalizeJsonbPatchValue(body.requirementsStateJson);
+      }
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (code === "INVALID_JSON_STRING") {
+        return NextResponse.json(
+          { success: false, message: "JSON 필드(requirements*) 값이 올바른 JSON 문자열이 아닙니다." },
+          { status: 400 }
+        );
+      }
+      throw e;
     }
 
     const hasPromptPatch = body.specPromptTemplate !== undefined || body.specPromptPreset !== undefined;
@@ -390,17 +657,31 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: "수정할 필드가 없습니다." }, { status: 400 });
     }
 
-    let updated = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });
+    let updated = await findProjectScalarsByIdSafe(id);
     if (!updated) {
       return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
     }
 
+    let patchApplied = false;
+    let patchDegraded: { code: string; message: string } | null = null;
+
     if (Object.keys(data).length > 0) {
-      updated = await prisma.project.update({
-        where: { id },
-        data: data as Parameters<typeof prisma.project.update>[0]["data"],
-        select: PROJECT_MAP_SELECT,
-      });
+      // Prisma update는 스키마 불일치 시 P2022 + prisma:error 로그를 유발하므로,
+      // 여기서는 테이블 실제 컬럼을 조회한 뒤 raw UPDATE로 안전하게 저장합니다.
+      const raw = await rawUpdateProjectByIdSafe(id, data);
+      if (!raw.ok) {
+        patchApplied = false;
+        patchDegraded = { code: "DB_UPDATE_FAILED", message: "저장에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+      } else {
+        patchApplied = raw.applied;
+        patchDegraded = raw.degraded ?? null;
+      }
+
+      const refetched = await findProjectScalarsByIdSafe(id);
+      if (!refetched) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+      updated = refetched;
     }
 
     let specPromptConfigOut: ReturnType<typeof mapSpecPromptConfigRow> | null = null;
@@ -413,7 +694,7 @@ export async function PATCH(
           ? normalizeSpecPromptPreset(body.specPromptPreset)
           : normalizeSpecPromptPreset(cfg.preset);
       if (!nextTemplate.trim()) {
-        return NextResponse.json({ success: false, message: "Spec 프롬프트 템플릿이 비어 있습니다." }, { status: 400 });
+        return NextResponse.json({ success: false, message: "AI 생성용 프롬프트 템플릿이 비어 있습니다." }, { status: 400 });
       }
       const saved = await prisma.specPromptConfig.update({
         where: { projectId: id },
@@ -424,9 +705,11 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message: "프로젝트 Spec 컨텍스트가 저장되었습니다.",
+      message: patchDegraded?.message ?? "실행 계획 입력이 저장되었습니다.",
       data: {
-        project: mapProject(updated),
+        project: toProjectMapRow(updated),
+        patchApplied,
+        ...(patchDegraded ? { code: patchDegraded.code } : {}),
         ...(specPromptConfigOut ? { specPromptConfig: specPromptConfigOut } : {}),
       },
     });
@@ -508,7 +791,7 @@ export async function POST(
         workspaceOpenAiModel = rawModel;
       }
 
-      const projectFull = await prisma.project.findUnique({ where: { id } });
+      const projectFull = await findProjectScalarsByIdSafe(id);
       if (!projectFull) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -544,7 +827,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            message: "프롬프트 템플릿이 비어 있으면 Project Spec을 생성할 수 없습니다.",
+            message: "프롬프트 템플릿이 비어 있으면 AI 실행 계획 문서를 생성할 수 없습니다.",
           },
           { status: 400 }
         );
@@ -613,7 +896,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            message: "AI Spec 문서 생성에 실패했습니다. 잠시 후 다시 시도하세요.",
+            message: "AI 실행 계획 문서 생성에 실패했습니다. 잠시 후 다시 시도하세요.",
             code: "OPENAI_GENERATE_FAILED",
           },
           { status: 502 }
@@ -644,9 +927,9 @@ export async function POST(
         response: mapResponseRow(responseRow),
       };
 
-      const mapped = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });
+      const mapped = await findProjectScalarsByIdSafe(id);
       if (mapped) {
-        responsePayload.project = mapProject(mapped);
+        responsePayload.project = toProjectMapRow(mapped);
       }
 
       return NextResponse.json({
@@ -676,10 +959,7 @@ export async function POST(
         createdByUserId: userId,
       });
 
-      const updatedProject = await prisma.project.findUnique({
-        where: { id },
-        select: PROJECT_MAP_SELECT,
-      });
+      const updatedProject = await findProjectScalarsByIdSafe(id);
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -692,8 +972,8 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "이 응답을 공식 Project Spec으로 확정했습니다.",
-        data: { project: mapProject(updatedProject), taskDraftSync },
+        message: "이 응답을 공식 실행 계획으로 확정했습니다.",
+        data: { project: toProjectMapRow(updatedProject), taskDraftSync },
       });
     }
 
@@ -731,10 +1011,7 @@ export async function POST(
         createdByUserId: userId,
       });
 
-      const updatedProject = await prisma.project.findUnique({
-        where: { id },
-        select: PROJECT_MAP_SELECT,
-      });
+      const updatedProject = await findProjectScalarsByIdSafe(id);
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -747,8 +1024,8 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "섹션 병합 결과를 공식 Project Spec으로 확정했습니다.",
-        data: { project: mapProject(updatedProject), taskDraftSync },
+        message: "섹션 병합 결과를 공식 실행 계획으로 확정했습니다.",
+        data: { project: toProjectMapRow(updatedProject), taskDraftSync },
       });
     }
 
@@ -764,10 +1041,7 @@ export async function POST(
         sourceData: null,
         createdByUserId: userId,
       });
-      const updatedProject = await prisma.project.findUnique({
-        where: { id },
-        select: PROJECT_MAP_SELECT,
-      });
+      const updatedProject = await findProjectScalarsByIdSafe(id);
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -779,7 +1053,7 @@ export async function POST(
       return NextResponse.json({
         success: true,
         message: "수정 내용을 새 버전으로 저장했습니다.",
-        data: { project: mapProject(updatedProject), taskDraftSync },
+        data: { project: toProjectMapRow(updatedProject), taskDraftSync },
       });
     }
 
@@ -796,22 +1070,21 @@ export async function POST(
         refineModel = rawRefine;
       }
 
-      const projBase = await prisma.project.findUnique({
-        where: { id },
-        select: {
-          currentSpecVersionId: true,
-          currentSpecVersion: { select: { markdown: true } },
-          confirmedSpecMarkdown: true,
-        },
-      });
+      const projBase = await findProjectScalarsByIdSafe(id);
       if (!projBase) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
+      const currentVerRow = projBase.currentSpecVersionId
+        ? await prisma.projectSpecVersion.findFirst({
+            where: { id: projBase.currentSpecVersionId, projectId: id },
+            select: { markdown: true },
+          })
+        : null;
       const currentMd =
-        projBase.currentSpecVersion?.markdown?.trim() || projBase.confirmedSpecMarkdown?.trim() || "";
+        currentVerRow?.markdown?.trim() || String(projBase.confirmedSpecMarkdown ?? "").trim() || "";
       if (!currentMd) {
         return NextResponse.json(
-          { success: false, message: "확정된 Project Spec이 없어 AI 개선을 실행할 수 없습니다." },
+          { success: false, message: "확정된 실행 계획이 없어 AI 개선을 실행할 수 없습니다." },
           { status: 400 }
         );
       }
@@ -856,10 +1129,7 @@ export async function POST(
         createdByUserId: userId,
       });
 
-      const updatedProject = await prisma.project.findUnique({
-        where: { id },
-        select: PROJECT_MAP_SELECT,
-      });
+      const updatedProject = await findProjectScalarsByIdSafe(id);
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -873,8 +1143,8 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
-        data: { project: mapProject(updatedProject), taskDraftSync },
+        message: "현재 확정된 실행 계획을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
+        data: { project: toProjectMapRow(updatedProject), taskDraftSync },
       });
     }
 
@@ -893,10 +1163,7 @@ export async function POST(
         }
         throw e;
       }
-      const updatedProject = await prisma.project.findUnique({
-        where: { id },
-        select: PROJECT_MAP_SELECT,
-      });
+      const updatedProject = await findProjectScalarsByIdSafe(id);
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
@@ -907,8 +1174,8 @@ export async function POST(
       });
       return NextResponse.json({
         success: true,
-        message: "선택한 버전을 현재 활성 스펙으로 되돌렸습니다.",
-        data: { project: mapProject(updatedProject), taskDraftSync },
+        message: "선택한 버전을 현재 활성 실행 계획으로 되돌렸습니다.",
+        data: { project: toProjectMapRow(updatedProject), taskDraftSync },
       });
     }
 

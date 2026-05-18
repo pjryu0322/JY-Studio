@@ -1,4 +1,8 @@
-import type { CursorApiValidationPayload, ExecutionSetupDto } from "@/components/project-spec/api";
+import type {
+  CursorApiValidationPayload,
+  ExecutionSetupDto,
+  GithubCapabilityValidationSnapshot,
+} from "@/components/project-spec/api";
 
 export type { CursorApiValidationPayload } from "@/components/project-spec/api";
 
@@ -8,6 +12,10 @@ export type ValidateResponseData = {
   needsRevalidation?: boolean;
   lastValidationError?: string | null;
   repoConnectionOk?: boolean | null;
+  githubAuthConnectionOk?: boolean | null;
+  githubAuthValidatedAt?: string | null;
+  githubAuthValidationError?: string | null;
+  githubCapabilityValidation?: GithubCapabilityValidationSnapshot | null;
   cursorApiConnectionOk?: boolean | null;
   executorConnectionOk?: boolean | null;
   repoValidatedAt?: string | null;
@@ -32,6 +40,18 @@ export function mergeValidateIntoSetup(prev: ExecutionSetupDto, d: ValidateRespo
     lastValidationError:
       d.lastValidationError !== undefined ? d.lastValidationError ?? null : prev.lastValidationError ?? null,
     repoConnectionOk: d.repoConnectionOk !== undefined ? d.repoConnectionOk : prev.repoConnectionOk,
+    githubAuthConnectionOk:
+      d.githubAuthConnectionOk !== undefined ? d.githubAuthConnectionOk : prev.githubAuthConnectionOk,
+    githubAuthValidatedAt:
+      d.githubAuthValidatedAt !== undefined ? d.githubAuthValidatedAt ?? null : prev.githubAuthValidatedAt ?? null,
+    githubAuthValidationError:
+      d.githubAuthValidationError !== undefined
+        ? d.githubAuthValidationError ?? null
+        : prev.githubAuthValidationError ?? null,
+    githubCapabilityValidation:
+      d.githubCapabilityValidation !== undefined
+        ? d.githubCapabilityValidation ?? null
+        : prev.githubCapabilityValidation ?? null,
     cursorApiConnectionOk: d.cursorApiConnectionOk !== undefined ? d.cursorApiConnectionOk : prev.cursorApiConnectionOk,
     executorConnectionOk: d.executorConnectionOk !== undefined ? d.executorConnectionOk : prev.executorConnectionOk,
     repoValidatedAt: d.repoValidatedAt !== undefined ? d.repoValidatedAt ?? null : prev.repoValidatedAt ?? null,

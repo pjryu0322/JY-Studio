@@ -7,6 +7,7 @@ import {
   SEED_EDITOR_PASSWORD,
   SEED_OWNER_EMAIL,
   SEED_OWNER_PASSWORD,
+  SEED_PROJECT_NAME,
 } from "./helpers";
 
 describe("projects API", () => {
@@ -25,10 +26,14 @@ describe("projects API", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const json = (await res.json()) as { success?: boolean; data?: { id: string; name: string } };
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { id: string; name: string; workflowStatus?: string | null };
+    };
     expect(json.success).toBe(true);
     expect(json.data?.name).toBe(name);
     expect(json.data?.id).toBeTruthy();
+    expect(json.data?.workflowStatus).toBe("REQUIREMENTS_PENDING");
   });
 
   it("[PRJ-002] 프로젝트 목록 조회 (소유·멤버십)", async () => {
@@ -38,7 +43,7 @@ describe("projects API", () => {
     const json = (await res.json()) as { success?: boolean; data?: { name: string }[] };
     expect(json.success).toBe(true);
     expect(Array.isArray(json.data)).toBe(true);
-    expect(json.data!.some((p) => p.name === "Web Meeting MVP")).toBe(true);
+    expect(json.data!.some((p) => p.name === SEED_PROJECT_NAME)).toBe(true);
   });
 
   it("[PRJ-003] 미로그인 시 목록 401", async () => {

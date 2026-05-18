@@ -1,3 +1,12 @@
+/**
+ * Overlay: **Review Harness** — Cursor 실행 **이후** OpenAI 기반 JSON 리뷰를 멤버 순으로 수행.
+ * 내부 단계(의미만 분리, 동작 동일):
+ * 1) member selection — `projectMember` 조회·정렬
+ * 2) context build — `buildCommonContext` + 역할별 user 메시지
+ * 3) model execution — `runOpenAiChatJsonEvaluation` 루프
+ * 4) result aggregation — `aggregateExecutionReviewDecisions` + usage 합산
+ * Stage1/2·Cursor launch·GitHub 자동화와 분리된 **리뷰 전용** 경로.
+ */
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import {
   runOpenAiChatJsonEvaluation,
@@ -13,6 +22,41 @@ import {
   roleOrderIndex,
 } from "@/lib/ai-member/aiMemberOrchestration";
 import { prisma } from "@/lib/prisma";
+import type { ActiveKnowledgePackRef } from "@/lib/overlay/activeKnowledgePackRef";
+import type { MemoryScope } from "@/lib/overlay/memoryScopeContract";
+import { resolveKnowledgeActivationHintsForRole } from "@/lib/overlay/knowledgeActivationResolver";
+import {
+  buildOverlayRuntimePolicyHintsWire,
+  type OverlayRuntimePolicyHintsWire,
+  shouldEnableKnowledgeHints,
+} from "@/lib/overlay/overlayPolicy";
+import { buildOverlayPolicyWarningsForResolvedRole } from "@/lib/overlay/overlayPolicyWarning";
+import type { OverlayPolicyWarning } from "@/lib/overlay/overlayPolicyWarning";
+import { summarizeOverlayPolicyWarnings } from "@/lib/overlay/overlayPolicyWarning";
+import { resolveAiIdentityContract, resolveDefaultMemoryScopesForRole } from "@/lib/overlay/overlayRuntimeResolver";
+
+/** Review Harness 전체 기준 overlay 경고 집계(metadata only; decision 비영향). */
+export type ExecutionReviewOverlayWarningSummaryWire = Readonly<{
+  total: number;
+  critical: number;
+  warning: number;
+  info: number;
+  byRole: Readonly<Record<string, number>>;
+}>;
+
+export function buildExecutionReviewOverlayWarningSummary(
+  steps: readonly ExecutionReviewerStepRecord[]
+): ExecutionReviewOverlayWarningSummaryWire {
+  const flat = steps.flatMap((s) => [...(s.overlayPolicyWarnings ?? [])]);
+  const s = summarizeOverlayPolicyWarnings(flat);
+  return {
+    total: flat.length,
+    critical: s.criticalCount,
+    warning: s.warningCount,
+    info: s.infoCount,
+    byRole: s.byRole,
+  };
+}
 
 export type ExecutionReviewerStepRecord = {
   memberId: string;
@@ -23,6 +67,20 @@ export type ExecutionReviewerStepRecord = {
   summary: string;
   issues: string[];
   reviewedAt: string;
+  /** Overlay policy layer: 리뷰어 역할 기준 메타(LLM 프롬프트 본문은 기존과 동일) */
+  overlayIdentity?: Readonly<{
+    roleKey: string;
+    perspective: string;
+    provider: string;
+    capabilities: readonly string[];
+  }>;
+  overlayMemoryScopes?: readonly MemoryScope[];
+  overlayKnowledgeHints?: readonly ActiveKnowledgePackRef[];
+  overlayPolicyHints?: OverlayRuntimePolicyHintsWire;
+  /**
+   * 진단·감사용 metadata. review decision(pass/retry/fail) 및 집계 결과에 영향 없음.
+   */
+  overlayPolicyWarnings?: readonly OverlayPolicyWarning[];
 };
 
 function buildCommonContext(params: {
@@ -30,13 +88,37 @@ function buildCommonContext(params: {
   cursorResult: CursorRunResult;
   repoUrl: string;
   stopOnTestFailure: boolean;
+  /** GitHub compare 기반: push된 실제 변경 증거 */
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
 }): string {
   const criteria = params.task.acceptanceCriteria.length
     ? params.task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
     : "(수용 기준 없음 — 설명만으로 판단)";
   const cr = params.cursorResult;
-  return `오케스트레이션 플랫폼의 검토자다. 실행은 Cursor(원격)가 수행했고, 아래는 그 **보고 결과**뿐이다.
-플랫폼은 저장소를 클론하거나 git을 실행하지 않는다.
+  const ge = params.gitEvidence;
+  const gitSection = ge
+    ? `
+[Git 증거(실제 push된 변경분, GitHub API compare 기반)]
+- base: ${ge.baseBranch}
+- head(branch): ${ge.headBranch}
+- headSha: ${ge.headSha ?? "(없음)"}
+
+[변경 파일 목록(실측)]
+${ge.changedFiles.length ? ge.changedFiles.join("\n") : "(없음)"}
+
+[diff 요약/patch 일부(실측)]
+${ge.diffSummary.slice(0, 18_000)}
+`
+    : "";
+
+  return `오케스트레이션 플랫폼의 검토자다. 실행은 Cursor(원격)가 수행했고, 아래는 Cursor의 **보고** + GitHub의 **실제 변경 증거**다.
+플랫폼은 저장소를 클론하거나 git을 실행하지 않는다(원격 API 기반).
 
 [대상 저장소 URL]
 ${params.repoUrl}
@@ -65,6 +147,8 @@ ${cr.changedFiles.length ? cr.changedFiles.join("\n") : "(없음)"}
 [실행 요약 / 로그 성격의 본문]
 ${cr.summary.slice(0, 14_000)}
 
+${gitSection}
+
 [공통 정책]
 - 출력은 반드시 JSON 한 객체만.
 - decision은 "pass" | "retry" | "fail" (레거시로 done/retry/failed 도 허용).
@@ -72,6 +156,8 @@ ${cr.summary.slice(0, 14_000)}
 - issues는 문자열 배열(구체적 지적; 없으면 []).
 ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하면 fail.\n" : ""}`;
 }
+
+const buildExecutionReviewBaseContext = buildCommonContext;
 
 function roleSpecificInstructions(role: AiMemberRole): string {
   switch (role) {
@@ -102,7 +188,7 @@ function roleSpecificInstructions(role: AiMemberRole): string {
 
 function buildUserMessageForRole(
   role: AiMemberRole,
-  base: ReturnType<typeof buildCommonContext>
+  base: ReturnType<typeof buildExecutionReviewBaseContext>
 ): string {
   return `${base}
 
@@ -116,37 +202,17 @@ ${roleSpecificInstructions(role)}
 }`;
 }
 
-/** execution-review 스테이지에 배정된 AI 멤버 수 (리뷰어 없음 판별용). */
-export async function countExecutionReviewAiMembers(projectId: string): Promise<number> {
-  return prisma.projectMember.count({
-    where: {
-      projectId,
-      memberType: "AI",
-      orchestrationEnabled: true,
-      orchestrationStage: "execution-review",
-      aiOrchestrationRole: { in: [...EXECUTION_REVIEW_ROLE_ORDER] },
-    },
-  });
-}
+type ExecutionReviewMemberRow = Readonly<{
+  id: string;
+  name: string;
+  role: AiMemberRole;
+  model: string;
+}>;
 
-export async function tryRunExecutionReviewWithAiMembers(params: {
-  projectId: string;
-  task: {
-    title: string;
-    description: string | null;
-    acceptanceCriteria: string[];
-  };
-  cursorResult: CursorRunResult;
-  repoUrl: string;
-  stopOnTestFailure: boolean;
-}): Promise<{
-  result: TaskEvaluationResult;
-  usage: OpenAiRelayEvalUsage;
-  steps: ExecutionReviewerStepRecord[];
-} | null> {
+async function selectExecutionReviewMembers(projectId: string): Promise<ExecutionReviewMemberRow[]> {
   const rows = await prisma.projectMember.findMany({
     where: {
-      projectId: params.projectId,
+      projectId,
       memberType: "AI",
       orchestrationEnabled: true,
       orchestrationStage: "execution-review",
@@ -160,7 +226,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
     },
   });
 
-  const members = rows
+  return rows
     .map((r) => {
       const role = r.aiOrchestrationRole as AiMemberRole | null;
       if (!role) return null;
@@ -178,62 +244,176 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
       if (oa !== ob) return oa - ob;
       return a.id.localeCompare(b.id);
     });
+}
 
-  if (members.length === 0) {
-    return null;
-  }
+async function executeReviewerStep(
+  m: ExecutionReviewMemberRow,
+  baseContext: string,
+  projectId: string
+): Promise<{
+  step: ExecutionReviewerStepRecord;
+  decision: ExecutionReviewDecision;
+  usage: NonNullable<OpenAiRelayEvalUsage> | null;
+}> {
+  const userMessage = buildUserMessageForRole(m.role, baseContext);
+  const { result, usage } = await runOpenAiChatJsonEvaluation({
+    model: m.model,
+    systemContent: `You are AI member "${m.name}" with orchestration role "${m.role}". Output only valid JSON.`,
+    userMessage,
+  });
 
-  const baseContext = buildCommonContext(params);
-  const steps: ExecutionReviewerStepRecord[] = [];
-  const decisions: ExecutionReviewDecision[] = [];
-  let totalUsage: NonNullable<OpenAiRelayEvalUsage> | null = null;
+  const decision = result.decision as ExecutionReviewDecision;
+  const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
 
-  for (const m of members) {
-    const userMessage = buildUserMessageForRole(m.role, baseContext);
-    const { result, usage } = await runOpenAiChatJsonEvaluation({
-      model: m.model,
-      systemContent: `You are AI member "${m.name}" with orchestration role "${m.role}". Output only valid JSON.`,
-      userMessage,
-    });
+  const identity = resolveAiIdentityContract(m.role);
+  const overlayIdentity = identity
+    ? {
+        roleKey: identity.roleKey,
+        perspective: identity.perspective,
+        provider: identity.provider,
+        capabilities: [...identity.capabilities],
+      }
+    : {
+        roleKey: m.role,
+        perspective: "unknown",
+        provider: "unknown",
+        capabilities: [] as const,
+      };
+  const overlayMemoryScopes = resolveDefaultMemoryScopesForRole(m.role);
+  const policyRoleKey = identity?.roleKey ?? m.role;
+  const overlayKnowledgeHints = shouldEnableKnowledgeHints(policyRoleKey)
+    ? resolveKnowledgeActivationHintsForRole({
+        roleKey: m.role,
+        projectId,
+      })
+    : [];
+  const overlayPolicyHints = buildOverlayRuntimePolicyHintsWire(policyRoleKey);
+  const overlayPolicyWarnings = buildOverlayPolicyWarningsForResolvedRole({
+    policyRoleKey,
+    source: "review-harness",
+    identity,
+  });
 
-    const decision = result.decision as ExecutionReviewDecision;
-    decisions.push(decision);
-    const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
-    steps.push({
-      memberId: m.id,
-      name: m.name,
-      role: m.role,
-      model: m.model,
-      decision,
-      summary: result.reason.slice(0, 4000),
-      issues,
-      reviewedAt: new Date().toISOString(),
-    });
+  const step: ExecutionReviewerStepRecord = {
+    memberId: m.id,
+    name: m.name,
+    role: m.role,
+    model: m.model,
+    decision,
+    summary: result.reason.slice(0, 4000),
+    issues,
+    reviewedAt: new Date().toISOString(),
+    overlayIdentity,
+    overlayMemoryScopes,
+    overlayKnowledgeHints,
+    overlayPolicyHints,
+    overlayPolicyWarnings,
+  };
+  return { step, decision, usage: usage ?? null };
+}
 
-    if (usage) {
-      totalUsage = totalUsage
-        ? {
-            promptTokens: totalUsage.promptTokens + usage.promptTokens,
-            completionTokens: totalUsage.completionTokens + usage.completionTokens,
-            totalTokens: totalUsage.totalTokens + usage.totalTokens,
-          }
-        : { ...usage };
-    }
-  }
+function mergeReviewerUsage(
+  acc: NonNullable<OpenAiRelayEvalUsage> | null,
+  usage: NonNullable<OpenAiRelayEvalUsage> | null
+): NonNullable<OpenAiRelayEvalUsage> | null {
+  if (!usage) return acc;
+  if (!acc) return { ...usage };
+  return {
+    promptTokens: acc.promptTokens + usage.promptTokens,
+    completionTokens: acc.completionTokens + usage.completionTokens,
+    totalTokens: acc.totalTokens + usage.totalTokens,
+  };
+}
 
-  const finalDecision = aggregateExecutionReviewDecisions(decisions);
-  const reason = steps
+function aggregateReviewerHarnessResult(input: {
+  steps: ExecutionReviewerStepRecord[];
+  decisions: ExecutionReviewDecision[];
+  usage: OpenAiRelayEvalUsage | null;
+}): {
+  result: TaskEvaluationResult;
+  usage: OpenAiRelayEvalUsage | null;
+  steps: ExecutionReviewerStepRecord[];
+  /** 스텝별 `overlayPolicyWarnings` 총 개수(감사용; decision과 무관). */
+  overlayWarningCount: number;
+  /** 전체 run 기준 severity·역할 분포(metadata only). */
+  overlayWarningSummary: ExecutionReviewOverlayWarningSummaryWire;
+} {
+  const finalDecision = aggregateExecutionReviewDecisions(input.decisions);
+  const reason = input.steps
     .map((s) => `[${s.name}·${s.role}·${s.model}] ${s.decision}: ${s.summary}`)
     .join("\n---\n")
     .slice(0, 8000);
+
+  const overlayWarningCount = input.steps.reduce((n, s) => n + (s.overlayPolicyWarnings?.length ?? 0), 0);
+  const overlayWarningSummary = buildExecutionReviewOverlayWarningSummary(input.steps);
 
   return {
     result: {
       decision: finalDecision,
       reason,
-      suspiciousChanges: steps.flatMap((s) => (s.decision === "failed" ? [`${s.role}_failed`] : [])),
+      suspiciousChanges: input.steps.flatMap((s) => (s.decision === "failed" ? [`${s.role}_failed`] : [])),
     },
-    usage: totalUsage,
-    steps,
+    usage: input.usage,
+    steps: input.steps,
+    overlayWarningCount,
+    overlayWarningSummary,
   };
+}
+
+/** Review Harness — member selection (count). execution-review 스테이지 AI 멤버 수. */
+export async function countExecutionReviewAiMembers(projectId: string): Promise<number> {
+  return prisma.projectMember.count({
+    where: {
+      projectId,
+      memberType: "AI",
+      orchestrationEnabled: true,
+      orchestrationStage: "execution-review",
+      aiOrchestrationRole: { in: [...EXECUTION_REVIEW_ROLE_ORDER] },
+    },
+  });
+}
+
+/** Review Harness — member selection + context + model loop + aggregation. */
+export async function tryRunExecutionReviewWithAiMembers(params: {
+  projectId: string;
+  task: {
+    title: string;
+    description: string | null;
+    acceptanceCriteria: string[];
+  };
+  cursorResult: CursorRunResult;
+  repoUrl: string;
+  stopOnTestFailure: boolean;
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
+}): Promise<{
+  result: TaskEvaluationResult;
+  usage: OpenAiRelayEvalUsage | null;
+  steps: ExecutionReviewerStepRecord[];
+  overlayWarningCount: number;
+  overlayWarningSummary: ExecutionReviewOverlayWarningSummaryWire;
+} | null> {
+  const members = await selectExecutionReviewMembers(params.projectId);
+  if (members.length === 0) {
+    return null;
+  }
+
+  const baseContext = buildExecutionReviewBaseContext(params);
+  const steps: ExecutionReviewerStepRecord[] = [];
+  const decisions: ExecutionReviewDecision[] = [];
+  let totalUsage: NonNullable<OpenAiRelayEvalUsage> | null = null;
+
+  for (const m of members) {
+    const { step, decision, usage } = await executeReviewerStep(m, baseContext, params.projectId);
+    steps.push(step);
+    decisions.push(decision);
+    totalUsage = mergeReviewerUsage(totalUsage, usage);
+  }
+
+  return aggregateReviewerHarnessResult({ steps, decisions, usage: totalUsage });
 }

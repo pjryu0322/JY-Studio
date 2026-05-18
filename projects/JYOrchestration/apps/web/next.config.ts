@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
     "localhost:3000",
     ...extraOrigins,
   ],
+  // Next 16 types only expose `position`, but the runtime supports buildActivity.
+  // Use a narrow cast to keep TS happy.
+  devIndicators: { buildActivity: false } as unknown as NextConfig["devIndicators"],
 };
 
 export default nextConfig;

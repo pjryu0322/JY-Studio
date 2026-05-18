@@ -8,12 +8,13 @@ import {
 import {
   countExecutionReviewAiMembers,
   tryRunExecutionReviewWithAiMembers,
+  type ExecutionReviewOverlayWarningSummaryWire,
+  type ExecutionReviewerStepRecord,
 } from "@/lib/execution/executionReviewWithAiMembers";
-import type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
 import { filterPathsOutsideAllowedGlobs } from "@/lib/execution/pathGlobPolicy";
 
 export type { TaskEvaluationResult } from "@/lib/execution/openAiRelayEvaluation";
-export type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
+export type { ExecutionReviewerStepRecord, ExecutionReviewOverlayWarningSummaryWire } from "@/lib/execution/executionReviewWithAiMembers";
 
 /** 저장소·UI에서 리뷰 생략 여부 판별 */
 export const EXECUTION_REVIEW_SKIPPED_REASON_PREFIX = "review_skipped:";
@@ -38,12 +39,22 @@ export async function evaluateExecutionResult(params: {
   stopOnOutOfScopeChange: boolean;
   allowedPathGlobs: string[];
   repoUrl: string;
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
   /** 미전달 시 projectId로 조회. 0이면 AI 리뷰·OpenAI 릴레이 평가를 모두 생략하고 통과 처리 */
   executionReviewerCount?: number;
 }): Promise<{
   result: TaskEvaluationResult;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   reviewerSteps: ExecutionReviewerStepRecord[];
+  /** Review Harness 사용 시에만 채워짐(metadata; decision 비영향). */
+  overlayWarningSummary?: ExecutionReviewOverlayWarningSummaryWire;
+  overlayWarningCount?: number;
 }> {
   const summary = params.summary || params.cursorResult.summary;
   const files = params.changedFiles.length ? params.changedFiles : params.cursorResult.changedFiles;
@@ -87,7 +98,7 @@ export async function evaluateExecutionResult(params: {
     }
   }
 
-  const mergedForReflection: Pick<CursorRunResult, "commitHash" | "changedFiles" | "summary"> = {
+  const mergedForReflection: Pick<CursorRunResult, "commitHash" | "changedFiles" | "summary" | "prUrl"> = {
     ...params.cursorResult,
     changedFiles: files,
     summary,
@@ -135,12 +146,15 @@ export async function evaluateExecutionResult(params: {
       cursorResult: cursorPayload,
       repoUrl: params.repoUrl,
       stopOnTestFailure: params.stopOnTestFailure,
+      gitEvidence: params.gitEvidence ?? null,
     });
     if (memberPack) {
       return {
         result: memberPack.result,
         usage: memberPack.usage,
         reviewerSteps: memberPack.steps,
+        overlayWarningSummary: memberPack.overlayWarningSummary,
+        overlayWarningCount: memberPack.overlayWarningCount,
       };
     }
   }

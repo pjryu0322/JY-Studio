@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
@@ -22,14 +23,25 @@ import {
   probeGitBaseBranchReachable,
   probeGitHttpRemote,
 } from "@/lib/executionSetup/hardening";
+import { githubRestApiBase } from "@/lib/integration/githubRestCommon";
+import { sanitizeGithubPatForStorage } from "@/lib/integration/githubPatIntegrity";
+import { bumpGithubTokenValidationEpoch, logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
+import {
+  formatGithubCanonicalGetReposPermissionsLine,
+  formatGithubCapabilityProbeStepFailureLine,
+  formatGithubRecentAcceptedPermissionsLine,
+  runGithubPatCapabilityProbes,
+  type GithubCapabilityValidationSnapshot,
+} from "@/lib/executionSetup/githubPatCapabilityProbes";
 
 /** 요청 scope. `cursor` 는 이전 클라이언트 호환용(= cursor_execution). */
-export type ValidateScope = "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all";
+export type ValidateScope = "repository" | "github_auth" | "cursor_api" | "cursor_execution" | "cursor" | "all";
 
-type NormalizedScope = "repository" | "cursor_api" | "cursor_execution" | "all";
+type NormalizedScope = "repository" | "github_auth" | "cursor_api" | "cursor_execution" | "all";
 
 function normalizeValidateScope(raw: string | undefined): NormalizedScope {
   if (raw === "repository") return "repository";
+  if (raw === "github_auth") return "github_auth";
   if (raw === "cursor_api") return "cursor_api";
   if (raw === "cursor_execution" || raw === "cursor") return "cursor_execution";
   return "all";
@@ -79,7 +91,11 @@ function validateRepoStructure(row: {
   }
 
   const parsed = parseGitHubRepoFullName(row.gitRepoUrl);
-  const name = (row.gitRepoName ?? "").trim().toLowerCase();
+  const name = (row.gitRepoName ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
   if (parsed && name && parsed !== name) {
     git = "error";
     messages.push(`저장소: full name이 URL과 맞지 않습니다. (URL 기준 ${parsed})`);
@@ -90,11 +106,12 @@ function validateRepoStructure(row: {
 
 function computeOverallStatus(
   repoOk: boolean | null,
+  githubAuthOk: boolean | null,
   cursorApiOk: boolean | null,
   execOk: boolean | null
 ): "draft" | "validated" | "invalid" {
-  if (repoOk === true && cursorApiOk === true && execOk === true) return "validated";
-  if (repoOk === false || cursorApiOk === false || execOk === false) return "invalid";
+  if (repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true) return "validated";
+  if (repoOk === false || githubAuthOk === false || cursorApiOk === false || execOk === false) return "invalid";
   return "draft";
 }
 
@@ -102,6 +119,13 @@ function storedSide(ok: boolean | null | undefined): Side {
   if (ok === true) return "ok";
   if (ok === false) return "error";
   return "needs";
+}
+
+function parseGithubCapabilitySnapshot(v: unknown): GithubCapabilityValidationSnapshot | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.githubOperableOk !== "boolean") return null;
+  return v as GithubCapabilityValidationSnapshot;
 }
 
 export async function POST(
@@ -121,13 +145,7 @@ export async function POST(
       if (ct.includes("application/json")) {
         const b = (await request.json()) as { scope?: string };
         const s = b?.scope;
-        if (
-          s === "repository" ||
-          s === "cursor_api" ||
-          s === "cursor_execution" ||
-          s === "cursor" ||
-          s === "all"
-        ) {
+        if (s === "repository" || s === "github_auth" || s === "cursor_api" || s === "cursor_execution" || s === "cursor" || s === "all") {
           requestedScope = s;
         }
       }
@@ -185,6 +203,12 @@ export async function POST(
     let nextRepoErr: string | null = row.repoValidationError ?? null;
     let nextRepoAt: Date | null = row.repoValidatedAt ?? null;
 
+    let nextGithubOk: boolean | null = row.githubAuthConnectionOk ?? null;
+    let nextGithubErr: string | null = row.githubAuthValidationError ?? null;
+    let nextGithubAt: Date | null = row.githubAuthValidatedAt ?? null;
+    let nextGithubCapabilityJson: Prisma.InputJsonValue | null = null;
+    let lastGithubCapabilitySnapshot: GithubCapabilityValidationSnapshot | null = null;
+
     let nextCursorApiOk: boolean | null = row.cursorApiConnectionOk ?? null;
     let nextCursorApiErr: string | null = row.cursorApiValidationError ?? null;
     let nextCursorApiAt: Date | null = row.cursorApiValidatedAt ?? null;
@@ -217,6 +241,84 @@ export async function POST(
       nextRepoAt = now;
     } else {
       gitResult = storedSide(row.repoConnectionOk);
+    }
+
+    // GitHub auth: 단계별 REST 프로브(메타·compare·PR 목록·PR 생성 시도·머지/협업자). githubAuthConnectionOk = 전체 운영 가능할 때만 true.
+    const shouldRunGithubAuth = scope === "github_auth" || scope === "repository" || scope === "all";
+    if (shouldRunGithubAuth) {
+      const githubValidationEpoch = bumpGithubTokenValidationEpoch(
+        scope === "github_auth" ? "execution_setup_validate_github_auth" : `execution_setup_validate_${scope}`
+      );
+      nextGithubCapabilityJson = (row.githubCapabilityValidation as Prisma.JsonValue | null) ?? null;
+      const tok = sanitizeGithubPatForStorage(String(row.githubAccessToken ?? ""));
+      if (!tok) {
+        logGithubTokenResolution({
+          operation: "execution_setup_github_validate",
+          token: null,
+          source: "none",
+          validationEpoch: githubValidationEpoch,
+          projectId: pid,
+        });
+        nextGithubOk = false;
+        nextGithubErr = "GitHub 인증: 실행 환경(Execution setup)에 저장된 토큰이 없습니다.";
+        nextGithubAt = now;
+        nextGithubCapabilityJson = null;
+        messages.push("GitHub 인증: 토큰이 없습니다. GitHub 토큰을 저장한 뒤 다시 검증하세요.");
+      } else {
+        try {
+          const parsed = parseGitHubRepoFullName(row.gitRepoUrl.trim());
+          if (!parsed) {
+            nextGithubOk = false;
+            nextGithubErr = "GitHub 인증: 저장소 URL이 GitHub 형식이 아닙니다.";
+            nextGithubAt = now;
+            nextGithubCapabilityJson = null;
+            messages.push("GitHub 인증: 저장소 URL이 GitHub 형식이 아닙니다.");
+          } else {
+            const api = githubRestApiBase();
+            const [owner, repo] = parsed.split("/");
+            const snapshot = await runGithubPatCapabilityProbes({
+              apiBase: api,
+              owner,
+              repo,
+              baseBranch: row.baseBranch.trim() || "main",
+              token: tok,
+              tokenSource: "db",
+              validationEpoch: githubValidationEpoch,
+              projectId: pid,
+            });
+            lastGithubCapabilitySnapshot = snapshot;
+            nextGithubCapabilityJson = snapshot as unknown as Prisma.InputJsonValue;
+            nextGithubOk = snapshot.githubOperableOk;
+            nextGithubErr = snapshot.githubOperableOk
+              ? null
+              : snapshot.lastErrorMessage ?? snapshot.summaryKr ?? "GitHub 권한이 부족합니다.";
+            nextGithubAt = now;
+            messages.push(snapshot.summaryKr);
+            for (const st of snapshot.steps) {
+              if (st.ok) continue;
+              probeMessages.push(formatGithubCapabilityProbeStepFailureLine(st));
+            }
+            if (snapshot.canonicalRepoGetAcceptedPermissions) {
+              probeMessages.push(
+                formatGithubCanonicalGetReposPermissionsLine(snapshot.canonicalRepoGetAcceptedPermissions)
+              );
+            }
+            if (!snapshot.githubOperableOk && snapshot.acceptedPermissionsHeader) {
+              probeMessages.push(formatGithubRecentAcceptedPermissionsLine(snapshot.acceptedPermissionsHeader));
+            }
+            if (snapshot.tokenMismatchHintKr) {
+              probeMessages.push(`GitHub: ${snapshot.tokenMismatchHintKr}`);
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          nextGithubOk = false;
+          nextGithubErr = `GitHub 인증: 예외 (${msg.slice(0, 200)})`;
+          nextGithubAt = now;
+          nextGithubCapabilityJson = null;
+          messages.push("GitHub 인증: 검증 중 오류가 발생했습니다.");
+        }
+      }
     }
 
     const cursorArgs = {
@@ -254,7 +356,7 @@ export async function POST(
       });
     }
 
-    const nextStatus = computeOverallStatus(nextRepoOk, nextCursorApiOk, nextExecOk);
+    const nextStatus = computeOverallStatus(nextRepoOk, nextGithubOk, nextCursorApiOk, nextExecOk);
     const needsRevalidation = nextStatus !== "validated";
 
     let lastValidationError: string | null = null;
@@ -266,6 +368,11 @@ export async function POST(
         if (nextRepoErr) parts.push(nextRepoErr);
       } else if (nextRepoOk === null) {
         parts.push("① Git 저장소 연결 검증이 필요합니다.");
+      }
+      if (nextGithubOk === false) {
+        if (nextGithubErr) parts.push(nextGithubErr);
+      } else if (nextGithubOk === null) {
+        parts.push("GitHub 인증 검증이 필요합니다.");
       }
       if (nextCursorApiOk === false) {
         if (nextCursorApiErr) parts.push(nextCursorApiErr);
@@ -297,6 +404,15 @@ export async function POST(
           repoConnectionOk: nextRepoOk,
           repoValidatedAt: nextRepoAt,
           repoValidationError: nextRepoErr,
+          githubAuthConnectionOk: nextGithubOk,
+          githubAuthValidatedAt: nextGithubAt,
+          githubAuthValidationError: nextGithubErr,
+          ...(shouldRunGithubAuth
+            ? {
+                githubCapabilityValidation:
+                  nextGithubCapabilityJson === null ? Prisma.DbNull : nextGithubCapabilityJson,
+              }
+            : {}),
           cursorApiConnectionOk: nextCursorApiOk,
           cursorApiValidatedAt: nextCursorApiAt,
           cursorApiValidationError: nextCursorApiErr,
@@ -308,8 +424,14 @@ export async function POST(
     );
 
     const allMessages = [...messages, ...probeMessages];
+    const githubCapFromDb =
+      parseGithubCapabilitySnapshot(updated.githubCapabilityValidation) ?? lastGithubCapabilitySnapshot;
     const userMessage =
-      scope === "repository"
+      scope === "github_auth"
+        ? nextGithubOk === true
+          ? "GitHub 권한 검증에 성공했습니다. (PR 머지 권한 포함, 운영 가능)"
+          : "GitHub 권한 검증에서 필요한 권한이 부족합니다. 세부 항목과 오류 메시지를 확인하세요."
+        : scope === "repository"
         ? gitResult === "ok"
           ? "저장소 연결 검증에 성공했습니다."
           : "저장소 연결 검증에 실패했습니다."
@@ -342,6 +464,22 @@ export async function POST(
         probeCursorOk:
           runCursorFull ? nextExecOk === true : runCursorApiOnly ? nextCursorApiOk === true : undefined,
         repoConnectionOk: nextRepoOk,
+        githubAuthConnectionOk: nextGithubOk,
+        githubAuthValidatedAt: updated.githubAuthValidatedAt ? updated.githubAuthValidatedAt.toISOString() : null,
+        githubAuthValidationError: updated.githubAuthValidationError ?? null,
+        githubCapabilityValidation: githubCapFromDb,
+        repoAccessOk: githubCapFromDb?.repoAccessOk ?? null,
+        prReadOk: githubCapFromDb?.prReadOk ?? null,
+        prCreateOk: githubCapFromDb?.prCreateOk ?? null,
+        prMergeOk: githubCapFromDb?.prMergeOk ?? null,
+        githubOperableOk: githubCapFromDb?.githubOperableOk ?? null,
+        acceptedPermissionsHeader: githubCapFromDb?.acceptedPermissionsHeader ?? null,
+        canonicalRepoGetAcceptedPermissions: githubCapFromDb?.canonicalRepoGetAcceptedPermissions ?? null,
+        tokenMismatchHintKr: githubCapFromDb?.tokenMismatchHintKr ?? null,
+        tokenSourceUsed: githubCapFromDb?.tokenSourceUsed ?? null,
+        validationEpoch: githubCapFromDb?.validationEpoch ?? null,
+        lastHttpStatus: githubCapFromDb?.lastHttpStatus ?? null,
+        lastErrorMessage: githubCapFromDb?.lastErrorMessage ?? null,
         cursorApiConnectionOk: nextCursorApiOk,
         executorConnectionOk: nextExecOk,
         repoValidatedAt: updated.repoValidatedAt ? updated.repoValidatedAt.toISOString() : null,

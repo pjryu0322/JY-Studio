@@ -2,9 +2,13 @@
  * Project CRUD / 설정 (API 레이어에서 호출).
  */
 import type { Project } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
+import { PROJECT_WORKFLOW_REQUIREMENTS_PENDING } from "@/lib/project/projectWorkflowStatus";
+import { ensureDefaultAiPlannerProjectMember } from "@/lib/service/projectMemberService";
+import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -20,27 +24,68 @@ export async function listProjectsAccessibleToUser(
   options?: { includeDeleted?: boolean }
 ) {
   const includeDeleted = options?.includeDeleted === true;
-  return prisma.project.findMany({
-    where: {
-      AND: [
-        ...(includeDeleted ? [] : [{ status: { not: PROJECT_LIFECYCLE_DELETED } }]),
-        {
-          OR: [
-            { ownerUserId: userId },
-            {
-              members: {
-                some: {
-                  userId,
-                  memberType: "HUMAN",
+  try {
+    if (skipPrismaProjectListDueToP2022) {
+      return listProjectsAccessibleToUserViaRawSelect(userId, includeDeleted);
+    }
+    return await prisma.project.findMany({
+      where: {
+        AND: [
+          ...(includeDeleted ? [] : [{ status: { not: PROJECT_LIFECYCLE_DELETED } }]),
+          {
+            OR: [
+              { ownerUserId: userId },
+              {
+                members: {
+                  some: {
+                    userId,
+                    memberType: "HUMAN",
+                  },
                 },
               },
-            },
-          ],
-        },
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-  });
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e ?? "");
+    // Prisma NAPI can fail on invalid/oversized strings in DB rows. Fall back to raw select.
+    const shouldFallback =
+      (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022") ||
+      /Failed to convert rust `String` into napi `string`/i.test(msg) ||
+      /GenericFailure/i.test(msg);
+    if (shouldFallback) {
+      skipPrismaProjectListDueToP2022 = true;
+      return listProjectsAccessibleToUserViaRawSelect(userId, includeDeleted);
+    }
+    throw e;
+  }
+}
+
+let skipPrismaProjectListDueToP2022 = false;
+
+async function listProjectsAccessibleToUserViaRawSelect(userId: string, includeDeleted: boolean): Promise<Project[]> {
+  const rows = await prisma.$queryRaw<Array<Project>>`
+    SELECT p.*
+    FROM "projects" p
+    WHERE
+      (${includeDeleted} = true OR p."status" <> ${PROJECT_LIFECYCLE_DELETED})
+    AND
+    (
+      p."ownerUserId" = ${userId}
+      OR EXISTS (
+        SELECT 1
+        FROM "project_members" pm
+        WHERE pm."projectId" = p."id"
+          AND pm."userId" = ${userId}
+          AND pm."memberType" = 'HUMAN'
+      )
+    )
+    ORDER BY p."createdAt" DESC
+  `;
+  return rows;
 }
 
 export type CreateProjectInput = {
@@ -50,9 +95,12 @@ export type CreateProjectInput = {
   repoUrl: string | null;
   defaultBranch: string;
   ownerUserId: string;
+  /** 기본 true. false면 spec 단계 기본 AI(planner) 멤버를 넣지 않습니다. */
+  includeDefaultAiPlanner?: boolean;
 };
 
 export async function createProject(input: CreateProjectInput) {
+  const includeAi = input.includeDefaultAiPlanner !== false;
   return prisma.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
@@ -63,6 +111,9 @@ export async function createProject(input: CreateProjectInput) {
         repoUrl: input.repoUrl,
         defaultBranch: input.defaultBranch,
         status: PROJECT_LIFECYCLE_ACTIVE,
+        workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
+        // Preserve original creation description for project cards.
+        requirementsStateJson: mergeRequirementsStateJson({}, { originalProjectDescription: input.description ?? "" }) as Prisma.InputJsonValue,
       },
     });
     await tx.projectMember.create({
@@ -72,6 +123,12 @@ export async function createProject(input: CreateProjectInput) {
         role: "OWNER",
       },
     });
+    if (includeAi) {
+      await ensureDefaultAiPlannerProjectMember(tx, {
+        projectId: project.id,
+        invitedByUserId: input.ownerUserId,
+      });
+    }
     return project;
   });
 }

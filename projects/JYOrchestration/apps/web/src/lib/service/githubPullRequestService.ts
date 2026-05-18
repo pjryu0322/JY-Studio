@@ -1,10 +1,13 @@
 /**
- * GitHub Pull Request 생성·동기화 (토큰·저장소는 env 또는 프로젝트 repoUrl).
- * 하드코딩 금지: GITHUB_TOKEN / GH_TOKEN, GITHUB_REPOSITORY / GITHUB_REPO / GITHUB_OWNER+GITHUB_REPO / GITHUB_REPO_URL.
+ * GitHub Pull Request 생성·동기화.
+ * 토큰: Execution setup(DB)에 저장된 프로젝트별 값만 사용. 저장소: 프로젝트 repoUrl(github.com)만 사용.
  */
 
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
-import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
+import {
+  GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+  resolveProjectGithubToken,
+} from "@/lib/integration/githubProjectDbToken";
 import { isAutoGitPushMode } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
 import { isExecutionSafeMode } from "@/lib/production/safeMode";
@@ -25,6 +28,8 @@ export const GITHUB_PR_ERROR_CODES = {
   NO_PUSH: "GITHUB_PR_PUSH_NOT_CONFIRMED",
   NO_AUTO_PUSH_POLICY: "GITHUB_PR_NOT_AUTO_PUSH_PROJECT",
   NO_CONFIG: "GITHUB_PR_MISSING_GITHUB_CONFIG",
+  /** Execution setup(DB)에 GitHub PAT 없음 — ENV PAT 미사용 */
+  MISSING_PROJECT_GITHUB_TOKEN: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
   API_ERROR: "GITHUB_PR_GITHUB_API_ERROR",
   NO_PR_NUMBER: "GITHUB_PR_NUMBER_MISSING",
 } as const;
@@ -175,12 +180,6 @@ async function appendGitPrSyncHistory(input: {
   }
 }
 
-function getGithubToken(): string | null {
-  const t =
-    process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
-  return t || null;
-}
-
 function githubApiBase(): string {
   const b = process.env.GITHUB_API_URL?.trim();
   if (b) {
@@ -189,14 +188,10 @@ function githubApiBase(): string {
   return "https://api.github.com";
 }
 
-/** env 우선, 없으면 github.com 프로젝트 repoUrl 파싱 */
+/** 프로젝트 repoUrl(github.com)에서 owner/repo만 파싱 */
 export function resolveGithubRepoForPr(input: {
   projectRepoUrl?: string | null;
 }): { owner: string; repo: string } | null {
-  const env = resolveGithubRepositoryFromEnv();
-  if (env) {
-    return env;
-  }
   const url = String(input.projectRepoUrl ?? "").trim();
   if (!url) {
     return null;
@@ -288,11 +283,11 @@ function deriveReviewStatusFromReviews(reviews: GhReviewJson[]): string {
 }
 
 async function githubFetchJson<T>(
+  token: string,
   path: string,
   init: RequestInit & { method?: string }
 ): Promise<{ ok: boolean; status: number; json: T | null; text: string }> {
-  const token = getGithubToken();
-  if (!token) {
+  if (!String(token ?? "").trim()) {
     return { ok: false, status: 0, json: null, text: "no token" };
   }
   const base = githubApiBase();
@@ -444,13 +439,21 @@ export async function createPullRequestForGitChangeRequest(input: {
   }
 
   const repo = resolveGithubRepoForPr({ projectRepoUrl: row.project.repoUrl });
-  const token = getGithubToken();
-  if (!repo || !token) {
+  const auth = await resolveProjectGithubToken(row.projectId);
+  const token = auth.token;
+  if (!repo) {
     return {
       ok: false,
       code: GITHUB_PR_ERROR_CODES.NO_CONFIG,
-      message:
-        "GITHUB_TOKEN(또는 GH_TOKEN)과 저장소 식별(GITHUB_REPOSITORY, GITHUB_REPO, GITHUB_OWNER+GITHUB_REPO, GITHUB_REPO_URL) 또는 프로젝트 GitHub repoUrl이 필요합니다.",
+      message: "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있어 PR을 만들 수 없습니다.",
+      httpStatus: 400,
+    };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      code: GITHUB_PR_ERROR_CODES.MISSING_PROJECT_GITHUB_TOKEN,
+      message: "프로젝트 설정에 GitHub 토큰이 저장되어 있지 않습니다. Execution setup에서 토큰을 저장·검증하세요.",
       httpStatus: 400,
     };
   }
@@ -465,7 +468,7 @@ export async function createPullRequestForGitChangeRequest(input: {
   });
 
   const path = `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/pulls`;
-  const r = await githubFetchJson<GhPullJson>(path, {
+  const r = await githubFetchJson<GhPullJson>(token, path, {
     method: "POST",
     body: JSON.stringify({
       title,
@@ -583,12 +586,21 @@ export async function syncPullRequestStatus(input: {
   }
 
   const repo = resolveGithubRepoForPr({ projectRepoUrl: row.project.repoUrl });
-  if (!repo || !getGithubToken()) {
+  const auth = await resolveProjectGithubToken(row.projectId);
+  const token = auth.token;
+  if (!repo) {
     return {
       ok: false,
       code: GITHUB_PR_ERROR_CODES.NO_CONFIG,
-      message:
-        "GitHub API 설정(토큰·저장소: GITHUB_REPOSITORY / GITHUB_REPO / GITHUB_OWNER+GITHUB_REPO / GITHUB_REPO_URL 또는 프로젝트 repoUrl)이 필요합니다.",
+      message: "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있습니다.",
+      httpStatus: 400,
+    };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      code: GITHUB_PR_ERROR_CODES.MISSING_PROJECT_GITHUB_TOKEN,
+      message: "프로젝트 설정에 GitHub 토큰이 저장되어 있지 않아 PR 상태를 동기화할 수 없습니다. Execution setup에서 토큰을 저장·검증하세요.",
       httpStatus: 400,
     };
   }
@@ -601,7 +613,7 @@ export async function syncPullRequestStatus(input: {
 
   const n = row.pullRequestNumber;
   const prPath = `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/pulls/${n}`;
-  const prRes = await githubFetchJson<GhPullJson>(prPath, { method: "GET" });
+  const prRes = await githubFetchJson<GhPullJson>(token, prPath, { method: "GET" });
   if (!prRes.ok || !prRes.json) {
     return {
       ok: false,
@@ -613,7 +625,7 @@ export async function syncPullRequestStatus(input: {
 
   const pr = prRes.json;
   const reviewsPath = `${prPath}/reviews`;
-  const revRes = await githubFetchJson<GhReviewJson[]>(reviewsPath, { method: "GET" });
+  const revRes = await githubFetchJson<GhReviewJson[]>(token, reviewsPath, { method: "GET" });
   const reviews = Array.isArray(revRes.json) ? revRes.json : [];
   let reviewStatus = deriveReviewStatusFromReviews(reviews);
   const prState = mapGithubPrState(pr);

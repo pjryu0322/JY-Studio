@@ -7,6 +7,8 @@ export type Project = {
   repoUrl?: string | null;
   defaultBranch?: string | null;
   status: string;
+  /** null=제한 없음, REQUIREMENTS_PENDING=요구사항 단계 완료 전 실행 계획 진입 불가 */
+  workflowStatus?: string | null;
   deletedAt?: string | null;
   deletedByUserId?: string | null;
   /** 승인만: NO_APPROVAL | MANUAL_APPROVAL (레거시 AUTO_APPLY = NO_APPROVAL). push와 독립. */
@@ -29,6 +31,16 @@ export type Project = {
   currentSpecVersionId?: string | null;
   /** Task 생성(요구사항 추출) 사용자 프롬프트 템플릿 (null이면 기본값 사용) */
   taskPrompt?: string | null;
+  /** 단일 호출 Task 생성용 템플릿 (null이면 기본값) */
+  taskGenerationPrompt?: string | null;
+  /** 요구사항 협의실 JSON (메시지·회의록 등) */
+  requirementsRoomState?: unknown | null;
+  /** 요구사항 협의실 Raw conversation(JSON) */
+  requirementsConversationJson?: unknown | null;
+  /** 요구사항 협의실 Derived draft(JSON) */
+  requirementsDraftJson?: unknown | null;
+  /** 요구사항 협의실 State/meta(JSON) */
+  requirementsStateJson?: unknown | null;
 };
 
 /** 확정 Project Spec 버전 행 (append-only) */

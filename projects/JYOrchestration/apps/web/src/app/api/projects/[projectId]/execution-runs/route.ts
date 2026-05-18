@@ -3,6 +3,10 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import {
+  buildTeamRuntimeAdditiveFields,
+  loadRequireApprovalBeforeApply,
+} from "@/lib/ai-team-runtime/apiTeamRuntime";
 
 export async function GET(
   request: NextRequest,
@@ -35,6 +39,8 @@ export async function GET(
       take,
     });
 
+    const requireApproval = await loadRequireApprovalBeforeApply(pid);
+
     return NextResponse.json({
       success: true,
       data: rows.map((r) => ({
@@ -45,6 +51,7 @@ export async function GET(
         provider: r.provider ?? "cursor",
         repoUrlSnapshot: r.repoUrlSnapshot,
         status: r.status,
+        ...buildTeamRuntimeAdditiveFields(r, requireApproval),
         branchName: r.branchName,
         cursorRunId: r.cursorRunId,
         cursorSummary: r.cursorSummary,

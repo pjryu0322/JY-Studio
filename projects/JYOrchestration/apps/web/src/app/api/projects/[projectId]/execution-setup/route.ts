@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
@@ -10,10 +11,59 @@ import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSp
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
+import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
+import { maskOpenAiKeyForUi } from "@/lib/executionSetup/openAiKeyMask";
+import { getUserDefaultExecutionCredentials } from "@/lib/service/userDefaultExecutionCredentials";
+import {
+  probeGithubPatAgainstExecutionRepo,
+  sanitizeGithubPatForStorage,
+  type GithubPatPostSaveRepoProbeResult,
+} from "@/lib/integration/githubPatIntegrity";
+import { githubTokenFingerprint, githubTokenPrefixForLog } from "@/lib/integration/githubTokenTrace";
 
 function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
   const t = String(cursorApiToken ?? "").trim();
   return t ? maskCursorTokenForUi(t) : null;
+}
+
+function githubTokenMaskedForApiResponse(githubAccessToken: string | null | undefined): string | null {
+  const t = String(githubAccessToken ?? "").trim();
+  return t ? maskGithubTokenForUi(t) : null;
+}
+
+/** DB `*Masked` 컬럼과 평문 컬럼을 함께 본다(이전 마이그레이션·부분 저장 호환). */
+function clientGithubTokenMeta(row: {
+  githubAccessToken: string | null;
+  githubAccessTokenMasked: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const fromPlain = githubTokenMaskedForApiResponse(row.githubAccessToken);
+  const stored = String(row.githubAccessTokenMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(String(row.githubAccessToken ?? "").trim()) || Boolean(stored);
+  return { masked, hasToken };
+}
+
+function clientCursorTokenMeta(row: {
+  cursorApiToken: string | null;
+  cursorApiTokenMasked: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const fromPlain = cursorTokenMaskedForApiResponse(row.cursorApiToken);
+  const stored = String(row.cursorApiTokenMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(String(row.cursorApiToken ?? "").trim()) || Boolean(stored);
+  return { masked, hasToken };
+}
+
+function clientOpenAiPlannerKeyMeta(row: {
+  openaiPlannerApiKey?: string | null;
+  openaiPlannerApiKeyMasked?: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const plain = String(row.openaiPlannerApiKey ?? "").trim();
+  const fromPlain = plain ? maskOpenAiKeyForUi(plain) : "";
+  const stored = String(row.openaiPlannerApiKeyMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(plain) || Boolean(stored);
+  return { masked, hasToken };
 }
 
 function isLikelyUrl(s: string): boolean {
@@ -51,11 +101,21 @@ type PatchBody = Partial<{
 
   cursorApiUrl: string;
   cursorApiToken: string | null;
+  githubAccessToken: string | null;
+  /** 프로토타입 생성(작업계획)용 OpenAI 키(프로젝트 단위) */
+  openaiPlannerApiKey: string | null;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
   if (v === null) return null;
   const s = String(v ?? "").trim();
+  return s ? s : null;
+}
+
+/** owner/repo 입력의 앞뒤 슬래시·공백 제거(URL 파싱 결과와 맞춤) */
+function normalizeGitRepoNameForDb(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(/^\/+/, "").replace(/\/+$/, "");
   return s ? s : null;
 }
 
@@ -83,11 +143,12 @@ function normalizeGlobsJson(g: unknown): string {
 
 function executionSetupOverallStatus(
   repoOk: boolean | null,
+  githubAuthOk: boolean | null,
   cursorApiOk: boolean | null,
   execOk: boolean | null
 ): "draft" | "validated" | "invalid" {
-  if (repoOk === true && cursorApiOk === true && execOk === true) return "validated";
-  if (repoOk === false || cursorApiOk === false || execOk === false) return "invalid";
+  if (repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true) return "validated";
+  if (repoOk === false || githubAuthOk === false || cursorApiOk === false || execOk === false) return "invalid";
   return "draft";
 }
 
@@ -117,11 +178,62 @@ export async function GET(
       prisma.executionSetup.findUnique({ where: { projectId: pid } })
     );
     if (!row) {
+      const projectMetaNoRow = await prisma.project.findUnique({
+        where: { id: pid },
+        select: { ownerUserId: true },
+      });
+      let peerCredentialHintsNoRow: {
+        githubAccessTokenMasked: string | null;
+        cursorApiUrl: string | null;
+        cursorApiTokenMasked: string | null;
+      } | null = null;
+      if (projectMetaNoRow?.ownerUserId) {
+        const donor = await getUserDefaultExecutionCredentials(projectMetaNoRow.ownerUserId, pid);
+        if (donor && (donor.githubAccessTokenMasked || donor.cursorApiTokenMasked)) {
+          peerCredentialHintsNoRow = {
+            githubAccessTokenMasked: donor.githubAccessTokenMasked,
+            cursorApiUrl: donor.cursorApiUrl,
+            cursorApiTokenMasked: donor.cursorApiTokenMasked,
+          };
+        }
+      }
       return NextResponse.json({
         success: true,
         message: "Execution setup이 아직 없습니다.",
         data: null,
+        peerCredentialHints: peerCredentialHintsNoRow,
       });
+    }
+
+    const ghTok = clientGithubTokenMeta(row);
+    const curTok = clientCursorTokenMeta(row);
+    const openAiTok = clientOpenAiPlannerKeyMeta(row);
+
+    const projectMeta = await prisma.project.findUnique({
+      where: { id: pid },
+      select: { ownerUserId: true },
+    });
+    let peerCredentialHints: {
+      githubAccessTokenMasked: string | null;
+      cursorApiUrl: string | null;
+      cursorApiTokenMasked: string | null;
+    } | null = null;
+    if (projectMeta?.ownerUserId) {
+      const donor = await getUserDefaultExecutionCredentials(projectMeta.ownerUserId, pid);
+      if (donor) {
+        const needsGh = !ghTok.hasToken;
+        const needsCur = !curTok.hasToken;
+        const gh = needsGh ? donor.githubAccessTokenMasked : null;
+        const cu = needsCur ? donor.cursorApiUrl : null;
+        const ctm = needsCur ? donor.cursorApiTokenMasked : null;
+        if (gh || ctm) {
+          peerCredentialHints = {
+            githubAccessTokenMasked: gh,
+            cursorApiUrl: cu,
+            cursorApiTokenMasked: ctm,
+          };
+        }
+      }
     }
 
     return NextResponse.json({
@@ -136,9 +248,17 @@ export async function GET(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
+        githubAccessTokenMasked: ghTok.masked,
+        hasGithubAccessToken: ghTok.hasToken,
+        githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
+        githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
+        githubAuthValidationError: row.githubAuthValidationError ?? null,
+        githubCapabilityValidation: row.githubCapabilityValidation ?? null,
+        openaiPlannerApiKeyMasked: openAiTok.masked,
+        hasOpenaiPlannerApiKey: openAiTok.hasToken,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
-        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
+        cursorApiTokenMasked: curTok.masked,
+        hasCursorToken: curTok.hasToken,
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
@@ -167,6 +287,7 @@ export async function GET(
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        peerCredentialHints,
       },
     });
   } catch (error) {
@@ -257,7 +378,7 @@ export async function PATCH(
             gitRepoProvider: String(body.gitRepoProvider ?? "").trim().toLowerCase() || "github",
           }
         : {}),
-      ...(body.gitRepoName !== undefined ? { gitRepoName: toStringOrNull(body.gitRepoName) } : {}),
+      ...(body.gitRepoName !== undefined ? { gitRepoName: normalizeGitRepoNameForDb(body.gitRepoName) } : {}),
       ...(body.baseBranch !== undefined ? { baseBranch: String(body.baseBranch ?? "").trim() } : {}),
       ...(body.branchStrategy !== undefined ? { branchStrategy: body.branchStrategy } : {}),
       ...(body.branchPrefix !== undefined ? { branchPrefix: toStringOrNull(body.branchPrefix) } : {}),
@@ -311,6 +432,35 @@ export async function PATCH(
             };
           })()
         : {}),
+      ...(body.githubAccessToken !== undefined
+        ? (() => {
+            const raw = body.githubAccessToken;
+            if (raw === null || raw === "") {
+              return { githubAccessToken: null, githubAccessTokenMasked: null };
+            }
+            const tok = sanitizeGithubPatForStorage(String(raw));
+            if (!tok) {
+              return { githubAccessToken: null, githubAccessTokenMasked: null };
+            }
+            return {
+              githubAccessToken: tok,
+              githubAccessTokenMasked: maskGithubTokenForUi(tok),
+            };
+          })()
+        : {}),
+      ...(body.openaiPlannerApiKey !== undefined
+        ? (() => {
+            const raw = body.openaiPlannerApiKey;
+            if (raw === null || raw === "") {
+              return { openaiPlannerApiKey: null, openaiPlannerApiKeyMasked: null };
+            }
+            const tok = String(raw).trim();
+            return {
+              openaiPlannerApiKey: tok,
+              openaiPlannerApiKeyMasked: maskOpenAiKeyForUi(tok),
+            };
+          })()
+        : {}),
     };
 
     const existing = await withExecutionSetupSchemaHealRetry(() =>
@@ -328,7 +478,7 @@ export async function PATCH(
             .trim()
             .toLowerCase() || "github";
     const nextGitRepoName =
-      body.gitRepoName !== undefined ? toStringOrNull(body.gitRepoName) : (existing?.gitRepoName ?? null);
+      body.gitRepoName !== undefined ? normalizeGitRepoNameForDb(body.gitRepoName) : (existing?.gitRepoName ?? null);
     const nextBranchStrategy =
       body.branchStrategy !== undefined ? body.branchStrategy : (existing?.branchStrategy ?? "manual");
     const nextBranchPrefix =
@@ -341,6 +491,7 @@ export async function PATCH(
     const cursorDirty = Boolean(
       existing && (body.cursorApiUrl !== undefined || body.cursorApiToken !== undefined)
     );
+    const githubDirty = Boolean(existing && body.githubAccessToken !== undefined);
 
     const repoDirty = Boolean(
       existing &&
@@ -360,6 +511,7 @@ export async function PATCH(
       data.executorConnectionOk = null;
       data.executorValidatedAt = null;
       data.executorValidationError = null;
+      data.githubCapabilityValidation = Prisma.DbNull;
     }
     if (executorDirty || cursorDirty) {
       data.cursorApiConnectionOk = null;
@@ -369,11 +521,18 @@ export async function PATCH(
       data.executorValidatedAt = null;
       data.executorValidationError = null;
     }
-    if (repoDirty || executorDirty || cursorDirty) {
+    if (githubDirty) {
+      data.githubAuthConnectionOk = null;
+      data.githubAuthValidatedAt = null;
+      data.githubAuthValidationError = null;
+      data.githubCapabilityValidation = Prisma.DbNull;
+    }
+    if (repoDirty || executorDirty || cursorDirty || githubDirty) {
       const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
+      const mergeGithubOk = githubDirty ? null : (existing?.githubAuthConnectionOk ?? null);
       const mergeCursorApiOk = executorDirty || cursorDirty ? null : (existing?.cursorApiConnectionOk ?? null);
       const mergeExecOk = executorDirty || cursorDirty ? null : (existing?.executorConnectionOk ?? null);
-      data.status = executionSetupOverallStatus(mergeRepoOk, mergeCursorApiOk, mergeExecOk);
+      data.status = executionSetupOverallStatus(mergeRepoOk, mergeGithubOk, mergeCursorApiOk, mergeExecOk);
       data.needsRevalidation = true;
       data.lastValidationError = null;
     }
@@ -386,6 +545,13 @@ export async function PATCH(
       baseBranch: "main",
       branchStrategy: "manual",
       branchPrefix: null,
+      githubAccessToken: null,
+      githubAccessTokenMasked: null,
+      openaiPlannerApiKey: null,
+      openaiPlannerApiKeyMasked: null,
+      githubAuthConnectionOk: null,
+      githubAuthValidatedAt: null,
+      githubAuthValidationError: null,
       cursorApiUrl: DEFAULT_CURSOR_API_BASE,
       cursorApiToken: null,
       cursorApiTokenMasked: null,
@@ -431,9 +597,108 @@ export async function PATCH(
       })
     );
 
+    let githubPatPostSaveCheck: GithubPatPostSaveRepoProbeResult | undefined;
+    if (body.githubAccessToken !== undefined) {
+      const prevTok = sanitizeGithubPatForStorage(String(existing?.githubAccessToken ?? ""));
+      const prevFp = prevTok ? githubTokenFingerprint(prevTok) : "(none)";
+      const prevPx = prevTok ? githubTokenPrefixForLog(prevTok) : "—";
+      const storedTok = sanitizeGithubPatForStorage(String(row.githubAccessToken ?? ""));
+      const storedFp = storedTok ? githubTokenFingerprint(storedTok) : "(cleared)";
+      const storedPx = storedTok ? githubTokenPrefixForLog(storedTok) : "—";
+      const expectedClear = body.githubAccessToken === null || body.githubAccessToken === "";
+      const expectedTok = expectedClear ? "" : sanitizeGithubPatForStorage(String(body.githubAccessToken));
+      const dbMatches =
+        expectedClear ? storedTok === "" : storedTok === expectedTok && storedTok.length > 0;
+      const fingerprintChanged = !expectedClear && prevFp !== "(none)" && storedFp !== "(cleared)" && prevFp !== storedFp;
+      const fingerprintUnchanged = !expectedClear && prevFp === storedFp && prevTok.length > 0;
+      console.info(
+        `[GitHub token] PATCH execution-setup projectId=${pid} DB_OVERWRITE ` +
+          `TOKEN_SOURCE=DB prev_TOKEN_PREFIX=${prevPx} new_TOKEN_PREFIX=${storedPx} ` +
+          `prev_TOKEN_LENGTH=${prevTok.length} new_TOKEN_LENGTH=${storedTok.length} ` +
+          `prev_TOKEN_HASH=${prevFp} new_TOKEN_HASH=${storedFp} ` +
+          `fingerprint_changed=${fingerprintChanged} fingerprint_unchanged=${fingerprintUnchanged} ` +
+          `db_row_matches_sanitized_request=${dbMatches}`
+      );
+
+      if (storedTok && !expectedClear) {
+        const probeGitRepoUrl =
+          String(nextGitRepoUrl ?? "").trim() ||
+          String(row.gitRepoUrl ?? "").trim() ||
+          String(existing?.gitRepoUrl ?? "").trim();
+        if (!probeGitRepoUrl) {
+          githubPatPostSaveCheck = {
+            attempted: false,
+            skippedReason: "missing_git_repo_url",
+            httpStatus: null,
+            xAcceptedGitHubPermissions: null,
+            ok: false,
+          };
+        } else {
+        githubPatPostSaveCheck = await probeGithubPatAgainstExecutionRepo({
+          gitRepoUrl: probeGitRepoUrl,
+          token: storedTok,
+          projectId: pid,
+        });
+        }
+        const reread = await withExecutionSetupSchemaHealRetry(() =>
+          prisma.executionSetup.findUnique({
+            where: { projectId: pid },
+            select: { githubAccessToken: true },
+          })
+        );
+        const rereadTok = sanitizeGithubPatForStorage(String(reread?.githubAccessToken ?? ""));
+        const rereadFp = rereadTok ? githubTokenFingerprint(rereadTok) : "(cleared)";
+        console.info(
+          `[GitHub token] PATCH execution-setup projectId=${pid} DB_REREAD_AFTER_UPSERT ` +
+            `TOKEN_SOURCE=DB TOKEN_LENGTH=${rereadTok.length} TOKEN_HASH=${rereadFp} ` +
+            `matches_upsert_row_hash=${rereadFp === storedFp}`
+        );
+      } else {
+        githubPatPostSaveCheck = {
+          attempted: false,
+          skippedReason: "token_cleared_or_empty_after_sanitize",
+          httpStatus: null,
+          xAcceptedGitHubPermissions: null,
+          ok: false,
+        };
+      }
+    }
+
+    const ghTokPatch = clientGithubTokenMeta(row);
+    const curTokPatch = clientCursorTokenMeta(row);
+    const openAiTokPatch = clientOpenAiPlannerKeyMeta(row);
+
+    let peerCredentialHintsPatch: {
+      githubAccessTokenMasked: string | null;
+      cursorApiUrl: string | null;
+      cursorApiTokenMasked: string | null;
+    } | null = null;
+    const projectMetaPatch = await prisma.project.findUnique({
+      where: { id: pid },
+      select: { ownerUserId: true },
+    });
+    if (projectMetaPatch?.ownerUserId) {
+      const donor = await getUserDefaultExecutionCredentials(projectMetaPatch.ownerUserId, pid);
+      if (donor) {
+        const needsGh = !ghTokPatch.hasToken;
+        const needsCur = !curTokPatch.hasToken;
+        const gh = needsGh ? donor.githubAccessTokenMasked : null;
+        const cu = needsCur ? donor.cursorApiUrl : null;
+        const ctm = needsCur ? donor.cursorApiTokenMasked : null;
+        if (gh || ctm) {
+          peerCredentialHintsPatch = {
+            githubAccessTokenMasked: gh,
+            cursorApiUrl: cu,
+            cursorApiTokenMasked: ctm,
+          };
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Execution setup을 저장했습니다.",
+      ...(githubPatPostSaveCheck !== undefined ? { githubPatPostSaveCheck } : {}),
       data: {
         id: row.id,
         projectId: row.projectId,
@@ -443,9 +708,17 @@ export async function PATCH(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
+        githubAccessTokenMasked: ghTokPatch.masked,
+        hasGithubAccessToken: ghTokPatch.hasToken,
+        githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
+        githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
+        githubAuthValidationError: row.githubAuthValidationError ?? null,
+        githubCapabilityValidation: row.githubCapabilityValidation ?? null,
+        openaiPlannerApiKeyMasked: openAiTokPatch.masked,
+        hasOpenaiPlannerApiKey: openAiTokPatch.hasToken,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
-        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
+        cursorApiTokenMasked: curTokPatch.masked,
+        hasCursorToken: curTokPatch.hasToken,
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
@@ -474,6 +747,7 @@ export async function PATCH(
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        peerCredentialHints: peerCredentialHintsPatch,
       },
     });
   } catch (error) {

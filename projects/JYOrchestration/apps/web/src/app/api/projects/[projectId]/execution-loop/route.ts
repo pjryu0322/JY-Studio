@@ -8,6 +8,11 @@ import {
 } from "@/lib/executionLoop/runExecutionLoop";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import {
+  buildTeamRuntimeAdditiveFields,
+  loadRequireApprovalBeforeApply,
+} from "@/lib/ai-team-runtime/apiTeamRuntime";
+import { prisma } from "@/lib/prisma";
 
 type Body = {
   action?: string;
@@ -94,11 +99,28 @@ export async function POST(
       actorUserId: userId,
       singleTaskId: singleTaskId || undefined,
     });
+
+    const latestRun = await prisma.taskExecutionRun.findFirst({
+      where: {
+        projectId: pid,
+        ...(singleTaskId ? { taskId: singleTaskId } : {}),
+        archivedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const requireApproval = await loadRequireApprovalBeforeApply(pid);
+    const teamRuntime = latestRun
+      ? buildTeamRuntimeAdditiveFields(latestRun, requireApproval).teamRuntime
+      : null;
+
     return NextResponse.json(
       {
         success: result.ok,
         message: result.message,
-        data: { steps: result.steps },
+        data: {
+          steps: result.steps,
+          teamRuntime,
+        },
       },
       { status: result.ok ? 200 : 422 }
     );

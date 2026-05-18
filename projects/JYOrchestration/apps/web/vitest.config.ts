@@ -4,7 +4,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/api/**/*.test.ts"],
+    include: [
+      "tests/api/**/*.test.ts",
+      "tests/harness/**/*.test.ts",
+      "tests/overlay/**/*.test.ts",
+      "tests/overlay-ui/**/*.test.ts",
+      "tests/components/**/*.test.tsx",
+    ],
     fileParallelism: false,
     maxConcurrency: 1,
     testTimeout: 60_000,
@@ -17,6 +23,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@jy-orch": path.resolve(__dirname, "../../src"),
     },
   },
 });

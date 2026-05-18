@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
       where: {
         projectId,
         archivedAt: null,
+        taskKind: "PRIMARY",
+        status: { notIn: ["BLOCKED", "CANCELLED"] },
         ...(currentSpecId
           ? { sourceSpecVersionId: currentSpecId }
           : {
@@ -159,7 +161,7 @@ export async function POST(request: Request) {
     {
       success: false,
       message:
-        "업로드 기반 Task 생성 API는 비활성화되었습니다. Project Spec 워크스페이스에서 스펙을 확정한 뒤 Task Draft 생성을 사용하세요.",
+        "업로드 기반 Task 생성 API는 비활성화되었습니다. 프로젝트 상세의 실행 계획을 확정한 뒤 Task Draft 생성을 사용하세요.",
       code: "LEGACY_UPLOAD_FLOW_DISABLED",
     },
     { status: 410 }
