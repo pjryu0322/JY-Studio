@@ -30,7 +30,16 @@ export async function loadTeamRuntimeTaskContextMap(
     select: { id: true, ...TEAM_RUNTIME_TASK_CONTEXT_SELECT },
   });
 
-  return new Map(rows.map((row) => [row.id, row]));
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        executionWorkflowStatus: row.executionWorkflowStatus,
+        lastEvalResult: row.lastEvalResult,
+        lastEvalSummary: row.lastEvalSummary,
+      },
+    ])
+  );
 }
 
 export async function loadTeamRuntimeTaskContext(

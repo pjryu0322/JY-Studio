@@ -3,8 +3,8 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { toTaskExecutionRunListItem } from "@/lib/ai-team-runtime/executionRunListItem";
 import {
-  buildTeamRuntimeAdditiveFields,
   loadRequireApprovalBeforeApply,
   loadTeamRuntimeTaskContextMap,
 } from "@/lib/ai-team-runtime/apiTeamRuntime";
@@ -49,39 +49,9 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => {
-        const taskContext = taskById.get(r.taskId) ?? null;
-        return {
-          id: r.id,
-          projectId: r.projectId,
-          workflowId: r.workflowId,
-          taskId: r.taskId,
-          provider: r.provider ?? "cursor",
-          repoUrlSnapshot: r.repoUrlSnapshot,
-          status: r.status,
-          ...buildTeamRuntimeAdditiveFields(r, requireApproval, taskContext),
-          branchName: r.branchName,
-          cursorRunId: r.cursorRunId,
-          cursorSummary: r.cursorSummary,
-          changedFiles: Array.isArray(r.changedFiles) ? r.changedFiles : [],
-          gitSummary: r.gitSummary,
-          evaluationReason: r.evaluationReason,
-          evaluationDecision: r.evaluationDecision,
-          evaluationReviewerSteps: Array.isArray(r.evaluationReviewerSteps)
-            ? r.evaluationReviewerSteps
-            : [],
-          validationOutput: r.validationOutput,
-          runError: r.runError,
-          commitStatus: r.commitStatus,
-          pushStatus: r.pushStatus,
-          commitSha: r.commitSha,
-          prStatus: r.prStatus,
-          retryCount: r.retryCount,
-          createdAt: r.createdAt.toISOString(),
-          updatedAt: r.updatedAt.toISOString(),
-          archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
-        };
-      }),
+      data: rows.map((r) =>
+        toTaskExecutionRunListItem(r, requireApproval, taskById.get(r.taskId) ?? null)
+      ),
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
