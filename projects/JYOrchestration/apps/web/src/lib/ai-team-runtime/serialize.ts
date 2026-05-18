@@ -59,6 +59,7 @@ export type TaskExecutionRunTeamRuntimeSource = Readonly<{
 export type TaskExecutionRunForTeamRuntime = TaskExecutionRunTeamRuntimeSource &
   Readonly<{
     id: string;
+    taskId?: string;
     teamExecutionStatus?: string | null;
   }>;
 

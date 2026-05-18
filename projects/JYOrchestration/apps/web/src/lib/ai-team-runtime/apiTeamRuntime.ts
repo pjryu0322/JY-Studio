@@ -18,6 +18,20 @@ const TEAM_RUNTIME_TASK_CONTEXT_SELECT = {
   lastEvalSummary: true,
 } as const;
 
+type TeamRuntimeTaskContextRow = {
+  executionWorkflowStatus: string | null;
+  lastEvalResult: string | null;
+  lastEvalSummary: string | null;
+};
+
+function pickTeamRuntimeTaskContext(row: TeamRuntimeTaskContextRow): TeamRuntimeTaskContext {
+  return {
+    executionWorkflowStatus: row.executionWorkflowStatus,
+    lastEvalResult: row.lastEvalResult,
+    lastEvalSummary: row.lastEvalSummary,
+  };
+}
+
 export async function loadTeamRuntimeTaskContextMap(
   projectId: string,
   taskIds: readonly string[]
@@ -30,16 +44,7 @@ export async function loadTeamRuntimeTaskContextMap(
     select: { id: true, ...TEAM_RUNTIME_TASK_CONTEXT_SELECT },
   });
 
-  return new Map(
-    rows.map((row) => [
-      row.id,
-      {
-        executionWorkflowStatus: row.executionWorkflowStatus,
-        lastEvalResult: row.lastEvalResult,
-        lastEvalSummary: row.lastEvalSummary,
-      },
-    ])
-  );
+  return new Map(rows.map((row) => [row.id, pickTeamRuntimeTaskContext(row)]));
 }
 
 export async function loadTeamRuntimeTaskContext(
@@ -63,15 +68,17 @@ export async function loadRequireApprovalBeforeApply(projectId: string): Promise
   return setup?.requireApprovalBeforeApply === true;
 }
 
+export type TeamRuntimeAdditiveFields = Readonly<{
+  teamExecutionStatus: string | null | undefined;
+  teamRuntimeStatus: TeamRuntimeSummary["status"];
+  teamRuntime: TeamRuntimeSummary;
+}>;
+
 export function buildTeamRuntimeAdditiveFields(
   run: TaskExecutionRunForTeamRuntime,
   requireApproval: boolean,
   task?: TeamRuntimeTaskContext
-): Readonly<{
-  teamExecutionStatus: string | null | undefined;
-  teamRuntimeStatus: TeamRuntimeSummary["status"];
-  teamRuntime: TeamRuntimeSummary;
-}> {
+): TeamRuntimeAdditiveFields {
   const summary = buildTeamRuntimeSummaryFromRun(run, { requireApproval });
   const timeline = buildAiTeamRuntimeTimelineSafe({
     run,
@@ -84,4 +91,19 @@ export function buildTeamRuntimeAdditiveFields(
     teamRuntimeStatus: teamRuntime.status,
     teamRuntime,
   };
+}
+
+/** Loads approval policy + task workflow context, then builds `teamRuntime` for a single run. */
+export async function buildTeamRuntimeForExecutionRun(
+  projectId: string,
+  run: TaskExecutionRunForTeamRuntime | null | undefined
+): Promise<TeamRuntimeSummary | null> {
+  if (!run) return null;
+
+  const [requireApproval, taskContext] = await Promise.all([
+    loadRequireApprovalBeforeApply(projectId),
+    loadTeamRuntimeTaskContext(projectId, run.taskId),
+  ]);
+
+  return buildTeamRuntimeAdditiveFields(run, requireApproval, taskContext).teamRuntime;
 }

@@ -8,11 +8,7 @@ import {
 } from "@/lib/executionLoop/runExecutionLoop";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-import {
-  buildTeamRuntimeAdditiveFields,
-  loadRequireApprovalBeforeApply,
-  loadTeamRuntimeTaskContext,
-} from "@/lib/ai-team-runtime/apiTeamRuntime";
+import { buildTeamRuntimeForExecutionRun } from "@/lib/ai-team-runtime/apiTeamRuntime";
 import { prisma } from "@/lib/prisma";
 
 type Body = {
@@ -109,11 +105,7 @@ export async function POST(
       },
       orderBy: { createdAt: "desc" },
     });
-    const requireApproval = await loadRequireApprovalBeforeApply(pid);
-    const taskContext = await loadTeamRuntimeTaskContext(pid, latestRun?.taskId);
-    const teamRuntime = latestRun
-      ? buildTeamRuntimeAdditiveFields(latestRun, requireApproval, taskContext).teamRuntime
-      : null;
+    const teamRuntime = await buildTeamRuntimeForExecutionRun(pid, latestRun);
 
     return NextResponse.json(
       {

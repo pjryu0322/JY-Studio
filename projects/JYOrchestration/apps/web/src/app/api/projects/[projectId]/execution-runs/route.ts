@@ -40,12 +40,13 @@ export async function GET(
       take,
     });
 
-    const requireApproval = await loadRequireApprovalBeforeApply(pid);
-
-    const taskById = await loadTeamRuntimeTaskContextMap(
-      pid,
-      rows.map((r) => r.taskId)
-    );
+    const [requireApproval, taskById] = await Promise.all([
+      loadRequireApprovalBeforeApply(pid),
+      loadTeamRuntimeTaskContextMap(
+        pid,
+        rows.map((r) => r.taskId)
+      ),
+    ]);
 
     return NextResponse.json({
       success: true,

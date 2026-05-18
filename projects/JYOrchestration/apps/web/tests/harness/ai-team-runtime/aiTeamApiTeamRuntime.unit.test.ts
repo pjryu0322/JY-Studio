@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTeamRuntimeAdditiveFields } from "@/lib/ai-team-runtime/apiTeamRuntime";
+import {
+  buildTeamRuntimeAdditiveFields,
+  buildTeamRuntimeForExecutionRun,
+} from "@/lib/ai-team-runtime/apiTeamRuntime";
 
 describe("buildTeamRuntimeAdditiveFields", () => {
   it("passes task context into timeline approval stage", () => {
@@ -11,6 +14,10 @@ describe("buildTeamRuntimeAdditiveFields", () => {
     );
 
     expect(fields.teamRuntime.timeline?.find((t) => t.id === "approval")?.status).toBe("blocked");
+  });
+
+  it("buildTeamRuntimeForExecutionRun returns null when run is missing", async () => {
+    await expect(buildTeamRuntimeForExecutionRun("project-1", null)).resolves.toBeNull();
   });
 
   it("includes startedAt and completedAt on timeline items", () => {
