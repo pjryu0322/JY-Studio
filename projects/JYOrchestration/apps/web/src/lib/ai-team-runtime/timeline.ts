@@ -124,14 +124,21 @@ function evaluationReasonLower(run: BuildAiTeamRuntimeTimelineInput["run"]): str
   return String(run.evaluationReason ?? "").toLowerCase();
 }
 
+function gitEvidenceBlocked(reason: string): boolean {
+  return reason.includes("github_compare_failed");
+}
+
 function scmHoldInReason(reason: string): boolean {
   return (
+    reason.includes("scm manager") ||
     reason.includes("scm") ||
-    reason.includes("merge") ||
+    reason.includes("merge_failed") ||
     reason.includes("auto-merge") ||
     reason.includes("auto merge") ||
-    reason.includes("pull request") ||
-    reason.includes("github_compare_failed")
+    reason.includes("자동 merge") ||
+    reason.includes("merge pending") ||
+    reason.includes("pr 생성 실패") ||
+    reason.includes("pr 준비 완료")
   );
 }
 
@@ -191,7 +198,7 @@ function buildGitItem(
     Boolean(run.prStatus?.trim());
 
   let status: AiTeamRuntimeTimelineStatus = "pending";
-  if (reason.includes("github_compare_failed")) status = "blocked";
+  if (gitEvidenceBlocked(reason)) status = "blocked";
   else if (run.commitSha?.trim() || files > 0 || prOpenOrMerged) status = "succeeded";
 
   const parts: string[] = [];
@@ -510,7 +517,8 @@ export function buildAiTeamRuntimeTimelineSafe(
 ): AiTeamRuntimeTimelineItem[] {
   try {
     return buildAiTeamRuntimeTimeline(input);
-  } catch {
+  } catch (error) {
+    console.warn("[ai-team-runtime] timeline build failed", error);
     return STAGE_ORDER.map((stage) => ({
       id: stage,
       stage,

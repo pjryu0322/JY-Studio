@@ -109,8 +109,18 @@ export async function POST(
       orderBy: { createdAt: "desc" },
     });
     const requireApproval = await loadRequireApprovalBeforeApply(pid);
+    const taskContext = latestRun?.taskId
+      ? await prisma.task.findFirst({
+          where: { id: latestRun.taskId, projectId: pid },
+          select: {
+            executionWorkflowStatus: true,
+            lastEvalResult: true,
+            lastEvalSummary: true,
+          },
+        })
+      : null;
     const teamRuntime = latestRun
-      ? buildTeamRuntimeAdditiveFields(latestRun, requireApproval).teamRuntime
+      ? buildTeamRuntimeAdditiveFields(latestRun, requireApproval, taskContext).teamRuntime
       : null;
 
     return NextResponse.json(

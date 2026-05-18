@@ -38,6 +38,29 @@ function timelineStatusLabel(status: string): string {
   return status;
 }
 
+function truncateText(value: string | null | undefined, max = 500): string | null {
+  if (value == null || value === "") return null;
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}…`;
+}
+
+function formatTimelineMeta(item: TeamRuntimeTimelineItemDto): string {
+  const parts: string[] = [];
+  if (item.branchName) parts.push(`branch ${item.branchName}`);
+  if (item.commitSha) parts.push(`commit ${item.commitSha.slice(0, 8)}`);
+  if (item.changedFileCount != null && item.changedFileCount > 0) {
+    parts.push(`files ${item.changedFileCount}`);
+  }
+  return parts.join(" · ");
+}
+
+function formatTimelineTime(iso: string | null | undefined): string | null {
+  if (!iso?.trim()) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
+
 export function AiTeamRuntimeTimelineList({
   items,
 }: {
@@ -51,44 +74,59 @@ export function AiTeamRuntimeTimelineList({
 
   return (
     <ul data-testid="ai-team-runtime-timeline" style={{ margin: 0, padding: 0 }}>
-      {items.map((item) => (
-        <li
-          key={item.id}
-          data-testid={`ai-team-runtime-timeline-${item.id}`}
-          style={{
-            listStyle: "none",
-            margin: 0,
-            padding: "8px 0",
-            borderBottom: "1px solid #f1f5f9",
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-            <span style={timelineStatusBadgeStyle(item.status)}>{timelineStatusLabel(item.status)}</span>
-            {item.titleKo}
-          </div>
-          {item.summaryKo ? (
-            <p style={{ margin: "0 0 4px", fontSize: 12, color: "#475569" }}>{item.summaryKo}</p>
-          ) : null}
-          <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>
-            {item.branchName ? `branch ${item.branchName}` : null}
-            {item.commitSha ? `${item.branchName ? " · " : ""}commit ${item.commitSha.slice(0, 8)}` : null}
-            {item.changedFileCount != null ? ` · files ${item.changedFileCount}` : null}
-            {item.prUrl ? (
-              <>
-                {" · "}
-                <a href={item.prUrl} target="_blank" rel="noreferrer">
-                  PR{item.prNumber != null ? ` #${item.prNumber}` : ""}
-                </a>
-              </>
+      {items.map((item) => {
+        const meta = formatTimelineMeta(item);
+        const blockReason = truncateText(item.blockReason);
+        const startedLabel = formatTimelineTime(item.startedAt);
+        const completedLabel = formatTimelineTime(item.completedAt);
+
+        return (
+          <li
+            key={item.id}
+            data-testid={`ai-team-runtime-timeline-${item.id}`}
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: "8px 0",
+              borderBottom: "1px solid #f1f5f9",
+            }}
+          >
+            
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
+              <span style={timelineStatusBadgeStyle(item.status)}>{timelineStatusLabel(item.status)}</span>
+              {item.titleKo}
+            </div>
+            {item.summaryKo ? (
+              <p style={{ margin: "0 0 4px", fontSize: 12, color: "#475569" }}>{item.summaryKo}</p>
             ) : null}
-          </p>
-          {item.blockReason ? (
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#b45309", fontWeight: 600 }}>
-              {item.blockReason}
-            </p>
-          ) : null}
-        </li>
-      ))}
+            {meta || item.prUrl ? (
+              <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>
+                {meta}
+                {item.prUrl ? (
+                  <>
+                    {meta ? " · " : null}
+                    <a href={item.prUrl} target="_blank" rel="noreferrer">
+                      PR{item.prNumber != null ? ` #${item.prNumber}` : ""}
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {startedLabel || completedLabel ? (
+              <p style={{ margin: "2px 0 0", fontSize: 10, color: "#94a3b8" }}>
+                {startedLabel ? `시작: ${startedLabel}` : null}
+                {startedLabel && completedLabel ? " · " : null}
+                {completedLabel ? `완료: ${completedLabel}` : null}
+              </p>
+            ) : null}
+            {blockReason ? (
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+                {blockReason}
+              </p>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }

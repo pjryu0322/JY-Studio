@@ -41,38 +41,56 @@ export async function GET(
 
     const requireApproval = await loadRequireApprovalBeforeApply(pid);
 
+    const taskIds = Array.from(new Set(rows.map((r) => r.taskId).filter(Boolean)));
+    const taskRows =
+      taskIds.length > 0
+        ? await prisma.task.findMany({
+            where: { projectId: pid, id: { in: taskIds } },
+            select: {
+              id: true,
+              executionWorkflowStatus: true,
+              lastEvalResult: true,
+              lastEvalSummary: true,
+            },
+          })
+        : [];
+    const taskById = new Map(taskRows.map((t) => [t.id, t]));
+
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => ({
-        id: r.id,
-        projectId: r.projectId,
-        workflowId: r.workflowId,
-        taskId: r.taskId,
-        provider: r.provider ?? "cursor",
-        repoUrlSnapshot: r.repoUrlSnapshot,
-        status: r.status,
-        ...buildTeamRuntimeAdditiveFields(r, requireApproval),
-        branchName: r.branchName,
-        cursorRunId: r.cursorRunId,
-        cursorSummary: r.cursorSummary,
-        changedFiles: Array.isArray(r.changedFiles) ? r.changedFiles : [],
-        gitSummary: r.gitSummary,
-        evaluationReason: r.evaluationReason,
-        evaluationDecision: r.evaluationDecision,
-        evaluationReviewerSteps: Array.isArray(r.evaluationReviewerSteps)
-          ? r.evaluationReviewerSteps
-          : [],
-        validationOutput: r.validationOutput,
-        runError: r.runError,
-        commitStatus: r.commitStatus,
-        pushStatus: r.pushStatus,
-        commitSha: r.commitSha,
-        prStatus: r.prStatus,
-        retryCount: r.retryCount,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-        archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
-      })),
+      data: rows.map((r) => {
+        const taskContext = taskById.get(r.taskId) ?? null;
+        return {
+          id: r.id,
+          projectId: r.projectId,
+          workflowId: r.workflowId,
+          taskId: r.taskId,
+          provider: r.provider ?? "cursor",
+          repoUrlSnapshot: r.repoUrlSnapshot,
+          status: r.status,
+          ...buildTeamRuntimeAdditiveFields(r, requireApproval, taskContext),
+          branchName: r.branchName,
+          cursorRunId: r.cursorRunId,
+          cursorSummary: r.cursorSummary,
+          changedFiles: Array.isArray(r.changedFiles) ? r.changedFiles : [],
+          gitSummary: r.gitSummary,
+          evaluationReason: r.evaluationReason,
+          evaluationDecision: r.evaluationDecision,
+          evaluationReviewerSteps: Array.isArray(r.evaluationReviewerSteps)
+            ? r.evaluationReviewerSteps
+            : [],
+          validationOutput: r.validationOutput,
+          runError: r.runError,
+          commitStatus: r.commitStatus,
+          pushStatus: r.pushStatus,
+          commitSha: r.commitSha,
+          prStatus: r.prStatus,
+          retryCount: r.retryCount,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+          archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
+        };
+      }),
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

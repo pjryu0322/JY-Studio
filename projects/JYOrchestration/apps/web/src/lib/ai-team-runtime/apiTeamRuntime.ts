@@ -6,6 +6,12 @@ import {
 } from "./serialize";
 import { buildAiTeamRuntimeTimelineSafe } from "./timeline";
 
+export type TeamRuntimeTaskContext = Readonly<{
+  executionWorkflowStatus?: string | null;
+  lastEvalResult?: string | null;
+  lastEvalSummary?: string | null;
+}> | null;
+
 export async function loadRequireApprovalBeforeApply(projectId: string): Promise<boolean> {
   const setup = await prisma.executionSetup.findUnique({
     where: { projectId },
@@ -16,14 +22,19 @@ export async function loadRequireApprovalBeforeApply(projectId: string): Promise
 
 export function buildTeamRuntimeAdditiveFields(
   run: TaskExecutionRunForTeamRuntime,
-  requireApproval: boolean
+  requireApproval: boolean,
+  task?: TeamRuntimeTaskContext
 ): Readonly<{
   teamExecutionStatus: string | null | undefined;
   teamRuntimeStatus: TeamRuntimeSummary["status"];
   teamRuntime: TeamRuntimeSummary;
 }> {
   const summary = buildTeamRuntimeSummaryFromRun(run, { requireApproval });
-  const timeline = buildAiTeamRuntimeTimelineSafe({ run, requireApproval });
+  const timeline = buildAiTeamRuntimeTimelineSafe({
+    run,
+    task: task ?? null,
+    requireApproval,
+  });
   const teamRuntime: TeamRuntimeSummary = { ...summary, timeline };
   return {
     teamExecutionStatus: run.teamExecutionStatus,

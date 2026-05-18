@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { buildTeamRuntimeAdditiveFields } from "@/lib/ai-team-runtime/apiTeamRuntime";
 import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
-import { buildAiTeamRuntimeTimeline } from "@/lib/ai-team-runtime/timeline";
+import {
+  buildAiTeamRuntimeTimeline,
+  buildAiTeamRuntimeTimelineSafe,
+} from "@/lib/ai-team-runtime/timeline";
 
 function stageIds(timeline: ReturnType<typeof buildAiTeamRuntimeTimeline>) {
   return timeline.map((t) => t.id);
@@ -113,6 +117,72 @@ describe("buildAiTeamRuntimeTimeline", () => {
     });
     expect(timeline.find((t) => t.id === "completion")?.status).toBe("failed");
     expect(timeline.find((t) => t.id === "completion")?.blockReason).toContain("cursor");
+  });
+
+  it("does not mark scm blocked for github_compare_failed only", () => {
+    const timeline = buildAiTeamRuntimeTimeline({
+      run: {
+        id: "run-1",
+        evaluationReason: "github_compare_failed:404:not found",
+      },
+    });
+
+    expect(timeline.find((t) => t.id === "git")?.status).toBe("blocked");
+    expect(timeline.find((t) => t.id === "scm")?.status).not.toBe("blocked");
+    expect(timeline.find((t) => t.id === "completion")?.status).not.toBe("blocked");
+  });
+
+  it("blocks approval when task executionWorkflowStatus is awaiting_human", () => {
+    const timeline = buildAiTeamRuntimeTimeline({
+      run: { id: "run-1" },
+      task: { executionWorkflowStatus: "awaiting_human" },
+      requireApproval: true,
+    });
+    expect(timeline.find((t) => t.id === "approval")?.status).toBe("blocked");
+  });
+
+  it("marks scm blocked when merge_pending workflow without merged PR", () => {
+    const timeline = buildAiTeamRuntimeTimeline({
+      run: {
+        id: "run-1",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.MERGE_RUNNING,
+      },
+      task: { executionWorkflowStatus: "merge_pending" },
+      requireApproval: true,
+    });
+    expect(timeline.find((t) => t.id === "approval")?.status).toBe("succeeded");
+    expect(timeline.find((t) => t.id === "scm")?.status).toBe("blocked");
+  });
+
+  it("does not throw when blockReason is very long", () => {
+    const longReason = "x".repeat(5000);
+    expect(() =>
+      buildAiTeamRuntimeTimeline({
+        run: {
+          id: "run-1",
+          teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+          evaluationReason: longReason,
+        },
+        requireApproval: true,
+      })
+    ).not.toThrow();
+    const timeline = buildAiTeamRuntimeTimeline({
+      run: {
+        id: "run-1",
+        teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.APPROVAL_WAITING,
+        evaluationReason: longReason,
+      },
+      requireApproval: true,
+    });
+    expect(timeline.find((t) => t.id === "approval")?.blockReason).toBe(longReason);
+  });
+
+  it("safe wrapper returns fallback timeline without throwing", () => {
+    const timeline = buildAiTeamRuntimeTimelineSafe({
+      run: { id: "run-1" },
+    });
+    expect(timeline).toHaveLength(7);
+    expect(timeline.every((t) => t.status === "pending" || t.status !== undefined)).toBe(true);
   });
 
   it("does not throw on malformed evaluationReviewerSteps", () => {

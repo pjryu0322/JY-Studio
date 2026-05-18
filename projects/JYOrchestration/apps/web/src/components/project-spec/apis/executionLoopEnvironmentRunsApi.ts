@@ -199,6 +199,8 @@ export type TeamRuntimeTimelineItemDto = Readonly<{
   commitSha?: string | null;
   changedFileCount?: number | null;
   blockReason?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 }>;
 
 export type TaskExecutionRunDto = {
