@@ -3,6 +3,10 @@
  */
 
 import type { RuntimePilotValidationReadOnlyChainStatus } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationTypes";
+import type {
+  RuntimeSafeEchoAdapterContractStatus,
+  RuntimeSafeEchoAdapterMode,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractTypes";
 import {
   buildPilotValidationUserSummaryVmFromInput,
   type PilotValidationUserSummaryBuildInput,
@@ -14,6 +18,19 @@ const VALIDATION_STATUSES = new Set<RuntimePilotValidationReadOnlyChainStatus>([
   "watch",
   "blocked",
   "not_ready",
+]);
+
+const SAFE_ECHO_CONTRACT_STATUSES = new Set<RuntimeSafeEchoAdapterContractStatus>([
+  "contract_ready",
+  "watch",
+  "blocked",
+  "not_ready",
+]);
+
+const SAFE_ECHO_ADAPTER_MODES = new Set<RuntimeSafeEchoAdapterMode>([
+  "contract_only",
+  "sandbox_dry_run_contract",
+  "blocked",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,8 +86,17 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
   const candidateRaw = data.runtimeControlledPilotExecutionCandidateSummary;
   const policyRaw = data.runtimeControlledPilotExecutionCandidatePolicy;
   const approvalRaw = data.runtimeOperatorApprovalSummary;
+  const safeEchoRaw = data.runtimeSafeEchoAdapterContractSummary;
+  const boundaryRaw = data.runtimeSandboxDryRunBoundary;
 
-  if (!isRecord(summaryRaw) || !isRecord(candidateRaw) || !isRecord(policyRaw) || !isRecord(approvalRaw)) {
+  if (
+    !isRecord(summaryRaw) ||
+    !isRecord(candidateRaw) ||
+    !isRecord(policyRaw) ||
+    !isRecord(approvalRaw) ||
+    !isRecord(safeEchoRaw) ||
+    !isRecord(boundaryRaw)
+  ) {
     return null;
   }
 
@@ -79,13 +105,25 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
   const operatorReview = readBoolean(policyRaw.operatorReviewBeforeControlledPilotExecution);
   const approvalReadiness = readApprovalReadiness(approvalRaw.approvalReadiness);
   const userVisibleSummaryKo = readString(summaryRaw.userVisibleSummaryKo);
+  const contractStatus = readString(safeEchoRaw.contractStatus);
+  const adapterMode = readString(safeEchoRaw.adapterMode);
+  const safeEchoContractStatus =
+    contractStatus && SAFE_ECHO_CONTRACT_STATUSES.has(contractStatus as RuntimeSafeEchoAdapterContractStatus)
+      ? (contractStatus as RuntimeSafeEchoAdapterContractStatus)
+      : null;
+  const safeEchoAdapterMode =
+    adapterMode && SAFE_ECHO_ADAPTER_MODES.has(adapterMode as RuntimeSafeEchoAdapterMode)
+      ? (adapterMode as RuntimeSafeEchoAdapterMode)
+      : null;
 
   if (
     !validationStatus ||
     !executionMode ||
     operatorReview === null ||
     !approvalReadiness ||
-    !userVisibleSummaryKo
+    !userVisibleSummaryKo ||
+    !safeEchoContractStatus ||
+    !safeEchoAdapterMode
   ) {
     return null;
   }
@@ -99,6 +137,9 @@ export function buildPilotValidationUserSummaryVmFromDiagnosticData(
     executionMode,
     operatorReviewBeforeControlledPilotExecution: operatorReview,
     approvalReadiness,
+    safeEchoContractStatus,
+    safeEchoAdapterMode,
+    sandboxBoundaryTopForbiddenKo: readStringArray(boundaryRaw.forbiddenBoundaryOperations)[0] ?? null,
   };
 
   return buildPilotValidationUserSummaryVmFromInput(input);

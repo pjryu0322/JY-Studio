@@ -146,6 +146,22 @@ export function PilotValidationReviewPanel({
             {vm.canRequestPilotValidation ? "\uac80\uc99d \uc694\uccad \uac00\ub2a5" : "\uac80\uc99d \uc694\uccad \ubd88\uac00"}
           </dd>
         </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Safe Echo \uac80\uc99d \uacc4\uc57d"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-safe-echo-contract">
+            {vm.safeEchoContractStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"Sandbox/Dry-run \uacbd\uacc4"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }} data-testid="pilot-validation-sandbox-boundary">
+            {vm.sandboxDryRunBoundaryStatusKo}
+          </dd>
+        </div>
+        <div>
+          <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"\ud5c8\uc6a9 \uac80\uc99d \ubc29\uc2dd"}</dt>
+          <dd style={{ margin: 0, color: t.textPrimary }}>{vm.safeEchoValidationModeKo}</dd>
+        </div>
         {vm.cannotProceedReasonKo ? (
           <div>
             <dt style={{ color: t.textMuted, marginBottom: 2 }}>{"\ucc28\ub2e8/\uc8fc\uc758 \uc0ac\uc720"}</dt>

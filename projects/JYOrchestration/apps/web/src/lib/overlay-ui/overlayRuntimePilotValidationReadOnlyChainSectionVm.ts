@@ -11,6 +11,10 @@ import {
   RUNTIME_PILOT_VALIDATION_READ_ONLY_CHAIN_SECTION_DISCLAIMER_KO,
   RUNTIME_PILOT_VALIDATION_READ_ONLY_CHAIN_STATUS_LABEL_KO,
 } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationLabelsKo";
+import {
+  RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO,
+  RUNTIME_SAFE_ECHO_ADAPTER_MODE_LABEL_KO,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractLabelsKo";
 import { sliceOverlayRows } from "@/lib/harness/runtimeReleaseGatePreflight/runtimeReleaseGatePreflightCheckHelpers";
 import { buildPilotValidationUserSummaryVmFromReports } from "./pilotValidationUserSummaryVm";
 import type { PilotValidationUserSummaryVm } from "./pilotValidationUserSummaryVm";
@@ -29,6 +33,11 @@ export type OverlayRuntimePilotValidationReadOnlyChainSectionVM = Readonly<{
   finalProofSummaryRows: readonly string[];
   recommendationRows: readonly string[];
   userSummaryVm: PilotValidationUserSummaryVm;
+  safeEchoContractStatusKo: string;
+  safeEchoAdapterModeKo: string;
+  sandboxBoundaryTopForbiddenKo: string | null;
+  safeEchoInputContractSummaryKo: string;
+  safeEchoOutputContractSummaryKo: string;
 }>;
 
 export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromReports(
@@ -39,6 +48,10 @@ export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromRepo
   const summary = reports.runtimePilotValidationReadOnlyChainSummary;
   const finalGate = reports.runtimeControlledPilotExecutionCandidateFinalSafetyGate;
   const userSummaryVm = buildPilotValidationUserSummaryVmFromReports(reports);
+  const safeEcho = reports.runtimeSafeEchoAdapterContractSummary;
+  const boundary = reports.runtimeSandboxDryRunBoundary;
+  const inputContract = reports.runtimeSafeEchoAdapterInputContract;
+  const outputContract = reports.runtimeSafeEchoAdapterOutputContract;
 
   const showAttention =
     summary.validationStatus === "watch" ||
@@ -70,5 +83,10 @@ export function buildOverlayRuntimePilotValidationReadOnlyChainSectionVmFromRepo
       compactAndNarrowUi
     ),
     userSummaryVm,
+    safeEchoContractStatusKo: RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO[safeEcho.contractStatus],
+    safeEchoAdapterModeKo: RUNTIME_SAFE_ECHO_ADAPTER_MODE_LABEL_KO[safeEcho.adapterMode],
+    sandboxBoundaryTopForbiddenKo: boundary.forbiddenBoundaryOperations[0] ?? null,
+    safeEchoInputContractSummaryKo: `requiredInputs:${inputContract.requiredInputs.length}; prohibited:${inputContract.prohibitedInputPayloads.length}`,
+    safeEchoOutputContractSummaryKo: `expectedOutputs:${outputContract.expectedOutputs.length}; prohibited:${outputContract.prohibitedOutputs.length}`,
   };
 }

@@ -48,6 +48,25 @@ export function OverlayRuntimePilotValidationReadOnlyChainSection({
             {vm.userSummaryVm.cannotProceedReasonKo ? (
               <OverlayUiKeyValueRow label="Cannot proceed reason" value={vm.userSummaryVm.cannotProceedReasonKo} />
             ) : null}
+            <OverlayUiKeyValueRow
+              label="Safe Echo Adapter Contract status"
+              value={vm.safeEchoContractStatusKo}
+            />
+            <OverlayUiKeyValueRow label="Safe Echo adapter mode" value={vm.safeEchoAdapterModeKo} />
+            {vm.sandboxBoundaryTopForbiddenKo ? (
+              <OverlayUiKeyValueRow
+                label="Top prohibited boundary operation"
+                value={vm.sandboxBoundaryTopForbiddenKo}
+              />
+            ) : null}
+            <OverlayUiKeyValueRow
+              label="Input contract summary"
+              value={vm.safeEchoInputContractSummaryKo}
+            />
+            <OverlayUiKeyValueRow
+              label="Output contract summary"
+              value={vm.safeEchoOutputContractSummaryKo}
+            />
             <OverlayRuntimePlanningDetailBlock
               title="Final proof summary"
               rows={vm.finalProofSummaryRows}

@@ -4,13 +4,16 @@
 
 import type { RuntimeSemanticPlanningReportsBeforePilotValidation } from "@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages";
 import { buildRuntimePilotValidationReadOnlyChainSummary } from "./buildRuntimePilotValidationReadOnlyChainSummary";
+import { buildRuntimeSafeEchoAdapterContractReports } from "./buildRuntimeSafeEchoAdapterContractReports";
 import type { RuntimePilotValidationPlanningReports } from "./runtimePilotValidationTypes";
 
 export function buildRuntimePilotValidationReadOnlyChainPlanningReports(
   reports: RuntimeSemanticPlanningReportsBeforePilotValidation
 ): RuntimePilotValidationPlanningReports {
+  const runtimePilotValidationReadOnlyChainSummary = buildRuntimePilotValidationReadOnlyChainSummary(reports);
   return {
-    runtimePilotValidationReadOnlyChainSummary: buildRuntimePilotValidationReadOnlyChainSummary(reports),
+    runtimePilotValidationReadOnlyChainSummary,
+    ...buildRuntimeSafeEchoAdapterContractReports(reports, runtimePilotValidationReadOnlyChainSummary),
   };
 }
 

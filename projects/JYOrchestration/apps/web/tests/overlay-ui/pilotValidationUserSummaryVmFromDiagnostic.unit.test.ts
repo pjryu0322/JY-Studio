@@ -31,6 +31,8 @@ describe("buildPilotValidationUserSummaryVmFromDiagnosticData", () => {
     expect(vm?.secondaryActionLabelKo).toBe(fromReports.secondaryActionLabelKo);
     expect(vm?.canRequestPilotValidation).toBe(fromReports.canRequestPilotValidation);
     expect(vm?.prohibitedOperationRows).toEqual(fromReports.prohibitedOperationRows);
+    expect(vm?.safeEchoContractStatusKo).toBe(fromReports.safeEchoContractStatusKo);
+    expect(vm?.safeEchoValidationModeKo).toContain("Safe Echo Contract only");
   });
 
   it("watch status enables secondary action", () => {

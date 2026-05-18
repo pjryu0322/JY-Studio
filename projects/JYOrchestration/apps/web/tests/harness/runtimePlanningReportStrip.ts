@@ -651,8 +651,22 @@ function omitControlledPilotExecutionCandidateLayerOnly<T extends RuntimeSemanti
 
 function omitPilotValidationReadOnlyChainLayerOnly<T extends RuntimeSemanticPlanningReports>(
   semantic: T
-): Omit<T, "runtimePilotValidationReadOnlyChainSummary"> {
-  const { runtimePilotValidationReadOnlyChainSummary: _pv0, ...rest } = semantic;
+): Omit<
+  T,
+  | "runtimePilotValidationReadOnlyChainSummary"
+  | "runtimeSafeEchoAdapterContractSummary"
+  | "runtimeSafeEchoAdapterInputContract"
+  | "runtimeSafeEchoAdapterOutputContract"
+  | "runtimeSandboxDryRunBoundary"
+> {
+  const {
+    runtimePilotValidationReadOnlyChainSummary: _pv0,
+    runtimeSafeEchoAdapterContractSummary: _pv1,
+    runtimeSafeEchoAdapterInputContract: _pv2,
+    runtimeSafeEchoAdapterOutputContract: _pv3,
+    runtimeSandboxDryRunBoundary: _pv4,
+    ...rest
+  } = semantic;
   return rest;
 }
 

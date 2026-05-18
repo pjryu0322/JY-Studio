@@ -440,6 +440,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeControlledPilotExecutionCandidateAlignmentReport: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateAlignmentReport"];
   runtimeControlledPilotExecutionCandidateFinalSafetyGate: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateFinalSafetyGate"];
   runtimePilotValidationReadOnlyChainSummary: SerializedRuntimePilotValidationDiag["runtimePilotValidationReadOnlyChainSummary"];
+  runtimeSafeEchoAdapterContractSummary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterContractSummary"];
+  runtimeSafeEchoAdapterInputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterInputContract"];
+  runtimeSafeEchoAdapterOutputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterOutputContract"];
+  runtimeSandboxDryRunBoundary: SerializedRuntimePilotValidationDiag["runtimeSandboxDryRunBoundary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -581,6 +585,10 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...controlledPilotExecutionCandidateDiag,
     runtimePilotValidationReadOnlyChainSummary:
       pilotValidationDiag.runtimePilotValidationReadOnlyChainSummary,
+    runtimeSafeEchoAdapterContractSummary: pilotValidationDiag.runtimeSafeEchoAdapterContractSummary,
+    runtimeSafeEchoAdapterInputContract: pilotValidationDiag.runtimeSafeEchoAdapterInputContract,
+    runtimeSafeEchoAdapterOutputContract: pilotValidationDiag.runtimeSafeEchoAdapterOutputContract,
+    runtimeSandboxDryRunBoundary: pilotValidationDiag.runtimeSandboxDryRunBoundary,
   };
 }
 

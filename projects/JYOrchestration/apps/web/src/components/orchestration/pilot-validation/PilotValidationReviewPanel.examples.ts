@@ -23,6 +23,9 @@ const baseVm: PilotValidationUserSummaryVm = {
   primaryActionEnabled: true,
   secondaryActionEnabled: true,
   dryRunOnlyNoticeKo: PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
+  safeEchoContractStatusKo: "계약 준비되지 않음",
+  sandboxDryRunBoundaryStatusKo: "Sandbox dry-run 경계 metadata만 정의(호출 불가)",
+  safeEchoValidationModeKo: "Safe Echo Contract only (실제 adapter/sandbox/runner 호출 없음)",
 };
 
 export const pilotValidationReviewPanelExampleVms = {
@@ -33,6 +36,8 @@ export const pilotValidationReviewPanelExampleVms = {
     canRequestPilotValidation: true,
     secondaryActionEnabled: true,
     secondaryActionLabelKo: "파일럿 실행 검증 준비",
+    safeEchoContractStatusKo: "파일럿 검증 계약 준비됨",
+    sandboxDryRunBoundaryStatusKo: "Sandbox dry-run 경계 metadata 정의됨(실제 sandbox 호출 없음)",
   },
   watch: {
     ...baseVm,

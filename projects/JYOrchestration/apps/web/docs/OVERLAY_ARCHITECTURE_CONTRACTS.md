@@ -269,6 +269,7 @@
 78. **Pilot Validation Phase 0 — Read-only Chain Validation & Pilot Execution UI Verification Preparation** (read-only) — H45.5 final gate 기반 **`runtimePilotValidationReadOnlyChainSummary`**·사용자용 **`PilotValidationUserSummaryVm`** contract. 진단 1개 필드 additive. Overlay **`OverlayRuntimePilotValidationReadOnlyChainSection`**. **여전히 actual pilot activation·execution·runner·adapter·sandbox 없음** (신규 harness 계층 추가 없음).
 79. **Pilot Validation Phase 1 — User-visible Pilot Validation Review UI** (read-only) — **`PilotValidationReviewPanel`**·`PilotValidationUserSummaryVm` additive 보강. 사용자 화면은 H단계명 미노출·실행 handler 미연결. Overlay에 user action preview additive.
 79.5. **Pilot Validation Phase 1.5 — UI wiring & action policy** (read-only) — `/pilot-validation`·`buildPilotValidationUserSummaryVmFromDiagnosticData`·상태별 secondary enabled. actual execution 없음.
+79.75. **Pilot Validation Phase 2 — Safe Echo Adapter Contract & Sandbox dry-run boundary** (read-only) — contract summary·input/output·boundary metadata. actual adapter/sandbox/runner invocation 없음.
 80. **Runtime Policy Enforcement Layer** (향후) — **미도입** (hard gate·Cursor 차단·라우팅 강제 없음).
 
 ### H20.5~H45.5 / Pilot Validation Phase 0 read-only orchestration chain (정합성)

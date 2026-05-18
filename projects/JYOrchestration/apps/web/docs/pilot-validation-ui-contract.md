@@ -15,6 +15,13 @@
 - `파일럿 실행 검증 준비` 버튼은 adapter 호출이 아니며, 기본 동작은 dry-run 안내 문구 표시다.
 - 실제 pilot execution adapter는 Phase 2에서 별도 검토한다.
 
+## Phase 2 (Safe Echo Adapter Contract)
+
+- `runtimeSafeEchoAdapterContractSummary`·input/output·`runtimeSandboxDryRunBoundary` metadata only.
+- 아직 actual adapter/sandbox/runner invocation 없음.
+- 사용자 UI는 「파일럿 검증 계약 준비됨」 등 contract-only 문구를 표시한다.
+- Phase 3에서 validation request draft·operator approval UI contract 검토.
+
 ## Phase 1.5 (UI wiring & action policy)
 
 - `GET /pilot-validation?projectId=` 화면에서 `PilotValidationReviewPanel`을 표시한다.

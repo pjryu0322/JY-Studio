@@ -19,6 +19,8 @@ describe("PilotValidationReviewPanel", () => {
     expect(html).toContain("pilot-validation-prohibited-rows");
     expect(html).toContain("Git Push 없음");
     expect(html).toContain("배포 없음");
+    expect(html).toContain("pilot-validation-safe-echo-contract");
+    expect(html).toContain("Safe Echo Contract only");
   });
 
   it("does not invoke execution handlers on prepare secondary click without callback", () => {

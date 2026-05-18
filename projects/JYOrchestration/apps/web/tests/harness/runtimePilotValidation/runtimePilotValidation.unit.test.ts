@@ -125,7 +125,15 @@ describe("Pilot Validation Phase 0 read-only chain", () => {
   it("serializer exposes pilot validation summary without rebuilding", () => {
     const semantic = buildFullSemanticForPilotValidation();
     const diag = serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports(semantic);
-    expect(Object.keys(diag)).toEqual(["runtimePilotValidationReadOnlyChainSummary"]);
+    expect(Object.keys(diag).sort()).toEqual(
+      [
+        "runtimePilotValidationReadOnlyChainSummary",
+        "runtimeSafeEchoAdapterContractSummary",
+        "runtimeSafeEchoAdapterInputContract",
+        "runtimeSafeEchoAdapterOutputContract",
+        "runtimeSandboxDryRunBoundary",
+      ].sort()
+    );
     expect((diag.runtimePilotValidationReadOnlyChainSummary as { mode: string }).mode).toBe(
       "runtime_pilot_validation_read_only_chain_summary"
     );

@@ -3,6 +3,12 @@
  */
 
 import type { RuntimePilotExecutionReadinessActualFlagsDisabled } from "@/lib/harness/runtimePilotExecutionReadiness/runtimePilotExecutionReadinessTypes";
+import type {
+  RuntimeSafeEchoAdapterContractSummary,
+  RuntimeSafeEchoAdapterInputContract,
+  RuntimeSafeEchoAdapterOutputContract,
+  RuntimeSandboxDryRunBoundary,
+} from "./runtimeSafeEchoAdapterContractTypes";
 
 export type RuntimePilotValidationReadOnlyChainStatus =
   | "ready_for_validation"
@@ -27,4 +33,8 @@ export type RuntimePilotValidationReadOnlyChainSummary = Readonly<
 
 export type RuntimePilotValidationPlanningReports = Readonly<{
   runtimePilotValidationReadOnlyChainSummary: RuntimePilotValidationReadOnlyChainSummary;
+  runtimeSafeEchoAdapterContractSummary: RuntimeSafeEchoAdapterContractSummary;
+  runtimeSafeEchoAdapterInputContract: RuntimeSafeEchoAdapterInputContract;
+  runtimeSafeEchoAdapterOutputContract: RuntimeSafeEchoAdapterOutputContract;
+  runtimeSandboxDryRunBoundary: RuntimeSandboxDryRunBoundary;
 }>;

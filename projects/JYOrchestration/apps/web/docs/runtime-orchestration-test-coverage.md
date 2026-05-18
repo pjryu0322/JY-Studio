@@ -4,7 +4,7 @@
 
 | Priority | Layers | Harness unit tests | Overlay UI tests | Notes |
 |----------|--------|-------------------|-------------------|-------|
-| P1 | H38.5–H45.5, Pilot Validation Phase 0–1.5 | yes | H38–H45.5 + Pilot Validation sections + `PilotValidationReviewPanel` + diagnostic VM | `runtimeShared/runtimeReadOnlyInvariants.ts` + unit test |
+| P1 | H38.5–H45.5, Pilot Validation Phase 0–2 | yes | H38–H45.5 + Pilot Validation + Safe Echo contract + `PilotValidationReviewPanel` | `runtimeShared/runtimeReadOnlyInvariants.ts` + unit test |
 | P2 | H36–H37.5 | yes | yes | execution boundary + governance boundary |
 | P3 | H31–H35.5 | yes (H33 harness gap) | yes | H33 overlay only |
 | P4 | H20.5–H30 | yes | yes | resource through runner harness |

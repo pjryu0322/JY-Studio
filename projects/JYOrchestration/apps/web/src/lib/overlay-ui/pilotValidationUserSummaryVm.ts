@@ -7,8 +7,14 @@ import { PILOT_VALIDATION_PROHIBITED_OPERATION_ROWS_KO } from "@/lib/harness/run
 import type { RuntimePilotValidationReadOnlyChainStatus } from "@/lib/harness/runtimePilotValidation/runtimePilotValidationTypes";
 import type { RuntimeOperatorApprovalReadiness } from "@/lib/harness/runtimeOperatorApproval/runtimeOperatorApprovalTypes";
 import type { RuntimeControlledPilotExecutionCandidateSummary } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/runtimeControlledPilotExecutionCandidateTypes";
+import type {
+  RuntimeSafeEchoAdapterContractStatus,
+  RuntimeSafeEchoAdapterMode,
+} from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractTypes";
+import { RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO } from "@/lib/harness/runtimePilotValidation/runtimeSafeEchoAdapterContractLabelsKo";
 import {
   PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
+  PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO,
   PILOT_VALIDATION_USER_EXECUTION_SCOPE_KO,
   PILOT_VALIDATION_USER_PANEL_DESCRIPTION_KO,
   PILOT_VALIDATION_USER_STATUS_LABEL_KO,
@@ -25,6 +31,9 @@ export type PilotValidationUserSummaryBuildInput = Readonly<{
   executionMode: RuntimeControlledPilotExecutionCandidateSummary["executionMode"];
   operatorReviewBeforeControlledPilotExecution: boolean;
   approvalReadiness: RuntimeOperatorApprovalReadiness;
+  safeEchoContractStatus: RuntimeSafeEchoAdapterContractStatus;
+  safeEchoAdapterMode: RuntimeSafeEchoAdapterMode;
+  sandboxBoundaryTopForbiddenKo: string | null;
 }>;
 
 export type PilotValidationUserSummaryVm = Readonly<{
@@ -43,6 +52,9 @@ export type PilotValidationUserSummaryVm = Readonly<{
   primaryActionEnabled: boolean;
   secondaryActionEnabled: boolean;
   dryRunOnlyNoticeKo: string;
+  safeEchoContractStatusKo: string;
+  sandboxDryRunBoundaryStatusKo: string;
+  safeEchoValidationModeKo: string;
 }>;
 
 function actionLabelsForStatus(status: RuntimePilotValidationReadOnlyChainStatus): Readonly<{
@@ -143,6 +155,12 @@ export function buildPilotValidationUserSummaryVmFromInput(
     primaryActionEnabled: true,
     secondaryActionEnabled: true,
     dryRunOnlyNoticeKo: PILOT_VALIDATION_DRY_RUN_ONLY_NOTICE_KO,
+    safeEchoContractStatusKo: RUNTIME_SAFE_ECHO_ADAPTER_CONTRACT_STATUS_LABEL_KO[input.safeEchoContractStatus],
+    sandboxDryRunBoundaryStatusKo:
+      input.safeEchoContractStatus === "contract_ready"
+        ? "Sandbox dry-run 경계 metadata 정의됨(실제 sandbox 호출 없음)"
+        : "Sandbox dry-run 경계 metadata만 정의(호출 불가)",
+    safeEchoValidationModeKo: PILOT_VALIDATION_SAFE_ECHO_VALIDATION_MODE_KO,
   };
 }
 
@@ -154,6 +172,9 @@ export function buildPilotValidationUserSummaryVmFromReports(
   const policy = reports.runtimeControlledPilotExecutionCandidatePolicy;
   const approval = reports.runtimeOperatorApprovalSummary;
 
+  const safeEcho = reports.runtimeSafeEchoAdapterContractSummary;
+  const boundary = reports.runtimeSandboxDryRunBoundary;
+
   return buildPilotValidationUserSummaryVmFromInput({
     validationStatus: summary.validationStatus,
     topBlockers: summary.topBlockers,
@@ -163,5 +184,8 @@ export function buildPilotValidationUserSummaryVmFromReports(
     executionMode: candidate.executionMode,
     operatorReviewBeforeControlledPilotExecution: policy.operatorReviewBeforeControlledPilotExecution,
     approvalReadiness: approval.approvalReadiness,
+    safeEchoContractStatus: safeEcho.contractStatus,
+    safeEchoAdapterMode: safeEcho.adapterMode,
+    sandboxBoundaryTopForbiddenKo: boundary.forbiddenBoundaryOperations[0] ?? null,
   });
 }

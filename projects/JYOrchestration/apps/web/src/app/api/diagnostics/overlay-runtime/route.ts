@@ -1028,6 +1028,10 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateFinalSafetyGate,
       runtimePilotValidationReadOnlyChainSummary:
         runtimeSemanticDiag.runtimePilotValidationReadOnlyChainSummary,
+      runtimeSafeEchoAdapterContractSummary: runtimeSemanticDiag.runtimeSafeEchoAdapterContractSummary,
+      runtimeSafeEchoAdapterInputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterInputContract,
+      runtimeSafeEchoAdapterOutputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterOutputContract,
+      runtimeSandboxDryRunBoundary: runtimeSemanticDiag.runtimeSandboxDryRunBoundary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,
