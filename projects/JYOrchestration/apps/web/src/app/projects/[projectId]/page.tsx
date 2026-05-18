@@ -7,6 +7,7 @@ import { fetchExecutionSetup, fetchProjectById, type ExecutionSetupDto } from "@
 import type { Project } from "@/components/project-spec/types";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
+import { AiTeamExecutionLatestRunPanel } from "@/components/project/AiTeamExecutionLatestRunPanel";
 import { ProjectExecutionReadinessSummary } from "@/components/project/ProjectExecutionReadinessSummary";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 
@@ -166,6 +167,8 @@ export default function ProjectDetailPage() {
         loading={executionSetupOverviewLoading}
         settingsHref={settingsHref}
       />
+
+      <AiTeamExecutionLatestRunPanel projectId={projectId} />
 
       <section
         aria-label="멤버 요약"

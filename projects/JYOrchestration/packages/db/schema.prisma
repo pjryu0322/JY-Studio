@@ -750,6 +750,8 @@ model TaskExecutionRun {
   repoUrlSnapshot String?
   /// running | reviewing | done | retry_needed | failed | paused
   status    String
+  /// AI Team Execution Runtime phase (Option B — legacy `status` preserved). See `apps/web/src/lib/ai-team-runtime/`.
+  teamExecutionStatus String?
   branchName       String?
   cursorRunId      String?
   promptSnapshot   String?  @db.Text

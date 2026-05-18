@@ -49,6 +49,18 @@ import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipelin
 import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
+import { AI_TEAM_EXECUTION_STATUS } from "@/lib/ai-team-runtime/status";
+import {
+  applyTeamRuntimeAfterReviewHarness,
+  markTeamRuntimeCompleted,
+  markTeamRuntimeDeveloperFailed,
+  markTeamRuntimeDeveloperRunning,
+  markTeamRuntimeMergeRunning,
+  markTeamRuntimeReflectionWaiting,
+  markTeamRuntimeReviewFailed,
+  markTeamRuntimeReviewRunning,
+  runTeamRuntimeSafe,
+} from "@/lib/ai-team-runtime/teamRuntimeLoopBridge";
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 
 const loopLocks = new Set<string>();
@@ -564,6 +576,7 @@ export async function runExecutionLoop(params: {
           projectId,
           taskId,
           status: "running",
+          teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.REQUESTED,
           branchName: branchPlan.branchName,
           // Cursor 전달 원문 프롬프트(raw) 보존: 사후 분석/패널 표시용.
           promptSnapshot: prompt,
@@ -573,6 +586,11 @@ export async function runExecutionLoop(params: {
           repoUrlSnapshot: repoUrl,
         },
       });
+
+      const teamCtx = { execRunId: execRun.id, projectId, taskId, actorUserId };
+      if (!isEnvTestTask) {
+        await runTeamRuntimeSafe("developer_running", () => markTeamRuntimeDeveloperRunning(teamCtx));
+      }
 
       console.info("[execution-loop] cursor invoke", {
         projectId,
@@ -783,6 +801,11 @@ export async function runExecutionLoop(params: {
             evaluationReason: `cursor_exception: ${errMsg.slice(0, 2000)}`,
           },
         });
+        if (!isEnvTestTask) {
+          await runTeamRuntimeSafe("developer_failed", () =>
+            markTeamRuntimeDeveloperFailed(teamCtx, { error: errMsg.slice(0, 500) })
+          );
+        }
         await prisma.task.update({
           where: { id: taskId },
           data: {
@@ -1185,10 +1208,18 @@ export async function runExecutionLoop(params: {
             commitStatus: "no_commit_hash",
             pushStatus: "delegated_to_cursor",
             status: "awaiting_git_reflection",
+            ...(isEnvTestTask
+              ? {}
+              : { teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.REFLECTION_WAITING }),
             evaluationReason:
               "git_reflection_unconfirmed: commitHash 없음 · changedFiles=0 — Task 완료 처리 생략(pending_apply)",
           },
         });
+        if (!isEnvTestTask) {
+          await runTeamRuntimeSafe("reflection_waiting", () =>
+            markTeamRuntimeReflectionWaiting(teamCtx, { gateReason })
+          );
+        }
 
         await updateTaskOrchestrationSnapshot(taskId, {
           branch: cr.branchName,
@@ -1494,6 +1525,9 @@ export async function runExecutionLoop(params: {
       }
 
       console.info("[execution-loop] reviewer start", { taskId, projectId });
+      if (!isEnvTestTask) {
+        await runTeamRuntimeSafe("review_running", () => markTeamRuntimeReviewRunning(teamCtx));
+      }
       let evalPack: Awaited<ReturnType<typeof evaluateExecutionResult>>;
       try {
         evalPack = await evaluateExecutionResult({
@@ -1528,6 +1562,11 @@ export async function runExecutionLoop(params: {
           where: { id: execRun.id },
           data: { status: "failed", evaluationDecision: "failed", evaluationReason: `review_exception:${errMsg}`.slice(0, 8000), runError: errMsg.slice(0, 8000) },
         });
+        if (!isEnvTestTask) {
+          await runTeamRuntimeSafe("review_failed", () =>
+            markTeamRuntimeReviewFailed(teamCtx, { error: errMsg.slice(0, 500) })
+          );
+        }
         await refreshWorkflowStates(projectId);
         return { ok: false, steps, message: errMsg };
       }
@@ -1552,6 +1591,11 @@ export async function runExecutionLoop(params: {
             lastEvalSummary: evalPack.result.reason,
           },
         });
+        if (!isEnvTestTask) {
+          await runTeamRuntimeSafe("review_failed", () =>
+            markTeamRuntimeReviewFailed(teamCtx, { verdict: reviewerVerdict })
+          );
+        }
         appendTaskProgressLog({
           kind: "execution",
           phase: "review_rejected",
@@ -1562,6 +1606,27 @@ export async function runExecutionLoop(params: {
         });
         await refreshWorkflowStates(projectId);
         return { ok: false, steps, message: "Reviewer rejected/retry" };
+      }
+
+      if (!isEnvTestTask) {
+        const teamAfterReview = await applyTeamRuntimeAfterReviewHarness(teamCtx, evalPack.reviewerSteps, {
+          requireApprovalBeforeMerge: setup.requireApprovalBeforeApply === true,
+        });
+        if (!teamAfterReview.ok) {
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              executionWorkflowStatus:
+                teamAfterReview.reason === "security_failed"
+                  ? EXECUTION_WORKFLOW.SECURITY_FAILED
+                  : EXECUTION_WORKFLOW.REVIEW_REJECTED,
+              lastEvalResult: teamAfterReview.reason,
+              lastEvalSummary: evalPack.result.reason,
+            },
+          });
+          await refreshWorkflowStates(projectId);
+          return { ok: false, steps, message: `AI team runtime blocked: ${teamAfterReview.reason}` };
+        }
       }
 
       await prisma.task.update({
@@ -1594,6 +1659,10 @@ export async function runExecutionLoop(params: {
         });
         await refreshWorkflowStates(projectId);
         return { ok: false, steps, message: "SCM Manager 미설정" };
+      }
+
+      if (!isEnvTestTask) {
+        await runTeamRuntimeSafe("merge_running", () => markTeamRuntimeMergeRunning(teamCtx));
       }
 
       const scmDecisionPack = await tryRunScmManagerWithAiMembers({
@@ -1707,6 +1776,9 @@ export async function runExecutionLoop(params: {
         where: { id: execRun.id },
         data: { prStatus: "merged", status: "done", evaluationDecision: "done" },
       });
+      if (!isEnvTestTask) {
+        await runTeamRuntimeSafe("completed", () => markTeamRuntimeCompleted(teamCtx));
+      }
       await prisma.task.update({
         where: { id: taskId },
         data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED, status: "DONE", lastEvalResult: "merged", lastEvalSummary: "Merged to main." },

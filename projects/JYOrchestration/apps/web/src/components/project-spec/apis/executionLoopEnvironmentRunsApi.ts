@@ -162,11 +162,30 @@ export type ExecutionReviewerStepDto = {
   reviewedAt: string;
 };
 
+export type TeamRuntimeSummaryDto = Readonly<{
+  status: string;
+  statusKo: string;
+  developer: Readonly<{
+    status: string;
+    cursorRunId?: string | null;
+    commitSha?: string | null;
+    branchName?: string | null;
+    changedFilesCount?: number;
+  }>;
+  review: Readonly<{ status: string; issues?: readonly string[] }>;
+  security: Readonly<{ status: string; issues?: readonly string[] }>;
+  approval: Readonly<{ required: boolean; status: string }>;
+  blockReason?: string | null;
+}>;
+
 export type TaskExecutionRunDto = {
   id: string;
   projectId: string;
   taskId: string;
   status: string;
+  teamExecutionStatus?: string | null;
+  teamRuntimeStatus?: string | null;
+  teamRuntime?: TeamRuntimeSummaryDto | null;
   branchName: string | null;
   cursorRunId: string | null;
   cursorSummary: string | null;

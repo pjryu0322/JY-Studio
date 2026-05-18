@@ -17,6 +17,8 @@ const TASK_EXECUTION_RUN_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   `ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "envTestMergeBlockedReason" TEXT`,
   // 20260403160000_task_execution_run_env_test_merge_started_at
   `ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "envTestMergeStartedAt" TIMESTAMP(3)`,
+  // AI Team Execution Runtime (teamExecutionStatus)
+  `ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "teamExecutionStatus" TEXT`,
 ];
 
 let columnsReadyCache = false;
