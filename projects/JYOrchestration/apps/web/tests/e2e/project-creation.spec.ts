@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { E2E_SEED_OWNER_EMAIL, E2E_SEED_PASSWORD } from "./seedCredentials";
+import { E2E_SEED_OWNER_EMAIL, E2E_SEED_PASSWORD, E2E_SEED_PROJECT_NAME } from "./seedCredentials";
 
 test.describe("E2E project", () => {
   test.beforeEach(async ({ page }) => {
@@ -113,7 +113,7 @@ test.describe("E2E project", () => {
     const seedPage = await seedPromise;
     await seedPage.waitForLoadState("domcontentloaded");
     await expect(seedPage).toHaveURL(/\/requirements\?.*projectId=/, { timeout: 20_000 });
-    await expect(seedPage.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
+    await expect(seedPage.getByText(E2E_SEED_PROJECT_NAME).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("[E2E-PRJ-AI-001] Overview: 워크스페이스·저장 계획 기반 Spec 생성 UI (프롬프트 노출 없음)", async ({ page }) => {
