@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useLayoutMobileBreakpoint } from "@/components/ui/breakpoints";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { patchAccountPassword } from "@/lib/user/accountPasswordChange";
 import { MAX_PLATFORM_LEGAL_NAME_LENGTH, MAX_PLATFORM_NICKNAME_LENGTH } from "@/lib/user/platformProfile";
 
 type MeDto = {
@@ -216,11 +217,7 @@ export default function AccountPage() {
       return;
     }
     try {
-      const res = await credentialsIncludeFetch("/api/me/password", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword: pwdCurrent, newPassword: pwdNew }),
-      });
+      const res = await patchAccountPassword(credentialsIncludeFetch, pwdCurrent, pwdNew);
       const json = (await res.json()) as { success?: boolean; message?: string };
       if (!res.ok || !json.success) {
         setBannerTone("err");
