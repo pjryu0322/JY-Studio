@@ -42,3 +42,15 @@ SCM reuses existing PR from `prStatus` (`open:N:url`) or `findOpenPullRequestByH
 ## PR detection (normal Task)
 
 PR detected after Cursor is recorded on `TaskExecutionRun.prStatus` only; flow continues to review/security (no `PR_OPENED` terminal). ENV_TEST family keeps `PR_OPENED` terminal success.
+
+## Final validation (merge candidate)
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit` | PASS |
+| `tests/harness/ai-team-runtime/` | PASS (13) |
+| `planningExecutionRunStatusPresentation.unit.test.ts` | PASS (3) |
+| `projects.api.test.ts` | 미실행 (dev server 미기동 — ECONNREFUSED :3000) |
+| GitHub PR mergeable | MERGEABLE ([#13](https://github.com/pjryu0322/JY-Studio/pull/13)) |
+
+Manual E2E (Cursor Cloud, DB, real merge) remains operational validation.
