@@ -51,6 +51,11 @@ describe("ai-team-runtime-live-e2e-lib", () => {
     expect(hits.length).toBeGreaterThan(0);
   });
 
+  it("findSensitiveEvidenceLines flags OpenAI-style keys", () => {
+    const hits = findSensitiveEvidenceLines("note: sk-abcdefghijklmnopqrstuvwxyz123456");
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
   it("parseLiveE2eEnv reads flags", () => {
     const config = parseLiveE2eEnv({
       JYO_PROJECT_ID: "p1",

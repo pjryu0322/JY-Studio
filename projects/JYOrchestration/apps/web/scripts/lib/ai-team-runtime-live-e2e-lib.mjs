@@ -60,6 +60,9 @@ const SENSITIVE_EVIDENCE_PATTERNS = [
   /authorization:\s*bearer/i,
   /\bgithub_pat_/i,
   /\bghp_[a-z0-9]{20,}/i,
+  /\bsk-[a-zA-Z0-9_-]{20,}/,
+  /cursor[_-]?api[_-]?key/i,
+  /\bprivate[_-]?token/i,
 ];
 
 /** @param {string} text */

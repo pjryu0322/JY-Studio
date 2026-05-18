@@ -62,13 +62,13 @@ docs/runtime/ai-team-runtime-level3-timeline.md
 
 ## 현재 한계
 
-- Manual E2E live는 `ai-team-runtime-level3-manual-e2e.md` 참고 (자동·소스 검증 완료, live A/B 미실행)
+- Manual E2E live: `ai-team-runtime-level3-manual-e2e.md` (자동·소스 PASS; live A/B는 운영자만 — `ai-team-runtime-level3-live-e2e-execution-only.md`)
 - TaskHistory / `appendTaskProgressLog` timeline 통합은 후속 과제
 - Role Run 분리 필요
 - Retry / Cancel / Resume 정책 필요
 
 ## 다음 작업
 
-1. Level 3 Runtime Manual E2E live — evidence 미제공 (`ai-team-runtime-level3-evidence-review.md` 참고) → runbook + helper 실행 필요
+1. Level 3 Runtime Manual E2E live — `ai-team-runtime-level3-live-e2e-execution-only.md` + helper + scan (`ai-team-runtime-level3-evidence-review.md`)
 2. Role Run 분리 설계
 3. Retry / Cancel / Resume 정책 설계

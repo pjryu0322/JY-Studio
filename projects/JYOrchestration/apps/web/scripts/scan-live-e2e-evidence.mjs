@@ -36,7 +36,9 @@ function main() {
   console.log(`Evidence files: ${files.length}`);
 
   if (files.length === 0) {
-    console.log("\nNo operator evidence found. Run ai-team-runtime-live-e2e-check.mjs per runbook.");
+    console.log("\nNo operator evidence found.");
+    console.log("See docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md");
+    console.log("Then: node scripts/ai-team-runtime-live-e2e-check.mjs");
     process.exit(0);
   }
 
@@ -55,11 +57,19 @@ function main() {
       console.log(`  line ${hit.line}: ${hit.text}`);
     }
     if (sensitive.length > 5) console.log(`  ... and ${sensitive.length - 5} more`);
+    console.log("\nGate: Level 3 next step BLOCKED until evidence is redacted and re-generated.");
+    process.exit(1);
   } else {
     console.log("\nNo obvious sensitive patterns detected (manual review still recommended).");
   }
 
-  console.log("\nSummarize PASS/FAIL into ai-team-runtime-level3-manual-e2e.md only — never commit evidence *.md.");
+  console.log("\nNext: summarize into docs/runtime/ai-team-runtime-level3-manual-e2e.md (templates in execution-only §8).");
+  console.log("Never commit docs/runtime/evidence/*.md");
+  if (conclusion === "PASS") {
+    console.log("Gate: evidence PASS — operator may update manual-e2e and proceed to TaskHistory integration (§9).");
+  } else if (conclusion) {
+    console.log(`Gate: evidence ${conclusion} — next step held per execution-only §9.`);
+  }
 }
 
 main();

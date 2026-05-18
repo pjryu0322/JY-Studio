@@ -2,26 +2,31 @@
 
 ## 목적
 
-`main` 기준으로 실제 AI Team Runtime 흐름을 운영자가 로컬 환경에서 확인하고, API 응답 증거를 파일로 남긴다.
+`main` 기준으로 실제 AI Team Runtime 흐름을 **운영자**가 로컬 환경에서 확인하고, API 응답 증거를 파일로 남긴다.
+
+**운영자 실행 SSOT:** `ai-team-runtime-level3-live-e2e-execution-only.md` (단계별 체크·게이트·Manual E2E 갱신 템플릿)
 
 관련 문서:
 
+- `ai-team-runtime-level3-live-e2e-execution-only.md` — **실제 live 실행 전용** (Cursor 미수행)
 - `ai-team-runtime-level3-timeline.md` — Timeline 설계
 - `ai-team-runtime-level3-timeline-post-merge.md` — PR #14 post-merge 자동 검증
 - `ai-team-runtime-level3-manual-e2e.md` — Manual E2E 판정 (live 미실행 시 PARTIAL)
+- `ai-team-runtime-level3-evidence-review.md` — evidence 유무 검토 로그
 
 ## 사전 조건
 
 1. `git checkout main && git pull`
 2. `cd projects/JYOrchestration/apps/web && npm install` (필요 시)
-3. dev server 실행 (`npm run dev`, 기본 `http://localhost:3000`)
-4. DB 연결 (`.env.local`의 `DATABASE_URL`)
-5. 브라우저 로그인 후 session cookie 확보
-6. 테스트용 `projectId` 확보
-7. **일반 Task** 생성 (ENV_TEST / Stage1 / Stage2 제외)
-8. `ExecutionSetup.requireApprovalBeforeApply = true`
-9. Cursor / GitHub 연동 설정
-10. AI Reviewer / Security Reviewer / SCM Manager 멤버 설정
+3. `npx prisma generate` (스키마 변경 후)
+4. dev server 실행 (`npm run dev`, 기본 `http://localhost:3000`)
+5. DB 연결 (`.env.local`의 `DATABASE_URL`)
+6. 브라우저 로그인 후 session cookie 확보 (원문은 evidence·git·채팅에 넣지 않음)
+7. 테스트용 `projectId` 확보
+8. **일반 Task** 생성 (ENV_TEST / Stage1 / Stage2 제외)
+9. `ExecutionSetup.requireApprovalBeforeApply = true`
+10. Cursor / GitHub 연동 설정
+11. AI Reviewer / Security Reviewer / SCM Manager 멤버 설정
 
 ## 순서
 
@@ -73,6 +78,8 @@ evidence 생성 후 로컬 파일 점검(커밋 금지):
 node scripts/scan-live-e2e-evidence.mjs
 ```
 
+승인 전 helper 성공 시 콘솔에 최소 `execution-runs success` ~ `stage order` 가 PASS이고 `Evidence written:` 이 출력되어야 한다.
+
 브라우저에서 cookie 복사: DevTools → Application → Cookies → 요청 헤더의 `Cookie` 전체 문자열.
 
 ### 환경 변수
@@ -106,7 +113,7 @@ node scripts/ai-team-runtime-live-e2e-check.mjs
 projects/JYOrchestration/docs/runtime/evidence/ai-team-runtime-live-e2e-YYYY-MM-DD-HHMMSS.md
 ```
 
-생성된 evidence를 `ai-team-runtime-level3-manual-e2e.md` 운영자 기록에 링크하세요. **helper를 실행하지 않았다면 Manual E2E를 PASS로 바꾸지 마세요.**
+생성된 evidence를 `ai-team-runtime-level3-manual-e2e.md` 운영자 기록에 **요약만** 반영하세요. **helper·evidence 없이 Manual E2E를 PASS로 바꾸지 마세요.** 갱신 절차·게이트: `ai-team-runtime-level3-live-e2e-execution-only.md` §8–9.
 
 ## 실패 분리
 

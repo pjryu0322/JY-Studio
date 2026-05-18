@@ -32,7 +32,11 @@ function fail(message, code = 1) {
 }
 
 function printUsage() {
-  console.log(`Usage:
+  console.log(`Level 3 Live E2E evidence helper (operator-only; does not run Runtime).
+
+Docs: projects/JYOrchestration/docs/runtime/ai-team-runtime-level3-live-e2e-execution-only.md
+
+Usage:
   JYO_PROJECT_ID=<id> JYO_TASK_ID=<id> JYO_SESSION_COOKIE='<cookie>' \\
     node scripts/ai-team-runtime-live-e2e-check.mjs
 
@@ -41,6 +45,8 @@ Optional:
   JYO_APPROVE=1          # mutates task — prints WARNING first
   JYO_OUTPUT_MD=<path>   # default: docs/runtime/evidence/ai-team-runtime-live-e2e-<timestamp>.md
   JYO_EXPECT_TIMELINE=0  # skip timeline checks
+
+After run: node scripts/scan-live-e2e-evidence.mjs
 `);
 }
 

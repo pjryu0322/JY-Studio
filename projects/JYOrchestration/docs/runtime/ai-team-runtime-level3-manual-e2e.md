@@ -6,17 +6,18 @@
 - Date: 2026-05-18
 - Scope: `projects/JYOrchestration/**`
 - PR baseline: #13 (Runtime execution connection), #14 (Level 3 Timeline)
-- Related: `ai-team-runtime-level3-timeline-post-merge.md`, `ai-team-runtime-level3-evidence-review.md`
+- Related: `ai-team-runtime-level3-timeline-post-merge.md`, `ai-team-runtime-level3-evidence-review.md`, `ai-team-runtime-level3-live-e2e-execution-only.md`
 
 ## 자동 검증 결과
 
 | 명령 | 결과 | 비고 |
 |---|---|---|
-| `npx tsc --noEmit` | PASS | main @ `a9e373b9` |
+| `npx tsc --noEmit` | PASS | main @ `9b91b8a2` |
 | `aiTeamRuntimeTimeline.unit.test.ts` | PASS | 14 tests |
 | `aiTeamApiTeamRuntime.unit.test.ts` | PASS | 3 tests |
-| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS | 3 tests |
-| `tests/harness/ai-team-runtime/` | PASS | 30 tests |
+| `aiTeamRuntimeLiveE2eLib.unit.test.ts` | PASS | 7 tests |
+| `tests/harness/ai-team-runtime/` | PASS | 30+ tests |
+| `node scripts/scan-live-e2e-evidence.mjs` | PASS | evidence 0건 (운영자 미생성) |
 | `planningExecutionRunStatusPresentation.unit.test.ts` | PASS | 3 tests |
 | `node scripts/ai-team-runtime-live-e2e-check.mjs` (env 없음) | PASS | 기대 오류 메시지 출력 |
 | `projects.api.test.ts` | 환경 이슈 | `ECONNREFUSED 127.0.0.1:3000` (dev server 미기동) |
@@ -119,7 +120,31 @@ curl -X POST "http://localhost:3000/api/task/control" \
 | Timeline length/order (live) | 미확인 |
 | Approval/SCM transition (live) | 미확인 |
 
-운영자가 `ai-team-runtime-level3-live-e2e-runbook.md`에 따라 helper를 실행한 뒤 evidence Markdown을 생성하면, 본 절과 E2E A/B 표를 **요약만** 갱신한다 (session cookie 등 민감정보는 커밋·문서에 포함하지 않음).
+운영자가 `ai-team-runtime-level3-live-e2e-execution-only.md` · `ai-team-runtime-level3-live-e2e-runbook.md`에 따라 helper를 실행한 뒤 evidence Markdown을 생성하면, 본 절과 E2E A/B 표를 **요약만** 갱신한다 (session cookie 등 민감정보는 커밋·문서에 포함하지 않음). PASS/FAIL/PARTIAL 템플릿은 execution-only §8.
+
+### Evidence PASS 시 갱신 템플릿 (운영자)
+
+```md
+## Live Evidence 반영
+
+- Evidence generated: yes
+- Evidence file: docs/runtime/evidence/<filename> (원문 gitignore, 요약만 반영)
+- Live E2E result: PASS
+- execution-runs API: PASS
+- Timeline length/order: PASS
+- Approval/SCM transition: PASS
+- ENV_TEST preservation: PASS/PARTIAL
+
+## 결론
+
+- Level 3 Timeline 운영 검증: PASS
+- Level 3 다음 단계 진입 가능 여부: 가능
+```
+
+### Evidence PARTIAL / FAIL 시 (운영자)
+
+- **PARTIAL:** 결론에 보류 사유·조건부 가능 여부 기록
+- **FAIL:** 결론에 실패 사유·다음 단계 **보류** 명시
 
 ## 결론
 
@@ -135,13 +160,19 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 운영자는 `apps/web/scripts/ai-team-runtime-live-e2e-check.mjs`(검증 로직: `scripts/lib/ai-team-runtime-live-e2e-lib.mjs`)로 `GET /api/projects/{projectId}/execution-runs` 응답의 `teamRuntime.timeline`을 검증하고 Markdown evidence를 저장할 수 있다.
 
-- 절차: `ai-team-runtime-level3-live-e2e-runbook.md`
+- 실행 SSOT: `ai-team-runtime-level3-live-e2e-execution-only.md`
+- API·env: `ai-team-runtime-level3-live-e2e-runbook.md`
 - evidence 기본 경로: `docs/runtime/evidence/ai-team-runtime-live-e2e-<timestamp>.md`
+- 로컬 점검: `node scripts/scan-live-e2e-evidence.mjs`
 - **주의:** helper를 실행·PASS 확인하기 전까지 본 문서의 live E2E 결과는 **미실행 / PARTIAL** 로 유지한다.
+
+## 운영자 결과 보고 템플릿 (채팅/이슈)
+
+evidence 생성 후 execution-only §10 형식으로 보고 (cookie·token 원문 금지).
 
 ## 운영자 Manual E2E 체크리스트 (요약)
 
-1. `cd projects/JYOrchestration/apps/web && npm run dev`
+1. `cd projects/JYOrchestration/apps/web && npx prisma generate && npm run dev`
 2. DB·`.env.local`·로그인
 3. 일반 Task + `requireApprovalBeforeApply=true` + AI 멤버 설정
 4. 실행 → `execution-runs` API·프로젝트 화면 Timeline 7단계 확인
@@ -150,7 +181,7 @@ curl -X POST "http://localhost:3000/api/task/control" \
 
 ## 다음 작업
 
-1. **(필수)** Runbook + Evidence Helper로 live Manual E2E 수행 → `docs/runtime/evidence/`에 evidence 생성 → 본 문서 「Live Evidence 반영」갱신
+1. **(필수)** `ai-team-runtime-level3-live-e2e-execution-only.md` + Evidence Helper로 live Manual E2E → evidence 생성 → `scan-live-e2e-evidence.mjs` → 본 문서 「Live Evidence 반영」갱신
 2. evidence PASS 후: TaskHistory / `appendTaskProgressLog` Timeline 통합 (A안)
 3. evidence 미제공 시: Live E2E 환경·Runbook 보강 (B안)
 4. Role Run 분리 설계
