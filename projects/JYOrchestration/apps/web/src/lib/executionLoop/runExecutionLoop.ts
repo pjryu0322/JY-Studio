@@ -50,6 +50,7 @@ import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2En
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
+import { persistScmBlockReasonOnRun } from "@/lib/ai-team-runtime/scmBlockReason";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
 import {
   buildCursorResultFromExecutionRun,
@@ -380,6 +381,7 @@ export async function runExecutionLoop(params: {
       }));
 
       let next = pickNextReadyTask(pickRows);
+      let shouldResumeAiTeamMergeForPickedTask = false;
       if (singleTaskId) {
         const forced = rows.find((r) => r.id === singleTaskId);
         if (!forced || forced.status !== "TODO") {
@@ -399,6 +401,9 @@ export async function runExecutionLoop(params: {
           workflowStatus: forcedWf,
           teamExecutionStatus: latestTeamStatusForForced,
         });
+        if (canResumeAiTeamMerge) {
+          shouldResumeAiTeamMergeForPickedTask = true;
+        }
         const forcedResumable =
           forcedWf === EXECUTION_WORKFLOW.READY ||
           forcedWf === EXECUTION_WORKFLOW.PENDING_APPLY ||
@@ -443,10 +448,23 @@ export async function runExecutionLoop(params: {
       await prisma.task.update({
         where: { id: taskId },
         data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.RUNNING,
+          executionWorkflowStatus: shouldResumeAiTeamMergeForPickedTask
+            ? EXECUTION_WORKFLOW.MERGE_PENDING
+            : EXECUTION_WORKFLOW.RUNNING,
           lastLoopRunAt: new Date(),
         },
       });
+
+      if (shouldResumeAiTeamMergeForPickedTask) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "resume_scm_after_runtime_approval",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { reason: "merge_pending+merge_running", cursorRerun: false },
+        });
+      }
 
       const taskRow = await prisma.task.findUnique({
         where: { id: taskId },
@@ -1775,12 +1793,14 @@ export async function runExecutionLoop(params: {
       // 3) SCM Manager 단계: PR 생성 + merge (Cursor는 절대 PR/merge 하지 않음)
       const scmCount = await countScmManagerAiMembers(projectId);
       if (scmCount === 0) {
+        const scmMissingReason = "SCM Manager 미설정: PR 생성/merge를 수행할 수 없습니다.";
+        await persistScmBlockReasonOnRun(execRun.id, scmMissingReason);
         await prisma.task.update({
           where: { id: taskId },
           data: {
             executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
             lastEvalResult: "merge_pending",
-            lastEvalSummary: "SCM Manager 미설정: PR 생성/merge를 수행할 수 없습니다.",
+            lastEvalSummary: scmMissingReason,
           },
         });
         await refreshWorkflowStates(projectId);
@@ -1803,12 +1823,14 @@ export async function runExecutionLoop(params: {
         reviewerSummary: evalPack.result.reason,
       });
       if (!scmDecisionPack || scmDecisionPack.decision !== "approve_merge") {
+        const scmHoldReason = scmDecisionPack?.summary || "SCM Manager 판단 대기/보류";
+        await persistScmBlockReasonOnRun(execRun.id, scmHoldReason);
         await prisma.task.update({
           where: { id: taskId },
           data: {
             executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
             lastEvalResult: "merge_pending",
-            lastEvalSummary: scmDecisionPack?.summary || "SCM Manager 판단 대기/보류",
+            lastEvalSummary: scmHoldReason,
           },
         });
         await refreshWorkflowStates(projectId);
@@ -1871,6 +1893,7 @@ export async function runExecutionLoop(params: {
             where: { id: execRun.id },
             data: { prStatus: `pr_create_failed:${prCreate.code}`.slice(0, 80) },
           });
+          await persistScmBlockReasonOnRun(execRun.id, prCreate.message);
           await prisma.task.update({
             where: { id: taskId },
             data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: prCreate.message },
@@ -1924,6 +1947,7 @@ export async function runExecutionLoop(params: {
           where: { id: execRun.id },
           data: { prStatus: `merge_failed:${mr.code}`.slice(0, 80) },
         });
+        await persistScmBlockReasonOnRun(execRun.id, mr.message);
         await prisma.task.update({
           where: { id: taskId },
           data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: mr.message },

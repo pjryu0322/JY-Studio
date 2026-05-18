@@ -12,6 +12,7 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
   const [loading, setLoading] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [approveSuccess, setApproveSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const pid = projectId.trim();
@@ -39,6 +40,7 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
     const taskId = run?.taskId?.trim();
     if (!taskId || approving) return;
     setApproving(true);
+    setApproveSuccess(null);
     setApproveError(null);
     try {
       const res = await credentialsIncludeFetch("/api/task/control", {
@@ -54,6 +56,7 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
         setApproveError(json.message ?? "승인 요청에 실패했습니다.");
         return;
       }
+      setApproveSuccess("승인 완료. 동일 Task 실행 시 merge 단계로 진행됩니다.");
       await load();
     } catch (e) {
       setApproveError(e instanceof Error ? e.message : "승인 요청 중 오류가 발생했습니다.");
@@ -159,6 +162,9 @@ export function AiTeamExecutionLatestRunPanel({ projectId }: { projectId: string
               >
                 {approving ? "승인 처리 중…" : "AI팀 Runtime 승인"}
               </button>
+              {approveSuccess ? (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#166534" }}>{approveSuccess}</p>
+              ) : null}
               {approveError ? (
                 <p style={{ margin: "6px 0 0", fontSize: 12, color: "#b45309" }}>{approveError}</p>
               ) : null}

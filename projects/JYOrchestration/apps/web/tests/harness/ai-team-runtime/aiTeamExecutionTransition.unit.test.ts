@@ -87,6 +87,17 @@ describe("ai-team-runtime fourth fix helpers", () => {
     expect(parsePrStatusForTeamRuntime("merged")?.pullRequestState).toBe("MERGED");
   });
 
+  it("parses open:<url> prStatus with number from URL path", () => {
+    const openUrlOnly = parseOpenPrStatus("open:https://github.com/a/b/pull/13");
+    expect(openUrlOnly?.pullRequestNumber).toBe(13);
+    expect(openUrlOnly?.pullRequestUrl).toBe("https://github.com/a/b/pull/13");
+
+    const parsed = parsePrStatusForTeamRuntime("open:https://github.com/a/b/pull/13");
+    expect(parsed?.pullRequestState).toBe("OPEN");
+    expect(parsed?.pullRequestNumber).toBe(13);
+    expect(parsed?.pullRequestUrl).toBe("https://github.com/a/b/pull/13");
+  });
+
   it("canResumeTeamRuntimeMerge requires merge_pending and merge_running", () => {
     expect(
       canResumeTeamRuntimeMerge({
