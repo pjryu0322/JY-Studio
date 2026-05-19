@@ -225,7 +225,14 @@ export type RequirementsPromptTimelineEntry = {
   questionQualityStatus?: "pass" | "retry_passed" | "retry_failed_repaired";
   questionQualityIssues?: readonly string[];
   questionQualityRetryCount?: number;
-  finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+  finalQuestionSource?:
+    | "llm"
+    | "llm_retry"
+    | "repaired_context"
+    | "proposal_synthesis"
+    | "llm_proposal_regeneration"
+    | "proposal_fallback_synthesis";
+  proposalFallbackApplied?: boolean;
   suggestionQualityIssues?: readonly string[];
   /** 멀티 에이전트 bootstrap reasoning 메타 */
   primaryDecisionAxis?: string | null;

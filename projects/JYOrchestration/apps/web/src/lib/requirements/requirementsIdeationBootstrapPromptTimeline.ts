@@ -40,21 +40,36 @@ export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_STAGE = "ideation" as const;
 /** @deprecated 서버는 `buildIdeationBootstrapContextualFallbackQuestion` 우선 사용 */
 export const IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION = "무엇을 만들고 싶은가?" as const;
 
-/** LLM 부트스트략 불가 시에도 프로젝트명·설명·유형을 반영한 한 문장 질문(무조건 generic 금지) */
+/**
+ * API 키 없음 등 LLM 호출 불가 시 — 프로젝트 설명 기반 generic proposal skeleton(서비스별 단계 하드코딩 없음).
+ */
+export function buildIdeationBootstrapDescriptionProposalSkeleton(input: {
+  readonly projectName: string;
+  readonly projectDescription: string;
+}): string {
+  const name = input.projectName.trim() || "프로젝트";
+  const desc = input.projectDescription.trim().replace(/\s+/g, " ").slice(0, 280);
+  const lines: string[] = [];
+  lines.push(
+    desc
+      ? `${name}에 대한 초기 기획 초안을 정리했습니다.\n\n${desc}`
+      : `${name}의 초기 기획 초안을 정리했습니다.`,
+  );
+  lines.push("", "예상 서비스 흐름", "1. 사용자가 목표·입력을 제공한다", "2. 시스템이 요청을 처리한다", "3. 결과를 확인·조정한다");
+  lines.push("", "다음: 위 초안을 기준으로 진행할지 선택·수정해 주세요.");
+  return lines.join("\n");
+}
+
+/** @deprecated question-only — `buildIdeationBootstrapDescriptionProposalSkeleton` 사용 */
 export function buildIdeationBootstrapContextualFallbackQuestion(input: {
   readonly projectName: string;
   readonly projectDescription: string;
   readonly projectType?: string | null;
 }): string {
-  const desc = input.projectDescription.trim().replace(/\s+/g, " ");
-  const snippet = desc.slice(0, 220).trim();
-  const anchor =
-    ["회의록", "녹취", "요약", "산출물", "초안"].find((w) => snippet.includes(w)) ?? (snippet.length >= 8 ? "초안" : "초안");
-  if (snippet.length >= 12) {
-    const thing = anchor === "초안" ? "문서 초안" : `${anchor} 초안`;
-    return `AI가 정리한 ${thing}은 작성자만 확인하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
-  }
-  return "AI가 만든 초안은 누가 최종 확인하고 확정하면 좋을까요?";
+  return buildIdeationBootstrapDescriptionProposalSkeleton({
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+  });
 }
 
 const MAX_PROMPT_TIMELINE = 50;
@@ -459,7 +474,14 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       ? { questionQualityRetryCount: Math.max(0, Math.min(3, Math.floor(r.questionQualityRetryCount))) }
       : {}),
     ...(typeof r.finalQuestionSource === "string" &&
-    (r.finalQuestionSource === "llm" || r.finalQuestionSource === "llm_retry" || r.finalQuestionSource === "repaired_context")
+    (
+      r.finalQuestionSource === "llm" ||
+      r.finalQuestionSource === "llm_retry" ||
+      r.finalQuestionSource === "repaired_context" ||
+      r.finalQuestionSource === "proposal_synthesis" ||
+      r.finalQuestionSource === "llm_proposal_regeneration" ||
+      r.finalQuestionSource === "proposal_fallback_synthesis"
+    )
       ? { finalQuestionSource: r.finalQuestionSource }
       : {}),
     ...(Array.isArray(r.suggestionQualityIssues)
@@ -647,7 +669,13 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly questionQualityStatus?: "pass" | "retry_passed" | "retry_failed_repaired";
   readonly questionQualityIssues?: readonly string[];
   readonly questionQualityRetryCount?: number;
-  readonly finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+  readonly finalQuestionSource?:
+    | "llm"
+    | "llm_retry"
+    | "repaired_context"
+    | "proposal_synthesis"
+    | "llm_proposal_regeneration"
+    | "proposal_fallback_synthesis";
   readonly suggestionQualityIssues?: readonly string[];
   readonly primaryDecisionAxis?: string | null;
   readonly selectedQuestionAxis?: string | null;

@@ -19,6 +19,7 @@ import {
   detectInternalOrchestrationVocabInUserQuestion,
   filterBootstrapInterviewSuggestions,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import {
   buildBootstrapProposalRegenerationUserPayload,
   parseBootstrapProposalDraftFromJson,
@@ -92,7 +93,8 @@ export type BootstrapFinalQuestionSource =
   | "llm"
   | "llm_retry"
   | "proposal_synthesis"
-  | "llm_proposal_regeneration";
+  | "llm_proposal_regeneration"
+  | "proposal_fallback_synthesis";
 
 export type RequirementsSingleChatBootstrapOpenAIResult =
   | {
@@ -135,6 +137,9 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       finalQuestionBeforeFallback?: string;
       /** 서버가 workflow 칩을 보강했는지 */
       fallbackGeneratedSuggestions?: boolean;
+      /** strict validation 실패 후 proposal-first fallback synthesis 적용 */
+      proposalFallbackApplied?: boolean;
+      recoveryFallbackReason?: string;
     }
   | {
       ok: false;
@@ -1100,32 +1105,59 @@ ${baseCatalog.slice(0, 2500)}
   }
 
   if (!proposalValidation.ok || !payload.proposalDraft) {
-    logBootstrapDiagnosis("return_fail", {
-      fallbackReason: "PROPOSAL_VALIDATION_FAILED",
-      issues: proposalValidation.issues,
+    logBootstrapDiagnosis("proposal_validation_failed", { issues: proposalValidation.issues });
+    logBootstrapDiagnosis("proposal_regeneration_exhausted", { proposalQualityRetryCount });
+    proposalQualityIssues = proposalValidation.issues.map(String);
+    logBootstrapDiagnosis("proposal_fallback_synthesis_started", { issues: proposalQualityIssues });
+    const fallbackSynth = await runBootstrapProposalFallbackSynthesisOpenAI({
+      projectName: pn,
+      projectDescription: pd,
+      projectType: pt,
+      failureIssues: proposalQualityIssues,
+      rejectedProposalPreview: proposalDraftPreviewForDiagnostics(payload.proposalDraft),
+      rejectedQuestion: payload.question,
     });
-    return {
-      ok: false,
-      code: "PROPOSAL",
-      message: "bootstrap proposalDraft 검증 실패(LLM regeneration 후에도 proposal-first 규칙 미충족)",
-      ...baseFail,
-      responseText: truncateForTimeline(String(text), 20_000),
-      rawResponseText,
-      parsedJsonPreview: parsedPack.parsedJsonPreview,
-      parseError: "",
-      questionQualityRetryCount: 0,
-      questionQualityIssues: proposalValidation.issues.map(String),
-      proposalQualityRetryCount,
-      finalQuestionBeforeFallback: payload.question.slice(0, 200),
-      fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+    promptTextOut = `${promptTextOut}\n\n--- bootstrap_proposal_fallback_synthesis ---\n${fallbackSynth.promptText ?? ""}`;
+    if (fallbackSynth.ok) {
+      logBootstrapDiagnosis("proposal_fallback_synthesis_ok", { questionPreview: fallbackSynth.question.slice(0, 120) });
+      payload = {
+        ...payload,
+        proposalDraft: fallbackSynth.proposalDraft,
+        question: fallbackSynth.question,
+        suggestions: fallbackSynth.suggestions.length ? fallbackSynth.suggestions : payload.suggestions,
+        allowCustomInput: fallbackSynth.allowCustomInput,
+      };
+      finalQuestionSource = "proposal_fallback_synthesis";
+    } else {
+      logBootstrapDiagnosis("proposal_fallback_synthesis_failed", { code: fallbackSynth.code });
+      logBootstrapDiagnosis("return_fail", {
+        fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+        issues: proposalValidation.issues,
+      });
+      return {
+        ok: false,
+        code: "PROPOSAL",
+        message: "bootstrap proposalDraft 검증 실패(LLM regeneration·fallback synthesis 후에도 proposal-first 규칙 미충족)",
+        ...baseFail,
+        promptText: promptTextOut,
+        responseText: truncateForTimeline(String(text), 20_000),
+        rawResponseText,
+        parsedJsonPreview: parsedPack.parsedJsonPreview,
+        parseError: "",
+        questionQualityRetryCount: 0,
+        questionQualityIssues: proposalQualityIssues,
+        proposalQualityRetryCount,
+        finalQuestionBeforeFallback: payload.question.slice(0, 200),
+        fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+      };
+    }
+  } else {
+    payload = {
+      ...payload,
+      question: synthesizeBootstrapUserMessageFromProposalDraft(payload.proposalDraft, payload.question),
     };
+    finalQuestionSource = proposalQualityRetryCount > 0 ? "llm_proposal_regeneration" : "proposal_synthesis";
   }
-
-  payload = {
-    ...payload,
-    question: synthesizeBootstrapUserMessageFromProposalDraft(payload.proposalDraft, payload.question),
-  };
-  finalQuestionSource = proposalQualityRetryCount > 0 ? "llm_proposal_regeneration" : "proposal_synthesis";
   logBootstrapDiagnosis("proposal_synthesis_applied", { questionPreview: payload.question.slice(0, 120) });
 
   if (!payload.question.trim()) {
@@ -1281,20 +1313,46 @@ ${baseCatalog.slice(0, 2500)}
         }
       }
       if (!questionRecoveredAfterProposalRegen) {
-        questionQualityStatus = "retry_failed_repaired";
-        logBootstrapDiagnosis("return_fail", { fallbackReason: "PROPOSAL_VALIDATION_FAILED" });
-        return {
-          ok: false,
-          code: "PROPOSAL",
-          message: "bootstrap 질문 품질·proposal 검증 실패(LLM regeneration 소진)",
-          ...baseFail,
-          rawResponseText,
-          questionQualityRetryCount,
-          questionQualityIssues,
-          proposalQualityRetryCount,
-          proposalQualityIssues,
-          fallbackReason: "PROPOSAL_VALIDATION_FAILED",
-        };
+        logBootstrapDiagnosis("proposal_fallback_synthesis_started", { issues: questionQualityIssues });
+        const fallbackSynth = await runBootstrapProposalFallbackSynthesisOpenAI({
+          projectName: pn,
+          projectDescription: pd,
+          projectType: pt,
+          failureIssues: questionQualityIssues,
+          rejectedProposalPreview: proposalDraftPreviewForDiagnostics(payload.proposalDraft),
+          rejectedQuestion: payload.question,
+        });
+        promptTextOut = `${promptTextOut}\n\n--- bootstrap_proposal_fallback_synthesis ---\n${fallbackSynth.promptText ?? ""}`;
+        if (fallbackSynth.ok) {
+          logBootstrapDiagnosis("proposal_fallback_synthesis_ok", { questionPreview: fallbackSynth.question.slice(0, 120) });
+          payload = {
+            ...payload,
+            proposalDraft: fallbackSynth.proposalDraft,
+            question: fallbackSynth.question,
+            suggestions: fallbackSynth.suggestions.length ? fallbackSynth.suggestions : payload.suggestions,
+            allowCustomInput: fallbackSynth.allowCustomInput,
+          };
+          questionQualityStatus = "retry_passed";
+          finalQuestionSource = "proposal_fallback_synthesis";
+          questionRecoveredAfterProposalRegen = true;
+        } else {
+          logBootstrapDiagnosis("proposal_fallback_synthesis_failed", { code: fallbackSynth.code });
+          questionQualityStatus = "retry_failed_repaired";
+          logBootstrapDiagnosis("return_fail", { fallbackReason: "PROPOSAL_VALIDATION_FAILED" });
+          return {
+            ok: false,
+            code: "PROPOSAL",
+            message: "bootstrap 질문 품질·proposal 검증 실패(LLM regeneration·fallback synthesis 소진)",
+            ...baseFail,
+            promptText: promptTextOut,
+            rawResponseText,
+            questionQualityRetryCount,
+            questionQualityIssues,
+            proposalQualityRetryCount,
+            proposalQualityIssues,
+            fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+          };
+        }
       }
     }
   }
@@ -1309,11 +1367,14 @@ ${baseCatalog.slice(0, 2500)}
     String(payload.orchestrationBootstrap?.userFacingQuestionStyle ?? "").trim() || null;
   const userLanguageTransformApplied = payload.question ? !detectInternalOrchestrationVocabInUserQuestion(payload.question) : false;
 
+  const proposalFallbackApplied = finalQuestionSource === "proposal_fallback_synthesis";
+
   logBootstrapDiagnosis("return_ok", {
     finalQuestionSource,
     questionQualityStatus,
     questionQualityRetryCount,
     fallbackGeneratedSuggestions: sugPack.fallbackGeneratedSuggestions,
+    proposalFallbackApplied,
   });
 
   return {
@@ -1341,6 +1402,9 @@ ${baseCatalog.slice(0, 2500)}
     ...(retryPromptText ? { retryPromptText } : {}),
     ...(retryRawResponseText ? { retryRawResponseText } : {}),
     ...(proposalQualityRetryCount > 0 ? { proposalQualityRetryCount, proposalQualityIssues } : {}),
+    ...(proposalFallbackApplied
+      ? { proposalFallbackApplied: true, recoveryFallbackReason: "PROPOSAL_VALIDATION_FAILED" }
+      : {}),
     ...(internalAxis ? { internalAxis } : {}),
     ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
     userLanguageTransformApplied,

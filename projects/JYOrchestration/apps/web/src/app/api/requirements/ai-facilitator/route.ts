@@ -17,8 +17,9 @@ import {
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
+import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import {
-  buildIdeationBootstrapContextualFallbackQuestion,
+  buildIdeationBootstrapDescriptionProposalSkeleton,
   buildSingleChatPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import {
@@ -172,10 +173,9 @@ export async function POST(request: NextRequest) {
     const projectType = projectTypeRaw ? projectTypeRaw : null;
 
     const contextualBootstrapFallbackQuestion = (): string =>
-      buildIdeationBootstrapContextualFallbackQuestion({
+      buildIdeationBootstrapDescriptionProposalSkeleton({
         projectName,
         projectDescription,
-        projectType,
       });
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
@@ -543,13 +543,70 @@ export async function POST(request: NextRequest) {
       });
     }
     if (!result.ok) {
+      if (bootstrapInterview) {
+        const routeSynth = await runBootstrapProposalFallbackSynthesisOpenAI({
+          projectName,
+          projectDescription,
+          projectType,
+          failureIssues: [
+            ...(((result as any).proposalQualityIssues as string[] | undefined) ?? []),
+            ...(((result as any).questionQualityIssues as string[] | undefined) ?? []),
+            String((result as any).fallbackReason ?? result.code ?? "").trim(),
+          ].filter(Boolean),
+          rejectedProposalPreview: String((result as any).parsedJsonPreview ?? "").slice(0, 500),
+          rejectedQuestion: String((result as any).finalQuestionBeforeFallback ?? ""),
+        });
+        if (routeSynth.ok) {
+          const orchPayloadRoute =
+            orchInitialForBootstrap ??
+            (projectId
+              ? initialOrchestrationPayload(
+                  projectName,
+                  projectDescription,
+                  projectType,
+                  new Date().toISOString(),
+                  servicePlanningCatalogKeys,
+                )
+              : null);
+          return NextResponse.json({
+            success: true,
+            data: {
+              reply: routeSynth.question,
+              ...(orchPayloadRoute ? { singleChatOrchestrationV1: orchPayloadRoute } : {}),
+              promptTrace: buildSingleChatPromptTimelineEntry({
+                action: "bootstrapInterview",
+                source: "llm",
+                timelineStage: agentCtxBootstrap.timelineStage,
+                stageGroup: agentCtxBootstrap.stageGroup,
+                workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
+                selectedAgents: agentCtxBootstrap.selectedAgents,
+                promptText: `${String((result as any).promptText ?? "").trim()}\n\n--- bootstrap_proposal_fallback_synthesis(route) ---\n${routeSynth.promptText}`,
+                responseText: routeSynth.question.slice(0, 4000),
+                model: routeSynth.model,
+                provider: "openai",
+                createdAtIso: new Date().toISOString(),
+                routingDecision: "bootstrap_proposal_fallback_synthesis",
+                fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+                finalQuestionSource: "proposal_fallback_synthesis",
+                orchestratorAgent: "planner",
+                fallback: false,
+                interviewQuestion: routeSynth.question,
+                ...(routeSynth.suggestions.length ? { interviewSuggestions: [...routeSynth.suggestions] } : {}),
+                interviewSuggestionsSource: routeSynth.suggestions.length ? ("llm" as const) : ("empty" as const),
+              }),
+              interviewSuggestions: routeSynth.suggestions,
+              interviewAllowCustomInput: routeSynth.allowCustomInput,
+            },
+          });
+        }
+      }
       if (bootstrapInterview && shouldLogBootstrapRouteResult()) {
         console.info("[bootstrap-route-result]", {
           ok: false,
           fallbackReason: String((result as any).fallbackReason ?? "").trim() || String((result as any).code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
           hasQuestion: false,
           source: "fallback",
-          routingDecision: "bootstrap_contextual_fallback",
+          routingDecision: "bootstrap_proposal_skeleton_fallback",
         });
       }
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
@@ -628,7 +685,7 @@ export async function POST(request: NextRequest) {
                   fallbackText: contextualBootstrapFallbackQuestion(),
                   fallback: true,
                   orchestratorAgent: "planner",
-                  routingDecision: "bootstrap_contextual_fallback",
+                  routingDecision: "bootstrap_proposal_skeleton_fallback",
                   fallbackReason: String((result as any).fallbackReason ?? "").trim() || String(result.code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
                   rawResponseText: String((result as any).rawResponseText ?? "") || undefined,
                   parseError: String((result as any).parseError ?? "") || undefined,
@@ -820,7 +877,12 @@ export async function POST(request: NextRequest) {
       configuredModelOverride: (result as any).configuredModelOverride ?? configuredModelOverrideBoot ?? undefined,
       provider: (result as any).provider ?? "openai",
       createdAtIso: (result as any).calledAt ?? new Date().toISOString(),
-      routingDecision: plannerChosenOk ? "bootstrap_llm_first_question(planner)" : "bootstrap_llm_first_question(default)",
+      routingDecision:
+        bootstrapInterview && result.ok && (result as { proposalFallbackApplied?: boolean }).proposalFallbackApplied
+          ? "bootstrap_proposal_fallback_synthesis"
+          : plannerChosenOk
+            ? "bootstrap_llm_first_question(planner)"
+            : "bootstrap_llm_first_question(default)",
       orchestratorAgent: "planner",
       delegatedAgents: [],
       fallback: false,
@@ -875,8 +937,21 @@ export async function POST(request: NextRequest) {
             questionQualityRetryCount: Number(
               (result as { questionQualityRetryCount?: number }).questionQualityRetryCount ?? 0
             ),
-            finalQuestionSource: (result as { finalQuestionSource: "llm" | "llm_retry" | "repaired_context" })
-              .finalQuestionSource,
+            finalQuestionSource: (result as { finalQuestionSource?: string }).finalQuestionSource as
+              | "llm"
+              | "llm_retry"
+              | "repaired_context"
+              | "proposal_synthesis"
+              | "llm_proposal_regeneration"
+              | "proposal_fallback_synthesis"
+              | undefined,
+            ...((result as { proposalFallbackApplied?: boolean }).proposalFallbackApplied
+              ? {
+                  proposalFallbackApplied: true,
+                  fallbackReason:
+                    (result as { recoveryFallbackReason?: string }).recoveryFallbackReason ?? "PROPOSAL_VALIDATION_FAILED",
+                }
+              : {}),
           }
         : {}),
       ...(bootstrapInterview &&
