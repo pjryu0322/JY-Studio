@@ -64,6 +64,14 @@ import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requireme
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import {
+  applyOrchestrationInvalidationsAfterFlowChange,
+  buildServiceFlowStructureFingerprint,
+} from "@/lib/requirements/requirementsOrchestrationInvalidation";
+import {
+  resolveAuthoritativeOrchestrationStage,
+  workspaceStageFromOrchestrationStage,
+} from "@/lib/requirements/requirementsOrchestrationRegistry";
+import {
   buildServiceFlowApplySyncUserMessage,
   buildServiceFlowSlotSyncTimelineEntry,
   syncServiceFlowToOrchestrationSlots,
@@ -229,22 +237,13 @@ export function RequirementsWorkspace({
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
   const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
   const featurePlanningSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
+  const serviceFlowStructureFingerprintRef = useRef<string | null>(null);
 
   const activeStage = useMemo((): RequirementsWorkspaceStage => {
-    // SingleChat 정책: URL stage 쿼리는 더 이상 UI/내부 단계의 단일 소스가 아니다.
-    // 내부 단계는 저장된 state JSON(요구사항 상태)을 기반으로 자동 산정한다.
     const persisted = parseRequirementsStateJson(project?.requirementsStateJson);
     const local = stateJsonRef.current;
     const st = (local && Object.keys(local).length ? local : persisted) as RequirementsStateJson;
-
-    // 1) 기능 상세 전이 또는 기능 정리 산출물 → feature-planning
-    if (st.requirementsOrchestrationStageV1?.currentStage === "FEATURE_DETAIL") return "feature-planning";
-    if (st.serviceFlowV1?.conversationState === "FEATURE_DETAIL") return "feature-planning";
-    if (st.featurePlanningSlotsV1?.slots?.length) return "feature-planning";
-    // 2) 서비스 흐름이 있으면 service-flow
-    if (st.serviceFlowV1?.steps?.length || st.serviceFlowV1?.actors?.length) return "service-flow";
-    // 3) 그 외는 ideation
-    return "ideation";
+    return workspaceStageFromOrchestrationStage(resolveAuthoritativeOrchestrationStage(st));
   }, [project?.requirementsStateJson, fetchNonce]);
   const inIdeationStage = activeStage === "ideation";
   const participantAiMemberId = useMemo(() => resolveParticipantContextKey(activeStage), [activeStage]);
@@ -800,10 +799,40 @@ export function RequirementsWorkspace({
         return null;
       }
       const hydrated = hydrateServiceFlowStepsFromAlternativePayload(next);
+      const fp = buildServiceFlowStructureFingerprint(hydrated);
+      let orchBase = orchestrationAlignedState;
+      const invalidation =
+        orchBase && serviceFlowStructureFingerprintRef.current
+          ? applyOrchestrationInvalidationsAfterFlowChange({
+              orchestration: orchBase,
+              definitions: slotDefsForProgress,
+              previousFingerprint: serviceFlowStructureFingerprintRef.current,
+              currentFingerprint: fp,
+              flowApproved: Boolean(hydrated.flowApproved),
+            })
+          : null;
+      serviceFlowStructureFingerprintRef.current = fp;
+
+      if (invalidation) {
+        orchBase = invalidation.state;
+        appendSingleChatPromptTimeline({
+          stage: "service-flow",
+          stageGroup: "service-planning",
+          workspaceScreenKey: "requirements_service_flow",
+          action: "orchestrationInvalidation",
+          source: "internal",
+          createdAt: new Date().toISOString(),
+          routingDecision: "flow_structure_invalidation",
+          staleTriggered: invalidation.staleTriggered,
+          invalidations: [...invalidation.invalidations],
+          staleSlots: [...invalidation.staleSlotKeys],
+        });
+      }
+
       const sync = syncServiceFlowToOrchestrationSlots({
         flow: hydrated,
         definitions: slotDefsForProgress,
-        orchestration: orchestrationAlignedState,
+        orchestration: orchBase,
       });
       if (sync) {
         setServiceFlow(hydrated);
@@ -833,6 +862,7 @@ export function RequirementsWorkspace({
           slotStateTransitions: [...timelineMeta.slotStateTransitions],
           updatedSlotCount: timelineMeta.updatedSlotCount,
           staleSlots: [...timelineMeta.staleSlots],
+          ...(invalidation?.staleTriggered ? { staleTriggered: true } : {}),
         });
         return sync;
       }

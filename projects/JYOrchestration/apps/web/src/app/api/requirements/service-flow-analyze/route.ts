@@ -15,7 +15,12 @@ import {
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import { tryServiceFlowOrchestrationTransitionFastPath } from "@/lib/requirements/serviceFlowStageTransition";
+import {
+  filterQuickRepliesForOrchestrationStage,
+  resolveAuthoritativeOrchestrationStage,
+} from "@/lib/requirements/requirementsOrchestrationRegistry";
+import { appendOrchestrationTransitionTimelineExtras } from "@/lib/requirements/requirementsOrchestrationTimeline";
+import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import {
@@ -35,7 +40,6 @@ import { augmentUserMessageForLlm } from "@/lib/requirements/singleChatQuickActi
 import {
   resolveServiceFlowProposalDecision,
   shouldBlockServiceFlowProposalReplay,
-  tryServiceFlowProposalDecisionFastPath,
   buildServiceFlowApprovedTransitionMessage,
   buildServiceFlowEnterReviewMessage,
   type ServiceFlowProposalDecision,
@@ -208,6 +212,17 @@ function buildAnalyzeSuccessResponse(input: {
     ...(typeof input.timelineExtras?.quickActionType === "string"
       ? { quickActionType: String(input.timelineExtras.quickActionType) }
       : {}),
+    ...(typeof input.timelineExtras?.transitionSignal === "string"
+      ? { transitionSignal: String(input.timelineExtras.transitionSignal) }
+      : {}),
+    ...(typeof input.timelineExtras?.transitionResult === "string"
+      ? { transitionResult: String(input.timelineExtras.transitionResult) }
+      : {}),
+    ...(input.timelineExtras?.projectionUpdated === true ? { projectionUpdated: true } : {}),
+    ...(input.timelineExtras?.staleTriggered === true ? { staleTriggered: true } : {}),
+    ...(Array.isArray(input.timelineExtras?.invalidations)
+      ? { invalidations: input.timelineExtras.invalidations.map((x) => String(x)) }
+      : {}),
     ...(input.timelineExtras?.transitionTriggered === true ? { transitionTriggered: true } : {}),
     ...(typeof input.timelineExtras?.fromStage === "string"
       ? { fromStage: String(input.timelineExtras.fromStage) }
@@ -322,29 +337,26 @@ export async function POST(request: NextRequest) {
         ? null
         : parseFeaturePlanningSlotsArtifactV1(fpRaw) ?? null;
 
-    const transitionFastPath = tryServiceFlowOrchestrationTransitionFastPath({
+    const clientOrchestrationState: RequirementsStateJson = {
+      serviceFlowV1: currentFlow,
+      singleChatOrchestrationV1: orchestrationAligned,
+      requirementsOrchestrationStageV1: existingOrchestrationStage ?? null,
+      featurePlanningSlotsV1: existingFeaturePlanning,
+    };
+
+    const transitionEngineResult = applyRequirementsOrchestrationTransition({
+      state: clientOrchestrationState,
+      currentFlow,
       proposalDecision,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
-      currentFlow,
       projectName,
       slotDefinitions,
       orchestration: orchestrationAligned,
-      existingFeaturePlanning,
-      existingOrchestrationStage: existingOrchestrationStage ?? null,
       approvedBy: userId,
     });
 
-    const fastPathDecisions = new Set<ServiceFlowProposalDecision>(["APPLY", "REVIEW_FLOW"]);
-    const legacyFastPath =
-      !transitionFastPath && proposalDecision && fastPathDecisions.has(proposalDecision)
-        ? tryServiceFlowProposalDecisionFastPath({
-            decision: proposalDecision,
-            currentFlow,
-            projectName,
-          })
-        : null;
-    const fastPath = transitionFastPath ?? legacyFastPath;
+    const fastPath = transitionEngineResult.fastPath;
 
     if (proposalDecision === "ALTERNATIVE") {
       const alt = await runServiceFlowAlternativeProposalTurn({
@@ -423,10 +435,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (fastPath) {
+      const mergedForStage: RequirementsStateJson = {
+        ...clientOrchestrationState,
+        ...(transitionEngineResult.requirementsStatePatch ?? {}),
+        serviceFlowV1: fastPath.updatedFlow,
+      };
+      const stage = resolveAuthoritativeOrchestrationStage(mergedForStage);
+      const projectedQuickReplies = filterQuickRepliesForOrchestrationStage(stage, fastPath.quickReplies);
+
       const fpAssistant = finalizeServiceFlowAssistantForResponse({
         assistantMessage: fastPath.assistantMessage,
         nextQuestion: null,
-        quickReplies: fastPath.quickReplies,
+        quickReplies: projectedQuickReplies,
         proposalVariantMode: "PRIMARY",
       });
       const parsed: ServiceFlowAnalyzeParsed & { updatedFlow: RequirementsServiceFlowV1 } = {
@@ -434,10 +454,11 @@ export async function POST(request: NextRequest) {
         updatedFlow: fastPath.updatedFlow,
         intent: fastPath.intent,
         nextQuestion: fastPath.nextQuestion,
-        quickReplies: [...fastPath.quickReplies],
+        quickReplies: [...projectedQuickReplies],
         readiness: fastPath.readiness,
       };
-      const transitionMeta = transitionFastPath?.transitionMeta ?? null;
+      const transitionMeta =
+        "transitionMeta" in fastPath && fastPath.transitionMeta ? fastPath.transitionMeta : null;
       return buildAnalyzeSuccessResponse({
         parsed,
         userMessage,
@@ -451,36 +472,24 @@ export async function POST(request: NextRequest) {
         model: null,
         agentCtx,
         forceVisibleMode: "state_transition",
-        requirementsStatePatch: transitionFastPath?.requirementsStatePatch,
-        timelineExtras: {
-          timelineAction: fastPath.timelineAction,
-          llmCallSkipped: true,
-          routingDecision: fastPath.routingDecision,
-          conversationStateBefore: fastPath.conversationStateBefore,
-          conversationStateAfter: fastPath.conversationStateAfter,
-          reviewDepth: fastPath.reviewDepth,
-          quickReplyProfile: fastPath.quickReplyProfile,
-          ...(transitionMeta
-            ? {
-                quickActionType: transitionMeta.quickActionType,
-                transitionTriggered: transitionMeta.transitionTriggered,
-                fromStage: transitionMeta.fromStage,
-                toStage: transitionMeta.toStage,
-                transitionMode: transitionMeta.transitionMode,
-                orchestrationStateUpdated: transitionMeta.orchestrationStateUpdated,
-              }
-            : {}),
-        },
+        requirementsStatePatch: transitionEngineResult.requirementsStatePatch,
+        timelineExtras: appendOrchestrationTransitionTimelineExtras({
+          base: {
+            timelineAction: fastPath.timelineAction,
+            llmCallSkipped: true,
+            routingDecision: fastPath.routingDecision,
+            conversationStateBefore: fastPath.conversationStateBefore,
+            conversationStateAfter: fastPath.conversationStateAfter,
+            reviewDepth: fastPath.reviewDepth,
+            quickReplyProfile: fastPath.quickReplyProfile,
+          },
+          transitionMeta,
+          transitionEngine: transitionEngineResult,
+        }),
       });
     }
 
-    const blockedTransitionDecisions = new Set<ServiceFlowProposalDecision>([
-      "FLOW_APPROVE",
-      "FEATURE_DETAIL",
-      "NEXT_STAGE",
-      "DOCUMENTATION_COMPLETE",
-    ]);
-    if (proposalDecision && blockedTransitionDecisions.has(proposalDecision)) {
+    if (transitionEngineResult.transitionResult === "blocked") {
       return NextResponse.json(
         {
           success: false,
@@ -494,7 +503,7 @@ export async function POST(request: NextRequest) {
               stageGroup: agentCtx.stageGroup,
               workspaceScreenKey: agentCtx.workspaceScreenKey,
               selectedAgents: agentCtx.selectedAgents,
-              proposalDecision,
+              ...(proposalDecision ? { proposalDecision } : {}),
               routingDecision: "stage_transition_precondition_failed",
             }),
           },
