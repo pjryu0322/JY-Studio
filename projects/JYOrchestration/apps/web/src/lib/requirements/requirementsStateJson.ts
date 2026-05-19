@@ -269,6 +269,13 @@ export type RequirementsPromptTimelineEntry = {
   alternativeProposalId?: string;
   comparisonGenerated?: boolean;
   reviewMode?: string;
+  /** service-flow → orchestration slot sync bridge */
+  slotSyncTriggered?: boolean;
+  slotSyncMode?: string;
+  slotSyncResult?: string;
+  slotSyncCount?: number;
+  progressBefore?: number;
+  progressAfter?: number;
   /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
   fallbackReason?:
     | "NO_KEY"

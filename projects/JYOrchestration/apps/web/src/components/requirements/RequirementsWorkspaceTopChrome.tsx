@@ -210,7 +210,10 @@ export function RequirementsWorkspaceTopChrome({
           <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
-                서비스 기획 진행도 {slotsUi.readinessPercent}% · {slotsUi.covered}/{slotsUi.total}
+                서비스 기획 진행도 {slotsUi.readinessPercent}%
+                {slotsUi.statusCounts ?
+                  ` · 확정 ${slotsUi.statusCounts.confirmed} / 부분 ${slotsUi.statusCounts.partial} / 후보 ${slotsUi.statusCounts.candidate}`
+                : ` · ${slotsUi.covered}/${slotsUi.total}`}
               </div>
               <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
                 <div style={{ height: "100%", borderRadius: 999, background: "#0f766e", width: `${Math.min(100, Math.max(0, slotsUi.readinessPercent))}%` }} />
@@ -250,7 +253,7 @@ export function RequirementsWorkspaceTopChrome({
           </div>
           {slotsUi.statusCounts ? (
             <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <span>확보 중 {slotsUi.statusCounts.partial}</span>
+              <span>부분 {slotsUi.statusCounts.partial}</span>
               <span>· 후보 {slotsUi.statusCounts.candidate}</span>
               <span>· stale {slotsUi.statusCounts.stale}</span>
               <span>· 미확보 {slotsUi.statusCounts.empty}</span>

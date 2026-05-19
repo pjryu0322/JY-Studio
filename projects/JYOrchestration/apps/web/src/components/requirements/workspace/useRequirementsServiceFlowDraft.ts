@@ -10,7 +10,9 @@ import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsS
 
 export function useRequirementsServiceFlowDraft(p: {
   readonly resolvedProjectId: string;
-  readonly persistServiceFlow: (next: RequirementsServiceFlowV1 | null) => Promise<void>;
+  readonly persistServiceFlow: (
+    next: RequirementsServiceFlowV1 | null,
+  ) => Promise<unknown>;
   readonly serviceFlow: RequirementsServiceFlowV1 | null;
   readonly project: Project | null;
   readonly ideationReadyForServiceFlow: boolean;

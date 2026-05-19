@@ -117,6 +117,7 @@ describe("serviceFlowProposalDecision phase10", () => {
     });
     expect(r?.updatedFlow.steps?.length).toBeGreaterThan(0);
     expect(r?.updatedFlow.proposalVariantMode).toBe("PRIMARY");
+    expect(r?.updatedFlow.lastProposalDecision).toBe("APPLY");
     expect(r?.assistantMessage).toContain("검토 단계로 반영");
     const presentationMode = resolveProposalPresentationVariantMode({
       proposalDecision: "APPLY",

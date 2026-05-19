@@ -62,6 +62,13 @@ import {
 } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
+import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import {
+  buildServiceFlowApplySyncUserMessage,
+  buildServiceFlowSlotSyncTimelineEntry,
+  syncServiceFlowToOrchestrationSlots,
+  type ServiceFlowOrchestrationSyncResult,
+} from "@/lib/requirements/serviceFlowOrchestrationSync";
 import {
   buildDynamicServicePlanningSlotDefinitions,
   buildOrchestrationSlotSummarySections,
@@ -69,6 +76,7 @@ import {
   initialOrchestrationStateFromDefinitions,
   singleChatOrchestrationConfirmedProgress,
   singleChatOrchestrationStatusCounts,
+  singleChatOrchestrationWeightedProgress,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   appendIdeationBootstrapPromptTimeline,
@@ -657,6 +665,10 @@ export function RequirementsWorkspace({
     () => singleChatOrchestrationConfirmedProgress(orchestrationUiState),
     [orchestrationUiState]
   );
+  const orchestrationWeightedMetrics = useMemo(
+    () => singleChatOrchestrationWeightedProgress(orchestrationUiState),
+    [orchestrationUiState]
+  );
   const orchestrationStatusCounts = useMemo(
     () => singleChatOrchestrationStatusCounts(orchestrationUiState),
     [orchestrationUiState]
@@ -671,8 +683,8 @@ export function RequirementsWorkspace({
     [problemInterviewState]
   );
   const proposalReadinessPercentVal = useMemo(() => {
-    return orchestrationConfirmedMetrics.percent;
-  }, [orchestrationConfirmedMetrics.percent]);
+    return orchestrationWeightedMetrics.percent;
+  }, [orchestrationWeightedMetrics.percent]);
   const problemInterviewCovered = useMemo(() => {
     return orchestrationConfirmedMetrics.confirmed;
   }, [orchestrationConfirmedMetrics.confirmed]);
@@ -684,8 +696,11 @@ export function RequirementsWorkspace({
     return null;
   }, []);
   const remainingQuestionsEstimate = useMemo(() => {
-    return Math.max(0, orchestrationConfirmedMetrics.total - orchestrationConfirmedMetrics.confirmed);
-  }, [orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed]);
+    return Math.max(
+      0,
+      Math.ceil(orchestrationWeightedMetrics.total - orchestrationWeightedMetrics.weightedScore),
+    );
+  }, [orchestrationWeightedMetrics.total, orchestrationWeightedMetrics.weightedScore]);
 
   /**
    * 산출물 뷰어는 "채팅 카드가 가리키는 assetId"와 동일한 소스를 사용해야 합니다.
@@ -774,6 +789,61 @@ export function RequirementsWorkspace({
       });
     },
     [persistStateJsonOnly]
+  );
+
+  const persistServiceFlowWithOrchestration = useCallback(
+    async (next: RequirementsServiceFlowV1 | null): Promise<ServiceFlowOrchestrationSyncResult | null> => {
+      if (!next) {
+        await persistServiceFlow(null);
+        return null;
+      }
+      const hydrated = hydrateServiceFlowStepsFromAlternativePayload(next);
+      const sync = syncServiceFlowToOrchestrationSlots({
+        flow: hydrated,
+        definitions: slotDefsForProgress,
+        orchestration: orchestrationAlignedState,
+      });
+      if (sync) {
+        setServiceFlow(hydrated);
+        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+          serviceFlowV1: hydrated,
+          singleChatOrchestrationV1: sync.state,
+        });
+        await persistStateJsonOnly({
+          serviceFlowV1: hydrated,
+          singleChatOrchestrationV1: sync.state,
+        });
+        const timelineMeta = buildServiceFlowSlotSyncTimelineEntry(sync);
+        appendSingleChatPromptTimeline({
+          stage: "service-flow",
+          stageGroup: "service-planning",
+          workspaceScreenKey: "requirements_service_flow",
+          action: timelineMeta.action,
+          source: timelineMeta.source,
+          createdAt: new Date().toISOString(),
+          routingDecision: timelineMeta.routingDecision,
+          slotSyncTriggered: timelineMeta.slotSyncTriggered,
+          slotSyncMode: timelineMeta.slotSyncMode,
+          slotSyncResult: timelineMeta.slotSyncResult,
+          slotSyncCount: timelineMeta.slotSyncCount,
+          progressBefore: timelineMeta.progressBefore,
+          progressAfter: timelineMeta.progressAfter,
+          slotStateTransitions: [...timelineMeta.slotStateTransitions],
+          updatedSlotCount: timelineMeta.updatedSlotCount,
+          staleSlots: [...timelineMeta.staleSlots],
+        });
+        return sync;
+      }
+      await persistServiceFlow(hydrated);
+      return null;
+    },
+    [
+      appendSingleChatPromptTimeline,
+      persistServiceFlow,
+      persistStateJsonOnly,
+      slotDefsForProgress,
+      orchestrationAlignedState,
+    ],
   );
 
   useRequirementsProjectLoad({
@@ -872,7 +942,7 @@ export function RequirementsWorkspace({
 
   const serviceFlowDraft = useRequirementsServiceFlowDraft({
     resolvedProjectId,
-    persistServiceFlow,
+    persistServiceFlow: persistServiceFlowWithOrchestration,
     serviceFlow,
     project,
     ideationReadyForServiceFlow,
@@ -1702,7 +1772,7 @@ export function RequirementsWorkspace({
       content: a.content,
     })),
     flow: serviceFlow,
-    onChangeFlow: (next) => void persistServiceFlow(next),
+    onChangeFlow: (next) => void persistServiceFlowWithOrchestration(next),
     members,
     currentUserId: sessionUser?.id ?? null,
     ideationReady: ideationReadyForServiceFlow,

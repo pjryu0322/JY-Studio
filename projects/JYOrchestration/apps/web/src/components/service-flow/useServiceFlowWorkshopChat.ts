@@ -30,6 +30,10 @@ import {
   mergeQuickRepliesWithAlternativeCanvasReopen,
   type AlternativeProposalPayloadWire,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import {
+  buildServiceFlowApplySyncUserMessage,
+  type ServiceFlowOrchestrationSyncResult,
+} from "@/lib/requirements/serviceFlowOrchestrationSync";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import {
   buildServiceDesignHarnessPayload,
@@ -95,7 +99,9 @@ export function useServiceFlowWorkshopChat({
   readonly projectDescription: string;
   readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly flow: RequirementsServiceFlowV1 | null;
-  readonly onChangeFlow: (next: RequirementsServiceFlowV1) => void;
+  readonly onChangeFlow: (
+    next: RequirementsServiceFlowV1,
+  ) => void | Promise<ServiceFlowOrchestrationSyncResult | null>;
   readonly currentUserId: string | null;
   readonly ideationReady: boolean;
   readonly generatingDraft: boolean;
@@ -321,7 +327,7 @@ export function useServiceFlowWorkshopChat({
             clearReplyingState();
             return;
           }
-          onChangeFlowRef.current(nextFlow);
+          const slotSync = await Promise.resolve(onChangeFlowRef.current(nextFlow));
 
           const suppressVisible = shouldSuppressServiceFlowVisibleFromResponse(data);
           const nextQ = String(data.nextQuestion ?? "").trim();
@@ -341,7 +347,12 @@ export function useServiceFlowWorkshopChat({
             return;
           }
 
+          const applySyncBody =
+            pendingDecision === "APPLY" && slotSync
+              ? buildServiceFlowApplySyncUserMessage({ flow: nextFlow, sync: slotSync })
+              : null;
           const aiBody =
+            applySyncBody ||
             mergeServiceFlowUserFacingMessage(String(data.assistantMessage ?? "").trim(), nextQ || null) ||
             "반영했습니다.";
           const done = !nextQ && Boolean(data.readiness?.readyForNext);

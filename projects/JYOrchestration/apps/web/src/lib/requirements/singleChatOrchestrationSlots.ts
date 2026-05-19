@@ -91,6 +91,61 @@ export function singleChatOrchestrationConfirmedProgress(state: RequirementsSing
   return { confirmed, total, percent };
 }
 
+const ORCHESTRATION_STATUS_WEIGHT: Readonly<Partial<Record<SingleChatOrchestrationSlotStatus, number>>> = {
+  confirmed: 1,
+  completed: 1,
+  partial: 0.5,
+  candidate: 0.25,
+  stale: 0,
+  empty: 0,
+  blocked: 0,
+  conflicted: 0,
+};
+
+/** 진행률 UI: confirmed=1, partial=0.5, candidate=0.25 가중 합 */
+export function singleChatOrchestrationWeightedProgress(
+  state: RequirementsSingleChatOrchestrationStateV1 | null | undefined,
+): {
+  confirmed: number;
+  partial: number;
+  candidate: number;
+  stale: number;
+  empty: number;
+  total: number;
+  weightedScore: number;
+  percent: number;
+} {
+  const counts = singleChatOrchestrationStatusCounts(state);
+  let weightedScore = 0;
+  const rows =
+    state?.slots && typeof state.slots === "object"
+      ? Object.values(state.slots).filter((s) => {
+          const baseKeys =
+            state.baseSlotKeys?.length ?
+              new Set(state.baseSlotKeys.map((k) => String(k ?? "").trim()).filter(Boolean))
+            : null;
+          return baseKeys ? baseKeys.has(String(s.slotKey ?? "")) : true;
+        })
+      : [];
+  for (const s of rows) {
+    const st = normalizeSlotStatus(String(s.status));
+    weightedScore += ORCHESTRATION_STATUS_WEIGHT[st] ?? 0;
+  }
+  const total = counts.total;
+  const percent =
+    total > 0 ? Math.min(100, Math.round((100 * weightedScore) / total)) : 0;
+  return {
+    confirmed: counts.confirmed,
+    partial: counts.partial,
+    candidate: counts.candidate,
+    stale: counts.stale,
+    empty: counts.empty,
+    total,
+    weightedScore: Number(weightedScore.toFixed(2)),
+    percent,
+  };
+}
+
 /** 진행률 UI 보조: 상태별 카운트(confirmed/partial/candidate/stale/empty) */
 export function singleChatOrchestrationStatusCounts(
   state: RequirementsSingleChatOrchestrationStateV1 | null | undefined

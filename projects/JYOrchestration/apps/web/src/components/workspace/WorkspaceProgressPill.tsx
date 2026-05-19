@@ -30,13 +30,25 @@ export function WorkspaceProgressPill({
   readonly headerRef?: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className={styles.root} title="서비스 기획 진행도 (확정 슬롯 기준)">
+    <div className={styles.root} title="서비스 기획 진행도 (가중치: 확정 1 · 부분 0.5 · 후보 0.25)">
       <div className={styles.trigger} aria-label="서비스 기획 진행도">
         <span className={styles.nowrap}>서비스 기획 진행도 {interviewUi.readinessPercent}%</span>
-        <span className={styles.sep}>·</span>
-        <span className={styles.count}>
-          {interviewUi.covered}/{interviewUi.total}
-        </span>
+        {interviewUi.statusCounts ? (
+          <>
+            <span className={styles.sep}>·</span>
+            <span className={styles.count}>
+              확정 {interviewUi.statusCounts.confirmed} / 부분 {interviewUi.statusCounts.partial} / 후보{" "}
+              {interviewUi.statusCounts.candidate}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className={styles.sep}>·</span>
+            <span className={styles.count}>
+              {interviewUi.covered}/{interviewUi.total}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

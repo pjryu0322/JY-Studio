@@ -118,8 +118,16 @@ export function buildServiceFlowStateSummaryMessage(input: {
 
 export function buildServiceFlowEnterReviewMessage(input: {
   readonly flow: RequirementsServiceFlowV1;
+  readonly applySyncSummary?: string | null;
 }): string {
   const flow = hydrateServiceFlowStepsFromAlternativePayload(input.flow);
+  const syncSummary = String(input.applySyncSummary ?? "").trim();
+  if (syncSummary) {
+    const canvasHint = flow.alternativeProposalPayload
+      ? `\n\n**${REOPEN_ALTERNATIVE_CANVAS_LABEL}**에서 기존안과의 비교를 다시 확인할 수 있습니다.`
+      : "";
+    return `${syncSummary}${canvasHint}`;
+  }
   const body = buildServiceFlowReviewPresentation({
     flow,
     depth: "summary",
