@@ -37,8 +37,10 @@ export async function runPlannerMergeTurnOpenAI(input: {
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
 당신은 SingleChat의 **merge coordinator**입니다.
-목표는 **오케스트레이션 상태(state) 업데이트**입니다. specialist digest는 내부 contributor 관점이며, 이후 단계에서 AI 기획자 코디네이터가 사용자용 단일 메시지로 합성한다.
-사용자에게 보이는 문장/톤/질문을 이 단계에서 만들지 마라. assistantMessage는 비운다.
+목표는 **오케스트레이션 상태(state) 업데이트**입니다. specialist digest는 내부 proposal contributor 출력이며, 이후 AI 기획자 코디네이터가 **proposal-first** 대화 메시지로 합성한다.
+- specialist value는 가능한 한 **구조화 초안**(흐름 단계·액터 후보·기능 후보) 형태로 슬롯에 반영한다.
+- 빈 질문·question-first 문장을 슬롯 value에 넣지 말 것.
+- 사용자에게 보이는 문장/톤/질문을 이 단계에서 만들지 마라. assistantMessage는 비운다.
 [사용자]에 '[QuickAction 선택]'이 있으면, 대화 발췌에서 직전 assistant 추천을 반영해 planner 슬롯 조정·derivedPromotions를 수행한다(추천안 적용=후보 확정에 가깝게, 보류=변경 최소).
 
 ${stableLine}

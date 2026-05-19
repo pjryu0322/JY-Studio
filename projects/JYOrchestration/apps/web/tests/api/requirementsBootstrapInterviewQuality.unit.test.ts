@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeBootstrapQuestionQuality,
   BOOTSTRAP_QUESTION_DOMAIN_LEXEMES,
+  detectQuestionFirstUx,
   filterBootstrapInterviewSuggestions,
+  hasProposalFirstStructure,
   repairBootstrapQuestionFromContext,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
@@ -40,14 +42,47 @@ describe("requirementsBootstrapInterviewQuality", () => {
     expect(BOOTSTRAP_QUESTION_DOMAIN_LEXEMES.some((w) => q.includes(w))).toBe(true);
   });
 
-  it("repairBootstrapQuestionFromContext는 검토·수정·확정 등 앵커를 포함한다", () => {
+  it("question-first 빈 설계 질문은 거절된다", () => {
+    expect(detectQuestionFirstUx("첫 단계는 무엇입니까?")).toBe(true);
+    const r = analyzeBootstrapQuestionQuality({
+      question: "첫 단계는 무엇입니까?",
+      projectDescription: "회의록 자동화",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues).toContain("question_first_ux");
+  });
+
+  it("proposal-first 구조(흐름·액터 초안)는 통과할 수 있다", () => {
+    const q = `회의록 자동화로 이해했습니다.
+
+예상 흐름:
+1. 녹취 업로드
+2. STT·화자 분리
+3. 초안 생성
+4. 검토·수정
+5. 확정
+
+예상 액터:
+- 작성자
+- 참석자
+
+맞는지 선택하거나 수정해 주세요.`;
+    expect(hasProposalFirstStructure(q)).toBe(true);
+    const r = analyzeBootstrapQuestionQuality({
+      question: q,
+      projectDescription: "회의록 자동화",
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("repairBootstrapQuestionFromContext는 proposal-first 초안 구조를 포함한다", () => {
     const q = repairBootstrapQuestionFromContext({
       projectName: "스마트 회의록",
       projectDescription: "회의 내용을 요약합니다.",
       orchestrationBootstrap: { detectedDomain: "협업", recommendedFocus: null },
     });
-    expect(/검토|수정|확정/.test(q)).toBe(true);
-    expect(q.includes("주도")).toBe(true);
+    expect(hasProposalFirstStructure(q)).toBe(true);
+    expect(/예상 흐름|예상 참여/.test(q)).toBe(true);
   });
 
   it("suggestions에서 메타형 문구를 걸러낸다", () => {

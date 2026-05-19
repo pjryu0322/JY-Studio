@@ -18,8 +18,15 @@ import {
   buildBootstrapQuestionRetryUserPayload,
   detectInternalOrchestrationVocabInUserQuestion,
   filterBootstrapInterviewSuggestions,
-  repairBootstrapQuestionFromContext,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import {
+  buildBootstrapProposalRegenerationUserPayload,
+  parseBootstrapProposalDraftFromJson,
+  proposalDraftPreviewForDiagnostics,
+  synthesizeBootstrapUserMessageFromProposalDraft,
+  validateBootstrapProposalDraft,
+  type BootstrapProposalDraftWire,
+} from "@/lib/requirements/requirementsBootstrapProposalDraft";
 import { formatBootstrapAxisRotationBlock } from "@/lib/requirements/requirementsBootstrapOrchestrationHints";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
@@ -75,10 +82,17 @@ export type RequirementsSingleChatBootstrapSuggestedSlot = {
 
 export type BootstrapQuestionQualityStatus = "pass" | "retry_passed" | "retry_failed_repaired";
 
+export type BootstrapFinalQuestionSource =
+  | "llm"
+  | "llm_retry"
+  | "proposal_synthesis"
+  | "llm_proposal_regeneration";
+
 export type RequirementsSingleChatBootstrapOpenAIResult =
   | {
       ok: true;
       question: string;
+      proposalDraft: BootstrapProposalDraftWire;
       suggestions: string[];
       allowCustomInput: boolean;
       suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[];
@@ -91,7 +105,9 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       questionQualityStatus: BootstrapQuestionQualityStatus;
       questionQualityIssues: readonly string[];
       questionQualityRetryCount: number;
-      finalQuestionSource: "llm" | "llm_retry" | "repaired_context";
+      finalQuestionSource: BootstrapFinalQuestionSource;
+      proposalQualityRetryCount?: number;
+      proposalQualityIssues?: readonly string[];
       suggestionQualityIssues?: readonly string[];
       /** 원문 LLM 응답(트렁케이트; 원인 추적) */
       rawResponseText?: string;
@@ -147,6 +163,7 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
         | "QUESTION_QUALITY_REJECTED"
         | "RETRY_FAILED"
         | "REPAIRED_CONTEXT_USED"
+        | "PROPOSAL_VALIDATION_FAILED"
         | "ROUTE_HANDLING_ERROR"
         | "UNKNOWN_BOOTSTRAP_ERROR"
         | string;
@@ -155,8 +172,10 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       questionQualityIssues?: readonly string[];
       /** retry count(가능하면) */
       questionQualityRetryCount?: number;
+      proposalQualityRetryCount?: number;
+      proposalQualityIssues?: readonly string[];
       /** final question source(가능하면) */
-      finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
+      finalQuestionSource?: BootstrapFinalQuestionSource;
       /** 성공 분기와 동일 — 라우트 예외 등에서 기록 */
       actualModel?: string;
       configuredModelOverride?: string | null;
@@ -291,6 +310,7 @@ export function parseBootstrapInitializerJsonFromModelText(rawText: string): {
 
 function extractSingleChatBootstrapFromJson(j: Record<string, unknown>): {
   question: string;
+  proposalDraft: BootstrapProposalDraftWire | null;
   suggestions: string[];
   allowCustomInput: boolean;
   suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[];
@@ -393,7 +413,8 @@ function extractSingleChatBootstrapFromJson(j: Record<string, unknown>): {
       ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
     };
   }
-  return { question, suggestions, allowCustomInput, suggestedSlots, orchestrationBootstrap, suggestedSlotReasons };
+  const proposalDraft = parseBootstrapProposalDraftFromJson(j.proposalDraft);
+  return { question, proposalDraft, suggestions, allowCustomInput, suggestedSlots, orchestrationBootstrap, suggestedSlotReasons };
 }
 
 function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
@@ -745,24 +766,23 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
     : "";
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}[BOOTSTRAP — multi-agent orchestration initializer]
-역할: planner/analyst/architect/(designer) 관점을 **내부적으로만** 검토한 뒤, **AI 기획자(코디네이터) 한 명의 목소리**로 첫 질문 1개(question)와 suggestions를 산출한다.
+역할: planner/analyst/architect/(designer) 관점을 **내부적으로만** 검토한 뒤, **proposalDraft(primary)** 를 먼저 만들고, question(secondary)와 suggestions를 산출한다.
 참여 AI 블록의 역할 문자열은 외부 6종(planner/analyst/architect/designer/reviewer/security)만 사용한다.
-reasoningContributors·analyst/architect 관점은 orchestrationBootstrap 메타에만 두고, question에는 역할 이름·"AI 분석가" 등 **다른 화자 표현 금지**.
+reasoningContributors·analyst/architect 관점은 orchestrationBootstrap 메타에만 두고, question·proposalDraft에 역할 이름·"AI 분석가" 등 **다른 화자 표현 금지**.
 
-[bootstrap reasoning mode]
-질문 생성 전에 내부적으로 planner·analyst·architect 관점을 모두 검토한 뒤, 프로젝트에서 가장 중요한 orchestration decision 축 하나를 고른다.
-analyst 관점은 question-first(빈 질문)가 아니라 **proposal-first**(예상 액터·흐름 후보를 제시하고 선택/추가 요청)로 반영한다.
-question은 단순 정보 수집이 아니라 현재 프로젝트의 핵심 설계 분기를 드러내야 한다.
-사용자에게 보이는 것은 **질문 1개(물음표 1개)·여러 질문 동시 금지**다.
+[bootstrap reasoning mode — proposal-driven]
+1) 내부적으로 planner·analyst·architect 관점을 검토한다.
+2) **proposalDraft**에 summary·actors·workflow(또는 stages)·capabilities를 프로젝트 설명에서 추론해 채운다(analyst는 질문자가 아니라 proposal contributor).
+3) question은 secondary: proposalDraft를 사용자에게 검토·선택·수정 요청하는 짧은 CTA(물음표 최대 1개).
+사용자에게 **빈 설계 질문 금지**("첫 단계는 무엇입니까?", "어떤 액터가 필요하신가요?" 등). proposalDraft 없이 question만 내는 출력은 invalid.
 
-question 선택 우선순위(내부, 단일 축만 출력):
-1 workflow branching 2 collaboration boundary 3 approval responsibility 4 automation level 5 quality validation 6 prototype boundary 7 editing authority 8 realtime vs batch — 동일 서비스 목적 재질문 금지.
+내부 decision 축 선택 우선순위(메타만, question에 축 id 노출 금지):
+1 workflow branching 2 collaboration boundary 3 approval responsibility 4 automation level 5 quality validation 6 prototype boundary 7 editing authority 8 realtime vs batch.
 
-질문 정책(orchestration-first):
-- [phase1_slot_catalog]의 label 문자열을 question에 그대로 넣지 말 것.
-- 한 질문에는 하나의 판단축만(물음표 1개·한 문장).
-- 프로젝트 설명에 이미 적힌 사실을 되묻지 말 것.
-- question에는 도메인 실행 단어 최소 1개: 회의록·녹취·화자·요약·검토·수정·확정·자동화·실시간·배치·협업·산출물 중 하나(프로젝트 설명에 없으면 산출물·흐름을 자연어로 특정).
+proposal 정책(orchestration-first):
+- [phase1_slot_catalog] label 문자열을 question에 그대로 넣지 말 것.
+- 프로젝트 설명에 이미 적힌 사실만 되묻지 말 것.
+- question에 도메인 실행 어절 최소 1개: 회의록·녹취·화자·요약·검토·수정·확정·자동화·실시간·배치·협업·산출물 등(프로젝트에 맞게).
 
 architect 관점: 자동화·품질·수정 허용·처리 속도·업로드·연동 한도 등 분기를 후보에 포함한다(단, question에는 이런 내부 라벨을 그대로 넣지 말 것).
 
@@ -798,10 +818,17 @@ orchestrationBootstrap에 반드시 포함:
 - userFacingQuestionStyle: 사용자에게 보이는 질문 톤 태그(예: workflow-confirmation, automation-scope) — 질문 하드코딩 아님
 - riskSignals: 짧은 토큰 배열(예: multi-user-collaboration)
 
-JSON 스키마(마크다운·코드펜스 금지 — 예시 문장은 도메인 특정 금지, 플레이스홀더만):
+JSON 스키마(마크다운·코드펜스 금지 — proposalDraft가 primary, question은 secondary):
 {
-  "question": "다음 설계 판단에 필요한 한국어 질문 한 문장",
-  "suggestions": ["작성자만 최종 확정", "참석자와 함께 수정 후 확정"],
+  "proposalDraft": {
+    "summary": "프로젝트 이해 1~2문장",
+    "actors": ["역할1", "역할2"],
+    "workflow": ["단계1", "단계2", "단계3"],
+    "stages": [],
+    "capabilities": ["핵심 기능1"]
+  },
+  "question": "위 초안이 맞는지 선택하거나 수정해 주세요.",
+  "suggestions": ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력"],
   "allowCustomInput": true,
   "orchestrationBootstrap": {
     "detectedDomain": "…",
@@ -833,12 +860,13 @@ ${baseCatalog.slice(0, 2500)}
 
 출력은 반드시 위 [JSON 스키마] 형태의 "결과 JSON 오브젝트 1개"만.
 - phase1_slot_catalog JSON(위 블록)을 그대로 재출력하지 마라.
-- question/suggestions/allowCustomInput 키는 반드시 포함하라(최소 스키마).
+- proposalDraft·question·suggestions·allowCustomInput 키는 반드시 포함하라.
+- proposalDraft.workflow 또는 stages에 최소 2단계, actors에 최소 2명을 채울 것.
 - slot catalog 원문을 복사하지 마라.`;
 
   const calledAt = new Date().toISOString();
   const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
-  const maxBootTokens = 520;
+  const maxBootTokens = 680;
 
   const res = await postOpenAiChatCompletion({
     apiKey,
@@ -940,7 +968,7 @@ ${baseCatalog.slice(0, 2500)}
   let assistantRaw = parsedPack.jsonText;
   let payload = extractSingleChatBootstrapFromJson(parsedPack.parsed);
 
-  if (!payload.question) {
+  if (!payload.proposalDraft && !payload.question) {
     const parsedKeys = Object.keys(parsedPack.parsed ?? {}).slice(0, 24);
     const mode = typeof (parsedPack.parsed as any).mode === "string" ? String((parsedPack.parsed as any).mode).trim() : null;
     const hasSlots = Array.isArray((parsedPack.parsed as any).slots) && (parsedPack.parsed as any).slots.length > 0;
@@ -955,15 +983,15 @@ ${baseCatalog.slice(0, 2500)}
       mode,
       fallbackReason,
     });
-    logBootstrapDiagnosis("question_missing", {});
-    logBootstrapDiagnosis("return_fail", { fallbackReason: "MISSING_QUESTION" });
+    logBootstrapDiagnosis("proposal_missing", {});
+    logBootstrapDiagnosis("return_fail", { fallbackReason });
     return {
       ok: false,
       code: "EMPTY",
       message:
         fallbackReason === "MODEL_RETURNED_SLOT_CATALOG"
           ? "모델이 결과 JSON 대신 phase1_slot_catalog(슬롯 목록) JSON을 반환했습니다."
-          : "question이 비어 있습니다.",
+          : "proposalDraft와 question이 모두 비어 있습니다.",
       ...baseFail,
       responseText: truncateForTimeline(String(text), 20_000),
       rawResponseText: truncateForTimeline(String(text), 4000),
@@ -975,10 +1003,13 @@ ${baseCatalog.slice(0, 2500)}
       fallbackReason,
     };
   }
-  logBootstrapDiagnosis("question_extracted", { questionPreview: payload.question.slice(0, 120) });
+  logBootstrapDiagnosis("bootstrap_extracted", {
+    questionPreview: payload.question.slice(0, 80),
+    proposalPreview: proposalDraftPreviewForDiagnostics(payload.proposalDraft),
+  });
   logBootstrapParseResult({
     parsedKeys: Object.keys(parsedPack.parsed ?? {}).slice(0, 24),
-    hasQuestion: true,
+    hasQuestion: Boolean(payload.question || payload.proposalDraft),
     hasSuggestions: payload.suggestions.length > 0,
     hasSlots: Array.isArray((parsedPack.parsed as any).slots) && (parsedPack.parsed as any).slots.length > 0,
     mode: typeof (parsedPack.parsed as any).mode === "string" ? String((parsedPack.parsed as any).mode).trim() : null,
@@ -987,13 +1018,121 @@ ${baseCatalog.slice(0, 2500)}
 
   let promptTextOut = promptText;
   let questionQualityRetryCount = 0;
-  let questionQualityStatus: BootstrapQuestionQualityStatus;
+  let proposalQualityRetryCount = 0;
+  let proposalQualityIssues: string[] = [];
+  let questionQualityStatus: BootstrapQuestionQualityStatus = "pass";
   let questionQualityIssues: string[] = [];
-  let finalQuestionSource: "llm" | "llm_retry" | "repaired_context" = "llm";
+  let finalQuestionSource: BootstrapFinalQuestionSource = "llm";
   const rawResponseText = truncateForTimeline(String(text), 4000);
   let retryPromptText: string | undefined = undefined;
   let retryRawResponseText: string | undefined = undefined;
-  let finalQuestionBeforeRepair: string | undefined = undefined;
+  let proposalRegenPromptText: string | undefined = undefined;
+
+  logBootstrapDiagnosis("proposal_validation_started", {});
+  let proposalValidation = validateBootstrapProposalDraft({
+    proposalDraft: payload.proposalDraft,
+    question: payload.question,
+  });
+
+  while (!proposalValidation.ok && proposalQualityRetryCount < 2) {
+    proposalQualityIssues = proposalValidation.issues.map(String);
+    proposalQualityRetryCount += 1;
+    const regenUser = buildBootstrapProposalRegenerationUserPayload({
+      issues: proposalValidation.issues,
+      rejectedQuestion: payload.question,
+      rejectedProposalPreview: proposalDraftPreviewForDiagnostics(payload.proposalDraft),
+    });
+    proposalRegenPromptText = truncateForTimeline(regenUser, 4000);
+    promptTextOut = `${promptTextOut}\n\n--- bootstrap_proposal_regeneration ---\n${regenUser}`;
+    logBootstrapDiagnosis("proposal_regeneration_started", { proposalQualityRetryCount });
+
+    const resProp = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+        { role: "assistant", content: assistantRaw },
+        { role: "user", content: regenUser },
+      ],
+      temperature: 0.2,
+      maxTokens: maxBootTokens,
+      responseFormatJsonObject: true,
+    });
+    logBootstrapLlmCall({
+      projectId: projectIdDiag,
+      phase: `proposal_regen_${proposalQualityRetryCount}`,
+      model,
+      hasApiKey: true,
+      responseFormatJsonObject: true,
+      maxTokens: maxBootTokens,
+      ok: resProp.ok,
+      code: resProp.ok ? null : resProp.code,
+      message: resProp.ok ? null : String(resProp.message).slice(0, 400),
+      textLength: resProp.ok ? String(resProp.text ?? "").length : 0,
+    });
+
+    if (resProp.ok && resProp.text) {
+      const parsedProp = parseBootstrapInitializerJsonFromModelText(String(resProp.text));
+      if (parsedProp.ok) {
+        const pProp = extractSingleChatBootstrapFromJson(parsedProp.parsed);
+        assistantRaw = parsedProp.jsonText;
+        payload = {
+          ...payload,
+          ...pProp,
+          orchestrationBootstrap: {
+            ...(payload.orchestrationBootstrap ?? {}),
+            ...(pProp.orchestrationBootstrap ?? {}),
+          },
+        };
+      }
+    }
+    proposalValidation = validateBootstrapProposalDraft({
+      proposalDraft: payload.proposalDraft,
+      question: payload.question,
+    });
+  }
+
+  if (!proposalValidation.ok || !payload.proposalDraft) {
+    logBootstrapDiagnosis("return_fail", {
+      fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+      issues: proposalValidation.issues,
+    });
+    return {
+      ok: false,
+      code: "PROPOSAL",
+      message: "bootstrap proposalDraft 검증 실패(LLM regeneration 후에도 proposal-first 규칙 미충족)",
+      ...baseFail,
+      responseText: truncateForTimeline(String(text), 20_000),
+      rawResponseText,
+      parsedJsonPreview: parsedPack.parsedJsonPreview,
+      parseError: "",
+      questionQualityRetryCount: 0,
+      questionQualityIssues: proposalValidation.issues.map(String),
+      proposalQualityRetryCount,
+      finalQuestionBeforeFallback: payload.question.slice(0, 200),
+      fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+    };
+  }
+
+  payload = {
+    ...payload,
+    question: synthesizeBootstrapUserMessageFromProposalDraft(payload.proposalDraft, payload.question),
+  };
+  finalQuestionSource = proposalQualityRetryCount > 0 ? "llm_proposal_regeneration" : "proposal_synthesis";
+  logBootstrapDiagnosis("proposal_synthesis_applied", { questionPreview: payload.question.slice(0, 120) });
+
+  if (!payload.question.trim()) {
+    return {
+      ok: false,
+      code: "EMPTY",
+      message: "proposalDraft 합성 후 사용자 메시지가 비어 있습니다.",
+      ...baseFail,
+      fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+      questionQualityRetryCount: 0,
+      questionQualityIssues: [],
+    };
+  }
 
   logBootstrapDiagnosis("quality_check_started", {});
   const q0 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
@@ -1050,16 +1189,23 @@ ${baseCatalog.slice(0, 2500)}
       const parsed2 = parseBootstrapInitializerJsonFromModelText(String(res2.text));
       if (parsed2.ok) {
         const p2 = extractSingleChatBootstrapFromJson(parsed2.parsed);
-        if (p2.question) {
+        if (p2.proposalDraft || p2.question) {
           assistantRaw = parsed2.jsonText;
           payload = {
+            ...payload,
             ...p2,
             orchestrationBootstrap: {
               ...(payload.orchestrationBootstrap ?? {}),
               ...(p2.orchestrationBootstrap ?? {}),
             },
           };
-          logBootstrapDiagnosis("retry_success", { questionPreview: p2.question.slice(0, 120) });
+          if (payload.proposalDraft) {
+            payload = {
+              ...payload,
+              question: synthesizeBootstrapUserMessageFromProposalDraft(payload.proposalDraft, payload.question),
+            };
+          }
+          logBootstrapDiagnosis("retry_success", { questionPreview: payload.question.slice(0, 120) });
         } else {
           logBootstrapDiagnosis("retry_question_missing", {});
         }
@@ -1077,23 +1223,73 @@ ${baseCatalog.slice(0, 2500)}
       finalQuestionSource = "llm_retry";
       logBootstrapDiagnosis("retry_passed_quality", {});
     } else {
-      finalQuestionBeforeRepair = payload.question;
-      payload = {
-        ...payload,
-        question: repairBootstrapQuestionFromContext({
-          projectName: pn,
-          projectDescription: pd,
-          orchestrationBootstrap: payload.orchestrationBootstrap ?? null,
-        }),
-      };
-      questionQualityStatus = "retry_failed_repaired";
       questionQualityIssues = [...new Set([...firstIssues, ...q1.issues.map(String)])];
-      finalQuestionSource = "repaired_context";
-      logBootstrapDiagnosis("repair_used", {
-        questionPreview: payload.question.slice(0, 120),
-        finalQuestionBeforeFallback: String(finalQuestionBeforeRepair ?? "").slice(0, 120),
+      let questionRecoveredAfterProposalRegen = false;
+      const regenUser = buildBootstrapProposalRegenerationUserPayload({
+        issues: [...proposalValidation.issues, "question_first_without_proposal"],
+        rejectedQuestion: payload.question,
+        rejectedProposalPreview: proposalDraftPreviewForDiagnostics(payload.proposalDraft),
       });
-      logBootstrapDiagnosis("retry_failed", { fallbackReason: "RETRY_FAILED", issues: questionQualityIssues });
+      proposalRegenPromptText = truncateForTimeline(regenUser, 4000);
+      logBootstrapDiagnosis("proposal_regeneration_after_question_retry", {});
+      const res3 = await postOpenAiChatCompletion({
+        apiKey,
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+          { role: "assistant", content: assistantRaw },
+          { role: "user", content: regenUser },
+        ],
+        temperature: 0.2,
+        maxTokens: maxBootTokens,
+        responseFormatJsonObject: true,
+      });
+      if (res3.ok && res3.text) {
+        const parsed3 = parseBootstrapInitializerJsonFromModelText(String(res3.text));
+        if (parsed3.ok) {
+          const p3 = extractSingleChatBootstrapFromJson(parsed3.parsed);
+          if (p3.proposalDraft) {
+            payload = {
+              ...payload,
+              ...p3,
+              orchestrationBootstrap: {
+                ...(payload.orchestrationBootstrap ?? {}),
+                ...(p3.orchestrationBootstrap ?? {}),
+              },
+            };
+            payload = {
+              ...payload,
+              question: synthesizeBootstrapUserMessageFromProposalDraft(payload.proposalDraft!, payload.question),
+            };
+            const qAfter = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
+            if (qAfter.ok) {
+              questionQualityStatus = "retry_passed";
+              finalQuestionSource = "llm_proposal_regeneration";
+              questionRecoveredAfterProposalRegen = true;
+              logBootstrapDiagnosis("proposal_regeneration_after_question_retry_ok", {});
+            } else {
+              questionQualityIssues = [...new Set([...questionQualityIssues, ...qAfter.issues.map(String)])];
+            }
+          }
+        }
+      }
+      if (!questionRecoveredAfterProposalRegen) {
+        questionQualityStatus = "retry_failed_repaired";
+        logBootstrapDiagnosis("return_fail", { fallbackReason: "PROPOSAL_VALIDATION_FAILED" });
+        return {
+          ok: false,
+          code: "PROPOSAL",
+          message: "bootstrap 질문 품질·proposal 검증 실패(LLM regeneration 소진)",
+          ...baseFail,
+          rawResponseText,
+          questionQualityRetryCount,
+          questionQualityIssues,
+          proposalQualityRetryCount,
+          proposalQualityIssues,
+          fallbackReason: "PROPOSAL_VALIDATION_FAILED",
+        };
+      }
     }
   }
 
@@ -1117,6 +1313,7 @@ ${baseCatalog.slice(0, 2500)}
   return {
     ok: true,
     question: payload.question,
+    proposalDraft: payload.proposalDraft!,
     suggestions: [...sugPack.suggestions],
     allowCustomInput: payload.allowCustomInput,
     suggestedSlots: payload.suggestedSlots,
@@ -1137,12 +1334,10 @@ ${baseCatalog.slice(0, 2500)}
     rawResponseText,
     ...(retryPromptText ? { retryPromptText } : {}),
     ...(retryRawResponseText ? { retryRawResponseText } : {}),
+    ...(proposalQualityRetryCount > 0 ? { proposalQualityRetryCount, proposalQualityIssues } : {}),
     ...(internalAxis ? { internalAxis } : {}),
     ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
     userLanguageTransformApplied,
-    ...(finalQuestionSource === "repaired_context" && finalQuestionBeforeRepair
-      ? { finalQuestionBeforeFallback: finalQuestionBeforeRepair }
-      : {}),
   };
 }
 
@@ -1633,8 +1828,9 @@ export type ServiceFlowAnalyzeOpenAiResult =
         };
       };
       model: string;
+      promptText: string;
     }
-  | { ok: false; code: string; message: string };
+  | { ok: false; code: string; message: string; promptText?: string };
 
 function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
   return JSON.stringify(problemInterviewStateToAnalyzerWire(state));
@@ -1783,8 +1979,8 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   - 현재 updatedFlow.steps가 1개 이상이면: 그 흐름을 3~8개 항목으로 짧게 재진술하고(assistantMessage),
     "누락/수정할 단계가 있습니까?" 같은 검증 질문 1개를 nextQuestion으로 둔다.
     quickReplies 예: ["단계 수정 있어요", "빠진 단계 있어요", "그대로 진행"].
-  - steps가 없고 actors만 있으면: "첫 단계는 무엇입니까?"처럼 흐름 검증 시작 질문 1개를 nextQuestion으로 둔다.
-  - actors도 없으면: 아이디어 구체화 산출물에서 액터/흐름을 최소 초안으로 채우고, 즉시 검증 질문 1개를 nextQuestion으로 둔다.
+  - steps가 없고 actors만 있으면: 아이디어·산출물에서 **예상 흐름 3~6단계 초안**을 assistantMessage에 제시하고, nextQuestion은 "위 흐름이 맞는지 선택·수정" 1문장만(빈 질문 금지).
+  - actors도 없으면: 액터·흐름 **최소 초안**을 assistantMessage에 채운 뒤, nextQuestion은 초안 검증 1문장만.
 - 인터뷰가 충분히 채워졌고(readyForNext=true가 될 수 있을 정도) nextQuestion이 null이면, assistantMessage는 짧게 마무리한다.
 - 응답은 반드시 JSON 1개만 출력(마크다운/설명/코드펜스 금지).
 
@@ -1827,6 +2023,8 @@ ${input.userMessage.trim()}
   "readiness": { "score": 0, "actorsReady": true, "stepsReady": true, "mappingReady": true, "readyForNext": true }
 }`;
 
+  const promptTextSf = `[service-flow-analyze]\n[system]\n${system}\n\n[user]\n${user}`;
+
   const callOnce = async (repair: boolean) => {
     const res = await postOpenAiChatCompletion({
       apiKey,
@@ -1859,7 +2057,7 @@ ${input.userMessage.trim()}
 
   let r = await callOnce(false);
   if (!r.ok && (r.code === "PARSE" || r.code === "EMPTY")) r = await callOnce(true);
-  if (!r.ok) return r;
+  if (!r.ok) return { ...r, promptText: promptTextSf };
 
   const root = r.parsed as Record<string, unknown>;
   const updatedFlow = ensureServiceFlowShape(root.updatedFlow, nowIso);
@@ -1894,6 +2092,7 @@ ${input.userMessage.trim()}
   return {
     ok: true,
     model,
+    promptText: promptTextSf,
     data: {
       assistantMessage: safeText(root.assistantMessage, 900) || "반영했습니다.",
       updatedFlow,

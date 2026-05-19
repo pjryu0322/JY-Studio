@@ -934,16 +934,32 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     }
   }
 
-  const buildOwnerFallbackQuestion = (): string => {
-    // Ensure owner voice even without LLM.
-    if (nextOwner === "designer") return "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?";
-    if (nextOwner === "architect") return "업로드 후 결과는 실시간에 가깝게 즉시 나와야 하나요, 아니면 배치 처리도 허용되나요?";
-    if (nextOwner === "analyst") return "참석자는 회의록 전체를 수정하나요, 아니면 자신의 발언만 수정하나요?";
-    if (nextOwner === "security") return "녹취/전사 데이터는 어느 기간 보관하고, 누가 접근할 수 있어야 하나요?";
-    if (nextOwner === "reviewer") return "첫 버전에서 꼭 확정해야 할 품질 기준(예: 화자 분리 정확도/요약 품질)은 무엇인가요?";
-    return "이 서비스의 첫 버전에서 반드시 해결해야 할 핵심 목표를 한 문장으로 정리해 주실래요?";
+  const buildCoordinatorFallbackProposal = (): string => {
+    const pn = input.projectName.trim() || "이 서비스";
+    const pd = input.projectDescription.trim();
+    const digest = specialistDigest.trim().slice(0, 600);
+    const lines: string[] = [`${pn} 방향으로 정리해 보았습니다.`];
+    if (pd) lines.push("", `이해한 배경: ${pd.slice(0, 280)}`);
+    if (digest) lines.push("", "내부 검토 포인트(요약):", digest);
+    lines.push(
+      "",
+      "예상 흐름(초안):",
+      "1. 입력·업로드",
+      "2. 자동 처리·가공",
+      "3. 검토·수정",
+      "4. 확정·공유",
+      "",
+      "예상 참여 역할(초안):",
+      "- 주 작성자",
+      "- 협업 참여자",
+      "- 관리자",
+      "",
+      "추천: 검토·수정 단계를 넣는 흐름으로 시작합니다.",
+      "다음: 추천안 적용 / 일부 수정 / 다른 대안 보기 중 하나를 골라 주세요."
+    );
+    return lines.join("\n");
   };
-  const buildConflictMediationQuestion = (): string => {
+  const buildConflictMediationProposal = (): string => {
     const label = (a: DecisionAxis): string => {
       if (a === "ux_direction" || a === "mobile_experience") return "검토·편집 UX";
       if (a === "automation_latency" || a === "processing_pipeline") return "처리 구조/속도";
@@ -954,10 +970,19 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     };
     const a1 = top1?.axis ?? "unknown";
     const a2 = top2?.axis ?? "unknown";
-    return `지금은 ${label(a1)}과 ${label(a2)} 중 어느 쪽을 먼저 확정하는 게 더 중요할까요?`;
+    const l1 = label(a1);
+    const l2 = label(a2);
+    return `지금 ${l1}과 ${l2} 두 축이 동시에 중요해 보입니다.
+
+추천 진행(초안):
+1. ${l1} 초안을 먼저 맞춤
+2. 이어서 ${l2}를 조정
+
+추천: 위 순서로 초안을 잡고 세부를 수정하는 방식입니다.
+다음: 추천 순서로 진행 / ${l2} 먼저 / 둘 다 짧게 수정 중 하나를 골라 주세요.`;
   };
 
-  let nextQuestion = conflictDetected ? buildConflictMediationQuestion() : buildOwnerFallbackQuestion();
+  let nextQuestion = conflictDetected ? buildConflictMediationProposal() : buildCoordinatorFallbackProposal();
   let personaValidationReason: string | null = null;
   let personaValidationRetry = 0;
   let repeatedQuestionDetected: boolean | null = null;
@@ -996,7 +1021,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     }
   }
   const skipRepeatGuard = quickActionKind === "alternatives";
-  const conflictHint = conflictDetected ? buildConflictMediationQuestion() : null;
+  const conflictHint = conflictDetected ? buildConflictMediationProposal() : null;
 
   const applyCoordinatorMessage = (msg: string, suggestions: string[] | null) => {
     const rep = skipRepeatGuard ? { repeated: false as const } : isRepeatedQuestion(msg, recentQuestionsPrev);
@@ -1036,7 +1061,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
         const retry = await runCoordinatorSynthesisTurnOpenAI({
           projectName: input.projectName,
           projectDescription: input.projectDescription,
-          userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전 질문과 같은 의미로 다시 묻지 말고, 다른 세부 결정으로 이어가세요.`,
+          userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
+          synthesisRetryHint:
+            "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",
           dialogueExcerpt: input.dialogueExcerpt,
           specialistDigest,
           specialistContributors: uniqSpecialists,

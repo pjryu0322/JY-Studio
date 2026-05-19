@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
         stageGroup: agentCtx.stageGroup,
         workspaceScreenKey: agentCtx.workspaceScreenKey,
         selectedAgents: agentCtx.selectedAgents,
+        ...(result.promptText ? { promptText: result.promptText } : {}),
         error: `${result.code}: ${result.message}`,
         fallbackText: "",
       });
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
       stageGroup: agentCtx.stageGroup,
       workspaceScreenKey: agentCtx.workspaceScreenKey,
       selectedAgents: agentCtx.selectedAgents,
+      promptText: result.promptText,
       responseText: String(result.data.assistantMessage ?? "").trim().slice(0, 4000),
       model: result.model,
       provider: "openai",

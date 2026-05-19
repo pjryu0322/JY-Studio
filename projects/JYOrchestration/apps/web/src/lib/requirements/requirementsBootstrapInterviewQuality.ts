@@ -146,7 +146,40 @@ export type BootstrapQuestionQualityIssueCode =
   | "generic_what_only"
   | "weak_decision_axis"
   | "internal_orchestration_vocab_question"
-  | "document_interview_tone";
+  | "document_interview_tone"
+  | "question_first_ux";
+
+/** question-first(빈 설계 질문) 패턴 — 하드코딩 질문 테이블이 아니라 UX 휴리스틱 */
+export function detectQuestionFirstUx(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  const patterns: RegExp[] = [
+    /첫\s*단계는\s*무엇/,
+    /어떤\s*액터/,
+    /무엇을\s*(할|하시|해|해야)/,
+    /무엇입니까/,
+    /뭘\s*(할|해)/,
+    /어떻게\s*하시겠/,
+    /어디서\s*시작/,
+    /처음부터\s*(설명|알려)/,
+    /어떤\s*기능이\s*필요/,
+    /무엇이\s*필요하신가요/,
+    /무엇이\s*필요한가요/,
+    /무엇을\s*원하시/,
+    /무엇부터\s*(할|진행)/,
+  ];
+  return patterns.some((re) => re.test(t));
+}
+
+/** proposal-first 초안 구조(흐름·액터·단계 제안 + 검토 CTA) */
+export function hasProposalFirstStructure(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (t.length < 48) return false;
+  const hasProposalLex = /예상|초안|후보|제안|흐름|액터|단계|역할|기능|범위|이해했/.test(t);
+  const hasStructure = /(\d+[\.\)]\s|[-•]\s)/.test(t) || /:\s*\n/.test(t);
+  const hasReviewCta = /선택|수정|맞는지|검토|확인해\s*주|이대로/.test(t);
+  return hasProposalLex && (hasStructure || hasReviewCta);
+}
 
 export function analyzeBootstrapQuestionQuality(input: {
   readonly question: string;
@@ -155,6 +188,9 @@ export function analyzeBootstrapQuestionQuality(input: {
   const q = String(input.question ?? "").trim();
   const issues: BootstrapQuestionQualityIssueCode[] = [];
   if (!q) return { ok: false, issues: ["missing_domain_anchor"] };
+
+  const proposalFirst = hasProposalFirstStructure(q);
+  if (detectQuestionFirstUx(q) && !proposalFirst) issues.push("question_first_ux");
 
   if (detectInternalOrchestrationVocabInUserQuestion(q)) issues.push("internal_orchestration_vocab_question");
 
@@ -165,16 +201,18 @@ export function analyzeBootstrapQuestionQuality(input: {
   if (hitLabels.length >= 2) issues.push("multi_slot_question");
   if (hitLabels.length >= 1) issues.push("slot_label_question");
 
-  const hasDomainLex = BOOTSTRAP_QUESTION_DOMAIN_LEXEMES.some((w) => q.includes(w));
-  if (!hasDomainLex) issues.push("missing_domain_anchor");
+  const hasDomainLex =
+    BOOTSTRAP_QUESTION_DOMAIN_LEXEMES.some((w) => q.includes(w)) ||
+    BOOTSTRAP_QUESTION_DOMAIN_LEXEMES.some((w) => String(input.projectDescription ?? "").includes(w));
+  if (!proposalFirst && !hasDomainLex) issues.push("missing_domain_anchor");
 
   const qMarks = (q.match(/\?|？/g) ?? []).length;
   if (qMarks >= 2) issues.push("multi_question_marks");
 
   const genericWhat = /무엇인가요|뭔가요|무엇을|뭘\s/.test(q);
-  if (genericWhat && !DECISION_AXIS_RE.test(q)) issues.push("generic_what_only");
+  if (!proposalFirst && genericWhat && !DECISION_AXIS_RE.test(q)) issues.push("generic_what_only");
 
-  if (hasDomainLex && !DECISION_AXIS_RE.test(q)) issues.push("weak_decision_axis");
+  if (!proposalFirst && hasDomainLex && !DECISION_AXIS_RE.test(q)) issues.push("weak_decision_axis");
 
   const unique = [...new Set(issues)];
   return { ok: unique.length === 0, issues: unique };
@@ -214,10 +252,30 @@ export function repairBootstrapQuestionFromContext(input: {
     return `${lead}협업으로 같이 검토·수정하는 흐름이 필요할까요, 아니면 작성자가 주도해서 정리하면 될까요?`;
   }
   if (axis.includes("prototype") || axis.includes("boundary")) {
-    return `${lead}첫 버전에서는 어디까지 만들어 두면 될까요?`;
+    return `${lead}다음처럼 초안을 잡아 보았습니다.
+
+예상 범위(초안):
+- 핵심 흐름만 구현
+- 검토·수정 화면 포함
+- 고급 자동화·연동은 이후
+
+위 범위가 맞는지 선택하거나 수정해 주세요.`;
   }
 
-  return `${lead}AI가 만든 초안은 누가 주도해서 최종 확인·확정하면 될까요?`;
+  return `${lead}다음처럼 이해했습니다.
+
+예상 흐름(초안):
+1. 입력·업로드
+2. 자동 처리·가공
+3. 검토·수정
+4. 확정·공유
+
+예상 참여 역할(초안):
+- 주 작성자
+- 협업 참여자
+- 관리자
+
+위 초안이 맞는지 선택하거나 수정해 주세요.`;
 }
 
 export function buildBootstrapQuestionRetryUserPayload(input: {
@@ -226,6 +284,7 @@ export function buildBootstrapQuestionRetryUserPayload(input: {
 }): string {
   const internalUx = input.issues.includes("internal_orchestration_vocab_question");
   const docTone = input.issues.includes("document_interview_tone");
+  const questionFirst = input.issues.includes("question_first_ux");
   const lines = [
     "[QUALITY_RETRY]",
     "이전 JSON의 question이 아래 정책을 위반했습니다. 동일 스키마로 JSON 전체를 다시 출력하세요.",
@@ -243,16 +302,25 @@ export function buildBootstrapQuestionRetryUserPayload(input: {
           "- 내부 오케스트레이션 축 메타는 orchestrationBootstrap에만 두고, question은 회의실·업무 현장에서 묻는 말투로 다시 작성할 것.",
         ]
       : []),
+    ...(questionFirst
+      ? [
+          "",
+          "[question-first 거절]",
+          "- question 필드를 proposal-first 메시지로 다시 작성할 것(예상 흐름 번호 목록 + 예상 액터 불릿 + 수정·선택 CTA).",
+        ]
+      : []),
     "",
-    "반드시:",
-    "- decision 질문 1문장(물음표 1개)",
-    "- 실제 검토·확정·협업·자동 처리 흐름과 연결",
-    "- 회의록·녹취·화자·요약·검토·수정·확정 중 최소 1어절 포함",
+    "반드시 (proposal-first):",
+    "- question 필드는 코디네이터 **첫 제안 메시지** 전체(이해 1~2줄 + 예상 흐름/액터/단계 초안 + 추천 1줄 + 수정·선택 CTA)",
+    "- '첫 단계는 무엇입니까?', '어떤 액터가 필요하신가요?' 같은 빈 설계 질문 금지",
+    "- 물음표는 최대 1개(마지막 확인용만)",
+    "- 회의록·녹취·화자·요약·검토·수정·확정·자동화·협업 중 프로젝트에 맞는 어절 포함",
     "",
     "금지:",
-    "- phase1 슬롯 라벨을 질문에 직접 넣기",
-    "- 두 개 이상의 슬롯 주제를 한 질문에 묶기",
-    "- 설명에 이미 적힌 사실을 되묻기",
+    "- phase1 슬롯 라벨을 question에 직접 넣기",
+    "- 두 개 이상의 슬롯 주제를 한 메시지에 묶기",
+    "- 설명에 이미 적힌 사실만 되묻기",
+    "- question-first(사용자가 처음부터 설계하게 만드는 질문만 던지기)",
   ];
   return lines.join("\n");
 }
