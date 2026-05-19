@@ -4,6 +4,8 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
+import { resolveServiceFlowVisiblePresentation } from "@/lib/requirements/crossStageProposalDedupe";
 import {
   buildSingleChatPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
@@ -97,6 +99,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const mergedAssistant = mergeServiceFlowUserFacingMessage(
+      result.data.assistantMessage,
+      result.data.nextQuestion,
+    );
+    const presentation = resolveServiceFlowVisiblePresentation({
+      userMessage,
+      currentFlow,
+      priorScreenHandoff,
+      assistantMessage: result.data.assistantMessage,
+      nextQuestion: result.data.nextQuestion,
+      quickReplies: result.data.quickReplies,
+      updatedFlow: result.data.updatedFlow,
+      recentMessages,
+    });
+
     const promptTrace = buildSingleChatPromptTimelineEntry({
       action: "serviceFlowAnalyze",
       source: result.proposalFallbackApplied ? "fallback" : "llm",
@@ -105,19 +122,34 @@ export async function POST(request: NextRequest) {
       workspaceScreenKey: agentCtx.workspaceScreenKey,
       selectedAgents: agentCtx.selectedAgents,
       promptText: result.promptText,
-      responseText: String(result.data.assistantMessage ?? "").trim().slice(0, 4000),
+      responseText: mergedAssistant.slice(0, 4000),
       model: result.model,
       provider: "openai",
       createdAtIso: new Date().toISOString(),
+      visibleMessageSuppressed: presentation.suppressVisibleMessage,
+      ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
+      serviceFlowVisibleMode: presentation.mode,
       ...(result.proposalFallbackApplied
         ? {
             routingDecision: "service_flow_proposal_fallback_synthesis",
             fallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
           }
-        : {}),
+        : presentation.suppressVisibleMessage
+          ? { routingDecision: "service_flow_handoff_state_only" }
+          : {}),
     });
 
-    return NextResponse.json({ success: true, data: result.data, meta: { model: result.model, promptTrace } });
+    const responseData = {
+      ...result.data,
+      assistantMessage: presentation.visibleAssistantMessage,
+      nextQuestion: presentation.suppressVisibleMessage ? null : result.data.nextQuestion,
+      quickReplies: presentation.visibleQuickReplies,
+      visibleMode: presentation.mode,
+      visibleMessageSuppressed: presentation.suppressVisibleMessage,
+      ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
+    };
+
+    return NextResponse.json({ success: true, data: responseData, meta: { model: result.model, promptTrace } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;

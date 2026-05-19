@@ -19,7 +19,7 @@ import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsS
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
+import { consumeWorkspaceAiScreenHandoff, peekWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
@@ -243,13 +243,21 @@ export function useServiceFlowWorkshopChat({
           }
           onChangeFlowRef.current(nextFlow);
 
+          const suppressVisible =
+            Boolean(data.visibleMessageSuppressed) || data.visibleMode === "handoff_state_only";
           const nextQ = String(data.nextQuestion ?? "").trim();
-          if (nextQ) setLatestAiQuestion(nextQ);
+          if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 
           const replies = Array.isArray(data.quickReplies)
             ? data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
             : [];
-          setQuickReplies(replies.length ? replies : null);
+          if (!suppressVisible) setQuickReplies(replies.length ? replies : null);
+          else setQuickReplies(null);
+
+          if (suppressVisible) {
+            setReplying(false);
+            return;
+          }
 
           const aiBody =
             mergeServiceFlowUserFacingMessage(String(data.assistantMessage ?? "").trim(), nextQ || null) ||
@@ -442,11 +450,17 @@ export function useServiceFlowWorkshopChat({
     const hasIdeationAssets = (ideationAssets?.length ?? 0) > 0;
 
     if (hasSteps) {
+      const handoffPeek = projectId.trim() ? peekWorkspaceAiScreenHandoff(projectId.trim(), "actor_flow") : "";
+      const ideationHandoff = /이전\s*담당:\s*ideation/i.test(handoffPeek);
+      bootOnceRef.current = true;
+      if (ideationHandoff) {
+        callAnalyzeRef.current("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
+        return;
+      }
       const list = normalizeServiceFlowStepOrder(flow?.steps ?? [])
         .slice(0, 8)
         .map((s) => `${s.order}. ${s.title}`)
         .join("\n");
-      bootOnceRef.current = true;
       void onAppendRef.current([
         buildServiceFlowAiPersist(
           `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.`,

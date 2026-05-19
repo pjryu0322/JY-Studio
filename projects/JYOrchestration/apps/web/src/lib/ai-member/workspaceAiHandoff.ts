@@ -43,6 +43,26 @@ export function publishWorkspaceAiScreenHandoff(projectId: string, payload: Omit
 /**
  * `forMemberId`가 대기 중인 handoff 대상과 일치할 때만 본문을 반환하고 저장소를 비운다(일회성).
  */
+/** handoff 본문 미리보기(소비하지 않음) */
+export function peekWorkspaceAiScreenHandoff(projectId: string, forMemberId: WorkspaceAiMemberId): string {
+  const pid = projectId.trim();
+  if (!pid) return "";
+  const raw = readRaw(pid);
+  if (!raw) return "";
+  let parsed: WorkspaceAiHandoffPayload;
+  try {
+    parsed = JSON.parse(raw) as WorkspaceAiHandoffPayload;
+  } catch {
+    return "";
+  }
+  if (!parsed || parsed.targetMemberId !== forMemberId) return "";
+  const from = String(parsed.fromMemberId ?? "").trim();
+  const body = String(parsed.snippet ?? "").trim();
+  if (!body) return "";
+  const fromLine = from ? `이전 담당: ${from}` : "이전 담당: (알 수 없음)";
+  return `${fromLine}\n요약:\n${body}`.slice(0, 4500);
+}
+
 export function consumeWorkspaceAiScreenHandoff(projectId: string, forMemberId: WorkspaceAiMemberId): string {
   const pid = projectId.trim();
   if (!pid) return "";

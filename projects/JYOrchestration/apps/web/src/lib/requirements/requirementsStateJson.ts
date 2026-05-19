@@ -246,6 +246,12 @@ export type RequirementsPromptTimelineEntry = {
   userFacingQuestionStyle?: string | null;
   /** 최종 question이 내부 오케스트레이션 어휘 없이 사용자 업무 언어로 정리되었는지 */
   userLanguageTransformApplied?: boolean;
+  /** service-flow 등: 사용자 visible 메시지 저장 억제 여부 */
+  visibleMessageSuppressed?: boolean;
+  /** visible 억제 사유(예: duplicate_cross_stage_proposal) */
+  suppressReason?: string;
+  /** service-flow analyze visible mode */
+  serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta";
   /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
   fallbackReason?:
     | "NO_KEY"

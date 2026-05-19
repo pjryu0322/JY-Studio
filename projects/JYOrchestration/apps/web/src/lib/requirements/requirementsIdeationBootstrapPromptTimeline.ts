@@ -316,6 +316,15 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.fallbackReason === "string" && r.fallbackReason.trim()
       ? { fallbackReason: r.fallbackReason.trim().slice(0, 80) }
       : {}),
+    ...(typeof r.visibleMessageSuppressed === "boolean" ? { visibleMessageSuppressed: r.visibleMessageSuppressed } : {}),
+    ...(typeof r.suppressReason === "string" && r.suppressReason.trim()
+      ? { suppressReason: r.suppressReason.trim().slice(0, 80) }
+      : {}),
+    ...(r.serviceFlowVisibleMode === "visible_proposal" ||
+    r.serviceFlowVisibleMode === "handoff_state_only" ||
+    r.serviceFlowVisibleMode === "visible_delta"
+      ? { serviceFlowVisibleMode: r.serviceFlowVisibleMode }
+      : {}),
     ...(typeof r.rawResponseText === "string" ? { rawResponseText: r.rawResponseText.slice(0, 4000) } : {}),
     ...(typeof r.parseError === "string" && r.parseError.trim() ? { parseError: r.parseError.trim().slice(0, 400) } : {}),
     ...(typeof r.parsedJsonPreview === "string" && r.parsedJsonPreview.trim()
@@ -686,6 +695,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly userFacingQuestionStyle?: string | null;
   readonly userLanguageTransformApplied?: boolean;
   readonly fallbackReason?: string;
+  readonly visibleMessageSuppressed?: boolean;
+  readonly suppressReason?: string;
+  readonly serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta";
   readonly rawResponseText?: string;
   readonly parseError?: string;
   readonly parsedJsonPreview?: string;
@@ -854,6 +866,11 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { userLanguageTransformApplied: params.userLanguageTransformApplied }
       : {}),
     ...(params.fallbackReason ? { fallbackReason: params.fallbackReason } : {}),
+    ...(typeof params.visibleMessageSuppressed === "boolean"
+      ? { visibleMessageSuppressed: params.visibleMessageSuppressed }
+      : {}),
+    ...(params.suppressReason ? { suppressReason: params.suppressReason } : {}),
+    ...(params.serviceFlowVisibleMode ? { serviceFlowVisibleMode: params.serviceFlowVisibleMode } : {}),
     ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
     ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),
     ...(params.parsedJsonPreview ? { parsedJsonPreview: params.parsedJsonPreview.slice(0, 4000) } : {}),

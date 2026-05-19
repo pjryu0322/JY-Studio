@@ -20,12 +20,17 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly workspaceScreenKey?: string;
 };
 
+export type ServiceFlowVisibleMode = "visible_proposal" | "handoff_state_only" | "visible_delta";
+
 export type ServiceFlowAnalyzeSuccessData = {
   assistantMessage?: string;
   updatedFlow?: RequirementsServiceFlowV1;
   nextQuestion?: string | null;
   quickReplies?: string[] | null;
   readiness?: { score?: number; readyForNext?: boolean } | null;
+  visibleMode?: ServiceFlowVisibleMode;
+  visibleMessageSuppressed?: boolean;
+  suppressReason?: string;
 };
 
 export type ServiceFlowAnalyzeMeta = {
