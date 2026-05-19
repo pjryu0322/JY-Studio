@@ -32,6 +32,8 @@ import { formatBootstrapAxisRotationBlock } from "@/lib/requirements/requirement
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 import { pickConfiguredModelOverrideFromAgents } from "@/lib/requirements/singleChatAgentContext";
+import { parseServiceFlowAnalyzeWire } from "@/lib/requirements/serviceFlowAnalyzeParse";
+import { runServiceFlowProposalFallbackSynthesisOpenAI } from "@/lib/requirements/serviceFlowProposalFallbackSynthesis";
 import {
   buildServiceFlowProposalRegenerationUserPayload,
   mergeServiceFlowUserFacingMessage,
@@ -1899,6 +1901,8 @@ export type ServiceFlowAnalyzeOpenAiResult =
       };
       model: string;
       promptText: string;
+      proposalFallbackApplied?: boolean;
+      recoveryFallbackReason?: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED";
     }
   | { ok: false; code: string; message: string; promptText?: string };
 
@@ -1906,69 +1910,10 @@ function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
   return JSON.stringify(problemInterviewStateToAnalyzerWire(state));
 }
 
-function clamp01Score(n: unknown): number {
-  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
-  return Math.max(0, Math.min(100, Math.round(v)));
-}
-
 function safeText(v: unknown, max = 520): string {
   const s = String(v ?? "").trim();
   if (!s) return "";
   return s.length > max ? `${s.slice(0, max)}…` : s;
-}
-
-function ensureServiceFlowShape(v: unknown, nowIso: string): RequirementsServiceFlowV1 | null {
-  if (!v || typeof v !== "object") return null;
-  const o = v as Record<string, unknown>;
-  const actorsRaw = Array.isArray(o.actors) ? o.actors : [];
-  const stepsRaw = Array.isArray(o.steps) ? o.steps : [];
-
-  const actors = actorsRaw
-    .map((a) => {
-      const aa = a as Record<string, unknown>;
-      const id = safeText(aa.id, 90);
-      const name = safeText(aa.name, 60);
-      const kind = safeText(aa.kind, 16) === "system" ? "system" : "human";
-      const description = safeText(aa.description, 140);
-      if (!id || !name) return null;
-      return { id, name, kind, description };
-    })
-    .filter(Boolean) as RequirementsServiceFlowV1["actors"];
-
-  const actorIds = new Set(actors.map((a) => a.id));
-  const steps = stepsRaw
-    .map((s) => {
-      const ss = s as Record<string, unknown>;
-      const id = safeText(ss.id, 140);
-      const title = safeText(ss.title, 80);
-      const purpose = safeText(ss.purpose, 240);
-      const order = Number(ss.order);
-      const primaryActorId = safeText(ss.primaryActorId, 90);
-      const secondaryActorIds = Array.isArray(ss.secondaryActorIds)
-        ? (ss.secondaryActorIds.map((x) => safeText(x, 90)).filter(Boolean) as string[])
-        : [];
-      const approved = Boolean(ss.approved);
-      const updatedAt = safeText(ss.updatedAt, 40) || nowIso;
-      if (!id || !title || !Number.isFinite(order)) return null;
-      return {
-        id,
-        title,
-        purpose,
-        order: Math.max(1, Math.round(order)),
-        primaryActorId: primaryActorId && actorIds.has(primaryActorId) ? primaryActorId : "",
-        secondaryActorIds: secondaryActorIds.filter((x) => actorIds.has(x)),
-        approved,
-        updatedAt,
-      };
-    })
-    .filter(Boolean) as RequirementsServiceFlowV1["steps"];
-
-  return {
-    createdAt: safeText(o.createdAt, 40) || nowIso,
-    updatedAt: safeText(o.updatedAt, 40) || nowIso,
-    actors,
-    steps,
-  };
 }
 
 export async function runServiceFlowAnalyzeOpenAI(input: {
@@ -2100,51 +2045,6 @@ ${input.userMessage.trim()}
     };
   };
 
-  const parseModelRoot = (
-    root: Record<string, unknown>,
-  ): { ok: true; data: ParsedSfPack } | { ok: false; message: string } => {
-    const updatedFlow = ensureServiceFlowShape(root.updatedFlow, nowIso);
-    if (!updatedFlow) return { ok: false, message: "updatedFlow 스키마가 올바르지 않습니다." };
-
-    const intentRaw = safeText(root.intent, 40) as ServiceFlowAnalyzeIntent;
-    const allowed: ServiceFlowAnalyzeIntent[] = [
-      "add_actor",
-      "update_actor",
-      "add_step",
-      "update_step",
-      "update_mapping",
-      "show_summary",
-      "delegate_to_ai",
-      "unclear",
-    ];
-    const intent: ServiceFlowAnalyzeIntent = allowed.includes(intentRaw) ? intentRaw : "unclear";
-
-    const readinessRaw = (root.readiness ?? {}) as Record<string, unknown>;
-    const readiness = {
-      score: clamp01Score(readinessRaw.score),
-      actorsReady: Boolean(readinessRaw.actorsReady),
-      stepsReady: Boolean(readinessRaw.stepsReady),
-      mappingReady: Boolean(readinessRaw.mappingReady),
-      readyForNext: Boolean(readinessRaw.readyForNext),
-    };
-
-    const quickReplies = Array.isArray(root.quickReplies)
-      ? (root.quickReplies.map((x) => safeText(x, 40)).filter(Boolean).slice(0, 3) as string[])
-      : null;
-
-    return {
-      ok: true,
-      data: {
-        assistantMessage: safeText(root.assistantMessage, 1200) || "반영했습니다.",
-        updatedFlow,
-        intent,
-        nextQuestion: safeText(root.nextQuestion, 240) || null,
-        quickReplies: quickReplies && quickReplies.length ? quickReplies : null,
-        readiness,
-      },
-    };
-  };
-
   const callModel = async (
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   ) => {
@@ -2182,19 +2082,23 @@ ${input.userMessage.trim()}
     text: string,
   ): { ok: true; data: ParsedSfPack } | { ok: false; rejected: ParsedSfPack } | null => {
     assistantRaw = text;
-    const root = parsed as Record<string, unknown>;
-    const parsedPack = parseModelRoot(root);
+    const parsedPack = parseServiceFlowAnalyzeWire(parsed, nowIso);
     if (!parsedPack.ok) return null;
 
+    const data: ParsedSfPack = {
+      ...parsedPack.data,
+      intent: parsedPack.data.intent as ServiceFlowAnalyzeIntent,
+    };
+
     const validation = validateServiceFlowAnalyzeResponse({
-      parsed: parsedPack.data,
+      parsed: data,
       userMessage: input.userMessage,
       currentFlow: input.currentFlow,
     });
 
-    if (validation.ok) return { ok: true, data: parsedPack.data };
+    if (validation.ok) return { ok: true, data };
     lastQualityIssues = validation.issues.map(String);
-    return { ok: false, rejected: parsedPack.data };
+    return { ok: false, rejected: data };
   };
 
   let r = await callModel(baseMessages);
@@ -2224,6 +2128,7 @@ ${input.userMessage.trim()}
 
   while (attempt && !attempt.ok && qualityRetryCount < 2) {
     qualityRetryCount += 1;
+    promptTextSf = `${promptTextSf}\n\n--- service_flow_regeneration_started ---\n${lastQualityIssues.join(", ")}`;
     const regenUser = buildServiceFlowProposalRegenerationUserPayload({
       issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
       rejectedAssistantPreview: attempt.rejected.assistantMessage,
@@ -2238,6 +2143,9 @@ ${input.userMessage.trim()}
     ]);
     if (!regen.ok) return { ok: false, code: regen.code, message: regen.message, promptText: promptTextSf };
     attempt = tryValidateModelOutput(regen.parsed, regen.text);
+    promptTextSf += attempt?.ok
+      ? `\n\n--- service_flow_regeneration_result_ok ---`
+      : `\n\n--- service_flow_regeneration_result_failed ---\n${lastQualityIssues.join(", ")}`;
   }
 
   const validated = attempt?.ok ? attempt.data : null;
@@ -2258,6 +2166,50 @@ ${input.userMessage.trim()}
       },
     };
   }
+
+  const rejectedPack = attempt && !attempt.ok ? attempt.rejected : undefined;
+  promptTextSf += `\n\n--- service_flow_validation_failed ---\n${lastQualityIssues.join(", ") || "unknown"}`;
+  promptTextSf += `\n\n--- service_flow_fallback_synthesis_started ---`;
+
+  const fallback = await runServiceFlowProposalFallbackSynthesisOpenAI({
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+    ideationAssets: input.ideationAssets,
+    userMessage: input.userMessage,
+    currentFlow: input.currentFlow,
+    recentMessages: input.recentMessages,
+    failureIssues: lastQualityIssues,
+    rejectedAssistantPreview: rejectedPack?.assistantMessage ?? "",
+    rejectedNextQuestion: rejectedPack?.nextQuestion ?? null,
+    rejectedUpdatedFlowPreview: JSON.stringify(rejectedPack?.updatedFlow ?? input.currentFlow ?? {}).slice(0, 2000),
+  });
+
+  promptTextSf += `\n\n--- service_flow_fallback_synthesis ---\n${fallback.promptText ?? ""}`;
+
+  if (fallback.ok) {
+    promptTextSf += `\n\n--- service_flow_fallback_synthesis_result_ok ---`;
+    const mergedAssistant = mergeServiceFlowUserFacingMessage(
+      fallback.data.assistantMessage,
+      fallback.data.nextQuestion,
+    );
+    return {
+      ok: true,
+      model: fallback.model,
+      promptText: promptTextSf,
+      proposalFallbackApplied: true,
+      recoveryFallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
+      data: {
+        assistantMessage: mergedAssistant,
+        updatedFlow: fallback.data.updatedFlow,
+        intent: fallback.data.intent as ServiceFlowAnalyzeIntent,
+        nextQuestion: fallback.data.nextQuestion,
+        quickReplies: fallback.data.quickReplies,
+        readiness: fallback.data.readiness,
+      },
+    };
+  }
+
+  promptTextSf += `\n\n--- service_flow_fallback_synthesis_result_failed ---\n${fallback.code}: ${fallback.message}`;
 
   return {
     ok: false,

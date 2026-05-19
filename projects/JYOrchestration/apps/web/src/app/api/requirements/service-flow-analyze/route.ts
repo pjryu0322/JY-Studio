@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     const promptTrace = buildSingleChatPromptTimelineEntry({
       action: "serviceFlowAnalyze",
-      source: "llm",
+      source: result.proposalFallbackApplied ? "fallback" : "llm",
       timelineStage: agentCtx.timelineStage,
       stageGroup: agentCtx.stageGroup,
       workspaceScreenKey: agentCtx.workspaceScreenKey,
@@ -109,6 +109,12 @@ export async function POST(request: NextRequest) {
       model: result.model,
       provider: "openai",
       createdAtIso: new Date().toISOString(),
+      ...(result.proposalFallbackApplied
+        ? {
+            routingDecision: "service_flow_proposal_fallback_synthesis",
+            fallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
+          }
+        : {}),
     });
 
     return NextResponse.json({ success: true, data: result.data, meta: { model: result.model, promptTrace } });
