@@ -3,6 +3,11 @@ import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsS
 import { quickRepliesForConversationState } from "@/lib/requirements/serviceFlowConversationState";
 import { buildServiceFlowReviewPresentation } from "@/lib/requirements/serviceFlowReviewPresentation";
 import {
+  finalizeServiceFlowAssistantForResponse,
+  resolveProposalPresentationVariantMode,
+} from "@/lib/requirements/serviceFlowAssistantPresentation";
+import { buildAlternativeProposalPayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import {
   buildServiceFlowApprovedTransitionMessage,
   classifyServiceFlowProposalDecision,
   shouldUseApprovedReviewReplayCompact,
@@ -72,6 +77,58 @@ describe("serviceFlowProposalDecision phase10", () => {
     expect(r?.quickReplies).not.toContain("흐름 검토하기");
     expect(r?.quickReplies).toContain("흐름 승인하기");
     expect(r?.routingDecision).toBe("proposal_apply_enter_review");
+  });
+
+  it("APPLY + alternative payload(steps만) — hydrate 후 검토 메시지, 대안 intro 없음", () => {
+    const primary = sampleFlow();
+    const alt = {
+      ...sampleFlow(),
+      actors: [
+        { id: "a1", name: "편집자", kind: "human" as const, description: "" },
+        { id: "a2", name: "요약 생성기", kind: "system" as const, description: "" },
+      ],
+      steps: [
+        {
+          id: "s1",
+          title: "녹취 업로드",
+          purpose: "",
+          order: 1,
+          primaryActorId: "a1",
+          secondaryActorIds: [],
+          approved: false,
+          updatedAt: now,
+        },
+      ],
+    };
+    const payload = buildAlternativeProposalPayload({
+      baselineFlow: primary,
+      alternativeFlow: alt,
+      proposalId: "alt-apply-1",
+    });
+    const flowWithPayloadOnlySteps: RequirementsServiceFlowV1 = {
+      ...alt,
+      steps: [],
+      proposalVariantMode: "ALTERNATIVE",
+      alternativeProposalPayload: payload,
+    };
+    const r = tryServiceFlowProposalDecisionFastPath({
+      decision: "APPLY",
+      currentFlow: flowWithPayloadOnlySteps,
+    });
+    expect(r?.updatedFlow.steps?.length).toBeGreaterThan(0);
+    expect(r?.updatedFlow.proposalVariantMode).toBe("PRIMARY");
+    expect(r?.assistantMessage).toContain("검토 단계로 반영");
+    const presentationMode = resolveProposalPresentationVariantMode({
+      proposalDecision: "APPLY",
+      flowVariantMode: "ALTERNATIVE",
+    });
+    const finalized = finalizeServiceFlowAssistantForResponse({
+      assistantMessage: r!.assistantMessage,
+      nextQuestion: null,
+      quickReplies: r!.quickReplies,
+      proposalVariantMode: presentationMode,
+    });
+    expect(finalized).not.toMatch(/기존\s*초안과\s*다른\s*방향의\s*대안을\s*제시/);
   });
 
   it("FLOW_APPROVE → APPROVED profile (흐름 검토하기 제거)", () => {

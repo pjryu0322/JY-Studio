@@ -27,6 +27,7 @@ import {
 } from "@/lib/requirements/serviceFlowProposalDecision";
 import {
   ALTERNATIVE_CANVAS_QUICK_REPLIES,
+  mergeQuickRepliesWithAlternativeCanvasReopen,
   type AlternativeProposalPayloadWire,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
@@ -119,7 +120,13 @@ export function useServiceFlowWorkshopChat({
   const [replying, setReplying] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
   const [alternativeCanvasOpen, setAlternativeCanvasOpen] = useState(false);
+  const [pendingStatusLabel, setPendingStatusLabel] = useState<string | null>(null);
   const alternativePayloadRef = useRef<AlternativeProposalPayloadWire | null>(null);
+
+  const clearReplyingState = useCallback(() => {
+    setReplying(false);
+    setPendingStatusLabel(null);
+  }, []);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
@@ -197,6 +204,21 @@ export function useServiceFlowWorkshopChat({
       if (workspaceMode !== "chat") return;
       const body = userMessageText.trim();
       if (!body) return;
+      const quickActionLabelEarly = String(opts?.quickActionLabel ?? "").trim();
+      const pendingDecision = quickActionLabelEarly
+        ? classifyServiceFlowProposalDecision(quickActionLabelEarly)
+        : null;
+      if (pendingDecision === "ALTERNATIVE") {
+        setPendingStatusLabel("다른 대안을 생성하고 있습니다…");
+      } else if (pendingDecision === "APPLY") {
+        setPendingStatusLabel("추천안을 반영하고 있습니다…");
+      } else if (pendingDecision === "REVIEW_FLOW") {
+        setPendingStatusLabel("흐름을 정리하고 있습니다…");
+      } else if (quickActionLabelEarly) {
+        setPendingStatusLabel("요청을 처리하고 있습니다…");
+      } else {
+        setPendingStatusLabel("AI 기획자가 응답을 준비하고 있습니다…");
+      }
       setReplying(true);
       setQuickReplies(null);
 
@@ -279,7 +301,7 @@ export function useServiceFlowWorkshopChat({
             ]);
             if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-            setReplying(false);
+            clearReplyingState();
             return;
           }
 
@@ -296,7 +318,7 @@ export function useServiceFlowWorkshopChat({
               buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-            setReplying(false);
+            clearReplyingState();
             return;
           }
           onChangeFlowRef.current(nextFlow);
@@ -305,14 +327,17 @@ export function useServiceFlowWorkshopChat({
           const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 
-          const replies = Array.isArray(data.quickReplies)
-            ? data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
-            : [];
+          const replies = mergeQuickRepliesWithAlternativeCanvasReopen(
+            Array.isArray(data.quickReplies)
+              ? data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean)
+              : [],
+            Boolean(nextFlow?.alternativeProposalPayload),
+          );
           if (!suppressVisible) setQuickReplies(replies.length ? replies : null);
           else setQuickReplies(null);
 
           if (suppressVisible) {
-            setReplying(false);
+            clearReplyingState();
             return;
           }
 
@@ -329,16 +354,16 @@ export function useServiceFlowWorkshopChat({
             }),
           ]);
           messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          setReplying(false);
+          clearReplyingState();
         } catch {
           autoScrollPendingRef.current = true;
           try {
             const errSlice = await onAppendRef.current([
-              buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+              buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           } finally {
-            setReplying(false);
+            clearReplyingState();
           }
         }
       })();
@@ -353,6 +378,7 @@ export function useServiceFlowWorkshopChat({
       ideationAssets,
       takeActorFlowHandoff,
       emitPromptTrace,
+      clearReplyingState,
     ],
   );
 
@@ -367,12 +393,25 @@ export function useServiceFlowWorkshopChat({
     }
   }, [flow?.alternativeProposalPayload]);
 
+  useEffect(() => {
+    if (!flow?.alternativeProposalPayload) return;
+    setQuickReplies((prev) =>
+      mergeQuickRepliesWithAlternativeCanvasReopen(prev ?? [], true),
+    );
+  }, [flow?.alternativeProposalPayload]);
+
+  const openAlternativeCanvas = useCallback(() => {
+    const payload =
+      flowRef.current?.alternativeProposalPayload ?? alternativePayloadRef.current;
+    if (!payload) return;
+    alternativePayloadRef.current = payload;
+    setAlternativeCanvasOpen(true);
+  }, []);
+
   const dispatchClientOnlyDecision = useCallback(
     (decision: ServiceFlowProposalDecision, _chip: string | null): boolean => {
       if (decision === "VIEW_ALTERNATIVE_DETAIL") {
-        const payload =
-          flowRef.current?.alternativeProposalPayload ?? alternativePayloadRef.current;
-        if (payload) setAlternativeCanvasOpen(true);
+        openAlternativeCanvas();
         return true;
       }
       if (decision === "KEEP_PRIMARY") {
@@ -391,7 +430,7 @@ export function useServiceFlowWorkshopChat({
       }
       return false;
     },
-    [],
+    [openAlternativeCanvas],
   );
 
   const sendMessage = useCallback(
@@ -488,7 +527,7 @@ export function useServiceFlowWorkshopChat({
           ]);
           if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          setReplying(false);
+          clearReplyingState();
           return;
         }
         const organizedFlow = result.data.updatedFlow;
@@ -503,13 +542,13 @@ export function useServiceFlowWorkshopChat({
         const okSlice = await onAppendRef.current([buildServiceFlowAiPersist(organizeBody)]);
         messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setWorkspaceMode("summary");
-        setReplying(false);
+        clearReplyingState();
       } catch {
         try {
           const errSlice = await onAppendRef.current([buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요.")]);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         } finally {
-          setReplying(false);
+          clearReplyingState();
         }
       }
     })();
@@ -631,6 +670,7 @@ export function useServiceFlowWorkshopChat({
     input,
     setInput,
     replying,
+    pendingStatusLabel,
     quickReplies,
     setQuickReplies,
     latestAiQuestion,
@@ -648,6 +688,7 @@ export function useServiceFlowWorkshopChat({
     alternativeCanvasOpen,
     alternativeCanvasPayload,
     closeAlternativeCanvas,
+    openAlternativeCanvas,
     applyAlternativeFromCanvas,
     keepPrimaryFromCanvas,
     regenerateAlternativeFromCanvas,

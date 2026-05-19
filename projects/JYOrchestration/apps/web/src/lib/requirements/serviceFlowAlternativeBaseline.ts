@@ -9,6 +9,7 @@ import {
   extractWorkflowFromProposalText,
 } from "@/lib/requirements/crossStageProposalDedupe";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 export type AlternativeBaselineSource =
   | "currentFlow"
@@ -106,16 +107,19 @@ export function resolveAlternativeBaseline(input: {
   readonly nowIso?: string;
 }): AlternativeBaseline | null {
   const nowIso = input.nowIso ?? new Date().toISOString();
+  const currentFlow = input.currentFlow
+    ? hydrateServiceFlowStepsFromAlternativePayload(input.currentFlow)
+    : null;
 
-  if (input.currentFlow && flowHasUsableSteps(input.currentFlow)) {
+  if (currentFlow && flowHasUsableSteps(currentFlow)) {
     return {
       source: "currentFlow",
-      flow: input.currentFlow,
-      referenceText: buildFlowReferenceText(input.currentFlow),
+      flow: currentFlow,
+      referenceText: buildFlowReferenceText(currentFlow),
     };
   }
 
-  const accepted = String(input.currentFlow?.acceptedProposalSnapshot ?? "").trim();
+  const accepted = String(currentFlow?.acceptedProposalSnapshot ?? "").trim();
   if (accepted) {
     const fromAccepted = buildRequirementsServiceFlowFromProposalText(accepted, nowIso);
     if (fromAccepted) {
@@ -152,11 +156,11 @@ export function resolveAlternativeBaseline(input: {
     }
   }
 
-  if (input.currentFlow && (input.currentFlow.actors?.length || input.currentFlow.steps?.length)) {
+  if (currentFlow && (currentFlow.actors?.length || currentFlow.steps?.length)) {
     return {
       source: "currentFlow",
-      flow: input.currentFlow,
-      referenceText: buildFlowReferenceText(input.currentFlow),
+      flow: currentFlow,
+      referenceText: buildFlowReferenceText(currentFlow),
     };
   }
 

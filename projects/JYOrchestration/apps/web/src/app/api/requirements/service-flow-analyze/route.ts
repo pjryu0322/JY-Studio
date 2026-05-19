@@ -5,7 +5,11 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
-import { finalizeServiceFlowAssistantForResponse } from "@/lib/requirements/serviceFlowAssistantPresentation";
+import {
+  finalizeServiceFlowAssistantForResponse,
+  resolveProposalPresentationVariantMode,
+} from "@/lib/requirements/serviceFlowAssistantPresentation";
+import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import { runServiceFlowAlternativeProposalTurn } from "@/lib/requirements/serviceFlowAlternativeProposal";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import { resolveServiceFlowVisiblePresentation } from "@/lib/requirements/crossStageProposalDedupe";
@@ -70,7 +74,7 @@ function buildAnalyzeSuccessResponse(input: {
 }) {
   let assistantMessage = input.parsed.assistantMessage;
   let nextQuestion = input.parsed.nextQuestion;
-  let updatedFlow = input.parsed.updatedFlow;
+  let updatedFlow = hydrateServiceFlowStepsFromAlternativePayload(input.parsed.updatedFlow);
   let quickReplies = input.parsed.quickReplies;
 
   if (
@@ -118,14 +122,15 @@ function buildAnalyzeSuccessResponse(input: {
       : presentation.mode;
 
   const responseQuickReplies = presentation.visibleQuickReplies ?? quickReplies;
-  const variantMode =
-    updatedFlow.proposalVariantMode ??
-    (input.proposalDecision === "ALTERNATIVE" ? "ALTERNATIVE" : "PRIMARY");
+  const presentationVariantMode = resolveProposalPresentationVariantMode({
+    proposalDecision: input.proposalDecision,
+    flowVariantMode: updatedFlow.proposalVariantMode ?? null,
+  });
   const finalAssistant = finalizeServiceFlowAssistantForResponse({
     assistantMessage: mergedAssistant,
     nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
     quickReplies: responseQuickReplies,
-    proposalVariantMode: variantMode,
+    proposalVariantMode: presentationVariantMode,
   });
 
   const promptTrace = buildSingleChatPromptTimelineEntry({

@@ -24,6 +24,7 @@ import {
   ALTERNATIVE_CANVAS_QUICK_REPLIES,
   buildAlternativeCompactAssistantMessage,
   buildAlternativeProposalPayload,
+  hydrateServiceFlowStepsFromAlternativePayload,
   type AlternativeProposalPayloadWire,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
@@ -183,13 +184,13 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
         proposalVariantMode: "ALTERNATIVE",
       });
 
-      const updatedFlow = {
+      const updatedFlow = hydrateServiceFlowStepsFromAlternativePayload({
         ...markFlowAsAlternativeProposalVariant(result.data.updatedFlow, {
           previousFlow,
           deltaScore,
         }),
         alternativeProposalPayload,
-      };
+      });
 
       return {
         ok: true,
@@ -233,13 +234,13 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
       quickReplies,
       proposalVariantMode: "ALTERNATIVE",
     });
-    const updatedFlow = {
+    const updatedFlow = hydrateServiceFlowStepsFromAlternativePayload({
       ...markFlowAsAlternativeProposalVariant(last.data.updatedFlow, {
         previousFlow,
         deltaScore,
       }),
       alternativeProposalPayload,
-    };
+    });
     return {
       ok: true,
       data: {

@@ -100,6 +100,26 @@ export function applyQuickReplyAwareAssistantPresentation(
   return text.trim();
 }
 
+/** 채팅 표시용 variant — APPLY 등 상태 전환 시 flow의 ALTERNATIVE 플래그로 intro가 붙지 않게 한다 */
+export function resolveProposalPresentationVariantMode(input: {
+  readonly proposalDecision?: string | null;
+  readonly flowVariantMode?: ProposalVariantMode | null;
+}): ProposalVariantMode {
+  const decision = String(input.proposalDecision ?? "")
+    .trim()
+    .toUpperCase();
+  if (decision === "ALTERNATIVE") return "ALTERNATIVE";
+  if (
+    decision === "APPLY" ||
+    decision === "FLOW_APPROVE" ||
+    decision === "REVIEW_FLOW" ||
+    decision === "FEATURE_DETAIL"
+  ) {
+    return "PRIMARY";
+  }
+  return input.flowVariantMode === "ALTERNATIVE" ? "ALTERNATIVE" : "PRIMARY";
+}
+
 export function finalizeServiceFlowAssistantForResponse(input: {
   readonly assistantMessage: string;
   readonly nextQuestion: string | null | undefined;

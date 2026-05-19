@@ -24,6 +24,12 @@ import {
   type ServiceFlowReviewDepth,
 } from "@/lib/requirements/serviceFlowConversationState";
 import { buildServiceFlowReviewPresentation } from "@/lib/requirements/serviceFlowReviewPresentation";
+import {
+  hydrateServiceFlowStepsFromAlternativePayload,
+  mergeQuickRepliesWithAlternativeCanvasReopen,
+  REOPEN_ALTERNATIVE_CANVAS_LABEL,
+} from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 
 export type ServiceFlowProposalDecision =
   | ProposalDecision
@@ -93,7 +99,8 @@ export function resolveServiceFlowProposalDecision(input: {
 
 export function serviceFlowHasReviewableState(flow: RequirementsServiceFlowV1 | null): boolean {
   if (!flow) return false;
-  return (flow.actors?.length ?? 0) >= 1 && (flow.steps?.length ?? 0) >= 1;
+  const hydrated = hydrateServiceFlowStepsFromAlternativePayload(flow);
+  return (hydrated.actors?.length ?? 0) >= 1 && (hydrated.steps?.length ?? 0) >= 1;
 }
 
 export function buildServiceFlowStateSummaryMessage(input: {
@@ -112,12 +119,15 @@ export function buildServiceFlowStateSummaryMessage(input: {
 export function buildServiceFlowEnterReviewMessage(input: {
   readonly flow: RequirementsServiceFlowV1;
 }): string {
-  return buildServiceFlowReviewPresentation({
-    flow: input.flow,
+  const flow = hydrateServiceFlowStepsFromAlternativePayload(input.flow);
+  const body = buildServiceFlowReviewPresentation({
+    flow,
     depth: "summary",
     heading: "추천안을 서비스 흐름 검토 단계로 반영했습니다.",
     cta: "다음: 흐름 상세 검토 후 승인하거나 일부 수정할 수 있습니다.",
   });
+  if (!flow.alternativeProposalPayload) return body;
+  return `${body}\n\n**${REOPEN_ALTERNATIVE_CANVAS_LABEL}**에서 기존안과의 비교를 다시 확인할 수 있습니다.`;
 }
 
 export function buildServiceFlowApprovedTransitionMessage(input: {
@@ -313,12 +323,14 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
   readonly nowIso?: string;
 }): ServiceFlowDecisionFastPathResult | null {
   const nowIso = input.nowIso ?? new Date().toISOString();
-  const baseFlow: RequirementsServiceFlowV1 = input.currentFlow ?? {
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    actors: [],
-    steps: [],
-  };
+  const baseFlow: RequirementsServiceFlowV1 = hydrateServiceFlowStepsFromAlternativePayload(
+    input.currentFlow ?? {
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      actors: [],
+      steps: [],
+    },
+  );
   const stateBefore = resolveServiceFlowConversationState(baseFlow);
 
   if (input.decision === "REVIEW_FLOW") {
@@ -376,11 +388,17 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
     if (!serviceFlowHasReviewableState(baseFlow)) return null;
     const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
     const flowReview = withServiceFlowConversationState(
-      {
-        ...baseFlow,
-        acceptedProposalSnapshot: snapshot.slice(0, 8000) || null,
-        lastProposalDecision: "APPLY",
-      },
+      markFlowAsPrimaryProposalVariant(
+        {
+          ...baseFlow,
+          acceptedProposalSnapshot: snapshot.slice(0, 8000) || null,
+          lastProposalDecision: "APPLY",
+          ...(baseFlow.alternativeProposalPayload
+            ? { alternativeProposalPayload: baseFlow.alternativeProposalPayload }
+            : {}),
+        },
+        nowIso,
+      ),
       "REVIEW",
       nowIso,
     );
@@ -388,7 +406,10 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
     return buildFastPathResult({
       assistantMessage,
       updatedFlow: flowReview,
-      quickReplies: quickRepliesForConversationState("REVIEW"),
+      quickReplies: mergeQuickRepliesWithAlternativeCanvasReopen(
+        quickRepliesForConversationState("REVIEW"),
+        Boolean(flowReview.alternativeProposalPayload),
+      ),
       intent: "unclear",
       routingDecision: "proposal_apply_enter_review",
       timelineAction: "proposalDecisionApply",

@@ -23,6 +23,9 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   chatMessages: readonly RequirementsMessage[];
   participantAiMemberId: WorkspaceAiMemberId;
   aiInvokePending: boolean;
+  /** service-flow analyze API 대기(통합 채팅 typing/busy 연동) */
+  serviceFlowAnalyzePending?: boolean;
+  serviceFlowPendingStatusLabel?: string | null;
   /** SingleChat 입력·하네스 라우팅용 내부 단계 */
   serviceDesignStage: RequirementsWorkspaceStage;
   /** 채팅 헤더 참가자 배지(통합 화면에서는 항상 전달 권장) */
@@ -72,6 +75,8 @@ export function RequirementsIdeationChatPanel({
   chatMessages,
   participantAiMemberId,
   aiInvokePending,
+  serviceFlowAnalyzePending = false,
+  serviceFlowPendingStatusLabel = null,
   serviceDesignStage,
   memberControls,
   proposalReadinessPercentVal,
@@ -165,7 +170,7 @@ export function RequirementsIdeationChatPanel({
         textAreaRef={composerTextAreaRef}
         value={input}
         onChange={onInputChange}
-        busy={busy || aiInvokePending}
+        busy={busy || aiInvokePending || serviceFlowAnalyzePending}
         disabled={false}
         placeholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
@@ -188,9 +193,16 @@ export function RequirementsIdeationChatPanel({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
-        typingIndicator={aiInvokePending}
-        typingIndicatorSpeakerLine={typingIndicatorSpeakerLine}
-        typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
+        typingIndicator={aiInvokePending || serviceFlowAnalyzePending}
+        typingIndicatorSpeakerLine={
+          serviceFlowAnalyzePending
+            ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
+              "AI 기획자가 응답을 준비하고 있습니다…"
+            : typingIndicatorSpeakerLine
+        }
+        typingIndicatorResolvedSpeakerSource={
+          serviceFlowAnalyzePending ? "service-flow-analyze" : typingIndicatorResolvedSpeakerSource
+        }
         sessionUserDisplayName={sessionUserDisplayName}
         memberControls={memberControls}
         promptTimeline={promptTimeline}

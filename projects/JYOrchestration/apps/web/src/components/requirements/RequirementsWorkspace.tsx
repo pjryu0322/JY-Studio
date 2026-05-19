@@ -1803,6 +1803,10 @@ export function RequirementsWorkspace({
     setConversationAiInsight(null);
     setConversationAiSummaryError(null);
   }, [conversationAiInsight, insertComposerPrompt]);
+
+  const serviceFlowChatPending =
+    activeStage === "service-flow" && serviceFlowAlternativeCanvas.replying;
+
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
       <RequirementsIdeationChatPanel
@@ -1811,6 +1815,8 @@ export function RequirementsWorkspace({
         chatMessages={conversationMessages}
         participantAiMemberId={participantAiMemberId}
         aiInvokePending={aiInvokePending}
+        serviceFlowAnalyzePending={serviceFlowChatPending}
+        serviceFlowPendingStatusLabel={serviceFlowAlternativeCanvas.pendingStatusLabel}
         serviceDesignStage={activeStage}
         proposalReadinessPercentVal={proposalReadinessPercentVal}
         problemInterviewCovered={problemInterviewCovered}
@@ -1839,7 +1845,7 @@ export function RequirementsWorkspace({
         input={input}
         onInputChange={setInput}
         onSendIdeation={handleServiceDesignComposerSend}
-        busy={busy}
+        busy={busy || serviceFlowChatPending}
         composerPlaceholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
         onOrganizeRequirements={() => void onOrganizeRequirements()}

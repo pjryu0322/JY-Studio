@@ -78,9 +78,11 @@ export function useServiceFlowSingleChatBridge(params: {
     alternativeCanvasOpen: workshop.alternativeCanvasOpen,
     alternativeCanvasPayload: workshop.alternativeCanvasPayload,
     closeAlternativeCanvas: workshop.closeAlternativeCanvas,
+    openAlternativeCanvas: workshop.openAlternativeCanvas,
     applyAlternativeFromCanvas: workshop.applyAlternativeFromCanvas,
     keepPrimaryFromCanvas: workshop.keepPrimaryFromCanvas,
     regenerateAlternativeFromCanvas: workshop.regenerateAlternativeFromCanvas,
     replying: workshop.replying,
+    pendingStatusLabel: workshop.pendingStatusLabel,
   };
 }

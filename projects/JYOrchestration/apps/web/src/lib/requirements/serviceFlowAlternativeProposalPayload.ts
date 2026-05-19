@@ -47,11 +47,76 @@ export type AlternativeProposalPayloadWire = Readonly<{
   baselineFlow: RequirementsServiceFlowV1;
 }>;
 
+export const REOPEN_ALTERNATIVE_CANVAS_LABEL = "대안 상세 보기";
+
 export const ALTERNATIVE_CANVAS_QUICK_REPLIES = [
-  "대안 상세 보기",
+  REOPEN_ALTERNATIVE_CANVAS_LABEL,
   "이 대안 적용",
   "다른 대안 다시 생성",
 ] as const;
+
+/** payload가 있으면 검토 단계 chip에도 대안 Canvas 재오픈 버튼을 보장한다 */
+function wireActorToFull(wire: AlternativeProposalActorWire): RequirementsServiceFlowActorV1 {
+  return { id: wire.id, name: wire.name, kind: wire.kind, description: "" };
+}
+
+function wireStepToFull(
+  wire: AlternativeProposalStepWire,
+  actors: readonly RequirementsServiceFlowActorV1[],
+  now: string,
+): RequirementsServiceFlowStepV1 {
+  const primary =
+    actors.find((a) => a.kind === "human") ?? actors[0];
+  return {
+    id: wire.id,
+    title: wire.title,
+    purpose: wire.title,
+    order: wire.order,
+    primaryActorId: primary?.id ?? "",
+    secondaryActorIds: [],
+    approved: false,
+    updatedAt: now,
+  };
+}
+
+/** root flow.steps가 비어 있고 alternativeProposalPayload에만 단계가 있을 때 동기화 */
+export function hydrateServiceFlowStepsFromAlternativePayload(
+  flow: RequirementsServiceFlowV1,
+): RequirementsServiceFlowV1 {
+  if ((flow.steps?.length ?? 0) >= 1) return flow;
+  const payload = flow.alternativeProposalPayload;
+  if (!payload?.steps?.length) return flow;
+
+  const now = flow.updatedAt ?? new Date().toISOString();
+  const actors: RequirementsServiceFlowActorV1[] =
+    (flow.actors?.length ?? 0) >= 1
+      ? flow.actors
+      : payload.actors.map(wireActorToFull);
+
+  const steps = [...payload.steps]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => wireStepToFull(s, actors, now))
+    .filter((s) => s.primaryActorId);
+
+  if (!steps.length) return flow;
+  return { ...flow, actors, steps, updatedAt: now };
+}
+
+export function mergeQuickRepliesWithAlternativeCanvasReopen(
+  quickReplies: readonly string[],
+  hasAlternativePayload: boolean,
+  maxItems = 4,
+): string[] {
+  const normalized = quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean);
+  if (!hasAlternativePayload) return normalized.slice(0, maxItems);
+
+  const out: string[] = [REOPEN_ALTERNATIVE_CANVAS_LABEL];
+  for (const label of normalized) {
+    if (label === REOPEN_ALTERNATIVE_CANVAS_LABEL || out.includes(label)) continue;
+    out.push(label);
+  }
+  return out.slice(0, maxItems);
+}
 
 function norm(s: string): string {
   return String(s ?? "")

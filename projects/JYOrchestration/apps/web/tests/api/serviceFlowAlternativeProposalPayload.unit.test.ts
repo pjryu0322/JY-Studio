@@ -4,7 +4,10 @@ import {
   buildAlternativeCompactAssistantMessage,
   buildAlternativeProposalPayload,
   computeAlternativeProposalComparison,
+  hydrateServiceFlowStepsFromAlternativePayload,
   inferAlternativeDirectionLabel,
+  mergeQuickRepliesWithAlternativeCanvasReopen,
+  REOPEN_ALTERNATIVE_CANVAS_LABEL,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 const now = "2026-05-19T00:00:00.000Z";
@@ -47,6 +50,36 @@ describe("serviceFlowAlternativeProposalPayload phase13", () => {
       baseFlow(["A", "검토 요청", "승인"], ["사용자", "검토자"]),
     );
     expect(inferAlternativeDirectionLabel(comp)).toBe("협업·검토 강화형");
+  });
+
+  it("mergeQuickRepliesWithAlternativeCanvasReopen — 검토 chip에 재오픈 보장", () => {
+    const merged = mergeQuickRepliesWithAlternativeCanvasReopen(
+      ["흐름 승인하기", "단계 수정하기"],
+      true,
+    );
+    expect(merged[0]).toBe(REOPEN_ALTERNATIVE_CANVAS_LABEL);
+    expect(merged).toContain("흐름 승인하기");
+  });
+
+  it("hydrateServiceFlowStepsFromAlternativePayload — root steps 비어 있어도 payload에서 복원", () => {
+    const baseline = baseFlow(["업로드", "정리"], ["사용자", "시스템"]);
+    const alt = baseFlow(["업로드", "검토 요청", "확정"], ["사용자", "검토자"]);
+    const payload = buildAlternativeProposalPayload({
+      baselineFlow: baseline,
+      alternativeFlow: alt,
+      proposalId: "alt-hydrate-1",
+    });
+    const flowOnlyActors: RequirementsServiceFlowV1 = {
+      createdAt: now,
+      updatedAt: now,
+      actors: alt.actors,
+      steps: [],
+      alternativeProposalPayload: payload,
+      proposalVariantMode: "ALTERNATIVE",
+    };
+    const hydrated = hydrateServiceFlowStepsFromAlternativePayload(flowOnlyActors);
+    expect(hydrated.steps?.length).toBe(3);
+    expect(hydrated.steps?.[0]?.primaryActorId).toBeTruthy();
   });
 
   it("buildAlternativeProposalPayload + compact assistant — dump 없음", () => {
