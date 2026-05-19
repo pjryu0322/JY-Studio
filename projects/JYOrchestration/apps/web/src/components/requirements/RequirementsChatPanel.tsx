@@ -7,6 +7,7 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
+import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   parseIdeationDeliverableChatPayload,
@@ -556,6 +557,11 @@ export function RequirementsChatPanel({
                 !isErr &&
                 // 기존 인터뷰 턴뿐 아니라, 모든 AI 응답에 quick action chip을 허용한다.
                 true;
+              const showBootstrapProposalPlain =
+                !deliverPayload &&
+                !isErr &&
+                (m.meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE ||
+                  hasProposalFirstStructure(text));
               const aiBody = deliverPayload ? (
                 <WorkspaceResultCard
                   payload={deliverPayload}
@@ -565,6 +571,8 @@ export function RequirementsChatPanel({
                   onRegenerate={(types) => onRegenerateDeliverables?.(types)}
                   onConfirm={(ids) => onConfirmDeliverables?.(ids)}
                 />
+              ) : showBootstrapProposalPlain ? (
+                <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, whiteSpace: "pre-wrap" }}>{text}</div>
               ) : (
                 <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
               );

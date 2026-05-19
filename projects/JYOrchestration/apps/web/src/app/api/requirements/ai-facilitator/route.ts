@@ -18,6 +18,7 @@ import {
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
+import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
   buildIdeationBootstrapDescriptionProposalSkeleton,
   buildSingleChatPromptTimelineEntry,
@@ -177,6 +178,11 @@ export async function POST(request: NextRequest) {
         projectName,
         projectDescription,
       });
+    const bootstrapFallbackUserReply = (failed: { responseText?: string }): string => {
+      const responseText = String(failed.responseText ?? "").trim();
+      if (responseText && hasProposalFirstStructure(responseText)) return responseText;
+      return contextualBootstrapFallbackQuestion();
+    };
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const quickActionLabel = typeof body.quickActionLabel === "string" ? String(body.quickActionLabel).trim() : "";
@@ -659,6 +665,9 @@ export async function POST(request: NextRequest) {
           { status: 503 }
         );
       }
+      const bootstrapFailureDisplayReply = bootstrapFallbackUserReply({
+        responseText: String((result as { responseText?: string }).responseText ?? ""),
+      });
       return NextResponse.json({
         success: false,
         code: result.code,
@@ -666,6 +675,7 @@ export async function POST(request: NextRequest) {
         ...(bootstrapInterview
           ? {
               data: {
+                reply: bootstrapFailureDisplayReply,
                 ...(orchPayload ? { singleChatOrchestrationV1: orchPayload } : {}),
                 promptTrace: buildSingleChatPromptTimelineEntry({
                   action: "bootstrapInterview",
@@ -675,16 +685,17 @@ export async function POST(request: NextRequest) {
                   workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
                   selectedAgents: agentCtxBootstrap.selectedAgents,
                   promptText: String((result as any).promptText ?? "").trim() || undefined,
-                  responseText: String((result as any).responseText ?? "").trim() || undefined,
+                  responseText: bootstrapFailureDisplayReply,
                   model: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
                   actualModel: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
                   configuredModelOverride: configuredModelOverrideBoot,
                   provider: String((result as any).provider ?? "").trim() || "openai",
                   createdAtIso: String((result as any).calledAt ?? "").trim() || new Date().toISOString(),
                   error: `${result.code}: ${result.message}`,
-                  fallbackText: contextualBootstrapFallbackQuestion(),
+                  fallbackText: bootstrapFailureDisplayReply,
                   fallback: true,
                   orchestratorAgent: "planner",
+                  interviewQuestion: bootstrapFailureDisplayReply,
                   routingDecision: "bootstrap_proposal_skeleton_fallback",
                   fallbackReason: String((result as any).fallbackReason ?? "").trim() || String(result.code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
                   rawResponseText: String((result as any).rawResponseText ?? "") || undefined,

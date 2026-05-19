@@ -42,7 +42,10 @@ import {
 } from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
-import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE, sanitizeIdeationInterviewFirstQuestion } from "@/lib/requirements/ideationInterviewBootstrap";
+import {
+  IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
+  normalizeIdeationBootstrapDisplayMessage,
+} from "@/lib/requirements/ideationInterviewBootstrap";
 import {
   emptyProblemInterviewState,
   problemInterviewStateFromBootstrapSeedWire,
@@ -1019,13 +1022,21 @@ export function RequirementsWorkspace({
           projectType: project.projectType ?? "",
         };
         const contextualFb = buildIdeationBootstrapContextualFallbackQuestion(bootCtx);
-        const okReply = res.ok && json.success && String(json.data?.reply ?? "").trim();
+        const rawTraceEarly =
+          (json.data as { promptTrace?: unknown } | undefined)?.promptTrace ??
+          (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
+        const traceEarly = coerceBootstrapPromptTrace(rawTraceEarly);
+        const replyFromApi = String(json.data?.reply ?? "").trim();
+        const replyFromTrace = String(
+          traceEarly?.responseText ?? traceEarly?.interviewQuestion ?? traceEarly?.fallbackText ?? "",
+        ).trim();
+        const resolvedReply = replyFromApi || replyFromTrace;
+        const okReply = res.ok && json.success && Boolean(resolvedReply);
         const fallbackReason =
           okReply
             ? undefined
             : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
-        const raw = okReply ? String(json.data?.reply) : "";
-        const bodyText = sanitizeIdeationInterviewFirstQuestion(okReply ? raw : contextualFb);
+        const bodyText = normalizeIdeationBootstrapDisplayMessage(resolvedReply || contextualFb);
         if (cancelled) return;
         const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
         const apiRawSug = json.data?.interviewSuggestions;
@@ -1053,7 +1064,7 @@ export function RequirementsWorkspace({
             fallbackReason: fallbackReason ?? "UNKNOWN_BOOTSTRAP_ERROR",
             provider: "fallback",
             fallbackText: bodyText,
-            routingDecision: "bootstrap_contextual_fallback_http",
+            routingDecision: "bootstrap_proposal_skeleton_fallback_http",
             interviewQuestion: bodyText,
             interviewSuggestions: bootInterviewChips,
             interviewSuggestionsSource: bootSugSource,
@@ -1085,7 +1096,7 @@ export function RequirementsWorkspace({
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
           const persistFailCtx = buildIdeationBootstrapContextualFallbackQuestion(bootCtx);
-          const persistFailBody = sanitizeIdeationInterviewFirstQuestion(persistFailCtx);
+          const persistFailBody = normalizeIdeationBootstrapDisplayMessage(persistFailCtx);
           const persistFailSug: string[] = [];
           const persistFailSugSrc: "llm" | "empty" = persistFailSug.length ? "llm" : "empty";
           await persistFirstQuestion({
@@ -1116,7 +1127,7 @@ export function RequirementsWorkspace({
           projectType: project.projectType ?? "",
         };
         const excCtx = buildIdeationBootstrapContextualFallbackQuestion(excBootCtx);
-        const bodyText = sanitizeIdeationInterviewFirstQuestion(excCtx);
+        const bodyText = normalizeIdeationBootstrapDisplayMessage(excCtx);
         const excSug: string[] = [];
         const excSugSrc: "llm" | "empty" = excSug.length ? "llm" : "empty";
         await persistFirstQuestion({
