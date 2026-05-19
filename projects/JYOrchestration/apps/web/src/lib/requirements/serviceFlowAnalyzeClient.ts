@@ -21,9 +21,14 @@ export type ServiceFlowAnalyzeRequestBody = {
   /** ideation→service-flow 자동 handoff (silentUserAppend) */
   readonly autoHandoff?: boolean;
   readonly quickActionLabel?: string;
+  readonly proposalDecision?: string;
 };
 
-export type ServiceFlowVisibleMode = "visible_proposal" | "handoff_state_only" | "visible_delta";
+export type ServiceFlowVisibleMode =
+  | "visible_proposal"
+  | "handoff_state_only"
+  | "visible_delta"
+  | "state_transition";
 
 export type ServiceFlowAnalyzeSuccessData = {
   assistantMessage?: string;
@@ -34,6 +39,8 @@ export type ServiceFlowAnalyzeSuccessData = {
   visibleMode?: ServiceFlowVisibleMode;
   visibleMessageSuppressed?: boolean;
   suppressReason?: string;
+  proposalDecision?: string;
+  acceptedProposalSnapshot?: string | null;
 };
 
 export type ServiceFlowAnalyzeMeta = {

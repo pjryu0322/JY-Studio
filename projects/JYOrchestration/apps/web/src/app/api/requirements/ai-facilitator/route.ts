@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
       "ALTERNATIVE",
       "DIRECT_INPUT",
       "HOLD",
+      "REVIEW_FLOW",
     ]);
     const proposalDecision: ProposalDecision | null = PROPOSAL_DECISIONS.has(proposalDecisionRaw as ProposalDecision)
       ? (proposalDecisionRaw as ProposalDecision)

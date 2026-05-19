@@ -30,7 +30,13 @@
    readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
    /** expose send executor to parent without UI mount */
    readonly serviceFlowSendRef?: {
-     current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null;
+     current:
+       | ((
+           payload: ServiceDesignHarnessPayload,
+           text: string,
+           quickActionLabel?: string | null,
+         ) => void | Promise<void>)
+       | null;
    };
  }) {
    const [workspaceMode, setWorkspaceMode] = useState<ServiceFlowWorkspaceMode>("chat");
@@ -60,8 +66,8 @@
    useEffect(() => {
      const ref = params.serviceFlowSendRef;
      if (!ref) return;
-     ref.current = async (payload, text) => {
-       workshop.sendMessage(payload, text);
+     ref.current = async (payload, text, quickActionLabel) => {
+       workshop.sendMessage(payload, text, quickActionLabel);
      };
      return () => {
        if (ref.current) ref.current = null;

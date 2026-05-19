@@ -21,6 +21,7 @@ import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requir
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { consumeWorkspaceAiScreenHandoff, peekWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import { shouldSuppressServiceFlowVisibleFromResponse } from "@/lib/requirements/crossStageProposalDedupe";
+import { classifyServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
 import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
@@ -155,7 +156,12 @@ export function useServiceFlowWorkshopChat({
   const callAnalyze = useCallback(
     (
       userMessageText: string,
-      opts?: { silentUserAppend?: boolean; harness?: ServiceDesignHarnessPayload; responsePolicy?: unknown }
+      opts?: {
+        silentUserAppend?: boolean;
+        harness?: ServiceDesignHarnessPayload;
+        responsePolicy?: unknown;
+        quickActionLabel?: string | null;
+      }
     ) => {
       if (workspaceMode !== "chat") return;
       const body = userMessageText.trim();
@@ -198,6 +204,10 @@ export function useServiceFlowWorkshopChat({
 
           const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
           const responsePolicy = harness.responsePolicy ?? opts?.responsePolicy ?? undefined;
+          const quickActionLabel = String(opts?.quickActionLabel ?? "").trim();
+          const proposalDecision = quickActionLabel
+            ? classifyServiceFlowProposalDecision(quickActionLabel)
+            : null;
 
           const result = await postServiceFlowAnalyze({
             projectId,
@@ -210,6 +220,8 @@ export function useServiceFlowWorkshopChat({
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
             ...(opts?.silentUserAppend ? { autoHandoff: true } : {}),
+            ...(quickActionLabel ? { quickActionLabel } : {}),
+            ...(proposalDecision ? { proposalDecision } : {}),
             serviceDesignStage: harness.stage,
             mentionedAI: harness.mentionedAI,
             ...(responsePolicy ? { responsePolicy } : {}),
@@ -306,13 +318,18 @@ export function useServiceFlowWorkshopChat({
   }, [callAnalyze]);
 
   const sendMessage = useCallback(
-    (harnessFromComposer?: ServiceDesignHarnessPayload, overrideText?: string) => {
+    (
+      harnessFromComposer?: ServiceDesignHarnessPayload,
+      overrideText?: string,
+      quickActionLabel?: string | null,
+    ) => {
       if (workspaceMode !== "chat") return;
       const body = (overrideText ?? input).trim();
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
+      const chip = String(quickActionLabel ?? "").trim() || null;
       setInput("");
-      callAnalyze(body, { harness: payload });
+      callAnalyze(body, { harness: payload, ...(chip ? { quickActionLabel: chip } : {}) });
       scrollChatToBottom();
     },
     [workspaceMode, input, callAnalyze, scrollChatToBottom]

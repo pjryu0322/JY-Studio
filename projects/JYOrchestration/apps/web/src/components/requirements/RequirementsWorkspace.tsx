@@ -1400,9 +1400,12 @@ export function RequirementsWorkspace({
   const runServiceFlowSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
+      const quickActionLabel = interviewSuggestionPickRef.current;
+      interviewSuggestionPickRef.current = null;
       await dispatchServiceFlowSingleChatSend({
         payload,
         text,
+        quickActionLabel,
         sendRefCurrent: serviceFlowSendRef.current,
         onAfterDispatch: () => setInput(""),
       });

@@ -251,7 +251,9 @@ export type RequirementsPromptTimelineEntry = {
   /** visible 억제 사유(예: duplicate_cross_stage_proposal) */
   suppressReason?: string;
   /** service-flow analyze visible mode */
-  serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta";
+  serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta" | "state_transition";
+  proposalDecision?: string;
+  llmCallSkipped?: boolean;
   /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
   fallbackReason?:
     | "NO_KEY"
@@ -511,6 +513,11 @@ export type RequirementsServiceFlowV1 = {
    * 키가 없으면 해당 슬롯은 아직 사용자가 위임하지 않은 것으로 본다.
    */
   checklistDeferrals?: Partial<Record<RequirementsServiceFlowChecklistKey, RequirementsServiceFlowChecklistDeferralKind>> | null;
+  /** 추천안 적용 등으로 확정된 proposal 스냅샷(표시·replay guard) */
+  acceptedProposalSnapshot?: string | null;
+  proposalAcceptedAt?: string | null;
+  lastProposalDecision?: string | null;
+  acceptedProposalFingerprint?: string | null;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -994,6 +1001,27 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     } else checklistDeferrals = undefined;
   }
 
+  const acceptedProposalSnapshot =
+    "acceptedProposalSnapshot" in o
+      ? o.acceptedProposalSnapshot === null
+        ? null
+        : typeof o.acceptedProposalSnapshot === "string"
+          ? o.acceptedProposalSnapshot.slice(0, 8000)
+          : undefined
+      : undefined;
+  const proposalAcceptedAt =
+    typeof o.proposalAcceptedAt === "string" && o.proposalAcceptedAt.trim()
+      ? o.proposalAcceptedAt.trim()
+      : undefined;
+  const lastProposalDecision =
+    typeof o.lastProposalDecision === "string" && o.lastProposalDecision.trim()
+      ? o.lastProposalDecision.trim().slice(0, 40)
+      : undefined;
+  const acceptedProposalFingerprint =
+    typeof o.acceptedProposalFingerprint === "string" && o.acceptedProposalFingerprint.trim()
+      ? o.acceptedProposalFingerprint.trim().slice(0, 80)
+      : undefined;
+
   return {
     createdAt,
     updatedAt,
@@ -1001,5 +1029,9 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     actors,
     ...(structureLockedAt !== undefined ? { structureLockedAt } : {}),
     ...(checklistDeferrals !== undefined ? { checklistDeferrals } : {}),
+    ...(acceptedProposalSnapshot !== undefined ? { acceptedProposalSnapshot } : {}),
+    ...(proposalAcceptedAt ? { proposalAcceptedAt } : {}),
+    ...(lastProposalDecision ? { lastProposalDecision } : {}),
+    ...(acceptedProposalFingerprint ? { acceptedProposalFingerprint } : {}),
   };
 }

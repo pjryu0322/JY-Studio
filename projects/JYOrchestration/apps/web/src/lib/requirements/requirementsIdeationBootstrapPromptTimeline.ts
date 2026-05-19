@@ -322,9 +322,14 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       : {}),
     ...(r.serviceFlowVisibleMode === "visible_proposal" ||
     r.serviceFlowVisibleMode === "handoff_state_only" ||
-    r.serviceFlowVisibleMode === "visible_delta"
+    r.serviceFlowVisibleMode === "visible_delta" ||
+    r.serviceFlowVisibleMode === "state_transition"
       ? { serviceFlowVisibleMode: r.serviceFlowVisibleMode }
       : {}),
+    ...(typeof r.proposalDecision === "string" && r.proposalDecision.trim()
+      ? { proposalDecision: r.proposalDecision.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.llmCallSkipped === "boolean" ? { llmCallSkipped: r.llmCallSkipped } : {}),
     ...(typeof r.rawResponseText === "string" ? { rawResponseText: r.rawResponseText.slice(0, 4000) } : {}),
     ...(typeof r.parseError === "string" && r.parseError.trim() ? { parseError: r.parseError.trim().slice(0, 400) } : {}),
     ...(typeof r.parsedJsonPreview === "string" && r.parsedJsonPreview.trim()
@@ -595,7 +600,7 @@ export function selectedAgentsForTimeline(
 
 export function buildSingleChatPromptTimelineEntry(params: {
   readonly action: string;
-  readonly source: "llm" | "fallback";
+  readonly source: "llm" | "fallback" | "internal";
   readonly timelineStage: string;
   readonly stageGroup: string;
   readonly workspaceScreenKey: string;
@@ -697,7 +702,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly fallbackReason?: string;
   readonly visibleMessageSuppressed?: boolean;
   readonly suppressReason?: string;
-  readonly serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta";
+  readonly serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta" | "state_transition";
+  readonly proposalDecision?: string;
+  readonly llmCallSkipped?: boolean;
   readonly rawResponseText?: string;
   readonly parseError?: string;
   readonly parsedJsonPreview?: string;
@@ -871,6 +878,10 @@ export function buildSingleChatPromptTimelineEntry(params: {
       : {}),
     ...(params.suppressReason ? { suppressReason: params.suppressReason } : {}),
     ...(params.serviceFlowVisibleMode ? { serviceFlowVisibleMode: params.serviceFlowVisibleMode } : {}),
+    ...(typeof params.proposalDecision === "string" && params.proposalDecision.trim()
+      ? { proposalDecision: params.proposalDecision.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.llmCallSkipped === "boolean" ? { llmCallSkipped: params.llmCallSkipped } : {}),
     ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
     ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),
     ...(params.parsedJsonPreview ? { parsedJsonPreview: params.parsedJsonPreview.slice(0, 4000) } : {}),

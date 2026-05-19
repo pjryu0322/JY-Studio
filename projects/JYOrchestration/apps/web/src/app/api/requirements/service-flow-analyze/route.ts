@@ -11,6 +11,15 @@ import {
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { resolveSingleChatAgentContext } from "@/lib/requirements/singleChatAgentContext";
 import { parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import { augmentUserMessageForLlm } from "@/lib/requirements/singleChatQuickAction";
+import {
+  resolveServiceFlowProposalDecision,
+  shouldBlockServiceFlowProposalReplay,
+  tryServiceFlowProposalDecisionFastPath,
+  buildServiceFlowApplyTransitionMessage,
+  type ServiceFlowProposalDecision,
+} from "@/lib/requirements/serviceFlowProposalDecision";
+import type { ServiceFlowAnalyzeParsed } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 
 type Body = {
   projectId?: string;
@@ -30,11 +39,124 @@ type Body = {
   /** ideation→service-flow 자동 handoff(silentUserAppend) */
   autoHandoff?: boolean;
   quickActionLabel?: string;
+  proposalDecision?: string;
 };
 
 function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
   const p = parseWorkspaceScreenKey(raw);
   return p ?? "requirements_service_flow";
+}
+
+function buildAnalyzeSuccessResponse(input: {
+  readonly parsed: ServiceFlowAnalyzeParsed & { updatedFlow: RequirementsServiceFlowV1 };
+  readonly userMessage: string;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly priorScreenHandoff: string;
+  readonly recentMessages: string;
+  readonly autoHandoff: boolean;
+  readonly quickActionLabel: string;
+  readonly proposalDecision: ServiceFlowProposalDecision | null;
+  readonly projectName: string;
+  readonly model: string | null;
+  readonly promptText?: string;
+  readonly proposalFallbackApplied?: boolean;
+  readonly agentCtx: Awaited<ReturnType<typeof resolveSingleChatAgentContext>>;
+  readonly timelineExtras?: Record<string, unknown>;
+  readonly forceVisibleMode?: "state_transition";
+}) {
+  let assistantMessage = input.parsed.assistantMessage;
+  let nextQuestion = input.parsed.nextQuestion;
+  let updatedFlow = input.parsed.updatedFlow;
+  let quickReplies = input.parsed.quickReplies;
+
+  if (
+    input.proposalDecision === "APPLY" &&
+    shouldBlockServiceFlowProposalReplay({
+      flow: input.currentFlow,
+      proposalDecision: input.proposalDecision,
+      candidateAssistantMessage: assistantMessage,
+    })
+  ) {
+    updatedFlow =
+      input.currentFlow ??
+      updatedFlow;
+    assistantMessage = buildServiceFlowApplyTransitionMessage({
+      flow: updatedFlow,
+      projectName: input.projectName,
+    });
+    nextQuestion = null;
+  }
+
+  const mergedAssistant = mergeServiceFlowUserFacingMessage(assistantMessage, nextQuestion);
+  const presentation = resolveServiceFlowVisiblePresentation({
+    userMessage: input.userMessage,
+    currentFlow: input.currentFlow,
+    priorScreenHandoff: input.priorScreenHandoff,
+    assistantMessage,
+    nextQuestion,
+    quickReplies,
+    updatedFlow,
+    recentMessages: input.recentMessages,
+    autoHandoff: input.autoHandoff,
+    ...(input.quickActionLabel ? { quickActionLabel: input.quickActionLabel } : {}),
+    ...(input.forceVisibleMode === "state_transition" ? { forceVisibleProposal: true } : {}),
+  });
+
+  const visibleMode =
+    input.forceVisibleMode === "state_transition"
+      ? "state_transition"
+      : presentation.mode;
+
+  const promptTrace = buildSingleChatPromptTimelineEntry({
+    action: (input.timelineExtras?.timelineAction as string) ?? "serviceFlowAnalyze",
+    source: input.timelineExtras?.llmCallSkipped ? "internal" : input.proposalFallbackApplied ? "fallback" : "llm",
+    timelineStage: input.agentCtx.timelineStage,
+    stageGroup: input.agentCtx.stageGroup,
+    workspaceScreenKey: input.agentCtx.workspaceScreenKey,
+    selectedAgents: input.agentCtx.selectedAgents,
+    ...(input.promptText ? { promptText: input.promptText } : {}),
+    responseText: mergedAssistant.slice(0, 4000),
+    model: input.model,
+    provider: input.timelineExtras?.llmCallSkipped ? undefined : "openai",
+    createdAtIso: new Date().toISOString(),
+    visibleMessageSuppressed: presentation.suppressVisibleMessage,
+    ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
+    serviceFlowVisibleMode: visibleMode,
+    ...(input.quickActionLabel ? { quickActionLabel: input.quickActionLabel } : {}),
+    ...(input.proposalDecision ? { proposalDecision: input.proposalDecision } : {}),
+    ...(input.timelineExtras?.llmCallSkipped ? { llmCallSkipped: true } : {}),
+    ...(input.timelineExtras?.routingDecision
+      ? { routingDecision: String(input.timelineExtras.routingDecision) }
+      : input.proposalFallbackApplied
+        ? {
+            routingDecision: "service_flow_proposal_fallback_synthesis",
+            fallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
+          }
+        : presentation.suppressVisibleMessage
+          ? { routingDecision: "service_flow_handoff_state_only" }
+          : {}),
+  });
+
+  const responseData = {
+    assistantMessage:
+      input.forceVisibleMode === "state_transition"
+        ? mergedAssistant
+        : presentation.visibleAssistantMessage || mergedAssistant,
+    updatedFlow,
+    nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
+    quickReplies: presentation.visibleQuickReplies ?? quickReplies,
+    intent: input.parsed.intent,
+    readiness: input.parsed.readiness,
+    visibleMode,
+    visibleMessageSuppressed: presentation.suppressVisibleMessage,
+    ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
+    ...(input.proposalDecision ? { proposalDecision: input.proposalDecision } : {}),
+    ...(updatedFlow.acceptedProposalSnapshot
+      ? { acceptedProposalSnapshot: updatedFlow.acceptedProposalSnapshot }
+      : {}),
+  };
+
+  return NextResponse.json({ success: true, data: responseData, meta: { model: input.model, promptTrace } });
 }
 
 export async function POST(request: NextRequest) {
@@ -56,6 +178,12 @@ export async function POST(request: NextRequest) {
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
     const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
+    const proposalDecision = resolveServiceFlowProposalDecision({
+      quickActionLabel: quickActionLabel || undefined,
+      userMessage,
+      proposalDecisionRaw: body.proposalDecision,
+    });
+
     if (!projectId) return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     if (!userMessage) return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
 
@@ -69,11 +197,55 @@ export async function POST(request: NextRequest) {
 
     const agentCtx = await resolveSingleChatAgentContext(projectId, workspaceScreen);
 
+    const fastPath =
+      proposalDecision === "APPLY" || proposalDecision === "REVIEW_FLOW"
+        ? tryServiceFlowProposalDecisionFastPath({
+            decision: proposalDecision,
+            currentFlow,
+            projectName,
+          })
+        : null;
+
+    if (fastPath) {
+      const parsed: ServiceFlowAnalyzeParsed & { updatedFlow: RequirementsServiceFlowV1 } = {
+        assistantMessage: fastPath.assistantMessage,
+        updatedFlow: fastPath.updatedFlow,
+        intent: fastPath.intent,
+        nextQuestion: fastPath.nextQuestion,
+        quickReplies: [...fastPath.quickReplies],
+        readiness: fastPath.readiness,
+      };
+      return buildAnalyzeSuccessResponse({
+        parsed,
+        userMessage,
+        currentFlow,
+        priorScreenHandoff,
+        recentMessages,
+        autoHandoff,
+        quickActionLabel: quickActionLabel || userMessage,
+        proposalDecision: fastPath.proposalDecision,
+        projectName,
+        model: null,
+        agentCtx,
+        forceVisibleMode: "state_transition",
+        timelineExtras: {
+          timelineAction: fastPath.timelineAction,
+          llmCallSkipped: true,
+          routingDecision: fastPath.routingDecision,
+        },
+      });
+    }
+
+    const llmUserMessage =
+      proposalDecision && proposalDecision !== "REVIEW_FLOW"
+        ? augmentUserMessageForLlm(userMessage, quickActionLabel || userMessage, proposalDecision)
+        : userMessage;
+
     const result = await runServiceFlowAnalyzeOpenAI({
       projectName,
       projectDescription,
       ideationAssets,
-      userMessage,
+      userMessage: llmUserMessage,
       currentFlow,
       recentMessages,
       latestAiQuestion,
@@ -92,6 +264,8 @@ export async function POST(request: NextRequest) {
         ...(result.promptText ? { promptText: result.promptText } : {}),
         error: `${result.code}: ${result.message}`,
         fallbackText: "",
+        ...(quickActionLabel ? { quickActionLabel } : {}),
+        ...(proposalDecision ? { proposalDecision } : {}),
       });
       return NextResponse.json(
         {
@@ -104,57 +278,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mergedAssistant = mergeServiceFlowUserFacingMessage(
-      result.data.assistantMessage,
-      result.data.nextQuestion,
-    );
-    const presentation = resolveServiceFlowVisiblePresentation({
+    return buildAnalyzeSuccessResponse({
+      parsed: result.data,
       userMessage,
       currentFlow,
       priorScreenHandoff,
-      assistantMessage: result.data.assistantMessage,
-      nextQuestion: result.data.nextQuestion,
-      quickReplies: result.data.quickReplies,
-      updatedFlow: result.data.updatedFlow,
       recentMessages,
       autoHandoff,
-      ...(quickActionLabel ? { quickActionLabel } : {}),
-    });
-
-    const promptTrace = buildSingleChatPromptTimelineEntry({
-      action: "serviceFlowAnalyze",
-      source: result.proposalFallbackApplied ? "fallback" : "llm",
-      timelineStage: agentCtx.timelineStage,
-      stageGroup: agentCtx.stageGroup,
-      workspaceScreenKey: agentCtx.workspaceScreenKey,
-      selectedAgents: agentCtx.selectedAgents,
-      promptText: result.promptText,
-      responseText: mergedAssistant.slice(0, 4000),
+      quickActionLabel: quickActionLabel || userMessage,
+      proposalDecision,
+      projectName,
       model: result.model,
-      provider: "openai",
-      createdAtIso: new Date().toISOString(),
-      visibleMessageSuppressed: presentation.suppressVisibleMessage,
-      ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
-      serviceFlowVisibleMode: presentation.mode,
-      ...(result.proposalFallbackApplied
-        ? {
-            routingDecision: "service_flow_proposal_fallback_synthesis",
-            fallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
-          }
-        : presentation.suppressVisibleMessage ? { routingDecision: "service_flow_handoff_state_only" } : {}),
+      promptText: result.promptText,
+      proposalFallbackApplied: result.proposalFallbackApplied,
+      agentCtx,
+      timelineExtras: proposalDecision
+        ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
+        : {},
     });
-
-    const responseData = {
-      ...result.data,
-      assistantMessage: presentation.visibleAssistantMessage,
-      nextQuestion: presentation.suppressVisibleMessage ? null : result.data.nextQuestion,
-      quickReplies: presentation.visibleQuickReplies,
-      visibleMode: presentation.mode,
-      visibleMessageSuppressed: presentation.suppressVisibleMessage,
-      ...(presentation.suppressReason ? { suppressReason: presentation.suppressReason } : {}),
-    };
-
-    return NextResponse.json({ success: true, data: responseData, meta: { model: result.model, promptTrace } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;

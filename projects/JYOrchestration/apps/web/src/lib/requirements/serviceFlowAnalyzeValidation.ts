@@ -55,9 +55,34 @@ function messagesOverlap(a: string, b: string): boolean {
   const nb = norm(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
+
+  const stripCtaPrefix = (x: string) => x.replace(/^다음\s*[:：]\s*/i, "");
+  const ca = stripCtaPrefix(na);
+  const cb = stripCtaPrefix(nb);
+  if (ca && cb && (ca === cb || ca.includes(cb) || cb.includes(ca)) && Math.min(ca.length, cb.length) >= 10) {
+    return true;
+  }
+
   const short = na.length <= nb.length ? na : nb;
   const long = na.length <= nb.length ? nb : na;
   return long.includes(short) && short.length >= 12;
+}
+
+function dedupeDuplicateCtaLines(text: string): string {
+  const lines = String(text ?? "").split("\n");
+  const seenCta = new Set<string>();
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const trimmed = line.trim();
+    if (/^다음\s*[:：]/i.test(trimmed)) {
+      const key = norm(trimmed.replace(/^다음\s*[:：]\s*/i, ""));
+      if (!key || seenCta.has(key)) continue;
+      seenCta.add(key);
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
 }
 
 function flowNamesReflectedInMessage(
@@ -92,21 +117,24 @@ export function mergeServiceFlowUserFacingMessage(
   assistantMessage: string,
   nextQuestion: string | null | undefined,
 ): string {
-  const assistant = String(assistantMessage ?? "").trim();
+  let assistant = dedupeDuplicateCtaLines(String(assistantMessage ?? "").trim());
   const nextQ = String(nextQuestion ?? "").trim();
   if (!assistant) return nextQ;
   if (!nextQ) return assistant;
 
   if (messagesOverlap(assistant, nextQ)) return assistant;
 
-  const assistantHasCta = /(다음:|선택|수정|맞는지|확인해\s*주|이대로|그대로\s*진행)/.test(assistant);
+  const assistantHasCta = /(다음\s*[:：]|선택|수정|맞는지|확인해\s*주|이대로|그대로\s*진행)/.test(assistant);
   const nextIsQuestion = /\?/.test(nextQ) || countLikelyQuestionSentences(nextQ) > 0;
   if (assistantHasCta && nextIsQuestion) return assistant;
 
+  const nextNorm = norm(nextQ.replace(/^다음\s*[:：]\s*/i, ""));
+  if (nextNorm && norm(assistant).includes(nextNorm)) return assistant;
   if (assistant.includes(nextQ.slice(0, Math.min(24, nextQ.length)))) return assistant;
 
-  const nextLine = nextQ.startsWith("다음:") ? nextQ : `다음: ${nextQ}`;
-  return `${assistant}\n\n${nextLine}`;
+  const nextLine = /^다음\s*[:：]/i.test(nextQ) ? nextQ : `다음: ${nextQ}`;
+  const merged = `${assistant}\n\n${nextLine}`;
+  return dedupeDuplicateCtaLines(merged);
 }
 
 export function validateServiceFlowAnalyzeResponse(input: {

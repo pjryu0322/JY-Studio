@@ -5,7 +5,13 @@ import { buildProposalDecisionUserSignal } from "@/lib/requirements/singleChatPr
 export type SingleChatQuickActionKind = "apply" | "partial_edit" | "alternatives" | "direct" | "defer";
 
 /** proposal 승인/선택 신호 — 일반 user message 가 아님 */
-export type ProposalDecision = "APPLY" | "PARTIAL_EDIT" | "ALTERNATIVE" | "DIRECT_INPUT" | "HOLD";
+export type ProposalDecision =
+  | "APPLY"
+  | "PARTIAL_EDIT"
+  | "ALTERNATIVE"
+  | "DIRECT_INPUT"
+  | "HOLD"
+  | "REVIEW_FLOW";
 
 const KNOWN_CHIP_LABELS = ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력", "보류"] as const;
 

@@ -15,7 +15,11 @@ export type ProposalFingerprint = Readonly<{
   normalizedWorkflowHash: string;
 }>;
 
-export type ServiceFlowVisibleMode = "visible_proposal" | "handoff_state_only" | "visible_delta";
+export type ServiceFlowVisibleMode =
+  | "visible_proposal"
+  | "handoff_state_only"
+  | "visible_delta"
+  | "state_transition";
 
 export type ServiceFlowVisiblePresentation = Readonly<{
   mode: ServiceFlowVisibleMode;
@@ -188,7 +192,13 @@ export function isExplicitServiceFlowUserIntent(input: {
 
   const qa = String(input.quickActionLabel ?? "").trim();
   if (qa) {
-    if (/다른\s*대안|일부\s*수정|직접\s*입력|보류|그대로\s*진행|단계\s*수정|빠진\s*단계/.test(qa)) return true;
+    if (
+      /다른\s*대안|일부\s*수정|직접\s*입력|보류|그대로\s*진행|단계\s*수정|빠진\s*단계|흐름\s*검토|흐름\s*승인|액터\s*추가/.test(
+        qa,
+      )
+    ) {
+      return true;
+    }
     if (/추천안\s*적용/.test(qa) && !isSilentServiceFlowAutoHandoffStart({ userMessage: input.userMessage })) {
       return true;
     }

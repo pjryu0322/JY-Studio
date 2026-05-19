@@ -75,6 +75,14 @@ describe("serviceFlowAnalyzeValidation", () => {
     expect(merged.split("?").length - 1).toBeLessThanOrEqual(1);
   });
 
+  it("mergeServiceFlowUserFacingMessage — assistant+nextQuestion 동일 CTA", () => {
+    const cta = "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.";
+    const assistant = `초안입니다.\n\n${cta}`;
+    const merged = mergeServiceFlowUserFacingMessage(assistant, cta);
+    expect(merged).toBe(assistant);
+    expect(merged.match(/다음:/g)?.length).toBe(1);
+  });
+
   it("validate — proposal-first 구조·flow 정합성 pass", () => {
     const flow = sampleFlow();
     const assistant = `회의록 자동화 흐름 초안입니다.
