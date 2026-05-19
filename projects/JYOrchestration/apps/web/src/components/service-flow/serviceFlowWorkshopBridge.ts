@@ -2,7 +2,8 @@ import type { ParticipantOption } from "@/components/workspace/workspaceParticip
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import { displayedWorkspaceAiStatusForContext, displayedWorkspaceAiTitle, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { displayedWorkspaceAiStatusForContext, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE } from "@/lib/requirements/serviceFlowConversation";
@@ -45,16 +46,25 @@ export function buildServiceFlowUserPersist(body: string, currentUserId: string 
   });
 }
 
-export function buildServiceFlowAiPersist(body: string): RequirementsMessage {
-  const name = displayedWorkspaceAiTitle("actor_flow");
+export function buildServiceFlowAiPersist(
+  body: string,
+  options?: { readonly interviewSuggestions?: readonly string[] },
+): RequirementsMessage {
+  const chips = (options?.interviewSuggestions ?? [])
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 3);
   return newChatMessage({
     role: "ai",
     body,
     speakerType: "AI",
     speakerId: VIRTUAL_AI_PLANNER_ID,
-    speakerName: name,
+    speakerName: IDEATION_AI_DISPLAY_NAME,
     messageType: "ANSWER",
-    meta: { internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE },
+    meta: {
+      internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE,
+      ...(chips.length ? { interviewSuggestions: chips } : {}),
+    },
   });
 }
 

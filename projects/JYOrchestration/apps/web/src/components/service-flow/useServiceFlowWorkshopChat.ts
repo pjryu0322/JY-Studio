@@ -12,7 +12,8 @@ import {
   serviceFlowMissingSlotQuestions,
   type ServiceFlowStageSlotKey,
 } from "@/components/service-flow/serviceFlowStageDerived";
-import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
+import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
+import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
@@ -77,7 +78,7 @@ export function useServiceFlowWorkshopChat({
   readonly derivedSlotsForDraftBootstrap: Record<ServiceFlowStageSlotKey, boolean>;
   readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 }) {
-  const aiDisplayName = displayedWorkspaceAiTitle("actor_flow");
+  const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
     () => persistedServiceFlowMessages.map((m) => workshopMessageFromPersisted(m, aiDisplayName)),
     [persistedServiceFlowMessages, aiDisplayName],
@@ -250,13 +251,18 @@ export function useServiceFlowWorkshopChat({
             : [];
           setQuickReplies(replies.length ? replies : null);
 
-          const aiBody = [String(data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
+          const aiBody =
+            mergeServiceFlowUserFacingMessage(String(data.assistantMessage ?? "").trim(), nextQ || null) ||
+            "반영했습니다.";
           const done = !nextQ && Boolean(data.readiness?.readyForNext);
           autoScrollPendingRef.current = true;
           const combined =
-            (aiBody || "반영했습니다.") +
-            (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
-          const okSlice = await onAppendRef.current([buildServiceFlowAiPersist(combined)]);
+            aiBody + (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
+          const okSlice = await onAppendRef.current([
+            buildServiceFlowAiPersist(combined, {
+              interviewSuggestions: replies.length ? replies : undefined,
+            }),
+          ]);
           messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
         } catch {
@@ -376,11 +382,11 @@ export function useServiceFlowWorkshopChat({
         const nextQ = String(result.data?.nextQuestion ?? "").trim();
         if (nextQ) setLatestAiQuestion(nextQ);
         setQuickReplies(null);
-        const okSlice = await onAppendRef.current([
-          buildServiceFlowAiPersist(
-            [String(result.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n"),
-          ),
-        ]);
+        const organizeBody = mergeServiceFlowUserFacingMessage(
+          String(result.data?.assistantMessage ?? "").trim() || "정리했습니다.",
+          nextQ || null,
+        );
+        const okSlice = await onAppendRef.current([buildServiceFlowAiPersist(organizeBody)]);
         messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setWorkspaceMode("summary");
         setReplying(false);
@@ -443,7 +449,8 @@ export function useServiceFlowWorkshopChat({
       bootOnceRef.current = true;
       void onAppendRef.current([
         buildServiceFlowAiPersist(
-          `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
+          `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.`,
+          { interviewSuggestions: ["그대로 진행", "단계 수정", "빠진 단계 추가"] },
         ),
       ]);
       return;

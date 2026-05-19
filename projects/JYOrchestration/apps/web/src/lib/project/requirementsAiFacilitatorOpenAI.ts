@@ -31,6 +31,12 @@ import { formatBootstrapAxisRotationBlock } from "@/lib/requirements/requirement
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 import { pickConfiguredModelOverrideFromAgents } from "@/lib/requirements/singleChatAgentContext";
+import {
+  buildServiceFlowProposalRegenerationUserPayload,
+  mergeServiceFlowUserFacingMessage,
+  validateServiceFlowAnalyzeResponse,
+  type ServiceFlowAnalyzeQualityIssueCode,
+} from "@/lib/requirements/serviceFlowAnalyzeValidation";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
@@ -1938,51 +1944,41 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
     ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
     : "";
 
-  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}이 단계의 실제 목적은 "아이디어 구체화 결과 기반의 서비스 흐름 검증/보정/담당 확정"이다.
-중요: 이 단계에서 "이제 흐름을 정의해볼까요?"처럼 백지 디스커버리를 다시 시작하면 실패다.
+  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
+사용자에게 보이는 톤은 **AI 기획자(코디네이터)** — 질문 위주 인터뷰어가 아닙니다.
+
+이 단계의 목적: 아이디어 구체화 산출물을 바탕으로 서비스 흐름(액터·단계·담당)을 **제안·검증·보정**한다.
+"이제 흐름을 정의해볼까요?" 같은 백지 디스커버리는 실패다.
 
 목표:
-사용자의 자연어 발화를 의미 기반으로 해석하여, 액터/서비스 단계/담당 매핑 상태(updatedFlow)를 업데이트하고,
-사용자가 이해하기 쉬운 짧은 응답(assistantMessage)과 다음 질문(nextQuestion)을 만든다.
-항상 아래 6가지 중 하나를 앞으로 진전시키는 질문만 한다:
-1) 액터 검증
-2) 흐름 단계 검증/보정
-3) 각 단계 담당자(primaryActorId) 지정
-4) 승인/확정 단계 확인(없으면 추가 제안)
-5) 예외 처리/반려/재처리 흐름 확인
-6) 기능정리 단계로 이동할 준비 확인
+- updatedFlow를 의미 기반으로 갱신한다.
+- assistantMessage는 **구조화된 proposal** (draft 중심, question-first 금지).
+- nextQuestion은 null이거나 **단일 CTA** 1문장만(assistantMessage와 중복 질문 금지).
+- quickReplies는 proposal 검토용 2~3개(LLM 생성, 서비스명·도메인 하드코딩 선택지 금지).
 
-중요 규칙:
-- ideationAssets가 존재하면, 그 내용을 이 단계의 source of truth로 우선 사용한다(현재 flow가 비어 있어도 초안을 추론/생성하라).
-- 사용자가 이미 말한 내용을 다시 질문하지 않는다(재진술 후 검증 질문 1개로 좁혀라).
-- 최초 응답은 "질문"보다 "초안 제시"가 우선이다(assistantMessage에 먼저 초안/요약을 제시하고, nextQuestion으로 검증 질문 1개).
-- "없습니다/모르겠습니다" 같은 무지성 응답 금지. 정보가 부족하면 합리적 기본안을 제안하고 검증 질문으로 확인한다.
-- 이 단계는 discovery가 아니라 refinement/confirmation 단계다.
-- 키워드 매칭/룰 기반으로 판단하지 말고 의미로 판단한다.
-- assistantMessage는 반드시 updatedFlow와 일치해야 한다(말만 하고 상태가 안 바뀌면 실패).
-- 사용자가 "액터목록을 보여줘/액터 목록 보여줘" 등 요약 요청이면 intent=show_summary로 두고,
-  assistantMessage에 현재 updatedFlow의 액터 목록을 그대로 출력한다.
-- nextQuestion은 필요한 경우에만(모호하거나 빠진 정보가 있을 때) 1문장 질문으로 넣고, 없으면 null.
-- nextQuestion이 있을 때는, 가능하면 quickReplies(최대 3개)를 같이 제안한다. (예: ["시스템 자동 생성", "작성자가 직접", "둘 다"])
-- quickReplies는 사용자가 클릭해 답할 수 있는 짧은 선택지 문자열만. 없으면 null.
-- 이 단계는 "검증/확정 인터뷰형" UX다. 사용자가 백지로 길게 쓰지 않아도 되도록 질문을 단계적으로 진행한다.
-- 질문은 한 번에 하나만. (설문처럼 여러 문항을 나열하지 말 것)
-- 이 단계에서 "기능 세부 명세/기능 옵션 상세/UI 상세 정의"를 질문하거나 확정하려고 하지 말 것.
-  - 사용자가 그 내용을 요청하면 assistantMessage에 반드시 아래 문장을 포함해 부드럽게 다음 단계로 안내한다:
-    "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다."
-  - 그리고 nextQuestion은 위 1)~5) 중 미확정인 항목만 1개로 좁혀서 묻는다.
-- 질문은 가능한 한 "현재 상태 JSON"과 "아이디어 구체화 산출물"에서 이미 존재하는 내용을 인용/요약한 뒤,
-  누락/수정/확정이 필요한 1가지만 확인하는 방식으로 만든다.
-- 최신 발화가 모호해도 "처음부터 다시 설명"을 요구하지 말고, 선택지(quickReplies) 또는 1문장 уточถาม으로 좁혀라.
-- latestAiQuestion과 updatedFlow/readiness를 참고해 "다음 질문"을 결정한다.
-- userMessage가 "인터뷰 시작"으로 시작하면, 반드시 "상속된 맥락 검증 모드"로 시작한다.
-  - 현재 updatedFlow.steps가 1개 이상이면: 그 흐름을 3~8개 항목으로 짧게 재진술하고(assistantMessage),
-    "누락/수정할 단계가 있습니까?" 같은 검증 질문 1개를 nextQuestion으로 둔다.
-    quickReplies 예: ["단계 수정 있어요", "빠진 단계 있어요", "그대로 진행"].
-  - steps가 없고 actors만 있으면: 아이디어·산출물에서 **예상 흐름 3~6단계 초안**을 assistantMessage에 제시하고, nextQuestion은 "위 흐름이 맞는지 선택·수정" 1문장만(빈 질문 금지).
-  - actors도 없으면: 액터·흐름 **최소 초안**을 assistantMessage에 채운 뒤, nextQuestion은 초안 검증 1문장만.
-- 인터뷰가 충분히 채워졌고(readyForNext=true가 될 수 있을 정도) nextQuestion이 null이면, assistantMessage는 짧게 마무리한다.
-- 응답은 반드시 JSON 1개만 출력(마크다운/설명/코드펜스 금지).
+assistantMessage 형식(초안·인터뷰 시작 턴에 필수):
+1) 한 줄 요약(프로젝트 맥락 반영)
+2) 빈 줄
+3) "예상 액터" + 불릿 목록(updatedFlow.actors와 일치)
+4) 빈 줄
+5) "예상 흐름" + 번호 목록(updatedFlow.steps와 일치)
+6) 빈 줄
+7) 단일 CTA 한 줄 (예: "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.")
+
+금지:
+- assistantMessage와 nextQuestion에 서로 다른 질문 2개 이상
+- "누락/수정할 단계가 있습니까?"와 "위 흐름이 맞는지…"를 동시에 넣기
+- 액터·단계를 문장 속에만 나열하고 updatedFlow에는 비우기
+- 프로젝트명 키워드 if/else 하드코딩
+
+규칙:
+- ideationAssets가 있으면 source of truth로 우선 사용(빈 flow여도 초안 추론).
+- assistantMessage의 액터·단계는 updatedFlow와 **반드시 일치**.
+- 최초·인터뷰 시작: updatedFlow.actors >= 2, steps >= 3, readiness.score >= 1, quickReplies 2~3개.
+- nextQuestion이 null이어도 assistantMessage 마지막에 CTA 1개는 있어야 함.
+- show_summary 요청 시 intent=show_summary, 현재 flow 목록 출력.
+- 기능/UI 상세는 이 단계에서 확정하지 말고 "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다."로 안내.
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
 
 의도(intent) 분류:
 add_actor|update_actor|add_step|update_step|update_mapping|show_summary|delegate_to_ai|unclear
@@ -2023,84 +2019,187 @@ ${input.userMessage.trim()}
   "readiness": { "score": 0, "actorsReady": true, "stepsReady": true, "mappingReady": true, "readyForNext": true }
 }`;
 
-  const promptTextSf = `[service-flow-analyze]\n[system]\n${system}\n\n[user]\n${user}`;
+  let promptTextSf = `[service-flow-analyze]\n[system]\n${system}\n\n[user]\n${user}\n[internalRole=analyst userFacing=coordinator]`;
 
-  const callOnce = async (repair: boolean) => {
+  type ParsedSfPack = {
+    assistantMessage: string;
+    updatedFlow: RequirementsServiceFlowV1;
+    intent: ServiceFlowAnalyzeIntent;
+    nextQuestion: string | null;
+    quickReplies: string[] | null;
+    readiness: {
+      score: number;
+      actorsReady: boolean;
+      stepsReady: boolean;
+      mappingReady: boolean;
+      readyForNext: boolean;
+    };
+  };
+
+  const parseModelRoot = (
+    root: Record<string, unknown>,
+  ): { ok: true; data: ParsedSfPack } | { ok: false; message: string } => {
+    const updatedFlow = ensureServiceFlowShape(root.updatedFlow, nowIso);
+    if (!updatedFlow) return { ok: false, message: "updatedFlow 스키마가 올바르지 않습니다." };
+
+    const intentRaw = safeText(root.intent, 40) as ServiceFlowAnalyzeIntent;
+    const allowed: ServiceFlowAnalyzeIntent[] = [
+      "add_actor",
+      "update_actor",
+      "add_step",
+      "update_step",
+      "update_mapping",
+      "show_summary",
+      "delegate_to_ai",
+      "unclear",
+    ];
+    const intent: ServiceFlowAnalyzeIntent = allowed.includes(intentRaw) ? intentRaw : "unclear";
+
+    const readinessRaw = (root.readiness ?? {}) as Record<string, unknown>;
+    const readiness = {
+      score: clamp01Score(readinessRaw.score),
+      actorsReady: Boolean(readinessRaw.actorsReady),
+      stepsReady: Boolean(readinessRaw.stepsReady),
+      mappingReady: Boolean(readinessRaw.mappingReady),
+      readyForNext: Boolean(readinessRaw.readyForNext),
+    };
+
+    const quickReplies = Array.isArray(root.quickReplies)
+      ? (root.quickReplies.map((x) => safeText(x, 40)).filter(Boolean).slice(0, 3) as string[])
+      : null;
+
+    return {
+      ok: true,
+      data: {
+        assistantMessage: safeText(root.assistantMessage, 1200) || "반영했습니다.",
+        updatedFlow,
+        intent,
+        nextQuestion: safeText(root.nextQuestion, 240) || null,
+        quickReplies: quickReplies && quickReplies.length ? quickReplies : null,
+        readiness,
+      },
+    };
+  };
+
+  const callModel = async (
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  ) => {
     const res = await postOpenAiChatCompletion({
       apiKey,
       model,
-      messages: [
-        { role: "system", content: system },
-        {
-          role: "user",
-          content: repair
-            ? `${user}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.`
-            : user,
-        },
-      ],
+      messages,
       temperature: 0.18,
       responseFormatJsonObject: true,
     });
     if (!res.ok) {
-      return { ok: false as const, code: res.code, message: res.message.slice(0, 400) };
+      return { ok: false as const, code: res.code, message: res.message.slice(0, 400), text: "" };
     }
     const text = res.text;
-    if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다." };
+    if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다.", text: "" };
     let parsed: unknown;
     try {
       parsed = JSON.parse(text) as unknown;
     } catch {
-      return { ok: false as const, code: "PARSE", message: "JSON 파싱 실패" };
+      return { ok: false as const, code: "PARSE", message: "JSON 파싱 실패", text };
     }
-    return { ok: true as const, parsed };
+    return { ok: true as const, parsed, text };
   };
 
-  let r = await callOnce(false);
-  if (!r.ok && (r.code === "PARSE" || r.code === "EMPTY")) r = await callOnce(true);
-  if (!r.ok) return { ...r, promptText: promptTextSf };
-
-  const root = r.parsed as Record<string, unknown>;
-  const updatedFlow = ensureServiceFlowShape(root.updatedFlow, nowIso);
-  if (!updatedFlow) return { ok: false, code: "SCHEMA", message: "updatedFlow 스키마가 올바르지 않습니다." };
-
-  const intentRaw = safeText(root.intent, 40) as ServiceFlowAnalyzeIntent;
-  const allowed: ServiceFlowAnalyzeIntent[] = [
-    "add_actor",
-    "update_actor",
-    "add_step",
-    "update_step",
-    "update_mapping",
-    "show_summary",
-    "delegate_to_ai",
-    "unclear",
+  let assistantRaw = "";
+  let qualityRetryCount = 0;
+  let lastQualityIssues: string[] = [];
+  const baseMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: system },
+    { role: "user", content: user },
   ];
-  const intent: ServiceFlowAnalyzeIntent = allowed.includes(intentRaw) ? intentRaw : "unclear";
 
-  const readinessRaw = (root.readiness ?? {}) as Record<string, unknown>;
-  const readiness = {
-    score: clamp01Score(readinessRaw.score),
-    actorsReady: Boolean(readinessRaw.actorsReady),
-    stepsReady: Boolean(readinessRaw.stepsReady),
-    mappingReady: Boolean(readinessRaw.mappingReady),
-    readyForNext: Boolean(readinessRaw.readyForNext),
+  const tryValidateModelOutput = (
+    parsed: unknown,
+    text: string,
+  ): { ok: true; data: ParsedSfPack } | { ok: false; rejected: ParsedSfPack } | null => {
+    assistantRaw = text;
+    const root = parsed as Record<string, unknown>;
+    const parsedPack = parseModelRoot(root);
+    if (!parsedPack.ok) return null;
+
+    const validation = validateServiceFlowAnalyzeResponse({
+      parsed: parsedPack.data,
+      userMessage: input.userMessage,
+      currentFlow: input.currentFlow,
+    });
+
+    if (validation.ok) return { ok: true, data: parsedPack.data };
+    lastQualityIssues = validation.issues.map(String);
+    return { ok: false, rejected: parsedPack.data };
   };
 
-  const quickReplies = Array.isArray(root.quickReplies)
-    ? (root.quickReplies.map((x) => safeText(x, 40)).filter(Boolean).slice(0, 3) as string[])
-    : null;
+  let r = await callModel(baseMessages);
+  if (!r.ok && (r.code === "PARSE" || r.code === "EMPTY")) {
+    r = await callModel([
+      ...baseMessages,
+      {
+        role: "user",
+        content: `${user}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.`,
+      },
+    ]);
+  }
+  if (!r.ok) return { ok: false, code: r.code, message: r.message, promptText: promptTextSf };
+
+  let attempt = tryValidateModelOutput(r.parsed, r.text);
+  if (!attempt) {
+    const retry = await callModel([
+      ...baseMessages,
+      {
+        role: "user",
+        content: `${user}\n\n[재시도] updatedFlow·assistantMessage JSON 스키마를 지켜 다시 출력하세요.`,
+      },
+    ]);
+    if (!retry.ok) return { ok: false, code: retry.code, message: retry.message, promptText: promptTextSf };
+    attempt = tryValidateModelOutput(retry.parsed, retry.text);
+  }
+
+  while (attempt && !attempt.ok && qualityRetryCount < 2) {
+    qualityRetryCount += 1;
+    const regenUser = buildServiceFlowProposalRegenerationUserPayload({
+      issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+      rejectedAssistantPreview: attempt.rejected.assistantMessage,
+      rejectedNextQuestion: attempt.rejected.nextQuestion,
+    });
+    promptTextSf = `${promptTextSf}\n\n--- service_flow_proposal_regeneration_${qualityRetryCount} ---\n${regenUser}`;
+
+    const regen = await callModel([
+      ...baseMessages,
+      { role: "assistant", content: assistantRaw },
+      { role: "user", content: regenUser },
+    ]);
+    if (!regen.ok) return { ok: false, code: regen.code, message: regen.message, promptText: promptTextSf };
+    attempt = tryValidateModelOutput(regen.parsed, regen.text);
+  }
+
+  const validated = attempt?.ok ? attempt.data : null;
+
+  if (validated) {
+    const mergedAssistant = mergeServiceFlowUserFacingMessage(
+      validated.assistantMessage,
+      validated.nextQuestion,
+    );
+    return {
+      ok: true,
+      model,
+      promptText: promptTextSf,
+      data: {
+        ...validated,
+        assistantMessage: mergedAssistant,
+        intent: validated.intent as ServiceFlowAnalyzeIntent,
+      },
+    };
+  }
 
   return {
-    ok: true,
-    model,
+    ok: false,
+    code: "QUALITY",
+    message: `service-flow proposal-first 검증 실패: ${lastQualityIssues.join(", ") || "unknown"}`,
     promptText: promptTextSf,
-    data: {
-      assistantMessage: safeText(root.assistantMessage, 900) || "반영했습니다.",
-      updatedFlow,
-      intent,
-      nextQuestion: safeText(root.nextQuestion, 240) || null,
-      quickReplies: quickReplies && quickReplies.length ? quickReplies : null,
-      readiness,
-    },
   };
 }
 
