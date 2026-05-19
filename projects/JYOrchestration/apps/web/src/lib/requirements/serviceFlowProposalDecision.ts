@@ -13,8 +13,23 @@ import {
   classifyProposalDecision,
   type ProposalDecision,
 } from "@/lib/requirements/singleChatQuickAction";
+import {
+  quickRepliesForConversationState,
+  quickReplyProfileForState,
+  resolveServiceFlowConversationState,
+  reviewDepthForDecision,
+  withServiceFlowConversationState,
+  type ServiceFlowConversationState,
+  type ServiceFlowQuickReplyProfile,
+  type ServiceFlowReviewDepth,
+} from "@/lib/requirements/serviceFlowConversationState";
+import { buildServiceFlowReviewPresentation } from "@/lib/requirements/serviceFlowReviewPresentation";
 
-export type ServiceFlowProposalDecision = ProposalDecision | "REVIEW_FLOW";
+export type ServiceFlowProposalDecision =
+  | ProposalDecision
+  | "REVIEW_FLOW"
+  | "FLOW_APPROVE"
+  | "FEATURE_DETAIL";
 
 export type ServiceFlowVisibleModeExtended =
   | "visible_proposal"
@@ -29,15 +44,9 @@ const SERVICE_FLOW_DECISIONS = new Set<ServiceFlowProposalDecision>([
   "DIRECT_INPUT",
   "HOLD",
   "REVIEW_FLOW",
+  "FLOW_APPROVE",
+  "FEATURE_DETAIL",
 ]);
-
-export const SERVICE_FLOW_REVIEW_QUICK_REPLIES = ["흐름 승인하기", "단계 수정하기", "액터 추가하기"] as const;
-
-export const SERVICE_FLOW_POST_APPLY_QUICK_REPLIES = [
-  "흐름 검토하기",
-  "단계 수정하기",
-  "세부 기능 정리",
-] as const;
 
 export function classifyServiceFlowProposalDecision(
   label: string | null | undefined,
@@ -45,8 +54,12 @@ export function classifyServiceFlowProposalDecision(
   const s = String(label ?? "").trim();
   if (!s) return null;
 
-  if (/흐름\s*검토/.test(s)) return "REVIEW_FLOW";
-  if (/흐름\s*승인|그대로\s*진행/.test(s)) return "APPLY";
+  if (/흐름\s*상세\s*검토|흐름\s*검토/.test(s)) return "REVIEW_FLOW";
+  if (/흐름\s*승인/.test(s)) return "FLOW_APPROVE";
+  if (/세부\s*기능\s*정리/.test(s)) return "FEATURE_DETAIL";
+  if (/그대로\s*진행/.test(s)) {
+    return "FLOW_APPROVE";
+  }
   if (/단계\s*수정|액터\s*추가|빠진\s*단계/.test(s)) return "PARTIAL_EDIT";
 
   return classifyProposalDecision(s);
@@ -60,6 +73,9 @@ export function resolveServiceFlowProposalDecision(input: {
   const raw = String(input.proposalDecisionRaw ?? "")
     .trim()
     .toUpperCase();
+  if (raw === "FLOW_APPROVE" || raw === "FEATURE_DETAIL") {
+    return raw as ServiceFlowProposalDecision;
+  }
   if (raw && SERVICE_FLOW_DECISIONS.has(raw as ServiceFlowProposalDecision)) {
     return raw as ServiceFlowProposalDecision;
   }
@@ -77,47 +93,71 @@ export function buildServiceFlowStateSummaryMessage(input: {
   readonly heading?: string;
   readonly cta?: string;
 }): string {
-  const actors = (input.flow.actors ?? [])
-    .map((a) => String(a.name ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 12);
+  return buildServiceFlowReviewPresentation({
+    flow: input.flow,
+    depth: "summary",
+    heading: input.heading,
+    cta: input.cta,
+  });
+}
+
+export function buildServiceFlowEnterReviewMessage(input: {
+  readonly flow: RequirementsServiceFlowV1;
+}): string {
+  return buildServiceFlowReviewPresentation({
+    flow: input.flow,
+    depth: "summary",
+    heading: "추천안을 서비스 흐름 검토 단계로 반영했습니다.",
+    cta: "다음: 흐름 상세 검토 후 승인하거나 일부 수정할 수 있습니다.",
+  });
+}
+
+export function buildServiceFlowApprovedTransitionMessage(input: {
+  readonly flow: RequirementsServiceFlowV1;
+}): string {
+  const steps = [...(input.flow.steps ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => String(s.title ?? "").trim())
+    .filter(Boolean);
+
+  const lines = [
+    "서비스 흐름 초안을 승인 상태로 반영했습니다.",
+    "",
+    "확정된 흐름",
+    ...steps.map((t, i) => `${i + 1}. ${t}`),
+    "",
+    "다음 단계에서는 각 흐름별 세부 기능과 화면/API를 정리할 수 있습니다.",
+  ];
+  return lines.join("\n").trim();
+}
+
+export function buildServiceFlowFeatureDetailTransitionMessage(input: {
+  readonly flow: RequirementsServiceFlowV1;
+}): string {
   const steps = [...(input.flow.steps ?? [])]
     .sort((a, b) => a.order - b.order)
     .map((s) => String(s.title ?? "").trim())
     .filter(Boolean)
-    .slice(0, 16);
+    .slice(0, 8);
 
-  const lines: string[] = [String(input.heading ?? "현재 서비스 흐름을 정리했습니다.").trim(), ""];
-  if (actors.length) {
-    lines.push("액터");
-    for (const a of actors) lines.push(`- ${a}`);
-    lines.push("");
-  }
-  if (steps.length) {
-    lines.push("흐름");
-    steps.forEach((title, i) => lines.push(`${i + 1}. ${title}`));
-    lines.push("");
-  }
-  lines.push(
-    String(input.cta ?? "다음: 이 흐름을 승인하거나 일부 수정할 수 있습니다.").trim(),
-  );
+  const lines = [
+    "서비스 흐름을 기준으로 세부 기능 정리 단계로 이동합니다.",
+    "",
+    "기능 정리 대상 흐름",
+    ...steps.map((t, i) => `${i + 1}. ${t}`),
+    "",
+    "다음: 각 흐름별 기능·화면·API를 구체화하거나 수정할 수 있습니다.",
+  ];
   return lines.join("\n").trim();
 }
 
+/** @deprecated use buildServiceFlowApprovedTransitionMessage — kept for replay guard callers */
 export function buildServiceFlowApplyTransitionMessage(input: {
   readonly flow: RequirementsServiceFlowV1;
   readonly projectName?: string;
 }): string {
-  const name = String(input.projectName ?? "").trim();
-  const intro = name
-    ? `추천안을 서비스 흐름 초안으로 반영했습니다.`
-    : "추천안을 서비스 흐름 초안으로 반영했습니다.";
-  const summary = buildServiceFlowStateSummaryMessage({
-    flow: input.flow,
-    heading: intro,
-    cta: "다음: 세부 기능을 정리하거나, 흐름을 일부 수정할 수 있습니다.",
-  });
-  return summary;
+  void input.projectName;
+  return buildServiceFlowApprovedTransitionMessage({ flow: input.flow });
 }
 
 export function markServiceFlowProposalAccepted(input: {
@@ -128,14 +168,18 @@ export function markServiceFlowProposalAccepted(input: {
 }): RequirementsServiceFlowV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const fp = buildProposalFingerprintFromFlow(input.flow);
-  return {
-    ...input.flow,
-    updatedAt: now,
-    acceptedProposalSnapshot: String(input.snapshot ?? "").trim().slice(0, 8000) || null,
-    proposalAcceptedAt: now,
-    lastProposalDecision: input.decision,
-    acceptedProposalFingerprint: fp.normalizedWorkflowHash || undefined,
-  };
+  return withServiceFlowConversationState(
+    {
+      ...input.flow,
+      updatedAt: now,
+      acceptedProposalSnapshot: String(input.snapshot ?? "").trim().slice(0, 8000) || null,
+      proposalAcceptedAt: now,
+      lastProposalDecision: input.decision,
+      acceptedProposalFingerprint: fp.normalizedWorkflowHash || undefined,
+    },
+    "APPROVED",
+    now,
+  );
 }
 
 export function shouldBlockServiceFlowProposalReplay(input: {
@@ -143,7 +187,9 @@ export function shouldBlockServiceFlowProposalReplay(input: {
   readonly proposalDecision: ServiceFlowProposalDecision | null;
   readonly candidateAssistantMessage: string;
 }): boolean {
-  if (input.proposalDecision !== "APPLY") return false;
+  if (input.proposalDecision !== "FLOW_APPROVE" && input.proposalDecision !== "APPLY") {
+    return false;
+  }
   const flow = input.flow;
   if (!flow) return false;
 
@@ -174,6 +220,14 @@ export function shouldBlockServiceFlowProposalReplay(input: {
   return false;
 }
 
+export function shouldUseApprovedReviewReplayCompact(input: {
+  readonly flow: RequirementsServiceFlowV1 | null;
+  readonly decision: ServiceFlowProposalDecision;
+}): boolean {
+  if (input.decision !== "REVIEW_FLOW") return false;
+  return resolveServiceFlowConversationState(input.flow) === "APPROVED";
+}
+
 export type ServiceFlowDecisionFastPathResult = Readonly<{
   assistantMessage: string;
   updatedFlow: RequirementsServiceFlowV1;
@@ -193,6 +247,10 @@ export type ServiceFlowDecisionFastPathResult = Readonly<{
   llmCallSkipped: true;
   proposalDecision: ServiceFlowProposalDecision;
   acceptedProposalSnapshot: string;
+  conversationStateBefore: ServiceFlowConversationState;
+  conversationStateAfter: ServiceFlowConversationState;
+  reviewDepth: ServiceFlowReviewDepth;
+  quickReplyProfile: ServiceFlowQuickReplyProfile;
 }>;
 
 function computeReadiness(flow: RequirementsServiceFlowV1) {
@@ -208,6 +266,38 @@ function computeReadiness(flow: RequirementsServiceFlowV1) {
   return { score, actorsReady, stepsReady, mappingReady, readyForNext };
 }
 
+function buildFastPathResult(input: {
+  readonly assistantMessage: string;
+  readonly updatedFlow: RequirementsServiceFlowV1;
+  readonly quickReplies: readonly string[];
+  readonly intent: string;
+  readonly routingDecision: string;
+  readonly timelineAction: string;
+  readonly proposalDecision: ServiceFlowProposalDecision;
+  readonly conversationStateBefore: ServiceFlowConversationState;
+  readonly conversationStateAfter: ServiceFlowConversationState;
+  readonly reviewDepth: ServiceFlowReviewDepth;
+}): ServiceFlowDecisionFastPathResult {
+  return {
+    assistantMessage: input.assistantMessage,
+    updatedFlow: input.updatedFlow,
+    nextQuestion: null,
+    quickReplies: input.quickReplies,
+    intent: input.intent,
+    readiness: computeReadiness(input.updatedFlow),
+    visibleMode: "state_transition",
+    routingDecision: input.routingDecision,
+    timelineAction: input.timelineAction,
+    llmCallSkipped: true,
+    proposalDecision: input.proposalDecision,
+    acceptedProposalSnapshot: input.assistantMessage.slice(0, 8000),
+    conversationStateBefore: input.conversationStateBefore,
+    conversationStateAfter: input.conversationStateAfter,
+    reviewDepth: input.reviewDepth,
+    quickReplyProfile: quickReplyProfileForState(input.conversationStateAfter),
+  };
+}
+
 export function tryServiceFlowProposalDecisionFastPath(input: {
   readonly decision: ServiceFlowProposalDecision;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
@@ -221,57 +311,126 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
     actors: [],
     steps: [],
   };
+  const stateBefore = resolveServiceFlowConversationState(baseFlow);
 
   if (input.decision === "REVIEW_FLOW") {
     if (!serviceFlowHasReviewableState(baseFlow)) return null;
-    const assistantMessage = buildServiceFlowStateSummaryMessage({ flow: baseFlow });
-    return {
+
+    if (shouldUseApprovedReviewReplayCompact({ flow: baseFlow, decision: "REVIEW_FLOW" })) {
+      const assistantMessage = buildServiceFlowReviewPresentation({
+        flow: baseFlow,
+        depth: "compact",
+        heading: "현재 흐름은 이미 승인 상태입니다.",
+      });
+      return buildFastPathResult({
+        assistantMessage,
+        updatedFlow: { ...baseFlow, updatedAt: nowIso },
+        quickReplies: quickRepliesForConversationState("APPROVED"),
+        intent: "show_summary",
+        routingDecision: "approved_review_replay_compact",
+        timelineAction: "reviewFlowSummary",
+        proposalDecision: "REVIEW_FLOW",
+        conversationStateBefore: stateBefore,
+        conversationStateAfter: "APPROVED",
+        reviewDepth: "compact",
+      });
+    }
+
+    const reviewDepth = reviewDepthForDecision({
+      decision: "REVIEW_FLOW",
+      conversationState: stateBefore === "PROPOSAL" ? "REVIEW" : stateBefore,
+    });
+    const nextState: ServiceFlowConversationState =
+      stateBefore === "PROPOSAL" ? "REVIEW" : stateBefore === "APPROVED" ? "APPROVED" : "REVIEW";
+    const flowForReview = withServiceFlowConversationState(baseFlow, nextState, nowIso);
+    const assistantMessage = buildServiceFlowReviewPresentation({
+      flow: flowForReview,
+      depth: reviewDepth === "compact" ? "detailed" : reviewDepth,
+      heading: "현재 서비스 흐름 상세 검토",
+      cta: "다음: 흐름을 승인하거나 단계·액터를 수정할 수 있습니다.",
+    });
+
+    return buildFastPathResult({
       assistantMessage,
-      updatedFlow: { ...baseFlow, updatedAt: nowIso },
-      nextQuestion: null,
-      quickReplies: [...SERVICE_FLOW_REVIEW_QUICK_REPLIES],
+      updatedFlow: flowForReview,
+      quickReplies: quickRepliesForConversationState(nextState === "APPROVED" ? "APPROVED" : "REVIEW"),
       intent: "show_summary",
-      readiness: computeReadiness(baseFlow),
-      visibleMode: "state_transition",
-      routingDecision: "flow_summary_from_state",
+      routingDecision: "flow_detailed_review_from_state",
       timelineAction: "reviewFlowSummary",
-      llmCallSkipped: true,
       proposalDecision: "REVIEW_FLOW",
-      acceptedProposalSnapshot: assistantMessage,
-    };
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: nextState,
+      reviewDepth: "detailed",
+    });
   }
 
   if (input.decision === "APPLY") {
     if (!serviceFlowHasReviewableState(baseFlow)) return null;
-    const snapshot = buildServiceFlowStateSummaryMessage({
-      flow: baseFlow,
-      heading: "",
-      cta: "",
+    const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
+    const flowReview = withServiceFlowConversationState(
+      {
+        ...baseFlow,
+        acceptedProposalSnapshot: snapshot.slice(0, 8000) || null,
+        lastProposalDecision: "APPLY",
+      },
+      "REVIEW",
+      nowIso,
+    );
+    const assistantMessage = buildServiceFlowEnterReviewMessage({ flow: flowReview });
+    return buildFastPathResult({
+      assistantMessage,
+      updatedFlow: flowReview,
+      quickReplies: quickRepliesForConversationState("REVIEW"),
+      intent: "unclear",
+      routingDecision: "proposal_apply_enter_review",
+      timelineAction: "proposalDecisionApply",
+      proposalDecision: "APPLY",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "REVIEW",
+      reviewDepth: "summary",
     });
+  }
+
+  if (input.decision === "FLOW_APPROVE") {
+    if (!serviceFlowHasReviewableState(baseFlow)) return null;
+    const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
     const updatedFlow = markServiceFlowProposalAccepted({
       flow: baseFlow,
       snapshot,
-      decision: "APPLY",
+      decision: "FLOW_APPROVE",
       nowIso,
     });
-    const assistantMessage = buildServiceFlowApplyTransitionMessage({
-      flow: updatedFlow,
-      projectName: input.projectName,
-    });
-    return {
+    const assistantMessage = buildServiceFlowApprovedTransitionMessage({ flow: updatedFlow });
+    return buildFastPathResult({
       assistantMessage,
       updatedFlow,
-      nextQuestion: null,
-      quickReplies: [...SERVICE_FLOW_POST_APPLY_QUICK_REPLIES],
+      quickReplies: quickRepliesForConversationState("APPROVED"),
       intent: "unclear",
-      readiness: computeReadiness(updatedFlow),
-      visibleMode: "state_transition",
-      routingDecision: "proposal_decision_apply_fast_path",
-      timelineAction: "proposalDecisionApply",
-      llmCallSkipped: true,
-      proposalDecision: "APPLY",
-      acceptedProposalSnapshot: assistantMessage,
-    };
+      routingDecision: "flow_approve_transition",
+      timelineAction: "flowApprove",
+      proposalDecision: "FLOW_APPROVE",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "APPROVED",
+      reviewDepth: "compact",
+    });
+  }
+
+  if (input.decision === "FEATURE_DETAIL") {
+    if (!serviceFlowHasReviewableState(baseFlow)) return null;
+    const updatedFlow = withServiceFlowConversationState(baseFlow, "FEATURE_DETAIL", nowIso);
+    const assistantMessage = buildServiceFlowFeatureDetailTransitionMessage({ flow: updatedFlow });
+    return buildFastPathResult({
+      assistantMessage,
+      updatedFlow,
+      quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+      intent: "unclear",
+      routingDecision: "feature_detail_transition",
+      timelineAction: "featureDetailTransition",
+      proposalDecision: "FEATURE_DETAIL",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "FEATURE_DETAIL",
+      reviewDepth: "compact",
+    });
   }
 
   return null;

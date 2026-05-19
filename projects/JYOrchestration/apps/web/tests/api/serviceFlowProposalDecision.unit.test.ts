@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import { quickRepliesForConversationState } from "@/lib/requirements/serviceFlowConversationState";
+import { buildServiceFlowReviewPresentation } from "@/lib/requirements/serviceFlowReviewPresentation";
 import {
-  buildServiceFlowApplyTransitionMessage,
-  buildServiceFlowStateSummaryMessage,
+  buildServiceFlowApprovedTransitionMessage,
   classifyServiceFlowProposalDecision,
-  shouldBlockServiceFlowProposalReplay,
+  shouldUseApprovedReviewReplayCompact,
   tryServiceFlowProposalDecisionFastPath,
 } from "@/lib/requirements/serviceFlowProposalDecision";
-import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 
 const now = "2026-05-19T00:00:00.000Z";
 
@@ -22,8 +22,8 @@ function sampleFlow(): RequirementsServiceFlowV1 {
     steps: [
       {
         id: "s1",
-        title: "녹취 업로드",
-        purpose: "p",
+        title: "녹취 파일 업로드",
+        purpose: "목적: 사용자가 회의 녹취 파일을 등록\n입력: 음성 파일\n처리: 업로드 및 검증\n결과: 분석 대기",
         order: 1,
         primaryActorId: "a1",
         secondaryActorIds: [],
@@ -32,8 +32,8 @@ function sampleFlow(): RequirementsServiceFlowV1 {
       },
       {
         id: "s2",
-        title: "발화 정리",
-        purpose: "p",
+        title: "발화자별 내용 정리",
+        purpose: "STT 및 화자 분리",
         order: 2,
         primaryActorId: "a2",
         secondaryActorIds: [],
@@ -42,10 +42,10 @@ function sampleFlow(): RequirementsServiceFlowV1 {
       },
       {
         id: "s3",
-        title: "요약 생성",
-        purpose: "p",
+        title: "결과를 확인·조정한다",
+        purpose: "",
         order: 3,
-        primaryActorId: "a2",
+        primaryActorId: "a1",
         secondaryActorIds: [],
         approved: false,
         updatedAt: now,
@@ -54,70 +54,88 @@ function sampleFlow(): RequirementsServiceFlowV1 {
   };
 }
 
-describe("serviceFlowProposalDecision", () => {
-  it("classifyServiceFlowProposalDecision — chip 매핑", () => {
+describe("serviceFlowProposalDecision phase10", () => {
+  it("classifyServiceFlowProposalDecision — FLOW_APPROVE / FEATURE_DETAIL", () => {
     expect(classifyServiceFlowProposalDecision("추천안 적용")).toBe("APPLY");
+    expect(classifyServiceFlowProposalDecision("흐름 승인하기")).toBe("FLOW_APPROVE");
     expect(classifyServiceFlowProposalDecision("흐름 검토하기")).toBe("REVIEW_FLOW");
-    expect(classifyServiceFlowProposalDecision("흐름 승인하기")).toBe("APPLY");
-    expect(classifyServiceFlowProposalDecision("단계 수정하기")).toBe("PARTIAL_EDIT");
+    expect(classifyServiceFlowProposalDecision("흐름 상세 검토")).toBe("REVIEW_FLOW");
+    expect(classifyServiceFlowProposalDecision("세부 기능 정리")).toBe("FEATURE_DETAIL");
   });
 
-  it("tryServiceFlowProposalDecisionFastPath — APPLY LLM skip", () => {
+  it("APPLY fast-path → REVIEW profile (흐름 검토하기 없음)", () => {
     const r = tryServiceFlowProposalDecisionFastPath({
       decision: "APPLY",
       currentFlow: sampleFlow(),
-      projectName: "테스트",
     });
-    expect(r?.llmCallSkipped).toBe(true);
-    expect(r?.routingDecision).toBe("proposal_decision_apply_fast_path");
-    expect(r?.assistantMessage).toContain("추천안을 서비스 흐름 초안으로 반영했습니다");
-    expect(r?.assistantMessage).toContain("녹취 업로드");
-    expect(r?.updatedFlow.acceptedProposalSnapshot).toBeTruthy();
+    expect(r?.conversationStateAfter).toBe("REVIEW");
+    expect(r?.quickReplies).not.toContain("흐름 검토하기");
+    expect(r?.quickReplies).toContain("흐름 승인하기");
+    expect(r?.routingDecision).toBe("proposal_apply_enter_review");
   });
 
-  it("tryServiceFlowProposalDecisionFastPath — REVIEW_FLOW state summary", () => {
+  it("FLOW_APPROVE → APPROVED profile (흐름 검토하기 제거)", () => {
+    const r = tryServiceFlowProposalDecisionFastPath({
+      decision: "FLOW_APPROVE",
+      currentFlow: { ...sampleFlow(), conversationState: "REVIEW" },
+    });
+    expect(r?.conversationStateAfter).toBe("APPROVED");
+    expect(r?.quickReplies).not.toContain("흐름 검토하기");
+    expect(r?.quickReplies).toContain("세부 기능 정리");
+    expect(r?.assistantMessage).toContain("승인 상태로 반영");
+    expect(r?.routingDecision).toBe("flow_approve_transition");
+  });
+
+  it("REVIEW_FLOW → detailed review (목적/입력/처리)", () => {
     const r = tryServiceFlowProposalDecisionFastPath({
       decision: "REVIEW_FLOW",
       currentFlow: sampleFlow(),
     });
-    expect(r?.llmCallSkipped).toBe(true);
-    expect(r?.routingDecision).toBe("flow_summary_from_state");
-    expect(r?.assistantMessage).toContain("액터");
-    expect(r?.assistantMessage).toContain("흐름");
-    expect(r?.assistantMessage).toContain("1. 녹취 업로드");
-    expect(r?.quickReplies).toContain("흐름 승인하기");
+    expect(r?.reviewDepth).toBe("detailed");
+    expect(r?.assistantMessage).toContain("상세 검토");
+    expect(r?.assistantMessage).toContain("- 목적:");
+    expect(r?.assistantMessage).toContain("녹취 파일 업로드");
+    expect(r?.routingDecision).toBe("flow_detailed_review_from_state");
   });
 
-  it("shouldBlockServiceFlowProposalReplay — APPLY 후 동일 proposal", () => {
-    const flow = {
+  it("APPROVED + REVIEW_FLOW → compact reminder", () => {
+    const approved = {
       ...sampleFlow(),
-      acceptedProposalSnapshot: buildServiceFlowStateSummaryMessage({ flow: sampleFlow() }),
-      acceptedProposalFingerprint: "abc",
+      conversationState: "APPROVED" as const,
+      proposalAcceptedAt: now,
     };
-    const dup = `회의록 흐름 초안입니다.
-
-예상 액터
-- 사용자
-- 시스템
-
-예상 흐름
-1. 녹취 업로드
-2. 발화 정리
-3. 요약 생성`;
-    expect(
-      shouldBlockServiceFlowProposalReplay({
-        flow,
-        proposalDecision: "APPLY",
-        candidateAssistantMessage: dup,
-      }),
-    ).toBe(true);
-    expect(buildServiceFlowApplyTransitionMessage({ flow: sampleFlow() })).toContain("추천안을");
+    expect(shouldUseApprovedReviewReplayCompact({ flow: approved, decision: "REVIEW_FLOW" })).toBe(true);
+    const r = tryServiceFlowProposalDecisionFastPath({
+      decision: "REVIEW_FLOW",
+      currentFlow: approved,
+    });
+    expect(r?.reviewDepth).toBe("compact");
+    expect(r?.assistantMessage).toContain("이미 승인");
+    expect(r?.routingDecision).toBe("approved_review_replay_compact");
   });
 
-  it("mergeServiceFlowUserFacingMessage — 동일 CTA 1회만", () => {
-    const cta = "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.";
-    const assistant = `초안입니다.\n\n${cta}\n\n${cta}`;
-    const merged = mergeServiceFlowUserFacingMessage(assistant, cta);
-    expect(merged.match(/다음:/g)?.length).toBe(1);
+  it("FEATURE_DETAIL transition", () => {
+    const r = tryServiceFlowProposalDecisionFastPath({
+      decision: "FEATURE_DETAIL",
+      currentFlow: sampleFlow(),
+    });
+    expect(r?.conversationStateAfter).toBe("FEATURE_DETAIL");
+    expect(r?.quickReplies).toContain("기능 수정");
+    expect(r?.assistantMessage).toContain("세부 기능 정리");
+  });
+
+  it("quickRepliesForConversationState — approved에 흐름 검토하기 없음", () => {
+    const approved = quickRepliesForConversationState("APPROVED");
+    expect(approved).not.toContain("흐름 검토하기");
+    expect(buildServiceFlowApprovedTransitionMessage({ flow: sampleFlow() })).toContain("확정된 흐름");
+  });
+
+  it("buildServiceFlowReviewPresentation — detailed from step purpose", () => {
+    const detailed = buildServiceFlowReviewPresentation({
+      flow: sampleFlow(),
+      depth: "detailed",
+    });
+    expect(detailed).toContain("- 처리:");
+    expect(detailed).toContain("업로드 및 검증");
   });
 });

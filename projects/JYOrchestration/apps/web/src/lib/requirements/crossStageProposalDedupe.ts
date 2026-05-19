@@ -193,7 +193,7 @@ export function isExplicitServiceFlowUserIntent(input: {
   const qa = String(input.quickActionLabel ?? "").trim();
   if (qa) {
     if (
-      /다른\s*대안|일부\s*수정|직접\s*입력|보류|그대로\s*진행|단계\s*수정|빠진\s*단계|흐름\s*검토|흐름\s*승인|액터\s*추가/.test(
+      /다른\s*대안|일부\s*수정|직접\s*입력|보류|그대로\s*진행|단계\s*수정|빠진\s*단계|흐름\s*검토|흐름\s*상세|흐름\s*승인|액터\s*추가|세부\s*기능|문서화/.test(
         qa,
       )
     ) {

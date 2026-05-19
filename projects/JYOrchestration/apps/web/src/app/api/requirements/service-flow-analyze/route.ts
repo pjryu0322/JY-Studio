@@ -16,7 +16,8 @@ import {
   resolveServiceFlowProposalDecision,
   shouldBlockServiceFlowProposalReplay,
   tryServiceFlowProposalDecisionFastPath,
-  buildServiceFlowApplyTransitionMessage,
+  buildServiceFlowApprovedTransitionMessage,
+  buildServiceFlowEnterReviewMessage,
   type ServiceFlowProposalDecision,
 } from "@/lib/requirements/serviceFlowProposalDecision";
 import type { ServiceFlowAnalyzeParsed } from "@/lib/requirements/serviceFlowAnalyzeValidation";
@@ -70,20 +71,26 @@ function buildAnalyzeSuccessResponse(input: {
   let quickReplies = input.parsed.quickReplies;
 
   if (
-    input.proposalDecision === "APPLY" &&
+    input.proposalDecision === "FLOW_APPROVE" &&
     shouldBlockServiceFlowProposalReplay({
       flow: input.currentFlow,
-      proposalDecision: input.proposalDecision,
+      proposalDecision: "FLOW_APPROVE",
       candidateAssistantMessage: assistantMessage,
     })
   ) {
-    updatedFlow =
-      input.currentFlow ??
-      updatedFlow;
-    assistantMessage = buildServiceFlowApplyTransitionMessage({
-      flow: updatedFlow,
-      projectName: input.projectName,
-    });
+    updatedFlow = input.currentFlow ?? updatedFlow;
+    assistantMessage = buildServiceFlowApprovedTransitionMessage({ flow: updatedFlow });
+    nextQuestion = null;
+  } else if (
+    input.proposalDecision === "APPLY" &&
+    shouldBlockServiceFlowProposalReplay({
+      flow: input.currentFlow,
+      proposalDecision: "APPLY",
+      candidateAssistantMessage: assistantMessage,
+    })
+  ) {
+    updatedFlow = input.currentFlow ?? updatedFlow;
+    assistantMessage = buildServiceFlowEnterReviewMessage({ flow: updatedFlow });
     nextQuestion = null;
   }
 
@@ -125,6 +132,18 @@ function buildAnalyzeSuccessResponse(input: {
     ...(input.quickActionLabel ? { quickActionLabel: input.quickActionLabel } : {}),
     ...(input.proposalDecision ? { proposalDecision: input.proposalDecision } : {}),
     ...(input.timelineExtras?.llmCallSkipped ? { llmCallSkipped: true } : {}),
+    ...(typeof input.timelineExtras?.conversationStateBefore === "string"
+      ? { conversationStateBefore: String(input.timelineExtras.conversationStateBefore) }
+      : {}),
+    ...(typeof input.timelineExtras?.conversationStateAfter === "string"
+      ? { conversationStateAfter: String(input.timelineExtras.conversationStateAfter) }
+      : {}),
+    ...(typeof input.timelineExtras?.reviewDepth === "string"
+      ? { reviewDepth: String(input.timelineExtras.reviewDepth) }
+      : {}),
+    ...(typeof input.timelineExtras?.quickReplyProfile === "string"
+      ? { quickReplyProfile: String(input.timelineExtras.quickReplyProfile) }
+      : {}),
     ...(input.timelineExtras?.routingDecision
       ? { routingDecision: String(input.timelineExtras.routingDecision) }
       : input.proposalFallbackApplied
@@ -154,6 +173,7 @@ function buildAnalyzeSuccessResponse(input: {
     ...(updatedFlow.acceptedProposalSnapshot
       ? { acceptedProposalSnapshot: updatedFlow.acceptedProposalSnapshot }
       : {}),
+    ...(updatedFlow.conversationState ? { conversationState: updatedFlow.conversationState } : {}),
   };
 
   return NextResponse.json({ success: true, data: responseData, meta: { model: input.model, promptTrace } });
@@ -197,8 +217,14 @@ export async function POST(request: NextRequest) {
 
     const agentCtx = await resolveSingleChatAgentContext(projectId, workspaceScreen);
 
+    const fastPathDecisions = new Set<ServiceFlowProposalDecision>([
+      "APPLY",
+      "REVIEW_FLOW",
+      "FLOW_APPROVE",
+      "FEATURE_DETAIL",
+    ]);
     const fastPath =
-      proposalDecision === "APPLY" || proposalDecision === "REVIEW_FLOW"
+      proposalDecision && fastPathDecisions.has(proposalDecision)
         ? tryServiceFlowProposalDecisionFastPath({
             decision: proposalDecision,
             currentFlow,
@@ -232,14 +258,22 @@ export async function POST(request: NextRequest) {
           timelineAction: fastPath.timelineAction,
           llmCallSkipped: true,
           routingDecision: fastPath.routingDecision,
+          conversationStateBefore: fastPath.conversationStateBefore,
+          conversationStateAfter: fastPath.conversationStateAfter,
+          reviewDepth: fastPath.reviewDepth,
+          quickReplyProfile: fastPath.quickReplyProfile,
         },
       });
     }
 
-    const llmUserMessage =
-      proposalDecision && proposalDecision !== "REVIEW_FLOW"
-        ? augmentUserMessageForLlm(userMessage, quickActionLabel || userMessage, proposalDecision)
-        : userMessage;
+    const llmAugmentable =
+      proposalDecision === "PARTIAL_EDIT" ||
+      proposalDecision === "ALTERNATIVE" ||
+      proposalDecision === "DIRECT_INPUT" ||
+      proposalDecision === "HOLD";
+    const llmUserMessage = llmAugmentable
+      ? augmentUserMessageForLlm(userMessage, quickActionLabel || userMessage, proposalDecision)
+      : userMessage;
 
     const result = await runServiceFlowAnalyzeOpenAI({
       projectName,

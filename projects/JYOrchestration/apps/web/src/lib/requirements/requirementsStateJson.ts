@@ -518,7 +518,15 @@ export type RequirementsServiceFlowV1 = {
   proposalAcceptedAt?: string | null;
   lastProposalDecision?: string | null;
   acceptedProposalFingerprint?: string | null;
+  /** SingleChat service-flow UX state (proposal → review → approved → feature detail) */
+  conversationState?: ServiceFlowConversationStateWire | null;
 };
+
+export type ServiceFlowConversationStateWire =
+  | "PROPOSAL"
+  | "REVIEW"
+  | "APPROVED"
+  | "FEATURE_DETAIL";
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
   if (!v || typeof v !== "object") return false;
@@ -1022,6 +1030,19 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
       ? o.acceptedProposalFingerprint.trim().slice(0, 80)
       : undefined;
 
+  const conversationStateRaw = "conversationState" in o ? o.conversationState : undefined;
+  const conversationStateValid = new Set<ServiceFlowConversationStateWire>([
+    "PROPOSAL",
+    "REVIEW",
+    "APPROVED",
+    "FEATURE_DETAIL",
+  ]);
+  let conversationState: ServiceFlowConversationStateWire | null | undefined;
+  if (conversationStateRaw === null) conversationState = null;
+  else if (typeof conversationStateRaw === "string" && conversationStateValid.has(conversationStateRaw as ServiceFlowConversationStateWire)) {
+    conversationState = conversationStateRaw as ServiceFlowConversationStateWire;
+  }
+
   return {
     createdAt,
     updatedAt,
@@ -1033,5 +1054,6 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     ...(proposalAcceptedAt ? { proposalAcceptedAt } : {}),
     ...(lastProposalDecision ? { lastProposalDecision } : {}),
     ...(acceptedProposalFingerprint ? { acceptedProposalFingerprint } : {}),
+    ...(conversationState !== undefined ? { conversationState } : {}),
   };
 }

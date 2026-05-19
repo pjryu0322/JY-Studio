@@ -330,6 +330,18 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       ? { proposalDecision: r.proposalDecision.trim().slice(0, 40) }
       : {}),
     ...(typeof r.llmCallSkipped === "boolean" ? { llmCallSkipped: r.llmCallSkipped } : {}),
+    ...(typeof r.conversationStateBefore === "string" && r.conversationStateBefore.trim()
+      ? { conversationStateBefore: r.conversationStateBefore.trim().slice(0, 24) }
+      : {}),
+    ...(typeof r.conversationStateAfter === "string" && r.conversationStateAfter.trim()
+      ? { conversationStateAfter: r.conversationStateAfter.trim().slice(0, 24) }
+      : {}),
+    ...(typeof r.reviewDepth === "string" && r.reviewDepth.trim()
+      ? { reviewDepth: r.reviewDepth.trim().slice(0, 16) }
+      : {}),
+    ...(typeof r.quickReplyProfile === "string" && r.quickReplyProfile.trim()
+      ? { quickReplyProfile: r.quickReplyProfile.trim().slice(0, 24) }
+      : {}),
     ...(typeof r.rawResponseText === "string" ? { rawResponseText: r.rawResponseText.slice(0, 4000) } : {}),
     ...(typeof r.parseError === "string" && r.parseError.trim() ? { parseError: r.parseError.trim().slice(0, 400) } : {}),
     ...(typeof r.parsedJsonPreview === "string" && r.parsedJsonPreview.trim()
@@ -705,6 +717,10 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta" | "state_transition";
   readonly proposalDecision?: string;
   readonly llmCallSkipped?: boolean;
+  readonly conversationStateBefore?: string;
+  readonly conversationStateAfter?: string;
+  readonly reviewDepth?: string;
+  readonly quickReplyProfile?: string;
   readonly rawResponseText?: string;
   readonly parseError?: string;
   readonly parsedJsonPreview?: string;
@@ -882,6 +898,10 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { proposalDecision: params.proposalDecision.trim().slice(0, 40) }
       : {}),
     ...(typeof params.llmCallSkipped === "boolean" ? { llmCallSkipped: params.llmCallSkipped } : {}),
+    ...(params.conversationStateBefore ? { conversationStateBefore: params.conversationStateBefore } : {}),
+    ...(params.conversationStateAfter ? { conversationStateAfter: params.conversationStateAfter } : {}),
+    ...(params.reviewDepth ? { reviewDepth: params.reviewDepth } : {}),
+    ...(params.quickReplyProfile ? { quickReplyProfile: params.quickReplyProfile } : {}),
     ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
     ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),
     ...(params.parsedJsonPreview ? { parsedJsonPreview: params.parsedJsonPreview.slice(0, 4000) } : {}),
