@@ -113,8 +113,8 @@ export function synthesizeBootstrapUserMessageFromProposalDraft(
   const secondary = String(questionSecondary ?? "").trim();
   if (secondary && hasProposalFirstStructure(secondary) && !lines.some((l) => l.includes(secondary.slice(0, 24)))) {
     lines.push("", secondary);
-  } else if (!/선택|수정|맞는지|확인해\s*주|다음:/.test(lines.join("\n"))) {
-    lines.push("", "추천: 위 초안을 기준으로 세부를 맞춰 가면 됩니다.", "다음: 추천안 적용 / 일부 수정 / 다른 대안 보기 중 하나를 골라 주세요.");
+  } else if (!/선택|수정|맞는지|확인해\s*주|다음:|추천안을\s*검토/.test(lines.join("\n"))) {
+    lines.push("", "추천안을 검토해 주세요.");
   }
 
   return lines.join("\n").trim();

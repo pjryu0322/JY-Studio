@@ -254,6 +254,14 @@ export type RequirementsPromptTimelineEntry = {
   serviceFlowVisibleMode?: "visible_proposal" | "handoff_state_only" | "visible_delta" | "state_transition";
   proposalDecision?: string;
   llmCallSkipped?: boolean;
+  proposalVariantMode?: string;
+  proposalFingerprint?: string;
+  proposalDeltaScore?: number;
+  alternativeGenerationReason?: string;
+  alternativeBaselineSource?: string;
+  alternativeBaselineRecovered?: boolean;
+  failureReason?: string;
+  reviewMode?: string;
   /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
   fallbackReason?:
     | "NO_KEY"
@@ -520,7 +528,15 @@ export type RequirementsServiceFlowV1 = {
   acceptedProposalFingerprint?: string | null;
   /** SingleChat service-flow UX state (proposal → review → approved → feature detail) */
   conversationState?: ServiceFlowConversationStateWire | null;
+  proposalVariantMode?: ProposalVariantModeWire | null;
+  reviewMode?: ServiceFlowReviewModeWire | null;
+  primaryProposalFingerprint?: string | null;
+  alternativeProposalFingerprint?: string | null;
 };
+
+export type ProposalVariantModeWire = "PRIMARY" | "ALTERNATIVE";
+
+export type ServiceFlowReviewModeWire = "PRIMARY_REVIEW" | "ALTERNATIVE_REVIEW";
 
 export type ServiceFlowConversationStateWire =
   | "PROPOSAL"
@@ -1055,5 +1071,19 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     ...(lastProposalDecision ? { lastProposalDecision } : {}),
     ...(acceptedProposalFingerprint ? { acceptedProposalFingerprint } : {}),
     ...(conversationState !== undefined ? { conversationState } : {}),
+    ...(typeof o.proposalVariantMode === "string" &&
+    (o.proposalVariantMode === "PRIMARY" || o.proposalVariantMode === "ALTERNATIVE")
+      ? { proposalVariantMode: o.proposalVariantMode }
+      : {}),
+    ...(typeof o.reviewMode === "string" &&
+    (o.reviewMode === "PRIMARY_REVIEW" || o.reviewMode === "ALTERNATIVE_REVIEW")
+      ? { reviewMode: o.reviewMode }
+      : {}),
+    ...(typeof o.primaryProposalFingerprint === "string" && o.primaryProposalFingerprint.trim()
+      ? { primaryProposalFingerprint: o.primaryProposalFingerprint.trim().slice(0, 80) }
+      : {}),
+    ...(typeof o.alternativeProposalFingerprint === "string" && o.alternativeProposalFingerprint.trim()
+      ? { alternativeProposalFingerprint: o.alternativeProposalFingerprint.trim().slice(0, 80) }
+      : {}),
   };
 }

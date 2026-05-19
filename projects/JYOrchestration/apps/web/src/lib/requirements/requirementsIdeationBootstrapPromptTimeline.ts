@@ -342,6 +342,30 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.quickReplyProfile === "string" && r.quickReplyProfile.trim()
       ? { quickReplyProfile: r.quickReplyProfile.trim().slice(0, 24) }
       : {}),
+    ...(typeof r.proposalVariantMode === "string" && r.proposalVariantMode.trim()
+      ? { proposalVariantMode: r.proposalVariantMode.trim().slice(0, 24) }
+      : {}),
+    ...(typeof r.proposalFingerprint === "string" && r.proposalFingerprint.trim()
+      ? { proposalFingerprint: r.proposalFingerprint.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.proposalDeltaScore === "number" && Number.isFinite(r.proposalDeltaScore)
+      ? { proposalDeltaScore: Math.max(0, Math.min(1, Number(r.proposalDeltaScore.toFixed(3)))) }
+      : {}),
+    ...(typeof r.alternativeGenerationReason === "string" && r.alternativeGenerationReason.trim()
+      ? { alternativeGenerationReason: r.alternativeGenerationReason.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.alternativeBaselineSource === "string" && r.alternativeBaselineSource.trim()
+      ? { alternativeBaselineSource: r.alternativeBaselineSource.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.alternativeBaselineRecovered === "boolean"
+      ? { alternativeBaselineRecovered: r.alternativeBaselineRecovered }
+      : {}),
+    ...(typeof r.failureReason === "string" && r.failureReason.trim()
+      ? { failureReason: r.failureReason.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.reviewMode === "string" && r.reviewMode.trim()
+      ? { reviewMode: r.reviewMode.trim().slice(0, 32) }
+      : {}),
     ...(typeof r.rawResponseText === "string" ? { rawResponseText: r.rawResponseText.slice(0, 4000) } : {}),
     ...(typeof r.parseError === "string" && r.parseError.trim() ? { parseError: r.parseError.trim().slice(0, 400) } : {}),
     ...(typeof r.parsedJsonPreview === "string" && r.parsedJsonPreview.trim()
@@ -721,6 +745,14 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly conversationStateAfter?: string;
   readonly reviewDepth?: string;
   readonly quickReplyProfile?: string;
+  readonly proposalVariantMode?: string;
+  readonly proposalFingerprint?: string;
+  readonly proposalDeltaScore?: number;
+  readonly alternativeGenerationReason?: string;
+  readonly alternativeBaselineSource?: string;
+  readonly alternativeBaselineRecovered?: boolean;
+  readonly failureReason?: string;
+  readonly reviewMode?: string;
   readonly rawResponseText?: string;
   readonly parseError?: string;
   readonly parsedJsonPreview?: string;
@@ -902,6 +934,16 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.conversationStateAfter ? { conversationStateAfter: params.conversationStateAfter } : {}),
     ...(params.reviewDepth ? { reviewDepth: params.reviewDepth } : {}),
     ...(params.quickReplyProfile ? { quickReplyProfile: params.quickReplyProfile } : {}),
+    ...(params.proposalVariantMode ? { proposalVariantMode: params.proposalVariantMode } : {}),
+    ...(params.proposalFingerprint ? { proposalFingerprint: params.proposalFingerprint } : {}),
+    ...(typeof params.proposalDeltaScore === "number" ? { proposalDeltaScore: params.proposalDeltaScore } : {}),
+    ...(params.alternativeGenerationReason ? { alternativeGenerationReason: params.alternativeGenerationReason } : {}),
+    ...(params.alternativeBaselineSource ? { alternativeBaselineSource: params.alternativeBaselineSource } : {}),
+    ...(typeof params.alternativeBaselineRecovered === "boolean"
+      ? { alternativeBaselineRecovered: params.alternativeBaselineRecovered }
+      : {}),
+    ...(params.failureReason ? { failureReason: params.failureReason } : {}),
+    ...(params.reviewMode ? { reviewMode: params.reviewMode } : {}),
     ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
     ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),
     ...(params.parsedJsonPreview ? { parsedJsonPreview: params.parsedJsonPreview.slice(0, 4000) } : {}),

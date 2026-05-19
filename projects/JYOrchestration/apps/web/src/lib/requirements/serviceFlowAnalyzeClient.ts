@@ -46,6 +46,8 @@ export type ServiceFlowAnalyzeSuccessData = {
 export type ServiceFlowAnalyzeMeta = {
   readonly model?: string | null;
   readonly promptTrace?: unknown;
+  readonly userFacingMessage?: string;
+  readonly quickReplies?: readonly string[];
 };
 
 export type ServiceFlowAnalyzeResponse =

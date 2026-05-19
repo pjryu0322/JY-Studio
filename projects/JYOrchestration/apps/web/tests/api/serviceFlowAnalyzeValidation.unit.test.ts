@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import { applyQuickReplyAwareAssistantPresentation } from "@/lib/requirements/serviceFlowAssistantPresentation";
 import {
   isServiceFlowProposalBootstrapTurn,
   mergeServiceFlowUserFacingMessage,
@@ -73,6 +74,16 @@ describe("serviceFlowAnalyzeValidation", () => {
     const merged = mergeServiceFlowUserFacingMessage(assistant, nextQ);
     expect(merged).toBe(assistant);
     expect(merged.split("?").length - 1).toBeLessThanOrEqual(1);
+  });
+
+  it("applyQuickReplyAwareAssistantPresentation — chip enumeration CTA", () => {
+    const assistant = `초안입니다.\n\n다음: 추천안 적용 / 일부 수정 / 다른 대안 보기 중 하나를 골라 주세요.`;
+    const out = applyQuickReplyAwareAssistantPresentation(assistant, [
+      "추천안 적용",
+      "일부 수정",
+      "다른 대안 보기",
+    ]);
+    expect(out.match(/다음:/g)?.length ?? 0).toBe(0);
   });
 
   it("mergeServiceFlowUserFacingMessage — assistant+nextQuestion 동일 CTA", () => {

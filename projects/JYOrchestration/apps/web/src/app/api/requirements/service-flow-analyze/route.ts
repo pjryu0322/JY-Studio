@@ -5,6 +5,9 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
+import { finalizeServiceFlowAssistantForResponse } from "@/lib/requirements/serviceFlowAssistantPresentation";
+import { runServiceFlowAlternativeProposalTurn } from "@/lib/requirements/serviceFlowAlternativeProposal";
+import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import { resolveServiceFlowVisiblePresentation } from "@/lib/requirements/crossStageProposalDedupe";
 import {
   buildSingleChatPromptTimelineEntry,
@@ -114,6 +117,17 @@ function buildAnalyzeSuccessResponse(input: {
       ? "state_transition"
       : presentation.mode;
 
+  const responseQuickReplies = presentation.visibleQuickReplies ?? quickReplies;
+  const variantMode =
+    updatedFlow.proposalVariantMode ??
+    (input.proposalDecision === "ALTERNATIVE" ? "ALTERNATIVE" : "PRIMARY");
+  const finalAssistant = finalizeServiceFlowAssistantForResponse({
+    assistantMessage: mergedAssistant,
+    nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
+    quickReplies: responseQuickReplies,
+    proposalVariantMode: variantMode,
+  });
+
   const promptTrace = buildSingleChatPromptTimelineEntry({
     action: (input.timelineExtras?.timelineAction as string) ?? "serviceFlowAnalyze",
     source: input.timelineExtras?.llmCallSkipped ? "internal" : input.proposalFallbackApplied ? "fallback" : "llm",
@@ -122,7 +136,7 @@ function buildAnalyzeSuccessResponse(input: {
     workspaceScreenKey: input.agentCtx.workspaceScreenKey,
     selectedAgents: input.agentCtx.selectedAgents,
     ...(input.promptText ? { promptText: input.promptText } : {}),
-    responseText: mergedAssistant.slice(0, 4000),
+    responseText: finalAssistant.slice(0, 4000),
     model: input.model,
     provider: input.timelineExtras?.llmCallSkipped ? undefined : "openai",
     createdAtIso: new Date().toISOString(),
@@ -144,6 +158,21 @@ function buildAnalyzeSuccessResponse(input: {
     ...(typeof input.timelineExtras?.quickReplyProfile === "string"
       ? { quickReplyProfile: String(input.timelineExtras.quickReplyProfile) }
       : {}),
+    ...(typeof input.timelineExtras?.proposalVariantMode === "string"
+      ? { proposalVariantMode: String(input.timelineExtras.proposalVariantMode) }
+      : {}),
+    ...(typeof input.timelineExtras?.proposalFingerprint === "string"
+      ? { proposalFingerprint: String(input.timelineExtras.proposalFingerprint) }
+      : {}),
+    ...(typeof input.timelineExtras?.proposalDeltaScore === "number"
+      ? { proposalDeltaScore: input.timelineExtras.proposalDeltaScore }
+      : {}),
+    ...(typeof input.timelineExtras?.alternativeGenerationReason === "string"
+      ? { alternativeGenerationReason: String(input.timelineExtras.alternativeGenerationReason) }
+      : {}),
+    ...(typeof input.timelineExtras?.reviewMode === "string"
+      ? { reviewMode: String(input.timelineExtras.reviewMode) }
+      : {}),
     ...(input.timelineExtras?.routingDecision
       ? { routingDecision: String(input.timelineExtras.routingDecision) }
       : input.proposalFallbackApplied
@@ -159,11 +188,11 @@ function buildAnalyzeSuccessResponse(input: {
   const responseData = {
     assistantMessage:
       input.forceVisibleMode === "state_transition"
-        ? mergedAssistant
-        : presentation.visibleAssistantMessage || mergedAssistant,
+        ? finalAssistant
+        : presentation.visibleAssistantMessage || finalAssistant,
     updatedFlow,
     nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
-    quickReplies: presentation.visibleQuickReplies ?? quickReplies,
+    quickReplies: responseQuickReplies,
     intent: input.parsed.intent,
     readiness: input.parsed.readiness,
     visibleMode,
@@ -232,9 +261,88 @@ export async function POST(request: NextRequest) {
           })
         : null;
 
+    if (proposalDecision === "ALTERNATIVE") {
+      const alt = await runServiceFlowAlternativeProposalTurn({
+        projectName,
+        projectDescription,
+        ideationAssets,
+        userMessage,
+        quickActionLabel: quickActionLabel || userMessage,
+        currentFlow,
+        recentMessages,
+        latestAiQuestion,
+        priorScreenHandoff: priorScreenHandoff || undefined,
+        participatingAgentsPromptBlock: agentCtx.promptBlock,
+      });
+      if (!alt.ok) {
+        const promptTrace = buildSingleChatPromptTimelineEntry({
+          action: "alternativeProposalGenerate",
+          source: "fallback",
+          timelineStage: agentCtx.timelineStage,
+          stageGroup: agentCtx.stageGroup,
+          workspaceScreenKey: agentCtx.workspaceScreenKey,
+          selectedAgents: agentCtx.selectedAgents,
+          error: `${alt.failureReason}: ${alt.message}`,
+          proposalDecision: "ALTERNATIVE",
+          proposalVariantMode: "ALTERNATIVE",
+          routingDecision: alt.routingDecision,
+          failureReason: alt.failureReason,
+          ...(alt.alternativeBaselineSource ? { alternativeBaselineSource: alt.alternativeBaselineSource } : {}),
+          alternativeBaselineRecovered: alt.alternativeBaselineRecovered,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            code: alt.code,
+            message: alt.message,
+            meta: {
+              model: null,
+              promptTrace,
+              userFacingMessage: alt.userFacingMessage,
+              quickReplies: [...alt.quickReplies],
+            },
+          },
+          { status: alt.code === "NO_KEY" ? 503 : 502 },
+        );
+      }
+      return buildAnalyzeSuccessResponse({
+        parsed: alt.data,
+        userMessage,
+        currentFlow,
+        priorScreenHandoff,
+        recentMessages,
+        autoHandoff,
+        quickActionLabel: quickActionLabel || userMessage,
+        proposalDecision: "ALTERNATIVE",
+        projectName,
+        model: alt.model,
+        promptText: alt.promptText,
+        proposalFallbackApplied: alt.proposalFallbackApplied,
+        agentCtx,
+        forceVisibleMode: "state_transition",
+        timelineExtras: {
+          timelineAction: "alternativeProposalGenerate",
+          routingDecision: alt.routingDecision,
+          proposalVariantMode: alt.proposalVariantMode,
+          proposalFingerprint: alt.proposalFingerprint,
+          proposalDeltaScore: alt.proposalDeltaScore,
+          alternativeBaselineSource: alt.alternativeBaselineSource,
+          alternativeBaselineRecovered: alt.alternativeBaselineRecovered,
+          ...(alt.alternativeGenerationReason ? { alternativeGenerationReason: alt.alternativeGenerationReason } : {}),
+          reviewMode: "ALTERNATIVE_REVIEW",
+        },
+      });
+    }
+
     if (fastPath) {
-      const parsed: ServiceFlowAnalyzeParsed & { updatedFlow: RequirementsServiceFlowV1 } = {
+      const fpAssistant = finalizeServiceFlowAssistantForResponse({
         assistantMessage: fastPath.assistantMessage,
+        nextQuestion: null,
+        quickReplies: fastPath.quickReplies,
+        proposalVariantMode: "PRIMARY",
+      });
+      const parsed: ServiceFlowAnalyzeParsed & { updatedFlow: RequirementsServiceFlowV1 } = {
+        assistantMessage: fpAssistant,
         updatedFlow: fastPath.updatedFlow,
         intent: fastPath.intent,
         nextQuestion: fastPath.nextQuestion,
@@ -268,7 +376,6 @@ export async function POST(request: NextRequest) {
 
     const llmAugmentable =
       proposalDecision === "PARTIAL_EDIT" ||
-      proposalDecision === "ALTERNATIVE" ||
       proposalDecision === "DIRECT_INPUT" ||
       proposalDecision === "HOLD";
     const llmUserMessage = llmAugmentable
@@ -312,8 +419,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const primaryFlow = !result.data.updatedFlow.proposalVariantMode
+      ? markFlowAsPrimaryProposalVariant(result.data.updatedFlow)
+      : result.data.updatedFlow;
+
     return buildAnalyzeSuccessResponse({
-      parsed: result.data,
+      parsed: { ...result.data, updatedFlow: primaryFlow },
       userMessage,
       currentFlow,
       priorScreenHandoff,
@@ -326,9 +437,13 @@ export async function POST(request: NextRequest) {
       promptText: result.promptText,
       proposalFallbackApplied: result.proposalFallbackApplied,
       agentCtx,
-      timelineExtras: proposalDecision
-        ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
-        : {},
+      timelineExtras: {
+        ...(proposalDecision
+          ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
+          : {}),
+        proposalVariantMode: primaryFlow.proposalVariantMode ?? "PRIMARY",
+        reviewMode: primaryFlow.reviewMode ?? "PRIMARY_REVIEW",
+      },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

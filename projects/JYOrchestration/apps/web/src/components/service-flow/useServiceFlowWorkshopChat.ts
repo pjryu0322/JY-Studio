@@ -30,6 +30,27 @@ import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesi
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
+const GENERIC_ANALYZE_FAILURE =
+  "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." as const;
+
+function resolveServiceFlowAnalyzeFailureUx(json: unknown): {
+  body: string;
+  quickReplies?: string[];
+} {
+  const fj = json as {
+    message?: string;
+    meta?: { userFacingMessage?: string; quickReplies?: readonly string[] };
+  };
+  const body =
+    String(fj.meta?.userFacingMessage ?? "").trim() ||
+    String(fj.message ?? "").trim() ||
+    GENERIC_ANALYZE_FAILURE;
+  const quickReplies = Array.isArray(fj.meta?.quickReplies)
+    ? fj.meta.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
+    : [];
+  return quickReplies.length ? { body, quickReplies } : { body };
+}
+
 const SLOT_RESOLVE_USER_MESSAGES: Record<ServiceFlowStageSlotKey, string> = {
   humanActors: "사람 액터를 누가 쓰는지 정리해 주세요. 액터 목록을 사람/시스템으로 나눠 반영해 주세요.",
   systemActors: "시스템이 처리하는 역할을 액터로 정리해 주세요. 시스템 액터를 추가해 주세요.",
@@ -236,9 +257,17 @@ export function useServiceFlowWorkshopChat({
 
           if (!result.ok || !result.data.updatedFlow) {
             autoScrollPendingRef.current = true;
+            const failureUx = result.ok
+              ? { body: GENERIC_ANALYZE_FAILURE }
+              : resolveServiceFlowAnalyzeFailureUx(result.json);
             const errSlice = await onAppendRef.current([
-              buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+              buildServiceFlowAiPersist(failureUx.body, {
+                ...(failureUx.quickReplies?.length
+                  ? { interviewSuggestions: failureUx.quickReplies }
+                  : {}),
+              }),
             ]);
+            if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
             setReplying(false);
             return;
@@ -249,7 +278,7 @@ export function useServiceFlowWorkshopChat({
           if (!nextFlow) {
             autoScrollPendingRef.current = true;
             const errSlice = await onAppendRef.current([
-              buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+              buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
             setReplying(false);
@@ -396,9 +425,15 @@ export function useServiceFlowWorkshopChat({
           emitPromptTrace(fj?.meta?.promptTrace);
         }
         if (!result.ok || !result.data.updatedFlow) {
+          const failureUx = result.ok
+            ? { body: GENERIC_ANALYZE_FAILURE }
+            : resolveServiceFlowAnalyzeFailureUx(result.json);
           const errSlice = await onAppendRef.current([
-            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+            buildServiceFlowAiPersist(failureUx.body, {
+              ...(failureUx.quickReplies?.length ? { interviewSuggestions: failureUx.quickReplies } : {}),
+            }),
           ]);
+          if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
           return;
