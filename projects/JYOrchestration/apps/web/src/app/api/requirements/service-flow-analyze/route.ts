@@ -203,6 +203,12 @@ function buildAnalyzeSuccessResponse(input: {
       ? { acceptedProposalSnapshot: updatedFlow.acceptedProposalSnapshot }
       : {}),
     ...(updatedFlow.conversationState ? { conversationState: updatedFlow.conversationState } : {}),
+    ...(updatedFlow.alternativeProposalPayload
+      ? { alternativeProposalPayload: updatedFlow.alternativeProposalPayload }
+      : {}),
+    ...(input.proposalDecision === "ALTERNATIVE" && updatedFlow.alternativeProposalPayload
+      ? { openAlternativeCanvas: true }
+      : {}),
   };
 
   return NextResponse.json({ success: true, data: responseData, meta: { model: input.model, promptTrace } });
@@ -330,6 +336,9 @@ export async function POST(request: NextRequest) {
           alternativeBaselineRecovered: alt.alternativeBaselineRecovered,
           ...(alt.alternativeGenerationReason ? { alternativeGenerationReason: alt.alternativeGenerationReason } : {}),
           reviewMode: "ALTERNATIVE_REVIEW",
+          proposalVisualizationMode: "canvas",
+          alternativeProposalId: alt.alternativeProposalPayload.proposalId,
+          comparisonGenerated: true,
         },
       });
     }

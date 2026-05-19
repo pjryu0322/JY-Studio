@@ -20,7 +20,12 @@ import {
   markFlowAsAlternativeProposalVariant,
   type ProposalVariantMode,
 } from "@/lib/requirements/serviceFlowProposalVariant";
-import { quickRepliesForConversationState } from "@/lib/requirements/serviceFlowConversationState";
+import {
+  ALTERNATIVE_CANVAS_QUICK_REPLIES,
+  buildAlternativeCompactAssistantMessage,
+  buildAlternativeProposalPayload,
+  type AlternativeProposalPayloadWire,
+} from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 export type ServiceFlowAlternativeTurnResult =
   | {
@@ -35,6 +40,7 @@ export type ServiceFlowAlternativeTurnResult =
       readonly alternativeGenerationReason?: string;
       readonly alternativeBaselineSource: AlternativeBaselineSource;
       readonly alternativeBaselineRecovered: boolean;
+      readonly alternativeProposalPayload: AlternativeProposalPayloadWire;
       readonly routingDecision: string;
     }
   | {
@@ -69,10 +75,10 @@ function buildAlternativeAnalyzeAugment(input: {
 사용자는 "다른 대안 보기"를 선택했습니다. 아래 직전 초안과 **다른 방향**의 service-flow proposal을 새로 제안하세요.
 - 다른 관점·운영 방식·actor 구조·workflow depth·협업 구조 중 2가지 이상 변경
 - 직전과 동일한 단계 제목·액터 나열만 반복 금지
-- assistantMessage는 proposal-first(요약 + 예상 액터 + 예상 흐름). "서비스 흐름을 정의해 보겠습니다" 같은 백지 시작 금지
-- 첫 문단에 "기존 초안과 다른 방향의 대안" 맥락 포함
-- quickReplies 2~3개 (추천안 적용 / 일부 수정 / 다른 대안 보기 등)
-- nextQuestion은 null 권장(버튼 CTA와 중복 금지)
+- updatedFlow에 actors/steps를 반드시 채울 것(상세 구조는 canvas가 렌더링)
+- assistantMessage는 2~3줄 요약만(예상 흐름·액터 전체 나열 금지, 채팅에 proposal dump 금지)
+- 첫 문단에 "기존 초안과 다른 방향" 맥락 + 무엇이 달라졌는지 1~2문장
+- nextQuestion은 null
 
 [직전 초안 구조]
 ${prevJson}${regen}`;
@@ -162,22 +168,28 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
 
     const deltaScore = computeProposalFlowDeltaScore(previousFlow, result.data.updatedFlow);
     if (!isAlternativeProposalInsufficientDelta({ previousFlow, candidateFlow: result.data.updatedFlow })) {
-      const quickReplies =
-        result.data.quickReplies?.length ?
-          result.data.quickReplies
-        : [...quickRepliesForConversationState("REVIEW")];
+      const quickReplies = [...ALTERNATIVE_CANVAS_QUICK_REPLIES];
+      const alternativeProposalPayload = buildAlternativeProposalPayload({
+        baselineFlow: previousFlow,
+        alternativeFlow: result.data.updatedFlow,
+        llmAssistantMessage: result.data.assistantMessage,
+      });
+      const compactSummary = buildAlternativeCompactAssistantMessage(alternativeProposalPayload);
 
       const assistantMessage = finalizeServiceFlowAssistantForResponse({
-        assistantMessage: result.data.assistantMessage,
+        assistantMessage: compactSummary,
         nextQuestion: null,
         quickReplies,
         proposalVariantMode: "ALTERNATIVE",
       });
 
-      const updatedFlow = markFlowAsAlternativeProposalVariant(result.data.updatedFlow, {
-        previousFlow,
-        deltaScore,
-      });
+      const updatedFlow = {
+        ...markFlowAsAlternativeProposalVariant(result.data.updatedFlow, {
+          previousFlow,
+          deltaScore,
+        }),
+        alternativeProposalPayload,
+      };
 
       return {
         ok: true,
@@ -188,6 +200,7 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
           quickReplies: [...quickReplies],
           updatedFlow,
         },
+        alternativeProposalPayload,
         model: result.model,
         promptText: result.promptText,
         proposalFallbackApplied: result.proposalFallbackApplied,
@@ -207,20 +220,26 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
   const last = lastResult?.ok ? lastResult : null;
   if (last?.ok) {
     const deltaScore = computeProposalFlowDeltaScore(previousFlow, last.data.updatedFlow);
-    const quickReplies =
-      last.data.quickReplies?.length ?
-        last.data.quickReplies
-      : [...quickRepliesForConversationState("REVIEW")];
+    const quickReplies = [...ALTERNATIVE_CANVAS_QUICK_REPLIES];
+    const alternativeProposalPayload = buildAlternativeProposalPayload({
+      baselineFlow: previousFlow,
+      alternativeFlow: last.data.updatedFlow,
+      llmAssistantMessage: last.data.assistantMessage,
+    });
+    const compactSummary = buildAlternativeCompactAssistantMessage(alternativeProposalPayload);
     const assistantMessage = finalizeServiceFlowAssistantForResponse({
-      assistantMessage: last.data.assistantMessage,
+      assistantMessage: compactSummary,
       nextQuestion: null,
       quickReplies,
       proposalVariantMode: "ALTERNATIVE",
     });
-    const updatedFlow = markFlowAsAlternativeProposalVariant(last.data.updatedFlow, {
-      previousFlow,
-      deltaScore,
-    });
+    const updatedFlow = {
+      ...markFlowAsAlternativeProposalVariant(last.data.updatedFlow, {
+        previousFlow,
+        deltaScore,
+      }),
+      alternativeProposalPayload,
+    };
     return {
       ok: true,
       data: {
@@ -230,6 +249,7 @@ export async function runServiceFlowAlternativeProposalTurn(input: {
         quickReplies: [...quickReplies],
         updatedFlow,
       },
+      alternativeProposalPayload,
       model: last.model,
       promptText: last.promptText,
       proposalFallbackApplied: last.proposalFallbackApplied,

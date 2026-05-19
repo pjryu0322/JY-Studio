@@ -752,6 +752,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly alternativeBaselineSource?: string;
   readonly alternativeBaselineRecovered?: boolean;
   readonly failureReason?: string;
+  readonly proposalVisualizationMode?: string;
+  readonly alternativeProposalId?: string;
+  readonly comparisonGenerated?: boolean;
   readonly reviewMode?: string;
   readonly rawResponseText?: string;
   readonly parseError?: string;
@@ -943,6 +946,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { alternativeBaselineRecovered: params.alternativeBaselineRecovered }
       : {}),
     ...(params.failureReason ? { failureReason: params.failureReason } : {}),
+    ...(params.proposalVisualizationMode ? { proposalVisualizationMode: params.proposalVisualizationMode } : {}),
+    ...(params.alternativeProposalId ? { alternativeProposalId: params.alternativeProposalId } : {}),
+    ...(typeof params.comparisonGenerated === "boolean" ? { comparisonGenerated: params.comparisonGenerated } : {}),
     ...(params.reviewMode ? { reviewMode: params.reviewMode } : {}),
     ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
     ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),

@@ -121,6 +121,7 @@ import { publishWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHand
 import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
 import { useFeaturePlanningSingleChatBridge } from "@/components/feature-planning/useFeaturePlanningSingleChatBridge";
 import { useServiceFlowSingleChatBridge } from "@/components/service-flow/useServiceFlowSingleChatBridge";
+import { AlternativeProposalCanvasOverlay } from "@/components/service-flow/AlternativeProposalCanvasOverlay";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 
@@ -1690,7 +1691,7 @@ export function RequirementsWorkspace({
           ? "불러오는 중…"
           : "이름 미설정";
 
-  useServiceFlowSingleChatBridge({
+  const serviceFlowAlternativeCanvas = useServiceFlowSingleChatBridge({
     projectId: resolvedProjectId.trim(),
     projectName: headerProjectName,
     projectDescription: String(project?.description ?? ""),
@@ -1854,6 +1855,18 @@ export function RequirementsWorkspace({
   return (
     <div style={requirementsWorkspaceShellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
+
+      {activeStage === "service-flow" ? (
+        <AlternativeProposalCanvasOverlay
+          open={serviceFlowAlternativeCanvas.alternativeCanvasOpen}
+          payload={serviceFlowAlternativeCanvas.alternativeCanvasPayload}
+          onClose={serviceFlowAlternativeCanvas.closeAlternativeCanvas}
+          onApplyAlternative={serviceFlowAlternativeCanvas.applyAlternativeFromCanvas}
+          onKeepPrimary={serviceFlowAlternativeCanvas.keepPrimaryFromCanvas}
+          onRegenerateAlternative={serviceFlowAlternativeCanvas.regenerateAlternativeFromCanvas}
+          busy={serviceFlowAlternativeCanvas.replying}
+        />
+      ) : null}
 
       {inIdeationStage ? (
         <RequirementsOrganizeProposalWorkspaceOverlay

@@ -41,6 +41,8 @@ export type ServiceFlowAnalyzeSuccessData = {
   suppressReason?: string;
   proposalDecision?: string;
   acceptedProposalSnapshot?: string | null;
+  alternativeProposalPayload?: unknown;
+  openAlternativeCanvas?: boolean;
 };
 
 export type ServiceFlowAnalyzeMeta = {

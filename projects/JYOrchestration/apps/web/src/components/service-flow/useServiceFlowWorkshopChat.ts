@@ -21,7 +21,15 @@ import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requir
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { consumeWorkspaceAiScreenHandoff, peekWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import { shouldSuppressServiceFlowVisibleFromResponse } from "@/lib/requirements/crossStageProposalDedupe";
-import { classifyServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
+import {
+  classifyServiceFlowProposalDecision,
+  type ServiceFlowProposalDecision,
+} from "@/lib/requirements/serviceFlowProposalDecision";
+import {
+  ALTERNATIVE_CANVAS_QUICK_REPLIES,
+  type AlternativeProposalPayloadWire,
+} from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
@@ -110,6 +118,8 @@ export function useServiceFlowWorkshopChat({
   const [input, setInput] = useState("");
   const [replying, setReplying] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
+  const [alternativeCanvasOpen, setAlternativeCanvasOpen] = useState(false);
+  const alternativePayloadRef = useRef<AlternativeProposalPayloadWire | null>(null);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
@@ -275,6 +285,11 @@ export function useServiceFlowWorkshopChat({
 
           const data = result.data;
           const nextFlow = data.updatedFlow;
+          const altPayload = nextFlow?.alternativeProposalPayload ?? null;
+          if (altPayload) {
+            alternativePayloadRef.current = altPayload;
+            if (data.openAlternativeCanvas) setAlternativeCanvasOpen(true);
+          }
           if (!nextFlow) {
             autoScrollPendingRef.current = true;
             const errSlice = await onAppendRef.current([
@@ -346,6 +361,39 @@ export function useServiceFlowWorkshopChat({
     callAnalyzeRef.current = callAnalyze;
   }, [callAnalyze]);
 
+  useEffect(() => {
+    if (flow?.alternativeProposalPayload) {
+      alternativePayloadRef.current = flow.alternativeProposalPayload;
+    }
+  }, [flow?.alternativeProposalPayload]);
+
+  const dispatchClientOnlyDecision = useCallback(
+    (decision: ServiceFlowProposalDecision, _chip: string | null): boolean => {
+      if (decision === "VIEW_ALTERNATIVE_DETAIL") {
+        const payload =
+          flowRef.current?.alternativeProposalPayload ?? alternativePayloadRef.current;
+        if (payload) setAlternativeCanvasOpen(true);
+        return true;
+      }
+      if (decision === "KEEP_PRIMARY") {
+        const payload =
+          flowRef.current?.alternativeProposalPayload ?? alternativePayloadRef.current;
+        if (payload?.baselineFlow) {
+          onChangeFlowRef.current({
+            ...markFlowAsPrimaryProposalVariant(payload.baselineFlow),
+            alternativeProposalPayload: null,
+          });
+          alternativePayloadRef.current = null;
+          setAlternativeCanvasOpen(false);
+          setQuickReplies([...ALTERNATIVE_CANVAS_QUICK_REPLIES]);
+        }
+        return true;
+      }
+      return false;
+    },
+    [],
+  );
+
   const sendMessage = useCallback(
     (
       harnessFromComposer?: ServiceDesignHarnessPayload,
@@ -357,11 +405,16 @@ export function useServiceFlowWorkshopChat({
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
       const chip = String(quickActionLabel ?? "").trim() || null;
+      const decision = chip ? classifyServiceFlowProposalDecision(chip) : null;
+      if (decision && dispatchClientOnlyDecision(decision, chip)) {
+        setInput("");
+        return;
+      }
       setInput("");
       callAnalyze(body, { harness: payload, ...(chip ? { quickActionLabel: chip } : {}) });
       scrollChatToBottom();
     },
-    [workspaceMode, input, callAnalyze, scrollChatToBottom]
+    [workspaceMode, input, callAnalyze, scrollChatToBottom, dispatchClientOnlyDecision],
   );
 
   const jumpToResolveSlot = useCallback(
@@ -545,6 +598,33 @@ export function useServiceFlowWorkshopChat({
     scrollChatToBottom();
   }, [displayMessages.length, replying, scrollChatToBottom]);
 
+  const alternativeCanvasPayload =
+    flow?.alternativeProposalPayload ?? alternativePayloadRef.current;
+
+  const closeAlternativeCanvas = useCallback(() => setAlternativeCanvasOpen(false), []);
+
+  const applyAlternativeFromCanvas = useCallback(() => {
+    setAlternativeCanvasOpen(false);
+    sendMessage(
+      buildServiceDesignHarnessPayload("service-flow", "이 대안 적용"),
+      "이 대안 적용",
+      "이 대안 적용",
+    );
+  }, [sendMessage]);
+
+  const keepPrimaryFromCanvas = useCallback(() => {
+    dispatchClientOnlyDecision("KEEP_PRIMARY", "기존안 유지");
+  }, [dispatchClientOnlyDecision]);
+
+  const regenerateAlternativeFromCanvas = useCallback(() => {
+    setAlternativeCanvasOpen(false);
+    sendMessage(
+      buildServiceDesignHarnessPayload("service-flow", "다른 대안 보기"),
+      "다른 대안 보기",
+      "다른 대안 다시 생성",
+    );
+  }, [sendMessage]);
+
   return {
     aiDisplayName,
     displayMessages,
@@ -565,5 +645,11 @@ export function useServiceFlowWorkshopChat({
     sendMessage,
     jumpToResolveSlot,
     requestOrganize,
+    alternativeCanvasOpen,
+    alternativeCanvasPayload,
+    closeAlternativeCanvas,
+    applyAlternativeFromCanvas,
+    keepPrimaryFromCanvas,
+    regenerateAlternativeFromCanvas,
   };
 }

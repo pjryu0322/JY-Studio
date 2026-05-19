@@ -37,6 +37,10 @@ import type {
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
+import {
+  parseAlternativeProposalPayloadWire,
+  type AlternativeProposalPayloadWire,
+} from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 function unwrapDbJsonField(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
@@ -261,6 +265,9 @@ export type RequirementsPromptTimelineEntry = {
   alternativeBaselineSource?: string;
   alternativeBaselineRecovered?: boolean;
   failureReason?: string;
+  proposalVisualizationMode?: string;
+  alternativeProposalId?: string;
+  comparisonGenerated?: boolean;
   reviewMode?: string;
   /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
   fallbackReason?:
@@ -532,6 +539,8 @@ export type RequirementsServiceFlowV1 = {
   reviewMode?: ServiceFlowReviewModeWire | null;
   primaryProposalFingerprint?: string | null;
   alternativeProposalFingerprint?: string | null;
+  /** Alternative proposal canvas visualization payload (source of truth for overlay) */
+  alternativeProposalPayload?: AlternativeProposalPayloadWire | null;
 };
 
 export type ProposalVariantModeWire = "PRIMARY" | "ALTERNATIVE";
@@ -1084,6 +1093,13 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
       : {}),
     ...(typeof o.alternativeProposalFingerprint === "string" && o.alternativeProposalFingerprint.trim()
       ? { alternativeProposalFingerprint: o.alternativeProposalFingerprint.trim().slice(0, 80) }
+      : {}),
+    ...(o.alternativeProposalPayload === null ? { alternativeProposalPayload: null } : {}),
+    ...(o.alternativeProposalPayload && typeof o.alternativeProposalPayload === "object"
+      ? (() => {
+          const parsed = parseAlternativeProposalPayloadWire(o.alternativeProposalPayload);
+          return parsed ? { alternativeProposalPayload: parsed } : {};
+        })()
       : {}),
   };
 }

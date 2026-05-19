@@ -29,7 +29,9 @@ export type ServiceFlowProposalDecision =
   | ProposalDecision
   | "REVIEW_FLOW"
   | "FLOW_APPROVE"
-  | "FEATURE_DETAIL";
+  | "FEATURE_DETAIL"
+  | "VIEW_ALTERNATIVE_DETAIL"
+  | "KEEP_PRIMARY";
 
 export type ServiceFlowVisibleModeExtended =
   | "visible_proposal"
@@ -46,6 +48,8 @@ const SERVICE_FLOW_DECISIONS = new Set<ServiceFlowProposalDecision>([
   "REVIEW_FLOW",
   "FLOW_APPROVE",
   "FEATURE_DETAIL",
+  "VIEW_ALTERNATIVE_DETAIL",
+  "KEEP_PRIMARY",
 ]);
 
 export function classifyServiceFlowProposalDecision(
@@ -54,6 +58,10 @@ export function classifyServiceFlowProposalDecision(
   const s = String(label ?? "").trim();
   if (!s) return null;
 
+  if (/대안\s*상세/.test(s)) return "VIEW_ALTERNATIVE_DETAIL";
+  if (/기존안\s*유지/.test(s)) return "KEEP_PRIMARY";
+  if (/이\s*대안\s*적용/.test(s)) return "APPLY";
+  if (/다른\s*대안\s*(다시\s*)?생성|다른\s*대안\s*보기/.test(s)) return "ALTERNATIVE";
   if (/흐름\s*상세\s*검토|흐름\s*검토/.test(s)) return "REVIEW_FLOW";
   if (/흐름\s*승인/.test(s)) return "FLOW_APPROVE";
   if (/세부\s*기능\s*정리/.test(s)) return "FEATURE_DETAIL";
