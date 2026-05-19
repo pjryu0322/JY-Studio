@@ -15,8 +15,11 @@ import {
   type ServiceFlowDecisionFastPathResult,
 } from "@/lib/requirements/serviceFlowProposalDecision";
 import {
-  proposalDecisionToTransitionSignal,
-  resolveServiceFlowTransitionSignal,
+  isQuickActionId,
+  resolveProposalDecisionFromQuickActionInput,
+  resolveTransitionSignalFromQuickActionInput,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
+import {
   tryServiceFlowOrchestrationTransitionFastPath,
   type ServiceFlowStageTransitionFastPathResult,
   type ServiceFlowTransitionSignal,
@@ -46,36 +49,32 @@ export type RequirementsTransitionResult = Readonly<{
   readonly invalidations: readonly string[];
 }>;
 
-function mapSignalType(
-  raw: ServiceFlowTransitionSignal | null,
-  proposalDecision: ServiceFlowProposalDecision | null,
-): string {
-  if (raw) return raw;
-  if (proposalDecision) return proposalDecision;
-  return "unknown";
-}
-
 export function resolveRequirementsTransitionSignal(input: {
   readonly state: RequirementsStateJson;
+  readonly quickActionId?: string | null;
   readonly quickActionLabel?: string | null;
   readonly userMessage?: string | null;
   readonly proposalDecision?: ServiceFlowProposalDecision | null;
 }): RequirementsTransitionSignal | null {
   const sourceStage = resolveAuthoritativeOrchestrationStage(input.state);
   const raw =
-    resolveServiceFlowTransitionSignal({
-      label: input.quickActionLabel,
-      userMessage: input.userMessage,
-    }) ?? proposalDecisionToTransitionSignal(input.proposalDecision ?? null);
+    resolveTransitionSignalFromQuickActionInput({
+      quickActionId: input.quickActionId,
+      proposalDecision: input.proposalDecision ?? null,
+    }) ?? null;
 
   if (!raw) return null;
 
   const targetStage = orchestrationStageFromTransitionTarget(raw);
+  const type = input.quickActionId && isQuickActionId(input.quickActionId) ? input.quickActionId : raw;
   return {
-    type: mapSignalType(raw, input.proposalDecision ?? null),
+    type,
     sourceStage,
     targetStage,
-    payload: { proposalDecision: input.proposalDecision ?? null },
+    payload: {
+      proposalDecision: input.proposalDecision ?? null,
+      quickActionId: input.quickActionId ?? null,
+    },
   };
 }
 
@@ -83,6 +82,7 @@ export function applyRequirementsOrchestrationTransition(input: {
   readonly state: RequirementsStateJson;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
   readonly proposalDecision: ServiceFlowProposalDecision | null;
+  readonly quickActionId?: string | null;
   readonly quickActionLabel?: string | null;
   readonly userMessage?: string | null;
   readonly projectName?: string;
@@ -91,17 +91,25 @@ export function applyRequirementsOrchestrationTransition(input: {
   readonly approvedBy?: string | null;
   readonly nowIso?: string;
 }): RequirementsTransitionResult {
+  const proposalDecision =
+    input.proposalDecision ??
+    resolveProposalDecisionFromQuickActionInput({
+      quickActionId: input.quickActionId,
+      quickActionLabel: input.quickActionLabel,
+      userMessage: input.userMessage,
+    });
+
   const signal = resolveRequirementsTransitionSignal({
     state: input.state,
+    quickActionId: input.quickActionId,
     quickActionLabel: input.quickActionLabel,
     userMessage: input.userMessage,
-    proposalDecision: input.proposalDecision,
+    proposalDecision,
   });
 
   const transitionFastPath = tryServiceFlowOrchestrationTransitionFastPath({
-    proposalDecision: input.proposalDecision,
-    quickActionLabel: input.quickActionLabel,
-    userMessage: input.userMessage,
+    proposalDecision,
+    quickActionId: input.quickActionId,
     currentFlow: input.currentFlow,
     projectName: input.projectName,
     slotDefinitions: input.slotDefinitions,
@@ -130,9 +138,9 @@ export function applyRequirementsOrchestrationTransition(input: {
 
   const legacyDecisions = new Set<ServiceFlowProposalDecision>(["APPLY", "REVIEW_FLOW"]);
   const legacy =
-    input.proposalDecision && legacyDecisions.has(input.proposalDecision)
+    proposalDecision && legacyDecisions.has(proposalDecision)
       ? tryServiceFlowProposalDecisionFastPath({
-          decision: input.proposalDecision,
+          decision: proposalDecision,
           currentFlow: input.currentFlow,
           projectName: input.projectName,
           nowIso: input.nowIso,
@@ -154,10 +162,10 @@ export function applyRequirementsOrchestrationTransition(input: {
   }
 
   const blocked =
-    input.proposalDecision === "FLOW_APPROVE" ||
-    input.proposalDecision === "FEATURE_DETAIL" ||
-    input.proposalDecision === "NEXT_STAGE" ||
-    input.proposalDecision === "DOCUMENTATION_COMPLETE";
+    proposalDecision === "FLOW_APPROVE" ||
+    proposalDecision === "FEATURE_DETAIL" ||
+    proposalDecision === "NEXT_STAGE" ||
+    proposalDecision === "DOCUMENTATION_COMPLETE";
 
   return {
     signal,

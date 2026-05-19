@@ -8,16 +8,17 @@ import {
   resolveServiceFlowConversationState,
   type ServiceFlowConversationState,
 } from "@/lib/requirements/serviceFlowConversationState";
+import {
+  filterQuickActionsForOrchestrationStage,
+  normalizeQuickRepliesToActions,
+  quickActionsToLabels,
+  type QuickAction,
+  type QuickActionId,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { ServiceFlowTransitionSignal } from "@/lib/requirements/serviceFlowStageTransition";
 
 /** Phase 14 canonical stages (wire + forward-compat logical stages). */
 export type OrchestrationStage = RequirementsOrchestrationStageWire | "SERVICE_FLOW" | "SCREEN_DEFINE" | "PROTOTYPE" | "REVIEW";
-
-export type OrchestrationTransitionSignalType =
-  | ServiceFlowTransitionSignal
-  | "APPLY"
-  | "REVIEW_FLOW"
-  | "PARTIAL_EDIT";
 
 export type OrchestrationStageDefinition = Readonly<{
   readonly wireStage: RequirementsOrchestrationStageWire | null;
@@ -25,8 +26,8 @@ export type OrchestrationStageDefinition = Readonly<{
   readonly conversationState: ServiceFlowConversationState | null;
   readonly allowedTransitions: readonly OrchestrationStage[];
   readonly rollbackTransitions: readonly OrchestrationStage[];
-  readonly allowedQuickReplyPatterns: readonly RegExp[];
-  readonly obsoleteQuickReplyPatterns: readonly RegExp[];
+  readonly allowedActionIds: readonly QuickActionId[];
+  readonly obsoleteActionIds: readonly QuickActionId[];
 }>;
 
 const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> = {
@@ -36,8 +37,14 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: null,
     allowedTransitions: ["SERVICE_FLOW", "SERVICE_FLOW_REVIEW"],
     rollbackTransitions: [],
-    allowedQuickReplyPatterns: [],
-    obsoleteQuickReplyPatterns: [/흐름\s*승인/, /다음\s*단계/, /세부\s*기능/],
+    allowedActionIds: [],
+    obsoleteActionIds: [
+      "APPROVE_FLOW",
+      "NEXT_STAGE",
+      "START_FEATURE_DETAIL",
+      "APPLY_PROPOSAL",
+      "GENERATE_ALTERNATIVE",
+    ],
   },
   SERVICE_FLOW: {
     wireStage: "SERVICE_FLOW_REVIEW",
@@ -45,8 +52,8 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "PROPOSAL",
     allowedTransitions: ["SERVICE_FLOW_REVIEW", "FEATURE_DETAIL", "DOCUMENTATION_COMPLETE"],
     rollbackTransitions: ["IDEATION"],
-    allowedQuickReplyPatterns: [/추천안\s*적용/, /흐름\s*검토/, /다른\s*대안/],
-    obsoleteQuickReplyPatterns: [/기능\s*수정/, /화면\s*정의/],
+    allowedActionIds: ["APPLY_PROPOSAL", "REVIEW_FLOW", "GENERATE_ALTERNATIVE", "PARTIAL_EDIT", "DIRECT_INPUT", "HOLD"],
+    obsoleteActionIds: ["EDIT_FEATURES", "DEFINE_SCREEN", "DEFINE_API", "GENERATE_DOCUMENT"],
   },
   SERVICE_FLOW_REVIEW: {
     wireStage: "SERVICE_FLOW_REVIEW",
@@ -54,8 +61,15 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "REVIEW",
     allowedTransitions: ["FEATURE_DETAIL", "DOCUMENTATION_COMPLETE"],
     rollbackTransitions: ["SERVICE_FLOW"],
-    allowedQuickReplyPatterns: [/흐름\s*승인/, /흐름\s*검토/, /세부\s*기능/, /단계\s*수정/],
-    obsoleteQuickReplyPatterns: [/기능\s*수정/, /API\s*정의/],
+    allowedActionIds: [
+      "REVIEW_FLOW",
+      "APPROVE_FLOW",
+      "EDIT_STEPS",
+      "ADD_ACTOR",
+      "START_FEATURE_DETAIL",
+      "DOCUMENT_FLOW",
+    ],
+    obsoleteActionIds: ["APPLY_PROPOSAL", "GENERATE_ALTERNATIVE", "EDIT_FEATURES", "DEFINE_API"],
   },
   FEATURE_DETAIL: {
     wireStage: "FEATURE_DETAIL",
@@ -63,8 +77,14 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "FEATURE_DETAIL",
     allowedTransitions: ["SCREEN_DEFINE", "DOCUMENTATION_COMPLETE"],
     rollbackTransitions: ["SERVICE_FLOW_REVIEW"],
-    allowedQuickReplyPatterns: [/기능\s*수정/, /화면\s*정의/, /API\s*정의/, /문서\s*생성/],
-    obsoleteQuickReplyPatterns: [/흐름\s*승인/, /다음\s*단계\s*진행/, /추천안\s*적용/, /흐름\s*검토/],
+    allowedActionIds: ["EDIT_FEATURES", "DEFINE_SCREEN", "DEFINE_API", "GENERATE_DOCUMENT"],
+    obsoleteActionIds: [
+      "APPROVE_FLOW",
+      "REVIEW_FLOW",
+      "APPLY_PROPOSAL",
+      "NEXT_STAGE",
+      "GENERATE_ALTERNATIVE",
+    ],
   },
   DOCUMENTATION_COMPLETE: {
     wireStage: "DOCUMENTATION_COMPLETE",
@@ -72,8 +92,8 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "APPROVED",
     allowedTransitions: ["FEATURE_DETAIL"],
     rollbackTransitions: ["SERVICE_FLOW_REVIEW"],
-    allowedQuickReplyPatterns: [/세부\s*기능/, /문서/],
-    obsoleteQuickReplyPatterns: [/흐름\s*승인/, /추천안\s*적용/],
+    allowedActionIds: ["START_FEATURE_DETAIL", "DOCUMENT_FLOW", "COMPLETE_DOCUMENTATION", "EDIT_STEPS"],
+    obsoleteActionIds: ["APPROVE_FLOW", "APPLY_PROPOSAL"],
   },
   SCREEN_DEFINE: {
     wireStage: null,
@@ -81,8 +101,8 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "FEATURE_DETAIL",
     allowedTransitions: ["PROTOTYPE", "REVIEW"],
     rollbackTransitions: ["FEATURE_DETAIL"],
-    allowedQuickReplyPatterns: [/화면/, /API/],
-    obsoleteQuickReplyPatterns: [/흐름\s*승인/],
+    allowedActionIds: ["DEFINE_SCREEN", "DEFINE_API", "EDIT_FEATURES"],
+    obsoleteActionIds: ["APPROVE_FLOW"],
   },
   PROTOTYPE: {
     wireStage: null,
@@ -90,8 +110,8 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: null,
     allowedTransitions: ["REVIEW"],
     rollbackTransitions: ["SCREEN_DEFINE"],
-    allowedQuickReplyPatterns: [],
-    obsoleteQuickReplyPatterns: [/흐름\s*승인/, /추천안\s*적용/],
+    allowedActionIds: [],
+    obsoleteActionIds: ["APPROVE_FLOW", "APPLY_PROPOSAL"],
   },
   REVIEW: {
     wireStage: null,
@@ -99,8 +119,8 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: null,
     allowedTransitions: ["DOCUMENTATION_COMPLETE"],
     rollbackTransitions: ["PROTOTYPE"],
-    allowedQuickReplyPatterns: [],
-    obsoleteQuickReplyPatterns: [],
+    allowedActionIds: [],
+    obsoleteActionIds: [],
   },
 };
 
@@ -155,24 +175,22 @@ export function orchestrationStageFromTransitionTarget(
   return "SERVICE_FLOW_REVIEW";
 }
 
+export function filterQuickActionsForStage(
+  stage: OrchestrationStage,
+  actions: readonly QuickAction[],
+): readonly QuickAction[] {
+  const def = STAGE_REGISTRY[stage];
+  return filterQuickActionsForOrchestrationStage(stage, actions, {
+    allowedActionIds: def.allowedActionIds,
+    obsoleteActionIds: def.obsoleteActionIds,
+  });
+}
+
+/** @deprecated use filterQuickActionsForStage — label-only compat for legacy callers */
 export function filterQuickRepliesForOrchestrationStage(
   stage: OrchestrationStage,
   replies: readonly string[],
 ): readonly string[] {
-  const def = STAGE_REGISTRY[stage];
-  return replies.filter((label) => {
-    const s = String(label ?? "").trim();
-    if (!s) return false;
-    if (def.obsoleteQuickReplyPatterns.some((re) => re.test(s))) return false;
-    return true;
-  });
-}
-
-export function isQuickReplyAllowedForStage(stage: OrchestrationStage, label: string): boolean {
-  const s = String(label ?? "").trim();
-  if (!s) return false;
-  const def = STAGE_REGISTRY[stage];
-  if (def.obsoleteQuickReplyPatterns.some((re) => re.test(s))) return false;
-  if (!def.allowedQuickReplyPatterns.length) return true;
-  return def.allowedQuickReplyPatterns.some((re) => re.test(s));
+  const actions = normalizeQuickRepliesToActions(replies);
+  return quickActionsToLabels(filterQuickActionsForStage(stage, actions));
 }

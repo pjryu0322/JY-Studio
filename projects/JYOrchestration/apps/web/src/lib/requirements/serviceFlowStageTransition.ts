@@ -4,6 +4,10 @@
 
 import type { RequirementsStateJson, RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import type { ServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
+import {
+  resolveQuickActionIdFromLegacyLabel,
+  resolveTransitionSignalFromQuickActionInput,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
 import { seedFeaturePlanningArtifactFromServiceFlow } from "@/lib/requirements/seedFeaturePlanningFromServiceFlow";
 import {
   hydrateServiceFlowStepsFromAlternativePayload,
@@ -51,27 +55,19 @@ export type ServiceFlowStageTransitionFastPathResult = ServiceFlowDecisionFastPa
     transitionMeta?: ServiceFlowStageTransitionMeta;
   }>;
 
-function norm(s: string): string {
-  return String(s ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-/** semantic intent — exact chip label 비교 금지 */
+/**
+ * @deprecated Prefer `resolveTransitionSignalFromQuickActionInput` with `quickActionId`.
+ * Legacy label → actionId mapping only (no RegExp transition inference).
+ */
 export function resolveServiceFlowTransitionSignal(input: {
   readonly label?: string | null;
   readonly userMessage?: string | null;
 }): ServiceFlowTransitionSignal | null {
-  const s = norm(`${input.label ?? ""} ${input.userMessage ?? ""}`);
-  if (!s) return null;
-  if (/문서화\s*(완료|완료하기|완료됨)/.test(s)) return "DOCUMENTATION_COMPLETE";
-  if (/다음\s*단계\s*(진행|으로|시작|이동)?/.test(s) || /\bnext\s*stage\b/.test(s)) {
-    return "NEXT_STAGE";
-  }
-  if (/세부\s*기능\s*(정리|정의|시작|상세)/.test(s)) return "FEATURE_DETAIL_START";
-  if (/흐름\s*승인/.test(s)) return "APPROVE_FLOW";
-  return null;
+  const label = String(input.label ?? input.userMessage ?? "").trim();
+  if (!label) return null;
+  const quickActionId = resolveQuickActionIdFromLegacyLabel(label);
+  if (!quickActionId) return null;
+  return resolveTransitionSignalFromQuickActionInput({ quickActionId });
 }
 
 export function orchestrationStageFromConversation(
@@ -421,8 +417,7 @@ export function proposalDecisionToTransitionSignal(
 /** QuickAction / proposal decision → orchestration stage transition fast-path */
 export function tryServiceFlowOrchestrationTransitionFastPath(input: {
   readonly proposalDecision: string | null;
-  readonly quickActionLabel?: string | null;
-  readonly userMessage?: string | null;
+  readonly quickActionId?: string | null;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
   readonly projectName?: string;
   readonly nowIso?: string;
@@ -432,11 +427,10 @@ export function tryServiceFlowOrchestrationTransitionFastPath(input: {
   readonly existingOrchestrationStage?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
   readonly approvedBy?: string | null;
 }): ServiceFlowStageTransitionFastPathResult | null {
-  const signal =
-    resolveServiceFlowTransitionSignal({
-      label: input.quickActionLabel,
-      userMessage: input.userMessage,
-    }) ?? proposalDecisionToTransitionSignal(input.proposalDecision);
+  const signal = resolveTransitionSignalFromQuickActionInput({
+    quickActionId: input.quickActionId,
+    proposalDecision: input.proposalDecision as ServiceFlowProposalDecision | null,
+  });
   if (!signal) return null;
   return handleQuickActionTransition({
     signal,

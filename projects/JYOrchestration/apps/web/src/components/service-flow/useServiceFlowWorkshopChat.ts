@@ -25,9 +25,15 @@ import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/require
 import { consumeWorkspaceAiScreenHandoff, peekWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import { shouldSuppressServiceFlowVisibleFromResponse } from "@/lib/requirements/crossStageProposalDedupe";
 import {
-  classifyServiceFlowProposalDecision,
   type ServiceFlowProposalDecision,
 } from "@/lib/requirements/serviceFlowProposalDecision";
+import {
+  normalizeQuickRepliesToActions,
+  quickActionsToLabels,
+  resolveProposalDecisionFromQuickActionInput,
+  type QuickAction,
+  type QuickActionId,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
   ALTERNATIVE_CANVAS_QUICK_REPLIES,
   mergeQuickRepliesWithAlternativeCanvasReopen,
@@ -45,6 +51,21 @@ import {
 import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
+
+export type ServiceFlowQuickActionDispatch = Readonly<{
+  readonly id: QuickActionId;
+  readonly label: string;
+}>;
+
+function resolveDecisionFromQuickActionInput(input: {
+  readonly quickAction?: ServiceFlowQuickActionDispatch | null;
+  readonly labelFallback?: string | null;
+}): ServiceFlowProposalDecision | null {
+  return resolveProposalDecisionFromQuickActionInput({
+    quickActionId: input.quickAction?.id,
+    quickActionLabel: input.quickAction?.label ?? input.labelFallback,
+  });
+}
 
 const GENERIC_ANALYZE_FAILURE =
   "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." as const;
@@ -135,6 +156,7 @@ export function useServiceFlowWorkshopChat({
 
   const [input, setInput] = useState("");
   const [replying, setReplying] = useState(false);
+  const [quickActions, setQuickActions] = useState<readonly QuickAction[] | null>(null);
   const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
   const [alternativeCanvasOpen, setAlternativeCanvasOpen] = useState(false);
   const [pendingStatusLabel, setPendingStatusLabel] = useState<string | null>(null);
@@ -223,16 +245,20 @@ export function useServiceFlowWorkshopChat({
         silentUserAppend?: boolean;
         harness?: ServiceDesignHarnessPayload;
         responsePolicy?: unknown;
+        quickAction?: ServiceFlowQuickActionDispatch | null;
         quickActionLabel?: string | null;
       }
     ) => {
       if (workspaceMode !== "chat") return;
       const body = userMessageText.trim();
       if (!body) return;
-      const quickActionLabelEarly = String(opts?.quickActionLabel ?? "").trim();
-      const pendingDecision = quickActionLabelEarly
-        ? classifyServiceFlowProposalDecision(quickActionLabelEarly)
-        : null;
+      const quickAction = opts?.quickAction ?? null;
+      const quickActionLabelEarly =
+        String(quickAction?.label ?? opts?.quickActionLabel ?? "").trim() || null;
+      const pendingDecision = resolveDecisionFromQuickActionInput({
+        quickAction,
+        labelFallback: quickActionLabelEarly,
+      });
       if (pendingDecision === "ALTERNATIVE") {
         setPendingStatusLabel("다른 대안을 생성하고 있습니다…");
       } else if (pendingDecision === "APPLY") {
@@ -254,6 +280,7 @@ export function useServiceFlowWorkshopChat({
       }
       setReplying(true);
       setQuickReplies(null);
+      setQuickActions(null);
 
       void (async () => {
         try {
@@ -290,10 +317,13 @@ export function useServiceFlowWorkshopChat({
 
           const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
           const responsePolicy = harness.responsePolicy ?? opts?.responsePolicy ?? undefined;
-          const quickActionLabel = String(opts?.quickActionLabel ?? "").trim();
-          const proposalDecision = quickActionLabel
-            ? classifyServiceFlowProposalDecision(quickActionLabel)
-            : null;
+          const quickActionLabel =
+            String(quickAction?.label ?? opts?.quickActionLabel ?? "").trim() || undefined;
+          const quickActionId = quickAction?.id;
+          const proposalDecision = resolveDecisionFromQuickActionInput({
+            quickAction,
+            labelFallback: quickActionLabel,
+          });
 
           const orchCtx = orchestrationContextRef.current;
           const result = await postServiceFlowAnalyze({
@@ -307,6 +337,7 @@ export function useServiceFlowWorkshopChat({
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
             ...(opts?.silentUserAppend ? { autoHandoff: true } : {}),
+            ...(quickActionId ? { quickActionId } : {}),
             ...(quickActionLabel ? { quickActionLabel } : {}),
             ...(proposalDecision ? { proposalDecision } : {}),
             ...(orchCtx?.singleChatOrchestrationV1 !== undefined
@@ -374,14 +405,21 @@ export function useServiceFlowWorkshopChat({
           const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 
+          const normalizedActions = normalizeQuickRepliesToActions(
+            Array.isArray(data.quickReplies) ? data.quickReplies : [],
+          );
           const replies = mergeQuickRepliesWithAlternativeCanvasReopen(
-            Array.isArray(data.quickReplies)
-              ? data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean)
-              : [],
+            quickActionsToLabels(normalizedActions),
             Boolean(nextFlow?.alternativeProposalPayload),
           );
-          if (!suppressVisible) setQuickReplies(replies.length ? replies : null);
-          else setQuickReplies(null);
+          const actionsAfterCanvas = normalizeQuickRepliesToActions(replies);
+          if (!suppressVisible) {
+            setQuickActions(actionsAfterCanvas.length ? actionsAfterCanvas : null);
+            setQuickReplies(replies.length ? replies : null);
+          } else {
+            setQuickActions(null);
+            setQuickReplies(null);
+          }
 
           if (suppressVisible) {
             clearReplyingState();
@@ -489,20 +527,26 @@ export function useServiceFlowWorkshopChat({
     (
       harnessFromComposer?: ServiceDesignHarnessPayload,
       overrideText?: string,
-      quickActionLabel?: string | null,
+      quickAction?: ServiceFlowQuickActionDispatch | null,
     ) => {
       if (workspaceMode !== "chat") return;
       const body = (overrideText ?? input).trim();
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
-      const chip = String(quickActionLabel ?? "").trim() || null;
-      const decision = chip ? classifyServiceFlowProposalDecision(chip) : null;
-      if (decision && dispatchClientOnlyDecision(decision, chip)) {
+      const decision = resolveDecisionFromQuickActionInput({
+        quickAction,
+        labelFallback: quickAction?.label ?? body,
+      });
+      if (decision && dispatchClientOnlyDecision(decision, quickAction?.label ?? null)) {
         setInput("");
         return;
       }
       setInput("");
-      callAnalyze(body, { harness: payload, ...(chip ? { quickActionLabel: chip } : {}) });
+      callAnalyze(body, {
+        harness: payload,
+        ...(quickAction ? { quickAction } : {}),
+        ...(quickAction?.label ? { quickActionLabel: quickAction.label } : {}),
+      });
       scrollChatToBottom();
     },
     [workspaceMode, input, callAnalyze, scrollChatToBottom, dispatchClientOnlyDecision],
@@ -699,7 +743,7 @@ export function useServiceFlowWorkshopChat({
     sendMessage(
       buildServiceDesignHarnessPayload("service-flow", "이 대안 적용"),
       "이 대안 적용",
-      "이 대안 적용",
+      { id: "APPLY_ALTERNATIVE", label: "이 대안 적용" },
     );
   }, [sendMessage]);
 
@@ -712,7 +756,7 @@ export function useServiceFlowWorkshopChat({
     sendMessage(
       buildServiceDesignHarnessPayload("service-flow", "다른 대안 보기"),
       "다른 대안 보기",
-      "다른 대안 다시 생성",
+      { id: "GENERATE_ALTERNATIVE", label: "다른 대안 다시 생성" },
     );
   }, [sendMessage]);
 
@@ -723,6 +767,7 @@ export function useServiceFlowWorkshopChat({
     setInput,
     replying,
     pendingStatusLabel,
+    quickActions,
     quickReplies,
     setQuickReplies,
     latestAiQuestion,

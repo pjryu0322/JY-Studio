@@ -24,6 +24,7 @@ export type ServiceFlowAnalyzeRequestBody = {
   /** ideation→service-flow 자동 handoff (silentUserAppend) */
   readonly autoHandoff?: boolean;
   readonly quickActionLabel?: string;
+  readonly quickActionId?: string;
   readonly proposalDecision?: string;
   readonly singleChatOrchestrationV1?: unknown;
   readonly requirementsOrchestrationStageV1?: unknown;

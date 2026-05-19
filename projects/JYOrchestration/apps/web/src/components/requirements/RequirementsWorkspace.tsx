@@ -153,7 +153,14 @@ import {
   shouldSkipFeaturePlanningMirror,
   shouldSkipFeaturePlanningAiMirror,
 } from "@/lib/service-design/serviceDesignSingleChatFeaturePlanningMirror";
-import { dispatchServiceFlowSingleChatSend } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
+import type { ServiceFlowQuickActionDispatch } from "@/components/service-flow/useServiceFlowWorkshopChat";
+import {
+  dispatchServiceFlowSingleChatSend,
+  interviewSuggestionPickToLabel,
+  interviewSuggestionPickToQuickAction,
+  storeInterviewSuggestionPick,
+  type InterviewSuggestionPickWire,
+} from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 
 
 export function RequirementsWorkspace({
@@ -232,10 +239,17 @@ export function RequirementsWorkspace({
   const requirementsSendFlightRef = useRef(false);
   const sendDraftRestoreRef = useRef<string | null>(null);
   /** 인터뷰 추천 칩 선택 후 전송 시 analyzer에 한 번 전달 */
-  const interviewSuggestionPickRef = useRef<string | null>(null);
+  const interviewSuggestionPickRef = useRef<InterviewSuggestionPickWire | null>(null);
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
-  const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
+  const serviceFlowSendRef = useRef<
+    | ((
+        payload: ServiceDesignHarnessPayload,
+        text: string,
+        quickAction?: ServiceFlowQuickActionDispatch | null,
+      ) => void | Promise<void>)
+    | null
+  >(null);
   const featurePlanningSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
   const serviceFlowStructureFingerprintRef = useRef<string | null>(null);
 
@@ -1444,10 +1458,8 @@ export function RequirementsWorkspace({
             serviceDesignHarness: harnessPayload,
             workspaceScreenKey: requirementsWorkspaceStageToScreenKey(activeStage),
             projectType: project?.projectType ?? "",
-            consumeInterviewSelectedSuggestion: () => {
-              // chip 클릭은 입력 보조만: 자동 전송/강제 reply가 되지 않도록 이번 전송 1회만 포함
-              return selectedSuggestionSnapshot;
-            },
+            consumeInterviewSelectedSuggestion: () =>
+              interviewSuggestionPickToLabel(selectedSuggestionSnapshot),
           });
         } finally {
           setAiInvokePending(false);
@@ -1503,12 +1515,13 @@ export function RequirementsWorkspace({
   const runServiceFlowSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
-      const quickActionLabel = interviewSuggestionPickRef.current;
+      const pick = interviewSuggestionPickRef.current;
       interviewSuggestionPickRef.current = null;
       await dispatchServiceFlowSingleChatSend({
         payload,
         text,
-        quickActionLabel,
+        quickAction: interviewSuggestionPickToQuickAction(pick),
+        quickActionLabel: interviewSuggestionPickToLabel(pick),
         sendRefCurrent: serviceFlowSendRef.current,
         onAfterDispatch: () => setInput(""),
       });
@@ -1938,7 +1951,7 @@ export function RequirementsWorkspace({
         onForceGeneratePlanNow={onForceGeneratePlanNow}
         onInsertComposerPrompt={insertComposerPrompt}
         onInterviewSuggestionPick={(label) => {
-          interviewSuggestionPickRef.current = label;
+          interviewSuggestionPickRef.current = storeInterviewSuggestionPick(label);
           insertComposerPrompt(label);
         }}
         onSetReplyTo={(messageId, preview) => setReplyTo({ id: messageId, preview })}

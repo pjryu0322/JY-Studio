@@ -5,10 +5,11 @@ import {
   buildServiceFlowStructureFingerprint,
 } from "@/lib/requirements/requirementsOrchestrationInvalidation";
 import {
-  filterQuickRepliesForOrchestrationStage,
+  filterQuickActionsForStage,
   isOrchestrationTransitionAllowed,
   resolveAuthoritativeOrchestrationStage,
 } from "@/lib/requirements/requirementsOrchestrationRegistry";
+import { normalizeQuickRepliesToActions } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { projectRequirementsOrchestrationView } from "@/lib/requirements/requirementsOrchestrationProjection";
 import { buildCompressedOrchestrationSummaryForLlm } from "@/lib/requirements/requirementsOrchestrationTimeline";
 import {
@@ -82,15 +83,16 @@ describe("requirementsOrchestrationRuntime phase14", () => {
     expect(isOrchestrationTransitionAllowed("IDEATION", "FEATURE_DETAIL")).toBe(false);
   });
 
-  it("filterQuickRepliesForOrchestrationStage removes obsolete review chips in FEATURE_DETAIL", () => {
-    const filtered = filterQuickRepliesForOrchestrationStage("FEATURE_DETAIL", [
-      "흐름 승인하기",
-      "기능 수정",
-      "다음 단계 진행",
-    ]);
-    expect(filtered).toContain("기능 수정");
-    expect(filtered).not.toContain("흐름 승인하기");
-    expect(filtered).not.toContain("다음 단계 진행");
+  it("filterQuickActionsForStage removes obsolete actionIds in FEATURE_DETAIL", () => {
+    const filtered = filterQuickActionsForStage(
+      "FEATURE_DETAIL",
+      normalizeQuickRepliesToActions([
+        { id: "APPROVE_FLOW", label: "흐름 승인하기" },
+        { id: "EDIT_FEATURES", label: "기능 수정" },
+        { id: "NEXT_STAGE", label: "다음 단계 진행" },
+      ]),
+    );
+    expect(filtered.map((a) => a.id)).toEqual(["EDIT_FEATURES"]);
   });
 
   it("applyOrchestrationInvalidationsAfterFlowChange — approved flow edit downgrades confirmed", () => {
@@ -152,7 +154,8 @@ describe("requirementsOrchestrationRuntime phase14", () => {
     const r = applyRequirementsOrchestrationTransition({
       state: st,
       currentFlow: st.serviceFlowV1 ?? null,
-      proposalDecision: "NEXT_STAGE",
+      proposalDecision: null,
+      quickActionId: "NEXT_STAGE",
       quickActionLabel: "다음 단계 진행",
       userMessage: "다음 단계 진행",
       slotDefinitions: defs,
@@ -165,6 +168,7 @@ describe("requirementsOrchestrationRuntime phase14", () => {
   it("resolveRequirementsTransitionSignal exposes transitionSignal type", () => {
     const signal = resolveRequirementsTransitionSignal({
       state: { serviceFlowV1: sampleFlow() },
+      quickActionId: "APPROVE_FLOW",
       quickActionLabel: "흐름 승인하기",
       proposalDecision: "FLOW_APPROVE",
     });

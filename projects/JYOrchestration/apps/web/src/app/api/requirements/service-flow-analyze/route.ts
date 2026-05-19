@@ -16,9 +16,13 @@ import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/s
 import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import {
-  filterQuickRepliesForOrchestrationStage,
+  filterQuickActionsForStage,
   resolveAuthoritativeOrchestrationStage,
 } from "@/lib/requirements/requirementsOrchestrationRegistry";
+import {
+  normalizeQuickRepliesToActions,
+  quickActionsToLabels,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
 import { appendOrchestrationTransitionTimelineExtras } from "@/lib/requirements/requirementsOrchestrationTimeline";
 import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
@@ -64,6 +68,7 @@ type Body = {
   /** ideation→service-flow 자동 handoff(silentUserAppend) */
   autoHandoff?: boolean;
   quickActionLabel?: string;
+  quickActionId?: string;
   proposalDecision?: string;
   singleChatOrchestrationV1?: unknown;
   requirementsOrchestrationStageV1?: unknown;
@@ -212,6 +217,9 @@ function buildAnalyzeSuccessResponse(input: {
     ...(typeof input.timelineExtras?.quickActionType === "string"
       ? { quickActionType: String(input.timelineExtras.quickActionType) }
       : {}),
+    ...(typeof input.timelineExtras?.quickActionId === "string"
+      ? { quickActionId: String(input.timelineExtras.quickActionId) }
+      : {}),
     ...(typeof input.timelineExtras?.transitionSignal === "string"
       ? { transitionSignal: String(input.timelineExtras.transitionSignal) }
       : {}),
@@ -291,10 +299,12 @@ export async function POST(request: NextRequest) {
     const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
     const autoHandoff = body.autoHandoff === true;
     const quickActionLabel = typeof body.quickActionLabel === "string" ? String(body.quickActionLabel).trim() : "";
+    const quickActionId = typeof body.quickActionId === "string" ? String(body.quickActionId).trim() : "";
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
     const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
     const proposalDecision = resolveServiceFlowProposalDecision({
+      quickActionId: quickActionId || undefined,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
       proposalDecisionRaw: body.proposalDecision,
@@ -441,7 +451,11 @@ export async function POST(request: NextRequest) {
         serviceFlowV1: fastPath.updatedFlow,
       };
       const stage = resolveAuthoritativeOrchestrationStage(mergedForStage);
-      const projectedQuickReplies = filterQuickRepliesForOrchestrationStage(stage, fastPath.quickReplies);
+      const projectedActions = filterQuickActionsForStage(
+        stage,
+        normalizeQuickRepliesToActions(fastPath.quickReplies),
+      );
+      const projectedQuickReplies = quickActionsToLabels(projectedActions);
 
       const fpAssistant = finalizeServiceFlowAssistantForResponse({
         assistantMessage: fastPath.assistantMessage,
@@ -482,6 +496,8 @@ export async function POST(request: NextRequest) {
             conversationStateAfter: fastPath.conversationStateAfter,
             reviewDepth: fastPath.reviewDepth,
             quickReplyProfile: fastPath.quickReplyProfile,
+            ...(quickActionId ? { quickActionId } : {}),
+            ...(quickActionLabel ? { quickActionLabel } : {}),
           },
           transitionMeta,
           transitionEngine: transitionEngineResult,

@@ -271,6 +271,7 @@ export type RequirementsPromptTimelineEntry = {
   reviewMode?: string;
   /** stage transition fast-path (service-flow quick actions) */
   quickActionType?: string;
+  quickActionId?: string;
   transitionSignal?: string;
   transitionResult?: string;
   transitionTriggered?: boolean;

@@ -56,11 +56,12 @@ function sampleFlow(): RequirementsServiceFlowV1 {
 }
 
 describe("serviceFlowStageTransition", () => {
-  it("resolveServiceFlowTransitionSignal — semantic patterns", () => {
+  it("resolveServiceFlowTransitionSignal — legacy label maps to actionId signal", () => {
     expect(resolveServiceFlowTransitionSignal({ label: "다음 단계 진행" })).toBe("NEXT_STAGE");
     expect(resolveServiceFlowTransitionSignal({ label: "문서화 완료" })).toBe("DOCUMENTATION_COMPLETE");
     expect(resolveServiceFlowTransitionSignal({ label: "흐름 승인하기" })).toBe("APPROVE_FLOW");
     expect(resolveServiceFlowTransitionSignal({ label: "세부 기능 정리" })).toBe("FEATURE_DETAIL_START");
+    expect(resolveServiceFlowTransitionSignal({ label: "완전히 새로운 문장" })).toBeNull();
   });
 
   it("classifyServiceFlowProposalDecision — NEXT_STAGE / DOCUMENTATION_COMPLETE", () => {
@@ -71,8 +72,7 @@ describe("serviceFlowStageTransition", () => {
   it("NEXT_STAGE → FEATURE_DETAIL with context-aware bootstrap", () => {
     const r = tryServiceFlowOrchestrationTransitionFastPath({
       proposalDecision: "NEXT_STAGE",
-      quickActionLabel: "다음 단계 진행",
-      userMessage: "다음 단계 진행",
+      quickActionId: "NEXT_STAGE",
       currentFlow: sampleFlow(),
     });
     expect(r?.conversationStateAfter).toBe("FEATURE_DETAIL");
@@ -90,6 +90,7 @@ describe("serviceFlowStageTransition", () => {
   it("FLOW_APPROVE sets approval metadata", () => {
     const r = tryServiceFlowOrchestrationTransitionFastPath({
       proposalDecision: "FLOW_APPROVE",
+      quickActionId: "APPROVE_FLOW",
       currentFlow: { ...sampleFlow(), conversationState: "REVIEW" },
     });
     expect(r?.updatedFlow.flowApproved).toBe(true);
@@ -101,6 +102,7 @@ describe("serviceFlowStageTransition", () => {
   it("DOCUMENTATION_COMPLETE sets documentation metadata", () => {
     const r = tryServiceFlowOrchestrationTransitionFastPath({
       proposalDecision: "DOCUMENTATION_COMPLETE",
+      quickActionId: "COMPLETE_DOCUMENTATION",
       currentFlow: sampleFlow(),
     });
     expect(r?.updatedFlow.documentationStatus).toBe("completed");

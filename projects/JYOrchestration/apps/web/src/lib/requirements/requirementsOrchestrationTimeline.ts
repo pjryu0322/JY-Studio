@@ -34,6 +34,9 @@ export function appendOrchestrationTransitionTimelineExtras(input: {
     ...(eng?.staleTriggered ? { staleTriggered: eng.staleTriggered } : {}),
     ...(eng?.invalidations?.length ? { invalidations: [...eng.invalidations] } : {}),
     ...(eng?.signal?.type ? { transitionSignal: eng.signal.type } : {}),
+    ...(typeof (eng?.signal?.payload as { quickActionId?: string } | undefined)?.quickActionId === "string"
+      ? { quickActionId: String((eng?.signal?.payload as { quickActionId: string }).quickActionId) }
+      : {}),
   };
 }
 

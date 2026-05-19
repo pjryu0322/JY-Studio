@@ -9,10 +9,7 @@ import {
   proposalFingerprintsStructurallySimilar,
   proposalTextsStructurallySimilar,
 } from "@/lib/requirements/crossStageProposalDedupe";
-import {
-  classifyProposalDecision,
-  type ProposalDecision,
-} from "@/lib/requirements/singleChatQuickAction";
+import type { ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 import {
   quickRepliesForConversationState,
   quickReplyProfileForState,
@@ -30,7 +27,7 @@ import {
   REOPEN_ALTERNATIVE_CANVAS_LABEL,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
-import { resolveServiceFlowTransitionSignal } from "@/lib/requirements/serviceFlowStageTransition";
+import { resolveProposalDecisionFromQuickActionInput } from "@/lib/requirements/requirementsQuickActionRegistry";
 
 export type ServiceFlowProposalDecision =
   | ProposalDecision
@@ -64,53 +61,26 @@ const SERVICE_FLOW_DECISIONS = new Set<ServiceFlowProposalDecision>([
 ]);
 
 export function classifyServiceFlowProposalDecision(
-  label: string | null | undefined,
+  labelOrActionId: string | null | undefined,
 ): ServiceFlowProposalDecision | null {
-  const s = String(label ?? "").trim();
-  if (!s) return null;
-
-  const transition = resolveServiceFlowTransitionSignal({ label: s });
-  if (transition === "NEXT_STAGE") return "NEXT_STAGE";
-  if (transition === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
-  if (transition === "FEATURE_DETAIL_START") return "FEATURE_DETAIL";
-  if (transition === "APPROVE_FLOW") return "FLOW_APPROVE";
-
-  if (/대안\s*상세/.test(s)) return "VIEW_ALTERNATIVE_DETAIL";
-  if (/기존안\s*유지/.test(s)) return "KEEP_PRIMARY";
-  if (/이\s*대안\s*적용/.test(s)) return "APPLY";
-  if (/다른\s*대안\s*(다시\s*)?생성|다른\s*대안\s*보기/.test(s)) return "ALTERNATIVE";
-  if (/흐름\s*상세\s*검토|흐름\s*검토/.test(s)) return "REVIEW_FLOW";
-  if (/흐름\s*승인/.test(s)) return "FLOW_APPROVE";
-  if (/세부\s*기능\s*정리/.test(s)) return "FEATURE_DETAIL";
-  if (/그대로\s*진행/.test(s)) {
-    return "FLOW_APPROVE";
-  }
-  if (/단계\s*수정|액터\s*추가|빠진\s*단계/.test(s)) return "PARTIAL_EDIT";
-
-  return classifyProposalDecision(s);
+  return resolveProposalDecisionFromQuickActionInput({
+    quickActionId: labelOrActionId,
+    quickActionLabel: labelOrActionId,
+  });
 }
 
 export function resolveServiceFlowProposalDecision(input: {
+  readonly quickActionId?: string | null;
   readonly quickActionLabel?: string | null;
   readonly userMessage?: string | null;
   readonly proposalDecisionRaw?: string | null;
 }): ServiceFlowProposalDecision | null {
-  const raw = String(input.proposalDecisionRaw ?? "")
-    .trim()
-    .toUpperCase();
-  if (
-    raw === "FLOW_APPROVE" ||
-    raw === "FEATURE_DETAIL" ||
-    raw === "NEXT_STAGE" ||
-    raw === "DOCUMENTATION_COMPLETE"
-  ) {
-    return raw as ServiceFlowProposalDecision;
-  }
-  if (raw && SERVICE_FLOW_DECISIONS.has(raw as ServiceFlowProposalDecision)) {
-    return raw as ServiceFlowProposalDecision;
-  }
-  const label = String(input.quickActionLabel ?? "").trim() || String(input.userMessage ?? "").trim();
-  return classifyServiceFlowProposalDecision(label);
+  return resolveProposalDecisionFromQuickActionInput({
+    quickActionId: input.quickActionId,
+    quickActionLabel: input.quickActionLabel,
+    userMessage: input.userMessage,
+    proposalDecisionRaw: input.proposalDecisionRaw,
+  });
 }
 
 export function serviceFlowHasReviewableState(flow: RequirementsServiceFlowV1 | null): boolean {

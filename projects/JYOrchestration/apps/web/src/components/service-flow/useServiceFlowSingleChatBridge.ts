@@ -7,6 +7,7 @@ import type {
   RequirementsServiceFlowV1,
   RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import type { ServiceFlowQuickActionDispatch } from "@/components/service-flow/useServiceFlowWorkshopChat";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { deriveServiceFlowApprovalFromFlow, type ServiceFlowStageSlotKey } from "@/components/service-flow/serviceFlowStageDerived";
@@ -44,7 +45,7 @@ export function useServiceFlowSingleChatBridge(params: {
       | ((
           payload: ServiceDesignHarnessPayload,
           text: string,
-          quickActionLabel?: string | null,
+          quickAction?: ServiceFlowQuickActionDispatch | null,
         ) => void | Promise<void>)
       | null;
   };
@@ -78,8 +79,8 @@ export function useServiceFlowSingleChatBridge(params: {
   useEffect(() => {
     const ref = params.serviceFlowSendRef;
     if (!ref) return;
-    ref.current = async (payload, text, quickActionLabel) => {
-      workshop.sendMessage(payload, text, quickActionLabel);
+    ref.current = async (payload, text, quickAction) => {
+      workshop.sendMessage(payload, text, quickAction ?? null);
     };
     return () => {
       if (ref.current) ref.current = null;
