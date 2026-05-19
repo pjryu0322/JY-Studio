@@ -34,6 +34,13 @@ enum ProjectMemberInviteStatus {
   DECLINED
 }
 
+/// 대화방 사람 멤버 초대(수락 시 chat_room_members 행 생성)
+enum ChatRoomMemberInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 /// AI(또는 멤버) 액션 유형
 enum AiMemberActionType {
   /// 코드/변경 리뷰 요청
@@ -214,6 +221,13 @@ model User {
   passwordResetTokens PasswordResetToken[]
   /// 메신저 등 LLM 호출 프롬프트 타임라인(감사·재현)
   messengerPromptTimelineLogs MessengerPromptTimelineLog[]
+  /// 내 친구 목록(단방향 — 초대·대화방 참여 요청 검증용)
+  platformFriends PlatformUserFriend[] @relation("PlatformUserFriendOwner")
+  platformFriendOf PlatformUserFriend[] @relation("PlatformUserFriendTarget")
+  /// 받은 대화방 참여 요청
+  receivedChatRoomMemberInvites ChatRoomMemberInvite[] @relation("ChatRoomMemberInvitee")
+  /// 보낸 대화방 참여 요청
+  sentChatRoomMemberInvites ChatRoomMemberInvite[] @relation("ChatRoomMemberInviteInvitedBy")
 
   @@map("users")
 }
@@ -273,12 +287,47 @@ model ChatRoom {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   members             ChatRoomMember[]
+  memberInvites       ChatRoomMemberInvite[]
   messages            ChatMessage[]
   projectDrafts       ProjectFromChatDraft[]
 
   @@index([ownerUserId, updatedAt])
   @@index([projectId])
   @@map("chat_rooms")
+}
+
+/// 플랫폼 친구(메신저 홈·대화방 초대용, 단방향)
+model PlatformUserFriend {
+  id           String   @id @default(cuid())
+  userId       String
+  friendUserId String
+  createdAt    DateTime @default(now())
+
+  user   User @relation("PlatformUserFriendOwner", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("PlatformUserFriendTarget", fields: [friendUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendUserId])
+  @@index([friendUserId])
+  @@map("platform_user_friends")
+}
+
+/// 대화방 사람 멤버 참여 요청(수락 시 chat_room_members 생성)
+model ChatRoomMemberInvite {
+  id              String                   @id @default(cuid())
+  chatRoomId      String
+  inviteeUserId   String
+  invitedByUserId String
+  status          ChatRoomMemberInviteStatus @default(PENDING)
+  createdAt       DateTime                 @default(now())
+  respondedAt     DateTime?
+
+  chatRoom  ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  invitee   User     @relation("ChatRoomMemberInvitee", fields: [inviteeUserId], references: [id], onDelete: Cascade)
+  invitedBy User     @relation("ChatRoomMemberInviteInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([chatRoomId, inviteeUserId])
+  @@index([inviteeUserId, status])
+  @@map("chat_room_member_invites")
 }
 
 model ChatRoomMember {

@@ -55,7 +55,7 @@ export function MessengerFriendAddSheet(p: {
       ) : null}
 
       <p style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.45, margin: "14px 0 0" }}>
-        친구 정보는 이 브라우저에 저장됩니다. 서버에 동기화하는 기능은 추후 연결됩니다.
+        추가한 친구는 계정에 저장되며, 대화방 참여 요청 등에서 사용됩니다.
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>

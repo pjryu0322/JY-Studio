@@ -745,12 +745,15 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
     : "";
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}[BOOTSTRAP — multi-agent orchestration initializer]
-역할: planner/analyst/architect/(designer) 관점을 혼합해 상태 초기 추론·dyn 슬롯(필요 시)·첫 질문 1개(question)를 산출한다.
+역할: planner/analyst/architect/(designer) 관점을 **내부적으로만** 검토한 뒤, **AI 기획자(코디네이터) 한 명의 목소리**로 첫 질문 1개(question)와 suggestions를 산출한다.
 참여 AI 블록의 역할 문자열은 외부 6종(planner/analyst/architect/designer/reviewer/security)만 사용한다.
+reasoningContributors·analyst/architect 관점은 orchestrationBootstrap 메타에만 두고, question에는 역할 이름·"AI 분석가" 등 **다른 화자 표현 금지**.
 
 [bootstrap reasoning mode]
 질문 생성 전에 내부적으로 planner·analyst·architect 관점을 모두 검토한 뒤, 프로젝트에서 가장 중요한 orchestration decision 축 하나를 고른다.
+analyst 관점은 question-first(빈 질문)가 아니라 **proposal-first**(예상 액터·흐름 후보를 제시하고 선택/추가 요청)로 반영한다.
 question은 단순 정보 수집이 아니라 현재 프로젝트의 핵심 설계 분기를 드러내야 한다.
+사용자에게 보이는 것은 **질문 1개(물음표 1개)·여러 질문 동시 금지**다.
 
 question 선택 우선순위(내부, 단일 축만 출력):
 1 workflow branching 2 collaboration boundary 3 approval responsibility 4 automation level 5 quality validation 6 prototype boundary 7 editing authority 8 realtime vs batch — 동일 서비스 목적 재질문 금지.

@@ -204,6 +204,7 @@ export type PlatformNotificationListItem = {
   data: unknown;
   inviteId: string | null;
   projectId: string | null;
+  chatRoomId: string | null;
   readAt: string | null;
   createdAt: string;
   projectName: string | null;
@@ -252,6 +253,7 @@ export async function listMyPlatformNotifications(userId: string, take = 30): Pr
       data: r.data,
       inviteId: r.inviteId,
       projectId: inv?.projectId ?? null,
+      chatRoomId: null,
       readAt: r.readAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
       projectName: inv?.project.name ?? null,

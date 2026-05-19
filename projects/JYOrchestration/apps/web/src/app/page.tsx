@@ -1,13 +1,11 @@
-"use client";
+import { redirect } from "next/navigation";
+import { HomePageClient } from "@/app/HomePageClient";
+import { getAuthenticatedUserIdFromServerCookies } from "@/lib/auth/serverSession";
 
-import { Suspense } from "react";
-import { LoadingState } from "@/components/ui";
-import { MessengerHome } from "@/components/messenger/MessengerHome";
-
-export default function HomePage() {
-  return (
-    <Suspense fallback={<LoadingState />}>
-      <MessengerHome />
-    </Suspense>
-  );
+export default async function HomePage() {
+  const userId = await getAuthenticatedUserIdFromServerCookies();
+  if (!userId) {
+    redirect("/login?from=/");
+  }
+  return <HomePageClient />;
 }

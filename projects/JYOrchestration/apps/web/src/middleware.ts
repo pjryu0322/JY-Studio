@@ -42,7 +42,9 @@ export async function middleware(request: NextRequest) {
 
   const login = new URL("/login", request.url);
   login.searchParams.set("from", pathname);
-  return NextResponse.redirect(login);
+  const res = NextResponse.redirect(login);
+  res.cookies.set(SESSION_COOKIE_NAME, "", { path: "/", maxAge: 0 });
+  return res;
 }
 
 /**
@@ -50,5 +52,6 @@ export async function middleware(request: NextRequest) {
  * `api`·`_next`·favicon 을 제외한 앱 경로 전부에 세션 검사를 적용한다.
  */
 export const config = {
-  matcher: ["/((?!api/|_next/|favicon\\.ico).*)"],
+  /** `/` 단독 경로는 일부 Next 버전에서 아래 패턴만으로는 매칭되지 않아 로그인 우회가 난다. */
+  matcher: ["/", "/((?!api/|_next/|favicon\\.ico).*)"],
 };

@@ -4,7 +4,7 @@ import "./globals.css";
 import "@/lib/service/executionWorkerRuntime";
 import "@/lib/service/aiActionWorkerRuntime";
 import { ClientProviders } from "@/components/layout/ClientProviders";
-import { PlatformShell } from "@/components/layout/PlatformShell";
+import { PlatformShellGate } from "@/components/layout/PlatformShellGate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +31,7 @@ export default function RootLayout({
       <body className="h-full min-h-0 flex flex-col">
         <ClientProviders>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <PlatformShell>{children}</PlatformShell>
+            <PlatformShellGate>{children}</PlatformShellGate>
           </div>
         </ClientProviders>
       </body>

@@ -107,57 +107,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
   const legacyFallbackEnabled = legacyProblemInterviewFallbackEnabled();
 
   const speakerForOrchestratorAgent = (
-    agent: string | null | undefined,
-    hintAxis?: string | null,
+    _agent: string | null | undefined,
+    _hintAxis?: string | null,
   ): { id: string; name: string } => {
-    const a = String(agent ?? "").trim().toLowerCase();
-    const axis = String(hintAxis ?? "").trim();
-    const subtitleFor = (owner: string, ax: string): { subtitle: string; mismatch: boolean } => {
-      const o = String(owner ?? "").trim().toLowerCase();
-      const normalizedAxis = String(ax ?? "").trim();
-      const byAxis =
-        normalizedAxis === "ux_direction" || normalizedAxis === "mobile_experience"
-          ? "편집 UX 검토 중"
-          : normalizedAxis === "automation_latency" || normalizedAxis === "processing_pipeline"
-            ? "처리 구조 검토 중"
-            : normalizedAxis === "permissions_approval" || normalizedAxis === "collaboration_flow"
-              ? "권한·승인 흐름 분석 중"
-              : normalizedAxis === "security_risk"
-                ? "보안·보관 정책 검토 중"
-                : normalizedAxis === "scope_value"
-                  ? "목표·범위 정리 중"
-                  : "";
-      const defaultByOwner =
-        o === "designer"
-          ? "편집 UX 검토 중"
-          : o === "architect"
-            ? "처리 구조 검토 중"
-            : o === "analyst"
-              ? "권한·승인 흐름 분석 중"
-              : o === "security"
-                ? "보안·보관 정책 검토 중"
-                : o === "planner"
-                  ? "목표·범위 정리 중"
-                  : "";
-      // enforce owner-aligned hint (avoid "AI 분석가 (편집 UX...)")
-      if (!byAxis) return { subtitle: defaultByOwner, mismatch: Boolean(defaultByOwner) };
-      if (!defaultByOwner) return { subtitle: byAxis, mismatch: false };
-      if (o === "designer" && (normalizedAxis === "ux_direction" || normalizedAxis === "mobile_experience")) return { subtitle: byAxis, mismatch: false };
-      if (o === "architect" && (normalizedAxis === "automation_latency" || normalizedAxis === "processing_pipeline")) return { subtitle: byAxis, mismatch: false };
-      if (o === "analyst" && (normalizedAxis === "permissions_approval" || normalizedAxis === "collaboration_flow")) return { subtitle: byAxis, mismatch: false };
-      if (o === "security" && normalizedAxis === "security_risk") return { subtitle: byAxis, mismatch: false };
-      if (o === "planner" && (normalizedAxis === "scope_value" || normalizedAxis === "unknown")) return { subtitle: byAxis || defaultByOwner, mismatch: false };
-      return { subtitle: defaultByOwner, mismatch: true };
-    };
-    const { subtitle } = subtitleFor(a, axis);
-    const suffix = subtitle ? ` (${subtitle})` : "";
-    if (a === "analyst") return { id: "virtual:ai-analyst", name: `AI 분석가${suffix}` };
-    if (a === "architect") return { id: "virtual:ai-architect", name: `AI 설계자${suffix}` };
-    if (a === "designer") return { id: "virtual:ai-designer", name: `AI 디자이너${suffix}` };
-    if (a === "security") return { id: "virtual:ai-security", name: `AI 보안관${suffix}` };
-    // reviewer는 별도 참여 멤버가 아니라, 기획자가 중재 역할을 수행한다.
-    if (a === "reviewer") return { id: VIRTUAL_AI_PLANNER_ID, name: `${IDEATION_AI_DISPLAY_NAME}${suffix}` };
-    return { id: VIRTUAL_AI_PLANNER_ID, name: `${IDEATION_AI_DISPLAY_NAME}${suffix}` };
+    // SingleChat coordinator UX: 내부 owner는 promptTrace에만 남기고, UI 화자는 AI 기획자 단일.
+    return { id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME };
   };
 
   const absorbPromptTrace = (raw: unknown) => {

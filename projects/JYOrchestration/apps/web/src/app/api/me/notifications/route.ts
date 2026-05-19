@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { listMyPlatformNotifications } from "@/lib/service/projectMemberInviteService";
+import { listMyPlatformNotifications } from "@/lib/service/platformNotificationInboxService";
 
 export async function GET(request: NextRequest) {
   try {

@@ -20,6 +20,7 @@ import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatA
 import { DESIGN_OWNERS, FLOW_OWNERS, SECURITY_OWNERS } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 import { runPlannerRouteTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerRoute";
 import { runSpecialistGroupTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.specialist";
+import { runCoordinatorSynthesisTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.coordinatorSynthesis";
 import { runPlannerMergeTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerMerge";
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
@@ -71,7 +72,7 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   /** next-question 재시도 사유 */
   nextQuestionRetryReason?: string | null;
   /** UI: quick action suggestions (chips) */
-  interviewSuggestions?: readonly string[] | null;
+  interviewSuggestions?: readonly string[];
   /** 사용자가 선택한 QuickAction 칩 라벨(있을 때만) */
   quickActionLabel?: string | null;
   /** QuickAction 의도 분류 */
@@ -273,7 +274,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const calledAt = new Date().toISOString();
   const promptChunks: string[] = [];
   const executedAgents: string[] = ["planner-route"];
-  let interviewSuggestions: string[] | null = null;
+  const coordinatorChipSuggestionsRef: { current: string[] | null } = { current: null };
 
   const rawUserMessage = String(input.userMessage ?? "").trim();
   const quickActionLabel = String(input.quickActionLabel ?? "").trim() || null;
@@ -994,218 +995,72 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       conflictSignals.push(`conflicted_slots(${conflictPatchedKeys.slice(0, 4).join(",")})`);
     }
   }
+  const skipRepeatGuard = quickActionKind === "alternatives";
+  const conflictHint = conflictDetected ? buildConflictMediationQuestion() : null;
+
+  const applyCoordinatorMessage = (msg: string, suggestions: string[] | null) => {
+    const rep = skipRepeatGuard ? { repeated: false as const } : isRepeatedQuestion(msg, recentQuestionsPrev);
+    if (rep.repeated) {
+      repeatedQuestionDetected = true;
+      repeatedQuestionReason = rep.reason ?? "repeated";
+      return false;
+    }
+    nextQuestion = msg;
+    if (suggestions?.length) coordinatorChipSuggestionsRef.current = suggestions;
+    return true;
+  };
+
   if (apiKey) {
-    const model = resolveOpenAiModelFromEnv();
-    const slotsJson = JSON.stringify(state.slots, null, 0).slice(0, 18_000);
-    const keyHints = definitions
-      .filter((d) => ownerLabelFromInternal(d.ownerAgent) === conversationOwner)
-      .slice(0, 10)
-      .map((d) => `- ${d.label} (${d.slotKey})`)
-      .join("\n");
-    const baseRules = [
-      "당신은 SingleChat의 다음 대화 진행자(conversation owner)다.",
-      "질문만 던지고 끝내지 말고, 가능하면 아래 4요소를 포함해 짧게 제시한다:",
-      "1) 지금 이해한 내용 1~2줄 요약",
-      "2) 가능한 대안 2~3개(번호 목록)",
-      "3) 역할 관점의 추천안 1개(‘추천: …’ 한 줄)",
-      "4) 사용자가 바로 고를 다음 행동(‘다음: …’ 한 줄)",
-      "내부 슬롯 키/ownerAgent/phase/오케스트레이션 용어 금지.",
-      "이미 답한 선택지를 다시 묻는 동일 의미 질문 금지.",
-      '출력(JSON 1개): { "assistantMessage": "짧은 제안 메시지", "suggestions": ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력", "보류"] }',
-    ].join("\n");
-
-    const roleSystem =
-      conflictDetected
-        ? [
-            `${workspaceAiMemberSystemPrefix("ideation")}`,
-            "당신의 공식 표시 이름은「AI 기획자」이다.",
-            "당신은 여러 specialist 관점을 조정하는 중립적 조정자(mediator)다.",
-            "목표는 상충되는 요구를 조정하기 위한 '선택 질문'을 1문장으로 만드는 것이다.",
-            "질문은 트레이드오프를 명확히 드러내되, 기획자식 일반론 질문은 금지한다.",
-            baseRules,
-          ].join("\n")
-        :
-      conversationOwner === "designer"
-        ? [
-            `${workspaceAiMemberSystemPrefix("ideation")}`,
-            "당신의 공식 표시 이름은「AI 디자이너」이다.",
-            "당신은 숙련된 UX/UI 디자이너다. 대화를 리드하면서 사용자의 검토/수정 경험을 구체화한다.",
-            "초점: 편집 UX, 리뷰 UX(댓글/승인), 문서 IA, 모바일 사용성, 톤&스타일.",
-            "질문 예시 톤: ‘검토 화면은 문서 편집기 스타일과 댓글 기반 중 어떤 흐름이 더 자연스럽나요?’",
-            baseRules,
-          ].join("\n")
-        : conversationOwner === "architect"
-          ? [
-              `${workspaceAiMemberSystemPrefix("ideation")}`,
-              "당신의 공식 표시 이름은「AI 설계자」이다.",
-              "당신은 시스템/자동화 구조를 설계하는 AI 설계자다. 처리 구조와 성능/연동 경계를 리드한다.",
-              "초점: 실시간 vs 배치, 자동화 경계, 처리 파이프라인, 연동/API, 확장성/비용.",
-              "질문 예시 톤: ‘업로드 직후 처리해야 하나요, 배치 처리도 허용되나요?’",
-              baseRules,
-            ].join("\n")
-          : conversationOwner === "analyst"
-            ? [
-                `${workspaceAiMemberSystemPrefix("ideation")}`,
-                "당신의 공식 표시 이름은「AI 분석가」이다.",
-                "당신은 서비스 흐름/권한/승인을 분석하는 AI 분석가다. 역할과 운영 흐름을 리드한다.",
-                "초점: 액터 책임, 승인/확정 흐름, 협업/공동편집, 권한(누가 무엇을), 예외/운영.",
-                "질문 예시 톤: ‘참석자는 전체를 고치나요, 자기 발언만 고치나요?’",
-                baseRules,
-              ].join("\n")
-            : conversationOwner === "security"
-              ? [
-                  `${workspaceAiMemberSystemPrefix("ideation")}`,
-                  "당신의 공식 표시 이름은「AI 보안관」이다.",
-                  "당신은 보안/개인정보 관점의 AI 보안 리뷰어다. 데이터/권한/보관 정책 리스크를 리드한다.",
-                  "초점: 개인정보/민감정보, 접근 제어, 보관 기간, 감사 로그, 공유 범위.",
-                  "질문 예시 톤: ‘녹취/전사 데이터는 누가 볼 수 있고 얼마나 보관하나요?’",
-                  baseRules,
-                ].join("\n")
-              : conversationOwner === "reviewer"
-                ? [
-                    `${workspaceAiMemberSystemPrefix("ideation")}`,
-                    "당신의 공식 표시 이름은「AI 리뷰어」이다.",
-                    "당신은 범위/리스크/검증기준을 점검하는 AI 리뷰어다. 우선순위와 성공 기준을 리드한다.",
-                    "초점: MVP 범위, 품질 기준, 검증 방법, 리스크/트레이드오프.",
-                    "질문 예시 톤: ‘첫 버전에서 어떤 품질 기준을 반드시 만족해야 하나요?’",
-                    baseRules,
-                  ].join("\n")
-                : [
-                    `${workspaceAiMemberSystemPrefix("ideation")}`,
-                    "당신의 공식 표시 이름은「AI 기획자」이다.",
-                    "당신은 제품 기획자(planner)다. 비즈니스 가치/범위/목표 정렬을 리드한다.",
-                    "초점: 목적/핵심가치, 범위/MVP, 이해관계자 정렬, 협업 방향.",
-                    "질문 예시 톤: ‘첫 버전에서 가장 중요한 성공 기준은 무엇인가요?’",
-                    baseRules,
-                  ].join("\n");
-
-    const quickNextBlock = quickActionNextQuestionBlock(quickActionKind, quickActionLabel);
-    const user = `[프로젝트] ${input.projectName.trim()}
-[최근 사용자 발화] ${userMessageForLlm.trim().slice(0, 1600)}
-${quickNextBlock ? `${quickNextBlock}\n` : ""}[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
-[이 역할이 담당하는 슬롯(참고)]\n${keyHints || "- (없음)"}
-[현재 슬롯 스냅샷] ${slotsJson}
-[결정 축] ${decisionAxis}`;
-    const skipRepeatGuard = quickActionKind === "alternatives";
-    const qMaxTokens = quickActionKind ? 220 : 160;
-    const resQ = await postOpenAiChatCompletion({
-      apiKey,
-      model,
-      messages: [
-        { role: "system", content: roleSystem },
-        { role: "user", content: user },
-      ],
-      temperature: 0.25,
-      responseFormatJsonObject: true,
-      maxTokens: qMaxTokens,
+    const synthesis = await runCoordinatorSynthesisTurnOpenAI({
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      userMessage: userMessageForLlm,
+      dialogueExcerpt: input.dialogueExcerpt,
+      specialistDigest,
+      specialistContributors: uniqSpecialists,
+      state,
+      decisionAxis,
+      conflictHint,
+      recentAssistantQuestions: recentQuestionsPrev,
+      stickyTurnsRemainingPrev,
+      ownerPersistenceReason,
+      quickActionLabel,
+      quickActionKind,
     });
-    if (resQ.ok) {
-      const parsed = safeJsonParse(resQ.text ?? "") as Record<string, unknown> | null;
-      const msg = String(parsed?.assistantMessage ?? "").trim();
-      const quickSug =
-        Array.isArray((parsed as any)?.suggestions) && (parsed as any).suggestions.length
-          ? (parsed as any).suggestions.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
-          : null;
-      if (quickSug?.length) interviewSuggestions = quickSug;
-      if (msg) {
-        const validate = (owner: NextOwner, q: string): { ok: boolean; reason?: string } => {
-          const qq = String(q ?? "").trim();
-          if (!qq) return { ok: false, reason: "empty_question" };
-          const forbidCommon = /(추가\s*요구사항|구체적인\s*요구사항|원하시나요|원하나요)/i;
-          if (forbidCommon.test(qq)) return { ok: false, reason: "forbidden_generic_phrase" };
-          if (owner === "designer" && /(기능|요소|요구사항|스펙)/i.test(qq)) return { ok: false, reason: "designer_planner_tone_leak" };
-          if (owner === "architect" && /(디자인|톤앤매너|ui|ux)/i.test(qq)) return { ok: false, reason: "architect_focus_leak" };
-          if (owner === "analyst" && /(성능|지연|파이프라인|실시간|배치)/i.test(qq)) return { ok: false, reason: "analyst_focus_leak" };
-          return { ok: true };
-        };
 
-        const rep1 = skipRepeatGuard ? { repeated: false as const } : isRepeatedQuestion(msg, recentQuestionsPrev);
-        if (rep1.repeated) {
-          repeatedQuestionDetected = true;
-          repeatedQuestionReason = rep1.reason ?? "repeated";
-        }
-        const v1 = validate(conversationOwner, msg);
-        if (v1.ok) {
-          if (!rep1.repeated) {
-            nextQuestion = msg;
+    if (synthesis.ok) {
+      promptChunks.push(synthesis.promptText);
+      executedAgents.push("coordinator-synthesis");
+      if (!applyCoordinatorMessage(synthesis.assistantMessage, synthesis.suggestions)) {
+        nextQuestionRetryReason = "repeated_question_retry";
+        const retry = await runCoordinatorSynthesisTurnOpenAI({
+          projectName: input.projectName,
+          projectDescription: input.projectDescription,
+          userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전 질문과 같은 의미로 다시 묻지 말고, 다른 세부 결정으로 이어가세요.`,
+          dialogueExcerpt: input.dialogueExcerpt,
+          specialistDigest,
+          specialistContributors: uniqSpecialists,
+          state,
+          decisionAxis,
+          conflictHint,
+          recentAssistantQuestions: recentQuestionsPrev,
+          stickyTurnsRemainingPrev,
+          ownerPersistenceReason,
+          quickActionLabel,
+          quickActionKind,
+        });
+        if (retry.ok) {
+          promptChunks.push(retry.promptText);
+          executedAgents.push("coordinator-synthesis:repeat-guard");
+          if (applyCoordinatorMessage(retry.assistantMessage, retry.suggestions)) {
+            nextQuestionRetryReason = "repeated_question_retry_succeeded";
           } else {
-            // Repeat-guard retry even if persona validation passed.
-            nextQuestionRetryReason = "repeated_question_retry";
-            const recentBlock = recentQuestionsPrev.slice(0, 6).map((q) => `- ${q}`).join("\n");
-            const repeatGuardSystem = `${roleSystem}\n\n[repeat-guard]\n아래의 최근 질문과 의미가 같은 질문은 금지합니다.\n최근 질문:\n${recentBlock || "- (없음)"}\n\n반드시 다른 세부 결정으로 이어지는 질문 1문장만 생성하세요.`;
-            const resRepeatRetry = await postOpenAiChatCompletion({
-              apiKey,
-              model,
-              messages: [
-                { role: "system", content: repeatGuardSystem },
-                { role: "user", content: user },
-              ],
-              temperature: 0.22,
-              responseFormatJsonObject: true,
-              maxTokens: qMaxTokens,
-            });
-            if (resRepeatRetry.ok) {
-              const parsedR = safeJsonParse(resRepeatRetry.text ?? "") as Record<string, unknown> | null;
-              const msgR = String(parsedR?.assistantMessage ?? "").trim();
-              const vR = validate(conversationOwner, msgR);
-              const repR = skipRepeatGuard || !msgR ? { repeated: false as const } : isRepeatedQuestion(msgR, recentQuestionsPrev);
-              if (msgR && vR.ok && !repR.repeated) {
-                nextQuestion = msgR;
-                promptChunks.push(
-                  `[next-question:${conversationOwner}:repeat-guard]\n[system]\n${repeatGuardSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resRepeatRetry.text ?? "").slice(0, 4000)}`
-                );
-                executedAgents.push(`question:${conversationOwner}:repeat-guard`);
-                nextQuestionRetryReason = "repeated_question_retry_succeeded";
-              } else {
-                nextQuestionRetryReason = "repeated_question_retry_failed";
-              }
-            } else {
-              nextQuestionRetryReason = "repeated_question_retry_failed";
-            }
-          }
-          promptChunks.push(`[next-question:${conversationOwner}]\n[system]\n${roleSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
-          executedAgents.push(`question:${conversationOwner}`);
-        } else {
-          personaValidationReason = v1.reason ?? "persona_validation_failed";
-          personaValidationRetry = 1;
-          const retrySystem = `${roleSystem}\n\n[persona-validation]\n이전 질문은 ${personaValidationReason} 로 거절되었습니다. 금지어/톤을 피하고, 역할 관점에 맞는 질문 1문장만 다시 생성하세요.`;
-          const resRetry = await postOpenAiChatCompletion({
-            apiKey,
-            model,
-            messages: [
-              { role: "system", content: retrySystem },
-              { role: "user", content: user },
-            ],
-            temperature: 0.22,
-            responseFormatJsonObject: true,
-            maxTokens: qMaxTokens,
-          });
-          if (resRetry.ok) {
-            const parsed2 = safeJsonParse(resRetry.text ?? "") as Record<string, unknown> | null;
-            const msg2 = String(parsed2?.assistantMessage ?? "").trim();
-            const sug2 =
-              Array.isArray((parsed2 as any)?.suggestions) && (parsed2 as any).suggestions.length
-                ? (parsed2 as any).suggestions.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
-                : null;
-            if (sug2?.length) interviewSuggestions = sug2;
-            const v2 = validate(conversationOwner, msg2);
-            const rep2 = skipRepeatGuard || !msg2 ? { repeated: false as const } : isRepeatedQuestion(msg2, recentQuestionsPrev);
-            if (rep2.repeated) {
-              repeatedQuestionDetected = true;
-              repeatedQuestionReason = rep2.reason ?? repeatedQuestionReason ?? "repeated";
-              nextQuestionRetryReason = "repeated_question_retry_failed";
-            }
-            if (msg2 && v2.ok && !rep2.repeated) {
-              nextQuestion = msg2;
-              promptChunks.push(
-                `[next-question:${conversationOwner}:retry]\n[system]\n${retrySystem}\n\n[user]\n${user}\n\n[raw]\n${String(resRetry.text ?? "").slice(0, 4000)}`
-              );
-              executedAgents.push(`question:${conversationOwner}:retry`);
-              if (rep1.repeated) nextQuestionRetryReason = "repeated_question_retry_succeeded";
-            }
+            nextQuestionRetryReason = "repeated_question_retry_failed";
           }
         }
       }
+    } else {
+      personaValidationReason = `coordinator_synthesis_failed:${synthesis.code}`;
     }
   }
 
@@ -1235,7 +1090,8 @@ ${quickNextBlock ? `${quickNextBlock}\n` : ""}[대화 발췌] ${input.dialogueEx
     updatedSlotKeys,
     updatedSlotCount: updatedSlotKeys.length,
     delegatedAgents: uniqSpecialists,
-    orchestratorAgent: conversationOwner,
+    /** 사용자 UI에는 항상 AI 기획자(코디네이터) 단일 화자 */
+    orchestratorAgent: "planner",
     nextQuestionOwnerAgent: conversationOwner,
     conversationOwner,
     questionGeneratedBy,
@@ -1251,7 +1107,9 @@ ${quickNextBlock ? `${quickNextBlock}\n` : ""}[대화 발췌] ${input.dialogueEx
     ...(typeof repeatedQuestionDetected === "boolean" ? { repeatedQuestionDetected } : {}),
     ...(repeatedQuestionReason ? { repeatedQuestionReason } : {}),
     ...(nextQuestionRetryReason ? { nextQuestionRetryReason } : {}),
-    ...(interviewSuggestions?.length ? { interviewSuggestions } : {}),
+    ...(coordinatorChipSuggestionsRef.current?.length
+      ? { interviewSuggestions: coordinatorChipSuggestionsRef.current as readonly string[] }
+      : {}),
     ...(quickActionLabel ? { quickActionLabel: quickActionLabel.slice(0, 40) } : {}),
     ...(quickActionKind ? { quickActionKind } : {}),
     mergeCoordinator: "merge-coordinator",

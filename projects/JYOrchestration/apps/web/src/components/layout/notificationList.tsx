@@ -9,6 +9,7 @@ export type NotificationRow = {
   body: string;
   inviteId: string | null;
   projectId: string | null;
+  chatRoomId: string | null;
   readAt: string | null;
   createdAt: string;
   projectName: string | null;
@@ -20,7 +21,7 @@ export function NotificationListBody(p: {
   readonly items: NotificationRow[];
   readonly busyInviteId: string | null;
   readonly narrow: boolean;
-  readonly onRespond: (inviteId: string, action: "accept" | "decline") => void;
+  readonly onRespond: (inviteId: string, action: "accept" | "decline", notification: NotificationRow) => void;
 }) {
   const { loadState, items, busyInviteId, narrow, onRespond } = p;
   const padX = narrow ? 16 : 14;
@@ -58,7 +59,7 @@ export function NotificationListBody(p: {
               <button
                 type="button"
                 disabled={busyInviteId === n.inviteId}
-                onClick={() => void onRespond(n.inviteId!, "accept")}
+                onClick={() => void onRespond(n.inviteId!, "accept", n)}
                 style={{
                   padding: btnPad,
                   minHeight: btnMinH,
@@ -77,7 +78,7 @@ export function NotificationListBody(p: {
               <button
                 type="button"
                 disabled={busyInviteId === n.inviteId}
-                onClick={() => void onRespond(n.inviteId!, "decline")}
+                onClick={() => void onRespond(n.inviteId!, "decline", n)}
                 style={{
                   padding: btnPad,
                   minHeight: btnMinH,
@@ -108,6 +109,21 @@ export function NotificationListBody(p: {
               }}
             >
               프로젝트로 이동
+            </Link>
+          ) : null}
+          {n.type === "CHAT_ROOM_MEMBER_INVITE" && !n.canRespond && n.chatRoomId ? (
+            <Link
+              href={`/chat/${encodeURIComponent(n.chatRoomId)}`}
+              style={{
+                display: "inline-block",
+                marginTop: 6,
+                fontSize: narrow ? 14 : 12,
+                fontWeight: 700,
+                color: "#2563eb",
+                padding: narrow ? "4px 0" : undefined,
+              }}
+            >
+              대화방으로 이동
             </Link>
           ) : null}
         </div>

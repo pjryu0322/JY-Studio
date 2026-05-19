@@ -9,6 +9,7 @@ import { MessengerChatRoomHeaderBar } from "./MessengerChatRoomHeaderBar";
 import { MessengerChatRoomProjectDraftModal } from "./MessengerChatRoomProjectDraftModal";
 import { MessengerChatRoomRenameModal } from "./MessengerChatRoomRenameModal";
 import { MessengerRoomAiSettingsModal } from "./MessengerRoomAiSettingsModal";
+import { MessengerProjectLinkedComposerHint } from "./MessengerProjectLinkedComposerHint";
 import { MessengerRoomMembersModal } from "./MessengerRoomMembersModal";
 import { useMessengerChatRoomData } from "./useMessengerChatRoomData";
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
@@ -109,6 +110,18 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   useEffect(() => {
     projectLinkedRef.current = detail?.room.projectId ?? null;
   }, [detail?.room.projectId]);
+
+  /** 프로젝트 팝업(jyo-idea-*)에서 이 방으로 들어온 경우 window.name을 메신저용으로 바꿔, 프로젝트 이동 시 현재 창이 바뀌지 않게 한다. */
+  useEffect(() => {
+    if (!rid || typeof window === "undefined") return;
+    try {
+      if (window.name.startsWith("jyo-idea-")) {
+        window.name = `jyo-messenger-chat-${encodeURIComponent(rid)}`;
+      }
+    } catch {
+      /* noop */
+    }
+  }, [rid]);
 
   useEffect(() => {
     if (!sessionUserId || !messages || !rid) return;
@@ -343,9 +356,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [rid, confirmBusy, projectName, projectDesc, reloadDetail]);
 
-  const composerPlaceholder = projectLinkedId
-    ? "프로젝트에 연결된 대화방입니다. 요구사항 화면에서 계속하세요."
-    : "메시지를 입력하세요";
+  const composerPlaceholder = "메시지를 입력하세요";
 
   const messengerPlusMenuRender = useCallback(
     ({ close }: { readonly close: () => void }) => (
@@ -397,17 +408,18 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     []
   );
 
-  const composer = (
+  const composer = projectLinkedId ? (
+    <MessengerProjectLinkedComposerHint projectId={projectLinkedId} />
+  ) : (
     <ServiceDesignComposer
       stage="ideation"
       textAreaRef={composerTextAreaRef}
       value={input}
       onChange={setInput}
       busy={busy || aiBusy || summaryBusy}
-      disabled={Boolean(projectLinkedId)}
       placeholder={composerPlaceholder}
       targetPickerItems={targetPickerItems}
-      plusMenuRender={projectLinkedId ? undefined : messengerPlusMenuRender}
+      plusMenuRender={messengerPlusMenuRender}
       onSendIdeation={handleComposerSend}
       onSendServiceFlow={handleComposerSend}
       onSendFeaturePlanning={handleComposerSend}
@@ -484,6 +496,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
           roomId={rid}
           participants={participantOptions}
           aiParticipationMode={aiMode}
+          onMembershipChanged={() => void reloadDetail()}
         />
 
         <MessengerRoomAiSettingsModal

@@ -64,7 +64,12 @@ export async function runSpecialistGroupTurnOpenAI(input: {
 - [사용자]에 '[QuickAction 선택]'이 있으면 버튼 의도를 반영해 관련 슬롯만 갱신한다(추천안 적용=직전 assistant 추천을 value에 반영).
 - 오직 위 목록의 슬롯만 updatedSlots에 포함.
 - status는 반드시 "candidate" (planner 확정 전). 값·근거를 value에 한국어로 짧게.
-- planner 슬롯은 수정 금지.
+- planner 슬롯은 수정 금지.${
+    input.groupLabel === "flow-analyst"
+      ? `
+- analyst 관점(액터·권한·흐름): 빈 질문·"어떤 액터가 필요하신가요?" 류 금지. value에는 **구조화 제안**만(예: 예상 액터 후보 나열, 승인/수정 흐름 가설). 사용자 질문 문장을 만들지 말 것.`
+      : ""
+  }
 
 출력: { "updatedSlots": [ { "slotKey", "status": "candidate", "value", "confidence", "ownerAgent" } ] }`;
 

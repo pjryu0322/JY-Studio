@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { formatParticipantStatusSubtitle } from "@/components/workspace/participantOptionPresentation";
 import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
-import { Button, uiTokens as t } from "@/components/ui";
+import { Button, InlineAlert, uiTokens as t } from "@/components/ui";
 import styles from "@/components/workspace/workspaceParticipantsModal.module.css";
 import type { MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
+import {
+  fetchMessengerFriends,
+  fetchPendingChatRoomMemberInvites,
+  requestChatRoomMemberInvite,
+  type MessengerFriendApiRow,
+} from "@/lib/messenger/messengerFriendApi";
 
 function partitionParticipants(participants: readonly ParticipantOption[]) {
   const humans = participants.filter((x): x is ParticipantOption => x.kind === "human");
@@ -58,25 +64,71 @@ export function MessengerRoomMembersModal(p: {
   readonly roomId: string;
   readonly participants: readonly ParticipantOption[];
   readonly aiParticipationMode: MessengerAiMode;
+  readonly onMembershipChanged?: () => void;
 }) {
-  const [copyDone, setCopyDone] = useState(false);
   const { humansOrdered, ais } = useMemo(() => partitionParticipants(p.participants), [p.participants]);
   const total = humansOrdered.length + ais.length;
 
-  const inviteUrl = useMemo(() => {
-    if (typeof window === "undefined") return `/chat/${encodeURIComponent(p.roomId)}`;
-    return `${window.location.origin}/chat/${encodeURIComponent(p.roomId)}`;
-  }, [p.roomId]);
-
-  const copyInvite = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopyDone(true);
-      window.setTimeout(() => setCopyDone(false), 2400);
-    } catch {
-      setCopyDone(false);
+  const memberUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const h of humansOrdered) {
+      const raw = h.id.startsWith("human:") ? h.id.slice(6) : h.id;
+      if (raw) ids.add(raw);
     }
-  }, [inviteUrl]);
+    return ids;
+  }, [humansOrdered]);
+
+  const [friends, setFriends] = useState<readonly MessengerFriendApiRow[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<
+    readonly { inviteId: string; inviteeUserId: string; displayName: string }[]
+  >([]);
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadInviteData = useCallback(async () => {
+    if (!p.open || !p.roomId) return;
+    setLoadError(null);
+    try {
+      const [friendRows, pending] = await Promise.all([
+        fetchMessengerFriends(),
+        fetchPendingChatRoomMemberInvites(p.roomId),
+      ]);
+      setFriends(friendRows);
+      setPendingInvites(pending);
+    } catch {
+      setLoadError("친구·참여 요청 정보를 불러오지 못했습니다.");
+    }
+  }, [p.open, p.roomId]);
+
+  useEffect(() => {
+    void loadInviteData();
+  }, [loadInviteData]);
+
+  const inviteableFriends = useMemo(
+    () => friends.filter((f) => !memberUserIds.has(f.id) && !pendingInvites.some((pi) => pi.inviteeUserId === f.id)),
+    [friends, memberUserIds, pendingInvites]
+  );
+
+  const sendInvite = useCallback(
+    async (friend: MessengerFriendApiRow) => {
+      setInviteBusyId(friend.id);
+      setInviteMessage(null);
+      try {
+        const result = await requestChatRoomMemberInvite(p.roomId, friend.id);
+        if (!result.ok) {
+          setInviteMessage(result.message || "참여 요청에 실패했습니다.");
+          return;
+        }
+        setInviteMessage(result.message || "참여 요청을 보냈습니다.");
+        await loadInviteData();
+        p.onMembershipChanged?.();
+      } finally {
+        setInviteBusyId(null);
+      }
+    },
+    [p.roomId, loadInviteData, p.onMembershipChanged]
+  );
 
   if (!p.open) return null;
 
@@ -184,29 +236,80 @@ export function MessengerRoomMembersModal(p: {
             background: "linear-gradient(180deg, #fafbfc 0%, #fff 100%)",
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 900, color: t.textPrimary, marginBottom: 6 }}>초대</div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: t.textPrimary, marginBottom: 6 }}>친구에게 참여 요청</div>
           <p style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.5, margin: "0 0 12px" }}>
-            아래 링크를 공유할 수 있습니다. 초대 수락 및 권한 처리는 후속 단계에서 연결됩니다.
+            친구 목록에 있는 사용자에게만 참여 요청을 보낼 수 있습니다. 상대가 알림에서 수락하면 참여 멤버로 추가됩니다.
           </p>
-          <Button type="button" variant="secondary" size="md" onClick={() => void copyInvite()}>
-            {copyDone ? "복사됨" : "초대 링크 복사"}
-          </Button>
-          <div
-            style={{
-              marginTop: 10,
-              padding: "8px 10px",
-              borderRadius: 8,
-              background: "#f8fafc",
-              border: `1px solid ${t.border}`,
-              fontSize: 11,
-              color: t.textMuted,
-              wordBreak: "break-all",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-              lineHeight: 1.4,
-            }}
-          >
-            {inviteUrl}
-          </div>
+
+          {loadError ? <InlineAlert variant="danger">{loadError}</InlineAlert> : null}
+          {inviteMessage ? (
+            <div style={{ marginBottom: 10 }}>
+              <InlineAlert variant="info">{inviteMessage}</InlineAlert>
+            </div>
+          ) : null}
+
+          {pendingInvites.length > 0 ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 6 }}>대기 중인 요청</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pendingInvites.map((pi) => (
+                  <div
+                    key={pi.inviteId}
+                    style={{
+                      fontSize: 12,
+                      color: t.textSecondary,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#f8fafc",
+                      border: `1px solid ${t.border}`,
+                    }}
+                  >
+                    {pi.displayName} — 수락 대기
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {inviteableFriends.length === 0 ? (
+            <div style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.5 }}>
+              초대할 친구가 없습니다. 홈의 「친구」 탭에서 친구를 추가한 뒤 다시 시도해 주세요.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
+              {inviteableFriends.map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: `1px solid ${t.border}`,
+                    background: t.bgCard,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: t.textPrimary }}>{f.displayName}</div>
+                    {f.email ? (
+                      <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, wordBreak: "break-all" }}>{f.email}</div>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={inviteBusyId !== null}
+                    onClick={() => void sendInvite(f)}
+                  >
+                    {inviteBusyId === f.id ? "전송 중…" : "참여 요청"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

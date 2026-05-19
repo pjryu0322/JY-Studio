@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState, type CSSProperties } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
+import type { CSSProperties } from "react";
 import { parseMessengerHomePanel, type MessengerHomePanel } from "@/components/messenger/messengerHomePanel";
-import { createMessengerChatRoom } from "@/lib/messenger/messengerChatRoomApi";
-import { openMessengerChatRoomWindow } from "@/lib/messenger/openMessengerChatRoomWindow";
-import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 import {
   platformRailMessengerActiveShell,
   platformRailMessengerActiveText,
@@ -20,59 +16,16 @@ function railLinkActive(panel: MessengerHomePanel, current: MessengerHomePanel, 
   return false;
 }
 
-type QuickCreateKind = "chat" | "aichat";
-
 export function MessengerRailNavLinks() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
-  const { effectiveLayout } = useWorkspaceMode();
   const current = parseMessengerHomePanel(searchParams.get("panel"));
-  const [quickBusy, setQuickBusy] = useState<QuickCreateKind | null>(null);
-  const quickBusyRef = useRef(false);
-
-  const createQuickRoom = useCallback(
-    async (kind: QuickCreateKind) => {
-      if (quickBusyRef.current) return;
-      quickBusyRef.current = true;
-      setQuickBusy(kind);
-      try {
-        const payload =
-          kind === "aichat"
-            ? ({ roomType: "DIRECT", aiParticipationMode: "AUTO" } as const)
-            : ({ roomType: "DIRECT", aiParticipationMode: "MENTION_ONLY" } as const);
-        const { id } = await createMessengerChatRoom(payload);
-        const opened = openMessengerChatRoomWindow(id, { effectiveLayout, discardEmptyOnClose: true });
-        if (!opened) {
-          const url = `${window.location.origin}/chat/${encodeURIComponent(id)}?discardEmpty=1`;
-          const w = window.open(url, "_blank", "noopener,noreferrer");
-          registerPlatformPopupFromOpenedUrl(w, url);
-        }
-      } catch (e) {
-        window.alert(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
-      } finally {
-        quickBusyRef.current = false;
-        setQuickBusy(null);
-      }
-    },
-    [effectiveLayout]
-  );
 
   const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
   const projectsActive = pathOnly === "/workspace" || pathOnly.startsWith("/workspace/");
   const friendsActive = railLinkActive("friends", current, pathname);
   const logActive = pathOnly === "/prompt-timeline" || pathOnly.startsWith("/prompt-timeline/");
   const knowledgePacksActive = pathOnly === "/knowledge-packs" || pathOnly.startsWith("/knowledge-packs/");
-
-  /** 빠른 생성 버튼은 내비 ‘선택’과 무관하게 배경을 쓰지 않음(선택 강조는 Chat·친구 등 링크만). */
-  const actionCol = (extra?: CSSProperties): CSSProperties => ({
-    ...platformRailNavTextCell,
-    appearance: "none",
-    WebkitAppearance: "none",
-    font: "inherit",
-    width: "100%",
-    minWidth: 0,
-    ...extra,
-  });
 
   const navCol = (active: boolean, extra?: CSSProperties): CSSProperties => ({
     ...platformRailNavTextCell,
@@ -87,34 +40,6 @@ export function MessengerRailNavLinks() {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="새 일반 대화방 (1:N) — 새 창에서 열기"
-        title="1:N · 새 일반 대화방"
-        disabled={Boolean(quickBusy)}
-        onClick={() => void createQuickRoom("chat")}
-        style={{
-          ...actionCol(),
-          opacity: quickBusy && quickBusy !== "chat" ? 0.55 : 1,
-          cursor: quickBusy ? "wait" : "pointer",
-        }}
-      >
-        <span style={platformRailNavPrimaryText}>1:N</span>
-      </button>
-      <button
-        type="button"
-        aria-label="새 AI 대화방 (1:Agent) — 새 창에서 열기"
-        title="1:Agent · 새 AI 채팅"
-        disabled={Boolean(quickBusy)}
-        onClick={() => void createQuickRoom("aichat")}
-        style={{
-          ...actionCol(),
-          opacity: quickBusy && quickBusy !== "aichat" ? 0.55 : 1,
-          cursor: quickBusy ? "wait" : "pointer",
-        }}
-      >
-        <span style={platformRailNavPrimaryText}>1:Agent</span>
-      </button>
       <Link
         href="/workspace"
         prefetch={false}

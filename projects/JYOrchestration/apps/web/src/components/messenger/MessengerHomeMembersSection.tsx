@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { Button, Card, EmptyState, InlineAlert, uiTokens as t } from "@/components/ui";
 import { aiMemberStatusLabel, MESSENGER_HOME_AI_CATALOG } from "@/lib/messenger/messengerHomeAiCatalog";
 import type { HumanFriendStatus, HumanMember } from "@/lib/messenger/messengerHomeMemberTypes";
+import { addMessengerFriendApi, fetchMessengerFriends, syncMessengerFriendsToServer } from "@/lib/messenger/messengerFriendApi";
 import { loadMessengerFriendsFromStorage, saveMessengerFriendsToStorage } from "@/lib/messenger/messengerLocalFriendsStorage";
 import type { PlatformUserRow } from "@/components/requirements/PlatformUserSearchCombobox";
 import { createMessengerChatRoom } from "@/lib/messenger/messengerChatRoomApi";
@@ -105,7 +106,26 @@ export function MessengerHomeMembersSection() {
   const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
-    setHumanFriends(loadMessengerFriendsFromStorage());
+    let cancelled = false;
+    void (async () => {
+      const local = loadMessengerFriendsFromStorage();
+      if (local.length) {
+        await syncMessengerFriendsToServer(local.map((m) => m.id));
+      }
+      const serverRows = await fetchMessengerFriends();
+      if (cancelled) return;
+      const merged: HumanMember[] = serverRows.map((row) => ({
+        id: row.id,
+        displayName: row.displayName,
+        email: row.email ?? undefined,
+        status: "FRIEND",
+      }));
+      setHumanFriends(merged);
+      saveMessengerFriendsToStorage(merged);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -123,15 +143,18 @@ export function MessengerHomeMembersSection() {
   }, []);
   const closeFriendSheet = useCallback(() => setFriendSheetOpen(false), []);
 
-  const addFriendFromPlatformUser = useCallback((u: PlatformUserRow) => {
+  const addFriendFromPlatformUser = useCallback(async (u: PlatformUserRow) => {
+    const row = await addMessengerFriendApi(u.id);
+    const nextMember: HumanMember = row
+      ? { id: row.id, displayName: row.displayName, email: row.email ?? undefined, status: "FRIEND" }
+      : {
+          id: u.id,
+          displayName: displayNameFromPlatformUser(u),
+          email: u.email,
+          status: "FRIEND",
+        };
     setHumanFriends((prev) => {
-      if (prev.some((m) => m.id === u.id)) return prev;
-      const nextMember: HumanMember = {
-        id: u.id,
-        displayName: displayNameFromPlatformUser(u),
-        email: u.email,
-        status: "FRIEND",
-      };
+      if (prev.some((m) => m.id === nextMember.id)) return prev;
       const merged = [...prev, nextMember];
       saveMessengerFriendsToStorage(merged);
       return merged;
@@ -185,7 +208,7 @@ export function MessengerHomeMembersSection() {
   const humanHeader = (
     <div style={{ marginBottom: 12 }}>
       <p style={{ fontSize: 13, color: t.textSecondary, margin: "0 0 10px", lineHeight: 1.5 }}>
-        플랫폼에 가입한 사용자 중, 친구로 추가한 사람만 이 목록에 표시됩니다. Chat 유형(AI 없음)으로 대화방을 열 수 있습니다.
+        플랫폼에 가입한 사용자 중 친구로 추가한 사람만 표시됩니다. 친구에게만 대화방 참여 요청을 보낼 수 있습니다.
       </p>
       <Button type="button" variant="primary" size="md" onClick={openFriendSheet} disabled={startBusy}>
         친구 추가

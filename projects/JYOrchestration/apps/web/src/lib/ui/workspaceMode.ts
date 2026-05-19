@@ -218,6 +218,19 @@ export function projectRoomWindowName(projectId: string): string {
   return `jyo-idea-${encodeURIComponent(id)}`;
 }
 
+/** 현재 탭이 이미 해당 프로젝트 룸 URL을 보고 있는지 */
+function isCurrentWindowOnProjectRoomUrl(projectId: string, pathnameAndSearch: string): boolean {
+  try {
+    const pid = projectId.trim();
+    const target = new URL(pathnameAndSearch, window.location.origin);
+    const cur = new URL(window.location.href);
+    if (cur.pathname !== target.pathname) return false;
+    return (cur.searchParams.get("projectId") ?? "").trim() === pid;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 프로젝트 룸(기본: 요구사항 SingleChat)을 전용 창으로 연다.
  * 같은 `projectId`로 다시 호출하면 기존 창이 포커스되고 URL이 갱신된다.
@@ -245,9 +258,14 @@ export function openProjectRoomWindow(projectId: string, mode: WorkspaceMode, pa
       "toolbar=no",
     ].join(",");
     const name = projectRoomWindowName(pid);
-    let opened = window.open(href, name, `noopener,noreferrer,${feats}`);
+    // 프로젝트 팝업에서 /chat 등으로 이동한 뒤에는 window.name이 jyo-idea-* 로 남을 수 있음.
+    // 동일 name으로 open 하면 현재(메신저) 창이 프로젝트 URL로 바뀌므로, 별도 창으로 연다.
+    const mustOpenSeparateWindow =
+      window.name === name && !isCurrentWindowOnProjectRoomUrl(pid, path);
+    const targetName = mustOpenSeparateWindow ? "_blank" : name;
+    let opened = window.open(href, targetName, `noopener,noreferrer,${feats}`);
     if (!opened) {
-      opened = window.open(href, name, "noopener,noreferrer");
+      opened = window.open(href, targetName, "noopener,noreferrer");
     }
     if (opened) {
       try {

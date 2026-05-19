@@ -5,10 +5,7 @@ import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/component
 import { messengerAiModeShortLabel } from "@/lib/messenger/messengerAiParticipation";
 import type { MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
 import type { MessengerRoomDetail } from "@/lib/messenger/messengerRoomParticipantMapping";
-import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
-import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { openProjectRoomWindow } from "@/lib/ui/workspaceMode";
 
 export function MessengerChatRoomHeaderBar(p: {
   readonly detail: MessengerRoomDetail | null;
@@ -28,7 +25,6 @@ export function MessengerChatRoomHeaderBar(p: {
   readonly onDelete: () => void;
   readonly onOpenMembers: () => void;
 }) {
-  const { mode: workspaceMode } = useWorkspaceMode();
   const title = p.detail?.room.title ?? "대화";
   const projectLinkedId = p.detail?.room.projectId ?? null;
   const aiMode: MessengerAiMode = p.detail?.room.aiParticipationMode ?? "AUTO";
@@ -39,10 +35,6 @@ export function MessengerChatRoomHeaderBar(p: {
   const showRoomLeave = Boolean(p.sessionUserId && p.detail);
 
   const hasChatBody = Boolean((p.messages ?? []).some((m) => String(m.content ?? "").trim()));
-
-  const projectRequirementsHref = projectLinkedId ? appFlowStepHref("requirements", projectLinkedId) : null;
-  const projectLinkTooltip =
-    "프로젝트룸에 연결된 대화입니다. 요구사항(SingleChat)으로 계속하기";
 
   return (
     <>
@@ -62,39 +54,6 @@ export function MessengerChatRoomHeaderBar(p: {
           >
             {title}
           </div>
-          {projectRequirementsHref && projectLinkedId ? (
-            <a
-              href={projectRequirementsHref}
-              title={projectLinkTooltip}
-              aria-label={projectLinkTooltip}
-              onClick={(e) => {
-                if (e.defaultPrevented) return;
-                if (e.button !== 0) return;
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                e.preventDefault();
-                openProjectRoomWindow(projectLinkedId, workspaceMode, projectRequirementsHref);
-              }}
-              style={{
-                flexShrink: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                border: "1px solid #bae6fd",
-                background: "#f0f9ff",
-                color: "#0369a1",
-                textDecoration: "none",
-                boxSizing: "border-box",
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M10 13a5 5 0 0 0 7.54.54l1.41-1.41a5 5 0 0 0-7.07-7.07L9.88 6.88" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54L5.05 11.95a5 5 0 0 0 7.07 7.07l.71-.71" />
-              </svg>
-            </a>
-          ) : null}
           <MessengerRoomSettingsGearMenu
             disabled={p.roomLifecycleBusy}
             showRename

@@ -49,17 +49,25 @@ export function NotificationsPageClient() {
   }, [load]);
 
   const respond = useCallback(
-    async (inviteId: string, action: "accept" | "decline") => {
+    async (inviteId: string, action: "accept" | "decline", n: NotificationRow) => {
       setBusyInviteId(inviteId);
       try {
-        const res = await fetch(`/api/me/project-invites/${encodeURIComponent(inviteId)}/${action}`, {
+        const isChatInvite = n.type === "CHAT_ROOM_MEMBER_INVITE";
+        const base = isChatInvite
+          ? `/api/me/chat-room-invites/${encodeURIComponent(inviteId)}`
+          : `/api/me/project-invites/${encodeURIComponent(inviteId)}`;
+        const res = await fetch(`${base}/${action}`, {
           method: "POST",
           credentials: "include",
         });
-        const json = (await res.json()) as { success?: boolean; projectId?: string };
+        const json = (await res.json()) as { success?: boolean; projectId?: string; chatRoomId?: string };
         await load();
-        if (action === "accept" && res.ok && json.success && json.projectId) {
-          window.dispatchEvent(new CustomEvent("jy:project-membership-changed", { detail: { projectId: json.projectId } }));
+        if (action === "accept" && res.ok && json.success) {
+          if (isChatInvite && json.chatRoomId) {
+            window.location.href = `/chat/${encodeURIComponent(json.chatRoomId)}`;
+          } else if (!isChatInvite && json.projectId) {
+            window.dispatchEvent(new CustomEvent("jy:project-membership-changed", { detail: { projectId: json.projectId } }));
+          }
         }
       } finally {
         setBusyInviteId(null);
