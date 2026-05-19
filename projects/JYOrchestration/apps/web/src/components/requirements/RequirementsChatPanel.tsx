@@ -331,14 +331,14 @@ export function RequirementsChatPanel({
   const interviewUi = ideationInterviewUi ?? null;
   const membersUi = memberControls ?? null;
 
-  const topChrome =
-    interviewUi || membersUi ? (
-      <RequirementsChatHeaderRow
-        ref={headerRef}
-        memberControls={membersUi}
-        leading={interviewUi ? <WorkspaceProgressPill interviewUi={interviewUi} headerRef={headerRef} /> : null}
-      />
-    ) : null;
+  const topChrome = interviewUi ? (
+    <RequirementsChatHeaderRow
+      ref={headerRef}
+      leading={<WorkspaceProgressPill interviewUi={interviewUi} headerRef={headerRef} />}
+    />
+  ) : membersUi ? (
+    <RequirementsChatHeaderRow ref={headerRef} memberControls={membersUi} leading={null} />
+  ) : null;
 
   const messageBody = (
     <>

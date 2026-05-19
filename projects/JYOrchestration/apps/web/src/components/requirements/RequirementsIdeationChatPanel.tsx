@@ -26,7 +26,7 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   /** SingleChat 입력·하네스 라우팅용 내부 단계 */
   serviceDesignStage: RequirementsWorkspaceStage;
   /** 채팅 헤더 참가자 배지(통합 화면에서는 항상 전달 권장) */
-  memberControls: { count: number; onOpen: () => void } | null;
+  memberControls?: { count: number; onOpen: () => void } | null;
   proposalReadinessPercentVal: number;
   problemInterviewCovered: number;
   /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */

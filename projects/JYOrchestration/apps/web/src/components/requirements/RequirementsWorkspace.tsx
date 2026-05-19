@@ -1797,7 +1797,6 @@ export function RequirementsWorkspace({
         participantAiMemberId={participantAiMemberId}
         aiInvokePending={aiInvokePending}
         serviceDesignStage={activeStage}
-        memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
         proposalReadinessPercentVal={proposalReadinessPercentVal}
         problemInterviewCovered={problemInterviewCovered}
         progressSlotTotal={progressSlotTotal}
