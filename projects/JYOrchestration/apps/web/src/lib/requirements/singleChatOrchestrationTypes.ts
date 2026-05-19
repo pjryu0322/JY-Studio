@@ -1,3 +1,5 @@
+import type { SingleChatProposalLifecycleV1 } from "@/lib/requirements/singleChatProposalLifecycle";
+
 /** SingleChat 내부 슬롯 lifecycle — UI 비노출 */
 export type SingleChatOrchestrationSlotStatus =
   | "empty"
@@ -114,6 +116,8 @@ export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   lastDecisionAxisCandidates?: readonly { axis: string; score: number }[] | null;
   /** 최근 assistant 질문(반복 질문 방지용) */
   recentAssistantQuestions?: readonly string[] | null;
+  /** proposal 승인·다음 단계 전환 상태 */
+  proposalLifecycleV1?: SingleChatProposalLifecycleV1 | null;
   /** 마지막 턴에서 실제 LLM이 실행된 specialist 역할(플래너 제외) */
   lastDelegatedAgents?: readonly string[];
   lastRoutingDecision?: string | null;

@@ -51,6 +51,7 @@ import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatDynamicSlotProposalWireV1,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import { classifyProposalDecision, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
@@ -81,6 +82,8 @@ type Body = {
   summaryOnly?: boolean;
   /** 서비스 기획 SingleChat QuickAction 칩(추천안 적용 등) */
   quickActionLabel?: string;
+  /** proposal 승인 신호 — 일반 user message 와 구분 */
+  proposalDecision?: string;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -186,6 +189,17 @@ export async function POST(request: NextRequest) {
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const quickActionLabel = typeof body.quickActionLabel === "string" ? String(body.quickActionLabel).trim() : "";
+    const proposalDecisionRaw = String(body.proposalDecision ?? "").trim().toUpperCase();
+    const PROPOSAL_DECISIONS = new Set<ProposalDecision>([
+      "APPLY",
+      "PARTIAL_EDIT",
+      "ALTERNATIVE",
+      "DIRECT_INPUT",
+      "HOLD",
+    ]);
+    const proposalDecision: ProposalDecision | null = PROPOSAL_DECISIONS.has(proposalDecisionRaw as ProposalDecision)
+      ? (proposalDecisionRaw as ProposalDecision)
+      : classifyProposalDecision(quickActionLabel);
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
     const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
@@ -348,6 +362,7 @@ export async function POST(request: NextRequest) {
         orchestrationWakeupReason: orchestrationWakeupReason || undefined,
         orchestrationLazyInit,
         ...(quickActionLabel ? { quickActionLabel } : {}),
+        ...(proposalDecision ? { proposalDecision } : {}),
       });
 
       let usedFallback = false;
@@ -363,6 +378,7 @@ export async function POST(request: NextRequest) {
                 activeRoles: effectiveRoles,
                 nowIso: new Date().toISOString(),
                 ...(quickActionLabel ? { quickActionLabel } : {}),
+                ...(proposalDecision ? { proposalDecision } : {}),
               });
             })();
 

@@ -37,6 +37,7 @@ import {
 import type { IdeationPlannerTail } from "@/components/requirements/workspace/requirementsIdeationAiTypes";
 import { runLegacyProblemInterviewFallbackPipeline } from "@/components/requirements/workspace/legacyProblemInterviewFallbackPipeline";
 import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+import { classifyProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 
 export type { IdeationPlannerTail } from "@/components/requirements/workspace/requirementsIdeationAiTypes";
 
@@ -172,6 +173,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     let facilitatorFinalRoom: RequirementsRoomStateV3;
     try {
       const quickActionChip = String(consumeInterviewSelectedSuggestion?.() ?? "").trim();
+      const proposalDecision = quickActionChip ? classifyProposalDecision(quickActionChip) : null;
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
       const res = await credentialsIncludeFetch(endpoint, {
         method: "POST",
@@ -184,6 +186,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           stage: "requirements",
           userMessage: text,
           ...(quickActionChip ? { quickActionLabel: quickActionChip } : {}),
+          ...(proposalDecision ? { proposalDecision } : {}),
           dialogueExcerpt: excerpt,
           targets: targets.map((t) => ({ id: t.id, name: t.name })),
           sender: { id: sessionUserId, name: sessionUserName },

@@ -26,11 +26,22 @@ import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+import { runProposalAcceptedNextStageOpenAI, buildProposalAcceptedNextStageFallback } from "@/lib/requirements/singleChatProposalAcceptedNextStage";
+import {
+  hashProposalResponse,
+  shouldBlockProposalReplay,
+  shouldRegisterPendingProposal,
+  transitionLifecycleOnDecision,
+  transitionLifecycleOnPendingProposal,
+  type SingleChatProposalLifecycleV1,
+} from "@/lib/requirements/singleChatProposalLifecycle";
 import {
   augmentUserMessageForLlm,
+  classifyProposalDecision,
   classifyQuickAction,
   quickActionNextQuestionBlock,
   routingUserMessageForHeuristics,
+  type ProposalDecision,
 } from "@/lib/requirements/singleChatQuickAction";
 
 export type SingleChatOrchestrationTurnMeta = Readonly<{
@@ -77,6 +88,10 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   quickActionLabel?: string | null;
   /** QuickAction 의도 분류 */
   quickActionKind?: string | null;
+  /** proposal decision signal */
+  proposalDecision?: ProposalDecision | null;
+  proposalLifecyclePhase?: string | null;
+  proposalApplyFastPath?: boolean | null;
   /** merge coordinator 역할(진단용; tone contamination 방지) */
   mergeCoordinator?: string | null;
   /** 내부 specialist contributor(진단용) */
@@ -270,6 +285,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly orchestrationLazyInit?: boolean;
   /** 인터뷰/오케스트레이션 QuickAction 칩(추천안 적용 등) */
   readonly quickActionLabel?: string | null;
+  /** proposal 승인 신호(칩 라벨과 별도 전달 가능) */
+  readonly proposalDecision?: ProposalDecision | null;
 }): Promise<SingleChatOrchestrationTurnResult> {
   const calledAt = new Date().toISOString();
   const promptChunks: string[] = [];
@@ -279,8 +296,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const rawUserMessage = String(input.userMessage ?? "").trim();
   const quickActionLabel = String(input.quickActionLabel ?? "").trim() || null;
   const quickActionKind = classifyQuickAction(quickActionLabel);
-  const userMessageForLlm = augmentUserMessageForLlm(rawUserMessage, quickActionLabel);
+  const proposalDecision: ProposalDecision | null =
+    input.proposalDecision ?? classifyProposalDecision(quickActionLabel);
+  const userMessageForLlm = augmentUserMessageForLlm(rawUserMessage, quickActionLabel, proposalDecision);
   const routingUserMessage = routingUserMessageForHeuristics(rawUserMessage, quickActionLabel);
+  let proposalLifecycle: SingleChatProposalLifecycleV1 | null = input.baseState.proposalLifecycleV1 ?? null;
 
   // Definitions can grow during the turn (hybrid dynamic slots).
   let definitions = [...input.definitions];
@@ -1035,7 +1055,54 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     return true;
   };
 
-  if (apiKey) {
+  const stageGroupForProposal =
+    state.stageGroup || input.definitions[0]?.stageGroup || SINGLE_CHAT_SERVICE_PLANNING_GROUP;
+  const pendingProposalText =
+    proposalLifecycle?.pendingProposalPreview?.trim() || recentQuestionsPrev[0]?.trim() || "";
+  let proposalApplyFastPath = false;
+
+  const runApplyFastPath = async (): Promise<void> => {
+    const snapshot =
+      proposalLifecycle?.pendingProposalPreview?.trim() ||
+      pendingProposalText ||
+      buildCoordinatorFallbackProposal();
+    proposalLifecycle = transitionLifecycleOnDecision({
+      lifecycle: proposalLifecycle,
+      decision: "APPLY",
+      stageGroup: stageGroupForProposal,
+      acceptedSnapshot: snapshot,
+      nowIso: calledAt,
+    });
+    const nextStage = await runProposalAcceptedNextStageOpenAI({
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      acceptedProposalSnapshot: snapshot,
+      dialogueExcerpt: input.dialogueExcerpt,
+      state,
+      specialistDigest,
+    });
+    executedAgents.push("planner-next-stage");
+    proposalApplyFastPath = true;
+    if (nextStage.ok) {
+      promptChunks.push(nextStage.promptText);
+      applyCoordinatorMessage(nextStage.assistantMessage, nextStage.suggestions);
+      personaValidationReason = "proposal_apply_fast_path";
+      return;
+    }
+    promptChunks.push(`--- planner-next-stage-failed ---\n${nextStage.code}: ${nextStage.message}`);
+    applyCoordinatorMessage(
+      buildProposalAcceptedNextStageFallback({
+        projectName: input.projectName,
+        acceptedSnapshot: snapshot,
+      }),
+      ["세부 요구사항 정리", "기능 상세화", "액터 정의 확장"],
+    );
+    personaValidationReason = "proposal_apply_fast_path_fallback";
+  };
+
+  if (proposalDecision === "APPLY") {
+    await runApplyFastPath();
+  } else if (apiKey) {
     const synthesis = await runCoordinatorSynthesisTurnOpenAI({
       projectName: input.projectName,
       projectDescription: input.projectDescription,
@@ -1054,36 +1121,77 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     });
 
     if (synthesis.ok) {
-      promptChunks.push(synthesis.promptText);
-      executedAgents.push("coordinator-synthesis");
-      if (!applyCoordinatorMessage(synthesis.assistantMessage, synthesis.suggestions)) {
-        nextQuestionRetryReason = "repeated_question_retry";
-        const retry = await runCoordinatorSynthesisTurnOpenAI({
-          projectName: input.projectName,
-          projectDescription: input.projectDescription,
-          userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
-          synthesisRetryHint:
-            "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",
-          dialogueExcerpt: input.dialogueExcerpt,
-          specialistDigest,
-          specialistContributors: uniqSpecialists,
-          state,
-          decisionAxis,
-          conflictHint,
-          recentAssistantQuestions: recentQuestionsPrev,
-          stickyTurnsRemainingPrev,
-          ownerPersistenceReason,
-          quickActionLabel,
-          quickActionKind,
-        });
-        if (retry.ok) {
-          promptChunks.push(retry.promptText);
-          executedAgents.push("coordinator-synthesis:repeat-guard");
-          if (applyCoordinatorMessage(retry.assistantMessage, retry.suggestions)) {
-            nextQuestionRetryReason = "repeated_question_retry_succeeded";
-          } else {
-            nextQuestionRetryReason = "repeated_question_retry_failed";
+      const candidateHash = hashProposalResponse(synthesis.assistantMessage);
+      if (
+        shouldBlockProposalReplay({
+          lifecycle: proposalLifecycle,
+          stageGroup: stageGroupForProposal,
+          candidateMessageHash: candidateHash,
+          proposalDecision,
+        })
+      ) {
+        promptChunks.push(`--- proposal_replay_blocked ---\nhash=${candidateHash}`);
+        executedAgents.push("proposal-replay-guard");
+        personaValidationReason = "proposal_replay_blocked";
+        await runApplyFastPath();
+      } else {
+        promptChunks.push(synthesis.promptText);
+        executedAgents.push("coordinator-synthesis");
+        const appliedFirst = applyCoordinatorMessage(synthesis.assistantMessage, synthesis.suggestions);
+        if (!appliedFirst) {
+          nextQuestionRetryReason = "repeated_question_retry";
+          const retry = await runCoordinatorSynthesisTurnOpenAI({
+            projectName: input.projectName,
+            projectDescription: input.projectDescription,
+            userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
+            synthesisRetryHint:
+              "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",
+            dialogueExcerpt: input.dialogueExcerpt,
+            specialistDigest,
+            specialistContributors: uniqSpecialists,
+            state,
+            decisionAxis,
+            conflictHint,
+            recentAssistantQuestions: recentQuestionsPrev,
+            stickyTurnsRemainingPrev,
+            ownerPersistenceReason,
+            quickActionLabel,
+            quickActionKind,
+          });
+          if (retry.ok) {
+            promptChunks.push(retry.promptText);
+            executedAgents.push("coordinator-synthesis:repeat-guard");
+            if (applyCoordinatorMessage(retry.assistantMessage, retry.suggestions)) {
+              nextQuestionRetryReason = "repeated_question_retry_succeeded";
+              if (shouldRegisterPendingProposal(retry.assistantMessage)) {
+                proposalLifecycle = transitionLifecycleOnPendingProposal({
+                  lifecycle: proposalLifecycle,
+                  stageGroup: stageGroupForProposal,
+                  proposalMessage: retry.assistantMessage,
+                  nowIso: calledAt,
+                });
+              }
+            } else {
+              nextQuestionRetryReason = "repeated_question_retry_failed";
+            }
           }
+        } else if (shouldRegisterPendingProposal(synthesis.assistantMessage)) {
+          proposalLifecycle = transitionLifecycleOnPendingProposal({
+            lifecycle: proposalLifecycle,
+            stageGroup: stageGroupForProposal,
+            proposalMessage: synthesis.assistantMessage,
+            nowIso: calledAt,
+          });
+        }
+
+        if (proposalDecision) {
+          proposalLifecycle = transitionLifecycleOnDecision({
+            lifecycle: proposalLifecycle,
+            decision: proposalDecision,
+            stageGroup: stageGroupForProposal,
+            acceptedSnapshot: pendingProposalText || synthesis.assistantMessage,
+            nowIso: calledAt,
+          });
         }
       }
     } else {
@@ -1112,7 +1220,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const updatedSlotKeys = uniqueStrings(allUpdated);
 
   const meta: SingleChatOrchestrationTurnMeta = {
-    routingDecision: `orchestration_turn(${conversationOwner})`,
+    routingDecision: proposalApplyFastPath
+      ? "proposal_apply_fast_path"
+      : `orchestration_turn(${conversationOwner})`,
     matchedSlots: route.matchedSlots,
     updatedSlotKeys,
     updatedSlotCount: updatedSlotKeys.length,
@@ -1139,6 +1249,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       : {}),
     ...(quickActionLabel ? { quickActionLabel: quickActionLabel.slice(0, 40) } : {}),
     ...(quickActionKind ? { quickActionKind } : {}),
+    ...(proposalDecision ? { proposalDecision } : {}),
+    ...(proposalLifecycle ? { proposalLifecyclePhase: proposalLifecycle.phase } : {}),
+    ...(proposalApplyFastPath ? { proposalApplyFastPath: true } : {}),
     mergeCoordinator: "merge-coordinator",
     specialistContributors: uniqSpecialists,
     decisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
@@ -1182,6 +1295,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       lastDecisionAxis: decisionAxis,
       lastDecisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
       recentAssistantQuestions: [nextQuestion, ...recentQuestionsPrev].filter(Boolean).slice(0, 8),
+      proposalLifecycleV1: proposalLifecycle,
     },
     meta,
     promptText: promptChunks.join("\n\n---\n\n"),

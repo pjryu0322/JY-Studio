@@ -1,3 +1,4 @@
+import { parseSingleChatProposalLifecycleV1 } from "@/lib/requirements/singleChatProposalLifecycle";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatDynamicSlotDefinitionV1,
@@ -285,6 +286,13 @@ export function parseRequirementsSingleChatOrchestrationV1(
         .filter(Boolean) as SingleChatDynamicSlotProposalHistoryV1[]
     : undefined;
 
+  const proposalLifecycleV1 =
+    o.proposalLifecycleV1 === null
+      ? null
+      : o.proposalLifecycleV1 === undefined
+        ? undefined
+        : parseSingleChatProposalLifecycleV1(o.proposalLifecycleV1);
+
   return {
     version: ver === 2 ? 2 : 2,
     stageGroup,
@@ -303,6 +311,7 @@ export function parseRequirementsSingleChatOrchestrationV1(
     ...(lastDecisionAxis !== undefined ? { lastDecisionAxis } : {}),
     ...(lastDecisionAxisCandidates !== undefined ? { lastDecisionAxisCandidates } : {}),
     ...(recentAssistantQuestions !== undefined ? { recentAssistantQuestions } : {}),
+    ...(proposalLifecycleV1 !== undefined ? { proposalLifecycleV1 } : {}),
     ...(lastRoutingDecision !== undefined ? { lastRoutingDecision } : {}),
     ...(lastDelegatedAgents !== undefined ? { lastDelegatedAgents } : {}),
     updatedAt,

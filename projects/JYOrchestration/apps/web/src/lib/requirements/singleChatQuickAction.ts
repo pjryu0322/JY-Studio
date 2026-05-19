@@ -1,8 +1,31 @@
 /** SingleChat 메시지 하단 QuickAction 칩과 오케스트레이션 연동 */
 
+import { buildProposalDecisionUserSignal } from "@/lib/requirements/singleChatProposalLifecycle";
+
 export type SingleChatQuickActionKind = "apply" | "partial_edit" | "alternatives" | "direct" | "defer";
 
+/** proposal 승인/선택 신호 — 일반 user message 가 아님 */
+export type ProposalDecision = "APPLY" | "PARTIAL_EDIT" | "ALTERNATIVE" | "DIRECT_INPUT" | "HOLD";
+
 const KNOWN_CHIP_LABELS = ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력", "보류"] as const;
+
+export function classifyProposalDecision(label: string | null | undefined): ProposalDecision | null {
+  const kind = classifyQuickAction(label);
+  switch (kind) {
+    case "apply":
+      return "APPLY";
+    case "partial_edit":
+      return "PARTIAL_EDIT";
+    case "alternatives":
+      return "ALTERNATIVE";
+    case "direct":
+      return "DIRECT_INPUT";
+    case "defer":
+      return "HOLD";
+    default:
+      return null;
+  }
+}
 
 export function classifyQuickAction(label: string | null | undefined): SingleChatQuickActionKind | null {
   const s = String(label ?? "").trim();
@@ -27,11 +50,24 @@ export function routingUserMessageForHeuristics(rawUser: string, quickLabel: str
 }
 
 /** planner·specialist·merge·next-question LLM 입력용 */
-export function augmentUserMessageForLlm(rawUser: string, quickLabel: string | null): string {
+export function augmentUserMessageForLlm(
+  rawUser: string,
+  quickLabel: string | null,
+  proposalDecision?: ProposalDecision | null,
+): string {
   const r = String(rawUser ?? "").trim();
   const q = String(quickLabel ?? "").trim();
-  if (!q) return r;
-  return `[QuickAction 선택]\n- 버튼: ${q}\n---\n${r}`;
+  const decision =
+    proposalDecision ?? (q ? classifyProposalDecision(q) : null);
+  const parts: string[] = [];
+  if (decision) {
+    parts.push(buildProposalDecisionUserSignal(decision, q));
+  } else if (q) {
+    parts.push(`[QuickAction 선택]\n- 버튼: ${q}`);
+  }
+  if (r && r !== q) parts.push(r);
+  else if (r && !q) parts.push(r);
+  return parts.filter(Boolean).join("\n---\n");
 }
 
 export function quickActionNextQuestionBlock(kind: SingleChatQuickActionKind | null, label: string | null): string {
