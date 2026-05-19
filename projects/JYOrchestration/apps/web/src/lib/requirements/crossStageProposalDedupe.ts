@@ -167,6 +167,60 @@ export function proposalTextsStructurallySimilar(textA: string, textB: string): 
   return false;
 }
 
+/** 클라이언트 silentUserAppend 등 — 사용자가 직접 입력한 턴이 아님 */
+export function isSilentServiceFlowAutoHandoffStart(input: {
+  readonly userMessage: string;
+  readonly autoHandoff?: boolean;
+}): boolean {
+  if (input.autoHandoff === true) return true;
+  const um = String(input.userMessage ?? "").trim();
+  return /^서비스\s*흐름\s*인터뷰\s*시작$/i.test(um);
+}
+
+/** visible_delta / visible_proposal 허용 — 명시적 사용자 의도가 있을 때만 */
+export function isExplicitServiceFlowUserIntent(input: {
+  readonly userMessage: string;
+  readonly autoHandoff?: boolean;
+  readonly quickActionLabel?: string | null;
+  readonly priorScreenHandoff?: string;
+}): boolean {
+  if (input.autoHandoff === true) return false;
+
+  const qa = String(input.quickActionLabel ?? "").trim();
+  if (qa) {
+    if (/다른\s*대안|일부\s*수정|직접\s*입력|보류|그대로\s*진행|단계\s*수정|빠진\s*단계/.test(qa)) return true;
+    if (/추천안\s*적용/.test(qa) && !isSilentServiceFlowAutoHandoffStart({ userMessage: input.userMessage })) {
+      return true;
+    }
+  }
+
+  const um = String(input.userMessage ?? "").trim();
+  if (!um) return false;
+
+  if (
+    isSilentServiceFlowAutoHandoffStart({ userMessage: um }) &&
+    String(input.priorScreenHandoff ?? "").trim()
+  ) {
+    return false;
+  }
+
+  if (/정리\s*요청|다시\s*정리|재정리|다른\s*대안|수정해|직접|빠진\s*단계/.test(um)) return true;
+  if (!/^서비스\s*흐름\s*인터뷰\s*시작$/i.test(um)) return true;
+  return false;
+}
+
+function isGenericPlaceholderDeltaItem(title: string): boolean {
+  const n = normToken(title);
+  if (!n) return true;
+  return /(목표입력|요청을처리|결과를확인|확인조정|사용자가목표|시스템이요청|제공한다|처리한다)$/.test(n);
+}
+
+function hasMeaningfulHandoffDelta(addedSteps: readonly string[], addedActors: readonly string[]): boolean {
+  const items = [...addedSteps, ...addedActors].map((x) => String(x ?? "").trim()).filter(Boolean);
+  const meaningful = items.filter((x) => !isGenericPlaceholderDeltaItem(x));
+  return meaningful.length > 0;
+}
+
 export function isIdeationCrossStageHandoffContext(input: {
   readonly priorScreenHandoff: string;
   readonly userMessage: string;
@@ -220,6 +274,9 @@ export function resolveServiceFlowVisiblePresentation(input: {
   readonly updatedFlow: RequirementsServiceFlowV1;
   readonly recentMessages?: string;
   readonly forceVisibleProposal?: boolean;
+  /** true — ideation→service-flow 자동 handoff(silentUserAppend) */
+  readonly autoHandoff?: boolean;
+  readonly quickActionLabel?: string | null;
 }): ServiceFlowVisiblePresentation {
   const mergedVisible = [String(input.assistantMessage ?? "").trim(), String(input.nextQuestion ?? "").trim()]
     .filter(Boolean)
@@ -231,6 +288,13 @@ export function resolveServiceFlowVisiblePresentation(input: {
     priorScreenHandoff: input.priorScreenHandoff,
     userMessage: input.userMessage,
     currentFlow: input.currentFlow,
+  });
+
+  const explicitUserIntent = isExplicitServiceFlowUserIntent({
+    userMessage: input.userMessage,
+    autoHandoff: input.autoHandoff,
+    quickActionLabel: input.quickActionLabel,
+    priorScreenHandoff: input.priorScreenHandoff,
   });
 
   const handoffSummary = extractHandoffSummaryBody(input.priorScreenHandoff);
@@ -270,22 +334,34 @@ export function resolveServiceFlowVisiblePresentation(input: {
     };
   }
 
-  if (handoffBootstrap) {
-    if (addedSteps.length > 0 || addedActors.length > 0) {
-      const delta = buildServiceFlowVisibleDeltaMessage({
-        addedStepTitles: addedSteps,
-        addedActorNames: addedActors,
-      });
-      if (delta && !proposalTextsStructurallySimilar(baselineText || mergedVisible, delta)) {
-        return {
-          mode: "visible_delta",
-          suppressVisibleMessage: false,
-          visibleAssistantMessage: delta,
-          visibleQuickReplies: input.quickReplies,
-          fingerprint: newFp,
-        };
-      }
+  if (handoffBootstrap && !explicitUserIntent) {
+    return {
+      mode: "handoff_state_only",
+      suppressVisibleMessage: true,
+      suppressReason: "initial_cross_stage_handoff_state_only",
+      visibleAssistantMessage: "",
+      visibleQuickReplies: null,
+      fingerprint: newFp,
+    };
+  }
+
+  if (handoffBootstrap && explicitUserIntent && hasMeaningfulHandoffDelta(addedSteps, addedActors)) {
+    const delta = buildServiceFlowVisibleDeltaMessage({
+      addedStepTitles: addedSteps,
+      addedActorNames: addedActors,
+    });
+    if (delta && !proposalTextsStructurallySimilar(baselineText || mergedVisible, delta)) {
+      return {
+        mode: "visible_delta",
+        suppressVisibleMessage: false,
+        visibleAssistantMessage: delta,
+        visibleQuickReplies: input.quickReplies,
+        fingerprint: newFp,
+      };
     }
+  }
+
+  if (handoffBootstrap) {
     return {
       mode: "handoff_state_only",
       suppressVisibleMessage: true,
@@ -318,4 +394,16 @@ export function resolveServiceFlowVisiblePresentation(input: {
 
 export function shouldPersistServiceFlowAiMessage(presentation: ServiceFlowVisiblePresentation): boolean {
   return !presentation.suppressVisibleMessage && Boolean(presentation.visibleAssistantMessage.trim());
+}
+
+export function shouldSuppressServiceFlowVisibleFromResponse(input: {
+  readonly visibleMessageSuppressed?: boolean;
+  readonly visibleMode?: ServiceFlowVisibleMode;
+  readonly suppressReason?: string;
+}): boolean {
+  if (input.visibleMessageSuppressed === true) return true;
+  if (input.visibleMode === "handoff_state_only") return true;
+  const reason = String(input.suppressReason ?? "").trim();
+  if (reason && /handoff|cross_stage|duplicate_proposal/i.test(reason)) return true;
+  return false;
 }

@@ -18,6 +18,9 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly responsePolicy?: unknown;
   /** SingleChat 절차별 Agent 매핑 — 서버에서 requirements_service_flow 등으로 해석 */
   readonly workspaceScreenKey?: string;
+  /** ideation→service-flow 자동 handoff (silentUserAppend) */
+  readonly autoHandoff?: boolean;
+  readonly quickActionLabel?: string;
 };
 
 export type ServiceFlowVisibleMode = "visible_proposal" | "handoff_state_only" | "visible_delta";

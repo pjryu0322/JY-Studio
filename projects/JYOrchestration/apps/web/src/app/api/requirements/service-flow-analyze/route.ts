@@ -27,6 +27,9 @@ type Body = {
   responsePolicy?: unknown;
   /** SingleChat 현재 화면 — 절차별 참여 Agent 매핑 조회용 */
   workspaceScreenKey?: string;
+  /** ideation→service-flow 자동 handoff(silentUserAppend) */
+  autoHandoff?: boolean;
+  quickActionLabel?: string;
 };
 
 function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
@@ -48,6 +51,8 @@ export async function POST(request: NextRequest) {
     const recentMessages = String(body.recentMessages ?? "").trim();
     const latestAiQuestion = String(body.latestAiQuestion ?? "").trim();
     const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
+    const autoHandoff = body.autoHandoff === true;
+    const quickActionLabel = typeof body.quickActionLabel === "string" ? String(body.quickActionLabel).trim() : "";
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
     const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
@@ -112,6 +117,8 @@ export async function POST(request: NextRequest) {
       quickReplies: result.data.quickReplies,
       updatedFlow: result.data.updatedFlow,
       recentMessages,
+      autoHandoff,
+      ...(quickActionLabel ? { quickActionLabel } : {}),
     });
 
     const promptTrace = buildSingleChatPromptTimelineEntry({
@@ -134,9 +141,7 @@ export async function POST(request: NextRequest) {
             routingDecision: "service_flow_proposal_fallback_synthesis",
             fallbackReason: "SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED",
           }
-        : presentation.suppressVisibleMessage
-          ? { routingDecision: "service_flow_handoff_state_only" }
-          : {}),
+        : presentation.suppressVisibleMessage ? { routingDecision: "service_flow_handoff_state_only" } : {}),
     });
 
     const responseData = {

@@ -20,6 +20,7 @@ import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeCli
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { consumeWorkspaceAiScreenHandoff, peekWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
+import { shouldSuppressServiceFlowVisibleFromResponse } from "@/lib/requirements/crossStageProposalDedupe";
 import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
@@ -208,6 +209,7 @@ export function useServiceFlowWorkshopChat({
             recentMessages,
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
+            ...(opts?.silentUserAppend ? { autoHandoff: true } : {}),
             serviceDesignStage: harness.stage,
             mentionedAI: harness.mentionedAI,
             ...(responsePolicy ? { responsePolicy } : {}),
@@ -243,8 +245,7 @@ export function useServiceFlowWorkshopChat({
           }
           onChangeFlowRef.current(nextFlow);
 
-          const suppressVisible =
-            Boolean(data.visibleMessageSuppressed) || data.visibleMode === "handoff_state_only";
+          const suppressVisible = shouldSuppressServiceFlowVisibleFromResponse(data);
           const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 

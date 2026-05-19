@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProposalFingerprintFromText,
+  isExplicitServiceFlowUserIntent,
   isIdeationCrossStageHandoffContext,
   proposalTextsStructurallySimilar,
   resolveServiceFlowVisiblePresentation,
@@ -50,7 +51,7 @@ describe("crossStageProposalDedupe", () => {
     expect(fp.normalizedWorkflowHash.length).toBeGreaterThan(2);
   });
 
-  it("resolveServiceFlowVisiblePresentation — handoff bootstrap 시 suppress", () => {
+  it("resolveServiceFlowVisiblePresentation — autoHandoff 시 initial handoff suppress", () => {
     const r = resolveServiceFlowVisiblePresentation({
       userMessage: "서비스 흐름 인터뷰 시작",
       currentFlow: null,
@@ -58,6 +59,7 @@ describe("crossStageProposalDedupe", () => {
       assistantMessage: serviceFlowDuplicate,
       nextQuestion: null,
       quickReplies: ["추천안 적용", "일부 수정"],
+      autoHandoff: true,
       updatedFlow: {
         createdAt: "2026-05-19T00:00:00.000Z",
         updatedAt: "2026-05-19T00:00:00.000Z",
@@ -101,7 +103,83 @@ describe("crossStageProposalDedupe", () => {
     });
     expect(r.mode).toBe("handoff_state_only");
     expect(r.suppressVisibleMessage).toBe(true);
-    expect(r.suppressReason).toBe("duplicate_cross_stage_proposal");
+    expect(r.suppressReason).toBe("initial_cross_stage_handoff_state_only");
     expect(r.visibleAssistantMessage).toBe("");
+  });
+
+  it("resolveServiceFlowVisiblePresentation — autoHandoff + generic skeleton delta suppress", () => {
+    const r = resolveServiceFlowVisiblePresentation({
+      userMessage: "서비스 흐름 인터뷰 시작",
+      currentFlow: null,
+      priorScreenHandoff: "이전 담당: ideation\n요약:\n" + ideationProposal,
+      assistantMessage: serviceFlowDuplicate,
+      nextQuestion: null,
+      quickReplies: null,
+      autoHandoff: true,
+      updatedFlow: {
+        createdAt: "2026-05-19T00:00:00.000Z",
+        updatedAt: "2026-05-19T00:00:00.000Z",
+        actors: [
+          { id: "a1", name: "사용자", kind: "human", description: "" },
+          { id: "a2", name: "시스템", kind: "system", description: "" },
+        ],
+        steps: [
+          {
+            id: "s1",
+            title: "사용자가 목표·입력을 제공한다",
+            purpose: "",
+            order: 1,
+            primaryActorId: "a1",
+            secondaryActorIds: [],
+            approved: false,
+            updatedAt: "2026-05-19T00:00:00.000Z",
+          },
+          {
+            id: "s2",
+            title: "시스템이 요청을 처리한다",
+            purpose: "",
+            order: 2,
+            primaryActorId: "a2",
+            secondaryActorIds: [],
+            approved: false,
+            updatedAt: "2026-05-19T00:00:00.000Z",
+          },
+          {
+            id: "s3",
+            title: "결과를 확인·조정한다",
+            purpose: "",
+            order: 3,
+            primaryActorId: "a1",
+            secondaryActorIds: [],
+            approved: false,
+            updatedAt: "2026-05-19T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    expect(r.mode).toBe("handoff_state_only");
+    expect(r.suppressVisibleMessage).toBe(true);
+    expect(r.suppressReason).toBe("initial_cross_stage_handoff_state_only");
+  });
+
+  it("isExplicitServiceFlowUserIntent — 다른 대안 보기 허용", () => {
+    expect(
+      isExplicitServiceFlowUserIntent({
+        userMessage: "다른 대안 보기",
+        autoHandoff: false,
+        quickActionLabel: "다른 대안 보기",
+        priorScreenHandoff: "",
+      }),
+    ).toBe(true);
+  });
+
+  it("isExplicitServiceFlowUserIntent — autoHandoff 인터뷰 시작 거부", () => {
+    expect(
+      isExplicitServiceFlowUserIntent({
+        userMessage: "서비스 흐름 인터뷰 시작",
+        autoHandoff: true,
+        priorScreenHandoff: "이전 담당: ideation\n요약: test",
+      }),
+    ).toBe(false);
   });
 });
