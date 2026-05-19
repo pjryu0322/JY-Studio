@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import {
+  parseRequirementsOrchestrationStageV1,
+  type RequirementsServiceFlowV1,
+  type RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
+import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  hashSlotDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
+import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { tryServiceFlowOrchestrationTransitionFastPath } from "@/lib/requirements/serviceFlowStageTransition";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import {
@@ -48,6 +61,9 @@ type Body = {
   autoHandoff?: boolean;
   quickActionLabel?: string;
   proposalDecision?: string;
+  singleChatOrchestrationV1?: unknown;
+  requirementsOrchestrationStageV1?: unknown;
+  featurePlanningSlotsV1?: unknown;
 };
 
 function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
@@ -71,6 +87,7 @@ function buildAnalyzeSuccessResponse(input: {
   readonly agentCtx: Awaited<ReturnType<typeof resolveSingleChatAgentContext>>;
   readonly timelineExtras?: Record<string, unknown>;
   readonly forceVisibleMode?: "state_transition";
+  readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
 }) {
   let assistantMessage = input.parsed.assistantMessage;
   let nextQuestion = input.parsed.nextQuestion;
@@ -188,6 +205,22 @@ function buildAnalyzeSuccessResponse(input: {
         : presentation.suppressVisibleMessage
           ? { routingDecision: "service_flow_handoff_state_only" }
           : {}),
+    ...(typeof input.timelineExtras?.quickActionType === "string"
+      ? { quickActionType: String(input.timelineExtras.quickActionType) }
+      : {}),
+    ...(input.timelineExtras?.transitionTriggered === true ? { transitionTriggered: true } : {}),
+    ...(typeof input.timelineExtras?.fromStage === "string"
+      ? { fromStage: String(input.timelineExtras.fromStage) }
+      : {}),
+    ...(typeof input.timelineExtras?.toStage === "string"
+      ? { toStage: String(input.timelineExtras.toStage) }
+      : {}),
+    ...(typeof input.timelineExtras?.transitionMode === "string"
+      ? { transitionMode: String(input.timelineExtras.transitionMode) }
+      : {}),
+    ...(input.timelineExtras?.orchestrationStateUpdated === true
+      ? { orchestrationStateUpdated: true }
+      : {}),
   });
 
   const responseData = {
@@ -216,7 +249,15 @@ function buildAnalyzeSuccessResponse(input: {
       : {}),
   };
 
-  return NextResponse.json({ success: true, data: responseData, meta: { model: input.model, promptTrace } });
+  return NextResponse.json({
+    success: true,
+    data: responseData,
+    meta: {
+      model: input.model,
+      promptTrace,
+      ...(input.requirementsStatePatch ? { requirementsStatePatch: input.requirementsStatePatch } : {}),
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -257,20 +298,53 @@ export async function POST(request: NextRequest) {
 
     const agentCtx = await resolveSingleChatAgentContext(projectId, workspaceScreen);
 
-    const fastPathDecisions = new Set<ServiceFlowProposalDecision>([
-      "APPLY",
-      "REVIEW_FLOW",
-      "FLOW_APPROVE",
-      "FEATURE_DETAIL",
-    ]);
-    const fastPath =
-      proposalDecision && fastPathDecisions.has(proposalDecision)
+    const servicePlanningAgents = await resolveServicePlanningOrchestrationContext(projectId);
+    const servicePlanningCatalogKeys: WorkspaceAiMemberId[] = servicePlanningAgents
+      ? servicePlanningAgents.selectedAgents
+          .map((a) => (a.source === "catalog" ? a.catalogKey : undefined))
+          .filter((x): x is WorkspaceAiMemberId => Boolean(String(x ?? "").trim()))
+      : [];
+    const slotDefinitions = buildDynamicServicePlanningSlotDefinitions({
+      projectName,
+      projectDescription,
+      projectType: null,
+      servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys,
+    });
+    const orchParsed = parseRequirementsSingleChatOrchestrationV1(body.singleChatOrchestrationV1, slotDefinitions);
+    const orchestrationAligned =
+      orchParsed && orchParsed.slotDefinitionsHash === hashSlotDefinitions(slotDefinitions) ? orchParsed : null;
+    const existingOrchestrationStage = parseRequirementsOrchestrationStageV1(
+      body.requirementsOrchestrationStageV1,
+    );
+    const fpRaw = body.featurePlanningSlotsV1;
+    const existingFeaturePlanning =
+      fpRaw === undefined || fpRaw === null
+        ? null
+        : parseFeaturePlanningSlotsArtifactV1(fpRaw) ?? null;
+
+    const transitionFastPath = tryServiceFlowOrchestrationTransitionFastPath({
+      proposalDecision,
+      quickActionLabel: quickActionLabel || undefined,
+      userMessage,
+      currentFlow,
+      projectName,
+      slotDefinitions,
+      orchestration: orchestrationAligned,
+      existingFeaturePlanning,
+      existingOrchestrationStage: existingOrchestrationStage ?? null,
+      approvedBy: userId,
+    });
+
+    const fastPathDecisions = new Set<ServiceFlowProposalDecision>(["APPLY", "REVIEW_FLOW"]);
+    const legacyFastPath =
+      !transitionFastPath && proposalDecision && fastPathDecisions.has(proposalDecision)
         ? tryServiceFlowProposalDecisionFastPath({
             decision: proposalDecision,
             currentFlow,
             projectName,
           })
         : null;
+    const fastPath = transitionFastPath ?? legacyFastPath;
 
     if (proposalDecision === "ALTERNATIVE") {
       const alt = await runServiceFlowAlternativeProposalTurn({
@@ -363,6 +437,7 @@ export async function POST(request: NextRequest) {
         quickReplies: [...fastPath.quickReplies],
         readiness: fastPath.readiness,
       };
+      const transitionMeta = transitionFastPath?.transitionMeta ?? null;
       return buildAnalyzeSuccessResponse({
         parsed,
         userMessage,
@@ -376,6 +451,7 @@ export async function POST(request: NextRequest) {
         model: null,
         agentCtx,
         forceVisibleMode: "state_transition",
+        requirementsStatePatch: transitionFastPath?.requirementsStatePatch,
         timelineExtras: {
           timelineAction: fastPath.timelineAction,
           llmCallSkipped: true,
@@ -384,8 +460,47 @@ export async function POST(request: NextRequest) {
           conversationStateAfter: fastPath.conversationStateAfter,
           reviewDepth: fastPath.reviewDepth,
           quickReplyProfile: fastPath.quickReplyProfile,
+          ...(transitionMeta
+            ? {
+                quickActionType: transitionMeta.quickActionType,
+                transitionTriggered: transitionMeta.transitionTriggered,
+                fromStage: transitionMeta.fromStage,
+                toStage: transitionMeta.toStage,
+                transitionMode: transitionMeta.transitionMode,
+                orchestrationStateUpdated: transitionMeta.orchestrationStateUpdated,
+              }
+            : {}),
         },
       });
+    }
+
+    const blockedTransitionDecisions = new Set<ServiceFlowProposalDecision>([
+      "FLOW_APPROVE",
+      "FEATURE_DETAIL",
+      "NEXT_STAGE",
+      "DOCUMENTATION_COMPLETE",
+    ]);
+    if (proposalDecision && blockedTransitionDecisions.has(proposalDecision)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "단계 전환을 처리할 수 없습니다. 서비스 흐름(액터·단계)을 먼저 확정해 주세요.",
+          meta: {
+            model: null,
+            promptTrace: buildSingleChatPromptTimelineEntry({
+              action: "stageTransitionBlocked",
+              source: "internal",
+              timelineStage: agentCtx.timelineStage,
+              stageGroup: agentCtx.stageGroup,
+              workspaceScreenKey: agentCtx.workspaceScreenKey,
+              selectedAgents: agentCtx.selectedAgents,
+              proposalDecision,
+              routingDecision: "stage_transition_precondition_failed",
+            }),
+          },
+        },
+        { status: 422 },
+      );
     }
 
     const llmAugmentable =

@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { RequirementsPromptTimelineEntry, RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type {
+  RequirementsPromptTimelineEntry,
+  RequirementsServiceFlowV1,
+  RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { deriveServiceFlowApprovalFromFlow, type ServiceFlowStageSlotKey } from "@/components/service-flow/serviceFlowStageDerived";
@@ -28,6 +32,12 @@ export function useServiceFlowSingleChatBridge(params: {
   ) => Promise<readonly RequirementsMessage[]>;
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
   readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
+  readonly orchestrationContext?: Readonly<{
+    singleChatOrchestrationV1?: unknown;
+    requirementsOrchestrationStageV1?: unknown;
+    featurePlanningSlotsV1?: unknown;
+  }>;
+  readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   /** expose send executor to parent without UI mount */
   readonly serviceFlowSendRef?: {
     current:
@@ -61,6 +71,8 @@ export function useServiceFlowSingleChatBridge(params: {
     structureLockedAt: params.flow?.structureLockedAt,
     derivedSlotsForDraftBootstrap: derivedApproval.slots as Record<ServiceFlowStageSlotKey, boolean>,
     onSingleChatPromptTrace: params.onSingleChatPromptTrace,
+    orchestrationContext: params.orchestrationContext,
+    onAnalyzeStatePatch: params.onAnalyzeStatePatch,
   });
 
   useEffect(() => {

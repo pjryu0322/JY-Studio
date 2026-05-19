@@ -269,6 +269,13 @@ export type RequirementsPromptTimelineEntry = {
   alternativeProposalId?: string;
   comparisonGenerated?: boolean;
   reviewMode?: string;
+  /** stage transition fast-path (service-flow quick actions) */
+  quickActionType?: string;
+  transitionTriggered?: boolean;
+  fromStage?: string;
+  toStage?: string;
+  transitionMode?: string;
+  orchestrationStateUpdated?: boolean;
   /** service-flow → orchestration slot sync bridge */
   slotSyncTriggered?: boolean;
   slotSyncMode?: string;
@@ -469,6 +476,21 @@ export type RequirementsStateJson = {
   featurePlanningWorkspaceChatV1?: FeaturePlanningWorkspaceChatV1 | null;
   /** SingleChat AI 멤버 슬롯 오케스트레이션 상태(서비스 기획 그룹) */
   singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
+  /** SingleChat 절차 단계(서비스 흐름 검토 → 기능 상세 등) */
+  requirementsOrchestrationStageV1?: RequirementsOrchestrationStageV1 | null;
+};
+
+export type RequirementsOrchestrationStageWire =
+  | "IDEATION"
+  | "SERVICE_FLOW_REVIEW"
+  | "FEATURE_DETAIL"
+  | "DOCUMENTATION_COMPLETE";
+
+export type RequirementsOrchestrationStageV1 = {
+  currentStage: RequirementsOrchestrationStageWire;
+  completedStages: string[];
+  activePhase?: string | null;
+  updatedAt: string;
 };
 
 export type PrototypeWorkspaceTimelineCardV1 = Readonly<{
@@ -548,6 +570,15 @@ export type RequirementsServiceFlowV1 = {
   alternativeProposalFingerprint?: string | null;
   /** Alternative proposal canvas visualization payload (source of truth for overlay) */
   alternativeProposalPayload?: AlternativeProposalPayloadWire | null;
+  /** 흐름 승인 orchestration 메타 */
+  flowApproved?: boolean;
+  flowApprovedAt?: string | null;
+  flowApprovedBy?: string | null;
+  activeFlowVersion?: string | null;
+  /** 문서화 완료 상태 */
+  documentationStatus?: "completed" | "draft" | null;
+  documentationCompletedAt?: string | null;
+  documentationSnapshot?: string | null;
 };
 
 export type ProposalVariantModeWire = "PRIMARY" | "ALTERNATIVE";
@@ -808,6 +839,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     singleChatOrchestrationV1 = parseRequirementsSingleChatOrchestrationV1(orchRaw) ?? null;
   }
 
+  const orchStageRaw =
+    "requirementsOrchestrationStageV1" in o ? (o.requirementsOrchestrationStageV1 as unknown) : undefined;
+  const requirementsOrchestrationStageV1 = parseRequirementsOrchestrationStageV1(orchStageRaw);
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -862,6 +897,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
     ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
+    ...(requirementsOrchestrationStageV1 !== undefined
+      ? { requirementsOrchestrationStageV1 }
+      : {}),
   };
 }
 
@@ -1108,5 +1146,63 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
           return parsed ? { alternativeProposalPayload: parsed } : {};
         })()
       : {}),
+    ...(typeof o.flowApproved === "boolean" ? { flowApproved: o.flowApproved } : {}),
+    ...(o.flowApprovedAt === null ? { flowApprovedAt: null } : {}),
+    ...(typeof o.flowApprovedAt === "string" && o.flowApprovedAt.trim()
+      ? { flowApprovedAt: o.flowApprovedAt.trim() }
+      : {}),
+    ...(typeof o.flowApprovedBy === "string" && o.flowApprovedBy.trim()
+      ? { flowApprovedBy: o.flowApprovedBy.trim().slice(0, 120) }
+      : {}),
+    ...(typeof o.activeFlowVersion === "string" && o.activeFlowVersion.trim()
+      ? { activeFlowVersion: o.activeFlowVersion.trim().slice(0, 80) }
+      : {}),
+    ...(o.documentationStatus === "completed" || o.documentationStatus === "draft"
+      ? { documentationStatus: o.documentationStatus }
+      : {}),
+    ...(o.documentationCompletedAt === null ? { documentationCompletedAt: null } : {}),
+    ...(typeof o.documentationCompletedAt === "string" && o.documentationCompletedAt.trim()
+      ? { documentationCompletedAt: o.documentationCompletedAt.trim() }
+      : {}),
+    ...(o.documentationSnapshot === null ? { documentationSnapshot: null } : {}),
+    ...(typeof o.documentationSnapshot === "string"
+      ? { documentationSnapshot: o.documentationSnapshot.slice(0, 8000) }
+      : {}),
+  };
+}
+
+const ORCHESTRATION_STAGE_WIRE = new Set<RequirementsOrchestrationStageWire>([
+  "IDEATION",
+  "SERVICE_FLOW_REVIEW",
+  "FEATURE_DETAIL",
+  "DOCUMENTATION_COMPLETE",
+]);
+
+export function parseRequirementsOrchestrationStageV1(
+  raw: unknown,
+): RequirementsOrchestrationStageV1 | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const currentStage = typeof o.currentStage === "string" ? o.currentStage.trim() : "";
+  const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt.trim() : "";
+  if (!ORCHESTRATION_STAGE_WIRE.has(currentStage as RequirementsOrchestrationStageWire) || !updatedAt) {
+    return null;
+  }
+  const completedStages = Array.isArray(o.completedStages)
+    ? o.completedStages.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24)
+    : [];
+  const activePhase =
+    o.activePhase === null
+      ? null
+      : typeof o.activePhase === "string" && o.activePhase.trim()
+        ? o.activePhase.trim().slice(0, 80)
+        : undefined;
+  return {
+    currentStage: currentStage as RequirementsOrchestrationStageWire,
+    completedStages,
+    updatedAt,
+    ...(activePhase !== undefined ? { activePhase } : {}),
   };
 }

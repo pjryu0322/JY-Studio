@@ -15,7 +15,10 @@ import {
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type {
+  RequirementsServiceFlowV1,
+  RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -93,6 +96,8 @@ export function useServiceFlowWorkshopChat({
   structureLockedAt,
   derivedSlotsForDraftBootstrap,
   onSingleChatPromptTrace,
+  orchestrationContext,
+  onAnalyzeStatePatch,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -115,6 +120,12 @@ export function useServiceFlowWorkshopChat({
   readonly structureLockedAt: string | null | undefined;
   readonly derivedSlotsForDraftBootstrap: Record<ServiceFlowStageSlotKey, boolean>;
   readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
+  readonly orchestrationContext?: Readonly<{
+    singleChatOrchestrationV1?: unknown;
+    requirementsOrchestrationStageV1?: unknown;
+    featurePlanningSlotsV1?: unknown;
+  }>;
+  readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -142,6 +153,8 @@ export function useServiceFlowWorkshopChat({
 
   const onAppendRef = useRef(onAppendPersistedServiceFlowMessages);
   const onChangeFlowRef = useRef(onChangeFlow);
+  const onAnalyzeStatePatchRef = useRef(onAnalyzeStatePatch);
+  const orchestrationContextRef = useRef(orchestrationContext);
   const onSingleChatPromptTraceRef = useRef(onSingleChatPromptTrace);
   useEffect(() => {
     onSingleChatPromptTraceRef.current = onSingleChatPromptTrace;
@@ -157,6 +170,12 @@ export function useServiceFlowWorkshopChat({
   useEffect(() => {
     onChangeFlowRef.current = onChangeFlow;
   }, [onChangeFlow]);
+  useEffect(() => {
+    onAnalyzeStatePatchRef.current = onAnalyzeStatePatch;
+  }, [onAnalyzeStatePatch]);
+  useEffect(() => {
+    orchestrationContextRef.current = orchestrationContext;
+  }, [orchestrationContext]);
 
   const scrollChatToBottom = useCallback(() => {
     autoScrollPendingRef.current = true;
@@ -220,6 +239,14 @@ export function useServiceFlowWorkshopChat({
         setPendingStatusLabel("추천안을 반영하고 있습니다…");
       } else if (pendingDecision === "REVIEW_FLOW") {
         setPendingStatusLabel("흐름을 정리하고 있습니다…");
+      } else if (
+        pendingDecision === "NEXT_STAGE" ||
+        pendingDecision === "FEATURE_DETAIL" ||
+        pendingDecision === "FLOW_APPROVE"
+      ) {
+        setPendingStatusLabel("다음 단계로 전환하고 있습니다…");
+      } else if (pendingDecision === "DOCUMENTATION_COMPLETE") {
+        setPendingStatusLabel("문서화를 반영하고 있습니다…");
       } else if (quickActionLabelEarly) {
         setPendingStatusLabel("요청을 처리하고 있습니다…");
       } else {
@@ -268,6 +295,7 @@ export function useServiceFlowWorkshopChat({
             ? classifyServiceFlowProposalDecision(quickActionLabel)
             : null;
 
+          const orchCtx = orchestrationContextRef.current;
           const result = await postServiceFlowAnalyze({
             projectId,
             projectName,
@@ -281,6 +309,15 @@ export function useServiceFlowWorkshopChat({
             ...(opts?.silentUserAppend ? { autoHandoff: true } : {}),
             ...(quickActionLabel ? { quickActionLabel } : {}),
             ...(proposalDecision ? { proposalDecision } : {}),
+            ...(orchCtx?.singleChatOrchestrationV1 !== undefined
+              ? { singleChatOrchestrationV1: orchCtx.singleChatOrchestrationV1 }
+              : {}),
+            ...(orchCtx?.requirementsOrchestrationStageV1 !== undefined
+              ? { requirementsOrchestrationStageV1: orchCtx.requirementsOrchestrationStageV1 }
+              : {}),
+            ...(orchCtx?.featurePlanningSlotsV1 !== undefined
+              ? { featurePlanningSlotsV1: orchCtx.featurePlanningSlotsV1 }
+              : {}),
             serviceDesignStage: harness.stage,
             mentionedAI: harness.mentionedAI,
             ...(responsePolicy ? { responsePolicy } : {}),
@@ -326,6 +363,10 @@ export function useServiceFlowWorkshopChat({
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
             clearReplyingState();
             return;
+          }
+          const statePatch = result.meta?.requirementsStatePatch;
+          if (statePatch && onAnalyzeStatePatchRef.current) {
+            await Promise.resolve(onAnalyzeStatePatchRef.current(statePatch));
           }
           const slotSync = await Promise.resolve(onChangeFlowRef.current(nextFlow));
 

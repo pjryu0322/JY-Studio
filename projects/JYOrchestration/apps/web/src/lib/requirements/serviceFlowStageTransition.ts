@@ -1,0 +1,452 @@
+/**
+ * QuickAction → orchestration stage transition (semantic intent, chip 문자열 하드코딩 분기 금지).
+ */
+
+import type { RequirementsStateJson, RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type { ServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
+import { seedFeaturePlanningArtifactFromServiceFlow } from "@/lib/requirements/seedFeaturePlanningFromServiceFlow";
+import {
+  hydrateServiceFlowStepsFromAlternativePayload,
+} from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import {
+  buildServiceFlowStateSummaryMessage,
+  markServiceFlowProposalAccepted,
+  type ServiceFlowDecisionFastPathResult,
+} from "@/lib/requirements/serviceFlowProposalDecision";
+import {
+  quickRepliesForConversationState,
+  quickReplyProfileForState,
+  resolveServiceFlowConversationState,
+  withServiceFlowConversationState,
+  type ServiceFlowConversationState,
+} from "@/lib/requirements/serviceFlowConversationState";
+import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
+import { syncServiceFlowToOrchestrationSlots } from "@/lib/requirements/serviceFlowOrchestrationSync";
+import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
+
+export type ServiceFlowTransitionSignal =
+  | "NEXT_STAGE"
+  | "APPROVE_FLOW"
+  | "DOCUMENTATION_COMPLETE"
+  | "FEATURE_DETAIL_START";
+
+export type ServiceFlowOrchestrationStageWire =
+  | "IDEATION"
+  | "SERVICE_FLOW_REVIEW"
+  | "FEATURE_DETAIL"
+  | "DOCUMENTATION_COMPLETE";
+
+export type ServiceFlowStageTransitionMeta = Readonly<{
+  quickActionType: ServiceFlowTransitionSignal;
+  transitionTriggered: true;
+  fromStage: ServiceFlowOrchestrationStageWire;
+  toStage: ServiceFlowOrchestrationStageWire;
+  transitionMode: "fast_path";
+  orchestrationStateUpdated: boolean;
+}>;
+
+export type ServiceFlowStageTransitionFastPathResult = ServiceFlowDecisionFastPathResult &
+  Readonly<{
+    requirementsStatePatch?: Partial<RequirementsStateJson>;
+    transitionMeta?: ServiceFlowStageTransitionMeta;
+  }>;
+
+function norm(s: string): string {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/** semantic intent — exact chip label 비교 금지 */
+export function resolveServiceFlowTransitionSignal(input: {
+  readonly label?: string | null;
+  readonly userMessage?: string | null;
+}): ServiceFlowTransitionSignal | null {
+  const s = norm(`${input.label ?? ""} ${input.userMessage ?? ""}`);
+  if (!s) return null;
+  if (/문서화\s*(완료|완료하기|완료됨)/.test(s)) return "DOCUMENTATION_COMPLETE";
+  if (/다음\s*단계\s*(진행|으로|시작|이동)?/.test(s) || /\bnext\s*stage\b/.test(s)) {
+    return "NEXT_STAGE";
+  }
+  if (/세부\s*기능\s*(정리|정의|시작|상세)/.test(s)) return "FEATURE_DETAIL_START";
+  if (/흐름\s*승인/.test(s)) return "APPROVE_FLOW";
+  return null;
+}
+
+export function orchestrationStageFromConversation(
+  state: ServiceFlowConversationState,
+): ServiceFlowOrchestrationStageWire {
+  if (state === "FEATURE_DETAIL") return "FEATURE_DETAIL";
+  if (state === "APPROVED") return "SERVICE_FLOW_REVIEW";
+  if (state === "REVIEW") return "SERVICE_FLOW_REVIEW";
+  return "SERVICE_FLOW_REVIEW";
+}
+
+function buildOrchestrationStagePatch(input: {
+  readonly toStage: ServiceFlowOrchestrationStageWire;
+  readonly fromStage: ServiceFlowOrchestrationStageWire;
+  readonly nowIso: string;
+  readonly existing?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
+}): NonNullable<RequirementsStateJson["requirementsOrchestrationStageV1"]> {
+  const prev = new Set(input.existing?.completedStages ?? []);
+  if (input.fromStage !== input.toStage) prev.add(input.fromStage);
+  return {
+    currentStage: input.toStage,
+    completedStages: [...prev],
+    activePhase: input.toStage === "FEATURE_DETAIL" ? "feature_detail_bootstrap" : input.toStage,
+    updatedAt: input.nowIso,
+  };
+}
+
+export function buildContextAwareFeatureDetailBootstrapMessage(
+  flow: RequirementsServiceFlowV1,
+): string {
+  const hydrated = hydrateServiceFlowStepsFromAlternativePayload(flow);
+  const steps = [...(hydrated.steps ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => s.title.trim())
+    .filter(Boolean);
+  const firstStep = steps[0] ?? "핵심 흐름";
+
+  const lines = [
+    "현재 승인된 서비스 흐름을 기준으로 세부 기능 정의 단계로 이동합니다.",
+    "",
+    "확인된 흐름:",
+    ...steps.map((t, i) => `- ${t}`),
+    "",
+    "이제 기능 단위로 세분화하겠습니다.",
+    "",
+    `우선 **${firstStep}** 기능에서 다음을 정리합니다:`,
+    "- 입력 데이터",
+    "- 처리 방식",
+    "- 출력 결과",
+    "- 예외 상황",
+  ];
+  return lines.join("\n").trim();
+}
+
+function applyFlowApprovalMetadata(
+  flow: RequirementsServiceFlowV1,
+  nowIso: string,
+  approvedBy?: string | null,
+): RequirementsServiceFlowV1 {
+  const version =
+    String(flow.activeFlowVersion ?? "").trim() ||
+    `flow-v${nowIso.replace(/[^\d]/g, "").slice(0, 14)}`;
+  return {
+    ...flow,
+    flowApproved: true,
+    flowApprovedAt: nowIso,
+    ...(approvedBy ? { flowApprovedBy: approvedBy.slice(0, 120) } : {}),
+    activeFlowVersion: version,
+    updatedAt: nowIso,
+  };
+}
+
+function computeReadiness(flow: RequirementsServiceFlowV1) {
+  const actors = flow.actors ?? [];
+  const steps = flow.steps ?? [];
+  const actorsReady = actors.length >= 2;
+  const stepsReady = steps.length >= 3;
+  const mappingReady = steps.every(
+    (s) => s.primaryActorId && actors.some((a) => a.id === s.primaryActorId),
+  );
+  const readyForNext = actorsReady && stepsReady && mappingReady;
+  const score = readyForNext ? 85 : stepsReady && actorsReady ? 55 : steps.length ? 25 : 10;
+  return { score, actorsReady, stepsReady, mappingReady, readyForNext };
+}
+
+function buildTransitionFastPathResult(input: {
+  readonly assistantMessage: string;
+  readonly updatedFlow: RequirementsServiceFlowV1;
+  readonly quickReplies: readonly string[];
+  readonly routingDecision: string;
+  readonly timelineAction: string;
+  readonly proposalDecision: ServiceFlowProposalDecision;
+  readonly conversationStateBefore: ServiceFlowConversationState;
+  readonly conversationStateAfter: ServiceFlowConversationState;
+  readonly transitionMeta: ServiceFlowStageTransitionMeta;
+  readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
+}): ServiceFlowStageTransitionFastPathResult {
+  return {
+    assistantMessage: input.assistantMessage,
+    updatedFlow: input.updatedFlow,
+    nextQuestion: null,
+    quickReplies: input.quickReplies,
+    intent: "unclear",
+    readiness: computeReadiness(input.updatedFlow),
+    visibleMode: "state_transition",
+    routingDecision: input.routingDecision,
+    timelineAction: input.timelineAction,
+    llmCallSkipped: true,
+    proposalDecision: input.proposalDecision,
+    acceptedProposalSnapshot: input.assistantMessage.slice(0, 8000),
+    conversationStateBefore: input.conversationStateBefore,
+    conversationStateAfter: input.conversationStateAfter,
+    reviewDepth: "compact",
+    quickReplyProfile: quickReplyProfileForState(input.conversationStateAfter),
+    requirementsStatePatch: input.requirementsStatePatch,
+    transitionMeta: input.transitionMeta,
+  };
+}
+
+export function handleQuickActionTransition(input: {
+  readonly signal: ServiceFlowTransitionSignal;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly projectName?: string;
+  readonly nowIso?: string;
+  readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly orchestration?: RequirementsStateJson["singleChatOrchestrationV1"] | null;
+  readonly existingFeaturePlanning?: RequirementsStateJson["featurePlanningSlotsV1"] | null;
+  readonly existingOrchestrationStage?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
+  readonly approvedBy?: string | null;
+}): ServiceFlowStageTransitionFastPathResult | null {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const baseFlow = hydrateServiceFlowStepsFromAlternativePayload(
+    input.currentFlow ?? {
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      actors: [],
+      steps: [],
+    },
+  );
+  const stateBefore = resolveServiceFlowConversationState(baseFlow);
+  const fromStage = orchestrationStageFromConversation(stateBefore);
+
+  if (input.signal === "APPROVE_FLOW") {
+    if ((baseFlow.actors?.length ?? 0) < 1 || (baseFlow.steps?.length ?? 0) < 1) return null;
+    const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
+    let updatedFlow = markServiceFlowProposalAccepted({
+      flow: baseFlow,
+      snapshot,
+      decision: "FLOW_APPROVE",
+      nowIso,
+    });
+    updatedFlow = applyFlowApprovalMetadata(updatedFlow, nowIso, input.approvedBy);
+    const assistantMessage = [
+      "서비스 흐름을 승인 상태로 반영했습니다.",
+      "",
+      "확정된 흐름",
+      ...(updatedFlow.steps ?? [])
+        .sort((a, b) => a.order - b.order)
+        .map((s, i) => `${i + 1}. ${s.title}`),
+      "",
+      "다음: **다음 단계 진행** 또는 **세부 기능 정리**로 기능 단위 정의를 시작할 수 있습니다.",
+    ].join("\n");
+
+    const orchPatch = buildOrchestrationStagePatch({
+      toStage: "SERVICE_FLOW_REVIEW",
+      fromStage,
+      nowIso,
+      existing: input.existingOrchestrationStage,
+    });
+    let requirementsStatePatch: Partial<RequirementsStateJson> = {
+      requirementsOrchestrationStageV1: orchPatch,
+    };
+    if (input.slotDefinitions?.length) {
+      const sync = syncServiceFlowToOrchestrationSlots({
+        flow: { ...updatedFlow, lastProposalDecision: "FLOW_APPROVE" },
+        definitions: input.slotDefinitions,
+        orchestration: input.orchestration,
+        nowIso,
+      });
+      if (sync) {
+        requirementsStatePatch = {
+          ...requirementsStatePatch,
+          singleChatOrchestrationV1: sync.state,
+        };
+      }
+    }
+
+    return buildTransitionFastPathResult({
+      assistantMessage,
+      updatedFlow,
+      quickReplies: quickRepliesForConversationState("APPROVED"),
+      routingDecision: "flow_approve_transition",
+      timelineAction: "flowApprove",
+      proposalDecision: "FLOW_APPROVE",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "APPROVED",
+      transitionMeta: {
+        quickActionType: "APPROVE_FLOW",
+        transitionTriggered: true,
+        fromStage,
+        toStage: "SERVICE_FLOW_REVIEW",
+        transitionMode: "fast_path",
+        orchestrationStateUpdated: true,
+      },
+      requirementsStatePatch,
+    });
+  }
+
+  if (input.signal === "DOCUMENTATION_COMPLETE") {
+    const snapshot = buildServiceFlowStateSummaryMessage({
+      flow: baseFlow,
+      heading: "문서화 스냅샷",
+      cta: "",
+    });
+    const updatedFlow: RequirementsServiceFlowV1 = {
+      ...baseFlow,
+      updatedAt: nowIso,
+      documentationStatus: "completed",
+      documentationCompletedAt: nowIso,
+      documentationSnapshot: snapshot.slice(0, 8000) || null,
+      lastProposalDecision: "DOCUMENTATION_COMPLETE",
+    };
+    const orchPatch = buildOrchestrationStagePatch({
+      toStage: "DOCUMENTATION_COMPLETE",
+      fromStage,
+      nowIso,
+      existing: input.existingOrchestrationStage,
+    });
+    return buildTransitionFastPathResult({
+      assistantMessage: [
+        "서비스 흐름 문서화를 완료 상태로 반영했습니다.",
+        "",
+        "문서화 스냅샷이 저장되었으며, 이후 단계에서 참조할 수 있습니다.",
+        "다음: 세부 기능 정리 또는 프로토타입 준비로 이어갈 수 있습니다.",
+      ].join("\n"),
+      updatedFlow,
+      quickReplies: quickRepliesForConversationState(
+        resolveServiceFlowConversationState(updatedFlow),
+      ),
+      routingDecision: "documentation_complete_transition",
+      timelineAction: "documentationComplete",
+      proposalDecision: "DOCUMENTATION_COMPLETE",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: resolveServiceFlowConversationState(updatedFlow),
+      transitionMeta: {
+        quickActionType: "DOCUMENTATION_COMPLETE",
+        transitionTriggered: true,
+        fromStage,
+        toStage: "DOCUMENTATION_COMPLETE",
+        transitionMode: "fast_path",
+        orchestrationStateUpdated: true,
+      },
+      requirementsStatePatch: { requirementsOrchestrationStageV1: orchPatch },
+    });
+  }
+
+  if (input.signal === "NEXT_STAGE" || input.signal === "FEATURE_DETAIL_START") {
+    if ((baseFlow.actors?.length ?? 0) < 1 || (baseFlow.steps?.length ?? 0) < 1) return null;
+
+    let flow = baseFlow;
+    if (resolveServiceFlowConversationState(flow) !== "APPROVED") {
+      const snapshot = buildServiceFlowStateSummaryMessage({ flow, heading: "", cta: "" });
+      flow = markServiceFlowProposalAccepted({
+        flow,
+        snapshot,
+        decision: "NEXT_STAGE",
+        nowIso,
+      });
+    }
+    flow = applyFlowApprovalMetadata(flow, nowIso, input.approvedBy);
+    flow = markFlowAsPrimaryProposalVariant(flow, nowIso);
+    flow = withServiceFlowConversationState(flow, "FEATURE_DETAIL", nowIso);
+    flow = {
+      ...flow,
+      lastProposalDecision: "NEXT_STAGE",
+      updatedAt: nowIso,
+    };
+
+    const assistantMessage = buildContextAwareFeatureDetailBootstrapMessage(flow);
+    const featureArtifact =
+      input.existingFeaturePlanning?.slots?.length ?
+        input.existingFeaturePlanning
+      : seedFeaturePlanningArtifactFromServiceFlow(flow, nowIso);
+
+    const orchPatch = buildOrchestrationStagePatch({
+      toStage: "FEATURE_DETAIL",
+      fromStage,
+      nowIso,
+      existing: input.existingOrchestrationStage,
+    });
+
+    const requirementsStatePatch: Partial<RequirementsStateJson> = {
+      requirementsOrchestrationStageV1: orchPatch,
+      featurePlanningSlotsV1: featureArtifact,
+    };
+
+    if (input.slotDefinitions?.length) {
+      const sync = syncServiceFlowToOrchestrationSlots({
+        flow,
+        definitions: input.slotDefinitions,
+        orchestration: input.orchestration,
+        nowIso,
+      });
+      if (sync) {
+        requirementsStatePatch.singleChatOrchestrationV1 = sync.state;
+      }
+    }
+
+    const proposalDecision =
+      input.signal === "FEATURE_DETAIL_START" ? ("FEATURE_DETAIL" as const) : ("NEXT_STAGE" as const);
+    return buildTransitionFastPathResult({
+      assistantMessage,
+      updatedFlow: flow,
+      quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+      routingDecision: "service_flow_to_feature_detail_transition",
+      timelineAction: input.signal === "FEATURE_DETAIL_START" ? "featureDetailTransition" : "stageTransitionNext",
+      proposalDecision,
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "FEATURE_DETAIL",
+      transitionMeta: {
+        quickActionType: input.signal === "FEATURE_DETAIL_START" ? "FEATURE_DETAIL_START" : "NEXT_STAGE",
+        transitionTriggered: true,
+        fromStage,
+        toStage: "FEATURE_DETAIL",
+        transitionMode: "fast_path",
+        orchestrationStateUpdated: Boolean(requirementsStatePatch.singleChatOrchestrationV1),
+      },
+      requirementsStatePatch,
+    });
+  }
+
+  return null;
+}
+
+export function proposalDecisionToTransitionSignal(
+  decision: string | null | undefined,
+): ServiceFlowTransitionSignal | null {
+  const d = String(decision ?? "").trim().toUpperCase();
+  if (!d) return null;
+  if (d === "NEXT_STAGE") return "NEXT_STAGE";
+  if (d === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
+  if (d === "FLOW_APPROVE") return "APPROVE_FLOW";
+  if (d === "FEATURE_DETAIL") return "FEATURE_DETAIL_START";
+  return null;
+}
+
+/** QuickAction / proposal decision → orchestration stage transition fast-path */
+export function tryServiceFlowOrchestrationTransitionFastPath(input: {
+  readonly proposalDecision: string | null;
+  readonly quickActionLabel?: string | null;
+  readonly userMessage?: string | null;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly projectName?: string;
+  readonly nowIso?: string;
+  readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly orchestration?: RequirementsStateJson["singleChatOrchestrationV1"] | null;
+  readonly existingFeaturePlanning?: RequirementsStateJson["featurePlanningSlotsV1"] | null;
+  readonly existingOrchestrationStage?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
+  readonly approvedBy?: string | null;
+}): ServiceFlowStageTransitionFastPathResult | null {
+  const signal =
+    resolveServiceFlowTransitionSignal({
+      label: input.quickActionLabel,
+      userMessage: input.userMessage,
+    }) ?? proposalDecisionToTransitionSignal(input.proposalDecision);
+  if (!signal) return null;
+  return handleQuickActionTransition({
+    signal,
+    currentFlow: input.currentFlow,
+    projectName: input.projectName,
+    nowIso: input.nowIso,
+    slotDefinitions: input.slotDefinitions,
+    orchestration: input.orchestration,
+    existingFeaturePlanning: input.existingFeaturePlanning,
+    existingOrchestrationStage: input.existingOrchestrationStage,
+    approvedBy: input.approvedBy,
+  });
+}

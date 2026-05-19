@@ -30,12 +30,15 @@ import {
   REOPEN_ALTERNATIVE_CANVAS_LABEL,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
+import { resolveServiceFlowTransitionSignal } from "@/lib/requirements/serviceFlowStageTransition";
 
 export type ServiceFlowProposalDecision =
   | ProposalDecision
   | "REVIEW_FLOW"
   | "FLOW_APPROVE"
   | "FEATURE_DETAIL"
+  | "NEXT_STAGE"
+  | "DOCUMENTATION_COMPLETE"
   | "VIEW_ALTERNATIVE_DETAIL"
   | "KEEP_PRIMARY";
 
@@ -54,6 +57,8 @@ const SERVICE_FLOW_DECISIONS = new Set<ServiceFlowProposalDecision>([
   "REVIEW_FLOW",
   "FLOW_APPROVE",
   "FEATURE_DETAIL",
+  "NEXT_STAGE",
+  "DOCUMENTATION_COMPLETE",
   "VIEW_ALTERNATIVE_DETAIL",
   "KEEP_PRIMARY",
 ]);
@@ -63,6 +68,12 @@ export function classifyServiceFlowProposalDecision(
 ): ServiceFlowProposalDecision | null {
   const s = String(label ?? "").trim();
   if (!s) return null;
+
+  const transition = resolveServiceFlowTransitionSignal({ label: s });
+  if (transition === "NEXT_STAGE") return "NEXT_STAGE";
+  if (transition === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
+  if (transition === "FEATURE_DETAIL_START") return "FEATURE_DETAIL";
+  if (transition === "APPROVE_FLOW") return "FLOW_APPROVE";
 
   if (/대안\s*상세/.test(s)) return "VIEW_ALTERNATIVE_DETAIL";
   if (/기존안\s*유지/.test(s)) return "KEEP_PRIMARY";
@@ -87,7 +98,12 @@ export function resolveServiceFlowProposalDecision(input: {
   const raw = String(input.proposalDecisionRaw ?? "")
     .trim()
     .toUpperCase();
-  if (raw === "FLOW_APPROVE" || raw === "FEATURE_DETAIL") {
+  if (
+    raw === "FLOW_APPROVE" ||
+    raw === "FEATURE_DETAIL" ||
+    raw === "NEXT_STAGE" ||
+    raw === "DOCUMENTATION_COMPLETE"
+  ) {
     return raw as ServiceFlowProposalDecision;
   }
   if (raw && SERVICE_FLOW_DECISIONS.has(raw as ServiceFlowProposalDecision)) {
@@ -425,48 +441,6 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
       conversationStateBefore: stateBefore,
       conversationStateAfter: "REVIEW",
       reviewDepth: "summary",
-    });
-  }
-
-  if (input.decision === "FLOW_APPROVE") {
-    if (!serviceFlowHasReviewableState(baseFlow)) return null;
-    const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
-    const updatedFlow = markServiceFlowProposalAccepted({
-      flow: baseFlow,
-      snapshot,
-      decision: "FLOW_APPROVE",
-      nowIso,
-    });
-    const assistantMessage = buildServiceFlowApprovedTransitionMessage({ flow: updatedFlow });
-    return buildFastPathResult({
-      assistantMessage,
-      updatedFlow,
-      quickReplies: quickRepliesForConversationState("APPROVED"),
-      intent: "unclear",
-      routingDecision: "flow_approve_transition",
-      timelineAction: "flowApprove",
-      proposalDecision: "FLOW_APPROVE",
-      conversationStateBefore: stateBefore,
-      conversationStateAfter: "APPROVED",
-      reviewDepth: "compact",
-    });
-  }
-
-  if (input.decision === "FEATURE_DETAIL") {
-    if (!serviceFlowHasReviewableState(baseFlow)) return null;
-    const updatedFlow = withServiceFlowConversationState(baseFlow, "FEATURE_DETAIL", nowIso);
-    const assistantMessage = buildServiceFlowFeatureDetailTransitionMessage({ flow: updatedFlow });
-    return buildFastPathResult({
-      assistantMessage,
-      updatedFlow,
-      quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
-      intent: "unclear",
-      routingDecision: "feature_detail_transition",
-      timelineAction: "featureDetailTransition",
-      proposalDecision: "FEATURE_DETAIL",
-      conversationStateBefore: stateBefore,
-      conversationStateAfter: "FEATURE_DETAIL",
-      reviewDepth: "compact",
     });
   }
 

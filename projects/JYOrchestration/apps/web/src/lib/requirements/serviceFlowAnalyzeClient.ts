@@ -1,4 +1,7 @@
-import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type {
+  RequirementsServiceFlowV1,
+  RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 
 export type ServiceFlowAnalyzeRequestBody = {
@@ -22,6 +25,9 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly autoHandoff?: boolean;
   readonly quickActionLabel?: string;
   readonly proposalDecision?: string;
+  readonly singleChatOrchestrationV1?: unknown;
+  readonly requirementsOrchestrationStageV1?: unknown;
+  readonly featurePlanningSlotsV1?: unknown;
 };
 
 export type ServiceFlowVisibleMode =
@@ -50,6 +56,7 @@ export type ServiceFlowAnalyzeMeta = {
   readonly promptTrace?: unknown;
   readonly userFacingMessage?: string;
   readonly quickReplies?: readonly string[];
+  readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
 };
 
 export type ServiceFlowAnalyzeResponse =

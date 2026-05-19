@@ -13,6 +13,7 @@ import {
   shouldUseApprovedReviewReplayCompact,
   tryServiceFlowProposalDecisionFastPath,
 } from "@/lib/requirements/serviceFlowProposalDecision";
+import { tryServiceFlowOrchestrationTransitionFastPath } from "@/lib/requirements/serviceFlowStageTransition";
 
 const now = "2026-05-19T00:00:00.000Z";
 
@@ -133,8 +134,8 @@ describe("serviceFlowProposalDecision phase10", () => {
   });
 
   it("FLOW_APPROVE → APPROVED profile (흐름 검토하기 제거)", () => {
-    const r = tryServiceFlowProposalDecisionFastPath({
-      decision: "FLOW_APPROVE",
+    const r = tryServiceFlowOrchestrationTransitionFastPath({
+      proposalDecision: "FLOW_APPROVE",
       currentFlow: { ...sampleFlow(), conversationState: "REVIEW" },
     });
     expect(r?.conversationStateAfter).toBe("APPROVED");
@@ -173,13 +174,13 @@ describe("serviceFlowProposalDecision phase10", () => {
   });
 
   it("FEATURE_DETAIL transition", () => {
-    const r = tryServiceFlowProposalDecisionFastPath({
-      decision: "FEATURE_DETAIL",
+    const r = tryServiceFlowOrchestrationTransitionFastPath({
+      proposalDecision: "FEATURE_DETAIL",
       currentFlow: sampleFlow(),
     });
     expect(r?.conversationStateAfter).toBe("FEATURE_DETAIL");
     expect(r?.quickReplies).toContain("기능 수정");
-    expect(r?.assistantMessage).toContain("세부 기능 정리");
+    expect(r?.assistantMessage).toContain("세부 기능 정의");
   });
 
   it("quickRepliesForConversationState — approved에 흐름 검토하기 없음", () => {

@@ -237,7 +237,9 @@ export function RequirementsWorkspace({
     const local = stateJsonRef.current;
     const st = (local && Object.keys(local).length ? local : persisted) as RequirementsStateJson;
 
-    // 1) 기능 정리 산출물이 있으면 feature-planning
+    // 1) 기능 상세 전이 또는 기능 정리 산출물 → feature-planning
+    if (st.requirementsOrchestrationStageV1?.currentStage === "FEATURE_DETAIL") return "feature-planning";
+    if (st.serviceFlowV1?.conversationState === "FEATURE_DETAIL") return "feature-planning";
     if (st.featurePlanningSlotsV1?.slots?.length) return "feature-planning";
     // 2) 서비스 흐름이 있으면 service-flow
     if (st.serviceFlowV1?.steps?.length || st.serviceFlowV1?.actors?.length) return "service-flow";
@@ -1782,6 +1784,15 @@ export function RequirementsWorkspace({
     onAppendPersistedServiceFlowMessages: appendServiceFlowWorkshopMessages,
     platformScreenAiMemberIds: serviceFlowScreenCatalogIds,
     onSingleChatPromptTrace: appendSingleChatPromptTimeline,
+    orchestrationContext: {
+      singleChatOrchestrationV1: orchestrationAlignedState,
+      requirementsOrchestrationStageV1: stateJsonRef.current.requirementsOrchestrationStageV1,
+      featurePlanningSlotsV1: stateJsonRef.current.featurePlanningSlotsV1,
+    },
+    onAnalyzeStatePatch: async (patch) => {
+      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, patch);
+      await persistStateJsonOnly(patch);
+    },
     serviceFlowSendRef,
   });
 
