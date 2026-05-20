@@ -81,11 +81,19 @@ export function focusReasonForRouting(focus: ConversationFocusWire | null): stri
 export function buildFeatureEditingFocus(input: {
   readonly featureId: string;
   readonly label?: string;
+  readonly stage?: string;
+  readonly nowIso?: string;
 }): ConversationFocusWire {
+  const now = input.nowIso ?? new Date().toISOString();
   return {
     type: "feature",
     id: input.featureId,
     ...(input.label?.trim() ? { label: input.label.trim().slice(0, 120) } : {}),
+    confidence: 0.85,
+    lastReferencedAt: now,
+    referenceCount: 1,
+    focusSetAtStage: input.stage,
+    softStale: false,
   };
 }
 

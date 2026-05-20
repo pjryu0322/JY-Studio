@@ -2,6 +2,7 @@
  * Lightweight intent routing cache — same utterance + context fingerprint reuses result.
  */
 
+import { INTENT_ROUTER_CACHE_SCHEMA_VERSION } from "@/lib/requirements/requirementsOrchestrationConstants";
 import type { IntentRoutingResult } from "@/lib/requirements/requirementsIntentRouterTypes";
 import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
 
@@ -23,22 +24,40 @@ function featureMetricsSummary(input: RequirementsIntentRouterInput): string {
   ].join(":");
 }
 
-function fingerprint(input: RequirementsIntentRouterInput): string {
-  const focus = input.activeFocus ?? input.conversationMemory?.activeFocus;
+function projectionHash(input: RequirementsIntentRouterInput): string {
   return [
     input.authoritativeStage,
-    input.userMessage.trim().toLowerCase(),
     input.availableActionIds.join(","),
-    focus ? `${focus.type}:${focus.id}` : "",
+    input.chatVisibleActionIds.join(","),
+    input.projection.conversationState,
     featureMetricsSummary(input),
     input.conversationMemory?.clarificationPending ? "clar" : "",
+    input.artifactHubState?.badgeEligible ? "hub1" : "hub0",
+    INTENT_ROUTER_CACHE_SCHEMA_VERSION,
+  ].join(":");
+}
+
+function fingerprint(input: RequirementsIntentRouterInput): string {
+  const focus = input.activeFocus ?? input.conversationMemory?.activeFocus;
+  const session = input.conversationMemory?.recentTransitions?.[0] ?? "";
+  return [
+    `v${INTENT_ROUTER_CACHE_SCHEMA_VERSION}`,
+    projectionHash(input),
+    input.userMessage.trim().toLowerCase(),
+    focus ? `${focus.type}:${focus.id}:${focus.softStale ? "stale" : "fresh"}` : "",
     input.conversationMemory?.lastSuggestedAction ?? "",
+    session.slice(0, 40),
   ].join("|");
 }
 
 /** @internal tests */
 export function intentRouterCacheFingerprint(input: RequirementsIntentRouterInput): string {
   return fingerprint(input);
+}
+
+/** @internal tests */
+export function intentRouterCacheProjectionHash(input: RequirementsIntentRouterInput): string {
+  return projectionHash(input);
 }
 
 export function getCachedIntentRoute(input: RequirementsIntentRouterInput): IntentRoutingResult | null {

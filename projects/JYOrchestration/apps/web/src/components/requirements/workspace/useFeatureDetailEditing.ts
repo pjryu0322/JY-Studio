@@ -89,6 +89,7 @@ export function useFeatureDetailEditing(args: UseFeatureDetailEditingArgs) {
         featureId,
         label: slot?.title,
         prev: args.stateJsonRef.current.requirementsIntentOrchestrationV1,
+        state: args.stateJsonRef.current,
       });
       const slotsChanged = focused.focusFeatureId !== artifact.focusFeatureId;
       if (!slotsChanged && args.stateJsonRef.current.requirementsIntentOrchestrationV1?.activeFocus?.id === featureId) {

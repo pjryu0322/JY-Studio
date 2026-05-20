@@ -200,6 +200,9 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       : {}),
     ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as string | null } : {}),
     ...(typeof r.routingDecision === "string" ? { routingDecision: r.routingDecision } : {}),
+    ...(typeof r.orchestrationTraceGroup === "string" && r.orchestrationTraceGroup.trim()
+      ? { orchestrationTraceGroup: r.orchestrationTraceGroup.trim().slice(0, 40) }
+      : {}),
     ...(typeof r.currentPhase === "number" && Number.isFinite(r.currentPhase)
       ? { currentPhase: Math.max(1, Math.min(5, Math.floor(r.currentPhase))) as 1 | 2 | 3 | 4 | 5 }
       : {}),

@@ -49,11 +49,17 @@ import {
 } from "@/lib/requirements/requirementsConversationMemory";
 import { inferFocusFromMessage, updateFocusAfterAction } from "@/lib/requirements/requirementsConversationFocus";
 import {
-  buildClarificationPendingState,
-  buildTargetResolutionClarification,
   clearClarificationState,
   isAmbiguousTargetEditRequest,
 } from "@/lib/requirements/requirementsIntentClarification";
+import { wrapNewClarificationPending } from "@/lib/requirements/requirementsClarificationLifecycle";
+import { buildOrchestrationHumanExplainability } from "@/lib/requirements/requirementsOrchestrationExplainability";
+import {
+  formatOrchestrationTimelineResponse,
+  orchestrationTimelineGroupForAction,
+} from "@/lib/requirements/requirementsOrchestrationTimeline";
+import { applyIntentOrchestrationPhase3 } from "@/lib/requirements/requirementsIntentOrchestrationRuntime";
+import { splitPrioritizedRecommendations } from "@/lib/requirements/requirementsActionRecommendation";
 import {
   mergeIntentOrchestrationPatch,
   type RequirementsIntentOrchestrationV1,
@@ -85,6 +91,8 @@ export type RequirementsIntentDispatchResult = Readonly<{
   readonly fallbackQuickActions?: readonly QuickAction[];
   readonly intentOrchestrationPatch?: RequirementsIntentOrchestrationV1;
   readonly proactiveRecommendations?: readonly string[];
+  readonly secondaryRecommendations?: readonly string[];
+  readonly humanExplainability?: import("@/lib/requirements/requirementsOrchestrationExplainability").OrchestrationHumanExplainability;
 }>;
 
 export function buildRequirementsIntentDispatchContext(
@@ -204,13 +212,15 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
   const targetResolutionPending =
     input.lowConfidenceClarification &&
     isAmbiguousTargetEditRequest(input.userMessage, hasFocus);
+  const clarificationResolved = input.intent.routerMode === "clarification_resolution";
   const clarification =
     targetResolutionPending ?
-      buildTargetResolutionClarification({
+      wrapNewClarificationPending({
+        topic: "target_resolution",
         question: input.intent.clarificationQuestion ?? "어떤 항목을 수정할까요?",
       })
     : input.lowConfidenceClarification && input.intent.clarificationQuestion ?
-      buildClarificationPendingState({
+      wrapNewClarificationPending({
         question: input.intent.clarificationQuestion,
         candidateActionIds:
           input.guard.fallbackActionIds ??
@@ -218,25 +228,30 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
             buildRequirementsIntentDispatchContext(input.routingState).chatQuickActions.map((a) => a.id)
           : undefined),
       })
-    : input.intent.routerMode === "clarification_resolution" ? clearClarificationState()
+    : clarificationResolved ? clearClarificationState()
     : input.effectiveActionId ? clearClarificationState()
     : input.prev?.clarification;
 
-  return mergeIntentOrchestrationPatch(input.prev, {
+  const merged = mergeIntentOrchestrationPatch(input.prev, {
     activeFocus: focus,
     recentConversationSummary: summary,
-    lastSuggestedActionId: input.intent.suggestedActionId,
-    lastConfirmedActionId: input.effectiveActionId ?? input.prev?.lastConfirmedActionId ?? null,
     clarification,
-    lastRouting: {
-      routerMode: input.intent.routerMode,
-      routingReason: input.intent.explainability?.routingReason ?? input.intent.reason,
-      guardReason: input.guard.reason,
-      fallbackReason: input.intent.explainability?.fallbackReason,
-      focusReason: input.intent.explainability?.focusReason,
-      confidenceFactors: input.intent.confidenceFactors,
-      at: new Date().toISOString(),
-    },
+  });
+
+  if (!input.routingState) return merged;
+
+  const ctx = buildRequirementsIntentDispatchContext(input.routingState);
+  return applyIntentOrchestrationPhase3({
+    base: merged,
+    routingState: input.routingState,
+    userMessage: input.userMessage,
+    intent: input.intent,
+    guard: input.guard,
+    effectiveActionId: input.effectiveActionId,
+    clarificationResolved,
+    nextFocus: focus,
+    featureMetrics: ctx.featureMetrics,
+    availableActionIds: ctx.availableActionIds,
   });
 }
 
@@ -264,13 +279,35 @@ function finalizeDispatchResult(input: {
   const artifactHub = input.routingState
     ? buildArtifactHubOrchestrationState({ state: input.routingState })
     : undefined;
+  const orchForRec = input.routingState?.requirementsIntentOrchestrationV1;
   const proactive = buildProactiveActionRecommendations({
     stage: input.ctx.authoritativeStage,
     metrics: input.ctx.featureMetrics,
     availableActionIds: input.ctx.availableActionIds,
     artifactHub,
   });
-  const proactiveLabel = proactive[0]?.reason;
+  const prioritized = splitPrioritizedRecommendations(
+    orchForRec?.recommendationQueue?.length
+      ? orchForRec.recommendationQueue.map((r) => ({
+          actionId: r.actionId,
+          score: r.score,
+          reason: r.reason,
+          blocking: r.blocking,
+          generatedAt: r.generatedAt,
+        }))
+      : proactive.map((p) => ({
+          actionId: p.actionId,
+          score: p.priority,
+          reason: p.reason,
+          blocking: p.priority >= 90,
+          generatedAt: new Date().toISOString(),
+        })),
+  );
+  const proactiveLabel = prioritized.primary?.reason ?? proactive[0]?.reason;
+  const humanExplainability = buildOrchestrationHumanExplainability({
+    intent: input.intent,
+    guard: input.guard,
+  });
   const focusLabel = input.routingState
     ? (() => {
         const f = inferFocusFromMessage(input.userMessage ?? "", {
@@ -281,11 +318,16 @@ function finalizeDispatchResult(input: {
         return f ? `${f.type}:${f.id}` : undefined;
       })()
     : undefined;
-  const timelineDetail = intentRouterTimelinePayload(input.intent, input.guard, {
+  const rawTimeline = intentRouterTimelinePayload(input.intent, input.guard, {
     availableActionIds: input.ctx.availableActionIds,
     proactiveRecommendation: proactiveLabel,
     activeFocus: focusLabel,
     clarificationPending: input.routingState?.requirementsIntentOrchestrationV1?.clarification?.pending === true,
+  });
+  const timelineDetail = formatOrchestrationTimelineResponse({
+    group: orchestrationTimelineGroupForAction("intentRouterGuard"),
+    detail: rawTimeline,
+    ...humanExplainability,
   });
   const lowConfidence = !input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent);
   const orchPatch =
@@ -317,7 +359,9 @@ function finalizeDispatchResult(input: {
       userFacingMessage: parts.join("\n") || undefined,
       fallbackQuickActions,
       ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
-      proactiveRecommendations: proactive.map((p) => p.reason),
+      proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
+      secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
+      humanExplainability,
     };
   }
 
@@ -331,7 +375,9 @@ function finalizeDispatchResult(input: {
       userFacingMessage: input.intent.clarificationQuestion,
       fallbackQuickActions: input.ctx.chatQuickActions,
       ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
-      proactiveRecommendations: proactive.map((p) => p.reason),
+      proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
+      secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
+      humanExplainability,
     };
   }
 
@@ -347,7 +393,9 @@ function finalizeDispatchResult(input: {
     timelineDetail,
     ...(input.guard.warning ? { userFacingMessage: input.guard.warning } : {}),
     ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
-    proactiveRecommendations: proactive.map((p) => p.reason),
+    proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
+    secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
+    humanExplainability,
   };
 }
 
@@ -496,6 +544,7 @@ export function buildIntentRouterPromptTimelineEntry(input: {
 }): import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry {
   const now = input.createdAt ?? new Date().toISOString();
   const routerMode = input.dispatch.intent.routerMode;
+  const group = orchestrationTimelineGroupForAction("intentRouterGuard");
   return {
     stage: "service-flow",
     stageGroup: "service-planning",
@@ -505,6 +554,7 @@ export function buildIntentRouterPromptTimelineEntry(input: {
     provider: "internal",
     createdAt: now,
     routingDecision: routerMode,
+    orchestrationTraceGroup: group,
     promptText: input.userMessage.slice(0, 500),
     responseText: input.dispatch.timelineDetail,
   };

@@ -6,6 +6,7 @@ import {
   parseRequirementsIntentOrchestrationV1,
   type RequirementsIntentOrchestrationV1,
 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
+import { recoverRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationRecovery";
 import { softMigrateLegacyRoleSlotsArtifact } from "@/lib/featurePlanning/featurePlanningLegacyRoleSlots";
 import type { FeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { parseFeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
@@ -115,6 +116,8 @@ export type RequirementsPromptTimelineEntry = {
   createdAt: string;
   /** SingleChat 내부 오케스트레이션 메타(UX 비노출) */
   routingDecision?: string;
+  /** Phase 3 orchestration timeline grouping */
+  orchestrationTraceGroup?: string;
   matchedSlots?: readonly string[];
   updatedSlots?: readonly string[];
   /** 명시적 fallback 플래그(source와 함께 사용) */
@@ -909,7 +912,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   if (intentOrchRaw === undefined) requirementsIntentOrchestrationV1 = undefined;
   else if (intentOrchRaw === null) requirementsIntentOrchestrationV1 = null;
   else {
-    requirementsIntentOrchestrationV1 = parseRequirementsIntentOrchestrationV1(intentOrchRaw) ?? null;
+    const parsed = parseRequirementsIntentOrchestrationV1(intentOrchRaw) ?? null;
+    requirementsIntentOrchestrationV1 = parsed ? recoverRequirementsIntentOrchestration(parsed) : null;
   }
 
   return {

@@ -6,12 +6,29 @@ import { getQuickActionDefinition, quickActionFromDefinition, type QuickAction, 
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { ArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import type { RequirementsIntentOrchestrationV1 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
+import { MAX_CHAT_PRIORITIZED_RECOMMENDATIONS } from "@/lib/requirements/requirementsOrchestrationConstants";
 
 export type ProactiveActionRecommendation = Readonly<{
   readonly actionId: QuickActionId;
   readonly label: string;
   readonly reason: string;
   readonly priority: number;
+}>;
+
+/** Phase 3 prioritized recommendation queue entry. */
+export type OrchestrationRecommendation = Readonly<{
+  readonly actionId: QuickActionId;
+  readonly score: number;
+  readonly reason: string;
+  readonly blocking: boolean;
+  readonly generatedAt: string;
+}>;
+
+export type PrioritizedRecommendationQueue = Readonly<{
+  readonly primary: OrchestrationRecommendation | null;
+  readonly secondary: readonly OrchestrationRecommendation[];
+  readonly all: readonly OrchestrationRecommendation[];
 }>;
 
 const COVERAGE_SCREEN_THRESHOLD = 0.8;
@@ -77,4 +94,53 @@ export function proactiveRecommendationsToQuickActions(
   recs: readonly ProactiveActionRecommendation[],
 ): readonly QuickAction[] {
   return recs.map((r) => quickActionFromDefinition(getQuickActionDefinition(r.actionId), r.label));
+}
+
+function scoreFromLegacy(rec: ProactiveActionRecommendation, nowIso: string): OrchestrationRecommendation {
+  return {
+    actionId: rec.actionId,
+    score: rec.priority,
+    reason: rec.reason,
+    blocking: rec.priority >= 90,
+    generatedAt: nowIso,
+  };
+}
+
+export function buildPrioritizedRecommendationQueue(input: {
+  readonly stage: OrchestrationStage;
+  readonly metrics: FeatureDetailProjectionMetrics;
+  readonly availableActionIds: readonly QuickActionId[];
+  readonly artifactHub?: ArtifactHubOrchestrationState;
+  readonly orchestration?: RequirementsIntentOrchestrationV1 | null;
+  readonly lastIntentActionId?: QuickActionId | null;
+  readonly nowIso?: string;
+}): readonly OrchestrationRecommendation[] {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const legacy = buildProactiveActionRecommendations({
+    stage: input.stage,
+    metrics: input.metrics,
+    availableActionIds: input.availableActionIds,
+    artifactHub: input.artifactHub,
+  });
+
+  const scored = legacy.map((r) => {
+    let score = r.priority;
+    if (input.orchestration?.clarification?.pending) score -= 25;
+    if (input.orchestration?.activeFocus?.softStale) score -= 10;
+    if (input.lastIntentActionId === r.actionId) score -= 15;
+    if (input.metrics.featureCoverage >= 0.8 && r.actionId === "DEFINE_SCREEN") score += 5;
+    if (input.artifactHub?.hasStaleArtifact && r.actionId === "OPEN_ARTIFACT_HUB") score += 8;
+    return scoreFromLegacy({ ...r, priority: score }, nowIso);
+  });
+
+  return [...scored].sort((a, b) => b.score - a.score);
+}
+
+export function splitPrioritizedRecommendations(
+  queue: readonly OrchestrationRecommendation[],
+): PrioritizedRecommendationQueue {
+  const sorted = [...queue].sort((a, b) => b.score - a.score);
+  const primary = sorted[0] ?? null;
+  const secondary = sorted.slice(MAX_CHAT_PRIORITIZED_RECOMMENDATIONS);
+  return { primary, secondary, all: sorted };
 }

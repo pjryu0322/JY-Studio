@@ -11,6 +11,11 @@ export type ConversationFocusWire = Readonly<{
   readonly type: ConversationFocusType;
   readonly id: string;
   readonly label?: string;
+  readonly confidence?: number;
+  readonly lastReferencedAt?: string;
+  readonly referenceCount?: number;
+  readonly softStale?: boolean;
+  readonly focusSetAtStage?: string;
 }>;
 
 export type IntentClarificationTopic =
@@ -26,6 +31,13 @@ export type IntentClarificationWire = Readonly<{
   readonly question?: string;
   readonly candidateActionIds?: readonly QuickActionId[];
   readonly askedAt?: string;
+  readonly createdAt?: string;
+  readonly expiresAt?: string;
+  readonly retryCount?: number;
+  readonly unrelatedMessageCount?: number;
+  readonly abandoned?: boolean;
+  readonly abandonedAt?: string;
+  readonly abandonedReason?: string;
 }>;
 
 export type IntentRoutingMemoryWire = Readonly<{
@@ -38,10 +50,35 @@ export type IntentRoutingMemoryWire = Readonly<{
   readonly at?: string;
 }>;
 
+export type OrchestrationRecommendationWire = Readonly<{
+  readonly actionId: QuickActionId;
+  readonly score: number;
+  readonly reason: string;
+  readonly blocking: boolean;
+  readonly generatedAt: string;
+}>;
+
+export type ArtifactLifecycleEntryWire = Readonly<{
+  readonly artifactKey: string;
+  readonly generated: boolean;
+  readonly stale: boolean;
+  readonly sourceStage: string;
+  readonly sourceHash: string;
+  readonly generatedAt?: string;
+  readonly updatedAt?: string;
+  readonly staleReason?: string;
+}>;
+
 export type RequirementsIntentOrchestrationV1 = Readonly<{
   readonly version: 1;
   readonly updatedAt: string;
+  readonly orchestrationSessionId?: string;
+  readonly lastRecoveredAt?: string;
+  readonly turnCount?: number;
+  readonly lastFocusReferencedTurn?: number;
+  readonly alternateFocusHits?: number;
   readonly activeFocus?: ConversationFocusWire;
+  readonly archivedFocuses?: readonly ConversationFocusWire[];
   readonly currentEditingTarget?: Readonly<{
     readonly featureId?: string;
     readonly stepId?: string;
@@ -52,6 +89,9 @@ export type RequirementsIntentOrchestrationV1 = Readonly<{
   readonly clarification?: IntentClarificationWire;
   readonly recentConversationSummary?: string;
   readonly lastRouting?: IntentRoutingMemoryWire;
+  readonly recommendationQueue?: readonly OrchestrationRecommendationWire[];
+  readonly artifactLifecycle?: readonly ArtifactLifecycleEntryWire[];
+  readonly recentTransitions?: readonly string[];
 }>;
 
 const FOCUS_TYPES = new Set<ConversationFocusType>([
@@ -64,6 +104,100 @@ const FOCUS_TYPES = new Set<ConversationFocusType>([
   "none",
 ]);
 
+function parseFocus(raw: unknown): ConversationFocusWire | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const f = raw as Record<string, unknown>;
+  const type = String(f.type ?? "").trim() as ConversationFocusType;
+  const id = String(f.id ?? "").trim();
+  if (!FOCUS_TYPES.has(type) || !id) return undefined;
+  return {
+    type,
+    id,
+    ...(typeof f.label === "string" && f.label.trim() ? { label: f.label.trim().slice(0, 120) } : {}),
+    ...(typeof f.confidence === "number" && Number.isFinite(f.confidence)
+      ? { confidence: Math.max(0, Math.min(1, f.confidence)) }
+      : {}),
+    ...(typeof f.lastReferencedAt === "string" ? { lastReferencedAt: f.lastReferencedAt } : {}),
+    ...(typeof f.referenceCount === "number" ? { referenceCount: Math.max(0, Math.floor(f.referenceCount)) } : {}),
+    ...(f.softStale === true ? { softStale: true } : {}),
+    ...(typeof f.focusSetAtStage === "string" ? { focusSetAtStage: f.focusSetAtStage.trim().slice(0, 40) } : {}),
+  };
+}
+
+function parseClarification(raw: unknown): IntentClarificationWire | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const c = raw as Record<string, unknown>;
+  const pending = c.pending === true;
+  const candidateActionIds = Array.isArray(c.candidateActionIds)
+    ? c.candidateActionIds
+        .map((x) => String(x ?? "").trim())
+        .filter((id): id is QuickActionId => isQuickActionId(id))
+        .slice(0, 8)
+    : undefined;
+  return {
+    pending,
+    ...(typeof c.topic === "string" ? { topic: c.topic.trim() as IntentClarificationTopic } : {}),
+    ...(typeof c.question === "string" ? { question: c.question.trim().slice(0, 500) } : {}),
+    ...(candidateActionIds?.length ? { candidateActionIds } : {}),
+    ...(typeof c.askedAt === "string" ? { askedAt: c.askedAt } : {}),
+    ...(typeof c.createdAt === "string" ? { createdAt: c.createdAt } : {}),
+    ...(typeof c.expiresAt === "string" ? { expiresAt: c.expiresAt } : {}),
+    ...(typeof c.retryCount === "number" ? { retryCount: Math.max(0, Math.floor(c.retryCount)) } : {}),
+    ...(typeof c.unrelatedMessageCount === "number"
+      ? { unrelatedMessageCount: Math.max(0, Math.floor(c.unrelatedMessageCount)) }
+      : {}),
+    ...(c.abandoned === true ? { abandoned: true } : {}),
+    ...(typeof c.abandonedAt === "string" ? { abandonedAt: c.abandonedAt } : {}),
+    ...(typeof c.abandonedReason === "string" ? { abandonedReason: c.abandonedReason.slice(0, 80) } : {}),
+  };
+}
+
+function parseRecommendationQueue(raw: unknown): OrchestrationRecommendationWire[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: OrchestrationRecommendationWire[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const actionId = String(r.actionId ?? "").trim();
+    if (!isQuickActionId(actionId)) continue;
+    const score = Number(r.score);
+    if (!Number.isFinite(score)) continue;
+    const reason = String(r.reason ?? "").trim();
+    if (!reason) continue;
+    out.push({
+      actionId,
+      score,
+      reason: reason.slice(0, 500),
+      blocking: r.blocking === true,
+      generatedAt: String(r.generatedAt ?? new Date().toISOString()),
+    });
+  }
+  return out.length ? out.slice(0, 16) : undefined;
+}
+
+function parseArtifactLifecycle(raw: unknown): ArtifactLifecycleEntryWire[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ArtifactLifecycleEntryWire[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const artifactKey = String(r.artifactKey ?? "").trim();
+    const sourceHash = String(r.sourceHash ?? "").trim();
+    if (!artifactKey || !sourceHash) continue;
+    out.push({
+      artifactKey,
+      generated: r.generated === true,
+      stale: r.stale === true,
+      sourceStage: String(r.sourceStage ?? "").slice(0, 40),
+      sourceHash: sourceHash.slice(0, 240),
+      ...(typeof r.generatedAt === "string" ? { generatedAt: r.generatedAt } : {}),
+      ...(typeof r.updatedAt === "string" ? { updatedAt: r.updatedAt } : {}),
+      ...(typeof r.staleReason === "string" ? { staleReason: r.staleReason.slice(0, 80) } : {}),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 export function parseRequirementsIntentOrchestrationV1(raw: unknown): RequirementsIntentOrchestrationV1 | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
@@ -73,38 +207,11 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
   const updatedAt = String(o.updatedAt ?? "").trim();
   if (!updatedAt) return null;
 
-  let activeFocus: ConversationFocusWire | undefined;
-  if (o.activeFocus && typeof o.activeFocus === "object") {
-    const f = o.activeFocus as Record<string, unknown>;
-    const type = String(f.type ?? "").trim() as ConversationFocusType;
-    const id = String(f.id ?? "").trim();
-    if (FOCUS_TYPES.has(type) && id) {
-      activeFocus = {
-        type,
-        id,
-        ...(typeof f.label === "string" && f.label.trim() ? { label: f.label.trim().slice(0, 120) } : {}),
-      };
-    }
-  }
-
-  let clarification: IntentClarificationWire | undefined;
-  if (o.clarification && typeof o.clarification === "object") {
-    const c = o.clarification as Record<string, unknown>;
-    const pending = c.pending === true;
-    const candidateActionIds = Array.isArray(c.candidateActionIds)
-      ? c.candidateActionIds
-          .map((x) => String(x ?? "").trim())
-          .filter((id): id is QuickActionId => isQuickActionId(id))
-          .slice(0, 8)
-      : undefined;
-    clarification = {
-      pending,
-      ...(typeof c.topic === "string" ? { topic: c.topic.trim() as IntentClarificationTopic } : {}),
-      ...(typeof c.question === "string" ? { question: c.question.trim().slice(0, 500) } : {}),
-      ...(candidateActionIds?.length ? { candidateActionIds } : {}),
-      ...(typeof c.askedAt === "string" ? { askedAt: c.askedAt } : {}),
-    };
-  }
+  const activeFocus = parseFocus(o.activeFocus);
+  const clarification = parseClarification(o.clarification);
+  const archivedFocuses = Array.isArray(o.archivedFocuses)
+    ? o.archivedFocuses.map(parseFocus).filter((x): x is ConversationFocusWire => Boolean(x)).slice(0, 8)
+    : undefined;
 
   const lastSuggested = o.lastSuggestedActionId;
   const lastConfirmed = o.lastConfirmedActionId;
@@ -112,7 +219,19 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
   return {
     version: 1,
     updatedAt,
+    ...(typeof o.orchestrationSessionId === "string"
+      ? { orchestrationSessionId: o.orchestrationSessionId.trim().slice(0, 80) }
+      : {}),
+    ...(typeof o.lastRecoveredAt === "string" ? { lastRecoveredAt: o.lastRecoveredAt } : {}),
+    ...(typeof o.turnCount === "number" ? { turnCount: Math.max(0, Math.floor(o.turnCount)) } : {}),
+    ...(typeof o.lastFocusReferencedTurn === "number"
+      ? { lastFocusReferencedTurn: Math.max(0, Math.floor(o.lastFocusReferencedTurn)) }
+      : {}),
+    ...(typeof o.alternateFocusHits === "number"
+      ? { alternateFocusHits: Math.max(0, Math.floor(o.alternateFocusHits)) }
+      : {}),
     ...(activeFocus ? { activeFocus } : {}),
+    ...(archivedFocuses?.length ? { archivedFocuses } : {}),
     ...(o.currentEditingTarget && typeof o.currentEditingTarget === "object"
       ? {
           currentEditingTarget: {
@@ -139,6 +258,20 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
       ? { recentConversationSummary: o.recentConversationSummary.trim().slice(0, 2000) }
       : {}),
     ...(o.lastRouting && typeof o.lastRouting === "object" ? { lastRouting: o.lastRouting as IntentRoutingMemoryWire } : {}),
+    ...(parseRecommendationQueue(o.recommendationQueue)
+      ? { recommendationQueue: parseRecommendationQueue(o.recommendationQueue) }
+      : {}),
+    ...(parseArtifactLifecycle(o.artifactLifecycle)
+      ? { artifactLifecycle: parseArtifactLifecycle(o.artifactLifecycle) }
+      : {}),
+    ...(Array.isArray(o.recentTransitions)
+      ? {
+          recentTransitions: o.recentTransitions
+            .map((t) => String(t ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 24),
+        }
+      : {}),
   };
 }
 
@@ -156,6 +289,10 @@ export function mergeIntentOrchestrationPatch(
     updatedAt: now,
     ...(patch.clarification !== undefined ? { clarification: patch.clarification } : {}),
     ...(patch.activeFocus !== undefined ? { activeFocus: patch.activeFocus } : {}),
+    ...(patch.archivedFocuses !== undefined ? { archivedFocuses: patch.archivedFocuses } : {}),
     ...(patch.lastRouting !== undefined ? { lastRouting: patch.lastRouting } : {}),
+    ...(patch.recommendationQueue !== undefined ? { recommendationQueue: patch.recommendationQueue } : {}),
+    ...(patch.artifactLifecycle !== undefined ? { artifactLifecycle: patch.artifactLifecycle } : {}),
+    ...(patch.recentTransitions !== undefined ? { recentTransitions: patch.recentTransitions } : {}),
   };
 }
