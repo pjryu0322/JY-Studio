@@ -6,6 +6,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "tests/api/**/*.test.ts",
+      "tests/orchestration/**/*.test.ts",
       "tests/harness/**/*.test.ts",
       "tests/overlay/**/*.test.ts",
       "tests/overlay-ui/**/*.test.ts",
