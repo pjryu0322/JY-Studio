@@ -183,18 +183,8 @@ import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlo
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
 import { FeatureDetailCanvasOverlay } from "@/components/feature-planning/FeatureDetailCanvasOverlay";
 import { FeatureDetailEditDrawer } from "@/components/feature-planning/FeatureDetailEditDrawer";
-import {
-  activeFeatureDetailSlots,
-  confirmFeatureDetailSlot,
-  featureDetailSlotToEditDraft,
-  markFeatureDetailSlotPartial,
-  mergeFeatureDetailReadinessPercent,
-  obsoleteFeatureDetailSlot,
-  projectFeatureDetailMetrics,
-  withFeatureDetailFocus,
-  type FeatureDetailSlotEditDraft,
-  type FeatureDetailSlotsV1,
-} from "@/lib/requirements/featureDetailSlots";
+import { mergeFeatureDetailReadinessPercent, projectFeatureDetailMetrics } from "@/lib/requirements/featureDetailSlots";
+import { useFeatureDetailEditing } from "@/components/requirements/workspace/useFeatureDetailEditing";
 import { ServiceFlowActorEditDrawer } from "@/components/service-flow/ServiceFlowActorEditDrawer";
 import { ServiceFlowActorAssignmentDrawer } from "@/components/service-flow/ServiceFlowActorAssignmentDrawer";
 import {
@@ -276,11 +266,6 @@ export function RequirementsWorkspace({
   const [assignmentDrawerOpen, setAssignmentDrawerOpen] = useState(false);
   const [assignmentStepId, setAssignmentStepId] = useState<string | null>(null);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
-  const [featureDetailEditOpen, setFeatureDetailEditOpen] = useState(false);
-  const [featureDetailEditSlotId, setFeatureDetailEditSlotId] = useState<string | null>(null);
-  const [featureDetailEditBusy, setFeatureDetailEditBusy] = useState(false);
-  const [featureDetailConfirmError, setFeatureDetailConfirmError] = useState<string | null>(null);
-  const [featureDetailRevision, setFeatureDetailRevision] = useState(0);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -926,6 +911,17 @@ export function RequirementsWorkspace({
     },
     [persistStateJsonOnly]
   );
+
+  const featureDetailEditing = useFeatureDetailEditing({
+    stateJsonRef,
+    persistedFeatureDetail: persistedPromptState.featureDetailSlotsV1,
+    serviceFlow,
+    persistStateJsonOnly,
+    appendSingleChatPromptTimeline,
+    setActiveCanvasView,
+    showSuccessToast,
+    showErrorToast,
+  });
 
   const persistServiceFlowWithOrchestration = useCallback(
     async (next: RequirementsServiceFlowV1 | null): Promise<ServiceFlowOrchestrationSyncResult | null> => {
@@ -2013,251 +2009,6 @@ export function RequirementsWorkspace({
     void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
   }, [busy, deliverableGenerateBusy, remoteLocked, latestProblemInterviewStateForGate, handleGenerateDeliverables, showErrorToast]);
 
-  const resolveFeatureDetailArtifact = useCallback((): FeatureDetailSlotsV1 | null => {
-    void featureDetailRevision;
-    return stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1 ?? null;
-  }, [persistedPromptState, featureDetailRevision]);
-
-  const appendFeatureDetailMutationTimeline = useCallback(
-    (artifact: FeatureDetailSlotsV1) => {
-      const m = artifact.lastMutation;
-      if (!m) return;
-      appendSingleChatPromptTimeline({
-        stage: "feature-planning",
-        stageGroup: "service-planning",
-        workspaceScreenKey: "feature_planning",
-        action: "feature_detail_mutation",
-        source: "internal",
-        createdAt: m.at,
-        routingDecision: m.featureAction,
-        responseText: [
-          `feature:${m.featureId ?? ""}`,
-          `linkedStep:${m.linkedStepId ?? ""}`,
-          `featureAction:${m.featureAction}`,
-          m.previousStatus ? `previousStatus:${m.previousStatus}` : "",
-          m.nextStatus ? `nextStatus:${m.nextStatus}` : "",
-          `mutationSource:${m.mutationSource}`,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      });
-    },
-    [appendSingleChatPromptTimeline],
-  );
-
-  const persistFeatureDetailArtifact = useCallback(
-    async (next: FeatureDetailSlotsV1) => {
-      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
-        featureDetailSlotsV1: next,
-      });
-      await persistStateJsonOnly({ featureDetailSlotsV1: next });
-      appendFeatureDetailMutationTimeline(next);
-      setFeatureDetailRevision((n) => n + 1);
-    },
-    [persistStateJsonOnly, appendFeatureDetailMutationTimeline],
-  );
-
-  const openFeatureDetailEdit = useCallback(
-    (slotId?: string) => {
-      const artifact = resolveFeatureDetailArtifact();
-      const active = artifact ? activeFeatureDetailSlots(artifact) : [];
-      const target =
-        slotId ??
-        artifact?.focusFeatureId ??
-        active.find((s) => s.status === "candidate" || s.status === "partial")?.id ??
-        active[0]?.id ??
-        null;
-      setActiveCanvasView("feature-detail");
-      if (!target || !artifact) return;
-      const focused = withFeatureDetailFocus(artifact, target);
-      if (focused.focusFeatureId !== artifact.focusFeatureId) {
-        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
-          featureDetailSlotsV1: focused,
-        });
-        void persistStateJsonOnly({ featureDetailSlotsV1: focused });
-        setFeatureDetailRevision((n) => n + 1);
-      }
-      setFeatureDetailEditSlotId(target);
-      setFeatureDetailConfirmError(null);
-      setFeatureDetailEditOpen(true);
-    },
-    [resolveFeatureDetailArtifact, persistStateJsonOnly],
-  );
-
-  const mutateFeatureDetailFromCanvas = useCallback(
-    async (
-      slotId: string,
-      mode: "partial" | "confirm" | "obsolete",
-    ) => {
-      const artifact = resolveFeatureDetailArtifact();
-      const slot = artifact?.slots.find((s) => s.id === slotId);
-      if (!artifact || !slot) return;
-      setFeatureDetailEditBusy(true);
-      setFeatureDetailConfirmError(null);
-      try {
-        if (mode === "obsolete") {
-          const next = obsoleteFeatureDetailSlot({
-            artifact,
-            featureId: slotId,
-            mutationSource: "feature_detail_canvas",
-          });
-          await persistFeatureDetailArtifact(next);
-          if (featureDetailEditSlotId === slotId) {
-            setFeatureDetailEditOpen(false);
-            setFeatureDetailEditSlotId(null);
-          }
-          showSuccessToast("기능을 폐기했습니다.");
-          return;
-        }
-        const draft = featureDetailSlotToEditDraft(slot);
-        if (mode === "partial") {
-          const next = markFeatureDetailSlotPartial({
-            artifact,
-            featureId: slotId,
-            draft,
-            mutationSource: "feature_detail_canvas",
-          });
-          await persistFeatureDetailArtifact(next);
-          showSuccessToast("기능을 부분 저장했습니다.");
-          return;
-        }
-        const { artifact: next, error } = confirmFeatureDetailSlot({
-          artifact,
-          featureId: slotId,
-          draft,
-          mutationSource: "feature_detail_canvas",
-        });
-        if (error) {
-          setFeatureDetailConfirmError(error);
-          openFeatureDetailEdit(slotId);
-          return;
-        }
-        await persistFeatureDetailArtifact(next);
-        showSuccessToast("기능을 확정했습니다.");
-      } catch {
-        showErrorToast("기능 저장에 실패했습니다.");
-      } finally {
-        setFeatureDetailEditBusy(false);
-      }
-    },
-    [
-      resolveFeatureDetailArtifact,
-      persistFeatureDetailArtifact,
-      featureDetailEditSlotId,
-      openFeatureDetailEdit,
-      showSuccessToast,
-      showErrorToast,
-    ],
-  );
-
-  const handleFeatureDetailPartialSave = useCallback(
-    async (draft: FeatureDetailSlotEditDraft) => {
-      const artifact = resolveFeatureDetailArtifact();
-      const featureId = featureDetailEditSlotId;
-      if (!artifact || !featureId) return;
-      setFeatureDetailEditBusy(true);
-      setFeatureDetailConfirmError(null);
-      try {
-        const next = markFeatureDetailSlotPartial({
-          artifact,
-          featureId,
-          draft,
-          mutationSource: "feature_detail_edit_drawer",
-        });
-        await persistFeatureDetailArtifact(next);
-        showSuccessToast("기능을 부분 저장했습니다.");
-      } catch {
-        showErrorToast("기능 부분 저장에 실패했습니다.");
-      } finally {
-        setFeatureDetailEditBusy(false);
-      }
-    },
-    [
-      resolveFeatureDetailArtifact,
-      featureDetailEditSlotId,
-      persistFeatureDetailArtifact,
-      showSuccessToast,
-      showErrorToast,
-    ],
-  );
-
-  const handleFeatureDetailConfirm = useCallback(
-    async (draft: FeatureDetailSlotEditDraft) => {
-      const artifact = resolveFeatureDetailArtifact();
-      const featureId = featureDetailEditSlotId;
-      if (!artifact || !featureId) return;
-      setFeatureDetailEditBusy(true);
-      setFeatureDetailConfirmError(null);
-      try {
-        const { artifact: next, error } = confirmFeatureDetailSlot({
-          artifact,
-          featureId,
-          draft,
-          mutationSource: "feature_detail_edit_drawer",
-        });
-        if (error) {
-          setFeatureDetailConfirmError(error);
-          return;
-        }
-        await persistFeatureDetailArtifact(next);
-        showSuccessToast("기능을 확정했습니다.");
-      } catch {
-        showErrorToast("기능 확정에 실패했습니다.");
-      } finally {
-        setFeatureDetailEditBusy(false);
-      }
-    },
-    [
-      resolveFeatureDetailArtifact,
-      featureDetailEditSlotId,
-      persistFeatureDetailArtifact,
-      showSuccessToast,
-      showErrorToast,
-    ],
-  );
-
-  const handleFeatureDetailObsolete = useCallback(async () => {
-    const artifact = resolveFeatureDetailArtifact();
-    const featureId = featureDetailEditSlotId;
-    if (!artifact || !featureId) return;
-    setFeatureDetailEditBusy(true);
-    try {
-      const next = obsoleteFeatureDetailSlot({
-        artifact,
-        featureId,
-        mutationSource: "feature_detail_edit_drawer",
-      });
-      await persistFeatureDetailArtifact(next);
-      setFeatureDetailEditOpen(false);
-      setFeatureDetailEditSlotId(null);
-      showSuccessToast("기능을 폐기했습니다.");
-    } catch {
-      showErrorToast("기능 폐기에 실패했습니다.");
-    } finally {
-      setFeatureDetailEditBusy(false);
-    }
-  }, [
-    resolveFeatureDetailArtifact,
-    featureDetailEditSlotId,
-    persistFeatureDetailArtifact,
-    showSuccessToast,
-    showErrorToast,
-  ]);
-
-  const featureDetailArtifactLive = resolveFeatureDetailArtifact();
-  const featureDetailEditSlot =
-    featureDetailArtifactLive?.slots.find((s) => s.id === featureDetailEditSlotId) ?? null;
-  const featureDetailNavSlotIds = useMemo(
-    () => activeFeatureDetailSlots(featureDetailArtifactLive).map((s) => s.id),
-    [featureDetailArtifactLive],
-  );
-  const featureDetailFlowSteps = useMemo(() => {
-    const hydrated = hydrateServiceFlowStepsFromAlternativePayload(
-      serviceFlow ?? { createdAt: "", updatedAt: "", actors: [], steps: [] },
-    );
-    return [...(hydrated.steps ?? [])].sort((a, b) => a.order - b.order);
-  }, [serviceFlow]);
-
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName
     ? trimmedProjectName
@@ -2305,7 +2056,7 @@ export function RequirementsWorkspace({
       setActorEditPhase((p) => nextActorEditingPhase(p, "open"));
       setActorEditOpen(true);
     },
-    onEnterFeatureDetailEdit: () => openFeatureDetailEdit(),
+    onEnterFeatureDetailEdit: () => void featureDetailEditing.openEdit(),
   });
 
   const handleActorEditSave = useCallback(
@@ -2644,32 +2395,29 @@ export function RequirementsWorkspace({
       />
       <FeatureDetailCanvasOverlay
         open={activeCanvasView === "feature-detail"}
-        artifact={featureDetailArtifactLive}
-        selectedSlotId={featureDetailEditSlotId}
+        artifact={featureDetailEditing.artifactLive}
+        selectedSlotId={featureDetailEditing.editSlotId}
         onClose={() => {
           setActiveCanvasView(null);
-          setFeatureDetailEditOpen(false);
+          featureDetailEditing.closeEdit();
         }}
-        onEditSlot={(slotId) => openFeatureDetailEdit(slotId)}
-        onPartialSaveSlot={(slotId) => void mutateFeatureDetailFromCanvas(slotId, "partial")}
-        onConfirmSlot={(slotId) => void mutateFeatureDetailFromCanvas(slotId, "confirm")}
-        onObsoleteSlot={(slotId) => void mutateFeatureDetailFromCanvas(slotId, "obsolete")}
+        onEditSlot={(slotId) => void featureDetailEditing.openEdit(slotId)}
+        onPartialSaveSlot={(slotId) => void featureDetailEditing.mutateFromCanvas(slotId, "partial")}
+        onConfirmSlot={(slotId) => void featureDetailEditing.mutateFromCanvas(slotId, "confirm")}
+        onObsoleteSlot={(slotId) => void featureDetailEditing.mutateFromCanvas(slotId, "obsolete")}
       />
       <FeatureDetailEditDrawer
-        open={featureDetailEditOpen}
-        slot={featureDetailEditSlot}
-        slotIds={featureDetailNavSlotIds}
-        steps={featureDetailFlowSteps}
-        busy={featureDetailEditBusy}
-        confirmError={featureDetailConfirmError}
-        onNavigateSlot={(slotId) => openFeatureDetailEdit(slotId)}
-        onClose={() => {
-          setFeatureDetailEditOpen(false);
-          setFeatureDetailConfirmError(null);
-        }}
-        onPartialSave={handleFeatureDetailPartialSave}
-        onConfirm={handleFeatureDetailConfirm}
-        onObsolete={handleFeatureDetailObsolete}
+        open={featureDetailEditing.editOpen}
+        slot={featureDetailEditing.editSlot}
+        slotIds={featureDetailEditing.navSlotIds}
+        steps={featureDetailEditing.flowSteps}
+        busy={featureDetailEditing.editBusy}
+        confirmError={featureDetailEditing.confirmError}
+        onNavigateSlot={(slotId) => void featureDetailEditing.openEdit(slotId)}
+        onClose={featureDetailEditing.closeEdit}
+        onPartialSave={featureDetailEditing.handlePartialSave}
+        onConfirm={featureDetailEditing.handleConfirm}
+        onObsolete={featureDetailEditing.handleObsolete}
       />
 
       <ServiceFlowActorEditDrawer

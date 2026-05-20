@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyFeatureDetailSlotMutation,
   buildFeatureDetailBootstrapMessage,
   confirmFeatureDetailSlot,
   deriveFeatureTitleFromStepTitle,
@@ -67,6 +68,35 @@ describe("featureDetailSlots", () => {
     const metrics = projectFeatureDetailMetrics(confirmed);
     expect(metrics.confirmedFeatureCount).toBe(1);
     expect(metrics.featureCoverage).toBeGreaterThan(0);
+  });
+
+  it("applyFeatureDetailSlotMutation unifies partial/confirm/obsolete", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const artifact = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const slot = artifact.slots[0]!;
+    const partial = applyFeatureDetailSlotMutation({
+      artifact,
+      featureId: slot.id,
+      mode: "partial",
+      draft: { ...featureDetailSlotToEditDraft(slot), inputData: "only-in" },
+      mutationSource: "test_unified",
+      nowIso: now,
+    });
+    expect(partial.artifact.slots.find((s) => s.id === slot.id)?.status).toBe("partial");
+
+    const confirm = applyFeatureDetailSlotMutation({
+      artifact: partial.artifact,
+      featureId: slot.id,
+      mode: "confirm",
+      draft: {
+        ...featureDetailSlotToEditDraft(slot),
+        inputData: "in",
+        processRules: "proc",
+      },
+      mutationSource: "test_unified",
+      nowIso: now,
+    });
+    expect(confirm.artifact.slots.find((s) => s.id === slot.id)?.status).toBe("confirmed");
   });
 
   it("A: candidate edit → partial 저장", () => {

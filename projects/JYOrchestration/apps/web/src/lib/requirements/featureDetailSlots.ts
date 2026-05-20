@@ -407,6 +407,49 @@ export function confirmFeatureDetailSlot(input: {
   };
 }
 
+export type FeatureDetailSlotMutationMode = "partial" | "confirm" | "obsolete";
+
+export function applyFeatureDetailSlotMutation(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly featureId: string;
+  readonly mode: FeatureDetailSlotMutationMode;
+  readonly draft?: FeatureDetailSlotEditDraft;
+  readonly mutationSource: string;
+  readonly nowIso?: string;
+}): { readonly artifact: FeatureDetailSlotsV1; readonly error?: string } {
+  if (input.mode === "obsolete") {
+    return {
+      artifact: obsoleteFeatureDetailSlot({
+        artifact: input.artifact,
+        featureId: input.featureId,
+        mutationSource: input.mutationSource,
+        nowIso: input.nowIso,
+      }),
+    };
+  }
+  const slot = input.artifact.slots.find((s) => s.id === input.featureId);
+  if (!slot) return { artifact: input.artifact, error: "기능을 찾을 수 없습니다." };
+  const draft = input.draft ?? featureDetailSlotToEditDraft(slot);
+  if (input.mode === "partial") {
+    return {
+      artifact: markFeatureDetailSlotPartial({
+        artifact: input.artifact,
+        featureId: input.featureId,
+        draft,
+        mutationSource: input.mutationSource,
+        nowIso: input.nowIso,
+      }),
+    };
+  }
+  return confirmFeatureDetailSlot({
+    artifact: input.artifact,
+    featureId: input.featureId,
+    draft,
+    mutationSource: input.mutationSource,
+    nowIso: input.nowIso,
+  });
+}
+
 export function obsoleteFeatureDetailSlot(input: {
   readonly artifact: FeatureDetailSlotsV1;
   readonly featureId: string;
