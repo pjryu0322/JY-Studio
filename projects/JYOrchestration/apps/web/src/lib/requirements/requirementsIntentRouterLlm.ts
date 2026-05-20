@@ -12,6 +12,7 @@ import {
   type IntentType,
   type RequirementsIntentRouterInput,
 } from "@/lib/requirements/requirementsIntentRouterTypes";
+import { memorySummaryForRouterPayload } from "@/lib/requirements/requirementsConversationMemory";
 import { buildProjectionSummaryForIntentRouter } from "@/lib/requirements/requirementsIntentRouterTypes";
 
 export type RequirementsIntentRouterLlmResult =
@@ -73,6 +74,9 @@ function buildIntentRouterUserPayload(input: RequirementsIntentRouterInput): str
       projectionSummary: buildProjectionSummaryForIntentRouter(input),
       projectName: input.projectName ?? "",
       projectDescription: String(input.projectDescription ?? "").slice(0, 800),
+      orchestrationMemory: input.conversationMemory
+        ? memorySummaryForRouterPayload(input.conversationMemory)
+        : null,
     },
     null,
     0,

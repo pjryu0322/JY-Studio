@@ -1,9 +1,12 @@
 "use client";
 
-import type { IntentRoutingResult } from "@/lib/requirements/requirementsIntentRouterTypes";
+import type { OrchestrationConversationMemory } from "@/lib/requirements/requirementsConversationMemory";
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
+import type { IntentRoutingResult } from "@/lib/requirements/requirementsIntentRouterTypes";
+import type { IntentClarificationWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
+import { memorySummaryForRouterPayload } from "@/lib/requirements/requirementsConversationMemory";
 
 export type PostRequirementsIntentRouterBody = Readonly<{
   readonly projectId: string;
@@ -15,6 +18,8 @@ export type PostRequirementsIntentRouterBody = Readonly<{
   readonly chatVisibleActionIds: readonly QuickActionId[];
   readonly conversationState?: string | null;
   readonly featureMetrics: FeatureDetailProjectionMetrics;
+  readonly conversationMemory?: OrchestrationConversationMemory;
+  readonly clarification?: IntentClarificationWire;
 }>;
 
 export async function postRequirementsIntentRouter(
@@ -26,7 +31,12 @@ export async function postRequirementsIntentRouter(
   const res = await fetch("/api/requirements/intent-router", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      conversationMemory: body.conversationMemory
+        ? memorySummaryForRouterPayload(body.conversationMemory)
+        : undefined,
+    }),
   });
   const json = (await res.json()) as {
     success?: boolean;

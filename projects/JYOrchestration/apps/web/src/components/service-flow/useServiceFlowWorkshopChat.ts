@@ -603,6 +603,10 @@ export function useServiceFlowWorkshopChat({
           orchestrationContextRef.current,
         );
         const intentCtx = buildRequirementsIntentDispatchContext(intentState);
+        const recentMessageLines = (messagesRef.current ?? []).slice(-8).map((m) => ({
+          role: m.role === "user" ? ("user" as const) : ("ai" as const),
+          body: m.body,
+        }));
         const routed = await dispatchRequirementsUserIntentAsync({
           userMessage: body,
           directQuickActionId: quickAction?.id ?? null,
@@ -613,7 +617,14 @@ export function useServiceFlowWorkshopChat({
           projectDescription,
           orchestrationContext: orchestrationContextRef.current,
           serviceFlowV1: flowRef.current,
+          routingState: intentState,
+          recentMessageLines,
         });
+        if (routed.intentOrchestrationPatch) {
+          await onAnalyzeStatePatchRef.current?.({
+            requirementsIntentOrchestrationV1: routed.intentOrchestrationPatch,
+          });
+        }
         emitPromptTrace(buildIntentRouterPromptTimelineEntry({ userMessage: body, dispatch: routed }));
 
         const effective = routed.effectiveQuickAction;

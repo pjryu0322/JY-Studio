@@ -6,7 +6,9 @@ import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestr
 import { isQuickActionId, type QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { routeRequirementsIntentAsync } from "@/lib/requirements/requirementsIntentRouter";
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
+import type { OrchestrationConversationMemory } from "@/lib/requirements/requirementsConversationMemory";
 import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
+import type { IntentClarificationWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 
 type Body = {
   projectId?: string;
@@ -18,6 +20,8 @@ type Body = {
   chatVisibleActionIds?: string[];
   conversationState?: string | null;
   featureMetrics?: FeatureDetailProjectionMetrics;
+  conversationMemory?: OrchestrationConversationMemory;
+  clarification?: IntentClarificationWire;
 };
 
 function parseActionIds(raw: unknown): QuickActionId[] {
@@ -76,9 +80,12 @@ export async function POST(request: NextRequest) {
       featureMetrics,
       projectName: String(body.projectName ?? "").trim(),
       projectDescription: String(body.projectDescription ?? "").trim(),
+      conversationMemory: body.conversationMemory,
     };
 
-    const intent = await routeRequirementsIntentAsync(routerInput);
+    const intent = await routeRequirementsIntentAsync(routerInput, {
+      clarification: body.clarification,
+    });
     return NextResponse.json({ success: true, data: { intent } });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -178,6 +178,7 @@ import {
   buildProjectArtifactHubCatalog,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
+import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
@@ -840,6 +841,21 @@ export function RequirementsWorkspace({
     fetchNonce,
     project?.requirementsStateJson,
   ]);
+
+  const artifactHubOrchestration = useMemo(() => {
+    const st: RequirementsStateJson = {
+      ...persistedPromptState,
+      featureDetailSlotsV1:
+        stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1,
+      projectArtifacts:
+        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
+    };
+    return buildArtifactHubOrchestrationState({
+      state: st,
+      deliverableAssets: deliverableAssetsFromProject,
+      projectArtifacts: st.projectArtifacts ?? undefined,
+    });
+  }, [persistedPromptState, deliverableAssetsFromProject, saveState, fetchNonce, project?.requirementsStateJson]);
 
   const deliverableViewerAssets = useMemo(
     () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
@@ -2506,7 +2522,9 @@ export function RequirementsWorkspace({
         artifactHubControls={
           resolvedProjectId.trim()
             ? {
-                count: showWorkspaceHubBadges ? artifactHubCatalog.length : 0,
+                count: showWorkspaceHubBadges
+                  ? Math.max(artifactHubCatalog.length, artifactHubOrchestration.generatableCount)
+                  : 0,
                 onOpen: () => setArtifactHubOpen(true),
               }
             : null

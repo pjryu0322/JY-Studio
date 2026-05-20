@@ -1,11 +1,13 @@
 /**
- * Intent Router shared types — LLM / deterministic / dispatch.
+ * Intent Router shared types — LLM / deterministic / dispatch / phase-2 continuity.
  */
 
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { RequirementsOrchestrationProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
+import type { OrchestrationConversationMemory } from "@/lib/requirements/requirementsConversationMemory";
+import type { ConversationFocusWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 
 export type IntentType =
   | "orchestration_action"
@@ -15,7 +17,23 @@ export type IntentType =
   | "question"
   | "unknown";
 
-export type IntentRouterMode = "direct" | "deterministic" | "llm" | "fallback";
+export type IntentRouterMode =
+  | "direct"
+  | "deterministic"
+  | "llm"
+  | "fallback"
+  | "timeout_fallback"
+  | "invalid_json_fallback"
+  | "rate_limit_fallback"
+  | "clarification_resolution";
+
+export type IntentRoutingExplainability = Readonly<{
+  readonly routingReason?: string;
+  readonly guardReason?: string;
+  readonly fallbackReason?: string;
+  readonly focusReason?: string;
+  readonly confidenceFactors?: readonly string[];
+}>;
 
 export type IntentRoutingResult = Readonly<{
   readonly intentType: IntentType;
@@ -24,6 +42,8 @@ export type IntentRoutingResult = Readonly<{
   readonly reason?: string;
   readonly clarificationQuestion?: string;
   readonly routerMode: IntentRouterMode;
+  readonly confidenceFactors?: readonly string[];
+  readonly explainability?: IntentRoutingExplainability;
   readonly extractedTargets?: Readonly<{
     readonly featureIds?: readonly string[];
     readonly stepIds?: readonly string[];
@@ -43,6 +63,8 @@ export type RequirementsIntentRouterInput = Readonly<{
   readonly featureMetrics: FeatureDetailProjectionMetrics;
   readonly projectName?: string;
   readonly projectDescription?: string;
+  readonly conversationMemory?: OrchestrationConversationMemory;
+  readonly activeFocus?: ConversationFocusWire | null;
 }>;
 
 export const ARTIFACT_CHAT_SUPPRESSED_ACTION_IDS = [
@@ -57,13 +79,13 @@ export function isArtifactChatSuppressedActionId(id: QuickActionId): id is Artif
   return (ARTIFACT_CHAT_SUPPRESSED_ACTION_IDS as readonly string[]).includes(id);
 }
 
-/** LLM may only pick from these ids (artifact doc actions excluded). */
 export function actionIdsForLlmIntentRouter(available: readonly QuickActionId[]): readonly QuickActionId[] {
   return available.filter((id) => !isArtifactChatSuppressedActionId(id));
 }
 
 export function buildProjectionSummaryForIntentRouter(input: RequirementsIntentRouterInput): string {
   const m = input.featureMetrics;
+  const mem = input.conversationMemory;
   return [
     `stage=${input.authoritativeStage}`,
     `conv=${input.projection.conversationState ?? "none"}`,
@@ -71,5 +93,18 @@ export function buildProjectionSummaryForIntentRouter(input: RequirementsIntentR
     `coverage=${Math.round(m.featureCoverage * 100)}%`,
     `allowedActions=${input.availableActionIds.join(",")}`,
     `chatVisible=${input.chatVisibleActionIds.join(",")}`,
-  ].join("; ");
+    mem?.activeFocus ? `focus=${mem.activeFocus.type}:${mem.activeFocus.id}` : "",
+    mem?.lastSuggestedAction ? `lastSuggested=${mem.lastSuggestedAction}` : "",
+    mem?.clarificationPending ? "clarificationPending=true" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+export function mapLlmFailureToRouterMode(code: string): IntentRouterMode {
+  const c = String(code ?? "").toUpperCase();
+  if (c.includes("TIMEOUT") || c === "NETWORK") return "timeout_fallback";
+  if (c.includes("429") || c.includes("RATE")) return "rate_limit_fallback";
+  if (c === "PARSE" || c.includes("JSON")) return "invalid_json_fallback";
+  return "fallback";
 }

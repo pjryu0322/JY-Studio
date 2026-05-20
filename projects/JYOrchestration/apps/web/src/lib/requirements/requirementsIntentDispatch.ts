@@ -41,6 +41,21 @@ import {
   listAllowedActionIdsForStage,
 } from "@/lib/requirements/requirementsQuickActionPolicy";
 import { postRequirementsIntentRouter } from "@/lib/requirements/requirementsIntentRouterClient";
+import { buildProactiveActionRecommendations } from "@/lib/requirements/requirementsActionRecommendation";
+import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import {
+  buildOrchestrationConversationMemory,
+  compressRecentMessagesForMemory,
+} from "@/lib/requirements/requirementsConversationMemory";
+import { inferFocusFromMessage, updateFocusAfterAction } from "@/lib/requirements/requirementsConversationFocus";
+import {
+  buildClarificationPendingState,
+  clearClarificationState,
+} from "@/lib/requirements/requirementsIntentClarification";
+import {
+  mergeIntentOrchestrationPatch,
+  type RequirementsIntentOrchestrationV1,
+} from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
 
@@ -66,6 +81,8 @@ export type RequirementsIntentDispatchResult = Readonly<{
   readonly timelineDetail: string;
   readonly userFacingMessage?: string;
   readonly fallbackQuickActions?: readonly QuickAction[];
+  readonly intentOrchestrationPatch?: RequirementsIntentOrchestrationV1;
+  readonly proactiveRecommendations?: readonly string[];
 }>;
 
 export function buildRequirementsIntentDispatchContext(
@@ -109,14 +126,30 @@ export function buildRequirementsIntentDispatchContext(
   };
 }
 
-function buildRouterInput(
-  input: {
-    readonly userMessage: string;
-    readonly ctx: RequirementsIntentDispatchContext;
-    readonly projectName?: string;
-    readonly projectDescription?: string;
-  },
-): RequirementsIntentRouterInput {
+function buildRouterInput(input: {
+  readonly userMessage: string;
+  readonly ctx: RequirementsIntentDispatchContext;
+  readonly routingState?: RequirementsStateJson;
+  readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
+  readonly projectName?: string;
+  readonly projectDescription?: string;
+}): RequirementsIntentRouterInput {
+  const state = input.routingState;
+  const memory = state
+    ? buildOrchestrationConversationMemory({
+        state,
+        recentMessageLines: input.recentMessageLines,
+        orchestration: state.requirementsIntentOrchestrationV1,
+      })
+    : undefined;
+  const focus =
+    state ?
+      inferFocusFromMessage(input.userMessage, {
+        orchestration: state.requirementsIntentOrchestrationV1,
+        featureDetailSlotsV1: state.featureDetailSlotsV1,
+        serviceFlowV1: state.serviceFlowV1,
+      })
+    : null;
   return {
     userMessage: input.userMessage,
     authoritativeStage: input.ctx.authoritativeStage,
@@ -126,7 +159,64 @@ function buildRouterInput(
     featureMetrics: input.ctx.featureMetrics,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
+    conversationMemory: memory,
+    activeFocus: focus,
   };
+}
+
+function buildIntentOrchestrationPatchAfterDispatch(input: {
+  readonly prev: RequirementsIntentOrchestrationV1 | null | undefined;
+  readonly intent: IntentRoutingResult;
+  readonly guard: GuardResult;
+  readonly effectiveActionId: QuickActionId | null;
+  readonly userMessage: string;
+  readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
+  readonly routingState?: RequirementsStateJson;
+  readonly lowConfidenceClarification?: boolean;
+}): RequirementsIntentOrchestrationV1 {
+  const summary = compressRecentMessagesForMemory(input.recentMessageLines ?? []);
+  const focus =
+    input.routingState && input.effectiveActionId ?
+      updateFocusAfterAction({
+        actionId: input.effectiveActionId,
+        focus: inferFocusFromMessage(input.userMessage, {
+          orchestration: input.prev,
+          featureDetailSlotsV1: input.routingState.featureDetailSlotsV1,
+          serviceFlowV1: input.routingState.serviceFlowV1,
+        }),
+        featureDetailSlotsV1: input.routingState.featureDetailSlotsV1,
+      })
+    : input.prev?.activeFocus;
+
+  const clarification =
+    input.lowConfidenceClarification && input.intent.clarificationQuestion ?
+      buildClarificationPendingState({
+        question: input.intent.clarificationQuestion,
+        candidateActionIds:
+          input.guard.fallbackActionIds ??
+          (input.routingState ?
+            buildRequirementsIntentDispatchContext(input.routingState).chatQuickActions.map((a) => a.id)
+          : undefined),
+      })
+    : input.effectiveActionId ? clearClarificationState()
+    : input.prev?.clarification;
+
+  return mergeIntentOrchestrationPatch(input.prev, {
+    activeFocus: focus,
+    recentConversationSummary: summary,
+    lastSuggestedActionId: input.intent.suggestedActionId,
+    lastConfirmedActionId: input.effectiveActionId ?? input.prev?.lastConfirmedActionId ?? null,
+    clarification,
+    lastRouting: {
+      routerMode: input.intent.routerMode,
+      routingReason: input.intent.explainability?.routingReason ?? input.intent.reason,
+      guardReason: input.guard.reason,
+      fallbackReason: input.intent.explainability?.fallbackReason,
+      focusReason: input.intent.explainability?.focusReason,
+      confidenceFactors: input.intent.confidenceFactors,
+      at: new Date().toISOString(),
+    },
+  });
 }
 
 function resolveGuardedEffectiveActionId(
@@ -144,12 +234,40 @@ function finalizeDispatchResult(input: {
   readonly ctx: RequirementsIntentDispatchContext;
   readonly directQuickActionLabel?: string | null;
   readonly skipLowConfidenceCheck?: boolean;
+  readonly routingState?: RequirementsStateJson;
+  readonly userMessage?: string;
+  readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
 }): RequirementsIntentDispatchResult {
   const suggested = input.intent.suggestedActionId;
   const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  const artifactHub = input.routingState
+    ? buildArtifactHubOrchestrationState({ state: input.routingState })
+    : undefined;
+  const proactive = buildProactiveActionRecommendations({
+    stage: input.ctx.authoritativeStage,
+    metrics: input.ctx.featureMetrics,
+    availableActionIds: input.ctx.availableActionIds,
+    artifactHub,
+  });
+  const proactiveLabel = proactive[0]?.reason;
   const timelineDetail = intentRouterTimelinePayload(input.intent, input.guard, {
     availableActionIds: input.ctx.availableActionIds,
+    proactiveRecommendation: proactiveLabel,
   });
+  const lowConfidence = !input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent);
+  const orchPatch =
+    input.routingState && input.userMessage ?
+      buildIntentOrchestrationPatchAfterDispatch({
+        prev: input.routingState.requirementsIntentOrchestrationV1,
+        intent: input.intent,
+        guard: input.guard,
+        effectiveActionId: effectiveId,
+        userMessage: input.userMessage,
+        recentMessageLines: input.recentMessageLines,
+        routingState: input.routingState,
+        lowConfidenceClarification: lowConfidence && !effectiveId,
+      })
+    : undefined;
 
   if (!effectiveId) {
     const fallbackIds = input.guard.fallbackActionIds ?? [];
@@ -165,10 +283,12 @@ function finalizeDispatchResult(input: {
       timelineDetail,
       userFacingMessage: parts.join("\n") || undefined,
       fallbackQuickActions,
+      ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
+      proactiveRecommendations: proactive.map((p) => p.reason),
     };
   }
 
-  if (!input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent)) {
+  if (lowConfidence) {
     return {
       intent: input.intent,
       guard: { allowed: false, reason: input.intent.clarificationQuestion },
@@ -177,6 +297,8 @@ function finalizeDispatchResult(input: {
       timelineDetail,
       userFacingMessage: input.intent.clarificationQuestion,
       fallbackQuickActions: input.ctx.chatQuickActions,
+      ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
+      proactiveRecommendations: proactive.map((p) => p.reason),
     };
   }
 
@@ -191,6 +313,8 @@ function finalizeDispatchResult(input: {
     effectiveQuickAction,
     timelineDetail,
     ...(input.guard.warning ? { userFacingMessage: input.guard.warning } : {}),
+    ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
+    proactiveRecommendations: proactive.map((p) => p.reason),
   };
 }
 
@@ -200,16 +324,24 @@ export function dispatchRequirementsUserIntent(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly ctx: RequirementsIntentDispatchContext;
+  readonly routingState?: RequirementsStateJson;
+  readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
 }): RequirementsIntentDispatchResult {
   const directId =
     input.directQuickActionId ??
     resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
     null;
 
+  const routerInput = buildRouterInput({
+    userMessage: input.userMessage,
+    ctx: input.ctx,
+    routingState: input.routingState,
+    recentMessageLines: input.recentMessageLines,
+  });
   const intent: IntentRoutingResult =
     directId && input.ctx.availableActionIds.includes(directId) ?
-      routeRequirementsIntentDirect(buildRouterInput({ userMessage: input.userMessage, ctx: input.ctx }), directId)
-    : routeRequirementsIntent(buildRouterInput({ userMessage: input.userMessage, ctx: input.ctx }));
+      routeRequirementsIntentDirect(routerInput, directId)
+    : routeRequirementsIntent(routerInput);
 
   const suggested = intent.suggestedActionId;
   const guard: GuardResult =
@@ -228,6 +360,9 @@ export function dispatchRequirementsUserIntent(input: {
     ctx: input.ctx,
     directQuickActionLabel: input.directQuickActionLabel,
     skipLowConfidenceCheck: Boolean(directId),
+    routingState: input.routingState,
+    userMessage: input.userMessage,
+    recentMessageLines: input.recentMessageLines,
   });
 }
 
@@ -242,18 +377,28 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   readonly projectDescription?: string;
   readonly orchestrationContext?: RequirementsOrchestrationContextWire;
   readonly serviceFlowV1?: RequirementsServiceFlowV1 | null;
+  readonly routingState?: RequirementsStateJson;
+  readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
 }): Promise<RequirementsIntentDispatchResult> {
   const directId =
     input.directQuickActionId ??
     resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
     null;
 
+  const routingState =
+    input.routingState ??
+    buildIntentRouterStateFromOrchestrationContext(input.serviceFlowV1 ?? null, input.orchestrationContext);
+
   const routerInput = buildRouterInput({
     userMessage: input.userMessage,
     ctx: input.ctx,
+    routingState,
+    recentMessageLines: input.recentMessageLines,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
   });
+
+  const clarification = routingState.requirementsIntentOrchestrationV1?.clarification;
 
   let intent: IntentRoutingResult;
   if (directId && input.ctx.availableActionIds.includes(directId)) {
@@ -269,10 +414,15 @@ export async function dispatchRequirementsUserIntentAsync(input: {
       chatVisibleActionIds: input.ctx.chatQuickActions.map((a) => a.id),
       conversationState: input.ctx.projectionSlice.conversationState,
       featureMetrics: input.ctx.featureMetrics,
+      conversationMemory: routerInput.conversationMemory,
+      clarification,
     });
     intent =
       llmRes.ok ? llmRes.intent : (
-        await routeRequirementsIntentAsync(routerInput, { skipLlm: true })
+        await routeRequirementsIntentAsync(routerInput, {
+          skipLlm: true,
+          clarification,
+        })
       );
   }
 
@@ -293,6 +443,9 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     ctx: input.ctx,
     directQuickActionLabel: input.directQuickActionLabel,
     skipLowConfidenceCheck: Boolean(directId),
+    routingState,
+    userMessage: input.userMessage,
+    recentMessageLines: input.recentMessageLines,
   });
 }
 

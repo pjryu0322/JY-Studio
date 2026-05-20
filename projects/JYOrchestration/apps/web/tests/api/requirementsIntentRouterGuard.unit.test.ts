@@ -5,10 +5,7 @@ import {
   buildRequirementsIntentDispatchContext,
   dispatchRequirementsUserIntent,
 } from "@/lib/requirements/requirementsIntentDispatch";
-import {
-  intentRouterTimelinePayload,
-  routeRequirementsIntentAsync,
-} from "@/lib/requirements/requirementsIntentRouter";
+import { routeRequirementsIntentAsync } from "@/lib/requirements/requirementsIntentRouter";
 import { routeRequirementsIntentDeterministic } from "@/lib/requirements/requirementsIntentRouterDeterministic";
 import {
   filterQuickActionsForChatProjection,
@@ -144,9 +141,8 @@ describe("requirementsIntentRouter + guard follow-up", () => {
     expect(entry.responseText).toContain("routerMode:");
     expect(entry.responseText).toContain("guardAllowed:");
     expect(entry.responseText).toContain("availableActionIds:");
-    expect(intentRouterTimelinePayload(dispatch.intent, dispatch.guard, {
-      availableActionIds: ctx.availableActionIds,
-    })).toBe(dispatch.timelineDetail);
+    expect(dispatch.timelineDetail).toContain("routerMode:");
+    expect(dispatch.timelineDetail).toContain("proactiveRecommendation:");
   });
 
   it("artifact actions hidden from chat projection", () => {

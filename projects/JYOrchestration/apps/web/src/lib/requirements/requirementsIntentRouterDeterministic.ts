@@ -7,6 +7,7 @@ import {
   type QuickActionId,
 } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { getQuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
+import { messageRefersToActiveFocus } from "@/lib/requirements/requirementsConversationFocus";
 import {
   actionIdsForLlmIntentRouter,
   type IntentRoutingResult,
@@ -90,6 +91,30 @@ export function routeRequirementsIntentDeterministic(
       routerMode: "deterministic",
       clarificationQuestion: "무엇을 도와드릴까요?",
     };
+  }
+
+  const focus = input.activeFocus ?? input.conversationMemory?.activeFocus ?? null;
+  if (focus && messageRefersToActiveFocus(msg)) {
+    if (focus.type === "feature" && pickable.includes("EDIT_FEATURES")) {
+      return {
+        intentType: "edit_request",
+        suggestedActionId: "EDIT_FEATURES",
+        confidence: 0.78,
+        reason: "focus continuity — feature refinement",
+        routerMode: "deterministic",
+        explainability: { focusReason: `activeFocus:feature:${focus.id}`, routingReason: "deictic→feature edit" },
+      };
+    }
+    if (focus.type === "feature" && /pdf|조건|추가|유지|가능/.test(msg) && pickable.includes("EDIT_FEATURES")) {
+      return {
+        intentType: "edit_request",
+        suggestedActionId: "EDIT_FEATURES",
+        confidence: 0.76,
+        reason: "focus continuity — constraint on active feature",
+        routerMode: "deterministic",
+        explainability: { focusReason: `activeFocus:feature:${focus.id}`, routingReason: "follow-up on focused feature" },
+      };
+    }
   }
 
   const chipId = resolveQuickActionIdFromLegacyLabel(input.userMessage);

@@ -2,6 +2,10 @@ import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featu
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
+import {
+  parseRequirementsIntentOrchestrationV1,
+  type RequirementsIntentOrchestrationV1,
+} from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import { softMigrateLegacyRoleSlotsArtifact } from "@/lib/featurePlanning/featurePlanningLegacyRoleSlots";
 import type { FeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { parseFeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
@@ -492,6 +496,8 @@ export type RequirementsStateJson = {
   singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
   /** SingleChat 절차 단계(서비스 흐름 검토 → 기능 상세 등) */
   requirementsOrchestrationStageV1?: RequirementsOrchestrationStageV1 | null;
+  /** Intent router continuity — focus, clarification, last actions (phase 2) */
+  requirementsIntentOrchestrationV1?: RequirementsIntentOrchestrationV1 | null;
 };
 
 export type RequirementsOrchestrationStageWire =
@@ -959,6 +965,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
     ...(requirementsOrchestrationStageV1 !== undefined
       ? { requirementsOrchestrationStageV1 }
+      : {}),
+    ...(requirementsIntentOrchestrationV1 !== undefined
+      ? { requirementsIntentOrchestrationV1 }
       : {}),
   };
 }
