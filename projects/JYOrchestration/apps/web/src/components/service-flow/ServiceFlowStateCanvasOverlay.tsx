@@ -7,30 +7,13 @@ import {
   buildActorRelatedStepViews,
   buildStepActorAssignmentViews,
   formatStepActorAssignmentLine,
-  isCandidateActor,
 } from "@/lib/requirements/serviceFlowActorStepMapping";
+import { actorStatusDisplayLabel, normalizeActorStatus } from "@/lib/requirements/serviceFlowActorAssignment";
 import {
   canvasOverlayBackdropStyle,
   canvasOverlayPanelStyle,
   canvasSectionTitleStyle,
 } from "@/components/service-flow/canvasOverlayStyles";
-
-function OrderedList({ items }: { readonly items: readonly string[] }) {
-  if (!items.length) {
-    return <EmptyBlock />;
-  }
-  return (
-    <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
-      {items.map((item, i) => (
-        <li key={`${i}-${item}`}>{item}</li>
-      ))}
-    </ol>
-  );
-}
-
-function EmptyBlock() {
-  return <div style={{ color: "#94a3b8", fontSize: 13 }}>(없음)</div>;
-}
 
 export function ServiceFlowStateCanvasOverlay({
   open,
@@ -38,12 +21,14 @@ export function ServiceFlowStateCanvasOverlay({
   title = "현재 서비스 흐름",
   subtitle = "확정·후보 상태의 현재 흐름",
   onClose,
+  onManageStepAssignment,
 }: {
   readonly open: boolean;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly title?: string;
   readonly subtitle?: string;
   readonly onClose: () => void;
+  readonly onManageStepAssignment?: (stepId: string) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -61,49 +46,59 @@ export function ServiceFlowStateCanvasOverlay({
   if (!open || !flow) return null;
 
   const hydrated = hydrateServiceFlowStepsFromAlternativePayload(flow);
-  const stepLines = buildStepActorAssignmentViews(hydrated).map(formatStepActorAssignmentLine);
+  const stepViews = buildStepActorAssignmentViews(hydrated);
 
   const actorLines = (hydrated.actors ?? []).map((actor) => {
     const related = buildActorRelatedStepViews(hydrated, actor.id);
-    const roleLabel = isCandidateActor(actor) ? "후보" : "확정";
+    const st = normalizeActorStatus(actor);
     const steps =
       related.length > 0
         ? related
             .map((r) => {
-              const role = r.role === "primary" ? "주" : r.role === "secondary" ? "보조" : "후보";
+              const role =
+                r.role === "primary"
+                  ? "주"
+                  : r.role === "secondary"
+                    ? "보조"
+                    : r.role === "partial"
+                      ? "부분"
+                      : "후보";
               return `${r.stepTitle}(${role})`;
             })
             .join(", ")
         : "(연결 단계 없음)";
-    return `${actor.name} [${roleLabel}] — ${steps}`;
+    return `${actor.name} [${actorStatusDisplayLabel(st)}] — ${steps}`;
   });
 
   return (
-    <FlowCanvasDialog
+    <FlowCanvasBody
       title={title}
       subtitle={subtitle}
-      stepLines={stepLines}
+      stepViews={stepViews}
       actorLines={actorLines}
       onClose={onClose}
       stopPropagation={stopPropagation}
+      onManageStepAssignment={onManageStepAssignment}
     />
   );
 }
 
-function FlowCanvasDialog({
+function FlowCanvasBody({
   title,
   subtitle,
-  stepLines,
+  stepViews,
   actorLines,
   onClose,
   stopPropagation,
+  onManageStepAssignment,
 }: {
   readonly title: string;
   readonly subtitle: string;
-  readonly stepLines: readonly string[];
+  readonly stepViews: ReturnType<typeof buildStepActorAssignmentViews>;
   readonly actorLines: readonly string[];
   readonly onClose: () => void;
   readonly stopPropagation: (e: React.MouseEvent) => void;
+  readonly onManageStepAssignment?: (stepId: string) => void;
 }) {
   return (
     <div
@@ -142,11 +137,43 @@ function FlowCanvasDialog({
         </header>
         <section style={{ marginTop: 18 }}>
           <h3 style={canvasSectionTitleStyle}>단계별 담당 (주·보조·후보)</h3>
-          <OrderedList items={stepLines} />
+          <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+            {stepViews.map((view) => (
+              <li key={view.stepId} style={{ marginBottom: 8 }}>
+                <div>{formatStepActorAssignmentLine(view)}</div>
+                {onManageStepAssignment ? (
+                  <button
+                    type="button"
+                    onClick={() => onManageStepAssignment(view.stepId)}
+                    style={{
+                      marginTop: 4,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                      cursor: "pointer",
+                    }}
+                  >
+                    담당 변경
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ol>
         </section>
         <section style={{ marginTop: 18 }}>
           <h3 style={canvasSectionTitleStyle}>액터별 관련 단계</h3>
-          <OrderedList items={actorLines} />
+          {actorLines.length ? (
+            <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+              {actorLines.map((line, i) => (
+                <li key={`${i}-${line}`}>{line}</li>
+              ))}
+            </ol>
+          ) : (
+            <div style={{ color: "#94a3b8", fontSize: 13 }}>(없음)</div>
+          )}
         </section>
       </div>
     </div>

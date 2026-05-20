@@ -4,11 +4,16 @@
 
 import type {
   RequirementsServiceFlowActorV1,
-  RequirementsServiceFlowStepV1,
   RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
+import {
+  actorStatusDisplayLabel,
+  computeAssignmentDiffLines,
+  isActorCandidate,
+  normalizeActorStatus,
+} from "@/lib/requirements/serviceFlowActorAssignment";
 
-export type ServiceFlowActorParticipationStatus = "confirmed" | "candidate";
+export type ServiceFlowActorParticipationStatus = import("@/lib/requirements/requirementsStateJson").RequirementsServiceFlowActorParticipationStatus;
 
 export type ServiceFlowStructuredActorMutationMeta = Readonly<{
   readonly mutationSource: "actor_drawer";
@@ -25,18 +30,18 @@ export type StepActorAssignmentView = Readonly<{
   readonly primaryActorName: string | null;
   readonly secondaryActorNames: readonly string[];
   readonly candidateActorNames: readonly string[];
+  readonly partialActorNames: readonly string[];
 }>;
 
 export type ActorRelatedStepView = Readonly<{
   readonly stepId: string;
   readonly stepTitle: string;
   readonly order: number;
-  readonly role: "primary" | "secondary" | "candidate";
+  readonly role: "primary" | "secondary" | "candidate" | "partial";
 }>;
 
 export function isCandidateActor(actor: RequirementsServiceFlowActorV1): boolean {
-  if (actor.status === "candidate") return true;
-  return actor.id.startsWith("actor-candidate-");
+  return isActorCandidate(actor);
 }
 
 export function actorNameById(
@@ -88,25 +93,31 @@ export function buildStepActorAssignmentViews(
       const primary = actorById.get(step.primaryActorId);
       const secondaryActorNames: string[] = [];
       const candidateActorNames: string[] = [];
+      const partialActorNames: string[] = [];
 
       for (const sid of step.secondaryActorIds) {
         const a = actorById.get(sid);
         if (!a) continue;
         const name = a.name.trim();
         if (!name) continue;
-        if (isCandidateActor(a)) candidateActorNames.push(name);
+        const st = normalizeActorStatus(a);
+        if (st === "candidate") candidateActorNames.push(name);
+        else if (st === "partial") partialActorNames.push(name);
         else secondaryActorNames.push(name);
       }
+
+      const primarySt = primary ? normalizeActorStatus(primary) : null;
 
       return {
         stepId: step.id,
         stepTitle: step.title.trim(),
         order: step.order,
         primaryActorName: primary
-          ? `${primary.name.trim()}${isCandidateActor(primary) ? " (후보)" : ""}`
+          ? `${primary.name.trim()} (${actorStatusDisplayLabel(primarySt ?? "confirmed")})`
           : null,
         secondaryActorNames,
         candidateActorNames,
+        partialActorNames,
       };
     });
 }
@@ -119,7 +130,7 @@ export function buildActorRelatedStepViews(
   const actor = (flow.actors ?? []).find((a) => a.id === id);
   if (!actor) return [];
 
-  const candidate = isCandidateActor(actor);
+  const st = normalizeActorStatus(actor);
   const out: ActorRelatedStepView[] = [];
 
   for (const step of flow.steps ?? []) {
@@ -128,7 +139,7 @@ export function buildActorRelatedStepViews(
         stepId: step.id,
         stepTitle: step.title.trim(),
         order: step.order,
-        role: candidate ? "candidate" : "primary",
+        role: st === "candidate" ? "candidate" : st === "partial" ? "partial" : "primary",
       });
       continue;
     }
@@ -137,7 +148,7 @@ export function buildActorRelatedStepViews(
         stepId: step.id,
         stepTitle: step.title.trim(),
         order: step.order,
-        role: candidate ? "candidate" : "secondary",
+        role: st === "candidate" ? "candidate" : st === "partial" ? "partial" : "secondary",
       });
     }
   }
@@ -145,51 +156,19 @@ export function buildActorRelatedStepViews(
   return out.sort((a, b) => a.order - b.order);
 }
 
-/** alternative flow 비교 — step 담당 재배치 */
+/** alternative flow 비교 — assignment lifecycle diff */
 export function computeStepAssignmentDiffLines(
   baselineFlow: RequirementsServiceFlowV1,
   alternativeFlow: RequirementsServiceFlowV1,
 ): readonly string[] {
-  const baseByTitle = new Map<string, RequirementsServiceFlowStepV1>();
-  for (const s of baselineFlow.steps ?? []) {
-    const t = s.title.trim().toLowerCase();
-    if (t && !baseByTitle.has(t)) baseByTitle.set(t, s);
-  }
-
-  const lines: string[] = [];
-  for (const alt of alternativeFlow.steps ?? []) {
-    const key = alt.title.trim().toLowerCase();
-    if (!key) continue;
-    const base = baseByTitle.get(key);
-    if (!base) continue;
-
-    const basePrimary = actorNameById(baselineFlow.actors ?? [], base.primaryActorId) ?? "—";
-    const altPrimary = actorNameById(alternativeFlow.actors ?? [], alt.primaryActorId) ?? "—";
-    if (basePrimary !== altPrimary) {
-      lines.push(`~ ${alt.title}: 주 담당 ${basePrimary} → ${altPrimary}`);
-    }
-
-    const baseSec = new Set(base.secondaryActorIds);
-    const altSec = new Set(alt.secondaryActorIds);
-    for (const sid of altSec) {
-      if (baseSec.has(sid)) continue;
-      const name = actorNameById(alternativeFlow.actors ?? [], sid);
-      if (name) lines.push(`+ ${alt.title}: 보조/후보 ${name}`);
-    }
-    for (const sid of baseSec) {
-      if (altSec.has(sid)) continue;
-      const name = actorNameById(baselineFlow.actors ?? [], sid);
-      if (name) lines.push(`- ${alt.title}: 보조/후보 ${name}`);
-    }
-  }
-
-  return lines.slice(0, 12);
+  return computeAssignmentDiffLines(baselineFlow, alternativeFlow);
 }
 
 export function formatStepActorAssignmentLine(view: StepActorAssignmentView): string {
   const parts: string[] = [];
   if (view.primaryActorName) parts.push(`주: ${view.primaryActorName}`);
   if (view.secondaryActorNames.length) parts.push(`보조: ${view.secondaryActorNames.join(", ")}`);
+  if (view.partialActorNames.length) parts.push(`부분: ${view.partialActorNames.join(", ")}`);
   if (view.candidateActorNames.length) parts.push(`후보: ${view.candidateActorNames.join(", ")}`);
   const actors = parts.length ? ` (${parts.join(" · ")})` : "";
   return `${view.order}. ${view.stepTitle}${actors}`;

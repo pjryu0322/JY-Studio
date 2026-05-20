@@ -535,7 +535,11 @@ export type RequirementsServiceFlowChecklistDeferralKind = "pending" | "deferred
 
 export type RequirementsServiceFlowActorKind = "human" | "system";
 
-export type RequirementsServiceFlowActorParticipationStatus = "confirmed" | "candidate";
+export type RequirementsServiceFlowActorParticipationStatus =
+  | "candidate"
+  | "partial"
+  | "confirmed"
+  | "obsolete";
 
 export type RequirementsServiceFlowActorV1 = {
   id: string;
@@ -549,6 +553,18 @@ export type RequirementsServiceFlowActorV1 = {
 export type RequirementsServiceFlowStructuredActorMutationMeta = Readonly<{
   readonly mutationSource: "actor_drawer";
   readonly actorId: string;
+  readonly affectedStepIds: readonly string[];
+  readonly projectionId?: string;
+  readonly createdAt: string;
+}>;
+
+export type RequirementsServiceFlowAssignmentMutationMeta = Readonly<{
+  readonly mutationSource: "assignment_drawer";
+  readonly assignmentAction: string;
+  readonly stepId: string;
+  readonly previousActorId?: string;
+  readonly nextActorId?: string;
+  readonly assignmentType: string;
   readonly affectedStepIds: readonly string[];
   readonly projectionId?: string;
   readonly createdAt: string;
@@ -603,6 +619,8 @@ export type RequirementsServiceFlowV1 = {
   documentationSnapshot?: string | null;
   /** Actor Drawer structured mutation audit */
   lastStructuredActorMutation?: RequirementsServiceFlowStructuredActorMutationMeta | null;
+  /** Assignment Drawer structured mutation audit */
+  lastAssignmentMutation?: RequirementsServiceFlowAssignmentMutationMeta | null;
 };
 
 export type ProposalVariantModeWire = "PRIMARY" | "ALTERNATIVE";
@@ -1080,7 +1098,10 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
         r.description === null ? null : typeof r.description === "string" ? r.description.trim() : undefined;
       const statusRaw = typeof r.status === "string" ? r.status.trim() : "";
       const status =
-        statusRaw === "candidate" || statusRaw === "confirmed"
+        statusRaw === "candidate" ||
+        statusRaw === "partial" ||
+        statusRaw === "confirmed" ||
+        statusRaw === "obsolete"
           ? (statusRaw as RequirementsServiceFlowActorParticipationStatus)
           : undefined;
       if (!id || !name || !kind) return null;
@@ -1227,6 +1248,43 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
           actorId,
           affectedStepIds,
           createdAt,
+          ...(projectionId ? { projectionId } : {}),
+        },
+      };
+    })(),
+    ...(() => {
+      const m = o.lastAssignmentMutation;
+      if (!m || typeof m !== "object") return {};
+      const r = m as Record<string, unknown>;
+      const stepId = typeof r.stepId === "string" ? r.stepId.trim() : "";
+      const createdAt = typeof r.createdAt === "string" ? r.createdAt.trim() : "";
+      const mutationSource = r.mutationSource === "assignment_drawer" ? ("assignment_drawer" as const) : null;
+      const assignmentAction = typeof r.assignmentAction === "string" ? r.assignmentAction.trim().slice(0, 40) : "";
+      const assignmentType = typeof r.assignmentType === "string" ? r.assignmentType.trim().slice(0, 24) : "";
+      const affectedStepIds = Array.isArray(r.affectedStepIds)
+        ? (r.affectedStepIds as unknown[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+        : [];
+      const previousActorId =
+        typeof r.previousActorId === "string" && r.previousActorId.trim()
+          ? r.previousActorId.trim().slice(0, 90)
+          : undefined;
+      const nextActorId =
+        typeof r.nextActorId === "string" && r.nextActorId.trim()
+          ? r.nextActorId.trim().slice(0, 90)
+          : undefined;
+      const projectionId =
+        typeof r.projectionId === "string" && r.projectionId.trim() ? r.projectionId.trim().slice(0, 80) : undefined;
+      if (!mutationSource || !stepId || !createdAt || !assignmentAction || !assignmentType) return {};
+      return {
+        lastAssignmentMutation: {
+          mutationSource,
+          assignmentAction,
+          stepId,
+          assignmentType,
+          affectedStepIds,
+          createdAt,
+          ...(previousActorId ? { previousActorId } : {}),
+          ...(nextActorId ? { nextActorId } : {}),
           ...(projectionId ? { projectionId } : {}),
         },
       };

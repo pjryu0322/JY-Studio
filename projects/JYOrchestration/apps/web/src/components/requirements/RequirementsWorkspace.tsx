@@ -181,12 +181,17 @@ import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/Service
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
 import { ServiceFlowActorEditDrawer } from "@/components/service-flow/ServiceFlowActorEditDrawer";
+import { ServiceFlowActorAssignmentDrawer } from "@/components/service-flow/ServiceFlowActorAssignmentDrawer";
 import {
   appendCandidateActorToFlow,
   nextActorEditingPhase,
   type ActorEditingPhase,
   type ServiceFlowActorEditDraft,
 } from "@/lib/requirements/serviceFlowActorEditing";
+import {
+  applyAssignmentEditToFlow,
+  type ServiceFlowAssignmentEditDraft,
+} from "@/lib/requirements/serviceFlowActorAssignment";
 import { rebuildOrchestrationProjectionWithFallback } from "@/lib/requirements/serviceFlowOrchestrationProjection";
 
 
@@ -253,6 +258,9 @@ export function RequirementsWorkspace({
   const [actorEditOpen, setActorEditOpen] = useState(false);
   const [actorEditPhase, setActorEditPhase] = useState<ActorEditingPhase>("IDLE");
   const [actorEditBusy, setActorEditBusy] = useState(false);
+  const [assignmentDrawerOpen, setAssignmentDrawerOpen] = useState(false);
+  const [assignmentStepId, setAssignmentStepId] = useState<string | null>(null);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -2019,6 +2027,63 @@ export function RequirementsWorkspace({
     [serviceFlow, persistServiceFlowWithOrchestration, showSuccessToast, showErrorToast, orchestrationAlignedState],
   );
 
+  const openAssignmentDrawerForStep = useCallback((stepId: string) => {
+    setAssignmentStepId(stepId);
+    setAssignmentDrawerOpen(true);
+  }, []);
+
+  const handleAssignmentSave = useCallback(
+    async (draft: ServiceFlowAssignmentEditDraft) => {
+      if (!serviceFlow) return;
+      setAssignmentBusy(true);
+      try {
+        const nextFlow = applyAssignmentEditToFlow({
+          flow: serviceFlow,
+          draft,
+          projectionId: orchestrationAlignedState?.slotDefinitionsHash ?? undefined,
+        });
+        await persistServiceFlowWithOrchestration(nextFlow);
+        setServiceFlow(nextFlow);
+        const meta = nextFlow.lastAssignmentMutation;
+        if (meta) {
+          appendSingleChatPromptTimeline({
+            stage: "service-flow",
+            stageGroup: "service-planning",
+            workspaceScreenKey: "requirements_service_flow",
+            action: "assignment_mutation",
+            source: "internal",
+            createdAt: meta.createdAt,
+            routingDecision: meta.assignmentAction,
+            responseText: [
+              `assignment:${meta.assignmentAction}`,
+              `step:${meta.stepId}`,
+              meta.previousActorId ? `from:${meta.previousActorId}` : "",
+              meta.nextActorId ? `to:${meta.nextActorId}` : "",
+              `type:${meta.assignmentType}`,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          });
+        }
+        setAssignmentDrawerOpen(false);
+        setAssignmentStepId(null);
+        showSuccessToast("단계 담당 배정을 저장했습니다.");
+      } catch {
+        showErrorToast("담당 저장 후 오케스트레이션 갱신에 실패했습니다.");
+      } finally {
+        setAssignmentBusy(false);
+      }
+    },
+    [
+      serviceFlow,
+      persistServiceFlowWithOrchestration,
+      orchestrationAlignedState,
+      appendSingleChatPromptTimeline,
+      showSuccessToast,
+      showErrorToast,
+    ],
+  );
+
   const handleCanvasHubSelect = useCallback(
     (item: ProjectCanvasArtifact) => {
       setCanvasHubOpen(false);
@@ -2240,6 +2305,19 @@ export function RequirementsWorkspace({
         open={activeCanvasView === "service-flow"}
         flow={serviceFlow}
         onClose={() => setActiveCanvasView(null)}
+        onManageStepAssignment={openAssignmentDrawerForStep}
+      />
+
+      <ServiceFlowActorAssignmentDrawer
+        open={assignmentDrawerOpen}
+        flow={serviceFlow}
+        stepId={assignmentStepId}
+        busy={assignmentBusy}
+        onClose={() => {
+          setAssignmentDrawerOpen(false);
+          setAssignmentStepId(null);
+        }}
+        onSave={handleAssignmentSave}
       />
 
       <BaselineFlowCanvasOverlay
