@@ -1,31 +1,72 @@
 /**
- * Bridge notes: Requirements governed runtime ↔ Agent Foundation (Stage 1 — types only).
+ * Requirements governed runtime ↔ Agent Foundation event metadata helpers.
  */
 
 import type { OrchestrationReplaySnapshot } from "@/lib/requirements/requirementsOrchestrationReplay";
+import { getAgentById } from "@/lib/agents/agentRegistry";
+import {
+  resolveAgentIdFromRuntimeRole,
+} from "@/lib/agents/aiMemberAgentBridge";
+import type {
+  AgentReplayExtension,
+  AgentReplaySnapshotContract,
+  AgentRuntimeEventContext,
+  AgentTimelineMetadata,
+} from "@/lib/agents/agentRuntimeEventContract";
 
-/** Timeline fields already present; future Harness should populate explicitly. */
-export type AgentTimelineMetadata = Readonly<{
-  readonly agentId?: string;
-  readonly agentRole?: string;
-  readonly actorId?: string;
-  readonly decisionSource?: string;
+export type {
+  AgentReplayExtension,
+  AgentReplaySnapshotContract,
+  AgentRuntimeEventContext,
+  AgentRuntimeEventSource,
+  AgentTimelineMetadata,
+} from "@/lib/agents/agentRuntimeEventContract";
+
+export function buildAgentRuntimeEventContext(input: {
+  readonly agentId: string;
   readonly capabilityId?: string;
-  readonly connectorId?: string;
-}>;
-
-export function agentTimelineMetadataFromReplay(snapshot: OrchestrationReplaySnapshot): AgentTimelineMetadata {
+  readonly projectId?: string;
+  readonly source?: AgentRuntimeEventContext["source"];
+}): AgentRuntimeEventContext {
   return {
+    agentId: input.agentId,
+    ...(input.capabilityId ? { capabilityId: input.capabilityId } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    ...(input.source ? { source: input.source } : {}),
+  };
+}
+
+export function agentTimelineMetadataFromReplay(
+  snapshot: OrchestrationReplaySnapshot,
+  input?: { readonly capabilityId?: string; readonly agentId?: string },
+): AgentTimelineMetadata {
+  const agentId =
+    input?.agentId ??
+    resolveAgentIdFromRuntimeRole(snapshot.agentRole) ??
+    "system";
+  const agent = getAgentById(agentId);
+  return {
+    agentId,
+    ...(input?.capabilityId ? { capabilityId: input.capabilityId } : {}),
+    ...(agent ? { agentType: agent.type, runtimeMode: agent.runtimeMode } : {}),
     actorId: snapshot.actorId,
     agentRole: snapshot.agentRole,
     decisionSource: snapshot.decisionSource,
   };
 }
 
-/** Suggested replay extension (not persisted in Stage 1). */
-export type AgentReplayExtension = Readonly<{
+export function agentReplayContractFromFoundation(input: {
   readonly agentId: string;
   readonly capabilityId?: string;
-  readonly inputSnapshot?: string;
-  readonly outputSnapshot?: string;
-}>;
+  readonly inputContextKeys?: readonly string[];
+  readonly outputType?: string;
+  readonly connectorRefs?: readonly string[];
+}): AgentReplaySnapshotContract {
+  return {
+    agentId: input.agentId,
+    ...(input.capabilityId ? { capabilityId: input.capabilityId } : {}),
+    inputContextKeys: input.inputContextKeys ?? [],
+    ...(input.outputType ? { outputType: input.outputType } : {}),
+    ...(input.connectorRefs?.length ? { connectorRefs: input.connectorRefs } : {}),
+  };
+}

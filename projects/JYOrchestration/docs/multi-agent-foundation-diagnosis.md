@@ -92,3 +92,14 @@ Stage 1 — Agent Definition / Capability Registry 선행 작업용.
 - `tests/api/multiAgentFoundation.unit.test.ts`
 
 기존 AI 멤버 호출·dispatch 경로는 **대체하지 않음**.
+
+---
+
+## 7. Stage 1 보완 (Stage 2 진입 준비)
+
+- Registry Public API: `getAllAgents`, `getCapabilitiesForAgent`, `validateAgentCapabilityBinding`
+- Bridge: `mapProjectMemberToAgentId`, `mapRequirementIntentToPrimaryAgentId`, `getDefaultAgentForStage`
+- Event contract: `AgentRuntimeEventContext`, `AgentTimelineMetadata`, `AgentReplaySnapshotContract`
+- Connector: `DEFAULT_CONNECTORS`, `isConnectorEnabledForExecution`, `AgentConnectorBoundary`
+
+Timeline/Replay **persist는 Stage 2** — 타입만 준비됨.

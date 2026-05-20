@@ -17,3 +17,6 @@ export function getCapabilityById(id: string): CapabilityDefinition | undefined 
 export function hasCapability(id: string): boolean {
   return byId.has(id);
 }
+
+/** Public API alias — prefer over direct `DEFAULT_CAPABILITIES` import. */
+export const getAllCapabilities = listCapabilities;

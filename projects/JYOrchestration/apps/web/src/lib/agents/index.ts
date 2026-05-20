@@ -1,5 +1,6 @@
 /**
- * Multi-Agent Runtime Foundation — Stage 1 public surface.
+ * Multi-Agent Runtime Foundation — public API (Stage 1 + Stage 2 prep).
+ * Prefer registry functions over importing default* arrays directly.
  */
 
 export type {
@@ -13,20 +14,40 @@ export type {
 
 export type { CapabilityCategory, CapabilityDefinition } from "@/lib/agents/capabilityDefinitionTypes";
 
-export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
-export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";
+export type {
+  AgentConnectorBoundary,
+  ConnectorDescriptor,
+  ConnectorType,
+} from "@/lib/agents/connectorDescriptorTypes";
+
+export type {
+  AgentReplayExtension,
+  AgentReplaySnapshotContract,
+  AgentRuntimeEventContext,
+  AgentRuntimeEventSource,
+  AgentTimelineMetadata,
+} from "@/lib/agents/agentRuntimeEventContract";
 
 export {
   getAgentById,
+  getAllAgents,
+  getAgentsByType,
   listAgents,
   listAgentsByType,
 } from "@/lib/agents/agentRegistry";
 
 export {
+  getAllCapabilities,
   getCapabilityById,
   hasCapability,
   listCapabilities,
 } from "@/lib/agents/capabilityRegistry";
+
+export {
+  getCapabilitiesByAgentType,
+  getCapabilitiesForAgent,
+  validateAgentCapabilityBinding,
+} from "@/lib/agents/agentCapabilityBinding";
 
 export {
   assertDefaultAgentRegistryValid,
@@ -35,14 +56,34 @@ export {
 } from "@/lib/agents/agentRegistryValidation";
 
 export {
+  getDefaultAgentForStage,
+  mapAiMemberRoleToAgentId,
+  mapProjectMemberToAgentId,
+  mapRequirementIntentToPrimaryAgentId,
+  mapWorkspaceAiMemberToAgentId,
   ORCHESTRATION_ROLE_TO_AGENT_ID,
-  WORKSPACE_AI_MEMBER_TO_AGENT_ID,
   resolveAgentDefinitionForOrchestrationRole,
   resolveAgentDefinitionForWorkspaceMember,
+  resolveAgentIdFromRuntimeRole,
+  WORKSPACE_AI_MEMBER_TO_AGENT_ID,
+  type ProjectMemberAgentBridgeInput,
+  type RequirementIntentBridgeInput,
 } from "@/lib/agents/aiMemberAgentBridge";
 
 export {
+  agentReplayContractFromFoundation,
   agentTimelineMetadataFromReplay,
-  type AgentReplayExtension,
-  type AgentTimelineMetadata,
+  buildAgentRuntimeEventContext,
 } from "@/lib/agents/orchestrationRuntimeBridge";
+
+export {
+  buildAgentConnectorBoundary,
+  getAllConnectors,
+  getConnectorById,
+  isConnectorEnabledForExecution,
+} from "@/lib/agents/connectorRegistry";
+
+/** @internal Tests and registry bootstrap only. */
+export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
+export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";
+export { DEFAULT_CONNECTORS } from "@/lib/agents/defaultConnectors";

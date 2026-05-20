@@ -69,3 +69,36 @@ Stage 1 연결 지점 — 구현은 문서화·타입만, Connector Gateway / Ha
 3. Connector Gateway facade (cursor/github only)  
 4. ProjectMember ↔ AgentDefinition sync  
 5. Agent-to-Agent orchestration (마지막)
+
+---
+
+## Stage 2 진입 조건
+
+Stage 2로 진입하기 전에 다음 조건이 충족되어야 한다.
+
+| 조건 | 현재 상태 | 필요 조치 |
+|---|---|---|
+| Agent Registry Public API | 완료 | `getAllAgents`, `getCapabilitiesForAgent`, `validateAgentCapabilityBinding` |
+| AI멤버 ↔ Agent Bridge | 완료 | `mapAiMemberRoleToAgentId`, `mapProjectMemberToAgentId`, `mapRequirementIntentToPrimaryAgentId`, `getDefaultAgentForStage` |
+| Runtime Event Contract | 완료 | `agentRuntimeEventContract.ts`, `buildAgentRuntimeEventContext` |
+| Connector Descriptor | 완료 | `DEFAULT_CONNECTORS`, `isConnectorEnabledForExecution` |
+| Registry/Bridge 테스트 | 완료 | `multiAgentFoundation.unit.test.ts` 16건+ |
+
+## Stage 2 작업 후보
+
+| 우선순위 | 작업 | 설명 | 주의사항 |
+|---|---|---|---|
+| 1 | agentId/capabilityId runtime metadata wire | `AgentTimelineMetadata` / wire optional fields | 기존 저장 구조 변경 최소화 |
+| 2 | Connector Gateway facade | Cursor/GitHub 호출 경로를 facade로 감싸기 | 실제 실행 방식 변경 금지 |
+| 3 | Harness dry-run | Agent+Capability 선택 결과만 생성 | 자동 실행 금지 |
+| 4 | Governance pre-check | `validateAgentCapabilityBinding`을 dispatch 전 호출 | dry-run부터 차단 로그 |
+
+### Stage 2 prep 모듈 (이번 보완)
+
+```text
+apps/web/src/lib/agents/agentCapabilityBinding.ts
+apps/web/src/lib/agents/agentRuntimeEventContract.ts
+apps/web/src/lib/agents/connectorDescriptorTypes.ts
+apps/web/src/lib/agents/defaultConnectors.ts
+apps/web/src/lib/agents/connectorRegistry.ts
+```

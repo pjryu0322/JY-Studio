@@ -15,3 +15,8 @@ export function getAgentById(id: string): AgentDefinition | undefined {
 export function listAgentsByType(type: AgentType): readonly AgentDefinition[] {
   return listAgents().filter((a) => a.type === type);
 }
+
+/** Public API alias — prefer over direct `DEFAULT_AGENTS` import. */
+export const getAllAgents = listAgents;
+
+export const getAgentsByType = listAgentsByType;
