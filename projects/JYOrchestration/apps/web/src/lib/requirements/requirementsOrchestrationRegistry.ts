@@ -168,6 +168,7 @@ export function resolveAuthoritativeOrchestrationStage(
 ): OrchestrationStage {
   const activePhase = String(state.requirementsOrchestrationStageV1?.activePhase ?? "").trim();
   if (activePhase === "screen_define") return "SCREEN_DEFINE";
+  if (activePhase === "api_define") return "FEATURE_DETAIL";
 
   const stored = state.requirementsOrchestrationStageV1?.currentStage;
   if (stored === "FEATURE_DETAIL") return "FEATURE_DETAIL";
@@ -202,6 +203,7 @@ export function orchestrationStageFromTransitionTarget(
 ): OrchestrationStage {
   if (signal === "FEATURE_DETAIL_START" || signal === "NEXT_STAGE") return "FEATURE_DETAIL";
   if (signal === "SCREEN_DEFINE_START") return "SCREEN_DEFINE";
+  if (signal === "API_DEFINE_START") return "FEATURE_DETAIL";
   if (signal === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
   if (signal === "APPROVE_FLOW") return "SERVICE_FLOW_REVIEW";
   return "SERVICE_FLOW_REVIEW";

@@ -2,8 +2,8 @@
 
 import { useEffect, useCallback, type CSSProperties, type MouseEvent } from "react";
 import {
+  canConfirmFeatureDetailSlot,
   projectFeatureDetailMetrics,
-  type FeatureDetailProjectionMetrics,
   type FeatureDetailSlot,
   type FeatureDetailSlotsV1,
 } from "@/lib/requirements/featureDetailSlots";
@@ -45,12 +45,18 @@ export function FeatureDetailCanvasOverlay({
   selectedSlotId,
   onClose,
   onEditSlot,
+  onPartialSaveSlot,
+  onConfirmSlot,
+  onObsoleteSlot,
 }: {
   readonly open: boolean;
   readonly artifact: FeatureDetailSlotsV1 | null;
   readonly selectedSlotId?: string | null;
   readonly onClose: () => void;
   readonly onEditSlot?: (slotId: string) => void;
+  readonly onPartialSaveSlot?: (slotId: string) => void;
+  readonly onConfirmSlot?: (slotId: string) => void;
+  readonly onObsoleteSlot?: (slotId: string) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -69,6 +75,7 @@ export function FeatureDetailCanvasOverlay({
 
   const metrics = projectFeatureDetailMetrics(artifact);
   const slots = artifact.slots.filter((s) => s.status !== "obsolete");
+  const hasActions = Boolean(onEditSlot || onPartialSaveSlot || onConfirmSlot || onObsoleteSlot);
 
   return (
     <div
@@ -81,10 +88,28 @@ export function FeatureDetailCanvasOverlay({
       <div style={canvasOverlayPanelStyle} onClick={stopPropagation}>
         <CanvasHeader metrics={metrics} onClose={onClose} />
         {slots.map((slot) => {
-          const selected = selectedSlotId === slot.id;
+          const selected = selectedSlotId === slot.id || artifact.focusFeatureId === slot.id;
+          const confirmReady = canConfirmFeatureDetailSlot(slot);
           return (
-            <section key={slot.id} style={{ marginTop: 18 }}>
-              <FeatureDetailSlotHeader slot={slot} selected={selected} onEditSlot={onEditSlot} />
+            <section
+              key={slot.id}
+              style={{
+                marginTop: 18,
+                padding: selected ? "12px 14px" : undefined,
+                borderRadius: selected ? 10 : undefined,
+                border: selected ? "1px solid #cbd5e1" : undefined,
+                background: selected ? "#f8fafc" : undefined,
+              }}
+            >
+              <FeatureDetailSlotHeader
+                slot={slot}
+                hasActions={hasActions}
+                confirmReady={confirmReady}
+                onEditSlot={onEditSlot}
+                onPartialSaveSlot={onPartialSaveSlot}
+                onConfirmSlot={onConfirmSlot}
+                onObsoleteSlot={onObsoleteSlot}
+              />
               <p style={bodyStyle}>{slotBody(slot)}</p>
             </section>
           );
@@ -96,20 +121,55 @@ export function FeatureDetailCanvasOverlay({
 
 function FeatureDetailSlotHeader({
   slot,
-  selected,
+  hasActions,
+  confirmReady,
   onEditSlot,
+  onPartialSaveSlot,
+  onConfirmSlot,
+  onObsoleteSlot,
 }: {
   readonly slot: FeatureDetailSlot;
-  readonly selected: boolean;
+  readonly hasActions: boolean;
+  readonly confirmReady: boolean;
   readonly onEditSlot?: (slotId: string) => void;
+  readonly onPartialSaveSlot?: (slotId: string) => void;
+  readonly onConfirmSlot?: (slotId: string) => void;
+  readonly onObsoleteSlot?: (slotId: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-      <h3 style={canvasSectionTitleStyle}>{slot.title}</h3>
-      {onEditSlot ? (
-        <button type="button" style={editBtnStyle(selected)} onClick={() => onEditSlot(slot.id)}>
-          편집
-        </button>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ minWidth: 0 }}>
+        <h3 style={{ ...canvasSectionTitleStyle, marginBottom: 2 }}>{slot.title}</h3>
+        <span style={{ fontSize: 11, color: "#64748b" }}>{STATUS_KO[slot.status] ?? slot.status}</span>
+      </div>
+      {hasActions ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {onEditSlot ? (
+            <button type="button" style={miniBtnStyle} onClick={() => onEditSlot(slot.id)}>
+              편집
+            </button>
+          ) : null}
+          {onPartialSaveSlot ? (
+            <button type="button" style={miniBtnStyle} onClick={() => onPartialSaveSlot(slot.id)}>
+              부분 저장
+            </button>
+          ) : null}
+          {onConfirmSlot ? (
+            <button
+              type="button"
+              style={{ ...miniBtnStyle, ...(!confirmReady ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
+              disabled={!confirmReady}
+              onClick={() => onConfirmSlot(slot.id)}
+            >
+              확정
+            </button>
+          ) : null}
+          {onObsoleteSlot ? (
+            <button type="button" style={miniDangerBtnStyle} onClick={() => onObsoleteSlot(slot.id)}>
+              폐기
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -119,7 +179,7 @@ function CanvasHeader({
   metrics,
   onClose,
 }: {
-  readonly metrics: FeatureDetailProjectionMetrics;
+  readonly metrics: ReturnType<typeof projectFeatureDetailMetrics>;
   readonly onClose: () => void;
 }) {
   return (
@@ -140,18 +200,21 @@ function CanvasHeader({
   );
 }
 
-function editBtnStyle(selected: boolean): CSSProperties {
-  return {
-    border: selected ? "1px solid #0f172a" : "1px solid #e2e8f0",
-    background: selected ? "#f1f5f9" : "#f8fafc",
-    borderRadius: 8,
-    padding: "4px 10px",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 700,
-    flexShrink: 0,
-  };
-}
+const miniBtnStyle: CSSProperties = {
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  borderRadius: 8,
+  padding: "4px 8px",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const miniDangerBtnStyle: CSSProperties = {
+  ...miniBtnStyle,
+  color: "#b91c1c",
+  borderColor: "#fecaca",
+};
 
 const closeBtnStyle: CSSProperties = {
   border: "1px solid #e2e8f0",

@@ -7,9 +7,12 @@ import {
   filterFeatureDetailQuickActions,
   markFeatureDetailSlotPartial,
   projectFeatureDetailMetrics,
+  resolveFocusFeatureSlot,
   seedFeatureDetailSlotsFromServiceFlow,
   shouldRecomputeFeatureDetailProjection,
+  withFeatureDetailFocus,
 } from "@/lib/requirements/featureDetailSlots";
+import { tryServiceFlowOrchestrationTransitionFastPath } from "@/lib/requirements/serviceFlowStageTransition";
 import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { buildQuickReplyProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
 import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
@@ -247,6 +250,53 @@ describe("featureDetailSlots", () => {
       flowApproved: true,
     });
     expect(invalidation).toBeNull();
+  });
+
+  it("focusFeatureId tracks active feature for bootstrap message", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const artifact = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const second = artifact.slots[1];
+    expect(second).toBeDefined();
+    const focused = withFeatureDetailFocus(artifact, second!.id);
+    expect(focused.focusFeatureId).toBe(second!.id);
+    expect(resolveFocusFeatureSlot(focused)?.id).toBe(second!.id);
+    expect(buildFeatureDetailBootstrapMessage(flow, focused)).toContain(second!.title);
+  });
+
+  it("API_DEFINE_START fast-path requires confirmed feature", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const candidateOnly = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const blocked = tryServiceFlowOrchestrationTransitionFastPath({
+      proposalDecision: null,
+      quickActionId: "DEFINE_API",
+      currentFlow: flow,
+      existingFeatureDetail: candidateOnly,
+    });
+    expect(blocked?.routingDecision).toBe("api_define_gated");
+
+    const oneConfirmed = {
+      ...candidateOnly,
+      slots: candidateOnly.slots.map((s, i) =>
+        i === 0 ?
+          { ...s, status: "confirmed" as const, inputData: ["a"], processRules: ["b"], updatedAt: now }
+        : s,
+      ),
+    };
+    const ok = tryServiceFlowOrchestrationTransitionFastPath({
+      proposalDecision: null,
+      quickActionId: "DEFINE_API",
+      currentFlow: flow,
+      existingFeatureDetail: oneConfirmed,
+      existingOrchestrationStage: {
+        currentStage: "FEATURE_DETAIL",
+        completedStages: ["SERVICE_FLOW_REVIEW"],
+        activePhase: "feature_detail_bootstrap",
+        updatedAt: now,
+      },
+    });
+    expect(ok?.transitionMeta?.transitionTriggered).toBe(true);
+    expect(ok?.requirementsStatePatch?.requirementsOrchestrationStageV1?.activePhase).toBe("api_define");
+    expect(String(ok?.assistantMessage ?? "")).toContain("API");
   });
 
   it("transition engine seeds featureDetailSlotsV1 on FEATURE_DETAIL_START", () => {

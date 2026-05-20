@@ -78,9 +78,11 @@ const STATUS_KO: Record<string, string> = {
 export function FeatureDetailEditDrawer({
   open,
   slot,
+  slotIds,
   steps,
   busy,
   confirmError,
+  onNavigateSlot,
   onClose,
   onPartialSave,
   onConfirm,
@@ -88,9 +90,11 @@ export function FeatureDetailEditDrawer({
 }: {
   readonly open: boolean;
   readonly slot: FeatureDetailSlot | null;
+  readonly slotIds?: readonly string[];
   readonly steps: readonly RequirementsServiceFlowStepV1[];
   readonly busy?: boolean;
   readonly confirmError?: string | null;
+  readonly onNavigateSlot?: (slotId: string) => void;
   readonly onClose: () => void;
   readonly onPartialSave: (draft: FeatureDetailSlotEditDraft) => void | Promise<void>;
   readonly onConfirm: (draft: FeatureDetailSlotEditDraft) => void | Promise<void>;
@@ -126,6 +130,10 @@ export function FeatureDetailEditDrawer({
   const sections = countFeatureDetailStructuredSections(preview);
   const confirmReady = canConfirmFeatureDetailSlot(preview);
   const saving = Boolean(busy);
+  const navIds = slotIds ?? [];
+  const navIndex = slot ? navIds.indexOf(slot.id) : -1;
+  const hasPrev = navIndex > 0;
+  const hasNext = navIndex >= 0 && navIndex < navIds.length - 1;
 
   return (
     <>
@@ -133,6 +141,29 @@ export function FeatureDetailEditDrawer({
       <aside style={panelStyle} aria-label="기능 상세 편집">
         <header style={{ padding: "16px 18px", borderBottom: "1px solid #e2e8f0" }}>
           <DrawerHeader onClose={onClose} saving={saving} statusLabel={STATUS_KO[slot.status] ?? slot.status} sections={sections} />
+          {onNavigateSlot && navIds.length > 1 ? (
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                type="button"
+                style={secondaryBtn}
+                disabled={saving || !hasPrev}
+                onClick={() => onNavigateSlot(navIds[navIndex - 1]!)}
+              >
+                이전 기능
+              </button>
+              <button
+                type="button"
+                style={secondaryBtn}
+                disabled={saving || !hasNext}
+                onClick={() => onNavigateSlot(navIds[navIndex + 1]!)}
+              >
+                다음 기능
+              </button>
+              <span style={{ fontSize: 11, color: "#94a3b8", alignSelf: "center" }}>
+                {navIndex + 1} / {navIds.length}
+              </span>
+            </div>
+          ) : null}
         </header>
         <DrawerFormBody
           draft={draft}

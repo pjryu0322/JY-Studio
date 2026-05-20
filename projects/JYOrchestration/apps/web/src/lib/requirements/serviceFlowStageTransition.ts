@@ -30,11 +30,13 @@ import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/s
 import { planningTopicInstructionKo } from "@/lib/featurePlanning/featurePlanningTopic";
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import {
+  buildApiDefineLowCoverageWarning,
   buildFeatureDetailBootstrapMessage,
-  buildScreenDefineBlockedMessage,
+  buildFeatureDetailDefineBlockedMessage,
   buildScreenDefineLowCoverageWarning,
   projectFeatureDetailMetrics,
   recordFeatureDetailMutation,
+  resolveFocusFeatureSlot,
   seedFeatureDetailSlotsFromServiceFlow,
   type FeatureDetailSlotsV1,
 } from "@/lib/requirements/featureDetailSlots";
@@ -45,6 +47,7 @@ export type ServiceFlowTransitionSignal =
   | "DOCUMENTATION_COMPLETE"
   | "FEATURE_DETAIL_START"
   | "SCREEN_DEFINE_START"
+  | "API_DEFINE_START"
   | "ACTION_ENTER_ACTOR_EDIT"
   | "ACTION_ADD_STEP";
 
@@ -166,6 +169,27 @@ export function buildScreenDefineBootstrapMessage(flow: RequirementsServiceFlowV
   return lines.join("\n").trim();
 }
 
+export function buildApiDefineBootstrapMessage(
+  flow: RequirementsServiceFlowV1,
+  detailArtifact?: FeatureDetailSlotsV1 | null,
+): string {
+  const focus = detailArtifact ? resolveFocusFeatureSlot(detailArtifact) : null;
+  const focusTitle = focus?.title ?? firstOrderedFlowStepTitle(flow);
+  const lines = [
+    "세부 기능 정의 중 **API 정의** 단계로 이동합니다.",
+    "",
+    `우선 **${focusTitle}** 기능 기준으로 **API·데이터 연동**을 정리합니다.`,
+    "",
+    "각 API에 대해:",
+    "- 엔드포인트·메서드",
+    "- 요청/응답 데이터",
+    "- 연결 기능·화면",
+    "",
+    planningTopicInstructionKo("DATA"),
+  ];
+  return lines.join("\n").trim();
+}
+
 function patchFeaturePlanningForScreenDefine(
   artifact: FeaturePlanningSlotsArtifactV1 | null | undefined,
   nowIso: string,
@@ -174,6 +198,18 @@ function patchFeaturePlanningForScreenDefine(
   return {
     ...artifact,
     planningTopic: "SCREENS",
+    updatedAt: nowIso,
+  };
+}
+
+function patchFeaturePlanningForApiDefine(
+  artifact: FeaturePlanningSlotsArtifactV1 | null | undefined,
+  nowIso: string,
+): FeaturePlanningSlotsArtifactV1 | null {
+  if (!artifact?.slots?.length) return artifact ?? null;
+  return {
+    ...artifact,
+    planningTopic: "DATA",
     updatedAt: nowIso,
   };
 }
@@ -425,7 +461,7 @@ export function handleQuickActionTransition(input: {
     const metrics = projectFeatureDetailMetrics(detailArtifact);
     if (!metrics.hasConfirmedFeature) {
       return buildTransitionFastPathResult({
-        assistantMessage: buildScreenDefineBlockedMessage(metrics),
+        assistantMessage: buildFeatureDetailDefineBlockedMessage(metrics, "screen"),
         updatedFlow: { ...baseFlow, updatedAt: nowIso },
         quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
         routingDecision: "screen_define_gated",
@@ -491,6 +527,89 @@ export function handleQuickActionTransition(input: {
       conversationStateAfter: "FEATURE_DETAIL",
       transitionMeta: {
         quickActionType: "SCREEN_DEFINE_START",
+        transitionTriggered: true,
+        fromStage,
+        toStage: "FEATURE_DETAIL",
+        transitionMode: "fast_path",
+        orchestrationStateUpdated: true,
+      },
+      requirementsStatePatch,
+    });
+  }
+
+  if (input.signal === "API_DEFINE_START") {
+    if (stateBefore !== "FEATURE_DETAIL") return null;
+
+    const detailArtifact = input.existingFeatureDetail;
+    const metrics = projectFeatureDetailMetrics(detailArtifact);
+    if (!metrics.hasConfirmedFeature) {
+      return buildTransitionFastPathResult({
+        assistantMessage: buildFeatureDetailDefineBlockedMessage(metrics, "api"),
+        updatedFlow: { ...baseFlow, updatedAt: nowIso },
+        quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+        routingDecision: "api_define_gated",
+        timelineAction: "apiDefineBlocked",
+        proposalDecision: "DIRECT_INPUT",
+        conversationStateBefore: stateBefore,
+        conversationStateAfter: "FEATURE_DETAIL",
+        transitionMeta: {
+          quickActionType: "API_DEFINE_START",
+          transitionTriggered: false,
+          fromStage,
+          toStage: "FEATURE_DETAIL",
+          transitionMode: "fast_path",
+          orchestrationStateUpdated: false,
+        },
+      });
+    }
+
+    const coverageWarning = buildApiDefineLowCoverageWarning(metrics);
+    const assistantMessage = [
+      buildApiDefineBootstrapMessage(baseFlow, detailArtifact),
+      coverageWarning ? `\n\n${coverageWarning}` : "",
+    ]
+      .join("")
+      .trim();
+    const featureArtifact = patchFeaturePlanningForApiDefine(input.existingFeaturePlanning, nowIso);
+    const nextDetail =
+      detailArtifact ?
+        recordFeatureDetailMutation(detailArtifact, {
+          featureAction: "api_define_enter",
+          mutationSource: "DEFINE_API",
+        })
+      : null;
+
+    const orchPatch = buildOrchestrationStagePatch({
+      toStage: "FEATURE_DETAIL",
+      fromStage: "FEATURE_DETAIL",
+      nowIso,
+      existing: input.existingOrchestrationStage,
+      activePhase: "api_define",
+    });
+
+    const requirementsStatePatch: Partial<RequirementsStateJson> = {
+      requirementsOrchestrationStageV1: orchPatch,
+      ...(featureArtifact ? { featurePlanningSlotsV1: featureArtifact } : {}),
+      ...(nextDetail ? { featureDetailSlotsV1: nextDetail } : {}),
+    };
+
+    const updatedFlow = {
+      ...baseFlow,
+      lastProposalDecision: "DIRECT_INPUT",
+      updatedAt: nowIso,
+    };
+
+    return buildTransitionFastPathResult({
+      assistantMessage,
+      updatedFlow,
+      quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+      routingDecision: "feature_detail_to_api_define_transition",
+      timelineAction: "apiDefineTransition",
+      proposalDecision: "DIRECT_INPUT",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "FEATURE_DETAIL",
+      transitionMeta: {
+        quickActionType: "API_DEFINE_START",
         transitionTriggered: true,
         fromStage,
         toStage: "FEATURE_DETAIL",

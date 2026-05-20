@@ -31,7 +31,8 @@ export type FeatureDetailMutationAction =
   | "confirm"
   | "partial_edit"
   | "obsolete"
-  | "screen_define_enter";
+  | "screen_define_enter"
+  | "api_define_enter";
 
 export type FeatureDetailLastMutationV1 = Readonly<{
   readonly featureId?: string;
@@ -59,6 +60,7 @@ export type FeatureDetailSlotsV1 = Readonly<{
   readonly version: 1;
   readonly slots: readonly FeatureDetailSlot[];
   readonly updatedAt: string;
+  readonly focusFeatureId?: string;
   readonly lastMutation?: FeatureDetailLastMutationV1;
 }>;
 
@@ -143,7 +145,42 @@ export function parseFeatureDetailSlotsV1(raw: unknown): FeatureDetailSlotsV1 | 
       };
     }
   }
-  return { version: 1, slots, updatedAt, ...(lastMutation ? { lastMutation } : {}) };
+  const focusFeatureId =
+    typeof o.focusFeatureId === "string" && o.focusFeatureId.trim() ? o.focusFeatureId.trim() : undefined;
+  return {
+    version: 1,
+    slots,
+    updatedAt,
+    ...(focusFeatureId ? { focusFeatureId } : {}),
+    ...(lastMutation ? { lastMutation } : {}),
+  };
+}
+
+export function activeFeatureDetailSlots(artifact: FeatureDetailSlotsV1 | null | undefined): readonly FeatureDetailSlot[] {
+  return (artifact?.slots ?? []).filter((s) => s.status !== "obsolete");
+}
+
+export function resolveFocusFeatureSlot(
+  artifact: FeatureDetailSlotsV1,
+  preferredId?: string | null,
+): FeatureDetailSlot | undefined {
+  const active = activeFeatureDetailSlots(artifact);
+  if (!active.length) return undefined;
+  const pref = String(preferredId ?? artifact.focusFeatureId ?? "").trim();
+  if (pref) {
+    const hit = active.find((s) => s.id === pref);
+    if (hit) return hit;
+  }
+  return active.find((s) => s.status === "candidate" || s.status === "partial") ?? active[0];
+}
+
+export function withFeatureDetailFocus(
+  artifact: FeatureDetailSlotsV1,
+  featureId: string | null | undefined,
+): FeatureDetailSlotsV1 {
+  const id = String(featureId ?? "").trim();
+  if (!id) return artifact;
+  return { ...artifact, focusFeatureId: id };
 }
 
 function splitMultilineField(raw: string, max = 24): readonly string[] | undefined {
@@ -453,6 +490,7 @@ export function seedFeatureDetailSlotsFromServiceFlow(
     version: 1,
     slots,
     updatedAt: now,
+    ...(slots[0] ? { focusFeatureId: slots[0].id } : {}),
     lastMutation: {
       featureAction: "bootstrap",
       mutationSource: "FEATURE_DETAIL_START",
@@ -496,8 +534,7 @@ export function buildFeatureDetailBootstrapMessage(
     .sort((a, b) => a.order - b.order)
     .map((s) => s.title.trim())
     .filter(Boolean);
-  const focus =
-    artifact.slots.find((s) => s.status === "candidate" || s.status === "partial") ?? artifact.slots[0];
+  const focus = resolveFocusFeatureSlot(artifact);
 
   const lines = [
     "현재 승인된 서비스 흐름을 기준으로 **세부 기능 정의** 단계로 이동했습니다.",
@@ -526,16 +563,36 @@ export function buildFeatureDetailBootstrapMessage(
   return lines.join("\n").trim();
 }
 
-export function buildScreenDefineBlockedMessage(metrics: FeatureDetailProjectionMetrics): string {
+export function buildFeatureDetailDefineBlockedMessage(
+  metrics: FeatureDetailProjectionMetrics,
+  kind: "screen" | "api",
+): string {
   if (!metrics.hasConfirmedFeature) {
+    const target = kind === "api" ? "API 정의" : "화면 정의";
     return [
       "아직 **확정된 기능**이 없습니다.",
       "",
-      "화면 정의를 시작하려면 최소 1개 기능을 확정해 주세요.",
+      `${target}를 시작하려면 최소 1개 기능을 확정해 주세요.`,
       "「기능 수정」으로 입력·처리·출력·예외를 정리한 뒤 확정할 수 있습니다.",
     ].join("\n");
   }
   return "";
+}
+
+/** @deprecated use buildFeatureDetailDefineBlockedMessage */
+export function buildScreenDefineBlockedMessage(metrics: FeatureDetailProjectionMetrics): string {
+  return buildFeatureDetailDefineBlockedMessage(metrics, "screen");
+}
+
+export function buildApiDefineLowCoverageWarning(metrics: FeatureDetailProjectionMetrics): string | null {
+  if (!metrics.hasConfirmedFeature) return null;
+  const pct = Math.round(metrics.featureCoverage * 100);
+  const need = Math.round(FEATURE_DETAIL_COVERAGE_THRESHOLD * 100);
+  if (pct >= need) return null;
+  return [
+    `전체 기능 확정률이 **${pct}%**로 낮습니다.`,
+    "일부 확정 기능 기준으로 API 정의를 시작합니다. 나머지 기능은 이후에 확정해 주세요.",
+  ].join("\n");
 }
 
 export function buildScreenDefineLowCoverageWarning(metrics: FeatureDetailProjectionMetrics): string | null {

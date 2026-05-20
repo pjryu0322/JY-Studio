@@ -202,7 +202,7 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
     defaultLabel: "API 정의",
     conversationProfiles: ["feature_detail"],
     proposalDecision: null,
-    transitionSignal: null,
+    transitionSignal: "API_DEFINE_START",
   },
   GENERATE_DOCUMENT: {
     id: "GENERATE_DOCUMENT",
