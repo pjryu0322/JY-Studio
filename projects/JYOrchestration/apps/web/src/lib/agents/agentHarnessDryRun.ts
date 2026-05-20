@@ -8,11 +8,13 @@ import type {
   HarnessDryRunResult,
   HarnessDryRunStatus,
   HarnessGovernancePrecheck,
+  HarnessGovernancePrecheckStatus,
 } from "@/lib/agents/agentHarnessDryRunTypes";
 import { getAgentById } from "@/lib/agents/agentRegistry";
 import { getCapabilityById } from "@/lib/agents/capabilityRegistry";
 import { planConnectorInvocation } from "@/lib/agents/connectorGatewayFacade";
 import type { ConnectorInvocationResult } from "@/lib/agents/connectorGatewayFacadeTypes";
+import { evaluateGovernancePrecheckDryRun } from "@/lib/agents/governancePrecheckDryRun";
 import {
   resolveDispatchAgent,
   resolveDispatchCapability,
@@ -57,6 +59,17 @@ export function buildHarnessDryRunRequest(
   }
 }
 
+function deriveHarnessGovernancePrecheckStatus(input: {
+  readonly blocking: readonly string[];
+  readonly warnings: readonly string[];
+  readonly requiredChecks: readonly string[];
+}): HarnessGovernancePrecheckStatus {
+  if (input.blocking.length) return "blocked";
+  if (input.warnings.length) return "warning";
+  if (input.requiredChecks.length) return "pass_candidate";
+  return "not_evaluated";
+}
+
 export function buildGovernancePrecheckForCapability(
   capabilityId?: string,
   options?: Readonly<{
@@ -68,10 +81,13 @@ export function buildGovernancePrecheckForCapability(
   const warnings = [...(options?.warnings ?? [])];
 
   if (!capabilityId?.trim()) {
-    const status = blocking.length ? "blocked" : warnings.length ? "warning" : "not_evaluated";
     return {
       requiredChecks: [],
-      status,
+      status: deriveHarnessGovernancePrecheckStatus({
+        blocking,
+        warnings,
+        requiredChecks: [],
+      }),
       ...(warnings.length ? { warnings } : {}),
       ...(blocking.length ? { blockingReasons: blocking } : {}),
     };
@@ -79,37 +95,69 @@ export function buildGovernancePrecheckForCapability(
 
   const cap = getCapabilityById(capabilityId.trim());
   if (!cap) {
+    const mergedWarnings = [`unknown_capability:${capabilityId}`, ...warnings];
     return {
       requiredChecks: [],
-      status: "warning",
-      warnings: [`unknown_capability:${capabilityId}`],
+      status: blocking.length ? "blocked" : "warning",
+      warnings: mergedWarnings,
       ...(blocking.length ? { blockingReasons: blocking } : {}),
     };
   }
 
   const requiredChecks = [...(cap.governanceChecks ?? [])];
-  let status: HarnessGovernancePrecheck["status"] = "not_evaluated";
-  if (blocking.length) status = "blocked";
-  else if (warnings.length) status = "warning";
-  else if (requiredChecks.length) status = "pass_candidate";
-
   return {
     requiredChecks,
-    status,
+    status: deriveHarnessGovernancePrecheckStatus({ blocking, warnings, requiredChecks }),
     ...(warnings.length ? { warnings } : {}),
     ...(blocking.length ? { blockingReasons: blocking } : {}),
   };
 }
 
+function buildHarnessDryRunMetadata(
+  request: HarnessDryRunRequest,
+  extras?: Readonly<{
+    readonly agentResolutionReason?: string;
+    readonly capabilityResolutionReason?: string;
+    readonly connectorPlanSummary?: string;
+    readonly governancePrecheckStatus?: string;
+    readonly governanceDryRunStatus?: string;
+  }>,
+): Readonly<Record<string, unknown>> | undefined {
+  const metadata: Record<string, unknown> = {};
+  if (request.source) metadata.source = request.source;
+  if (request.projectId) metadata.projectId = request.projectId;
+  if (request.conversationId) metadata.conversationId = request.conversationId;
+  if (request.runId) metadata.runId = request.runId;
+  if (request.taskId) metadata.taskId = request.taskId;
+  if (extras?.agentResolutionReason) metadata.agentResolutionReason = extras.agentResolutionReason;
+  if (extras?.capabilityResolutionReason) {
+    metadata.capabilityResolutionReason = extras.capabilityResolutionReason;
+  }
+  if (extras?.connectorPlanSummary) metadata.connectorPlanSummary = extras.connectorPlanSummary;
+  if (extras?.governancePrecheckStatus) {
+    metadata.governancePrecheckStatus = extras.governancePrecheckStatus;
+  }
+  if (extras?.governanceDryRunStatus) metadata.governanceDryRunStatus = extras.governanceDryRunStatus;
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
+function summarizeConnectorPlans(
+  plans: readonly ConnectorInvocationResult[],
+): string | undefined {
+  if (!plans.length) return undefined;
+  return plans.map((p) => `${p.connectorId}:${p.status}:${p.allowed}`).join(",");
+}
+
 function resolveHarnessAgentId(request: HarnessDryRunRequest): {
   readonly agentId?: string;
   readonly warnings: string[];
+  readonly resolutionReason?: string;
 } {
   const warnings: string[] = [];
   const direct = trimOptional(request.agentId);
   if (direct) {
     if (!getAgentById(direct)) warnings.push(`unknown_agent:${direct}`);
-    return { agentId: direct, warnings };
+    return { agentId: direct, warnings, resolutionReason: `direct:${direct}` };
   }
 
   const resolved = resolveDispatchAgent({
@@ -120,9 +168,16 @@ function resolveHarnessAgentId(request: HarnessDryRunRequest): {
     aiMemberRole: request.aiMemberRole,
   });
 
-  if (resolved.agentId) return { agentId: resolved.agentId, warnings: [...warnings, ...(resolved.warnings ?? [])] };
+  if (resolved.agentId) {
+    return {
+      agentId: resolved.agentId,
+      warnings: [...warnings, ...(resolved.warnings ?? [])],
+      resolutionReason: resolved.reason,
+    };
+  }
   return {
     warnings: [...warnings, ...(resolved.warnings ?? []), resolved.reason],
+    resolutionReason: resolved.reason,
   };
 }
 
@@ -132,12 +187,13 @@ function resolveHarnessCapabilityId(
 ): {
   readonly capabilityId?: string;
   readonly warnings: string[];
+  readonly resolutionReason?: string;
 } {
   const warnings: string[] = [];
   const direct = trimOptional(request.capabilityId);
   if (direct) {
     if (!getCapabilityById(direct)) warnings.push(`unknown_capability:${direct}`);
-    return { capabilityId: direct, warnings };
+    return { capabilityId: direct, warnings, resolutionReason: `direct:${direct}` };
   }
 
   const resolved = resolveDispatchCapability({
@@ -148,10 +204,15 @@ function resolveHarnessCapabilityId(
   });
 
   if (resolved.capabilityId) {
-    return { capabilityId: resolved.capabilityId, warnings: [...warnings, ...(resolved.warnings ?? [])] };
+    return {
+      capabilityId: resolved.capabilityId,
+      warnings: [...warnings, ...(resolved.warnings ?? [])],
+      resolutionReason: resolved.reason,
+    };
   }
   return {
     warnings: [...warnings, ...(resolved.warnings ?? []), resolved.reason],
+    resolutionReason: resolved.reason,
   };
 }
 
@@ -177,14 +238,80 @@ function buildConnectorPlansForHarness(input: {
   );
 }
 
+function mergeGovernanceDryRunWarnings(
+  warnings: string[],
+  governanceDryRun: ReturnType<typeof evaluateGovernancePrecheckDryRun>,
+): void {
+  warnings.push(...governanceDryRun.warnings);
+  if (governanceDryRun.status === "blocking_candidate") {
+    for (const policyId of governanceDryRun.blockingCandidates) {
+      warnings.push(`governance_blocking_candidate:${policyId}`);
+    }
+  }
+}
+
+function finalizeHarnessResult(input: {
+  readonly request: HarnessDryRunRequest;
+  readonly status: HarnessDryRunStatus;
+  readonly executable: boolean;
+  readonly reason: string;
+  readonly agentId?: string;
+  readonly capabilityId?: string;
+  readonly requiredConnectors: readonly string[];
+  readonly connectorPlans: readonly ConnectorInvocationResult[];
+  readonly governancePrecheck: HarnessGovernancePrecheck;
+  readonly warnings: readonly string[];
+  readonly blockingReasons: readonly string[];
+  readonly agentResolutionReason?: string;
+  readonly capabilityResolutionReason?: string;
+}): HarnessDryRunResult {
+  const governanceDryRun = evaluateGovernancePrecheckDryRun({
+    requiredChecks: input.governancePrecheck.requiredChecks,
+    agentId: input.agentId,
+    capabilityId: input.capabilityId,
+  });
+
+  const warnings = [...input.warnings];
+  mergeGovernanceDryRunWarnings(warnings, governanceDryRun);
+
+  const agent = input.agentId ? getAgentById(input.agentId) : undefined;
+  const metadata = buildHarnessDryRunMetadata(input.request, {
+    agentResolutionReason: input.agentResolutionReason,
+    capabilityResolutionReason: input.capabilityResolutionReason,
+    connectorPlanSummary: summarizeConnectorPlans(input.connectorPlans),
+    governancePrecheckStatus: input.governancePrecheck.status,
+    governanceDryRunStatus: governanceDryRun.status,
+  });
+
+  return {
+    status: input.status,
+    executable: input.executable,
+    reason: input.reason,
+    requiredConnectors: input.requiredConnectors,
+    connectorPlans: input.connectorPlans,
+    governancePrecheck: input.governancePrecheck,
+    governanceDryRun,
+    warnings,
+    blockingReasons: [...input.blockingReasons],
+    ...(input.agentId ? { agentId: input.agentId } : {}),
+    ...(agent ? { agentType: agent.type } : {}),
+    ...(input.capabilityId ? { capabilityId: input.capabilityId } : {}),
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 function harnessUnresolvedResult(input: {
+  readonly request: HarnessDryRunRequest;
   readonly status: Extract<HarnessDryRunStatus, "no_agent" | "no_capability">;
   readonly reason: string;
   readonly agentId?: string;
   readonly blockingKey: "no_agent" | "no_capability";
   readonly warnings: string[];
+  readonly agentResolutionReason?: string;
+  readonly capabilityResolutionReason?: string;
 }): HarnessDryRunResult {
   return finalizeHarnessResult({
+    request: input.request,
     status: input.status,
     executable: false,
     reason: input.reason,
@@ -196,37 +323,9 @@ function harnessUnresolvedResult(input: {
     }),
     warnings: input.warnings,
     blockingReasons: [input.blockingKey],
+    agentResolutionReason: input.agentResolutionReason,
+    capabilityResolutionReason: input.capabilityResolutionReason,
   });
-}
-
-function finalizeHarnessResult(input: {
-  readonly status: HarnessDryRunStatus;
-  readonly executable: boolean;
-  readonly reason: string;
-  readonly agentId?: string;
-  readonly capabilityId?: string;
-  readonly requiredConnectors: readonly string[];
-  readonly connectorPlans: readonly ConnectorInvocationResult[];
-  readonly governancePrecheck: HarnessGovernancePrecheck;
-  readonly warnings: readonly string[];
-  readonly blockingReasons: readonly string[];
-  readonly metadata?: Readonly<Record<string, unknown>>;
-}): HarnessDryRunResult {
-  const agent = input.agentId ? getAgentById(input.agentId) : undefined;
-  return {
-    status: input.status,
-    executable: input.executable,
-    reason: input.reason,
-    requiredConnectors: input.requiredConnectors,
-    connectorPlans: input.connectorPlans,
-    governancePrecheck: input.governancePrecheck,
-    warnings: [...input.warnings],
-    blockingReasons: [...input.blockingReasons],
-    ...(input.agentId ? { agentId: input.agentId } : {}),
-    ...(agent ? { agentType: agent.type } : {}),
-    ...(input.capabilityId ? { capabilityId: input.capabilityId } : {}),
-    ...(input.metadata ? { metadata: input.metadata } : {}),
-  };
 }
 
 /** Safe wrapper — never throws. */
@@ -240,10 +339,12 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
 
     if (!agentResolution.agentId) {
       return harnessUnresolvedResult({
+        request,
         status: "no_agent",
         reason: "harness:no_agent_resolved",
         blockingKey: "no_agent",
         warnings,
+        agentResolutionReason: agentResolution.resolutionReason,
       });
     }
 
@@ -252,16 +353,15 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
     warnings.push(...capabilityResolution.warnings);
 
     if (!capabilityResolution.capabilityId) {
-      return finalizeHarnessResult({
+      return harnessUnresolvedResult({
+        request,
         status: "no_capability",
-        executable: false,
         reason: "harness:no_capability_resolved",
         agentId,
-        requiredConnectors: [],
-        connectorPlans: [],
-        governancePrecheck: buildGovernancePrecheckForCapability(undefined, { warnings }),
+        blockingKey: "no_capability",
         warnings,
-        blockingReasons: ["no_capability"],
+        agentResolutionReason: agentResolution.resolutionReason,
+        capabilityResolutionReason: capabilityResolution.resolutionReason,
       });
     }
 
@@ -271,6 +371,7 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
     if (!validateAgentCapabilityBinding(agentId, capabilityId)) {
       blockingReasons.push(`agent_capability_binding_invalid:${agentId}+${capabilityId}`);
       return finalizeHarnessResult({
+        request,
         status: "blocked",
         executable: false,
         reason: "harness:binding_invalid",
@@ -284,6 +385,8 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
         }),
         warnings,
         blockingReasons,
+        agentResolutionReason: agentResolution.resolutionReason,
+        capabilityResolutionReason: capabilityResolution.resolutionReason,
       });
     }
 
@@ -306,8 +409,14 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
       warnings: warnings.length ? warnings : undefined,
     });
 
+    const resolutionExtras = {
+      agentResolutionReason: agentResolution.resolutionReason,
+      capabilityResolutionReason: capabilityResolution.resolutionReason,
+    };
+
     if (blockingReasons.length) {
       return finalizeHarnessResult({
+        request,
         status: "blocked",
         executable: false,
         reason: "harness:connector_or_policy_blocked",
@@ -322,11 +431,13 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
         },
         warnings,
         blockingReasons,
+        ...resolutionExtras,
       });
     }
 
     if (warnings.length) {
       return finalizeHarnessResult({
+        request,
         status: "warning",
         executable: true,
         reason: "harness:planned_with_warnings",
@@ -337,10 +448,12 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
         governancePrecheck,
         warnings,
         blockingReasons: [],
+        ...resolutionExtras,
       });
     }
 
     return finalizeHarnessResult({
+      request,
       status: "planned",
       executable: true,
       reason: "harness:planned",
@@ -351,10 +464,11 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
       governancePrecheck,
       warnings: [],
       blockingReasons: [],
-      metadata: request.source ? { source: request.source } : undefined,
+      ...resolutionExtras,
     });
   } catch {
-    return {
+    return finalizeHarnessResult({
+      request,
       status: "blocked",
       executable: false,
       reason: "harness:plan_failed",
@@ -363,7 +477,7 @@ export function planAgentHarnessDryRun(request: HarnessDryRunRequest): HarnessDr
       governancePrecheck: buildGovernancePrecheckForCapability(),
       warnings: [],
       blockingReasons: ["harness_internal_error"],
-    };
+    });
   }
 }
 

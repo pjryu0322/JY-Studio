@@ -176,14 +176,43 @@ warnings only → warning, executable=true
 else → planned, executable=true
 ```
 
-## Stage 2-4 후보: Governance Pre-check Dry-run
+## Stage 2-3 소스 점검 보완 (Stage 2-4 전)
 
-Stage 2-4에서는 Harness Dry-run 결과에 포함된 `governanceChecks`를 기준으로 실제 차단이 아닌 정책 후보 평가를 수행한다.
+| 항목 | 조치 | 파일 |
+|---|---|---|
+| governancePrecheck 상태 일관성 | blocking 시 status=blocked 보장 | `agentHarnessDryRun.ts` |
+| Harness metadata 유지 | 모든 status에 source/projectId 등 metadata | `buildHarnessDryRunMetadata` |
+| 테스트 mock 안정화 | original fn + afterEach restore | `multiAgentHarnessDryRun.unit.test.ts` |
+| 설명력 보강 | resolution reason, connectorPlanSummary | harness `metadata` |
 
-| 항목 | 설명 |
-|---|---|
-| GovernancePolicyDescriptor | 정책 후보 타입 |
-| evaluateGovernancePrecheckDryRun | 실행 전 정책 후보 평가 |
-| blocking/warning 분리 | 실제 차단 전 시뮬레이션 |
-| Runtime 연결 | 아직 없음 |
+## Stage 2-4 Governance Pre-check Dry-run 결과
+
+| 항목 | 반영 방식 | 실제 차단 여부 | 비고 |
+|---|---|---|---|
+| GovernancePolicyDescriptor | 정책 후보 타입 | 없음 | dry-run 전용 |
+| GovernancePolicyRegistry | check → policy 조회 | 없음 | unknown check warning |
+| evaluateGovernancePrecheckDryRun | requiredChecks 평가 | 없음 | candidate 평가 |
+| Harness 연계 | `governanceDryRun` optional field | 없음 | executable 강제 변경 없음 |
+
+구현: `governancePrecheckDryRunTypes.ts`, `defaultGovernancePolicies.ts`, `governancePolicyRegistry.ts`, `governancePrecheckDryRun.ts`
+
+### Stage 2-4 상태 규칙
+
+```text
+requiredChecks 없음 → not_evaluated
+info 정책만 존재 → pass_candidate
+warning 정책 존재 → warning_candidate
+blocking_candidate 정책 존재 → blocking_candidate (Harness executable 유지)
+unknown check → warning finding
+```
+
+### Stage 2-5 후보: Timeline/Replay Metadata Persistence 검토
+
+| 후보 필드 | 목적 | 저장 필요성 | 주의사항 |
+|---|---|---|---|
+| agentId | 실행 주체 추적 | 높음 | 기존 dispatch 영향 최소화 |
+| capabilityId | 실행 능력 추적 | 높음 | registry version 고려 |
+| connectorPlans | 실행 전 connector 판단 | 중간 | 원문 metadata 최소화 |
+| governanceDryRun | 정책 후보 평가 | 중간 | 실제 차단과 구분 |
+| lastAgentEvent | timeline/replay 연결 | 높음 | event schema 안정화 필요 |
 ```

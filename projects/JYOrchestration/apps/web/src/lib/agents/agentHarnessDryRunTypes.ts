@@ -3,6 +3,7 @@
  */
 
 import type { ConnectorInvocationResult } from "@/lib/agents/connectorGatewayFacadeTypes";
+import type { GovernancePrecheckDryRunResult } from "@/lib/agents/governancePrecheckDryRunTypes";
 
 export type HarnessDryRunStatus =
   | "planned"
@@ -55,6 +56,7 @@ export interface HarnessDryRunResult {
   readonly requiredConnectors: readonly string[];
   readonly connectorPlans: readonly ConnectorInvocationResult[];
   readonly governancePrecheck: HarnessGovernancePrecheck;
+  readonly governanceDryRun?: GovernancePrecheckDryRunResult;
   readonly reason: string;
   readonly warnings: readonly string[];
   readonly blockingReasons: readonly string[];

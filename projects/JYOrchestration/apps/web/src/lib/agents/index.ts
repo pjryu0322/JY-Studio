@@ -138,7 +138,27 @@ export {
   planRequirementsHarnessDryRun,
 } from "@/lib/agents/agentHarnessDryRun";
 
+export type {
+  GovernancePolicyDescriptor,
+  GovernancePrecheckDryRunResult,
+  GovernancePrecheckFinding,
+  GovernancePrecheckSeverity,
+  GovernancePrecheckStatus,
+} from "@/lib/agents/governancePrecheckDryRunTypes";
+
+export {
+  evaluateGovernancePrecheckDryRun,
+} from "@/lib/agents/governancePrecheckDryRun";
+
+export {
+  getGovernancePoliciesForCheck,
+  getGovernancePoliciesForChecks,
+  getGovernancePolicyById,
+  listGovernancePolicies,
+} from "@/lib/agents/governancePolicyRegistry";
+
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
 export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";
 export { DEFAULT_CONNECTORS } from "@/lib/agents/defaultConnectors";
+export { DEFAULT_GOVERNANCE_POLICIES } from "@/lib/agents/defaultGovernancePolicies";

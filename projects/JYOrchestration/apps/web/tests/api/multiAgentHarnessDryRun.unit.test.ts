@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as connectorFacade from "@/lib/agents/connectorGatewayFacade";
 import * as capabilityRegistry from "@/lib/agents/capabilityRegistry";
+import * as governancePrecheckModule from "@/lib/agents/governancePrecheckDryRun";
 import {
   buildGovernancePrecheckForCapability,
   planAgentHarnessDryRun,
@@ -8,13 +9,21 @@ import {
 } from "@/lib/agents/agentHarnessDryRun";
 import * as requirementsDispatch from "@/lib/requirements/requirementsIntentDispatch";
 
+const originalGetCapabilityById = capabilityRegistry.getCapabilityById;
+
 describe("multi-agent harness dry-run stage 2-3", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("ideation intent resolves ai-planner with planned status", () => {
-    const r = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const r = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION", source: "manual" });
     expect(r.agentId).toBe("ai-planner");
     expect(r.capabilityId).toBe("project.idea.structure");
     expect(r.status).toBe("planned");
     expect(r.executable).toBe(true);
+    expect(r.metadata?.source).toBe("manual");
+    expect(r.governanceDryRun?.status).toBe("pass_candidate");
   });
 
   it("prototype_build intent resolves ai-developer with cursor capability", () => {
@@ -24,6 +33,7 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     expect(["planned", "warning"]).toContain(r.status);
     expect(r.requiredConnectors).toContain("cursor");
     expect(r.connectorPlans.some((p) => p.connectorId === "cursor" && p.allowed)).toBe(true);
+    expect(r.governanceDryRun?.requiredChecks).toContain("connector:cursor");
   });
 
   it("security_review intent resolves ai-security with security capability", () => {
@@ -41,9 +51,11 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     const r = planAgentHarnessDryRun({
       intent: "totally_unknown_intent_xyz",
       stage: "UNKNOWN_STAGE_XYZ",
+      source: "requirements",
     });
     expect(r.executable).toBe(false);
     expect(["no_agent", "blocked", "no_capability"]).toContain(r.status);
+    expect(r.metadata?.source).toBe("requirements");
   });
 
   it("explicit agentId takes precedence over resolver", () => {
@@ -54,6 +66,7 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     });
     expect(r.agentId).toBe("ai-scm");
     expect(r.capabilityId).toBe("git.pr.merge.control");
+    expect(r.metadata?.agentResolutionReason).toBe("direct:ai-scm");
   });
 
   it("explicit capabilityId is used with binding validation", () => {
@@ -69,9 +82,11 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     const r = planAgentHarnessDryRun({
       agentId: "ai-planner",
       capabilityId: "cursor.implementation.plan",
+      source: "manual",
     });
     expect(r.executable).toBe(false);
     expect(r.status).toBe("blocked");
+    expect(r.metadata?.source).toBe("manual");
     expect(r.blockingReasons.some((b) => b.includes("binding"))).toBe(true);
   });
 
@@ -82,6 +97,7 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     });
     expect(r.connectorPlans.length).toBeGreaterThan(0);
     expect(r.connectorPlans[0]?.mode).toBe("dry_run");
+    expect(r.metadata?.connectorPlanSummary).toContain("cursor");
   });
 
   it("disabled required connector blocks harness", () => {
@@ -93,10 +109,11 @@ describe("multi-agent harness dry-run stage 2-3", () => {
           category: "development",
           description: "test",
           requiredConnectors: ["codex"],
+          allowedAgentTypes: ["developer"],
           enabled: true,
         };
       }
-      return capabilityRegistry.getCapabilityById(id);
+      return originalGetCapabilityById(id);
     });
 
     const r = planAgentHarnessDryRun({
@@ -105,16 +122,20 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     });
     expect(r.executable).toBe(false);
     expect(r.status).toBe("blocked");
-    vi.restoreAllMocks();
   });
 
-  it("governanceChecks appear in governancePrecheck.requiredChecks", () => {
-    const pre = buildGovernancePrecheckForCapability("project.idea.structure");
-    expect(pre.requiredChecks).toContain("stage:ideation");
-    expect(pre.status).toBe("pass_candidate");
+  it("unknown capability with blockingReasons yields governancePrecheck blocked", () => {
+    const pre = buildGovernancePrecheckForCapability("unknown.capability", {
+      blockingReasons: ["binding_invalid"],
+      warnings: ["unknown_capability:unknown.capability"],
+    });
+    expect(pre.status).toBe("blocked");
+  });
 
+  it("governanceChecks appear in governancePrecheck and governanceDryRun", () => {
     const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
-    expect(harness.governancePrecheck.requiredChecks.length).toBeGreaterThan(0);
+    expect(harness.governancePrecheck.requiredChecks).toContain("stage:ideation");
+    expect(harness.governanceDryRun?.status).toBe("pass_candidate");
   });
 
   it("planRequirementsHarnessDryRun does not call requirements dispatch", () => {
@@ -126,7 +147,7 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     });
     expect(dispatchSpy).not.toHaveBeenCalled();
     expect(r.metadata?.source).toBe("requirements");
-    dispatchSpy.mockRestore();
+    expect(r.metadata?.projectId).toBe("p1");
   });
 
   it("dry-run uses connector facade only without external invocation", () => {
@@ -139,6 +160,32 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     for (const call of planSpy.mock.calls) {
       expect(call[0]?.mode).toBe("dry_run");
     }
-    planSpy.mockRestore();
+  });
+
+  it("governance blocking_candidate does not force executable false", () => {
+    vi.spyOn(governancePrecheckModule, "evaluateGovernancePrecheckDryRun").mockReturnValue({
+      mode: "dry_run",
+      status: "blocking_candidate",
+      requiredChecks: ["registry-guard"],
+      evaluatedPolicyIds: ["registry.guard.required"],
+      findings: [
+        {
+          policyId: "registry.guard.required",
+          check: "registry-guard",
+          severity: "blocking_candidate",
+          message: "policy_matched:registry.guard.required",
+        },
+      ],
+      warnings: [],
+      blockingCandidates: ["registry.guard.required"],
+    });
+
+    const r = planAgentHarnessDryRun({
+      agentId: "ai-planner",
+      capabilityId: "orchestration.intent.route",
+    });
+    expect(r.executable).toBe(true);
+    expect(r.governanceDryRun?.status).toBe("blocking_candidate");
+    expect(r.warnings.some((w) => w.includes("governance_blocking_candidate"))).toBe(true);
   });
 });
