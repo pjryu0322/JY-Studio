@@ -230,6 +230,20 @@ export { buildAgentRuntimeDiagnosticViewModel } from "@/lib/agents/buildAgentRun
 
 export { buildAgentRuntimeDiagnosticSampleViewModel } from "@/lib/agents/buildAgentRuntimeDiagnosticSample";
 
+export type {
+  AgentRuntimePersistenceDecision,
+  AgentRuntimePersistenceDecisionFinding,
+  AgentRuntimePersistenceDecisionReport,
+  AgentRuntimePersistenceTarget,
+} from "@/lib/agents/agentRuntimePersistenceDecisionTypes";
+
+export {
+  evaluateAgentRuntimePersistenceDecision,
+  mapPersistenceDecisionToDiagnosticSection,
+} from "@/lib/agents/evaluateAgentRuntimePersistenceDecision";
+
+export type { PersistenceDecisionDiagnosticSection } from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

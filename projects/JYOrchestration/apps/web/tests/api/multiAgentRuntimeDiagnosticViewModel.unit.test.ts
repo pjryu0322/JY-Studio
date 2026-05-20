@@ -95,4 +95,20 @@ describe("multi-agent runtime diagnostic view model stage 2-7", () => {
     expect(vm.persistenceCandidate?.valid).toBe(false);
     expect(vm.warnings.length).toBeGreaterThan(0);
   });
+
+  it("includes persistenceDecision when persistenceCandidate is provided", () => {
+    const harness = planAgentHarnessDryRun({ intent: "prototype_build" });
+    const candidate = buildTimelineMetadataCandidateFromHarness(harness);
+    const vm = buildAgentRuntimeDiagnosticViewModel({ persistenceCandidate: candidate });
+    expect(vm.persistenceDecision?.decision).toBeDefined();
+    expect(vm.persistenceDecision?.requiresSchemaChange).toBe(true);
+    expect(vm.persistenceDecision?.requiresMigration).toBe(true);
+    expect(typeof vm.persistenceDecision?.findingCount).toBe("number");
+  });
+
+  it("sample VM includes persistenceDecision section", () => {
+    const vm = buildAgentRuntimeDiagnosticSampleViewModel();
+    expect(vm.persistenceDecision?.decision).toBeTruthy();
+    expect(vm.persistenceDecision?.recommendedTargets.length).toBeGreaterThan(0);
+  });
 });

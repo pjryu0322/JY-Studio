@@ -17,7 +17,8 @@ export type HarnessDryRunSource =
   | "requirements"
   | "runtime"
   | "governance"
-  | "manual";
+  | "manual"
+  | "diagnostic";
 
 export interface HarnessDryRunRequest {
   readonly intent?: string;

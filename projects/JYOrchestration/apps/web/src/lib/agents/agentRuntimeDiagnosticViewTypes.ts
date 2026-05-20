@@ -55,6 +55,15 @@ export interface PassThroughDiagnosticSection {
   readonly records: readonly PassThroughDiagnosticRecordRow[];
 }
 
+export interface PersistenceDecisionDiagnosticSection {
+  readonly decision: string;
+  readonly recommendedTargets: readonly string[];
+  readonly requiresSchemaChange: boolean;
+  readonly requiresMigration: boolean;
+  readonly findingCount: number;
+  readonly blockingFindingCount: number;
+}
+
 export interface AgentRuntimeDiagnosticViewModel {
   readonly mode: AgentRuntimeDiagnosticViewMode;
   readonly title: string;
@@ -63,6 +72,7 @@ export interface AgentRuntimeDiagnosticViewModel {
   readonly harness?: HarnessDiagnosticSection;
   readonly governance?: GovernanceDiagnosticSection;
   readonly persistenceCandidate?: PersistenceCandidateDiagnosticSection;
+  readonly persistenceDecision?: PersistenceDecisionDiagnosticSection;
   readonly passThrough?: PassThroughDiagnosticSection;
 
   readonly warnings: readonly string[];

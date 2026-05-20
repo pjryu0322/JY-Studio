@@ -162,6 +162,36 @@ export function AgentRuntimeDiagnosticPanel({
         </Section>
       ) : null}
 
+      {vm.persistenceDecision ? (
+        <Section
+          title="Persistence 적용 여부 (read-only 결정)"
+          testId="agent-runtime-diagnostic-persistence-decision"
+        >
+          <Field label="decision" value={vm.persistenceDecision.decision} />
+          <Field
+            label="recommendedTargets"
+            value={
+              vm.persistenceDecision.recommendedTargets.length
+                ? vm.persistenceDecision.recommendedTargets.join(", ")
+                : "없음"
+            }
+          />
+          <Field
+            label="requiresSchemaChange"
+            value={String(vm.persistenceDecision.requiresSchemaChange)}
+          />
+          <Field
+            label="requiresMigration"
+            value={String(vm.persistenceDecision.requiresMigration)}
+          />
+          <Field label="findingCount" value={String(vm.persistenceDecision.findingCount)} />
+          <Field
+            label="blockingFindingCount"
+            value={String(vm.persistenceDecision.blockingFindingCount)}
+          />
+        </Section>
+      ) : null}
+
       {vm.persistenceCandidate ? (
         <Section
           title="Persistence Candidate Preview (저장 아님)"

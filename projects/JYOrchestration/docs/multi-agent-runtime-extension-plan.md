@@ -308,13 +308,52 @@ unknown check → warning finding
 - React Testing Library 미사용 → UI 단위 테스트 생략, VM 테스트로 검증.
 ```
 
-### Stage 2-8 후보: Timeline/Replay Persistence 실제 적용 여부 결정
+## Stage 2-7 소스 동기화 검증 결과
 
-Stage 2-8에서는 지금까지 만든 candidate를 실제 Timeline/Replay 저장 구조에 연결할지 여부를 결정한다.
-
-| 검토 항목 | 설명 | 주의사항 |
+| 항목 | 상태 | 비고 |
 |---|---|---|
-| 저장 대상 필드 | agentId/capabilityId/governance/passThrough summary | 민감정보 제외 |
-| 저장 위치 | Timeline metadata / Replay snapshot / diagnostic log | 기존 schema 영향 |
-| Migration 필요성 | Prisma/DB 변경 여부 판단 | 별도 승인 필요 |
-| Rollback 전략 | 저장 적용 후 되돌릴 수 있는 구조 | 필수 |
+| Diagnostic ViewModel | 반영됨 | `read_only_dry_run` |
+| Sample Builder | 반영됨 | `source: diagnostic` |
+| Diagnostic Panel | 반영됨 | `components/diagnostics/AgentRuntimeDiagnosticPanel.tsx` |
+| Route 연결 | 없음 | 내부 진단 컴포넌트만 |
+| 실제 실행/저장 영향 | 없음 | VM/builder only |
+
+## Stage 2-8 Timeline/Replay Persistence 적용 여부 결정 준비 결과
+
+| 항목 | 반영 방식 | 실제 저장 여부 | 비고 |
+|---|---|---|---|
+| Persistence Decision 타입 | `read_only_decision` report | 없음 | 적용 여부 판단용 |
+| Persistence Decision Evaluator | candidate 기반 판단 | 없음 | DB 호출 없음 |
+| Diagnostic VM 연계 | `persistenceDecision` section | 없음 | 내부 진단용 |
+| Schema/Migration 판단 | boolean flag | 없음 | 실제 migration 아님 |
+
+구현: `agentRuntimePersistenceDecisionTypes.ts`, `evaluateAgentRuntimePersistenceDecision.ts`
+
+### Stage 2-8 원칙
+
+```text
+- 아직 실제 persist를 적용하지 않는다.
+- DB/Prisma schema를 바꾸지 않는다.
+- Timeline/Replay 저장 함수를 호출하지 않는다.
+- 저장 여부를 결정하기 위한 report만 만든다.
+- 실제 저장 적용은 별도 승인 후 Stage 2-8 후속 또는 Stage 2-9에서 진행한다.
+```
+
+### Stage 2-8 Decision 규칙 요약
+
+```text
+invalid schema/registry/forbidden key → blocked
+JSON size only exceed → defer
+replay_snapshot kind → defer
+valid timeline_metadata → ready_for_design + timeline_metadata target
+valid diagnostic_metadata + governance/passThrough summary → ready_for_design + diagnostic_log target
+requiresSchemaChange/requiresMigration → true (판단값만, 실제 적용 없음)
+```
+
+### Stage 2-9 후보: Connector Gateway 실제 라우팅 전환 평가
+
+| 후보 | 설명 | 주의사항 |
+|---|---|---|
+| Cursor Gateway routing | 기존 Cursor 호출 경로를 gateway로 감쌀지 평가 | 실제 변경 전 영향 분석 필수 |
+| GitHub Gateway routing | PR/merge/status 경로를 gateway로 감쌀지 평가 | Stage1/ENV_TEST 영향 검증 필수 |
+| Rollback plan | 기존 직접 호출 경로로 되돌릴 수 있는 구조 | 필수 |

@@ -15,7 +15,7 @@ import { buildTimelineMetadataCandidateFromHarness } from "@/lib/agents/agentRun
 export function buildAgentRuntimeDiagnosticSampleViewModel(): AgentRuntimeDiagnosticViewModel {
   const harnessResult = planAgentHarnessDryRun({
     intent: "prototype_build",
-    source: "manual",
+    source: "diagnostic",
   });
 
   const persistenceBase = buildTimelineMetadataCandidateFromHarness(harnessResult);

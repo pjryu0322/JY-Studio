@@ -17,6 +17,10 @@ import {
 } from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
 import type { ConnectorPassThroughRecordCandidate } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 import { listConnectorPassThroughBoundaries } from "@/lib/agents/connectorPassThroughBoundaryRegistry";
+import {
+  evaluateAgentRuntimePersistenceDecision,
+  mapPersistenceDecisionToDiagnosticSection,
+} from "@/lib/agents/evaluateAgentRuntimePersistenceDecision";
 
 function buildHarnessSection(result: HarnessDryRunResult): HarnessDiagnosticSection {
   return {
@@ -85,6 +89,13 @@ function buildPassThroughSection(
   return { boundaryCount, records: rows };
 }
 
+function appendUniqueWarnings(target: string[], items: readonly string[]): void {
+  for (const item of items) {
+    const t = String(item).trim();
+    if (t && !target.includes(t)) target.push(t);
+  }
+}
+
 /** Read-only VM — does not invoke dispatch, connectors, runtime execution, or timeline/replay storage. */
 export function buildAgentRuntimeDiagnosticViewModel(input: {
   readonly harnessResult?: HarnessDryRunResult;
@@ -98,6 +109,10 @@ export function buildAgentRuntimeDiagnosticViewModel(input: {
 
   const persistenceCandidate = input.persistenceCandidate
     ? buildPersistenceSection(input.persistenceCandidate)
+    : undefined;
+
+  const persistenceDecision = input.persistenceCandidate
+    ? buildPersistenceDecisionSection(input.persistenceCandidate)
     : undefined;
 
   if (persistenceCandidate && !persistenceCandidate.valid) {
@@ -120,6 +135,7 @@ export function buildAgentRuntimeDiagnosticViewModel(input: {
     ...(harness ? { harness } : {}),
     ...(governance ? { governance } : {}),
     ...(persistenceCandidate ? { persistenceCandidate } : {}),
+    ...(persistenceDecision ? { persistenceDecision } : {}),
     passThrough,
     warnings,
   };
