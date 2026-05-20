@@ -11,6 +11,7 @@ import {
   type FeatureDetailSlotMutationMode,
   type FeatureDetailSlotsV1,
 } from "@/lib/requirements/featureDetailSlots";
+import { buildIntentOrchestrationFocusPatch } from "@/lib/requirements/requirementsIntentOrchestrationFocusPersist";
 import {
   mergeRequirementsStateJson,
   type RequirementsPromptTimelineEntry,
@@ -83,11 +84,24 @@ export function useFeatureDetailEditing(args: UseFeatureDetailEditingArgs) {
   const persistFocus = useCallback(
     async (artifact: FeatureDetailSlotsV1, featureId: string) => {
       const focused = withFeatureDetailFocus(artifact, featureId);
-      if (focused.focusFeatureId === artifact.focusFeatureId) return;
+      const slot = focused.slots.find((s) => s.id === featureId);
+      const intentPatch = buildIntentOrchestrationFocusPatch({
+        featureId,
+        label: slot?.title,
+        prev: args.stateJsonRef.current.requirementsIntentOrchestrationV1,
+      });
+      const slotsChanged = focused.focusFeatureId !== artifact.focusFeatureId;
+      if (!slotsChanged && args.stateJsonRef.current.requirementsIntentOrchestrationV1?.activeFocus?.id === featureId) {
+        return;
+      }
       args.stateJsonRef.current = mergeRequirementsStateJson(args.stateJsonRef.current, {
         featureDetailSlotsV1: focused,
+        requirementsIntentOrchestrationV1: intentPatch,
       });
-      await args.persistStateJsonOnly({ featureDetailSlotsV1: focused });
+      await args.persistStateJsonOnly({
+        featureDetailSlotsV1: focused,
+        requirementsIntentOrchestrationV1: intentPatch,
+      });
       setRevision((n) => n + 1);
     },
     [args.stateJsonRef, args.persistStateJsonOnly],

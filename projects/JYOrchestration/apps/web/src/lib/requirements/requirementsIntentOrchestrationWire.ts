@@ -15,6 +15,7 @@ export type ConversationFocusWire = Readonly<{
 
 export type IntentClarificationTopic =
   | "feature_target"
+  | "target_resolution"
   | "action_choice"
   | "stage_next"
   | "general";

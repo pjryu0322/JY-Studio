@@ -6,6 +6,8 @@ import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureD
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { RequirementsOrchestrationProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
+import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
+import type { ArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import type { OrchestrationConversationMemory } from "@/lib/requirements/requirementsConversationMemory";
 import type { ConversationFocusWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 
@@ -65,6 +67,8 @@ export type RequirementsIntentRouterInput = Readonly<{
   readonly projectDescription?: string;
   readonly conversationMemory?: OrchestrationConversationMemory;
   readonly activeFocus?: ConversationFocusWire | null;
+  readonly artifactHubState?: ArtifactHubOrchestrationState;
+  readonly featureDetailSlotsV1?: FeatureDetailSlotsV1 | null;
 }>;
 
 export const ARTIFACT_CHAT_SUPPRESSED_ACTION_IDS = [

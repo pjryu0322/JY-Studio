@@ -138,6 +138,8 @@ describe("requirementsIntentRouter + guard follow-up", () => {
       userMessage: "API 정의 시작",
       dispatch,
     });
+    expect(entry.createdAt).toBeTruthy();
+    expect(entry.routingDecision).toBeTruthy();
     expect(entry.responseText).toContain("routerMode:");
     expect(entry.responseText).toContain("guardAllowed:");
     expect(entry.responseText).toContain("availableActionIds:");

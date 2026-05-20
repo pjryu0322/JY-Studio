@@ -77,6 +77,24 @@ export function focusReasonForRouting(focus: ConversationFocusWire | null): stri
   return `activeFocus:${focus.type}:${focus.id}`;
 }
 
+/** Persisted focus for feature drawer / slot selection (not message parsing). */
+export function buildFeatureEditingFocus(input: {
+  readonly featureId: string;
+  readonly label?: string;
+}): ConversationFocusWire {
+  return {
+    type: "feature",
+    id: input.featureId,
+    ...(input.label?.trim() ? { label: input.label.trim().slice(0, 120) } : {}),
+  };
+}
+
+export function buildCurrentEditingTargetForFeature(featureId: string): NonNullable<
+  RequirementsIntentOrchestrationV1["currentEditingTarget"]
+> {
+  return { featureId };
+}
+
 export function updateFocusAfterAction(input: {
   readonly actionId: QuickActionId;
   readonly focus: ConversationFocusWire | null;

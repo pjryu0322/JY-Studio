@@ -9,6 +9,10 @@ import {
 import { getQuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
 import { messageRefersToActiveFocus } from "@/lib/requirements/requirementsConversationFocus";
 import {
+  buildTargetResolutionClarification,
+  isAmbiguousTargetEditRequest,
+} from "@/lib/requirements/requirementsIntentClarification";
+import {
   actionIdsForLlmIntentRouter,
   type IntentRoutingResult,
   type IntentType,
@@ -94,6 +98,22 @@ export function routeRequirementsIntentDeterministic(
   }
 
   const focus = input.activeFocus ?? input.conversationMemory?.activeFocus ?? null;
+  if (
+    isAmbiguousTargetEditRequest(input.userMessage, Boolean(focus?.id)) &&
+    pickable.includes("EDIT_FEATURES")
+  ) {
+    const q = buildTargetResolutionClarification().question ?? "어떤 항목을 수정할까요?";
+    return {
+      intentType: "edit_request",
+      suggestedActionId: null,
+      confidence: 0.35,
+      reason: "ambiguous target — clarification required",
+      routerMode: "deterministic",
+      clarificationQuestion: q,
+      explainability: { routingReason: "target_resolution:missing_focus" },
+    };
+  }
+
   if (focus && messageRefersToActiveFocus(msg)) {
     if (focus.type === "feature" && pickable.includes("EDIT_FEATURES")) {
       return {
@@ -171,14 +191,15 @@ export function routeRequirementsIntentDeterministic(
     };
   }
 
-  if (/수정|편집|바꿔|고쳐/.test(msg) && pickable.includes("EDIT_FEATURES")) {
+  if (/수정|편집|바꿔|고쳐/.test(msg) && pickable.includes("EDIT_FEATURES") && !focus) {
     return {
       intentType: "edit_request",
-      suggestedActionId: "EDIT_FEATURES",
-      confidence: 0.52,
-      reason: "weak edit heuristic",
+      suggestedActionId: null,
+      confidence: 0.38,
+      reason: "edit request without resolvable target",
       routerMode: "deterministic",
-      clarificationQuestion: "어떤 기능을 수정할지 선택해 주세요.",
+      clarificationQuestion: buildTargetResolutionClarification().question ?? "어떤 항목을 수정할까요?",
+      explainability: { routingReason: "target_resolution:weak_edit" },
     };
   }
 

@@ -903,6 +903,15 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "requirementsOrchestrationStageV1" in o ? (o.requirementsOrchestrationStageV1 as unknown) : undefined;
   const requirementsOrchestrationStageV1 = parseRequirementsOrchestrationStageV1(orchStageRaw);
 
+  const intentOrchRaw =
+    "requirementsIntentOrchestrationV1" in o ? (o.requirementsIntentOrchestrationV1 as unknown) : undefined;
+  let requirementsIntentOrchestrationV1: RequirementsIntentOrchestrationV1 | null | undefined;
+  if (intentOrchRaw === undefined) requirementsIntentOrchestrationV1 = undefined;
+  else if (intentOrchRaw === null) requirementsIntentOrchestrationV1 = null;
+  else {
+    requirementsIntentOrchestrationV1 = parseRequirementsIntentOrchestrationV1(intentOrchRaw) ?? null;
+  }
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,

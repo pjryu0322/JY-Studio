@@ -100,11 +100,39 @@ export function routeRequirementsIntentDirect(
 }
 
 /** Sync path: deterministic only (unit tests). */
-export function routeRequirementsIntent(input: RequirementsIntentRouterInput): IntentRoutingResult {
+export function routeRequirementsIntent(
+  input: RequirementsIntentRouterInput,
+  options?: Pick<RouteRequirementsIntentOptions, "clarification">,
+): IntentRoutingResult {
   const chipId = resolveQuickActionIdFromLegacyLabel(input.userMessage);
   if (chipId && input.availableActionIds.includes(chipId)) {
     return routeRequirementsIntentDirect(input, chipId);
   }
+
+  const clarificationWire =
+    options?.clarification ??
+    (input.conversationMemory?.clarificationPending ?
+      {
+        pending: true,
+        topic: input.conversationMemory.clarificationTopic as IntentClarificationTopic,
+        question: input.conversationMemory.unresolvedClarificationQuestion,
+      }
+    : undefined);
+  if (clarificationWire?.pending) {
+    const resolved = tryResolveClarification({
+      userMessage: input.userMessage,
+      clarification: clarificationWire,
+      availableActionIds: input.availableActionIds,
+      featureDetailSlotsV1: input.featureDetailSlotsV1,
+    });
+    if (resolved) {
+      return finalizeRoutedIntent(input, {
+        ...resolved,
+        routerMode: "clarification_resolution",
+      });
+    }
+  }
+
   return finalizeRoutedIntent(input, routeRequirementsIntentDeterministic(input));
 }
 
@@ -143,6 +171,7 @@ export async function routeRequirementsIntentAsync(
       userMessage: input.userMessage,
       clarification: clarificationWire,
       availableActionIds: input.availableActionIds,
+      featureDetailSlotsV1: input.featureDetailSlotsV1,
     });
     if (resolved) {
       return finalizeRoutedIntent(input, {
@@ -193,6 +222,8 @@ export function intentRouterTimelinePayload(
   extras?: Readonly<{
     readonly availableActionIds?: readonly QuickActionId[];
     readonly proactiveRecommendation?: string;
+    readonly activeFocus?: string;
+    readonly clarificationPending?: boolean;
   }>,
 ): string {
   const ex = intent.explainability;
@@ -206,6 +237,8 @@ export function intentRouterTimelinePayload(
     ex?.focusReason ? `focusReason:${ex.focusReason}` : "",
     ex?.fallbackReason ? `fallbackReason:${ex.fallbackReason}` : "",
     intent.confidenceFactors?.length ? `confidenceFactors:${intent.confidenceFactors.join(",")}` : "",
+    extras?.activeFocus ? `activeFocus:${extras.activeFocus}` : "",
+    extras?.clarificationPending ? "clarificationPending:true" : "",
     `guardAllowed:${guard.allowed}`,
     guard.reason ? `guardReason:${guard.reason}` : "",
     guard.warning ? `guardWarning:${guard.warning}` : "",

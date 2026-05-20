@@ -8,6 +8,7 @@ export type RequirementsOrchestrationContextWire = Readonly<{
   readonly requirementsOrchestrationStageV1?: unknown;
   readonly featurePlanningSlotsV1?: unknown;
   readonly featureDetailSlotsV1?: unknown;
+  readonly requirementsIntentOrchestrationV1?: unknown;
 }>;
 
 export function buildIntentRouterStateFromOrchestrationContext(
@@ -21,5 +22,7 @@ export function buildIntentRouterStateFromOrchestrationContext(
       orchCtx?.requirementsOrchestrationStageV1 as RequirementsStateJson["requirementsOrchestrationStageV1"],
     featurePlanningSlotsV1: orchCtx?.featurePlanningSlotsV1 as RequirementsStateJson["featurePlanningSlotsV1"],
     featureDetailSlotsV1: orchCtx?.featureDetailSlotsV1 as RequirementsStateJson["featureDetailSlotsV1"],
+    requirementsIntentOrchestrationV1:
+      orchCtx?.requirementsIntentOrchestrationV1 as RequirementsStateJson["requirementsIntentOrchestrationV1"],
   };
 }

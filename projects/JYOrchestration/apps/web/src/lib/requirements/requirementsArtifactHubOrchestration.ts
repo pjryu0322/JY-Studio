@@ -11,11 +11,20 @@ import { projectFeatureDetailMetrics } from "@/lib/requirements/featureDetailSlo
 export type ArtifactHubOrchestrationState = Readonly<{
   readonly totalCount: number;
   readonly generatableCount: number;
+  readonly staleArtifactCount: number;
   readonly hasStaleArtifact: boolean;
   readonly hasRecentUpdate: boolean;
   readonly badgeEligible: boolean;
   readonly badgeHint?: string;
 }>;
+
+export function artifactHubTopChromeBadgeCount(
+  catalogCount: number,
+  hub: ArtifactHubOrchestrationState,
+): number {
+  if (!hub.badgeEligible) return 0;
+  return Math.max(catalogCount, hub.generatableCount);
+}
 
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -34,10 +43,14 @@ export function buildArtifactHubOrchestrationState(input: {
   const now = input.nowMs ?? Date.now();
   let hasStale = false;
   let hasRecent = false;
+  let staleArtifactCount = 0;
   for (const entry of catalog) {
     const t = Date.parse(entry.createdAt);
     if (!Number.isFinite(t)) continue;
-    if (now - t > STALE_MS) hasStale = true;
+    if (now - t > STALE_MS) {
+      hasStale = true;
+      staleArtifactCount += 1;
+    }
     if (now - t < 48 * 60 * 60 * 1000) hasRecent = true;
   }
 
@@ -47,6 +60,7 @@ export function buildArtifactHubOrchestrationState(input: {
   return {
     totalCount: catalog.length,
     generatableCount,
+    staleArtifactCount,
     hasStaleArtifact: hasStale,
     hasRecentUpdate: hasRecent,
     badgeEligible,

@@ -93,7 +93,7 @@ describe("intent router phase 2", () => {
       availableActionIds: ["EDIT_FEATURES", "DEFINE_SCREEN", "DEFINE_API"],
     });
     expect(resolved?.suggestedActionId).toBe("DEFINE_SCREEN");
-    expect(resolved?.routerMode).toBe("deterministic");
+    expect(resolved?.routerMode).toBe("clarification_resolution");
   });
 
   it("C: focus-based routing infers feature from title in message", () => {
@@ -123,6 +123,7 @@ describe("intent router phase 2", () => {
     expect(intentRouterCacheSize()).toBe(1);
     const cached = getCachedIntentRoute(input);
     expect(cached?.suggestedActionId).toBe(first.suggestedActionId);
+    expect(cached?.routerMode).toBe("cache");
     expect(cached?.reason).toContain("cached");
   });
 

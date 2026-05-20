@@ -14,16 +14,31 @@ const CACHE = new Map<string, CacheEntry>();
 const MAX_ENTRIES = 64;
 const TTL_MS = 5 * 60 * 1000;
 
+function featureMetricsSummary(input: RequirementsIntentRouterInput): string {
+  const m = input.featureMetrics;
+  return [
+    m.confirmedFeatureCount,
+    m.featureCoverage.toFixed(2),
+    m.hasConfirmedFeature ? "1" : "0",
+  ].join(":");
+}
+
 function fingerprint(input: RequirementsIntentRouterInput): string {
-  const focus = input.conversationMemory?.activeFocus;
+  const focus = input.activeFocus ?? input.conversationMemory?.activeFocus;
   return [
     input.authoritativeStage,
     input.userMessage.trim().toLowerCase(),
     input.availableActionIds.join(","),
     focus ? `${focus.type}:${focus.id}` : "",
+    featureMetricsSummary(input),
     input.conversationMemory?.clarificationPending ? "clar" : "",
     input.conversationMemory?.lastSuggestedAction ?? "",
   ].join("|");
+}
+
+/** @internal tests */
+export function intentRouterCacheFingerprint(input: RequirementsIntentRouterInput): string {
+  return fingerprint(input);
 }
 
 export function getCachedIntentRoute(input: RequirementsIntentRouterInput): IntentRoutingResult | null {
@@ -34,7 +49,15 @@ export function getCachedIntentRoute(input: RequirementsIntentRouterInput): Inte
     CACHE.delete(key);
     return null;
   }
-  return { ...hit.result, reason: `${hit.result.reason ?? ""} (cached)`.trim() };
+  return {
+    ...hit.result,
+    routerMode: "cache",
+    reason: `${hit.result.reason ?? ""} (cached)`.trim(),
+    explainability: {
+      ...hit.result.explainability,
+      routingReason: hit.result.explainability?.routingReason ?? "intent router cache hit",
+    },
+  };
 }
 
 export function setCachedIntentRoute(input: RequirementsIntentRouterInput, result: IntentRoutingResult): void {

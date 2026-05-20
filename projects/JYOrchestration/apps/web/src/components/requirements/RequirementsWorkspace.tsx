@@ -178,7 +178,10 @@ import {
   buildProjectArtifactHubCatalog,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
-import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import {
+  artifactHubTopChromeBadgeCount,
+  buildArtifactHubOrchestrationState,
+} from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
@@ -2062,6 +2065,7 @@ export function RequirementsWorkspace({
       requirementsOrchestrationStageV1: stateJsonRef.current.requirementsOrchestrationStageV1,
       featurePlanningSlotsV1: stateJsonRef.current.featurePlanningSlotsV1,
       featureDetailSlotsV1: stateJsonRef.current.featureDetailSlotsV1,
+      requirementsIntentOrchestrationV1: stateJsonRef.current.requirementsIntentOrchestrationV1,
     },
     onAnalyzeStatePatch: async (patch) => {
       stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, patch);
@@ -2523,7 +2527,7 @@ export function RequirementsWorkspace({
           resolvedProjectId.trim()
             ? {
                 count: showWorkspaceHubBadges
-                  ? Math.max(artifactHubCatalog.length, artifactHubOrchestration.generatableCount)
+                  ? artifactHubTopChromeBadgeCount(artifactHubCatalog.length, artifactHubOrchestration)
                   : 0,
                 onOpen: () => setArtifactHubOpen(true),
               }

@@ -50,7 +50,9 @@ import {
 import { inferFocusFromMessage, updateFocusAfterAction } from "@/lib/requirements/requirementsConversationFocus";
 import {
   buildClarificationPendingState,
+  buildTargetResolutionClarification,
   clearClarificationState,
+  isAmbiguousTargetEditRequest,
 } from "@/lib/requirements/requirementsIntentClarification";
 import {
   mergeIntentOrchestrationPatch,
@@ -142,14 +144,15 @@ function buildRouterInput(input: {
         orchestration: state.requirementsIntentOrchestrationV1,
       })
     : undefined;
-  const focus =
-    state ?
-      inferFocusFromMessage(input.userMessage, {
+  const focusCtx = state
+    ? {
         orchestration: state.requirementsIntentOrchestrationV1,
         featureDetailSlotsV1: state.featureDetailSlotsV1,
         serviceFlowV1: state.serviceFlowV1,
-      })
+      }
     : null;
+  const focus = focusCtx ? inferFocusFromMessage(input.userMessage, focusCtx) : null;
+  const artifactHubState = state ? buildArtifactHubOrchestrationState({ state }) : undefined;
   return {
     userMessage: input.userMessage,
     authoritativeStage: input.ctx.authoritativeStage,
@@ -161,6 +164,8 @@ function buildRouterInput(input: {
     projectDescription: input.projectDescription,
     conversationMemory: memory,
     activeFocus: focus,
+    artifactHubState,
+    featureDetailSlotsV1: state?.featureDetailSlotsV1,
   };
 }
 
@@ -188,8 +193,23 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
       })
     : input.prev?.activeFocus;
 
+  const focusCtx = input.routingState
+    ? {
+        orchestration: input.prev,
+        featureDetailSlotsV1: input.routingState.featureDetailSlotsV1,
+        serviceFlowV1: input.routingState.serviceFlowV1,
+      }
+    : null;
+  const hasFocus = Boolean(focusCtx && inferFocusFromMessage(input.userMessage, focusCtx)?.id);
+  const targetResolutionPending =
+    input.lowConfidenceClarification &&
+    isAmbiguousTargetEditRequest(input.userMessage, hasFocus);
   const clarification =
-    input.lowConfidenceClarification && input.intent.clarificationQuestion ?
+    targetResolutionPending ?
+      buildTargetResolutionClarification({
+        question: input.intent.clarificationQuestion ?? "어떤 항목을 수정할까요?",
+      })
+    : input.lowConfidenceClarification && input.intent.clarificationQuestion ?
       buildClarificationPendingState({
         question: input.intent.clarificationQuestion,
         candidateActionIds:
@@ -198,6 +218,7 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
             buildRequirementsIntentDispatchContext(input.routingState).chatQuickActions.map((a) => a.id)
           : undefined),
       })
+    : input.intent.routerMode === "clarification_resolution" ? clearClarificationState()
     : input.effectiveActionId ? clearClarificationState()
     : input.prev?.clarification;
 
@@ -250,9 +271,21 @@ function finalizeDispatchResult(input: {
     artifactHub,
   });
   const proactiveLabel = proactive[0]?.reason;
+  const focusLabel = input.routingState
+    ? (() => {
+        const f = inferFocusFromMessage(input.userMessage ?? "", {
+          orchestration: input.routingState!.requirementsIntentOrchestrationV1,
+          featureDetailSlotsV1: input.routingState!.featureDetailSlotsV1,
+          serviceFlowV1: input.routingState!.serviceFlowV1,
+        });
+        return f ? `${f.type}:${f.id}` : undefined;
+      })()
+    : undefined;
   const timelineDetail = intentRouterTimelinePayload(input.intent, input.guard, {
     availableActionIds: input.ctx.availableActionIds,
     proactiveRecommendation: proactiveLabel,
+    activeFocus: focusLabel,
+    clarificationPending: input.routingState?.requirementsIntentOrchestrationV1?.clarification?.pending === true,
   });
   const lowConfidence = !input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent);
   const orchPatch =
@@ -341,7 +374,9 @@ export function dispatchRequirementsUserIntent(input: {
   const intent: IntentRoutingResult =
     directId && input.ctx.availableActionIds.includes(directId) ?
       routeRequirementsIntentDirect(routerInput, directId)
-    : routeRequirementsIntent(routerInput);
+    : routeRequirementsIntent(routerInput, {
+        clarification: input.routingState?.requirementsIntentOrchestrationV1?.clarification,
+      });
 
   const suggested = intent.suggestedActionId;
   const guard: GuardResult =
@@ -457,17 +492,19 @@ export function fallbackQuickReplyLabels(actions: readonly QuickAction[] | undef
 export function buildIntentRouterPromptTimelineEntry(input: {
   readonly userMessage: string;
   readonly dispatch: RequirementsIntentDispatchResult;
-}): {
-  readonly stage: "service-flow";
-  readonly action: "intentRouterGuard";
-  readonly source: "system";
-  readonly promptText: string;
-  readonly responseText: string;
-} {
+  readonly createdAt?: string;
+}): import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry {
+  const now = input.createdAt ?? new Date().toISOString();
+  const routerMode = input.dispatch.intent.routerMode;
   return {
     stage: "service-flow",
+    stageGroup: "service-planning",
+    workspaceScreenKey: "service_flow_workshop",
     action: "intentRouterGuard",
     source: "system",
+    provider: "internal",
+    createdAt: now,
+    routingDecision: routerMode,
     promptText: input.userMessage.slice(0, 500),
     responseText: input.dispatch.timelineDetail,
   };
