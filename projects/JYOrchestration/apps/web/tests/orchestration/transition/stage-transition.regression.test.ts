@@ -65,20 +65,4 @@ describe("orchestration regression — stage transition", () => {
     ]);
   });
 
-  it("DOCUMENTATION_COMPLETE transition sets wire stage", () => {
-    const flow = createSampleServiceFlow({
-      conversationState: "APPROVED",
-      proposalAcceptedAt: ORCHESTRATION_REGRESSION_NOW,
-    });
-    const state = createMockOrchestrationState({ stage: "SERVICE_FLOW_REVIEW", flow });
-    const result = dispatchQuickAction({
-      state,
-      currentFlow: flow,
-      quickActionId: "COMPLETE_DOCUMENTATION",
-    });
-    expect(result.transitionResult).toBe("applied");
-    expect(result.requirementsStatePatch?.requirementsOrchestrationStageV1?.currentStage).toBe(
-      "DOCUMENTATION_COMPLETE",
-    );
-  });
 });

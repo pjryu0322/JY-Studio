@@ -161,6 +161,11 @@ import {
   storeInterviewSuggestionPick,
   type InterviewSuggestionPickWire,
 } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
+import { fetchGenerateProjectArtifact } from "@/lib/requirements/projectArtifactClient";
+import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
+import type { ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
+import { WorkspaceArtifactPlusMenuItems } from "@/components/requirements/WorkspaceArtifactPlusMenu";
+import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 
 
 export function RequirementsWorkspace({
@@ -218,6 +223,7 @@ export function RequirementsWorkspace({
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [deliverableGenerateBusy, setDeliverableGenerateBusy] = useState(false);
+  const [artifactGenerateBusy, setArtifactGenerateBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
@@ -1322,6 +1328,55 @@ export function RequirementsWorkspace({
   }, [resolvedProjectId, busy, resetConversationBusy, persistRemote]);
 
 
+  const handleGenerateProjectArtifact = useCallback(
+    async (artifactType: ProjectArtifactType) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid || busy || artifactGenerateBusy) return;
+      setArtifactGenerateBusy(true);
+      setError(null);
+      try {
+        const st = stateJsonRef.current;
+        const sourceStage = resolveAuthoritativeOrchestrationStage(st);
+        const result = await fetchGenerateProjectArtifact({
+          projectId: pid,
+          artifactType,
+          projectName: project?.name ?? "",
+          projectDescription: project?.description ?? "",
+          sourceStage,
+          serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+          featurePlanning: st.featurePlanningSlotsV1 ?? null,
+        });
+        if (!result.success || !result.artifact) {
+          const msg = result.message ?? "문서 생성에 실패했습니다.";
+          setError(msg);
+          showErrorToast(msg);
+          return;
+        }
+        const deliverable = projectArtifactToDeliverableAsset(result.artifact, pid);
+        await persistStateJsonOnly({
+          projectArtifacts: [...(st.projectArtifacts ?? []), result.artifact],
+          deliverableAssets: [...(st.deliverableAssets ?? []), deliverable],
+        });
+        openDeliverableViewer([deliverable.id], deliverable.id);
+        showSuccessToast(`${result.artifact.title}을(를) 생성했습니다.`);
+      } finally {
+        setArtifactGenerateBusy(false);
+      }
+    },
+    [
+      resolvedProjectId,
+      busy,
+      artifactGenerateBusy,
+      project?.name,
+      project?.description,
+      serviceFlow,
+      persistStateJsonOnly,
+      openDeliverableViewer,
+      showErrorToast,
+      showSuccessToast,
+    ],
+  );
+
   const handleGenerateDeliverables = useRequirementsHandleGenerateDeliverables({
     resolvedProjectId,
     conversationStatus,
@@ -1976,6 +2031,26 @@ export function RequirementsWorkspace({
         organizeDisabled={busy || remoteLocked}
         draftDocTruthy={Boolean(draftDoc)}
         onOpenDraftView={() => setDraftDrawerOpen(true)}
+        plusMenuRender={({ close }) => (
+          <>
+            {activeStage === "ideation" ? (
+              <WorkspacePlusMenuItems
+                tools={{
+                  onOrganizeRequirements: () => void onOrganizeRequirements(),
+                  organizeDisabled: busy || remoteLocked,
+                  draftViewAvailable: Boolean(draftDoc),
+                  onOpenDraftView: () => setDraftDrawerOpen(true),
+                }}
+                onPick={close}
+              />
+            ) : null}
+            <WorkspaceArtifactPlusMenuItems
+              disabled={busy || artifactGenerateBusy || remoteLocked || deliverableGenerateBusy}
+              onGenerate={(type) => void handleGenerateProjectArtifact(type)}
+              onPick={close}
+            />
+          </>
+        )}
         promptTimeline={promptTimelineUi ?? null}
         onOpenPromptTimeline={() => setPromptDrawerOpen(true)}
       />

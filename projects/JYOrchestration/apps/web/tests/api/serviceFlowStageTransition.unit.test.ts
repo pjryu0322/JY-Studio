@@ -58,7 +58,7 @@ function sampleFlow(): RequirementsServiceFlowV1 {
 describe("serviceFlowStageTransition", () => {
   it("resolveServiceFlowTransitionSignal — legacy label maps to actionId signal", () => {
     expect(resolveServiceFlowTransitionSignal({ label: "다음 단계 진행" })).toBe("NEXT_STAGE");
-    expect(resolveServiceFlowTransitionSignal({ label: "문서화 완료" })).toBe("DOCUMENTATION_COMPLETE");
+    expect(resolveServiceFlowTransitionSignal({ label: "문서화 완료" })).toBeNull();
     expect(resolveServiceFlowTransitionSignal({ label: "흐름 승인하기" })).toBe("APPROVE_FLOW");
     expect(resolveServiceFlowTransitionSignal({ label: "세부 기능 정리" })).toBe("FEATURE_DETAIL_START");
     expect(resolveServiceFlowTransitionSignal({ label: "완전히 새로운 문장" })).toBeNull();
@@ -66,7 +66,7 @@ describe("serviceFlowStageTransition", () => {
 
   it("classifyServiceFlowProposalDecision — NEXT_STAGE / DOCUMENTATION_COMPLETE", () => {
     expect(classifyServiceFlowProposalDecision("다음 단계 진행")).toBe("NEXT_STAGE");
-    expect(classifyServiceFlowProposalDecision("문서화 완료")).toBe("DOCUMENTATION_COMPLETE");
+    expect(classifyServiceFlowProposalDecision("문서화 완료")).toBeNull();
   });
 
   it("NEXT_STAGE → FEATURE_DETAIL with context-aware bootstrap", () => {
@@ -99,16 +99,13 @@ describe("serviceFlowStageTransition", () => {
     expect(r?.assistantMessage).toContain("승인 상태로 반영");
   });
 
-  it("DOCUMENTATION_COMPLETE sets documentation metadata", () => {
+  it("DOCUMENTATION_COMPLETE fast-path removed — documentation is artifact side-action only", () => {
     const r = tryServiceFlowOrchestrationTransitionFastPath({
       proposalDecision: "DOCUMENTATION_COMPLETE",
       quickActionId: "COMPLETE_DOCUMENTATION",
       currentFlow: sampleFlow(),
     });
-    expect(r?.updatedFlow.documentationStatus).toBe("completed");
-    expect(r?.updatedFlow.documentationCompletedAt).toBeTruthy();
-    expect(r?.updatedFlow.documentationSnapshot).toBeTruthy();
-    expect(r?.transitionMeta?.toStage).toBe("DOCUMENTATION_COMPLETE");
+    expect(r).toBeNull();
   });
 
   it("buildContextAwareFeatureDetailBootstrapMessage uses first step", () => {

@@ -276,54 +276,6 @@ export function handleQuickActionTransition(input: {
     });
   }
 
-  if (input.signal === "DOCUMENTATION_COMPLETE") {
-    const snapshot = buildServiceFlowStateSummaryMessage({
-      flow: baseFlow,
-      heading: "문서화 스냅샷",
-      cta: "",
-    });
-    const updatedFlow: RequirementsServiceFlowV1 = {
-      ...baseFlow,
-      updatedAt: nowIso,
-      documentationStatus: "completed",
-      documentationCompletedAt: nowIso,
-      documentationSnapshot: snapshot.slice(0, 8000) || null,
-      lastProposalDecision: "DOCUMENTATION_COMPLETE",
-    };
-    const orchPatch = buildOrchestrationStagePatch({
-      toStage: "DOCUMENTATION_COMPLETE",
-      fromStage,
-      nowIso,
-      existing: input.existingOrchestrationStage,
-    });
-    return buildTransitionFastPathResult({
-      assistantMessage: [
-        "서비스 흐름 문서화를 완료 상태로 반영했습니다.",
-        "",
-        "문서화 스냅샷이 저장되었으며, 이후 단계에서 참조할 수 있습니다.",
-        "다음: 세부 기능 정리 또는 프로토타입 준비로 이어갈 수 있습니다.",
-      ].join("\n"),
-      updatedFlow,
-      quickReplies: quickRepliesForConversationState(
-        resolveServiceFlowConversationState(updatedFlow),
-      ),
-      routingDecision: "documentation_complete_transition",
-      timelineAction: "documentationComplete",
-      proposalDecision: "DOCUMENTATION_COMPLETE",
-      conversationStateBefore: stateBefore,
-      conversationStateAfter: resolveServiceFlowConversationState(updatedFlow),
-      transitionMeta: {
-        quickActionType: "DOCUMENTATION_COMPLETE",
-        transitionTriggered: true,
-        fromStage,
-        toStage: "DOCUMENTATION_COMPLETE",
-        transitionMode: "fast_path",
-        orchestrationStateUpdated: true,
-      },
-      requirementsStatePatch: { requirementsOrchestrationStageV1: orchPatch },
-    });
-  }
-
   if (input.signal === "NEXT_STAGE" || input.signal === "FEATURE_DETAIL_START") {
     if ((baseFlow.actors?.length ?? 0) < 1 || (baseFlow.steps?.length ?? 0) < 1) return null;
 

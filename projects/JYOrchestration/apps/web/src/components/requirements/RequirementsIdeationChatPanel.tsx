@@ -64,6 +64,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   organizeDisabled: boolean;
   draftDocTruthy: boolean;
   onOpenDraftView: () => void;
+  /** + 메뉴(ideation 정리 + Artifact 생성) */
+  plusMenuRender?: (ctx: { readonly close: () => void }) => ReactNode;
   /** H7.5: explainability 보조 매핑용 */
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   onOpenPromptTimeline?: () => void;
@@ -110,6 +112,7 @@ export function RequirementsIdeationChatPanel({
   organizeDisabled,
   draftDocTruthy,
   onOpenDraftView,
+  plusMenuRender,
   promptTimeline,
   onOpenPromptTimeline,
 }: RequirementsIdeationChatPanelProps) {
@@ -177,12 +180,17 @@ export function RequirementsIdeationChatPanel({
         onSendIdeation={onSendIdeation}
         onSendServiceFlow={onSendIdeation}
         onSendFeaturePlanning={onSendIdeation}
-        ideationToolsMenu={{
-          onOrganizeRequirements: () => void onOrganizeRequirements(),
-          organizeDisabled,
-          draftViewAvailable: draftDocTruthy,
-          onOpenDraftView,
-        }}
+        plusMenuRender={plusMenuRender}
+        ideationToolsMenu={
+          plusMenuRender
+            ? undefined
+            : {
+                onOrganizeRequirements: () => void onOrganizeRequirements(),
+                organizeDisabled,
+                draftViewAvailable: draftDocTruthy,
+                onOpenDraftView,
+              }
+        }
       />
     </>
   );

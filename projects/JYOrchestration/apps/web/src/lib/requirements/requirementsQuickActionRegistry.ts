@@ -142,16 +142,17 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
   DOCUMENT_FLOW: {
     id: "DOCUMENT_FLOW",
     defaultLabel: "문서화하기",
-    conversationProfiles: ["approved"],
+    labelAliases: ["문서화 진행"],
+    conversationProfiles: [],
     proposalDecision: null,
     transitionSignal: null,
   },
   COMPLETE_DOCUMENTATION: {
     id: "COMPLETE_DOCUMENTATION",
     defaultLabel: "문서화 완료",
-    conversationProfiles: ["approved"],
-    proposalDecision: "DOCUMENTATION_COMPLETE",
-    transitionSignal: "DOCUMENTATION_COMPLETE",
+    conversationProfiles: [],
+    proposalDecision: null,
+    transitionSignal: null,
   },
   VIEW_ALTERNATIVE_DETAIL: {
     id: "VIEW_ALTERNATIVE_DETAIL",

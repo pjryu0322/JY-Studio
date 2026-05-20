@@ -64,7 +64,7 @@ export function ServiceDesignComposer({
       disabled={disabled}
       placeholder={placeholder}
       targetPickerItems={targetPickerItems}
-      plusMenuRender={stage === "ideation" ? plusMenuRender : undefined}
+      plusMenuRender={plusMenuRender}
       toolsMenu={stage === "ideation" && !plusMenuRender ? ideationToolsMenu : undefined}
     />
   );

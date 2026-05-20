@@ -6,6 +6,8 @@ import { parseFeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featu
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
   parseRequirementsOrganizeContextV1,
@@ -456,6 +458,8 @@ export type RequirementsStateJson = {
   lastUserDraftText?: string;
   /** AI 산출물 초안(회의 요약·문제정의서 등), 버전은 유형별로 증가 */
   deliverableAssets?: IdeationDeliverableAsset[] | null;
+  /** Artifact viewer(+ 메뉴) 산출물 — orchestration stage transition과 무관 */
+  projectArtifacts?: ProjectArtifact[] | null;
   /**
    * 정리 요청용 맥락(원문 대화는 `requirementsConversationJson`이 단일 소스).
    * `memoryFacts`·`rollingSummary`·`recentMessagesSnapshot`으로 AI 입력을 압축한다.
@@ -888,6 +892,11 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(promptTimeline && promptTimeline.length ? { promptTimeline } : {}),
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
     deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
+    projectArtifacts: !("projectArtifacts" in o)
+      ? undefined
+      : o.projectArtifacts === null
+        ? null
+        : parseProjectArtifactsFromState(o.projectArtifacts) ?? null,
     organizeContext: !("organizeContext" in o)
       ? undefined
       : o.organizeContext === null

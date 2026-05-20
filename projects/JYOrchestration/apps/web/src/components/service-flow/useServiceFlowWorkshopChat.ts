@@ -271,8 +271,6 @@ export function useServiceFlowWorkshopChat({
         pendingDecision === "FLOW_APPROVE"
       ) {
         setPendingStatusLabel("다음 단계로 전환하고 있습니다…");
-      } else if (pendingDecision === "DOCUMENTATION_COMPLETE") {
-        setPendingStatusLabel("문서화를 반영하고 있습니다…");
       } else if (quickActionLabelEarly) {
         setPendingStatusLabel("요청을 처리하고 있습니다…");
       } else {
