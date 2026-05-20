@@ -276,7 +276,21 @@ export type {
   TimelineReplayPersistTarget,
 } from "@/lib/agents/timelineReplayPersistDesignTypes";
 
-export { evaluateTimelineReplayPersistDesign } from "@/lib/agents/evaluateTimelineReplayPersistDesign";
+export {
+  evaluateTimelineReplayPersistDesign,
+  inferTargetFromCandidateKind,
+  uniqueFieldDecisions,
+} from "@/lib/agents/evaluateTimelineReplayPersistDesign";
+
+export type {
+  GovernanceEnforcementDesignDecision,
+  GovernanceEnforcementDesignFinding,
+  GovernanceEnforcementDesignReport,
+  GovernanceEnforcementMode,
+  GovernanceEnforcementPolicyDecision,
+} from "@/lib/agents/governanceEnforcementDesignTypes";
+
+export { evaluateGovernanceEnforcementDesign } from "@/lib/agents/evaluateGovernanceEnforcementDesign";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

@@ -69,11 +69,9 @@ function finding(
   return { severity, code, message };
 }
 
-function inferPersistTarget(
+export function inferTargetFromCandidateKind(
   candidate: AgentRuntimePersistenceCandidate,
-  explicit?: TimelineReplayPersistTarget,
 ): TimelineReplayPersistTarget {
-  if (explicit) return explicit;
   switch (candidate.kind) {
     case "timeline_metadata":
       return "timeline_metadata";
@@ -140,6 +138,34 @@ function collectCandidateForbiddenFields(
   return out;
 }
 
+/** Deduplicates by field name; later entries override earlier (detected over policy). */
+export function uniqueFieldDecisions(
+  fields: readonly TimelineReplayPersistFieldDecision[],
+): TimelineReplayPersistFieldDecision[] {
+  const byKey = new Map<string, TimelineReplayPersistFieldDecision>();
+  for (const field of fields) {
+    byKey.set(field.field.toLowerCase(), field);
+  }
+  return [...byKey.values()];
+}
+
+function ensureBlockingFindingForInvalidCandidate(
+  findings: TimelineReplayPersistDesignFinding[],
+  candidateValid: boolean,
+): void {
+  if (candidateValid) return;
+  const hasBlocking = findings.some((f) => f.severity === "blocking");
+  if (!hasBlocking) {
+    findings.push(
+      finding(
+        "blocking",
+        "invalid_candidate",
+        "candidate validation failed; persist design is blocked",
+      ),
+    );
+  }
+}
+
 function resolveDesignDecision(input: {
   readonly candidateValid: boolean;
   readonly blockingCount: number;
@@ -160,7 +186,18 @@ export function evaluateTimelineReplayPersistDesign(input: {
 }): TimelineReplayPersistDesignReport {
   const findings: TimelineReplayPersistDesignFinding[] = [];
   const candidate = input.candidate;
-  const target = inferPersistTarget(candidate, input.target);
+  const inferredTarget = inferTargetFromCandidateKind(candidate);
+  const target = input.target ?? inferredTarget;
+
+  if (input.target && input.target !== inferredTarget) {
+    findings.push(
+      finding(
+        "warning",
+        "target_kind_mismatch",
+        `explicit target ${input.target} differs from candidate kind target ${inferredTarget}`,
+      ),
+    );
+  }
 
   if (candidate.schemaVersion !== AGENT_RUNTIME_METADATA_SCHEMA_VERSION) {
     findings.push(finding("blocking", "invalid_schema_version", "schemaVersion is missing or invalid"));
@@ -184,9 +221,11 @@ export function evaluateTimelineReplayPersistDesign(input: {
     }
   }
 
+  ensureBlockingFindingForInvalidCandidate(findings, candidateValid);
+
   const persistFields = buildPersistFields(candidate);
   const detectedForbidden = collectCandidateForbiddenFields(candidate);
-  const excludedFields = [...POLICY_EXCLUDED_FIELDS, ...detectedForbidden];
+  const excludedFields = uniqueFieldDecisions([...POLICY_EXCLUDED_FIELDS, ...detectedForbidden]);
 
   const blockingCount = findings.filter((f) => f.severity === "blocking").length;
   const decision = resolveDesignDecision({ candidateValid, blockingCount, target });

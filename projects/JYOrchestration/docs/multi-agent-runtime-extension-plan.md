@@ -471,13 +471,56 @@ invalid candidate → blocked
 requiresSchemaChange / requiresMigration / requiresRollbackPlan → true (판단값만)
 ```
 
-### Stage 2-12 후보: Governance enforcement 적용 설계
+## Stage 2-11 소스 보완 결과
 
-Stage 2-12에서는 Governance dry-run을 실제 차단 정책으로 전환할 수 있는지 설계만 검토한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| invalid candidate blocking finding | 보완 | `invalid_candidate` blocking finding 보장 |
+| target-kind mismatch warning | 보완 | `target_kind_mismatch` finding |
+| excludedFields dedupe | 보완 | `uniqueFieldDecisions` (detected 우선) |
+| 실제 persist | 없음 | read-only design evaluator |
+
+## Stage 2-12 Governance Enforcement 적용 설계 결과
+
+| 항목 | 반영 방식 | 실제 차단 여부 | 비고 |
+|---|---|---|---|
+| Governance Enforcement 타입 | `read_only_governance_enforcement_design` | 없음 | 설계 판단용 |
+| Enforcement evaluator | `governanceDryRun` 기반 | 없음 | runtime 차단 없음 |
+| observe_only | not_evaluated / pass_candidate | 없음 | 관찰 모드 |
+| warn_only | warning_candidate | 없음 | 경고 후보 |
+| block_candidate | blocking_candidate | 없음 | 실제 차단 아님 |
+| policy approval | `requiresPolicyApproval` flag | 없음 | 실제 승인 아님 |
+| audit/rollback | required flags | 없음 | 실제 저장 아님 |
+
+구현: `governanceEnforcementDesignTypes.ts`, `evaluateGovernanceEnforcementDesign.ts`
+
+### Stage 2-12 원칙
+
+```text
+- 실제 Governance 차단을 적용하지 않는다.
+- Dispatch/Runtime 실행을 중단하지 않는다.
+- Policy storage를 변경하지 않는다.
+- Operator override, audit log, rollback은 설계 flag로만 둔다.
+- blocking_candidate는 defer + block_candidate mode (승인 전 wire 금지)
+```
+
+### Stage 2-12 Decision 규칙 요약
+
+```text
+not_evaluated → defer, observe_only
+pass_candidate → ready_for_policy_design, observe_only
+warning_candidate → ready_for_policy_design, warn_only
+blocking_candidate → defer, block_candidate + approval/audit/rollback flags
+policyDecisions ← governanceDryRun.findings (info/warning/blocking_candidate 매핑)
+```
+
+### Stage 2-13 후보: Connector Gateway routing 실험 브랜치 설계
+
+Stage 2-13에서는 main이 아닌 실험 브랜치에서 Connector Gateway routing 검증을 설계한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Policy severity mapping | warning/blocking_candidate를 실제 차단 기준으로 매핑 | 운영 승인 필요 |
-| Enforcement scope | capability별 적용 범위 | 오탐 방지 |
-| Override policy | 운영자 승인 우회 | 감사 로그 필요 |
-| Rollback plan | enforcement 비활성화 경로 | 필수 |
+| experiment branch | routing 변경은 별도 브랜치에서만 | main 직접 변경 금지 |
+| feature flag | gateway routing enable flag | default off |
+| rollback path | direct call fallback 유지 | 필수 |
+| Stage1 regression | ENV_TEST/GitHub flow 회귀 | 필수 |

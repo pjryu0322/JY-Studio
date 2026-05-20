@@ -59,6 +59,61 @@ describe("multi-agent timeline replay persist design stage 2-11", () => {
     expect(report.decision).toBe("blocked");
   });
 
+  it("invalid candidate has at least one blocking finding", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const candidate: AgentRuntimePersistenceCandidate = {
+      ...buildTimelineMetadataCandidateFromHarness(harness),
+      capabilityId: 999 as unknown as string,
+    };
+    const report = evaluateTimelineReplayPersistDesign({ candidate });
+    expect(report.findings.some((f) => f.severity === "blocking")).toBe(true);
+    expect(report.findings.some((f) => f.code === "invalid_candidate")).toBe(true);
+  });
+
+  it("target_kind_mismatch warning when explicit target differs from kind", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const candidate = buildTimelineMetadataCandidateFromHarness(harness);
+    const report = evaluateTimelineReplayPersistDesign({
+      candidate,
+      target: "replay_snapshot",
+    });
+    expect(report.findings.some((f) => f.code === "target_kind_mismatch")).toBe(true);
+  });
+
+  it("explicit replay_snapshot target yields defer for valid timeline candidate", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const candidate = buildTimelineMetadataCandidateFromHarness(harness);
+    const report = evaluateTimelineReplayPersistDesign({
+      candidate,
+      target: "replay_snapshot",
+    });
+    expect(report.decision).toBe("defer");
+    expect(report.target).toBe("replay_snapshot");
+  });
+
+  it("deduplicates excludedFields by field name", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const candidate: AgentRuntimePersistenceCandidate = {
+      ...buildTimelineMetadataCandidateFromHarness(harness),
+      apiKey: "should-not-persist",
+    };
+    const report = evaluateTimelineReplayPersistDesign({ candidate });
+    const apiKeyRows = report.excludedFields.filter((f) => f.field.toLowerCase() === "apikey");
+    expect(apiKeyRows.length).toBe(1);
+    expect(apiKeyRows[0]?.reason).toContain("detected forbidden");
+  });
+
+  it("policy and detected forbidden paths do not duplicate token field row", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const candidate: AgentRuntimePersistenceCandidate = {
+      ...buildTimelineMetadataCandidateFromHarness(harness),
+      nested: { accessToken: "secret" },
+    } as AgentRuntimePersistenceCandidate & { nested: { accessToken: string } };
+    const report = evaluateTimelineReplayPersistDesign({ candidate });
+    const tokenRows = report.excludedFields.filter((f) => f.field.toLowerCase() === "token");
+    expect(tokenRows.length).toBe(1);
+  });
+
   it("invalid schemaVersion returns blocked", () => {
     const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
     const candidate: AgentRuntimePersistenceCandidate = {
