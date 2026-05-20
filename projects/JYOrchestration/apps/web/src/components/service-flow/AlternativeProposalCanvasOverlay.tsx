@@ -133,11 +133,11 @@ export function AlternativeProposalCanvasOverlay({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
             <h2 id="alternative-proposal-canvas-title" style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-              Alternative Proposal
+              대안 비교 Viewer
             </h2>
             <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
               {payload.directionLabel ? `${payload.directionLabel} · ` : ""}
-              기존안 대비 변경 방향
+              기존안 vs 후보안 diff
             </p>
           </div>
           <button

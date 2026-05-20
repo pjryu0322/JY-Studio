@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RequirementsStateJson, RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
-import {
-  buildProjectCanvasHubCatalog,
-  featurePlanningToDeliverablePreview,
-} from "@/lib/requirements/projectCanvasHub";
+import { buildProjectCanvasHubCatalog } from "@/lib/requirements/projectCanvasHub";
 import { buildAlternativeProposalPayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 const now = "2026-05-19T00:00:00.000Z";
@@ -31,7 +28,7 @@ function miniFlow(steps: string[]): RequirementsServiceFlowV1 {
 }
 
 describe("projectCanvasHub", () => {
-  it("buildProjectCanvasHubCatalog — orchestration state 기준 (messageId 아님)", () => {
+  it("buildProjectCanvasHubCatalog — 상태 Viewer 항목만 (산출물 제외)", () => {
     const baseline = miniFlow(["업로드", "정리"]);
     const alt = miniFlow(["업로드", "검토", "확정"]);
     const payload = buildAlternativeProposalPayload({
@@ -49,31 +46,21 @@ describe("projectCanvasHub", () => {
       requirementsOrchestrationStageV1: "SERVICE_FLOW_REVIEW",
     };
     const catalog = buildProjectCanvasHubCatalog({ state, serviceFlow: flow });
-    const titles = catalog.map((c) => c.title);
-    expect(titles).toContain("현재 서비스 흐름");
-    expect(titles.some((t) => /후보|협업/.test(t))).toBe(true);
-    expect(catalog.every((c) => c.id.startsWith("canvas-"))).toBe(true);
-    expect(catalog.some((c) => c.openTarget.kind === "alternative-canvas")).toBe(true);
+    const types = catalog.map((c) => c.type);
+    expect(types).toContain("service-flow");
+    expect(types).toContain("alternative-flow");
+    expect(types).toContain("baseline-flow");
+    expect(types).not.toContain("deliverable");
+    expect(catalog.every((c) => !("openTarget" in c))).toBe(true);
   });
 
-  it("featurePlanningToDeliverablePreview — 기능 정의 hub viewer id", () => {
-    const preview = featurePlanningToDeliverablePreview(
-      {
-        version: 1,
-        generatedAt: now,
-        updatedAt: now,
-        slots: [
-          {
-            slotKey: "core",
-            slotName: "핵심 기능",
-            slotDescription: "업로드 후 요약",
-            legacy: false,
-          },
-        ],
-      },
-      "proj-1",
-    );
-    expect(preview.id).toBe("canvas-feature-planning-preview");
-    expect(preview.content).toContain("핵심 기능");
+  it("항목 type별 고유 id", () => {
+    const flow = miniFlow(["A", "B"]);
+    const catalog = buildProjectCanvasHubCatalog({
+      state: { serviceFlowV1: flow },
+      serviceFlow: flow,
+    });
+    const ids = new Set(catalog.map((c) => c.id));
+    expect(ids.size).toBe(catalog.length);
   });
 });

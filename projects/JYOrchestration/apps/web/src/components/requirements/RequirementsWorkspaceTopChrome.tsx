@@ -36,6 +36,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onDownloadConversationMarkdown?: () => void | Promise<void>;
   onSummarizeConversation?: () => void | Promise<void>;
   canvasHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
+  artifactHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
   workflowGuidanceBanner: string | null;
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
@@ -91,6 +92,18 @@ function CanvasHubIcon() {
   );
 }
 
+function ArtifactHubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+      <path d="M10 9H8" />
+    </svg>
+  );
+}
+
 export function RequirementsWorkspaceTopChrome({
   showScreenLabels,
   showProjectWorkflowNav,
@@ -110,6 +123,7 @@ export function RequirementsWorkspaceTopChrome({
   onDownloadConversationMarkdown,
   onSummarizeConversation,
   canvasHubControls,
+  artifactHubControls,
   workflowGuidanceBanner,
   loadError,
   onClearLoadErrorAndRetry,
@@ -379,13 +393,24 @@ export function RequirementsWorkspaceTopChrome({
         ) : null}
         {canvasHubControls ? (
           <WorkspaceHubChromeIconButton
-            title="Canvas Hub — 프로젝트 상태·산출물 보기"
+            title="Canvas Hub — 프로젝트 상태 Viewer"
             ariaLabel="Canvas Hub 열기"
             disabled={false}
             badge={canvasHubControls.count > 0 ? canvasHubControls.count : undefined}
             onClick={() => canvasHubControls.onOpen()}
           >
             <CanvasHubIcon />
+          </WorkspaceHubChromeIconButton>
+        ) : null}
+        {artifactHubControls ? (
+          <WorkspaceHubChromeIconButton
+            title="Artifact Hub — 산출물 생성·조회"
+            ariaLabel="Artifact Hub 열기"
+            disabled={false}
+            badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
+            onClick={() => artifactHubControls.onOpen()}
+          >
+            <ArtifactHubIcon />
           </WorkspaceHubChromeIconButton>
         ) : null}
         {memberControls ? (

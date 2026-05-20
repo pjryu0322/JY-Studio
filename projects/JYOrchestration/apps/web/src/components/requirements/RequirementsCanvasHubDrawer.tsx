@@ -31,6 +31,17 @@ const statusLabel: Record<ProjectCanvasArtifact["status"], string> = {
   obsolete: "이전",
 };
 
+const typeLabel: Record<ProjectCanvasArtifact["type"], string> = {
+  "service-flow": "서비스 흐름",
+  "alternative-flow": "대안 비교",
+  "baseline-flow": "기준안",
+  "feature-definition": "기능 정의",
+  "screen-definition": "화면 정의",
+  "api-definition": "API 명세",
+  review: "검토",
+  "security-review": "보안 검토",
+};
+
 export function RequirementsCanvasHubDrawer({
   open,
   items,
@@ -90,7 +101,7 @@ export function RequirementsCanvasHubDrawer({
                   <button type="button" onClick={() => onSelect(item)} style={itemBtnStyle}>
                     <span style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{item.title}</span>
                     <span style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                      {statusLabel[item.status]} · {item.sourceStage}
+                      {typeLabel[item.type]} · {statusLabel[item.status]} · {item.sourceStage}
                     </span>
                   </button>
                 </li>

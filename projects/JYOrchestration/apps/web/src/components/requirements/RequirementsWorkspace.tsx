@@ -164,15 +164,21 @@ import {
 import { fetchGenerateProjectArtifact } from "@/lib/requirements/projectArtifactClient";
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import type { ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
-import { WorkspaceArtifactPlusMenuItems } from "@/components/requirements/WorkspaceArtifactPlusMenu";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
+import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
 import {
   buildProjectCanvasHubCatalog,
-  featurePlanningToDeliverablePreview,
+  type CanvasArtifactType,
   type ProjectCanvasArtifact,
 } from "@/lib/requirements/projectCanvasHub";
-import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
+import {
+  buildProjectArtifactHubCatalog,
+  type ProjectArtifactHubEntry,
+} from "@/lib/requirements/projectArtifactHub";
+import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
+import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
+import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
 
 
 export function RequirementsWorkspace({
@@ -233,9 +239,8 @@ export function RequirementsWorkspace({
   const [artifactGenerateBusy, setArtifactGenerateBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [canvasHubOpen, setCanvasHubOpen] = useState(false);
-  const [canvasHubExtraDeliverables, setCanvasHubExtraDeliverables] = useState<
-    readonly IdeationDeliverableAsset[]
-  >([]);
+  const [artifactHubOpen, setArtifactHubOpen] = useState(false);
+  const [activeCanvasView, setActiveCanvasView] = useState<CanvasArtifactType | null>(null);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -742,19 +747,14 @@ export function RequirementsWorkspace({
    */
   const deliverableAssetsFromProject = useMemo(() => {
     const local = stateJsonRef.current.deliverableAssets;
-    const base =
-      Array.isArray(local) && local.length ? local : (persistedPromptState.deliverableAssets ?? []);
-    if (!canvasHubExtraDeliverables.length) return base;
-    const seen = new Set(base.map((a) => a.id));
-    const extras = canvasHubExtraDeliverables.filter((a) => !seen.has(a.id));
-    return extras.length ? [...base, ...extras] : base;
+    if (Array.isArray(local) && local.length) return local;
+    return persistedPromptState.deliverableAssets ?? [];
   }, [
     persistedPromptState.deliverableAssets,
     project?.requirementsStateJson,
     saveState,
     fetchNonce,
     room.requirementsConversation.messages.length,
-    canvasHubExtraDeliverables,
   ]);
 
   const canvasHubCatalog = useMemo(() => {
@@ -763,18 +763,26 @@ export function RequirementsWorkspace({
       serviceFlowV1: serviceFlow ?? persistedPromptState.serviceFlowV1 ?? undefined,
       featurePlanningSlotsV1:
         stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1,
-      projectArtifacts:
-        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
     };
     return buildProjectCanvasHubCatalog({
       state: st,
       serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+    });
+  }, [persistedPromptState, serviceFlow, saveState, fetchNonce, project?.requirementsStateJson]);
+
+  const artifactHubCatalog = useMemo(() => {
+    const st: RequirementsStateJson = {
+      ...persistedPromptState,
+      projectArtifacts:
+        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
+    };
+    return buildProjectArtifactHubCatalog({
+      state: st,
       deliverableAssets: deliverableAssetsFromProject,
       projectArtifacts: st.projectArtifacts ?? undefined,
     });
   }, [
     persistedPromptState,
-    serviceFlow,
     deliverableAssetsFromProject,
     saveState,
     fetchNonce,
@@ -1937,23 +1945,40 @@ export function RequirementsWorkspace({
   const handleCanvasHubSelect = useCallback(
     (item: ProjectCanvasArtifact) => {
       setCanvasHubOpen(false);
-      if (item.openTarget.kind === "alternative-canvas") {
-        serviceFlowAlternativeCanvas.openAlternativeCanvas();
-        return;
+      switch (item.type) {
+        case "service-flow":
+          setActiveCanvasView("service-flow");
+          return;
+        case "alternative-flow":
+          serviceFlowAlternativeCanvas.openAlternativeCanvas();
+          return;
+        case "baseline-flow":
+          setActiveCanvasView("baseline-flow");
+          return;
+        case "feature-definition":
+          setActiveCanvasView("feature-definition");
+          return;
+        default:
+          return;
       }
-      const assetId = item.openTarget.assetId;
-      if (assetId === "canvas-feature-planning-preview") {
-        const fp = stateJsonRef.current.featurePlanningSlotsV1;
-        const pid = resolvedProjectId.trim();
-        if (!fp || !pid) return;
-        const preview = featurePlanningToDeliverablePreview(fp, pid);
-        setCanvasHubExtraDeliverables([preview]);
-        openDeliverableViewer([preview.id], preview.id);
-        return;
-      }
-      openDeliverableViewer([assetId], assetId);
     },
-    [openDeliverableViewer, resolvedProjectId, serviceFlowAlternativeCanvas],
+    [serviceFlowAlternativeCanvas],
+  );
+
+  const handleArtifactHubSelect = useCallback(
+    (entry: ProjectArtifactHubEntry) => {
+      setArtifactHubOpen(false);
+      openDeliverableViewer([entry.assetId], entry.assetId);
+    },
+    [openDeliverableViewer],
+  );
+
+  const handleArtifactHubGenerate = useCallback(
+    (type: ProjectArtifactType) => {
+      setArtifactHubOpen(false);
+      void handleGenerateProjectArtifact(type);
+    },
+    [handleGenerateProjectArtifact],
   );
 
   const onDownloadConversationMarkdown = useCallback(() => {
@@ -2106,11 +2131,6 @@ export function RequirementsWorkspace({
                 onPick={close}
               />
             ) : null}
-            <WorkspaceArtifactPlusMenuItems
-              disabled={busy || artifactGenerateBusy || remoteLocked || deliverableGenerateBusy}
-              onGenerate={(type) => void handleGenerateProjectArtifact(type)}
-              onPick={close}
-            />
           </>
         )}
         promptTimeline={promptTimelineUi ?? null}
@@ -2128,6 +2148,33 @@ export function RequirementsWorkspace({
         items={canvasHubCatalog}
         onClose={() => setCanvasHubOpen(false)}
         onSelect={handleCanvasHubSelect}
+      />
+
+      <RequirementsArtifactHubDrawer
+        open={artifactHubOpen}
+        items={artifactHubCatalog}
+        generateDisabled={busy || artifactGenerateBusy || remoteLocked || deliverableGenerateBusy}
+        onClose={() => setArtifactHubOpen(false)}
+        onSelectEntry={handleArtifactHubSelect}
+        onGenerate={handleArtifactHubGenerate}
+      />
+
+      <ServiceFlowStateCanvasOverlay
+        open={activeCanvasView === "service-flow"}
+        flow={serviceFlow}
+        onClose={() => setActiveCanvasView(null)}
+      />
+
+      <BaselineFlowCanvasOverlay
+        open={activeCanvasView === "baseline-flow"}
+        payload={serviceFlowAlternativeCanvas.alternativeCanvasPayload ?? serviceFlow?.alternativeProposalPayload ?? null}
+        onClose={() => setActiveCanvasView(null)}
+      />
+
+      <FeatureDefinitionCanvasOverlay
+        open={activeCanvasView === "feature-definition"}
+        artifact={stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1 ?? null}
+        onClose={() => setActiveCanvasView(null)}
       />
 
       {activeStage === "service-flow" ? (
@@ -2195,6 +2242,11 @@ export function RequirementsWorkspace({
         canvasHubControls={
           resolvedProjectId.trim()
             ? { count: canvasHubCatalog.length, onOpen: () => setCanvasHubOpen(true) }
+            : null
+        }
+        artifactHubControls={
+          resolvedProjectId.trim()
+            ? { count: artifactHubCatalog.length, onOpen: () => setArtifactHubOpen(true) }
             : null
         }
         onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}

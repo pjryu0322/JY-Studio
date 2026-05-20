@@ -1,11 +1,8 @@
 /**
- * Canvas Hub — project orchestration state 기반 viewer catalog (not messageId).
+ * Canvas Hub — project orchestration state 기반 상태 Viewer 카탈로그 (not messageId).
  */
 
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
-import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
-import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import { PROJECT_ARTIFACT_LABELS, type ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsServiceFlowV1, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
@@ -13,13 +10,12 @@ import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirement
 export type CanvasArtifactType =
   | "service-flow"
   | "alternative-flow"
-  | "service-flow-baseline"
+  | "baseline-flow"
   | "feature-definition"
   | "screen-definition"
   | "api-definition"
-  | "deliverable"
-  | "markdown-export"
-  | "pdf-export";
+  | "review"
+  | "security-review";
 
 export type CanvasArtifactStatus = "draft" | "candidate" | "confirmed" | "obsolete";
 
@@ -32,26 +28,11 @@ export type ProjectCanvasArtifact = Readonly<{
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly status: CanvasArtifactStatus;
-  readonly openTarget:
-    | Readonly<{ readonly kind: "alternative-canvas" }>
-    | Readonly<{ readonly kind: "deliverable"; readonly assetId: string }>;
 }>;
-
-function artifactTypeToCanvasType(type: ProjectArtifactType): CanvasArtifactType {
-  if (type === "screen-spec") return "screen-definition";
-  if (type === "api-spec") return "api-definition";
-  if (type === "feature-spec") return "feature-definition";
-  if (type === "service-flow-doc") return "service-flow";
-  if (type === "markdown-export") return "markdown-export";
-  if (type === "pdf-export") return "pdf-export";
-  return "deliverable";
-}
 
 export function buildProjectCanvasHubCatalog(input: {
   readonly state: RequirementsStateJson;
   readonly serviceFlow: RequirementsServiceFlowV1 | null;
-  readonly deliverableAssets?: readonly IdeationDeliverableAsset[];
-  readonly projectArtifacts?: readonly ProjectArtifact[];
 }): readonly ProjectCanvasArtifact[] {
   const sourceStage = resolveAuthoritativeOrchestrationStage(input.state);
   const now = new Date().toISOString();
@@ -71,7 +52,6 @@ export function buildProjectCanvasHubCatalog(input: {
       createdAt: String(hydrated.createdAt ?? updatedAt),
       updatedAt,
       status: confirmed ? "confirmed" : "candidate",
-      openTarget: { kind: "alternative-canvas" },
     });
 
     const alt = hydrated.alternativeProposalPayload;
@@ -85,19 +65,17 @@ export function buildProjectCanvasHubCatalog(input: {
         createdAt: updatedAt,
         updatedAt,
         status: "candidate",
-        openTarget: { kind: "alternative-canvas" },
       });
       if (alt.baselineFlow) {
         out.push({
           id: `canvas-baseline-${alt.proposalId}`,
-          type: "service-flow-baseline",
+          type: "baseline-flow",
           title: "기존안 (비교 기준)",
           sourceStage,
           version: 1,
           createdAt: String(alt.baselineFlow.createdAt ?? updatedAt),
           updatedAt: String(alt.baselineFlow.updatedAt ?? updatedAt),
           status: "confirmed",
-          openTarget: { kind: "alternative-canvas" },
         });
       }
     }
@@ -115,46 +93,17 @@ export function buildProjectCanvasHubCatalog(input: {
       createdAt: String(fp.generatedAt ?? updatedAt),
       updatedAt,
       status: "draft",
-      openTarget: { kind: "deliverable", assetId: "canvas-feature-planning-preview" },
-    });
-  }
-
-  for (const asset of input.deliverableAssets ?? []) {
-    out.push({
-      id: `canvas-deliverable-${asset.id}`,
-      type: "deliverable",
-      title: asset.title,
-      sourceStage: "IDEATION",
-      version: asset.version ?? 1,
-      createdAt: asset.createdAt,
-      updatedAt: asset.createdAt,
-      status: asset.confirmedAt ? "confirmed" : "draft",
-      openTarget: { kind: "deliverable", assetId: asset.id },
-    });
-  }
-
-  for (const art of input.projectArtifacts ?? []) {
-    out.push({
-      id: `canvas-artifact-${art.id}`,
-      type: artifactTypeToCanvasType(art.type),
-      title: PROJECT_ARTIFACT_LABELS[art.type] ?? art.title,
-      sourceStage: art.sourceStage,
-      version: 1,
-      createdAt: art.createdAt,
-      updatedAt: art.createdAt,
-      status: "draft",
-      openTarget: { kind: "deliverable", assetId: art.id },
     });
   }
 
   return out;
 }
 
-/** Feature-planning canvas preview용 deliverable-shaped content */
+/** 기능 정의 Artifact Hub 미리보기용 (Canvas는 FeatureDefinitionCanvasOverlay 사용) */
 export function featurePlanningToDeliverablePreview(
   artifact: FeaturePlanningSlotsArtifactV1,
   projectId: string,
-): IdeationDeliverableAsset {
+): import("@/lib/requirements/ideationDeliverables").IdeationDeliverableAsset {
   const lines = ["# 기능 정의", ""];
   for (const slot of artifact.slots.filter((s) => !s.legacy)) {
     lines.push(`## ${slot.slotName}`, "", slot.slotDescription ?? slot.reason ?? "", "");
