@@ -292,6 +292,15 @@ export type {
 
 export { evaluateGovernanceEnforcementDesign } from "@/lib/agents/evaluateGovernanceEnforcementDesign";
 
+export type {
+  ConnectorGatewayRoutingExperimentDecision,
+  ConnectorGatewayRoutingExperimentFinding,
+  ConnectorGatewayRoutingExperimentReport,
+  ConnectorGatewayRoutingExperimentScope,
+} from "@/lib/agents/connectorGatewayRoutingExperimentTypes";
+
+export { evaluateConnectorGatewayRoutingExperiment } from "@/lib/agents/evaluateConnectorGatewayRoutingExperiment";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

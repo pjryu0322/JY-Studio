@@ -514,13 +514,58 @@ blocking_candidate → defer, block_candidate + approval/audit/rollback flags
 policyDecisions ← governanceDryRun.findings (info/warning/blocking_candidate 매핑)
 ```
 
-### Stage 2-13 후보: Connector Gateway routing 실험 브랜치 설계
+## Stage 2-12 소스 보완 결과
 
-Stage 2-13에서는 main이 아닌 실험 브랜치에서 Connector Gateway routing 검증을 설계한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| blocking_candidate severity 명시 분기 | 보완 | `mapFindingToPolicyDecision` explicit branch |
+| blockingCandidates 기반 decision | 보완 | `appendBlockingCandidateDecisions` |
+| status/findings mismatch warning | 보완 | `status_findings_mismatch`, `blocking_candidate_without_policy_decision`, `not_evaluated_with_findings` |
+| warn_only audit flag | 보완 | `requiresAuditLog=true`, approval/rollback false |
+| 실제 enforcement | 없음 | read-only design evaluator |
+
+## Stage 2-13 Connector Gateway Routing 실험 브랜치 설계 결과
+
+| 항목 | 반영 방식 | 실제 routing 여부 | 비고 |
+|---|---|---|---|
+| Routing Experiment 타입 | read-only experiment design report | 없음 | 설계 판단용 |
+| Routing Experiment evaluator | `boundaryIds` 기반 판단 | 없음 | 실행 경로 변경 없음 |
+| experiment branch | `experimentBranchRequired` flag | 없음 | main 직접 변경 금지 |
+| feature flag | `featureFlagRequired` / default `off` | 없음 | 실제 flag wire 없음 |
+| direct call fallback | `directCallFallbackRequired` flag | 없음 | 기존 경로 유지 원칙 |
+| Stage1 regression | github boundary 시 `stage1RegressionRequired` | 없음 | ENV_TEST 보호 |
+
+구현: `connectorGatewayRoutingExperimentTypes.ts`, `evaluateConnectorGatewayRoutingExperiment.ts`
+
+### Stage 2-13 원칙
+
+```text
+- 실제 routing을 구현하지 않는다.
+- routing 변경은 실험 브랜치에서만 설계한다.
+- feature flag default는 off다.
+- direct call fallback을 유지해야 한다.
+- GitHub boundary는 Stage1/ENV_TEST regression이 필수다.
+- main 브랜치에서 실행 경로를 변경하지 않는다.
+```
+
+### Stage 2-13 Decision 규칙 요약
+
+```text
+boundaryIds=[] / unknown → blocked, scope=none
+cursor_only → ready_for_experiment_design
+github_only → defer + stage1RegressionRequired=true
+cursor_and_github → defer + stage1RegressionRequired=true
+experimentBranchRequired / featureFlagRequired / directCallFallback / rollbackPlan → active scope에서 true
+featureFlagDefault → "off"
+```
+
+### Stage 2-14 후보: Agent execution record 실제 저장 설계
+
+Stage 2-14에서는 실제 Agent 실행이 아니라, 실행이 발생했을 때 어떤 record를 저장할지 설계한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| experiment branch | routing 변경은 별도 브랜치에서만 | main 직접 변경 금지 |
-| feature flag | gateway routing enable flag | default off |
-| rollback path | direct call fallback 유지 | 필수 |
-| Stage1 regression | ENV_TEST/GitHub flow 회귀 | 필수 |
+| AgentExecutionRecord | agent/capability/input/output summary | raw prompt 제외 |
+| ExecutionResultSummary | status/duration/error summary | 민감정보 제외 |
+| Timeline link | eventId/runId 연결 | schema 영향 |
+| Audit trail | operator approval/override 연결 | 저장 위치 결정 |

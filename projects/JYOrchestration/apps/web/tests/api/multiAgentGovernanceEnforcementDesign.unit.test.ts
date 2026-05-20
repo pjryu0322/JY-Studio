@@ -92,6 +92,77 @@ describe("multi-agent governance enforcement design stage 2-12", () => {
     expect(report.mode).toBe("read_only_governance_enforcement_design");
   });
 
+  it("maps blocking_candidate severity to block_candidate policyDecision", () => {
+    const gov: GovernancePrecheckDryRunResult = {
+      ...emptyGov,
+      status: "blocking_candidate",
+      findings: [
+        { policyId: "p1", check: "c1", severity: "blocking_candidate", message: "block" },
+      ],
+      blockingCandidates: ["p1"],
+    };
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: gov });
+    expect(report.policyDecisions.some((d) => d.enforcementMode === "block_candidate")).toBe(true);
+    expect(report.policyDecisions.find((d) => d.check === "c1")?.enforcementMode).toBe(
+      "block_candidate",
+    );
+  });
+
+  it("adds block_candidate policyDecision when only blockingCandidates are present", () => {
+    const gov: GovernancePrecheckDryRunResult = {
+      ...emptyGov,
+      status: "blocking_candidate",
+      findings: [],
+      blockingCandidates: ["critical:block"],
+    };
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: gov });
+    expect(report.policyDecisions).toHaveLength(1);
+    expect(report.policyDecisions[0]?.enforcementMode).toBe("block_candidate");
+    expect(report.policyDecisions[0]?.check).toBe("critical:block");
+  });
+
+  it("warning_candidate without policyDecisions adds status_findings_mismatch warning", () => {
+    const gov: GovernancePrecheckDryRunResult = {
+      ...emptyGov,
+      status: "warning_candidate",
+      findings: [],
+      warnings: [],
+      blockingCandidates: [],
+    };
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: gov });
+    expect(report.findings.some((f) => f.code === "status_findings_mismatch")).toBe(true);
+  });
+
+  it("blocking_candidate without block policyDecision adds blocking_candidate_without_policy_decision warning", () => {
+    const gov: GovernancePrecheckDryRunResult = {
+      ...emptyGov,
+      status: "blocking_candidate",
+      findings: [{ policyId: "p1", check: "c1", severity: "info", message: "info only" }],
+      blockingCandidates: [],
+    };
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: gov });
+    expect(
+      report.findings.some((f) => f.code === "blocking_candidate_without_policy_decision"),
+    ).toBe(true);
+  });
+
+  it("warn_only sets requiresAuditLog true and approval flags false", () => {
+    const gov = evaluateGovernancePrecheckDryRun({ requiredChecks: ["connector:cursor"] });
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: gov });
+    expect(report.enforcementMode).toBe("warn_only");
+    expect(report.requiresAuditLog).toBe(true);
+    expect(report.requiresPolicyApproval).toBe(false);
+    expect(report.requiresOperatorOverride).toBe(false);
+    expect(report.requiresRollbackPlan).toBe(false);
+  });
+
+  it("observe_only sets requiresAuditLog false", () => {
+    const report = evaluateGovernanceEnforcementDesign({ governanceDryRun: emptyGov });
+    expect(report.enforcementMode).toBe("observe_only");
+    expect(report.requiresAuditLog).toBe(false);
+    expect(report.requiresPolicyApproval).toBe(false);
+  });
+
   it("does not invoke governance precheck when evaluating design report", () => {
     const precheckSpy = vi.spyOn(governancePrecheckModule, "evaluateGovernancePrecheckDryRun");
     const gov: GovernancePrecheckDryRunResult = {
