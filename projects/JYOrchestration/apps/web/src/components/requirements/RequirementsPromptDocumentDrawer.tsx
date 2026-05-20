@@ -296,6 +296,7 @@ export function RequirementsPromptDocumentDrawer({
   promptTimeline,
   conversationMessages,
   exportBaseName,
+  orchestrationDebugSummary,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -306,6 +307,7 @@ export function RequirementsPromptDocumentDrawer({
   readonly conversationMessages: readonly RequirementsMessage[] | null;
   /** 다운로드 파일명 접두사(예: 프로젝트명). 비어 있으면 `project` 사용 */
   readonly exportBaseName?: string | null;
+  readonly orchestrationDebugSummary?: string | null;
 }) {
   const show = useShowScreenLabels();
   const [tab, setTab] = useState<"prompt" | "history">("prompt");
@@ -620,6 +622,26 @@ export function RequirementsPromptDocumentDrawer({
                 </p>
               ) : (
                 <>
+                  {orchestrationDebugSummary?.trim() ? (
+                    <div style={docBlock}>
+                      <div style={labelSm}>오케스트레이션 디버그</div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #e2e8f0",
+                          background: "#fff",
+                          fontSize: 11,
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          color: "#334155",
+                        }}
+                      >
+                        {orchestrationDebugSummary}
+                      </pre>
+                    </div>
+                  ) : null}
                   {foldedOrchestrationTimeline.length ? (
                     <div style={docBlock}>
                       <div style={labelSm}>오케스트레이션 타임라인</div>

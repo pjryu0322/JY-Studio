@@ -20,7 +20,7 @@ import {
   applyStageGovernanceToScore,
   stageGovernanceFor,
 } from "@/lib/requirements/requirementsStageGovernance";
-import { applyIntentOrchestrationGoverned } from "@/lib/requirements/requirementsIntentOrchestrationGovernedRuntime";
+import { applyIntentOrchestrationProduct } from "@/lib/requirements/requirementsIntentOrchestrationProductRuntime";
 import { buildOrchestrationUiProjection } from "@/lib/requirements/requirementsOrchestrationUiProjection";
 import {
   dispatchRequirementsUserIntent,
@@ -242,7 +242,7 @@ describe("orchestration runtime phase 4", () => {
   it("I2: applyIntentOrchestrationGoverned sets replay and metrics", () => {
     const state = featureDetailState(1);
     const ctx = buildRequirementsIntentDispatchContext(state);
-    const governed = applyIntentOrchestrationGoverned({
+    const governed = applyIntentOrchestrationProduct({
       before: state.requirementsIntentOrchestrationV1,
       routingState: state,
       userMessage: "화면 정의",
@@ -260,7 +260,7 @@ describe("orchestration runtime phase 4", () => {
       runtimeMetrics: { totalMs: 12, cacheHit: false },
       nowMs: Date.parse(now),
     });
-    expect(governed.lastRouting?.agentRole).toBe("orchestration-planner");
+    expect(governed.lastRouting?.agentRole).toBe("orchestration-architect");
     expect(governed.lastReplaySnapshot?.afterStateSummary).toBeTruthy();
     expect(governed.lastRuntimeMetrics?.totalMs).toBe(12);
   });

@@ -5,6 +5,8 @@
 import type { RequirementsIntentOrchestrationV1 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 
+export type ReplayImportance = "critical" | "normal" | "summary";
+
 export type OrchestrationReplaySnapshot = Readonly<{
   readonly beforeStateSummary: string;
   readonly afterStateSummary: string;
@@ -14,6 +16,7 @@ export type OrchestrationReplaySnapshot = Readonly<{
   readonly decisionSource?: string;
   readonly agentRole?: string;
   readonly actorId?: string;
+  readonly replayImportance?: ReplayImportance;
 }>;
 
 export function summarizeOrchestrationState(orch: RequirementsIntentOrchestrationV1 | null | undefined): string {

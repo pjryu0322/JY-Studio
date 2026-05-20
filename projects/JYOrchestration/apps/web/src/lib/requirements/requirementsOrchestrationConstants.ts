@@ -29,3 +29,16 @@ export const RECOMMENDATION_COOLDOWN_MS = 10 * 60 * 1000;
 export const MAX_TIMELINE_ROWS_PER_GROUP = 5;
 
 export const MAX_ORCHESTRATION_PROMPT_TIMELINE = 80;
+
+/** Phase 4 product runtime — bounded replay, lineage, dependency graph. */
+export const MAX_REPLAY_HISTORY_ENTRIES = 50;
+
+export const MAX_REPLAY_CRITICAL_ENTRIES = 12;
+
+export const MAX_ARTIFACT_LINEAGE_ACTIVE = 8;
+
+export const MAX_ARTIFACT_DEPENDENCY_EDGES = 24;
+
+export const DEFAULT_INSTRUMENTATION_LEVEL = "standard" as const;
+
+export type InstrumentationLevel = "minimal" | "standard" | "debug";

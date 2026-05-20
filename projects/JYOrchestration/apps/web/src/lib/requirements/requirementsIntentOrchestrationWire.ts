@@ -8,6 +8,10 @@ import type { OrchestrationReplaySnapshot } from "@/lib/requirements/requirement
 import type { OrchestrationRuntimeMetrics } from "@/lib/requirements/requirementsOrchestrationInstrumentation";
 import type { FocusSource } from "@/lib/requirements/requirementsFocusPriority";
 import type { RecommendationDisposition } from "@/lib/requirements/requirementsRecommendationGovernance";
+import type { RecommendationStatus } from "@/lib/requirements/requirementsRecommendationLifecycle";
+import type { GovernedReplaySnapshot } from "@/lib/requirements/requirementsOrchestrationReplayGovernance";
+import type { ArtifactDependencyEdge } from "@/lib/requirements/requirementsArtifactDependencyGraph";
+import type { OrchestrationTransactionTrace } from "@/lib/requirements/requirementsOrchestrationTransaction";
 
 export type ConversationFocusType = "feature" | "step" | "actor" | "screen" | "api" | "flow" | "none";
 
@@ -113,7 +117,12 @@ export type RequirementsIntentOrchestrationV1 = Readonly<{
   readonly artifactLifecycle?: readonly ArtifactLifecycleEntryWire[];
   readonly recentTransitions?: readonly string[];
   readonly lastReplaySnapshot?: OrchestrationReplaySnapshot;
+  readonly replayHistory?: readonly GovernedReplaySnapshot[];
   readonly lastRuntimeMetrics?: OrchestrationRuntimeMetrics;
+  readonly lastGovernedStage?: string;
+  readonly artifactDependencies?: readonly ArtifactDependencyEdge[];
+  readonly humanReadableDebugSummary?: string;
+  readonly lastTransaction?: OrchestrationTransactionTrace;
 }>;
 
 const FOCUS_TYPES = new Set<ConversationFocusType>([
@@ -196,6 +205,7 @@ function parseRecommendationQueue(raw: unknown): OrchestrationRecommendationWire
       generatedAt: String(r.generatedAt ?? new Date().toISOString()),
       ...(typeof r.targetKey === "string" ? { targetKey: r.targetKey.slice(0, 80) } : {}),
       ...(typeof r.disposition === "string" ? { disposition: r.disposition as RecommendationDisposition } : {}),
+      ...(typeof r.status === "string" ? { status: r.status as RecommendationStatus } : {}),
       ...(typeof r.cooldownUntil === "string" ? { cooldownUntil: r.cooldownUntil } : {}),
       ...(r.dismissed === true ? { dismissed: true } : {}),
       ...(r.accepted === true ? { accepted: true } : {}),
@@ -308,6 +318,19 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
     ...(o.lastRuntimeMetrics && typeof o.lastRuntimeMetrics === "object"
       ? { lastRuntimeMetrics: o.lastRuntimeMetrics as OrchestrationRuntimeMetrics }
       : {}),
+    ...(Array.isArray(o.replayHistory)
+      ? { replayHistory: o.replayHistory.slice(-50) as GovernedReplaySnapshot[] }
+      : {}),
+    ...(typeof o.lastGovernedStage === "string" ? { lastGovernedStage: o.lastGovernedStage.slice(0, 40) } : {}),
+    ...(Array.isArray(o.artifactDependencies)
+      ? { artifactDependencies: o.artifactDependencies.slice(0, 24) as ArtifactDependencyEdge[] }
+      : {}),
+    ...(typeof o.humanReadableDebugSummary === "string"
+      ? { humanReadableDebugSummary: o.humanReadableDebugSummary.slice(0, 1200) }
+      : {}),
+    ...(o.lastTransaction && typeof o.lastTransaction === "object"
+      ? { lastTransaction: o.lastTransaction as OrchestrationTransactionTrace }
+      : {}),
   };
 }
 
@@ -332,5 +355,12 @@ export function mergeIntentOrchestrationPatch(
     ...(patch.recentTransitions !== undefined ? { recentTransitions: patch.recentTransitions } : {}),
     ...(patch.lastReplaySnapshot !== undefined ? { lastReplaySnapshot: patch.lastReplaySnapshot } : {}),
     ...(patch.lastRuntimeMetrics !== undefined ? { lastRuntimeMetrics: patch.lastRuntimeMetrics } : {}),
+    ...(patch.replayHistory !== undefined ? { replayHistory: patch.replayHistory } : {}),
+    ...(patch.lastGovernedStage !== undefined ? { lastGovernedStage: patch.lastGovernedStage } : {}),
+    ...(patch.artifactDependencies !== undefined ? { artifactDependencies: patch.artifactDependencies } : {}),
+    ...(patch.humanReadableDebugSummary !== undefined
+      ? { humanReadableDebugSummary: patch.humanReadableDebugSummary }
+      : {}),
+    ...(patch.lastTransaction !== undefined ? { lastTransaction: patch.lastTransaction } : {}),
   };
 }

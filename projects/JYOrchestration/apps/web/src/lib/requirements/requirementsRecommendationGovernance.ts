@@ -5,6 +5,7 @@
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { RECOMMENDATION_COOLDOWN_MS } from "@/lib/requirements/requirementsOrchestrationConstants";
 import type { OrchestrationRecommendationWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
+import { withRecommendationStatus } from "@/lib/requirements/requirementsRecommendationLifecycle";
 
 export type RecommendationDisposition = "pending" | "dismissed" | "accepted" | "rejected";
 
@@ -62,7 +63,7 @@ export function mergeGovernedRecommendations(input: {
       merged.score = Math.max(prev.score, raw.score);
     }
 
-    byKey.set(key, merged);
+    byKey.set(key, withRecommendationStatus(merged, merged.dismissed ? "dismissed" : "pending"));
   }
 
   return [...byKey.values()]

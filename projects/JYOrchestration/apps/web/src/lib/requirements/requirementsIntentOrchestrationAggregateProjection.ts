@@ -9,7 +9,7 @@ import { buildArtifactHubOrchestrationState, artifactHubTopChromeBadgeCount } fr
 import { buildArtifactVersionLineage, artifactLineageLabelKo } from "@/lib/requirements/requirementsArtifactVersionLineage";
 import { resolveContestedFocus } from "@/lib/requirements/requirementsFocusPriority";
 import { mergeGovernedRecommendations } from "@/lib/requirements/requirementsRecommendationGovernance";
-import { applyStageGovernanceToScore } from "@/lib/requirements/requirementsStageGovernance";
+import { applyGovernanceResolverToScore } from "@/lib/requirements/requirementsStageGovernanceResolver";
 import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
 import {
   pickOrchestrationPromptTimelineEntries,
@@ -115,7 +115,12 @@ export function buildGovernedOrchestrationAggregateProjection(input: {
   const governedQueue = mergeGovernedRecommendations({
     incoming: rawQueue.map((r) => ({
       actionId: r.actionId,
-      score: applyStageGovernanceToScore({ stage, actionId: r.actionId, score: r.score }),
+      score: applyGovernanceResolverToScore({
+        stage,
+        actionId: r.actionId,
+        score: r.score,
+        clarificationPending: orch?.clarification?.pending,
+      }),
       reason: r.reason,
       blocking: r.blocking,
       generatedAt: r.generatedAt,

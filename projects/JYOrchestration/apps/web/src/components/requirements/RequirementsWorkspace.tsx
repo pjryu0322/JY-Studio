@@ -2762,6 +2762,7 @@ export function RequirementsWorkspace({
           onCloseDeliverableViewer={() => setDeliverableViewerOpen(false)}
           deliverableViewerAssets={deliverableViewerAssets}
           deliverableViewerFocusId={deliverableViewerFocusId}
+          orchestrationDebugSummary={orchestrationUi.humanReadableDebugSummary}
         />
       ) : null}
     </div>

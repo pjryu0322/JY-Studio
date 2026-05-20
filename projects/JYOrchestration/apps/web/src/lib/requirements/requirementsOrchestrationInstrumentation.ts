@@ -1,6 +1,8 @@
 /**
- * Runtime instrumentation — latency and cost metadata for timeline explainability.
+ * Runtime instrumentation — latency and cost metadata with sampling levels.
  */
+
+import type { InstrumentationLevel } from "@/lib/requirements/requirementsOrchestrationConstants";
 
 export type OrchestrationRuntimeMetrics = Readonly<{
   readonly routerMs?: number;
@@ -11,7 +13,40 @@ export type OrchestrationRuntimeMetrics = Readonly<{
   readonly cacheHit?: boolean;
   readonly projectionCost?: number;
   readonly persistCost?: number;
+  readonly instrumentationLevel?: InstrumentationLevel;
+  readonly sampled?: boolean;
 }>;
+
+export function resolveInstrumentationLevel(debugMode?: boolean): InstrumentationLevel {
+  if (debugMode) return "debug";
+  if (process.env.NODE_ENV === "production") return "minimal";
+  return "standard";
+}
+
+/** Sample high-cost fields unless debug — keeps timeline compact in production. */
+export function sampleRuntimeMetrics(
+  metrics: OrchestrationRuntimeMetrics,
+  level: InstrumentationLevel = "standard",
+): OrchestrationRuntimeMetrics {
+  if (level === "debug") return { ...metrics, instrumentationLevel: "debug", sampled: false };
+  if (level === "minimal") {
+    return {
+      totalMs: metrics.totalMs,
+      cacheHit: metrics.cacheHit,
+      instrumentationLevel: "minimal",
+      sampled: true,
+    };
+  }
+  const sampled = (metrics.projectionMs ?? 0) > 80;
+  if (!sampled) return { ...metrics, instrumentationLevel: "standard", sampled: false };
+  return {
+    totalMs: metrics.totalMs,
+    cacheHit: metrics.cacheHit,
+    projectionCost: metrics.projectionCost,
+    instrumentationLevel: "standard",
+    sampled: true,
+  };
+}
 
 export function createOrchestrationTimer(): Readonly<{
   readonly mark: (label: string) => void;

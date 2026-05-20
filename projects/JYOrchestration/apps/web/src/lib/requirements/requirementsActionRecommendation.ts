@@ -8,10 +8,8 @@ import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestr
 import type { ArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import type { RequirementsIntentOrchestrationV1 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import { MAX_CHAT_PRIORITIZED_RECOMMENDATIONS } from "@/lib/requirements/requirementsOrchestrationConstants";
-import {
-  applyStageGovernanceToScore,
-  filterRecommendationsByStageGovernance,
-} from "@/lib/requirements/requirementsStageGovernance";
+import { filterRecommendationsByStageGovernance } from "@/lib/requirements/requirementsStageGovernance";
+import { applyGovernanceResolverToScore } from "@/lib/requirements/requirementsStageGovernanceResolver";
 
 export type ProactiveActionRecommendation = Readonly<{
   readonly actionId: QuickActionId;
@@ -136,7 +134,12 @@ export function buildPrioritizedRecommendationQueue(input: {
       if (input.lastIntentActionId === r.actionId) score -= 15;
       if (input.metrics.featureCoverage >= 0.8 && r.actionId === "DEFINE_SCREEN") score += 5;
       if (input.artifactHub?.hasStaleArtifact && r.actionId === "OPEN_ARTIFACT_HUB") score += 8;
-      score = applyStageGovernanceToScore({ stage: input.stage, actionId: r.actionId, score });
+      score = applyGovernanceResolverToScore({
+        stage: input.stage,
+        actionId: r.actionId,
+        score,
+        clarificationPending: input.orchestration?.clarification?.pending,
+      });
       return scoreFromLegacy({ ...r, priority: score }, nowIso);
     }),
   );

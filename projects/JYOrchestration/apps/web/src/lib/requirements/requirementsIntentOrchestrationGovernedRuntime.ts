@@ -8,7 +8,7 @@ import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requireme
 import { buildArtifactVersionLineage } from "@/lib/requirements/requirementsArtifactVersionLineage";
 import { resolveContestedFocus } from "@/lib/requirements/requirementsFocusPriority";
 import { mergeGovernedRecommendations } from "@/lib/requirements/requirementsRecommendationGovernance";
-import { applyStageGovernanceToScore } from "@/lib/requirements/requirementsStageGovernance";
+import { applyGovernanceResolverToScore } from "@/lib/requirements/requirementsStageGovernanceResolver";
 import { buildOrchestrationReplaySnapshot } from "@/lib/requirements/requirementsOrchestrationReplay";
 import type { OrchestrationRuntimeMetrics } from "@/lib/requirements/requirementsOrchestrationInstrumentation";
 import { applyIntentOrchestrationPhase3 } from "@/lib/requirements/requirementsIntentOrchestrationRuntime";
@@ -70,7 +70,12 @@ export function applyIntentOrchestrationGoverned(input: {
   const governedQueue = mergeGovernedRecommendations({
     incoming: rawQueue.map((r) => ({
       actionId: r.actionId,
-      score: applyStageGovernanceToScore({ stage, actionId: r.actionId, score: r.score }),
+      score: applyGovernanceResolverToScore({
+        stage,
+        actionId: r.actionId,
+        score: r.score,
+        clarificationPending: input.before?.clarification?.pending,
+      }),
       reason: r.reason,
       blocking: r.blocking,
       generatedAt: r.generatedAt,

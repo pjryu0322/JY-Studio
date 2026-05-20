@@ -41,6 +41,7 @@ export type RequirementsIdeationDocumentDrawersProps = Readonly<{
   onCloseDeliverableViewer: () => void;
   deliverableViewerAssets: readonly IdeationDeliverableAsset[];
   deliverableViewerFocusId: string | null;
+  orchestrationDebugSummary?: string | null;
 }>;
 
 export function RequirementsIdeationDocumentDrawers({
@@ -74,6 +75,7 @@ export function RequirementsIdeationDocumentDrawers({
   onCloseDeliverableViewer,
   deliverableViewerAssets,
   deliverableViewerFocusId,
+  orchestrationDebugSummary,
 }: RequirementsIdeationDocumentDrawersProps) {
   return (
     <>
@@ -86,6 +88,7 @@ export function RequirementsIdeationDocumentDrawers({
         promptTimeline={promptTimeline}
         conversationMessages={ideationConversationForPromptExport}
         exportBaseName={exportBaseName}
+        orchestrationDebugSummary={orchestrationDebugSummary}
       />
 
       <RequirementsSummaryModal

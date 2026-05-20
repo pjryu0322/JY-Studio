@@ -58,7 +58,7 @@ import {
   formatOrchestrationTimelineResponse,
   orchestrationTimelineGroupForAction,
 } from "@/lib/requirements/requirementsOrchestrationTimeline";
-import { applyIntentOrchestrationGoverned } from "@/lib/requirements/requirementsIntentOrchestrationGovernedRuntime";
+import { applyIntentOrchestrationProduct } from "@/lib/requirements/requirementsIntentOrchestrationProductRuntime";
 import {
   createOrchestrationTimer,
   formatRuntimeMetricsForTimeline,
@@ -248,7 +248,11 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
   const ctx = buildRequirementsIntentDispatchContext(input.routingState);
   const timer = createOrchestrationTimer();
   timer.mark("projection");
-  const governed = applyIntentOrchestrationGoverned({
+  timer.mark("post-projection");
+  const metrics = timer.finish({
+    cacheHit: input.intent.routerMode === "cache",
+  });
+  const product = applyIntentOrchestrationProduct({
     before: input.prev,
     base: merged,
     routingState: input.routingState,
@@ -260,13 +264,13 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
     nextFocus: focus,
     featureMetrics: ctx.featureMetrics,
     availableActionIds: ctx.availableActionIds,
+    runtimeMetrics: metrics,
   });
-  timer.mark("post-projection");
-  return mergeIntentOrchestrationPatch(governed, {
-    lastRuntimeMetrics: timer.finish({
-      cacheHit: input.intent.routerMode === "cache",
-      projectionCost: governed.recommendationQueue?.length ?? 0,
-    }),
+  return mergeIntentOrchestrationPatch(product, {
+    lastRuntimeMetrics: {
+      ...product.lastRuntimeMetrics,
+      projectionCost: product.recommendationQueue?.length ?? 0,
+    },
   });
 }
 
