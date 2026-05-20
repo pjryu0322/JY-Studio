@@ -21,6 +21,28 @@ export type {
 } from "@/lib/agents/connectorDescriptorTypes";
 
 export type {
+  ConnectorInvocationMode,
+  ConnectorInvocationRequest,
+  ConnectorInvocationResult,
+  ConnectorInvocationStatus,
+} from "@/lib/agents/connectorGatewayFacadeTypes";
+
+export type {
+  BuildConnectorInvocationInput,
+  BuildConnectorPlanFromAgentMetadataInput,
+  PlanNamedConnectorInvocationInput,
+} from "@/lib/agents/connectorGatewayFacade";
+
+export {
+  buildConnectorInvocationRequest,
+  buildConnectorPlanFromAgentMetadata,
+  evaluateConnectorInvocation,
+  planConnectorInvocation,
+  planCursorConnectorInvocation,
+  planGithubConnectorInvocation,
+} from "@/lib/agents/connectorGatewayFacade";
+
+export type {
   AgentReplayExtension,
   AgentReplaySnapshotContract,
   AgentRuntimeEventContext,
@@ -84,6 +106,7 @@ export {
 } from "@/lib/agents/connectorRegistry";
 
 export type {
+  BuildConnectorPlanFromAgentMetadataInput,
   BuildRequirementsAgentMetadataInput,
   RequirementsAgentRuntimeMetadata,
   ResolveDispatchAgentInput,

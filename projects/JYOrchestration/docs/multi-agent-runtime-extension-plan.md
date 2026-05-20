@@ -116,26 +116,47 @@ apps/web/src/lib/agents/connectorRegistry.ts
 
 구현: `requirementsDispatchAgentMetadata.ts`, `requirementsIntentDispatch.ts` (optional field)
 
-## Stage 2-2 후보: Connector Gateway Facade
+## Stage 2-2 Connector Gateway Facade 결과
 
-Stage 2-2에서는 실제 Connector Gateway를 구현하지 않고, Cursor/GitHub 기존 호출 경로를 감싸는 no-op 또는 pass-through facade를 먼저 둔다.
+| 항목 | 반영 방식 | 실제 호출 여부 | 비고 |
+|---|---|---|---|
+| ConnectorInvocationRequest | facade 요청 타입 | 없음 | dry-run/pass-through 계획용 |
+| ConnectorInvocationResult | facade 판단 결과 | 없음 | allowed/status/reason 포함 |
+| planConnectorInvocation | connector 실행 계획 평가 | 없음 | registry + agent/capability 검증 |
+| planCursorConnectorInvocation | Cursor 계획 평가 | 없음 | 기존 Cursor 실행 미변경 |
+| planGithubConnectorInvocation | GitHub 계획 평가 | 없음 | 기존 GitHub 실행 미변경 |
+| Agent Metadata 연계 | `buildConnectorPlanFromAgentMetadata` | 없음 | Stage 2-1 metadata 활용 |
 
-| 대상 | 현재 경로 | Stage 2-2 목표 |
-|---|---|---|
-| Cursor | ExecutionJob / prototype_build | `connectorGateway.invokeCursor` facade 후보 |
-| GitHub | PR sync / reviewer | `connectorGateway.invokeGithub` facade 후보 |
-| Codex | 미사용 | descriptor만 유지 |
-| Copilot | 미사용 | descriptor만 유지 |
+구현: `connectorGatewayFacadeTypes.ts`, `connectorGatewayFacade.ts`, `buildConnectorPlanFromAgentMetadata` in `requirementsDispatchAgentMetadata.ts`
 
-## Stage 2-3 후보: Harness Dry-run
-
-Stage 2-3에서는 실제 Agent 실행 없이 다음 결과만 산출한다.
+검증 규칙:
 
 ```text
-입력 intent/stage/context
-→ resolved agent
-→ resolved capability
-→ required connectors
-→ governance pre-check 후보
+connector 미존재 → blocked
+connector disabled (codex/copilot) → skipped, allowed=false
+agent.allowedConnectors 미포함 → blocked
+capability.requiredConnectors 불일치 → blocked
+mode=dry_run + 조건 충족 → planned, allowed=true
+mode=pass_through + 조건 충족 → passed_through (외부 호출 없음)
+```
+
+## Stage 2-3 후보: Agent Harness Dry-run
+
+Stage 2-3에서는 실제 Agent 실행 없이 아래 결과만 산출한다.
+
+```text
+input context
+→ resolve agent
+→ resolve capability
+→ resolve required connector plans
+→ governance pre-check candidate
 → dry-run decision
+```
+
+| 항목 | 설명 |
+|---|---|
+| HarnessPlanRequest | dry-run 입력 |
+| HarnessPlanResult | agent/capability/connector/governance 후보 결과 |
+| 실행 여부 | 실제 실행 없음 |
+| 목적 | agent orchestration 전 의사결정 계획 검증 |
 ```
