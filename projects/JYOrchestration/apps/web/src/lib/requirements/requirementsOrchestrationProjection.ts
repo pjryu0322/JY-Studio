@@ -11,6 +11,11 @@ import {
   type OrchestrationStage,
 } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import {
+  filterFeatureDetailQuickActions,
+  projectFeatureDetailMetrics,
+  type FeatureDetailProjectionMetrics,
+} from "@/lib/requirements/featureDetailSlots";
+import {
   quickActionsForConversationState,
   quickActionsToLabels,
   type QuickAction,
@@ -45,6 +50,7 @@ export type RequirementsOrchestrationProjection = Readonly<{
   readonly quickReplies: readonly string[];
   readonly quickReplyProfile: string;
   readonly conversationState: ReturnType<typeof resolveServiceFlowConversationState> | null;
+  readonly featureDetail: FeatureDetailProjectionMetrics;
 }>;
 
 export function resolveOrchestrationUiState(input: {
@@ -77,14 +83,31 @@ export function buildQuickReplyProjection(input: {
   readonly quickActions: readonly QuickAction[];
   readonly quickReplies: readonly string[];
   readonly quickReplyProfile: string;
+  readonly featureDetail: FeatureDetailProjectionMetrics;
 } {
   const conv = input.state.serviceFlowV1
     ? resolveServiceFlowConversationState(input.state.serviceFlowV1)
     : "PROPOSAL";
   const profile = quickReplyProfileForState(conv);
   const raw = quickActionsForConversationState(conv);
-  const quickActions = filterQuickActionsForStage(input.authoritativeStage, raw);
-  return { quickActions, quickReplies: quickActionsToLabels(quickActions), quickReplyProfile: profile };
+  const featureDetail = projectFeatureDetailMetrics(input.state.featureDetailSlotsV1);
+  const activePhase = input.state.requirementsOrchestrationStageV1?.activePhase ?? null;
+  const stageFiltered = filterQuickActionsForStage(input.authoritativeStage, raw);
+  const quickActions =
+    conv === "FEATURE_DETAIL" ?
+      filterFeatureDetailQuickActions({
+        actions: stageFiltered,
+        metrics: featureDetail,
+        stage: input.authoritativeStage,
+        activePhase,
+      })
+    : stageFiltered;
+  return {
+    quickActions,
+    quickReplies: quickActionsToLabels(quickActions),
+    quickReplyProfile: profile,
+    featureDetail,
+  };
 }
 
 export function projectRequirementsOrchestrationView(input: {
@@ -103,7 +126,7 @@ export function projectRequirementsOrchestrationView(input: {
   const progressConfirmed = singleChatOrchestrationConfirmedProgress(uiState);
   const statusCounts = singleChatOrchestrationStatusCounts(uiState);
   const slotSections = buildOrchestrationSlotSummarySections(input.slotDefinitions, uiState);
-  const { quickActions, quickReplies, quickReplyProfile } = buildQuickReplyProjection({
+  const { quickActions, quickReplies, quickReplyProfile, featureDetail } = buildQuickReplyProjection({
     state: input.state,
     authoritativeStage,
   });
@@ -124,5 +147,6 @@ export function projectRequirementsOrchestrationView(input: {
     quickReplies,
     quickReplyProfile,
     conversationState,
+    featureDetail,
   };
 }

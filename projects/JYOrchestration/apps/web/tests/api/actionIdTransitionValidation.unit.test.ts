@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { appendOrchestrationTransitionTimelineExtras } from "@/lib/requirements/requirementsOrchestrationTimeline";
 import { buildQuickReplyProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
+import { seedFeatureDetailSlotsFromServiceFlow } from "@/lib/requirements/featureDetailSlots";
 import {
   filterQuickActionsForStage,
   getOrchestrationStageDefinition,
@@ -113,11 +114,29 @@ describe("actionId transition validation", () => {
     expect(def.obsoleteActionIds).toContain("APPROVE_FLOW");
     expect(def.obsoleteActionIds).toContain("GENERATE_ALTERNATIVE");
 
+    const flow = { ...sampleApprovedFlow(), conversationState: "FEATURE_DETAIL" as const };
+    const gatedProjection = buildQuickReplyProjection({
+      state: {
+        serviceFlowV1: flow,
+        featureDetailSlotsV1: seedFeatureDetailSlotsFromServiceFlow(flow, now),
+        requirementsOrchestrationStageV1: {
+          currentStage: "FEATURE_DETAIL",
+          completedStages: ["SERVICE_FLOW_REVIEW"],
+          activePhase: "feature_detail_bootstrap",
+          updatedAt: now,
+        },
+      },
+      authoritativeStage: "FEATURE_DETAIL",
+    });
+    expect(gatedProjection.quickReplies).toEqual(["기능 수정", "문서 생성"]);
+
+    const detailSeed = seedFeatureDetailSlotsFromServiceFlow(flow, now);
     const projection = buildQuickReplyProjection({
       state: {
-        serviceFlowV1: {
-          ...sampleApprovedFlow(),
-          conversationState: "FEATURE_DETAIL",
+        serviceFlowV1: flow,
+        featureDetailSlotsV1: {
+          ...detailSeed,
+          slots: detailSeed.slots.map((s) => ({ ...s, status: "confirmed" as const, updatedAt: now })),
         },
         requirementsOrchestrationStageV1: {
           currentStage: "FEATURE_DETAIL",

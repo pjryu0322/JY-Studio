@@ -27,12 +27,23 @@ import {
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import { syncServiceFlowToOrchestrationSlots } from "@/lib/requirements/serviceFlowOrchestrationSync";
 import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
+import { planningTopicInstructionKo } from "@/lib/featurePlanning/featurePlanningTopic";
+import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import {
+  buildFeatureDetailBootstrapMessage,
+  buildScreenDefineBlockedMessage,
+  projectFeatureDetailMetrics,
+  recordFeatureDetailMutation,
+  seedFeatureDetailSlotsFromServiceFlow,
+  type FeatureDetailSlotsV1,
+} from "@/lib/requirements/featureDetailSlots";
 
 export type ServiceFlowTransitionSignal =
   | "NEXT_STAGE"
   | "APPROVE_FLOW"
   | "DOCUMENTATION_COMPLETE"
   | "FEATURE_DETAIL_START"
+  | "SCREEN_DEFINE_START"
   | "ACTION_ENTER_ACTOR_EDIT"
   | "ACTION_ADD_STEP";
 
@@ -86,13 +97,17 @@ function buildOrchestrationStagePatch(input: {
   readonly fromStage: ServiceFlowOrchestrationStageWire;
   readonly nowIso: string;
   readonly existing?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
+  readonly activePhase?: string | null;
 }): NonNullable<RequirementsStateJson["requirementsOrchestrationStageV1"]> {
   const prev = new Set(input.existing?.completedStages ?? []);
   if (input.fromStage !== input.toStage) prev.add(input.fromStage);
+  const defaultPhase =
+    input.toStage === "FEATURE_DETAIL" ? "feature_detail_bootstrap" : input.toStage;
   return {
     currentStage: input.toStage,
     completedStages: [...prev],
-    activePhase: input.toStage === "FEATURE_DETAIL" ? "feature_detail_bootstrap" : input.toStage,
+    activePhase:
+      input.activePhase !== undefined ? input.activePhase : defaultPhase,
     updatedAt: input.nowIso,
   };
 }
@@ -122,6 +137,44 @@ export function buildContextAwareFeatureDetailBootstrapMessage(
     "- 예외 상황",
   ];
   return lines.join("\n").trim();
+}
+
+function firstOrderedFlowStepTitle(flow: RequirementsServiceFlowV1): string {
+  const hydrated = hydrateServiceFlowStepsFromAlternativePayload(flow);
+  const steps = [...(hydrated.steps ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => s.title.trim())
+    .filter(Boolean);
+  return steps[0] ?? "핵심 흐름";
+}
+
+export function buildScreenDefineBootstrapMessage(flow: RequirementsServiceFlowV1): string {
+  const firstStep = firstOrderedFlowStepTitle(flow);
+  const lines = [
+    "세부 기능 정의 중 **화면 정의** 단계로 이동합니다.",
+    "",
+    `우선 **${firstStep}** 기능 기준으로 **화면 목록**을 정리합니다.`,
+    "",
+    "각 화면에 대해:",
+    "- 화면 이름·역할",
+    "- 주요 진입 경로",
+    "- 연결되는 기능",
+    "",
+    planningTopicInstructionKo("SCREENS"),
+  ];
+  return lines.join("\n").trim();
+}
+
+function patchFeaturePlanningForScreenDefine(
+  artifact: FeaturePlanningSlotsArtifactV1 | null | undefined,
+  nowIso: string,
+): FeaturePlanningSlotsArtifactV1 | null {
+  if (!artifact?.slots?.length) return artifact ?? null;
+  return {
+    ...artifact,
+    planningTopic: "SCREENS",
+    updatedAt: nowIso,
+  };
 }
 
 function applyFlowApprovalMetadata(
@@ -197,6 +250,7 @@ export function handleQuickActionTransition(input: {
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly orchestration?: RequirementsStateJson["singleChatOrchestrationV1"] | null;
   readonly existingFeaturePlanning?: RequirementsStateJson["featurePlanningSlotsV1"] | null;
+  readonly existingFeatureDetail?: RequirementsStateJson["featureDetailSlotsV1"] | null;
   readonly existingOrchestrationStage?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
   readonly approvedBy?: string | null;
 }): ServiceFlowStageTransitionFastPathResult | null {
@@ -300,7 +354,11 @@ export function handleQuickActionTransition(input: {
       updatedAt: nowIso,
     };
 
-    const assistantMessage = buildContextAwareFeatureDetailBootstrapMessage(flow);
+    const featureDetailArtifact =
+      input.existingFeatureDetail?.slots?.length ?
+        input.existingFeatureDetail
+      : seedFeatureDetailSlotsFromServiceFlow(flow, nowIso);
+    const assistantMessage = buildFeatureDetailBootstrapMessage(flow, featureDetailArtifact);
     const featureArtifact =
       input.existingFeaturePlanning?.slots?.length ?
         input.existingFeaturePlanning
@@ -311,11 +369,13 @@ export function handleQuickActionTransition(input: {
       fromStage,
       nowIso,
       existing: input.existingOrchestrationStage,
+      activePhase: "feature_detail_bootstrap",
     });
 
     const requirementsStatePatch: Partial<RequirementsStateJson> = {
       requirementsOrchestrationStageV1: orchPatch,
       featurePlanningSlotsV1: featureArtifact,
+      featureDetailSlotsV1: featureDetailArtifact,
     };
 
     if (input.slotDefinitions?.length) {
@@ -353,6 +413,83 @@ export function handleQuickActionTransition(input: {
     });
   }
 
+  if (input.signal === "SCREEN_DEFINE_START") {
+    if (stateBefore !== "FEATURE_DETAIL") return null;
+
+    const detailArtifact = input.existingFeatureDetail;
+    const metrics = projectFeatureDetailMetrics(detailArtifact);
+    if (!metrics.canEnterScreenDefine) {
+      return buildTransitionFastPathResult({
+        assistantMessage: buildScreenDefineBlockedMessage(metrics),
+        updatedFlow: { ...baseFlow, updatedAt: nowIso },
+        quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+        routingDecision: "screen_define_gated",
+        timelineAction: "screenDefineBlocked",
+        proposalDecision: "DIRECT_INPUT",
+        conversationStateBefore: stateBefore,
+        conversationStateAfter: "FEATURE_DETAIL",
+        transitionMeta: {
+          quickActionType: "SCREEN_DEFINE_START",
+          transitionTriggered: false,
+          fromStage,
+          toStage: "FEATURE_DETAIL",
+          transitionMode: "fast_path",
+          orchestrationStateUpdated: false,
+        },
+      });
+    }
+
+    const assistantMessage = buildScreenDefineBootstrapMessage(baseFlow);
+    const featureArtifact = patchFeaturePlanningForScreenDefine(input.existingFeaturePlanning, nowIso);
+    const nextDetail =
+      detailArtifact ?
+        recordFeatureDetailMutation(detailArtifact, {
+          featureAction: "screen_define_enter",
+          mutationSource: "DEFINE_SCREEN",
+        })
+      : null;
+
+    const orchPatch = buildOrchestrationStagePatch({
+      toStage: "FEATURE_DETAIL",
+      fromStage: "FEATURE_DETAIL",
+      nowIso,
+      existing: input.existingOrchestrationStage,
+      activePhase: "screen_define",
+    });
+
+    const requirementsStatePatch: Partial<RequirementsStateJson> = {
+      requirementsOrchestrationStageV1: orchPatch,
+      ...(featureArtifact ? { featurePlanningSlotsV1: featureArtifact } : {}),
+      ...(nextDetail ? { featureDetailSlotsV1: nextDetail } : {}),
+    };
+
+    const updatedFlow = {
+      ...baseFlow,
+      lastProposalDecision: "DIRECT_INPUT",
+      updatedAt: nowIso,
+    };
+
+    return buildTransitionFastPathResult({
+      assistantMessage,
+      updatedFlow,
+      quickReplies: quickRepliesForConversationState("FEATURE_DETAIL"),
+      routingDecision: "feature_detail_to_screen_define_transition",
+      timelineAction: "screenDefineTransition",
+      proposalDecision: "DIRECT_INPUT",
+      conversationStateBefore: stateBefore,
+      conversationStateAfter: "FEATURE_DETAIL",
+      transitionMeta: {
+        quickActionType: "SCREEN_DEFINE_START",
+        transitionTriggered: true,
+        fromStage,
+        toStage: "FEATURE_DETAIL",
+        transitionMode: "fast_path",
+        orchestrationStateUpdated: true,
+      },
+      requirementsStatePatch,
+    });
+  }
+
   return null;
 }
 
@@ -378,6 +515,7 @@ export function tryServiceFlowOrchestrationTransitionFastPath(input: {
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly orchestration?: RequirementsStateJson["singleChatOrchestrationV1"] | null;
   readonly existingFeaturePlanning?: RequirementsStateJson["featurePlanningSlotsV1"] | null;
+  readonly existingFeatureDetail?: RequirementsStateJson["featureDetailSlotsV1"] | null;
   readonly existingOrchestrationStage?: RequirementsStateJson["requirementsOrchestrationStageV1"] | null;
   readonly approvedBy?: string | null;
 }): ServiceFlowStageTransitionFastPathResult | null {
@@ -394,6 +532,7 @@ export function tryServiceFlowOrchestrationTransitionFastPath(input: {
     slotDefinitions: input.slotDefinitions,
     orchestration: input.orchestration,
     existingFeaturePlanning: input.existingFeaturePlanning,
+    existingFeatureDetail: input.existingFeatureDetail,
     existingOrchestrationStage: input.existingOrchestrationStage,
     approvedBy: input.approvedBy,
   });

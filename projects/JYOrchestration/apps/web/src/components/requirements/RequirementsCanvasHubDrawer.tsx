@@ -36,6 +36,7 @@ const typeLabel: Record<ProjectCanvasArtifact["type"], string> = {
   "alternative-flow": "대안 비교",
   "baseline-flow": "기준안",
   "feature-definition": "기능 정의",
+  "feature-detail": "세부 기능",
   "screen-definition": "화면 정의",
   "api-definition": "API 명세",
   review: "검토",

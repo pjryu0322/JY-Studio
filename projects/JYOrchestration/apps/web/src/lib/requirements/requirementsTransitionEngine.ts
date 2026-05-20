@@ -115,6 +115,7 @@ export function applyRequirementsOrchestrationTransition(input: {
     slotDefinitions: input.slotDefinitions,
     orchestration: input.orchestration,
     existingFeaturePlanning: input.state.featurePlanningSlotsV1 ?? null,
+    existingFeatureDetail: input.state.featureDetailSlotsV1 ?? null,
     existingOrchestrationStage: input.state.requirementsOrchestrationStageV1 ?? null,
     approvedBy: input.approvedBy,
     nowIso: input.nowIso,
@@ -129,7 +130,11 @@ export function applyRequirementsOrchestrationTransition(input: {
       transitionResult: "applied",
       requirementsStatePatch: patch,
       updatedFlow: transitionFastPath.updatedFlow,
-      projectionUpdated: Boolean(patch?.requirementsOrchestrationStageV1 || patch?.featurePlanningSlotsV1),
+      projectionUpdated: Boolean(
+        patch?.requirementsOrchestrationStageV1 ||
+          patch?.featurePlanningSlotsV1 ||
+          patch?.featureDetailSlotsV1,
+      ),
       slotSyncTriggered: Boolean(patch?.singleChatOrchestrationV1),
       staleTriggered: false,
       invalidations: [],

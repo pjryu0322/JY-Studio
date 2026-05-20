@@ -8,6 +8,7 @@ import {
   dispatchQuickAction,
   ORCHESTRATION_REGRESSION_NOW,
 } from "../helpers/orchestrationRegressionHarness";
+import { seedFeatureDetailSlotsFromServiceFlow } from "@/lib/requirements/featureDetailSlots";
 import {
   isOrchestrationTransitionAllowed,
   resolveAuthoritativeOrchestrationStage,
@@ -49,6 +50,9 @@ describe("orchestration regression — stage transition", () => {
         result.requirementsStatePatch?.requirementsOrchestrationStageV1 ??
         state.requirementsOrchestrationStageV1,
       featurePlanningSlotsV1: result.requirementsStatePatch?.featurePlanningSlotsV1,
+      featureDetailSlotsV1:
+        result.requirementsStatePatch?.featureDetailSlotsV1 ??
+        seedFeatureDetailSlotsFromServiceFlow(result.updatedFlow ?? flow, ORCHESTRATION_REGRESSION_NOW),
     };
     expect(resolveAuthoritativeOrchestrationStage(merged)).toBe("FEATURE_DETAIL");
 
@@ -57,12 +61,51 @@ describe("orchestration regression — stage transition", () => {
     expect(projection.workspaceStage).toBe("feature-planning");
 
     const quick = buildQuickActionProjection({ state: merged, stage: "FEATURE_DETAIL" });
-    expect(quick.quickActions.map((a) => a.id)).toEqual([
-      "EDIT_FEATURES",
-      "DEFINE_SCREEN",
-      "DEFINE_API",
-      "GENERATE_DOCUMENT",
-    ]);
+    expect(quick.quickActions.map((a) => a.id)).toEqual(["EDIT_FEATURES", "GENERATE_DOCUMENT"]);
+    expect(quick.featureDetail.featureCount).toBeGreaterThan(0);
+  });
+
+  it("DEFINE_SCREEN transitions to screen_define phase with bootstrap reply", () => {
+    const flow = createSampleServiceFlow({
+      conversationState: "FEATURE_DETAIL",
+      proposalAcceptedAt: ORCHESTRATION_REGRESSION_NOW,
+      flowApproved: true,
+    });
+    const detailSeed = seedFeatureDetailSlotsFromServiceFlow(flow, ORCHESTRATION_REGRESSION_NOW);
+    const state = createMockOrchestrationState({
+      stage: "FEATURE_DETAIL",
+      flow,
+      completedStages: ["SERVICE_FLOW_REVIEW"],
+    });
+    const stateWithConfirmed = {
+      ...state,
+      featureDetailSlotsV1: {
+        ...detailSeed,
+        slots: detailSeed.slots.map((s) => ({ ...s, status: "confirmed" as const, updatedAt: ORCHESTRATION_REGRESSION_NOW })),
+      },
+    };
+    const result = dispatchQuickAction({
+      state: stateWithConfirmed,
+      currentFlow: flow,
+      quickActionId: "DEFINE_SCREEN",
+    });
+
+    expect(result.transitionResult).toBe("applied");
+    expect(result.transitionTriggered).toBe(true);
+    expect(result.signal?.targetStage).toBe("SCREEN_DEFINE");
+    expect(String(result.fastPath?.assistantMessage ?? "")).toContain("화면 정의");
+    expect(result.requirementsStatePatch?.requirementsOrchestrationStageV1?.activePhase).toBe(
+      "screen_define",
+    );
+
+    const merged: typeof state = {
+      ...state,
+      serviceFlowV1: result.updatedFlow ?? flow,
+      requirementsOrchestrationStageV1:
+        result.requirementsStatePatch?.requirementsOrchestrationStageV1 ??
+        state.requirementsOrchestrationStageV1,
+    };
+    expect(resolveAuthoritativeOrchestrationStage(merged)).toBe("SCREEN_DEFINE");
   });
 
 });

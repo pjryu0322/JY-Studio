@@ -1,5 +1,7 @@
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
+import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import { softMigrateLegacyRoleSlotsArtifact } from "@/lib/featurePlanning/featurePlanningLegacyRoleSlots";
 import type { FeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { parseFeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
@@ -482,6 +484,8 @@ export type RequirementsStateJson = {
   prototypeWorkspaceTimelineCardsV1?: readonly PrototypeWorkspaceTimelineCardV1[] | null;
   /** 기능 정리: LLM 동적 planning artifact(JSON 단일 blob, 내부 slot 모델) */
   featurePlanningSlotsV1?: FeaturePlanningSlotsArtifactV1 | null;
+  /** 세부 기능 정의(FEATURE_DETAIL) structured slots — orchestration SoT */
+  featureDetailSlotsV1?: FeatureDetailSlotsV1 | null;
   /** 기능 정리 워크스페이스 대화(요구사항 채팅과 분리) */
   featurePlanningWorkspaceChatV1?: FeaturePlanningWorkspaceChatV1 | null;
   /** SingleChat AI 멤버 슬롯 오케스트레이션 상태(서비스 기획 그룹) */
@@ -864,6 +868,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     featurePlanningSlotsV1 = parsed ? softMigrateLegacyRoleSlotsArtifact(parsed) : null;
   }
 
+  const featureDetailRaw = "featureDetailSlotsV1" in o ? (o.featureDetailSlotsV1 as unknown) : undefined;
+  let featureDetailSlotsV1: FeatureDetailSlotsV1 | null | undefined;
+  if (featureDetailRaw === undefined) featureDetailSlotsV1 = undefined;
+  else if (featureDetailRaw === null) featureDetailSlotsV1 = null;
+  else {
+    featureDetailSlotsV1 = parseFeatureDetailSlotsV1(featureDetailRaw) ?? null;
+  }
+
   const fpChatRaw = "featurePlanningWorkspaceChatV1" in o ? (o.featurePlanningWorkspaceChatV1 as unknown) : undefined;
   let featurePlanningWorkspaceChatV1: FeaturePlanningWorkspaceChatV1 | null | undefined;
   if (fpChatRaw === undefined) featurePlanningWorkspaceChatV1 = undefined;
@@ -942,6 +954,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeWorkspaceChatV1 !== undefined ? { prototypeWorkspaceChatV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
+    ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
     ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
     ...(requirementsOrchestrationStageV1 !== undefined

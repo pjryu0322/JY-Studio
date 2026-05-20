@@ -24,6 +24,20 @@ export function interviewSuggestionPickToQuickAction(
   return quickActionDispatchFromLegacyLabel(pick);
 }
 
+export function shouldRouteFeaturePlanningSendViaServiceFlowAnalyze(input: {
+  readonly text: string;
+  readonly quickAction?: ServiceFlowQuickActionDispatch | null;
+  readonly quickActionLabel?: string | null;
+}): boolean {
+  const chip =
+    String(input.quickActionLabel ?? "").trim() ||
+    String(input.text ?? "").trim() ||
+    null;
+  const quickAction =
+    input.quickAction ?? (chip ? quickActionDispatchFromLegacyLabel(chip) : null);
+  return Boolean(quickAction?.id);
+}
+
 export async function dispatchServiceFlowSingleChatSend(params: {
   readonly payload: ServiceDesignHarnessPayload;
   readonly text: string;
@@ -39,12 +53,24 @@ export async function dispatchServiceFlowSingleChatSend(params: {
     | undefined;
   readonly onAfterDispatch: () => void;
 }): Promise<{ dispatched: boolean }> {
-  if (params.payload.serviceDesignStage !== "service-flow") return { dispatched: false };
+  const stage = params.payload.serviceDesignStage;
+  const isServiceFlow = stage === "service-flow";
+  const isFeaturePlanningOrchestration =
+    stage === "feature-planning" &&
+    shouldRouteFeaturePlanningSendViaServiceFlowAnalyze({
+      text: params.text,
+      quickAction: params.quickAction,
+      quickActionLabel: params.quickActionLabel,
+    });
+  if (!isServiceFlow && !isFeaturePlanningOrchestration) return { dispatched: false };
   const text = String(params.text ?? "").trim();
   if (!text) return { dispatched: false };
   const fn = params.sendRefCurrent;
   if (!fn) return { dispatched: false };
-  const chip = String(params.quickActionLabel ?? "").trim() || null;
+  const chip =
+    String(params.quickActionLabel ?? "").trim() ||
+    text ||
+    null;
   const quickAction =
     params.quickAction ?? (chip ? quickActionDispatchFromLegacyLabel(chip) : null);
   await fn(params.payload, text, quickAction);

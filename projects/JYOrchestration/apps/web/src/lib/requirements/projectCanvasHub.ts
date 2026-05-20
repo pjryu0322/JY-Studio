@@ -3,6 +3,7 @@
  */
 
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import { projectFeatureDetailMetrics } from "@/lib/requirements/featureDetailSlots";
 import type { RequirementsServiceFlowV1, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
@@ -12,6 +13,7 @@ export type CanvasArtifactType =
   | "alternative-flow"
   | "baseline-flow"
   | "feature-definition"
+  | "feature-detail"
   | "screen-definition"
   | "api-definition"
   | "review"
@@ -79,6 +81,28 @@ export function buildProjectCanvasHubCatalog(input: {
         });
       }
     }
+  }
+
+  const fd = input.state.featureDetailSlotsV1;
+  if (fd?.slots?.length) {
+    const metrics = projectFeatureDetailMetrics(fd);
+    const updatedAt = String(fd.updatedAt ?? now);
+    const status: CanvasArtifactStatus =
+      metrics.confirmedFeatureCount > 0 ?
+        metrics.featureCoverage >= 0.7 ?
+          "confirmed"
+        : "partial"
+      : "candidate";
+    out.push({
+      id: "canvas-feature-detail",
+      type: "feature-detail",
+      title: `세부 기능 (${metrics.confirmedFeatureCount}/${metrics.featureCount} 확정 · ${Math.round(metrics.featureCoverage * 100)}%)`,
+      sourceStage,
+      version: fd.version ?? 1,
+      createdAt: updatedAt,
+      updatedAt,
+      status,
+    });
   }
 
   const fp = input.state.featurePlanningSlotsV1;

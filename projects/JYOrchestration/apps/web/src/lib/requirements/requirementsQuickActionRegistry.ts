@@ -195,7 +195,7 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
     defaultLabel: "화면 정의",
     conversationProfiles: ["feature_detail"],
     proposalDecision: null,
-    transitionSignal: null,
+    transitionSignal: "SCREEN_DEFINE_START",
   },
   DEFINE_API: {
     id: "DEFINE_API",

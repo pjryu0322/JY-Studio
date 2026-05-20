@@ -166,6 +166,9 @@ export function isOrchestrationTransitionAllowed(
 export function resolveAuthoritativeOrchestrationStage(
   state: RequirementsStateJson,
 ): OrchestrationStage {
+  const activePhase = String(state.requirementsOrchestrationStageV1?.activePhase ?? "").trim();
+  if (activePhase === "screen_define") return "SCREEN_DEFINE";
+
   const stored = state.requirementsOrchestrationStageV1?.currentStage;
   if (stored === "FEATURE_DETAIL") return "FEATURE_DETAIL";
   if (stored === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
@@ -174,6 +177,7 @@ export function resolveAuthoritativeOrchestrationStage(
 
   const conv = state.serviceFlowV1 ? resolveServiceFlowConversationState(state.serviceFlowV1) : null;
   if (conv === "FEATURE_DETAIL") return "FEATURE_DETAIL";
+  if (state.featureDetailSlotsV1?.slots?.length) return "FEATURE_DETAIL";
   if (state.featurePlanningSlotsV1?.slots?.length) return "FEATURE_DETAIL";
 
   if (conv === "APPROVED" || state.serviceFlowV1?.flowApproved) return "SERVICE_FLOW_REVIEW";
@@ -197,6 +201,7 @@ export function orchestrationStageFromTransitionTarget(
   signal: ServiceFlowTransitionSignal,
 ): OrchestrationStage {
   if (signal === "FEATURE_DETAIL_START" || signal === "NEXT_STAGE") return "FEATURE_DETAIL";
+  if (signal === "SCREEN_DEFINE_START") return "SCREEN_DEFINE";
   if (signal === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
   if (signal === "APPROVE_FLOW") return "SERVICE_FLOW_REVIEW";
   return "SERVICE_FLOW_REVIEW";

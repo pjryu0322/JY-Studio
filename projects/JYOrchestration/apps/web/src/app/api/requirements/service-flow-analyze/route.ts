@@ -15,14 +15,9 @@ import {
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import {
-  filterQuickActionsForStage,
-  resolveAuthoritativeOrchestrationStage,
-} from "@/lib/requirements/requirementsOrchestrationRegistry";
-import {
-  normalizeQuickRepliesToActions,
-  quickActionsToLabels,
-} from "@/lib/requirements/requirementsQuickActionRegistry";
+import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
+import { buildQuickReplyProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
+import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import { appendOrchestrationTransitionTimelineExtras } from "@/lib/requirements/requirementsOrchestrationTimeline";
 import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
@@ -346,12 +341,16 @@ export async function POST(request: NextRequest) {
       fpRaw === undefined || fpRaw === null
         ? null
         : parseFeaturePlanningSlotsArtifactV1(fpRaw) ?? null;
+    const fdRaw = body.featureDetailSlotsV1;
+    const existingFeatureDetail =
+      fdRaw === undefined || fdRaw === null ? null : parseFeatureDetailSlotsV1(fdRaw) ?? null;
 
     const clientOrchestrationState: RequirementsStateJson = {
       serviceFlowV1: currentFlow,
       singleChatOrchestrationV1: orchestrationAligned,
       requirementsOrchestrationStageV1: existingOrchestrationStage ?? null,
       featurePlanningSlotsV1: existingFeaturePlanning,
+      featureDetailSlotsV1: existingFeatureDetail,
     };
 
     const transitionEngineResult = applyRequirementsOrchestrationTransition({
@@ -452,11 +451,11 @@ export async function POST(request: NextRequest) {
         serviceFlowV1: fastPath.updatedFlow,
       };
       const stage = resolveAuthoritativeOrchestrationStage(mergedForStage);
-      const projectedActions = filterQuickActionsForStage(
-        stage,
-        normalizeQuickRepliesToActions(fastPath.quickReplies),
-      );
-      const projectedQuickReplies = quickActionsToLabels(projectedActions);
+      const quickProjection = buildQuickReplyProjection({
+        state: mergedForStage,
+        authoritativeStage: stage,
+      });
+      const projectedQuickReplies = [...quickProjection.quickReplies];
 
       const fpAssistant = finalizeServiceFlowAssistantForResponse({
         assistantMessage: fastPath.assistantMessage,

@@ -180,6 +180,11 @@ import {
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
+import { FeatureDetailCanvasOverlay } from "@/components/feature-planning/FeatureDetailCanvasOverlay";
+import {
+  mergeFeatureDetailReadinessPercent,
+  projectFeatureDetailMetrics,
+} from "@/lib/requirements/featureDetailSlots";
 import { ServiceFlowActorEditDrawer } from "@/components/service-flow/ServiceFlowActorEditDrawer";
 import { ServiceFlowActorAssignmentDrawer } from "@/components/service-flow/ServiceFlowActorAssignmentDrawer";
 import {
@@ -739,9 +744,27 @@ export function RequirementsWorkspace({
     () => problemInterviewStrictFilledCount(problemInterviewState),
     [problemInterviewState]
   );
+  const authoritativeOrchestrationStage = useMemo(() => {
+    const st = (stateJsonRef.current && Object.keys(stateJsonRef.current).length ?
+        stateJsonRef.current
+      : parseRequirementsStateJson(project?.requirementsStateJson)) as RequirementsStateJson;
+    return resolveAuthoritativeOrchestrationStage(st);
+  }, [project?.requirementsStateJson, fetchNonce, persistedPromptState]);
+
+  const featureDetailMetrics = useMemo(() => {
+    const st = (stateJsonRef.current && Object.keys(stateJsonRef.current).length ?
+        stateJsonRef.current
+      : parseRequirementsStateJson(project?.requirementsStateJson)) as RequirementsStateJson;
+    return projectFeatureDetailMetrics(st.featureDetailSlotsV1);
+  }, [project?.requirementsStateJson, fetchNonce, persistedPromptState]);
+
   const proposalReadinessPercentVal = useMemo(() => {
-    return orchestrationWeightedMetrics.percent;
-  }, [orchestrationWeightedMetrics.percent]);
+    return mergeFeatureDetailReadinessPercent({
+      orchestrationPercent: orchestrationWeightedMetrics.percent,
+      stage: authoritativeOrchestrationStage,
+      metrics: featureDetailMetrics,
+    });
+  }, [orchestrationWeightedMetrics.percent, authoritativeOrchestrationStage, featureDetailMetrics]);
   const showWorkspaceHubBadges = useMemo(
     () =>
       shouldShowWorkspaceHubNotificationBadges({
@@ -1694,6 +1717,11 @@ export function RequirementsWorkspace({
       const text = input.trim();
       if (!pid || !text) return;
 
+      const pick = interviewSuggestionPickRef.current;
+      interviewSuggestionPickRef.current = null;
+      const quickAction = interviewSuggestionPickToQuickAction(pick);
+      const quickLabel = interviewSuggestionPickToLabel(pick);
+
       setInput("");
 
       const nowIso = new Date().toISOString();
@@ -1720,9 +1748,23 @@ export function RequirementsWorkspace({
         await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
       }
 
+      // Orchestration quick actions (화면 정의 등) — service-flow-analyze fast-path + 단일 타임라인 반영
+      const orchestrationDispatched = await dispatchServiceFlowSingleChatSend({
+        payload,
+        text,
+        quickAction,
+        quickActionLabel: quickLabel,
+        sendRefCurrent: serviceFlowSendRef.current,
+        onAfterDispatch: () => {},
+      });
+      if (orchestrationDispatched.dispatched) return;
+
       // Execute existing feature-planning logic (no rewrite).
       const fn = featurePlanningSendRef.current;
-      if (!fn) return;
+      if (!fn) {
+        showErrorToast("기능 정리 전송을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
       try {
         await fn(payload, text);
       } catch (e) {
@@ -1731,7 +1773,7 @@ export function RequirementsWorkspace({
         throw e;
       }
     },
-    [resolvedProjectId, input, sessionUser?.id, sessionUser?.name, persistRemote]
+    [resolvedProjectId, input, sessionUser?.id, sessionUser?.name, persistRemote, showErrorToast]
   );
 
   const appendFeaturePlanningAiTurnsToRequirementsConversation = useCallback(
@@ -1988,6 +2030,7 @@ export function RequirementsWorkspace({
       singleChatOrchestrationV1: orchestrationAlignedState,
       requirementsOrchestrationStageV1: stateJsonRef.current.requirementsOrchestrationStageV1,
       featurePlanningSlotsV1: stateJsonRef.current.featurePlanningSlotsV1,
+      featureDetailSlotsV1: stateJsonRef.current.featureDetailSlotsV1,
     },
     onAnalyzeStatePatch: async (patch) => {
       stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, patch);
@@ -2099,6 +2142,9 @@ export function RequirementsWorkspace({
           return;
         case "feature-definition":
           setActiveCanvasView("feature-definition");
+          return;
+        case "feature-detail":
+          setActiveCanvasView("feature-detail");
           return;
         default:
           return;
@@ -2329,6 +2375,11 @@ export function RequirementsWorkspace({
       <FeatureDefinitionCanvasOverlay
         open={activeCanvasView === "feature-definition"}
         artifact={stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1 ?? null}
+        onClose={() => setActiveCanvasView(null)}
+      />
+      <FeatureDetailCanvasOverlay
+        open={activeCanvasView === "feature-detail"}
+        artifact={stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1 ?? null}
         onClose={() => setActiveCanvasView(null)}
       />
 

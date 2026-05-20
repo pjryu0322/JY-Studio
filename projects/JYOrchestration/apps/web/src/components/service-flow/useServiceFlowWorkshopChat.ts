@@ -145,6 +145,7 @@ export function useServiceFlowWorkshopChat({
     singleChatOrchestrationV1?: unknown;
     requirementsOrchestrationStageV1?: unknown;
     featurePlanningSlotsV1?: unknown;
+    featureDetailSlotsV1?: unknown;
   }>;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;
@@ -351,6 +352,9 @@ export function useServiceFlowWorkshopChat({
               : {}),
             ...(orchCtx?.featurePlanningSlotsV1 !== undefined
               ? { featurePlanningSlotsV1: orchCtx.featurePlanningSlotsV1 }
+              : {}),
+            ...(orchCtx?.featureDetailSlotsV1 !== undefined
+              ? { featureDetailSlotsV1: orchCtx.featureDetailSlotsV1 }
               : {}),
             serviceDesignStage: harness.stage,
             mentionedAI: harness.mentionedAI,

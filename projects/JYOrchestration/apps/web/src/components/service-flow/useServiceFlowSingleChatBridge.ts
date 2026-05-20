@@ -37,6 +37,7 @@ export function useServiceFlowSingleChatBridge(params: {
     singleChatOrchestrationV1?: unknown;
     requirementsOrchestrationStageV1?: unknown;
     featurePlanningSlotsV1?: unknown;
+    featureDetailSlotsV1?: unknown;
   }>;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;

@@ -29,6 +29,7 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly singleChatOrchestrationV1?: unknown;
   readonly requirementsOrchestrationStageV1?: unknown;
   readonly featurePlanningSlotsV1?: unknown;
+  readonly featureDetailSlotsV1?: unknown;
 };
 
 export type ServiceFlowVisibleMode =
