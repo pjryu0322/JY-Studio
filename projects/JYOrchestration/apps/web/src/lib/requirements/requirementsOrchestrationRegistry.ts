@@ -95,7 +95,7 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
     conversationState: "FEATURE_DETAIL",
     allowedTransitions: ["SCREEN_DEFINE", "DOCUMENTATION_COMPLETE"],
     rollbackTransitions: ["SERVICE_FLOW_REVIEW"],
-    allowedActionIds: ["EDIT_FEATURES", "DEFINE_SCREEN", "DEFINE_API", "GENERATE_DOCUMENT"],
+    allowedActionIds: ["EDIT_FEATURES", "DEFINE_SCREEN", "DEFINE_API", "OPEN_ARTIFACT_HUB", "OPEN_CANVAS"],
     obsoleteActionIds: [
       "APPROVE_FLOW",
       "REVIEW_FLOW",

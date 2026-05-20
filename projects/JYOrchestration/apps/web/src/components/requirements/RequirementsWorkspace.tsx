@@ -2057,6 +2057,7 @@ export function RequirementsWorkspace({
       setActorEditOpen(true);
     },
     onEnterFeatureDetailEdit: () => void featureDetailEditing.openEdit(),
+    onOpenArtifactHub: () => setArtifactHubOpen(true),
   });
 
   const handleActorEditSave = useCallback(

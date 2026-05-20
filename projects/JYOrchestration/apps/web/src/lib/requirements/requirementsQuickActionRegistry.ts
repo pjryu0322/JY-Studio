@@ -29,7 +29,9 @@ export type QuickActionId =
   | "EDIT_FEATURES"
   | "DEFINE_SCREEN"
   | "DEFINE_API"
-  | "GENERATE_DOCUMENT";
+  | "GENERATE_DOCUMENT"
+  | "OPEN_CANVAS"
+  | "OPEN_ARTIFACT_HUB";
 
 export type QuickReplyWire =
   | string
@@ -207,7 +209,23 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
   GENERATE_DOCUMENT: {
     id: "GENERATE_DOCUMENT",
     defaultLabel: "문서 생성",
-    conversationProfiles: ["feature_detail"],
+    conversationProfiles: [],
+    proposalDecision: null,
+    transitionSignal: null,
+  },
+  OPEN_CANVAS: {
+    id: "OPEN_CANVAS",
+    defaultLabel: "캔버스 열기",
+    labelAliases: ["서비스 흐름 보기", "흐름도 보기"],
+    conversationProfiles: [],
+    proposalDecision: null,
+    transitionSignal: null,
+  },
+  OPEN_ARTIFACT_HUB: {
+    id: "OPEN_ARTIFACT_HUB",
+    defaultLabel: "Artifact Hub",
+    labelAliases: ["산출물 보기", "문서 보기"],
+    conversationProfiles: [],
     proposalDecision: null,
     transitionSignal: null,
   },

@@ -8,6 +8,13 @@ import {
   workshopMessageFromPersisted,
 } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import {
+  buildIntentRouterPromptTimelineEntry,
+  buildIntentRouterStateFromOrchestrationContext,
+  buildRequirementsIntentDispatchContext,
+  dispatchRequirementsUserIntent,
+  fallbackQuickReplyLabels,
+} from "@/lib/requirements/requirementsIntentDispatch";
+import {
   normalizeServiceFlowStepOrder,
   serviceFlowMissingSlotQuestions,
   type ServiceFlowStageSlotKey,
@@ -98,6 +105,27 @@ const SLOT_RESOLVE_USER_MESSAGES: Record<ServiceFlowStageSlotKey, string> = {
   handoffToFeatures: "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다.",
 };
 
+type ServiceFlowOrchestrationContextWire = Readonly<{
+  readonly singleChatOrchestrationV1?: unknown;
+  readonly requirementsOrchestrationStageV1?: unknown;
+  readonly featurePlanningSlotsV1?: unknown;
+  readonly featureDetailSlotsV1?: unknown;
+}>;
+
+function buildIntentRouterStateFromContext(
+  flow: RequirementsServiceFlowV1 | null,
+  orchCtx: ServiceFlowOrchestrationContextWire | undefined,
+): RequirementsStateJson {
+  return {
+    serviceFlowV1: flow,
+    singleChatOrchestrationV1: orchCtx?.singleChatOrchestrationV1 as RequirementsStateJson["singleChatOrchestrationV1"],
+    requirementsOrchestrationStageV1:
+      orchCtx?.requirementsOrchestrationStageV1 as RequirementsStateJson["requirementsOrchestrationStageV1"],
+    featurePlanningSlotsV1: orchCtx?.featurePlanningSlotsV1 as RequirementsStateJson["featurePlanningSlotsV1"],
+    featureDetailSlotsV1: orchCtx?.featureDetailSlotsV1 as RequirementsStateJson["featureDetailSlotsV1"],
+  };
+}
+
 export function useServiceFlowWorkshopChat({
   projectId,
   projectName,
@@ -120,6 +148,7 @@ export function useServiceFlowWorkshopChat({
   onAnalyzeStatePatch,
   onEnterActorEdit,
   onEnterFeatureDetailEdit,
+  onOpenArtifactHub,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -151,6 +180,7 @@ export function useServiceFlowWorkshopChat({
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;
   readonly onEnterFeatureDetailEdit?: () => void;
+  readonly onOpenArtifactHub?: () => void;
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -539,6 +569,21 @@ export function useServiceFlowWorkshopChat({
     [openAlternativeCanvas, onEnterActorEdit],
   );
 
+  const appendIntentGuardAssistantReply = useCallback(
+    async (message: string, fallbacks: readonly string[]) => {
+      const aiPersisted = buildServiceFlowAiPersist(message, {
+        interviewSuggestions: [...fallbacks],
+      });
+      autoScrollPendingRef.current = true;
+      const nextSlice = await onAppendRef.current([aiPersisted]);
+      messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+      setQuickReplies(fallbacks.length ? [...fallbacks] : null);
+      setQuickActions(null);
+      scrollChatToBottom();
+    },
+    [aiDisplayName, scrollChatToBottom],
+  );
+
   const sendMessage = useCallback(
     (
       harnessFromComposer?: ServiceDesignHarnessPayload,
@@ -550,21 +595,63 @@ export function useServiceFlowWorkshopChat({
       const body = (overrideText ?? input).trim();
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
-      const decision = resolveDecisionFromQuickActionInput({
-        quickAction,
-        labelFallback: quickAction?.label ?? body,
+      const intentState = buildIntentRouterStateFromOrchestrationContext(
+        flowRef.current,
+        orchestrationContextRef.current,
+      );
+      const intentCtx = buildRequirementsIntentDispatchContext(intentState);
+      const routed = dispatchRequirementsUserIntent({
+        userMessage: body,
+        directQuickActionId: quickAction?.id ?? null,
+        directQuickActionLabel: quickAction?.label ?? null,
+        ctx: intentCtx,
       });
-      if (quickAction?.id === "ADD_ACTOR") {
+      emitPromptTrace(buildIntentRouterPromptTimelineEntry({ userMessage: body, dispatch: routed }));
+
+      const effective = routed.effectiveQuickAction;
+      if (!effective) {
+        setInput("");
+        const fallbacks = fallbackQuickReplyLabels(routed.fallbackQuickActions);
+        const msg =
+          routed.userFacingMessage?.trim() ||
+          routed.intent.clarificationQuestion ||
+          "요청을 이해하지 못했습니다.";
+        void appendIntentGuardAssistantReply(msg, fallbacks);
+        return;
+      }
+
+      const effectiveDispatch: ServiceFlowQuickActionDispatch = {
+        id: effective.id,
+        label: effective.label,
+      };
+      const decision = resolveDecisionFromQuickActionInput({
+        quickAction: effectiveDispatch,
+        labelFallback: effectiveDispatch.label,
+      });
+      if (effectiveDispatch.id === "ADD_ACTOR") {
         onEnterActorEdit?.();
         setInput("");
         return;
       }
-      if (quickAction?.id === "EDIT_FEATURES") {
+      if (effectiveDispatch.id === "EDIT_FEATURES") {
         onEnterFeatureDetailEdit?.();
         setInput("");
         return;
       }
-      if (decision && dispatchClientOnlyDecision(decision, quickAction?.label ?? null, quickAction?.id ?? null)) {
+      if (effectiveDispatch.id === "OPEN_ARTIFACT_HUB") {
+        onOpenArtifactHub?.();
+        setInput("");
+        return;
+      }
+      if (effectiveDispatch.id === "OPEN_CANVAS") {
+        setWorkspaceMode("mapping");
+        setInput("");
+        return;
+      }
+      if (
+        decision &&
+        dispatchClientOnlyDecision(decision, effectiveDispatch.label, effectiveDispatch.id)
+      ) {
         setInput("");
         return;
       }
@@ -572,12 +659,24 @@ export function useServiceFlowWorkshopChat({
       callAnalyze(body, {
         harness: payload,
         ...(sendOpts?.silentUserAppend ? { silentUserAppend: true } : {}),
-        ...(quickAction ? { quickAction } : {}),
-        ...(quickAction?.label ? { quickActionLabel: quickAction.label } : {}),
+        quickAction: effectiveDispatch,
+        quickActionLabel: effectiveDispatch.label,
       });
       scrollChatToBottom();
     },
-    [workspaceMode, input, callAnalyze, scrollChatToBottom, dispatchClientOnlyDecision, onEnterFeatureDetailEdit],
+    [
+      workspaceMode,
+      input,
+      callAnalyze,
+      scrollChatToBottom,
+      dispatchClientOnlyDecision,
+      onEnterFeatureDetailEdit,
+      onEnterActorEdit,
+      onOpenArtifactHub,
+      setWorkspaceMode,
+      emitPromptTrace,
+      appendIntentGuardAssistantReply,
+    ],
   );
 
   const jumpToResolveSlot = useCallback(

@@ -15,6 +15,7 @@ import {
   projectFeatureDetailMetrics,
   type FeatureDetailProjectionMetrics,
 } from "@/lib/requirements/featureDetailSlots";
+import { filterQuickActionsForChatProjection } from "@/lib/requirements/requirementsQuickActionPolicy";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
   quickActionsForConversationState,
@@ -99,7 +100,7 @@ export function buildQuickReplyProjection(input: {
     conv === "APPROVED" || conv === "FEATURE_DETAIL" ?
       stageFiltered.filter((a) => !postApproveBlocked.has(a.id))
     : stageFiltered;
-  const quickActions =
+  const stageQuickActions =
     conv === "FEATURE_DETAIL" ?
       filterFeatureDetailQuickActions({
         actions: afterApproveFilter,
@@ -108,6 +109,7 @@ export function buildQuickReplyProjection(input: {
         activePhase,
       })
     : afterApproveFilter;
+  const quickActions = filterQuickActionsForChatProjection(stageQuickActions);
   return {
     quickActions,
     quickReplies: quickActionsToLabels(quickActions),
