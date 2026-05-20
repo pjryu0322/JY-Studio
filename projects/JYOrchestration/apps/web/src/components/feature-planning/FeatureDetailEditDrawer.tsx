@@ -82,6 +82,7 @@ export function FeatureDetailEditDrawer({
   steps,
   busy,
   confirmError,
+  focusDriftBanner,
   onNavigateSlot,
   onClose,
   onPartialSave,
@@ -94,6 +95,7 @@ export function FeatureDetailEditDrawer({
   readonly steps: readonly RequirementsServiceFlowStepV1[];
   readonly busy?: boolean;
   readonly confirmError?: string | null;
+  readonly focusDriftBanner?: Readonly<{ readonly message: string; readonly detail?: string }> | null;
   readonly onNavigateSlot?: (slotId: string) => void;
   readonly onClose: () => void;
   readonly onPartialSave: (draft: FeatureDetailSlotEditDraft) => void | Promise<void>;
@@ -162,6 +164,25 @@ export function FeatureDetailEditDrawer({
               <span style={{ fontSize: 11, color: "#94a3b8", alignSelf: "center" }}>
                 {navIndex + 1} / {navIds.length}
               </span>
+            </div>
+          ) : null}
+          {focusDriftBanner ? (
+            <div
+              role="status"
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "#fffbeb",
+                border: "1px solid #fcd34d",
+                fontSize: 12,
+                color: "#92400e",
+              }}
+            >
+              <div style={{ fontWeight: 800 }}>{focusDriftBanner.message}</div>
+              {focusDriftBanner.detail ? (
+                <div style={{ marginTop: 4, lineHeight: 1.45 }}>{focusDriftBanner.detail}</div>
+              ) : null}
             </div>
           ) : null}
         </header>

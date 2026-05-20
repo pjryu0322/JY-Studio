@@ -23,7 +23,7 @@ export function artifactHubTopChromeBadgeCount(
   hub: ArtifactHubOrchestrationState,
 ): number {
   if (!hub.badgeEligible) return 0;
-  return Math.max(catalogCount, hub.generatableCount);
+  return Math.max(catalogCount, hub.generatableCount, hub.staleArtifactCount);
 }
 
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;

@@ -178,10 +178,10 @@ import {
   buildProjectArtifactHubCatalog,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
-import {
-  artifactHubTopChromeBadgeCount,
-  buildArtifactHubOrchestrationState,
-} from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
+import { buildOrchestrationUiProjection } from "@/lib/requirements/requirementsOrchestrationUiProjection";
+import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
@@ -860,6 +860,26 @@ export function RequirementsWorkspace({
     });
   }, [persistedPromptState, deliverableAssetsFromProject, saveState, fetchNonce, project?.requirementsStateJson]);
 
+  const orchestrationUi = useMemo(() => {
+    const st: RequirementsStateJson = {
+      ...stateJsonRef.current,
+      ...persistedPromptState,
+      requirementsIntentOrchestrationV1:
+        stateJsonRef.current.requirementsIntentOrchestrationV1 ??
+        persistedPromptState.requirementsIntentOrchestrationV1,
+    };
+    return buildOrchestrationUiProjection({
+      state: st,
+      catalogCount: artifactHubCatalog.length,
+    });
+  }, [
+    persistedPromptState,
+    artifactHubCatalog.length,
+    saveState,
+    fetchNonce,
+    project?.requirementsStateJson,
+  ]);
+
   const deliverableViewerAssets = useMemo(
     () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
     [deliverableAssetsFromProject, deliverableViewerIds]
@@ -930,6 +950,21 @@ export function RequirementsWorkspace({
     },
     [persistStateJsonOnly]
   );
+
+  const recoveryTimelineKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const orch = persistedPromptState.requirementsIntentOrchestrationV1;
+    if (!orch?.lastRecoveredAt) return;
+    const key = `${orch.orchestrationSessionId ?? ""}:${orch.lastRecoveredAt}`;
+    if (recoveryTimelineKeyRef.current === key) return;
+    recoveryTimelineKeyRef.current = key;
+    appendSingleChatPromptTimeline(
+      buildOrchestrationRecoveryTimelineEntry({
+        sessionId: orch.orchestrationSessionId,
+        recoveredAt: orch.lastRecoveredAt,
+      }),
+    );
+  }, [persistedPromptState.requirementsIntentOrchestrationV1, appendSingleChatPromptTimeline]);
 
   const featureDetailEditing = useFeatureDetailEditing({
     stateJsonRef,
@@ -2068,8 +2103,17 @@ export function RequirementsWorkspace({
       requirementsIntentOrchestrationV1: stateJsonRef.current.requirementsIntentOrchestrationV1,
     },
     onAnalyzeStatePatch: async (patch) => {
-      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, patch);
-      await persistStateJsonOnly(patch);
+      const nextPatch =
+        patch.requirementsIntentOrchestrationV1 ?
+          {
+            ...patch,
+            requirementsIntentOrchestrationV1: compactRequirementsIntentOrchestration(
+              patch.requirementsIntentOrchestrationV1,
+            ),
+          }
+        : patch;
+      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, nextPatch);
+      await persistStateJsonOnly(nextPatch);
     },
     serviceFlowSendRef,
     onEnterActorEdit: () => {
@@ -2379,6 +2423,10 @@ export function RequirementsWorkspace({
         open={artifactHubOpen}
         items={artifactHubCatalog}
         generateDisabled={busy || artifactGenerateBusy || remoteLocked || deliverableGenerateBusy}
+        lifecycleSummary={orchestrationUi.artifactLifecycleLabels.map((r) => ({
+          label: r.label,
+          hint: r.hint,
+        }))}
         onClose={() => setArtifactHubOpen(false)}
         onSelectEntry={handleArtifactHubSelect}
         onGenerate={handleArtifactHubGenerate}
@@ -2434,6 +2482,7 @@ export function RequirementsWorkspace({
         steps={featureDetailEditing.flowSteps}
         busy={featureDetailEditing.editBusy}
         confirmError={featureDetailEditing.confirmError}
+        focusDriftBanner={orchestrationUi.focusDrift}
         onNavigateSlot={(slotId) => void featureDetailEditing.openEdit(slotId)}
         onClose={featureDetailEditing.closeEdit}
         onPartialSave={featureDetailEditing.handlePartialSave}
@@ -2526,9 +2575,8 @@ export function RequirementsWorkspace({
         artifactHubControls={
           resolvedProjectId.trim()
             ? {
-                count: showWorkspaceHubBadges
-                  ? artifactHubTopChromeBadgeCount(artifactHubCatalog.length, artifactHubOrchestration)
-                  : 0,
+                count: showWorkspaceHubBadges ? orchestrationUi.artifactBadgeCount : 0,
+                hasStale: orchestrationUi.artifactBadgeHasStale,
                 onOpen: () => setArtifactHubOpen(true),
               }
             : null

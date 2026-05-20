@@ -9,7 +9,8 @@ export type OrchestrationTimelineGroup =
   | "Clarification"
   | "Recommendation"
   | "Artifact"
-  | "Recovery";
+  | "Recovery"
+  | "Compaction";
 
 export function orchestrationTimelineGroupForAction(action: string): OrchestrationTimelineGroup {
   if (action === "intentRouterGuard") return "Intent Routing";
@@ -17,6 +18,7 @@ export function orchestrationTimelineGroupForAction(action: string): Orchestrati
   if (/recommend/i.test(action)) return "Recommendation";
   if (/artifact/i.test(action)) return "Artifact";
   if (/recover/i.test(action)) return "Recovery";
+  if (/compact/i.test(action)) return "Compaction";
   if (/guard/i.test(action)) return "Guard";
   if (/dispatch|mutation/i.test(action)) return "Dispatch";
   return "Intent Routing";

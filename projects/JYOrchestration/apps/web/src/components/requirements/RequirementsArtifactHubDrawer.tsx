@@ -60,6 +60,7 @@ export function RequirementsArtifactHubDrawer({
   open,
   items,
   generateDisabled,
+  lifecycleSummary,
   onClose,
   onSelectEntry,
   onGenerate,
@@ -67,6 +68,7 @@ export function RequirementsArtifactHubDrawer({
   readonly open: boolean;
   readonly items: readonly ProjectArtifactHubEntry[];
   readonly generateDisabled?: boolean;
+  readonly lifecycleSummary?: readonly Readonly<{ readonly label: string; readonly hint: string }>[];
   readonly onClose: () => void;
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
@@ -110,6 +112,7 @@ export function RequirementsArtifactHubDrawer({
         <ArtifactHubBody
           items={items}
           generateDisabled={generateDisabled}
+          lifecycleSummary={lifecycleSummary}
           onSelectEntry={onSelectEntry}
           onGenerate={onGenerate}
         />
@@ -121,16 +124,41 @@ export function RequirementsArtifactHubDrawer({
 function ArtifactHubBody({
   items,
   generateDisabled,
+  lifecycleSummary,
   onSelectEntry,
   onGenerate,
 }: {
   readonly items: readonly ProjectArtifactHubEntry[];
   readonly generateDisabled?: boolean;
+  readonly lifecycleSummary?: readonly Readonly<{ readonly label: string; readonly hint: string }>[];
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
 }) {
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 16 }}>
+      {lifecycleSummary?.length ? (
+        <section>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>산출물 상태</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {lifecycleSummary.map((row) => (
+              <span
+                key={row.hint}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  background: row.label.includes("재생성") || row.label.includes("구버전") ? "#fffbeb" : "#ecfdf5",
+                  color: row.label.includes("재생성") || row.label.includes("구버전") ? "#92400e" : "#065f46",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                {row.hint}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>새로 생성</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

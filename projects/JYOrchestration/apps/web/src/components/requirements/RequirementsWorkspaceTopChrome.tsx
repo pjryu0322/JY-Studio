@@ -36,7 +36,11 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onDownloadConversationMarkdown?: () => void | Promise<void>;
   onSummarizeConversation?: () => void | Promise<void>;
   canvasHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
-  artifactHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
+  artifactHubControls?: {
+    readonly count: number;
+    readonly hasStale?: boolean;
+    readonly onOpen: () => void;
+  } | null;
   workflowGuidanceBanner: string | null;
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
@@ -408,6 +412,7 @@ export function RequirementsWorkspaceTopChrome({
             ariaLabel="Artifact Hub 열기"
             disabled={false}
             badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
+            badgeTone={artifactHubControls.hasStale ? "stale" : "default"}
             onClick={() => artifactHubControls.onOpen()}
           >
             <ArtifactHubIcon />

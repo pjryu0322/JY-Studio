@@ -34,6 +34,7 @@ export function WorkspaceHubChromeIconButton({
   onClick,
   children,
   badge,
+  badgeTone = "default",
   buttonRef,
 }: {
   readonly title: string;
@@ -42,6 +43,8 @@ export function WorkspaceHubChromeIconButton({
   readonly onClick: () => void | Promise<void>;
   readonly children: ReactNode;
   readonly badge?: number | null;
+  /** stale artifact 등 강조 배지 */
+  readonly badgeTone?: "default" | "stale";
   readonly buttonRef?: (node: HTMLButtonElement | null) => void;
 }) {
   return (
@@ -74,7 +77,14 @@ export function WorkspaceHubChromeIconButton({
     >
       {children}
       {typeof badge === "number" && badge > 0 ? (
-        <span style={badgeStyle}>{badge > 99 ? "99+" : badge}</span>
+        <span
+          style={{
+            ...badgeStyle,
+            ...(badgeTone === "stale" ? { background: "#d97706" } : {}),
+          }}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
       ) : null}
     </button>
   );

@@ -14,6 +14,11 @@ import {
   dispatchRequirementsUserIntentAsync,
   fallbackQuickReplyLabels,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  buildClarificationUserMessage,
+  buildOrchestrationUiProjection,
+} from "@/lib/requirements/requirementsOrchestrationUiProjection";
 import {
   normalizeServiceFlowStepOrder,
   serviceFlowMissingSlotQuestions,
@@ -627,13 +632,30 @@ export function useServiceFlowWorkshopChat({
         }
         emitPromptTrace(buildIntentRouterPromptTimelineEntry({ userMessage: body, dispatch: routed }));
 
+        const orchState = mergeRequirementsStateJson(intentState, {
+          requirementsIntentOrchestrationV1:
+            routed.intentOrchestrationPatch ?? intentState.requirementsIntentOrchestrationV1,
+        });
+        const orchUi = buildOrchestrationUiProjection({ state: orchState });
+
         const effective = routed.effectiveQuickAction;
         if (!effective) {
-          const fallbacks = fallbackQuickReplyLabels(routed.fallbackQuickActions);
-          const msg =
+          const clarMsg = buildClarificationUserMessage(orchUi.clarification);
+          let msg =
+            clarMsg ||
             routed.userFacingMessage?.trim() ||
+            routed.humanExplainability?.humanReadableReason ||
             routed.intent.clarificationQuestion ||
             "요청을 이해하지 못했습니다.";
+          if (orchUi.topRecommendation && !clarMsg) {
+            msg = `${msg}\n\n추천: ${orchUi.topRecommendation.reason}`;
+          }
+          const recAction = orchUi.topRecommendation?.quickAction;
+          const mergedFallbacks = [
+            ...(routed.fallbackQuickActions ?? []),
+            ...(recAction ? [recAction] : []),
+          ];
+          const fallbacks = fallbackQuickReplyLabels(mergedFallbacks);
           await appendIntentGuardAssistantReply(msg, fallbacks);
           return;
         }

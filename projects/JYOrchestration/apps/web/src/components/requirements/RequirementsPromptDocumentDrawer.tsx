@@ -9,6 +9,10 @@ import {
   isIdeationBootstrapTimelineEntry,
   pickIdeationBootstrapPromptTimelineEntries,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import {
+  buildOrchestrationTimelineViewModel,
+  pickOrchestrationPromptTimelineEntries,
+} from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -361,6 +365,11 @@ export function RequirementsPromptDocumentDrawer({
     [promptTimeline]
   );
 
+  const orchestrationTimelineView = useMemo(() => {
+    const entries = pickOrchestrationPromptTimelineEntries(promptTimeline);
+    return buildOrchestrationTimelineViewModel(entries);
+  }, [promptTimeline]);
+
   /** 서랍에 표시하는 것과 동일 필터 — 시간순(오래된 것부터)으로 MD보내기 */
   const promptTimelineExportAsc = useMemo(() => {
     const list = Array.isArray(promptTimeline) ? promptTimeline : [];
@@ -613,6 +622,53 @@ export function RequirementsPromptDocumentDrawer({
                 </p>
               ) : (
                 <>
+                  {orchestrationTimelineView.groups.length ? (
+                    <div style={docBlock}>
+                      <div style={labelSm}>오케스트레이션 타임라인</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {orchestrationTimelineView.groups.map((group) => (
+                          <div key={group.group}>
+                            <div style={{ fontSize: 12, fontWeight: 900, color: "#0d7377", marginBottom: 8 }}>
+                              {group.group}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              {group.rows.map((row, idx) => (
+                                <div
+                                  key={`${group.group}:${row.entry.createdAt}:${idx}`}
+                                  style={{
+                                    padding: "10px 12px",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 10,
+                                    background: "#f8fafc",
+                                    fontSize: 11,
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
+                                    {row.entry.action} · {row.entry.source}
+                                    {row.entry.provider ? ` · ${row.entry.provider}` : ""}
+                                  </div>
+                                  <div style={{ color: "#64748b", marginBottom: 4 }}>
+                                    {new Date(row.entry.createdAt).toLocaleString("ko-KR")}
+                                    {row.parsed.routerMode ? ` · ${row.parsed.routerMode}` : ""}
+                                  </div>
+                                  {row.parsed.humanReadableReason ? (
+                                    <div style={{ color: "#334155" }}>{row.parsed.humanReadableReason}</div>
+                                  ) : null}
+                                  {row.parsed.humanReadableGuardReason ? (
+                                    <div style={{ color: "#475569" }}>Guard: {row.parsed.humanReadableGuardReason}</div>
+                                  ) : null}
+                                  {row.parsed.humanReadableFallbackReason ? (
+                                    <div style={{ color: "#92400e" }}>{row.parsed.humanReadableFallbackReason}</div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {ideationBootstrapTimeline.length ? (
                     <div style={docBlock}>
                       <div style={labelSm}>프롬프트 타임라인</div>
