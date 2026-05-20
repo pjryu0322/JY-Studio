@@ -534,6 +534,7 @@ export function useServiceFlowWorkshopChat({
       harnessFromComposer?: ServiceDesignHarnessPayload,
       overrideText?: string,
       quickAction?: ServiceFlowQuickActionDispatch | null,
+      sendOpts?: { readonly silentUserAppend?: boolean },
     ) => {
       if (workspaceMode !== "chat") return;
       const body = (overrideText ?? input).trim();
@@ -555,6 +556,7 @@ export function useServiceFlowWorkshopChat({
       setInput("");
       callAnalyze(body, {
         harness: payload,
+        ...(sendOpts?.silentUserAppend ? { silentUserAppend: true } : {}),
         ...(quickAction ? { quickAction } : {}),
         ...(quickAction?.label ? { quickActionLabel: quickAction.label } : {}),
       });

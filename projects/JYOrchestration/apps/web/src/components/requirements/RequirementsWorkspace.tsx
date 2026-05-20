@@ -161,6 +161,7 @@ import {
   interviewSuggestionPickToQuickAction,
   storeInterviewSuggestionPick,
   type InterviewSuggestionPickWire,
+  type ServiceFlowSingleChatSendOptions,
 } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 import { fetchGenerateProjectArtifact } from "@/lib/requirements/projectArtifactClient";
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
@@ -294,6 +295,7 @@ export function RequirementsWorkspace({
         payload: ServiceDesignHarnessPayload,
         text: string,
         quickAction?: ServiceFlowQuickActionDispatch | null,
+        opts?: ServiceFlowSingleChatSendOptions,
       ) => void | Promise<void>)
     | null
   >(null);
@@ -1727,6 +1729,7 @@ export function RequirementsWorkspace({
       const nowIso = new Date().toISOString();
       const baseMessages = roomRef.current.requirementsConversation.messages;
 
+      let mirroredUserTurn = false;
       // Mirror user turn into requirementsConversation (single timeline).
       if (
         !shouldSkipFeaturePlanningMirror({
@@ -1746,6 +1749,7 @@ export function RequirementsWorkspace({
         const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...baseMessages, userMsg]);
         setRoom(nextRoom);
         await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
+        mirroredUserTurn = true;
       }
 
       // Orchestration quick actions (화면 정의 등) — service-flow-analyze fast-path + 단일 타임라인 반영
@@ -1754,6 +1758,7 @@ export function RequirementsWorkspace({
         text,
         quickAction,
         quickActionLabel: quickLabel,
+        silentUserAppend: mirroredUserTurn,
         sendRefCurrent: serviceFlowSendRef.current,
         onAfterDispatch: () => {},
       });

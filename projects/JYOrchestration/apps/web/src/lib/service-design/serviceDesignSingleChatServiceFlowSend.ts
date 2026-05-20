@@ -38,16 +38,23 @@ export function shouldRouteFeaturePlanningSendViaServiceFlowAnalyze(input: {
   return Boolean(quickAction?.id);
 }
 
+export type ServiceFlowSingleChatSendOptions = Readonly<{
+  /** feature-planning mirror already appended the user turn — skip service-flow duplicate */
+  readonly silentUserAppend?: boolean;
+}>;
+
 export async function dispatchServiceFlowSingleChatSend(params: {
   readonly payload: ServiceDesignHarnessPayload;
   readonly text: string;
   readonly quickAction?: ServiceFlowQuickActionDispatch | null;
   readonly quickActionLabel?: string | null;
+  readonly silentUserAppend?: boolean;
   readonly sendRefCurrent:
     | ((
         payload: ServiceDesignHarnessPayload,
         text: string,
         quickAction?: ServiceFlowQuickActionDispatch | null,
+        opts?: ServiceFlowSingleChatSendOptions,
       ) => void | Promise<void>)
     | null
     | undefined;
@@ -73,7 +80,9 @@ export async function dispatchServiceFlowSingleChatSend(params: {
     null;
   const quickAction =
     params.quickAction ?? (chip ? quickActionDispatchFromLegacyLabel(chip) : null);
-  await fn(params.payload, text, quickAction);
+  await fn(params.payload, text, quickAction, {
+    ...(params.silentUserAppend ? { silentUserAppend: true } : {}),
+  });
   params.onAfterDispatch();
   return { dispatched: true };
 }
