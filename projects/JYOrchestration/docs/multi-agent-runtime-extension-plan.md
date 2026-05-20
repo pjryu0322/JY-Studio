@@ -102,3 +102,40 @@ apps/web/src/lib/agents/connectorDescriptorTypes.ts
 apps/web/src/lib/agents/defaultConnectors.ts
 apps/web/src/lib/agents/connectorRegistry.ts
 ```
+
+---
+
+## Stage 2-1 Dispatch Metadata Wire 결과
+
+| 항목 | 반영 방식 | 저장 여부 | 비고 |
+|---|---|---|---|
+| agentId resolution | `resolveDispatchAgent` (role → intent → stage) | 저장 안 함 | optional |
+| capabilityId resolution | `resolveDispatchCapability` + `validateAgentCapabilityBinding` | 저장 안 함 | optional |
+| lastAgentEvent | `buildRequirementsAgentMetadata` → `AgentRuntimeEventContext` | 저장 안 함 | agentId 없으면 생략 |
+| dispatch result wire | `RequirementsIntentDispatchResult.agentRuntimeMetadata` | 저장 안 함 | timeline에 agentId 문자열 포함 |
+
+구현: `requirementsDispatchAgentMetadata.ts`, `requirementsIntentDispatch.ts` (optional field)
+
+## Stage 2-2 후보: Connector Gateway Facade
+
+Stage 2-2에서는 실제 Connector Gateway를 구현하지 않고, Cursor/GitHub 기존 호출 경로를 감싸는 no-op 또는 pass-through facade를 먼저 둔다.
+
+| 대상 | 현재 경로 | Stage 2-2 목표 |
+|---|---|---|
+| Cursor | ExecutionJob / prototype_build | `connectorGateway.invokeCursor` facade 후보 |
+| GitHub | PR sync / reviewer | `connectorGateway.invokeGithub` facade 후보 |
+| Codex | 미사용 | descriptor만 유지 |
+| Copilot | 미사용 | descriptor만 유지 |
+
+## Stage 2-3 후보: Harness Dry-run
+
+Stage 2-3에서는 실제 Agent 실행 없이 다음 결과만 산출한다.
+
+```text
+입력 intent/stage/context
+→ resolved agent
+→ resolved capability
+→ required connectors
+→ governance pre-check 후보
+→ dry-run decision
+```

@@ -83,6 +83,22 @@ export {
   isConnectorEnabledForExecution,
 } from "@/lib/agents/connectorRegistry";
 
+export type {
+  BuildRequirementsAgentMetadataInput,
+  RequirementsAgentRuntimeMetadata,
+  ResolveDispatchAgentInput,
+  ResolveDispatchAgentResult,
+  ResolveDispatchCapabilityInput,
+  ResolveDispatchCapabilityResult,
+} from "@/lib/agents/requirementsDispatchAgentMetadata";
+
+export {
+  buildRequirementsAgentMetadata,
+  formatAgentMetadataForTimeline,
+  resolveDispatchAgent,
+  resolveDispatchCapability,
+} from "@/lib/agents/requirementsDispatchAgentMetadata";
+
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
 export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";

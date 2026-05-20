@@ -71,6 +71,11 @@ import {
 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
+import {
+  buildRequirementsAgentMetadata,
+  formatAgentMetadataForTimeline,
+  type RequirementsAgentRuntimeMetadata,
+} from "@/lib/agents/requirementsDispatchAgentMetadata";
 
 export type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 export { buildIntentRouterStateFromOrchestrationContext } from "@/lib/requirements/requirementsOrchestrationContextWire";
@@ -98,6 +103,7 @@ export type RequirementsIntentDispatchResult = Readonly<{
   readonly proactiveRecommendations?: readonly string[];
   readonly secondaryRecommendations?: readonly string[];
   readonly humanExplainability?: import("@/lib/requirements/requirementsOrchestrationExplainability").OrchestrationHumanExplainability;
+  readonly agentRuntimeMetadata?: RequirementsAgentRuntimeMetadata;
 }>;
 
 export function buildRequirementsIntentDispatchContext(
@@ -283,6 +289,23 @@ function resolveGuardedEffectiveActionId(
   return guard.effectiveActionId ?? suggested;
 }
 
+function buildDispatchAgentRuntimeMetadata(input: {
+  readonly intent: IntentRoutingResult;
+  readonly ctx: RequirementsIntentDispatchContext;
+  readonly orchPatch?: RequirementsIntentOrchestrationV1;
+  readonly projectId?: string;
+}): RequirementsAgentRuntimeMetadata | undefined {
+  const routingAgentRole = input.orchPatch?.lastRouting?.agentRole;
+  return buildRequirementsAgentMetadata({
+    projectId: input.projectId,
+    stage: input.ctx.authoritativeStage,
+    suggestedActionId: input.intent.suggestedActionId,
+    intentToken: input.intent.routerMode,
+    runtimeRole: routingAgentRole,
+    aiMemberRole: routingAgentRole,
+  });
+}
+
 function finalizeDispatchResult(input: {
   readonly intent: IntentRoutingResult;
   readonly guard: GuardResult;
@@ -292,6 +315,7 @@ function finalizeDispatchResult(input: {
   readonly routingState?: RequirementsStateJson;
   readonly userMessage?: string;
   readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
+  readonly projectId?: string;
 }): RequirementsIntentDispatchResult {
   const suggested = input.intent.suggestedActionId;
   const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
@@ -358,9 +382,17 @@ function finalizeDispatchResult(input: {
     activeFocus: focusLabel,
     clarificationPending: input.routingState?.requirementsIntentOrchestrationV1?.clarification?.pending === true,
   });
+  const agentRuntimeMetadata = buildDispatchAgentRuntimeMetadata({
+    intent: input.intent,
+    ctx: input.ctx,
+    orchPatch,
+    projectId: input.projectId,
+  });
+
   const timelineExtras = [
     orchPatch?.lastRuntimeMetrics ? formatRuntimeMetricsForTimeline(orchPatch.lastRuntimeMetrics) : "",
     orchPatch?.lastReplaySnapshot ? replaySnapshotTimelineDetail(orchPatch.lastReplaySnapshot) : "",
+    formatAgentMetadataForTimeline(agentRuntimeMetadata),
   ].filter(Boolean);
   const timelineDetail = formatOrchestrationTimelineResponse({
     group: orchestrationTimelineGroupForAction("intentRouterGuard"),
@@ -386,6 +418,7 @@ function finalizeDispatchResult(input: {
       proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
       secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
       humanExplainability,
+      ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
     };
   }
 
@@ -402,6 +435,7 @@ function finalizeDispatchResult(input: {
       proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
       secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
       humanExplainability,
+      ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
     };
   }
 
@@ -420,6 +454,7 @@ function finalizeDispatchResult(input: {
     proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
     secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
     humanExplainability,
+    ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
   };
 }
 
@@ -553,6 +588,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     routingState,
     userMessage: input.userMessage,
     recentMessageLines: input.recentMessageLines,
+    projectId: input.projectId,
   });
 }
 
