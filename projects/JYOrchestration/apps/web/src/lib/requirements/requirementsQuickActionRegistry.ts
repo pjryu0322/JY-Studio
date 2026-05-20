@@ -113,8 +113,8 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
     id: "ADD_ACTOR",
     defaultLabel: "액터 추가하기",
     conversationProfiles: ["review"],
-    proposalDecision: "PARTIAL_EDIT",
-    transitionSignal: null,
+    proposalDecision: null,
+    transitionSignal: "ACTION_ENTER_ACTOR_EDIT",
   },
   REVIEW_FLOW: {
     id: "REVIEW_FLOW",

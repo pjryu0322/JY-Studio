@@ -61,7 +61,7 @@ function resolveSyncMode(flow: RequirementsServiceFlowV1): ServiceFlowSlotSyncMo
     .toUpperCase();
   if (d === "APPLY") return "service_flow_apply";
   if (d === "FLOW_APPROVE") return "service_flow_approve";
-  if (d === "PARTIAL_EDIT" || d === "REVIEW_FLOW") return "service_flow_edit";
+  if (d === "PARTIAL_EDIT" || d === "REVIEW_FLOW" || d === "STRUCTURED_ACTOR_ADD") return "service_flow_edit";
   return null;
 }
 

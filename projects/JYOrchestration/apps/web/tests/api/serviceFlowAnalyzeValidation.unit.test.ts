@@ -70,7 +70,7 @@ describe("serviceFlowAnalyzeValidation", () => {
 
   it("mergeServiceFlowUserFacingMessage — 중복 CTA 제거", () => {
     const assistant = `초안입니다.\n\n예상 액터\n- 사용자\n\n다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요.`;
-    const nextQ = "위 흐름이 맞는지 선택·수정해 주세요?";
+    const nextQ = "이 초안을 기준으로 진행할지 선택·수정해 주세요?";
     const merged = mergeServiceFlowUserFacingMessage(assistant, nextQ);
     expect(merged).toBe(assistant);
     expect(merged.split("?").length - 1).toBeLessThanOrEqual(1);

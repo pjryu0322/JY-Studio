@@ -68,6 +68,8 @@ function messagesOverlap(a: string, b: string): boolean {
   return long.includes(short) && short.length >= 12;
 }
 
+import { dedupeSentences, normalizeQuestionSentence, sentencesOverlap } from "@/lib/requirements/serviceFlowMessageDedupe";
+
 function dedupeDuplicateCtaLines(text: string): string {
   const lines = String(text ?? "").split("\n");
   const seenCta = new Set<string>();
@@ -118,11 +120,11 @@ export function mergeServiceFlowUserFacingMessage(
   nextQuestion: string | null | undefined,
 ): string {
   let assistant = dedupeDuplicateCtaLines(String(assistantMessage ?? "").trim());
-  const nextQ = String(nextQuestion ?? "").trim();
+  const nextQ = normalizeQuestionSentence(String(nextQuestion ?? "").trim());
   if (!assistant) return nextQ;
   if (!nextQ) return assistant;
 
-  if (messagesOverlap(assistant, nextQ)) return assistant;
+  if (messagesOverlap(assistant, nextQ) || sentencesOverlap(assistant, nextQ)) return assistant;
 
   const assistantHasCta = /(다음\s*[:：]|선택|수정|맞는지|확인해\s*주|이대로|그대로\s*진행)/.test(assistant);
   const nextIsQuestion = /\?/.test(nextQ) || countLikelyQuestionSentences(nextQ) > 0;

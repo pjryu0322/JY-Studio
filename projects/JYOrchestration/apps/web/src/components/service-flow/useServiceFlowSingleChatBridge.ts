@@ -39,6 +39,7 @@ export function useServiceFlowSingleChatBridge(params: {
     featurePlanningSlotsV1?: unknown;
   }>;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
+  readonly onEnterActorEdit?: () => void;
   /** expose send executor to parent without UI mount */
   readonly serviceFlowSendRef?: {
     current:
@@ -74,6 +75,7 @@ export function useServiceFlowSingleChatBridge(params: {
     onSingleChatPromptTrace: params.onSingleChatPromptTrace,
     orchestrationContext: params.orchestrationContext,
     onAnalyzeStatePatch: params.onAnalyzeStatePatch,
+    onEnterActorEdit: params.onEnterActorEdit,
   });
 
   useEffect(() => {

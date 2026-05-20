@@ -118,6 +118,7 @@ export function useServiceFlowWorkshopChat({
   onSingleChatPromptTrace,
   orchestrationContext,
   onAnalyzeStatePatch,
+  onEnterActorEdit,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -146,6 +147,7 @@ export function useServiceFlowWorkshopChat({
     featurePlanningSlotsV1?: unknown;
   }>;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
+  readonly onEnterActorEdit?: () => void;
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -488,7 +490,11 @@ export function useServiceFlowWorkshopChat({
   }, []);
 
   const dispatchClientOnlyDecision = useCallback(
-    (decision: ServiceFlowProposalDecision, _chip: string | null): boolean => {
+    (decision: ServiceFlowProposalDecision, _chip: string | null, quickActionId?: QuickActionId | null): boolean => {
+      if (quickActionId === "ADD_ACTOR") {
+        onEnterActorEdit?.();
+        return true;
+      }
       if (decision === "VIEW_ALTERNATIVE_DETAIL") {
         openAlternativeCanvas();
         return true;
@@ -510,7 +516,7 @@ export function useServiceFlowWorkshopChat({
       }
       return false;
     },
-    [openAlternativeCanvas],
+    [openAlternativeCanvas, onEnterActorEdit],
   );
 
   const sendMessage = useCallback(
@@ -527,7 +533,12 @@ export function useServiceFlowWorkshopChat({
         quickAction,
         labelFallback: quickAction?.label ?? body,
       });
-      if (decision && dispatchClientOnlyDecision(decision, quickAction?.label ?? null)) {
+      if (quickAction?.id === "ADD_ACTOR") {
+        onEnterActorEdit?.();
+        setInput("");
+        return;
+      }
+      if (decision && dispatchClientOnlyDecision(decision, quickAction?.label ?? null, quickAction?.id ?? null)) {
         setInput("");
         return;
       }

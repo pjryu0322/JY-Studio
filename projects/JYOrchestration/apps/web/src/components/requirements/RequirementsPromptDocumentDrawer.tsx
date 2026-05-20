@@ -620,7 +620,16 @@ export function RequirementsPromptDocumentDrawer({
                         {ideationBootstrapTimeline.map((row, idx) => {
                           const hasOut = Boolean(String(row.responseText ?? row.fallbackText ?? "").trim());
                           const isFallback = isPromptTimelineFallbackRow(row);
-                          const ok = !isFallback && !String(row.error ?? "").trim() && hasOut;
+                          const isInternalOrchestration =
+                            row.source === "internal" &&
+                            (row.action === "orchestrationInvalidation" ||
+                              String(row.routingDecision ?? "").includes("invalidation") ||
+                              String(row.routingDecision ?? "").includes("slot_sync") ||
+                              Boolean(row.slotSyncTriggered) ||
+                              Boolean(row.staleTriggered));
+                          const ok =
+                            isInternalOrchestration ||
+                            (!isFallback && !String(row.error ?? "").trim() && hasOut);
                           const platformToModel = String(row.promptText ?? "").trim();
                           const modelToPlatform = [
                             row.responseText,

@@ -32,7 +32,9 @@ export type ServiceFlowTransitionSignal =
   | "NEXT_STAGE"
   | "APPROVE_FLOW"
   | "DOCUMENTATION_COMPLETE"
-  | "FEATURE_DETAIL_START";
+  | "FEATURE_DETAIL_START"
+  | "ACTION_ENTER_ACTOR_EDIT"
+  | "ACTION_ADD_STEP";
 
 export type ServiceFlowOrchestrationStageWire =
   | "IDEATION"

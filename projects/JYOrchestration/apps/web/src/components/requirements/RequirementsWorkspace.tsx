@@ -179,6 +179,14 @@ import {
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
+import { ServiceFlowActorEditDrawer } from "@/components/service-flow/ServiceFlowActorEditDrawer";
+import {
+  appendCandidateActorToFlow,
+  nextActorEditingPhase,
+  type ActorEditingPhase,
+  type ServiceFlowActorEditDraft,
+} from "@/lib/requirements/serviceFlowActorEditing";
+import { rebuildOrchestrationProjectionWithFallback } from "@/lib/requirements/serviceFlowOrchestrationProjection";
 
 
 export function RequirementsWorkspace({
@@ -241,6 +249,9 @@ export function RequirementsWorkspace({
   const [canvasHubOpen, setCanvasHubOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
   const [activeCanvasView, setActiveCanvasView] = useState<CanvasArtifactType | null>(null);
+  const [actorEditOpen, setActorEditOpen] = useState(false);
+  const [actorEditPhase, setActorEditPhase] = useState<ActorEditingPhase>("IDLE");
+  const [actorEditBusy, setActorEditBusy] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -868,17 +879,40 @@ export function RequirementsWorkspace({
       }
       const hydrated = hydrateServiceFlowStepsFromAlternativePayload(next);
       const fp = buildServiceFlowStructureFingerprint(hydrated);
-      let orchBase = orchestrationAlignedState;
-      const invalidation =
-        orchBase && serviceFlowStructureFingerprintRef.current
-          ? applyOrchestrationInvalidationsAfterFlowChange({
-              orchestration: orchBase,
-              definitions: slotDefsForProgress,
-              previousFingerprint: serviceFlowStructureFingerprintRef.current,
-              currentFingerprint: fp,
-              flowApproved: Boolean(hydrated.flowApproved),
-            })
-          : null;
+      const stage = resolveAuthoritativeOrchestrationStage(stateJsonRef.current);
+      const projectionRebuild = rebuildOrchestrationProjectionWithFallback({
+        orchestration: orchestrationAlignedState,
+        definitions: slotDefsForProgress,
+        mutationSource: "service_flow_persist",
+        stage,
+      });
+      let orchBase = projectionRebuild.state;
+      let invalidation: ReturnType<typeof applyOrchestrationInvalidationsAfterFlowChange> = null;
+      try {
+        invalidation =
+          orchBase && serviceFlowStructureFingerprintRef.current
+            ? applyOrchestrationInvalidationsAfterFlowChange({
+                orchestration: orchBase,
+                definitions: slotDefsForProgress,
+                previousFingerprint: serviceFlowStructureFingerprintRef.current,
+                currentFingerprint: fp,
+                flowApproved: Boolean(hydrated.flowApproved),
+              })
+            : null;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        appendSingleChatPromptTimeline({
+          stage: "service-flow",
+          stageGroup: "service-planning",
+          workspaceScreenKey: "requirements_service_flow",
+          action: "orchestrationInvalidation",
+          source: "internal",
+          createdAt: new Date().toISOString(),
+          routingDecision: "invalidation_error",
+          responseText: `invalidation error (${projectionRebuild.log.projectionId}): ${msg}`,
+        });
+        orchBase = projectionRebuild.state;
+      }
       serviceFlowStructureFingerprintRef.current = fp;
 
       if (invalidation) {
@@ -891,9 +925,11 @@ export function RequirementsWorkspace({
           source: "internal",
           createdAt: new Date().toISOString(),
           routingDecision: "flow_structure_invalidation",
+          responseText: `invalidation applied: ${invalidation.invalidations.join("; ")}`,
           staleTriggered: invalidation.staleTriggered,
           invalidations: [...invalidation.invalidations],
           staleSlots: [...invalidation.staleSlotKeys],
+          ...(projectionRebuild.log.retried ? { projectionRebuildRetried: true } : {}),
         });
       }
 
@@ -1940,7 +1976,34 @@ export function RequirementsWorkspace({
       await persistStateJsonOnly(patch);
     },
     serviceFlowSendRef,
+    onEnterActorEdit: () => {
+      setActorEditPhase((p) => nextActorEditingPhase(p, "open"));
+      setActorEditOpen(true);
+    },
   });
+
+  const handleActorEditSave = useCallback(
+    async (draft: ServiceFlowActorEditDraft) => {
+      if (!serviceFlow) return;
+      setActorEditBusy(true);
+      setActorEditPhase((p) => nextActorEditingPhase(p, "save"));
+      try {
+        const nextFlow = appendCandidateActorToFlow({ flow: serviceFlow, draft });
+        setActorEditPhase((p) => nextActorEditingPhase(p, "recompute_ok"));
+        await persistServiceFlowWithOrchestration(nextFlow);
+        setServiceFlow(nextFlow);
+        setActorEditOpen(false);
+        setActorEditPhase("CONFIRMED");
+        showSuccessToast(`후보 액터 "${draft.name.trim()}"을(를) 저장했습니다.`);
+      } catch {
+        setActorEditPhase((p) => nextActorEditingPhase(p, "recompute_fail"));
+        showErrorToast("액터 저장 후 오케스트레이션 갱신에 실패했습니다.");
+      } finally {
+        setActorEditBusy(false);
+      }
+    },
+    [serviceFlow, persistServiceFlowWithOrchestration, showSuccessToast, showErrorToast],
+  );
 
   const handleCanvasHubSelect = useCallback(
     (item: ProjectCanvasArtifact) => {
@@ -2175,6 +2238,18 @@ export function RequirementsWorkspace({
         open={activeCanvasView === "feature-definition"}
         artifact={stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1 ?? null}
         onClose={() => setActiveCanvasView(null)}
+      />
+
+      <ServiceFlowActorEditDrawer
+        open={actorEditOpen}
+        phase={actorEditPhase}
+        steps={serviceFlow?.steps ?? []}
+        busy={actorEditBusy}
+        onClose={() => {
+          setActorEditOpen(false);
+          setActorEditPhase((p) => nextActorEditingPhase(p, "close"));
+        }}
+        onSave={handleActorEditSave}
       />
 
       {activeStage === "service-flow" ? (
