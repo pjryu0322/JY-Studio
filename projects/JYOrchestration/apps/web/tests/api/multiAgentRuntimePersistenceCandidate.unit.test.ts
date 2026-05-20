@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENT_RUNTIME_METADATA_SCHEMA_VERSION } from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
+import {
+  AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
+  type AgentRuntimePersistenceCandidate,
+} from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
 import { buildAgentRuntimePersistenceCandidateFromHarness } from "@/lib/agents/buildAgentRuntimePersistenceCandidate";
 import {
+  isForbiddenPersistenceKey,
+  MAX_CANDIDATE_JSON_LENGTH,
   MAX_REASON_LENGTH,
   sanitizeAgentRuntimePersistenceCandidate,
   validateAgentRuntimePersistenceCandidate,
@@ -66,19 +71,43 @@ describe("multi-agent runtime persistence candidate stage 2-5", () => {
     expect((candidate.reason?.length ?? 0) <= MAX_REASON_LENGTH).toBe(true);
   });
 
-  it("sanitizer removes forbidden keys", () => {
+  it("detects variant forbidden keys via fragment matching", () => {
+    expect(isForbiddenPersistenceKey("accessToken")).toBe(true);
+    expect(isForbiddenPersistenceKey("githubToken")).toBe(true);
+    expect(isForbiddenPersistenceKey("cursorApiKey")).toBe(true);
+    expect(isForbiddenPersistenceKey("authorizationHeader")).toBe(true);
+    expect(isForbiddenPersistenceKey("sourceCodeDiff")).toBe(true);
+    expect(isForbiddenPersistenceKey("projectId")).toBe(false);
+  });
+
+  it("sanitizer removes forbidden keys including variants", () => {
     const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
     const dirty = {
       ...buildAgentRuntimePersistenceCandidateFromHarness({ result: harness }),
-      token: "secret-value",
-      rawPrompt: "should-remove",
+      accessToken: "secret-value",
+      authorizationHeader: "hdr",
     } as ReturnType<typeof buildAgentRuntimePersistenceCandidateFromHarness> & {
-      token: string;
-      rawPrompt: string;
+      accessToken: string;
+      authorizationHeader: string;
     };
     const clean = sanitizeAgentRuntimePersistenceCandidate(dirty);
-    expect("token" in clean).toBe(false);
-    expect("rawPrompt" in clean).toBe(false);
+    expect("accessToken" in clean).toBe(false);
+    expect("authorizationHeader" in clean).toBe(false);
+  });
+
+  it("raw candidate with forbidden keys is invalid then sanitize becomes valid", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const raw = {
+      ...buildTimelineMetadataCandidateFromHarness(harness),
+      githubToken: "x",
+    } as AgentRuntimePersistenceCandidate & { githubToken: string };
+    const rawValidation = validateAgentRuntimePersistenceCandidate(raw);
+    expect(rawValidation.valid).toBe(false);
+    expect(rawValidation.warnings.some((w) => w.startsWith("forbidden_key_detected"))).toBe(true);
+
+    const clean = sanitizeAgentRuntimePersistenceCandidate(raw);
+    const cleanValidation = validateAgentRuntimePersistenceCandidate(clean);
+    expect(cleanValidation.valid).toBe(true);
   });
 
   it("validate returns valid=true for normal candidate", () => {
@@ -102,6 +131,18 @@ describe("multi-agent runtime persistence candidate stage 2-5", () => {
     const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
     const candidate = buildReplaySnapshotCandidateFromHarness(harness);
     expect(candidate.kind).toBe("replay_snapshot");
+  });
+
+  it("validate rejects oversized candidate json", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    const oversized = {
+      ...buildTimelineMetadataCandidateFromHarness(harness),
+      warnings: Array.from({ length: 500 }, (_, i) => `w-${"x".repeat(40)}-${i}`),
+    };
+    const v = validateAgentRuntimePersistenceCandidate(oversized);
+    expect(v.valid).toBe(false);
+    expect(v.warnings).toContain("candidate_json_exceeds_limit");
+    expect(JSON.stringify(oversized).length).toBeGreaterThan(MAX_CANDIDATE_JSON_LENGTH);
   });
 
   it("candidate builders do not call timeline or replay persistence", () => {

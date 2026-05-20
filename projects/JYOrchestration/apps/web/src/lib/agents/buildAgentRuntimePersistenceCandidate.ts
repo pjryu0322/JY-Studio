@@ -71,6 +71,8 @@ export function buildAgentRuntimePersistenceCandidateFromHarness(input: {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const connectorPlanSummary = summarizeConnectorPlans(input.result);
     const governanceSummary = summarizeGovernance(input.result);
+    const warnings = limitStrings(input.result.warnings, MAX_WARNINGS);
+    const blockingReasons = limitStrings(input.result.blockingReasons, MAX_BLOCKING_REASONS);
 
     return {
       schemaVersion: AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
@@ -90,12 +92,8 @@ export function buildAgentRuntimePersistenceCandidateFromHarness(input: {
       reason: truncateReason(input.result.reason),
       ...(connectorPlanSummary ? { connectorPlanSummary } : {}),
       ...(governanceSummary ? { governanceSummary } : {}),
-      ...(limitStrings(input.result.warnings, MAX_WARNINGS) ?
-        { warnings: limitStrings(input.result.warnings, MAX_WARNINGS) }
-      : {}),
-      ...(limitStrings(input.result.blockingReasons, MAX_BLOCKING_REASONS) ?
-        { blockingReasons: limitStrings(input.result.blockingReasons, MAX_BLOCKING_REASONS) }
-      : {}),
+      ...(warnings ? { warnings } : {}),
+      ...(blockingReasons ? { blockingReasons } : {}),
     };
   } catch {
     return {

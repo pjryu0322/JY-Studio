@@ -160,11 +160,20 @@ export {
 } from "@/lib/agents/governancePolicyRegistry";
 
 export type {
+  AgentConnectorPassThroughSummary,
   AgentConnectorPlanSummary,
   AgentGovernanceDryRunPersistenceSummary,
   AgentRuntimePersistenceCandidate,
   AgentRuntimePersistenceCandidateKind,
 } from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
+
+export type {
+  ConnectorPassThroughBoundary,
+  ConnectorPassThroughBoundaryKind,
+  ConnectorPassThroughRecordCandidate,
+} from "@/lib/agents/connectorPassThroughBoundaryTypes";
+
+export { CONNECTOR_PASS_THROUGH_RECORD_SCHEMA_VERSION } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 export {
   AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
@@ -183,8 +192,28 @@ export {
   buildTimelineMetadataCandidateFromHarness,
 } from "@/lib/agents/agentRuntimeTimelineReplayCandidate";
 
+export { buildConnectorPassThroughRecordCandidate } from "@/lib/agents/buildConnectorPassThroughRecordCandidate";
+
+export {
+  attachPassThroughSummaryToPersistenceCandidate,
+  buildConnectorPassThroughRecordFromHarness,
+} from "@/lib/agents/connectorPassThroughPersistenceCandidate";
+
+export {
+  getConnectorPassThroughBoundariesByConnector,
+  getConnectorPassThroughBoundariesByKind,
+  getConnectorPassThroughBoundaryById,
+  listConnectorPassThroughBoundaries,
+} from "@/lib/agents/connectorPassThroughBoundaryRegistry";
+
+export {
+  isForbiddenPersistenceKey,
+  MAX_CANDIDATE_JSON_LENGTH,
+} from "@/lib/agents/agentRuntimePersistenceCandidateValidation";
+
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
 export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";
 export { DEFAULT_CONNECTORS } from "@/lib/agents/defaultConnectors";
 export { DEFAULT_GOVERNANCE_POLICIES } from "@/lib/agents/defaultGovernancePolicies";
+export { DEFAULT_CONNECTOR_PASS_THROUGH_BOUNDARIES } from "@/lib/agents/defaultConnectorPassThroughBoundaries";

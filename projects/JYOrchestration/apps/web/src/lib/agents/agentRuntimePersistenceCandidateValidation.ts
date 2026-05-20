@@ -8,24 +8,31 @@ import {
 } from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
 
 export const MAX_REASON_LENGTH = 240;
+export const MAX_CANDIDATE_JSON_LENGTH = 12000;
 
-const FORBIDDEN_KEYS = [
+const FORBIDDEN_KEY_FRAGMENTS = [
   "token",
   "secret",
   "password",
   "authorization",
-  "apiKey",
-  "privateKey",
-  "rawPrompt",
-  "promptText",
-  "codeDiff",
-  "fileContent",
-  "env",
+  "apikey",
+  "privatekey",
+  "rawprompt",
+  "prompttext",
+  "codediff",
+  "filecontent",
 ] as const;
 
-function isForbiddenKey(key: string): boolean {
-  const norm = key.trim().toLowerCase();
-  return FORBIDDEN_KEYS.some((f) => f.toLowerCase() === norm);
+const ENV_FORBIDDEN_NORMALIZED = new Set(["env", "envvars", "envvalue", "envsecret"]);
+
+function normalizeKey(key: string): string {
+  return key.replace(/[_\-\s]/g, "").toLowerCase();
+}
+
+export function isForbiddenPersistenceKey(key: string): boolean {
+  const norm = normalizeKey(key);
+  if (ENV_FORBIDDEN_NORMALIZED.has(norm)) return true;
+  return FORBIDDEN_KEY_FRAGMENTS.some((fragment) => norm.includes(fragment));
 }
 
 const ALLOWED_KINDS = new Set(["timeline_metadata", "replay_snapshot", "diagnostic_metadata"]);
@@ -35,6 +42,7 @@ const MAX_BLOCKING_REASONS = 20;
 const MAX_CONNECTOR_PLANS = 10;
 const MAX_GOVERNANCE_CHECKS = 20;
 const MAX_POLICY_IDS = 20;
+const MAX_PASS_THROUGH_SUMMARY = 10;
 
 export function truncateReason(value: string): string {
   const t = String(value ?? "").trim();
@@ -66,10 +74,42 @@ function stripForbiddenKeys(value: unknown): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (isForbiddenKey(key)) continue;
+    if (isForbiddenPersistenceKey(key)) continue;
     out[key] = stripForbiddenKeys(child);
   }
   return out;
+}
+
+function trimCandidateForJsonSize(
+  candidate: AgentRuntimePersistenceCandidate,
+): AgentRuntimePersistenceCandidate {
+  let current = candidate;
+  let serialized = JSON.stringify(current);
+  if (serialized.length <= MAX_CANDIDATE_JSON_LENGTH) return current;
+
+  if (current.warnings?.length) {
+    current = { ...current, warnings: current.warnings.slice(0, Math.max(1, MAX_WARNINGS / 2)) };
+    serialized = JSON.stringify(current);
+    if (serialized.length <= MAX_CANDIDATE_JSON_LENGTH) return current;
+  }
+
+  if (current.blockingReasons?.length) {
+    current = {
+      ...current,
+      blockingReasons: current.blockingReasons.slice(0, Math.max(1, MAX_BLOCKING_REASONS / 2)),
+    };
+    serialized = JSON.stringify(current);
+    if (serialized.length <= MAX_CANDIDATE_JSON_LENGTH) return current;
+  }
+
+  if (current.connectorPlanSummary?.length) {
+    current = {
+      ...current,
+      connectorPlanSummary: current.connectorPlanSummary.slice(0, 1),
+    };
+  }
+
+  return current;
 }
 
 export function sanitizeAgentRuntimePersistenceCandidate(
@@ -77,7 +117,7 @@ export function sanitizeAgentRuntimePersistenceCandidate(
 ): AgentRuntimePersistenceCandidate {
   try {
     const stripped = stripForbiddenKeys(candidate) as AgentRuntimePersistenceCandidate;
-    return {
+    const sanitized: AgentRuntimePersistenceCandidate = {
       ...stripped,
       schemaVersion: AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
       ...(stripped.reason ? { reason: truncateReason(stripped.reason) } : {}),
@@ -85,6 +125,13 @@ export function sanitizeAgentRuntimePersistenceCandidate(
         {
           connectorPlanSummary: stripped.connectorPlanSummary
             .slice(0, MAX_CONNECTOR_PLANS)
+            .map((p) => ({ ...p, reason: truncateReason(p.reason) })),
+        }
+      : {}),
+      ...(stripped.passThroughRecordSummary ?
+        {
+          passThroughRecordSummary: stripped.passThroughRecordSummary
+            .slice(0, MAX_PASS_THROUGH_SUMMARY)
             .map((p) => ({ ...p, reason: truncateReason(p.reason) })),
         }
       : {}),
@@ -114,6 +161,7 @@ export function sanitizeAgentRuntimePersistenceCandidate(
         }
       : {}),
     };
+    return trimCandidateForJsonSize(sanitized);
   } catch {
     return {
       schemaVersion: AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
@@ -156,13 +204,19 @@ export function validateAgentRuntimePersistenceCandidate(
     if ((candidate.connectorPlanSummary?.length ?? 0) > MAX_CONNECTOR_PLANS) {
       warnings.push("connector_plans_exceed_limit");
     }
+    if ((candidate.passThroughRecordSummary?.length ?? 0) > MAX_PASS_THROUGH_SUMMARY) {
+      warnings.push("pass_through_summary_exceed_limit");
+    }
 
-    JSON.stringify(candidate);
+    const serialized = JSON.stringify(candidate);
+    if (serialized.length > MAX_CANDIDATE_JSON_LENGTH) {
+      warnings.push("candidate_json_exceeds_limit");
+    }
 
     const keys: string[] = [];
     collectObjectKeys(candidate, keys);
     for (const key of keys) {
-      if (isForbiddenKey(key)) warnings.push(`forbidden_key_detected:${key}`);
+      if (isForbiddenPersistenceKey(key)) warnings.push(`forbidden_key_detected:${key}`);
     }
 
     if (candidate.reason && candidate.reason.length > MAX_REASON_LENGTH) {

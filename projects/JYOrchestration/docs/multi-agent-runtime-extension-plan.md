@@ -240,11 +240,42 @@ unknown check → warning finding
 | warnings/blockingReasons | 후보 | 운영 진단 | 개수·길이 제한 |
 | rawPrompt/codeDiff/fileContent/token | 제외 | 민감/대용량 | 저장 금지 |
 
-### Stage 2-6 후보: Connector Gateway Pass-through Integration 검토
+### Stage 2-5 소스 점검 보완 (Stage 2-6 전)
+
+| 항목 | 조치 | 파일 |
+|---|---|---|
+| limitStrings 중복 | warnings/blockingReasons 한 번만 계산 | `buildAgentRuntimePersistenceCandidate.ts` |
+| 금지 키 fragment | accessToken/githubToken 등 변형 탐지 | `agentRuntimePersistenceCandidateValidation.ts` |
+| sanitize → validate | raw invalid, sanitize 후 valid 테스트 | persistence unit test |
+| JSON 크기 제한 | `MAX_CANDIDATE_JSON_LENGTH=12000` | validation + sanitize trim |
+
+## Stage 2-6 Connector Gateway Pass-through Integration Readiness 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| ConnectorPassThroughBoundary | 실행 경계 후보 타입 | 없음 | recordOnly=true |
+| Default pass-through boundaries | Cursor/GitHub 주요 경계 후보 | 없음 | 기존 실행 경로 미변경 |
+| Pass-through record candidate | facade pass_through 결과 축약 | 없음 | 외부 호출 없음 |
+| Harness 연계 helper | `buildConnectorPassThroughRecordFromHarness` | 없음 | metadata만 사용 |
+| Persistence summary helper | `attachPassThroughSummaryToPersistenceCandidate` | 없음 | 원문 record 제외 |
+
+구현: `connectorPassThroughBoundaryTypes.ts`, `defaultConnectorPassThroughBoundaries.ts`, `connectorPassThroughBoundaryRegistry.ts`, `buildConnectorPassThroughRecordCandidate.ts`, `connectorPassThroughPersistenceCandidate.ts`
+
+### Stage 2-6 경계 원칙
+
+```text
+- pass-through는 기존 실행을 대체하지 않는다.
+- pass-through는 실행 전후 record 후보만 만든다.
+- Connector Gateway 강제 라우팅은 하지 않는다.
+- 실제 Cursor/GitHub 호출 함수는 변경하지 않는다.
+- 저장 여부는 Stage 2-8 이후 별도 결정한다.
+```
+
+### Stage 2-7 후보: Harness/Governance Dry-run Read-only 진단 UI
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Cursor execution boundary | 실행 전 facade record 생성 후보 | 실제 호출 라우팅 변경 금지 |
-| GitHub PR boundary | PR 생성/상태 확인 전 facade record 후보 | 기존 GitHub 동작 변경 금지 |
-| Timeline diagnostic | pass-through record read-only 표시 | 저장 구조 변경 별도 승인 |
+| Harness dry-run summary | agent/capability/connector/governance 계획 표시 | 실제 실행 버튼과 분리 |
+| Persistence candidate preview | 저장 후보 metadata 표시 | 저장 아님 명시 |
+| Pass-through boundary preview | Cursor/GitHub 경계 후보 표시 | 실제 호출 아님 명시 |
 ```

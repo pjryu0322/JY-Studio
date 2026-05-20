@@ -27,6 +27,14 @@ export interface AgentGovernanceDryRunPersistenceSummary {
   readonly blockingCandidateCount: number;
 }
 
+export interface AgentConnectorPassThroughSummary {
+  readonly boundaryId: string;
+  readonly connectorId: string;
+  readonly operation: string;
+  readonly allowed: boolean;
+  readonly reason: string;
+}
+
 export interface AgentRuntimePersistenceCandidate {
   readonly schemaVersion: typeof AGENT_RUNTIME_METADATA_SCHEMA_VERSION;
   readonly registryVersion: typeof AGENT_RUNTIME_REGISTRY_VERSION;
@@ -48,6 +56,7 @@ export interface AgentRuntimePersistenceCandidate {
 
   readonly connectorPlanSummary?: readonly AgentConnectorPlanSummary[];
   readonly governanceSummary?: AgentGovernanceDryRunPersistenceSummary;
+  readonly passThroughRecordSummary?: readonly AgentConnectorPassThroughSummary[];
 
   readonly warnings?: readonly string[];
   readonly blockingReasons?: readonly string[];
