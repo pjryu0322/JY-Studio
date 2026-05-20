@@ -32,33 +32,20 @@ import {
   intentRouterTimelinePayload,
   isLowConfidenceIntent,
   routeRequirementsIntent,
+  routeRequirementsIntentAsync,
+  routeRequirementsIntentDirect,
   type IntentRoutingResult,
 } from "@/lib/requirements/requirementsIntentRouter";
 import {
   filterQuickActionsForChatProjection,
   listAllowedActionIdsForStage,
 } from "@/lib/requirements/requirementsQuickActionPolicy";
+import { postRequirementsIntentRouter } from "@/lib/requirements/requirementsIntentRouterClient";
+import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
+import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
 
-export type RequirementsOrchestrationContextWire = Readonly<{
-  readonly singleChatOrchestrationV1?: unknown;
-  readonly requirementsOrchestrationStageV1?: unknown;
-  readonly featurePlanningSlotsV1?: unknown;
-  readonly featureDetailSlotsV1?: unknown;
-}>;
-
-export function buildIntentRouterStateFromOrchestrationContext(
-  flow: RequirementsServiceFlowV1 | null,
-  orchCtx: RequirementsOrchestrationContextWire | undefined,
-): RequirementsStateJson {
-  return {
-    serviceFlowV1: flow,
-    singleChatOrchestrationV1: orchCtx?.singleChatOrchestrationV1 as RequirementsStateJson["singleChatOrchestrationV1"],
-    requirementsOrchestrationStageV1:
-      orchCtx?.requirementsOrchestrationStageV1 as RequirementsStateJson["requirementsOrchestrationStageV1"],
-    featurePlanningSlotsV1: orchCtx?.featurePlanningSlotsV1 as RequirementsStateJson["featurePlanningSlotsV1"],
-    featureDetailSlotsV1: orchCtx?.featureDetailSlotsV1 as RequirementsStateJson["featureDetailSlotsV1"],
-  };
-}
+export type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
+export { buildIntentRouterStateFromOrchestrationContext } from "@/lib/requirements/requirementsOrchestrationContextWire";
 
 export type RequirementsIntentDispatchContext = Readonly<{
   readonly authoritativeStage: OrchestrationStage;
@@ -122,6 +109,92 @@ export function buildRequirementsIntentDispatchContext(
   };
 }
 
+function buildRouterInput(
+  input: {
+    readonly userMessage: string;
+    readonly ctx: RequirementsIntentDispatchContext;
+    readonly projectName?: string;
+    readonly projectDescription?: string;
+  },
+): RequirementsIntentRouterInput {
+  return {
+    userMessage: input.userMessage,
+    authoritativeStage: input.ctx.authoritativeStage,
+    availableActionIds: input.ctx.availableActionIds,
+    chatVisibleActionIds: input.ctx.chatQuickActions.map((a) => a.id),
+    projection: input.ctx.projectionSlice,
+    featureMetrics: input.ctx.featureMetrics,
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+  };
+}
+
+function resolveGuardedEffectiveActionId(
+  suggested: QuickActionId | null,
+  guard: GuardResult,
+): QuickActionId | null {
+  if (!suggested) return null;
+  if (!guard.allowed) return null;
+  return guard.effectiveActionId ?? suggested;
+}
+
+function finalizeDispatchResult(input: {
+  readonly intent: IntentRoutingResult;
+  readonly guard: GuardResult;
+  readonly ctx: RequirementsIntentDispatchContext;
+  readonly directQuickActionLabel?: string | null;
+  readonly skipLowConfidenceCheck?: boolean;
+}): RequirementsIntentDispatchResult {
+  const suggested = input.intent.suggestedActionId;
+  const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  const timelineDetail = intentRouterTimelinePayload(input.intent, input.guard, {
+    availableActionIds: input.ctx.availableActionIds,
+  });
+
+  if (!effectiveId) {
+    const fallbackIds = input.guard.fallbackActionIds ?? [];
+    const fallbackQuickActions = fallbackIds
+      .map((id) => quickActionFromDefinition(getQuickActionDefinition(id)))
+      .filter((a) => input.ctx.availableActionIds.includes(a.id));
+    const parts = [input.guard.reason, input.guard.warning, input.intent.clarificationQuestion].filter(Boolean);
+    return {
+      intent: input.intent,
+      guard: input.guard,
+      effectiveActionId: null,
+      effectiveQuickAction: null,
+      timelineDetail,
+      userFacingMessage: parts.join("\n") || undefined,
+      fallbackQuickActions,
+    };
+  }
+
+  if (!input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent)) {
+    return {
+      intent: input.intent,
+      guard: { allowed: false, reason: input.intent.clarificationQuestion },
+      effectiveActionId: null,
+      effectiveQuickAction: null,
+      timelineDetail,
+      userFacingMessage: input.intent.clarificationQuestion,
+      fallbackQuickActions: input.ctx.chatQuickActions,
+    };
+  }
+
+  const effectiveQuickAction = quickActionFromDefinition(
+    getQuickActionDefinition(effectiveId),
+    input.directQuickActionLabel ?? undefined,
+  );
+  return {
+    intent: input.intent,
+    guard: input.guard,
+    effectiveActionId: effectiveId,
+    effectiveQuickAction,
+    timelineDetail,
+    ...(input.guard.warning ? { userFacingMessage: input.guard.warning } : {}),
+  };
+}
+
+/** Sync dispatch — deterministic router only (unit tests). */
 export function dispatchRequirementsUserIntent(input: {
   readonly userMessage: string;
   readonly directQuickActionId?: QuickActionId | null;
@@ -131,23 +204,12 @@ export function dispatchRequirementsUserIntent(input: {
   const directId =
     input.directQuickActionId ??
     resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
-    resolveQuickActionIdFromLegacyLabel(input.userMessage);
+    null;
 
   const intent: IntentRoutingResult =
     directId && input.ctx.availableActionIds.includes(directId) ?
-      {
-        intentType: "orchestration_action",
-        suggestedActionId: directId,
-        confidence: 1,
-        reason: "direct quick action",
-      }
-    : routeRequirementsIntent({
-        userMessage: input.userMessage,
-        authoritativeStage: input.ctx.authoritativeStage,
-        availableActionIds: input.ctx.availableActionIds,
-        projection: input.ctx.projectionSlice,
-        featureMetrics: input.ctx.featureMetrics,
-      });
+      routeRequirementsIntentDirect(buildRouterInput({ userMessage: input.userMessage, ctx: input.ctx }), directId)
+    : routeRequirementsIntent(buildRouterInput({ userMessage: input.userMessage, ctx: input.ctx }));
 
   const suggested = intent.suggestedActionId;
   const guard: GuardResult =
@@ -160,48 +222,78 @@ export function dispatchRequirementsUserIntent(input: {
       })
     : { allowed: false, reason: intent.clarificationQuestion ?? "요청을 이해하지 못했습니다." };
 
-  const timelineDetail = intentRouterTimelinePayload(intent, guard);
-
-  if (!suggested || !guard.allowed) {
-    const fallbackIds = guard.fallbackActionIds ?? [];
-    const fallbackQuickActions = fallbackIds
-      .map((id) => quickActionFromDefinition(getQuickActionDefinition(id)))
-      .filter((a) => input.ctx.availableActionIds.includes(a.id));
-    const parts = [guard.reason, guard.warning, intent.clarificationQuestion].filter(Boolean);
-    return {
-      intent,
-      guard,
-      effectiveActionId: null,
-      effectiveQuickAction: null,
-      timelineDetail,
-      userFacingMessage: parts.join("\n") || undefined,
-      fallbackQuickActions,
-    };
-  }
-
-  if (!directId && isLowConfidenceIntent(intent)) {
-    return {
-      intent,
-      guard: { allowed: false, reason: intent.clarificationQuestion },
-      effectiveActionId: null,
-      effectiveQuickAction: null,
-      timelineDetail,
-      userFacingMessage: intent.clarificationQuestion,
-      fallbackQuickActions: input.ctx.chatQuickActions,
-    };
-  }
-
-  const effectiveQuickAction = quickActionFromDefinition(
-    getQuickActionDefinition(suggested),
-    input.directQuickActionLabel ?? undefined,
-  );
-  return {
+  return finalizeDispatchResult({
     intent,
     guard,
-    effectiveActionId: suggested,
-    effectiveQuickAction,
-    timelineDetail,
-  };
+    ctx: input.ctx,
+    directQuickActionLabel: input.directQuickActionLabel,
+    skipLowConfidenceCheck: Boolean(directId),
+  });
+}
+
+/** Async dispatch — LLM router for free text; direct path skips LLM. */
+export async function dispatchRequirementsUserIntentAsync(input: {
+  readonly userMessage: string;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directQuickActionLabel?: string | null;
+  readonly ctx: RequirementsIntentDispatchContext;
+  readonly projectId: string;
+  readonly projectName?: string;
+  readonly projectDescription?: string;
+  readonly orchestrationContext?: RequirementsOrchestrationContextWire;
+  readonly serviceFlowV1?: RequirementsServiceFlowV1 | null;
+}): Promise<RequirementsIntentDispatchResult> {
+  const directId =
+    input.directQuickActionId ??
+    resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
+    null;
+
+  const routerInput = buildRouterInput({
+    userMessage: input.userMessage,
+    ctx: input.ctx,
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+  });
+
+  let intent: IntentRoutingResult;
+  if (directId && input.ctx.availableActionIds.includes(directId)) {
+    intent = routeRequirementsIntentDirect(routerInput, directId);
+  } else {
+    const llmRes = await postRequirementsIntentRouter({
+      projectId: input.projectId,
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      userMessage: input.userMessage,
+      authoritativeStage: input.ctx.authoritativeStage,
+      availableActionIds: input.ctx.availableActionIds,
+      chatVisibleActionIds: input.ctx.chatQuickActions.map((a) => a.id),
+      conversationState: input.ctx.projectionSlice.conversationState,
+      featureMetrics: input.ctx.featureMetrics,
+    });
+    intent =
+      llmRes.ok ? llmRes.intent : (
+        await routeRequirementsIntentAsync(routerInput, { skipLlm: true })
+      );
+  }
+
+  const guardSuggested = intent.suggestedActionId;
+  const guard: GuardResult =
+    guardSuggested ?
+      guardRequirementsAction({
+        suggestedActionId: guardSuggested,
+        authoritativeStage: input.ctx.authoritativeStage,
+        availableActionIds: input.ctx.availableActionIds,
+        featureMetrics: input.ctx.featureMetrics,
+      })
+    : { allowed: false, reason: intent.clarificationQuestion ?? "요청을 이해하지 못했습니다." };
+
+  return finalizeDispatchResult({
+    intent,
+    guard,
+    ctx: input.ctx,
+    directQuickActionLabel: input.directQuickActionLabel,
+    skipLowConfidenceCheck: Boolean(directId),
+  });
 }
 
 export function fallbackQuickReplyLabels(actions: readonly QuickAction[] | undefined): readonly string[] {

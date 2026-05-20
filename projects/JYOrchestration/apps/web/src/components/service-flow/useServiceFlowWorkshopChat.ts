@@ -11,7 +11,7 @@ import {
   buildIntentRouterPromptTimelineEntry,
   buildIntentRouterStateFromOrchestrationContext,
   buildRequirementsIntentDispatchContext,
-  dispatchRequirementsUserIntent,
+  dispatchRequirementsUserIntentAsync,
   fallbackQuickReplyLabels,
 } from "@/lib/requirements/requirementsIntentDispatch";
 import {
@@ -595,78 +595,83 @@ export function useServiceFlowWorkshopChat({
       const body = (overrideText ?? input).trim();
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
-      const intentState = buildIntentRouterStateFromOrchestrationContext(
-        flowRef.current,
-        orchestrationContextRef.current,
-      );
-      const intentCtx = buildRequirementsIntentDispatchContext(intentState);
-      const routed = dispatchRequirementsUserIntent({
-        userMessage: body,
-        directQuickActionId: quickAction?.id ?? null,
-        directQuickActionLabel: quickAction?.label ?? null,
-        ctx: intentCtx,
-      });
-      emitPromptTrace(buildIntentRouterPromptTimelineEntry({ userMessage: body, dispatch: routed }));
-
-      const effective = routed.effectiveQuickAction;
-      if (!effective) {
-        setInput("");
-        const fallbacks = fallbackQuickReplyLabels(routed.fallbackQuickActions);
-        const msg =
-          routed.userFacingMessage?.trim() ||
-          routed.intent.clarificationQuestion ||
-          "요청을 이해하지 못했습니다.";
-        void appendIntentGuardAssistantReply(msg, fallbacks);
-        return;
-      }
-
-      const effectiveDispatch: ServiceFlowQuickActionDispatch = {
-        id: effective.id,
-        label: effective.label,
-      };
-      const decision = resolveDecisionFromQuickActionInput({
-        quickAction: effectiveDispatch,
-        labelFallback: effectiveDispatch.label,
-      });
-      if (effectiveDispatch.id === "ADD_ACTOR") {
-        onEnterActorEdit?.();
-        setInput("");
-        return;
-      }
-      if (effectiveDispatch.id === "EDIT_FEATURES") {
-        onEnterFeatureDetailEdit?.();
-        setInput("");
-        return;
-      }
-      if (effectiveDispatch.id === "OPEN_ARTIFACT_HUB") {
-        onOpenArtifactHub?.();
-        setInput("");
-        return;
-      }
-      if (effectiveDispatch.id === "OPEN_CANVAS") {
-        setWorkspaceMode("mapping");
-        setInput("");
-        return;
-      }
-      if (
-        decision &&
-        dispatchClientOnlyDecision(decision, effectiveDispatch.label, effectiveDispatch.id)
-      ) {
-        setInput("");
-        return;
-      }
       setInput("");
-      callAnalyze(body, {
-        harness: payload,
-        ...(sendOpts?.silentUserAppend ? { silentUserAppend: true } : {}),
-        quickAction: effectiveDispatch,
-        quickActionLabel: effectiveDispatch.label,
-      });
-      scrollChatToBottom();
+
+      void (async () => {
+        const intentState = buildIntentRouterStateFromOrchestrationContext(
+          flowRef.current,
+          orchestrationContextRef.current,
+        );
+        const intentCtx = buildRequirementsIntentDispatchContext(intentState);
+        const routed = await dispatchRequirementsUserIntentAsync({
+          userMessage: body,
+          directQuickActionId: quickAction?.id ?? null,
+          directQuickActionLabel: quickAction?.label ?? null,
+          ctx: intentCtx,
+          projectId,
+          projectName,
+          projectDescription,
+          orchestrationContext: orchestrationContextRef.current,
+          serviceFlowV1: flowRef.current,
+        });
+        emitPromptTrace(buildIntentRouterPromptTimelineEntry({ userMessage: body, dispatch: routed }));
+
+        const effective = routed.effectiveQuickAction;
+        if (!effective) {
+          const fallbacks = fallbackQuickReplyLabels(routed.fallbackQuickActions);
+          const msg =
+            routed.userFacingMessage?.trim() ||
+            routed.intent.clarificationQuestion ||
+            "요청을 이해하지 못했습니다.";
+          await appendIntentGuardAssistantReply(msg, fallbacks);
+          return;
+        }
+
+        const effectiveDispatch: ServiceFlowQuickActionDispatch = {
+          id: effective.id,
+          label: effective.label,
+        };
+        const decision = resolveDecisionFromQuickActionInput({
+          quickAction: effectiveDispatch,
+          labelFallback: effectiveDispatch.label,
+        });
+        if (effectiveDispatch.id === "ADD_ACTOR") {
+          onEnterActorEdit?.();
+          return;
+        }
+        if (effectiveDispatch.id === "EDIT_FEATURES") {
+          onEnterFeatureDetailEdit?.();
+          return;
+        }
+        if (effectiveDispatch.id === "OPEN_ARTIFACT_HUB") {
+          onOpenArtifactHub?.();
+          return;
+        }
+        if (effectiveDispatch.id === "OPEN_CANVAS") {
+          setWorkspaceMode("mapping");
+          return;
+        }
+        if (
+          decision &&
+          dispatchClientOnlyDecision(decision, effectiveDispatch.label, effectiveDispatch.id)
+        ) {
+          return;
+        }
+        callAnalyze(body, {
+          harness: payload,
+          ...(sendOpts?.silentUserAppend ? { silentUserAppend: true } : {}),
+          quickAction: effectiveDispatch,
+          quickActionLabel: effectiveDispatch.label,
+        });
+        scrollChatToBottom();
+      })();
     },
     [
       workspaceMode,
       input,
+      projectId,
+      projectName,
+      projectDescription,
       callAnalyze,
       scrollChatToBottom,
       dispatchClientOnlyDecision,

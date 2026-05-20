@@ -7,8 +7,9 @@ import {
 } from "@/lib/requirements/requirementsIntentDispatch";
 import {
   intentRouterTimelinePayload,
-  routeRequirementsIntent,
+  routeRequirementsIntentAsync,
 } from "@/lib/requirements/requirementsIntentRouter";
+import { routeRequirementsIntentDeterministic } from "@/lib/requirements/requirementsIntentRouterDeterministic";
 import {
   filterQuickActionsForChatProjection,
   getQuickActionPolicy,
@@ -47,63 +48,75 @@ function featureDetailState(confirmedCount: number): RequirementsStateJson {
   };
 }
 
-describe("requirementsIntentRouter + guard", () => {
-  it("A: free text infers DEFINE_SCREEN", () => {
+function routerInputFromState(state: RequirementsStateJson, userMessage: string) {
+  const ctx = buildRequirementsIntentDispatchContext(state);
+  return {
+    userMessage,
+    authoritativeStage: ctx.authoritativeStage,
+    availableActionIds: ctx.availableActionIds,
+    chatVisibleActionIds: ctx.chatQuickActions.map((a) => a.id),
+    projection: ctx.projectionSlice,
+    featureMetrics: ctx.featureMetrics,
+  };
+}
+
+describe("requirementsIntentRouter + guard follow-up", () => {
+  it("A: free text infers DEFINE_SCREEN (deterministic / fallback)", () => {
     const state = featureDetailState(1);
-    const ctx = buildRequirementsIntentDispatchContext(state);
-    const intent = routeRequirementsIntent({
-      userMessage: "화면으로 넘어가자",
-      authoritativeStage: ctx.authoritativeStage,
-      availableActionIds: ctx.availableActionIds,
-      projection: ctx.projectionSlice,
-      featureMetrics: ctx.featureMetrics,
-    });
+    const input = routerInputFromState(state, "이 기능 먼저 화면으로 보고 싶어");
+    const intent = routeRequirementsIntentDeterministic(input);
     expect(intent.suggestedActionId).toBe("DEFINE_SCREEN");
-    expect(intent.confidence).toBeGreaterThan(0.8);
-  });
-
-  it("B: guard rejects GENERATE_DOCUMENT without confirmed features and suggests fallbacks", () => {
-    const state = featureDetailState(0);
-    const metrics = projectFeatureDetailMetrics(state.featureDetailSlotsV1);
     const guard = guardRequirementsAction({
-      suggestedActionId: "GENERATE_DOCUMENT",
-      authoritativeStage: "FEATURE_DETAIL",
-      availableActionIds: ["EDIT_FEATURES", "OPEN_ARTIFACT_HUB", "GENERATE_DOCUMENT"],
-      featureMetrics: metrics,
+      suggestedActionId: intent.suggestedActionId!,
+      authoritativeStage: input.authoritativeStage,
+      availableActionIds: input.availableActionIds,
+      featureMetrics: input.featureMetrics,
     });
-    expect(guard.allowed).toBe(false);
-    expect(guard.reason).toMatch(/확정된 기능/);
-    expect(guard.fallbackActionIds).toContain("EDIT_FEATURES");
+    expect(guard.allowed).toBe(true);
   });
 
-  it("C: document request routes to Artifact Hub when GENERATE_DOCUMENT unavailable", () => {
+  it("B: document request redirects to OPEN_ARTIFACT_HUB, not GENERATE_DOCUMENT", () => {
     const state = featureDetailState(0);
     const ctx = buildRequirementsIntentDispatchContext(state);
     const dispatch = dispatchRequirementsUserIntent({
-      userMessage: "문서로 정리해줘",
+      userMessage: "문서로 만들어줘",
       ctx,
     });
     expect(dispatch.intent.suggestedActionId).toBe("OPEN_ARTIFACT_HUB");
-    expect(dispatch.guard.allowed).toBe(true);
     expect(dispatch.effectiveActionId).toBe("OPEN_ARTIFACT_HUB");
+    expect(dispatch.effectiveActionId).not.toBe("GENERATE_DOCUMENT");
   });
 
-  it("D: quick action and free text share dispatch pipeline", () => {
+  it("C: guard rejects DEFINE_SCREEN without confirmed features → EDIT_FEATURES fallback", () => {
+    const state = featureDetailState(0);
+    const ctx = buildRequirementsIntentDispatchContext(state);
+    const guard = guardRequirementsAction({
+      suggestedActionId: "DEFINE_SCREEN",
+      authoritativeStage: ctx.authoritativeStage,
+      availableActionIds: [...ctx.availableActionIds, "DEFINE_SCREEN"],
+      featureMetrics: ctx.featureMetrics,
+    });
+    expect(guard.allowed).toBe(false);
+    expect(guard.fallbackActionIds).toContain("EDIT_FEATURES");
+
+    const dispatch = dispatchRequirementsUserIntent({
+      userMessage: "화면 정의하자",
+      ctx,
+    });
+    expect(dispatch.effectiveActionId).toBeNull();
+  });
+
+  it("D: quick action direct path uses routerMode direct", () => {
     const state = featureDetailState(1);
     const ctx = buildRequirementsIntentDispatchContext(state);
-    const fromChip = dispatchRequirementsUserIntent({
-      userMessage: "화면 정의",
-      directQuickActionId: "DEFINE_SCREEN",
+    const dispatch = dispatchRequirementsUserIntent({
+      userMessage: "기능 수정",
+      directQuickActionId: "EDIT_FEATURES",
       ctx,
     });
-    const fromText = dispatchRequirementsUserIntent({
-      userMessage: "화면으로 넘어가자",
-      ctx,
-    });
-    expect(fromChip.effectiveActionId).toBe("DEFINE_SCREEN");
-    expect(fromText.effectiveActionId).toBe("DEFINE_SCREEN");
-    expect(fromChip.guard.allowed).toBe(true);
-    expect(fromText.guard.allowed).toBe(true);
+    expect(dispatch.intent.routerMode).toBe("direct");
+    expect(dispatch.effectiveActionId).toBe("EDIT_FEATURES");
+    expect(dispatch.guard.allowed).toBe(true);
   });
 
   it("E: low confidence returns clarification", () => {
@@ -117,7 +130,7 @@ describe("requirementsIntentRouter + guard", () => {
     expect(dispatch.userFacingMessage || dispatch.intent.clarificationQuestion).toBeTruthy();
   });
 
-  it("F: timeline metadata includes intent and guard fields", () => {
+  it("F: timeline metadata includes routerMode and guard fields", () => {
     const state = featureDetailState(1);
     const ctx = buildRequirementsIntentDispatchContext(state);
     const dispatch = dispatchRequirementsUserIntent({
@@ -128,25 +141,51 @@ describe("requirementsIntentRouter + guard", () => {
       userMessage: "API 정의 시작",
       dispatch,
     });
-    expect(entry.action).toBe("intentRouterGuard");
-    expect(entry.responseText).toContain("intentType:");
+    expect(entry.responseText).toContain("routerMode:");
     expect(entry.responseText).toContain("guardAllowed:");
-    expect(intentRouterTimelinePayload(dispatch.intent, dispatch.guard)).toBe(entry.responseText);
+    expect(entry.responseText).toContain("availableActionIds:");
+    expect(intentRouterTimelinePayload(dispatch.intent, dispatch.guard, {
+      availableActionIds: ctx.availableActionIds,
+    })).toBe(dispatch.timelineDetail);
   });
 
-  it("artifact action is hidden from FEATURE_DETAIL chat chips", () => {
+  it("artifact actions hidden from chat projection", () => {
     const state = featureDetailState(1);
     const projection = buildQuickReplyProjection({
       state,
       authoritativeStage: "FEATURE_DETAIL",
     });
-    const ids = projection.quickActions.map((a) => a.id);
-    expect(ids).not.toContain("GENERATE_DOCUMENT");
-    expect(getQuickActionPolicy("GENERATE_DOCUMENT").chatChipVisible).toBe(false);
+    expect(projection.quickActions.map((a) => a.id)).not.toContain("GENERATE_DOCUMENT");
+    expect(getQuickActionPolicy("EXPORT_PDF").chatChipVisible).toBe(false);
     const filtered = filterQuickActionsForChatProjection([
       { id: "GENERATE_DOCUMENT", label: "문서 생성" },
+      { id: "EXPORT_PDF", label: "PDF Export" },
       { id: "EDIT_FEATURES", label: "기능 수정" },
     ]);
     expect(filtered.map((a) => a.id)).toEqual(["EDIT_FEATURES"]);
+  });
+
+  it("LLM path uses injectable caller and falls back on failure", async () => {
+    const state = featureDetailState(1);
+    const input = routerInputFromState(state, "화면으로 넘어가자");
+    const intent = await routeRequirementsIntentAsync(input, {
+      skipLlm: true,
+      llmCaller: async () => null,
+    });
+    expect(intent.routerMode).toBe("fallback");
+    expect(intent.suggestedActionId).toBe("DEFINE_SCREEN");
+  });
+
+  it("guard redirects GENERATE_DOCUMENT suggestion to Artifact Hub", () => {
+    const state = featureDetailState(1);
+    const metrics = projectFeatureDetailMetrics(state.featureDetailSlotsV1);
+    const guard = guardRequirementsAction({
+      suggestedActionId: "GENERATE_DOCUMENT",
+      authoritativeStage: "FEATURE_DETAIL",
+      availableActionIds: ["EDIT_FEATURES", "OPEN_ARTIFACT_HUB", "GENERATE_DOCUMENT"],
+      featureMetrics: metrics,
+    });
+    expect(guard.allowed).toBe(true);
+    expect(guard.effectiveActionId).toBe("OPEN_ARTIFACT_HUB");
   });
 });

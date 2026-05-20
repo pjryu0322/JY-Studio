@@ -7,6 +7,7 @@ import type { ServiceFlowConversationState, ServiceFlowQuickReplyProfile } from 
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { ServiceFlowTransitionSignal } from "@/lib/requirements/serviceFlowStageTransition";
 import { classifyProposalDecision, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
+import type { QuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
 
 export type QuickActionId =
   | "APPLY_PROPOSAL"
@@ -30,6 +31,8 @@ export type QuickActionId =
   | "DEFINE_SCREEN"
   | "DEFINE_API"
   | "GENERATE_DOCUMENT"
+  | "EXPORT_MARKDOWN"
+  | "EXPORT_PDF"
   | "OPEN_CANVAS"
   | "OPEN_ARTIFACT_HUB";
 
@@ -50,13 +53,34 @@ export type QuickActionDefinition = Readonly<{
   readonly id: QuickActionId;
   readonly defaultLabel: string;
   readonly labelAliases?: readonly string[];
+  readonly actionCategory: QuickActionCategory;
   readonly conversationProfiles: readonly ServiceFlowQuickReplyProfile[];
   readonly proposalDecision: ServiceFlowProposalDecision | null;
   readonly transitionSignal: ServiceFlowTransitionSignal | null;
   readonly uiIntent?: QuickAction["uiIntent"];
 }>;
 
-const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
+type QuickActionDefinitionDraft = Omit<QuickActionDefinition, "actionCategory">;
+
+const ACTION_CATEGORY_BY_ID: Partial<Record<QuickActionId, QuickActionCategory>> = {
+  GENERATE_DOCUMENT: "artifact_action",
+  EXPORT_MARKDOWN: "artifact_action",
+  EXPORT_PDF: "artifact_action",
+  OPEN_CANVAS: "view_action",
+  OPEN_ARTIFACT_HUB: "view_action",
+  VIEW_ALTERNATIVE_DETAIL: "view_action",
+  EDIT_FEATURES: "edit_request",
+  EDIT_STEPS: "edit_request",
+};
+
+function withActionCategory(draft: QuickActionDefinitionDraft): QuickActionDefinition {
+  return {
+    ...draft,
+    actionCategory: ACTION_CATEGORY_BY_ID[draft.id] ?? "orchestration_action",
+  };
+}
+
+const QUICK_ACTION_REGISTRY_DRAFT = {
   APPLY_PROPOSAL: {
     id: "APPLY_PROPOSAL",
     defaultLabel: "추천안 적용",
@@ -229,7 +253,30 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
     proposalDecision: null,
     transitionSignal: null,
   },
-};
+  EXPORT_MARKDOWN: {
+    id: "EXPORT_MARKDOWN",
+    defaultLabel: "Markdown Export",
+    labelAliases: ["마크다운보내기"],
+    conversationProfiles: [],
+    proposalDecision: null,
+    transitionSignal: null,
+  },
+  EXPORT_PDF: {
+    id: "EXPORT_PDF",
+    defaultLabel: "PDF Export",
+    labelAliases: ["PDF보내기"],
+    conversationProfiles: [],
+    proposalDecision: null,
+    transitionSignal: null,
+  },
+} satisfies Record<QuickActionId, QuickActionDefinitionDraft>;
+
+const QUICK_ACTION_REGISTRY = Object.fromEntries(
+  Object.entries(QUICK_ACTION_REGISTRY_DRAFT).map(([id, draft]) => [
+    id,
+    withActionCategory(draft as QuickActionDefinitionDraft),
+  ]),
+) as Record<QuickActionId, QuickActionDefinition>;
 
 const QUICK_ACTION_ID_SET = new Set<string>(Object.keys(QUICK_ACTION_REGISTRY));
 

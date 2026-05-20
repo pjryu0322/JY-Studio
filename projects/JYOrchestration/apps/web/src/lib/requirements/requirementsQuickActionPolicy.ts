@@ -5,11 +5,18 @@
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import {
+  isArtifactChatSuppressedActionId,
+} from "@/lib/requirements/requirementsIntentRouterTypes";
+import {
   type QuickAction,
   type QuickActionId,
 } from "@/lib/requirements/requirementsQuickActionRegistry";
 
-export type QuickActionCategory = "orchestration_action" | "artifact_action" | "view_action";
+export type QuickActionCategory =
+  | "orchestration_action"
+  | "artifact_action"
+  | "view_action"
+  | "edit_request";
 
 export type QuickActionPolicy = Readonly<{
   readonly actionCategory: QuickActionCategory;
@@ -31,7 +38,7 @@ const POLICY_BY_ID: Partial<Record<QuickActionId, QuickActionPolicy>> = {
   ADD_ACTOR: { actionCategory: "orchestration_action", allowedStages: ["SERVICE_FLOW_REVIEW"] },
   START_FEATURE_DETAIL: { actionCategory: "orchestration_action", allowedStages: ["SERVICE_FLOW_REVIEW"] },
   NEXT_STAGE: { actionCategory: "orchestration_action" },
-  EDIT_FEATURES: { actionCategory: "orchestration_action", allowedStages: ["FEATURE_DETAIL", "SCREEN_DEFINE"] },
+  EDIT_FEATURES: { actionCategory: "edit_request", allowedStages: ["FEATURE_DETAIL", "SCREEN_DEFINE"] },
   DEFINE_SCREEN: {
     actionCategory: "orchestration_action",
     allowedStages: ["FEATURE_DETAIL", "SCREEN_DEFINE"],
@@ -44,8 +51,16 @@ const POLICY_BY_ID: Partial<Record<QuickActionId, QuickActionPolicy>> = {
   },
   GENERATE_DOCUMENT: {
     actionCategory: "artifact_action",
-    allowedStages: ["FEATURE_DETAIL", "DOCUMENTATION_COMPLETE"],
+    allowedStages: ["DOCUMENTATION_COMPLETE"],
     requiredConfirmedFeatureCount: 1,
+    chatChipVisible: false,
+  },
+  EXPORT_MARKDOWN: {
+    actionCategory: "artifact_action",
+    chatChipVisible: false,
+  },
+  EXPORT_PDF: {
+    actionCategory: "artifact_action",
     chatChipVisible: false,
   },
   OPEN_CANVAS: {
@@ -106,7 +121,15 @@ export function guardQuickActionByPolicy(input: {
 export function filterQuickActionsForChatProjection(
   actions: readonly QuickAction[],
 ): readonly QuickAction[] {
-  return actions.filter((a) => isChatVisibleQuickAction(a.id));
+  return actions.filter((a) => isChatVisibleQuickAction(a.id) && !isArtifactChatSuppressedActionId(a.id));
+}
+
+export function isBlockedScreenApiWithoutConfirmedFeatures(
+  actionId: QuickActionId,
+  metrics: FeatureDetailProjectionMetrics,
+): boolean {
+  if (metrics.confirmedFeatureCount > 0) return false;
+  return actionId === "DEFINE_SCREEN" || actionId === "DEFINE_API" || isArtifactChatSuppressedActionId(actionId);
 }
 
 export function listAllowedActionIdsForStage(input: {
