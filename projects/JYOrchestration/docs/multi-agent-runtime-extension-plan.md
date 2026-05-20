@@ -612,13 +612,61 @@ persistFields ← summary/status/timing/link ids
 excludedFields ← rawPrompt/fullInput/fullOutput/codeDiff/token/apiKey 등 forbidden
 ```
 
-### Stage 2-15 후보: Operator approval / override / audit 설계
+## Stage 2-14 소스 보완 결과
 
-Stage 2-15에서는 실제 승인 엔진이 아니라, operator approval/override/audit record 설계를 검토한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| unknown target handling | 보완 | `normalizeExecutionRecordTarget`, `unknown` target + blocked |
+| link flags 분리 | 보완 | timeline/audit link flags per target |
+| persist/excluded field dedupe | 보완 | `uniqueFieldDecisions` |
+| summary-only policy | 보완 | summary field reasons 명시 |
+| 실제 execution record 저장 | 없음 | read-only design evaluator |
+
+## Stage 2-15 Operator Approval / Override / Audit 설계 결과
+
+| 항목 | 반영 방식 | 실제 저장 여부 | 비고 |
+|---|---|---|---|
+| Operator Approval/Audit 타입 | read-only approval/audit design report | 없음 | schema 설계 전 단계 |
+| Approval/Audit evaluator | target 기반 판단 | 없음 | 저장/승인 없음 |
+| operator_approval | ready_for_schema_design | 없음 | actor/reason/audit 필요 |
+| operator_override | defer | 없음 | 정책 승인/권한 모델 필요 |
+| audit_event | ready_for_schema_design | 없음 | 감사 이벤트 설계 가능 |
+| rollback_approval | defer | 없음 | rollback 대상 정의 필요 |
+| persistFields | summary/id 중심 | 없음 | raw reason 제외 |
+| excludedFields | forbidden policy | 없음 | prompt/diff/token/contact 제외 |
+
+구현: `operatorApprovalAuditDesignTypes.ts`, `evaluateOperatorApprovalAuditDesign.ts`
+
+### Stage 2-15 원칙
+
+```text
+- 실제 approval을 수행하지 않는다.
+- 실제 override를 수행하지 않는다.
+- 실제 audit event를 저장하지 않는다.
+- DB/Prisma schema를 변경하지 않는다.
+- raw reason/prompt/input/output/code diff/token/contact는 저장 후보에서도 제외한다.
+- operator approval/audit는 read-only 설계 report로만 둔다.
+```
+
+### Stage 2-15 Decision 규칙 요약
+
+```text
+operator_approval → ready_for_schema_design
+operator_override → defer
+audit_event → ready_for_schema_design
+rollback_approval → defer
+unknown → blocked
+requiresActorIdentity / requiresReason / requiresAuditTrail → true (active targets)
+reasonSummary only; rawReason forbidden
+```
+
+### Stage 2-16 후보: Connector Gateway 실험 브랜치 작업계획 수립
+
+Stage 2-16에서는 실제 main 경로가 아니라 별도 실험 브랜치에서 Connector Gateway routing을 검증하기 위한 작업계획을 만든다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| OperatorApprovalRecord | 실행/차단/저장 전 승인 기록 | 권한 모델 필요 |
-| OverrideRecord | Governance/Connector 차단 후보 우회 기록 | 감사 필수 |
-| AuditEvent | 누가/언제/왜 승인했는지 | 민감정보 제외 |
-| RollbackApproval | 실행 전환 롤백 승인 | 운영 정책 필요 |
+| experiment branch plan | 실험 브랜치명/범위/rollback 정의 | main 직접 변경 금지 |
+| feature flag wire plan | default off flag 위치 설계 | 실제 wire 별도 승인 |
+| cursor gateway wrapper plan | Cursor 실행 경계 wrapper 후보 | 기존 경로 fallback 필수 |
+| github gateway wrapper plan | PR/merge/status wrapper 후보 | Stage1 regression 필수 |

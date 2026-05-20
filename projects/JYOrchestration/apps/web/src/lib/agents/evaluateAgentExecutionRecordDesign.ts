@@ -2,6 +2,7 @@
  * Evaluate Agent execution record persist design (read-only; no DB/Timeline/Audit wire).
  */
 
+import { uniqueFieldDecisions } from "@/lib/agents/agentFieldDecisionUtils";
 import type {
   AgentExecutionRecordDesignDecision,
   AgentExecutionRecordDesignFinding,
@@ -30,11 +31,31 @@ const PERSIST_FIELD_SPECS: readonly {
   { field: "startedAt", sensitivity: "safe", reason: "execution start timestamp" },
   { field: "endedAt", sensitivity: "safe", reason: "execution end timestamp" },
   { field: "durationMs", sensitivity: "safe", reason: "execution duration in milliseconds" },
-  { field: "inputSummary", sensitivity: "internal", reason: "truncated input summary only" },
-  { field: "outputSummary", sensitivity: "internal", reason: "truncated output summary only" },
-  { field: "errorSummary", sensitivity: "internal", reason: "truncated error summary only" },
-  { field: "connectorSummary", sensitivity: "internal", reason: "connector invocation summary only" },
-  { field: "governanceSummary", sensitivity: "internal", reason: "governance dry-run summary only" },
+  {
+    field: "inputSummary",
+    sensitivity: "internal",
+    reason: "truncated input summary only (summary-only policy)",
+  },
+  {
+    field: "outputSummary",
+    sensitivity: "internal",
+    reason: "truncated output summary only (summary-only policy)",
+  },
+  {
+    field: "errorSummary",
+    sensitivity: "internal",
+    reason: "truncated error summary only (summary-only policy)",
+  },
+  {
+    field: "connectorSummary",
+    sensitivity: "internal",
+    reason: "connector invocation summary only (summary-only policy)",
+  },
+  {
+    field: "governanceSummary",
+    sensitivity: "internal",
+    reason: "governance dry-run summary only (summary-only policy)",
+  },
   { field: "operatorApprovalId", sensitivity: "internal", reason: "operator approval reference id" },
   { field: "timelineEventId", sensitivity: "internal", reason: "timeline event link id" },
   { field: "auditEventId", sensitivity: "internal", reason: "audit event link id" },
@@ -66,13 +87,18 @@ function finding(
   return { severity, code, message };
 }
 
-function buildPersistFields(): AgentExecutionRecordFieldDecision[] {
-  return PERSIST_FIELD_SPECS.map((spec) => ({
-    field: spec.field,
-    persist: true,
-    reason: spec.reason,
-    sensitivity: spec.sensitivity,
-  }));
+export { uniqueFieldDecisions } from "@/lib/agents/agentFieldDecisionUtils";
+
+export function normalizeExecutionRecordTarget(raw?: string): AgentExecutionRecordTarget {
+  if (
+    raw === "execution_record" ||
+    raw === "timeline_event_link" ||
+    raw === "audit_trail_link" ||
+    raw === "unknown"
+  ) {
+    return raw;
+  }
+  return raw ? "unknown" : "execution_record";
 }
 
 const TARGET_PLAN: Record<
@@ -80,7 +106,11 @@ const TARGET_PLAN: Record<
   {
     readonly decision: AgentExecutionRecordDesignDecision;
     readonly info?: { readonly code: string; readonly message: string };
-    readonly linkRequired: boolean;
+    readonly requiresAuditLink: boolean;
+    readonly requiresTimelineLink: boolean;
+    readonly requiresSchemaChange: boolean;
+    readonly requiresMigration: boolean;
+    readonly requiresRollbackPlan: boolean;
   }
 > = {
   execution_record: {
@@ -89,7 +119,11 @@ const TARGET_PLAN: Record<
       code: "ready_for_schema_design",
       message: "execution_record target is valid for schema design review",
     },
-    linkRequired: true,
+    requiresAuditLink: true,
+    requiresTimelineLink: true,
+    requiresSchemaChange: true,
+    requiresMigration: true,
+    requiresRollbackPlan: true,
   },
   timeline_event_link: {
     decision: "defer",
@@ -97,7 +131,11 @@ const TARGET_PLAN: Record<
       code: "defer_timeline_event_link",
       message: "timeline_event_link defers until Timeline storage structure is approved",
     },
-    linkRequired: false,
+    requiresAuditLink: false,
+    requiresTimelineLink: true,
+    requiresSchemaChange: true,
+    requiresMigration: true,
+    requiresRollbackPlan: true,
   },
   audit_trail_link: {
     decision: "defer",
@@ -105,19 +143,50 @@ const TARGET_PLAN: Record<
       code: "defer_audit_trail_link",
       message: "audit_trail_link defers until operator approval/audit design is linked",
     },
-    linkRequired: false,
+    requiresAuditLink: true,
+    requiresTimelineLink: false,
+    requiresSchemaChange: true,
+    requiresMigration: true,
+    requiresRollbackPlan: true,
+  },
+  unknown: {
+    decision: "blocked",
+    requiresAuditLink: false,
+    requiresTimelineLink: false,
+    requiresSchemaChange: false,
+    requiresMigration: false,
+    requiresRollbackPlan: false,
   },
 };
 
+function buildPersistFields(): AgentExecutionRecordFieldDecision[] {
+  return uniqueFieldDecisions(
+    PERSIST_FIELD_SPECS.map((spec) => ({
+      field: spec.field,
+      persist: true,
+      reason: spec.reason,
+      sensitivity: spec.sensitivity,
+    })),
+  );
+}
+
 /** Read-only execution record design — does not call DB, Timeline, or Audit storage APIs. */
 export function evaluateAgentExecutionRecordDesign(input?: {
-  readonly target?: AgentExecutionRecordTarget;
+  readonly target?: AgentExecutionRecordTarget | string;
 }): AgentExecutionRecordDesignReport {
   const findings: AgentExecutionRecordDesignFinding[] = [];
-  const target = input?.target ?? "execution_record";
-  const plan = TARGET_PLAN[target] ?? TARGET_PLAN.execution_record;
+  const target = normalizeExecutionRecordTarget(input?.target);
+  const plan = TARGET_PLAN[target];
 
-  if (plan.info) {
+  if (target === "unknown") {
+    findings.push(
+      finding(
+        "blocking",
+        "unknown_execution_record_target",
+        `unknown execution record target: ${String(input?.target ?? "")}`,
+      ),
+    );
+  } else if (plan.info) {
     findings.push(finding("info", plan.info.code, plan.info.message));
   }
 
@@ -125,13 +194,13 @@ export function evaluateAgentExecutionRecordDesign(input?: {
     mode: "read_only_agent_execution_record_design",
     decision: plan.decision,
     target,
-    requiresSchemaChange: true,
-    requiresMigration: true,
-    requiresRollbackPlan: true,
-    requiresAuditLink: plan.linkRequired,
-    requiresTimelineLink: plan.linkRequired,
+    requiresSchemaChange: plan.requiresSchemaChange,
+    requiresMigration: plan.requiresMigration,
+    requiresRollbackPlan: plan.requiresRollbackPlan,
+    requiresAuditLink: plan.requiresAuditLink,
+    requiresTimelineLink: plan.requiresTimelineLink,
     persistFields: buildPersistFields(),
-    excludedFields: [...POLICY_EXCLUDED_FIELDS],
+    excludedFields: uniqueFieldDecisions(POLICY_EXCLUDED_FIELDS),
     findings,
   };
 }

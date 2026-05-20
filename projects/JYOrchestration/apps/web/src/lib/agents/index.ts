@@ -310,7 +310,23 @@ export type {
   AgentExecutionRecordTarget,
 } from "@/lib/agents/agentExecutionRecordDesignTypes";
 
-export { evaluateAgentExecutionRecordDesign } from "@/lib/agents/evaluateAgentExecutionRecordDesign";
+export {
+  evaluateAgentExecutionRecordDesign,
+  normalizeExecutionRecordTarget,
+} from "@/lib/agents/evaluateAgentExecutionRecordDesign";
+
+export { uniqueFieldDecisions as uniqueExecutionRecordFieldDecisions } from "@/lib/agents/agentFieldDecisionUtils";
+
+export type {
+  OperatorApprovalAuditDesignDecision,
+  OperatorApprovalAuditDesignFinding,
+  OperatorApprovalAuditDesignReport,
+  OperatorApprovalAuditFieldDecision,
+  OperatorApprovalAuditFieldSensitivity,
+  OperatorApprovalAuditTarget,
+} from "@/lib/agents/operatorApprovalAuditDesignTypes";
+
+export { evaluateOperatorApprovalAuditDesign } from "@/lib/agents/evaluateOperatorApprovalAuditDesign";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

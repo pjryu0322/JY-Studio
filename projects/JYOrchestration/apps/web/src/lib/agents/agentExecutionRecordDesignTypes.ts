@@ -7,7 +7,8 @@ export type AgentExecutionRecordDesignDecision = "ready_for_schema_design" | "de
 export type AgentExecutionRecordTarget =
   | "execution_record"
   | "timeline_event_link"
-  | "audit_trail_link";
+  | "audit_trail_link"
+  | "unknown";
 
 export type AgentExecutionRecordFieldSensitivity = "safe" | "internal" | "sensitive" | "forbidden";
 
