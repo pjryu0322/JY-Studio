@@ -301,6 +301,17 @@ export type {
 
 export { evaluateConnectorGatewayRoutingExperiment } from "@/lib/agents/evaluateConnectorGatewayRoutingExperiment";
 
+export type {
+  AgentExecutionRecordDesignDecision,
+  AgentExecutionRecordDesignFinding,
+  AgentExecutionRecordDesignReport,
+  AgentExecutionRecordFieldDecision,
+  AgentExecutionRecordFieldSensitivity,
+  AgentExecutionRecordTarget,
+} from "@/lib/agents/agentExecutionRecordDesignTypes";
+
+export { evaluateAgentExecutionRecordDesign } from "@/lib/agents/evaluateAgentExecutionRecordDesign";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

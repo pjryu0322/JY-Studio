@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateConnectorGatewayRoutingExperiment } from "@/lib/agents/evaluateConnectorGatewayRoutingExperiment";
 import * as connectorFacade from "@/lib/agents/connectorGatewayFacade";
+import * as boundaryRegistry from "@/lib/agents/connectorPassThroughBoundaryRegistry";
 
 describe("multi-agent connector gateway routing experiment stage 2-13", () => {
   afterEach(() => {
@@ -96,5 +97,72 @@ describe("multi-agent connector gateway routing experiment stage 2-13", () => {
       boundaryIds: ["cursor.execution.before"],
     });
     expect(report.mode).toBe("read_only_routing_experiment_design");
+  });
+
+  it("report includes boundaryIds", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.boundaryIds).toEqual(["cursor.execution.before"]);
+  });
+
+  it("report includes connectorIds", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.connectorIds).toEqual(["cursor"]);
+  });
+
+  it("report includes boundaryKinds", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.boundaryKinds).toEqual(["cursor_execution"]);
+  });
+
+  it("removes duplicate boundaryIds and adds duplicate_boundary_id_removed warning", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["cursor.execution.before", "cursor.execution.before"],
+    });
+    expect(report.boundaryIds).toEqual(["cursor.execution.before"]);
+    expect(report.findings.some((f) => f.code === "duplicate_boundary_id_removed")).toBe(true);
+  });
+
+  it("unknown boundary report retains sanitized boundaryIds", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["unknown.boundary"],
+    });
+    expect(report.boundaryIds).toEqual(["unknown.boundary"]);
+    expect(report.connectorIds).toEqual([]);
+    expect(report.boundaryKinds).toEqual([]);
+  });
+
+  it("blocked report sets experiment and feature flags false", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({ boundaryIds: [] });
+    expect(report.experimentBranchRequired).toBe(false);
+    expect(report.featureFlagRequired).toBe(false);
+  });
+
+  it("blocked report keeps directCallFallback and rollbackPlan true", () => {
+    const report = evaluateConnectorGatewayRoutingExperiment({ boundaryIds: [] });
+    expect(report.directCallFallbackRequired).toBe(true);
+    expect(report.rollbackPlanRequired).toBe(true);
+  });
+
+  it("blocks disabled boundary via registry mock", () => {
+    vi.spyOn(boundaryRegistry, "getConnectorPassThroughBoundaryById").mockReturnValue({
+      id: "cursor.execution.before",
+      kind: "cursor_execution",
+      connectorId: "cursor",
+      operation: "cursor.execution.before",
+      description: "disabled mock",
+      enabled: false,
+      recordOnly: true,
+    });
+    const report = evaluateConnectorGatewayRoutingExperiment({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "disabled_boundary")).toBe(true);
   });
 });

@@ -559,13 +559,66 @@ experimentBranchRequired / featureFlagRequired / directCallFallback / rollbackPl
 featureFlagDefault → "off"
 ```
 
-### Stage 2-14 후보: Agent execution record 실제 저장 설계
+## Stage 2-13 소스 보완 결과
 
-Stage 2-14에서는 실제 Agent 실행이 아니라, 실행이 발생했을 때 어떤 record를 저장할지 설계한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| boundaryIds/connectorIds/boundaryKinds | 보완 | experiment report 추적성 |
+| duplicate boundary warning | 보왴 | `duplicate_boundary_id_removed` |
+| disabled boundary 방어 | 보완 | `disabled_boundary` blocking |
+| blocked report flag 정책 | 보완 | experiment/flag off, fallback/rollback on |
+| 실제 routing | 없음 | read-only experiment evaluator |
+
+### Stage 2-13 blocked report flag 정책
+
+```text
+empty/unknown/disabled → blocked
+experimentBranchRequired=false, featureFlagRequired=false, featureFlagDefault=off
+directCallFallbackRequired=true, rollbackPlanRequired=true, stage1RegressionRequired=false
+```
+
+## Stage 2-14 Agent Execution Record 저장 설계 결과
+
+| 항목 | 반영 방식 | 실제 저장 여부 | 비고 |
+|---|---|---|---|
+| Agent Execution Record 타입 | read-only record design report | 없음 | schema 설계 전 단계 |
+| Record Design evaluator | target 기반 판단 | 없음 | DB 호출 없음 |
+| execution_record | ready_for_schema_design | 없음 | schema/migration 설계 필요 |
+| timeline_event_link | defer | 없음 | Timeline 구조 영향 |
+| audit_trail_link | defer | 없음 | approval/audit 설계 연계 |
+| persistFields | summary 중심 | 없음 | raw input/output 제외 |
+| excludedFields | forbidden policy | 없음 | prompt/diff/token 제외 |
+
+구현: `agentExecutionRecordDesignTypes.ts`, `evaluateAgentExecutionRecordDesign.ts`
+
+### Stage 2-14 원칙
+
+```text
+- 실제 Agent 실행 record 저장을 적용하지 않는다.
+- DB/Prisma schema를 변경하지 않는다.
+- migration을 만들지 않는다.
+- raw prompt/input/output/code diff/file content/token은 저장 후보에서도 제외한다.
+- 실행 결과는 summary 중심으로만 설계한다.
+```
+
+### Stage 2-14 Decision 규칙 요약
+
+```text
+execution_record → ready_for_schema_design, requiresAuditLink=true, requiresTimelineLink=true
+timeline_event_link → defer
+audit_trail_link → defer
+requiresSchemaChange / requiresMigration / requiresRollbackPlan → true (판단값만)
+persistFields ← summary/status/timing/link ids
+excludedFields ← rawPrompt/fullInput/fullOutput/codeDiff/token/apiKey 등 forbidden
+```
+
+### Stage 2-15 후보: Operator approval / override / audit 설계
+
+Stage 2-15에서는 실제 승인 엔진이 아니라, operator approval/override/audit record 설계를 검토한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| AgentExecutionRecord | agent/capability/input/output summary | raw prompt 제외 |
-| ExecutionResultSummary | status/duration/error summary | 민감정보 제외 |
-| Timeline link | eventId/runId 연결 | schema 영향 |
-| Audit trail | operator approval/override 연결 | 저장 위치 결정 |
+| OperatorApprovalRecord | 실행/차단/저장 전 승인 기록 | 권한 모델 필요 |
+| OverrideRecord | Governance/Connector 차단 후보 우회 기록 | 감사 필수 |
+| AuditEvent | 누가/언제/왜 승인했는지 | 민감정보 제외 |
+| RollbackApproval | 실행 전환 롤백 승인 | 운영 정책 필요 |

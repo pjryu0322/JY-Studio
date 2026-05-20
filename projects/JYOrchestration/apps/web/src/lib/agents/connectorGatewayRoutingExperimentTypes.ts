@@ -23,6 +23,9 @@ export interface ConnectorGatewayRoutingExperimentReport {
   readonly mode: "read_only_routing_experiment_design";
   readonly decision: ConnectorGatewayRoutingExperimentDecision;
   readonly scope: ConnectorGatewayRoutingExperimentScope;
+  readonly boundaryIds: readonly string[];
+  readonly connectorIds: readonly string[];
+  readonly boundaryKinds: readonly string[];
   readonly experimentBranchRequired: boolean;
   readonly featureFlagRequired: boolean;
   readonly featureFlagDefault: "off";

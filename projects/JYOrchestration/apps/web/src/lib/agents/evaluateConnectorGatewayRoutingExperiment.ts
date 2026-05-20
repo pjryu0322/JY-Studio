@@ -3,7 +3,10 @@
  */
 
 import { getConnectorPassThroughBoundaryById } from "@/lib/agents/connectorPassThroughBoundaryRegistry";
-import type { ConnectorPassThroughBoundaryKind } from "@/lib/agents/connectorPassThroughBoundaryTypes";
+import type {
+  ConnectorPassThroughBoundary,
+  ConnectorPassThroughBoundaryKind,
+} from "@/lib/agents/connectorPassThroughBoundaryTypes";
 import type {
   ConnectorGatewayRoutingExperimentDecision,
   ConnectorGatewayRoutingExperimentFinding,
@@ -24,6 +27,38 @@ function finding(
   message: string,
 ): ConnectorGatewayRoutingExperimentFinding {
   return { severity, code, message };
+}
+
+function normalizeBoundaryIds(
+  boundaryIds: readonly string[],
+  findings: ConnectorGatewayRoutingExperimentFinding[],
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of boundaryIds) {
+    const id = String(raw ?? "").trim();
+    if (!id) continue;
+    if (seen.has(id)) {
+      findings.push(
+        finding("warning", "duplicate_boundary_id_removed", `duplicate boundary removed: ${id}`),
+      );
+      continue;
+    }
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function collectBoundaryTrace(boundaries: readonly ConnectorPassThroughBoundary[]): {
+  readonly boundaryIds: readonly string[];
+  readonly connectorIds: readonly string[];
+  readonly boundaryKinds: readonly string[];
+} {
+  const boundaryIds = boundaries.map((b) => b.id);
+  const connectorIds = [...new Set(boundaries.map((b) => b.connectorId))];
+  const boundaryKinds = [...new Set(boundaries.map((b) => b.kind))];
+  return { boundaryIds, connectorIds, boundaryKinds };
 }
 
 function isCursorBoundaryKind(kind: ConnectorPassThroughBoundaryKind): boolean {
@@ -74,24 +109,36 @@ function resolveDecision(scope: ConnectorGatewayRoutingExperimentScope) {
   return SCOPE_DECISION[scope] ?? "blocked";
 }
 
-function blockedReport(findings: ConnectorGatewayRoutingExperimentFinding[]): ConnectorGatewayRoutingExperimentReport {
+/** Blocked reports keep direct fallback + rollback; experiment/flag flags stay off. */
+function blockedReport(input: {
+  readonly findings: ConnectorGatewayRoutingExperimentFinding[];
+  readonly boundaryIds?: readonly string[];
+  readonly connectorIds?: readonly string[];
+  readonly boundaryKinds?: readonly string[];
+}): ConnectorGatewayRoutingExperimentReport {
   return {
     mode: "read_only_routing_experiment_design",
     decision: "blocked",
     scope: "none",
+    boundaryIds: input.boundaryIds ?? [],
+    connectorIds: input.connectorIds ?? [],
+    boundaryKinds: input.boundaryKinds ?? [],
     experimentBranchRequired: false,
     featureFlagRequired: false,
     featureFlagDefault: "off",
     directCallFallbackRequired: true,
     stage1RegressionRequired: false,
     rollbackPlanRequired: true,
-    findings,
+    findings: input.findings,
   };
 }
 
 function activeExperimentReport(input: {
   readonly decision: ConnectorGatewayRoutingExperimentDecision;
   readonly scope: ConnectorGatewayRoutingExperimentScope;
+  readonly boundaryIds: readonly string[];
+  readonly connectorIds: readonly string[];
+  readonly boundaryKinds: readonly string[];
   readonly stage1RegressionRequired: boolean;
   readonly findings: ConnectorGatewayRoutingExperimentFinding[];
 }): ConnectorGatewayRoutingExperimentReport {
@@ -99,6 +146,9 @@ function activeExperimentReport(input: {
     mode: "read_only_routing_experiment_design",
     decision: input.decision,
     scope: input.scope,
+    boundaryIds: input.boundaryIds,
+    connectorIds: input.connectorIds,
+    boundaryKinds: input.boundaryKinds,
     experimentBranchRequired: true,
     featureFlagRequired: true,
     featureFlagDefault: "off",
@@ -114,15 +164,14 @@ export function evaluateConnectorGatewayRoutingExperiment(input: {
   readonly boundaryIds: readonly string[];
 }): ConnectorGatewayRoutingExperimentReport {
   const findings: ConnectorGatewayRoutingExperimentFinding[] = [];
-  const boundaryIds = input.boundaryIds
-    .map((id) => String(id ?? "").trim())
-    .filter((id) => id.length > 0);
+  const boundaryIds = normalizeBoundaryIds(input.boundaryIds, findings);
 
   if (boundaryIds.length === 0) {
     findings.push(finding("blocking", "empty_boundary_ids", "boundaryIds must not be empty"));
-    return blockedReport(findings);
+    return blockedReport({ findings, boundaryIds: [] });
   }
 
+  const resolvedBoundaries: ConnectorPassThroughBoundary[] = [];
   let hasCursor = false;
   let hasGithub = false;
 
@@ -130,11 +179,19 @@ export function evaluateConnectorGatewayRoutingExperiment(input: {
     const boundary = getConnectorPassThroughBoundaryById(boundaryId);
     if (!boundary) {
       findings.push(finding("blocking", "unknown_boundary", `unknown boundary: ${boundaryId}`));
-      return blockedReport(findings);
+      return blockedReport({ findings, boundaryIds });
     }
+    if (!boundary.enabled) {
+      findings.push(finding("blocking", "disabled_boundary", `disabled boundary: ${boundaryId}`));
+      const trace = collectBoundaryTrace([...resolvedBoundaries, boundary]);
+      return blockedReport({ findings, ...trace });
+    }
+    resolvedBoundaries.push(boundary);
     if (isCursorBoundaryKind(boundary.kind)) hasCursor = true;
     if (isGithubBoundaryKind(boundary.kind)) hasGithub = true;
   }
+
+  const trace = collectBoundaryTrace(resolvedBoundaries);
 
   const scope = resolveScope(hasCursor, hasGithub);
   const decision = resolveDecision(scope);
@@ -150,5 +207,6 @@ export function evaluateConnectorGatewayRoutingExperiment(input: {
     scope,
     stage1RegressionRequired,
     findings,
+    ...trace,
   });
 }
