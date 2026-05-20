@@ -37,9 +37,22 @@ export type FeatureDetailLastMutationV1 = Readonly<{
   readonly featureId?: string;
   readonly linkedStepId?: string;
   readonly featureStatus?: FeatureDetailSlotStatus;
+  readonly previousStatus?: FeatureDetailSlotStatus;
+  readonly nextStatus?: FeatureDetailSlotStatus;
   readonly featureAction: FeatureDetailMutationAction;
   readonly mutationSource: string;
   readonly at: string;
+}>;
+
+export type FeatureDetailSlotEditDraft = Readonly<{
+  readonly title: string;
+  readonly description: string;
+  readonly inputData: string;
+  readonly processRules: string;
+  readonly outputData: string;
+  readonly exceptionCases: string;
+  readonly relatedActors: string;
+  readonly linkedStepId: string;
 }>;
 
 export type FeatureDetailSlotsV1 = Readonly<{
@@ -121,10 +134,273 @@ export function parseFeatureDetailSlotsV1(raw: unknown): FeatureDetailSlotsV1 | 
         ...(typeof m.featureStatus === "string" && STATUS_SET.has(m.featureStatus as FeatureDetailSlotStatus)
           ? { featureStatus: m.featureStatus as FeatureDetailSlotStatus }
           : {}),
+        ...(typeof m.previousStatus === "string" && STATUS_SET.has(m.previousStatus as FeatureDetailSlotStatus)
+          ? { previousStatus: m.previousStatus as FeatureDetailSlotStatus }
+          : {}),
+        ...(typeof m.nextStatus === "string" && STATUS_SET.has(m.nextStatus as FeatureDetailSlotStatus)
+          ? { nextStatus: m.nextStatus as FeatureDetailSlotStatus }
+          : {}),
       };
     }
   }
   return { version: 1, slots, updatedAt, ...(lastMutation ? { lastMutation } : {}) };
+}
+
+function splitMultilineField(raw: string, max = 24): readonly string[] | undefined {
+  const out = String(raw ?? "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, max);
+  return out.length ? out : undefined;
+}
+
+function joinMultilineField(items: readonly string[] | undefined): string {
+  return (items ?? []).join("\n");
+}
+
+function splitRelatedActorsField(raw: string, max = 16): readonly string[] | undefined {
+  const out = String(raw ?? "")
+    .split(/[,，\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, max);
+  return out.length ? [...new Set(out)] : undefined;
+}
+
+function joinRelatedActorsField(items: readonly string[] | undefined): string {
+  return (items ?? []).join(", ");
+}
+
+export function countFeatureDetailStructuredSections(
+  slot: Pick<
+    FeatureDetailSlot,
+    "inputData" | "processRules" | "outputData" | "exceptionCases"
+  >,
+): number {
+  let n = 0;
+  if (slot.inputData?.length) n += 1;
+  if (slot.processRules?.length) n += 1;
+  if (slot.outputData?.length) n += 1;
+  if (slot.exceptionCases?.length) n += 1;
+  return n;
+}
+
+export function canConfirmFeatureDetailSlot(
+  slot: Pick<
+    FeatureDetailSlot,
+    "inputData" | "processRules" | "outputData" | "exceptionCases"
+  >,
+): boolean {
+  return countFeatureDetailStructuredSections(slot) >= 2;
+}
+
+export function featureDetailSlotToEditDraft(slot: FeatureDetailSlot): FeatureDetailSlotEditDraft {
+  return {
+    title: slot.title,
+    description: String(slot.description ?? ""),
+    inputData: joinMultilineField(slot.inputData),
+    processRules: joinMultilineField(slot.processRules),
+    outputData: joinMultilineField(slot.outputData),
+    exceptionCases: joinMultilineField(slot.exceptionCases),
+    relatedActors: joinRelatedActorsField(slot.relatedActors),
+    linkedStepId: slot.linkedStepId,
+  };
+}
+
+export function applyFeatureDetailEditDraft(
+  slot: FeatureDetailSlot,
+  draft: FeatureDetailSlotEditDraft,
+  nowIso: string,
+): FeatureDetailSlot {
+  const title = String(draft.title ?? "").trim().slice(0, 120) || slot.title;
+  const description = String(draft.description ?? "").trim().slice(0, 4000) || undefined;
+  const linkedStepId = String(draft.linkedStepId ?? "").trim() || slot.linkedStepId;
+  return {
+    ...slot,
+    title,
+    linkedStepId,
+    ...(description ? { description } : {}),
+    inputData: splitMultilineField(draft.inputData),
+    processRules: splitMultilineField(draft.processRules),
+    outputData: splitMultilineField(draft.outputData),
+    exceptionCases: splitMultilineField(draft.exceptionCases),
+    relatedActors: splitRelatedActorsField(draft.relatedActors),
+    updatedAt: nowIso,
+  };
+}
+
+function mapFeatureDetailSlot(
+  artifact: FeatureDetailSlotsV1,
+  featureId: string,
+  map: (slot: FeatureDetailSlot) => FeatureDetailSlot,
+): { readonly artifact: FeatureDetailSlotsV1; readonly previous: FeatureDetailSlot | null; readonly next: FeatureDetailSlot | null } {
+  let previous: FeatureDetailSlot | null = null;
+  let next: FeatureDetailSlot | null = null;
+  const slots = artifact.slots.map((slot) => {
+    if (slot.id !== featureId) return slot;
+    previous = slot;
+    next = map(slot);
+    return next;
+  });
+  if (!previous || !next) {
+    return { artifact, previous: null, next: null };
+  }
+  const at = next.updatedAt;
+  return {
+    artifact: { ...artifact, slots, updatedAt: at },
+    previous,
+    next,
+  };
+}
+
+function commitFeatureDetailSlotMutation(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly previous: FeatureDetailSlot | null;
+  readonly next: FeatureDetailSlot | null;
+  readonly featureAction: FeatureDetailMutationAction;
+  readonly mutationSource: string;
+  readonly at: string;
+}): FeatureDetailSlotsV1 {
+  const { artifact, previous, next, featureAction, mutationSource, at } = input;
+  if (!previous || !next) return artifact;
+  return recordFeatureDetailMutation(artifact, {
+    featureId: next.id,
+    linkedStepId: next.linkedStepId,
+    featureStatus: next.status,
+    previousStatus: previous.status,
+    nextStatus: next.status,
+    featureAction,
+    mutationSource,
+    at,
+  });
+}
+
+export function updateFeatureDetailSlot(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly featureId: string;
+  readonly draft: FeatureDetailSlotEditDraft;
+  readonly mutationSource?: string;
+  readonly nowIso?: string;
+}): FeatureDetailSlotsV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const { artifact, previous, next } = mapFeatureDetailSlot(input.artifact, input.featureId, (slot) => {
+    const edited = applyFeatureDetailEditDraft(slot, input.draft, now);
+    const sections = countFeatureDetailStructuredSections(edited);
+    const status: FeatureDetailSlotStatus =
+      slot.status === "obsolete" ? "obsolete"
+      : sections >= 2 ? "confirmed"
+      : sections >= 1 ? "partial"
+      : slot.status === "confirmed" ? "partial"
+      : "candidate";
+    return { ...edited, status };
+  });
+  return commitFeatureDetailSlotMutation({
+    artifact,
+    previous,
+    next,
+    featureAction: "partial_edit",
+    mutationSource: input.mutationSource ?? "updateFeatureDetailSlot",
+    at: now,
+  });
+}
+
+export function markFeatureDetailSlotPartial(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly featureId: string;
+  readonly draft: FeatureDetailSlotEditDraft;
+  readonly mutationSource?: string;
+  readonly nowIso?: string;
+}): FeatureDetailSlotsV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const { artifact, previous, next } = mapFeatureDetailSlot(input.artifact, input.featureId, (slot) => {
+    const edited = applyFeatureDetailEditDraft(slot, input.draft, now);
+    return { ...edited, status: "partial" as const };
+  });
+  return commitFeatureDetailSlotMutation({
+    artifact,
+    previous,
+    next,
+    featureAction: "partial_edit",
+    mutationSource: input.mutationSource ?? "markFeatureDetailSlotPartial",
+    at: now,
+  });
+}
+
+export function confirmFeatureDetailSlot(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly featureId: string;
+  readonly draft: FeatureDetailSlotEditDraft;
+  readonly mutationSource?: string;
+  readonly nowIso?: string;
+}): { readonly artifact: FeatureDetailSlotsV1; readonly error?: string } {
+  const now = input.nowIso ?? new Date().toISOString();
+  const edited = applyFeatureDetailEditDraft(
+    input.artifact.slots.find((s) => s.id === input.featureId) ?? {
+      id: input.featureId,
+      linkedStepId: input.draft.linkedStepId,
+      title: input.draft.title,
+      status: "candidate",
+      createdAt: now,
+      updatedAt: now,
+    },
+    input.draft,
+    now,
+  );
+  if (!canConfirmFeatureDetailSlot(edited)) {
+    return {
+      artifact: input.artifact,
+      error: "입력·처리·출력·예외 중 2개 이상을 작성해야 확정할 수 있습니다.",
+    };
+  }
+  const { artifact, previous, next } = mapFeatureDetailSlot(input.artifact, input.featureId, () => ({
+    ...edited,
+    status: "confirmed" as const,
+  }));
+  if (!previous || !next) return { artifact: input.artifact, error: "기능을 찾을 수 없습니다." };
+  return {
+    artifact: commitFeatureDetailSlotMutation({
+      artifact,
+      previous,
+      next,
+      featureAction: "confirm",
+      mutationSource: input.mutationSource ?? "confirmFeatureDetailSlot",
+      at: now,
+    }),
+  };
+}
+
+export function obsoleteFeatureDetailSlot(input: {
+  readonly artifact: FeatureDetailSlotsV1;
+  readonly featureId: string;
+  readonly mutationSource?: string;
+  readonly nowIso?: string;
+}): FeatureDetailSlotsV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const { artifact, previous, next } = mapFeatureDetailSlot(input.artifact, input.featureId, (slot) => ({
+    ...slot,
+    status: "obsolete" as const,
+    updatedAt: now,
+  }));
+  return commitFeatureDetailSlotMutation({
+    artifact,
+    previous,
+    next,
+    featureAction: "obsolete",
+    mutationSource: input.mutationSource ?? "obsoleteFeatureDetailSlot",
+    at: now,
+  });
+}
+
+/** linkedStepId 변경·obsolete 시 feature projection만 재계산 (flow slot invalidation 없음). */
+export function shouldRecomputeFeatureDetailProjection(
+  previous: FeatureDetailSlot | null,
+  next: FeatureDetailSlot | null,
+): boolean {
+  if (!previous || !next) return false;
+  if (previous.linkedStepId !== next.linkedStepId) return true;
+  if (previous.status !== "obsolete" && next.status === "obsolete") return true;
+  return false;
 }
 
 export function deriveFeatureTitleFromStepTitle(stepTitle: string): string {
@@ -197,8 +473,7 @@ export function projectFeatureDetailMetrics(
   const featureCoverage = featureCount > 0 ? confirmedFeatureCount / featureCount : 0;
   const hasCandidateFeature = candidateFeatureCount + partialFeatureCount + confirmedFeatureCount > 0;
   const hasConfirmedFeature = confirmedFeatureCount > 0;
-  const canEnterScreenDefine =
-    hasConfirmedFeature && featureCoverage >= FEATURE_DETAIL_COVERAGE_THRESHOLD;
+  const canEnterScreenDefine = hasConfirmedFeature;
   return {
     featureCount,
     confirmedFeatureCount,
@@ -252,8 +527,6 @@ export function buildFeatureDetailBootstrapMessage(
 }
 
 export function buildScreenDefineBlockedMessage(metrics: FeatureDetailProjectionMetrics): string {
-  const pct = Math.round(metrics.featureCoverage * 100);
-  const need = Math.round(FEATURE_DETAIL_COVERAGE_THRESHOLD * 100);
   if (!metrics.hasConfirmedFeature) {
     return [
       "아직 **확정된 기능**이 없습니다.",
@@ -262,10 +535,17 @@ export function buildScreenDefineBlockedMessage(metrics: FeatureDetailProjection
       "「기능 수정」으로 입력·처리·출력·예외를 정리한 뒤 확정할 수 있습니다.",
     ].join("\n");
   }
+  return "";
+}
+
+export function buildScreenDefineLowCoverageWarning(metrics: FeatureDetailProjectionMetrics): string | null {
+  if (!metrics.hasConfirmedFeature) return null;
+  const pct = Math.round(metrics.featureCoverage * 100);
+  const need = Math.round(FEATURE_DETAIL_COVERAGE_THRESHOLD * 100);
+  if (pct >= need) return null;
   return [
-    `기능 확정 진행률이 **${pct}%**입니다 (화면 정의 진입 권장: **${need}%** 이상).`,
-    "",
-    "추가 기능을 확정한 뒤 「화면 정의」를 다시 선택해 주세요.",
+    `전체 기능 확정률이 **${pct}%**로 낮습니다.`,
+    "일부 기능 기준으로 화면 정의를 시작합니다. 나머지 기능은 이후에 확정해 주세요.",
   ].join("\n");
 }
 
@@ -279,15 +559,6 @@ export function filterFeatureDetailQuickActions(input: {
   return input.actions.filter((action) => {
     if (!input.metrics.hasCandidateFeature && screenApiIds.has(action.id)) return false;
     if (!input.metrics.hasConfirmedFeature && screenApiIds.has(action.id)) return false;
-    if (action.id === "DEFINE_SCREEN" && !input.metrics.canEnterScreenDefine) return false;
-    if (
-      action.id === "DEFINE_API" &&
-      input.stage === "FEATURE_DETAIL" &&
-      input.activePhase !== "screen_define" &&
-      !input.metrics.canEnterScreenDefine
-    ) {
-      return false;
-    }
     return true;
   });
 }

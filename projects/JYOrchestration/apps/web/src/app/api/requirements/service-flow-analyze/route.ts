@@ -101,12 +101,11 @@ function buildAnalyzeSuccessResponse(input: {
   if (
     input.proposalDecision === "FLOW_APPROVE" &&
     shouldBlockServiceFlowProposalReplay({
-      flow: input.currentFlow,
+      flow: updatedFlow,
       proposalDecision: "FLOW_APPROVE",
       candidateAssistantMessage: assistantMessage,
     })
   ) {
-    updatedFlow = input.currentFlow ?? updatedFlow;
     assistantMessage = buildServiceFlowApprovedTransitionMessage({ flow: updatedFlow });
     nextQuestion = null;
   } else if (

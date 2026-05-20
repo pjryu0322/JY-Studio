@@ -15,6 +15,7 @@ import {
   projectFeatureDetailMetrics,
   type FeatureDetailProjectionMetrics,
 } from "@/lib/requirements/featureDetailSlots";
+import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
   quickActionsForConversationState,
   quickActionsToLabels,
@@ -93,15 +94,20 @@ export function buildQuickReplyProjection(input: {
   const featureDetail = projectFeatureDetailMetrics(input.state.featureDetailSlotsV1);
   const activePhase = input.state.requirementsOrchestrationStageV1?.activePhase ?? null;
   const stageFiltered = filterQuickActionsForStage(input.authoritativeStage, raw);
+  const postApproveBlocked = new Set<QuickActionId>(["APPROVE_FLOW", "REVIEW_FLOW", "APPLY_PROPOSAL"]);
+  const afterApproveFilter =
+    conv === "APPROVED" || conv === "FEATURE_DETAIL" ?
+      stageFiltered.filter((a) => !postApproveBlocked.has(a.id))
+    : stageFiltered;
   const quickActions =
     conv === "FEATURE_DETAIL" ?
       filterFeatureDetailQuickActions({
-        actions: stageFiltered,
+        actions: afterApproveFilter,
         metrics: featureDetail,
         stage: input.authoritativeStage,
         activePhase,
       })
-    : stageFiltered;
+    : afterApproveFilter;
   return {
     quickActions,
     quickReplies: quickActionsToLabels(quickActions),

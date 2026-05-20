@@ -32,6 +32,7 @@ import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featu
 import {
   buildFeatureDetailBootstrapMessage,
   buildScreenDefineBlockedMessage,
+  buildScreenDefineLowCoverageWarning,
   projectFeatureDetailMetrics,
   recordFeatureDetailMutation,
   seedFeatureDetailSlotsFromServiceFlow,
@@ -219,6 +220,7 @@ function buildTransitionFastPathResult(input: {
   readonly conversationStateAfter: ServiceFlowConversationState;
   readonly transitionMeta: ServiceFlowStageTransitionMeta;
   readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
+  readonly readiness?: ReturnType<typeof computeReadiness>;
 }): ServiceFlowStageTransitionFastPathResult {
   return {
     assistantMessage: input.assistantMessage,
@@ -226,7 +228,7 @@ function buildTransitionFastPathResult(input: {
     nextQuestion: null,
     quickReplies: input.quickReplies,
     intent: "unclear",
-    readiness: computeReadiness(input.updatedFlow),
+    readiness: input.readiness ?? computeReadiness(input.updatedFlow),
     visibleMode: "state_transition",
     routingDecision: input.routingDecision,
     timelineAction: input.timelineAction,
@@ -311,6 +313,8 @@ export function handleQuickActionTransition(input: {
       }
     }
 
+    const readiness = { ...computeReadiness(updatedFlow), readyForNext: false };
+
     return buildTransitionFastPathResult({
       assistantMessage,
       updatedFlow,
@@ -318,6 +322,7 @@ export function handleQuickActionTransition(input: {
       routingDecision: "flow_approve_transition",
       timelineAction: "flowApprove",
       proposalDecision: "FLOW_APPROVE",
+      readiness,
       conversationStateBefore: stateBefore,
       conversationStateAfter: "APPROVED",
       transitionMeta: {
@@ -418,7 +423,7 @@ export function handleQuickActionTransition(input: {
 
     const detailArtifact = input.existingFeatureDetail;
     const metrics = projectFeatureDetailMetrics(detailArtifact);
-    if (!metrics.canEnterScreenDefine) {
+    if (!metrics.hasConfirmedFeature) {
       return buildTransitionFastPathResult({
         assistantMessage: buildScreenDefineBlockedMessage(metrics),
         updatedFlow: { ...baseFlow, updatedAt: nowIso },
@@ -439,7 +444,13 @@ export function handleQuickActionTransition(input: {
       });
     }
 
-    const assistantMessage = buildScreenDefineBootstrapMessage(baseFlow);
+    const coverageWarning = buildScreenDefineLowCoverageWarning(metrics);
+    const assistantMessage = [
+      buildScreenDefineBootstrapMessage(baseFlow),
+      coverageWarning ? `\n\n${coverageWarning}` : "",
+    ]
+      .join("")
+      .trim();
     const featureArtifact = patchFeaturePlanningForScreenDefine(input.existingFeaturePlanning, nowIso);
     const nextDetail =
       detailArtifact ?

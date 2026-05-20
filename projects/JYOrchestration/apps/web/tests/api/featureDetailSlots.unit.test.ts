@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFeatureDetailBootstrapMessage,
+  confirmFeatureDetailSlot,
   deriveFeatureTitleFromStepTitle,
+  featureDetailSlotToEditDraft,
   filterFeatureDetailQuickActions,
+  markFeatureDetailSlotPartial,
   projectFeatureDetailMetrics,
   seedFeatureDetailSlotsFromServiceFlow,
+  shouldRecomputeFeatureDetailProjection,
 } from "@/lib/requirements/featureDetailSlots";
 import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { buildQuickReplyProjection } from "@/lib/requirements/requirementsOrchestrationProjection";
@@ -62,7 +66,80 @@ describe("featureDetailSlots", () => {
     expect(metrics.featureCoverage).toBeGreaterThan(0);
   });
 
-  it("D: gates DEFINE_SCREEN / DEFINE_API until confirmed + coverage", () => {
+  it("A: candidate edit → partial 저장", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const artifact = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const slot = artifact.slots[0]!;
+    const draft = {
+      ...featureDetailSlotToEditDraft(slot),
+      inputData: "회의 녹취 파일",
+    };
+    const next = markFeatureDetailSlotPartial({
+      artifact,
+      featureId: slot.id,
+      draft,
+      mutationSource: "test",
+      nowIso: now,
+    });
+    const updated = next.slots.find((s) => s.id === slot.id)!;
+    expect(updated.status).toBe("partial");
+    expect(updated.inputData).toEqual(["회의 녹취 파일"]);
+    expect(next.lastMutation?.featureAction).toBe("partial_edit");
+    expect(next.lastMutation?.previousStatus).toBe("candidate");
+    expect(next.lastMutation?.nextStatus).toBe("partial");
+  });
+
+  it("B: candidate edit → confirmed 승격", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const artifact = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const slot = artifact.slots[0]!;
+    const draft = {
+      ...featureDetailSlotToEditDraft(slot),
+      inputData: "입력 A",
+      processRules: "처리 B",
+    };
+    const { artifact: next, error } = confirmFeatureDetailSlot({
+      artifact,
+      featureId: slot.id,
+      draft,
+      mutationSource: "test",
+      nowIso: now,
+    });
+    expect(error).toBeUndefined();
+    expect(next.slots.find((s) => s.id === slot.id)?.status).toBe("confirmed");
+    expect(next.lastMutation?.featureAction).toBe("confirm");
+    expect(next.lastMutation?.nextStatus).toBe("confirmed");
+  });
+
+  it("C: confirmed feature 1개 이상 → 화면 정의 버튼 노출", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const candidateOnly = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const oneConfirmed = {
+      ...candidateOnly,
+      slots: candidateOnly.slots.map((s, i) =>
+        i === 0 ?
+          {
+            ...s,
+            status: "confirmed" as const,
+            inputData: ["a"],
+            processRules: ["b"],
+            updatedAt: now,
+          }
+        : s,
+      ),
+    };
+    const raw = quickActionsForConversationState("FEATURE_DETAIL");
+    const open = filterFeatureDetailQuickActions({
+      actions: raw,
+      metrics: projectFeatureDetailMetrics(oneConfirmed),
+      stage: "FEATURE_DETAIL",
+      activePhase: "feature_detail_bootstrap",
+    });
+    expect(open.map((a) => a.id)).toContain("DEFINE_SCREEN");
+    expect(open.map((a) => a.id)).toContain("DEFINE_API");
+  });
+
+  it("D: gates DEFINE_SCREEN / DEFINE_API until at least one confirmed", () => {
     const raw = quickActionsForConversationState("FEATURE_DETAIL");
     const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
     const candidateOnly = seedFeatureDetailSlotsFromServiceFlow(flow, now);
@@ -76,13 +153,17 @@ describe("featureDetailSlots", () => {
     expect(gated.map((a) => a.id)).not.toContain("DEFINE_API");
     expect(gated.map((a) => a.id)).toContain("EDIT_FEATURES");
 
-    const allConfirmed = {
+    const oneConfirmed = {
       ...candidateOnly,
-      slots: candidateOnly.slots.map((s) => ({ ...s, status: "confirmed" as const, updatedAt: now })),
+      slots: candidateOnly.slots.map((s, i) =>
+        i === 0 ?
+          { ...s, status: "confirmed" as const, inputData: ["x"], processRules: ["y"], updatedAt: now }
+        : s,
+      ),
     };
     const open = filterFeatureDetailQuickActions({
       actions: raw,
-      metrics: projectFeatureDetailMetrics(allConfirmed),
+      metrics: projectFeatureDetailMetrics(oneConfirmed),
       stage: "FEATURE_DETAIL",
       activePhase: "feature_detail_bootstrap",
     });
@@ -90,7 +171,52 @@ describe("featureDetailSlots", () => {
     expect(open.map((a) => a.id)).toContain("DEFINE_API");
   });
 
-  it("E: projection rebuild uses featureDetailSlotsV1 for quick actions", () => {
+  it("E: confirmed feature 0개 → 화면/API 버튼 숨김", () => {
+    const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
+    const candidateOnly = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const raw = quickActionsForConversationState("FEATURE_DETAIL");
+    const gated = filterFeatureDetailQuickActions({
+      actions: raw,
+      metrics: projectFeatureDetailMetrics(candidateOnly),
+      stage: "FEATURE_DETAIL",
+    });
+    expect(gated.map((a) => a.id)).not.toContain("DEFINE_SCREEN");
+    expect(gated.map((a) => a.id)).not.toContain("DEFINE_API");
+  });
+
+  it("F: feature edit 시 flow invalidation 미발생 + timeline metadata", () => {
+    const defs = createDefaultSlotDefinitions();
+    const base = initialOrchestrationStateFromDefinitions(defs, now);
+    const flow = createSampleServiceFlow({
+      conversationState: "FEATURE_DETAIL",
+      flowApproved: true,
+    });
+    const artifact = seedFeatureDetailSlotsFromServiceFlow(flow, now);
+    const slot = artifact.slots[0]!;
+    const fp = buildServiceFlowStructureFingerprint(flow);
+    const invalidation = applyOrchestrationInvalidationsAfterFlowChange({
+      orchestration: base,
+      definitions: defs,
+      previousFingerprint: fp,
+      currentFingerprint: fp,
+      flowApproved: true,
+    });
+    expect(invalidation).toBeNull();
+
+    const next = markFeatureDetailSlotPartial({
+      artifact,
+      featureId: slot.id,
+      draft: { ...featureDetailSlotToEditDraft(slot), inputData: "only-input" },
+      mutationSource: "unit_test",
+      nowIso: now,
+    });
+    expect(next.lastMutation?.featureId).toBe(slot.id);
+    expect(next.lastMutation?.mutationSource).toBe("unit_test");
+    const updated = next.slots.find((s) => s.id === slot.id)!;
+    expect(shouldRecomputeFeatureDetailProjection(slot, updated)).toBe(false);
+  });
+
+  it("projection rebuild uses featureDetailSlotsV1 for quick actions", () => {
     const flow = createSampleServiceFlow({ conversationState: "FEATURE_DETAIL" });
     const state = {
       ...createMockOrchestrationState({ stage: "FEATURE_DETAIL", flow }),
@@ -104,7 +230,7 @@ describe("featureDetailSlots", () => {
     expect(projection.quickActions.map((a) => a.id)).not.toContain("DEFINE_SCREEN");
   });
 
-  it("F: FEATURE_DETAIL transition alone does not trigger flow-structure invalidation", () => {
+  it("FEATURE_DETAIL transition alone does not trigger flow-structure invalidation", () => {
     const defs = createDefaultSlotDefinitions();
     const base = initialOrchestrationStateFromDefinitions(defs, now);
     const flow = createSampleServiceFlow({

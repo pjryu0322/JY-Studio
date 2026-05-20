@@ -1,8 +1,9 @@
 ﻿"use client";
 
-import { useEffect, useCallback, type CSSProperties } from "react";
+import { useEffect, useCallback, type CSSProperties, type MouseEvent } from "react";
 import {
   projectFeatureDetailMetrics,
+  type FeatureDetailProjectionMetrics,
   type FeatureDetailSlot,
   type FeatureDetailSlotsV1,
 } from "@/lib/requirements/featureDetailSlots";
@@ -41,11 +42,15 @@ function slotBody(slot: FeatureDetailSlot): string {
 export function FeatureDetailCanvasOverlay({
   open,
   artifact,
+  selectedSlotId,
   onClose,
+  onEditSlot,
 }: {
   readonly open: boolean;
   readonly artifact: FeatureDetailSlotsV1 | null;
+  readonly selectedSlotId?: string | null;
   readonly onClose: () => void;
+  readonly onEditSlot?: (slotId: string) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -56,7 +61,7 @@ export function FeatureDetailCanvasOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const stopPropagation = useCallback((e: React.MouseEvent) => {
+  const stopPropagation = useCallback((e: MouseEvent) => {
     e.stopPropagation();
   }, []);
 
@@ -74,29 +79,78 @@ export function FeatureDetailCanvasOverlay({
       onClick={onClose}
     >
       <div style={canvasOverlayPanelStyle} onClick={stopPropagation}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-          <div>
-            <h2 id="feature-detail-canvas-title" style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-              세부 기능 정의
-            </h2>
-            <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
-              후보 {metrics.featureCount} · 확정 {metrics.confirmedFeatureCount} · 진행률{" "}
-              {Math.round(metrics.featureCoverage * 100)}%
-            </p>
-          </div>
-          <button type="button" onClick={onClose} style={closeBtnStyle}>
-            닫기
-          </button>
-        </div>
-        {slots.map((slot) => (
-          <section key={slot.id} style={{ marginTop: 18 }}>
-            <h3 style={canvasSectionTitleStyle}>{slot.title}</h3>
-            <p style={bodyStyle}>{slotBody(slot)}</p>
-          </section>
-        ))}
+        <CanvasHeader metrics={metrics} onClose={onClose} />
+        {slots.map((slot) => {
+          const selected = selectedSlotId === slot.id;
+          return (
+            <section key={slot.id} style={{ marginTop: 18 }}>
+              <FeatureDetailSlotHeader slot={slot} selected={selected} onEditSlot={onEditSlot} />
+              <p style={bodyStyle}>{slotBody(slot)}</p>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function FeatureDetailSlotHeader({
+  slot,
+  selected,
+  onEditSlot,
+}: {
+  readonly slot: FeatureDetailSlot;
+  readonly selected: boolean;
+  readonly onEditSlot?: (slotId: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <h3 style={canvasSectionTitleStyle}>{slot.title}</h3>
+      {onEditSlot ? (
+        <button type="button" style={editBtnStyle(selected)} onClick={() => onEditSlot(slot.id)}>
+          편집
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function CanvasHeader({
+  metrics,
+  onClose,
+}: {
+  readonly metrics: FeatureDetailProjectionMetrics;
+  readonly onClose: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      <div>
+        <h2 id="feature-detail-canvas-title" style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
+          세부 기능 정의
+        </h2>
+        <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
+          후보 {metrics.candidateFeatureCount} · 부분 {metrics.partialFeatureCount} · 확정{" "}
+          {metrics.confirmedFeatureCount}/{metrics.featureCount} · 진행률 {Math.round(metrics.featureCoverage * 100)}%
+        </p>
+      </div>
+      <button type="button" onClick={onClose} style={closeBtnStyle}>
+        닫기
+      </button>
+    </div>
+  );
+}
+
+function editBtnStyle(selected: boolean): CSSProperties {
+  return {
+    border: selected ? "1px solid #0f172a" : "1px solid #e2e8f0",
+    background: selected ? "#f1f5f9" : "#f8fafc",
+    borderRadius: 8,
+    padding: "4px 10px",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 700,
+    flexShrink: 0,
+  };
 }
 
 const closeBtnStyle: CSSProperties = {

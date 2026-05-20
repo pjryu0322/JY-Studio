@@ -96,7 +96,7 @@ export function buildProjectCanvasHubCatalog(input: {
     out.push({
       id: "canvas-feature-detail",
       type: "feature-detail",
-      title: `세부 기능 (${metrics.confirmedFeatureCount}/${metrics.featureCount} 확정 · ${Math.round(metrics.featureCoverage * 100)}%)`,
+      title: `세부 기능 (후보 ${metrics.candidateFeatureCount} · 부분 ${metrics.partialFeatureCount} · 확정 ${metrics.confirmedFeatureCount}/${metrics.featureCount})`,
       sourceStage,
       version: fd.version ?? 1,
       createdAt: updatedAt,

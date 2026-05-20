@@ -70,6 +70,24 @@ describe("actionId transition validation", () => {
     expect(r?.transitionMeta?.transitionTriggered).toBe(true);
     expect(r?.updatedFlow.flowApproved).toBe(true);
     expect(r?.quickReplies).toContain("다음 단계 진행");
+    expect(r?.readiness?.readyForNext).toBe(false);
+
+    const approvedFlow = r!.updatedFlow;
+    const postApproveProjection = buildQuickReplyProjection({
+      state: {
+        serviceFlowV1: approvedFlow,
+        requirementsOrchestrationStageV1: {
+          currentStage: "SERVICE_FLOW_REVIEW",
+          completedStages: [],
+          activePhase: "flow_approved",
+          updatedAt: now,
+        },
+      },
+      authoritativeStage: "SERVICE_FLOW_REVIEW",
+    });
+    expect(postApproveProjection.quickReplies).not.toContain("흐름 확정");
+    expect(postApproveProjection.quickReplies).not.toContain("흐름 검토하기");
+    expect(postApproveProjection.quickReplies).toEqual(["단계 수정하기", "세부 기능 정리"]);
 
     const eng = applyRequirementsOrchestrationTransition({
       state: { serviceFlowV1: sampleApprovedFlow() },

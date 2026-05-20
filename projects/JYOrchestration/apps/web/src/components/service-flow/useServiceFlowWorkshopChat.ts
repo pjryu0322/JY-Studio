@@ -119,6 +119,7 @@ export function useServiceFlowWorkshopChat({
   orchestrationContext,
   onAnalyzeStatePatch,
   onEnterActorEdit,
+  onEnterFeatureDetailEdit,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -149,6 +150,7 @@ export function useServiceFlowWorkshopChat({
   }>;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;
+  readonly onEnterFeatureDetailEdit?: () => void;
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -440,7 +442,15 @@ export function useServiceFlowWorkshopChat({
             applySyncBody ||
             mergeServiceFlowUserFacingMessage(String(data.assistantMessage ?? "").trim(), nextQ || null) ||
             "반영했습니다.";
-          const done = !nextQ && Boolean(data.readiness?.readyForNext);
+          const postTransitionDecision =
+            pendingDecision === "FLOW_APPROVE" ||
+            pendingDecision === "NEXT_STAGE" ||
+            pendingDecision === "FEATURE_DETAIL" ||
+            String(data.proposalDecision ?? "")
+              .trim()
+              .toUpperCase() === "FLOW_APPROVE";
+          const done =
+            !postTransitionDecision && !nextQ && Boolean(data.readiness?.readyForNext);
           autoScrollPendingRef.current = true;
           const combined =
             aiBody + (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
@@ -549,6 +559,11 @@ export function useServiceFlowWorkshopChat({
         setInput("");
         return;
       }
+      if (quickAction?.id === "EDIT_FEATURES") {
+        onEnterFeatureDetailEdit?.();
+        setInput("");
+        return;
+      }
       if (decision && dispatchClientOnlyDecision(decision, quickAction?.label ?? null, quickAction?.id ?? null)) {
         setInput("");
         return;
@@ -562,7 +577,7 @@ export function useServiceFlowWorkshopChat({
       });
       scrollChatToBottom();
     },
-    [workspaceMode, input, callAnalyze, scrollChatToBottom, dispatchClientOnlyDecision],
+    [workspaceMode, input, callAnalyze, scrollChatToBottom, dispatchClientOnlyDecision, onEnterFeatureDetailEdit],
   );
 
   const jumpToResolveSlot = useCallback(
