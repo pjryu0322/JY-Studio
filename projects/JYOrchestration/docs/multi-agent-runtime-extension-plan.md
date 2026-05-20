@@ -116,6 +116,18 @@ apps/web/src/lib/agents/connectorRegistry.ts
 
 구현: `requirementsDispatchAgentMetadata.ts`, `requirementsIntentDispatch.ts` (optional field)
 
+## Stage 2-2 점검 결과
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| Connector Facade 타입 | OK | `connectorGatewayFacadeTypes.ts` |
+| Connector plan/evaluate 함수 | OK | build/evaluate/plan |
+| Cursor/GitHub plan 함수 | OK | `planCursor*` / `planGithub*` |
+| Agent/Capability/Connector 정합성 검증 | OK | allowedConnectors, requiredConnectors, binding |
+| 실제 외부 호출 여부 | 없음 | dry-run / pass-through record only |
+| 기존 실행 경로 영향 | 없음 | Cursor/GitHub/dispatch 미변경 |
+| 테스트 | OK | `multiAgentConnectorGatewayFacade` 11건 |
+
 ## Stage 2-2 Connector Gateway Facade 결과
 
 | 항목 | 반영 방식 | 실제 호출 여부 | 비고 |
@@ -140,23 +152,38 @@ mode=dry_run + 조건 충족 → planned, allowed=true
 mode=pass_through + 조건 충족 → passed_through (외부 호출 없음)
 ```
 
-## Stage 2-3 후보: Agent Harness Dry-run
+## Stage 2-3 Agent Harness Dry-run 결과
 
-Stage 2-3에서는 실제 Agent 실행 없이 아래 결과만 산출한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| HarnessDryRunRequest | dry-run 입력 타입 | 없음 | intent/stage/role/agent 직접 입력 지원 |
+| HarnessDryRunResult | dry-run 결과 타입 | 없음 | executable/status/reason 포함 |
+| Agent resolution | Stage 2-1 `resolveDispatchAgent` 재사용 | 없음 | 직접 `agentId` 우선 |
+| Capability resolution | Stage 2-1 `resolveDispatchCapability` 재사용 | 없음 | 직접 `capabilityId` 우선 |
+| Connector plan | Stage 2-2 `planConnectorInvocation` 재사용 | 없음 | `requiredConnectors` 기반 |
+| Governance pre-check | `buildGovernancePrecheckForCapability` | 없음 | `governanceChecks` 후보만 |
+
+구현: `agentHarnessDryRunTypes.ts`, `agentHarnessDryRun.ts`
+
+상태 규칙:
 
 ```text
-input context
-→ resolve agent
-→ resolve capability
-→ resolve required connector plans
-→ governance pre-check candidate
-→ dry-run decision
+no agent → no_agent, executable=false
+no capability → no_capability, executable=false
+binding invalid → blocked
+connector plan !allowed → blocked
+warnings only → warning, executable=true
+else → planned, executable=true
 ```
+
+## Stage 2-4 후보: Governance Pre-check Dry-run
+
+Stage 2-4에서는 Harness Dry-run 결과에 포함된 `governanceChecks`를 기준으로 실제 차단이 아닌 정책 후보 평가를 수행한다.
 
 | 항목 | 설명 |
 |---|---|
-| HarnessPlanRequest | dry-run 입력 |
-| HarnessPlanResult | agent/capability/connector/governance 후보 결과 |
-| 실행 여부 | 실제 실행 없음 |
-| 목적 | agent orchestration 전 의사결정 계획 검증 |
+| GovernancePolicyDescriptor | 정책 후보 타입 |
+| evaluateGovernancePrecheckDryRun | 실행 전 정책 후보 평가 |
+| blocking/warning 분리 | 실제 차단 전 시뮬레이션 |
+| Runtime 연결 | 아직 없음 |
 ```

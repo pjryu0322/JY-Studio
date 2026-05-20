@@ -122,6 +122,22 @@ export {
   resolveDispatchCapability,
 } from "@/lib/agents/requirementsDispatchAgentMetadata";
 
+export type {
+  HarnessDryRunRequest,
+  HarnessDryRunResult,
+  HarnessDryRunSource,
+  HarnessDryRunStatus,
+  HarnessGovernancePrecheck,
+  HarnessGovernancePrecheckStatus,
+} from "@/lib/agents/agentHarnessDryRunTypes";
+
+export {
+  buildGovernancePrecheckForCapability,
+  buildHarnessDryRunRequest,
+  planAgentHarnessDryRun,
+  planRequirementsHarnessDryRun,
+} from "@/lib/agents/agentHarnessDryRun";
+
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
 export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";
