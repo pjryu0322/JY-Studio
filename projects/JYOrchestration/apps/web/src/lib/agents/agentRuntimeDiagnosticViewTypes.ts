@@ -64,6 +64,17 @@ export interface PersistenceDecisionDiagnosticSection {
   readonly blockingFindingCount: number;
 }
 
+export interface ConnectorRoutingDecisionDiagnosticSection {
+  readonly decision: string;
+  readonly target: string;
+  readonly connectorId: string;
+  readonly requiresExecutionPathChange: boolean;
+  readonly requiresRollbackPlan: boolean;
+  readonly requiresStage1Regression: boolean;
+  readonly findingCount: number;
+  readonly blockingFindingCount: number;
+}
+
 export interface AgentRuntimeDiagnosticViewModel {
   readonly mode: AgentRuntimeDiagnosticViewMode;
   readonly title: string;
@@ -73,6 +84,7 @@ export interface AgentRuntimeDiagnosticViewModel {
   readonly governance?: GovernanceDiagnosticSection;
   readonly persistenceCandidate?: PersistenceCandidateDiagnosticSection;
   readonly persistenceDecision?: PersistenceDecisionDiagnosticSection;
+  readonly connectorRoutingDecision?: ConnectorRoutingDecisionDiagnosticSection;
   readonly passThrough?: PassThroughDiagnosticSection;
 
   readonly warnings: readonly string[];

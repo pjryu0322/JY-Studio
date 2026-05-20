@@ -350,10 +350,46 @@ valid diagnostic_metadata + governance/passThrough summary → ready_for_design 
 requiresSchemaChange/requiresMigration → true (판단값만, 실제 적용 없음)
 ```
 
-### Stage 2-9 후보: Connector Gateway 실제 라우팅 전환 평가
+## Stage 2-8 소스 보완 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| buildPersistenceDecisionSection | 보완 | VM builder ReferenceError 방지 |
+| diagnostic source | 유지 | `HarnessDryRunSource`에 `diagnostic` |
+| Persistence Decision | 유지 | read-only decision |
+| 실제 persist | 없음 | DB/Timeline/Replay 미변경 |
+
+## Stage 2-9 Connector Gateway 라우팅 전환 평가 결과
+
+| 항목 | 반영 방식 | 실제 라우팅 여부 | 비고 |
+|---|---|---|---|
+| Routing Decision 타입 | `read_only_routing_decision` report | 없음 | 영향 평가용 |
+| Routing Decision evaluator | boundary 기반 판단 | 없음 | 기존 실행 경로 미변경 |
+| Cursor boundary | defer | 없음 | 실행 경로 변경 영향 큼 |
+| GitHub boundary | defer | 없음 | Stage1/ENV_TEST 회귀 필요 |
+| Rollback plan | `requiresRollbackPlan` flag | 없음 | 실제 전환 전 필수 |
+| Diagnostic VM 연계 | `connectorRoutingDecision` optional | 없음 | `routingBoundaryId` 입력 시 |
+
+구현: `connectorGatewayRoutingDecisionTypes.ts`, `evaluateConnectorGatewayRoutingDecision.ts`
+
+### Stage 2-9 판단 원칙
+
+```text
+- 실제 Connector Gateway 라우팅 전환은 하지 않는다.
+- Cursor/GitHub 기존 실행 경로를 바꾸지 않는다.
+- Stage1/ENV_TEST 회귀 없이 GitHub routing을 바꾸지 않는다.
+- rollback plan 없이 전환하지 않는다.
+- 현재 단계의 기본 판단은 defer이다.
+- unknown/disabled/non-recordOnly boundary → blocked
+```
+
+### Stage 2-10 후보: Multi-Agent Runtime 실행 전환 설계
+
+Stage 2-10에서는 실제 실행 전환이 아니라 foundation 기반 Agent Runtime 실행 전환 설계를 진행한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Cursor Gateway routing | 기존 Cursor 호출 경로를 gateway로 감쌀지 평가 | 실제 변경 전 영향 분석 필수 |
-| GitHub Gateway routing | PR/merge/status 경로를 gateway로 감쌀지 평가 | Stage1/ENV_TEST 영향 검증 필수 |
-| Rollback plan | 기존 직접 호출 경로로 되돌릴 수 있는 구조 | 필수 |
+| Harness execution boundary | dry-run planner를 실행 경계로 확장할지 검토 | 실제 실행 전 승인 필요 |
+| Agent execution record | 실행 결과를 Timeline/Replay에 남길지 설계 | 저장 구조 영향 |
+| Connector routing integration | Gateway를 실제 경로에 붙일지 설계 | rollback 필수 |
+| Governance enforcement | dry-run 후보를 실제 차단으로 바꿀지 검토 | 정책 승인 필수 |

@@ -242,7 +242,22 @@ export {
   mapPersistenceDecisionToDiagnosticSection,
 } from "@/lib/agents/evaluateAgentRuntimePersistenceDecision";
 
-export type { PersistenceDecisionDiagnosticSection } from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
+export type {
+  ConnectorRoutingDecisionDiagnosticSection,
+  PersistenceDecisionDiagnosticSection,
+} from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
+
+export type {
+  ConnectorGatewayRoutingDecision,
+  ConnectorGatewayRoutingDecisionReport,
+  ConnectorGatewayRoutingFinding,
+  ConnectorGatewayRoutingTarget,
+} from "@/lib/agents/connectorGatewayRoutingDecisionTypes";
+
+export {
+  evaluateConnectorGatewayRoutingDecision,
+  mapConnectorRoutingDecisionToDiagnosticSection,
+} from "@/lib/agents/evaluateConnectorGatewayRoutingDecision";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

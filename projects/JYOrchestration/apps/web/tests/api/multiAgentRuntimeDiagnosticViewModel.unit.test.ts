@@ -111,4 +111,28 @@ describe("multi-agent runtime diagnostic view model stage 2-7", () => {
     expect(vm.persistenceDecision?.decision).toBeTruthy();
     expect(vm.persistenceDecision?.recommendedTargets.length).toBeGreaterThan(0);
   });
+
+  it("builds persistenceDecision without ReferenceError", () => {
+    const harness = planAgentHarnessDryRun({ intent: "prototype_build" });
+    const candidate = buildTimelineMetadataCandidateFromHarness(harness);
+    expect(() =>
+      buildAgentRuntimeDiagnosticViewModel({ persistenceCandidate: candidate }),
+    ).not.toThrow();
+    const vm = buildAgentRuntimeDiagnosticViewModel({ persistenceCandidate: candidate });
+    expect(vm.persistenceDecision?.decision).toBeTruthy();
+  });
+
+  it("includes connectorRoutingDecision when routingBoundaryId is provided", () => {
+    const vm = buildAgentRuntimeDiagnosticViewModel({
+      routingBoundaryId: "cursor.execution.before",
+    });
+    expect(vm.connectorRoutingDecision?.decision).toBe("defer");
+    expect(vm.connectorRoutingDecision?.requiresExecutionPathChange).toBe(true);
+  });
+
+  it("sample VM includes connectorRoutingDecision section", () => {
+    const vm = buildAgentRuntimeDiagnosticSampleViewModel();
+    expect(vm.connectorRoutingDecision?.decision).toBe("defer");
+    expect(vm.connectorRoutingDecision?.target).toBe("cursor_execution");
+  });
 });

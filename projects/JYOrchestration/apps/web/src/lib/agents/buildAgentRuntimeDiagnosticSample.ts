@@ -32,5 +32,6 @@ export function buildAgentRuntimeDiagnosticSampleViewModel(): AgentRuntimeDiagno
     harnessResult,
     persistenceCandidate,
     passThroughRecords: [passThroughRecord],
+    routingBoundaryId: "cursor.execution.before",
   });
 }

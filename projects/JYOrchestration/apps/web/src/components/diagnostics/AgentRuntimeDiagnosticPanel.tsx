@@ -162,6 +162,34 @@ export function AgentRuntimeDiagnosticPanel({
         </Section>
       ) : null}
 
+      {vm.connectorRoutingDecision ? (
+        <Section
+          title="Connector 라우팅 전환 (read-only 평가)"
+          testId="agent-runtime-diagnostic-routing-decision"
+        >
+          <Field label="decision" value={vm.connectorRoutingDecision.decision} />
+          <Field label="target" value={vm.connectorRoutingDecision.target} />
+          <Field label="connectorId" value={vm.connectorRoutingDecision.connectorId} />
+          <Field
+            label="requiresExecutionPathChange"
+            value={String(vm.connectorRoutingDecision.requiresExecutionPathChange)}
+          />
+          <Field
+            label="requiresRollbackPlan"
+            value={String(vm.connectorRoutingDecision.requiresRollbackPlan)}
+          />
+          <Field
+            label="requiresStage1Regression"
+            value={String(vm.connectorRoutingDecision.requiresStage1Regression)}
+          />
+          <Field label="findingCount" value={String(vm.connectorRoutingDecision.findingCount)} />
+          <Field
+            label="blockingFindingCount"
+            value={String(vm.connectorRoutingDecision.blockingFindingCount)}
+          />
+        </Section>
+      ) : null}
+
       {vm.persistenceDecision ? (
         <Section
           title="Persistence 적용 여부 (read-only 결정)"

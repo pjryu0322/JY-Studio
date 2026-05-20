@@ -13,7 +13,9 @@ import {
   type HarnessDiagnosticSection,
   type PassThroughDiagnosticRecordRow,
   type PassThroughDiagnosticSection,
+  type ConnectorRoutingDecisionDiagnosticSection,
   type PersistenceCandidateDiagnosticSection,
+  type PersistenceDecisionDiagnosticSection,
 } from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
 import type { ConnectorPassThroughRecordCandidate } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 import { listConnectorPassThroughBoundaries } from "@/lib/agents/connectorPassThroughBoundaryRegistry";
@@ -21,6 +23,10 @@ import {
   evaluateAgentRuntimePersistenceDecision,
   mapPersistenceDecisionToDiagnosticSection,
 } from "@/lib/agents/evaluateAgentRuntimePersistenceDecision";
+import {
+  evaluateConnectorGatewayRoutingDecision,
+  mapConnectorRoutingDecisionToDiagnosticSection,
+} from "@/lib/agents/evaluateConnectorGatewayRoutingDecision";
 
 function buildHarnessSection(result: HarnessDryRunResult): HarnessDiagnosticSection {
   return {
@@ -89,6 +95,22 @@ function buildPassThroughSection(
   return { boundaryCount, records: rows };
 }
 
+function buildPersistenceDecisionSection(
+  candidate: AgentRuntimePersistenceCandidate,
+): PersistenceDecisionDiagnosticSection {
+  return mapPersistenceDecisionToDiagnosticSection(
+    evaluateAgentRuntimePersistenceDecision({ candidate }),
+  );
+}
+
+function buildConnectorRoutingDecisionSection(
+  boundaryId: string,
+): ConnectorRoutingDecisionDiagnosticSection {
+  return mapConnectorRoutingDecisionToDiagnosticSection(
+    evaluateConnectorGatewayRoutingDecision({ boundaryId }),
+  );
+}
+
 function appendUniqueWarnings(target: string[], items: readonly string[]): void {
   for (const item of items) {
     const t = String(item).trim();
@@ -101,6 +123,7 @@ export function buildAgentRuntimeDiagnosticViewModel(input: {
   readonly harnessResult?: HarnessDryRunResult;
   readonly persistenceCandidate?: AgentRuntimePersistenceCandidate;
   readonly passThroughRecords?: readonly ConnectorPassThroughRecordCandidate[];
+  readonly routingBoundaryId?: string;
 }): AgentRuntimeDiagnosticViewModel {
   const warnings: string[] = [];
 
@@ -128,6 +151,11 @@ export function buildAgentRuntimeDiagnosticViewModel(input: {
 
   const passThrough = buildPassThroughSection(input.passThroughRecords);
 
+  const routingBoundaryId = String(input.routingBoundaryId ?? "").trim();
+  const connectorRoutingDecision = routingBoundaryId
+    ? buildConnectorRoutingDecisionSection(routingBoundaryId)
+    : undefined;
+
   return {
     mode: "read_only_dry_run",
     title: AGENT_RUNTIME_DIAGNOSTIC_TITLE,
@@ -136,6 +164,7 @@ export function buildAgentRuntimeDiagnosticViewModel(input: {
     ...(governance ? { governance } : {}),
     ...(persistenceCandidate ? { persistenceCandidate } : {}),
     ...(persistenceDecision ? { persistenceDecision } : {}),
+    ...(connectorRoutingDecision ? { connectorRoutingDecision } : {}),
     passThrough,
     warnings,
   };
