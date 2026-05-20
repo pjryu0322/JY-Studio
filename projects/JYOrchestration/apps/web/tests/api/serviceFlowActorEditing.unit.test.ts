@@ -18,26 +18,41 @@ describe("serviceFlowActorEditing", () => {
     expect(p).toBe("CONFIRMED");
   });
 
-  it("appendCandidateActorToFlow — 실제 actors mutation", () => {
+  it("appendCandidateActorToFlow — actors + step secondary relation", () => {
     const flow = {
       createdAt: now,
       updatedAt: now,
       actors: [{ id: "a1", name: "사용자", kind: "human" as const, description: "" }],
-      steps: [],
+      steps: [
+        {
+          id: "s1",
+          order: 1,
+          title: "검토",
+          purpose: "검토",
+          primaryActorId: "a1",
+          secondaryActorIds: [] as string[],
+          approved: true,
+          updatedAt: now,
+        },
+      ],
     };
     const next = appendCandidateActorToFlow({
       flow,
+      nowIso: now,
       draft: {
         name: "검토자",
         actorType: "human",
         description: "승인 검토",
         role: "검토",
         automation: "manual",
-        relatedStepIds: [],
+        relatedStepIds: ["s1"],
       },
     });
     expect(next.actors?.length).toBe(2);
-    expect(next.actors?.some((a) => a.name === "검토자")).toBe(true);
+    const candidate = next.actors?.find((a) => a.name === "검토자");
+    expect(candidate?.status).toBe("candidate");
+    expect(next.steps?.[0]?.secondaryActorIds).toContain(candidate!.id);
     expect(next.lastProposalDecision).toBe("STRUCTURED_ACTOR_ADD");
+    expect(candidate?.description).not.toMatch(/관련 단계:/);
   });
 });

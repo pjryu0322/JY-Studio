@@ -1998,7 +1998,11 @@ export function RequirementsWorkspace({
       setActorEditBusy(true);
       setActorEditPhase((p) => nextActorEditingPhase(p, "save"));
       try {
-        const nextFlow = appendCandidateActorToFlow({ flow: serviceFlow, draft });
+        const nextFlow = appendCandidateActorToFlow({
+          flow: serviceFlow,
+          draft,
+          projectionId: orchestrationAlignedState?.slotDefinitionsHash ?? undefined,
+        });
         setActorEditPhase((p) => nextActorEditingPhase(p, "recompute_ok"));
         await persistServiceFlowWithOrchestration(nextFlow);
         setServiceFlow(nextFlow);
@@ -2012,7 +2016,7 @@ export function RequirementsWorkspace({
         setActorEditBusy(false);
       }
     },
-    [serviceFlow, persistServiceFlowWithOrchestration, showSuccessToast, showErrorToast],
+    [serviceFlow, persistServiceFlowWithOrchestration, showSuccessToast, showErrorToast, orchestrationAlignedState],
   );
 
   const handleCanvasHubSelect = useCallback(

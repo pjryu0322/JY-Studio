@@ -172,6 +172,8 @@ export function useServiceFlowWorkshopChat({
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollPendingRef = useRef(false);
+  const analyzeInFlightRef = useRef(false);
+  const bootOnceRef = useRef(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const onAppendRef = useRef(onAppendPersistedServiceFlowMessages);
@@ -278,6 +280,8 @@ export function useServiceFlowWorkshopChat({
         setPendingStatusLabel("AI 기획자가 응답을 준비하고 있습니다…");
       }
       setReplying(true);
+      analyzeInFlightRef.current = true;
+      bootOnceRef.current = true;
       setQuickReplies(null);
       setQuickActions(null);
 
@@ -453,6 +457,8 @@ export function useServiceFlowWorkshopChat({
           } catch {
             // replying already cleared
           }
+        } finally {
+          analyzeInFlightRef.current = false;
         }
       })();
     },
@@ -571,6 +577,8 @@ export function useServiceFlowWorkshopChat({
     if (workspaceMode !== "chat") return;
     setToolsOpen(false);
     setReplying(true);
+    analyzeInFlightRef.current = true;
+    bootOnceRef.current = true;
     void (async () => {
       const excerpt = [...displayMessages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
         .slice(-24)
@@ -648,6 +656,8 @@ export function useServiceFlowWorkshopChat({
         } catch {
           // replying already cleared
         }
+      } finally {
+        analyzeInFlightRef.current = false;
       }
     })();
   }, [
@@ -663,6 +673,7 @@ export function useServiceFlowWorkshopChat({
     setWorkspaceMode,
     takeActorFlowHandoff,
     emitPromptTrace,
+    clearReplyingState,
   ]);
 
   useEffect(() => {
@@ -678,11 +689,11 @@ export function useServiceFlowWorkshopChat({
     return () => window.clearTimeout(timer);
   }, [draftGenerationCount, derivedSlotsForDraftBootstrap, structureLockedAt]);
 
-  const bootOnceRef = useRef(false);
   useEffect(() => {
     if (structureLockedAt) return;
     if (workspaceMode !== "chat") return;
     if (bootOnceRef.current) return;
+    if (analyzeInFlightRef.current) return;
     if (replying) return;
     if (persistedServiceFlowMessages.length > 0) return;
     if (!ideationReady) return;

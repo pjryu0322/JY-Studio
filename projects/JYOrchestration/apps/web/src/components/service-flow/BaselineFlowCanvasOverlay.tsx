@@ -66,6 +66,7 @@ export function BaselineFlowCanvasOverlay({
     ...comp.changedSteps.map((s) => `~ 단계: ${s}`),
     ...comp.addedActors.map((a) => `+ 액터: ${a}`),
     ...comp.removedActors.map((a) => `- 액터: ${a}`),
+    ...comp.changedStepAssignments,
   ];
 
   return (

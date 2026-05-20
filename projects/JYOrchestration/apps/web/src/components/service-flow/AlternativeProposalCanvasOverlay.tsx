@@ -165,6 +165,17 @@ export function AlternativeProposalCanvasOverlay({
           </ul>
         </section>
 
+        {payload.comparison.changedStepAssignments.length > 0 ? (
+          <section style={{ marginTop: 18 }}>
+            <h3 style={sectionTitle}>단계 담당 변경</h3>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6, color: "#0f172a" }}>
+              {payload.comparison.changedStepAssignments.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         <section style={{ marginTop: 18 }}>
           <h3 style={sectionTitle}>액터 비교</h3>
           <ComparisonTable baseline={payload.comparison.baselineActors} alternative={altActors} />

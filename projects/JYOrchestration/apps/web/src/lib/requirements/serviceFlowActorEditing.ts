@@ -6,6 +6,10 @@ import type {
   RequirementsServiceFlowActorV1,
   RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
+import {
+  applyCandidateActorStepRelations,
+  type ServiceFlowStructuredActorMutationMeta,
+} from "@/lib/requirements/serviceFlowActorStepMapping";
 
 export type ServiceFlowActorType = "human" | "system" | "ai" | "external";
 
@@ -72,11 +76,12 @@ function newActorId(flow: RequirementsServiceFlowV1): string {
   return `actor-candidate-${Date.now()}`;
 }
 
-/** candidate actor를 flow에 추가하고 structured mutation 메타 설정 */
+/** candidate actor를 flow에 추가하고 step.primary/secondary relation 반영 */
 export function appendCandidateActorToFlow(input: {
   readonly flow: RequirementsServiceFlowV1;
   readonly draft: ServiceFlowActorEditDraft;
   readonly nowIso?: string;
+  readonly projectionId?: string;
 }): RequirementsServiceFlowV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const name = input.draft.name.trim();
@@ -86,24 +91,45 @@ export function appendCandidateActorToFlow(input: {
     input.draft.description.trim(),
     input.draft.role.trim() ? `역할: ${input.draft.role.trim()}` : "",
     input.draft.automation === "auto" ? "자동 처리" : "수동 처리",
-    input.draft.relatedStepIds.length
-      ? `관련 단계: ${input.draft.relatedStepIds.join(", ")}`
-      : "",
   ].filter(Boolean);
 
+  const actorId = newActorId(input.flow);
   const actor: RequirementsServiceFlowActorV1 = {
-    id: newActorId(input.flow),
+    id: actorId,
     name,
     kind: wireKindFromActorType(input.draft.actorType),
     description: descParts.join("\n").slice(0, 2000) || null,
+    status: "candidate",
   };
 
-  return {
+  const affectedStepIds = [...new Set(input.draft.relatedStepIds.map((id) => id.trim()).filter(Boolean))];
+
+  let next: RequirementsServiceFlowV1 = {
     ...input.flow,
     actors: [...(input.flow.actors ?? []), actor],
     updatedAt: now,
     lastProposalDecision: "STRUCTURED_ACTOR_ADD",
     conversationState: input.flow.conversationState ?? "REVIEW",
+  };
+
+  next = applyCandidateActorStepRelations({
+    flow: next,
+    actorId,
+    relatedStepIds: affectedStepIds,
+    nowIso: now,
+  });
+
+  const mutationMeta: ServiceFlowStructuredActorMutationMeta = {
+    mutationSource: "actor_drawer",
+    actorId,
+    affectedStepIds,
+    createdAt: now,
+    ...(input.projectionId?.trim() ? { projectionId: input.projectionId.trim() } : {}),
+  };
+
+  return {
+    ...next,
+    lastStructuredActorMutation: mutationMeta,
   };
 }
 

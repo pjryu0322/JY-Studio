@@ -535,12 +535,24 @@ export type RequirementsServiceFlowChecklistDeferralKind = "pending" | "deferred
 
 export type RequirementsServiceFlowActorKind = "human" | "system";
 
+export type RequirementsServiceFlowActorParticipationStatus = "confirmed" | "candidate";
+
 export type RequirementsServiceFlowActorV1 = {
   id: string;
   name: string;
   kind: RequirementsServiceFlowActorKind;
   description?: string | null;
+  /** structured 편집으로 추가된 후보 액터 */
+  status?: RequirementsServiceFlowActorParticipationStatus;
 };
+
+export type RequirementsServiceFlowStructuredActorMutationMeta = Readonly<{
+  readonly mutationSource: "actor_drawer";
+  readonly actorId: string;
+  readonly affectedStepIds: readonly string[];
+  readonly projectionId?: string;
+  readonly createdAt: string;
+}>;
 
 export type RequirementsServiceFlowStepV1 = {
   id: string;
@@ -589,6 +601,8 @@ export type RequirementsServiceFlowV1 = {
   documentationStatus?: "completed" | "draft" | null;
   documentationCompletedAt?: string | null;
   documentationSnapshot?: string | null;
+  /** Actor Drawer structured mutation audit */
+  lastStructuredActorMutation?: RequirementsServiceFlowStructuredActorMutationMeta | null;
 };
 
 export type ProposalVariantModeWire = "PRIMARY" | "ALTERNATIVE";
@@ -1064,8 +1078,19 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
       const kind = r.kind === "human" || r.kind === "system" ? (r.kind as RequirementsServiceFlowActorKind) : null;
       const description =
         r.description === null ? null : typeof r.description === "string" ? r.description.trim() : undefined;
+      const statusRaw = typeof r.status === "string" ? r.status.trim() : "";
+      const status =
+        statusRaw === "candidate" || statusRaw === "confirmed"
+          ? (statusRaw as RequirementsServiceFlowActorParticipationStatus)
+          : undefined;
       if (!id || !name || !kind) return null;
-      return { id, name, kind, ...(description !== undefined ? { description } : {}) };
+      return {
+        id,
+        name,
+        kind,
+        ...(description !== undefined ? { description } : {}),
+        ...(status ? { status } : {}),
+      };
     })
     .filter((x): x is RequirementsServiceFlowActorV1 => Boolean(x));
 
@@ -1183,6 +1208,29 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     ...(typeof o.documentationSnapshot === "string"
       ? { documentationSnapshot: o.documentationSnapshot.slice(0, 8000) }
       : {}),
+    ...(() => {
+      const m = o.lastStructuredActorMutation;
+      if (!m || typeof m !== "object") return {};
+      const r = m as Record<string, unknown>;
+      const actorId = typeof r.actorId === "string" ? r.actorId.trim() : "";
+      const createdAt = typeof r.createdAt === "string" ? r.createdAt.trim() : "";
+      const mutationSource = r.mutationSource === "actor_drawer" ? ("actor_drawer" as const) : null;
+      const affectedStepIds = Array.isArray(r.affectedStepIds)
+        ? (r.affectedStepIds as unknown[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+        : [];
+      const projectionId =
+        typeof r.projectionId === "string" && r.projectionId.trim() ? r.projectionId.trim().slice(0, 80) : undefined;
+      if (!mutationSource || !actorId || !createdAt) return {};
+      return {
+        lastStructuredActorMutation: {
+          mutationSource,
+          actorId,
+          affectedStepIds,
+          createdAt,
+          ...(projectionId ? { projectionId } : {}),
+        },
+      };
+    })(),
   };
 }
 

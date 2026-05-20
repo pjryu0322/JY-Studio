@@ -149,7 +149,10 @@ export function ServiceFlowActorEditDrawer({
           </label>
           {steps.length > 0 ? (
             <div>
-              <div style={labelStyle}>관련 단계</div>
+              <div style={labelStyle}>관련 단계 (보조·후보 담당으로 연결)</div>
+              <p style={{ margin: "0 0 8px", fontSize: 12, color: "#64748b" }}>
+                선택한 단계의 structured relation(secondaryActorIds)에 후보 액터가 반영됩니다.
+              </p>
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                 {[...steps]
                   .sort((a, b) => a.order - b.order)

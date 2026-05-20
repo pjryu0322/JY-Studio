@@ -8,6 +8,7 @@ import type {
   RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
 import { fingerprintHashFromFlow } from "@/lib/requirements/serviceFlowProposalVariant";
+import { computeStepAssignmentDiffLines } from "@/lib/requirements/serviceFlowActorStepMapping";
 
 export type AlternativeProposalActorWire = Readonly<{
   id: string;
@@ -27,6 +28,8 @@ export type AlternativeProposalComparisonWire = Readonly<{
   addedSteps: readonly string[];
   removedSteps: readonly string[];
   changedSteps: readonly string[];
+  /** step primary/secondary 재배치 */
+  changedStepAssignments: readonly string[];
   baselineActors: readonly string[];
   baselineSteps: readonly string[];
 }>;
@@ -177,12 +180,15 @@ export function computeAlternativeProposalComparison(
     }
   }
 
+  const changedStepAssignments = computeStepAssignmentDiffLines(baselineFlow, alternativeFlow);
+
   return {
     addedActors,
     removedActors,
     addedSteps,
     removedSteps,
     changedSteps: changedSteps.slice(0, 8),
+    changedStepAssignments,
     baselineActors: baseActors,
     baselineSteps: baseSteps,
   };

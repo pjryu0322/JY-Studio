@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject, ReactNode } from "react";
+import { useMemo, type RefObject, type ReactNode } from "react";
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { isIdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
@@ -116,6 +116,14 @@ export function RequirementsIdeationChatPanel({
   promptTimeline,
   onOpenPromptTimeline,
 }: RequirementsIdeationChatPanelProps) {
+  const showTypingIndicator = useMemo(() => {
+    const pending = aiInvokePending || serviceFlowAnalyzePending;
+    if (!pending) return false;
+    if (!chatMessages.length) return true;
+    const last = chatMessages[chatMessages.length - 1];
+    return last?.role !== "ai";
+  }, [aiInvokePending, serviceFlowAnalyzePending, chatMessages]);
+
   const ideationInterviewUi =
     conversationStatus === "loaded"
       ? {
@@ -201,7 +209,7 @@ export function RequirementsIdeationChatPanel({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
-        typingIndicator={aiInvokePending || serviceFlowAnalyzePending}
+        typingIndicator={showTypingIndicator}
         typingIndicatorSpeakerLine={
           serviceFlowAnalyzePending
             ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
