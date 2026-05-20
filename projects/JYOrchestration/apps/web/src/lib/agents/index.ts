@@ -211,6 +211,27 @@ export {
   MAX_CANDIDATE_JSON_LENGTH,
 } from "@/lib/agents/agentRuntimePersistenceCandidateValidation";
 
+export type {
+  AgentRuntimeDiagnosticViewMode,
+  AgentRuntimeDiagnosticViewModel,
+  GovernanceDiagnosticSection,
+  HarnessDiagnosticSection,
+  PassThroughDiagnosticRecordRow,
+  PassThroughDiagnosticSection,
+  PersistenceCandidateDiagnosticSection,
+} from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
+
+export {
+  AGENT_RUNTIME_DIAGNOSTIC_DISCLAIMER,
+  AGENT_RUNTIME_DIAGNOSTIC_TITLE,
+} from "@/lib/agents/agentRuntimeDiagnosticViewTypes";
+
+export { buildAgentRuntimeDiagnosticViewModel } from "@/lib/agents/buildAgentRuntimeDiagnosticViewModel";
+
+export { buildAgentRuntimeDiagnosticSampleViewModel } from "@/lib/agents/buildAgentRuntimeDiagnosticSample";
+
+export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
+
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
 export { DEFAULT_CAPABILITIES } from "@/lib/agents/defaultCapabilities";

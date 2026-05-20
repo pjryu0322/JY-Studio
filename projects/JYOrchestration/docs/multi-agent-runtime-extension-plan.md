@@ -271,11 +271,50 @@ unknown check → warning finding
 - 저장 여부는 Stage 2-8 이후 별도 결정한다.
 ```
 
-### Stage 2-7 후보: Harness/Governance Dry-run Read-only 진단 UI
+현재 Stage 2-6 기본 pass-through boundary는 모두 `enabled=true`이다.  
+`disabled` boundary 분기는 향후 운영 설정/정책화 단계에 대비한 방어 코드이며,  
+현재 기본 registry에는 disabled boundary를 포함하지 않는다.
 
-| 후보 | 설명 | 주의사항 |
+### Stage 2-6 소스 점검 보완 (Stage 2-7 전)
+
+| 항목 | 조치 | 파일 |
 |---|---|---|
-| Harness dry-run summary | agent/capability/connector/governance 계획 표시 | 실제 실행 버튼과 분리 |
-| Persistence candidate preview | 저장 후보 metadata 표시 | 저장 아님 명시 |
-| Pass-through boundary preview | Cursor/GitHub 경계 후보 표시 | 실제 호출 아님 명시 |
+| source/createdAt | pass-through record 추적 필드 | `connectorPassThroughBoundaryTypes.ts`, `buildConnectorPassThroughRecordCandidate.ts` |
+| summary mode/recordOnly | persistence summary에 record-only 명시 | `agentRuntimePersistenceCandidateTypes.ts`, `connectorPassThroughPersistenceCandidate.ts` |
+| disabled boundary 정책 | 기본 registry는 모두 enabled, disabled 분기는 방어 코드 | 이 문서 + registry |
+
+## Stage 2-7 Harness/Governance Dry-run Read-only 진단 UI 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Diagnostic ViewModel | `read_only_dry_run` VM | 없음 | 실행/저장 없음 disclaimer 포함 |
+| Harness section | agent/capability/connector 계획 표시 | 없음 | dry-run 결과만 |
+| Governance section | policy candidate 평가 표시 | 없음 | 실제 차단 아님 |
+| Persistence candidate section | 저장 후보 preview 표시 | 없음 | 실제 저장 아님 |
+| Pass-through section | boundary/record 후보 표시 | 없음 | recordOnly=true |
+
+구현: `agentRuntimeDiagnosticViewTypes.ts`, `buildAgentRuntimeDiagnosticViewModel.ts`, `buildAgentRuntimeDiagnosticSample.ts`, `components/diagnostics/AgentRuntimeDiagnosticPanel.tsx`
+
+### Stage 2-7 UI 원칙
+
+```text
+- 내부 진단용이다.
+- 사용자 실행 플로우가 아니다.
+- 실행 버튼을 만들지 않는다.
+- 저장 버튼을 만들지 않는다.
+- Connector 호출 버튼을 만들지 않는다.
+- dry-run/read-only/record-only 안내를 항상 표시한다.
+- API route 추가 없음 (방식 A: 컴포넌트 + VM만, route 미연결).
+- React Testing Library 미사용 → UI 단위 테스트 생략, VM 테스트로 검증.
 ```
+
+### Stage 2-8 후보: Timeline/Replay Persistence 실제 적용 여부 결정
+
+Stage 2-8에서는 지금까지 만든 candidate를 실제 Timeline/Replay 저장 구조에 연결할지 여부를 결정한다.
+
+| 검토 항목 | 설명 | 주의사항 |
+|---|---|---|
+| 저장 대상 필드 | agentId/capabilityId/governance/passThrough summary | 민감정보 제외 |
+| 저장 위치 | Timeline metadata / Replay snapshot / diagnostic log | 기존 schema 영향 |
+| Migration 필요성 | Prisma/DB 변경 여부 판단 | 별도 승인 필요 |
+| Rollback 전략 | 저장 적용 후 되돌릴 수 있는 구조 | 필수 |

@@ -24,6 +24,13 @@ export interface ConnectorPassThroughBoundary {
   readonly recordOnly: true;
 }
 
+export type ConnectorPassThroughRecordSource =
+  | "harness"
+  | "manual"
+  | "requirements"
+  | "runtime"
+  | "diagnostic";
+
 export interface ConnectorPassThroughRecordCandidate {
   readonly schemaVersion: typeof CONNECTOR_PASS_THROUGH_RECORD_SCHEMA_VERSION;
   readonly boundaryId: string;
@@ -31,6 +38,8 @@ export interface ConnectorPassThroughRecordCandidate {
   readonly operation: string;
   readonly mode: "pass_through";
   readonly recordOnly: true;
+  readonly source?: ConnectorPassThroughRecordSource;
+  readonly createdAt?: string;
 
   readonly agentId?: string;
   readonly capabilityId?: string;

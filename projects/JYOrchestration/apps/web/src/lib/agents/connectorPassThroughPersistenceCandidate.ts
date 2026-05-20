@@ -31,6 +31,7 @@ export function buildConnectorPassThroughRecordFromHarness(input: {
     runId: stringMeta(meta.runId),
     taskId: stringMeta(meta.taskId),
     conversationId: stringMeta(meta.conversationId),
+    source: "harness",
   });
 }
 
@@ -41,6 +42,8 @@ function toPassThroughSummary(
     boundaryId: record.boundaryId,
     connectorId: record.connectorId,
     operation: record.operation,
+    mode: "pass_through",
+    recordOnly: true,
     allowed: record.allowed ?? false,
     reason: truncateReason(record.reason ?? ""),
   };

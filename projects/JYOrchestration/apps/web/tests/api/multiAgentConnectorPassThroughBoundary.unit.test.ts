@@ -118,9 +118,13 @@ describe("multi-agent connector pass-through boundary stage 2-6", () => {
       "boundaryId",
       "connectorId",
       "operation",
+      "mode",
+      "recordOnly",
       "allowed",
       "reason",
     ]);
+    expect(record.source).toBe("harness");
+    expect(record.createdAt).toBeTruthy();
   });
 
   it("passThrough summary respects count limit", () => {

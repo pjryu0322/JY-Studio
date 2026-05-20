@@ -31,6 +31,8 @@ export interface AgentConnectorPassThroughSummary {
   readonly boundaryId: string;
   readonly connectorId: string;
   readonly operation: string;
+  readonly mode: "pass_through";
+  readonly recordOnly: true;
   readonly allowed: boolean;
   readonly reason: string;
 }
