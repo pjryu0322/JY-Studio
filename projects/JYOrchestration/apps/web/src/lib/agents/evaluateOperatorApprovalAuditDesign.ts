@@ -67,6 +67,18 @@ const POLICY_EXCLUDED_FIELDS: readonly OperatorApprovalAuditFieldDecision[] = [
     reason: "policy: personal contact excluded",
     sensitivity: "forbidden",
   },
+  {
+    field: "phoneNumber",
+    persist: false,
+    reason: "policy: phone number excluded",
+    sensitivity: "forbidden",
+  },
+  {
+    field: "emailBody",
+    persist: false,
+    reason: "policy: email body excluded",
+    sensitivity: "forbidden",
+  },
 ];
 
 function finding(

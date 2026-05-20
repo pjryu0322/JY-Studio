@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateOperatorApprovalAuditDesign } from "@/lib/agents/evaluateOperatorApprovalAuditDesign";
+import {
+  evaluateOperatorApprovalAuditDesign,
+  normalizeOperatorApprovalAuditTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditDesign";
+import { normalizeOperatorApprovalAuditTarget as normalizeFromIndex } from "@/lib/agents";
 import * as persistenceValidation from "@/lib/agents/agentRuntimePersistenceCandidateValidation";
 
 describe("multi-agent operator approval audit design stage 2-15", () => {
@@ -76,6 +80,29 @@ describe("multi-agent operator approval audit design stage 2-15", () => {
       expect(byField.get(field)?.sensitivity).toBe("forbidden");
       expect(byField.get(field)?.persist).toBe(false);
     }
+  });
+
+  it("normalizeOperatorApprovalAuditTarget invalid returns unknown", () => {
+    expect(normalizeOperatorApprovalAuditTarget("invalid")).toBe("unknown");
+  });
+
+  it("excludedFields includes phoneNumber as forbidden", () => {
+    const report = evaluateOperatorApprovalAuditDesign();
+    expect(report.excludedFields.find((f) => f.field === "phoneNumber")?.sensitivity).toBe(
+      "forbidden",
+    );
+  });
+
+  it("excludedFields includes emailBody as forbidden", () => {
+    const report = evaluateOperatorApprovalAuditDesign();
+    expect(report.excludedFields.find((f) => f.field === "emailBody")?.sensitivity).toBe(
+      "forbidden",
+    );
+  });
+
+  it("normalizeOperatorApprovalAuditTarget is importable from public index", () => {
+    expect(normalizeFromIndex("operator_approval")).toBe("operator_approval");
+    expect(normalizeFromIndex("bad")).toBe("unknown");
   });
 
   it("does not invoke persistence validation or storage helpers", () => {

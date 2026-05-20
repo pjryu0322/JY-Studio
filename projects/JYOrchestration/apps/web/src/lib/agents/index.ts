@@ -326,7 +326,19 @@ export type {
   OperatorApprovalAuditTarget,
 } from "@/lib/agents/operatorApprovalAuditDesignTypes";
 
-export { evaluateOperatorApprovalAuditDesign } from "@/lib/agents/evaluateOperatorApprovalAuditDesign";
+export {
+  evaluateOperatorApprovalAuditDesign,
+  normalizeOperatorApprovalAuditTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditDesign";
+
+export type {
+  ConnectorGatewayExperimentBranchPlanDecision,
+  ConnectorGatewayExperimentBranchPlanFinding,
+  ConnectorGatewayExperimentBranchPlanReport,
+  ConnectorGatewayExperimentBranchPlanScope,
+} from "@/lib/agents/connectorGatewayExperimentBranchPlanTypes";
+
+export { evaluateConnectorGatewayExperimentBranchPlan } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchPlan";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

@@ -660,13 +660,59 @@ requiresActorIdentity / requiresReason / requiresAuditTrail → true (active tar
 reasonSummary only; rawReason forbidden
 ```
 
-### Stage 2-16 후보: Connector Gateway 실험 브랜치 작업계획 수립
+## Stage 2-15 소스 보완 결과
 
-Stage 2-16에서는 실제 main 경로가 아니라 별도 실험 브랜치에서 Connector Gateway routing을 검증하기 위한 작업계획을 만든다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| normalizeOperatorApprovalAuditTarget export | 보완 | `index.ts` public export |
+| phoneNumber/emailBody excluded | 보완 | forbidden policy |
+| 실제 approval/override/audit | 없음 | read-only design evaluator |
+
+## Stage 2-16 Connector Gateway 실험 브랜치 작업계획 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Experiment Branch Plan 타입 | read-only branch plan report | 없음 | 작업계획 전용 |
+| Branch Plan evaluator | routing experiment report 기반 | 없음 | git branch 생성 없음 |
+| recommendedBranchName | scope별 제안 | 없음 | 실제 생성 아님 |
+| featureFlagName | scope별 제안 | 없음 | 실제 wire 아님 |
+| featureFlagDefault | off | 없음 | default off 원칙 |
+| direct fallback | required | 없음 | 기존 실행 경로 보호 |
+| Stage1 regression | GitHub 포함 시 required | 없음 | ENV_TEST 보호 |
+| rollback criteria | report field | 없음 | 실패 기준 명시 |
+
+구현: `connectorGatewayExperimentBranchPlanTypes.ts`, `evaluateConnectorGatewayExperimentBranchPlan.ts`
+
+### Stage 2-16 원칙
+
+```text
+- 실제 브랜치를 생성하지 않는다.
+- 실제 feature flag를 연결하지 않는다.
+- 실제 Connector Gateway routing을 적용하지 않는다.
+- 실험 브랜치는 별도 승인 후 생성한다.
+- main 브랜치의 Cursor/GitHub 실행 경로는 변경하지 않는다.
+- 모든 실험은 direct call fallback과 rollback plan을 전제로 한다.
+```
+
+### Stage 2-16 Decision 규칙 요약
+
+```text
+routing blocked / scope none → branch plan blocked
+cursor_only → ready_for_branch_plan + experiment/connector-gateway-cursor-routing
+github_only → defer + experiment/connector-gateway-github-routing (plan only)
+cursor_and_github → defer + experiment/connector-gateway-runtime-routing (plan only)
+featureFlagDefault → off
+requiresDirectCallFallback / requiresRollbackPlan / requiresOperatorApproval → true
+requiresStage1Regression ← routing experiment (github boundary)
+```
+
+### Stage 2-17 후보: Agent execution record schema 적용 여부 결정
+
+Stage 2-17에서는 Stage 2-14 설계를 바탕으로 실제 DB/schema 적용 여부를 결정한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| experiment branch plan | 실험 브랜치명/범위/rollback 정의 | main 직접 변경 금지 |
-| feature flag wire plan | default off flag 위치 설계 | 실제 wire 별도 승인 |
-| cursor gateway wrapper plan | Cursor 실행 경계 wrapper 후보 | 기존 경로 fallback 필수 |
-| github gateway wrapper plan | PR/merge/status wrapper 후보 | Stage1 regression 필수 |
+| schema decision report | 적용/보류/차단 판단 | migration 전 검토 |
+| table/field proposal | record 필드 후보 | raw prompt 제외 |
+| migration risk | DB 변경 영향 | rollback 필수 |
+| rollout plan | default off / read-only first | 운영 승인 필요 |
