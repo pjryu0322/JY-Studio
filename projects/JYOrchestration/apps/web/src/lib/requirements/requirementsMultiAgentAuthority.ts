@@ -1,5 +1,6 @@
 /**
  * Multi-agent authority — role-scoped allowed actions (no unauthorized mutation).
+ * Foundation AgentDefinition mapping: `@/lib/agents/aiMemberAgentBridge` (`ORCHESTRATION_ROLE_TO_AGENT_ID`).
  */
 
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
