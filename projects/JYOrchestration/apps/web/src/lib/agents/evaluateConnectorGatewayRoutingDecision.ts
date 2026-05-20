@@ -48,6 +48,26 @@ function isGithubRoutingTarget(target: ConnectorGatewayRoutingTarget): boolean {
   );
 }
 
+function blockedReport(input: {
+  readonly boundaryId: string;
+  readonly operation?: string;
+  readonly connectorId: string;
+  readonly findings: ConnectorGatewayRoutingFinding[];
+}): ConnectorGatewayRoutingDecisionReport {
+  return {
+    mode: "read_only_routing_decision",
+    decision: "blocked",
+    target: "unknown",
+    boundaryId: input.boundaryId,
+    ...(input.operation ? { operation: input.operation } : {}),
+    connectorId: input.connectorId,
+    requiresExecutionPathChange: false,
+    requiresRollbackPlan: true,
+    requiresStage1Regression: false,
+    findings: input.findings,
+  };
+}
+
 /** Read-only routing decision — does not change Cursor/GitHub execution paths. */
 export function evaluateConnectorGatewayRoutingDecision(input: {
   readonly boundaryId: string;
@@ -58,16 +78,7 @@ export function evaluateConnectorGatewayRoutingDecision(input: {
 
   if (!boundary) {
     findings.push(finding("blocking", "boundary_not_found", `boundary not found: ${boundaryId}`));
-    return {
-      mode: "read_only_routing_decision",
-      decision: "blocked",
-      target: "cursor_execution",
-      connectorId: "unknown",
-      requiresExecutionPathChange: false,
-      requiresRollbackPlan: true,
-      requiresStage1Regression: false,
-      findings,
-    };
+    return blockedReport({ boundaryId, connectorId: "unknown", findings });
   }
 
   if (!boundary.enabled) {
@@ -85,16 +96,12 @@ export function evaluateConnectorGatewayRoutingDecision(input: {
     findings.push(
       finding("blocking", "unsupported_boundary_kind", `unsupported boundary kind: ${boundary.kind}`),
     );
-    return {
-      mode: "read_only_routing_decision",
-      decision: "blocked",
-      target: "cursor_execution",
+    return blockedReport({
+      boundaryId: boundary.id,
+      operation: boundary.operation,
       connectorId: boundary.connectorId,
-      requiresExecutionPathChange: false,
-      requiresRollbackPlan: true,
-      requiresStage1Regression: false,
       findings,
-    };
+    });
   }
 
   const requiresExecutionPathChange = true;
@@ -133,6 +140,8 @@ export function evaluateConnectorGatewayRoutingDecision(input: {
     mode: "read_only_routing_decision",
     decision,
     target,
+    boundaryId: boundary.id,
+    operation: boundary.operation,
     connectorId: boundary.connectorId,
     requiresExecutionPathChange,
     requiresRollbackPlan,
@@ -148,6 +157,8 @@ export function mapConnectorRoutingDecisionToDiagnosticSection(
   return {
     decision: report.decision,
     target: report.target,
+    boundaryId: report.boundaryId,
+    operation: report.operation,
     connectorId: report.connectorId,
     requiresExecutionPathChange: report.requiresExecutionPathChange,
     requiresRollbackPlan: report.requiresRollbackPlan,

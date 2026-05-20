@@ -29,7 +29,7 @@ export type {
 
 export type {
   BuildConnectorInvocationInput,
-  BuildConnectorPlanFromAgentMetadataInput,
+  BuildConnectorPlanFromAgentMetadataInput as BuildConnectorFacadePlanFromAgentMetadataInput,
   PlanNamedConnectorInvocationInput,
 } from "@/lib/agents/connectorGatewayFacade";
 
@@ -106,7 +106,6 @@ export {
 } from "@/lib/agents/connectorRegistry";
 
 export type {
-  BuildConnectorPlanFromAgentMetadataInput,
   BuildRequirementsAgentMetadataInput,
   RequirementsAgentRuntimeMetadata,
   ResolveDispatchAgentInput,
@@ -258,6 +257,15 @@ export {
   evaluateConnectorGatewayRoutingDecision,
   mapConnectorRoutingDecisionToDiagnosticSection,
 } from "@/lib/agents/evaluateConnectorGatewayRoutingDecision";
+
+export type {
+  AgentRuntimeExecutionTransitionDecision,
+  AgentRuntimeExecutionTransitionFinding,
+  AgentRuntimeExecutionTransitionReport,
+  AgentRuntimeExecutionTransitionTarget,
+} from "@/lib/agents/agentRuntimeExecutionTransitionTypes";
+
+export { evaluateAgentRuntimeExecutionTransition } from "@/lib/agents/evaluateAgentRuntimeExecutionTransition";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

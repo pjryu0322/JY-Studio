@@ -383,13 +383,58 @@ requiresSchemaChange/requiresMigration → true (판단값만, 실제 적용 없
 - unknown/disabled/non-recordOnly boundary → blocked
 ```
 
-### Stage 2-10 후보: Multi-Agent Runtime 실행 전환 설계
+## Stage 2-9 소스 보완 결과
 
-Stage 2-10에서는 실제 실행 전환이 아니라 foundation 기반 Agent Runtime 실행 전환 설계를 진행한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| public export 중복 | 보완 | `BuildConnectorFacadePlanFromAgentMetadataInput` alias, requirements 중복 제거 |
+| routing report boundaryId/operation | 보완 | report + diagnostic section + panel |
+| unknown target 처리 | 보완 | `target: "unknown"` (cursor_execution fallback 제거) |
+| 실제 routing 전환 | 없음 | read-only evaluator only |
+
+## Stage 2-10 Multi-Agent Runtime 실행 전환 설계 준비 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Execution Transition 타입 | `read_only_execution_transition_decision` | 없음 | 설계 판단용 |
+| Execution Transition evaluator | target 기반 판단 | 없음 | 실행 없음 |
+| Harness execution | defer | 없음 | dry-run → 실행기 영향 |
+| Agent execution record | ready_for_design | 없음 | 저장 영향 검토 필요 |
+| Connector bridge | defer | 없음 | Cursor/GitHub 경로 영향 |
+| Governance enforcement | blocked | 없음 | 정책 승인 필요 |
+| Timeline/Replay persist | defer | 없음 | 저장 구조 영향 |
+
+구현: `agentRuntimeExecutionTransitionTypes.ts`, `evaluateAgentRuntimeExecutionTransition.ts`
+
+### Stage 2-10 원칙
+
+```text
+- 실제 Agent 실행을 구현하지 않는다.
+- 실제 Connector 실행을 구현하지 않는다.
+- 실제 Governance 차단을 구현하지 않는다.
+- 실제 Timeline/Replay 저장을 구현하지 않는다.
+- 실행 전환 가능성을 read-only report로만 평가한다.
+- requiresOperatorApproval / requiresRollbackPlan은 판단값만 제공한다.
+```
+
+### Stage 2-10 Decision 규칙 요약
+
+```text
+harness_execution → defer
+agent_execution_record → ready_for_design
+connector_execution_bridge → defer
+governance_enforcement → blocked
+timeline_replay_persist → defer
+unknown target → blocked
+```
+
+### Stage 2-11 후보: Timeline/Replay persist 실제 적용 설계
+
+Stage 2-11에서는 Stage 2-5/2-8 persistence candidate와 decision report를 바탕으로 실제 저장 적용 설계를 검토한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Harness execution boundary | dry-run planner를 실행 경계로 확장할지 검토 | 실제 실행 전 승인 필요 |
-| Agent execution record | 실행 결과를 Timeline/Replay에 남길지 설계 | 저장 구조 영향 |
-| Connector routing integration | Gateway를 실제 경로에 붙일지 설계 | rollback 필수 |
-| Governance enforcement | dry-run 후보를 실제 차단으로 바꿀지 검토 | 정책 승인 필수 |
+| Timeline metadata persist | agentId/capabilityId/harness status 저장 | schema 영향 |
+| Replay snapshot persist | replay candidate 저장 | 데이터량/민감정보 주의 |
+| Diagnostic log persist | dry-run decision log 저장 | 저장 위치 결정 필요 |
+| Rollback plan | 저장 적용 롤백 | 필수 |

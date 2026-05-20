@@ -9,7 +9,8 @@ export type ConnectorGatewayRoutingTarget =
   | "github_pr"
   | "github_branch"
   | "github_merge"
-  | "github_status";
+  | "github_status"
+  | "unknown";
 
 export interface ConnectorGatewayRoutingFinding {
   readonly severity: "info" | "warning" | "blocking";
@@ -21,6 +22,8 @@ export interface ConnectorGatewayRoutingDecisionReport {
   readonly mode: "read_only_routing_decision";
   readonly decision: ConnectorGatewayRoutingDecision;
   readonly target: ConnectorGatewayRoutingTarget;
+  readonly boundaryId?: string;
+  readonly operation?: string;
   readonly connectorId: string;
   readonly requiresExecutionPathChange: boolean;
   readonly requiresRollbackPlan: boolean;

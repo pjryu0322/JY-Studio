@@ -67,6 +67,8 @@ export interface PersistenceDecisionDiagnosticSection {
 export interface ConnectorRoutingDecisionDiagnosticSection {
   readonly decision: string;
   readonly target: string;
+  readonly boundaryId?: string;
+  readonly operation?: string;
   readonly connectorId: string;
   readonly requiresExecutionPathChange: boolean;
   readonly requiresRollbackPlan: boolean;

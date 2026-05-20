@@ -169,6 +169,8 @@ export function AgentRuntimeDiagnosticPanel({
         >
           <Field label="decision" value={vm.connectorRoutingDecision.decision} />
           <Field label="target" value={vm.connectorRoutingDecision.target} />
+          <Field label="boundaryId" value={vm.connectorRoutingDecision.boundaryId} />
+          <Field label="operation" value={vm.connectorRoutingDecision.operation} />
           <Field label="connectorId" value={vm.connectorRoutingDecision.connectorId} />
           <Field
             label="requiresExecutionPathChange"

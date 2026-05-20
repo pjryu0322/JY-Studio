@@ -127,6 +127,8 @@ describe("multi-agent runtime diagnostic view model stage 2-7", () => {
       routingBoundaryId: "cursor.execution.before",
     });
     expect(vm.connectorRoutingDecision?.decision).toBe("defer");
+    expect(vm.connectorRoutingDecision?.boundaryId).toBe("cursor.execution.before");
+    expect(vm.connectorRoutingDecision?.operation).toBe("cursor.execution.before");
     expect(vm.connectorRoutingDecision?.requiresExecutionPathChange).toBe(true);
   });
 

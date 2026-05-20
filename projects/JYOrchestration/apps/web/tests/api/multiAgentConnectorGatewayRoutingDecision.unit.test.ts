@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateConnectorGatewayRoutingDecision } from "@/lib/agents/evaluateConnectorGatewayRoutingDecision";
+import { mapConnectorRoutingDecisionToDiagnosticSection } from "@/lib/agents/evaluateConnectorGatewayRoutingDecision";
+import { buildAgentRuntimeDiagnosticViewModel } from "@/lib/agents/buildAgentRuntimeDiagnosticViewModel";
 import * as connectorFacade from "@/lib/agents/connectorGatewayFacade";
 
 describe("multi-agent connector gateway routing decision stage 2-9", () => {
@@ -12,7 +14,17 @@ describe("multi-agent connector gateway routing decision stage 2-9", () => {
       boundaryId: "unknown.boundary",
     });
     expect(report.decision).toBe("blocked");
+    expect(report.target).toBe("unknown");
     expect(report.findings.some((f) => f.code === "boundary_not_found")).toBe(true);
+  });
+
+  it("unknown boundaryId includes boundaryId in report", () => {
+    const report = evaluateConnectorGatewayRoutingDecision({
+      boundaryId: "missing.boundary.id",
+    });
+    expect(report.boundaryId).toBe("missing.boundary.id");
+    expect(report.operation).toBeUndefined();
+    expect(report.connectorId).toBe("unknown");
   });
 
   it("cursor.execution.before returns defer", () => {
@@ -22,6 +34,14 @@ describe("multi-agent connector gateway routing decision stage 2-9", () => {
     expect(report.decision).toBe("defer");
     expect(report.target).toBe("cursor_execution");
     expect(report.connectorId).toBe("cursor");
+  });
+
+  it("cursor.execution.before includes boundaryId and operation in report", () => {
+    const report = evaluateConnectorGatewayRoutingDecision({
+      boundaryId: "cursor.execution.before",
+    });
+    expect(report.boundaryId).toBe("cursor.execution.before");
+    expect(report.operation).toBe("cursor.execution.before");
   });
 
   it("cursor.execution.before requiresExecutionPathChange=true", () => {
@@ -44,6 +64,14 @@ describe("multi-agent connector gateway routing decision stage 2-9", () => {
     });
     expect(report.decision).toBe("defer");
     expect(report.target).toBe("github_pr");
+  });
+
+  it("github.pr.create.before includes operation in report", () => {
+    const report = evaluateConnectorGatewayRoutingDecision({
+      boundaryId: "github.pr.create.before",
+    });
+    expect(report.operation).toBe("github.pr.create.before");
+    expect(report.boundaryId).toBe("github.pr.create.before");
   });
 
   it("github.pr.create.before requiresStage1Regression=true", () => {
@@ -76,6 +104,23 @@ describe("multi-agent connector gateway routing decision stage 2-9", () => {
     expect(cursorSpy).not.toHaveBeenCalled();
     expect(githubSpy).not.toHaveBeenCalled();
     expect(planSpy).not.toHaveBeenCalled();
+  });
+
+  it("diagnostic section includes boundaryId and operation", () => {
+    const report = evaluateConnectorGatewayRoutingDecision({
+      boundaryId: "cursor.execution.before",
+    });
+    const section = mapConnectorRoutingDecisionToDiagnosticSection(report);
+    expect(section.boundaryId).toBe("cursor.execution.before");
+    expect(section.operation).toBe("cursor.execution.before");
+  });
+
+  it("diagnostic VM connectorRoutingDecision includes boundaryId and operation", () => {
+    const vm = buildAgentRuntimeDiagnosticViewModel({
+      routingBoundaryId: "github.pr.create.before",
+    });
+    expect(vm.connectorRoutingDecision?.boundaryId).toBe("github.pr.create.before");
+    expect(vm.connectorRoutingDecision?.operation).toBe("github.pr.create.before");
   });
 
   it("evaluator does not mutate connector gateway routing", () => {
