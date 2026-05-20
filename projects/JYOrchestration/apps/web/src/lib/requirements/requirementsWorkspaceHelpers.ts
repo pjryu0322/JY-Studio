@@ -9,6 +9,7 @@ import {
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 
 export type RequirementsWorkspaceStage = "ideation" | "service-flow" | "feature-planning";
 
@@ -133,4 +134,15 @@ export function ideationInterviewMilestoneLine(
   if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL / 2 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL / 2)
     return "서비스 기획 진행도가 절반을 넘었습니다.";
   return "";
+}
+
+/** 오케스트레이션 0%·슬롯 미확보 초기 상태에서는 Hub 알림 배지를 숨깁니다. */
+export function shouldShowWorkspaceHubNotificationBadges(input: {
+  readonly readinessPercent: number;
+  readonly statusCounts: SingleChatOrchestrationStatusCounts | null | undefined;
+}): boolean {
+  if (input.readinessPercent > 0) return true;
+  const c = input.statusCounts;
+  if (!c) return false;
+  return c.confirmed + c.partial + c.candidate > 0;
 }

@@ -361,6 +361,7 @@ export function useServiceFlowWorkshopChat({
           }
 
           if (!result.ok || !result.data.updatedFlow) {
+            clearReplyingState();
             autoScrollPendingRef.current = true;
             const failureUx = result.ok
               ? { body: GENERIC_ANALYZE_FAILURE }
@@ -374,7 +375,6 @@ export function useServiceFlowWorkshopChat({
             ]);
             if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-            clearReplyingState();
             return;
           }
 
@@ -386,14 +386,15 @@ export function useServiceFlowWorkshopChat({
             if (data.openAlternativeCanvas) setAlternativeCanvasOpen(true);
           }
           if (!nextFlow) {
+            clearReplyingState();
             autoScrollPendingRef.current = true;
             const errSlice = await onAppendRef.current([
               buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-            clearReplyingState();
             return;
           }
+          clearReplyingState();
           const statePatch = result.meta?.requirementsStatePatch;
           if (statePatch && onAnalyzeStatePatchRef.current) {
             await Promise.resolve(onAnalyzeStatePatchRef.current(statePatch));
@@ -420,7 +421,6 @@ export function useServiceFlowWorkshopChat({
           }
 
           if (suppressVisible) {
-            clearReplyingState();
             return;
           }
 
@@ -442,16 +442,16 @@ export function useServiceFlowWorkshopChat({
             }),
           ]);
           messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          clearReplyingState();
         } catch {
+          clearReplyingState();
           autoScrollPendingRef.current = true;
           try {
             const errSlice = await onAppendRef.current([
               buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          } finally {
-            clearReplyingState();
+          } catch {
+            // replying already cleared
           }
         }
       })();
@@ -614,6 +614,7 @@ export function useServiceFlowWorkshopChat({
           emitPromptTrace(fj?.meta?.promptTrace);
         }
         if (!result.ok || !result.data.updatedFlow) {
+          clearReplyingState();
           const failureUx = result.ok
             ? { body: GENERIC_ANALYZE_FAILURE }
             : resolveServiceFlowAnalyzeFailureUx(result.json);
@@ -624,9 +625,9 @@ export function useServiceFlowWorkshopChat({
           ]);
           if (failureUx.quickReplies?.length) setQuickReplies(failureUx.quickReplies);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          clearReplyingState();
           return;
         }
+        clearReplyingState();
         const organizedFlow = result.data.updatedFlow;
         onChangeFlowRef.current(organizedFlow);
         const nextQ = String(result.data?.nextQuestion ?? "").trim();
@@ -639,13 +640,13 @@ export function useServiceFlowWorkshopChat({
         const okSlice = await onAppendRef.current([buildServiceFlowAiPersist(organizeBody)]);
         messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setWorkspaceMode("summary");
-        clearReplyingState();
       } catch {
+        clearReplyingState();
         try {
           const errSlice = await onAppendRef.current([buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요.")]);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        } finally {
-          clearReplyingState();
+        } catch {
+          // replying already cleared
         }
       }
     })();

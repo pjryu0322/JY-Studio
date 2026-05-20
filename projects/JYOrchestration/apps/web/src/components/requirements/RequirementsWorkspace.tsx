@@ -126,6 +126,7 @@ import {
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
   IDEATION_DRAFT_REQUIRED_SLOTS,
+  shouldShowWorkspaceHubNotificationBadges,
   type MemberRow,
   type RequirementsWorkspaceStage,
   type SessionUser,
@@ -733,6 +734,14 @@ export function RequirementsWorkspace({
   const proposalReadinessPercentVal = useMemo(() => {
     return orchestrationWeightedMetrics.percent;
   }, [orchestrationWeightedMetrics.percent]);
+  const showWorkspaceHubBadges = useMemo(
+    () =>
+      shouldShowWorkspaceHubNotificationBadges({
+        readinessPercent: proposalReadinessPercentVal,
+        statusCounts: orchestrationStatusCounts,
+      }),
+    [proposalReadinessPercentVal, orchestrationStatusCounts],
+  );
   const problemInterviewCovered = useMemo(() => {
     return orchestrationConfirmedMetrics.confirmed;
   }, [orchestrationConfirmedMetrics.confirmed]);
@@ -1629,6 +1638,7 @@ export function RequirementsWorkspace({
     } finally {
       requirementsSendFlightRef.current = false;
       setBusy(false);
+      setServiceFlowDraftBusy(false);
     }
   }, [
     input,
@@ -2316,12 +2326,18 @@ export function RequirementsWorkspace({
         memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
         canvasHubControls={
           resolvedProjectId.trim()
-            ? { count: canvasHubCatalog.length, onOpen: () => setCanvasHubOpen(true) }
+            ? {
+                count: showWorkspaceHubBadges ? canvasHubCatalog.length : 0,
+                onOpen: () => setCanvasHubOpen(true),
+              }
             : null
         }
         artifactHubControls={
           resolvedProjectId.trim()
-            ? { count: artifactHubCatalog.length, onOpen: () => setArtifactHubOpen(true) }
+            ? {
+                count: showWorkspaceHubBadges ? artifactHubCatalog.length : 0,
+                onOpen: () => setArtifactHubOpen(true),
+              }
             : null
         }
         onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
