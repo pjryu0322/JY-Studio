@@ -30,7 +30,9 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     const r = planAgentHarnessDryRun({ intent: "prototype_build" });
     expect(r.agentId).toBe("ai-developer");
     expect(r.capabilityId).toBe("cursor.implementation.plan");
-    expect(["planned", "warning"]).toContain(r.status);
+    expect(r.status).toBe("warning");
+    expect(r.reason).toContain("governance_warning_candidate");
+    expect(r.executable).toBe(true);
     expect(r.requiredConnectors).toContain("cursor");
     expect(r.connectorPlans.some((p) => p.connectorId === "cursor" && p.allowed)).toBe(true);
     expect(r.governanceDryRun?.requiredChecks).toContain("connector:cursor");
@@ -162,6 +164,17 @@ describe("multi-agent harness dry-run stage 2-3", () => {
     }
   });
 
+  it("governance warning_candidate elevates harness status to warning", () => {
+    const r = planAgentHarnessDryRun({
+      agentId: "ai-developer",
+      capabilityId: "cursor.implementation.plan",
+    });
+    expect(r.governanceDryRun?.status).toBe("warning_candidate");
+    expect(r.status).toBe("warning");
+    expect(r.executable).toBe(true);
+    expect(r.governanceDryRunSummary?.evaluatedPolicyCount).toBeGreaterThan(0);
+  });
+
   it("governance blocking_candidate does not force executable false", () => {
     vi.spyOn(governancePrecheckModule, "evaluateGovernancePrecheckDryRun").mockReturnValue({
       mode: "dry_run",
@@ -185,7 +198,18 @@ describe("multi-agent harness dry-run stage 2-3", () => {
       capabilityId: "orchestration.intent.route",
     });
     expect(r.executable).toBe(true);
+    expect(r.status).toBe("warning");
     expect(r.governanceDryRun?.status).toBe("blocking_candidate");
+    expect(r.reason).toContain("governance_blocking_candidate");
     expect(r.warnings.some((w) => w.includes("governance_blocking_candidate"))).toBe(true);
+  });
+
+  it("no_agent result keeps metadata.source", () => {
+    const r = planAgentHarnessDryRun({
+      intent: "unknown_xyz",
+      stage: "UNKNOWN",
+      source: "requirements",
+    });
+    expect(r.metadata?.source).toBe("requirements");
   });
 });

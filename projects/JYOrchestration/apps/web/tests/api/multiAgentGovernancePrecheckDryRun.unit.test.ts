@@ -4,6 +4,7 @@ import {
   getGovernancePoliciesForCheck,
   listGovernancePolicies,
 } from "@/lib/agents/governancePolicyRegistry";
+import { planAgentHarnessDryRun } from "@/lib/agents/agentHarnessDryRun";
 
 describe("multi-agent governance precheck dry-run stage 2-4", () => {
   it("listGovernancePolicies returns default policies", () => {
@@ -48,6 +49,17 @@ describe("multi-agent governance precheck dry-run stage 2-4", () => {
     const r = evaluateGovernancePrecheckDryRun({ requiredChecks: ["unknown_check_xyz"] });
     expect(r.warnings.some((w) => w.includes("unknown_governance_check"))).toBe(true);
     expect(r.status).toBe("warning_candidate");
+  });
+
+  it("default policies include no blocking_candidate severity", () => {
+    const policies = listGovernancePolicies();
+    expect(policies.some((p) => p.severity === "blocking_candidate")).toBe(false);
+  });
+
+  it("harness includes governanceDryRun on planned path", () => {
+    const harness = planAgentHarnessDryRun({ intent: "ideation", stage: "IDEATION" });
+    expect(harness.governanceDryRun?.status).toBe("pass_candidate");
+    expect(harness.governanceDryRunSummary?.findingCount).toBeGreaterThan(0);
   });
 
   it("does not perform actual governance blocking", () => {

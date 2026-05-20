@@ -15,6 +15,8 @@ import { getCapabilityById } from "@/lib/agents/capabilityRegistry";
 import { planConnectorInvocation } from "@/lib/agents/connectorGatewayFacade";
 import type { ConnectorInvocationResult } from "@/lib/agents/connectorGatewayFacadeTypes";
 import { evaluateGovernancePrecheckDryRun } from "@/lib/agents/governancePrecheckDryRun";
+import type { GovernancePrecheckDryRunResult } from "@/lib/agents/governancePrecheckDryRunTypes";
+import type { HarnessGovernanceDryRunSummary } from "@/lib/agents/agentHarnessDryRunTypes";
 import {
   resolveDispatchAgent,
   resolveDispatchCapability,
@@ -238,6 +240,51 @@ function buildConnectorPlansForHarness(input: {
   );
 }
 
+export function summarizeGovernanceDryRun(
+  result: GovernancePrecheckDryRunResult,
+): HarnessGovernanceDryRunSummary {
+  return {
+    status: result.status,
+    evaluatedPolicyCount: result.evaluatedPolicyIds.length,
+    findingCount: result.findings.length,
+    warningCount: result.warnings.length,
+    blockingCandidateCount: result.blockingCandidates.length,
+  };
+}
+
+function deriveHarnessStatusWithGovernance(input: {
+  readonly baseStatus: HarnessDryRunStatus;
+  readonly governanceStatus: GovernancePrecheckDryRunResult["status"];
+}): HarnessDryRunStatus {
+  if (
+    input.baseStatus === "blocked" ||
+    input.baseStatus === "no_agent" ||
+    input.baseStatus === "no_capability"
+  ) {
+    return input.baseStatus;
+  }
+  if (
+    input.governanceStatus === "warning_candidate" ||
+    input.governanceStatus === "blocking_candidate"
+  ) {
+    return "warning";
+  }
+  return input.baseStatus;
+}
+
+function deriveHarnessReasonWithGovernance(
+  baseReason: string,
+  governanceStatus: GovernancePrecheckDryRunResult["status"],
+): string {
+  if (governanceStatus === "warning_candidate") {
+    return `${baseReason}:governance_warning_candidate`;
+  }
+  if (governanceStatus === "blocking_candidate") {
+    return `${baseReason}:governance_blocking_candidate`;
+  }
+  return baseReason;
+}
+
 function mergeGovernanceDryRunWarnings(
   warnings: string[],
   governanceDryRun: ReturnType<typeof evaluateGovernancePrecheckDryRun>,
@@ -274,6 +321,13 @@ function finalizeHarnessResult(input: {
   const warnings = [...input.warnings];
   mergeGovernanceDryRunWarnings(warnings, governanceDryRun);
 
+  const status = deriveHarnessStatusWithGovernance({
+    baseStatus: input.status,
+    governanceStatus: governanceDryRun.status,
+  });
+  const reason = deriveHarnessReasonWithGovernance(input.reason, governanceDryRun.status);
+  const governanceDryRunSummary = summarizeGovernanceDryRun(governanceDryRun);
+
   const agent = input.agentId ? getAgentById(input.agentId) : undefined;
   const metadata = buildHarnessDryRunMetadata(input.request, {
     agentResolutionReason: input.agentResolutionReason,
@@ -284,13 +338,14 @@ function finalizeHarnessResult(input: {
   });
 
   return {
-    status: input.status,
+    status,
     executable: input.executable,
-    reason: input.reason,
+    reason,
     requiredConnectors: input.requiredConnectors,
     connectorPlans: input.connectorPlans,
     governancePrecheck: input.governancePrecheck,
     governanceDryRun,
+    governanceDryRunSummary,
     warnings,
     blockingReasons: [...input.blockingReasons],
     ...(input.agentId ? { agentId: input.agentId } : {}),

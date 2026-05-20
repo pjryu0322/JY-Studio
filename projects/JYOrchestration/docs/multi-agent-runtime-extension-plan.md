@@ -206,13 +206,45 @@ blocking_candidate 정책 존재 → blocking_candidate (Harness executable 유�
 unknown check → warning finding
 ```
 
-### Stage 2-5 후보: Timeline/Replay Metadata Persistence 검토
+현재 Stage 2-4 기본 정책은 info/warning 후보만 포함한다. `blocking_candidate`는 타입과 evaluator가 지원하지만, 실제 기본 정책에는 아직 포함하지 않는다. 실제 차단 후보 정책은 Runtime 단계에서 별도 승인 후 추가한다.
 
-| 후보 필드 | 목적 | 저장 필요성 | 주의사항 |
+### Stage 2-4 소스 점검 보완 (Stage 2-5 전)
+
+| 항목 | 조치 | 파일 |
+|---|---|---|
+| governance → Harness status | `warning_candidate`/`blocking_candidate` 시 Harness `warning` 승격 | `agentHarnessDryRun.ts` |
+| governance summary | `governanceDryRunSummary` + `summarizeGovernanceDryRun` | `agentHarnessDryRunTypes.ts` |
+| reason 보강 | `:governance_warning_candidate` / `:governance_blocking_candidate` | `deriveHarnessReasonWithGovernance` |
+
+## Stage 2-5 Timeline/Replay Metadata Persistence Readiness 결과
+
+| 항목 | 반영 방식 | 실제 저장 여부 | 비고 |
 |---|---|---|---|
-| agentId | 실행 주체 추적 | 높음 | 기존 dispatch 영향 최소화 |
-| capabilityId | 실행 능력 추적 | 높음 | registry version 고려 |
-| connectorPlans | 실행 전 connector 판단 | 중간 | 원문 metadata 최소화 |
-| governanceDryRun | 정책 후보 평가 | 중간 | 실제 차단과 구분 |
-| lastAgentEvent | timeline/replay 연결 | 높음 | event schema 안정화 필요 |
+| AgentRuntimePersistenceCandidate | 저장 후보 타입 | 없음 | schemaVersion + registryVersion |
+| ConnectorPlanSummary | connectorPlans 축약 | 없음 | 원문 metadata 제외 |
+| GovernanceSummary | governanceDryRun 축약 | 없음 | 실제 차단과 구분 |
+| Timeline candidate helper | `buildTimelineMetadataCandidateFromHarness` | 없음 | 저장 함수 호출 없음 |
+| Replay candidate helper | `buildReplaySnapshotCandidateFromHarness` | 없음 | 저장 함수 호출 없음 |
+| Sanitizer/Validator | 금지 키 제거·검증 | 없음 | token/prompt/diff 제외 |
+
+구현: `agentRuntimePersistenceCandidateTypes.ts`, `buildAgentRuntimePersistenceCandidate.ts`, `agentRuntimePersistenceCandidateValidation.ts`, `agentRuntimeTimelineReplayCandidate.ts`
+
+### Stage 2-5 Persist 후보 필드
+
+| 필드 | 저장 후보 여부 | 사유 | 주의사항 |
+|---|---|---|---|
+| agentId | 후보 | 실행 주체 추적 | registry version 고려 |
+| capabilityId | 후보 | 실행 능력 추적 | registry version 고려 |
+| connectorPlanSummary | 후보 | connector 판단 설명 | 원문 metadata 제외 |
+| governanceSummary | 후보 | 정책 후보 평가 설명 | 실제 차단 아님 |
+| warnings/blockingReasons | 후보 | 운영 진단 | 개수·길이 제한 |
+| rawPrompt/codeDiff/fileContent/token | 제외 | 민감/대용량 | 저장 금지 |
+
+### Stage 2-6 후보: Connector Gateway Pass-through Integration 검토
+
+| 후보 | 설명 | 주의사항 |
+|---|---|---|
+| Cursor execution boundary | 실행 전 facade record 생성 후보 | 실제 호출 라우팅 변경 금지 |
+| GitHub PR boundary | PR 생성/상태 확인 전 facade record 후보 | 기존 GitHub 동작 변경 금지 |
+| Timeline diagnostic | pass-through record read-only 표시 | 저장 구조 변경 별도 승인 |
 ```

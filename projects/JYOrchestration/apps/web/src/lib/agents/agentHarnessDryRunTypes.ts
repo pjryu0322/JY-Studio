@@ -47,6 +47,14 @@ export interface HarnessGovernancePrecheck {
   readonly blockingReasons?: readonly string[];
 }
 
+export interface HarnessGovernanceDryRunSummary {
+  readonly status: GovernancePrecheckDryRunResult["status"];
+  readonly evaluatedPolicyCount: number;
+  readonly findingCount: number;
+  readonly warningCount: number;
+  readonly blockingCandidateCount: number;
+}
+
 export interface HarnessDryRunResult {
   readonly status: HarnessDryRunStatus;
   readonly executable: boolean;
@@ -57,6 +65,7 @@ export interface HarnessDryRunResult {
   readonly connectorPlans: readonly ConnectorInvocationResult[];
   readonly governancePrecheck: HarnessGovernancePrecheck;
   readonly governanceDryRun?: GovernancePrecheckDryRunResult;
+  readonly governanceDryRunSummary?: HarnessGovernanceDryRunSummary;
   readonly reason: string;
   readonly warnings: readonly string[];
   readonly blockingReasons: readonly string[];

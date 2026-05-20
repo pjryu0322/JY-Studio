@@ -127,6 +127,7 @@ export type {
   HarnessDryRunResult,
   HarnessDryRunSource,
   HarnessDryRunStatus,
+  HarnessGovernanceDryRunSummary,
   HarnessGovernancePrecheck,
   HarnessGovernancePrecheckStatus,
 } from "@/lib/agents/agentHarnessDryRunTypes";
@@ -136,6 +137,7 @@ export {
   buildHarnessDryRunRequest,
   planAgentHarnessDryRun,
   planRequirementsHarnessDryRun,
+  summarizeGovernanceDryRun,
 } from "@/lib/agents/agentHarnessDryRun";
 
 export type {
@@ -156,6 +158,30 @@ export {
   getGovernancePolicyById,
   listGovernancePolicies,
 } from "@/lib/agents/governancePolicyRegistry";
+
+export type {
+  AgentConnectorPlanSummary,
+  AgentGovernanceDryRunPersistenceSummary,
+  AgentRuntimePersistenceCandidate,
+  AgentRuntimePersistenceCandidateKind,
+} from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
+
+export {
+  AGENT_RUNTIME_METADATA_SCHEMA_VERSION,
+  AGENT_RUNTIME_REGISTRY_VERSION,
+} from "@/lib/agents/agentRuntimePersistenceCandidateTypes";
+
+export { buildAgentRuntimePersistenceCandidateFromHarness } from "@/lib/agents/buildAgentRuntimePersistenceCandidate";
+
+export {
+  sanitizeAgentRuntimePersistenceCandidate,
+  validateAgentRuntimePersistenceCandidate,
+} from "@/lib/agents/agentRuntimePersistenceCandidateValidation";
+
+export {
+  buildReplaySnapshotCandidateFromHarness,
+  buildTimelineMetadataCandidateFromHarness,
+} from "@/lib/agents/agentRuntimeTimelineReplayCandidate";
 
 /** @internal Tests and registry bootstrap only. */
 export { DEFAULT_AGENTS } from "@/lib/agents/defaultAgents";
