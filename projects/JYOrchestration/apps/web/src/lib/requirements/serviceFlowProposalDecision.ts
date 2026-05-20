@@ -23,8 +23,7 @@ import {
 import { buildServiceFlowReviewPresentation } from "@/lib/requirements/serviceFlowReviewPresentation";
 import {
   hydrateServiceFlowStepsFromAlternativePayload,
-  mergeQuickRepliesWithAlternativeCanvasReopen,
-  REOPEN_ALTERNATIVE_CANVAS_LABEL,
+  stripAlternativeCanvasReopenFromQuickReplies,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import { resolveProposalDecisionFromQuickActionInput } from "@/lib/requirements/requirementsQuickActionRegistry";
@@ -109,10 +108,7 @@ export function buildServiceFlowEnterReviewMessage(input: {
   const flow = hydrateServiceFlowStepsFromAlternativePayload(input.flow);
   const syncSummary = String(input.applySyncSummary ?? "").trim();
   if (syncSummary) {
-    const canvasHint = flow.alternativeProposalPayload
-      ? `\n\n**${REOPEN_ALTERNATIVE_CANVAS_LABEL}**에서 기존안과의 비교를 다시 확인할 수 있습니다.`
-      : "";
-    return `${syncSummary}${canvasHint}`;
+    return syncSummary;
   }
   const body = buildServiceFlowReviewPresentation({
     flow,
@@ -120,8 +116,7 @@ export function buildServiceFlowEnterReviewMessage(input: {
     heading: "추천안을 서비스 흐름 검토 단계로 반영했습니다.",
     cta: "다음: 흐름 상세 검토 후 승인하거나 일부 수정할 수 있습니다.",
   });
-  if (!flow.alternativeProposalPayload) return body;
-  return `${body}\n\n**${REOPEN_ALTERNATIVE_CANVAS_LABEL}**에서 기존안과의 비교를 다시 확인할 수 있습니다.`;
+  return body;
 }
 
 export function buildServiceFlowApprovedTransitionMessage(input: {
@@ -400,9 +395,8 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
     return buildFastPathResult({
       assistantMessage,
       updatedFlow: flowReview,
-      quickReplies: mergeQuickRepliesWithAlternativeCanvasReopen(
+      quickReplies: stripAlternativeCanvasReopenFromQuickReplies(
         quickRepliesForConversationState("REVIEW"),
-        Boolean(flowReview.alternativeProposalPayload),
       ),
       intent: "unclear",
       routingDecision: "proposal_apply_enter_review",

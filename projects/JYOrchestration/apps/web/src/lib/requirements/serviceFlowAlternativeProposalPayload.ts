@@ -49,8 +49,8 @@ export type AlternativeProposalPayloadWire = Readonly<{
 
 export const REOPEN_ALTERNATIVE_CANVAS_LABEL = "대안 상세 보기";
 
+/** 대안 검토 단계 decision chip (Canvas Hub에서 상세 보기 — 채팅 재오픈 버튼 없음) */
 export const ALTERNATIVE_CANVAS_QUICK_REPLIES = [
-  REOPEN_ALTERNATIVE_CANVAS_LABEL,
   "이 대안 적용",
   "다른 대안 다시 생성",
 ] as const;
@@ -102,20 +102,26 @@ export function hydrateServiceFlowStepsFromAlternativePayload(
   return { ...flow, actors, steps, updatedAt: now };
 }
 
-export function mergeQuickRepliesWithAlternativeCanvasReopen(
+/** 채팅 chip에서 "대안 상세 보기" 제거 (Canvas Hub로 이동) */
+export function stripAlternativeCanvasReopenFromQuickReplies(
   quickReplies: readonly string[],
-  hasAlternativePayload: boolean,
   maxItems = 4,
 ): string[] {
-  const normalized = quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean);
-  if (!hasAlternativePayload) return normalized.slice(0, maxItems);
-
-  const out: string[] = [REOPEN_ALTERNATIVE_CANVAS_LABEL];
-  for (const label of normalized) {
+  const out: string[] = [];
+  for (const label of quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean)) {
     if (label === REOPEN_ALTERNATIVE_CANVAS_LABEL || out.includes(label)) continue;
     out.push(label);
   }
   return out.slice(0, maxItems);
+}
+
+/** @deprecated Canvas Hub 전환 이후 stripAlternativeCanvasReopenFromQuickReplies 사용 */
+export function mergeQuickRepliesWithAlternativeCanvasReopen(
+  quickReplies: readonly string[],
+  _hasAlternativePayload?: boolean,
+  maxItems = 4,
+): string[] {
+  return stripAlternativeCanvasReopenFromQuickReplies(quickReplies, maxItems);
 }
 
 function norm(s: string): string {

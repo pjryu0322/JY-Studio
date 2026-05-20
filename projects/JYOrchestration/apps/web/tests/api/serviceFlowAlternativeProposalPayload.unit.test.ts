@@ -6,7 +6,7 @@ import {
   computeAlternativeProposalComparison,
   hydrateServiceFlowStepsFromAlternativePayload,
   inferAlternativeDirectionLabel,
-  mergeQuickRepliesWithAlternativeCanvasReopen,
+  stripAlternativeCanvasReopenFromQuickReplies,
   REOPEN_ALTERNATIVE_CANVAS_LABEL,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
@@ -52,13 +52,15 @@ describe("serviceFlowAlternativeProposalPayload phase13", () => {
     expect(inferAlternativeDirectionLabel(comp)).toBe("협업·검토 강화형");
   });
 
-  it("mergeQuickRepliesWithAlternativeCanvasReopen — 검토 chip에 재오픈 보장", () => {
-    const merged = mergeQuickRepliesWithAlternativeCanvasReopen(
-      ["흐름 승인하기", "단계 수정하기"],
-      true,
-    );
-    expect(merged[0]).toBe(REOPEN_ALTERNATIVE_CANVAS_LABEL);
+  it("stripAlternativeCanvasReopenFromQuickReplies — 대안 상세 보기 chip 제거", () => {
+    const merged = stripAlternativeCanvasReopenFromQuickReplies([
+      REOPEN_ALTERNATIVE_CANVAS_LABEL,
+      "흐름 승인하기",
+      "단계 수정하기",
+    ]);
+    expect(merged).not.toContain(REOPEN_ALTERNATIVE_CANVAS_LABEL);
     expect(merged).toContain("흐름 승인하기");
+    expect(merged[0]).toBe("흐름 승인하기");
   });
 
   it("hydrateServiceFlowStepsFromAlternativePayload — root steps 비어 있어도 payload에서 복원", () => {

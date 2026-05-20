@@ -35,8 +35,7 @@ import {
   type QuickActionId,
 } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
-  ALTERNATIVE_CANVAS_QUICK_REPLIES,
-  mergeQuickRepliesWithAlternativeCanvasReopen,
+  stripAlternativeCanvasReopenFromQuickReplies,
   type AlternativeProposalPayloadWire,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 import {
@@ -406,9 +405,8 @@ export function useServiceFlowWorkshopChat({
           const normalizedActions = normalizeQuickRepliesToActions(
             Array.isArray(data.quickReplies) ? data.quickReplies : [],
           );
-          const replies = mergeQuickRepliesWithAlternativeCanvasReopen(
+          const replies = stripAlternativeCanvasReopenFromQuickReplies(
             quickActionsToLabels(normalizedActions),
-            Boolean(nextFlow?.alternativeProposalPayload),
           );
           const actionsAfterCanvas = normalizeQuickRepliesToActions(replies);
           if (!suppressVisible) {
@@ -481,13 +479,6 @@ export function useServiceFlowWorkshopChat({
     }
   }, [flow?.alternativeProposalPayload]);
 
-  useEffect(() => {
-    if (!flow?.alternativeProposalPayload) return;
-    setQuickReplies((prev) =>
-      mergeQuickRepliesWithAlternativeCanvasReopen(prev ?? [], true),
-    );
-  }, [flow?.alternativeProposalPayload]);
-
   const openAlternativeCanvas = useCallback(() => {
     const payload =
       flowRef.current?.alternativeProposalPayload ?? alternativePayloadRef.current;
@@ -512,7 +503,8 @@ export function useServiceFlowWorkshopChat({
           });
           alternativePayloadRef.current = null;
           setAlternativeCanvasOpen(false);
-          setQuickReplies([...ALTERNATIVE_CANVAS_QUICK_REPLIES]);
+          setQuickReplies(null);
+          setQuickActions(null);
         }
         return true;
       }

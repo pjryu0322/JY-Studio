@@ -60,6 +60,7 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
       "GENERATE_DOCUMENT",
       "DOCUMENT_FLOW",
       "COMPLETE_DOCUMENTATION",
+      "VIEW_ALTERNATIVE_DETAIL",
     ],
   },
   SERVICE_FLOW_REVIEW: {
@@ -82,6 +83,10 @@ const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> =
       "DEFINE_API",
       "DOCUMENT_FLOW",
       "COMPLETE_DOCUMENTATION",
+      "VIEW_ALTERNATIVE_DETAIL",
+      "APPLY_ALTERNATIVE",
+      "KEEP_PRIMARY",
+      "REGENERATE_ALTERNATIVE",
     ],
   },
   FEATURE_DETAIL: {

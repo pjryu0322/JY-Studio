@@ -35,6 +35,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   } | null;
   onDownloadConversationMarkdown?: () => void | Promise<void>;
   onSummarizeConversation?: () => void | Promise<void>;
+  canvasHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
   workflowGuidanceBanner: string | null;
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
@@ -80,6 +81,16 @@ function SlotsIcon() {
   );
 }
 
+function CanvasHubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M9 21V9" />
+    </svg>
+  );
+}
+
 export function RequirementsWorkspaceTopChrome({
   showScreenLabels,
   showProjectWorkflowNav,
@@ -98,6 +109,7 @@ export function RequirementsWorkspaceTopChrome({
   ideationInterviewUi,
   onDownloadConversationMarkdown,
   onSummarizeConversation,
+  canvasHubControls,
   workflowGuidanceBanner,
   loadError,
   onClearLoadErrorAndRetry,
@@ -363,6 +375,17 @@ export function RequirementsWorkspaceTopChrome({
             onClick={() => setSlotsOpen((v) => !v)}
           >
             <SlotsIcon />
+          </WorkspaceHubChromeIconButton>
+        ) : null}
+        {canvasHubControls ? (
+          <WorkspaceHubChromeIconButton
+            title="Canvas Hub — 프로젝트 상태·산출물 보기"
+            ariaLabel="Canvas Hub 열기"
+            disabled={false}
+            badge={canvasHubControls.count > 0 ? canvasHubControls.count : undefined}
+            onClick={() => canvasHubControls.onOpen()}
+          >
+            <CanvasHubIcon />
           </WorkspaceHubChromeIconButton>
         ) : null}
         {memberControls ? (

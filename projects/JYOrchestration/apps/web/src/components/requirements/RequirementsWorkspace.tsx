@@ -166,6 +166,13 @@ import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArt
 import type { ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
 import { WorkspaceArtifactPlusMenuItems } from "@/components/requirements/WorkspaceArtifactPlusMenu";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
+import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
+import {
+  buildProjectCanvasHubCatalog,
+  featurePlanningToDeliverablePreview,
+  type ProjectCanvasArtifact,
+} from "@/lib/requirements/projectCanvasHub";
+import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 
 
 export function RequirementsWorkspace({
@@ -225,6 +232,10 @@ export function RequirementsWorkspace({
   const [deliverableGenerateBusy, setDeliverableGenerateBusy] = useState(false);
   const [artifactGenerateBusy, setArtifactGenerateBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
+  const [canvasHubOpen, setCanvasHubOpen] = useState(false);
+  const [canvasHubExtraDeliverables, setCanvasHubExtraDeliverables] = useState<
+    readonly IdeationDeliverableAsset[]
+  >([]);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -731,14 +742,43 @@ export function RequirementsWorkspace({
    */
   const deliverableAssetsFromProject = useMemo(() => {
     const local = stateJsonRef.current.deliverableAssets;
-    if (Array.isArray(local) && local.length) return local;
-    return persistedPromptState.deliverableAssets ?? [];
+    const base =
+      Array.isArray(local) && local.length ? local : (persistedPromptState.deliverableAssets ?? []);
+    if (!canvasHubExtraDeliverables.length) return base;
+    const seen = new Set(base.map((a) => a.id));
+    const extras = canvasHubExtraDeliverables.filter((a) => !seen.has(a.id));
+    return extras.length ? [...base, ...extras] : base;
   }, [
     persistedPromptState.deliverableAssets,
     project?.requirementsStateJson,
     saveState,
     fetchNonce,
     room.requirementsConversation.messages.length,
+    canvasHubExtraDeliverables,
+  ]);
+
+  const canvasHubCatalog = useMemo(() => {
+    const st: RequirementsStateJson = {
+      ...persistedPromptState,
+      serviceFlowV1: serviceFlow ?? persistedPromptState.serviceFlowV1 ?? undefined,
+      featurePlanningSlotsV1:
+        stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1,
+      projectArtifacts:
+        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
+    };
+    return buildProjectCanvasHubCatalog({
+      state: st,
+      serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+      deliverableAssets: deliverableAssetsFromProject,
+      projectArtifacts: st.projectArtifacts ?? undefined,
+    });
+  }, [
+    persistedPromptState,
+    serviceFlow,
+    deliverableAssetsFromProject,
+    saveState,
+    fetchNonce,
+    project?.requirementsStateJson,
   ]);
 
   const deliverableViewerAssets = useMemo(
@@ -1894,6 +1934,28 @@ export function RequirementsWorkspace({
     serviceFlowSendRef,
   });
 
+  const handleCanvasHubSelect = useCallback(
+    (item: ProjectCanvasArtifact) => {
+      setCanvasHubOpen(false);
+      if (item.openTarget.kind === "alternative-canvas") {
+        serviceFlowAlternativeCanvas.openAlternativeCanvas();
+        return;
+      }
+      const assetId = item.openTarget.assetId;
+      if (assetId === "canvas-feature-planning-preview") {
+        const fp = stateJsonRef.current.featurePlanningSlotsV1;
+        const pid = resolvedProjectId.trim();
+        if (!fp || !pid) return;
+        const preview = featurePlanningToDeliverablePreview(fp, pid);
+        setCanvasHubExtraDeliverables([preview]);
+        openDeliverableViewer([preview.id], preview.id);
+        return;
+      }
+      openDeliverableViewer([assetId], assetId);
+    },
+    [openDeliverableViewer, resolvedProjectId, serviceFlowAlternativeCanvas],
+  );
+
   const onDownloadConversationMarkdown = useCallback(() => {
     const pid = resolvedProjectId.trim();
     const projectLabel = (project?.name ?? "").trim() || "서비스기획";
@@ -2061,6 +2123,13 @@ export function RequirementsWorkspace({
     <div style={requirementsWorkspaceShellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
+      <RequirementsCanvasHubDrawer
+        open={canvasHubOpen}
+        items={canvasHubCatalog}
+        onClose={() => setCanvasHubOpen(false)}
+        onSelect={handleCanvasHubSelect}
+      />
+
       {activeStage === "service-flow" ? (
         <AlternativeProposalCanvasOverlay
           open={serviceFlowAlternativeCanvas.alternativeCanvasOpen}
@@ -2123,6 +2192,11 @@ export function RequirementsWorkspace({
             : null
         }
         memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
+        canvasHubControls={
+          resolvedProjectId.trim()
+            ? { count: canvasHubCatalog.length, onOpen: () => setCanvasHubOpen(true) }
+            : null
+        }
         onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
         onSummarizeConversation={() => void onSummarizeConversation()}
         resetConversationDisabled={
