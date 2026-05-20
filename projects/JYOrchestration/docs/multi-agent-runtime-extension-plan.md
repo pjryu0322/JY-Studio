@@ -428,13 +428,56 @@ timeline_replay_persist → defer
 unknown target → blocked
 ```
 
-### Stage 2-11 후보: Timeline/Replay persist 실제 적용 설계
+## Stage 2-10 소스 보완 결과
 
-Stage 2-11에서는 Stage 2-5/2-8 persistence candidate와 decision report를 바탕으로 실제 저장 적용 설계를 검토한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| execution transition summary | 보완 | 모든 report에 summary 포함 |
+| recommendedNextStage | 보완 | target별 Stage 2-11/2-13 안내 |
+| 실제 execution | 없음 | read-only evaluator |
+| 실제 connector routing | 없음 | |
+| 실제 persist | 없음 | |
+
+## Stage 2-11 Timeline/Replay Persist 실제 적용 설계 결과
+
+| 항목 | 반영 방식 | 실제 저장 여부 | 비고 |
+|---|---|---|---|
+| Persist Design 타입 | `read_only_persist_design` report | 없음 | schema 설계 전 단계 |
+| Persist Design evaluator | candidate + validate 기반 | 없음 | DB/Timeline 호출 없음 |
+| timeline_metadata | ready_for_schema_design | 없음 | schema 설계 필요 |
+| replay_snapshot | defer | 없음 | 데이터량/민감정보 검토 |
+| diagnostic_log | ready_for_schema_design | 없음 | 저장 위치 결정 필요 |
+| forbidden fields | excludedFields 정책 | 없음 | prompt/diff/token 제외 |
+
+구현: `timelineReplayPersistDesignTypes.ts`, `evaluateTimelineReplayPersistDesign.ts`
+
+### Stage 2-11 원칙
+
+```text
+- 실제 Timeline/Replay persist를 적용하지 않는다.
+- DB/Prisma schema를 변경하지 않는다.
+- migration을 만들지 않는다.
+- persistFields / excludedFields는 설계 report로만 제공한다.
+- validateAgentRuntimePersistenceCandidate를 설계 판단에 사용한다.
+```
+
+### Stage 2-11 필드 정책 요약
+
+```text
+persist 후보: schemaVersion, registryVersion, kind, agentId, capabilityId, summaries, warnings 등
+제외(정책): rawPrompt, codeDiff, token, secret, apiKey, env 등 (forbidden)
+replay_snapshot → defer
+invalid candidate → blocked
+requiresSchemaChange / requiresMigration / requiresRollbackPlan → true (판단값만)
+```
+
+### Stage 2-12 후보: Governance enforcement 적용 설계
+
+Stage 2-12에서는 Governance dry-run을 실제 차단 정책으로 전환할 수 있는지 설계만 검토한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Timeline metadata persist | agentId/capabilityId/harness status 저장 | schema 영향 |
-| Replay snapshot persist | replay candidate 저장 | 데이터량/민감정보 주의 |
-| Diagnostic log persist | dry-run decision log 저장 | 저장 위치 결정 필요 |
-| Rollback plan | 저장 적용 롤백 | 필수 |
+| Policy severity mapping | warning/blocking_candidate를 실제 차단 기준으로 매핑 | 운영 승인 필요 |
+| Enforcement scope | capability별 적용 범위 | 오탐 방지 |
+| Override policy | 운영자 승인 우회 | 감사 로그 필요 |
+| Rollback plan | enforcement 비활성화 경로 | 필수 |

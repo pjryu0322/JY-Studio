@@ -52,6 +52,22 @@ function resolveDecision(
   }
 }
 
+const RECOMMENDED_NEXT_STAGE: Record<AgentRuntimeExecutionTransitionTarget, string> = {
+  harness_execution: "Stage 2-10+ operator-approved runtime design",
+  agent_execution_record: "Stage 2-11 Timeline/Replay persist design",
+  connector_execution_bridge: "Stage 2-13 Connector Gateway routing experiment branch",
+  governance_enforcement: "Governance policy approval required",
+  timeline_replay_persist: "Stage 2-11 Timeline/Replay persist design",
+  unknown: "Define transition target before evaluation",
+};
+
+function buildSummary(
+  target: AgentRuntimeExecutionTransitionTarget,
+  decision: AgentRuntimeExecutionTransitionDecision,
+): string {
+  return `read-only transition decision: ${target} → ${decision} (no execution, persist, routing, or enforcement wire)`;
+}
+
 function appendTargetFindings(
   findings: AgentRuntimeExecutionTransitionFinding[],
   target: AgentRuntimeExecutionTransitionTarget,
@@ -111,7 +127,7 @@ function appendTargetFindings(
       finding(
         "info",
         "defer_timeline_replay_persist",
-        "Timeline/Replay persist affects DB/schema; defer",
+        "Timeline/Replay persist affects DB/schema; defer until Stage 2-11 design",
       ),
     );
   }
@@ -127,6 +143,9 @@ export function evaluateAgentRuntimeExecutionTransition(input: {
 
   appendTargetFindings(findings, target, decision);
 
+  const summary = buildSummary(target, decision);
+  const recommendedNextStage = RECOMMENDED_NEXT_STAGE[target];
+
   return {
     mode: "read_only_execution_transition_decision",
     decision,
@@ -138,5 +157,7 @@ export function evaluateAgentRuntimeExecutionTransition(input: {
       target === "governance_enforcement" ||
       target === "timeline_replay_persist",
     findings,
+    summary,
+    recommendedNextStage,
   };
 }

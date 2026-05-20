@@ -49,6 +49,49 @@ describe("multi-agent runtime execution transition stage 2-10", () => {
     expect(report.requiresRollbackPlan).toBe(true);
   });
 
+  it("all reports include summary", () => {
+    const targets = [
+      "harness_execution",
+      "agent_execution_record",
+      "connector_execution_bridge",
+      "governance_enforcement",
+      "timeline_replay_persist",
+      "unknown",
+    ] as const;
+    for (const target of targets) {
+      const report = evaluateAgentRuntimeExecutionTransition({ target });
+      expect(report.summary).toBeTruthy();
+      expect(report.summary).toContain("read-only transition decision");
+    }
+  });
+
+  it("timeline_replay_persist recommendedNextStage includes Stage 2-11", () => {
+    const report = evaluateAgentRuntimeExecutionTransition({ target: "timeline_replay_persist" });
+    expect(report.recommendedNextStage).toContain("Stage 2-11");
+  });
+
+  it("agent_execution_record recommendedNextStage includes persist design", () => {
+    const report = evaluateAgentRuntimeExecutionTransition({ target: "agent_execution_record" });
+    expect(report.recommendedNextStage?.toLowerCase()).toContain("persist");
+  });
+
+  it("connector_execution_bridge recommendedNextStage includes routing experiment", () => {
+    const report = evaluateAgentRuntimeExecutionTransition({ target: "connector_execution_bridge" });
+    expect(report.recommendedNextStage).toContain("Connector Gateway routing");
+  });
+
+  it("governance_enforcement recommendedNextStage includes policy approval", () => {
+    const report = evaluateAgentRuntimeExecutionTransition({ target: "governance_enforcement" });
+    expect(report.recommendedNextStage?.toLowerCase()).toContain("policy approval");
+  });
+
+  it("unknown target is blocked with define target guidance", () => {
+    const report = evaluateAgentRuntimeExecutionTransition({ target: "unknown" });
+    expect(report.target).toBe("unknown");
+    expect(report.decision).toBe("blocked");
+    expect(report.recommendedNextStage?.toLowerCase()).toContain("define");
+  });
+
   it("does not call harness, connector, or governance execution paths", () => {
     const harnessSpy = vi.spyOn(harnessModule, "planAgentHarnessDryRun");
     const connectorSpy = vi.spyOn(connectorFacade, "planConnectorInvocation");
@@ -57,11 +100,5 @@ describe("multi-agent runtime execution transition stage 2-10", () => {
     expect(harnessSpy).not.toHaveBeenCalled();
     expect(connectorSpy).not.toHaveBeenCalled();
     expect(governanceSpy).not.toHaveBeenCalled();
-  });
-
-  it("unknown target is blocked", () => {
-    const report = evaluateAgentRuntimeExecutionTransition({ target: "unknown" });
-    expect(report.target).toBe("unknown");
-    expect(report.decision).toBe("blocked");
   });
 });

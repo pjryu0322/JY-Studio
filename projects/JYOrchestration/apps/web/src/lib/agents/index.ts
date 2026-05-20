@@ -267,6 +267,17 @@ export type {
 
 export { evaluateAgentRuntimeExecutionTransition } from "@/lib/agents/evaluateAgentRuntimeExecutionTransition";
 
+export type {
+  TimelineReplayPersistDesignDecision,
+  TimelineReplayPersistDesignFinding,
+  TimelineReplayPersistDesignReport,
+  TimelineReplayPersistFieldDecision,
+  TimelineReplayPersistFieldSensitivity,
+  TimelineReplayPersistTarget,
+} from "@/lib/agents/timelineReplayPersistDesignTypes";
+
+export { evaluateTimelineReplayPersistDesign } from "@/lib/agents/evaluateTimelineReplayPersistDesign";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

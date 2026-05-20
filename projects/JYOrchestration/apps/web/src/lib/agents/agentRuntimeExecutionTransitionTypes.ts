@@ -26,4 +26,6 @@ export interface AgentRuntimeExecutionTransitionReport {
   readonly requiresRollbackPlan: boolean;
   readonly requiresRegressionTest: boolean;
   readonly findings: readonly AgentRuntimeExecutionTransitionFinding[];
+  readonly summary?: string;
+  readonly recommendedNextStage?: string;
 }
