@@ -94,8 +94,8 @@ const QUICK_ACTION_REGISTRY: Record<QuickActionId, QuickActionDefinition> = {
   },
   APPROVE_FLOW: {
     id: "APPROVE_FLOW",
-    defaultLabel: "흐름 승인하기",
-    labelAliases: ["그대로 진행"],
+    defaultLabel: "흐름 확정",
+    labelAliases: ["흐름 승인하기", "그대로 진행"],
     conversationProfiles: ["review", "approved"],
     proposalDecision: "FLOW_APPROVE",
     transitionSignal: "APPROVE_FLOW",

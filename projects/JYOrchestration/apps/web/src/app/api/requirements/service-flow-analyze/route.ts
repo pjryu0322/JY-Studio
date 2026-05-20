@@ -358,6 +358,7 @@ export async function POST(request: NextRequest) {
       state: clientOrchestrationState,
       currentFlow,
       proposalDecision,
+      quickActionId: quickActionId || undefined,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
       projectName,

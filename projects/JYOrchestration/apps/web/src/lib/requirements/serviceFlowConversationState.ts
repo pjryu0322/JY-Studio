@@ -21,7 +21,7 @@ export const SERVICE_FLOW_QUICK_REPLIES_BY_PROFILE: Readonly<
   Record<ServiceFlowQuickReplyProfile, readonly string[]>
 > = {
   proposal: ["추천안 적용", "일부 수정", "다른 대안 보기", "직접 입력", "보류"],
-  review: ["흐름 승인하기", "단계 수정하기", "액터 추가하기", "흐름 상세 검토", "세부 기능 정리"],
+  review: ["흐름 확정", "단계 수정하기", "액터 추가하기", "흐름 상세 검토", "세부 기능 정리"],
   approved: ["다음 단계 진행", "세부 기능 정리", "문서화하기", "문서화 완료", "단계 수정하기"],
   feature_detail: ["기능 수정", "화면 정의", "API 정의", "문서 생성"],
 };

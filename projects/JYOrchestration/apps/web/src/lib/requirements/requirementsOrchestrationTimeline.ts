@@ -16,9 +16,14 @@ export function appendOrchestrationTransitionTimelineExtras(input: {
 }): Record<string, unknown> {
   const meta = input.transitionMeta;
   const eng = input.transitionEngine;
+  const fastPathProposalDecision =
+    eng?.fastPath && "proposalDecision" in eng.fastPath && eng.fastPath.proposalDecision
+      ? String(eng.fastPath.proposalDecision)
+      : null;
   return {
     ...input.base,
     ...(meta?.quickActionType ? { quickActionType: meta.quickActionType } : {}),
+    ...(fastPathProposalDecision ? { proposalDecision: fastPathProposalDecision } : {}),
     ...(meta?.transitionTriggered || eng?.transitionTriggered
       ? { transitionTriggered: true }
       : {}),
@@ -33,7 +38,11 @@ export function appendOrchestrationTransitionTimelineExtras(input: {
     ...(eng?.slotSyncTriggered ? { slotSyncTriggered: eng.slotSyncTriggered } : {}),
     ...(eng?.staleTriggered ? { staleTriggered: eng.staleTriggered } : {}),
     ...(eng?.invalidations?.length ? { invalidations: [...eng.invalidations] } : {}),
-    ...(eng?.signal?.type ? { transitionSignal: eng.signal.type } : {}),
+    ...(meta?.transitionTriggered && fastPathProposalDecision
+      ? { transitionSignal: fastPathProposalDecision }
+      : eng?.signal?.type
+        ? { transitionSignal: eng.signal.type }
+        : {}),
     ...(typeof (eng?.signal?.payload as { quickActionId?: string } | undefined)?.quickActionId === "string"
       ? { quickActionId: String((eng?.signal?.payload as { quickActionId: string }).quickActionId) }
       : {}),

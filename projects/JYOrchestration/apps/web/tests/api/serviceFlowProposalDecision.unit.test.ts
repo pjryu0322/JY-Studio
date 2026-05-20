@@ -76,7 +76,7 @@ describe("serviceFlowProposalDecision phase10", () => {
     });
     expect(r?.conversationStateAfter).toBe("REVIEW");
     expect(r?.quickReplies).not.toContain("흐름 검토하기");
-    expect(r?.quickReplies).toContain("흐름 승인하기");
+    expect(r?.quickReplies).toContain("흐름 확정");
     expect(r?.routingDecision).toBe("proposal_apply_enter_review");
   });
 
