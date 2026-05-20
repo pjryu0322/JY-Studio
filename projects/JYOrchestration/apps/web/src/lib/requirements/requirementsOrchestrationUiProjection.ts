@@ -1,12 +1,11 @@
 /**
- * Phase 3 orchestration → UI projection (persisted state only, no message parsing).
+ * Phase 3/4 orchestration → UI projection (persisted state only; delegates to aggregate projection).
  */
 
 import { getQuickActionDefinition, quickActionFromDefinition, type QuickAction } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { splitPrioritizedRecommendations } from "@/lib/requirements/requirementsActionRecommendation";
-import { artifactLifecycleHasStale } from "@/lib/requirements/requirementsArtifactLifecycle";
-import { buildArtifactHubOrchestrationState, artifactHubTopChromeBadgeCount } from "@/lib/requirements/requirementsArtifactHubOrchestration";
-import type { ArtifactLifecycleEntryWire, RequirementsIntentOrchestrationV1 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
+import { buildGovernedOrchestrationAggregateProjection } from "@/lib/requirements/requirementsIntentOrchestrationAggregateProjection";
+import type { ArtifactLifecycleEntryWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type FocusDriftUiBanner = Readonly<{
@@ -72,43 +71,50 @@ export function artifactLifecycleLabelKo(label: ArtifactLifecycleUiLabel): strin
   return LIFECYCLE_LABEL_KO[label];
 }
 
+function lifecycleLabelFromHint(hint: string): ArtifactLifecycleUiLabel {
+  if (hint.includes("재생성")) return "regenerate";
+  if (hint.includes("구버전") || hint.includes("이전")) return "outdated";
+  if (hint.includes("최신")) return "latest";
+  return "generatable";
+}
+
 export function buildOrchestrationUiProjection(input: {
   readonly state: RequirementsStateJson;
   readonly catalogCount?: number;
+  readonly drawerFeatureId?: string | null;
 }): OrchestrationUiProjection {
-  const orch = input.state.requirementsIntentOrchestrationV1;
-  const hub = buildArtifactHubOrchestrationState({ state: input.state });
-  const catalog = input.catalogCount ?? 0;
-  const badgeCount = artifactHubTopChromeBadgeCount(catalog, hub);
-  const hasStale = hub.hasStaleArtifact || artifactLifecycleHasStale(orch?.artifactLifecycle);
+  const aggregate = buildGovernedOrchestrationAggregateProjection({
+    state: input.state,
+    catalogCount: input.catalogCount,
+    drawerFeatureId: input.drawerFeatureId,
+  });
 
   let focusDrift: FocusDriftUiBanner | null = null;
-  if (orch?.activeFocus?.softStale) {
+  if (aggregate.focus.softStale) {
     focusDrift = {
       message: "현재 편집 대상이 오래되었습니다.",
       detail: "최근 대화가 다른 항목으로 이동했을 수 있습니다. 현재 대상을 유지하거나 다른 기능을 선택해 주세요.",
-      focusLabel: orch.activeFocus.label ?? orch.activeFocus.id,
+      focusLabel: aggregate.focus.activeFocus?.label ?? aggregate.focus.activeFocus?.id,
     };
   }
 
   let clarification: ClarificationUiState | null = null;
-  if (orch?.clarification?.pending || orch?.clarification?.abandoned) {
+  if (aggregate.clarification.pending || aggregate.clarification.abandoned) {
     clarification = {
-      pending: orch.clarification.pending === true && !orch.clarification.abandoned,
-      abandoned: orch.clarification.abandoned === true,
+      pending: aggregate.clarification.pending,
+      abandoned: aggregate.clarification.abandoned,
       userMessage: buildClarificationUserMessage({
-        pending: orch.clarification.pending === true && !orch.clarification.abandoned,
-        abandoned: orch.clarification.abandoned === true,
+        pending: aggregate.clarification.pending,
+        abandoned: aggregate.clarification.abandoned,
         userMessage: "",
-        question: orch.clarification.question,
+        question: aggregate.clarification.question,
       }) ?? "",
-      question: orch.clarification.question,
+      question: aggregate.clarification.question,
     };
   }
 
-  const queue = orch?.recommendationQueue ?? [];
   const split = splitPrioritizedRecommendations(
-    queue.map((r) => ({
+    (aggregate.recommendations.queue ?? []).map((r) => ({
       actionId: r.actionId,
       score: r.score,
       reason: r.reason,
@@ -125,13 +131,9 @@ export function buildOrchestrationUiProjection(input: {
       }
     : null;
 
-  const artifactLifecycleLabels = (orch?.artifactLifecycle ?? []).map((e) => {
-    const label = artifactLifecycleUiLabel(e);
-    return {
-      key: e.artifactKey,
-      label,
-      hint: artifactLifecycleLabelKo(label),
-    };
+  const artifactLifecycleLabels = aggregate.artifacts.lifecycleLabels.map((e) => {
+    const label = lifecycleLabelFromHint(e.hint);
+    return { key: e.key, label, hint: e.hint };
   });
 
   return {
@@ -139,8 +141,8 @@ export function buildOrchestrationUiProjection(input: {
     clarification,
     topRecommendation,
     secondaryRecommendationReasons: split.secondary.map((r) => r.reason),
-    artifactBadgeCount: badgeCount,
-    artifactBadgeHasStale: hasStale,
+    artifactBadgeCount: aggregate.artifacts.badgeCount,
+    artifactBadgeHasStale: aggregate.artifacts.badgeHasStale,
     artifactLifecycleLabels,
   };
 }

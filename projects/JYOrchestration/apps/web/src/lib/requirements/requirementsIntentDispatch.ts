@@ -58,7 +58,12 @@ import {
   formatOrchestrationTimelineResponse,
   orchestrationTimelineGroupForAction,
 } from "@/lib/requirements/requirementsOrchestrationTimeline";
-import { applyIntentOrchestrationPhase3 } from "@/lib/requirements/requirementsIntentOrchestrationRuntime";
+import { applyIntentOrchestrationGoverned } from "@/lib/requirements/requirementsIntentOrchestrationGovernedRuntime";
+import {
+  createOrchestrationTimer,
+  formatRuntimeMetricsForTimeline,
+} from "@/lib/requirements/requirementsOrchestrationInstrumentation";
+import { replaySnapshotTimelineDetail } from "@/lib/requirements/requirementsOrchestrationReplay";
 import { splitPrioritizedRecommendations } from "@/lib/requirements/requirementsActionRecommendation";
 import {
   mergeIntentOrchestrationPatch,
@@ -241,7 +246,10 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
   if (!input.routingState) return merged;
 
   const ctx = buildRequirementsIntentDispatchContext(input.routingState);
-  return applyIntentOrchestrationPhase3({
+  const timer = createOrchestrationTimer();
+  timer.mark("projection");
+  const governed = applyIntentOrchestrationGoverned({
+    before: input.prev,
     base: merged,
     routingState: input.routingState,
     userMessage: input.userMessage,
@@ -252,6 +260,13 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
     nextFocus: focus,
     featureMetrics: ctx.featureMetrics,
     availableActionIds: ctx.availableActionIds,
+  });
+  timer.mark("post-projection");
+  return mergeIntentOrchestrationPatch(governed, {
+    lastRuntimeMetrics: timer.finish({
+      cacheHit: input.intent.routerMode === "cache",
+      projectionCost: governed.recommendationQueue?.length ?? 0,
+    }),
   });
 }
 
@@ -318,17 +333,6 @@ function finalizeDispatchResult(input: {
         return f ? `${f.type}:${f.id}` : undefined;
       })()
     : undefined;
-  const rawTimeline = intentRouterTimelinePayload(input.intent, input.guard, {
-    availableActionIds: input.ctx.availableActionIds,
-    proactiveRecommendation: proactiveLabel,
-    activeFocus: focusLabel,
-    clarificationPending: input.routingState?.requirementsIntentOrchestrationV1?.clarification?.pending === true,
-  });
-  const timelineDetail = formatOrchestrationTimelineResponse({
-    group: orchestrationTimelineGroupForAction("intentRouterGuard"),
-    detail: rawTimeline,
-    ...humanExplainability,
-  });
   const lowConfidence = !input.skipLowConfidenceCheck && isLowConfidenceIntent(input.intent);
   const orchPatch =
     input.routingState && input.userMessage ?
@@ -343,6 +347,22 @@ function finalizeDispatchResult(input: {
         lowConfidenceClarification: lowConfidence && !effectiveId,
       })
     : undefined;
+
+  const rawTimeline = intentRouterTimelinePayload(input.intent, input.guard, {
+    availableActionIds: input.ctx.availableActionIds,
+    proactiveRecommendation: proactiveLabel,
+    activeFocus: focusLabel,
+    clarificationPending: input.routingState?.requirementsIntentOrchestrationV1?.clarification?.pending === true,
+  });
+  const timelineExtras = [
+    orchPatch?.lastRuntimeMetrics ? formatRuntimeMetricsForTimeline(orchPatch.lastRuntimeMetrics) : "",
+    orchPatch?.lastReplaySnapshot ? replaySnapshotTimelineDetail(orchPatch.lastReplaySnapshot) : "",
+  ].filter(Boolean);
+  const timelineDetail = formatOrchestrationTimelineResponse({
+    group: orchestrationTimelineGroupForAction("intentRouterGuard"),
+    detail: [rawTimeline, ...timelineExtras].filter(Boolean).join(" "),
+    ...humanExplainability,
+  });
 
   if (!effectiveId) {
     const fallbackIds = input.guard.fallbackActionIds ?? [];

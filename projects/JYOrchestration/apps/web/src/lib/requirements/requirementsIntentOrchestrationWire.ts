@@ -4,6 +4,10 @@
 
 import { isQuickActionId, type QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { IntentRouterMode } from "@/lib/requirements/requirementsIntentRouterTypes";
+import type { OrchestrationReplaySnapshot } from "@/lib/requirements/requirementsOrchestrationReplay";
+import type { OrchestrationRuntimeMetrics } from "@/lib/requirements/requirementsOrchestrationInstrumentation";
+import type { FocusSource } from "@/lib/requirements/requirementsFocusPriority";
+import type { RecommendationDisposition } from "@/lib/requirements/requirementsRecommendationGovernance";
 
 export type ConversationFocusType = "feature" | "step" | "actor" | "screen" | "api" | "flow" | "none";
 
@@ -16,6 +20,8 @@ export type ConversationFocusWire = Readonly<{
   readonly referenceCount?: number;
   readonly softStale?: boolean;
   readonly focusSetAtStage?: string;
+  readonly focusSource?: FocusSource;
+  readonly focusPriority?: number;
 }>;
 
 export type IntentClarificationTopic =
@@ -48,6 +54,9 @@ export type IntentRoutingMemoryWire = Readonly<{
   readonly focusReason?: string;
   readonly confidenceFactors?: readonly string[];
   readonly at?: string;
+  readonly actorId?: string;
+  readonly agentRole?: string;
+  readonly decisionSource?: string;
 }>;
 
 export type OrchestrationRecommendationWire = Readonly<{
@@ -56,6 +65,12 @@ export type OrchestrationRecommendationWire = Readonly<{
   readonly reason: string;
   readonly blocking: boolean;
   readonly generatedAt: string;
+  readonly targetKey?: string;
+  readonly disposition?: RecommendationDisposition;
+  readonly cooldownUntil?: string;
+  readonly dismissed?: boolean;
+  readonly accepted?: boolean;
+  readonly rejected?: boolean;
 }>;
 
 export type ArtifactLifecycleEntryWire = Readonly<{
@@ -64,6 +79,11 @@ export type ArtifactLifecycleEntryWire = Readonly<{
   readonly stale: boolean;
   readonly sourceStage: string;
   readonly sourceHash: string;
+  readonly artifactVersionId?: string;
+  readonly parentArtifactVersionId?: string;
+  readonly generatedFromStateHash?: string;
+  readonly generatedFromStage?: string;
+  readonly lineageLabel?: string;
   readonly generatedAt?: string;
   readonly updatedAt?: string;
   readonly staleReason?: string;
@@ -92,6 +112,8 @@ export type RequirementsIntentOrchestrationV1 = Readonly<{
   readonly recommendationQueue?: readonly OrchestrationRecommendationWire[];
   readonly artifactLifecycle?: readonly ArtifactLifecycleEntryWire[];
   readonly recentTransitions?: readonly string[];
+  readonly lastReplaySnapshot?: OrchestrationReplaySnapshot;
+  readonly lastRuntimeMetrics?: OrchestrationRuntimeMetrics;
 }>;
 
 const FOCUS_TYPES = new Set<ConversationFocusType>([
@@ -121,6 +143,8 @@ function parseFocus(raw: unknown): ConversationFocusWire | undefined {
     ...(typeof f.referenceCount === "number" ? { referenceCount: Math.max(0, Math.floor(f.referenceCount)) } : {}),
     ...(f.softStale === true ? { softStale: true } : {}),
     ...(typeof f.focusSetAtStage === "string" ? { focusSetAtStage: f.focusSetAtStage.trim().slice(0, 40) } : {}),
+    ...(typeof f.focusSource === "string" ? { focusSource: f.focusSource as FocusSource } : {}),
+    ...(typeof f.focusPriority === "number" ? { focusPriority: Math.floor(f.focusPriority) } : {}),
   };
 }
 
@@ -170,6 +194,12 @@ function parseRecommendationQueue(raw: unknown): OrchestrationRecommendationWire
       reason: reason.slice(0, 500),
       blocking: r.blocking === true,
       generatedAt: String(r.generatedAt ?? new Date().toISOString()),
+      ...(typeof r.targetKey === "string" ? { targetKey: r.targetKey.slice(0, 80) } : {}),
+      ...(typeof r.disposition === "string" ? { disposition: r.disposition as RecommendationDisposition } : {}),
+      ...(typeof r.cooldownUntil === "string" ? { cooldownUntil: r.cooldownUntil } : {}),
+      ...(r.dismissed === true ? { dismissed: true } : {}),
+      ...(r.accepted === true ? { accepted: true } : {}),
+      ...(r.rejected === true ? { rejected: true } : {}),
     });
   }
   return out.length ? out.slice(0, 16) : undefined;
@@ -272,6 +302,12 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
             .slice(0, 24),
         }
       : {}),
+    ...(o.lastReplaySnapshot && typeof o.lastReplaySnapshot === "object"
+      ? { lastReplaySnapshot: o.lastReplaySnapshot as OrchestrationReplaySnapshot }
+      : {}),
+    ...(o.lastRuntimeMetrics && typeof o.lastRuntimeMetrics === "object"
+      ? { lastRuntimeMetrics: o.lastRuntimeMetrics as OrchestrationRuntimeMetrics }
+      : {}),
   };
 }
 
@@ -294,5 +330,7 @@ export function mergeIntentOrchestrationPatch(
     ...(patch.recommendationQueue !== undefined ? { recommendationQueue: patch.recommendationQueue } : {}),
     ...(patch.artifactLifecycle !== undefined ? { artifactLifecycle: patch.artifactLifecycle } : {}),
     ...(patch.recentTransitions !== undefined ? { recentTransitions: patch.recentTransitions } : {}),
+    ...(patch.lastReplaySnapshot !== undefined ? { lastReplaySnapshot: patch.lastReplaySnapshot } : {}),
+    ...(patch.lastRuntimeMetrics !== undefined ? { lastRuntimeMetrics: patch.lastRuntimeMetrics } : {}),
   };
 }

@@ -8,6 +8,10 @@ import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestr
 import type { ArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import type { RequirementsIntentOrchestrationV1 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import { MAX_CHAT_PRIORITIZED_RECOMMENDATIONS } from "@/lib/requirements/requirementsOrchestrationConstants";
+import {
+  applyStageGovernanceToScore,
+  filterRecommendationsByStageGovernance,
+} from "@/lib/requirements/requirementsStageGovernance";
 
 export type ProactiveActionRecommendation = Readonly<{
   readonly actionId: QuickActionId;
@@ -123,15 +127,19 @@ export function buildPrioritizedRecommendationQueue(input: {
     artifactHub: input.artifactHub,
   });
 
-  const scored = legacy.map((r) => {
-    let score = r.priority;
-    if (input.orchestration?.clarification?.pending) score -= 25;
-    if (input.orchestration?.activeFocus?.softStale) score -= 10;
-    if (input.lastIntentActionId === r.actionId) score -= 15;
-    if (input.metrics.featureCoverage >= 0.8 && r.actionId === "DEFINE_SCREEN") score += 5;
-    if (input.artifactHub?.hasStaleArtifact && r.actionId === "OPEN_ARTIFACT_HUB") score += 8;
-    return scoreFromLegacy({ ...r, priority: score }, nowIso);
-  });
+  const scored = filterRecommendationsByStageGovernance(
+    input.stage,
+    legacy.map((r) => {
+      let score = r.priority;
+      if (input.orchestration?.clarification?.pending) score -= 25;
+      if (input.orchestration?.activeFocus?.softStale) score -= 10;
+      if (input.lastIntentActionId === r.actionId) score -= 15;
+      if (input.metrics.featureCoverage >= 0.8 && r.actionId === "DEFINE_SCREEN") score += 5;
+      if (input.artifactHub?.hasStaleArtifact && r.actionId === "OPEN_ARTIFACT_HUB") score += 8;
+      score = applyStageGovernanceToScore({ stage: input.stage, actionId: r.actionId, score });
+      return scoreFromLegacy({ ...r, priority: score }, nowIso);
+    }),
+  );
 
   return [...scored].sort((a, b) => b.score - a.score);
 }

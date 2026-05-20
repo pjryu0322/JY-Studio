@@ -9,10 +9,8 @@ import {
   isIdeationBootstrapTimelineEntry,
   pickIdeationBootstrapPromptTimelineEntries,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
-import {
-  buildOrchestrationTimelineViewModel,
-  pickOrchestrationPromptTimelineEntries,
-} from "@/lib/requirements/requirementsOrchestrationTimelineView";
+import { pickOrchestrationPromptTimelineEntries } from "@/lib/requirements/requirementsOrchestrationTimelineView";
+import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -365,9 +363,9 @@ export function RequirementsPromptDocumentDrawer({
     [promptTimeline]
   );
 
-  const orchestrationTimelineView = useMemo(() => {
+  const foldedOrchestrationTimeline = useMemo(() => {
     const entries = pickOrchestrationPromptTimelineEntries(promptTimeline);
-    return buildOrchestrationTimelineViewModel(entries);
+    return buildFoldedOrchestrationTimeline(entries);
   }, [promptTimeline]);
 
   /** 서랍에 표시하는 것과 동일 필터 — 시간순(오래된 것부터)으로 MD보내기 */
@@ -622,17 +620,33 @@ export function RequirementsPromptDocumentDrawer({
                 </p>
               ) : (
                 <>
-                  {orchestrationTimelineView.groups.length ? (
+                  {foldedOrchestrationTimeline.length ? (
                     <div style={docBlock}>
                       <div style={labelSm}>오케스트레이션 타임라인</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                        {orchestrationTimelineView.groups.map((group) => (
+                        {foldedOrchestrationTimeline.map((group) => (
                           <div key={group.group}>
                             <div style={{ fontSize: 12, fontWeight: 900, color: "#0d7377", marginBottom: 8 }}>
                               {group.group}
+                              {group.count > 1 ? ` (${group.count})` : ""}
+                              {group.folded ? ` · ${group.hiddenCount}건 접힘` : ""}
                             </div>
+                            {group.summaryEntry ? (
+                              <div
+                                style={{
+                                  padding: "8px 10px",
+                                  marginBottom: 8,
+                                  border: "1px dashed #cbd5e1",
+                                  borderRadius: 8,
+                                  fontSize: 11,
+                                  color: "#64748b",
+                                }}
+                              >
+                                {group.summaryEntry.responseText}
+                              </div>
+                            ) : null}
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                              {group.rows.map((row, idx) => (
+                              {group.visibleRows.map((row, idx) => (
                                 <div
                                   key={`${group.group}:${row.entry.createdAt}:${idx}`}
                                   style={{
