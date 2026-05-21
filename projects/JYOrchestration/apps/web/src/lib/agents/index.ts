@@ -366,6 +366,16 @@ export {
   normalizeOperatorApprovalAuditSchemaTarget,
 } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaDecision";
 
+export type {
+  ConnectorGatewayExperimentBranchApprovalChecklistItem,
+  ConnectorGatewayExperimentBranchApprovalDecision,
+  ConnectorGatewayExperimentBranchApprovalFinding,
+  ConnectorGatewayExperimentBranchApprovalReport,
+  ConnectorGatewayExperimentBranchApprovalScope,
+} from "@/lib/agents/connectorGatewayExperimentBranchApprovalTypes";
+
+export { evaluateConnectorGatewayExperimentBranchApproval } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchApproval";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

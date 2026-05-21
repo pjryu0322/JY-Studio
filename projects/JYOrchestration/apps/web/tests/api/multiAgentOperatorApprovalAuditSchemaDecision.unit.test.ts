@@ -113,6 +113,72 @@ describe("multi-agent operator approval audit schema decision stage 2-18", () =>
     }
   });
 
+  it("excludedFields include promptText and fileContent as forbidden", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const byField = new Map(report.excludedFields.map((f) => [f.field, f]));
+    expect(byField.get("promptText")?.sensitivity).toBe("forbidden");
+    expect(byField.get("fileContent")?.sensitivity).toBe("forbidden");
+  });
+
+  it("excludedFields include secret password authorization privateKey env as forbidden", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const byField = new Map(report.excludedFields.map((f) => [f.field, f]));
+    for (const field of ["secret", "password", "authorization", "privateKey", "env"]) {
+      expect(byField.get(field)?.sensitivity).toBe("forbidden");
+    }
+  });
+
+  it("excludedFields have no duplicate fields", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const keys = report.excludedFields.map((f) => f.field.trim().toLowerCase());
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("actorRole is indexed", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const byField = new Map(report.fieldProposals.map((f) => [f.field, f]));
+    expect(byField.get("actorRole")?.indexed).toBe(true);
+  });
+
+  it("relatedAgentId relatedCapabilityId relatedConnectorId are indexed", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const byField = new Map(report.fieldProposals.map((f) => [f.field, f]));
+    for (const field of ["relatedAgentId", "relatedCapabilityId", "relatedConnectorId"]) {
+      expect(byField.get(field)?.indexed).toBe(true);
+    }
+  });
+
+  it("relatedGovernancePolicyId relatedTimelineEventId relatedExecutionRecordId auditEventId are indexed", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    const byField = new Map(report.fieldProposals.map((f) => [f.field, f]));
+    for (const field of [
+      "relatedGovernancePolicyId",
+      "relatedTimelineEventId",
+      "relatedExecutionRecordId",
+      "auditEventId",
+    ]) {
+      expect(byField.get(field)?.indexed).toBe(true);
+    }
+  });
+
+  it("includes forbidden_field_policy_enforced when required forbidden fields are present", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision();
+    expect(report.findings.some((f) => f.code === "forbidden_field_policy_enforced")).toBe(true);
+  });
+
+  it("unknown target has empty rolloutPlan and rollbackPlan", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision({ target: "invalid" });
+    expect(report.rolloutPlan).toEqual([]);
+    expect(report.rollbackPlan).toEqual([]);
+  });
+
+  it("unknown target includes operator_schema_target_unknown_no_rollout finding", () => {
+    const report = evaluateOperatorApprovalAuditSchemaDecision({ target: "bad" });
+    expect(report.findings.some((f) => f.code === "operator_schema_target_unknown_no_rollout")).toBe(
+      true,
+    );
+  });
+
   it("excludedFields use Forbidden type and indexed false", () => {
     const report = evaluateOperatorApprovalAuditSchemaDecision();
     for (const field of report.excludedFields) {

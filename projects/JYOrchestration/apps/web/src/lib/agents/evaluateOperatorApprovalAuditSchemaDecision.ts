@@ -16,11 +16,21 @@ const SUMMARY_FIELDS = new Set(["reasonSummary"]);
 const REQUIRED_FORBIDDEN_FIELDS = [
   "rawReason",
   "rawPrompt",
+  "promptText",
   "fullInput",
   "fullOutput",
   "codeDiff",
+  "fileContent",
   "token",
+  "secret",
+  "password",
+  "authorization",
   "apiKey",
+  "privateKey",
+  "env",
+  "personalContact",
+  "phoneNumber",
+  "emailBody",
 ] as const;
 
 const INDEXED_FIELDS = new Set([
@@ -33,8 +43,16 @@ const INDEXED_FIELDS = new Set([
   "actionType",
   "decision",
   "actorId",
+  "actorRole",
   "requestedAt",
   "expiresAt",
+  "relatedAgentId",
+  "relatedCapabilityId",
+  "relatedConnectorId",
+  "relatedGovernancePolicyId",
+  "relatedTimelineEventId",
+  "relatedExecutionRecordId",
+  "auditEventId",
   "createdAt",
 ]);
 
@@ -187,6 +205,18 @@ function toExcludedFieldProposal(input: {
   };
 }
 
+function uniqueFieldProposals<T extends { readonly field: string }>(fields: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const field of fields) {
+    const key = field.field.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(field);
+  }
+  return out;
+}
+
 function buildFieldProposalsFromDesign(
   persistFields: readonly {
     readonly field: string;
@@ -206,7 +236,9 @@ function buildExcludedFieldProposals(
     readonly sensitivity: OperatorApprovalAuditSchemaFieldProposal["sensitivity"];
   }[],
 ): OperatorApprovalAuditSchemaFieldProposal[] {
-  return excludedFields.map((f) => toExcludedFieldProposal({ field: f.field, reason: f.reason }));
+  return uniqueFieldProposals(
+    excludedFields.map((f) => toExcludedFieldProposal({ field: f.field, reason: f.reason })),
+  );
 }
 
 function appendForbiddenFieldPolicyFindings(
@@ -251,6 +283,16 @@ function appendSchemaFindings(
   if (target === "unknown") {
     findings.push(
       finding("blocking", "unknown_operator_schema_target", "unknown operator schema target is blocked"),
+    );
+    findings.push(
+      finding("info", "operator_schema_target_unknown_no_rollout", "unknown target has no rollout plan"),
+    );
+    findings.push(
+      finding(
+        "info",
+        "operator_schema_target_unknown_no_migration",
+        "unknown target has no migration path",
+      ),
     );
     return;
   }

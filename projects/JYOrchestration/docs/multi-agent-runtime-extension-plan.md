@@ -764,6 +764,16 @@ excludedFields ← forbidden policy including personalContact/phoneNumber/emailB
 | unknown target rollout/rollback | 보완 | empty plans + `schema_target_unknown_*` findings |
 | 실제 schema/migration | 없음 | read-only decision evaluator |
 
+## Stage 2-18 소스 보완 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| forbidden field required list | 보완 | 19개 필수 forbidden 목록 |
+| excludedFields dedupe | 보완 | `uniqueFieldProposals` lower-case dedupe |
+| approval/audit index policy | 보완 | actorRole/related*/auditEventId indexed |
+| unknown target findings | 보완 | `operator_schema_target_unknown_*` |
+| 실제 schema/migration | 없음 | read-only decision evaluator |
+
 ## Stage 2-18 Operator Approval/Audit Schema 적용 여부 결정 결과
 
 | 항목 | 반영 방식 | 실제 schema 변경 여부 | 비고 |
@@ -801,13 +811,48 @@ requiresPermissionModel / requiresAuditIntegrityPolicy → true (active targets)
 excludedFields type Forbidden; reasonSummary summary-only
 ```
 
-### Stage 2-19 후보: Connector Gateway 실험 브랜치 승인 후 생성
+## Stage 2-19 Connector Gateway 실험 브랜치 승인 준비 결과
 
-Stage 2-19에서는 Stage 2-16의 branch plan을 바탕으로 실제 실험 브랜치를 생성할지 결정한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Branch Approval 타입 | read-only approval readiness report | 없음 | 승인 준비 전용 |
+| Branch Approval evaluator | branch plan 기반 판단 | 없음 | git branch 생성 없음 |
+| ready_for_operator_approval | cursor_only | 없음 | 운영자 승인 필요 |
+| defer | github_only / cursor_and_github | 없음 | 회귀 계획 필요 |
+| blocked | unknown/invalid boundary | 없음 | 승인 불가 |
+| approvalChecklist | report field | 없음 | 승인 전 점검 |
+| featureFlagDefault | off | 없음 | default off 원칙 |
+| direct fallback | required | 없음 | 기존 실행 경로 보호 |
+
+구현: `connectorGatewayExperimentBranchApprovalTypes.ts`, `evaluateConnectorGatewayExperimentBranchApproval.ts`
+
+### Stage 2-19 원칙
+
+```text
+- 실제 브랜치를 생성하지 않는다.
+- 실제 feature flag를 연결하지 않는다.
+- 실제 Connector Gateway routing을 적용하지 않는다.
+- Stage 2-19는 승인 준비 report만 만든다.
+- 실제 실험 브랜치 생성은 별도 명시 승인 후 수행한다.
+```
+
+### Stage 2-19 Decision 규칙 요약
+
+```text
+ready_for_branch_plan → ready_for_operator_approval
+defer → defer
+blocked → blocked
+requiresOperatorApproval / requiresRegressionChecklist → true (non-blocked)
+approvalChecklist: branch/flag/rollback/regression/operator + no wire items
+```
+
+### Stage 2-20 후보: Agent Execution Record write path 설계
+
+Stage 2-20에서는 Stage 2-17 schema decision을 바탕으로 실제 write path를 설계할지 판단한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| branch creation approval | 실험 브랜치 생성 승인 | main 변경 금지 |
-| feature flag location | default off flag 위치 확정 | wire 전 회귀 필요 |
-| direct fallback guard | 기존 경로 fallback 유지 | 필수 |
-| regression checklist | Stage1/ENV_TEST/GitHub/Cursor 회귀 | 필수 |
+| write path design | record 저장 진입점 설계 | schema 적용 후 가능 |
+| feature flag | write path default off | 필수 |
+| forbidden field guard | raw 필드 저장 차단 | 필수 |
+| rollback path | write disable/rollback | 필수 |
