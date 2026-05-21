@@ -3,6 +3,7 @@ import {
   evaluateAgentExecutionRecordSchemaPrReadiness,
   modelDraftContainsForbiddenField,
 } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
+import { modelDraftContainsForbiddenFields } from "@/lib/agents/schemaPrReadinessShared";
 import * as schemaDecisionModule from "@/lib/agents/evaluateAgentExecutionRecordSchemaDecision";
 
 const FORBIDDEN_IN_DRAFT = [
@@ -152,9 +153,21 @@ describe("multi-agent agent execution record schema PR readiness stage 2-23", ()
     expect(report.modelCandidates[0]?.caution).toContain("separate PR approval");
   });
 
-  it("modelDraftContainsForbiddenField helper detects forbidden fields", () => {
-    expect(modelDraftContainsForbiddenField("  rawPrompt String")).toBe(true);
-    expect(modelDraftContainsForbiddenField("  recordId String")).toBe(false);
+  it('modelDraftContainsForbiddenField("model X { rawPrompt String }") is true', () => {
+    expect(modelDraftContainsForbiddenField("model X { rawPrompt String }")).toBe(true);
+  });
+
+  it('modelDraftContainsForbiddenField("model X { inputSummary String }") is false', () => {
+    expect(modelDraftContainsForbiddenField("model X { inputSummary String }")).toBe(false);
+  });
+
+  it("shared helper detects forbidden fields with word boundaries", () => {
+    expect(modelDraftContainsForbiddenFields("model X { rawPrompt String }", FORBIDDEN_IN_DRAFT)).toBe(
+      true,
+    );
+    expect(modelDraftContainsForbiddenFields("model X { inputSummary String }", FORBIDDEN_IN_DRAFT)).toBe(
+      false,
+    );
   });
 
   it("forbidden field in modelDraft blocks readiness", () => {

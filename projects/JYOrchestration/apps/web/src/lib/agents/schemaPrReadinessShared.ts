@@ -15,6 +15,18 @@ export interface SchemaPrChecklistItem {
   readonly reason: string;
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
 export function modelDraftContainsForbiddenFields(
   modelDraft: string,
   forbiddenFields: readonly string[],
@@ -22,19 +34,34 @@ export function modelDraftContainsForbiddenFields(
   return forbiddenFields.some((field) => new RegExp(`\\b${field}\\b`, "i").test(modelDraft));
 }
 
+export function modelDraftContainsRequiredFields(
+  modelDraft: string,
+  requiredFields: readonly string[],
+): boolean {
+  return requiredFields.every((field) => new RegExp(`\\b${field}\\b`, "i").test(modelDraft));
+}
+
 export function buildSchemaPrModelDraft(
   modelName: string,
   fieldProposals: readonly SchemaPrFieldProposal[],
 ): string {
-  const fieldLines = fieldProposals.map((f) => {
-    const optional = f.nullable ? "?" : "";
-    return `  ${f.field} ${f.type}${optional}`;
-  });
+  if (!modelName.trim()) {
+    return "";
+  }
 
-  const indexFields = fieldProposals
-    .filter((f) => f.indexed)
-    .map((f) => f.field)
-    .filter((field) => field !== "recordId");
+  const fieldLines = fieldProposals
+    .filter((f) => f.field.trim().length > 0)
+    .map((f) => {
+      const optional = f.nullable ? "?" : "";
+      return `  ${f.field} ${f.type}${optional}`;
+    });
+
+  const indexFields = uniqueStrings(
+    fieldProposals
+      .filter((f) => f.indexed)
+      .map((f) => f.field)
+      .filter((field) => field.trim().length > 0 && field !== "recordId"),
+  );
 
   const indexLines =
     indexFields.length > 0

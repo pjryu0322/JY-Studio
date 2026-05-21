@@ -424,7 +424,10 @@ export type {
   AgentExecutionRecordSchemaPrReadinessReport,
 } from "@/lib/agents/agentExecutionRecordSchemaPrReadinessTypes";
 
-export { evaluateAgentExecutionRecordSchemaPrReadiness } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
+export {
+  evaluateAgentExecutionRecordSchemaPrReadiness,
+  modelDraftContainsForbiddenField as agentExecutionRecordModelDraftContainsForbiddenField,
+} from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
 
 export type {
   OperatorApprovalAuditSchemaPrChecklistItem,
@@ -434,7 +437,19 @@ export type {
   OperatorApprovalAuditSchemaPrReadinessReport,
 } from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
 
-export { evaluateOperatorApprovalAuditSchemaPrReadiness } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrReadiness";
+export {
+  evaluateOperatorApprovalAuditSchemaPrReadiness,
+  modelDraftContainsForbiddenField as operatorApprovalAuditModelDraftContainsForbiddenField,
+} from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrReadiness";
+
+export type {
+  ConnectorGatewayExperimentBranchExecutionCommand,
+  ConnectorGatewayExperimentBranchExecutionPackageDecision,
+  ConnectorGatewayExperimentBranchExecutionPackageFinding,
+  ConnectorGatewayExperimentBranchExecutionPackageReport,
+} from "@/lib/agents/connectorGatewayExperimentBranchExecutionPackageTypes";
+
+export { evaluateConnectorGatewayExperimentBranchExecutionPackage } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchExecutionPackage";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

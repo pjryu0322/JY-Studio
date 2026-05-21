@@ -9,8 +9,8 @@ import {
 import type {
   OperatorApprovalAuditSchemaDecision,
   OperatorApprovalAuditSchemaDecisionReport,
-  OperatorApprovalAuditSchemaFieldProposal,
 } from "@/lib/agents/operatorApprovalAuditSchemaDecisionTypes";
+import type { OperatorApprovalAuditSchemaTarget } from "@/lib/agents/operatorApprovalAuditSchemaDecisionTypes";
 import type {
   OperatorApprovalAuditSchemaPrChecklistItem,
   OperatorApprovalAuditSchemaPrFinding,
@@ -20,12 +20,64 @@ import type {
 } from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
 import {
   buildSchemaPrForbiddenFieldChecklist,
-  buildSchemaPrModelDraft,
   buildSchemaPrStaticChecklist,
   modelDraftContainsForbiddenFields,
+  modelDraftContainsRequiredFields,
 } from "@/lib/agents/schemaPrReadinessShared";
 
 const MODEL_CAUTION = "read-only schema draft; do not apply without separate PR approval";
+
+const OPERATOR_APPROVAL_MODEL_DRAFT = `model OperatorApproval {
+  id String @id @default(cuid())
+  approvalId String @unique
+  schemaVersion String
+  projectId String
+  targetType String
+  targetId String
+  actorId String
+  actorRole String
+  actionType String
+  decision String
+  reasonSummary String?
+  relatedExecutionRecordId String?
+  relatedTimelineEventId String?
+  relatedGovernancePolicyId String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([targetType])
+  @@index([targetId])
+  @@index([actorId])
+  @@index([actorRole])
+  @@index([decision])
+  @@index([createdAt])
+}`;
+
+const OPERATOR_AUDIT_EVENT_MODEL_DRAFT = `model OperatorAuditEvent {
+  id String @id @default(cuid())
+  auditEventId String @unique
+  schemaVersion String
+  projectId String
+  eventType String
+  actorId String
+  actorRole String
+  targetType String
+  targetId String
+  reasonSummary String?
+  relatedExecutionRecordId String?
+  relatedTimelineEventId String?
+  relatedConnectorId String?
+  relatedGovernancePolicyId String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([eventType])
+  @@index([actorId])
+  @@index([actorRole])
+  @@index([targetType])
+  @@index([targetId])
+  @@index([createdAt])
+}`;
 
 const REQUIRED_FORBIDDEN_FIELDS = [
   "rawReason",
@@ -49,16 +101,30 @@ const REQUIRED_FORBIDDEN_FIELDS = [
 
 const FORBIDDEN_IN_MODEL_DRAFT = [...REQUIRED_FORBIDDEN_FIELDS] as const;
 
-const REQUIRED_PERMISSION_FIELDS = ["actorId", "actorRole", "decision", "actionType"] as const;
-
-const REQUIRED_AUDIT_INTEGRITY_FIELDS = [
-  "auditEventId",
-  "actorId",
-  "targetType",
-  "targetId",
-  "reasonSummary",
-  "createdAt",
-] as const;
+const REQUIRED_FIELDS_BY_TARGET: Record<
+  "operator_approval" | "audit_event",
+  readonly string[]
+> = {
+  operator_approval: [
+    "approvalId",
+    "actorId",
+    "actorRole",
+    "decision",
+    "actionType",
+    "targetType",
+    "targetId",
+  ],
+  audit_event: [
+    "auditEventId",
+    "actorId",
+    "actorRole",
+    "eventType",
+    "targetType",
+    "targetId",
+    "reasonSummary",
+    "createdAt",
+  ],
+};
 
 const MIGRATION_CHECKLIST_ITEMS = [
   "separate PR required",
@@ -125,15 +191,48 @@ function mapSchemaDecisionToPrReadiness(
   }
 }
 
-function fieldProposalsInclude(
-  fieldProposals: readonly OperatorApprovalAuditSchemaFieldProposal[],
-  requiredFields: readonly string[],
-): boolean {
-  const present = new Set(fieldProposals.map((f) => f.field));
-  return requiredFields.every((field) => present.has(field));
+function getRequiredFieldsForTarget(
+  target: OperatorApprovalAuditSchemaTarget,
+): readonly string[] | null {
+  if (target === "operator_approval" || target === "audit_event") {
+    return REQUIRED_FIELDS_BY_TARGET[target];
+  }
+  return null;
+}
+
+function buildModelCandidates(input: {
+  readonly target: OperatorApprovalAuditSchemaTarget;
+  readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
+}): OperatorApprovalAuditSchemaPrModelCandidate[] {
+  if (input.schemaDecision.fieldProposals.length === 0) {
+    return [];
+  }
+
+  if (input.target === "operator_approval") {
+    return [
+      {
+        modelName: "OperatorApproval",
+        modelDraft: OPERATOR_APPROVAL_MODEL_DRAFT,
+        caution: MODEL_CAUTION,
+      },
+    ];
+  }
+
+  if (input.target === "audit_event") {
+    return [
+      {
+        modelName: "OperatorAuditEvent",
+        modelDraft: OPERATOR_AUDIT_EVENT_MODEL_DRAFT,
+        caution: MODEL_CAUTION,
+      },
+    ];
+  }
+
+  return [];
 }
 
 function resolvePrReadinessDecision(input: {
+  readonly target: OperatorApprovalAuditSchemaTarget;
   readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
   readonly modelCandidates: readonly OperatorApprovalAuditSchemaPrModelCandidate[];
 }): OperatorApprovalAuditSchemaPrReadinessDecision {
@@ -144,23 +243,27 @@ function resolvePrReadinessDecision(input: {
       decision = "blocked";
     } else if (input.schemaDecision.fieldProposals.length === 0) {
       decision = "blocked";
+    } else if (input.modelCandidates.length === 0) {
+      decision = "blocked";
     } else {
       const excluded = new Set(input.schemaDecision.excludedFields.map((f) => f.field));
       const missingForbidden = REQUIRED_FORBIDDEN_FIELDS.filter((field) => !excluded.has(field));
       if (missingForbidden.length > 0) {
         decision = "blocked";
-      } else if (!fieldProposalsInclude(input.schemaDecision.fieldProposals, REQUIRED_PERMISSION_FIELDS)) {
-        decision = "blocked";
-      } else if (
-        !fieldProposalsInclude(input.schemaDecision.fieldProposals, REQUIRED_AUDIT_INTEGRITY_FIELDS)
-      ) {
-        decision = "blocked";
-      }
-    }
-    for (const candidate of input.modelCandidates) {
-      if (modelDraftContainsForbiddenField(candidate.modelDraft)) {
-        decision = "blocked";
-        break;
+      } else {
+        const requiredFields = getRequiredFieldsForTarget(input.target);
+        if (requiredFields) {
+          for (const candidate of input.modelCandidates) {
+            if (!modelDraftContainsRequiredFields(candidate.modelDraft, requiredFields)) {
+              decision = "blocked";
+              break;
+            }
+            if (modelDraftContainsForbiddenField(candidate.modelDraft)) {
+              decision = "blocked";
+              break;
+            }
+          }
+        }
       }
     }
   }
@@ -168,35 +271,15 @@ function resolvePrReadinessDecision(input: {
   return decision;
 }
 
-function buildModelCandidates(input: {
-  readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
-}): OperatorApprovalAuditSchemaPrModelCandidate[] {
-  if (!input.schemaDecision.proposedTableName || input.schemaDecision.fieldProposals.length === 0) {
-    return [];
-  }
-
-  const modelDraft = buildSchemaPrModelDraft(
-    input.schemaDecision.proposedTableName,
-    input.schemaDecision.fieldProposals,
-  );
-
-  return [
-    {
-      modelName: input.schemaDecision.proposedTableName,
-      modelDraft,
-      caution: MODEL_CAUTION,
-    },
-  ];
-}
-
 function appendPrReadinessFindings(input: {
   readonly findings: OperatorApprovalAuditSchemaPrFinding[];
   readonly decision: OperatorApprovalAuditSchemaPrReadinessDecision;
+  readonly target: OperatorApprovalAuditSchemaTarget;
   readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
   readonly isReady: boolean;
   readonly modelCandidates: readonly OperatorApprovalAuditSchemaPrModelCandidate[];
 }): void {
-  const { findings, decision, schemaDecision } = input;
+  const { findings, decision, schemaDecision, target } = input;
 
   findings.push(
     finding(
@@ -224,17 +307,15 @@ function appendPrReadinessFindings(input: {
         finding(
           "blocking",
           "missing_forbidden_field",
-          `missing forbidden excluded fields: ${missing.join(", ")}`,
+          `missing forbidden excluded fields: ${missingForbidden.join(", ")}`,
         ),
       );
     }
-    if (!fieldProposalsInclude(schemaDecision.fieldProposals, REQUIRED_PERMISSION_FIELDS)) {
-      findings.push(finding("blocking", "missing_permission_field", "permission guard fields are missing"));
-    }
-    if (!fieldProposalsInclude(schemaDecision.fieldProposals, REQUIRED_AUDIT_INTEGRITY_FIELDS)) {
-      findings.push(
-        finding("blocking", "missing_audit_integrity_field", "audit integrity fields are missing"),
-      );
+    const requiredFields = getRequiredFieldsForTarget(target);
+    if (requiredFields && input.modelCandidates.some(
+      (c) => !modelDraftContainsRequiredFields(c.modelDraft, requiredFields),
+    )) {
+      findings.push(finding("blocking", "missing_required_field", "required fields are missing from model draft"));
     }
     if (input.modelCandidates.some((c) => modelDraftContainsForbiddenField(c.modelDraft))) {
       findings.push(
@@ -254,8 +335,19 @@ function appendPrReadinessFindings(input: {
   );
   findings.push(finding("info", "summary_only_storage_required", "summary-only storage is required"));
 
-  if (input.isReady) {
-    findings.push(finding("info", "schema_model_candidate_generated", "Prisma model draft candidate is generated"));
+  if (input.isReady && target === "operator_approval") {
+    findings.push(
+      finding("info", "operator_approval_model_candidate_generated", "OperatorApproval model draft candidate is generated"),
+    );
+  }
+  if (input.isReady && target === "audit_event") {
+    findings.push(
+      finding(
+        "info",
+        "operator_audit_event_model_candidate_generated",
+        "OperatorAuditEvent model draft candidate is generated",
+      ),
+    );
   }
 
   findings.push(finding("warning", "migration_required", "migration will be required in a separate PR"));
@@ -270,6 +362,9 @@ function appendPrReadinessFindings(input: {
   );
 
   if (decision === "defer") {
+    if (target === "operator_override" || target === "rollback_approval") {
+      findings.push(finding("info", "operator_schema_target_deferred", "operator schema target is deferred"));
+    }
     findings.push(
       finding("warning", "schema_pr_deferred", "schema PR readiness defers until prerequisites are satisfied"),
     );
@@ -283,8 +378,12 @@ export function evaluateOperatorApprovalAuditSchemaPrReadiness(input?: {
   const target = normalizeOperatorApprovalAuditSchemaTarget(input?.target);
   const schemaDecision = evaluateOperatorApprovalAuditSchemaDecision({ target });
 
-  const preliminaryCandidates = buildModelCandidates({ schemaDecision });
-  const decision = resolvePrReadinessDecision({ schemaDecision, modelCandidates: preliminaryCandidates });
+  const preliminaryCandidates = buildModelCandidates({ target, schemaDecision });
+  const decision = resolvePrReadinessDecision({
+    target,
+    schemaDecision,
+    modelCandidates: preliminaryCandidates,
+  });
   const isReady = decision === "ready_for_schema_pr_plan";
   const isBlocked = decision === "blocked";
 
@@ -330,6 +429,7 @@ export function evaluateOperatorApprovalAuditSchemaPrReadiness(input?: {
   appendPrReadinessFindings({
     findings,
     decision,
+    target,
     schemaDecision,
     isReady,
     modelCandidates: isReady ? modelCandidates : preliminaryCandidates,

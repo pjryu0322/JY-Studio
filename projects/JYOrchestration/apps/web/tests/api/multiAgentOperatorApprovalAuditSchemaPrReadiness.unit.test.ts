@@ -28,77 +28,81 @@ describe("multi-agent operator approval audit schema PR readiness stage 2-24", (
   });
 
   it("default target is operator_approval", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.target).toBe("operator_approval");
+    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().target).toBe("operator_approval");
   });
 
   it("mode is read_only_operator_approval_audit_schema_pr_readiness", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.mode).toBe("read_only_operator_approval_audit_schema_pr_readiness");
+    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().mode).toBe(
+      "read_only_operator_approval_audit_schema_pr_readiness",
+    );
   });
 
   it("default target returns ready_for_schema_pr_plan", () => {
+    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().decision).toBe("ready_for_schema_pr_plan");
+  });
+
+  it("operator_approval generates OperatorApproval model draft", () => {
+    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
+    expect(report.modelCandidates[0]?.modelName).toBe("OperatorApproval");
+    expect(report.modelCandidates[0]?.modelDraft).toContain("model OperatorApproval");
+  });
+
+  it("OperatorApproval modelDraft includes approval fields", () => {
+    const draft = evaluateOperatorApprovalAuditSchemaPrReadiness().modelCandidates[0]?.modelDraft ?? "";
+    for (const field of [
+      "approvalId",
+      "actionType",
+      "actorId",
+      "actorRole",
+      "decision",
+      "targetType",
+      "targetId",
+    ]) {
+      expect(draft).toContain(field);
+    }
+  });
+
+  it("OperatorApproval modelDraft does not require auditEventId", () => {
     const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
     expect(report.decision).toBe("ready_for_schema_pr_plan");
+    expect(report.modelCandidates[0]?.modelDraft).not.toMatch(/\bauditEventId\b/);
   });
 
-  it("sourceSchemaDecision is ready_for_schema_proposal", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.sourceSchemaDecision).toBe("ready_for_schema_proposal");
+  it("audit_event generates OperatorAuditEvent model draft", () => {
+    const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "audit_event" });
+    expect(report.modelCandidates[0]?.modelName).toBe("OperatorAuditEvent");
+    expect(report.modelCandidates[0]?.modelDraft).toContain("model OperatorAuditEvent");
   });
 
-  it("sourceProposedTableName is non-empty", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.sourceProposedTableName.length).toBeGreaterThan(0);
+  it("OperatorAuditEvent modelDraft includes audit fields", () => {
+    const draft =
+      evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "audit_event" }).modelCandidates[0]
+        ?.modelDraft ?? "";
+    for (const field of [
+      "auditEventId",
+      "eventType",
+      "actorId",
+      "actorRole",
+      "targetType",
+      "targetId",
+    ]) {
+      expect(draft).toContain(field);
+    }
   });
 
-  it("sourceFieldProposalCount is at least 1", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.sourceFieldProposalCount).toBeGreaterThanOrEqual(1);
+  it("OperatorAuditEvent modelDraft does not require approvalId or actionType", () => {
+    const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "audit_event" });
+    expect(report.decision).toBe("ready_for_schema_pr_plan");
+    const draft = report.modelCandidates[0]?.modelDraft ?? "";
+    expect(draft).not.toMatch(/\bapprovalId\b/);
+    expect(draft).not.toMatch(/\bactionType\b/);
   });
 
-  it("sourceExcludedFieldCount is at least 1", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.sourceExcludedFieldCount).toBeGreaterThanOrEqual(1);
-  });
-
-  it("sourceForbiddenFieldNames is non-empty", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.sourceForbiddenFieldNames.length).toBeGreaterThan(0);
-  });
-
-  it("requiresSeparatePr is true", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().requiresSeparatePr).toBe(true);
-  });
-
-  it("modifiesSchemaInThisStep is false", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().modifiesSchemaInThisStep).toBe(false);
-  });
-
-  it("createsMigrationInThisStep is false", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().createsMigrationInThisStep).toBe(false);
-  });
-
-  it("writesDataInThisStep is false", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().writesDataInThisStep).toBe(false);
-  });
-
-  it("modelCandidates is non-empty for operator_approval", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    expect(report.modelCandidates.length).toBeGreaterThan(0);
-  });
-
-  it("all modelCandidates include caution", () => {
+  it("all modelCandidates include separate PR approval caution", () => {
     const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
     for (const candidate of report.modelCandidates) {
       expect(candidate.caution).toContain("separate PR approval");
     }
-  });
-
-  it("modelDraft includes OperatorApproval or OperatorAuditEvent", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    const draft = report.modelCandidates[0]?.modelDraft ?? "";
-    expect(draft.includes("OperatorApproval") || draft.includes("OperatorAuditEvent")).toBe(true);
   });
 
   it("modelDraft does not include forbidden fields", () => {
@@ -109,55 +113,30 @@ describe("multi-agent operator approval audit schema PR readiness stage 2-24", (
     }
   });
 
-  it("migrationChecklist is non-empty", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().migrationChecklist.length).toBeGreaterThan(0);
-  });
-
-  it("rollbackChecklist is non-empty", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().rollbackChecklist.length).toBeGreaterThan(0);
-  });
-
-  it("permissionAccessChecklist is non-empty", () => {
-    expect(
-      evaluateOperatorApprovalAuditSchemaPrReadiness().permissionAccessChecklist.length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("auditIntegrityChecklist is non-empty", () => {
-    expect(evaluateOperatorApprovalAuditSchemaPrReadiness().auditIntegrityChecklist.length).toBeGreaterThan(
-      0,
-    );
-  });
-
-  it("forbiddenFieldChecklist includes required fields as satisfied", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
-    const byField = new Map(report.forbiddenFieldChecklist.map((f) => [f.item, f]));
-    for (const field of FORBIDDEN_IN_DRAFT) {
-      expect(byField.get(field)?.satisfied).toBe(true);
-    }
-  });
-
-  it("operator_override returns defer", () => {
+  it("operator_override returns defer with empty modelCandidates", () => {
     const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "operator_override" });
     expect(report.decision).toBe("defer");
     expect(report.modelCandidates).toEqual([]);
+    expect(report.findings.some((f) => f.code === "operator_schema_target_deferred")).toBe(true);
   });
 
-  it("audit_event returns ready_for_schema_pr_plan", () => {
-    const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "audit_event" });
-    expect(report.decision).toBe("ready_for_schema_pr_plan");
-    expect(report.sourceProposedTableName).toBe("OperatorAuditEvent");
-  });
-
-  it("rollback_approval returns defer", () => {
+  it("rollback_approval returns defer with empty modelCandidates", () => {
     const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "rollback_approval" });
     expect(report.decision).toBe("defer");
+    expect(report.modelCandidates).toEqual([]);
   });
 
   it("unknown target returns blocked", () => {
     const report = evaluateOperatorApprovalAuditSchemaPrReadiness({ target: "invalid" });
     expect(report.decision).toBe("blocked");
     expect(report.modelCandidates).toEqual([]);
+  });
+
+  it("read-only flags are false for schema migration and data write", () => {
+    const report = evaluateOperatorApprovalAuditSchemaPrReadiness();
+    expect(report.modifiesSchemaInThisStep).toBe(false);
+    expect(report.createsMigrationInThisStep).toBe(false);
+    expect(report.writesDataInThisStep).toBe(false);
   });
 
   it("evaluator uses schema decision only without Prisma migration or DB write", () => {

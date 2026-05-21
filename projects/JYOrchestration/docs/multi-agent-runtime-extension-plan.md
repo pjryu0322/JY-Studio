@@ -1061,6 +1061,49 @@ audit integrity fields: auditEventId, actorId, targetType, targetId, reasonSumma
 19 forbidden excluded fields required; modelDraft forbidden guard
 ```
 
-### Stage 2-25 후보: Connector Gateway 실험 브랜치 명시 승인 후 실행
+## Stage 2-24 소스 보완 결과
 
-Stage 2-25에서는 Stage 2-22 readiness report의 commandCandidates를 사용자가 명시 승인한 후 수동 실행할지 결정한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| undefined variable fix | `missingForbidden` 수정 | evaluateOperatorApprovalAuditSchemaPrReadiness.ts |
+| target별 required field set | operator_approval / audit_event 분리 | model draft 기준 검증 |
+| OperatorApproval model candidate | 정적 draft 분리 | OperatorApproval |
+| OperatorAuditEvent model candidate | 정적 draft 분리 | OperatorAuditEvent |
+| typecheck | tsc --noEmit 통과 | 변경 파일 기준 |
+| 실제 schema/migration/DB write | 없음 | read-only 유지 |
+
+## Stage 2-25 Connector Gateway Branch Execution Package 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Execution Package 타입 | read-only package report | 없음 | 수동 실행 후보 |
+| Execution Package evaluator | branch readiness 기반 판단 | 없음 | git 명령 미실행 |
+| explicitUserApproval | input flag | 없음 | true여도 실행하지 않음 |
+| manualCommands | report field | 없음 | 사람이 수동 실행 |
+| preflightChecklist | report field | 없음 | 실행 전 체크 |
+| regressionChecklist | readiness 상속 | 없음 | 회귀 검증 |
+| rollbackCriteria | readiness 상속 | 없음 | 실패 기준 |
+
+구현: `connectorGatewayExperimentBranchExecutionPackageTypes.ts`, `evaluateConnectorGatewayExperimentBranchExecutionPackage.ts`
+
+### Stage 2-25 원칙
+
+```text
+- 실제 git 명령을 실행하지 않는다.
+- explicitUserApproval=true여도 report만 만든다.
+- manualCommands는 사람이 복사 실행할 수 있는 후보일 뿐이다.
+- feature flag wire와 routing 변경은 별도 PR/별도 승인 대상이다.
+```
+
+### Stage 2-25 Decision 규칙 요약
+
+```text
+ready_for_explicit_user_approval + explicitUserApproval=true → ready_for_manual_execution_after_approval + manualCommands
+ready_for_explicit_user_approval + explicitUserApproval=false → defer + manualCommands=[]
+defer → defer
+blocked → blocked
+```
+
+### Stage 2-26 후보: Agent Execution Record schema PR 실제 적용 여부 최종 승인
+
+Stage 2-26에서는 Stage 2-23 readiness를 기준으로 schema PR을 실제로 만들지 여부를 결정한다.
