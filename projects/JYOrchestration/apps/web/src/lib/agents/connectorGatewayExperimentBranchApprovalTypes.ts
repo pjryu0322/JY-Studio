@@ -42,6 +42,15 @@ export interface ConnectorGatewayExperimentBranchApprovalReport {
 
   readonly approvalChecklist: readonly ConnectorGatewayExperimentBranchApprovalChecklistItem[];
   readonly requiredRegressionSuites: readonly string[];
+  readonly validationSuites: readonly string[];
   readonly rollbackCriteria: readonly string[];
+
+  readonly candidateBoundaries: readonly string[];
+  readonly candidateConnectorIds: readonly string[];
+  readonly candidateBoundaryKinds: readonly string[];
+  readonly sourceBranchPlanDecision: string;
+  readonly sourceRoutingDecision: string;
+  readonly sourceRoutingScope: string;
+
   readonly findings: readonly ConnectorGatewayExperimentBranchApprovalFinding[];
 }

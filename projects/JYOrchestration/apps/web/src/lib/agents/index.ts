@@ -376,6 +376,19 @@ export type {
 
 export { evaluateConnectorGatewayExperimentBranchApproval } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchApproval";
 
+export type {
+  AgentExecutionRecordWritePathChecklistItem,
+  AgentExecutionRecordWritePathDecision,
+  AgentExecutionRecordWritePathDesignReport,
+  AgentExecutionRecordWritePathFinding,
+  AgentExecutionRecordWritePathTarget,
+} from "@/lib/agents/agentExecutionRecordWritePathDesignTypes";
+
+export {
+  evaluateAgentExecutionRecordWritePathDesign,
+  normalizeAgentExecutionRecordWritePathTarget,
+} from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

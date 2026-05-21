@@ -3,7 +3,10 @@
  */
 
 import { evaluateConnectorGatewayExperimentBranchPlan } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchPlan";
-import type { ConnectorGatewayExperimentBranchPlanDecision } from "@/lib/agents/connectorGatewayExperimentBranchPlanTypes";
+import type {
+  ConnectorGatewayExperimentBranchPlanDecision,
+  ConnectorGatewayExperimentBranchPlanReport,
+} from "@/lib/agents/connectorGatewayExperimentBranchPlanTypes";
 import type {
   ConnectorGatewayExperimentBranchApprovalChecklistItem,
   ConnectorGatewayExperimentBranchApprovalDecision,
@@ -35,6 +38,34 @@ function mapBranchPlanDecision(
   }
 }
 
+function resolveApprovalDecision(input: {
+  readonly branchPlan: ConnectorGatewayExperimentBranchPlanReport;
+  readonly requiresDirectCallFallback: boolean;
+}): ConnectorGatewayExperimentBranchApprovalDecision {
+  const { branchPlan, requiresDirectCallFallback } = input;
+  let decision = mapBranchPlanDecision(branchPlan.decision);
+
+  if (decision === "blocked") {
+    return "blocked";
+  }
+
+  const hasBranchName = branchPlan.recommendedBranchName.length > 0;
+  const hasFeatureFlag = branchPlan.featureFlagName.length > 0;
+  const hasRollback = branchPlan.rollbackCriteria.length > 0;
+  const hasRegression =
+    branchPlan.requiredRegressionSuites.length > 0 || branchPlan.validationSuites.length > 0;
+
+  if (!hasBranchName || !hasFeatureFlag || !hasRollback || !requiresDirectCallFallback) {
+    return "blocked";
+  }
+
+  if (decision === "ready_for_operator_approval" && !hasRegression) {
+    return "defer";
+  }
+
+  return decision;
+}
+
 function buildApprovalChecklist(input: {
   readonly decision: ConnectorGatewayExperimentBranchApprovalDecision;
   readonly recommendedBranchName: string;
@@ -46,15 +77,24 @@ function buildApprovalChecklist(input: {
   readonly validationSuiteCount: number;
 }): ConnectorGatewayExperimentBranchApprovalChecklistItem[] {
   const isBlocked = input.decision === "blocked";
+  const isReady = input.decision === "ready_for_operator_approval";
   const regressionDefined =
     !isBlocked &&
     (input.requiredRegressionSuites.length > 0 || input.validationSuiteCount > 0);
 
+  const branchNameSatisfied = isBlocked
+    ? false
+    : isReady
+      ? input.recommendedBranchName.length > 0
+      : input.recommendedBranchName.length > 0;
+
+  const operatorSatisfied = isBlocked ? false : input.requiresOperatorApproval;
+
   return [
     {
       item: "branch name selected",
-      satisfied: input.recommendedBranchName.length > 0,
-      reason: input.recommendedBranchName.length > 0 ? "branch name is defined" : "branch name missing",
+      satisfied: branchNameSatisfied,
+      reason: branchNameSatisfied ? "branch name is defined" : "branch name missing or blocked",
     },
     {
       item: "feature flag default off",
@@ -63,12 +103,14 @@ function buildApprovalChecklist(input: {
     },
     {
       item: "direct call fallback preserved",
-      satisfied: input.requiresDirectCallFallback,
-      reason: "direct call fallback is required during experiment",
+      satisfied: isBlocked ? false : input.requiresDirectCallFallback,
+      reason: isBlocked
+        ? "direct call fallback not ready while blocked"
+        : "direct call fallback is required during experiment",
     },
     {
       item: "rollback criteria defined",
-      satisfied: input.rollbackCriteria.length > 0,
+      satisfied: isBlocked ? false : input.rollbackCriteria.length > 0,
       reason:
         input.rollbackCriteria.length > 0
           ? "rollback criteria are defined"
@@ -76,15 +118,17 @@ function buildApprovalChecklist(input: {
     },
     {
       item: "regression suites defined",
-      satisfied: regressionDefined,
+      satisfied: isBlocked ? false : regressionDefined,
       reason: regressionDefined
         ? "regression suites are defined"
         : "regression suites missing for approval",
     },
     {
       item: "operator approval required",
-      satisfied: input.requiresOperatorApproval,
-      reason: "operator approval is required before experiment wire",
+      satisfied: operatorSatisfied,
+      reason: operatorSatisfied
+        ? "operator approval is required before experiment wire"
+        : "operator approval not required while blocked",
     },
     {
       item: "no main execution path change",
@@ -187,7 +231,8 @@ export function evaluateConnectorGatewayExperimentBranchApproval(input: {
     boundaryIds: input.boundaryIds,
   });
 
-  const decision = mapBranchPlanDecision(branchPlan.decision);
+  const requiresDirectCallFallback = branchPlan.requiresDirectCallFallback;
+  const decision = resolveApprovalDecision({ branchPlan, requiresDirectCallFallback });
   const scope = branchPlan.scope as ConnectorGatewayExperimentBranchApprovalScope;
   const isBlocked = decision === "blocked";
 
@@ -198,10 +243,10 @@ export function evaluateConnectorGatewayExperimentBranchApproval(input: {
   const requiresOperatorApproval = !isBlocked;
   const requiresRegressionChecklist = !isBlocked;
   const requiresRollbackPlan = true;
-  const requiresDirectCallFallback = true;
   const requiresStage1Regression = isBlocked ? false : branchPlan.requiresStage1Regression;
 
   const requiredRegressionSuites = isBlocked ? [] : [...branchPlan.requiredRegressionSuites];
+  const validationSuites = [...branchPlan.validationSuites];
   const rollbackCriteria = [...branchPlan.rollbackCriteria];
 
   const approvalChecklist = buildApprovalChecklist({
@@ -212,7 +257,7 @@ export function evaluateConnectorGatewayExperimentBranchApproval(input: {
     requiresOperatorApproval,
     rollbackCriteria,
     requiredRegressionSuites,
-    validationSuiteCount: branchPlan.validationSuites.length,
+    validationSuiteCount: validationSuites.length,
   });
 
   const findings: ConnectorGatewayExperimentBranchApprovalFinding[] = [];
@@ -241,7 +286,14 @@ export function evaluateConnectorGatewayExperimentBranchApproval(input: {
     requiresStage1Regression,
     approvalChecklist,
     requiredRegressionSuites,
+    validationSuites,
     rollbackCriteria,
+    candidateBoundaries: [...branchPlan.candidateBoundaries],
+    candidateConnectorIds: [...branchPlan.candidateConnectorIds],
+    candidateBoundaryKinds: [...branchPlan.candidateBoundaryKinds],
+    sourceBranchPlanDecision: branchPlan.decision,
+    sourceRoutingDecision: branchPlan.sourceRoutingDecision,
+    sourceRoutingScope: branchPlan.sourceRoutingScope,
     findings,
   };
 }
