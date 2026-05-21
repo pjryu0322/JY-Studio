@@ -545,7 +545,20 @@ export type {
   RuntimeChangeFinalApprovalPackageReport,
 } from "@/lib/agents/runtimeChangeFinalApprovalPackageTypes";
 
-export { evaluateRuntimeChangeFinalApprovalPackage } from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
+export {
+  evaluateRuntimeChangeFinalApprovalPackage,
+  uniqueStrings,
+} from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
+
+export type {
+  Stage2IntegratedClosureVerdictChecklistItem,
+  Stage2IntegratedClosureVerdictDecision,
+  Stage2IntegratedClosureVerdictFinding,
+  Stage2IntegratedClosureVerdictReport,
+  Stage2NextPhaseRecommendation,
+} from "@/lib/agents/stage2IntegratedClosureVerdictTypes";
+
+export { evaluateStage2IntegratedClosureVerdict } from "@/lib/agents/evaluateStage2IntegratedClosureVerdict";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

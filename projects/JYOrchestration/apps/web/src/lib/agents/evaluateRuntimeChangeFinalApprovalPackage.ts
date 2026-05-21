@@ -68,10 +68,16 @@ function finding(
   return { severity, code, message };
 }
 
+export function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
 function collectBlockingFindingCodes(
   findings: readonly { readonly severity: string; readonly code: string }[],
 ): string[] {
-  return findings.filter((f) => f.severity === "blocking").map((f) => f.code);
+  return uniqueStrings(
+    findings.filter((f) => f.severity === "blocking").map((f) => f.code),
+  );
 }
 
 function resolvePackageDecision(input: {
@@ -125,22 +131,21 @@ function resolvePackageDecision(input: {
   return "ready_for_final_runtime_change_approval";
 }
 
-function buildChecklist(
-  items: readonly string[],
-  satisfaction: Record<string, boolean>,
+function buildChecklistFromReasons(
+  items: readonly { readonly item: string; readonly satisfied: boolean; readonly reason: string }[],
 ): RuntimeChangeFinalApprovalPackageChecklistItem[] {
-  return items.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
+  return items.map((entry) => ({
+    item: entry.item,
+    satisfied: entry.satisfied,
+    reason: entry.reason,
   }));
 }
 
 function buildFinalApprovalChecklist(input: {
   readonly routingShadowReady: boolean;
+  readonly routingShadowDecision: string;
   readonly wireCandidateReady: boolean;
+  readonly wireCandidateDecision: string;
   readonly finalRuntimeApprovalConfirmed: boolean;
   readonly routingShadowReviewConfirmed: boolean;
   readonly wireCandidateReviewConfirmed: boolean;
@@ -150,58 +155,147 @@ function buildFinalApprovalChecklist(input: {
   readonly rollbackPlanReviewConfirmed: boolean;
   readonly operatorAuditReviewConfirmed: boolean;
 }): RuntimeChangeFinalApprovalPackageChecklistItem[] {
-  return buildChecklist(FINAL_APPROVAL_CHECKLIST_ITEMS, {
-    "routing shadow ready": input.routingShadowReady,
-    "wire candidate verification ready": input.wireCandidateReady,
-    "final runtime approval confirmed": input.finalRuntimeApprovalConfirmed,
-    "routing shadow review confirmed": input.routingShadowReviewConfirmed,
-    "wire candidate review confirmed": input.wireCandidateReviewConfirmed,
-    "stage1 regression review confirmed when required":
-      !input.requiresStage1Regression || input.stage1RegressionReviewConfirmed,
-    "rollback plan review confirmed when required":
-      !input.requiresRollbackPlan || input.rollbackPlanReviewConfirmed,
-    "operator audit review confirmed": input.operatorAuditReviewConfirmed,
-  });
+  return buildChecklistFromReasons(
+    FINAL_APPROVAL_CHECKLIST_ITEMS.map((item) => {
+      switch (item) {
+        case "routing shadow ready":
+          return {
+            item,
+            satisfied: input.routingShadowReady,
+            reason: `routing shadow decision=${input.routingShadowDecision}`,
+          };
+        case "wire candidate verification ready":
+          return {
+            item,
+            satisfied: input.wireCandidateReady,
+            reason: `wire candidate decision=${input.wireCandidateDecision}`,
+          };
+        case "final runtime approval confirmed":
+          return {
+            item,
+            satisfied: input.finalRuntimeApprovalConfirmed,
+            reason: `finalRuntimeApprovalConfirmed=${input.finalRuntimeApprovalConfirmed}`,
+          };
+        case "routing shadow review confirmed":
+          return {
+            item,
+            satisfied: input.routingShadowReviewConfirmed,
+            reason: `routingShadowReviewConfirmed=${input.routingShadowReviewConfirmed}`,
+          };
+        case "wire candidate review confirmed":
+          return {
+            item,
+            satisfied: input.wireCandidateReviewConfirmed,
+            reason: `wireCandidateReviewConfirmed=${input.wireCandidateReviewConfirmed}`,
+          };
+        case "stage1 regression review confirmed when required":
+          return {
+            item,
+            satisfied: !input.requiresStage1Regression || input.stage1RegressionReviewConfirmed,
+            reason: `requiresStage1Regression=${input.requiresStage1Regression}; stage1RegressionReviewConfirmed=${input.stage1RegressionReviewConfirmed}`,
+          };
+        case "rollback plan review confirmed when required":
+          return {
+            item,
+            satisfied: !input.requiresRollbackPlan || input.rollbackPlanReviewConfirmed,
+            reason: `requiresRollbackPlan=${input.requiresRollbackPlan}; rollbackPlanReviewConfirmed=${input.rollbackPlanReviewConfirmed}`,
+          };
+        case "operator audit review confirmed":
+          return {
+            item,
+            satisfied: input.operatorAuditReviewConfirmed,
+            reason: `operatorAuditReviewConfirmed=${input.operatorAuditReviewConfirmed}`,
+          };
+        default:
+          return { item, satisfied: false, reason: `${item} not evaluated` };
+      }
+    }),
+  );
 }
 
 function buildRuntimeSafetyChecklist(): RuntimeChangeFinalApprovalPackageChecklistItem[] {
-  return buildChecklist(RUNTIME_SAFETY_CHECKLIST_ITEMS, {
-    "final approval package only": true,
-    "no runtime change in this step": true,
-    "no connector routing change in this step": true,
-    "no write path wire in this step": true,
-    "no adapter wire in this step": true,
-    "no feature flag wire in this step": true,
-    "no DB write in this step": true,
-    "no Prisma call in this step": true,
-    "no schema change in this step": true,
-    "no migration in this step": true,
-    "no git execution in this step": true,
-    "no Cursor call in this step": true,
-    "no GitHub call in this step": true,
-    "existing execution path preserved": true,
-  });
+  return buildChecklistFromReasons(
+    RUNTIME_SAFETY_CHECKLIST_ITEMS.map((item) => {
+      let reason = "read-only final approval package only";
+      if (item === "no runtime change in this step") {
+        reason = "read-only final approval package only; runtime is not changed";
+      } else if (item === "no connector routing change in this step") {
+        reason = "read-only final approval package only; connector routing is not changed";
+      } else if (item === "no write path wire in this step") {
+        reason = "read-only final approval package only; write path is not wired";
+      } else if (item === "no GitHub call in this step") {
+        reason = "read-only final approval package only; GitHub connector is not called";
+      } else if (item === "no Cursor call in this step") {
+        reason = "read-only final approval package only; Cursor connector is not called";
+      } else if (item === "no git execution in this step") {
+        reason = "read-only final approval package only; git is not executed";
+      } else if (item === "existing execution path preserved") {
+        reason = "existing Stage1/runtime execution path is preserved";
+      }
+      return { item, satisfied: true, reason };
+    }),
+  );
 }
 
 function buildRollbackChecklist(input: {
-  readonly routingRollbackReviewed: boolean;
-  readonly writePathRollbackReviewed: boolean;
+  readonly routingRollbackChecklistCount: number;
+  readonly writePathRollbackChecklistCount: number;
   readonly schemaRollbackReviewed: boolean;
   readonly migrationRollbackReviewed: boolean;
   readonly featureFlagRollbackReviewed: boolean;
   readonly requiresStage1Regression: boolean;
   readonly stage1RegressionReviewConfirmed: boolean;
 }): RuntimeChangeFinalApprovalPackageChecklistItem[] {
-  return buildChecklist(ROLLBACK_CHECKLIST_ITEMS, {
-    "routing rollback plan reviewed": input.routingRollbackReviewed,
-    "write path rollback plan reviewed": input.writePathRollbackReviewed,
-    "schema rollback plan reviewed": input.schemaRollbackReviewed,
-    "migration rollback plan reviewed": input.migrationRollbackReviewed,
-    "feature flag rollback plan reviewed": input.featureFlagRollbackReviewed,
-    "Stage1 regression plan reviewed when required":
-      !input.requiresStage1Regression || input.stage1RegressionReviewConfirmed,
-    "manual recovery plan required before actual runtime change": true,
-  });
+  return buildChecklistFromReasons(
+    ROLLBACK_CHECKLIST_ITEMS.map((item) => {
+      switch (item) {
+        case "routing rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.routingRollbackChecklistCount > 0,
+            reason: `routing shadow rollback checklist count=${input.routingRollbackChecklistCount}`,
+          };
+        case "write path rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.writePathRollbackChecklistCount > 0,
+            reason: `wire candidate rollback checklist count=${input.writePathRollbackChecklistCount}`,
+          };
+        case "schema rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.schemaRollbackReviewed,
+            reason: `schema rollback reviewed=${input.schemaRollbackReviewed}`,
+          };
+        case "migration rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.migrationRollbackReviewed,
+            reason: `migration rollback reviewed=${input.migrationRollbackReviewed}`,
+          };
+        case "feature flag rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.featureFlagRollbackReviewed,
+            reason: `feature flag rollback reviewed=${input.featureFlagRollbackReviewed}`,
+          };
+        case "Stage1 regression plan reviewed when required":
+          return {
+            item,
+            satisfied: !input.requiresStage1Regression || input.stage1RegressionReviewConfirmed,
+            reason: `requiresStage1Regression=${input.requiresStage1Regression}; reviewed=${input.stage1RegressionReviewConfirmed}`,
+          };
+        case "manual recovery plan required before actual runtime change":
+          return {
+            item,
+            satisfied: true,
+            reason: "manual recovery plan is required before any actual runtime change",
+          };
+        default:
+          return { item, satisfied: false, reason: `${item} not evaluated` };
+      }
+    }),
+  );
 }
 
 function buildOperatorChecklist(input: {
@@ -211,13 +305,44 @@ function buildOperatorChecklist(input: {
   readonly rollbackApprovalReviewed: boolean;
   readonly securityGateReviewed: boolean;
 }): RuntimeChangeFinalApprovalPackageChecklistItem[] {
-  return buildChecklist(OPERATOR_CHECKLIST_ITEMS, {
-    "operator approval required before actual runtime change": input.operatorApprovalRequired,
-    "operator audit trail required before actual runtime change": input.operatorAuditRequired,
-    "operator override policy reviewed": input.overridePolicyReviewed,
-    "rollback approval policy reviewed": input.rollbackApprovalReviewed,
-    "security/reviewer gate must remain before actual route change": input.securityGateReviewed,
-  });
+  return buildChecklistFromReasons(
+    OPERATOR_CHECKLIST_ITEMS.map((item) => {
+      switch (item) {
+        case "operator approval required before actual runtime change":
+          return {
+            item,
+            satisfied: input.operatorApprovalRequired,
+            reason: "operator approval is required before any actual runtime change",
+          };
+        case "operator audit trail required before actual runtime change":
+          return {
+            item,
+            satisfied: input.operatorAuditRequired,
+            reason: `operator audit trail required=${input.operatorAuditRequired}`,
+          };
+        case "operator override policy reviewed":
+          return {
+            item,
+            satisfied: input.overridePolicyReviewed,
+            reason: `operator override policy reviewed=${input.overridePolicyReviewed}`,
+          };
+        case "rollback approval policy reviewed":
+          return {
+            item,
+            satisfied: input.rollbackApprovalReviewed,
+            reason: `rollback approval policy reviewed=${input.rollbackApprovalReviewed}`,
+          };
+        case "security/reviewer gate must remain before actual route change":
+          return {
+            item,
+            satisfied: input.securityGateReviewed,
+            reason: "security/reviewer gate must remain before actual route change",
+          };
+        default:
+          return { item, satisfied: false, reason: `${item} not evaluated` };
+      }
+    }),
+  );
 }
 
 function appendPackageFindings(input: {
@@ -340,6 +465,20 @@ function appendPackageFindings(input: {
   findings.push(
     finding("info", "final_runtime_change_approval_ready", "runtime change final approval package is ready"),
   );
+  findings.push(
+    finding(
+      "info",
+      "runtime_change_still_requires_separate_execution_stage",
+      "final approval package is ready but actual runtime change requires a separate execution stage",
+    ),
+  );
+  findings.push(
+    finding("info", "connector_routing_still_not_changed", "connector gateway routing is still not changed"),
+  );
+  findings.push(finding("info", "write_path_still_not_wired", "write path is still not wired"));
+  findings.push(
+    finding("info", "schema_migration_still_not_applied", "schema/migration is still not applied in runtime"),
+  );
 }
 
 /** Read-only final approval package — does not change runtime, routing, write paths, or call git/Cursor/GitHub. */
@@ -370,12 +509,13 @@ export function evaluateRuntimeChangeFinalApprovalPackage(input?: {
   readonly rollbackPlanReviewConfirmed?: boolean;
   readonly operatorAuditReviewConfirmed?: boolean;
 }): RuntimeChangeFinalApprovalPackageReport {
-  const routingTarget = input?.routingTarget ?? "cursor_only";
-  const routingBoundaryIds = input?.routingBoundaryIds ?? ["cursor.execution.before"];
+  const requestedRoutingTarget = input?.routingTarget ?? "cursor_only";
+  const requestedRoutingBoundaryIds = input?.routingBoundaryIds ?? ["cursor.execution.before"];
+  const requestedRoutingConnectorIds = input?.routingConnectorIds ?? [];
 
   const routingShadow = evaluateConnectorGatewayRoutingShadow({
-    target: routingTarget,
-    boundaryIds: routingBoundaryIds,
+    target: requestedRoutingTarget,
+    boundaryIds: requestedRoutingBoundaryIds,
     connectorIds: input?.routingConnectorIds,
     explicitShadowApproval: input?.explicitShadowApproval,
   });
@@ -425,14 +565,17 @@ export function evaluateRuntimeChangeFinalApprovalPackage(input?: {
   const wireCandidateReady = wireCandidate.decision === WIRE_CANDIDATE_READY;
 
   const sourceRoutingShadowBlockingFindingCodes = collectBlockingFindingCodes(routingShadow.findings);
-  const sourceWireCandidateBlockingFindingCodes = [
+  const sourceWireCandidateBlockingFindingCodes = uniqueStrings([
     ...wireCandidate.sourceAgentWireGateBlockingFindingCodes,
     ...wireCandidate.sourceOperatorWireGateBlockingFindingCodes,
-  ];
+    ...collectBlockingFindingCodes(wireCandidate.findings),
+  ]);
 
   const finalApprovalChecklist = buildFinalApprovalChecklist({
     routingShadowReady,
+    routingShadowDecision: routingShadow.decision,
     wireCandidateReady,
+    wireCandidateDecision: wireCandidate.decision,
     finalRuntimeApprovalConfirmed,
     routingShadowReviewConfirmed,
     wireCandidateReviewConfirmed,
@@ -446,9 +589,9 @@ export function evaluateRuntimeChangeFinalApprovalPackage(input?: {
   const runtimeSafetyChecklist = buildRuntimeSafetyChecklist();
 
   const rollbackChecklist = buildRollbackChecklist({
-    routingRollbackReviewed: routingShadow.rollbackChecklist.length > 0,
-    writePathRollbackReviewed: wireCandidate.rollbackChecklist.some((c) => c.satisfied),
-    schemaRollbackReviewed: wireCandidate.sourceSchemaMigrationAgentRequiresMigration,
+    routingRollbackChecklistCount: routingShadow.rollbackChecklist.length,
+    writePathRollbackChecklistCount: wireCandidate.rollbackChecklist.length,
+    schemaRollbackReviewed: wireCandidate.sourceSchemaMigrationAgentRequiresSchemaChange,
     migrationRollbackReviewed: wireCandidate.sourceSchemaMigrationOperatorRequiresMigration,
     featureFlagRollbackReviewed: wireCandidate.sourceAgentFeatureFlagName.length > 0,
     requiresStage1Regression: sourceRoutingShadowRequiresStage1Regression,
@@ -482,8 +625,21 @@ export function evaluateRuntimeChangeFinalApprovalPackage(input?: {
   return {
     mode: "read_only_runtime_change_final_approval_package",
     decision,
+    requestedRoutingTarget,
+    requestedRoutingBoundaryIds: [...requestedRoutingBoundaryIds],
+    requestedRoutingConnectorIds: [...requestedRoutingConnectorIds],
     sourceRoutingShadowDecision: routingShadow.decision,
     sourceRoutingShadowRouteMode: routingShadow.routeMode,
+    sourceRoutingShadowTarget: routingShadow.target,
+    sourceRoutingShadowActualRuntimePath: routingShadow.actualRuntimePath,
+    sourceRoutingShadowShadowRuntimePath: routingShadow.shadowRuntimePath,
+    sourceRoutingShadowObservesOnly: routingShadow.observesOnly,
+    sourceRoutingShadowChangesRuntimeRouteInThisStep: false,
+    sourceRoutingShadowCallsConnectorInThisStep: false,
+    sourceRoutingShadowInvokesCursorInThisStep: false,
+    sourceRoutingShadowInvokesGithubInThisStep: false,
+    sourceRoutingShadowWiresFeatureFlagInThisStep: false,
+    sourceRoutingShadowWritesDataInThisStep: false,
     sourceRoutingShadowBoundaryIds: [...routingShadow.boundaryIds],
     sourceRoutingShadowConnectorIds: [...routingShadow.connectorIds],
     sourceRoutingShadowBoundarySource: routingShadow.boundarySource,
@@ -496,6 +652,22 @@ export function evaluateRuntimeChangeFinalApprovalPackage(input?: {
     sourceWireCandidateOperatorWireGateDecision: wireCandidate.sourceOperatorWireGateDecision,
     sourceWireCandidateSchemaMigrationDecision: wireCandidate.sourceSchemaMigrationReadinessDecision,
     sourceWireCandidateBlockingFindingCodes,
+    sourceWireCandidateRequestedAgentTarget: wireCandidate.requestedAgentTarget,
+    sourceWireCandidateRequestedOperatorTarget: wireCandidate.requestedOperatorTarget,
+    sourceWireCandidateNormalizedAgentTarget: wireCandidate.normalizedAgentTarget,
+    sourceWireCandidateNormalizedOperatorTarget: wireCandidate.normalizedOperatorTarget,
+    sourceWireCandidateSchemaMigrationReviewConfirmed: wireCandidate.schemaMigrationReadinessReviewConfirmed,
+    sourceWireCandidateSchemaAppliedInRuntime: false,
+    sourceWireCandidateMigrationAppliedInRuntime: false,
+    sourceWireCandidateVerifiesCandidateOnly: true,
+    sourceWireCandidateWiresWritePathInThisStep: false,
+    sourceWireCandidateWiresAdapterInThisStep: false,
+    sourceWireCandidateWritesDataInThisStep: false,
+    sourceWireCandidateCallsPrismaInThisStep: false,
+    sourceWireCandidateModifiesSchemaInThisStep: false,
+    sourceWireCandidateCreatesMigrationInThisStep: false,
+    sourceWireCandidateWiresFeatureFlagInThisStep: false,
+    sourceWireCandidateChangesRuntimeRouteInThisStep: false,
     finalRuntimeApprovalConfirmed,
     routingShadowReviewConfirmed,
     wireCandidateReviewConfirmed,

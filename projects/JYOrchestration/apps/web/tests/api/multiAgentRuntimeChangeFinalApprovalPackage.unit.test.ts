@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateRuntimeChangeFinalApprovalPackage } from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
+import {
+  evaluateRuntimeChangeFinalApprovalPackage,
+  uniqueStrings,
+} from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
 import * as routingShadowModule from "@/lib/agents/evaluateConnectorGatewayRoutingShadow";
 import * as wireCandidateModule from "@/lib/agents/evaluateWritePathWireCandidateVerification";
 
@@ -378,6 +381,12 @@ describe("multi-agent runtime change final approval package stage 2-E", () => {
     });
     expect(report.decision).toBe("ready_for_final_runtime_change_approval");
     expect(report.findings.some((f) => f.code === "final_runtime_change_approval_ready")).toBe(true);
+    expect(report.findings.some((f) => f.code === "runtime_change_still_requires_separate_execution_stage")).toBe(
+      true,
+    );
+    expect(report.findings.some((f) => f.code === "connector_routing_still_not_changed")).toBe(true);
+    expect(report.findings.some((f) => f.code === "write_path_still_not_wired")).toBe(true);
+    expect(report.findings.some((f) => f.code === "schema_migration_still_not_applied")).toBe(true);
   });
 
   it("finalApprovalChecklist includes routing shadow ready", () => {
@@ -472,6 +481,98 @@ describe("multi-agent runtime change final approval package stage 2-E", () => {
     expect(report.findings.some((f) => f.code === "runtime_change_final_approval_blocked")).toBe(
       true,
     );
+  });
+
+  it("report includes routing and wire candidate source trace fields", () => {
+    vi.spyOn(routingShadowModule, "evaluateConnectorGatewayRoutingShadow").mockReturnValue(
+      mockRoutingShadowReady(),
+    );
+    vi.spyOn(wireCandidateModule, "evaluateWritePathWireCandidateVerification").mockReturnValue(
+      mockWireCandidateReady(),
+    );
+
+    const report = evaluateRuntimeChangeFinalApprovalPackage(ALL_APPROVALS);
+    expect(report.requestedRoutingTarget).toBe("cursor_only");
+    expect(report.sourceRoutingShadowTarget).toBe("cursor_only");
+    expect(report.sourceRoutingShadowActualRuntimePath).toBe("/api/requirements");
+    expect(report.sourceRoutingShadowObservesOnly).toBe(true);
+    expect(report.sourceRoutingShadowChangesRuntimeRouteInThisStep).toBe(false);
+    expect(report.sourceWireCandidateRequestedAgentTarget).toBe("agent_execution_record");
+    expect(report.sourceWireCandidateNormalizedOperatorTarget).toBe("operator_approval");
+    expect(report.sourceWireCandidateSchemaMigrationReviewConfirmed).toBe(true);
+    expect(report.sourceWireCandidateSchemaAppliedInRuntime).toBe(false);
+    expect(report.sourceWireCandidateMigrationAppliedInRuntime).toBe(false);
+    expect(report.sourceWireCandidateVerifiesCandidateOnly).toBe(true);
+  });
+
+  it("wire candidate findings blocking codes are included and deduped", () => {
+    vi.spyOn(routingShadowModule, "evaluateConnectorGatewayRoutingShadow").mockReturnValue(
+      mockRoutingShadowReady(),
+    );
+    vi.spyOn(wireCandidateModule, "evaluateWritePathWireCandidateVerification").mockReturnValue({
+      ...mockWireCandidateReady(),
+      sourceAgentWireGateBlockingFindingCodes: ["dup_code"],
+      sourceOperatorWireGateBlockingFindingCodes: ["dup_code"],
+      findings: [{ severity: "blocking", code: "dup_code", message: "dup" }],
+    });
+
+    const codes = evaluateRuntimeChangeFinalApprovalPackage(ALL_APPROVALS)
+      .sourceWireCandidateBlockingFindingCodes;
+    expect(codes).toContain("dup_code");
+    expect(codes.filter((c) => c === "dup_code").length).toBe(1);
+  });
+
+  it("uniqueStrings removes empty blocking codes", () => {
+    expect(uniqueStrings(["a", "", "  ", "a"])).toEqual(["a"]);
+  });
+
+  it("routing shadow findings blocking codes are in sourceRoutingShadowBlockingFindingCodes", () => {
+    vi.spyOn(routingShadowModule, "evaluateConnectorGatewayRoutingShadow").mockReturnValue({
+      ...mockRoutingShadowReady(),
+      decision: "blocked",
+      findings: [{ severity: "blocking", code: "routing_shadow_target_unknown", message: "blocked" }],
+    });
+    vi.spyOn(wireCandidateModule, "evaluateWritePathWireCandidateVerification").mockReturnValue(
+      mockWireCandidateReady(),
+    );
+
+    expect(
+      evaluateRuntimeChangeFinalApprovalPackage(ALL_APPROVALS).sourceRoutingShadowBlockingFindingCodes,
+    ).toContain("routing_shadow_target_unknown");
+  });
+
+  it("routing shadow ready reason includes routingShadow decision", () => {
+    vi.spyOn(routingShadowModule, "evaluateConnectorGatewayRoutingShadow").mockReturnValue(
+      mockRoutingShadowReady(),
+    );
+    vi.spyOn(wireCandidateModule, "evaluateWritePathWireCandidateVerification").mockReturnValue(
+      mockWireCandidateReady(),
+    );
+
+    const reason = checklistItem(
+      evaluateRuntimeChangeFinalApprovalPackage(ALL_APPROVALS),
+      "finalApprovalChecklist",
+      "routing shadow ready",
+    )?.reason;
+    expect(reason).toContain("shadow_ready");
+  });
+
+  it("no GitHub call in this step reason includes GitHub", () => {
+    const reason = checklistItem(
+      evaluateRuntimeChangeFinalApprovalPackage(),
+      "runtimeSafetyChecklist",
+      "no GitHub call in this step",
+    )?.reason;
+    expect(reason?.toLowerCase()).toContain("github");
+  });
+
+  it("operator approval required reason includes approval phrase", () => {
+    const reason = checklistItem(
+      evaluateRuntimeChangeFinalApprovalPackage(),
+      "operatorChecklist",
+      "operator approval required before actual runtime change",
+    )?.reason;
+    expect(reason?.toLowerCase()).toContain("approval");
   });
 
   it("evaluator does not change runtime routing write feature flag DB schema migration git Cursor or GitHub", () => {

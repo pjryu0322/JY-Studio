@@ -1562,6 +1562,59 @@ Stage1 regression 또는 rollback review required 미충족 → defer
 모두 충족 → ready_for_final_runtime_change_approval
 ```
 
-### Stage 2-F 후보
+### Stage 2-E 보강 (Stage 2-F 선행)
 
-Stage 2 전체 종료 판정과 실제 변경 전 승인 조건을 정리한다.
+| 항목 | 반영 방식 | 비고 |
+|---|---|---|
+| source trace | routing/wire candidate upstream no-run fields | Stage 2-F 종료 판정 |
+| blocking finding aggregation | wire gate + wire candidate findings dedupe | uniqueStrings |
+| checklist reason | decision/confirmation 기반 reason | 운영자 승인 가독성 |
+| ready finding | separate execution stage / not wired / not applied | 실제 변경 아님 명시 |
+
+## Stage 2-F Stage 2 Integrated Closure Verdict 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Stage 2 통합 종료 판정 타입 | read-only report | 없음 | Stage 2 종료 가능 여부 |
+| 통합 evaluator | Runtime Change Final Approval Package 기반 | 없음 | 실제 runtime 변경 없음 |
+| closureChecklist | report field | 없음 | 종료 조건 확인 |
+| noRunChecklist | report field | 없음 | Stage 2 no-run 원칙 검증 |
+| handoffChecklist | report field | 없음 | 후속 PR/실험 브랜치 분리 |
+| riskChecklist | report field | 없음 | Stage1/rollback/schema/routing/write risk |
+| recommendedNextPhases | report field | 없음 | 후속 단계 안내 |
+
+### Stage 2-F 원칙
+
+```text
+- Stage 2는 read-only foundation 단계로 종료한다.
+- runtime route를 변경하지 않는다.
+- Connector Gateway routing을 변경하지 않는다.
+- write path를 wire하지 않는다.
+- feature flag를 wire하지 않는다.
+- DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- git/Cursor/GitHub를 호출하지 않는다.
+- Stage 2 종료 후 실제 변경은 별도 PR/실험 브랜치/운영자 승인으로 진행한다.
+```
+
+### Stage 2-F Decision 규칙 요약
+
+```text
+runtime final approval / routing shadow / wire candidate blocked → blocked
+no-run policy violation → blocked
+runtime final approval 미준비 또는 review 미확인 → defer
+모두 충족 → stage2_closure_ready
+```
+
+### Stage 2 이후 후보
+
+```text
+1. schema.prisma / migration 별도 PR
+2. Operator Approval / Audit schema 별도 PR
+3. Connector Gateway 실험 브랜치 수동 생성 및 회귀 검증
+4. Runtime execution wire design
+5. Feature flag wire 설계
+6. 실제 Connector Gateway routing 전환 여부 결정
+```

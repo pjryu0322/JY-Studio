@@ -23,8 +23,22 @@ export interface RuntimeChangeFinalApprovalPackageReport {
   readonly mode: "read_only_runtime_change_final_approval_package";
   readonly decision: RuntimeChangeFinalApprovalPackageDecision;
 
+  readonly requestedRoutingTarget: string;
+  readonly requestedRoutingBoundaryIds: readonly string[];
+  readonly requestedRoutingConnectorIds: readonly string[];
+
   readonly sourceRoutingShadowDecision: string;
   readonly sourceRoutingShadowRouteMode: string;
+  readonly sourceRoutingShadowTarget: string;
+  readonly sourceRoutingShadowActualRuntimePath: string;
+  readonly sourceRoutingShadowShadowRuntimePath: string;
+  readonly sourceRoutingShadowObservesOnly: boolean;
+  readonly sourceRoutingShadowChangesRuntimeRouteInThisStep: false;
+  readonly sourceRoutingShadowCallsConnectorInThisStep: false;
+  readonly sourceRoutingShadowInvokesCursorInThisStep: false;
+  readonly sourceRoutingShadowInvokesGithubInThisStep: false;
+  readonly sourceRoutingShadowWiresFeatureFlagInThisStep: false;
+  readonly sourceRoutingShadowWritesDataInThisStep: false;
   readonly sourceRoutingShadowBoundaryIds: readonly string[];
   readonly sourceRoutingShadowConnectorIds: readonly string[];
   readonly sourceRoutingShadowBoundarySource: string;
@@ -38,6 +52,23 @@ export interface RuntimeChangeFinalApprovalPackageReport {
   readonly sourceWireCandidateOperatorWireGateDecision: string;
   readonly sourceWireCandidateSchemaMigrationDecision: string;
   readonly sourceWireCandidateBlockingFindingCodes: readonly string[];
+
+  readonly sourceWireCandidateRequestedAgentTarget: string;
+  readonly sourceWireCandidateRequestedOperatorTarget: string;
+  readonly sourceWireCandidateNormalizedAgentTarget: string;
+  readonly sourceWireCandidateNormalizedOperatorTarget: string;
+  readonly sourceWireCandidateSchemaMigrationReviewConfirmed: boolean;
+  readonly sourceWireCandidateSchemaAppliedInRuntime: false;
+  readonly sourceWireCandidateMigrationAppliedInRuntime: false;
+  readonly sourceWireCandidateVerifiesCandidateOnly: true;
+  readonly sourceWireCandidateWiresWritePathInThisStep: false;
+  readonly sourceWireCandidateWiresAdapterInThisStep: false;
+  readonly sourceWireCandidateWritesDataInThisStep: false;
+  readonly sourceWireCandidateCallsPrismaInThisStep: false;
+  readonly sourceWireCandidateModifiesSchemaInThisStep: false;
+  readonly sourceWireCandidateCreatesMigrationInThisStep: false;
+  readonly sourceWireCandidateWiresFeatureFlagInThisStep: false;
+  readonly sourceWireCandidateChangesRuntimeRouteInThisStep: false;
 
   readonly finalRuntimeApprovalConfirmed: boolean;
   readonly routingShadowReviewConfirmed: boolean;
