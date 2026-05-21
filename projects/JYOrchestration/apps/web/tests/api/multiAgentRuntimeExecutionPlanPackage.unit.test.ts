@@ -59,6 +59,16 @@ function mockPlanReady(): ReturnType<typeof planModule.evaluateRuntimeExecutionP
   };
 }
 
+function mockPlanWithUnsatisfiedStep(
+  kind: string,
+): ReturnType<typeof planModule.evaluateRuntimeExecutionPlanBuilder> {
+  const base = mockPlanReady();
+  return {
+    ...base,
+    planSteps: base.planSteps.map((s) => (s.kind === kind ? { ...s, satisfied: false } : s)),
+  };
+}
+
 const ALL_PACKAGE_REVIEW_INPUT = {
   schemaPrApproved: true,
   operatorAuditSchemaPrApproved: true,
@@ -331,6 +341,100 @@ describe("multi-agent runtime execution plan package stage 3-A", () => {
       evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).findings.some(
         (f) => f.code === "runtime_execution_plan_package_blocked",
       ),
+    ).toBe(true);
+  });
+
+  it("source plan ready with schemaPrerequisitesReady false returns defer", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("schema_migration_pr_check"),
+    );
+
+    expect(evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).decision).toBe("defer");
+  });
+
+  it("source plan ready with connectorExperimentReady false returns defer", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("connector_experiment_branch_check"),
+    );
+
+    expect(evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).decision).toBe("defer");
+  });
+
+  it("source plan ready with featureFlagWireReady false returns defer", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("feature_flag_check"),
+    );
+
+    expect(evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).decision).toBe("defer");
+  });
+
+  it("source plan ready with operatorApprovalReady false returns defer", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("operator_approval"),
+    );
+
+    expect(evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).decision).toBe("defer");
+  });
+
+  it("source plan ready with approvalReadiness missing returns defer", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("rollback_plan_check"),
+    );
+
+    expect(evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).decision).toBe("defer");
+  });
+
+  it("approval_readiness_incomplete finding includes missing items", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(
+      mockPlanWithUnsatisfiedStep("feature_flag_check"),
+    );
+
+    const finding = evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT).findings.find(
+      (f) => f.code === "approval_readiness_incomplete",
+    );
+    expect(finding?.message).toMatch(/missing=/);
+    expect(finding?.message).toContain("featureFlagWireReady");
+  });
+
+  it("ready state requires approvalReadiness.readyCount of 7", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(mockPlanReady());
+
+    const report = evaluateRuntimeExecutionPlanPackage(ALL_PACKAGE_REVIEW_INPUT);
+    expect(report.decision).toBe("ready_for_runtime_execution_approval_gate");
+    expect(report.approvalReadiness.readyCount).toBe(7);
+  });
+
+  it("plan ready with dryRunReviewConfirmed false keeps dry_run_ready status", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(mockPlanReady());
+
+    const report = evaluateRuntimeExecutionPlanPackage({
+      ...ALL_PACKAGE_REVIEW_INPUT,
+      dryRunReviewConfirmed: false,
+    });
+    expect(report.dryRunCandidate.status).toBe("dry_run_ready");
+    expect(report.decision).toBe("defer");
+  });
+
+  it("plan ready with dryRunReviewConfirmed false excludes review flag from dryRun deferredReasons", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(mockPlanReady());
+
+    const deferred = evaluateRuntimeExecutionPlanPackage({
+      ...ALL_PACKAGE_REVIEW_INPUT,
+      dryRunReviewConfirmed: false,
+    }).dryRunCandidate.deferredReasons;
+    expect(deferred).not.toContain("dryRunReviewConfirmed=false");
+    expect(deferred).not.toContain("approvalGateReviewConfirmed=false");
+    expect(deferred).not.toContain("safetyChecklistReviewed=false");
+  });
+
+  it("plan ready with dryRunReviewConfirmed false includes dry_run_review_missing finding", () => {
+    vi.spyOn(planModule, "evaluateRuntimeExecutionPlanBuilder").mockReturnValue(mockPlanReady());
+
+    expect(
+      evaluateRuntimeExecutionPlanPackage({
+        ...ALL_PACKAGE_REVIEW_INPUT,
+        dryRunReviewConfirmed: false,
+      }).findings.some((f) => f.code === "dry_run_review_missing"),
     ).toBe(true);
   });
 

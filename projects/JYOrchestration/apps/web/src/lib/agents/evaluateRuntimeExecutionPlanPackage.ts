@@ -123,9 +123,7 @@ function resolveDryRunStatus(planDecision: string): RuntimeExecutionDryRunCandid
 
 function buildDryRunCandidate(input: {
   readonly plan: ReturnType<typeof evaluateRuntimeExecutionPlanBuilder>;
-  readonly dryRunReviewConfirmed: boolean;
-  readonly approvalGateReviewConfirmed: boolean;
-  readonly safetyChecklistReviewed: boolean;
+  readonly approvalReadiness: RuntimeExecutionApprovalReadiness;
 }): RuntimeExecutionDryRunCandidate {
   const status = resolveDryRunStatus(input.plan.decision);
   const candidateSteps = input.plan.planSteps.map(
@@ -147,14 +145,11 @@ function buildDryRunCandidate(input: {
   if (input.plan.decision !== PLAN_READY) {
     deferredReasons.push("source plan not ready");
   }
-  if (!input.dryRunReviewConfirmed) {
-    deferredReasons.push("dryRunReviewConfirmed=false");
-  }
-  if (!input.approvalGateReviewConfirmed) {
-    deferredReasons.push("approvalGateReviewConfirmed=false");
-  }
-  if (!input.safetyChecklistReviewed) {
-    deferredReasons.push("safetyChecklistReviewed=false");
+  if (
+    input.plan.decision === PLAN_READY &&
+    input.approvalReadiness.readyCount !== input.approvalReadiness.totalCount
+  ) {
+    deferredReasons.push("source approval readiness incomplete");
   }
 
   return {
@@ -174,6 +169,7 @@ function buildDryRunCandidate(input: {
 
 function resolvePackageDecision(input: {
   readonly planDecision: string;
+  readonly approvalReadiness: RuntimeExecutionApprovalReadiness;
   readonly dryRunReviewConfirmed: boolean;
   readonly approvalGateReviewConfirmed: boolean;
   readonly safetyChecklistReviewed: boolean;
@@ -183,6 +179,10 @@ function resolvePackageDecision(input: {
   }
 
   if (input.planDecision !== PLAN_READY) {
+    return "defer";
+  }
+
+  if (input.approvalReadiness.readyCount !== input.approvalReadiness.totalCount) {
     return "defer";
   }
 
@@ -417,7 +417,7 @@ function appendPackageFindings(input: {
     if (!input.safetyChecklistReviewed) {
       findings.push(finding("warning", "safety_checklist_review_missing", "Safety checklist review is missing"));
     }
-    if (readiness.missing.length > 0) {
+    if (readiness.readyCount !== readiness.totalCount) {
       findings.push(
         finding(
           "warning",
@@ -468,15 +468,11 @@ export function evaluateRuntimeExecutionPlanPackage(
     handoffDecision: plan.sourceHandoffDecision,
   });
 
-  const dryRunCandidate = buildDryRunCandidate({
-    plan,
-    dryRunReviewConfirmed,
-    approvalGateReviewConfirmed,
-    safetyChecklistReviewed,
-  });
+  const dryRunCandidate = buildDryRunCandidate({ plan, approvalReadiness });
 
   const decision = resolvePackageDecision({
     planDecision: plan.decision,
+    approvalReadiness,
     dryRunReviewConfirmed,
     approvalGateReviewConfirmed,
     safetyChecklistReviewed,

@@ -590,6 +590,15 @@ export type {
 
 export { evaluateRuntimeExecutionPlanPackage } from "@/lib/agents/evaluateRuntimeExecutionPlanPackage";
 
+export type {
+  RuntimeExecutionApprovalGateChecklistItem,
+  RuntimeExecutionApprovalGateDecision,
+  RuntimeExecutionApprovalGateFinding,
+  RuntimeExecutionApprovalGateReport,
+} from "@/lib/agents/runtimeExecutionApprovalGateTypes";
+
+export { evaluateRuntimeExecutionApprovalGate } from "@/lib/agents/evaluateRuntimeExecutionApprovalGate";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

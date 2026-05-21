@@ -1657,6 +1657,25 @@ Stage 3-A는 기존 Stage 3-2/3-3/3-4를 압축한 Runtime Execution Plan Packag
 ready_for_runtime_execution_approval_gate는 Stage 3-B 승인 gate로 넘길 수 있는 package 준비 상태이지 실행 허가가 아니다.
 ```
 
+## Stage 3-B Runtime Execution Approval Gate 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Runtime Execution Approval Gate 타입 | read-only approval report | 없음 | Stage 3-C 전 승인 gate |
+| evaluator | Stage 3-A package 기반 | 없음 | runtime 미실행 |
+| approvalGateChecklist | report field | 없음 | 최종 승인 조건 |
+| riskChecklist | report field | 없음 | 실행 전 위험 인지 |
+| noRunChecklist | report field | 없음 | no-run 재확인 |
+| handoffChecklist | report field | 없음 | Stage 3-C 인계 |
+
+### Stage 3-B 원칙
+
+```text
+Stage 3-B는 Stage 3-A Runtime Execution Plan Package를 source로 받아 controlled runtime wire candidate로 넘길 수 있는지 판단하는 read-only approval gate다.
+실제 실행, routing 변경, write path wire, feature flag wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
+ready_for_controlled_runtime_wire_candidate는 Stage 3-C 후보 설계 가능 상태이지 실제 실행 허가가 아니다.
+```
+
 ### Stage 3 빠른 진행 로드맵
 
 ```text
