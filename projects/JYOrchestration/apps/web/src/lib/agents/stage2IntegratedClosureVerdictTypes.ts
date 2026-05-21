@@ -11,6 +11,11 @@ export type Stage2NextPhaseRecommendation =
   | "prepare_runtime_execution_wire_design"
   | "continue_read_only_hardening";
 
+export type Stage2Stage3Candidate =
+  | "runtime_execution_handoff_design"
+  | "schema_pr_preparation"
+  | "connector_gateway_experiment";
+
 export interface Stage2IntegratedClosureVerdictChecklistItem {
   readonly item: string;
   readonly satisfied: boolean;
@@ -26,6 +31,21 @@ export interface Stage2IntegratedClosureVerdictFinding {
 export interface Stage2IntegratedClosureVerdictReport {
   readonly mode: "read_only_stage2_integrated_closure_verdict";
   readonly decision: Stage2IntegratedClosureVerdictDecision;
+
+  readonly stage2Scope: "read_only_multi_agent_runtime_foundation";
+  readonly stage2ClosureSummary: string;
+
+  readonly actualRuntimeChangeAllowedAfterStage2: false;
+  readonly requiresSeparateSchemaPr: boolean;
+  readonly requiresSeparateOperatorAuditSchemaPr: boolean;
+  readonly requiresSeparateConnectorExperimentBranch: boolean;
+  readonly requiresSeparateRuntimeExecutionWireDesign: boolean;
+  readonly requiresSeparateFeatureFlagWire: boolean;
+
+  readonly stage3Candidate: Stage2Stage3Candidate;
+  readonly stage2ExitCriteriaSatisfied: boolean;
+  readonly stage2NoRunPolicySatisfied: boolean;
+  readonly stage2HandoffReady: boolean;
 
   readonly sourceRuntimeFinalApprovalDecision: string;
   readonly sourceWireCandidateDecision: string;

@@ -556,6 +556,7 @@ export type {
   Stage2IntegratedClosureVerdictFinding,
   Stage2IntegratedClosureVerdictReport,
   Stage2NextPhaseRecommendation,
+  Stage2Stage3Candidate,
 } from "@/lib/agents/stage2IntegratedClosureVerdictTypes";
 
 export { evaluateStage2IntegratedClosureVerdict } from "@/lib/agents/evaluateStage2IntegratedClosureVerdict";

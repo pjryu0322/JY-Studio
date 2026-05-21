@@ -330,4 +330,353 @@ describe("multi-agent stage 2 integrated closure verdict stage 2-F", () => {
     expect(report.callsCursorInThisStep).toBe(false);
     expect(report.callsGitHubInThisStep).toBe(false);
   });
+
+  describe("hardened report fields", () => {
+    it("stage2Scope is read_only_multi_agent_runtime_foundation", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().stage2Scope).toBe(
+        "read_only_multi_agent_runtime_foundation",
+      );
+    });
+
+    it("actualRuntimeChangeAllowedAfterStage2 is false", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().actualRuntimeChangeAllowedAfterStage2).toBe(false);
+    });
+
+    it("requiresSeparateSchemaPr is true", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().requiresSeparateSchemaPr).toBe(true);
+    });
+
+    it("requiresSeparateOperatorAuditSchemaPr is true", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().requiresSeparateOperatorAuditSchemaPr).toBe(true);
+    });
+
+    it("requiresSeparateConnectorExperimentBranch is true", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().requiresSeparateConnectorExperimentBranch).toBe(true);
+    });
+
+    it("requiresSeparateRuntimeExecutionWireDesign is true", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().requiresSeparateRuntimeExecutionWireDesign).toBe(true);
+    });
+
+    it("requiresSeparateFeatureFlagWire is true", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().requiresSeparateFeatureFlagWire).toBe(true);
+    });
+
+    it("stage2ClosureSummary is non-empty", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().stage2ClosureSummary.length).toBeGreaterThan(0);
+    });
+
+    it("ready stage3Candidate is runtime_execution_handoff_design", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).stage3Candidate).toBe(
+        "runtime_execution_handoff_design",
+      );
+    });
+
+    it("stage2ExitCriteriaSatisfied follows closure checklist when ready", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      const report = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(report.stage2ExitCriteriaSatisfied).toBe(
+        report.closureChecklist.every((c) => c.satisfied),
+      );
+    });
+
+    it("stage2NoRunPolicySatisfied follows no-run policy when ready", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      const report = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(report.stage2NoRunPolicySatisfied).toBe(true);
+      expect(report.noRunChecklist.every((c) => c.satisfied)).toBe(true);
+    });
+
+    it("stage2HandoffReady follows handoff checklist", () => {
+      const report = evaluateStage2IntegratedClosureVerdict();
+      expect(report.stage2HandoffReady).toBe(report.handoffChecklist.every((c) => c.satisfied));
+    });
+  });
+
+  describe("hardened checklist reasons", () => {
+    it("runtime final approval package ready reason includes runtime final approval decision", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        decision: "defer",
+      });
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "closureChecklist",
+        "runtime final approval package ready",
+      )?.reason;
+      expect(reason).toContain("runtime final approval decision=defer");
+    });
+
+    it("routing shadow reviewed reason includes routingShadowReviewConfirmed", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        routingShadowReviewConfirmed: false,
+      });
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "closureChecklist",
+        "routing shadow reviewed",
+      )?.reason;
+      expect(reason).toContain("routingShadowReviewConfirmed=false");
+    });
+
+    it("wire candidate reviewed reason includes wireCandidateReviewConfirmed", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        wireCandidateReviewConfirmed: false,
+      });
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "closureChecklist",
+        "wire candidate reviewed",
+      )?.reason;
+      expect(reason).toContain("wireCandidateReviewConfirmed=false");
+    });
+
+    it("Stage 2 remains read-only reason includes noRunPolicySatisfied", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "closureChecklist",
+        "Stage 2 remains read-only",
+      )?.reason;
+      expect(reason).toContain("noRunPolicySatisfied=");
+    });
+
+    it("no runtime change reason includes no-run policy wording", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "noRunChecklist",
+        "no runtime change",
+      )?.reason;
+      expect(reason).toContain("Stage 2 no-run policy");
+      expect(reason).toContain("no actual execution");
+    });
+
+    it("schema/migration PR must be separate reason includes separate PR wording", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "handoffChecklist",
+        "schema/migration PR must be separate",
+      )?.reason;
+      expect(reason).toContain("separate");
+    });
+
+    it("connector gateway routing risk acknowledged reason includes source and review wording", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "riskChecklist",
+        "connector gateway routing risk acknowledged",
+      )?.reason;
+      expect(reason).toContain("risk source=routing shadow");
+      expect(reason).toContain("routingShadowReviewConfirmed=");
+    });
+  });
+
+  describe("risk checklist acknowledgement", () => {
+    it("Stage1 regression not required includes not required in reason", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        sourceRoutingShadowRequiresStage1Regression: false,
+      });
+      const entry = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "riskChecklist",
+        "Stage1 regression risk acknowledged",
+      );
+      expect(entry?.satisfied).toBe(true);
+      expect(entry?.reason).toContain("not required");
+    });
+
+    it("Stage1 regression required and unconfirmed is not satisfied", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        sourceRoutingShadowRequiresStage1Regression: true,
+        stage1RegressionReviewConfirmed: false,
+      });
+      const entry = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "riskChecklist",
+        "Stage1 regression risk acknowledged",
+      );
+      expect(entry?.satisfied).toBe(false);
+    });
+
+    it("rollback required and unconfirmed is not satisfied", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        sourceRoutingShadowRequiresRollbackPlan: true,
+        rollbackPlanReviewConfirmed: false,
+      });
+      const entry = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+        "riskChecklist",
+        "rollback risk acknowledged",
+      );
+      expect(entry?.satisfied).toBe(false);
+    });
+
+    it("operator audit confirmed satisfies operator audit risk acknowledged", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        operatorAuditReviewConfirmed: true,
+      });
+      expect(
+        checklistItem(
+          evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+          "riskChecklist",
+          "operator audit risk acknowledged",
+        )?.satisfied,
+      ).toBe(true);
+    });
+
+    it("schema migration review confirmed satisfies schema migration risk acknowledged", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        sourceWireCandidateSchemaMigrationReviewConfirmed: true,
+      });
+      expect(
+        checklistItem(
+          evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS),
+          "riskChecklist",
+          "schema migration risk acknowledged",
+        )?.satisfied,
+      ).toBe(true);
+    });
+  });
+
+  describe("recommendedNextPhases order", () => {
+    it("defer puts continue_read_only_hardening first", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().recommendedNextPhases[0]).toBe(
+        "continue_read_only_hardening",
+      );
+    });
+
+    it("ready excludes continue_read_only_hardening", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      const phases = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases;
+      expect(phases).not.toContain("continue_read_only_hardening");
+    });
+
+    it("ready includes prepare_schema_migration_pr", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
+      ).toContain("prepare_schema_migration_pr");
+    });
+
+    it("ready includes prepare_operator_audit_schema_pr", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
+      ).toContain("prepare_operator_audit_schema_pr");
+    });
+
+    it("ready includes prepare_connector_gateway_experiment_branch", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
+      ).toContain("prepare_connector_gateway_experiment_branch");
+    });
+
+    it("ready includes prepare_runtime_execution_wire_design", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
+      ).toContain("prepare_runtime_execution_wire_design");
+    });
+  });
+
+  describe("hardened findings", () => {
+    it("ready includes stage2_read_only_foundation_complete", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "stage2_read_only_foundation_complete",
+        ),
+      ).toBe(true);
+    });
+
+    it("ready includes actual_runtime_change_requires_stage3_or_separate_pr", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "actual_runtime_change_requires_stage3_or_separate_pr",
+        ),
+      ).toBe(true);
+    });
+
+    it("ready includes schema_migration_requires_separate_pr", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "schema_migration_requires_separate_pr",
+        ),
+      ).toBe(true);
+    });
+
+    it("ready includes connector_gateway_routing_requires_experiment_branch", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "connector_gateway_routing_requires_experiment_branch",
+        ),
+      ).toBe(true);
+    });
+
+    it("ready includes write_path_wire_requires_separate_approval", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "write_path_wire_requires_separate_approval",
+        ),
+      ).toBe(true);
+    });
+
+    it("defer includes stage2_closure_requires_additional_read_only_hardening", () => {
+      expect(
+        evaluateStage2IntegratedClosureVerdict().findings.some(
+          (f) => f.code === "stage2_closure_requires_additional_read_only_hardening",
+        ),
+      ).toBe(true);
+    });
+
+    it("blocked includes stage2_closure_requires_blocking_issue_resolution", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        decision: "blocked",
+      });
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).findings.some(
+          (f) => f.code === "stage2_closure_requires_blocking_issue_resolution",
+        ),
+      ).toBe(true);
+    });
+  });
 });
