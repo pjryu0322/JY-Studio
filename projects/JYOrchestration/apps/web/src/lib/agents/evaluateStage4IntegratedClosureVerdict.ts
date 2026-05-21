@@ -4,6 +4,11 @@
 
 import { checklistCounts } from "@/lib/agents/agentFieldDecisionUtils";
 import { evaluateRuntimeWireExperimentReviewPackage } from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
+import {
+  MULTI_AGENT_ORCHESTRATION_MVP_BASELINE_SUMMARY,
+  STAGE2_THROUGH4_CLOSED_STAGES,
+  STAGE2_THROUGH4_CLOSURE_SCOPE,
+} from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
 import type {
   Stage4IntegratedClosureChecklistItem,
   Stage4IntegratedClosureFinding,
@@ -197,6 +202,36 @@ function buildClosureSummary(decision: Stage4IntegratedClosureVerdictDecision): 
   return "Stage 4 read-only design and review packages meet closure criteria. This is not runtime execution permission.";
 }
 
+function stage4IntegratedClosureNoRunViolated(): boolean {
+  return Object.values(STAGE4_INTEGRATED_CLOSURE_NO_RUN_REPORT).some((value) => value === true);
+}
+
+/** Whether Stage 2~4 read-only closure chain is locked at Stage 4-F. */
+export function resolveStage2Through4ClosureLocked(input: {
+  readonly decision: Stage4IntegratedClosureVerdictDecision;
+  readonly sourceReviewPackageDecision: string;
+  readonly sourceNoRunChecklistCount: number;
+  readonly sourceNoRunChecklistSatisfiedCount: number;
+}): boolean {
+  if (input.decision !== "stage4_closure_ready") {
+    return false;
+  }
+
+  if (input.sourceReviewPackageDecision === "blocked") {
+    return false;
+  }
+
+  if (input.sourceNoRunChecklistSatisfiedCount !== input.sourceNoRunChecklistCount) {
+    return false;
+  }
+
+  if (stage4IntegratedClosureNoRunViolated()) {
+    return false;
+  }
+
+  return true;
+}
+
 function buildClosureChecklist(input: {
   readonly reviewPackage: ReturnType<typeof evaluateRuntimeWireExperimentReviewPackage>;
   readonly stage4ReadOnlyScopeConfirmed: boolean;
@@ -204,6 +239,7 @@ function buildClosureChecklist(input: {
   readonly stage4NoRoutingChangeConfirmed: boolean;
   readonly stage4NoDbSchemaChangeConfirmed: boolean;
   readonly stage4HandoffPlanConfirmed: boolean;
+  readonly stage2Through4ClosureLocked: boolean;
 }): Stage4IntegratedClosureChecklistItem[] {
   return mapChecklistEntries([
     {
@@ -235,6 +271,41 @@ function buildClosureChecklist(input: {
       item: "stage4HandoffPlanConfirmed",
       satisfied: input.stage4HandoffPlanConfirmed,
       detail: `stage4HandoffPlanConfirmed=${input.stage4HandoffPlanConfirmed}`,
+    },
+    {
+      item: "stage2 through stage4 closure locked",
+      satisfied: input.stage2Through4ClosureLocked,
+      detail: `stage2Through4ClosureLocked=${input.stage2Through4ClosureLocked}`,
+    },
+    {
+      item: "actual runtime change disallowed",
+      satisfied: true,
+      detail: "actualRuntimeChangeAllowedAfterStage4=false",
+    },
+    {
+      item: "actual connector routing change disallowed",
+      satisfied: true,
+      detail: "actualConnectorRoutingChangeAllowedAfterStage4=false",
+    },
+    {
+      item: "actual write path wire disallowed",
+      satisfied: true,
+      detail: "actualWritePathWireAllowedAfterStage4=false",
+    },
+    {
+      item: "actual schema migration disallowed",
+      satisfied: true,
+      detail: "actualSchemaMigrationAllowedAfterStage4=false",
+    },
+    {
+      item: "mvp baseline preserved",
+      satisfied: true,
+      detail: "mvpBaselinePreserved=true",
+    },
+    {
+      item: "stage5 entry candidate only",
+      satisfied: true,
+      detail: "stage5EntryIsCandidateOnly=true",
     },
   ]);
 }
@@ -448,6 +519,80 @@ function appendStage4IntegratedClosureFindings(input: {
       "Connector Gateway experiment branch requires separate manual follow-up",
     ),
   );
+  findings.push(
+    finding("info", "stage2_through_stage4_closure_locked", "Stage 2 through Stage 4 read-only closure is locked"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage2_through_stage4_read_only_scope_confirmed",
+      "Stage 2 through Stage 4 scope is read-only multi-agent runtime foundation",
+    ),
+  );
+  findings.push(finding("info", "mvp_baseline_preserved", "Multi-agent orchestration MVP baseline is preserved"));
+  findings.push(
+    finding("info", "stage5_entry_candidate_only", "Stage 5 entry is candidate definition only; not implementation transition"),
+  );
+  findings.push(
+    finding("info", "actual_runtime_change_still_disallowed", "Actual runtime change remains disallowed after Stage 4-F"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "actual_connector_routing_change_still_disallowed",
+      "Actual connector routing change remains disallowed after Stage 4-F",
+    ),
+  );
+  findings.push(
+    finding("info", "actual_write_path_wire_still_disallowed", "Actual write path wire remains disallowed after Stage 4-F"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "actual_schema_migration_still_disallowed",
+      "Actual schema migration remains disallowed after Stage 4-F",
+    ),
+  );
+}
+
+const STAGE4_CLOSURE_BASELINE_FIELDS = {
+  stage2Through4ClosureScope: STAGE2_THROUGH4_CLOSURE_SCOPE,
+  stage2Through4ClosedStages: STAGE2_THROUGH4_CLOSED_STAGES,
+  mvpBaselinePreserved: true,
+  mvpBaselineSummary: MULTI_AGENT_ORCHESTRATION_MVP_BASELINE_SUMMARY,
+  actualRuntimeChangeAllowedAfterStage4: false as const,
+  actualConnectorRoutingChangeAllowedAfterStage4: false as const,
+  actualWritePathWireAllowedAfterStage4: false as const,
+  actualSchemaMigrationAllowedAfterStage4: false as const,
+  stage5EntryIsCandidateOnly: true as const,
+} as const;
+
+function buildClosureBaselineFields(input: {
+  readonly decision: Stage4IntegratedClosureVerdictDecision;
+  readonly reviewPackage: ReturnType<typeof evaluateRuntimeWireExperimentReviewPackage>;
+}): {
+  readonly stage2Through4ClosureLocked: boolean;
+  readonly stage2Through4ClosureScope: typeof STAGE2_THROUGH4_CLOSURE_SCOPE;
+  readonly stage2Through4ClosedStages: typeof STAGE2_THROUGH4_CLOSED_STAGES;
+  readonly mvpBaselinePreserved: boolean;
+  readonly mvpBaselineSummary: string;
+  readonly actualRuntimeChangeAllowedAfterStage4: false;
+  readonly actualConnectorRoutingChangeAllowedAfterStage4: false;
+  readonly actualWritePathWireAllowedAfterStage4: false;
+  readonly actualSchemaMigrationAllowedAfterStage4: false;
+  readonly stage5EntryIsCandidateOnly: true;
+} {
+  const stage2Through4ClosureLocked = resolveStage2Through4ClosureLocked({
+    decision: input.decision,
+    sourceReviewPackageDecision: input.reviewPackage.decision,
+    sourceNoRunChecklistCount: input.reviewPackage.noRunChecklistCount,
+    sourceNoRunChecklistSatisfiedCount: input.reviewPackage.noRunChecklistSatisfiedCount,
+  });
+
+  return {
+    stage2Through4ClosureLocked,
+    ...STAGE4_CLOSURE_BASELINE_FIELDS,
+  };
 }
 
 function buildClosurePostureFields(decision: Stage4IntegratedClosureVerdictDecision) {
@@ -477,6 +622,8 @@ export function evaluateStage4IntegratedClosureVerdict(
 
   const closureFingerprint = buildStage4IntegratedClosureFingerprint(fingerprintInput);
 
+  const baselineFields = buildClosureBaselineFields({ decision, reviewPackage });
+
   const findings: Stage4IntegratedClosureFinding[] = [];
   appendStage4IntegratedClosureFindings({
     findings,
@@ -498,7 +645,11 @@ export function evaluateStage4IntegratedClosureVerdict(
     closureSummary: buildClosureSummary(decision),
     closureFingerprint,
     ...flags,
-    closureChecklist: buildClosureChecklist({ reviewPackage, ...flags }),
+    closureChecklist: buildClosureChecklist({
+      reviewPackage,
+      ...flags,
+      stage2Through4ClosureLocked: baselineFields.stage2Through4ClosureLocked,
+    }),
     noRunChecklist,
     handoffChecklist: buildHandoffChecklist(),
     riskChecklist: buildRiskChecklist(),
@@ -507,6 +658,7 @@ export function evaluateStage4IntegratedClosureVerdict(
     recommendedNextActions: [...RECOMMENDED_NEXT_ACTIONS],
     separatedWorkItems: [...SEPARATED_WORK_ITEMS],
     ...buildClosurePostureFields(decision),
+    ...baselineFields,
     ...STAGE4_INTEGRATED_CLOSURE_NO_RUN_REPORT,
     findings,
   };

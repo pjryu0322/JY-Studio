@@ -1939,7 +1939,45 @@ requiresStage5RuntimeDesign — stage4_closure_ready일 때 Stage 5 runtime 설�
 requiresSeparate* — schema/operator audit/connector branch/feature flag/write path는 별도 PR·승인
 stage5Candidate — Stage 5 진입 시 우선 검토 후보(실행 순서 아님)
 stage5EntryCandidates — Stage 5 진입 후보 전체 목록(읽기 전용 정의)
+stage2Through4ClosureLocked — Stage 2~4 read-only chain이 Stage 4-F에서 닫혔는지
+mvpBaselinePreserved / mvpBaselineSummary — MVP 기준선 유지 요약
+actual*AllowedAfterStage4=false — Stage 4-F 이후에도 실제 변경은 별도 PR·승인 전까지 불가
+stage5EntryIsCandidateOnly=true — Stage 5 진입은 후보 정의만
 ```
+
+구현: `apps/web/src/lib/agents/multiAgentOrchestrationMvpBaseline.ts`
+
+## Multi-Agent Orchestration MVP Baseline after Stage 4-F
+
+Stage 4-F는 Stage 2~4 read-only multi-agent runtime foundation의 종료 판정이다.
+
+### 닫힌 범위
+
+- Stage 2: runtime/governance/readiness decision foundation
+- Stage 3: runtime execution handoff/approval design foundation
+- Stage 4: controlled runtime wire candidate, shadow routing, closure verdict
+
+### 유지되는 MVP 기준선
+
+- 역할 기반 AI 멤버 구조
+- runtime/governance decision report
+- connector gateway routing candidate
+- operator approval gate
+- stage closure verdict
+- role knowledge binding readiness candidate
+
+### 명시적 금지
+
+Stage 4-F 종료 이후에도 아래 작업은 별도 PR/승인 전까지 수행하지 않는다.
+
+- 실제 runtime execution
+- 실제 Connector Gateway routing 변경
+- 실제 Cursor/GitHub 실행 경로 변경
+- 실제 write path wire
+- 실제 schema.prisma/migration/DB write
+- 실제 RAG indexing/embedding
+- 실제 prompt injection
+- 지식팩 관리 UI
 
 ## Milestone: Stage 2~4 종료 정리 및 Stage 5 진입 후보 정의
 
@@ -1974,20 +2012,29 @@ runtime wire / feature flag wire / connector routing 변경
 DB write / schema.prisma / migration
 ```
 
-## Stage 5-A (후보) Role Knowledge Binding — read-only foundation
+## Stage 5-A Boundary
 
-Stage 5-A는 **본격 지식팩 구현이 아니다**. Stage 5 진입 후보 `role_knowledge_binding_foundation`에 대해, 역할→지식팩 ID 매핑과 binding readiness report만 제공하는 **read-only foundation**이다.
+Stage 5-A는 Role Knowledge Binding Foundation이다.
 
-### 범위 (하는 일)
+### 하는 일
 
-- 기본 역할별 지식팩 바인딩 ID·버전 레지스트리 (`defaultRoleKnowledgeBindings`)
-- `evaluateRoleKnowledgeBindingReadiness()` — agentType / available pack IDs 기준 blocked·defer·ready 판정
-- no-run flags 및 out-of-scope findings (RAG/UI/prompt/runtime/DB 미구현 명시)
+- AI 역할별 필요한 지식팩 ID 후보를 정의한다.
+- 기본 role → knowledge pack ID binding readiness를 평가한다.
+- required/optional binding 충족 여부를 read-only report로 남긴다.
+- boundary 필드(`stage5CandidateFoundationOnly`, `stage5AIsKnowledgePackImplementation`, registry read-only, MVP binding role)로 범위를 고정한다.
 
-### 범위 밖 (하지 않는 일)
+### 하지 않는 일
 
-- RAG, embedding, 지식팩 DB, 지식팩 관리 UI
-- 프롬프트 주입, runtime wire, schema/migration
+- 지식팩 등록/수정/버전관리
+- 원천자료 업로드
+- RAG 색인
+- embedding
+- prompt injection
+- runtime execution 변경
+- DB/schema/migration
+- UI 구현
+
+Stage 5-A는 본격 Knowledge Pack Management System 구현이 아니라, 향후 Stage 5-B 이후 작업을 위한 foundation candidate다.
 
 ### Decision (5-A 후보 evaluator)
 

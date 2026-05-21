@@ -7,6 +7,14 @@ import {
   getDefaultRoleKnowledgeBindingsForAgent,
   listDefaultRoleKnowledgeBindings,
 } from "@/lib/agents/defaultRoleKnowledgeBindings";
+import { MULTI_AGENT_ORCHESTRATION_MVP_BASELINE } from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
+
+function developerReadyReport() {
+  return evaluateRoleKnowledgeBindingReadiness({
+    agentType: "developer",
+    availableKnowledgePackIds: requiredPackIdsForAgent("developer"),
+  });
+}
 
 function requiredPackIdsForAgent(agentType: string): string[] {
   return getDefaultRoleKnowledgeBindingsForAgent(agentType)
@@ -135,6 +143,98 @@ describe("multi-agent role knowledge binding readiness stage 5-A", () => {
     expect(codes).toContain("runtime_wire_not_modified_in_stage_5_a");
     expect(codes).toContain("db_schema_migration_not_modified_in_stage_5_a");
     expect(codes).toContain("knowledge_pack_ui_not_implemented_in_stage_5_a");
+  });
+
+  describe("boundary and MVP baseline hardening", () => {
+    it("stage5CandidateFoundationOnly is true", () => {
+      expect(developerReadyReport().stage5CandidateFoundationOnly).toBe(true);
+    });
+
+    it("stage5AIsKnowledgePackImplementation is false", () => {
+      expect(developerReadyReport().stage5AIsKnowledgePackImplementation).toBe(false);
+    });
+
+    it("readsRoleKnowledgeBindingRegistryInThisStep is true", () => {
+      expect(developerReadyReport().readsRoleKnowledgeBindingRegistryInThisStep).toBe(true);
+    });
+
+    it("writesRoleKnowledgeBindingRegistryInThisStep is false", () => {
+      expect(developerReadyReport().writesRoleKnowledgeBindingRegistryInThisStep).toBe(false);
+    });
+
+    it("modifiesKnowledgePackRegistryInThisStep is false", () => {
+      expect(developerReadyReport().modifiesKnowledgePackRegistryInThisStep).toBe(false);
+    });
+
+    it("createsKnowledgePackInThisStep is false", () => {
+      expect(developerReadyReport().createsKnowledgePackInThisStep).toBe(false);
+    });
+
+    it("updatesKnowledgePackInThisStep is false", () => {
+      expect(developerReadyReport().updatesKnowledgePackInThisStep).toBe(false);
+    });
+
+    it("versionsKnowledgePackInThisStep is false", () => {
+      expect(developerReadyReport().versionsKnowledgePackInThisStep).toBe(false);
+    });
+
+    it("uploadsSourceDocumentInThisStep is false", () => {
+      expect(developerReadyReport().uploadsSourceDocumentInThisStep).toBe(false);
+    });
+
+    it("indexesKnowledgePackInThisStep is false", () => {
+      expect(developerReadyReport().indexesKnowledgePackInThisStep).toBe(false);
+    });
+
+    it("embedsKnowledgePackInThisStep is false", () => {
+      expect(developerReadyReport().embedsKnowledgePackInThisStep).toBe(false);
+    });
+
+    it("retrievesKnowledgeWithRagInThisStep is false", () => {
+      expect(developerReadyReport().retrievesKnowledgeWithRagInThisStep).toBe(false);
+    });
+
+    it("injectsKnowledgeIntoPromptInThisStep is false", () => {
+      expect(developerReadyReport().injectsKnowledgeIntoPromptInThisStep).toBe(false);
+    });
+
+    it("modifiesRuntimeExecutionInThisStep is false", () => {
+      expect(developerReadyReport().modifiesRuntimeExecutionInThisStep).toBe(false);
+    });
+
+    it("modifiesDbInThisStep is false", () => {
+      expect(developerReadyReport().modifiesDbInThisStep).toBe(false);
+    });
+
+    it("modifiesUiInThisStep is false", () => {
+      expect(developerReadyReport().modifiesUiInThisStep).toBe(false);
+    });
+
+    it("mvpBaselineBindingRole equals role_to_knowledge_pack_id_readiness_only", () => {
+      expect(developerReadyReport().mvpBaselineBindingRole).toBe("role_to_knowledge_pack_id_readiness_only");
+    });
+
+    it("findings include stage5_a_foundation_only", () => {
+      expect(developerReadyReport().findings.some((f) => f.code === "stage5_a_foundation_only")).toBe(true);
+    });
+
+    it("findings include stage5_a_not_knowledge_pack_implementation", () => {
+      expect(
+        developerReadyReport().findings.some((f) => f.code === "stage5_a_not_knowledge_pack_implementation"),
+      ).toBe(true);
+    });
+
+    it("findings include mvp_role_knowledge_binding_baseline_preserved", () => {
+      expect(
+        developerReadyReport().findings.some((f) => f.code === "mvp_role_knowledge_binding_baseline_preserved"),
+      ).toBe(true);
+    });
+
+    it("MVP baseline preserved capability includes role_knowledge_binding_readiness", () => {
+      expect(MULTI_AGENT_ORCHESTRATION_MVP_BASELINE.preservedCapabilities).toContain(
+        "role_knowledge_binding_readiness",
+      );
+    });
   });
 
   it("selectedBindings are deterministic", () => {

@@ -78,6 +78,29 @@ function resolveKnowledgeBindingDecision(input: {
   return "knowledge_binding_ready";
 }
 
+const STAGE5_A_BOUNDARY_REPORT = {
+  stage5CandidateFoundationOnly: true as const,
+  stage5AIsKnowledgePackImplementation: false as const,
+  readsRoleKnowledgeBindingRegistryInThisStep: true as const,
+  writesRoleKnowledgeBindingRegistryInThisStep: false as const,
+  modifiesKnowledgePackRegistryInThisStep: false as const,
+  createsKnowledgePackInThisStep: false as const,
+  updatesKnowledgePackInThisStep: false as const,
+  versionsKnowledgePackInThisStep: false as const,
+  uploadsSourceDocumentInThisStep: false as const,
+  indexesKnowledgePackInThisStep: false as const,
+  embedsKnowledgePackInThisStep: false as const,
+  retrievesKnowledgeWithRagInThisStep: false as const,
+  injectsKnowledgeIntoPromptInThisStep: false as const,
+  modifiesRuntimeExecutionInThisStep: false as const,
+  modifiesDbInThisStep: false as const,
+  modifiesUiInThisStep: false as const,
+  mvpBaselineBindingRole: "role_to_knowledge_pack_id_readiness_only" as const,
+  usesRagInThisStep: false as const,
+  writesKnowledgePackInThisStep: false as const,
+  modifiesPromptInjectionInThisStep: false as const,
+} as const;
+
 function buildReadinessChecklist(input: {
   readonly agentType: string;
   readonly taskType: string;
@@ -107,6 +130,23 @@ function buildReadinessChecklist(input: {
       satisfied: input.allowMissingOptionalBindings || input.missingRequiredBindingIds.length === 0,
       detail: `allowMissingOptionalBindings=${input.allowMissingOptionalBindings}`,
     },
+    { item: "stage5-a foundation only", satisfied: true, detail: "stage5CandidateFoundationOnly=true" },
+    {
+      item: "knowledge pack implementation not started",
+      satisfied: true,
+      detail: "stage5AIsKnowledgePackImplementation=false",
+    },
+    {
+      item: "role-to-knowledge-pack-id readiness only",
+      satisfied: true,
+      detail: "mvpBaselineBindingRole=role_to_knowledge_pack_id_readiness_only",
+    },
+    { item: "RAG indexing not used", satisfied: true, detail: "indexesKnowledgePackInThisStep=false" },
+    { item: "embedding not used", satisfied: true, detail: "embedsKnowledgePackInThisStep=false" },
+    { item: "prompt injection not modified", satisfied: true, detail: "injectsKnowledgeIntoPromptInThisStep=false" },
+    { item: "runtime execution not modified", satisfied: true, detail: "modifiesRuntimeExecutionInThisStep=false" },
+    { item: "DB not modified", satisfied: true, detail: "modifiesDbInThisStep=false" },
+    { item: "UI not modified", satisfied: true, detail: "modifiesUiInThisStep=false" },
   ]);
 }
 
@@ -119,6 +159,30 @@ function appendKnowledgeBindingFindings(input: {
 }): void {
   const { findings, decision, agentType } = input;
 
+  findings.push(finding("info", "stage5_a_foundation_only", "Stage 5-A is foundation only"));
+  findings.push(
+    finding(
+      "info",
+      "stage5_a_not_knowledge_pack_implementation",
+      "Stage 5-A is not knowledge pack management implementation",
+    ),
+  );
+  findings.push(finding("info", "stage5_a_registry_read_only", "Role knowledge binding registry is read-only"));
+  findings.push(finding("info", "stage5_a_no_rag_indexing", "RAG indexing is not used in Stage 5-A"));
+  findings.push(finding("info", "stage5_a_no_embedding", "Embedding is not used in Stage 5-A"));
+  findings.push(finding("info", "stage5_a_no_prompt_injection", "Prompt injection is not modified in Stage 5-A"));
+  findings.push(
+    finding("info", "stage5_a_no_runtime_execution_change", "Runtime execution is not modified in Stage 5-A"),
+  );
+  findings.push(finding("info", "stage5_a_no_db_change", "DB is not modified in Stage 5-A"));
+  findings.push(finding("info", "stage5_a_no_ui_change", "UI is not modified in Stage 5-A"));
+  findings.push(
+    finding(
+      "info",
+      "mvp_role_knowledge_binding_baseline_preserved",
+      "MVP role knowledge binding baseline is role-to-knowledge-pack-id readiness only",
+    ),
+  );
   findings.push(
     finding(
       "info",
@@ -235,11 +299,7 @@ export function evaluateRoleKnowledgeBindingReadiness(
       allowMissingOptionalBindings: parsed.allowMissingOptionalBindings,
     }),
     findings,
-    usesRagInThisStep: false,
-    writesKnowledgePackInThisStep: false,
-    modifiesPromptInjectionInThisStep: false,
-    modifiesRuntimeExecutionInThisStep: false,
-    modifiesDbInThisStep: false,
+    ...STAGE5_A_BOUNDARY_REPORT,
   };
 }
 

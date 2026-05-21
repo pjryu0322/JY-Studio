@@ -69,6 +69,17 @@ export interface Stage4IntegratedClosureVerdictReport {
     | "continue_read_only_hardening"
   )[];
 
+  readonly stage2Through4ClosureLocked: boolean;
+  readonly stage2Through4ClosureScope: "read_only_multi_agent_runtime_foundation";
+  readonly stage2Through4ClosedStages: readonly string[];
+  readonly mvpBaselinePreserved: boolean;
+  readonly mvpBaselineSummary: string;
+  readonly actualRuntimeChangeAllowedAfterStage4: false;
+  readonly actualConnectorRoutingChangeAllowedAfterStage4: false;
+  readonly actualWritePathWireAllowedAfterStage4: false;
+  readonly actualSchemaMigrationAllowedAfterStage4: false;
+  readonly stage5EntryIsCandidateOnly: true;
+
   readonly executesRuntimeInThisStep: false;
   readonly changesExecutionPathInThisStep: false;
   readonly changesConnectorRoutingInThisStep: false;

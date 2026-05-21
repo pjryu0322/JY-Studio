@@ -75,6 +75,22 @@ export interface RoleKnowledgeBindingReadinessReport {
   readonly usesRagInThisStep: false;
   readonly writesKnowledgePackInThisStep: false;
   readonly modifiesPromptInjectionInThisStep: false;
+
+  readonly stage5CandidateFoundationOnly: true;
+  readonly stage5AIsKnowledgePackImplementation: false;
+  readonly readsRoleKnowledgeBindingRegistryInThisStep: true;
+  readonly writesRoleKnowledgeBindingRegistryInThisStep: false;
+  readonly modifiesKnowledgePackRegistryInThisStep: false;
+  readonly createsKnowledgePackInThisStep: false;
+  readonly updatesKnowledgePackInThisStep: false;
+  readonly versionsKnowledgePackInThisStep: false;
+  readonly uploadsSourceDocumentInThisStep: false;
+  readonly indexesKnowledgePackInThisStep: false;
+  readonly embedsKnowledgePackInThisStep: false;
+  readonly retrievesKnowledgeWithRagInThisStep: false;
+  readonly injectsKnowledgeIntoPromptInThisStep: false;
   readonly modifiesRuntimeExecutionInThisStep: false;
   readonly modifiesDbInThisStep: false;
+  readonly modifiesUiInThisStep: false;
+  readonly mvpBaselineBindingRole: "role_to_knowledge_pack_id_readiness_only";
 }

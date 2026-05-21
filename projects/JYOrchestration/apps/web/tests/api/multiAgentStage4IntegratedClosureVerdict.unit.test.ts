@@ -2,8 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildStage4IntegratedClosureFingerprint,
   evaluateStage4IntegratedClosureVerdict,
+  resolveStage2Through4ClosureLocked,
   resolveStage4IntegratedClosureVerdictDecision,
 } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
+import {
+  MULTI_AGENT_ORCHESTRATION_MVP_BASELINE,
+  STAGE2_THROUGH4_CLOSED_STAGES,
+  STAGE2_THROUGH4_CLOSURE_SCOPE,
+} from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
 import * as reviewPackageModule from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
 import type { RuntimeWireExperimentReviewPackageReport } from "@/lib/agents/runtimeWireExperimentReviewPackageTypes";
 
@@ -335,6 +341,103 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
       expect(
         evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage4_stage5_entry_candidates_defined"),
       ).toBe(true);
+    });
+  });
+
+  describe("closure and MVP baseline hardening", () => {
+    it("stage2Through4ClosureLocked is true when Stage 4-F is ready", () => {
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosureLocked).toBe(true);
+    });
+
+    it("stage2Through4ClosureScope equals read_only_multi_agent_runtime_foundation", () => {
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosureScope).toBe(STAGE2_THROUGH4_CLOSURE_SCOPE);
+    });
+
+    it("stage2Through4ClosedStages includes Stage 2, Stage 3, Stage 4 identifiers", () => {
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosedStages).toEqual([...STAGE2_THROUGH4_CLOSED_STAGES]);
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosedStages).toContain(
+        "stage_2_read_only_runtime_governance",
+      );
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosedStages).toContain(
+        "stage_3_runtime_execution_handoff_and_approval_design",
+      );
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosedStages).toContain(
+        "stage_4_controlled_runtime_wire_and_closure_review",
+      );
+    });
+
+    it("mvpBaselinePreserved is true", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselinePreserved).toBe(true);
+    });
+
+    it("mvpBaselineSummary contains role-based agents", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselineSummary).toContain("role-based agents");
+    });
+
+    it("mvpBaselineSummary contains no actual runtime/schema/git/write-path execution", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselineSummary).toContain(
+        "no actual runtime/schema/git/write-path execution",
+      );
+    });
+
+    it("actualRuntimeChangeAllowedAfterStage4 is false", () => {
+      expect(evaluateReadyClosureVerdict().actualRuntimeChangeAllowedAfterStage4).toBe(false);
+    });
+
+    it("actualConnectorRoutingChangeAllowedAfterStage4 is false", () => {
+      expect(evaluateReadyClosureVerdict().actualConnectorRoutingChangeAllowedAfterStage4).toBe(false);
+    });
+
+    it("actualWritePathWireAllowedAfterStage4 is false", () => {
+      expect(evaluateReadyClosureVerdict().actualWritePathWireAllowedAfterStage4).toBe(false);
+    });
+
+    it("actualSchemaMigrationAllowedAfterStage4 is false", () => {
+      expect(evaluateReadyClosureVerdict().actualSchemaMigrationAllowedAfterStage4).toBe(false);
+    });
+
+    it("stage5EntryIsCandidateOnly is true", () => {
+      expect(evaluateReadyClosureVerdict().stage5EntryIsCandidateOnly).toBe(true);
+    });
+
+    it("ready findings include stage2_through_stage4_closure_locked", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage2_through_stage4_closure_locked"),
+      ).toBe(true);
+    });
+
+    it("ready findings include mvp_baseline_preserved", () => {
+      expect(evaluateReadyClosureVerdict().findings.some((f) => f.code === "mvp_baseline_preserved")).toBe(true);
+    });
+
+    it("ready findings include stage5_entry_candidate_only", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage5_entry_candidate_only"),
+      ).toBe(true);
+    });
+
+    it("no-run violation prevents closure locked", () => {
+      spyReviewPackageReady({
+        decision: "ready_for_stage4_closure_verdict",
+        noRunChecklistCount: 2,
+        noRunChecklistSatisfiedCount: 0,
+      });
+      const report = evaluateStage4IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(report.decision).toBe("blocked");
+      expect(report.stage2Through4ClosureLocked).toBe(false);
+      expect(
+        resolveStage2Through4ClosureLocked({
+          decision: report.decision,
+          sourceReviewPackageDecision: report.sourceReviewPackageDecision,
+          sourceNoRunChecklistCount: report.sourceNoRunChecklistCount,
+          sourceNoRunChecklistSatisfiedCount: report.sourceNoRunChecklistSatisfiedCount,
+        }),
+      ).toBe(false);
+    });
+
+    it("MVP baseline disallowed capabilities align with Stage 4-F separated work", () => {
+      expect(MULTI_AGENT_ORCHESTRATION_MVP_BASELINE.disallowedInBaseline).toContain("actual_runtime_execution");
+      expect(MULTI_AGENT_ORCHESTRATION_MVP_BASELINE.disallowedInBaseline).toContain("actual_schema_migration");
     });
   });
 

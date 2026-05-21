@@ -703,6 +703,7 @@ export type {
 export {
   buildStage4IntegratedClosureFingerprint,
   evaluateStage4IntegratedClosureVerdict,
+  resolveStage2Through4ClosureLocked,
   resolveStage4IntegratedClosureVerdictDecision,
   STAGE5_ENTRY_CANDIDATES,
 } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
@@ -731,6 +732,13 @@ export {
   evaluateRoleKnowledgeBindingReadiness,
   listDefaultKnowledgePackIds,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";
+
+export {
+  MULTI_AGENT_ORCHESTRATION_MVP_BASELINE,
+  MULTI_AGENT_ORCHESTRATION_MVP_BASELINE_SUMMARY,
+  STAGE2_THROUGH4_CLOSED_STAGES,
+  STAGE2_THROUGH4_CLOSURE_SCOPE,
+} from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
