@@ -567,6 +567,17 @@ export type {
 
 export { evaluateRuntimeExecutionHandoffCandidate } from "@/lib/agents/evaluateRuntimeExecutionHandoffCandidate";
 
+export type {
+  RuntimeExecutionPlanBuilderChecklistItem,
+  RuntimeExecutionPlanBuilderDecision,
+  RuntimeExecutionPlanBuilderFinding,
+  RuntimeExecutionPlanBuilderReport,
+  RuntimeExecutionPlanStepCandidate,
+  RuntimeExecutionPlanStepKind,
+} from "@/lib/agents/runtimeExecutionPlanBuilderTypes";
+
+export { evaluateRuntimeExecutionPlanBuilder } from "@/lib/agents/evaluateRuntimeExecutionPlanBuilder";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

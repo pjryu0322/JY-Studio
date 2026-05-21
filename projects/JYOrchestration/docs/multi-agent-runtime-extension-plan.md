@@ -1602,18 +1602,36 @@ Stage1 regression 또는 rollback review required 미충족 → defer
 
 | 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
 |---|---|---|---|
-| Runtime Execution Handoff Candidate 타입 | read-only report | 없음 | 실제 실행 아님 |
+| Handoff Candidate 타입 | read-only report | 없음 | 실제 실행 아님 |
 | evaluator | Stage 2-F source 기반 | 없음 | runtime 미실행 |
-| runtimeHandoffChecklist | report field | 없음 | 전환 후보 조건 |
+| runtimeHandoffChecklist | report field | 없음 | handoff 조건 |
 | preExecutionSafetyChecklist | report field | 없음 | no-run 재확인 |
-| prerequisiteChecklist | report field | 없음 | 후속 PR/승인 조건 |
+| prerequisite policy/approval checklist | report field | 없음 | 정책과 승인 상태 분리 |
+| sourceStage2NoRunBlocking | report field | 없음 | no-run violation vs defer 구분 |
+| sourceStage2PrerequisiteDeferred | report field | 없음 | prerequisite defer 추적 |
 
 ### Stage 3-1 원칙
 
 ```text
 Stage 3-1은 runtime execution handoff 후보를 평가하는 read-only gate다.
 ready 상태도 실제 실행 허가가 아니다.
-실제 실행은 execution plan builder, operator approval, regression, rollback, feature flag, connector route switch 검증 이후 별도 단계에서만 가능하다.
+```
+
+## Stage 3-2 Runtime Execution Plan Builder 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Execution Plan Builder 타입 | read-only report | 없음 | 실제 실행 아님 |
+| evaluator | Stage 3-1 handoff candidate 기반 | 없음 | runtime 미실행 |
+| planSteps | 9단계 후보 | 없음 | executesInThisStep=false |
+| noRunChecklist | report field | 없음 | runtime/DB/git/connector 호출 없음 |
+
+### Stage 3-2 원칙
+
+```text
+Stage 3-2는 runtime execution plan 후보를 만드는 read-only 단계다.
+실제 실행, routing 변경, write path wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
+ready_for_runtime_execution_plan_review는 실행계획 리뷰 준비 상태이지 실행 허가가 아니다.
 ```
 
 ### Stage 2 종료 판정 의미

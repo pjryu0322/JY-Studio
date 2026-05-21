@@ -30,6 +30,9 @@ export interface RuntimeExecutionHandoffCandidateReport {
   readonly sourceStage2ExitCriteriaSatisfied: boolean;
   readonly sourceStage2HandoffReady: boolean;
   readonly sourceStage2RecommendedNextPhases: readonly string[];
+  readonly sourceStage2AggregatedBlockingFindingCodes: readonly string[];
+  readonly sourceStage2NoRunBlocking: boolean;
+  readonly sourceStage2PrerequisiteDeferred: boolean;
 
   readonly requiresSchemaPrBeforeRuntime: boolean;
   readonly requiresOperatorAuditSchemaPrBeforeRuntime: boolean;
@@ -39,6 +42,8 @@ export interface RuntimeExecutionHandoffCandidateReport {
 
   readonly runtimeHandoffChecklist: readonly RuntimeExecutionHandoffCandidateChecklistItem[];
   readonly preExecutionSafetyChecklist: readonly RuntimeExecutionHandoffCandidateChecklistItem[];
+  readonly prerequisitePolicyChecklist: readonly RuntimeExecutionHandoffCandidateChecklistItem[];
+  readonly prerequisiteApprovalChecklist: readonly RuntimeExecutionHandoffCandidateChecklistItem[];
   readonly prerequisiteChecklist: readonly RuntimeExecutionHandoffCandidateChecklistItem[];
 
   readonly evaluatesHandoffOnly: true;

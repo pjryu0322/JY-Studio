@@ -6,7 +6,12 @@ const CURSOR_BOUNDARY = ["cursor.execution.before"] as const;
 
 function checklistItem(
   report: ReturnType<typeof evaluateRuntimeExecutionHandoffCandidate>,
-  list: "runtimeHandoffChecklist" | "preExecutionSafetyChecklist" | "prerequisiteChecklist",
+  list:
+    | "runtimeHandoffChecklist"
+    | "preExecutionSafetyChecklist"
+    | "prerequisiteChecklist"
+    | "prerequisitePolicyChecklist"
+    | "prerequisiteApprovalChecklist",
   item: string,
 ) {
   return report[list].find((c) => c.item === item);
@@ -41,11 +46,16 @@ function mockStage2Ready(): ReturnType<typeof stage2Module.evaluateStage2Integra
     sourceOperatorAuditReviewConfirmed: true,
     sourceRuntimeBlockingFindingCodes: [],
     sourceAggregatedBlockingFindingCodes: [],
+    sourceStage2NoRunBlocking: false,
+    sourceStage2PrerequisiteDeferred: false,
     sourceWireCandidateBlockingFindingCodes: [],
     sourceRoutingShadowBlockingFindingCodes: [],
     closureChecklist: [],
     noRunChecklist: [],
     handoffChecklist: [],
+    prerequisitePolicyChecklist: [],
+    prerequisiteApprovalChecklist: [],
+    prerequisiteChecklist: [],
     riskChecklist: [],
     recommendedNextPhases: ["prepare_schema_migration_pr"],
     closesStage2Only: true,
@@ -225,11 +235,11 @@ describe("multi-agent runtime execution handoff candidate stage 3-1", () => {
     ).toBe(true);
   });
 
-  it("prerequisiteChecklist includes operator approval remains required before actual execution", () => {
+  it("prerequisitePolicyChecklist includes operator approval remains required before actual execution", () => {
     expect(
       checklistItem(
         evaluateRuntimeExecutionHandoffCandidate(),
-        "prerequisiteChecklist",
+        "prerequisitePolicyChecklist",
         "operator approval remains required before actual execution",
       ),
     ).toBeDefined();
@@ -301,16 +311,88 @@ describe("multi-agent runtime execution handoff candidate stage 3-1", () => {
       featureFlagWireDesignApproved: true,
     } as const;
 
-    it("real chain defers until Stage 2 closure and prerequisite approvals are ready", () => {
+    it("real Stage 2 chain remains defer because upstream runtime/schema/write prerequisites are not applied", () => {
       const report = evaluateRuntimeExecutionHandoffCandidate(INTEGRATION_INPUT);
-      expect(report.decision).toBe("defer");
       expect(report.sourceStage2Decision).toBe("defer");
+      expect(report.decision).toBe("defer");
+      expect(report.executesRuntimeInThisStep).toBe(false);
+      expect(report.changesConnectorRoutingInThisStep).toBe(false);
+      expect(report.wiresWritePathInThisStep).toBe(false);
+      expect(report.sourceStage2PrerequisiteDeferred).toBe(true);
+      expect(report.sourceStage2NoRunBlocking).toBe(false);
     });
 
     it("real chain keeps execution flags false", () => {
       const report = evaluateRuntimeExecutionHandoffCandidate(INTEGRATION_INPUT);
       expect(report.executesRuntimeInThisStep).toBe(false);
       expect(report.callsGitHubInThisStep).toBe(false);
+    });
+  });
+
+  describe("Stage 3-1 hardening", () => {
+    it("Stage2 defer with noRunPolicySatisfied true yields Stage3 defer", () => {
+      vi.spyOn(stage2Module, "evaluateStage2IntegratedClosureVerdict").mockReturnValue({
+        ...mockStage2Ready(),
+        decision: "defer",
+        stage2HandoffReady: false,
+        sourceStage2PrerequisiteDeferred: true,
+      });
+
+      const report = evaluateRuntimeExecutionHandoffCandidate(ALL_HANDOFF_APPROVALS);
+      expect(report.decision).toBe("defer");
+      expect(report.sourceStage2NoRunBlocking).toBe(false);
+      expect(report.sourceStage2PrerequisiteDeferred).toBe(true);
+    });
+
+    it("Stage2 defer with noRunPolicySatisfied false yields Stage3 blocked", () => {
+      vi.spyOn(stage2Module, "evaluateStage2IntegratedClosureVerdict").mockReturnValue({
+        ...mockStage2Ready(),
+        decision: "defer",
+        stage2NoRunPolicySatisfied: false,
+        findings: [
+          { severity: "blocking", code: "stage2_no_run_policy_violated", message: "violated" },
+        ],
+      });
+
+      const report = evaluateRuntimeExecutionHandoffCandidate(ALL_HANDOFF_APPROVALS);
+      expect(report.decision).toBe("blocked");
+      expect(report.sourceStage2NoRunBlocking).toBe(true);
+    });
+
+    it("default prerequisiteApprovalChecklist approval items are false", () => {
+      const report = evaluateRuntimeExecutionHandoffCandidate();
+      expect(checklistItem(report, "prerequisiteApprovalChecklist", "schemaPrApproved")?.satisfied).toBe(
+        false,
+      );
+    });
+
+    it("prerequisitePolicyChecklist policy items are true", () => {
+      const report = evaluateRuntimeExecutionHandoffCandidate();
+      expect(
+        checklistItem(
+          report,
+          "prerequisitePolicyChecklist",
+          "schema/migration PR required before runtime",
+        )?.satisfied,
+      ).toBe(true);
+    });
+
+    it("ready prerequisiteApprovalChecklist items are all true", () => {
+      vi.spyOn(stage2Module, "evaluateStage2IntegratedClosureVerdict").mockReturnValue(mockStage2Ready());
+
+      const report = evaluateRuntimeExecutionHandoffCandidate(ALL_HANDOFF_APPROVALS);
+      expect(report.prerequisiteApprovalChecklist.every((c) => c.satisfied)).toBe(true);
+      expect(report.prerequisiteChecklist).toEqual(report.prerequisiteApprovalChecklist);
+    });
+
+    it("ready finding message states not actual execution permission", () => {
+      vi.spyOn(stage2Module, "evaluateStage2IntegratedClosureVerdict").mockReturnValue(mockStage2Ready());
+
+      const readyFinding = evaluateRuntimeExecutionHandoffCandidate(ALL_HANDOFF_APPROVALS).findings.find(
+        (f) => f.code === "runtime_execution_handoff_design_ready",
+      );
+      expect(readyFinding?.message).toMatch(/not actual execution permission/i);
+      expect(readyFinding?.message).toMatch(/design candidate only/i);
     });
   });
 });
