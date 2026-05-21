@@ -57,6 +57,13 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): ControlledExec
   }));
 }
 
+function checklistCounts<T extends { readonly satisfied: boolean }>(items: readonly T[]) {
+  return {
+    count: items.length,
+    satisfiedCount: items.filter((item) => item.satisfied).length,
+  };
+}
+
 function buildExecutionPathCandidates(
   shadowRoutes: readonly ConnectorGatewayShadowRouteCandidate[],
 ): ControlledExecutionPathCandidate[] {
@@ -397,6 +404,7 @@ export function evaluateControlledExecutionPathCandidate(
   });
 
   const noRunChecklist = buildNoRunChecklist();
+  const noRunCounts = checklistCounts(noRunChecklist);
 
   return {
     mode: "read_only_controlled_execution_path_candidate",
@@ -410,6 +418,11 @@ export function evaluateControlledExecutionPathCandidate(
     sourceNoRunChecklistCount: shadowPlan.noRunChecklistCount,
     sourceNoRunChecklistSatisfiedCount: shadowPlan.noRunChecklistSatisfiedCount,
     sourceFindingCodes: shadowPlan.findings.map((f) => f.code),
+    sourceShadowRoutingFindingCodes: shadowPlan.findings.map((f) => f.code),
+    sourceShadowRoutingNoRunChecklistCount: shadowPlan.noRunChecklistCount,
+    sourceShadowRoutingNoRunChecklistSatisfiedCount: shadowPlan.noRunChecklistSatisfiedCount,
+    sourceShadowRoutingRouteCandidateCount: shadowPlan.routeCandidateCount,
+    sourceShadowRoutingRouteCandidateSatisfiedCount: shadowPlan.routeCandidateSatisfiedCount,
     executionPathCandidates,
     executionPathCandidateCount,
     executionPathCandidateSatisfiedCount,
@@ -426,6 +439,8 @@ export function evaluateControlledExecutionPathCandidate(
     }),
     handoffChecklist: buildHandoffChecklist({ decision }),
     noRunChecklist,
+    noRunChecklistCount: noRunCounts.count,
+    noRunChecklistSatisfiedCount: noRunCounts.satisfiedCount,
     ...CONTROLLED_EXECUTION_PATH_NO_RUN_REPORT,
     findings,
   };

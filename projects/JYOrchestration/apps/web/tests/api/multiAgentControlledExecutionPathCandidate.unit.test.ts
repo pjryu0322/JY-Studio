@@ -377,4 +377,49 @@ describe("multi-agent controlled execution path candidate stage 4-D", () => {
     expect(checklist.length).toBeGreaterThan(0);
     expect(checklist.every((item) => item.satisfied === true)).toBe(true);
   });
+
+  describe("Stage 4-D hardening", () => {
+    it("noRunChecklistCount matches noRunChecklist length", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.noRunChecklistCount).toBe(report.noRunChecklist.length);
+    });
+
+    it("noRunChecklistSatisfiedCount matches satisfied item count", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.noRunChecklistSatisfiedCount).toBe(
+        report.noRunChecklist.filter((item) => item.satisfied).length,
+      );
+    });
+
+    it("noRunChecklistSatisfiedCount equals noRunChecklistCount", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.noRunChecklistSatisfiedCount).toBe(report.noRunChecklistCount);
+    });
+
+    it("sourceShadowRoutingFindingCodes includes shadow_route_candidates_generated", () => {
+      expect(evaluateReadyExecutionPathReport().sourceShadowRoutingFindingCodes).toContain(
+        "shadow_route_candidates_generated",
+      );
+    });
+
+    it("sourceShadowRoutingNoRunChecklistCount equals sourceNoRunChecklistCount", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.sourceShadowRoutingNoRunChecklistCount).toBe(report.sourceNoRunChecklistCount);
+    });
+
+    it("sourceShadowRoutingNoRunChecklistSatisfiedCount equals sourceNoRunChecklistSatisfiedCount", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.sourceShadowRoutingNoRunChecklistSatisfiedCount).toBe(report.sourceNoRunChecklistSatisfiedCount);
+    });
+
+    it("sourceShadowRoutingRouteCandidateCount equals sourceRouteCandidateCount", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.sourceShadowRoutingRouteCandidateCount).toBe(report.sourceRouteCandidateCount);
+    });
+
+    it("sourceShadowRoutingRouteCandidateSatisfiedCount equals sourceRouteCandidateSatisfiedCount", () => {
+      const report = evaluateReadyExecutionPathReport();
+      expect(report.sourceShadowRoutingRouteCandidateSatisfiedCount).toBe(report.sourceRouteCandidateSatisfiedCount);
+    });
+  });
 });

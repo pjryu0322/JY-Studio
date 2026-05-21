@@ -49,6 +49,12 @@ export interface ControlledExecutionPathCandidateReport {
   readonly sourceNoRunChecklistSatisfiedCount: number;
   readonly sourceFindingCodes: readonly string[];
 
+  readonly sourceShadowRoutingFindingCodes: readonly string[];
+  readonly sourceShadowRoutingNoRunChecklistCount: number;
+  readonly sourceShadowRoutingNoRunChecklistSatisfiedCount: number;
+  readonly sourceShadowRoutingRouteCandidateCount: number;
+  readonly sourceShadowRoutingRouteCandidateSatisfiedCount: number;
+
   readonly executionPathCandidates: readonly ControlledExecutionPathCandidate[];
   readonly executionPathCandidateCount: number;
   readonly executionPathCandidateSatisfiedCount: number;
@@ -63,6 +69,8 @@ export interface ControlledExecutionPathCandidateReport {
   readonly rollbackChecklist: readonly ControlledExecutionPathCandidateChecklistItem[];
   readonly handoffChecklist: readonly ControlledExecutionPathCandidateChecklistItem[];
   readonly noRunChecklist: readonly ControlledExecutionPathCandidateChecklistItem[];
+  readonly noRunChecklistCount: number;
+  readonly noRunChecklistSatisfiedCount: number;
 
   readonly executesRuntimeInThisStep: false;
   readonly changesExecutionPathInThisStep: false;

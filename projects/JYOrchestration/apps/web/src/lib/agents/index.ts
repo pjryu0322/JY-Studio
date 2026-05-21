@@ -678,6 +678,21 @@ export {
 
 export type { ControlledExecutionPathCandidateDecisionInput } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
 
+export type {
+  RuntimeWireExperimentReviewChecklistItem,
+  RuntimeWireExperimentReviewFinding,
+  RuntimeWireExperimentReviewPackageDecision,
+  RuntimeWireExperimentReviewPackageReport,
+} from "@/lib/agents/runtimeWireExperimentReviewPackageTypes";
+
+export {
+  buildRuntimeWireExperimentReviewFingerprint,
+  evaluateRuntimeWireExperimentReviewPackage,
+  resolveRuntimeWireExperimentReviewPackageDecision,
+} from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
+
+export type { RuntimeWireExperimentReviewPackageDecisionInput } from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

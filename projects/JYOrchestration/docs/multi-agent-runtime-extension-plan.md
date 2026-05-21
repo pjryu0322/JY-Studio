@@ -1836,6 +1836,50 @@ feature flag plan missing → defer
 all satisfied → ready_for_execution_path_review
 ```
 
+## Stage 4-E Runtime Wire Experiment Review Package
+
+Stage 4-E는 Stage 4-D Controlled Execution Path Candidate를 source로 하여 runtime wire experiment를 실제 적용하기 전의 review package를 만드는 read-only 단계다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| sourceControlledExecutionPathDecision | Stage 4-D source | 없음 |
+| sourceExecutionPathCandidateCount | Stage 4-D source | 없음 |
+| reviewFingerprint | deterministic report field | 없음 |
+| experimentReadinessChecklist | report field | 없음 |
+| connectorGatewayChecklist | report field | 없음 |
+| executionPathChecklist | report field | 없음 |
+| featureFlagChecklist | report field | 없음 |
+| rollbackChecklist | report field | 없음 |
+| noRunChecklist | report field | 없음 |
+
+### Stage 4-E 원칙
+
+```text
+- 실제 runtime execution path를 변경하지 않는다.
+- 실제 Connector Gateway routing을 변경하지 않는다.
+- 실제 Connector를 호출하지 않는다.
+- 실제 Cursor/GitHub를 호출하지 않는다.
+- 실제 feature flag를 wire하지 않는다.
+- 실제 Git/PR을 실행하지 않는다.
+- 실제 schema.prisma/migration/DB를 변경하지 않는다.
+- ready_for_stage4_closure_verdict는 Stage 4-F Integrated Closure Verdict로 넘길 수 있다는 의미이지 runtime 변경 허가가 아니다.
+```
+
+### Stage 4-E Decision 규칙 요약
+
+```text
+controlled execution path blocked → blocked
+controlled execution path not ready → defer
+source no-run checklist mismatch → blocked
+runtime wire review missing → defer
+connector gateway review missing → defer
+execution path review missing → defer
+feature flag review missing → defer
+rollback review missing → defer
+operator final review missing → defer
+all satisfied → ready_for_stage4_closure_verdict
+```
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
