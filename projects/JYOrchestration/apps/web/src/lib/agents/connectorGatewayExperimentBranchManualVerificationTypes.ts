@@ -30,6 +30,13 @@ export interface ConnectorGatewayExperimentBranchManualVerificationReport {
   readonly decision: ConnectorGatewayExperimentBranchManualVerificationDecision;
 
   readonly sourceExecutionPackageDecision: string;
+  readonly sourceBoundaryIds: readonly string[];
+  readonly sourceExecutionPackageFindings: readonly string[];
+  readonly sourceExecutionPackageChecklistSummary: {
+    readonly total: number;
+    readonly satisfied: number;
+    readonly unsatisfied: number;
+  };
   readonly expectedBranchName: string;
   readonly actualBranchName: string;
   readonly featureFlagName: string;

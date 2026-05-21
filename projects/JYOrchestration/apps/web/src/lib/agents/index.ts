@@ -480,6 +480,15 @@ export type {
 
 export { evaluateConnectorGatewayExperimentBranchManualVerification } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchManualVerification";
 
+export type {
+  AgentExecutionRecordWritePathWireApprovalChecklistItem,
+  AgentExecutionRecordWritePathWireApprovalDecision,
+  AgentExecutionRecordWritePathWireApprovalFinding,
+  AgentExecutionRecordWritePathWireApprovalGateReport,
+} from "@/lib/agents/agentExecutionRecordWritePathWireApprovalGateTypes";
+
+export { evaluateAgentExecutionRecordWritePathWireApprovalGate } from "@/lib/agents/evaluateAgentExecutionRecordWritePathWireApprovalGate";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

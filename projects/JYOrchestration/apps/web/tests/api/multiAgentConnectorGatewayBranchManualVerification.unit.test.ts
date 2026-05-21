@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateConnectorGatewayExperimentBranchManualVerification } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchManualVerification";
+import {
+  evaluateConnectorGatewayExperimentBranchManualVerification,
+  sanitizeRegressionResults,
+} from "@/lib/agents/evaluateConnectorGatewayExperimentBranchManualVerification";
 import * as executionPackageModule from "@/lib/agents/evaluateConnectorGatewayExperimentBranchExecutionPackage";
 
 const CURSOR_BOUNDARY = ["cursor.execution.before"] as const;
@@ -178,6 +181,42 @@ describe("multi-agent connector gateway branch manual verification stage 2-28", 
       regressionResults: [{ suite: "multiAgentHarnessDryRun.unit.test.ts", passed: true, summary: "ok" }],
     });
     expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "expected_branch_name_missing")).toBe(true);
+    expect(report.currentBranchMatchesExpected).toBe(false);
+  });
+
+  it("sanitizeRegressionResults normalizes empty suite and summary", () => {
+    const sanitized = sanitizeRegressionResults([{ suite: "  ", passed: true, summary: "" }]);
+    expect(sanitized).toHaveLength(1);
+    expect(sanitized[0]?.suite).toBe("unknown_regression_suite");
+    expect(sanitized[0]?.summary).toBe("no summary provided");
+  });
+
+  it("sanitizeRegressionResults dedupes suite and fails if any duplicate failed", () => {
+    const sanitized = sanitizeRegressionResults([
+      { suite: "suite-a", passed: true, summary: "ok" },
+      { suite: "suite-a", passed: false, summary: "failed" },
+    ]);
+    expect(sanitized).toHaveLength(1);
+    expect(sanitized[0]?.passed).toBe(false);
+  });
+
+  it("verified report includes source trace from execution package", () => {
+    const report = evaluateConnectorGatewayExperimentBranchManualVerification({
+      boundaryIds: [...CURSOR_BOUNDARY],
+      explicitManualExecutionConfirmed: true,
+      actualBranchName: EXPECTED_BRANCH,
+      regressionResults: [{ suite: "multiAgentHarnessDryRun.unit.test.ts", passed: true, summary: "ok" }],
+    });
+    expect(report.sourceBoundaryIds).toEqual([...CURSOR_BOUNDARY]);
+    expect(report.sourceExecutionPackageFindings.length).toBeGreaterThan(0);
+    expect(report.sourceExecutionPackageChecklistSummary.total).toBeGreaterThan(0);
+    expect(report.sourceExecutionPackageChecklistSummary.satisfied).toBeGreaterThanOrEqual(0);
+    expect(report.sourceExecutionPackageChecklistSummary.unsatisfied).toBeGreaterThanOrEqual(0);
+    expect(
+      report.sourceExecutionPackageChecklistSummary.satisfied +
+        report.sourceExecutionPackageChecklistSummary.unsatisfied,
+    ).toBe(report.sourceExecutionPackageChecklistSummary.total);
   });
 
   it("uses execution package only without git branch test flag or routing execution", () => {

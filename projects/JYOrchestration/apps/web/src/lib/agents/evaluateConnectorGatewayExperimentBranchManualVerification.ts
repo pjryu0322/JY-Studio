@@ -36,11 +36,35 @@ function finding(
   return { severity, code, message };
 }
 
+export function sanitizeRegressionResults(
+  results: readonly ConnectorGatewayExperimentBranchRegressionResult[],
+): ConnectorGatewayExperimentBranchRegressionResult[] {
+  const bySuite = new Map<string, ConnectorGatewayExperimentBranchRegressionResult>();
+
+  for (const result of results) {
+    const suite = result.suite.trim() || "unknown_regression_suite";
+    const summary = result.summary.trim() || "no summary provided";
+    const normalized = { suite, passed: result.passed, summary };
+    const existing = bySuite.get(suite);
+
+    if (!existing) {
+      bySuite.set(suite, normalized);
+      continue;
+    }
+
+    if (!existing.passed || !normalized.passed) {
+      bySuite.set(suite, { ...normalized, passed: false });
+    }
+  }
+
+  return [...bySuite.values()];
+}
+
 function resolveVerificationDecision(input: {
   readonly executionPackageDecision: string;
+  readonly expectedBranchName: string;
   readonly explicitManualExecutionConfirmed: boolean;
   readonly actualBranchName: string;
-  readonly expectedBranchName: string;
   readonly regressionResults: readonly ConnectorGatewayExperimentBranchRegressionResult[];
 }): {
   readonly decision: ConnectorGatewayExperimentBranchManualVerificationDecision;
@@ -49,6 +73,15 @@ function resolveVerificationDecision(input: {
   readonly currentBranchMatchesExpected: boolean;
 } {
   if (input.executionPackageDecision !== "ready_for_manual_execution_after_approval") {
+    return {
+      decision: "blocked",
+      rollbackRequired: false,
+      regressionPassed: false,
+      currentBranchMatchesExpected: false,
+    };
+  }
+
+  if (!input.expectedBranchName.trim()) {
     return {
       decision: "blocked",
       rollbackRequired: false,
@@ -159,9 +192,9 @@ function appendVerificationFindings(input: {
   readonly findings: ConnectorGatewayExperimentBranchManualVerificationFinding[];
   readonly decision: ConnectorGatewayExperimentBranchManualVerificationDecision;
   readonly executionPackageDecision: string;
+  readonly expectedBranchName: string;
   readonly explicitManualExecutionConfirmed: boolean;
   readonly actualBranchName: string;
-  readonly expectedBranchName: string;
   readonly regressionResults: readonly ConnectorGatewayExperimentBranchRegressionResult[];
   readonly currentBranchMatchesExpected: boolean;
   readonly regressionPassed: boolean;
@@ -171,9 +204,9 @@ function appendVerificationFindings(input: {
     findings,
     decision,
     executionPackageDecision,
+    expectedBranchName,
     explicitManualExecutionConfirmed,
     actualBranchName,
-    expectedBranchName,
     regressionResults,
     currentBranchMatchesExpected,
     regressionPassed,
@@ -197,6 +230,11 @@ function appendVerificationFindings(input: {
     if (executionPackageDecision !== "ready_for_manual_execution_after_approval") {
       findings.push(
         finding("blocking", "execution_package_not_ready", "execution package is not ready for manual verification"),
+      );
+    }
+    if (!expectedBranchName.trim()) {
+      findings.push(
+        finding("blocking", "expected_branch_name_missing", "expected branch name is missing from execution package"),
       );
     }
     if (actualBranchName.trim() && !currentBranchMatchesExpected) {
@@ -251,13 +289,20 @@ export function evaluateConnectorGatewayExperimentBranchManualVerification(input
   const explicitManualExecutionConfirmed = input.explicitManualExecutionConfirmed === true;
   const actualBranchName = input.actualBranchName?.trim() ?? "";
   const expectedBranchName = executionPackage.recommendedBranchName;
-  const regressionResults = input.regressionResults ?? [];
+  const regressionResults = sanitizeRegressionResults(input.regressionResults ?? []);
+
+  const preflightChecklist = executionPackage.preflightChecklist;
+  const sourceExecutionPackageChecklistSummary = {
+    total: preflightChecklist.length,
+    satisfied: preflightChecklist.filter((item) => item.satisfied).length,
+    unsatisfied: preflightChecklist.filter((item) => !item.satisfied).length,
+  };
 
   const resolved = resolveVerificationDecision({
     executionPackageDecision: executionPackage.decision,
+    expectedBranchName,
     explicitManualExecutionConfirmed,
     actualBranchName,
-    expectedBranchName,
     regressionResults,
   });
 
@@ -277,9 +322,9 @@ export function evaluateConnectorGatewayExperimentBranchManualVerification(input
     findings,
     decision: resolved.decision,
     executionPackageDecision: executionPackage.decision,
+    expectedBranchName,
     explicitManualExecutionConfirmed,
     actualBranchName,
-    expectedBranchName,
     regressionResults,
     currentBranchMatchesExpected: resolved.currentBranchMatchesExpected,
     regressionPassed: resolved.regressionPassed,
@@ -290,6 +335,9 @@ export function evaluateConnectorGatewayExperimentBranchManualVerification(input
     mode: "read_only_connector_gateway_branch_manual_verification",
     decision: resolved.decision,
     sourceExecutionPackageDecision: executionPackage.decision,
+    sourceBoundaryIds: [...input.boundaryIds],
+    sourceExecutionPackageFindings: executionPackage.findings.map((item) => item.code),
+    sourceExecutionPackageChecklistSummary,
     expectedBranchName,
     actualBranchName,
     featureFlagName: executionPackage.featureFlagName,
@@ -299,7 +347,7 @@ export function evaluateConnectorGatewayExperimentBranchManualVerification(input
     regressionPassed: resolved.regressionPassed,
     rollbackRequired: resolved.rollbackRequired,
     verificationChecklist,
-    regressionResults: [...regressionResults],
+    regressionResults,
     rollbackCriteria: [...executionPackage.rollbackCriteria],
     executesGitInThisStep: false,
     createsBranchInThisStep: false,

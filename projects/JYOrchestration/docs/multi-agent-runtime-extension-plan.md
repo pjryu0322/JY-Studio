@@ -1238,6 +1238,57 @@ branch mismatch / regression fail / package not ready → blocked
 regression failure → rollbackRequired=true
 ```
 
-### Stage 2-29 후보: Agent Execution Record write path 실제 wire 전 승인 게이트
+### Stage 2-28 보강 (소스 점검)
 
-Stage 2-29에서는 Agent Execution Record write path를 실제로 wire하기 전 최종 승인 게이트를 설계한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| sourceBoundaryIds | execution package 입력 boundary 복사 | 없음 | 추적성 보강 |
+| sourceExecutionPackageFindings | execution package finding code 목록 | 없음 | 추적성 보강 |
+| sourceExecutionPackageChecklistSummary | preflightChecklist total/satisfied/unsatisfied | 없음 | 구조화 checklist 기준 |
+| sanitizeRegressionResults | suite/summary 정규화 + suite dedupe | 없음 | failed 우선 |
+| expectedBranchName 빈 값 | branch match false + blocked | 없음 | `expected_branch_name_missing` |
+
+`shouldReportModelDraftMissing` 정책:
+
+```text
+- source readiness blocked: model_draft_missing 생략
+- approval blocked + modelDraft 비어 있음 + source readiness blocked 아님: model_draft_missing 보고
+- defer: model_draft_missing 미보고
+- forbiddenDraftDetected: model_draft_missing 미보고
+```
+
+### Stage 2-29 Agent Execution Record Write Path Wire Approval Gate 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Write Path Wire Approval 타입 | read-only gate report | 없음 | 실제 wire 전 승인 |
+| Write Path Wire Approval evaluator | Stage 2-20 + Stage 2-26 기반 | 없음 | DB 미호출 |
+| explicitUserApproval | input flag | 없음 | 승인 확인값 |
+| schemaAppliedConfirmed | input flag | 없음 | 실제 확인은 외부 |
+| migrationAppliedConfirmed | input flag | 없음 | 실제 확인은 외부 |
+| featureFlagWireApproved | input flag | 없음 | wire는 별도 PR |
+| writeAdapterImplementedConfirmed | input flag | 없음 | adapter 구현 확인 |
+| no-run flags | report field | 없음 | write/schema/migration 미실행 |
+
+### Stage 2-29 원칙
+
+```text
+- 실제 write path를 연결하지 않는다.
+- 실제 DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- 모든 확인값은 외부 입력으로만 판단한다.
+```
+
+### Stage 2-29 Decision 규칙 요약
+
+```text
+writePath ready + schema approval ready + 모든 확인값 true → ready_for_write_path_wire_approval
+writePath/schema approval 미준비 또는 확인값 미충족 → defer
+unknown target / upstream blocked / unsafe blocking finding → blocked
+```
+
+### Stage 2-30 후보: Operator Approval/Audit write path wire 전 승인 게이트
+
+Stage 2-30에서는 Operator Approval/Audit write path를 실제로 wire하기 전 최종 승인 게이트를 설계한다.
