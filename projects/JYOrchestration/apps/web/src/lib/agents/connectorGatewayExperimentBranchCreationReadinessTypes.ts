@@ -11,6 +11,7 @@ export interface ConnectorGatewayExperimentBranchCreationCommandCandidate {
   readonly command: string;
   readonly purpose: string;
   readonly allowedAfterExplicitApproval: boolean;
+  readonly caution: string;
 }
 
 export interface ConnectorGatewayExperimentBranchCreationChecklistItem {
@@ -31,6 +32,13 @@ export interface ConnectorGatewayExperimentBranchCreationReadinessReport {
 
   readonly sourceApprovalDecision: string;
   readonly sourceScope: string;
+  readonly sourceCandidateBoundaries: readonly string[];
+  readonly sourceCandidateConnectorIds: readonly string[];
+  readonly sourceCandidateBoundaryKinds: readonly string[];
+  readonly sourceBranchPlanDecision: string;
+  readonly sourceRoutingDecision: string;
+  readonly sourceRoutingScope: string;
+
   readonly recommendedBranchName: string;
   readonly featureFlagName: string;
   readonly featureFlagDefault: "off";

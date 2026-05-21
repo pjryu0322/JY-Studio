@@ -947,6 +947,16 @@ ready_for_write_path_design 타입 유지, 현재 단계에서는 미반환
 permission/audit integrity/forbidden guards in report only
 ```
 
+## Stage 2-22 소스 보완 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| source trace | 보완 | candidateBoundaries/connectors/kinds + branch/routing source |
+| command candidate caution | 보완 | `caution` on every command candidate |
+| branch/flag safety check | 보완 | `isSafeBranchName` / `isSafeFeatureFlagName` |
+| explicit approval policy | 보완 | `requiresExplicitUserApproval = decision !== "blocked"` |
+| 실제 branch/flag/routing | 없음 | read-only readiness evaluator |
+
 ## Stage 2-22 Connector Gateway Branch Creation Readiness 결과
 
 | 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
@@ -980,13 +990,46 @@ blocked → blocked; commandCandidates=[]
 createsBranchInThisStep / wiresFeatureFlagInThisStep / changesRoutingInThisStep = false
 ```
 
-### Stage 2-23 후보: Agent Execution Record schema/migration 별도 PR 준비
+## Stage 2-23 Agent Execution Record Schema/Migration PR Readiness 결과
 
-Stage 2-23에서는 Stage 2-17 schema decision을 기반으로 별도 PR에서 schema/migration 준비 여부를 판단한다.
+| 항목 | 반영 방식 | 실제 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema PR Readiness 타입 | read-only readiness report | 없음 | 별도 PR 준비 |
+| Schema PR evaluator | schema decision 기반 판단 | 없음 | schema.prisma 미수정 |
+| modelCandidates | Prisma model draft 문자열 | 없음 | 적용 금지 |
+| migrationChecklist | report field | 없음 | migration 미생성 |
+| rollbackChecklist | report field | 없음 | rollback 준비 |
+| retention/access checklist | report field | 없음 | 운영 검토 필요 |
+| forbidden field checklist | report field | 없음 | raw 필드 제외 확인 |
+
+구현: `agentExecutionRecordSchemaPrReadinessTypes.ts`, `evaluateAgentExecutionRecordSchemaPrReadiness.ts`
+
+### Stage 2-23 원칙
+
+```text
+- 실제 schema.prisma를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB write를 구현하지 않는다.
+- Prisma model은 report 내 draft 문자열로만 제공한다.
+- schema/migration은 별도 PR과 별도 승인 후 진행한다.
+```
+
+### Stage 2-23 Decision 규칙 요약
+
+```text
+ready_for_schema_proposal → ready_for_schema_pr_plan + modelCandidates
+defer / timeline_event_link / audit_trail_link → defer
+blocked / unknown → blocked; empty modelCandidates
+forbiddenFieldChecklist validates REQUIRED_FORBIDDEN_FIELDS in excludedFields
+```
+
+### Stage 2-24 후보: Operator Approval/Audit schema/migration PR readiness
+
+Stage 2-24에서는 Stage 2-18 schema decision을 기반으로 Operator Approval/Audit schema/migration PR 준비 여부를 판단한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| schema PR readiness | schema 변경 전 승인 패키지 | DB 영향 검토 |
-| migration draft plan | migration 후보 | 실제 migration은 별도 승인 |
+| schema PR readiness | approval/audit schema PR 패키지 | DB 영향 검토 |
+| permission/audit integrity checklist | 운영 검토 | 필수 |
+| migration draft plan | migration 후보 | 별도 승인 |
 | rollback migration plan | rollback 후보 | 필수 |
-| retention/access review | 보존/권한 정책 검토 | 필수 |

@@ -3,6 +3,7 @@
  */
 
 import { evaluateConnectorGatewayExperimentBranchApproval } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchApproval";
+import type { ConnectorGatewayExperimentBranchApprovalReport } from "@/lib/agents/connectorGatewayExperimentBranchApprovalTypes";
 import type { ConnectorGatewayExperimentBranchApprovalDecision } from "@/lib/agents/connectorGatewayExperimentBranchApprovalTypes";
 import type {
   ConnectorGatewayExperimentBranchCreationChecklistItem,
@@ -11,6 +12,9 @@ import type {
   ConnectorGatewayExperimentBranchCreationReadinessFinding,
   ConnectorGatewayExperimentBranchCreationReadinessReport,
 } from "@/lib/agents/connectorGatewayExperimentBranchCreationReadinessTypes";
+
+const COMMAND_CAUTION =
+  "read-only candidate; do not execute without explicit user approval";
 
 function uniqueStrings(values: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -32,6 +36,20 @@ function finding(
   return { severity, code, message };
 }
 
+export function isSafeBranchName(branchName: string): boolean {
+  return (
+    /^[a-zA-Z0-9._/-]+$/.test(branchName) &&
+    !branchName.includes("..") &&
+    !branchName.startsWith("/") &&
+    !branchName.endsWith("/") &&
+    !branchName.includes("//")
+  );
+}
+
+export function isSafeFeatureFlagName(flagName: string): boolean {
+  return /^[A-Z0-9_]+$/.test(flagName);
+}
+
 function mapApprovalToReadinessDecision(
   approvalDecision: ConnectorGatewayExperimentBranchApprovalDecision,
 ): ConnectorGatewayExperimentBranchCreationReadinessDecision {
@@ -47,6 +65,22 @@ function mapApprovalToReadinessDecision(
   }
 }
 
+function resolveReadinessDecision(input: {
+  readonly approval: ConnectorGatewayExperimentBranchApprovalReport;
+}): ConnectorGatewayExperimentBranchCreationReadinessDecision {
+  let decision = mapApprovalToReadinessDecision(input.approval.decision);
+
+  if (decision === "ready_for_explicit_user_approval") {
+    if (!isSafeBranchName(input.approval.recommendedBranchName)) {
+      decision = "blocked";
+    } else if (!isSafeFeatureFlagName(input.approval.featureFlagName)) {
+      decision = "blocked";
+    }
+  }
+
+  return decision;
+}
+
 function buildCommandCandidates(input: {
   readonly decision: ConnectorGatewayExperimentBranchCreationReadinessDecision;
   readonly recommendedBranchName: string;
@@ -56,26 +90,32 @@ function buildCommandCandidates(input: {
   }
 
   const branch = input.recommendedBranchName;
+  const caution = COMMAND_CAUTION;
+
   return [
     {
       command: "git fetch origin",
       purpose: "sync remote refs before creating experiment branch",
       allowedAfterExplicitApproval: true,
+      caution,
     },
     {
       command: "git checkout main",
       purpose: "base experiment branch on main",
       allowedAfterExplicitApproval: true,
+      caution,
     },
     {
       command: "git pull --ff-only origin main",
       purpose: "fast-forward main before branch creation",
       allowedAfterExplicitApproval: true,
+      caution,
     },
     {
       command: `git checkout -b ${branch}`,
       purpose: "create connector gateway experiment branch after explicit user approval",
       allowedAfterExplicitApproval: true,
+      caution,
     },
   ];
 }
@@ -135,7 +175,7 @@ function buildApprovalChecklist(input: {
     },
     {
       item: "rollback criteria defined",
-      satisfied: isReady ? input.rollbackCriteria.length > 0 : input.rollbackCriteria.length > 0,
+      satisfied: input.rollbackCriteria.length > 0,
       reason:
         input.rollbackCriteria.length > 0
           ? "rollback criteria are defined"
@@ -163,12 +203,13 @@ function appendReadinessFindings(input: {
   readonly findings: ConnectorGatewayExperimentBranchCreationReadinessFinding[];
   readonly decision: ConnectorGatewayExperimentBranchCreationReadinessDecision;
   readonly approvalDecision: ConnectorGatewayExperimentBranchApprovalDecision;
-  readonly recommendedBranchName: string;
-  readonly featureFlagName: string;
+  readonly approval: ConnectorGatewayExperimentBranchApprovalReport;
   readonly regressionChecklist: readonly string[];
   readonly rollbackCriteria: readonly string[];
+  readonly unsafeBranch: boolean;
+  readonly unsafeFlag: boolean;
 }): void {
-  const { findings, decision, approvalDecision } = input;
+  const { findings, decision, approvalDecision, approval } = input;
 
   findings.push(
     finding(
@@ -184,9 +225,18 @@ function appendReadinessFindings(input: {
   findings.push(finding("info", "no_feature_flag_wire", "does not wire feature flags"));
   findings.push(finding("info", "no_routing_change", "does not change connector routing paths"));
 
+  if (input.unsafeBranch) {
+    findings.push(finding("blocking", "unsafe_branch_name", "branch name failed safety validation"));
+  }
+  if (input.unsafeFlag) {
+    findings.push(finding("blocking", "unsafe_feature_flag_name", "feature flag name failed safety validation"));
+  }
+
   if (decision === "blocked") {
     findings.push(finding("blocking", "branch_creation_blocked", "branch creation is blocked"));
-    findings.push(finding("blocking", "source_approval_blocked", "source branch approval is blocked"));
+    if (approvalDecision === "blocked") {
+      findings.push(finding("blocking", "source_approval_blocked", "source branch approval is blocked"));
+    }
     return;
   }
 
@@ -207,10 +257,10 @@ function appendReadinessFindings(input: {
     finding("info", "command_candidates_are_not_executed", "command candidates are not executed by this evaluator"),
   );
 
-  if (!input.recommendedBranchName) {
+  if (!approval.recommendedBranchName) {
     findings.push(finding("blocking", "missing_branch_name", "branch name is required for branch creation"));
   }
-  if (!input.featureFlagName) {
+  if (!approval.featureFlagName) {
     findings.push(finding("blocking", "missing_feature_flag_name", "feature flag name is required for branch creation"));
   }
   if (input.regressionChecklist.length === 0) {
@@ -229,9 +279,17 @@ export function evaluateConnectorGatewayExperimentBranchCreationReadiness(input:
     boundaryIds: input.boundaryIds,
   });
 
-  const decision = mapApprovalToReadinessDecision(approval.decision);
+  const unsafeBranch =
+    approval.decision === "ready_for_operator_approval" &&
+    approval.recommendedBranchName.length > 0 &&
+    !isSafeBranchName(approval.recommendedBranchName);
+  const unsafeFlag =
+    approval.decision === "ready_for_operator_approval" &&
+    approval.featureFlagName.length > 0 &&
+    !isSafeFeatureFlagName(approval.featureFlagName);
+
+  const decision = resolveReadinessDecision({ approval });
   const isBlocked = decision === "blocked";
-  const isReady = decision === "ready_for_explicit_user_approval";
 
   const recommendedBranchName = isBlocked ? "" : approval.recommendedBranchName;
   const featureFlagName = isBlocked ? "" : approval.featureFlagName;
@@ -241,9 +299,7 @@ export function evaluateConnectorGatewayExperimentBranchCreationReadiness(input:
     ? []
     : uniqueStrings([...approval.requiredRegressionSuites, ...approval.validationSuites]);
 
-  const rollbackCriteria = isBlocked
-    ? []
-    : uniqueStrings(approval.rollbackCriteria);
+  const rollbackCriteria = isBlocked ? [] : uniqueStrings(approval.rollbackCriteria);
 
   const commandCandidates = buildCommandCandidates({ decision, recommendedBranchName });
 
@@ -263,10 +319,11 @@ export function evaluateConnectorGatewayExperimentBranchCreationReadiness(input:
     findings,
     decision,
     approvalDecision: approval.decision,
-    recommendedBranchName,
-    featureFlagName,
+    approval,
     regressionChecklist,
     rollbackCriteria,
+    unsafeBranch,
+    unsafeFlag,
   });
 
   return {
@@ -274,6 +331,12 @@ export function evaluateConnectorGatewayExperimentBranchCreationReadiness(input:
     decision,
     sourceApprovalDecision: approval.decision,
     sourceScope: approval.scope,
+    sourceCandidateBoundaries: [...approval.candidateBoundaries],
+    sourceCandidateConnectorIds: [...approval.candidateConnectorIds],
+    sourceCandidateBoundaryKinds: [...approval.candidateBoundaryKinds],
+    sourceBranchPlanDecision: approval.sourceBranchPlanDecision,
+    sourceRoutingDecision: approval.sourceRoutingDecision,
+    sourceRoutingScope: approval.sourceRoutingScope,
     recommendedBranchName,
     featureFlagName,
     featureFlagDefault,
@@ -281,7 +344,7 @@ export function evaluateConnectorGatewayExperimentBranchCreationReadiness(input:
     approvalChecklist,
     regressionChecklist,
     rollbackCriteria,
-    requiresExplicitUserApproval: isReady,
+    requiresExplicitUserApproval: decision !== "blocked",
     createsBranchInThisStep: false,
     wiresFeatureFlagInThisStep: false,
     changesRoutingInThisStep: false,

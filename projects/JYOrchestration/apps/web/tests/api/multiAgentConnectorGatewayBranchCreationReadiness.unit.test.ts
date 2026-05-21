@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateConnectorGatewayExperimentBranchCreationReadiness } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchCreationReadiness";
+import {
+  evaluateConnectorGatewayExperimentBranchCreationReadiness,
+  isSafeBranchName,
+  isSafeFeatureFlagName,
+} from "@/lib/agents/evaluateConnectorGatewayExperimentBranchCreationReadiness";
 import * as branchApprovalModule from "@/lib/agents/evaluateConnectorGatewayExperimentBranchApproval";
 import * as connectorFacade from "@/lib/agents/connectorGatewayFacade";
 
@@ -8,6 +12,36 @@ function checklistItem(
   item: string,
 ) {
   return report.approvalChecklist.find((c) => c.item === item);
+}
+
+function mockReadyApproval(
+  overrides: Partial<ReturnType<typeof branchApprovalModule.evaluateConnectorGatewayExperimentBranchApproval>> = {},
+) {
+  return {
+    mode: "read_only_connector_gateway_experiment_branch_approval" as const,
+    decision: "ready_for_operator_approval" as const,
+    scope: "cursor_only" as const,
+    recommendedBranchName: "experiment/connector-gateway-cursor-routing",
+    featureFlagName: "JYO_CONNECTOR_GATEWAY_CURSOR_ROUTING",
+    featureFlagDefault: "off" as const,
+    requiresOperatorApproval: true,
+    requiresRegressionChecklist: true,
+    requiresRollbackPlan: true,
+    requiresDirectCallFallback: true,
+    requiresStage1Regression: false,
+    candidateBoundaries: ["cursor.execution.before"],
+    candidateConnectorIds: ["cursor"],
+    candidateBoundaryKinds: ["cursor_execution"],
+    sourceBranchPlanDecision: "ready_for_branch_plan",
+    sourceRoutingDecision: "ready_for_experiment_design",
+    sourceRoutingScope: "cursor_only",
+    requiredRegressionSuites: ["multiAgentHarnessDryRun.unit.test.ts"],
+    validationSuites: ["multiAgentFoundation.unit.test.ts"],
+    rollbackCriteria: ["feature flag default off"],
+    approvalChecklist: [],
+    findings: [],
+    ...overrides,
+  };
 }
 
 describe("multi-agent connector gateway branch creation readiness stage 2-22", () => {
@@ -43,6 +77,36 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
     expect(report.sourceScope).toBe("cursor_only");
   });
 
+  it("report includes sourceCandidateBoundaries", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceCandidateBoundaries).toContain("cursor.execution.before");
+  });
+
+  it("report includes sourceCandidateConnectorIds", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceCandidateConnectorIds).toEqual(["cursor"]);
+  });
+
+  it("report includes sourceCandidateBoundaryKinds", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceCandidateBoundaryKinds).toEqual(["cursor_execution"]);
+  });
+
+  it("report includes sourceBranchPlanDecision sourceRoutingDecision sourceRoutingScope", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceBranchPlanDecision).toBe("ready_for_branch_plan");
+    expect(report.sourceRoutingDecision).toBe("ready_for_experiment_design");
+    expect(report.sourceRoutingScope).toBe("cursor_only");
+  });
+
   it("recommendedBranchName is experiment/connector-gateway-cursor-routing", () => {
     const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
       boundaryIds: ["cursor.execution.before"],
@@ -72,24 +136,27 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
   });
 
   it("createsBranchInThisStep is false", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(report.createsBranchInThisStep).toBe(false);
+    expect(
+      evaluateConnectorGatewayExperimentBranchCreationReadiness({
+        boundaryIds: ["cursor.execution.before"],
+      }).createsBranchInThisStep,
+    ).toBe(false);
   });
 
   it("wiresFeatureFlagInThisStep is false", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(report.wiresFeatureFlagInThisStep).toBe(false);
+    expect(
+      evaluateConnectorGatewayExperimentBranchCreationReadiness({
+        boundaryIds: ["cursor.execution.before"],
+      }).wiresFeatureFlagInThisStep,
+    ).toBe(false);
   });
 
   it("changesRoutingInThisStep is false", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(report.changesRoutingInThisStep).toBe(false);
+    expect(
+      evaluateConnectorGatewayExperimentBranchCreationReadiness({
+        boundaryIds: ["cursor.execution.before"],
+      }).changesRoutingInThisStep,
+    ).toBe(false);
   });
 
   it("commandCandidates include git fetch origin", () => {
@@ -119,6 +186,24 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
     }
   });
 
+  it("all commandCandidates include caution", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    for (const candidate of report.commandCandidates) {
+      expect(candidate.caution.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("commandCandidates caution includes explicit user approval wording", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    for (const candidate of report.commandCandidates) {
+      expect(candidate.caution.toLowerCase()).toMatch(/explicit user approval/);
+    }
+  });
+
   it("approvalChecklist includes explicit user approval required true", () => {
     const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
       boundaryIds: ["cursor.execution.before"],
@@ -127,24 +212,14 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
   });
 
   it("approvalChecklist includes no branch creation in this step true", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(checklistItem(report, "no branch creation in this step")?.satisfied).toBe(true);
-  });
-
-  it("approvalChecklist includes no feature flag wire in this step true", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(checklistItem(report, "no feature flag wire in this step")?.satisfied).toBe(true);
-  });
-
-  it("approvalChecklist includes no routing change in this step true", () => {
-    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
-    expect(checklistItem(report, "no routing change in this step")?.satisfied).toBe(true);
+    expect(
+      checklistItem(
+        evaluateConnectorGatewayExperimentBranchCreationReadiness({
+          boundaryIds: ["cursor.execution.before"],
+        }),
+        "no branch creation in this step",
+      )?.satisfied,
+    ).toBe(true);
   });
 
   it("regressionChecklist is non-empty for cursor boundary", () => {
@@ -175,6 +250,13 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
     expect(report.commandCandidates).toEqual([]);
   });
 
+  it("defer state has requiresExplicitUserApproval true", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["github.pr.create.before"],
+    });
+    expect(report.requiresExplicitUserApproval).toBe(true);
+  });
+
   it("unknown boundary returns blocked decision", () => {
     const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
       boundaryIds: ["unknown.boundary"],
@@ -189,13 +271,47 @@ describe("multi-agent connector gateway branch creation readiness stage 2-22", (
     expect(report.commandCandidates).toEqual([]);
   });
 
+  it("blocked state has requiresExplicitUserApproval false", () => {
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["unknown.boundary"],
+    });
+    expect(report.requiresExplicitUserApproval).toBe(false);
+  });
+
+  it("unsafe branch name results in blocked decision", () => {
+    vi.spyOn(branchApprovalModule, "evaluateConnectorGatewayExperimentBranchApproval").mockReturnValue(
+      mockReadyApproval({ recommendedBranchName: "../unsafe-branch" }),
+    );
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "unsafe_branch_name")).toBe(true);
+    expect(report.commandCandidates).toEqual([]);
+  });
+
+  it("unsafe feature flag name results in blocked decision", () => {
+    vi.spyOn(branchApprovalModule, "evaluateConnectorGatewayExperimentBranchApproval").mockReturnValue(
+      mockReadyApproval({ featureFlagName: "bad-flag-name" }),
+    );
+    const report = evaluateConnectorGatewayExperimentBranchCreationReadiness({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "unsafe_feature_flag_name")).toBe(true);
+    expect(isSafeFeatureFlagName("bad-flag-name")).toBe(false);
+  });
+
+  it("isSafeBranchName rejects path traversal patterns", () => {
+    expect(isSafeBranchName("../bad")).toBe(false);
+    expect(isSafeBranchName("experiment/connector-gateway-cursor-routing")).toBe(true);
+  });
+
   it("uses branch approval only without git branch creation feature flag wire or connector execution", () => {
     const approvalSpy = vi.spyOn(branchApprovalModule, "evaluateConnectorGatewayExperimentBranchApproval");
     const evaluateSpy = vi.spyOn(connectorFacade, "evaluateConnectorInvocation");
     const planSpy = vi.spyOn(connectorFacade, "planConnectorInvocation");
-    evaluateConnectorGatewayExperimentBranchCreationReadiness({
-      boundaryIds: ["cursor.execution.before"],
-    });
+    evaluateConnectorGatewayExperimentBranchCreationReadiness({ boundaryIds: ["cursor.execution.before"] });
     expect(approvalSpy).toHaveBeenCalledTimes(1);
     expect(evaluateSpy).not.toHaveBeenCalled();
     expect(planSpy).not.toHaveBeenCalled();

@@ -411,6 +411,20 @@ export type {
 } from "@/lib/agents/connectorGatewayExperimentBranchCreationReadinessTypes";
 
 export { evaluateConnectorGatewayExperimentBranchCreationReadiness } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchCreationReadiness";
+export {
+  isSafeBranchName,
+  isSafeFeatureFlagName,
+} from "@/lib/agents/evaluateConnectorGatewayExperimentBranchCreationReadiness";
+
+export type {
+  AgentExecutionRecordSchemaPrChecklistItem,
+  AgentExecutionRecordSchemaPrFinding,
+  AgentExecutionRecordSchemaPrModelCandidate,
+  AgentExecutionRecordSchemaPrReadinessDecision,
+  AgentExecutionRecordSchemaPrReadinessReport,
+} from "@/lib/agents/agentExecutionRecordSchemaPrReadinessTypes";
+
+export { evaluateAgentExecutionRecordSchemaPrReadiness } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
