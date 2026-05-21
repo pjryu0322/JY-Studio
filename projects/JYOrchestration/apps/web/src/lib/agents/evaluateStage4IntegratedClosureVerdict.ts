@@ -32,6 +32,16 @@ const SEPARATED_WORK_ITEMS = [
   "actual_runtime_execution_write_path_wire",
 ] as const;
 
+const HANDOFF_FOLLOWUP_ITEMS = [
+  "prepare_connector_gateway_experiment_branch_followup",
+  "prepare_agent_execution_record_schema_pr_followup",
+  "prepare_operator_approval_audit_schema_pr_followup",
+  "prepare_runtime_execution_write_path_design_followup",
+  "prepare_feature_flag_wire_followup",
+] as const;
+
+const HANDOFF_REASON = "Follow-up only; not executed in Stage 4-F";
+
 type Stage4IntegratedClosureVerdictInput = Parameters<typeof evaluateRuntimeWireExperimentReviewPackage>[0] & {
   readonly stage4ReadOnlyScopeConfirmed?: boolean;
   readonly stage4NoRuntimeExecutionConfirmed?: boolean;
@@ -142,6 +152,32 @@ export function resolveStage4IntegratedClosureVerdictDecision(
   return "stage4_closure_ready";
 }
 
+function buildReviewPackageSourceTrace(
+  reviewPackage: ReturnType<typeof evaluateRuntimeWireExperimentReviewPackage>,
+) {
+  return {
+    sourceReviewPackageDecision: reviewPackage.decision,
+    sourceReviewPackageFingerprint: reviewPackage.reviewFingerprint,
+    sourceReviewPackageSummary: reviewPackage.reviewPackageSummary,
+    sourceNoRunChecklistCount: reviewPackage.noRunChecklistCount,
+    sourceNoRunChecklistSatisfiedCount: reviewPackage.noRunChecklistSatisfiedCount,
+    sourceFindingCodes: reviewPackage.findings.map((f) => f.code),
+  };
+}
+
+function buildClosureFingerprintInput(
+  reviewPackage: ReturnType<typeof evaluateRuntimeWireExperimentReviewPackage>,
+  flags: ReturnType<typeof resolveClosureConfirmationFlags>,
+) {
+  return {
+    sourceReviewPackageDecision: reviewPackage.decision,
+    sourceReviewPackageFingerprint: reviewPackage.reviewFingerprint,
+    sourceNoRunChecklistCount: reviewPackage.noRunChecklistCount,
+    sourceNoRunChecklistSatisfiedCount: reviewPackage.noRunChecklistSatisfiedCount,
+    ...flags,
+  };
+}
+
 function buildClosureSummary(decision: Stage4IntegratedClosureVerdictDecision): string {
   if (decision === "blocked") {
     return "Stage 4 integrated closure is blocked; source review package or no-run policy failed.";
@@ -225,33 +261,13 @@ function buildNoRunChecklist(): Stage4IntegratedClosureChecklistItem[] {
 }
 
 function buildHandoffChecklist(): Stage4IntegratedClosureChecklistItem[] {
-  return mapChecklistEntries([
-    {
-      item: "prepare_connector_gateway_experiment_branch_followup",
+  return mapChecklistEntries(
+    HANDOFF_FOLLOWUP_ITEMS.map((item) => ({
+      item,
       satisfied: true,
-      detail: "Follow-up only; not executed in Stage 4-F",
-    },
-    {
-      item: "prepare_agent_execution_record_schema_pr_followup",
-      satisfied: true,
-      detail: "Follow-up only; not executed in Stage 4-F",
-    },
-    {
-      item: "prepare_operator_approval_audit_schema_pr_followup",
-      satisfied: true,
-      detail: "Follow-up only; not executed in Stage 4-F",
-    },
-    {
-      item: "prepare_runtime_execution_write_path_design_followup",
-      satisfied: true,
-      detail: "Follow-up only; not executed in Stage 4-F",
-    },
-    {
-      item: "prepare_feature_flag_wire_followup",
-      satisfied: true,
-      detail: "Follow-up only; not executed in Stage 4-F",
-    },
-  ]);
+      detail: HANDOFF_REASON,
+    })),
+  );
 }
 
 function buildRiskChecklist(): Stage4IntegratedClosureChecklistItem[] {
@@ -396,20 +412,11 @@ export function evaluateStage4IntegratedClosureVerdict(
   const reviewPackage = evaluateRuntimeWireExperimentReviewPackage(input);
   const flags = resolveClosureConfirmationFlags(input);
 
-  const decision = resolveStage4IntegratedClosureVerdictDecision({
-    sourceReviewPackageDecision: reviewPackage.decision,
-    sourceNoRunChecklistCount: reviewPackage.noRunChecklistCount,
-    sourceNoRunChecklistSatisfiedCount: reviewPackage.noRunChecklistSatisfiedCount,
-    ...flags,
-  });
+  const fingerprintInput = buildClosureFingerprintInput(reviewPackage, flags);
 
-  const closureFingerprint = buildStage4IntegratedClosureFingerprint({
-    sourceReviewPackageDecision: reviewPackage.decision,
-    sourceReviewPackageFingerprint: reviewPackage.reviewFingerprint,
-    sourceNoRunChecklistCount: reviewPackage.noRunChecklistCount,
-    sourceNoRunChecklistSatisfiedCount: reviewPackage.noRunChecklistSatisfiedCount,
-    ...flags,
-  });
+  const decision = resolveStage4IntegratedClosureVerdictDecision(fingerprintInput);
+
+  const closureFingerprint = buildStage4IntegratedClosureFingerprint(fingerprintInput);
 
   const findings: Stage4IntegratedClosureFinding[] = [];
   appendStage4IntegratedClosureFindings({
@@ -426,12 +433,7 @@ export function evaluateStage4IntegratedClosureVerdict(
     mode: "read_only_stage4_integrated_closure_verdict",
     stage: "stage_4_f",
     decision,
-    sourceReviewPackageDecision: reviewPackage.decision,
-    sourceReviewPackageFingerprint: reviewPackage.reviewFingerprint,
-    sourceReviewPackageSummary: reviewPackage.reviewPackageSummary,
-    sourceNoRunChecklistCount: reviewPackage.noRunChecklistCount,
-    sourceNoRunChecklistSatisfiedCount: reviewPackage.noRunChecklistSatisfiedCount,
-    sourceFindingCodes: reviewPackage.findings.map((f) => f.code),
+    ...buildReviewPackageSourceTrace(reviewPackage),
     closureVersion: CLOSURE_VERSION,
     closureTitle: CLOSURE_TITLE,
     closureSummary: buildClosureSummary(decision),

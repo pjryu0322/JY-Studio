@@ -198,10 +198,12 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
 
     it("source ready but stage4ReadOnlyScopeConfirmed=false yields defer", () => {
       spyReviewPackageReady();
-      expect(
-        evaluateStage4IntegratedClosureVerdict({ ...ALL_CLOSURE_CONFIRMATIONS, stage4ReadOnlyScopeConfirmed: false })
-          .decision,
-      ).toBe("defer");
+      const report = evaluateStage4IntegratedClosureVerdict({
+        ...ALL_CLOSURE_CONFIRMATIONS,
+        stage4ReadOnlyScopeConfirmed: false,
+      });
+      expect(report.decision).toBe("defer");
+      expect(report.findings.some((f) => f.code === "stage4_read_only_scope_confirmation_missing")).toBe(true);
     });
 
     it("missing stage4NoRuntimeExecutionConfirmed yields defer and finding", () => {
@@ -255,6 +257,10 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
   });
 
   describe("ready case", () => {
+    it("closureVersion is stage_4_f_v1", () => {
+      expect(evaluateReadyClosureVerdict().closureVersion).toBe("stage_4_f_v1");
+    });
+
     it("all confirmations satisfied yields stage4_closure_ready", () => {
       expect(evaluateReadyClosureVerdict().decision).toBe("stage4_closure_ready");
     });
