@@ -321,6 +321,14 @@ describe("multi-agent agent execution record write path wire approval gate stage
     expect(report.sourceBlockingFindingCodes.length).toBeGreaterThan(0);
   });
 
+  it("defer state does not include write_path_wire_approval_ready finding", () => {
+    expect(
+      evaluateAgentExecutionRecordWritePathWireApprovalGate().findings.some(
+        (f) => f.code === "write_path_wire_approval_ready",
+      ),
+    ).toBe(false);
+  });
+
   it("evaluator does not wire write path DB Prisma schema or migration", () => {
     const writeSpy = vi.spyOn(writePathModule, "evaluateAgentExecutionRecordWritePathDesign");
     const schemaSpy = vi.spyOn(

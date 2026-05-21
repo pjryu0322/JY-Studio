@@ -1335,6 +1335,60 @@ unknown / upstream blocked / unsafe blocking → blocked
 operator_override / rollback_approval → schemaApprovalReferenceOnly (defer)
 ```
 
-### Stage 2-31 후보: Connector Gateway routing 실험 브랜치 read-only route shadowing
+### Stage 2 통합 단계 로드맵 (잔여)
 
-Stage 2-31에서는 Connector Gateway routing 실험 브랜치 내 read-only route shadowing을 설계한다.
+```text
+Stage 2-A: Connector Gateway Routing Shadowing 설계
+Stage 2-B: Agent / Operator Write Adapter 설계 통합
+Stage 2-C: Agent / Operator Schema/Migration PR Readiness 통합
+Stage 2-D: Agent / Operator Write Path Wire 후보 검증 통합
+Stage 2-E: Connector Gateway Routing Shadow 실험 검증
+Stage 2-F: Stage 2 통합 종료 판정
+```
+
+### Write Path Wire Approval Gate 공통 정책 (Stage 2-29 / 2-30)
+
+```text
+- write path design이 ready가 아니면 defer 또는 blocked
+- schema approval package가 ready가 아니면 defer 또는 blocked (referenceOnly target은 schema ready 미요구)
+- explicit approval, schema applied, migration applied, feature flag approval, adapter implemented 확인값이 모두 true여야 ready
+- Operator 계열은 permissionModelConfirmed / auditTrailConfirmed도 true여야 ready
+- operator_override / rollback_approval은 schemaApprovalReferenceOnly=true이며 ready 금지
+- 실제 write path wire, DB write, Prisma call, schema/migration 변경 없음
+```
+
+### Stage 2-A Connector Gateway Routing Shadowing 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Routing Shadow 타입 | read-only shadow report | 없음 | 실제 route 변경 없음 |
+| Routing Shadow evaluator | routing experiment + manual verification 기반 | 없음 | connector 호출 없음 |
+| actualRuntimePath | report field | 없음 | 기존 경로 유지 |
+| shadowRuntimePath | report field | 없음 | 후보 경로 |
+| featureFlagEnabled | input guard | 없음 | true면 blocked |
+| explicitShadowApproval | input guard | 없음 | 없으면 defer |
+| no-run flags | report field | 없음 | route/connector/cursor/github 미실행 |
+
+### Stage 2-A 원칙
+
+```text
+- 실제 runtime route를 변경하지 않는다.
+- Connector Gateway를 실제 실행 경로에 연결하지 않는다.
+- Cursor/GitHub connector를 실제 호출하지 않는다.
+- feature flag를 wire하지 않는다.
+- feature flag enabled 상태는 shadowing 단계에서 blocked 처리한다.
+- shadowing은 기존 경로와 후보 경로를 비교하기 위한 read-only report다.
+```
+
+### Stage 2-A Decision 규칙 요약
+
+```text
+unknown target / boundary 없음 / routing blocked / rollback required / feature flag on → blocked
+explicitShadowApproval=false → defer (observe_only)
+cursor_only + routing ready + explicitShadowApproval=true → shadow_ready (shadow_compare)
+github/mixed scope → defer + stage1_regression_required warning
+```
+
+### Stage 2-B 후보: Agent / Operator Write Adapter 설계 통합
+
+Stage 2-B에서는 Agent / Operator Write Adapter 설계를 통합한다.

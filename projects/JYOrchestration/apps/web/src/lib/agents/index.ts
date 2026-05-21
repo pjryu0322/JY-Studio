@@ -498,6 +498,17 @@ export type {
 
 export { evaluateOperatorApprovalAuditWritePathWireApprovalGate } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathWireApprovalGate";
 
+export type {
+  ConnectorGatewayRoutingShadowChecklistItem,
+  ConnectorGatewayRoutingShadowDecision,
+  ConnectorGatewayRoutingShadowFinding,
+  ConnectorGatewayRoutingShadowReport,
+  ConnectorGatewayRoutingShadowRequest,
+  ConnectorGatewayRoutingShadowRouteMode,
+} from "@/lib/agents/connectorGatewayRoutingShadowTypes";
+
+export { evaluateConnectorGatewayRoutingShadow } from "@/lib/agents/evaluateConnectorGatewayRoutingShadow";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

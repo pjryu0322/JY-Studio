@@ -400,6 +400,8 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     sourceSchemaApprovalDecision: schemaApproval.decision,
     sourceSchemaApprovalTarget: schemaApprovalTarget,
     schemaApprovalReferenceOnly,
+    sourceWritePathTarget: writePath.target,
+    sourceSchemaApprovalMode: schemaApprovalReferenceOnly ? "reference_only" : "primary",
     target,
     explicitUserApprovalProvided: explicitUserApproval,
     schemaAppliedConfirmed,

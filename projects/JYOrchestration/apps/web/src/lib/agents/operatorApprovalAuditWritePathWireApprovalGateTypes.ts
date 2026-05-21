@@ -27,6 +27,10 @@ export interface OperatorApprovalAuditWritePathWireApprovalGateReport {
   readonly sourceSchemaApprovalDecision: string;
   readonly sourceSchemaApprovalTarget: string;
   readonly schemaApprovalReferenceOnly: boolean;
+  readonly sourceWritePathTarget: string;
+  readonly sourceSchemaApprovalMode: string;
+  readonly sourcePermissionChecklistItemCount: number;
+  readonly sourceAuditChecklistItemCount: number;
   readonly target: string;
 
   readonly explicitUserApprovalProvided: boolean;

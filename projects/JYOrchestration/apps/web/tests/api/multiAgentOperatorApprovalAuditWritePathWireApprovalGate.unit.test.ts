@@ -202,7 +202,7 @@ describe("multi-agent operator approval audit write path wire approval gate stag
     expect(schemaSpy).toHaveBeenCalledWith(expect.objectContaining({ target: "audit_event" }));
   });
 
-  it("operator_override target is defer not ready", () => {
+  it("operator_override target is defer not ready even with all confirmations", () => {
     vi.spyOn(writePathModule, "evaluateOperatorApprovalAuditWritePathDesign").mockReturnValue(
       mockWritePathReady("operator_approval"),
     );
@@ -215,10 +215,11 @@ describe("multi-agent operator approval audit write path wire approval gate stag
       ...ALL_CONFIRMATIONS,
     });
     expect(report.schemaApprovalReferenceOnly).toBe(true);
+    expect(report.sourceSchemaApprovalTarget).toBe("operator_override");
     expect(report.decision).toBe("defer");
   });
 
-  it("rollback_approval target is defer not ready", () => {
+  it("rollback_approval target is defer not ready even with all confirmations", () => {
     vi.spyOn(writePathModule, "evaluateOperatorApprovalAuditWritePathDesign").mockReturnValue(
       mockWritePathReady("operator_approval"),
     );
@@ -231,7 +232,33 @@ describe("multi-agent operator approval audit write path wire approval gate stag
       ...ALL_CONFIRMATIONS,
     });
     expect(report.schemaApprovalReferenceOnly).toBe(true);
+    expect(report.sourceSchemaApprovalTarget).toBe("rollback_approval");
     expect(report.decision).toBe("defer");
+  });
+
+  it("defer state does not include operator_write_path_wire_approval_ready finding", () => {
+    expect(
+      evaluateOperatorApprovalAuditWritePathWireApprovalGate().findings.some(
+        (f) => f.code === "operator_write_path_wire_approval_ready",
+      ),
+    ).toBe(false);
+  });
+
+  it("report includes source trace fields", () => {
+    const report = evaluateOperatorApprovalAuditWritePathWireApprovalGate({ target: "operator_approval" });
+    expect(report.sourceWritePathTarget).toBe("operator_approval");
+    expect(report.sourceSchemaApprovalMode).toBe("primary");
+    expect(report.sourcePermissionChecklistItemCount).toBeGreaterThanOrEqual(0);
+    expect(report.sourceAuditChecklistItemCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("unknown target has blocking trace or unknown finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathWireApprovalGate({ target: "unknown" });
+    expect(report.decision).toBe("blocked");
+    expect(
+      report.sourceBlockingFindingCodes.length > 0 ||
+        report.findings.some((f) => f.code === "unknown_operator_write_path_target"),
+    ).toBe(true);
   });
 
   it("unknown target returns blocked", () => {

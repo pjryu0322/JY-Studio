@@ -27,6 +27,8 @@ export interface AgentExecutionRecordWritePathWireApprovalGateReport {
   readonly sourceSchemaApprovalDecision: string;
   readonly sourceSchemaApprovalTarget: string;
   readonly schemaApprovalReferenceOnly: boolean;
+  readonly sourceWritePathTarget: string;
+  readonly sourceSchemaApprovalMode: string;
   readonly target: string;
 
   readonly explicitUserApprovalProvided: boolean;
