@@ -622,11 +622,26 @@ export type {
 } from "@/lib/agents/runtimeWireExperimentBranchPlanTypes";
 
 export {
+  buildRuntimeWireExperimentBranchManualCommands,
   buildRuntimeWireExperimentBranchName,
   buildRuntimeWireExperimentBranchPlanFingerprint,
   buildRuntimeWireFeatureFlagName,
   evaluateRuntimeWireExperimentBranchPlan,
+  runtimeWireManualCommandCautionsValid,
 } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
+
+export type {
+  RuntimeWireManualBranchVerificationChecklistItem,
+  RuntimeWireManualBranchVerificationDecision,
+  RuntimeWireManualBranchVerificationFinding,
+  RuntimeWireManualBranchVerificationRegressionResult,
+  RuntimeWireManualBranchVerificationReport,
+} from "@/lib/agents/runtimeWireManualBranchVerificationTypes";
+
+export {
+  evaluateRuntimeWireManualBranchVerification,
+  sanitizeRuntimeWireRegressionResults,
+} from "@/lib/agents/evaluateRuntimeWireManualBranchVerification";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

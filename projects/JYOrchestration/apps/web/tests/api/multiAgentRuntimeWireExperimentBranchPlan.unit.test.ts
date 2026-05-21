@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildRuntimeWireExperimentBranchManualCommands,
   buildRuntimeWireExperimentBranchName,
   buildRuntimeWireFeatureFlagName,
   evaluateRuntimeWireExperimentBranchPlan,
+  runtimeWireManualCommandCautionsValid,
 } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as wireCandidateModule from "@/lib/agents/evaluateControlledRuntimeWireCandidate";
 
 const CURSOR_BOUNDARY = ["cursor.execution.before"] as const;
+const EXPECTED_BRANCH = buildRuntimeWireExperimentBranchName();
 
 function mockWireCandidateReady(): ReturnType<typeof wireCandidateModule.evaluateControlledRuntimeWireCandidate> {
   return {
@@ -22,7 +25,13 @@ function mockWireCandidateReady(): ReturnType<typeof wireCandidateModule.evaluat
     candidateTitle: "candidate",
     candidateSummary: "ready",
     candidateFingerprint: "controlled-wire-candidate-v1:ready:fp",
-    wireCandidates: [],
+    wireCandidates: [
+      { sequence: 1, kind: "agent_execution_record_write_path", title: "a", target: "agent_execution_record", required: true, satisfied: true, reason: "ok", wiresInThisStep: false, executesInThisStep: false },
+      { sequence: 2, kind: "operator_approval_audit_write_path", title: "b", target: "operator_approval", required: true, satisfied: true, reason: "ok", wiresInThisStep: false, executesInThisStep: false },
+      { sequence: 3, kind: "connector_gateway_shadow_routing", title: "c", target: "connector_gateway", required: true, satisfied: false, reason: "ok", wiresInThisStep: false, executesInThisStep: false },
+      { sequence: 4, kind: "feature_flag_wire", title: "d", target: "feature_flag", required: true, satisfied: true, reason: "ok", wiresInThisStep: false, executesInThisStep: false },
+      { sequence: 5, kind: "runtime_execution_boundary", title: "e", target: "runtime_execution_boundary", required: true, satisfied: true, reason: "ok", wiresInThisStep: false, executesInThisStep: false },
+    ],
     candidateChecklist: [],
     safetyChecklist: [],
     handoffChecklist: [],
@@ -301,6 +310,93 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).planFingerprint.length).toBeGreaterThan(
       0,
     );
+  });
+
+  describe("Stage 4-A source trace and caution hardening", () => {
+    it("sourceCandidateKinds matches source wireCandidates kinds", () => {
+      spyWireCandidateReady();
+      const report = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS);
+      expect(report.sourceCandidateKinds).toEqual(
+        mockWireCandidateReady().wireCandidates.map((c) => c.kind),
+      );
+    });
+
+    it("sourceWireCandidateCount matches wireCandidates length", () => {
+      spyWireCandidateReady();
+      const report = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS);
+      expect(report.sourceWireCandidateCount).toBe(mockWireCandidateReady().wireCandidates.length);
+    });
+
+    it("sourceWireCandidateSatisfiedCount matches satisfied=true count", () => {
+      spyWireCandidateReady();
+      const report = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS);
+      const expected = mockWireCandidateReady().wireCandidates.filter((c) => c.satisfied).length;
+      expect(report.sourceWireCandidateSatisfiedCount).toBe(expected);
+    });
+
+    it("sourceWireCandidateUnsatisfiedCount matches satisfied=false count", () => {
+      spyWireCandidateReady();
+      const report = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS);
+      const expected = mockWireCandidateReady().wireCandidates.filter((c) => !c.satisfied).length;
+      expect(report.sourceWireCandidateUnsatisfiedCount).toBe(expected);
+    });
+
+    it("sourceNoRunFlags are all false", () => {
+      spyWireCandidateReady();
+      const flags = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).sourceNoRunFlags;
+      expect(Object.values(flags).every((v) => v === false)).toBe(true);
+    });
+
+    it("manualCommandCandidates cautions are non-empty", () => {
+      spyWireCandidateReady();
+      const commands = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).manualCommandCandidates;
+      expect(commands.every((c) => c.caution.trim().length > 0)).toBe(true);
+    });
+
+    it("returns blocked when manual command caution is missing", () => {
+      expect(runtimeWireManualCommandCautionsValid([{ caution: "" }])).toBe(false);
+      expect(
+        runtimeWireManualCommandCautionsValid(
+          buildRuntimeWireExperimentBranchManualCommands(EXPECTED_BRANCH, ""),
+        ),
+      ).toBe(false);
+
+      spyWireCandidateReady();
+
+      expect(
+        evaluateRuntimeWireExperimentBranchPlan({
+          ...ALL_BRANCH_PLAN_CONFIRMATIONS,
+          __testInvalidManualCommandCaution: true,
+        }).decision,
+      ).toBe("blocked");
+    });
+
+    it("branch_name_safety_checked finding is present", () => {
+      spyWireCandidateReady();
+      expect(
+        evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).findings.some(
+          (f) => f.code === "branch_name_safety_checked",
+        ),
+      ).toBe(true);
+    });
+
+    it("feature_flag_name_safety_checked finding is present", () => {
+      spyWireCandidateReady();
+      expect(
+        evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).findings.some(
+          (f) => f.code === "feature_flag_name_safety_checked",
+        ),
+      ).toBe(true);
+    });
+
+    it("manual_command_candidates_require_explicit_approval finding is present", () => {
+      spyWireCandidateReady();
+      expect(
+        evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).findings.some(
+          (f) => f.code === "manual_command_candidates_require_explicit_approval",
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("integration via real wire candidate chain", () => {

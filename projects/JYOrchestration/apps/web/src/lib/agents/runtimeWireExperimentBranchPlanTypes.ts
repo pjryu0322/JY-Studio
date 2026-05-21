@@ -26,6 +26,21 @@ export interface RuntimeWireExperimentBranchPlanFinding {
   readonly message: string;
 }
 
+export interface RuntimeWireExperimentBranchPlanSourceNoRunFlags {
+  readonly executesRuntimeInThisStep: false;
+  readonly changesConnectorRoutingInThisStep: false;
+  readonly wiresWritePathInThisStep: false;
+  readonly wiresFeatureFlagInThisStep: false;
+  readonly writesDataInThisStep: false;
+  readonly callsPrismaInThisStep: false;
+  readonly modifiesSchemaInThisStep: false;
+  readonly createsMigrationInThisStep: false;
+  readonly createsPullRequestInThisStep: false;
+  readonly executesGitInThisStep: false;
+  readonly callsCursorInThisStep: false;
+  readonly callsGitHubInThisStep: false;
+}
+
 export interface RuntimeWireExperimentBranchPlanReport {
   readonly mode: "read_only_runtime_wire_experiment_branch_plan";
   readonly stage: "stage_4_a";
@@ -35,6 +50,12 @@ export interface RuntimeWireExperimentBranchPlanReport {
   readonly sourceApprovalGateDecision: string;
   readonly sourceApprovalGateFingerprint: string;
   readonly sourceCandidateFingerprint: string;
+
+  readonly sourceCandidateKinds: readonly string[];
+  readonly sourceWireCandidateCount: number;
+  readonly sourceWireCandidateSatisfiedCount: number;
+  readonly sourceWireCandidateUnsatisfiedCount: number;
+  readonly sourceNoRunFlags: RuntimeWireExperimentBranchPlanSourceNoRunFlags;
 
   readonly planVersion: 1;
   readonly planTitle: string;

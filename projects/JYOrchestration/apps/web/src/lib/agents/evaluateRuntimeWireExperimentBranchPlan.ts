@@ -9,11 +9,12 @@ import type {
   RuntimeWireExperimentBranchPlanDecision,
   RuntimeWireExperimentBranchPlanFinding,
   RuntimeWireExperimentBranchPlanReport,
+  RuntimeWireExperimentBranchPlanSourceNoRunFlags,
 } from "@/lib/agents/runtimeWireExperimentBranchPlanTypes";
 
 const WIRE_CANDIDATE_READY = "ready_for_runtime_wire_experiment_branch";
 const PLAN_TITLE = "Runtime Wire Experiment Branch Plan (Read-Only)";
-const MANUAL_CAUTION =
+export const RUNTIME_WIRE_MANUAL_COMMAND_CAUTION =
   "Manual execution only after explicit user approval. This report does not execute git.";
 
 const MANUAL_GIT_COMMAND_STEPS = [
@@ -30,10 +31,27 @@ const REGRESSION_SUITES: readonly string[] = [
   "tests/api/requirementsOrchestrationPhase4Product.unit.test.ts",
 ];
 
+const SOURCE_NO_RUN_FLAGS: RuntimeWireExperimentBranchPlanSourceNoRunFlags = {
+  executesRuntimeInThisStep: false,
+  changesConnectorRoutingInThisStep: false,
+  wiresWritePathInThisStep: false,
+  wiresFeatureFlagInThisStep: false,
+  writesDataInThisStep: false,
+  callsPrismaInThisStep: false,
+  modifiesSchemaInThisStep: false,
+  createsMigrationInThisStep: false,
+  createsPullRequestInThisStep: false,
+  executesGitInThisStep: false,
+  callsCursorInThisStep: false,
+  callsGitHubInThisStep: false,
+};
+
 type RuntimeWireExperimentBranchPlanInput = Parameters<typeof evaluateControlledRuntimeWireCandidate>[0] & {
   readonly manualBranchPlanReviewConfirmed?: boolean;
   readonly branchNamingPolicyConfirmed?: boolean;
   readonly rollbackPlanConfirmed?: boolean;
+  /** @internal Unit tests only — forces manual command caution validation failure. */
+  readonly __testInvalidManualCommandCaution?: boolean;
 };
 
 type ChecklistEntry = {
@@ -73,6 +91,32 @@ export function buildRuntimeWireExperimentBranchPlanFingerprint(input: {
   ].join(":");
 }
 
+/** Build manual git command candidates (does not execute git). */
+export function buildRuntimeWireExperimentBranchManualCommands(
+  branchName: string,
+  caution: string = RUNTIME_WIRE_MANUAL_COMMAND_CAUTION,
+): RuntimeWireExperimentBranchManualCommand[] {
+  const commands = [...MANUAL_GIT_COMMAND_STEPS, `git checkout -b ${branchName}`];
+
+  return commands.map((command, index) => ({
+    sequence: index + 1,
+    command,
+    caution,
+    executesInThisStep: false as const,
+  }));
+}
+
+export function runtimeWireManualCommandCautionsValid(
+  commands: readonly Pick<RuntimeWireExperimentBranchManualCommand, "caution">[],
+): boolean {
+  return commands.every(
+    (entry) =>
+      entry.caution.trim().length > 0 &&
+      entry.caution.includes("Manual execution only after explicit user approval") &&
+      entry.caution.includes("does not execute git"),
+  );
+}
+
 function isBranchNameSafe(branchName: string): boolean {
   if (!branchName || branchName.trim().length === 0) {
     return false;
@@ -85,11 +129,25 @@ function isBranchNameSafe(branchName: string): boolean {
   return !forbidden.has(leaf) && !forbidden.has(branchName);
 }
 
+function isFeatureFlagNameSafe(flagName: string): boolean {
+  return flagName.length > 0 && flagName.startsWith("JYO_");
+}
+
 function resolvePlanFlags(input?: RuntimeWireExperimentBranchPlanInput) {
   return {
     manualBranchPlanReviewConfirmed: input?.manualBranchPlanReviewConfirmed === true,
     branchNamingPolicyConfirmed: input?.branchNamingPolicyConfirmed === true,
     rollbackPlanConfirmed: input?.rollbackPlanConfirmed === true,
+  };
+}
+
+function buildSourceTrace(wireCandidates: ReturnType<typeof evaluateControlledRuntimeWireCandidate>["wireCandidates"]) {
+  const satisfiedCount = wireCandidates.filter((c) => c.satisfied).length;
+  return {
+    sourceCandidateKinds: wireCandidates.map((c) => c.kind),
+    sourceWireCandidateCount: wireCandidates.length,
+    sourceWireCandidateSatisfiedCount: satisfiedCount,
+    sourceWireCandidateUnsatisfiedCount: wireCandidates.length - satisfiedCount,
   };
 }
 
@@ -118,7 +176,12 @@ function resolveBranchPlanDecision(input: {
   readonly manualBranchPlanReviewConfirmed: boolean;
   readonly branchNamingPolicyConfirmed: boolean;
   readonly rollbackPlanConfirmed: boolean;
+  readonly manualCommandCautionsValid: boolean;
 }): RuntimeWireExperimentBranchPlanDecision {
+  if (!input.manualCommandCautionsValid) {
+    return "blocked";
+  }
+
   if (input.wireCandidateDecision === "blocked") {
     return "blocked";
   }
@@ -145,7 +208,12 @@ function resolveBranchPlanDecision(input: {
 function buildPlanSummary(input: {
   readonly decision: RuntimeWireExperimentBranchPlanDecision;
   readonly branchName: string;
+  readonly manualCommandCautionsValid: boolean;
 }): string {
+  if (!input.manualCommandCautionsValid) {
+    return "Runtime wire experiment branch plan is blocked because manual command cautions are missing or invalid.";
+  }
+
   if (input.decision === "ready_for_manual_branch_creation_approval") {
     return (
       `Runtime wire experiment branch plan is ready for manual branch creation approval (${input.branchName}). ` +
@@ -161,17 +229,6 @@ function buildPlanSummary(input: {
     "Runtime wire experiment branch plan defers. Complete source wire candidate readiness, " +
     "manual branch plan review, branch naming policy confirmation, and rollback plan confirmation."
   );
-}
-
-function buildManualCommandCandidates(branchName: string): RuntimeWireExperimentBranchManualCommand[] {
-  const commands = [...MANUAL_GIT_COMMAND_STEPS, `git checkout -b ${branchName}`];
-
-  return commands.map((command, index) => ({
-    sequence: index + 1,
-    command,
-    caution: MANUAL_CAUTION,
-    executesInThisStep: false as const,
-  }));
 }
 
 function buildBranchSafetyChecklist(input: {
@@ -279,6 +336,9 @@ function appendPlanFindings(input: {
   readonly findings: RuntimeWireExperimentBranchPlanFinding[];
   readonly decision: RuntimeWireExperimentBranchPlanDecision;
   readonly wireCandidateDecision: string;
+  readonly manualCommandCautionsValid: boolean;
+  readonly branchNameSafe: boolean;
+  readonly featureFlagSafe: boolean;
   readonly manualBranchPlanReviewConfirmed: boolean;
   readonly branchNamingPolicyConfirmed: boolean;
   readonly rollbackPlanConfirmed: boolean;
@@ -292,6 +352,36 @@ function appendPlanFindings(input: {
       "Runtime wire experiment branch plan is read-only; no git branch creation",
     ),
   );
+
+  if (input.branchNameSafe) {
+    findings.push(finding("info", "branch_name_safety_checked", "Branch name safety checks passed"));
+  }
+
+  if (input.featureFlagSafe) {
+    findings.push(finding("info", "feature_flag_name_safety_checked", "Feature flag name safety checks passed"));
+  }
+
+  findings.push(
+    finding("info", "manual_command_candidates_generated", "Manual git command candidates generated (not executed)"),
+  );
+
+  findings.push(
+    finding(
+      "info",
+      "manual_command_candidates_require_explicit_approval",
+      "Manual execution only after explicit user approval. This report does not execute git.",
+    ),
+  );
+
+  if (!input.manualCommandCautionsValid) {
+    findings.push(
+      finding("blocking", "manual_command_caution_invalid", "Manual command caution is missing or invalid"),
+    );
+    findings.push(
+      finding("blocking", "runtime_wire_experiment_branch_plan_blocked", "Runtime wire experiment branch plan is blocked"),
+    );
+    return;
+  }
 
   if (decision === "blocked") {
     if (wireCandidateDecision === "blocked") {
@@ -344,12 +434,18 @@ export function evaluateRuntimeWireExperimentBranchPlan(
 
   const recommendedBranchName = buildRuntimeWireExperimentBranchName();
   const recommendedFeatureFlagName = buildRuntimeWireFeatureFlagName();
+  const manualCommandCandidates = buildRuntimeWireExperimentBranchManualCommands(recommendedBranchName);
+  const manualCommandCautionsValid =
+    input?.__testInvalidManualCommandCaution === true
+      ? false
+      : runtimeWireManualCommandCautionsValid(manualCommandCandidates);
 
   const decision = resolveBranchPlanDecision({
     wireCandidateDecision: wireCandidate.decision,
     manualBranchPlanReviewConfirmed,
     branchNamingPolicyConfirmed,
     rollbackPlanConfirmed,
+    manualCommandCautionsValid,
   });
 
   const planFingerprint = buildRuntimeWireExperimentBranchPlanFingerprint({
@@ -362,13 +458,24 @@ export function evaluateRuntimeWireExperimentBranchPlan(
     rollbackPlanConfirmed,
   });
 
-  const planSummary = buildPlanSummary({ decision, branchName: recommendedBranchName });
+  const sourceTrace = buildSourceTrace(wireCandidate.wireCandidates);
+  const branchNameSafe = isBranchNameSafe(recommendedBranchName);
+  const featureFlagSafe = isFeatureFlagNameSafe(recommendedFeatureFlagName);
+
+  const planSummary = buildPlanSummary({
+    decision,
+    branchName: recommendedBranchName,
+    manualCommandCautionsValid,
+  });
 
   const findings: RuntimeWireExperimentBranchPlanFinding[] = [];
   appendPlanFindings({
     findings,
     decision,
     wireCandidateDecision: wireCandidate.decision,
+    manualCommandCautionsValid,
+    branchNameSafe,
+    featureFlagSafe,
     manualBranchPlanReviewConfirmed,
     branchNamingPolicyConfirmed,
     rollbackPlanConfirmed,
@@ -382,13 +489,18 @@ export function evaluateRuntimeWireExperimentBranchPlan(
     sourceApprovalGateDecision: wireCandidate.sourceApprovalGateDecision,
     sourceApprovalGateFingerprint: wireCandidate.sourceApprovalGateFingerprint,
     sourceCandidateFingerprint: wireCandidate.candidateFingerprint,
+    sourceCandidateKinds: sourceTrace.sourceCandidateKinds,
+    sourceWireCandidateCount: sourceTrace.sourceWireCandidateCount,
+    sourceWireCandidateSatisfiedCount: sourceTrace.sourceWireCandidateSatisfiedCount,
+    sourceWireCandidateUnsatisfiedCount: sourceTrace.sourceWireCandidateUnsatisfiedCount,
+    sourceNoRunFlags: SOURCE_NO_RUN_FLAGS,
     planVersion: 1,
     planTitle: PLAN_TITLE,
     planSummary,
     planFingerprint,
     recommendedBranchName,
     recommendedFeatureFlagName,
-    manualCommandCandidates: buildManualCommandCandidates(recommendedBranchName),
+    manualCommandCandidates,
     regressionSuites: [...REGRESSION_SUITES],
     branchSafetyChecklist: buildBranchSafetyChecklist({
       branchName: recommendedBranchName,

@@ -1714,6 +1714,46 @@ Stage 4-A는 Stage 3-C controlled runtime wire candidate를 source로 하여 실
 ```text
 Stage 4-A는 read-only branch plan이다. recommendedBranchName과 manualCommandCandidates는 수동 승인 후에만 실행한다.
 ready_for_manual_branch_creation_approval은 Stage 4-B 수동 브랜치 생성 검증으로 넘길 수 있다는 의미이지 실제 git 실행 허가가 아니다.
+sourceCandidateKinds/sourceWireCandidateCount/sourceNoRunFlags는 Stage 4-B trace를 위해 report에 포함한다.
+```
+
+## Stage 4-B Manual Branch Creation Verification
+
+Stage 4-B는 Stage 4-A Runtime Wire Experiment Branch Plan을 source로 하여, 사용자가 수동으로 브랜치를 생성하고 회귀 검증을 수행했다는 외부 입력을 read-only로 판정한다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| expectedBranchName | Stage 4-A source | 없음 |
+| actualBranchName | input field | 없음 |
+| regressionResults | input field | 없음 |
+| rollbackRequired | report field | 없음 |
+| verificationChecklist | report field | 없음 |
+| regressionChecklist | report field | 없음 |
+| noRunChecklist | report field | 없음 |
+
+### Stage 4-B 원칙
+
+```text
+- 실제 git 명령을 실행하지 않는다.
+- 실제 브랜치를 생성하지 않는다.
+- 실제 테스트를 실행하지 않는다.
+- 실제 GitHub API를 호출하지 않는다.
+- 실제 PR을 생성하지 않는다.
+- regressionResults는 외부 실행 결과를 입력받아 판단한다.
+- manual_branch_verified는 Stage 4-C Connector Gateway Shadow Routing Plan으로 넘어갈 수 있다는 의미이지 routing 변경 허가가 아니다.
+```
+
+### Stage 4-B Decision 규칙 요약
+
+```text
+source branch plan blocked → blocked
+source branch plan not ready → defer
+manual execution confirmation missing → defer
+actual branch name missing → defer
+branch mismatch → blocked
+regression missing → defer
+regression failed → blocked + rollbackRequired=true
+all satisfied → manual_branch_verified
 ```
 
 ### Stage 3–4 빠른 진행 로드맵
