@@ -136,6 +136,79 @@ describe("multi-agent connector gateway experiment branch plan stage 2-16", () =
     expect(criteria).toMatch(/feature flag default off/i);
   });
 
+  it("report includes candidateConnectorIds", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.candidateConnectorIds).toEqual(["cursor"]);
+  });
+
+  it("report includes candidateBoundaryKinds", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.candidateBoundaryKinds).toEqual(["cursor_execution"]);
+  });
+
+  it("sourceRoutingDecision matches routing experiment", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceRoutingDecision).toBe("ready_for_experiment_design");
+  });
+
+  it("sourceRoutingScope matches routing experiment", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.sourceRoutingScope).toBe("cursor_only");
+  });
+
+  it("blocked report has empty requiredRegressionSuites", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["unknown.boundary"],
+    });
+    expect(report.requiredRegressionSuites).toEqual([]);
+  });
+
+  it("validationSuites includes common unit suites", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.validationSuites).toContain(
+      "multiAgentConnectorGatewayRoutingExperiment.unit.test.ts",
+    );
+    expect(report.validationSuites).toContain("multiAgentFoundation.unit.test.ts");
+  });
+
+  it("includes branch_plan_read_only finding on all reports", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.findings.some((f) => f.code === "branch_plan_read_only")).toBe(true);
+  });
+
+  it("includes no_git_branch_creation finding", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["github.pr.create.before"],
+    });
+    expect(report.findings.some((f) => f.code === "no_git_branch_creation")).toBe(true);
+  });
+
+  it("includes no_feature_flag_wire finding", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["cursor.execution.before"],
+    });
+    expect(report.findings.some((f) => f.code === "no_feature_flag_wire")).toBe(true);
+  });
+
+  it("includes no_routing_change finding", () => {
+    const report = evaluateConnectorGatewayExperimentBranchPlan({
+      boundaryIds: ["unknown.boundary"],
+    });
+    expect(report.findings.some((f) => f.code === "no_routing_change")).toBe(true);
+  });
+
   it("does not create git branch wire routing or invoke connector execution", () => {
     const evaluateSpy = vi.spyOn(connectorFacade, "evaluateConnectorInvocation");
     const planSpy = vi.spyOn(connectorFacade, "planConnectorInvocation");

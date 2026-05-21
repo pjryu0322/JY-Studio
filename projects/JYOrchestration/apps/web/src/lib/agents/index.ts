@@ -340,6 +340,19 @@ export type {
 
 export { evaluateConnectorGatewayExperimentBranchPlan } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchPlan";
 
+export type {
+  AgentExecutionRecordSchemaDecision,
+  AgentExecutionRecordSchemaDecisionReport,
+  AgentExecutionRecordSchemaFieldProposal,
+  AgentExecutionRecordSchemaFinding,
+  AgentExecutionRecordSchemaTarget,
+} from "@/lib/agents/agentExecutionRecordSchemaDecisionTypes";
+
+export {
+  evaluateAgentExecutionRecordSchemaDecision,
+  normalizeAgentExecutionRecordSchemaTarget,
+} from "@/lib/agents/evaluateAgentExecutionRecordSchemaDecision";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

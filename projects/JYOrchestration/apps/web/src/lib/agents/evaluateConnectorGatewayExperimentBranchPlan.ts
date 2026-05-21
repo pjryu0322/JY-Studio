@@ -11,7 +11,7 @@ import type {
   ConnectorGatewayExperimentBranchPlanScope,
 } from "@/lib/agents/connectorGatewayExperimentBranchPlanTypes";
 
-const COMMON_REGRESSION_SUITES: readonly string[] = [
+const VALIDATION_SUITES: readonly string[] = [
   "multiAgentConnectorGatewayRoutingExperiment.unit.test.ts",
   "multiAgentConnectorGatewayFacade.unit.test.ts",
   "multiAgentConnectorPassThroughBoundary.unit.test.ts",
@@ -89,8 +89,8 @@ function resolveBranchPlanDecision(input: {
   return SCOPE_PLAN[input.scope]?.decision ?? "blocked";
 }
 
-function buildRegressionSuites(scope: ConnectorGatewayExperimentBranchPlanScope): string[] {
-  const suites = [...COMMON_REGRESSION_SUITES];
+function buildRequiredRegressionSuites(scope: ConnectorGatewayExperimentBranchPlanScope): string[] {
+  const suites: string[] = [];
   if (scope === "cursor_only" || scope === "cursor_and_github") {
     suites.push(...CURSOR_REGRESSION_SUITES);
   }
@@ -98,6 +98,24 @@ function buildRegressionSuites(scope: ConnectorGatewayExperimentBranchPlanScope)
     suites.push(...GITHUB_REGRESSION_SUITES);
   }
   return suites;
+}
+
+function appendReadOnlyFindings(
+  findings: ConnectorGatewayExperimentBranchPlanFinding[],
+  decision: ConnectorGatewayExperimentBranchPlanDecision,
+): void {
+  findings.push(finding("info", "branch_plan_read_only", "branch plan is read-only; no execution wire"));
+  findings.push(finding("info", "no_git_branch_creation", "does not create git branches"));
+  findings.push(finding("info", "no_feature_flag_wire", "does not wire feature flags"));
+  findings.push(finding("info", "no_routing_change", "does not change connector routing paths"));
+
+  if (decision === "ready_for_branch_plan") {
+    findings.push(finding("info", "branch_plan_ready", "branch plan is ready for review"));
+  } else if (decision === "defer") {
+    findings.push(finding("warning", "branch_plan_deferred", "branch plan is deferred"));
+  } else if (decision === "blocked") {
+    findings.push(finding("blocking", "branch_plan_blocked", "branch plan is blocked"));
+  }
 }
 
 function appendPlanFindings(input: {
@@ -116,7 +134,6 @@ function appendPlanFindings(input: {
   }
 
   if (decision === "ready_for_branch_plan") {
-    findings.push(finding("info", "branch_plan_ready", "cursor-only scope is ready for branch plan"));
     findings.push(finding("info", "feature_flag_default_off", "feature flag must default to off"));
     findings.push(
       finding("info", "direct_call_fallback_required", "direct call fallback is required during experiment"),
@@ -148,6 +165,8 @@ function appendPlanFindings(input: {
       finding("warning", "runtime_scope_large", "cursor+github scope has large execution impact; defer branch plan"),
     );
   }
+
+  appendReadOnlyFindings(findings, decision);
 }
 
 /** Read-only branch plan — does not create git branches, wire flags, or change routing. */
@@ -162,6 +181,7 @@ export function evaluateConnectorGatewayExperimentBranchPlan(input: {
   const routingBlocked = routingExperiment.decision === "blocked";
   const decision = resolveBranchPlanDecision({ routingBlocked, scope });
   const plan = SCOPE_PLAN[scope] ?? SCOPE_PLAN.none;
+  const isBlocked = decision === "blocked";
 
   const findings: ConnectorGatewayExperimentBranchPlanFinding[] = routingExperiment.findings.map(
     mapRoutingFinding,
@@ -179,8 +199,6 @@ export function evaluateConnectorGatewayExperimentBranchPlan(input: {
     stage1RegressionRequired: routingExperiment.stage1RegressionRequired,
   });
 
-  const isBlocked = decision === "blocked";
-
   return {
     mode: "read_only_connector_gateway_experiment_branch_plan",
     decision,
@@ -193,7 +211,12 @@ export function evaluateConnectorGatewayExperimentBranchPlan(input: {
     requiresRollbackPlan: true,
     requiresOperatorApproval: true,
     candidateBoundaries: [...routingExperiment.boundaryIds],
-    requiredRegressionSuites: isBlocked ? [...COMMON_REGRESSION_SUITES] : buildRegressionSuites(scope),
+    candidateConnectorIds: [...routingExperiment.connectorIds],
+    candidateBoundaryKinds: [...routingExperiment.boundaryKinds],
+    sourceRoutingDecision: routingExperiment.decision,
+    sourceRoutingScope: routingExperiment.scope,
+    requiredRegressionSuites: isBlocked ? [] : buildRequiredRegressionSuites(scope),
+    validationSuites: [...VALIDATION_SUITES],
     rollbackCriteria: [...ROLLBACK_CRITERIA],
     findings,
   };

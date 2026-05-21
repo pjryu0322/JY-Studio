@@ -706,13 +706,61 @@ requiresDirectCallFallback / requiresRollbackPlan / requiresOperatorApproval →
 requiresStage1Regression ← routing experiment (github boundary)
 ```
 
-### Stage 2-17 후보: Agent execution record schema 적용 여부 결정
+## Stage 2-16 소스 보완 결과
 
-Stage 2-17에서는 Stage 2-14 설계를 바탕으로 실제 DB/schema 적용 여부를 결정한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| candidateConnectorIds/candidateBoundaryKinds | 보완 | routing experiment trace |
+| source routing decision/scope | 보완 | `sourceRoutingDecision`, `sourceRoutingScope` |
+| validationSuites/requiredRegressionSuites 분리 | 보완 | blocked 시 `requiredRegressionSuites=[]` |
+| read-only findings | 보완 | `branch_plan_read_only`, `no_git_branch_creation`, etc. |
+| 실제 branch/flag/routing | 없음 | read-only branch plan |
+
+## Stage 2-17 Agent Execution Record Schema 적용 여부 결정 결과
+
+| 항목 | 반영 방식 | 실제 schema 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema Decision 타입 | read-only schema decision report | 없음 | migration 전 단계 |
+| Schema Decision evaluator | execution record design 기반 | 없음 | Prisma/DB 호출 없음 |
+| AgentExecutionRecord | ready_for_schema_proposal | 없음 | 별도 PR 필요 |
+| timeline_event_link | defer | 없음 | Timeline 구조 영향 |
+| audit_trail_link | defer | 없음 | Audit 구조 영향 |
+| fieldProposals | table/field 후보 | 없음 | raw 필드 제외 |
+| excludedFields | forbidden policy | 없음 | prompt/diff/token/contact 제외 |
+| rolloutPlan | staged rollout | 없음 | feature flag/read-only first |
+| rollbackPlan | migration/write path rollback | 없음 | 별도 승인 필요 |
+
+구현: `agentExecutionRecordSchemaDecisionTypes.ts`, `evaluateAgentExecutionRecordSchemaDecision.ts`
+
+### Stage 2-17 원칙
+
+```text
+- 실제 Prisma schema를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB 저장 코드를 만들지 않는다.
+- Agent execution record schema는 read-only decision report로만 판단한다.
+- schema 적용은 별도 승인과 별도 PR에서 진행한다.
+```
+
+### Stage 2-17 Decision 규칙 요약
+
+```text
+agent_execution_record → ready_for_schema_proposal, AgentExecutionRecord
+timeline_event_link → defer, AgentExecutionTimelineLink
+audit_trail_link → defer, AgentExecutionAuditLink
+unknown → blocked
+requiresPrismaSchemaChange / requiresMigration / requiresRollbackPlan → true (active targets)
+fieldProposals ← Stage 2-14 persistFields with Prisma types
+excludedFields ← forbidden policy including personalContact/phoneNumber/emailBody
+```
+
+### Stage 2-18 후보: Operator approval/audit schema 적용 여부 결정
+
+Stage 2-18에서는 Stage 2-15 설계를 바탕으로 Operator Approval/Audit schema 적용 여부를 결정한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| schema decision report | 적용/보류/차단 판단 | migration 전 검토 |
-| table/field proposal | record 필드 후보 | raw prompt 제외 |
-| migration risk | DB 변경 영향 | rollback 필수 |
-| rollout plan | default off / read-only first | 운영 승인 필요 |
+| Approval/Audit schema decision | 적용/보류/차단 판단 | 권한 모델 필요 |
+| OperatorApproval table proposal | 승인/우회/감사 필드 후보 | raw reason 제외 |
+| Audit retention policy | 보존 기간/접근권한 | 운영 승인 필요 |
+| Migration risk | DB 변경 영향 | rollback 필수 |
