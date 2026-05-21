@@ -353,6 +353,19 @@ export {
   normalizeAgentExecutionRecordSchemaTarget,
 } from "@/lib/agents/evaluateAgentExecutionRecordSchemaDecision";
 
+export type {
+  OperatorApprovalAuditSchemaDecision,
+  OperatorApprovalAuditSchemaDecisionReport,
+  OperatorApprovalAuditSchemaFieldProposal,
+  OperatorApprovalAuditSchemaFinding,
+  OperatorApprovalAuditSchemaTarget,
+} from "@/lib/agents/operatorApprovalAuditSchemaDecisionTypes";
+
+export {
+  evaluateOperatorApprovalAuditSchemaDecision,
+  normalizeOperatorApprovalAuditSchemaTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditSchemaDecision";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

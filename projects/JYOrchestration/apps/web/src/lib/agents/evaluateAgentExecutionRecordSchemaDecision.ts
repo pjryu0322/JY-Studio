@@ -12,6 +12,24 @@ import type {
   AgentExecutionRecordSchemaTarget,
 } from "@/lib/agents/agentExecutionRecordSchemaDecisionTypes";
 
+const SUMMARY_FIELDS = new Set([
+  "inputSummary",
+  "outputSummary",
+  "errorSummary",
+  "connectorSummary",
+  "governanceSummary",
+]);
+
+const REQUIRED_FORBIDDEN_FIELDS = [
+  "rawPrompt",
+  "fullInput",
+  "fullOutput",
+  "codeDiff",
+  "token",
+  "apiKey",
+  "stackTraceRaw",
+] as const;
+
 const INDEXED_FIELDS = new Set([
   "recordId",
   "projectId",
@@ -174,11 +192,17 @@ function mapSchemaTargetToDesignTarget(
   }
 }
 
+function normalizeSchemaFieldReason(field: string, reason: string): string {
+  if (SUMMARY_FIELDS.has(field) && !reason.toLowerCase().includes("summary")) {
+    return `${reason}; summary only`;
+  }
+  return reason;
+}
+
 function toFieldProposal(input: {
   readonly field: string;
   readonly reason: string;
   readonly sensitivity: AgentExecutionRecordSchemaFieldProposal["sensitivity"];
-  readonly persist: boolean;
 }): AgentExecutionRecordSchemaFieldProposal {
   const spec = FIELD_TYPE_MAP[input.field] ?? { type: "String", nullable: true };
   return {
@@ -186,41 +210,80 @@ function toFieldProposal(input: {
     type: spec.type,
     nullable: spec.nullable,
     indexed: INDEXED_FIELDS.has(input.field),
-    reason: input.reason,
+    reason: normalizeSchemaFieldReason(input.field, input.reason),
     sensitivity: input.sensitivity,
   };
 }
 
+function toExcludedFieldProposal(input: {
+  readonly field: string;
+  readonly reason: string;
+}): AgentExecutionRecordSchemaFieldProposal {
+  return {
+    field: input.field,
+    type: "Forbidden",
+    nullable: true,
+    indexed: false,
+    reason: input.reason,
+    sensitivity: "forbidden",
+  };
+}
+
 function buildFieldProposalsFromDesign(
-  persistFields: readonly { readonly field: string; readonly reason: string; readonly sensitivity: AgentExecutionRecordSchemaFieldProposal["sensitivity"] }[],
+  persistFields: readonly {
+    readonly field: string;
+    readonly reason: string;
+    readonly sensitivity: AgentExecutionRecordSchemaFieldProposal["sensitivity"];
+  }[],
 ): AgentExecutionRecordSchemaFieldProposal[] {
   return persistFields.map((f) =>
-    toFieldProposal({ field: f.field, reason: f.reason, sensitivity: f.sensitivity, persist: true }),
+    toFieldProposal({ field: f.field, reason: f.reason, sensitivity: f.sensitivity }),
   );
 }
 
 function buildExcludedFieldProposals(
-  excludedFields: readonly { readonly field: string; readonly reason: string; readonly sensitivity: AgentExecutionRecordSchemaFieldProposal["sensitivity"] }[],
+  excludedFields: readonly {
+    readonly field: string;
+    readonly reason: string;
+    readonly sensitivity: AgentExecutionRecordSchemaFieldProposal["sensitivity"];
+  }[],
 ): AgentExecutionRecordSchemaFieldProposal[] {
   const byField = new Map<string, AgentExecutionRecordSchemaFieldProposal>();
   for (const f of excludedFields) {
-    byField.set(f.field.toLowerCase(), toFieldProposal({ ...f, persist: false }));
+    byField.set(f.field.toLowerCase(), toExcludedFieldProposal({ field: f.field, reason: f.reason }));
   }
   for (const extra of EXTRA_FORBIDDEN_FIELDS) {
     const key = extra.field.toLowerCase();
     if (!byField.has(key)) {
-      byField.set(
-        key,
-        toFieldProposal({
-          field: extra.field,
-          reason: extra.reason,
-          sensitivity: "forbidden",
-          persist: false,
-        }),
-      );
+      byField.set(key, toExcludedFieldProposal({ field: extra.field, reason: extra.reason }));
     }
   }
   return [...byField.values()];
+}
+
+function appendForbiddenFieldPolicyFindings(
+  findings: AgentExecutionRecordSchemaFinding[],
+  excludedFields: readonly AgentExecutionRecordSchemaFieldProposal[],
+): void {
+  const present = new Set(excludedFields.map((f) => f.field));
+  const missing = REQUIRED_FORBIDDEN_FIELDS.filter((field) => !present.has(field));
+  if (missing.length > 0) {
+    findings.push(
+      finding(
+        "blocking",
+        "forbidden_field_policy_missing",
+        `missing forbidden excluded fields: ${missing.join(", ")}`,
+      ),
+    );
+  } else {
+    findings.push(
+      finding(
+        "info",
+        "forbidden_field_policy_enforced",
+        "required forbidden fields are excluded from schema proposal",
+      ),
+    );
+  }
 }
 
 function appendSchemaFindings(
@@ -234,6 +297,12 @@ function appendSchemaFindings(
 
   if (target === "unknown") {
     findings.push(finding("blocking", "unknown_schema_target", "unknown schema target is blocked"));
+    findings.push(
+      finding("info", "schema_target_unknown_no_rollout", "unknown target has no rollout plan"),
+    );
+    findings.push(
+      finding("info", "schema_target_unknown_no_migration", "unknown target has no migration path"),
+    );
     return;
   }
 
@@ -242,7 +311,6 @@ function appendSchemaFindings(
   }
 
   findings.push(finding("info", "raw_fields_excluded", "raw prompt/input/output and secrets are excluded"));
-  findings.push(finding("info", "forbidden_field_policy_required", "forbidden field policy is enforced"));
   findings.push(finding("info", "retention_policy_required", "retention policy review is required"));
   findings.push(finding("info", "access_control_review_required", "access control review is required"));
   findings.push(
@@ -282,6 +350,7 @@ export function evaluateAgentExecutionRecordSchemaDecision(input?: {
   const findings: AgentExecutionRecordSchemaFinding[] = [];
   appendSchemaFindings(findings, target, plan.decision);
   const excludedFields = buildExcludedFieldProposals(design.excludedFields);
+  appendForbiddenFieldPolicyFindings(findings, excludedFields);
 
   return {
     mode: "read_only_agent_execution_record_schema_decision",

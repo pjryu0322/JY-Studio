@@ -76,6 +76,38 @@ describe("multi-agent agent execution record schema decision stage 2-17", () => 
     }
   });
 
+  it("summary field reasons include summary meaning", () => {
+    const report = evaluateAgentExecutionRecordSchemaDecision();
+    const byField = new Map(report.fieldProposals.map((f) => [f.field, f]));
+    for (const field of ["inputSummary", "outputSummary", "errorSummary", "connectorSummary", "governanceSummary"]) {
+      expect(byField.get(field)?.reason.toLowerCase()).toMatch(/summary/);
+    }
+  });
+
+  it("excludedFields use Forbidden type and are not indexed", () => {
+    const report = evaluateAgentExecutionRecordSchemaDecision();
+    for (const field of report.excludedFields) {
+      expect(field.type).toBe("Forbidden");
+      expect(field.indexed).toBe(false);
+    }
+  });
+
+  it("includes forbidden_field_policy_enforced when required forbidden fields are present", () => {
+    const report = evaluateAgentExecutionRecordSchemaDecision();
+    expect(report.findings.some((f) => f.code === "forbidden_field_policy_enforced")).toBe(true);
+  });
+
+  it("unknown target has empty rolloutPlan and rollbackPlan", () => {
+    const report = evaluateAgentExecutionRecordSchemaDecision({ target: "invalid" });
+    expect(report.rolloutPlan).toEqual([]);
+    expect(report.rollbackPlan).toEqual([]);
+  });
+
+  it("unknown target includes schema_target_unknown_no_rollout finding", () => {
+    const report = evaluateAgentExecutionRecordSchemaDecision({ target: "bad" });
+    expect(report.findings.some((f) => f.code === "schema_target_unknown_no_rollout")).toBe(true);
+  });
+
   it("timeline_event_link returns defer", () => {
     const report = evaluateAgentExecutionRecordSchemaDecision({ target: "timeline_event_link" });
     expect(report.decision).toBe("defer");

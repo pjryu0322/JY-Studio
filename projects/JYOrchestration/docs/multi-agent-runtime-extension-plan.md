@@ -754,13 +754,60 @@ fieldProposals ← Stage 2-14 persistFields with Prisma types
 excludedFields ← forbidden policy including personalContact/phoneNumber/emailBody
 ```
 
-### Stage 2-18 후보: Operator approval/audit schema 적용 여부 결정
+## Stage 2-17 소스 보완 결과
 
-Stage 2-18에서는 Stage 2-15 설계를 바탕으로 Operator Approval/Audit schema 적용 여부를 결정한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| summary-only reason | 보완 | `normalizeSchemaFieldReason` on persist proposals |
+| excluded field type policy | 보완 | `type="Forbidden"`, `indexed=false` |
+| forbidden field policy finding | 보완 | `forbidden_field_policy_enforced` / missing blocking |
+| unknown target rollout/rollback | 보완 | empty plans + `schema_target_unknown_*` findings |
+| 실제 schema/migration | 없음 | read-only decision evaluator |
+
+## Stage 2-18 Operator Approval/Audit Schema 적용 여부 결정 결과
+
+| 항목 | 반영 방식 | 실제 schema 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema Decision 타입 | read-only schema decision report | 없음 | migration 전 단계 |
+| Schema Decision evaluator | approval/audit design 기반 | 없음 | Prisma/DB 호출 없음 |
+| OperatorApproval | ready_for_schema_proposal | 없음 | 권한/감사 정책 필요 |
+| OperatorAuditEvent | ready_for_schema_proposal | 없음 | 감사 무결성 정책 필요 |
+| OperatorOverride | defer | 없음 | 권한 모델/정책 승인 필요 |
+| OperatorRollbackApproval | defer | 없음 | rollback 대상 정의 필요 |
+| fieldProposals | table/field 후보 | 없음 | raw 필드 제외 |
+| excludedFields | forbidden policy | 없음 | reason/prompt/diff/token/contact 제외 |
+| rolloutPlan | staged rollout | 없음 | permission/audit review first |
+| rollbackPlan | migration/write path rollback | 없음 | 별도 승인 필요 |
+
+구현: `operatorApprovalAuditSchemaDecisionTypes.ts`, `evaluateOperatorApprovalAuditSchemaDecision.ts`
+
+### Stage 2-18 원칙
+
+```text
+- 실제 Prisma schema를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB 저장 코드를 만들지 않는다.
+- Operator Approval/Audit schema는 read-only decision report로만 판단한다.
+- schema 적용은 별도 승인과 별도 PR에서 진행한다.
+```
+
+### Stage 2-18 Decision 규칙 요약
+
+```text
+operator_approval / audit_event → ready_for_schema_proposal
+operator_override / rollback_approval → defer
+unknown → blocked
+requiresPermissionModel / requiresAuditIntegrityPolicy → true (active targets)
+excludedFields type Forbidden; reasonSummary summary-only
+```
+
+### Stage 2-19 후보: Connector Gateway 실험 브랜치 승인 후 생성
+
+Stage 2-19에서는 Stage 2-16의 branch plan을 바탕으로 실제 실험 브랜치를 생성할지 결정한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| Approval/Audit schema decision | 적용/보류/차단 판단 | 권한 모델 필요 |
-| OperatorApproval table proposal | 승인/우회/감사 필드 후보 | raw reason 제외 |
-| Audit retention policy | 보존 기간/접근권한 | 운영 승인 필요 |
-| Migration risk | DB 변경 영향 | rollback 필수 |
+| branch creation approval | 실험 브랜치 생성 승인 | main 변경 금지 |
+| feature flag location | default off flag 위치 확정 | wire 전 회귀 필요 |
+| direct fallback guard | 기존 경로 fallback 유지 | 필수 |
+| regression checklist | Stage1/ENV_TEST/GitHub/Cursor 회귀 | 필수 |
