@@ -23,7 +23,17 @@ const NEXT_PHASE_ORDER: readonly Stage2NextPhaseRecommendation[] = [
   "prepare_operator_audit_schema_pr",
   "prepare_connector_gateway_experiment_branch",
   "prepare_runtime_execution_wire_design",
+  "prepare_feature_flag_wire_design",
 ];
+
+function noRunFlagDetail(input: {
+  readonly field: string;
+  readonly actualValue: boolean;
+  readonly expectedValue: false;
+  readonly satisfied: boolean;
+}): string {
+  return `${input.field}: actual=${input.actualValue}, expected=${input.expectedValue}, satisfied=${input.satisfied}; Stage 2 no-run policy; no actual execution in this step`;
+}
 
 function finding(
   severity: Stage2IntegratedClosureVerdictFinding["severity"],
@@ -126,9 +136,10 @@ function resolveClosureDecision(input: {
 }
 
 function resolveStage3Candidate(decision: Stage2IntegratedClosureVerdictDecision): Stage2Stage3Candidate {
-  return decision === "stage2_closure_ready"
-    ? "runtime_execution_handoff_design"
-    : "schema_pr_preparation";
+  if (decision === "stage2_closure_ready") {
+    return "runtime_execution_handoff_design";
+  }
+  return "read_only_hardening_required";
 }
 
 function buildRecommendedNextPhases(input: {
@@ -161,6 +172,9 @@ function buildRecommendedNextPhases(input: {
     include.add("prepare_operator_audit_schema_pr");
     include.add("prepare_connector_gateway_experiment_branch");
     include.add("prepare_runtime_execution_wire_design");
+    include.add("prepare_feature_flag_wire_design");
+  } else {
+    include.add("prepare_feature_flag_wire_design");
   }
 
   return NEXT_PHASE_ORDER.filter((phase) => include.has(phase));
@@ -237,81 +251,96 @@ function buildClosureChecklist(input: {
   return mapChecklistEntries(entries);
 }
 
+function noRunChecklistEntry(input: {
+  readonly item: string;
+  readonly field: string;
+  readonly actualValue: boolean;
+}): ChecklistEntry {
+  const satisfied = input.actualValue === false;
+  return {
+    item: input.item,
+    satisfied,
+    detail: noRunFlagDetail({
+      field: input.field,
+      actualValue: input.actualValue,
+      expectedValue: false,
+      satisfied,
+    }),
+  };
+}
+
 function buildNoRunChecklist(input: {
   readonly runtimeFinalApproval: ReturnType<typeof evaluateRuntimeChangeFinalApprovalPackage>;
   readonly noRunPolicySatisfied: boolean;
 }): Stage2IntegratedClosureVerdictChecklistItem[] {
   const r = input.runtimeFinalApproval;
 
-  const flagDetail = (label: string, value: boolean): string =>
-    `${label}=${value}; Stage 2 no-run policy; no actual execution in this step`;
-
   const entries: ChecklistEntry[] = [
-    {
+    noRunChecklistEntry({
       item: "no runtime change",
-      satisfied: r.changesRuntimeInThisStep === false,
-      detail: flagDetail("changesRuntimeInThisStep", r.changesRuntimeInThisStep === false),
-    },
-    {
+      field: "changesRuntimeInThisStep",
+      actualValue: r.changesRuntimeInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no connector routing change",
-      satisfied: r.changesConnectorRoutingInThisStep === false,
-      detail: flagDetail("changesConnectorRoutingInThisStep", r.changesConnectorRoutingInThisStep === false),
-    },
-    {
+      field: "changesConnectorRoutingInThisStep",
+      actualValue: r.changesConnectorRoutingInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no write path wire",
-      satisfied: r.wiresWritePathInThisStep === false,
-      detail: flagDetail("wiresWritePathInThisStep", r.wiresWritePathInThisStep === false),
-    },
-    {
+      field: "wiresWritePathInThisStep",
+      actualValue: r.wiresWritePathInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no adapter wire",
-      satisfied: r.wiresAdapterInThisStep === false,
-      detail: flagDetail("wiresAdapterInThisStep", r.wiresAdapterInThisStep === false),
-    },
-    {
+      field: "wiresAdapterInThisStep",
+      actualValue: r.wiresAdapterInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no feature flag wire",
-      satisfied: r.wiresFeatureFlagInThisStep === false,
-      detail: flagDetail("wiresFeatureFlagInThisStep", r.wiresFeatureFlagInThisStep === false),
-    },
-    {
+      field: "wiresFeatureFlagInThisStep",
+      actualValue: r.wiresFeatureFlagInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no DB write",
-      satisfied: r.writesDataInThisStep === false,
-      detail: flagDetail("writesDataInThisStep", r.writesDataInThisStep === false),
-    },
-    {
+      field: "writesDataInThisStep",
+      actualValue: r.writesDataInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no Prisma call",
-      satisfied: r.callsPrismaInThisStep === false,
-      detail: flagDetail("callsPrismaInThisStep", r.callsPrismaInThisStep === false),
-    },
-    {
+      field: "callsPrismaInThisStep",
+      actualValue: r.callsPrismaInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no schema change",
-      satisfied: r.modifiesSchemaInThisStep === false,
-      detail: flagDetail("modifiesSchemaInThisStep", r.modifiesSchemaInThisStep === false),
-    },
-    {
+      field: "modifiesSchemaInThisStep",
+      actualValue: r.modifiesSchemaInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no migration",
-      satisfied: r.createsMigrationInThisStep === false,
-      detail: flagDetail("createsMigrationInThisStep", r.createsMigrationInThisStep === false),
-    },
+      field: "createsMigrationInThisStep",
+      actualValue: r.createsMigrationInThisStep,
+    }),
     {
       item: "no pull request creation",
       satisfied: true,
       detail: "no PR created in this step; separate PR required after Stage 2",
     },
-    {
+    noRunChecklistEntry({
       item: "no git execution",
-      satisfied: r.executesGitInThisStep === false,
-      detail: flagDetail("executesGitInThisStep", r.executesGitInThisStep === false),
-    },
-    {
+      field: "executesGitInThisStep",
+      actualValue: r.executesGitInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no Cursor call",
-      satisfied: r.callsCursorInThisStep === false,
-      detail: flagDetail("callsCursorInThisStep", r.callsCursorInThisStep === false),
-    },
-    {
+      field: "callsCursorInThisStep",
+      actualValue: r.callsCursorInThisStep,
+    }),
+    noRunChecklistEntry({
       item: "no GitHub call",
-      satisfied: r.callsGitHubInThisStep === false,
-      detail: flagDetail("callsGitHubInThisStep", r.callsGitHubInThisStep === false),
-    },
+      field: "callsGitHubInThisStep",
+      actualValue: r.callsGitHubInThisStep,
+    }),
   ];
 
   return entries.map((entry) => ({
@@ -636,10 +665,14 @@ export function evaluateStage2IntegratedClosureVerdict(input?: {
     noRunPolicySatisfied,
   });
 
-  const sourceRuntimeBlockingFindingCodes = uniqueStrings([
-    ...runtimeFinalApproval.findings
+  const sourceRuntimeBlockingFindingCodes = uniqueStrings(
+    runtimeFinalApproval.findings
       .filter((f) => f.severity === "blocking")
       .map((f) => f.code),
+  );
+
+  const sourceAggregatedBlockingFindingCodes = uniqueStrings([
+    ...sourceRuntimeBlockingFindingCodes,
     ...runtimeFinalApproval.sourceRoutingShadowBlockingFindingCodes,
     ...runtimeFinalApproval.sourceWireCandidateBlockingFindingCodes,
   ]);
@@ -678,7 +711,8 @@ export function evaluateStage2IntegratedClosureVerdict(input?: {
   });
 
   const stage2ExitCriteriaSatisfied = checklistAllSatisfied(closureChecklist);
-  const stage2HandoffReady = checklistAllSatisfied(handoffChecklist);
+  const stage2HandoffPlanDocumented = checklistAllSatisfied(handoffChecklist);
+  const stage2HandoffReady = decision === "stage2_closure_ready" && stage2HandoffPlanDocumented;
 
   const stage2ClosureSummary = buildStage2ClosureSummary({
     decision,
@@ -714,6 +748,7 @@ export function evaluateStage2IntegratedClosureVerdict(input?: {
     stage3Candidate: resolveStage3Candidate(decision),
     stage2ExitCriteriaSatisfied,
     stage2NoRunPolicySatisfied: noRunPolicySatisfied && noRunChecklist.every((c) => c.satisfied),
+    stage2HandoffPlanDocumented,
     stage2HandoffReady,
     sourceRuntimeFinalApprovalDecision: runtimeFinalApproval.decision,
     sourceWireCandidateDecision: runtimeFinalApproval.sourceWireCandidateDecision,
@@ -726,6 +761,7 @@ export function evaluateStage2IntegratedClosureVerdict(input?: {
     sourceRollbackPlanReviewConfirmed: runtimeFinalApproval.rollbackPlanReviewConfirmed,
     sourceOperatorAuditReviewConfirmed: runtimeFinalApproval.operatorAuditReviewConfirmed,
     sourceRuntimeBlockingFindingCodes,
+    sourceAggregatedBlockingFindingCodes,
     sourceWireCandidateBlockingFindingCodes: [...runtimeFinalApproval.sourceWireCandidateBlockingFindingCodes],
     sourceRoutingShadowBlockingFindingCodes: [...runtimeFinalApproval.sourceRoutingShadowBlockingFindingCodes],
     closureChecklist,

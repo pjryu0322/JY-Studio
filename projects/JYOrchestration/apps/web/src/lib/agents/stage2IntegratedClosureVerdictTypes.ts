@@ -9,12 +9,14 @@ export type Stage2NextPhaseRecommendation =
   | "prepare_operator_audit_schema_pr"
   | "prepare_connector_gateway_experiment_branch"
   | "prepare_runtime_execution_wire_design"
+  | "prepare_feature_flag_wire_design"
   | "continue_read_only_hardening";
 
 export type Stage2Stage3Candidate =
   | "runtime_execution_handoff_design"
   | "schema_pr_preparation"
-  | "connector_gateway_experiment";
+  | "connector_gateway_experiment"
+  | "read_only_hardening_required";
 
 export interface Stage2IntegratedClosureVerdictChecklistItem {
   readonly item: string;
@@ -45,6 +47,7 @@ export interface Stage2IntegratedClosureVerdictReport {
   readonly stage3Candidate: Stage2Stage3Candidate;
   readonly stage2ExitCriteriaSatisfied: boolean;
   readonly stage2NoRunPolicySatisfied: boolean;
+  readonly stage2HandoffPlanDocumented: boolean;
   readonly stage2HandoffReady: boolean;
 
   readonly sourceRuntimeFinalApprovalDecision: string;
@@ -59,7 +62,10 @@ export interface Stage2IntegratedClosureVerdictReport {
   readonly sourceRollbackPlanReviewConfirmed: boolean;
   readonly sourceOperatorAuditReviewConfirmed: boolean;
 
+  /** Runtime final approval report blocking findings only. */
   readonly sourceRuntimeBlockingFindingCodes: readonly string[];
+  /** Runtime + routing shadow + wire candidate blocking findings (deduped). */
+  readonly sourceAggregatedBlockingFindingCodes: readonly string[];
   readonly sourceWireCandidateBlockingFindingCodes: readonly string[];
   readonly sourceRoutingShadowBlockingFindingCodes: readonly string[];
 

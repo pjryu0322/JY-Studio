@@ -394,9 +394,34 @@ describe("multi-agent stage 2 integrated closure verdict stage 2-F", () => {
       expect(report.noRunChecklist.every((c) => c.satisfied)).toBe(true);
     });
 
-    it("stage2HandoffReady follows handoff checklist", () => {
+    it("default defer has stage2HandoffReady false", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().stage2HandoffReady).toBe(false);
+    });
+
+    it("ready has stage2HandoffReady true", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).stage2HandoffReady).toBe(true);
+    });
+
+    it("handoff plan documented when handoff checklist satisfied", () => {
       const report = evaluateStage2IntegratedClosureVerdict();
-      expect(report.stage2HandoffReady).toBe(report.handoffChecklist.every((c) => c.satisfied));
+      expect(report.stage2HandoffPlanDocumented).toBe(report.handoffChecklist.every((c) => c.satisfied));
+    });
+
+    it("defer stage3Candidate is read_only_hardening_required", () => {
+      expect(evaluateStage2IntegratedClosureVerdict().stage3Candidate).toBe("read_only_hardening_required");
+    });
+
+    it("blocked stage3Candidate is read_only_hardening_required", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        decision: "blocked",
+      });
+      expect(evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).stage3Candidate).toBe(
+        "read_only_hardening_required",
+      );
     });
   });
 
@@ -449,14 +474,42 @@ describe("multi-agent stage 2 integrated closure verdict stage 2-F", () => {
       expect(reason).toContain("noRunPolicySatisfied=");
     });
 
-    it("no runtime change reason includes no-run policy wording", () => {
+    it("no runtime change reason includes actual=false", () => {
       const reason = checklistItem(
         evaluateStage2IntegratedClosureVerdict(),
         "noRunChecklist",
         "no runtime change",
       )?.reason;
-      expect(reason).toContain("Stage 2 no-run policy");
-      expect(reason).toContain("no actual execution");
+      expect(reason).toContain("actual=false");
+    });
+
+    it("no runtime change reason includes expected=false", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "noRunChecklist",
+        "no runtime change",
+      )?.reason;
+      expect(reason).toContain("expected=false");
+    });
+
+    it("no GitHub call reason includes actual=false and expected=false", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "noRunChecklist",
+        "no GitHub call",
+      )?.reason;
+      expect(reason).toContain("actual=false");
+      expect(reason).toContain("expected=false");
+    });
+
+    it("no runtime change reason does not misleadingly show changesRuntimeInThisStep=true", () => {
+      const reason = checklistItem(
+        evaluateStage2IntegratedClosureVerdict(),
+        "noRunChecklist",
+        "no runtime change",
+      )?.reason;
+      expect(reason).not.toMatch(/changesRuntimeInThisStep=true/);
+      expect(reason).toContain("changesRuntimeInThisStep: actual=false");
     });
 
     it("schema/migration PR must be separate reason includes separate PR wording", () => {
@@ -600,6 +653,93 @@ describe("multi-agent stage 2 integrated closure verdict stage 2-F", () => {
       expect(
         evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
       ).toContain("prepare_runtime_execution_wire_design");
+    });
+
+    it("ready includes prepare_feature_flag_wire_design", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue(
+        mockRuntimeFinalApprovalReady(),
+      );
+      expect(
+        evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS).recommendedNextPhases,
+      ).toContain("prepare_feature_flag_wire_design");
+    });
+  });
+
+  describe("blocking finding source separation", () => {
+    it("sourceRuntimeBlockingFindingCodes includes only runtime final approval blocking codes", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        findings: [{ severity: "blocking", code: "runtime_only_block", message: "blocked" }],
+        sourceRoutingShadowBlockingFindingCodes: ["routing_block"],
+        sourceWireCandidateBlockingFindingCodes: ["wire_block"],
+      });
+      const report = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(report.sourceRuntimeBlockingFindingCodes).toEqual(["runtime_only_block"]);
+      expect(report.sourceRuntimeBlockingFindingCodes).not.toContain("routing_block");
+      expect(report.sourceRuntimeBlockingFindingCodes).not.toContain("wire_block");
+    });
+
+    it("sourceAggregatedBlockingFindingCodes includes routing wire and runtime blocking codes", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        findings: [{ severity: "blocking", code: "runtime_only_block", message: "blocked" }],
+        sourceRoutingShadowBlockingFindingCodes: ["routing_block"],
+        sourceWireCandidateBlockingFindingCodes: ["wire_block"],
+      });
+      const report = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(report.sourceAggregatedBlockingFindingCodes).toEqual(
+        expect.arrayContaining(["runtime_only_block", "routing_block", "wire_block"]),
+      );
+    });
+
+    it("sourceAggregatedBlockingFindingCodes dedupes duplicate codes", () => {
+      vi.spyOn(runtimeFinalApprovalModule, "evaluateRuntimeChangeFinalApprovalPackage").mockReturnValue({
+        ...mockRuntimeFinalApprovalReady(),
+        findings: [{ severity: "blocking", code: "shared_block", message: "blocked" }],
+        sourceRoutingShadowBlockingFindingCodes: ["shared_block"],
+        sourceWireCandidateBlockingFindingCodes: ["wire_block"],
+      });
+      const report = evaluateStage2IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(
+        report.sourceAggregatedBlockingFindingCodes.filter((c) => c === "shared_block"),
+      ).toHaveLength(1);
+    });
+  });
+
+  describe("integration without upstream mocks", () => {
+    const INTEGRATION_CLOSURE_CONFIRMATIONS = {
+      ...ALL_CLOSURE_CONFIRMATIONS,
+      agentTarget: "agent_execution_record",
+      operatorTarget: "operator_approval",
+      routingConnectorIds: ["cursor"],
+    } as const;
+
+    it("real evaluator chain composes runtime final approval without mocks", () => {
+      const report = evaluateStage2IntegratedClosureVerdict(INTEGRATION_CLOSURE_CONFIRMATIONS);
+      expect(report.sourceRuntimeFinalApprovalDecision).toBeTruthy();
+      expect(report.sourceWireCandidateDecision).toBeTruthy();
+      expect(report.sourceRoutingShadowDecision).toBeTruthy();
+    });
+
+    it("real chain keeps all no-run execution flags false", () => {
+      const report = evaluateStage2IntegratedClosureVerdict(INTEGRATION_CLOSURE_CONFIRMATIONS);
+      expect(report.executesRuntimeChangeInThisStep).toBe(false);
+      expect(report.changesConnectorRoutingInThisStep).toBe(false);
+      expect(report.wiresWritePathInThisStep).toBe(false);
+      expect(report.writesDataInThisStep).toBe(false);
+      expect(report.callsPrismaInThisStep).toBe(false);
+      expect(report.modifiesSchemaInThisStep).toBe(false);
+      expect(report.createsMigrationInThisStep).toBe(false);
+      expect(report.executesGitInThisStep).toBe(false);
+      expect(report.callsCursorInThisStep).toBe(false);
+      expect(report.callsGitHubInThisStep).toBe(false);
+    });
+
+    it("real defer chain recommendedNextPhases starts with continue_read_only_hardening", () => {
+      const report = evaluateStage2IntegratedClosureVerdict(INTEGRATION_CLOSURE_CONFIRMATIONS);
+      expect(report.decision).toBe("defer");
+      expect(report.recommendedNextPhases[0]).toBe("continue_read_only_hardening");
+      expect(report.recommendedNextPhases).toContain("prepare_feature_flag_wire_design");
     });
   });
 

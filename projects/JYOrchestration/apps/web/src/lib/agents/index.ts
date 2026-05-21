@@ -545,10 +545,7 @@ export type {
   RuntimeChangeFinalApprovalPackageReport,
 } from "@/lib/agents/runtimeChangeFinalApprovalPackageTypes";
 
-export {
-  evaluateRuntimeChangeFinalApprovalPackage,
-  uniqueStrings,
-} from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
+export { evaluateRuntimeChangeFinalApprovalPackage } from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
 
 export type {
   Stage2IntegratedClosureVerdictChecklistItem,
@@ -560,6 +557,15 @@ export type {
 } from "@/lib/agents/stage2IntegratedClosureVerdictTypes";
 
 export { evaluateStage2IntegratedClosureVerdict } from "@/lib/agents/evaluateStage2IntegratedClosureVerdict";
+
+export type {
+  RuntimeExecutionHandoffCandidateChecklistItem,
+  RuntimeExecutionHandoffCandidateDecision,
+  RuntimeExecutionHandoffCandidateFinding,
+  RuntimeExecutionHandoffCandidateReport,
+} from "@/lib/agents/runtimeExecutionHandoffCandidateTypes";
+
+export { evaluateRuntimeExecutionHandoffCandidate } from "@/lib/agents/evaluateRuntimeExecutionHandoffCandidate";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

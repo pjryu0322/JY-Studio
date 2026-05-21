@@ -1592,6 +1592,29 @@ Stage1 regression 또는 rollback review required 미충족 → defer
 | separate PR requirements | report field | 없음 | schema/routing/write 후속 분리 |
 | risk acknowledgement | checklist reason | 없음 | risk required/review 분리 |
 | recommended next phases | ordered report field | 없음 | 후속 우선순위 고정 |
+| no-run reason 보강 | actual/expected/satisfied | 없음 | 오해 방지 |
+| stage2HandoffReady 의미 보강 | decision 기반 | 없음 | defer 상태 handoff-ready 방지 |
+| stage3Candidate 정책 | ready/defer/blocked 분리 | 없음 | read_only_hardening_required |
+| feature flag next phase | recommendation 분리 | 없음 | prepare_feature_flag_wire_design |
+| blocking finding source | aggregated/source 분리 | 없음 | 추적성 보강 |
+
+## Stage 3-1 Runtime Execution Handoff Candidate 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Runtime Execution Handoff Candidate 타입 | read-only report | 없음 | 실제 실행 아님 |
+| evaluator | Stage 2-F source 기반 | 없음 | runtime 미실행 |
+| runtimeHandoffChecklist | report field | 없음 | 전환 후보 조건 |
+| preExecutionSafetyChecklist | report field | 없음 | no-run 재확인 |
+| prerequisiteChecklist | report field | 없음 | 후속 PR/승인 조건 |
+
+### Stage 3-1 원칙
+
+```text
+Stage 3-1은 runtime execution handoff 후보를 평가하는 read-only gate다.
+ready 상태도 실제 실행 허가가 아니다.
+실제 실행은 execution plan builder, operator approval, regression, rollback, feature flag, connector route switch 검증 이후 별도 단계에서만 가능하다.
+```
 
 ### Stage 2 종료 판정 의미
 
