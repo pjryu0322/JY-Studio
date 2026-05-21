@@ -99,14 +99,19 @@ function buildShadowRouteCandidates(
   }));
 }
 
-function resolveShadowRoutingPlanDecision(input: {
+export type ConnectorGatewayShadowRoutingPlanDecisionInput = {
   readonly manualVerificationDecision: string;
   readonly rollbackRequired: boolean;
   readonly shadowRoutingReviewConfirmed: boolean;
   readonly connectorGatewayShadowModeConfirmed: boolean;
   readonly stage1RegressionReviewedForShadowRouting: boolean;
   readonly rollbackPlanReviewedForShadowRouting: boolean;
-}): ConnectorGatewayShadowRoutingPlanDecision {
+};
+
+/** Pure decision helper for shadow routing plan (no manual verification side effects). */
+export function resolveConnectorGatewayShadowRoutingPlanDecision(
+  input: ConnectorGatewayShadowRoutingPlanDecisionInput,
+): ConnectorGatewayShadowRoutingPlanDecision {
   if (input.manualVerificationDecision === "blocked" || input.rollbackRequired) {
     return "blocked";
   }
@@ -115,24 +120,35 @@ function resolveShadowRoutingPlanDecision(input: {
     return "defer";
   }
 
-  if (!input.shadowRoutingReviewConfirmed) {
-    return "defer";
-  }
+  const shadowRoutingConfirmationsSatisfied =
+    input.shadowRoutingReviewConfirmed &&
+    input.connectorGatewayShadowModeConfirmed &&
+    input.stage1RegressionReviewedForShadowRouting &&
+    input.rollbackPlanReviewedForShadowRouting;
 
-  if (!input.connectorGatewayShadowModeConfirmed) {
-    return "defer";
-  }
-
-  if (!input.stage1RegressionReviewedForShadowRouting) {
-    return "defer";
-  }
-
-  if (!input.rollbackPlanReviewedForShadowRouting) {
+  if (!shadowRoutingConfirmationsSatisfied) {
     return "defer";
   }
 
   return "ready_for_shadow_routing_review";
 }
+
+const CONNECTOR_GATEWAY_SHADOW_ROUTING_PLAN_NO_RUN_REPORT = {
+  executesRuntimeInThisStep: false,
+  changesConnectorRoutingInThisStep: false,
+  callsConnectorInThisStep: false,
+  callsCursorInThisStep: false,
+  callsGitHubInThisStep: false,
+  createsPullRequestInThisStep: false,
+  executesGitInThisStep: false,
+  createsBranchInThisStep: false,
+  wiresWritePathInThisStep: false,
+  wiresFeatureFlagInThisStep: false,
+  writesDataInThisStep: false,
+  callsPrismaInThisStep: false,
+  modifiesSchemaInThisStep: false,
+  createsMigrationInThisStep: false,
+} as const;
 
 function buildShadowRoutingChecklist(input: {
   readonly manualVerification: ReturnType<typeof evaluateRuntimeWireManualBranchVerification>;
@@ -335,7 +351,7 @@ export function evaluateConnectorGatewayShadowRoutingPlan(
   const routeCandidateCount = shadowRouteCandidates.length;
   const routeCandidateSatisfiedCount = routeCandidateCount;
 
-  const decision = resolveShadowRoutingPlanDecision({
+  const decision = resolveConnectorGatewayShadowRoutingPlanDecision({
     manualVerificationDecision: manualVerification.decision,
     rollbackRequired: manualVerification.rollbackRequired,
     ...flags,
@@ -379,20 +395,7 @@ export function evaluateConnectorGatewayShadowRoutingPlan(
       rollbackPlanReviewedForShadowRouting: flags.rollbackPlanReviewedForShadowRouting,
     }),
     noRunChecklist: buildNoRunChecklist(),
-    executesRuntimeInThisStep: false,
-    changesConnectorRoutingInThisStep: false,
-    callsConnectorInThisStep: false,
-    callsCursorInThisStep: false,
-    callsGitHubInThisStep: false,
-    createsPullRequestInThisStep: false,
-    executesGitInThisStep: false,
-    createsBranchInThisStep: false,
-    wiresWritePathInThisStep: false,
-    wiresFeatureFlagInThisStep: false,
-    writesDataInThisStep: false,
-    callsPrismaInThisStep: false,
-    modifiesSchemaInThisStep: false,
-    createsMigrationInThisStep: false,
+    ...CONNECTOR_GATEWAY_SHADOW_ROUTING_PLAN_NO_RUN_REPORT,
     findings,
   };
 }

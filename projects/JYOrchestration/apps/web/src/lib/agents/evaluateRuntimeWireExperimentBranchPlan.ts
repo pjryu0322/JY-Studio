@@ -31,7 +31,8 @@ const REGRESSION_SUITES: readonly string[] = [
   "tests/api/requirementsOrchestrationPhase4Product.unit.test.ts",
 ];
 
-const SOURCE_NO_RUN_FLAGS: RuntimeWireExperimentBranchPlanSourceNoRunFlags = {
+/** Canonical Stage 4-A source no-run flags (all false; no execution in this step). */
+export const runtimeWireExperimentBranchPlanSourceNoRunFlags: RuntimeWireExperimentBranchPlanSourceNoRunFlags = {
   executesRuntimeInThisStep: false,
   changesConnectorRoutingInThisStep: false,
   wiresWritePathInThisStep: false,
@@ -489,7 +490,7 @@ export function evaluateRuntimeWireExperimentBranchPlan(
     sourceWireCandidateCount: sourceTrace.sourceWireCandidateCount,
     sourceWireCandidateSatisfiedCount: sourceTrace.sourceWireCandidateSatisfiedCount,
     sourceWireCandidateUnsatisfiedCount: sourceTrace.sourceWireCandidateUnsatisfiedCount,
-    sourceNoRunFlags: SOURCE_NO_RUN_FLAGS,
+    sourceNoRunFlags: runtimeWireExperimentBranchPlanSourceNoRunFlags,
     planVersion: 1,
     planTitle: PLAN_TITLE,
     planSummary,

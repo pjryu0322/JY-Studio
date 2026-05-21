@@ -1,24 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateConnectorGatewayShadowRoutingPlan } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
-import { buildRuntimeWireExperimentBranchName } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
+import {
+  evaluateConnectorGatewayShadowRoutingPlan,
+  resolveConnectorGatewayShadowRoutingPlanDecision,
+} from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
+import {
+  buildRuntimeWireExperimentBranchName,
+  buildRuntimeWireFeatureFlagName,
+  runtimeWireExperimentBranchPlanSourceNoRunFlags,
+} from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as manualVerificationModule from "@/lib/agents/evaluateRuntimeWireManualBranchVerification";
 import type { RuntimeWireManualBranchVerificationReport } from "@/lib/agents/runtimeWireManualBranchVerificationTypes";
 
 const EXPECTED_BRANCH = buildRuntimeWireExperimentBranchName();
+const FEATURE_FLAG_NAME = buildRuntimeWireFeatureFlagName();
 
-const SOURCE_NO_RUN_FLAGS = {
-  executesRuntimeInThisStep: false,
-  changesConnectorRoutingInThisStep: false,
-  wiresWritePathInThisStep: false,
-  wiresFeatureFlagInThisStep: false,
-  writesDataInThisStep: false,
-  callsPrismaInThisStep: false,
-  modifiesSchemaInThisStep: false,
-  createsMigrationInThisStep: false,
-  createsPullRequestInThisStep: false,
-  executesGitInThisStep: false,
-  callsCursorInThisStep: false,
-  callsGitHubInThisStep: false,
+const ALL_SHADOW_CONFIRMATIONS = {
+  shadowRoutingReviewConfirmed: true,
+  connectorGatewayShadowModeConfirmed: true,
+  stage1RegressionReviewedForShadowRouting: true,
+  rollbackPlanReviewedForShadowRouting: true,
 } as const;
 
 function mockManualVerification(
@@ -34,11 +34,11 @@ function mockManualVerification(
     actualBranchName: EXPECTED_BRANCH,
     branchMatches: true,
     sourceRecommendedBranchName: EXPECTED_BRANCH,
-    sourceRecommendedFeatureFlagName: "JYO_RUNTIME_WIRE_EXPERIMENT",
+    sourceRecommendedFeatureFlagName: FEATURE_FLAG_NAME,
     sourceManualCommandCount: 4,
     sourceRegressionSuiteCount: 2,
     sourceBranchPlanFindingCodes: ["runtime_wire_experiment_branch_plan_read_only"],
-    sourceBranchPlanNoRunFlags: SOURCE_NO_RUN_FLAGS,
+    sourceBranchPlanNoRunFlags: runtimeWireExperimentBranchPlanSourceNoRunFlags,
     explicitManualExecutionConfirmed: true,
     regressionResultsProvided: true,
     regressionPassed: true,
@@ -75,16 +75,36 @@ function spyManualVerification(overrides: Partial<RuntimeWireManualBranchVerific
     .mockReturnValue(mockManualVerification(overrides));
 }
 
-const ALL_SHADOW_CONFIRMATIONS = {
-  shadowRoutingReviewConfirmed: true,
-  connectorGatewayShadowModeConfirmed: true,
-  stage1RegressionReviewedForShadowRouting: true,
-  rollbackPlanReviewedForShadowRouting: true,
-} as const;
+function evaluateReadyShadowReport() {
+  spyManualVerification();
+  return evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+}
 
 describe("multi-agent connector gateway shadow routing plan stage 4-C", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe("resolveConnectorGatewayShadowRoutingPlanDecision", () => {
+    it("returns blocked when source manual verification is blocked", () => {
+      expect(
+        resolveConnectorGatewayShadowRoutingPlanDecision({
+          manualVerificationDecision: "blocked",
+          rollbackRequired: false,
+          ...ALL_SHADOW_CONFIRMATIONS,
+        }),
+      ).toBe("blocked");
+    });
+
+    it("returns ready when manual verified and all shadow confirmations satisfied", () => {
+      expect(
+        resolveConnectorGatewayShadowRoutingPlanDecision({
+          manualVerificationDecision: "manual_branch_verified",
+          rollbackRequired: false,
+          ...ALL_SHADOW_CONFIRMATIONS,
+        }),
+      ).toBe("ready_for_shadow_routing_review");
+    });
   });
 
   it("mode is read_only_connector_gateway_shadow_routing_plan", () => {
@@ -157,129 +177,95 @@ describe("multi-agent connector gateway shadow routing plan stage 4-C", () => {
   });
 
   it("all conditions satisfied yields ready_for_shadow_routing_review", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).decision).toBe(
-      "ready_for_shadow_routing_review",
-    );
+    expect(evaluateReadyShadowReport().decision).toBe("ready_for_shadow_routing_review");
   });
 
   it("ready state keeps changesConnectorRoutingInThisStep false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).changesConnectorRoutingInThisStep).toBe(
-      false,
-    );
+    expect(evaluateReadyShadowReport().changesConnectorRoutingInThisStep).toBe(false);
   });
 
   it("ready state keeps callsConnectorInThisStep false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).callsConnectorInThisStep).toBe(false);
+    expect(evaluateReadyShadowReport().callsConnectorInThisStep).toBe(false);
   });
 
   it("ready state keeps callsCursorInThisStep false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).callsCursorInThisStep).toBe(false);
+    expect(evaluateReadyShadowReport().callsCursorInThisStep).toBe(false);
   });
 
   it("ready state keeps callsGitHubInThisStep false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).callsGitHubInThisStep).toBe(false);
+    expect(evaluateReadyShadowReport().callsGitHubInThisStep).toBe(false);
   });
 
   it("ready state keeps wiresFeatureFlagInThisStep false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).wiresFeatureFlagInThisStep).toBe(false);
+    expect(evaluateReadyShadowReport().wiresFeatureFlagInThisStep).toBe(false);
   });
 
   it("routeCandidateCount is 3", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).routeCandidateCount).toBe(3);
+    expect(evaluateReadyShadowReport().routeCandidateCount).toBe(3);
   });
 
   it("routeCandidateSatisfiedCount is 3", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).routeCandidateSatisfiedCount).toBe(3);
+    expect(evaluateReadyShadowReport().routeCandidateSatisfiedCount).toBe(3);
   });
 
   it("all shadowRouteCandidates have executesInThisStep false", () => {
-    spyManualVerification();
-    const report = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+    const report = evaluateReadyShadowReport();
     expect(report.shadowRouteCandidates.every((c) => c.executesInThisStep === false)).toBe(true);
   });
 
   it("all shadowRouteCandidates have changesRoutingInThisStep false", () => {
-    spyManualVerification();
-    const report = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+    const report = evaluateReadyShadowReport();
     expect(report.shadowRouteCandidates.every((c) => c.changesRoutingInThisStep === false)).toBe(true);
   });
 
   it("cursor route candidate exists", () => {
-    spyManualVerification();
     expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).shadowRouteCandidates.some(
-        (c) => c.routeName === "cursor.execution.shadow",
-      ),
+      evaluateReadyShadowReport().shadowRouteCandidates.some((c) => c.routeName === "cursor.execution.shadow"),
     ).toBe(true);
   });
 
   it("github route candidate exists", () => {
-    spyManualVerification();
     expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).shadowRouteCandidates.some(
-        (c) => c.routeName === "github.pr.shadow",
-      ),
+      evaluateReadyShadowReport().shadowRouteCandidates.some((c) => c.routeName === "github.pr.shadow"),
     ).toBe(true);
   });
 
   it("internal observe route candidate exists", () => {
-    spyManualVerification();
     expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).shadowRouteCandidates.some(
-        (c) => c.routeName === "runtime.audit.observe",
-      ),
+      evaluateReadyShadowReport().shadowRouteCandidates.some((c) => c.routeName === "runtime.audit.observe"),
     ).toBe(true);
   });
 
   it("featureFlagName has JYO_ prefix", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).featureFlagName.startsWith("JYO_")).toBe(
-      true,
-    );
+    expect(evaluateReadyShadowReport().featureFlagName.startsWith("JYO_")).toBe(true);
   });
 
   it("featureFlagDefault is off", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).featureFlagDefault).toBe("off");
+    expect(evaluateReadyShadowReport().featureFlagDefault).toBe("off");
   });
 
   it("featureFlagEnabledInThisStep is false", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).featureFlagEnabledInThisStep).toBe(false);
+    expect(evaluateReadyShadowReport().featureFlagEnabledInThisStep).toBe(false);
   });
 
   it("sourceFindingCodes includes source manual verification finding codes", () => {
-    spyManualVerification();
-    const report = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+    const report = evaluateReadyShadowReport();
     expect(report.sourceFindingCodes).toContain("manual_branch_verified");
     expect(report.sourceFindingCodes).toContain("runtime_wire_manual_branch_verification_read_only");
   });
 
   it("noRunChecklist exists", () => {
-    spyManualVerification();
-    expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).noRunChecklist.length).toBeGreaterThan(0);
+    expect(evaluateReadyShadowReport().noRunChecklist.length).toBeGreaterThan(0);
   });
 
   it("noRunChecklist items are all satisfied", () => {
-    spyManualVerification();
-    const checklist = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).noRunChecklist;
+    const checklist = evaluateReadyShadowReport().noRunChecklist;
     expect(checklist.every((item) => item.satisfied === true)).toBe(true);
   });
 
   it("ready state includes shadow_route_candidates_generated finding", () => {
-    spyManualVerification();
     expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).findings.some(
-        (f) => f.code === "shadow_route_candidates_generated",
-      ),
+      evaluateReadyShadowReport().findings.some((f) => f.code === "shadow_route_candidates_generated"),
     ).toBe(true);
   });
 
@@ -302,18 +288,12 @@ describe("multi-agent connector gateway shadow routing plan stage 4-C", () => {
   });
 
   it("ready includes shadow_routing_plan_ready finding", () => {
-    spyManualVerification();
-    expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).findings.some(
-        (f) => f.code === "shadow_routing_plan_ready",
-      ),
-    ).toBe(true);
+    expect(evaluateReadyShadowReport().findings.some((f) => f.code === "shadow_routing_plan_ready")).toBe(true);
   });
 
   it("ready includes ready_for_shadow_routing_review_not_routing_permission finding", () => {
-    spyManualVerification();
     expect(
-      evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).findings.some(
+      evaluateReadyShadowReport().findings.some(
         (f) => f.code === "ready_for_shadow_routing_review_not_routing_permission",
       ),
     ).toBe(true);

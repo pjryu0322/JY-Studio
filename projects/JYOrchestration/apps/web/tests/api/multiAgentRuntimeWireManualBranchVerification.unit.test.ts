@@ -3,7 +3,10 @@ import {
   evaluateRuntimeWireManualBranchVerification,
   sanitizeRuntimeWireRegressionResults,
 } from "@/lib/agents/evaluateRuntimeWireManualBranchVerification";
-import { buildRuntimeWireExperimentBranchName } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
+import {
+  buildRuntimeWireExperimentBranchName,
+  runtimeWireExperimentBranchPlanSourceNoRunFlags,
+} from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as branchPlanModule from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 
 const EXPECTED_BRANCH = buildRuntimeWireExperimentBranchName();
@@ -21,20 +24,7 @@ function mockBranchPlanReady(): ReturnType<typeof branchPlanModule.evaluateRunti
     sourceWireCandidateCount: 5,
     sourceWireCandidateSatisfiedCount: 5,
     sourceWireCandidateUnsatisfiedCount: 0,
-    sourceNoRunFlags: {
-      executesRuntimeInThisStep: false,
-      changesConnectorRoutingInThisStep: false,
-      wiresWritePathInThisStep: false,
-      wiresFeatureFlagInThisStep: false,
-      writesDataInThisStep: false,
-      callsPrismaInThisStep: false,
-      modifiesSchemaInThisStep: false,
-      createsMigrationInThisStep: false,
-      createsPullRequestInThisStep: false,
-      executesGitInThisStep: false,
-      callsCursorInThisStep: false,
-      callsGitHubInThisStep: false,
-    },
+    sourceNoRunFlags: runtimeWireExperimentBranchPlanSourceNoRunFlags,
     planVersion: 1,
     planTitle: "plan",
     planSummary: "ready",

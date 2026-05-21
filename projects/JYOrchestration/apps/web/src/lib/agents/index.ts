@@ -628,6 +628,8 @@ export {
   buildRuntimeWireExperimentBranchPlanFingerprint,
   buildRuntimeWireFeatureFlagName,
   evaluateRuntimeWireExperimentBranchPlan,
+  resolveRuntimeWireExperimentBranchPlanDecision,
+  runtimeWireExperimentBranchPlanSourceNoRunFlags,
   runtimeWireManualCommandCautionsValid,
 } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 
@@ -653,7 +655,12 @@ export type {
   ConnectorGatewayShadowRoutingPlanReport,
 } from "@/lib/agents/connectorGatewayShadowRoutingPlanTypes";
 
-export { evaluateConnectorGatewayShadowRoutingPlan } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
+export {
+  evaluateConnectorGatewayShadowRoutingPlan,
+  resolveConnectorGatewayShadowRoutingPlanDecision,
+} from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
+
+export type { ConnectorGatewayShadowRoutingPlanDecisionInput } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
