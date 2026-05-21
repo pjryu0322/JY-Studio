@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
+import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import {
   buildDefaultRoleKnowledgePackMappingCandidates,
   evaluateRoleKnowledgePackMappingCandidate,
@@ -9,7 +9,7 @@ import { listDefaultRoleKnowledgeAgentTypes } from "@/lib/agents/defaultRoleKnow
 
 function evaluateReadyMapping(input: Parameters<typeof evaluateRoleKnowledgePackMappingCandidate>[0] = {}) {
   return evaluateRoleKnowledgePackMappingCandidate({
-    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...buildStage5ReadyChainInput(),
     ...input,
   });
 }

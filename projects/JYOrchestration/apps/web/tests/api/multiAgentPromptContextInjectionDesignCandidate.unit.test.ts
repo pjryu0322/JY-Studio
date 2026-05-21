@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
+import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import {
   buildDefaultPromptContextInjectionDesignCandidates,
   evaluatePromptContextInjectionDesignCandidate,
@@ -11,7 +11,7 @@ import type { PromptContextInjectionDesignCandidate } from "@/lib/agents/promptC
 
 function evaluateReadyDesign(input: Parameters<typeof evaluatePromptContextInjectionDesignCandidate>[0] = {}) {
   return evaluatePromptContextInjectionDesignCandidate({
-    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...buildStage5ReadyChainInput(),
     ...input,
   });
 }

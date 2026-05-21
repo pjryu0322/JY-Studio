@@ -7,6 +7,7 @@ import type {
   Stage5IntegratedKnowledgeFoundationClosureInput,
   Stage5IntegratedKnowledgeFoundationClosureReport,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
+import { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 import {
   appendStage5IntegratedKnowledgeFoundationClosureFindings,
   buildStage5IntegratedBoundaryChecklist,
@@ -14,7 +15,7 @@ import {
   buildStage5IntegratedClosureSummary,
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   buildStage5IntegratedPipelineTraceFields,
-  evaluateStage5KnowledgeFoundationPipeline,
+  buildStage5IntegratedSourceDecisions,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
@@ -22,15 +23,16 @@ import {
   STAGE5_INTEGRATED_CLOSURE_VERSION,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
+export { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
+export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
+
 export {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
-  evaluateStage5KnowledgeFoundationPipeline,
+  buildStage5IntegratedSourceDecisions,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   RECOMMENDED_NEXT_PHASES,
   SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
-
-export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
 export type { Stage5IntegratedKnowledgeFoundationClosureDecisionInput } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
@@ -38,27 +40,21 @@ export type { Stage5IntegratedKnowledgeFoundationClosureDecisionInput } from "@/
 export function evaluateStage5IntegratedKnowledgeFoundationClosure(
   input?: Stage5IntegratedKnowledgeFoundationClosureInput,
 ): Stage5IntegratedKnowledgeFoundationClosureReport {
-  const { stage5A, stage5B, stage5C, stage5D } = evaluateStage5KnowledgeFoundationPipeline(input);
-
-  const sources = {
-    sourceStage5AClosureDecision: stage5A.decision,
-    sourceStage5BDecision: stage5B.decision,
-    sourceStage5CDecision: stage5C.decision,
-    sourceStage5DDecision: stage5D.decision,
-  };
+  const pipeline = evaluateStage5KnowledgeFoundationPipeline(input);
+  const sources = buildStage5IntegratedSourceDecisions(pipeline);
 
   const decision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
   const closureFingerprint = buildStage5IntegratedKnowledgeFoundationClosureFingerprint(sources);
 
   const findings: Stage5IntegratedKnowledgeFoundationClosureFinding[] = [];
-  appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources, pipeline: { stage5A, stage5B, stage5C, stage5D } });
+  appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources, pipeline });
 
   return {
     mode: "read_only_stage5_integrated_knowledge_foundation_closure",
     stage: "stage_5_f_closure",
     decision,
     ...sources,
-    ...buildStage5IntegratedPipelineTraceFields({ stage5A, stage5B, stage5C, stage5D }),
+    ...buildStage5IntegratedPipelineTraceFields(pipeline),
     closureVersion: STAGE5_INTEGRATED_CLOSURE_VERSION,
     closureTitle: STAGE5_INTEGRATED_CLOSURE_TITLE,
     closureSummary: buildStage5IntegratedClosureSummary(decision),

@@ -2,6 +2,7 @@
  * Shared Stage 5-A~5-D evaluator input normalization (read-only chain).
  */
 
+import { buildStage5AClosureConfirmedInput } from "@/lib/agents/roleKnowledgeBindingClosureSupport";
 import type { KnowledgePackMetadataRegistryCandidateInput } from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
 import type { PromptContextInjectionDesignCandidateInput } from "@/lib/agents/promptContextInjectionDesignCandidateTypes";
 import type { RoleKnowledgeBindingClosureInput } from "@/lib/agents/roleKnowledgeBindingClosureTypes";
@@ -49,3 +50,12 @@ export function extractStage5AClosureInput(
 ): RoleKnowledgeBindingClosureInput | undefined {
   return input?.stage5AClosure;
 }
+
+/** Ready-path input for Stage 5-B~5-F evaluators (all required 5-A confirmations set). */
+export function buildStage5ReadyChainInput(): Stage5KnowledgeFoundationChainInput {
+  return {
+    stage5AClosure: buildStage5AClosureConfirmedInput(),
+  };
+}
+
+export { buildStage5AClosureConfirmedInput } from "@/lib/agents/roleKnowledgeBindingClosureSupport";

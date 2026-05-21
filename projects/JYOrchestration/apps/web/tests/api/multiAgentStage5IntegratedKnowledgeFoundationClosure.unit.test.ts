@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { listDefaultRoleKnowledgeAgentTypes } from "@/lib/agents/defaultRoleKnowledgeBindings";
-import {
-  buildStage5AClosureConfirmedInput,
-} from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
+import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
@@ -15,7 +13,7 @@ function evaluateReadyIntegrated(
   input: Parameters<typeof evaluateStage5IntegratedKnowledgeFoundationClosure>[0] = {},
 ) {
   return evaluateStage5IntegratedKnowledgeFoundationClosure({
-    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...buildStage5ReadyChainInput(),
     ...input,
   });
 }
@@ -25,8 +23,10 @@ describe("multi-agent stage 5 integrated knowledge foundation closure stage 5-F"
     expect(evaluateStage5IntegratedKnowledgeFoundationClosure().decision).toBe("defer");
   });
 
-  it("buildStage5AClosureConfirmedInput enables ready path", () => {
-    expect(evaluateReadyIntegrated().decision).toBe("stage5_knowledge_foundation_ready");
+  it("buildStage5ReadyChainInput enables ready path", () => {
+    expect(
+      evaluateStage5IntegratedKnowledgeFoundationClosure(buildStage5ReadyChainInput()).decision,
+    ).toBe("stage5_knowledge_foundation_ready");
   });
 
   it("all upstream ready yields stage5_knowledge_foundation_ready", () => {

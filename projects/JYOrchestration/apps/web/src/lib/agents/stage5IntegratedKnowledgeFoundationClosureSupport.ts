@@ -2,44 +2,25 @@
  * Stage 5-F integrated knowledge foundation closure support (read-only).
  */
 
-import { evaluateKnowledgePackMetadataRegistryCandidate } from "@/lib/agents/evaluateKnowledgePackMetadataRegistryCandidate";
-import { evaluatePromptContextInjectionDesignCandidate } from "@/lib/agents/evaluatePromptContextInjectionDesignCandidate";
-import { evaluateRoleKnowledgeBindingClosure } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
-import { evaluateRoleKnowledgePackMappingCandidate } from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
-import type { KnowledgePackMetadataRegistryCandidateReport } from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
-import type { PromptContextInjectionDesignCandidateReport } from "@/lib/agents/promptContextInjectionDesignCandidateTypes";
-import type { RoleKnowledgeBindingClosureReport } from "@/lib/agents/roleKnowledgeBindingClosureTypes";
-import type { RoleKnowledgePackMappingCandidateReport } from "@/lib/agents/roleKnowledgePackMappingCandidateTypes";
-import {
-  extractStage5AClosureInput,
-  toMappingEvaluatorInput,
-  toMetadataRegistryEvaluatorInput,
-  toPromptDesignEvaluatorInput,
-} from "@/lib/agents/stage5KnowledgeFoundationInput";
+import type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 import type {
   Stage5IntegratedKnowledgeFoundationClosureChecklistItem,
   Stage5IntegratedKnowledgeFoundationClosureDecision,
   Stage5IntegratedKnowledgeFoundationClosureDecisionInput,
   Stage5IntegratedKnowledgeFoundationClosureFinding,
-  Stage5IntegratedKnowledgeFoundationClosureInput,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
-export type Stage5KnowledgeFoundationPipelineReports = {
-  readonly stage5A: RoleKnowledgeBindingClosureReport;
-  readonly stage5B: KnowledgePackMetadataRegistryCandidateReport;
-  readonly stage5C: RoleKnowledgePackMappingCandidateReport;
-  readonly stage5D: PromptContextInjectionDesignCandidateReport;
-};
+export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 
-/** Run Stage 5-A through 5-D once with normalized shared input. */
-export function evaluateStage5KnowledgeFoundationPipeline(
-  input?: Stage5IntegratedKnowledgeFoundationClosureInput,
-): Stage5KnowledgeFoundationPipelineReports {
+/** Map pipeline reports to Stage 5-F source decision fields. */
+export function buildStage5IntegratedSourceDecisions(
+  pipeline: Stage5KnowledgeFoundationPipelineReports,
+): Stage5IntegratedKnowledgeFoundationClosureDecisionInput {
   return {
-    stage5A: evaluateRoleKnowledgeBindingClosure(extractStage5AClosureInput(input)),
-    stage5B: evaluateKnowledgePackMetadataRegistryCandidate(toMetadataRegistryEvaluatorInput(input)),
-    stage5C: evaluateRoleKnowledgePackMappingCandidate(toMappingEvaluatorInput(input)),
-    stage5D: evaluatePromptContextInjectionDesignCandidate(toPromptDesignEvaluatorInput(input)),
+    sourceStage5AClosureDecision: pipeline.stage5A.decision,
+    sourceStage5BDecision: pipeline.stage5B.decision,
+    sourceStage5CDecision: pipeline.stage5C.decision,
+    sourceStage5DDecision: pipeline.stage5D.decision,
   };
 }
 

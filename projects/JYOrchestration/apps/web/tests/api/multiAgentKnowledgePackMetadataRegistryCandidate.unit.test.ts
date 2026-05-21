@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
+import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import {
   evaluateKnowledgePackMetadataRegistryCandidate,
   resolveKnowledgePackMetadataRegistryCandidateDecision,
@@ -10,7 +10,7 @@ import type { KnowledgePackMetadataCandidate } from "@/lib/agents/knowledgePackM
 
 function evaluateReadyMetadata(input: Parameters<typeof evaluateKnowledgePackMetadataRegistryCandidate>[0] = {}) {
   return evaluateKnowledgePackMetadataRegistryCandidate({
-    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...buildStage5ReadyChainInput(),
     ...input,
   });
 }

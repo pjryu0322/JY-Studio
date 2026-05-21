@@ -804,14 +804,15 @@ export type {
 
 export {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  buildStage5IntegratedSourceDecisions,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
-  evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
 
 export {
+  buildStage5ReadyChainInput,
   extractStage5AClosureInput,
   toMappingEvaluatorInput,
   toMetadataRegistryEvaluatorInput,
@@ -819,6 +820,12 @@ export {
 } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
 export type { Stage5KnowledgeFoundationChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
+
+export {
+  evaluateStage5KnowledgeFoundationPipeline,
+} from "@/lib/agents/stage5KnowledgeFoundationPipeline";
+
+export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 
 export type {
   Stage5IntegratedKnowledgeFoundationClosureChecklistItem,
