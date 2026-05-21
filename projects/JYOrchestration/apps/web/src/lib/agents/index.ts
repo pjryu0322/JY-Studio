@@ -623,6 +623,7 @@ export type {
 
 export {
   buildRuntimeWireExperimentBranchName,
+  buildRuntimeWireExperimentBranchPlanFingerprint,
   buildRuntimeWireFeatureFlagName,
   evaluateRuntimeWireExperimentBranchPlan,
 } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";

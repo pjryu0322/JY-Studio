@@ -43,6 +43,12 @@ function mockWireCandidateReady(): ReturnType<typeof wireCandidateModule.evaluat
   };
 }
 
+function spyWireCandidateReady() {
+  return vi
+    .spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate")
+    .mockReturnValue(mockWireCandidateReady());
+}
+
 const ALL_BRANCH_PLAN_CONFIRMATIONS = {
   schemaPrApproved: true,
   operatorAuditSchemaPrApproved: true,
@@ -159,9 +165,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("source wire candidate ready with manualBranchPlanReviewConfirmed false returns defer", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan({
@@ -172,9 +176,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("source wire candidate ready with branchNamingPolicyConfirmed false returns defer", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan({
@@ -185,9 +187,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("source wire candidate ready with rollbackPlanConfirmed false returns defer", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan({
@@ -198,9 +198,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("all conditions satisfied returns ready_for_manual_branch_creation_approval", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).decision).toBe(
       "ready_for_manual_branch_creation_approval",
@@ -208,9 +206,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("recommendedBranchName is experiment/runtime-wire-controlled-candidate", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).recommendedBranchName).toBe(
       buildRuntimeWireExperimentBranchName(),
@@ -219,9 +215,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("recommendedFeatureFlagName is JYO_RUNTIME_WIRE_EXPERIMENT", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).recommendedFeatureFlagName).toBe(
       buildRuntimeWireFeatureFlagName(),
@@ -230,9 +224,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("manualCommandCandidates has four items", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).manualCommandCandidates).toHaveLength(
       4,
@@ -240,9 +232,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("all manualCommandCandidates have executesInThisStep false", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).manualCommandCandidates.every(
@@ -252,9 +242,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("manualCommandCandidates caution states manual execution only", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     const commands = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).manualCommandCandidates;
     expect(commands.every((c) => c.caution.match(/Manual execution only/i))).toBe(true);
@@ -262,9 +250,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("regressionSuites includes multiAgent and Phase4 regression", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     const suites = evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).regressionSuites;
     expect(suites.some((s) => s.includes("multiAgent"))).toBe(true);
@@ -272,9 +258,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("branchSafetyChecklist includes branch name safety item", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).branchSafetyChecklist.some(
@@ -284,9 +268,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("rollbackChecklist includes rollback plan confirmed", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).rollbackChecklist.some(
@@ -304,9 +286,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("ready finding includes read-only branch plan info", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(
       evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).findings.some(
@@ -316,9 +296,7 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
   });
 
   it("planFingerprint is non-empty", () => {
-    vi.spyOn(wireCandidateModule, "evaluateControlledRuntimeWireCandidate").mockReturnValue(
-      mockWireCandidateReady(),
-    );
+    spyWireCandidateReady();
 
     expect(evaluateRuntimeWireExperimentBranchPlan(ALL_BRANCH_PLAN_CONFIRMATIONS).planFingerprint.length).toBeGreaterThan(
       0,

@@ -16,6 +16,12 @@ const PLAN_TITLE = "Runtime Wire Experiment Branch Plan (Read-Only)";
 const MANUAL_CAUTION =
   "Manual execution only after explicit user approval. This report does not execute git.";
 
+const MANUAL_GIT_COMMAND_STEPS = [
+  "git fetch origin",
+  "git checkout main",
+  "git pull --ff-only origin main",
+] as const;
+
 const REGRESSION_SUITES: readonly string[] = [
   "tests/api/multiAgentControlledRuntimeWireCandidate.unit.test.ts",
   "tests/api/multiAgentRuntimeExecutionApprovalGate.unit.test.ts",
@@ -158,12 +164,7 @@ function buildPlanSummary(input: {
 }
 
 function buildManualCommandCandidates(branchName: string): RuntimeWireExperimentBranchManualCommand[] {
-  const commands = [
-    "git fetch origin",
-    "git checkout main",
-    "git pull --ff-only origin main",
-    `git checkout -b ${branchName}`,
-  ];
+  const commands = [...MANUAL_GIT_COMMAND_STEPS, `git checkout -b ${branchName}`];
 
   return commands.map((command, index) => ({
     sequence: index + 1,
