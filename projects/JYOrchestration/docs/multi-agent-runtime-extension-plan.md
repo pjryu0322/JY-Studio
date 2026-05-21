@@ -1473,6 +1473,50 @@ schema readiness 미준비 또는 writeAdapterIntegrationConfirmed=false → def
 양쪽 schema ready + writeAdapterIntegrationConfirmed=true → ready_for_schema_migration_pr_readiness
 ```
 
-### Stage 2-D 후보: Agent / Operator Write Path Wire 후보 검증 통합
+## Stage 2-D Agent / Operator Write Path Wire Candidate Verification Integration 결과
 
-Stage 2-D에서는 Agent / Operator Write Path Wire 후보 검증을 통합한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| 통합 Wire Candidate Verification 타입 | read-only report | 없음 | 실제 wire 없음 |
+| 통합 evaluator | Agent wire gate + Operator wire gate + Stage 2-C schema readiness 조합 | 없음 | DB/Prisma 미호출 |
+| candidateChecklist | report field | 없음 | 승인/스키마/마이그레이션/어댑터 확인값 검토 |
+| safetyChecklist | report field | 없음 | no wire/no write 보장 |
+| rollbackChecklist | report field | 없음 | 실제 wire 전 rollback 확인 |
+| no-run flags | report field | 없음 | write/schema/migration/feature flag/routing 미실행 |
+
+### Stage 2-D 원칙
+
+```text
+- write path를 실제로 wire하지 않는다.
+- write adapter를 실제로 연결하지 않는다.
+- DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- feature flag를 wire하지 않는다.
+- runtime route를 변경하지 않는다.
+- 모든 조건이 충족되어도 결과는 “wire 후보 검증 ready”일 뿐이다.
+```
+
+### Stage 2-D Decision 규칙 요약
+
+```text
+agent/operator wire gate blocked 또는 schema migration readiness blocked → blocked
+schemaMigrationReadinessConfirmed=false → defer
+wire gate 미준비 또는 schema migration readiness 미준비 → defer
+모두 충족 → ready_for_wire_candidate_verification
+```
+
+### Stage 2-C 보강 (Stage 2-D 선행)
+
+| 항목 | 반영 방식 | 비고 |
+|---|---|---|
+| operator permission/audit count 분리 | report field | retention count=0 |
+| source trace | schema/write-adapter upstream fields | Stage 2-D 추적 |
+| writeAdapterIntegrationConfirmed | defer+confirmed 허용, blocked 우회 불가 | 테스트 고정 |
+| unknown target | normalized unknown → blocked | mock ready 불가 |
+| checklist reason | decision/count 기반 reason | 진단 가독성 |
+
+### Stage 2-E 후보
+
+Connector Gateway Routing Shadow 결과와 Write Path Wire Candidate 결과를 함께 검토하여, 실제 runtime route / write path 변경 전 최종 운영자 승인 패키지를 설계한다.

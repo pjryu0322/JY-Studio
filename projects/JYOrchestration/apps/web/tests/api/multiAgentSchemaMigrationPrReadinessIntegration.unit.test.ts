@@ -314,6 +314,123 @@ describe("multi-agent schema migration PR readiness integration stage 2-C", () =
     expect(report.findings.some((f) => f.code === "schema_migration_pr_readiness_blocked")).toBe(true);
   });
 
+  it("operatorPermissionChecklistCount matches permissionAccessChecklist length", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue(
+      mockWriteAdapterReady(),
+    );
+
+    const report = evaluateSchemaMigrationPrReadinessIntegration();
+    expect(report.operatorPermissionChecklistCount).toBe(1);
+    expect(report.operatorAuditIntegrityChecklistCount).toBe(1);
+    expect(report.operatorRetentionChecklistCount).toBe(0);
+  });
+
+  it("report includes sourceAgentSchemaTarget and source trace fields", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue(
+      mockWriteAdapterReady(),
+    );
+
+    const report = evaluateSchemaMigrationPrReadinessIntegration();
+    expect(report.sourceAgentSchemaTarget).toBe("agent_execution_record");
+    expect(report.sourceOperatorSchemaTarget).toBe("operator_approval");
+    expect(report.sourceAgentRequiresSchemaChange).toBe(true);
+    expect(report.sourceOperatorRequiresMigration).toBe(true);
+    expect(report.sourceWriteAdapterAgentWireGateDecision).toBe("ready_for_write_path_wire_approval");
+    expect(report.sourceWriteAdapterOperatorWireGateDecision).toBe("ready_for_write_path_wire_approval");
+    expect(Array.isArray(report.sourceWriteAdapterAgentBlockingFindingCodes)).toBe(true);
+    expect(Array.isArray(report.sourceWriteAdapterOperatorBlockingFindingCodes)).toBe(true);
+  });
+
+  it("write adapter defer with confirmed true and schema ready returns ready", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue({
+      ...mockWriteAdapterReady(),
+      decision: "defer",
+    });
+
+    const report = evaluateSchemaMigrationPrReadinessIntegration({
+      writeAdapterIntegrationConfirmed: true,
+    });
+    expect(report.decision).toBe("ready_for_schema_migration_pr_readiness");
+    expect(report.findings.some((f) => f.code === "write_adapter_integration_deferred_but_confirmed")).toBe(
+      true,
+    );
+  });
+
+  it("write adapter blocked with confirmed true returns blocked", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue({
+      ...mockWriteAdapterReady(),
+      decision: "blocked",
+    });
+
+    expect(
+      evaluateSchemaMigrationPrReadinessIntegration({ writeAdapterIntegrationConfirmed: true }).decision,
+    ).toBe("blocked");
+  });
+
+  it("agentTarget unknown returns blocked without ready finding", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue(
+      mockWriteAdapterReady(),
+    );
+
+    const report = evaluateSchemaMigrationPrReadinessIntegration({
+      agentTarget: "unknown",
+      writeAdapterIntegrationConfirmed: true,
+    });
+    expect(report.normalizedAgentTarget).toBe("unknown");
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "schema_migration_pr_readiness_ready")).toBe(false);
+  });
+
+  it("operatorTarget unknown returns blocked without ready finding", () => {
+    vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness").mockReturnValue(
+      mockAgentSchemaReady(),
+    );
+    vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue(
+      mockOperatorSchemaReady(),
+    );
+    vi.spyOn(writeAdapterIntegrationModule, "evaluateWriteAdapterDesignIntegration").mockReturnValue(
+      mockWriteAdapterReady(),
+    );
+
+    const report = evaluateSchemaMigrationPrReadinessIntegration({
+      operatorTarget: "unknown",
+      writeAdapterIntegrationConfirmed: true,
+    });
+    expect(report.normalizedOperatorTarget).toBe("unknown");
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "schema_migration_pr_readiness_ready")).toBe(false);
+  });
+
   it("evaluator does not modify schema migration DB Prisma PR or adapter wire", () => {
     const agentSpy = vi.spyOn(agentSchemaReadinessModule, "evaluateAgentExecutionRecordSchemaPrReadiness");
     const operatorSpy = vi.spyOn(operatorSchemaReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness");

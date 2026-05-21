@@ -23,9 +23,34 @@ export interface SchemaMigrationPrReadinessIntegrationReport {
   readonly mode: "read_only_schema_migration_pr_readiness_integration";
   readonly decision: SchemaMigrationPrReadinessIntegrationDecision;
 
+  readonly requestedAgentTarget: string;
+  readonly requestedOperatorTarget: string;
+  readonly normalizedAgentTarget: string;
+  readonly normalizedOperatorTarget: string;
+
   readonly sourceAgentSchemaPrReadinessDecision: string;
   readonly sourceOperatorSchemaPrReadinessDecision: string;
   readonly sourceWriteAdapterIntegrationDecision: string;
+
+  readonly sourceAgentSchemaTarget: string;
+  readonly sourceOperatorSchemaTarget: string;
+  readonly sourceAgentRequiresSchemaChange: boolean;
+  readonly sourceOperatorRequiresSchemaChange: boolean;
+  readonly sourceAgentRequiresMigration: boolean;
+  readonly sourceOperatorRequiresMigration: boolean;
+  readonly sourceAgentRequiresSeparatePr: boolean;
+  readonly sourceOperatorRequiresSeparatePr: boolean;
+
+  readonly sourceWriteAdapterRequestedAgentTarget: string;
+  readonly sourceWriteAdapterRequestedOperatorTarget: string;
+  readonly sourceWriteAdapterNormalizedAgentTarget: string;
+  readonly sourceWriteAdapterNormalizedOperatorTarget: string;
+  readonly sourceWriteAdapterAgentWireGateDecision: string;
+  readonly sourceWriteAdapterOperatorWireGateDecision: string;
+  readonly sourceWriteAdapterAgentWritePathDecision: string;
+  readonly sourceWriteAdapterOperatorWritePathDecision: string;
+  readonly sourceWriteAdapterAgentBlockingFindingCodes: readonly string[];
+  readonly sourceWriteAdapterOperatorBlockingFindingCodes: readonly string[];
 
   readonly agentProposedTableName: string;
   readonly operatorProposedTableNames: readonly string[];
@@ -45,6 +70,8 @@ export interface SchemaMigrationPrReadinessIntegrationReport {
   readonly operatorRollbackChecklistCount: number;
   readonly agentRetentionChecklistCount: number;
   readonly operatorRetentionChecklistCount: number;
+  readonly operatorPermissionChecklistCount: number;
+  readonly operatorAuditIntegrityChecklistCount: number;
 
   readonly schemaChecklist: readonly SchemaMigrationPrReadinessIntegrationChecklistItem[];
   readonly migrationChecklist: readonly SchemaMigrationPrReadinessIntegrationChecklistItem[];

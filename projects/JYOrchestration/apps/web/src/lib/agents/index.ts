@@ -529,6 +529,15 @@ export type {
 
 export { evaluateSchemaMigrationPrReadinessIntegration } from "@/lib/agents/evaluateSchemaMigrationPrReadinessIntegration";
 
+export type {
+  WritePathWireCandidateVerificationChecklistItem,
+  WritePathWireCandidateVerificationDecision,
+  WritePathWireCandidateVerificationFinding,
+  WritePathWireCandidateVerificationReport,
+} from "@/lib/agents/writePathWireCandidateVerificationTypes";
+
+export { evaluateWritePathWireCandidateVerification } from "@/lib/agents/evaluateWritePathWireCandidateVerification";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */
