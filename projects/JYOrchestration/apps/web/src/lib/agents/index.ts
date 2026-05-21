@@ -619,6 +619,7 @@ export type {
   RuntimeWireExperimentBranchPlanDecision,
   RuntimeWireExperimentBranchPlanFinding,
   RuntimeWireExperimentBranchPlanReport,
+  RuntimeWireExperimentBranchPlanSourceNoRunFlags,
 } from "@/lib/agents/runtimeWireExperimentBranchPlanTypes";
 
 export {

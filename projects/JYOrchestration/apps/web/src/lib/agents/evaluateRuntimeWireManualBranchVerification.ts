@@ -65,6 +65,14 @@ export function sanitizeRuntimeWireRegressionResults(
   return [...bySuite.values()];
 }
 
+function parseManualBranchVerificationInput(input?: RuntimeWireManualBranchVerificationInput) {
+  return {
+    explicitManualExecutionConfirmed: input?.explicitManualExecutionConfirmed === true,
+    actualBranchName: input?.actualBranchName?.trim() ?? "",
+    sanitizedRegressionResults: sanitizeRuntimeWireRegressionResults(input?.regressionResults),
+  };
+}
+
 function finding(
   severity: RuntimeWireManualBranchVerificationFinding["severity"],
   code: string,
@@ -345,11 +353,9 @@ export function evaluateRuntimeWireManualBranchVerification(
   input?: RuntimeWireManualBranchVerificationInput,
 ): RuntimeWireManualBranchVerificationReport {
   const branchPlan = evaluateRuntimeWireExperimentBranchPlan(input);
-
-  const explicitManualExecutionConfirmed = input?.explicitManualExecutionConfirmed === true;
-  const actualBranchName = input?.actualBranchName?.trim() ?? "";
+  const { explicitManualExecutionConfirmed, actualBranchName, sanitizedRegressionResults } =
+    parseManualBranchVerificationInput(input);
   const expectedBranchName = branchPlan.recommendedBranchName;
-  const sanitizedRegressionResults = sanitizeRuntimeWireRegressionResults(input?.regressionResults);
 
   const resolved = resolveVerificationDecision({
     branchPlanDecision: branchPlan.decision,
