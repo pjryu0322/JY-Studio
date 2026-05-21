@@ -2196,6 +2196,37 @@ Stage 5-F `stage5_knowledge_foundation_ready` 이후 진입 후보는 **Stage 6 
 
 Stage 5-F ready 이후에도 **바로** 지식팩 구현, prompt injection wire, RAG indexing, runtime execution wire로 진행하지 않는다. 해당 항목은 `separatedWorkItems`와 `recommendedNextPhases`의 `separate_pr`/`stage6` 후보로만 안내된다.
 
+## Stage 6 — Runtime Execution Model Design
+
+Stage 6은 실제 runtime execution wire 구현이 아니라, runtime 실행을 안전하게 설계하기 위한 model design 단계다.
+
+### Stage 6-A Runtime Execution Model Baseline
+
+- Stage 5-F의 `stage6EntryMode=design_candidate_only`를 source로 사용한다.
+- 실제 Cursor/GitHub/Connector/DB 실행은 하지 않는다.
+- 실행 단위, 실행 경계, 승인 필요 조건, 금지 항목을 read-only report로 정의한다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionModelBaseline.ts`, `runtimeExecutionModelBaselineTypes.ts`, `runtimeExecutionModelBaselineSupport.ts`
+
+### Stage 6-B Runtime Execution Request / Plan / Result Model Candidate
+
+- RuntimeExecutionRequest, RuntimeExecutionPlan, RuntimeExecutionStep, RuntimeExecutionResult, RuntimeExecutionFinding, RuntimeExecutionApprovalState, RuntimeExecutionRollbackPlan 등 모델 후보를 제시한다.
+- schema.prisma, migration, DB write는 생성하지 않는다.
+- 실제 execution runner/API는 만들지 않는다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionModelCandidate.ts`, `runtimeExecutionModelCandidateTypes.ts`, `runtimeExecutionModelCandidateSupport.ts`
+
+### Stage 6 금지 항목
+
+- actual runtime execution API
+- actual execution runner
+- actual Cursor execution wire
+- actual GitHub operation wire
+- actual Connector Gateway routing change
+- actual feature flag wire
+- actual DB write
+- actual persistence implementation
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

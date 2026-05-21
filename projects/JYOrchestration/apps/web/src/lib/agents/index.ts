@@ -830,6 +830,39 @@ export {
 export type { Stage5KnowledgeFoundationChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
 export {
+  evaluateRuntimeExecutionModelBaseline,
+  REQUIRED_STAGE6_A_MODEL_BASELINE_CONFIRMATIONS,
+  DEFAULT_RUNTIME_EXECUTION_UNIT_KINDS,
+  STAGE6_A_SEPARATED_WORK_ITEMS,
+} from "@/lib/agents/evaluateRuntimeExecutionModelBaseline";
+
+export type {
+  RuntimeExecutionModelBaselineDecision,
+  RuntimeExecutionModelBaselineInput,
+  RuntimeExecutionModelBaselineReport,
+  RuntimeExecutionUnitKind,
+  RuntimeExecutionBoundary,
+} from "@/lib/agents/runtimeExecutionModelBaselineTypes";
+
+export {
+  evaluateRuntimeExecutionModelCandidate,
+} from "@/lib/agents/evaluateRuntimeExecutionModelCandidate";
+
+export {
+  buildStage6AReadyBaselineInput,
+  buildStage6AModelBaselineConfirmedInput,
+  buildStage6BReadyCandidateInput,
+  buildStage6BRuntimeExecutionModelCandidateConfirmedInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
+
+export type {
+  RuntimeExecutionModelCandidateDecision,
+  RuntimeExecutionModelCandidateInput,
+  RuntimeExecutionModelCandidateReport,
+  RuntimeExecutionModelCandidateKind,
+} from "@/lib/agents/runtimeExecutionModelCandidateTypes";
+
+export {
   evaluateStage5KnowledgeFoundationPipeline,
 } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 
