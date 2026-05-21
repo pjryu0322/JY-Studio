@@ -256,22 +256,94 @@ describe("multi-agent runtime execution approval gate stage 3-B", () => {
     ).toBe(true);
   });
 
-  it("ready finding message states not actual runtime execution", () => {
+  it("gateVersion is 1 and gateTitle is set", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
+
+    const report = evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS);
+    expect(report.gateVersion).toBe(1);
+    expect(report.gateTitle).toMatch(/Approval Gate/i);
+  });
+
+  it("gateFingerprint is non-empty and deterministic", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
+
+    const report = evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS);
+    expect(report.gateFingerprint.length).toBeGreaterThan(0);
+    expect(report.gateFingerprint).toContain("runtime-approval-gate-v1");
+  });
+
+  function mockPackageWithReadinessGap(
+    readyCount: number,
+    missing: string[],
+  ): ReturnType<typeof packageModule.evaluateRuntimeExecutionPlanPackage> {
+    const base = mockPackageReady();
+    return {
+      ...base,
+      approvalReadiness: {
+        ...base.approvalReadiness,
+        readyCount,
+        totalCount: 7,
+        missing,
+      },
+    };
+  }
+
+  it("source package ready but approval readiness incomplete returns defer", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(
+      mockPackageWithReadinessGap(6, ["featureFlagWireReady"]),
+    );
+
+    const report = evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS);
+    expect(report.decision).toBe("defer");
+    expect(report.sourceApprovalReadinessComplete).toBe(false);
+  });
+
+  it("source_approval_readiness_incomplete finding when readiness incomplete", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(
+      mockPackageWithReadinessGap(5, ["featureFlagWireReady", "connectorExperimentReady"]),
+    );
+
+    expect(
+      evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS).findings.some(
+        (f) => f.code === "source_approval_readiness_incomplete",
+      ),
+    ).toBe(true);
+  });
+
+  it("ready state sets sourceApprovalReadinessComplete true", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
+
+    expect(evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS).sourceApprovalReadinessComplete).toBe(
+      true,
+    );
+  });
+
+  it("ready finding message states not actual execution permission", () => {
     vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
 
     const readyFinding = evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS).findings.find(
-      (f) => f.code === "controlled_runtime_wire_candidate_next",
+      (f) => f.code === "approval_gate_ready_not_execution_permission",
     );
-    expect(readyFinding?.message).toMatch(/not actual runtime execution/i);
+    expect(readyFinding?.message).toMatch(/not actual runtime execution permission/i);
   });
 
   it("ready finding message states Stage 3-C controlled runtime wire candidate required", () => {
     vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
 
     const readyFinding = evaluateRuntimeExecutionApprovalGate(ALL_GATE_CONFIRMATIONS).findings.find(
-      (f) => f.code === "controlled_runtime_wire_candidate_next",
+      (f) => f.code === "approval_gate_ready_not_execution_permission",
     );
     expect(readyFinding?.message).toMatch(/Stage 3-C controlled runtime wire candidate required/i);
+  });
+
+  it("riskChecklist reflects operator final approval flag", () => {
+    vi.spyOn(packageModule, "evaluateRuntimeExecutionPlanPackage").mockReturnValue(mockPackageReady());
+
+    const item = evaluateRuntimeExecutionApprovalGate({
+      ...ALL_GATE_CONFIRMATIONS,
+      operatorFinalApprovalConfirmed: false,
+    }).riskChecklist.find((c) => c.item === "final operator approval captured");
+    expect(item?.satisfied).toBe(false);
   });
 
   describe("integration via real package chain", () => {

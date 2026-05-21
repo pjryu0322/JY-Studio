@@ -1676,6 +1676,25 @@ Stage 3-B는 Stage 3-A Runtime Execution Plan Package를 source로 받아 contro
 ready_for_controlled_runtime_wire_candidate는 Stage 3-C 후보 설계 가능 상태이지 실제 실행 허가가 아니다.
 ```
 
+## Stage 3-C Controlled Runtime Wire Candidate 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Controlled Runtime Wire Candidate 타입 | read-only candidate report | 없음 | Stage 4-A 전 후보 |
+| evaluator | Stage 3-B approval gate 기반 | 없음 | runtime 미실행 |
+| wireCandidates | 5개 후보 report field | 없음 | 실제 wire 아님 |
+| candidateChecklist | report field | 없음 | 후보 준비 상태 |
+| safetyChecklist | report field | 없음 | no-run 재확인 |
+| handoffChecklist | report field | 없음 | Stage 4-A 인계 |
+
+### Stage 3-C 원칙
+
+```text
+Stage 3-C는 Stage 3-B Runtime Execution Approval Gate를 source로 받아 controlled runtime wire 후보를 설계하는 read-only 단계다.
+실제 실행, routing 변경, write path wire, feature flag wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
+ready_for_runtime_wire_experiment_branch는 Stage 4-A 실험 브랜치 단계로 넘길 수 있다는 의미이지 실제 브랜치 생성 또는 실행 허가가 아니다.
+```
+
 ### Stage 3 빠른 진행 로드맵
 
 ```text

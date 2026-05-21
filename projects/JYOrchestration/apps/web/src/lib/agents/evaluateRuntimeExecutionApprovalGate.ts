@@ -13,6 +13,7 @@ import type {
 const PACKAGE_READY = "ready_for_runtime_execution_approval_gate";
 const PLAN_READY = "ready_for_runtime_execution_plan_review";
 const HANDOFF_READY = "ready_for_runtime_execution_handoff_design";
+const GATE_TITLE = "Runtime Execution Approval Gate (Read-Only)";
 
 type RuntimeExecutionApprovalGateInput = Parameters<typeof evaluateRuntimeExecutionPlanPackage>[0] & {
   readonly operatorFinalApprovalConfirmed?: boolean;
@@ -26,6 +27,30 @@ type ChecklistEntry = {
   readonly satisfied: boolean;
   readonly detail: string;
 };
+
+function boolToken(value: boolean): string {
+  return value ? "true" : "false";
+}
+
+/** Deterministic approval gate fingerprint for Stage 3-C tracking. */
+export function buildRuntimeExecutionApprovalGateFingerprint(input: {
+  readonly sourcePackageDecision: string;
+  readonly sourcePlanFingerprint: string;
+  readonly operatorFinalApprovalConfirmed: boolean;
+  readonly riskAcknowledgementConfirmed: boolean;
+  readonly rollbackAcknowledgementConfirmed: boolean;
+  readonly executionWindowConfirmed: boolean;
+}): string {
+  return [
+    "runtime-approval-gate-v1",
+    input.sourcePackageDecision,
+    input.sourcePlanFingerprint,
+    `operator-${boolToken(input.operatorFinalApprovalConfirmed)}`,
+    `risk-${boolToken(input.riskAcknowledgementConfirmed)}`,
+    `rollback-${boolToken(input.rollbackAcknowledgementConfirmed)}`,
+    `window-${boolToken(input.executionWindowConfirmed)}`,
+  ].join(":");
+}
 
 function resolveConfirmationFlags(input?: RuntimeExecutionApprovalGateInput) {
   return {
@@ -56,8 +81,32 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): RuntimeExecuti
   }));
 }
 
+function buildApprovalGateSummary(input: {
+  readonly decision: RuntimeExecutionApprovalGateDecision;
+  readonly packageDecision: string;
+  readonly sourceApprovalReadinessComplete: boolean;
+}): string {
+  if (input.decision === "ready_for_controlled_runtime_wire_candidate") {
+    return (
+      "Runtime execution approval gate is ready for controlled runtime wire candidate. " +
+      "Not actual runtime execution; Stage 3-C candidate design is required."
+    );
+  }
+
+  if (input.decision === "blocked") {
+    return "Runtime execution approval gate is blocked because the source package is blocked.";
+  }
+
+  return (
+    "Runtime execution approval gate defers. Complete source package readiness, final approval, " +
+    "risk acknowledgement, rollback acknowledgement, and execution window confirmation." +
+    (input.sourceApprovalReadinessComplete ? "" : " Source approval readiness is incomplete.")
+  );
+}
+
 function resolveApprovalGateDecision(input: {
   readonly packageDecision: string;
+  readonly sourceApprovalReadinessComplete: boolean;
   readonly operatorFinalApprovalConfirmed: boolean;
   readonly riskAcknowledgementConfirmed: boolean;
   readonly rollbackAcknowledgementConfirmed: boolean;
@@ -68,6 +117,10 @@ function resolveApprovalGateDecision(input: {
   }
 
   if (input.packageDecision !== PACKAGE_READY) {
+    return "defer";
+  }
+
+  if (!input.sourceApprovalReadinessComplete) {
     return "defer";
   }
 
@@ -92,6 +145,7 @@ function resolveApprovalGateDecision(input: {
 
 function buildApprovalGateChecklist(input: {
   readonly planPackage: ReturnType<typeof evaluateRuntimeExecutionPlanPackage>;
+  readonly sourceApprovalReadinessComplete: boolean;
   readonly operatorFinalApprovalConfirmed: boolean;
   readonly riskAcknowledgementConfirmed: boolean;
   readonly rollbackAcknowledgementConfirmed: boolean;
@@ -117,7 +171,7 @@ function buildApprovalGateChecklist(input: {
     },
     {
       item: "source approval readiness complete",
-      satisfied: readiness.readyCount === readiness.totalCount,
+      satisfied: input.sourceApprovalReadinessComplete,
       detail: `readyCount=${readiness.readyCount}/${readiness.totalCount}`,
     },
     {
@@ -143,7 +197,13 @@ function buildApprovalGateChecklist(input: {
   ]);
 }
 
-function buildRiskChecklist(): RuntimeExecutionApprovalGateChecklistItem[] {
+function buildRiskChecklist(input: {
+  readonly sourceApprovalReadinessComplete: boolean;
+  readonly operatorFinalApprovalConfirmed: boolean;
+  readonly riskAcknowledgementConfirmed: boolean;
+  readonly rollbackAcknowledgementConfirmed: boolean;
+  readonly executionWindowConfirmed: boolean;
+}): RuntimeExecutionApprovalGateChecklistItem[] {
   return mapChecklistEntries([
     {
       item: "Stage1 regression reviewed before execution",
@@ -180,6 +240,31 @@ function buildRiskChecklist(): RuntimeExecutionApprovalGateChecklistItem[] {
       satisfied: true,
       detail: "Stage 3-C required after approval gate ready",
     },
+    {
+      item: "source approval readiness complete",
+      satisfied: input.sourceApprovalReadinessComplete,
+      detail: `sourceApprovalReadinessComplete=${input.sourceApprovalReadinessComplete}`,
+    },
+    {
+      item: "final operator approval captured",
+      satisfied: input.operatorFinalApprovalConfirmed,
+      detail: `operatorFinalApprovalConfirmed=${input.operatorFinalApprovalConfirmed}`,
+    },
+    {
+      item: "risk acknowledgement captured",
+      satisfied: input.riskAcknowledgementConfirmed,
+      detail: `riskAcknowledgementConfirmed=${input.riskAcknowledgementConfirmed}`,
+    },
+    {
+      item: "rollback acknowledgement captured",
+      satisfied: input.rollbackAcknowledgementConfirmed,
+      detail: `rollbackAcknowledgementConfirmed=${input.rollbackAcknowledgementConfirmed}`,
+    },
+    {
+      item: "execution window captured",
+      satisfied: input.executionWindowConfirmed,
+      detail: `executionWindowConfirmed=${input.executionWindowConfirmed}`,
+    },
   ]);
 }
 
@@ -206,12 +291,18 @@ function buildNoRunChecklist(): RuntimeExecutionApprovalGateChecklistItem[] {
 
 function buildHandoffChecklist(input: {
   readonly planFingerprint: string;
+  readonly gateFingerprint: string;
 }): RuntimeExecutionApprovalGateChecklistItem[] {
   return mapChecklistEntries([
     {
       item: "source package fingerprint captured",
       satisfied: input.planFingerprint.length > 0,
       detail: `sourcePlanFingerprint=${input.planFingerprint}`,
+    },
+    {
+      item: "approval gate fingerprint captured",
+      satisfied: input.gateFingerprint.length > 0,
+      detail: `gateFingerprint=${input.gateFingerprint}`,
     },
     {
       item: "approval gate is read-only",
@@ -235,6 +326,7 @@ function appendApprovalGateFindings(input: {
   readonly findings: RuntimeExecutionApprovalGateFinding[];
   readonly decision: RuntimeExecutionApprovalGateDecision;
   readonly packageDecision: string;
+  readonly sourceApprovalReadinessComplete: boolean;
   readonly operatorFinalApprovalConfirmed: boolean;
   readonly riskAcknowledgementConfirmed: boolean;
   readonly rollbackAcknowledgementConfirmed: boolean;
@@ -248,6 +340,9 @@ function appendApprovalGateFindings(input: {
       "runtime_execution_approval_gate_read_only",
       "Runtime execution approval gate is read-only; no runtime execution",
     ),
+  );
+  findings.push(
+    finding("info", "approval_gate_fingerprint_created", "Approval gate fingerprint created for Stage 3-C tracking"),
   );
 
   if (decision === "blocked") {
@@ -263,6 +358,11 @@ function appendApprovalGateFindings(input: {
   if (decision === "defer") {
     if (packageDecision !== PACKAGE_READY) {
       findings.push(finding("warning", "source_package_not_ready", "Source plan package is not ready for approval gate"));
+    }
+    if (!input.sourceApprovalReadinessComplete) {
+      findings.push(
+        finding("warning", "source_approval_readiness_incomplete", "Source approval readiness is incomplete"),
+      );
     }
     if (!input.operatorFinalApprovalConfirmed) {
       findings.push(finding("warning", "operator_final_approval_missing", "Operator final approval is missing"));
@@ -285,6 +385,13 @@ function appendApprovalGateFindings(input: {
   findings.push(
     finding(
       "info",
+      "approval_gate_ready_not_execution_permission",
+      "Approval gate ready; not actual runtime execution permission; Stage 3-C controlled runtime wire candidate required",
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
       "controlled_runtime_wire_candidate_next",
       "Approval gate ready; not actual runtime execution; Stage 3-C controlled runtime wire candidate required",
     ),
@@ -303,12 +410,31 @@ export function evaluateRuntimeExecutionApprovalGate(
     executionWindowConfirmed,
   } = resolveConfirmationFlags(input);
 
-  const decision = resolveApprovalGateDecision({
-    packageDecision: planPackage.decision,
+  const sourceApprovalReadinessComplete =
+    planPackage.approvalReadiness.readyCount === planPackage.approvalReadiness.totalCount;
+
+  const gateFingerprint = buildRuntimeExecutionApprovalGateFingerprint({
+    sourcePackageDecision: planPackage.decision,
+    sourcePlanFingerprint: planPackage.sourcePlanFingerprint,
     operatorFinalApprovalConfirmed,
     riskAcknowledgementConfirmed,
     rollbackAcknowledgementConfirmed,
     executionWindowConfirmed,
+  });
+
+  const decision = resolveApprovalGateDecision({
+    packageDecision: planPackage.decision,
+    sourceApprovalReadinessComplete,
+    operatorFinalApprovalConfirmed,
+    riskAcknowledgementConfirmed,
+    rollbackAcknowledgementConfirmed,
+    executionWindowConfirmed,
+  });
+
+  const gateSummary = buildApprovalGateSummary({
+    decision,
+    packageDecision: planPackage.decision,
+    sourceApprovalReadinessComplete,
   });
 
   const findings: RuntimeExecutionApprovalGateFinding[] = [];
@@ -316,6 +442,7 @@ export function evaluateRuntimeExecutionApprovalGate(
     findings,
     decision,
     packageDecision: planPackage.decision,
+    sourceApprovalReadinessComplete,
     operatorFinalApprovalConfirmed,
     riskAcknowledgementConfirmed,
     rollbackAcknowledgementConfirmed,
@@ -326,6 +453,10 @@ export function evaluateRuntimeExecutionApprovalGate(
     mode: "read_only_runtime_execution_approval_gate",
     stage: "stage_3_b",
     decision,
+    gateVersion: 1,
+    gateTitle: GATE_TITLE,
+    gateSummary,
+    gateFingerprint,
     sourcePackageDecision: planPackage.decision,
     sourcePlanDecision: planPackage.sourcePlanDecision,
     sourceHandoffDecision: planPackage.sourceHandoffDecision,
@@ -334,20 +465,31 @@ export function evaluateRuntimeExecutionApprovalGate(
     sourceApprovalReadinessReadyCount: planPackage.approvalReadiness.readyCount,
     sourceApprovalReadinessTotalCount: planPackage.approvalReadiness.totalCount,
     sourceApprovalReadinessMissing: planPackage.approvalReadiness.missing,
+    sourceApprovalReadinessComplete,
     operatorFinalApprovalConfirmed,
     riskAcknowledgementConfirmed,
     rollbackAcknowledgementConfirmed,
     executionWindowConfirmed,
     approvalGateChecklist: buildApprovalGateChecklist({
       planPackage,
+      sourceApprovalReadinessComplete,
       operatorFinalApprovalConfirmed,
       riskAcknowledgementConfirmed,
       rollbackAcknowledgementConfirmed,
       executionWindowConfirmed,
     }),
-    riskChecklist: buildRiskChecklist(),
+    riskChecklist: buildRiskChecklist({
+      sourceApprovalReadinessComplete,
+      operatorFinalApprovalConfirmed,
+      riskAcknowledgementConfirmed,
+      rollbackAcknowledgementConfirmed,
+      executionWindowConfirmed,
+    }),
     noRunChecklist: buildNoRunChecklist(),
-    handoffChecklist: buildHandoffChecklist({ planFingerprint: planPackage.sourcePlanFingerprint }),
+    handoffChecklist: buildHandoffChecklist({
+      planFingerprint: planPackage.sourcePlanFingerprint,
+      gateFingerprint,
+    }),
     evaluatesApprovalOnly: true,
     executesRuntimeInThisStep: false,
     changesConnectorRoutingInThisStep: false,

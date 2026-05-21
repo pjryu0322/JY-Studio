@@ -24,6 +24,11 @@ export interface RuntimeExecutionApprovalGateReport {
   readonly stage: "stage_3_b";
   readonly decision: RuntimeExecutionApprovalGateDecision;
 
+  readonly gateVersion: 1;
+  readonly gateTitle: string;
+  readonly gateSummary: string;
+  readonly gateFingerprint: string;
+
   readonly sourcePackageDecision: string;
   readonly sourcePlanDecision: string;
   readonly sourceHandoffDecision: string;
@@ -32,6 +37,7 @@ export interface RuntimeExecutionApprovalGateReport {
   readonly sourceApprovalReadinessReadyCount: number;
   readonly sourceApprovalReadinessTotalCount: number;
   readonly sourceApprovalReadinessMissing: readonly string[];
+  readonly sourceApprovalReadinessComplete: boolean;
 
   readonly operatorFinalApprovalConfirmed: boolean;
   readonly riskAcknowledgementConfirmed: boolean;

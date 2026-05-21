@@ -597,7 +597,21 @@ export type {
   RuntimeExecutionApprovalGateReport,
 } from "@/lib/agents/runtimeExecutionApprovalGateTypes";
 
-export { evaluateRuntimeExecutionApprovalGate } from "@/lib/agents/evaluateRuntimeExecutionApprovalGate";
+export {
+  buildRuntimeExecutionApprovalGateFingerprint,
+  evaluateRuntimeExecutionApprovalGate,
+} from "@/lib/agents/evaluateRuntimeExecutionApprovalGate";
+
+export type {
+  ControlledRuntimeWireCandidateChecklistItem,
+  ControlledRuntimeWireCandidateDecision,
+  ControlledRuntimeWireCandidateFinding,
+  ControlledRuntimeWireCandidateItem,
+  ControlledRuntimeWireCandidateKind,
+  ControlledRuntimeWireCandidateReport,
+} from "@/lib/agents/controlledRuntimeWireCandidateTypes";
+
+export { evaluateControlledRuntimeWireCandidate } from "@/lib/agents/evaluateControlledRuntimeWireCandidate";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
