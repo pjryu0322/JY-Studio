@@ -9,6 +9,10 @@ function checklistItem(
   return report.validationChecklist.find((c) => c.item === item);
 }
 
+function expectUnique(values: readonly string[]) {
+  expect(new Set(values.map((v) => v.toLowerCase())).size).toBe(values.length);
+}
+
 describe("multi-agent operator approval audit write path design stage 2-21", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -146,6 +150,7 @@ describe("multi-agent operator approval audit write path design stage 2-21", () 
   it("audit_event returns defer", () => {
     const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "audit_event" });
     expect(report.decision).toBe("defer");
+    expect(report.findings.some((f) => f.code === "audit_event_write_deferred")).toBe(true);
   });
 
   it("rollback_approval returns defer", () => {
@@ -171,6 +176,56 @@ describe("multi-agent operator approval audit write path design stage 2-21", () 
     expect(report.proposedSanitizers).toEqual([]);
     expect(report.forbiddenFieldGuards).toEqual([]);
     expect(report.rollbackPlan).toEqual([]);
+  });
+
+  it("unknown target includes approval_audit_write_path_target_unknown_no_feature_flag finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "invalid" });
+    expect(report.findings.some((f) => f.code === "approval_audit_write_path_target_unknown_no_feature_flag")).toBe(
+      true,
+    );
+  });
+
+  it("unknown target includes approval_audit_write_path_target_unknown_no_entrypoints finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "invalid" });
+    expect(report.findings.some((f) => f.code === "approval_audit_write_path_target_unknown_no_entrypoints")).toBe(
+      true,
+    );
+  });
+
+  it("unknown target includes approval_audit_write_path_target_unknown_no_permission_guards finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "invalid" });
+    expect(
+      report.findings.some((f) => f.code === "approval_audit_write_path_target_unknown_no_permission_guards"),
+    ).toBe(true);
+  });
+
+  it("unknown target includes approval_audit_write_path_target_unknown_no_audit_integrity_guards finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "invalid" });
+    expect(
+      report.findings.some((f) => f.code === "approval_audit_write_path_target_unknown_no_audit_integrity_guards"),
+    ).toBe(true);
+  });
+
+  it("unknown target includes approval_audit_write_path_target_unknown_no_rollback finding", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign({ target: "invalid" });
+    expect(report.findings.some((f) => f.code === "approval_audit_write_path_target_unknown_no_rollback")).toBe(
+      true,
+    );
+  });
+
+  it("validationChecklist includes runtime execution path unchanged true", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign();
+    expect(checklistItem(report, "runtime execution path unchanged")?.satisfied).toBe(true);
+  });
+
+  it("proposed arrays and rollbackPlan have no duplicates", () => {
+    const report = evaluateOperatorApprovalAuditWritePathDesign();
+    expectUnique(report.proposedWriteEntrypoints);
+    expectUnique(report.proposedPermissionGuards);
+    expectUnique(report.proposedAuditIntegrityGuards);
+    expectUnique(report.proposedSanitizers);
+    expectUnique(report.forbiddenFieldGuards);
+    expectUnique(report.rollbackPlan);
   });
 
   it("uses schema decision only without Prisma DB or write path calls", () => {

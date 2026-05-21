@@ -209,6 +209,11 @@ function buildValidationChecklist(input: {
       reason: "write adapter is not implemented in this stage",
     },
     {
+      item: "runtime execution path unchanged",
+      satisfied: true,
+      reason: "this evaluator does not change runtime execution paths",
+    },
+    {
       item: "DB write not implemented in this step",
       satisfied: true,
       reason: "this evaluator does not implement DB writes",
@@ -239,6 +244,41 @@ function appendWritePathFindings(input: {
     if (target === "unknown") {
       findings.push(
         finding("blocking", "unknown_approval_audit_write_path_target", "unknown write path target is blocked"),
+      );
+      findings.push(
+        finding(
+          "info",
+          "approval_audit_write_path_target_unknown_no_feature_flag",
+          "feature flag not applicable while blocked",
+        ),
+      );
+      findings.push(
+        finding(
+          "info",
+          "approval_audit_write_path_target_unknown_no_entrypoints",
+          "write entrypoints not applicable while blocked",
+        ),
+      );
+      findings.push(
+        finding(
+          "info",
+          "approval_audit_write_path_target_unknown_no_permission_guards",
+          "permission guards not applicable while blocked",
+        ),
+      );
+      findings.push(
+        finding(
+          "info",
+          "approval_audit_write_path_target_unknown_no_audit_integrity_guards",
+          "audit integrity guards not applicable while blocked",
+        ),
+      );
+      findings.push(
+        finding(
+          "info",
+          "approval_audit_write_path_target_unknown_no_rollback",
+          "rollback plan not applicable while blocked",
+        ),
       );
     }
     if (schemaDecision === "blocked") {
@@ -284,6 +324,15 @@ function appendWritePathFindings(input: {
           "warning",
           "rollback_approval_write_deferred",
           "rollback approval write path defers until schema applied",
+        ),
+      );
+    }
+    if (target === "audit_event") {
+      findings.push(
+        finding(
+          "warning",
+          "audit_event_write_deferred",
+          "audit event write path defers until schema and migration are applied",
         ),
       );
     }

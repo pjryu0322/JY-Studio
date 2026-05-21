@@ -901,6 +901,16 @@ ready_for_write_path_design 타입 유지, 현재 단계에서는 미반환
 featureFlagDefault=off; forbidden guards + sanitizers + rollback plan in report
 ```
 
+## Stage 2-21 소스 보완 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| unknown/blocked findings | 보완 | `approval_audit_write_path_target_unknown_no_*` |
+| audit_event defer finding | 보완 | `audit_event_write_deferred` |
+| runtime path unchanged checklist | 보완 | validationChecklist 항목 추가 |
+| candidate arrays dedupe test | 보완 | `expectUnique` on all proposed arrays |
+| 실제 approval/audit write | 없음 | read-only design evaluator |
+
 ## Stage 2-21 Operator Approval/Audit Write Path 설계 결과
 
 | 항목 | 반영 방식 | 실제 write 여부 | 비고 |
@@ -937,13 +947,46 @@ ready_for_write_path_design 타입 유지, 현재 단계에서는 미반환
 permission/audit integrity/forbidden guards in report only
 ```
 
-### Stage 2-22 후보: Connector Gateway 실험 브랜치 명시 승인 후 생성
+## Stage 2-22 Connector Gateway Branch Creation Readiness 결과
 
-Stage 2-22에서는 Stage 2-19 approval readiness를 바탕으로 실제 실험 브랜치를 생성할지 결정한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Branch Creation Readiness 타입 | read-only readiness report | 없음 | 승인 패키지 |
+| Branch Creation evaluator | branch approval 기반 판단 | 없음 | git 명령 미실행 |
+| commandCandidates | report field | 없음 | 명시 승인 후만 사용 |
+| explicit user approval | required | 없음 | 필수 |
+| regressionChecklist | report field | 없음 | 실행 전 체크 |
+| rollbackCriteria | report field | 없음 | 실패 기준 |
+| feature flag wire | 없음 | 없음 | 별도 PR |
+| routing change | 없음 | 없음 | 실험 브랜치 이후 |
+
+구현: `connectorGatewayExperimentBranchCreationReadinessTypes.ts`, `evaluateConnectorGatewayExperimentBranchCreationReadiness.ts`
+
+### Stage 2-22 원칙
+
+```text
+- 실제 브랜치를 생성하지 않는다.
+- git 명령은 command candidate로만 제시한다.
+- 사용자의 명시 승인 전에는 branch 생성 금지.
+- feature flag wire와 routing 변경은 별도 PR/별도 승인 대상이다.
+```
+
+### Stage 2-22 Decision 규칙 요약
+
+```text
+ready_for_operator_approval → ready_for_explicit_user_approval + commandCandidates
+defer → defer; commandCandidates=[]
+blocked → blocked; commandCandidates=[]
+createsBranchInThisStep / wiresFeatureFlagInThisStep / changesRoutingInThisStep = false
+```
+
+### Stage 2-23 후보: Agent Execution Record schema/migration 별도 PR 준비
+
+Stage 2-23에서는 Stage 2-17 schema decision을 기반으로 별도 PR에서 schema/migration 준비 여부를 판단한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| branch creation command plan | git checkout -b 후보 | 명시 승인 필요 |
-| branch scope | cursor_only 우선 | github 포함은 defer |
-| feature flag wire plan | default off 위치 확정 | 별도 PR |
-| regression runbook | Stage1/ENV_TEST/Cursor/GitHub 회귀 | 필수 |
+| schema PR readiness | schema 변경 전 승인 패키지 | DB 영향 검토 |
+| migration draft plan | migration 후보 | 실제 migration은 별도 승인 |
+| rollback migration plan | rollback 후보 | 필수 |
+| retention/access review | 보존/권한 정책 검토 | 필수 |

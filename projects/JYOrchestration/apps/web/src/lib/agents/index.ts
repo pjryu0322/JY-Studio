@@ -402,6 +402,16 @@ export {
   normalizeOperatorApprovalAuditWritePathTarget,
 } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
 
+export type {
+  ConnectorGatewayExperimentBranchCreationChecklistItem,
+  ConnectorGatewayExperimentBranchCreationCommandCandidate,
+  ConnectorGatewayExperimentBranchCreationReadinessDecision,
+  ConnectorGatewayExperimentBranchCreationReadinessFinding,
+  ConnectorGatewayExperimentBranchCreationReadinessReport,
+} from "@/lib/agents/connectorGatewayExperimentBranchCreationReadinessTypes";
+
+export { evaluateConnectorGatewayExperimentBranchCreationReadiness } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchCreationReadiness";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */
