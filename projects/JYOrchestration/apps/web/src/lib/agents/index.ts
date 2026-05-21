@@ -662,6 +662,17 @@ export {
 
 export type { ConnectorGatewayShadowRoutingPlanDecisionInput } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
 
+export type {
+  ControlledExecutionPathCandidate,
+  ControlledExecutionPathCandidateChecklistItem,
+  ControlledExecutionPathCandidateDecision,
+  ControlledExecutionPathCandidateFinding,
+  ControlledExecutionPathCandidateMode,
+  ControlledExecutionPathCandidateReport,
+} from "@/lib/agents/controlledExecutionPathCandidateTypes";
+
+export { evaluateControlledExecutionPathCandidate } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

@@ -99,6 +99,18 @@ function buildShadowRouteCandidates(
   }));
 }
 
+function countRouteCandidateSatisfied(candidates: readonly ConnectorGatewayShadowRouteCandidate[]): number {
+  return candidates.filter(
+    (candidate) =>
+      candidate.executesInThisStep === false &&
+      candidate.changesRoutingInThisStep === false &&
+      candidate.routeName.trim().length > 0 &&
+      candidate.sourcePath.trim().length > 0 &&
+      candidate.shadowPath.trim().length > 0 &&
+      candidate.connectorId.trim().length > 0,
+  ).length;
+}
+
 export type ConnectorGatewayShadowRoutingPlanDecisionInput = {
   readonly manualVerificationDecision: string;
   readonly rollbackRequired: boolean;
@@ -285,6 +297,7 @@ function appendShadowRoutingFindings(input: {
       "Connector Gateway shadow routing plan is read-only; no routing change",
     ),
   );
+  findings.push(finding("info", "shadow_route_candidates_generated", "Shadow route candidates generated"));
 
   if (decision === "blocked") {
     if (manualVerification.decision === "blocked") {
@@ -329,7 +342,6 @@ function appendShadowRoutingFindings(input: {
     return;
   }
 
-  findings.push(finding("info", "shadow_route_candidates_generated", "Shadow route candidates generated"));
   findings.push(finding("info", "shadow_routing_plan_ready", "Shadow routing plan is ready for review"));
   findings.push(
     finding(
@@ -349,7 +361,8 @@ export function evaluateConnectorGatewayShadowRoutingPlan(
 
   const shadowRouteCandidates = buildShadowRouteCandidates(manualVerification.decision);
   const routeCandidateCount = shadowRouteCandidates.length;
-  const routeCandidateSatisfiedCount = routeCandidateCount;
+  const routeCandidateSatisfiedCount = countRouteCandidateSatisfied(shadowRouteCandidates);
+  const noRunChecklist = buildNoRunChecklist();
 
   const decision = resolveConnectorGatewayShadowRoutingPlanDecision({
     manualVerificationDecision: manualVerification.decision,
@@ -378,6 +391,14 @@ export function evaluateConnectorGatewayShadowRoutingPlan(
     sourceRegressionPassed: manualVerification.regressionPassed,
     sourceRollbackRequired: manualVerification.rollbackRequired,
     sourceFindingCodes: manualVerification.findings.map((f) => f.code),
+    sourceManualVerificationExpectedBranchName: manualVerification.expectedBranchName,
+    sourceManualVerificationActualBranchName: manualVerification.actualBranchName,
+    sourceManualVerificationRegressionResultsProvided: manualVerification.regressionResultsProvided,
+    sourceManualVerificationExplicitApproval: manualVerification.explicitManualExecutionConfirmed,
+    sourceManualVerificationNoRunChecklistCount: manualVerification.noRunChecklist.length,
+    sourceManualVerificationNoRunChecklistSatisfiedCount: manualVerification.noRunChecklist.filter(
+      (item) => item.satisfied,
+    ).length,
     featureFlagName,
     featureFlagDefault: FEATURE_FLAG_DEFAULT,
     featureFlagEnabledInThisStep: false,
@@ -394,7 +415,9 @@ export function evaluateConnectorGatewayShadowRoutingPlan(
       sourceRollbackRequired: manualVerification.rollbackRequired,
       rollbackPlanReviewedForShadowRouting: flags.rollbackPlanReviewedForShadowRouting,
     }),
-    noRunChecklist: buildNoRunChecklist(),
+    noRunChecklist,
+    noRunChecklistCount: noRunChecklist.length,
+    noRunChecklistSatisfiedCount: noRunChecklist.filter((item) => item.satisfied).length,
     ...CONNECTOR_GATEWAY_SHADOW_ROUTING_PLAN_NO_RUN_REPORT,
     findings,
   };

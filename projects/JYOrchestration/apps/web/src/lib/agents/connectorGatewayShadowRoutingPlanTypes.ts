@@ -46,6 +46,13 @@ export interface ConnectorGatewayShadowRoutingPlanReport {
   readonly sourceRollbackRequired: boolean;
   readonly sourceFindingCodes: readonly string[];
 
+  readonly sourceManualVerificationExpectedBranchName: string;
+  readonly sourceManualVerificationActualBranchName: string;
+  readonly sourceManualVerificationRegressionResultsProvided: boolean;
+  readonly sourceManualVerificationExplicitApproval: boolean;
+  readonly sourceManualVerificationNoRunChecklistCount: number;
+  readonly sourceManualVerificationNoRunChecklistSatisfiedCount: number;
+
   readonly featureFlagName: string;
   readonly featureFlagDefault: "off";
   readonly featureFlagEnabledInThisStep: false;
@@ -58,6 +65,8 @@ export interface ConnectorGatewayShadowRoutingPlanReport {
   readonly safetyChecklist: readonly ConnectorGatewayShadowRoutingPlanChecklistItem[];
   readonly rollbackChecklist: readonly ConnectorGatewayShadowRoutingPlanChecklistItem[];
   readonly noRunChecklist: readonly ConnectorGatewayShadowRoutingPlanChecklistItem[];
+  readonly noRunChecklistCount: number;
+  readonly noRunChecklistSatisfiedCount: number;
 
   readonly executesRuntimeInThisStep: false;
   readonly changesConnectorRoutingInThisStep: false;

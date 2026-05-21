@@ -47,7 +47,10 @@ function mockManualVerification(
     verificationChecklist: [],
     regressionChecklist: [],
     rollbackChecklist: [],
-    noRunChecklist: [],
+    noRunChecklist: [
+      { item: "createsBranchInThisStep=false", satisfied: true, reason: "ok" },
+      { item: "executesGitInThisStep=false", satisfied: true, reason: "ok" },
+    ],
     createsBranchInThisStep: false,
     executesGitInThisStep: false,
     createsPullRequestInThisStep: false,
@@ -297,5 +300,92 @@ describe("multi-agent connector gateway shadow routing plan stage 4-C", () => {
         (f) => f.code === "ready_for_shadow_routing_review_not_routing_permission",
       ),
     ).toBe(true);
+  });
+
+  describe("Stage 4-C hardening", () => {
+    function findingCount(report: ReturnType<typeof evaluateConnectorGatewayShadowRoutingPlan>, code: string) {
+      return report.findings.filter((f) => f.code === code).length;
+    }
+
+    it("defer state includes shadow_route_candidates_generated finding", () => {
+      spyManualVerification({ decision: "defer" });
+      expect(
+        findingCount(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS), "shadow_route_candidates_generated"),
+      ).toBe(1);
+    });
+
+    it("blocked state includes shadow_route_candidates_generated finding", () => {
+      spyManualVerification({ decision: "blocked" });
+      expect(
+        findingCount(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS), "shadow_route_candidates_generated"),
+      ).toBe(1);
+    });
+
+    it("ready state includes shadow_route_candidates_generated finding exactly once", () => {
+      expect(findingCount(evaluateReadyShadowReport(), "shadow_route_candidates_generated")).toBe(1);
+    });
+
+    it("sourceManualVerificationExpectedBranchName matches expected branch", () => {
+      spyManualVerification({ expectedBranchName: EXPECTED_BRANCH });
+      const report = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+      expect(report.sourceManualVerificationExpectedBranchName).toBe(EXPECTED_BRANCH);
+      expect(report.sourceExpectedBranchName).toBe(EXPECTED_BRANCH);
+    });
+
+    it("sourceManualVerificationActualBranchName reflects manual verification actual branch", () => {
+      const actual = "experiment/custom-branch";
+      spyManualVerification({ actualBranchName: actual });
+      expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).sourceManualVerificationActualBranchName).toBe(
+        actual,
+      );
+    });
+
+    it("sourceManualVerificationRegressionResultsProvided reflects regressionResultsProvided false", () => {
+      spyManualVerification({ regressionResultsProvided: false });
+      expect(
+        evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).sourceManualVerificationRegressionResultsProvided,
+      ).toBe(false);
+    });
+
+    it("sourceManualVerificationRegressionResultsProvided reflects regressionResultsProvided true", () => {
+      spyManualVerification({ regressionResultsProvided: true });
+      expect(
+        evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).sourceManualVerificationRegressionResultsProvided,
+      ).toBe(true);
+    });
+
+    it("sourceManualVerificationExplicitApproval reflects explicitManualExecutionConfirmed", () => {
+      spyManualVerification({ explicitManualExecutionConfirmed: false });
+      expect(evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).sourceManualVerificationExplicitApproval).toBe(
+        false,
+      );
+    });
+
+    it("sourceManualVerificationNoRunChecklistCount is at least 1", () => {
+      spyManualVerification();
+      expect(
+        evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS).sourceManualVerificationNoRunChecklistCount,
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    it("sourceManualVerificationNoRunChecklistSatisfiedCount equals source no-run checklist count", () => {
+      spyManualVerification();
+      const report = evaluateConnectorGatewayShadowRoutingPlan(ALL_SHADOW_CONFIRMATIONS);
+      expect(report.sourceManualVerificationNoRunChecklistSatisfiedCount).toBe(
+        report.sourceManualVerificationNoRunChecklistCount,
+      );
+    });
+
+    it("noRunChecklistCount and satisfied count match report noRunChecklist", () => {
+      const report = evaluateReadyShadowReport();
+      expect(report.noRunChecklistCount).toBe(report.noRunChecklist.length);
+      expect(report.noRunChecklistSatisfiedCount).toBe(report.noRunChecklist.filter((item) => item.satisfied).length);
+    });
+
+    it("routeCandidateSatisfiedCount is computed from candidate no-run and path fields", () => {
+      const report = evaluateReadyShadowReport();
+      expect(report.routeCandidateSatisfiedCount).toBe(report.routeCandidateCount);
+      expect(report.routeCandidateSatisfiedCount).toBe(3);
+    });
   });
 });

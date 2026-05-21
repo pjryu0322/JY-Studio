@@ -1796,6 +1796,46 @@ rollback plan review missing → defer
 all satisfied → ready_for_shadow_routing_review
 ```
 
+## Stage 4-D Controlled Execution Path Candidate
+
+Stage 4-D는 Stage 4-C Connector Gateway Shadow Routing Plan을 source로 하여 controlled execution path 후보를 만드는 read-only 단계다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| sourceShadowRoutingDecision | Stage 4-C source | 없음 |
+| executionPathCandidates | report field | 없음 |
+| sourceFeatureFlagName | Stage 4-C source | 없음 |
+| candidateChecklist | report field | 없음 |
+| safetyChecklist | report field | 없음 |
+| rollbackChecklist | report field | 없음 |
+| handoffChecklist | report field | 없음 |
+| noRunChecklist | report field | 없음 |
+
+### Stage 4-D 원칙
+
+```text
+- 실제 runtime execution path를 변경하지 않는다.
+- 실제 Connector Gateway routing을 변경하지 않는다.
+- 실제 Connector를 호출하지 않는다.
+- 실제 Cursor/GitHub를 호출하지 않는다.
+- 실제 feature flag를 wire하지 않는다.
+- 실제 Git/PR을 실행하지 않는다.
+- ready_for_execution_path_review는 Stage 4-E Runtime Wire Experiment Review Package로 넘길 수 있다는 의미이지 execution path 변경 허가가 아니다.
+```
+
+### Stage 4-D Decision 규칙 요약
+
+```text
+shadow routing plan blocked → blocked
+shadow routing plan not ready → defer
+source no-run checklist mismatch → blocked
+execution path review missing → defer
+shadow routing review missing → defer
+rollback review missing → defer
+feature flag plan missing → defer
+all satisfied → ready_for_execution_path_review
+```
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
@@ -1807,6 +1847,7 @@ Stage 4-B: Manual Branch Creation Verification
 Stage 4-C: Connector Gateway Shadow Routing Plan
 Stage 4-D: Controlled Execution Path Candidate
 Stage 4-E: Runtime Wire Experiment Review Package
+Stage 4-F: Stage 4 Integrated Closure Verdict
 ```
 
 ### Stage 2 종료 판정 의미
