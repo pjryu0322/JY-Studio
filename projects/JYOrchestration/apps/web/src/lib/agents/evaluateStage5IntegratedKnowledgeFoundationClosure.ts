@@ -2,11 +2,8 @@
  * Stage 5-F integrated knowledge foundation closure (read-only).
  */
 
-import { evaluatePromptContextInjectionDesignCandidate } from "@/lib/agents/evaluatePromptContextInjectionDesignCandidate";
-import { evaluateRoleKnowledgeBindingClosure } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
-import { evaluateKnowledgePackMetadataRegistryCandidate } from "@/lib/agents/evaluateKnowledgePackMetadataRegistryCandidate";
-import { evaluateRoleKnowledgePackMappingCandidate } from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
 import type {
+  Stage5IntegratedKnowledgeFoundationClosureFinding,
   Stage5IntegratedKnowledgeFoundationClosureInput,
   Stage5IntegratedKnowledgeFoundationClosureReport,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
@@ -16,6 +13,7 @@ import {
   buildStage5IntegratedClosureChecklist,
   buildStage5IntegratedClosureSummary,
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
@@ -25,10 +23,13 @@ import {
 
 export {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  evaluateStage5KnowledgeFoundationPipeline,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   RECOMMENDED_NEXT_PHASES,
   SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
+
+export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
 export type { Stage5IntegratedKnowledgeFoundationClosureDecisionInput } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
@@ -36,35 +37,19 @@ export type { Stage5IntegratedKnowledgeFoundationClosureDecisionInput } from "@/
 export function evaluateStage5IntegratedKnowledgeFoundationClosure(
   input?: Stage5IntegratedKnowledgeFoundationClosureInput,
 ): Stage5IntegratedKnowledgeFoundationClosureReport {
-  const stage5AReport = evaluateRoleKnowledgeBindingClosure(input?.stage5AClosure);
-  const stage5BReport = evaluateKnowledgePackMetadataRegistryCandidate({
-    stage5AClosure: input?.stage5AClosure,
-    ...input?.metadataRegistry,
-  });
-  const stage5CReport = evaluateRoleKnowledgePackMappingCandidate({
-    stage5AClosure: input?.stage5AClosure,
-    metadataRegistry: input?.metadataRegistry,
-    ...input?.mapping,
-  });
-  const stage5DReport = evaluatePromptContextInjectionDesignCandidate({
-    stage5AClosure: input?.stage5AClosure,
-    metadataRegistry: input?.metadataRegistry,
-    mapping: input?.mapping,
-    ...input?.promptDesign,
-  });
+  const { stage5A, stage5B, stage5C, stage5D } = evaluateStage5KnowledgeFoundationPipeline(input);
 
   const sources = {
-    sourceStage5AClosureDecision: stage5AReport.decision,
-    sourceStage5BDecision: stage5BReport.decision,
-    sourceStage5CDecision: stage5CReport.decision,
-    sourceStage5DDecision: stage5DReport.decision,
+    sourceStage5AClosureDecision: stage5A.decision,
+    sourceStage5BDecision: stage5B.decision,
+    sourceStage5CDecision: stage5C.decision,
+    sourceStage5DDecision: stage5D.decision,
   };
 
   const decision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
   const closureFingerprint = buildStage5IntegratedKnowledgeFoundationClosureFingerprint(sources);
 
-  const findings: import("@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes").Stage5IntegratedKnowledgeFoundationClosureFinding[] =
-    [];
+  const findings: Stage5IntegratedKnowledgeFoundationClosureFinding[] = [];
   appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources });
 
   return {

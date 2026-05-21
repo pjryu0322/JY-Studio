@@ -803,10 +803,20 @@ export type {
 export {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
+  evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
+
+export {
+  extractStage5AClosureInput,
+  toMappingEvaluatorInput,
+  toMetadataRegistryEvaluatorInput,
+  toPromptDesignEvaluatorInput,
+} from "@/lib/agents/stage5KnowledgeFoundationInput";
+
+export type { Stage5KnowledgeFoundationChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
 export type {
   Stage5IntegratedKnowledgeFoundationClosureChecklistItem,

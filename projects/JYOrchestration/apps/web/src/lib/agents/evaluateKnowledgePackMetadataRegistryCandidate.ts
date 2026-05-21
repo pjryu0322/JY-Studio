@@ -4,6 +4,7 @@
 
 import { evaluateRoleKnowledgeBindingClosure } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import type {
+  KnowledgePackMetadataRegistryCandidateFinding,
   KnowledgePackMetadataRegistryCandidateInput,
   KnowledgePackMetadataRegistryCandidateReport,
 } from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
@@ -38,8 +39,7 @@ export function evaluateKnowledgePackMetadataRegistryCandidate(
     hasMissingRequiredFields: validation.hasMissingRequiredFields,
   });
 
-  const findings: import("@/lib/agents/knowledgePackMetadataRegistryCandidateTypes").KnowledgePackMetadataRegistryCandidateFinding[] =
-    [];
+  const findings: KnowledgePackMetadataRegistryCandidateFinding[] = [];
   appendKnowledgePackMetadataRegistryCandidateFindings({
     findings,
     decision,

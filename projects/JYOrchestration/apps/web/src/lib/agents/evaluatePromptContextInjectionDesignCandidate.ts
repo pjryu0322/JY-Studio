@@ -3,7 +3,9 @@
  */
 
 import { evaluateRoleKnowledgePackMappingCandidate } from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
+import { toMappingEvaluatorInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import type {
+  PromptContextInjectionDesignCandidateFinding,
   PromptContextInjectionDesignCandidateInput,
   PromptContextInjectionDesignCandidateReport,
 } from "@/lib/agents/promptContextInjectionDesignCandidateTypes";
@@ -29,11 +31,7 @@ export type { PromptContextInjectionDesignCandidateDecisionInput } from "@/lib/a
 export function evaluatePromptContextInjectionDesignCandidate(
   input?: PromptContextInjectionDesignCandidateInput,
 ): PromptContextInjectionDesignCandidateReport {
-  const stage5CReport = evaluateRoleKnowledgePackMappingCandidate({
-    stage5AClosure: input?.stage5AClosure,
-    metadataRegistry: input?.metadataRegistry,
-    ...input?.mapping,
-  });
+  const stage5CReport = evaluateRoleKnowledgePackMappingCandidate(toMappingEvaluatorInput(input));
   const { agentTypes } = parsePromptContextInjectionDesignCandidateInput(input);
   const designCandidates =
     input?.designCandidates ?? buildDefaultPromptContextInjectionDesignCandidates(stage5CReport.mappingCandidates);
@@ -46,8 +44,7 @@ export function evaluatePromptContextInjectionDesignCandidate(
     hasMissingDesignAgent: validation.hasMissingDesignAgent,
   });
 
-  const findings: import("@/lib/agents/promptContextInjectionDesignCandidateTypes").PromptContextInjectionDesignCandidateFinding[] =
-    [];
+  const findings: PromptContextInjectionDesignCandidateFinding[] = [];
   appendPromptContextInjectionDesignCandidateFindings({
     findings,
     decision,

@@ -3,7 +3,9 @@
  */
 
 import { evaluateKnowledgePackMetadataRegistryCandidate } from "@/lib/agents/evaluateKnowledgePackMetadataRegistryCandidate";
+import { toMetadataRegistryEvaluatorInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import type {
+  RoleKnowledgePackMappingCandidateFinding,
   RoleKnowledgePackMappingCandidateInput,
   RoleKnowledgePackMappingCandidateReport,
 } from "@/lib/agents/roleKnowledgePackMappingCandidateTypes";
@@ -28,10 +30,7 @@ export type { RoleKnowledgePackMappingCandidateDecisionInput } from "@/lib/agent
 export function evaluateRoleKnowledgePackMappingCandidate(
   input?: RoleKnowledgePackMappingCandidateInput,
 ): RoleKnowledgePackMappingCandidateReport {
-  const stage5BReport = evaluateKnowledgePackMetadataRegistryCandidate({
-    stage5AClosure: input?.stage5AClosure,
-    ...input?.metadataRegistry,
-  });
+  const stage5BReport = evaluateKnowledgePackMetadataRegistryCandidate(toMetadataRegistryEvaluatorInput(input));
   const { agentTypes, mappingCandidates } = parseRoleKnowledgePackMappingCandidateInput(input);
   const validation = validateRoleKnowledgePackMappings({
     agentTypes,
@@ -50,8 +49,7 @@ export function evaluateRoleKnowledgePackMappingCandidate(
     hasUnknownPackInMetadata: validation.hasUnknownPackInMetadata,
   });
 
-  const findings: import("@/lib/agents/roleKnowledgePackMappingCandidateTypes").RoleKnowledgePackMappingCandidateFinding[] =
-    [];
+  const findings: RoleKnowledgePackMappingCandidateFinding[] = [];
   appendRoleKnowledgePackMappingCandidateFindings({
     findings,
     decision,
