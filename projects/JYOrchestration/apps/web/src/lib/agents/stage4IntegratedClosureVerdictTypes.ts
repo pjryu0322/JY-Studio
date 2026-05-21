@@ -57,10 +57,17 @@ export interface Stage4IntegratedClosureVerdictReport {
   readonly requiresSeparateConnectorExperimentBranch: boolean;
   readonly requiresSeparateFeatureFlagWire: boolean;
   readonly requiresSeparateRuntimeWritePathWire: boolean;
+  /** Primary recommended Stage 5 entry candidate when closure is ready (not an execution order). */
   readonly stage5Candidate:
     | "role_knowledge_binding_foundation"
     | "runtime_execution_design"
     | "continue_read_only_hardening";
+  /** All Stage 5 entry candidates defined at Stage 4-F closure (read-only planning only). */
+  readonly stage5EntryCandidates: readonly (
+    | "role_knowledge_binding_foundation"
+    | "runtime_execution_design"
+    | "continue_read_only_hardening"
+  )[];
 
   readonly executesRuntimeInThisStep: false;
   readonly changesExecutionPathInThisStep: false;

@@ -313,6 +313,29 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
         evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage4_role_knowledge_binding_recommended"),
       ).toBe(true);
     });
+
+    it("ready report defines stage5EntryCandidates for Stage 5 entry planning", () => {
+      const report = evaluateReadyClosureVerdict();
+      expect(report.stage5EntryCandidates).toEqual([
+        "role_knowledge_binding_foundation",
+        "runtime_execution_design",
+        "continue_read_only_hardening",
+      ]);
+    });
+
+    it("ready findings include stage4_stage2_through_stage4_closure_complete", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some(
+          (f) => f.code === "stage4_stage2_through_stage4_closure_complete",
+        ),
+      ).toBe(true);
+    });
+
+    it("ready findings include stage4_stage5_entry_candidates_defined", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage4_stage5_entry_candidates_defined"),
+      ).toBe(true);
+    });
   });
 
   describe("no-run invariants", () => {

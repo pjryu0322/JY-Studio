@@ -1937,22 +1937,59 @@ Stage 5 또는 별도 PR·승인 단계로 분리한 뒤 진행한다.
 closureIsRuntimeExecutionPermission=false — 종료 판정이 runtime 실행 허가가 아님
 requiresStage5RuntimeDesign — stage4_closure_ready일 때 Stage 5 runtime 설계 필요
 requiresSeparate* — schema/operator audit/connector branch/feature flag/write path는 별도 PR·승인
-stage5Candidate — 권장 후속: role_knowledge_binding_foundation
+stage5Candidate — Stage 5 진입 시 우선 검토 후보(실행 순서 아님)
+stage5EntryCandidates — Stage 5 진입 후보 전체 목록(읽기 전용 정의)
 ```
 
-## Stage 5-A Role Knowledge Binding Foundation
+## Milestone: Stage 2~4 종료 정리 및 Stage 5 진입 후보 정의
 
-Stage 5-A는 Multi-Agent Runtime에서 AI멤버별 역할 수행에 필요한 지식팩 바인딩을 정의하는 read-only foundation 단계다.
+이번 마일스톤의 **주목적**은 멀티에이전트 오케스트레이션 **Stage 2~4 read-only 설계·검토·종료 정리**와 **Stage 5 진입 후보 정의**다. Stage 4-F가 종료 게이트이며, Stage 5-A Role Knowledge Binding은 그 다음 단계의 **후보 중 하나**를 read-only foundation 수준으로만 둔 것이다.
 
-### 원칙
+### Stage 2~4 종료 정리 (Stage 4-F)
 
-- LLM/Cursor의 일반 지식에만 의존하지 않는다.
-- AI멤버별 필수 지식팩을 명시한다.
-- 작업 유형별 지식팩 자동 선택을 위한 기반을 만든다.
-- 이번 단계에서는 RAG, embedding, DB, 지식팩 관리 UI, 실제 프롬프트 주입을 구현하지 않는다.
-- Knowledge binding readiness report만 생성한다.
+```text
+Stage 2: dispatch / connector facade / harness / governance / persist readiness / pass-through …
+Stage 3: runtime execution plan / approval / controlled wire candidate (read-only)
+Stage 4-A~E: wire experiment branch / manual verify / shadow routing / execution path / review package
+Stage 4-F: integrated closure verdict — stage4_closure_ready = 설계·검토 패키지 종료, runtime 실행 허가 아님
+```
 
-### Decision
+### Stage 5 진입 후보 (실행 아님, 정의만)
+
+| 후보 ID | 의미 | 이번 마일스톤 반영 |
+|---|---|---|
+| `role_knowledge_binding_foundation` | 역할별 지식팩 바인딩 **후보** — registry + readiness report | Stage 5-A read-only foundation 구현 |
+| `runtime_execution_design` | 별도 승인·PR 이후 runtime write path / feature flag 설계 | Stage 4-F `requiresStage5RuntimeDesign` |
+| `continue_read_only_hardening` | 추가 read-only 점검·문서·테스트 보강 | 선택 |
+
+`stage5Candidate`는 위 후보 중 **우선 검토**를 가리킬 뿐, 다른 후보를 배제하지 않는다.
+
+### 이번 마일스톤에서 절대 구현하지 않는 항목
+
+```text
+실제 RAG / embedding / vector 검색
+지식팩 관리 UI
+실제 프롬프트 주입 (prompt context wire)
+runtime wire / feature flag wire / connector routing 변경
+DB write / schema.prisma / migration
+```
+
+## Stage 5-A (후보) Role Knowledge Binding — read-only foundation
+
+Stage 5-A는 **본격 지식팩 구현이 아니다**. Stage 5 진입 후보 `role_knowledge_binding_foundation`에 대해, 역할→지식팩 ID 매핑과 binding readiness report만 제공하는 **read-only foundation**이다.
+
+### 범위 (하는 일)
+
+- 기본 역할별 지식팩 바인딩 ID·버전 레지스트리 (`defaultRoleKnowledgeBindings`)
+- `evaluateRoleKnowledgeBindingReadiness()` — agentType / available pack IDs 기준 blocked·defer·ready 판정
+- no-run flags 및 out-of-scope findings (RAG/UI/prompt/runtime/DB 미구현 명시)
+
+### 범위 밖 (하지 않는 일)
+
+- RAG, embedding, 지식팩 DB, 지식팩 관리 UI
+- 프롬프트 주입, runtime wire, schema/migration
+
+### Decision (5-A 후보 evaluator)
 
 ```text
 agentType missing/unknown -> blocked
@@ -1969,7 +2006,7 @@ apps/web/src/lib/agents/evaluateRoleKnowledgeBindingReadiness.ts
 apps/web/tests/api/multiAgentRoleKnowledgeBindingReadiness.unit.test.ts
 ```
 
-### 다음 단계 후보
+### Stage 5 후속 후보 (5-A 이후, 별도 승인·단계)
 
 ```text
 Stage 5-B: Knowledge Pack Metadata Registry

@@ -122,6 +122,21 @@ describe("multi-agent role knowledge binding readiness stage 5-A", () => {
     ).toBe(true);
   });
 
+  it("findings state stage5_a is candidate foundation only not full knowledge pack implementation", () => {
+    expect(
+      evaluateRoleKnowledgeBindingReadiness({ agentType: "developer" }).findings.some(
+        (f) => f.code === "stage5_a_candidate_foundation_only",
+      ),
+    ).toBe(true);
+  });
+
+  it("findings exclude runtime wire and db schema migration scope", () => {
+    const codes = evaluateRoleKnowledgeBindingReadiness({ agentType: "developer" }).findings.map((f) => f.code);
+    expect(codes).toContain("runtime_wire_not_modified_in_stage_5_a");
+    expect(codes).toContain("db_schema_migration_not_modified_in_stage_5_a");
+    expect(codes).toContain("knowledge_pack_ui_not_implemented_in_stage_5_a");
+  });
+
   it("selectedBindings are deterministic", () => {
     const input = {
       agentType: "architect",

@@ -1,5 +1,7 @@
 /**
- * Evaluate role knowledge binding readiness (read-only; no RAG/DB/prompt injection/runtime changes).
+ * Stage 5-A entry candidate evaluator: binding readiness report only (read-only foundation).
+ * Primary milestone context is Stage 2~4 closure + Stage 5 entry candidate definition.
+ * Out of scope: RAG, knowledge-pack UI, prompt injection, runtime wire, DB/schema/migration.
  */
 
 import {
@@ -118,11 +120,31 @@ function appendKnowledgeBindingFindings(input: {
   const { findings, decision, agentType } = input;
 
   findings.push(
+    finding(
+      "info",
+      "stage5_a_candidate_foundation_only",
+      "Stage 5-A is a Stage 5 entry candidate at read-only foundation level; not full knowledge pack implementation",
+    ),
+  );
+  findings.push(
     finding("info", "role_knowledge_binding_read_only", "Role knowledge binding readiness is read-only"),
   );
   findings.push(finding("info", "rag_not_used_in_stage_5_a", "RAG is not used in Stage 5-A"));
   findings.push(
     finding("info", "prompt_injection_not_modified_in_stage_5_a", "Prompt injection is not modified in Stage 5-A"),
+  );
+  findings.push(
+    finding("info", "runtime_wire_not_modified_in_stage_5_a", "Runtime wire is not modified in Stage 5-A"),
+  );
+  findings.push(
+    finding("info", "db_schema_migration_not_modified_in_stage_5_a", "DB/schema/migration is not modified in Stage 5-A"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "knowledge_pack_ui_not_implemented_in_stage_5_a",
+      "Knowledge pack management UI is not implemented in Stage 5-A",
+    ),
   );
 
   if (!agentType) {

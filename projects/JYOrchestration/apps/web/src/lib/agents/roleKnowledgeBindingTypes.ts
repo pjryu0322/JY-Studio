@@ -1,5 +1,7 @@
 /**
- * Read-only role knowledge binding foundation (no RAG/DB/prompt injection/runtime changes).
+ * Stage 5 entry candidate: role knowledge binding at read-only foundation level only.
+ * Not full knowledge-pack implementation. Out of scope: RAG, knowledge-pack UI, prompt injection,
+ * runtime wire, DB/schema/migration.
  */
 
 export type RoleKnowledgeBindingStage = "stage_5_a";

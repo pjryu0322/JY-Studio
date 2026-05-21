@@ -15,6 +15,13 @@ const REVIEW_PACKAGE_READY = "ready_for_stage4_closure_verdict";
 const CLOSURE_VERSION = "stage_4_f_v1" as const;
 const CLOSURE_TITLE = "Stage 4 Integrated Closure Verdict (Read-Only)";
 
+/** Stage 5 entry candidates — planning only; no runtime/RAG/DB work in Stage 4-F. */
+export const STAGE5_ENTRY_CANDIDATES = [
+  "role_knowledge_binding_foundation",
+  "runtime_execution_design",
+  "continue_read_only_hardening",
+] as const;
+
 const RECOMMENDED_NEXT_ACTIONS = [
   "prepare_connector_gateway_experiment_branch_followup",
   "prepare_agent_execution_record_schema_pr_followup",
@@ -413,8 +420,22 @@ function appendStage4IntegratedClosureFindings(input: {
   findings.push(
     finding(
       "info",
+      "stage4_stage2_through_stage4_closure_complete",
+      "Stage 2 through Stage 4 read-only orchestration design and review chain is summarized for closure",
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage4_stage5_entry_candidates_defined",
+      "Stage 5 entry candidates are defined; execution requires separate approvals and PRs",
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
       "stage4_role_knowledge_binding_recommended",
-      "Stage 5-A role knowledge binding foundation is the recommended next step",
+      "role_knowledge_binding_foundation is a Stage 5 entry candidate (read-only foundation only; not full knowledge pack implementation)",
     ),
   );
   findings.push(
@@ -439,6 +460,7 @@ function buildClosurePostureFields(decision: Stage4IntegratedClosureVerdictDecis
     requiresSeparateFeatureFlagWire: true,
     requiresSeparateRuntimeWritePathWire: true,
     stage5Candidate: "role_knowledge_binding_foundation" as const,
+    stage5EntryCandidates: STAGE5_ENTRY_CANDIDATES,
   };
 }
 

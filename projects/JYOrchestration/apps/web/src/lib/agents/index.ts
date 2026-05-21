@@ -704,6 +704,7 @@ export {
   buildStage4IntegratedClosureFingerprint,
   evaluateStage4IntegratedClosureVerdict,
   resolveStage4IntegratedClosureVerdictDecision,
+  STAGE5_ENTRY_CANDIDATES,
 } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
 
 export type { Stage4IntegratedClosureVerdictDecisionInput } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";

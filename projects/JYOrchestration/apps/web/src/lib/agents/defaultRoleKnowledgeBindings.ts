@@ -1,5 +1,6 @@
 /**
- * Default role → knowledge pack bindings (read-only registry; no RAG/DB/UI).
+ * Stage 5 entry candidate registry: default role → knowledge pack binding IDs only.
+ * Read-only foundation for Stage 5 planning — not RAG, UI, prompt injection, runtime wire, or DB.
  */
 
 import type { RoleKnowledgePackBinding, RoleKnowledgePackKind } from "@/lib/agents/roleKnowledgeBindingTypes";
