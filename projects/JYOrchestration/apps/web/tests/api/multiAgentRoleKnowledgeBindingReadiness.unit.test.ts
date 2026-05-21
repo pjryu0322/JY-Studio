@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateRoleKnowledgeBindingReadiness,
   listDefaultKnowledgePackIds,
+  normalizeAvailableKnowledgePackIds,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";
 import {
   getDefaultRoleKnowledgeBindingsForAgent,
@@ -234,6 +235,173 @@ describe("multi-agent role knowledge binding readiness stage 5-A", () => {
       expect(MULTI_AGENT_ORCHESTRATION_MVP_BASELINE.preservedCapabilities).toContain(
         "role_knowledge_binding_readiness",
       );
+    });
+  });
+
+  describe("input hygiene and baseline regression guard", () => {
+    const developerRequired = requiredPackIdsForAgent("developer");
+    const governancePackId = "kp.platform.governance-policy.default";
+
+    it("trims availableKnowledgePackIds before matching required bindings", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: developerRequired.map((id) => `  ${id}  `),
+      });
+      expect(report.decision).toBe("knowledge_binding_ready");
+      expect(report.normalizedAvailableKnowledgePackIds).toEqual([...developerRequired].sort());
+    });
+
+    it("removes blank availableKnowledgePackIds and reports count", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: ["", "   ", ...developerRequired],
+      });
+      expect(report.blankAvailableKnowledgePackIdsRemovedCount).toBe(2);
+      expect(report.normalizedAvailableKnowledgePackIdCount).toBe(developerRequired.length);
+    });
+
+    it("dedupes availableKnowledgePackIds and reports duplicates", () => {
+      const duplicateId = developerRequired[0];
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: [duplicateId, duplicateId, ...developerRequired.slice(1)],
+      });
+      expect(report.duplicateAvailableKnowledgePackIdsRemoved).toEqual([duplicateId]);
+    });
+
+    it("sorts normalizedAvailableKnowledgePackIds deterministically", () => {
+      const shuffled = [...developerRequired].reverse();
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: shuffled,
+      });
+      expect(report.normalizedAvailableKnowledgePackIds).toEqual([...developerRequired].sort());
+      expect(normalizeAvailableKnowledgePackIds(shuffled).normalizedIds).toEqual(report.normalizedAvailableKnowledgePackIds);
+    });
+
+    it("reports unknownAvailableKnowledgePackIds without blocking ready when required bindings are satisfied", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: [...developerRequired, "kp.platform.unknown-pack.test"],
+      });
+      expect(report.decision).toBe("knowledge_binding_ready");
+      expect(report.unknownAvailableKnowledgePackIds).toEqual(["kp.platform.unknown-pack.test"]);
+    });
+
+    it("unknownAvailableKnowledgePackIds causes warning finding", () => {
+      expect(
+        evaluateRoleKnowledgeBindingReadiness({
+          agentType: "developer",
+          availableKnowledgePackIds: [...developerRequired, "kp.platform.unknown-pack.test"],
+        }).findings.some((f) => f.code === "unknown_available_knowledge_pack_id_reported"),
+      ).toBe(true);
+    });
+
+    it("missingOptionalBindingIds is included in report", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: developerRequired,
+      });
+      expect(report.missingOptionalBindingIds).toEqual([governancePackId]);
+    });
+
+    it("optionalBindingCount and satisfiedOptionalBindingCount are calculated", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: [...developerRequired, governancePackId],
+      });
+      expect(report.optionalBindingCount).toBe(1);
+      expect(report.satisfiedOptionalBindingCount).toBe(1);
+      expect(report.missingOptionalBindingIds).toEqual([]);
+    });
+
+    it("sourceDefaultKnowledgePackIds includes all default registry IDs", () => {
+      const registryIds = [...listDefaultKnowledgePackIds()].sort();
+      expect(developerReadyReport().sourceDefaultKnowledgePackIds).toEqual(registryIds);
+    });
+
+    it("sourceDefaultKnowledgePackIdCount equals sourceDefaultKnowledgePackIds.length", () => {
+      const report = developerReadyReport();
+      expect(report.sourceDefaultKnowledgePackIdCount).toBe(report.sourceDefaultKnowledgePackIds.length);
+    });
+
+    it("inputHygieneChecklist includes available knowledge pack ids normalized", () => {
+      expect(
+        developerReadyReport().inputHygieneChecklist.some(
+          (item) => item.item === "available knowledge pack ids normalized",
+        ),
+      ).toBe(true);
+    });
+
+    it("inputHygieneChecklist includes unknown available knowledge pack ids reported", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: [...developerRequired, "kp.platform.unknown-pack.test"],
+      });
+      const item = report.inputHygieneChecklist.find(
+        (entry) => entry.item === "unknown available knowledge pack ids reported",
+      );
+      expect(item?.satisfied).toBe(false);
+    });
+
+    it("available_knowledge_pack_ids_normalized finding is present", () => {
+      expect(
+        developerReadyReport().findings.some((f) => f.code === "available_knowledge_pack_ids_normalized"),
+      ).toBe(true);
+    });
+
+    it("duplicate_available_knowledge_pack_id_removed finding is present when duplicate exists", () => {
+      const duplicateId = developerRequired[0];
+      expect(
+        evaluateRoleKnowledgeBindingReadiness({
+          agentType: "developer",
+          availableKnowledgePackIds: [duplicateId, duplicateId, ...developerRequired.slice(1)],
+        }).findings.some((f) => f.code === "duplicate_available_knowledge_pack_id_removed"),
+      ).toBe(true);
+    });
+
+    it("blank_available_knowledge_pack_id_removed finding is present when blank exists", () => {
+      expect(
+        evaluateRoleKnowledgeBindingReadiness({
+          agentType: "developer",
+          availableKnowledgePackIds: ["", ...developerRequired],
+        }).findings.some((f) => f.code === "blank_available_knowledge_pack_id_removed"),
+      ).toBe(true);
+    });
+
+    it("unknown_available_knowledge_pack_id_reported finding is present when unknown exists", () => {
+      expect(
+        evaluateRoleKnowledgeBindingReadiness({
+          agentType: "developer",
+          availableKnowledgePackIds: [...developerRequired, "kp.platform.unknown-pack.test"],
+        }).findings.some((f) => f.code === "unknown_available_knowledge_pack_id_reported"),
+      ).toBe(true);
+    });
+
+    it("missing required binding still defers", () => {
+      expect(
+        evaluateRoleKnowledgeBindingReadiness({
+          agentType: "developer",
+          availableKnowledgePackIds: [],
+        }).decision,
+      ).toBe("defer");
+    });
+
+    it("unknown agentType still blocks", () => {
+      expect(evaluateRoleKnowledgeBindingReadiness({ agentType: "unknown_role" }).decision).toBe("blocked");
+    });
+
+    it("Stage 5-A no-run/boundary flags remain unchanged", () => {
+      const report = developerReadyReport();
+      expect(report.usesRagInThisStep).toBe(false);
+      expect(report.modifiesRuntimeExecutionInThisStep).toBe(false);
+      expect(report.modifiesDbInThisStep).toBe(false);
+      expect(report.modifiesUiInThisStep).toBe(false);
+      expect(report.stage5CandidateFoundationOnly).toBe(true);
+    });
+
+    it("Stage 5-A is still not knowledge pack implementation", () => {
+      expect(developerReadyReport().stage5AIsKnowledgePackImplementation).toBe(false);
     });
   });
 

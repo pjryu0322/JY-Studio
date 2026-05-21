@@ -728,7 +728,9 @@ export {
 
 export {
   evaluateRoleKnowledgeBindingReadiness,
+  findUnknownKnowledgePackIds,
   listDefaultKnowledgePackIds,
+  normalizeAvailableKnowledgePackIds,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";
 
 export {

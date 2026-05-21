@@ -442,6 +442,30 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
     });
   });
 
+  describe("Stage 5-A input hygiene regression guard", () => {
+    it("stage5EntryCandidates still includes role_knowledge_binding_foundation", () => {
+      expect(evaluateReadyClosureVerdict().stage5EntryCandidates).toContain("role_knowledge_binding_foundation");
+    });
+
+    it("stage5EntryIsCandidateOnly remains true", () => {
+      expect(evaluateReadyClosureVerdict().stage5EntryIsCandidateOnly).toBe(true);
+    });
+
+    it("actualRuntimeChangeAllowedAfterStage4 remains false", () => {
+      expect(evaluateReadyClosureVerdict().actualRuntimeChangeAllowedAfterStage4).toBe(false);
+    });
+
+    it("actualSchemaMigrationAllowedAfterStage4 remains false", () => {
+      expect(evaluateReadyClosureVerdict().actualSchemaMigrationAllowedAfterStage4).toBe(false);
+    });
+
+    it("mvpBaselineSummary still contains no actual runtime/schema/git/write-path execution", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselineSummary).toContain(
+        "no actual runtime/schema/git/write-path execution",
+      );
+    });
+  });
+
   describe("no-run invariants", () => {
     it("keeps all no-run flags false when ready", () => {
       const report = evaluateReadyClosureVerdict();

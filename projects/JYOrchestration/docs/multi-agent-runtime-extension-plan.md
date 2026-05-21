@@ -2034,7 +2034,23 @@ Stage 5-A는 Role Knowledge Binding Foundation이다.
 - DB/schema/migration
 - UI 구현
 
-Stage 5-A는 본격 Knowledge Pack Management System 구현이 아니라, 향후 Stage 5-B 이후 작업을 위한 foundation candidate다.
+Stage 5-A는 본격 Knowledge Pack Management System 구현이 아니라, 향후 후속 단계를 위한 foundation candidate다.
+
+### Stage 5-A Input Hygiene
+
+Stage 5-A는 실제 지식팩 구현이 아니라 role → knowledge pack ID readiness report다.  
+따라서 입력된 `availableKnowledgePackIds`는 다음 기준으로 정규화·추적한다.
+
+- trim
+- blank 제거
+- dedupe
+- deterministic sort
+- default registry에 없는 unknown ID report
+- required/optional missing binding report
+- source default knowledge pack registry trace
+
+unknown knowledgePackId는 입력 품질 경고로 남기되, required binding이 모두 충족된 경우 ready 판정을 막지 않는다.  
+단, required binding 누락은 기존과 동일하게 defer다.
 
 ### Decision (5-A 후보 evaluator)
 
