@@ -671,7 +671,12 @@ export type {
   ControlledExecutionPathCandidateReport,
 } from "@/lib/agents/controlledExecutionPathCandidateTypes";
 
-export { evaluateControlledExecutionPathCandidate } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
+export {
+  evaluateControlledExecutionPathCandidate,
+  resolveControlledExecutionPathCandidateDecision,
+} from "@/lib/agents/evaluateControlledExecutionPathCandidate";
+
+export type { ControlledExecutionPathCandidateDecisionInput } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

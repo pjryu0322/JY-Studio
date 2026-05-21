@@ -91,7 +91,7 @@ function countExecutionPathCandidateSatisfied(
   ).length;
 }
 
-function resolveControlledExecutionPathCandidateDecision(input: {
+export type ControlledExecutionPathCandidateDecisionInput = {
   readonly shadowRoutingDecision: string;
   readonly sourceNoRunChecklistCount: number;
   readonly sourceNoRunChecklistSatisfiedCount: number;
@@ -99,7 +99,12 @@ function resolveControlledExecutionPathCandidateDecision(input: {
   readonly shadowRoutingReviewConfirmedForExecutionPath: boolean;
   readonly rollbackReviewConfirmedForExecutionPath: boolean;
   readonly featureFlagPlanConfirmedForExecutionPath: boolean;
-}): ControlledExecutionPathCandidateDecision {
+};
+
+/** Pure decision helper for controlled execution path candidate (no shadow plan side effects). */
+export function resolveControlledExecutionPathCandidateDecision(
+  input: ControlledExecutionPathCandidateDecisionInput,
+): ControlledExecutionPathCandidateDecision {
   if (input.shadowRoutingDecision === "blocked") {
     return "blocked";
   }

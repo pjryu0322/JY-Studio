@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateControlledExecutionPathCandidate } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
-import { buildRuntimeWireFeatureFlagName } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
+import {
+  evaluateControlledExecutionPathCandidate,
+  resolveControlledExecutionPathCandidateDecision,
+} from "@/lib/agents/evaluateControlledExecutionPathCandidate";
+import {
+  buildRuntimeWireExperimentBranchName,
+  buildRuntimeWireFeatureFlagName,
+} from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as shadowPlanModule from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
 import type { ConnectorGatewayShadowRoutingPlanReport } from "@/lib/agents/connectorGatewayShadowRoutingPlanTypes";
 
+const EXPECTED_BRANCH = buildRuntimeWireExperimentBranchName();
 const FEATURE_FLAG_NAME = buildRuntimeWireFeatureFlagName();
 
 const SHADOW_ROUTE_CANDIDATES = [
@@ -64,8 +71,8 @@ function mockShadowPlanReady(
       "connector_gateway_shadow_routing_plan_read_only",
       "shadow_route_candidates_generated",
     ],
-    sourceManualVerificationExpectedBranchName: "experiment/runtime-wire-controlled-candidate",
-    sourceManualVerificationActualBranchName: "experiment/runtime-wire-controlled-candidate",
+    sourceManualVerificationExpectedBranchName: EXPECTED_BRANCH,
+    sourceManualVerificationActualBranchName: EXPECTED_BRANCH,
     sourceManualVerificationRegressionResultsProvided: true,
     sourceManualVerificationExplicitApproval: true,
     sourceManualVerificationNoRunChecklistCount: 2,
@@ -126,6 +133,41 @@ function evaluateReadyExecutionPathReport() {
 describe("multi-agent controlled execution path candidate stage 4-D", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe("resolveControlledExecutionPathCandidateDecision", () => {
+    it("returns blocked when source shadow routing is blocked", () => {
+      expect(
+        resolveControlledExecutionPathCandidateDecision({
+          shadowRoutingDecision: "blocked",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 2,
+          ...ALL_EXECUTION_PATH_CONFIRMATIONS,
+        }),
+      ).toBe("blocked");
+    });
+
+    it("returns blocked when source no-run checklist counts mismatch", () => {
+      expect(
+        resolveControlledExecutionPathCandidateDecision({
+          shadowRoutingDecision: "ready_for_shadow_routing_review",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 1,
+          ...ALL_EXECUTION_PATH_CONFIRMATIONS,
+        }),
+      ).toBe("blocked");
+    });
+
+    it("returns ready when shadow routing ready and all execution path confirmations satisfied", () => {
+      expect(
+        resolveControlledExecutionPathCandidateDecision({
+          shadowRoutingDecision: "ready_for_shadow_routing_review",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 2,
+          ...ALL_EXECUTION_PATH_CONFIRMATIONS,
+        }),
+      ).toBe("ready_for_execution_path_review");
+    });
   });
 
   it("mode is read_only_controlled_execution_path_candidate", () => {
