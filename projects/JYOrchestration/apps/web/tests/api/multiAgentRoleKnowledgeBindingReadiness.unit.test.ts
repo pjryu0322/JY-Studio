@@ -405,6 +405,25 @@ describe("multi-agent role knowledge binding readiness stage 5-A", () => {
     });
   });
 
+  describe("Stage 5 integrated package regression guard", () => {
+    it("Stage 5-A remains not knowledge pack implementation", () => {
+      expect(developerReadyReport().stage5AIsKnowledgePackImplementation).toBe(false);
+    });
+
+    it("Stage 5-A no-run flags remain false", () => {
+      const report = developerReadyReport();
+      expect(report.usesRagInThisStep).toBe(false);
+      expect(report.modifiesRuntimeExecutionInThisStep).toBe(false);
+      expect(report.modifiesDbInThisStep).toBe(false);
+      expect(report.modifiesUiInThisStep).toBe(false);
+      expect(report.injectsKnowledgeIntoPromptInThisStep).toBe(false);
+    });
+
+    it("MVP baseline binding role unchanged", () => {
+      expect(developerReadyReport().mvpBaselineBindingRole).toBe("role_to_knowledge_pack_id_readiness_only");
+    });
+  });
+
   describe("closure source field regression guard", () => {
     it("exposes missingOptionalBindingIds for closure aggregation", () => {
       const report = evaluateRoleKnowledgeBindingReadiness({

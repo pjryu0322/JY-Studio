@@ -743,6 +743,80 @@ export type {
 } from "@/lib/agents/roleKnowledgeBindingClosureTypes";
 
 export {
+  buildDefaultKnowledgePackMetadataCandidates,
+} from "@/lib/agents/defaultKnowledgePackMetadataCandidates";
+
+export {
+  evaluateKnowledgePackMetadataRegistryCandidate,
+  resolveKnowledgePackMetadataRegistryCandidateDecision,
+  validateMetadataCandidates,
+} from "@/lib/agents/evaluateKnowledgePackMetadataRegistryCandidate";
+
+export type {
+  KnowledgePackMetadataCandidate,
+  KnowledgePackMetadataCategory,
+  KnowledgePackMetadataRegistryCandidateChecklistItem,
+  KnowledgePackMetadataRegistryCandidateDecision,
+  KnowledgePackMetadataRegistryCandidateFinding,
+  KnowledgePackMetadataRegistryCandidateInput,
+  KnowledgePackMetadataRegistryCandidateReport,
+  KnowledgePackMetadataSourceType,
+  KnowledgePackMetadataStatus,
+} from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
+
+export {
+  buildDefaultRoleKnowledgePackMappingCandidates,
+  evaluateRoleKnowledgePackMappingCandidate,
+  resolveRoleKnowledgePackMappingCandidateDecision,
+  validateRoleKnowledgePackMappings,
+} from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
+
+export type {
+  RoleKnowledgePackMappingCandidate,
+  RoleKnowledgePackMappingCandidateChecklistItem,
+  RoleKnowledgePackMappingCandidateDecision,
+  RoleKnowledgePackMappingCandidateFinding,
+  RoleKnowledgePackMappingCandidateInput,
+  RoleKnowledgePackMappingCandidateReport,
+} from "@/lib/agents/roleKnowledgePackMappingCandidateTypes";
+
+export {
+  buildDefaultPromptContextInjectionDesignCandidates,
+  evaluatePromptContextInjectionDesignCandidate,
+  resolvePromptContextInjectionDesignCandidateDecision,
+  SUPPORTED_INJECTION_MODES,
+  validatePromptContextInjectionDesigns,
+} from "@/lib/agents/evaluatePromptContextInjectionDesignCandidate";
+
+export type {
+  PromptContextInjectionDesignCandidate,
+  PromptContextInjectionDesignCandidateChecklistItem,
+  PromptContextInjectionDesignCandidateDecision,
+  PromptContextInjectionDesignCandidateFinding,
+  PromptContextInjectionDesignCandidateInput,
+  PromptContextInjectionDesignCandidateReport,
+  PromptContextInjectionMode,
+  PromptContextInjectionTiming,
+  PromptContextMaxContextPolicy,
+} from "@/lib/agents/promptContextInjectionDesignCandidateTypes";
+
+export {
+  buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  evaluateStage5IntegratedKnowledgeFoundationClosure,
+  RECOMMENDED_NEXT_PHASES,
+  resolveStage5IntegratedKnowledgeFoundationClosureDecision,
+  SEPARATED_WORK_ITEMS,
+} from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
+
+export type {
+  Stage5IntegratedKnowledgeFoundationClosureChecklistItem,
+  Stage5IntegratedKnowledgeFoundationClosureDecision,
+  Stage5IntegratedKnowledgeFoundationClosureFinding,
+  Stage5IntegratedKnowledgeFoundationClosureInput,
+  Stage5IntegratedKnowledgeFoundationClosureReport,
+} from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
+
+export {
   evaluateRoleKnowledgeBindingReadiness,
   listDefaultKnowledgePackIds,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";

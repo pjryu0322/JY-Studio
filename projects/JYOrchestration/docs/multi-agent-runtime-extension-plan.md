@@ -2052,6 +2052,61 @@ Stage 5-A는 실제 지식팩 구현이 아니라 role → knowledge pack ID rea
 unknown knowledgePackId는 입력 품질 경고로 남기되, required binding이 모두 충족된 경우 ready 판정을 막지 않는다.  
 단, required binding 누락은 기존과 동일하게 defer다.
 
+## Stage 5 Integrated Knowledge Foundation Package
+
+Stage 5는 AI멤버가 역할별 지식을 참조할 수 있도록 하기 위한 read-only foundation 단계다.  
+Stage 5는 실제 지식팩 시스템 구현이 아니다.
+
+### 포함 범위
+
+- Stage 5-A Role Knowledge Binding Closure
+- Stage 5-B Knowledge Pack Metadata Registry Candidate
+- Stage 5-C Role Knowledge Pack Mapping Candidate
+- Stage 5-D Prompt Context Injection Design Candidate
+- Stage 5-F Integrated Knowledge Foundation Closure
+
+### 하지 않는 일
+
+- 지식팩 CRUD
+- 지식팩 버전관리
+- 원천자료 업로드
+- RAG/embedding/vector DB
+- prompt injection runtime wire
+- 지식팩 관리 UI
+- DB/schema/migration
+- runtime execution 변경
+
+### Stage 5-F Closure 의미
+
+`stage5_knowledge_foundation_ready`는 실제 지식팩 기능 구현 완료가 아니다.  
+이는 역할별 지식 기반을 어떤 구조로 붙일지에 대한 read-only 설계·검증 기준선이 닫혔다는 의미다.
+
+### 후속 후보
+
+- Runtime Execution Model Design
+- Agent Execution Record Persistence PR
+- Operator Approval/Audit Persistence PR
+- Knowledge Pack Metadata Registry PR
+- Prompt Context Injection Wire PR
+- RAG/Embedding PR
+
+### 구현 위치 (통합 패키지)
+
+```text
+apps/web/src/lib/agents/knowledgePackMetadataRegistryCandidateTypes.ts
+apps/web/src/lib/agents/evaluateKnowledgePackMetadataRegistryCandidate.ts
+apps/web/src/lib/agents/roleKnowledgePackMappingCandidateTypes.ts
+apps/web/src/lib/agents/evaluateRoleKnowledgePackMappingCandidate.ts
+apps/web/src/lib/agents/promptContextInjectionDesignCandidateTypes.ts
+apps/web/src/lib/agents/evaluatePromptContextInjectionDesignCandidate.ts
+apps/web/src/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes.ts
+apps/web/src/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure.ts
+apps/web/tests/api/multiAgentKnowledgePackMetadataRegistryCandidate.unit.test.ts
+apps/web/tests/api/multiAgentRoleKnowledgePackMappingCandidate.unit.test.ts
+apps/web/tests/api/multiAgentPromptContextInjectionDesignCandidate.unit.test.ts
+apps/web/tests/api/multiAgentStage5IntegratedKnowledgeFoundationClosure.unit.test.ts
+```
+
 ## Stage 5-A Closure Package
 
 Stage 5-A Closure Package는 Role Knowledge Binding Foundation이 다음 후보 단계로 넘어갈 수 있는지 확인하는 read-only aggregate gate다.

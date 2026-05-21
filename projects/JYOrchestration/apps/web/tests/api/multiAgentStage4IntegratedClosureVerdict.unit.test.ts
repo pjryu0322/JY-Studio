@@ -464,6 +464,22 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
     });
   });
 
+  describe("Stage 5 integrated knowledge foundation package regression guard", () => {
+    it("Stage 4-F closure remains closed after Stage 5 integrated package", () => {
+      expect(evaluateReadyClosureVerdict().decision).toBe("stage4_closure_ready");
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosureLocked).toBe(true);
+    });
+
+    it("mvpBaselineSummary remains present after Stage 5 integrated package", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselineSummary.length).toBeGreaterThan(0);
+      expect(evaluateReadyClosureVerdict().mvpBaselinePreserved).toBe(true);
+    });
+
+    it("stage5EntryIsCandidateOnly remains true after integrated package", () => {
+      expect(evaluateReadyClosureVerdict().stage5EntryIsCandidateOnly).toBe(true);
+    });
+  });
+
   describe("Stage 5-A input hygiene regression guard", () => {
     it("stage5EntryCandidates still includes role_knowledge_binding_foundation", () => {
       expect(evaluateReadyClosureVerdict().stage5EntryCandidates).toContain("role_knowledge_binding_foundation");
