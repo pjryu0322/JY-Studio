@@ -693,6 +693,21 @@ export {
 
 export type { RuntimeWireExperimentReviewPackageDecisionInput } from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
 
+export type {
+  Stage4IntegratedClosureChecklistItem,
+  Stage4IntegratedClosureFinding,
+  Stage4IntegratedClosureVerdictDecision,
+  Stage4IntegratedClosureVerdictReport,
+} from "@/lib/agents/stage4IntegratedClosureVerdictTypes";
+
+export {
+  buildStage4IntegratedClosureFingerprint,
+  evaluateStage4IntegratedClosureVerdict,
+  resolveStage4IntegratedClosureVerdictDecision,
+} from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
+
+export type { Stage4IntegratedClosureVerdictDecisionInput } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

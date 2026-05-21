@@ -1880,6 +1880,57 @@ operator final review missing → defer
 all satisfied → ready_for_stage4_closure_verdict
 ```
 
+## Stage 4-F Integrated Closure Verdict
+
+Stage 4-F는 Stage 4-E Runtime Wire Experiment Review Package를 source로 하여 Stage 4-A~E read-only 산출물이 종료 기준을 만족하는지 판정하는 최종 read-only closure gate다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| sourceReviewPackageDecision | Stage 4-E source | 없음 |
+| closureFingerprint | deterministic report field | 없음 |
+| closureChecklist | report field | 없음 |
+| handoffChecklist | report field | 없음 |
+| riskChecklist | report field | 없음 |
+| recommendedNextActions | report field | 없음 |
+| separatedWorkItems | report field | 없음 |
+
+### Stage 4-F 원칙
+
+```text
+- Stage 4-E를 source of truth로 사용한다 (Stage 4-A~D를 직접 재평가하지 않음).
+- 실제 runtime execution path를 변경하지 않는다.
+- 실제 Connector Gateway routing을 변경하지 않는다.
+- 실제 Connector를 호출하지 않는다.
+- 실제 Cursor/GitHub를 호출하지 않는다.
+- 실제 Git/PR을 실행하지 않는다.
+- 실제 feature flag를 wire하지 않는다.
+- 실제 schema.prisma/migration/DB를 변경하지 않는다.
+- stage4_closure_ready는 실제 runtime 실행 허가가 아니라 Stage 4 read-only 설계·검토 패키지의 종료 판정이다.
+```
+
+### Stage 4-F Decision 규칙 요약
+
+```text
+review package blocked → blocked
+review package not ready → defer
+source no-run checklist mismatch → blocked
+Stage 4 closure confirmation missing → defer
+all satisfied → stage4_closure_ready
+```
+
+### Stage 4-F 후속 분리 작업
+
+```text
+actual_git_branch_creation
+actual_connector_gateway_routing_change
+actual_feature_flag_wire
+actual_agent_execution_record_schema_migration
+actual_operator_approval_audit_schema_migration
+actual_runtime_execution_write_path_wire
+```
+
+Stage 5 또는 별도 PR·승인 단계로 분리한 뒤 진행한다.
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
