@@ -278,6 +278,41 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
       expect(finding).toBeDefined();
       expect(finding?.message).toContain("not runtime execution permission");
     });
+
+    it("closureIsRuntimeExecutionPermission is always false", () => {
+      spyReviewPackageReady({ decision: "defer" });
+      const deferReport = evaluateStage4IntegratedClosureVerdict(ALL_CLOSURE_CONFIRMATIONS);
+      expect(deferReport.closureIsRuntimeExecutionPermission).toBe(false);
+      expect(evaluateReadyClosureVerdict().closureIsRuntimeExecutionPermission).toBe(false);
+    });
+
+    it("stage4_closure_ready returns stage5Candidate = role_knowledge_binding_foundation", () => {
+      expect(evaluateReadyClosureVerdict().stage5Candidate).toBe("role_knowledge_binding_foundation");
+    });
+
+    it("ready state keeps requiresSeparateSchemaPr true", () => {
+      expect(evaluateReadyClosureVerdict().requiresSeparateSchemaPr).toBe(true);
+    });
+
+    it("ready state keeps requiresSeparateConnectorExperimentBranch true", () => {
+      expect(evaluateReadyClosureVerdict().requiresSeparateConnectorExperimentBranch).toBe(true);
+    });
+
+    it("ready state keeps requiresSeparateRuntimeWritePathWire true", () => {
+      expect(evaluateReadyClosureVerdict().requiresSeparateRuntimeWritePathWire).toBe(true);
+    });
+
+    it("ready findings include stage4_closure_not_runtime_permission", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage4_closure_not_runtime_permission"),
+      ).toBe(true);
+    });
+
+    it("ready findings include stage4_role_knowledge_binding_recommended", () => {
+      expect(
+        evaluateReadyClosureVerdict().findings.some((f) => f.code === "stage4_role_knowledge_binding_recommended"),
+      ).toBe(true);
+    });
   });
 
   describe("no-run invariants", () => {

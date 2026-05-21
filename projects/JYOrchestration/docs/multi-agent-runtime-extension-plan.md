@@ -1931,6 +1931,53 @@ actual_runtime_execution_write_path_wire
 
 Stage 5 또는 별도 PR·승인 단계로 분리한 뒤 진행한다.
 
+### Stage 4-F posture fields (hardening)
+
+```text
+closureIsRuntimeExecutionPermission=false — 종료 판정이 runtime 실행 허가가 아님
+requiresStage5RuntimeDesign — stage4_closure_ready일 때 Stage 5 runtime 설계 필요
+requiresSeparate* — schema/operator audit/connector branch/feature flag/write path는 별도 PR·승인
+stage5Candidate — 권장 후속: role_knowledge_binding_foundation
+```
+
+## Stage 5-A Role Knowledge Binding Foundation
+
+Stage 5-A는 Multi-Agent Runtime에서 AI멤버별 역할 수행에 필요한 지식팩 바인딩을 정의하는 read-only foundation 단계다.
+
+### 원칙
+
+- LLM/Cursor의 일반 지식에만 의존하지 않는다.
+- AI멤버별 필수 지식팩을 명시한다.
+- 작업 유형별 지식팩 자동 선택을 위한 기반을 만든다.
+- 이번 단계에서는 RAG, embedding, DB, 지식팩 관리 UI, 실제 프롬프트 주입을 구현하지 않는다.
+- Knowledge binding readiness report만 생성한다.
+
+### Decision
+
+```text
+agentType missing/unknown -> blocked
+required knowledge pack missing -> defer
+required knowledge packs satisfied -> knowledge_binding_ready
+```
+
+### 구현 위치
+
+```text
+apps/web/src/lib/agents/roleKnowledgeBindingTypes.ts
+apps/web/src/lib/agents/defaultRoleKnowledgeBindings.ts
+apps/web/src/lib/agents/evaluateRoleKnowledgeBindingReadiness.ts
+apps/web/tests/api/multiAgentRoleKnowledgeBindingReadiness.unit.test.ts
+```
+
+### 다음 단계 후보
+
+```text
+Stage 5-B: Knowledge Pack Metadata Registry
+Stage 5-C: Task Type → Knowledge Pack Binding
+Stage 5-D: Prompt Context Injection Candidate
+Stage 5-E: Knowledge Pack Version Trace in Agent Runtime Report
+```
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
@@ -1943,6 +1990,7 @@ Stage 4-C: Connector Gateway Shadow Routing Plan
 Stage 4-D: Controlled Execution Path Candidate
 Stage 4-E: Runtime Wire Experiment Review Package
 Stage 4-F: Stage 4 Integrated Closure Verdict
+Stage 5-A: Role Knowledge Binding Foundation
 ```
 
 ### Stage 2 종료 판정 의미

@@ -708,6 +708,29 @@ export {
 
 export type { Stage4IntegratedClosureVerdictDecisionInput } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
 
+export type {
+  RoleKnowledgeBindingStage,
+  RoleKnowledgeBindingDecision,
+  RoleKnowledgeBindingScope,
+  RoleKnowledgePackKind,
+  RoleKnowledgePackBinding,
+  RoleKnowledgeBindingReadinessInput,
+  RoleKnowledgeBindingReadinessReport,
+  RoleKnowledgeBindingFinding,
+  RoleKnowledgeBindingChecklistItem,
+} from "@/lib/agents/roleKnowledgeBindingTypes";
+
+export {
+  DEFAULT_ROLE_KNOWLEDGE_BINDINGS,
+  listDefaultRoleKnowledgeBindings,
+  getDefaultRoleKnowledgeBindingsForAgent,
+} from "@/lib/agents/defaultRoleKnowledgeBindings";
+
+export {
+  evaluateRoleKnowledgeBindingReadiness,
+  listDefaultKnowledgePackIds,
+} from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

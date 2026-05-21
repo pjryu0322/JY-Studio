@@ -50,6 +50,18 @@ export interface Stage4IntegratedClosureVerdictReport {
   readonly recommendedNextActions: readonly string[];
   readonly separatedWorkItems: readonly string[];
 
+  readonly closureIsRuntimeExecutionPermission: false;
+  readonly requiresStage5RuntimeDesign: boolean;
+  readonly requiresSeparateSchemaPr: boolean;
+  readonly requiresSeparateOperatorAuditSchemaPr: boolean;
+  readonly requiresSeparateConnectorExperimentBranch: boolean;
+  readonly requiresSeparateFeatureFlagWire: boolean;
+  readonly requiresSeparateRuntimeWritePathWire: boolean;
+  readonly stage5Candidate:
+    | "role_knowledge_binding_foundation"
+    | "runtime_execution_design"
+    | "continue_read_only_hardening";
+
   readonly executesRuntimeInThisStep: false;
   readonly changesExecutionPathInThisStep: false;
   readonly changesConnectorRoutingInThisStep: false;

@@ -403,6 +403,43 @@ function appendStage4IntegratedClosureFindings(input: {
       "Stage 4 closure ready is not runtime execution permission",
     ),
   );
+  findings.push(
+    finding(
+      "info",
+      "stage4_closure_not_runtime_permission",
+      "Stage 4 closure is not runtime execution permission",
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage4_role_knowledge_binding_recommended",
+      "Stage 5-A role knowledge binding foundation is the recommended next step",
+    ),
+  );
+  findings.push(
+    finding("info", "stage4_separate_schema_pr_required", "Agent execution record and operator audit schema changes require separate PRs"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage4_separate_connector_experiment_branch_required",
+      "Connector Gateway experiment branch requires separate manual follow-up",
+    ),
+  );
+}
+
+function buildClosurePostureFields(decision: Stage4IntegratedClosureVerdictDecision) {
+  return {
+    closureIsRuntimeExecutionPermission: false as const,
+    requiresStage5RuntimeDesign: decision === "stage4_closure_ready",
+    requiresSeparateSchemaPr: true,
+    requiresSeparateOperatorAuditSchemaPr: true,
+    requiresSeparateConnectorExperimentBranch: true,
+    requiresSeparateFeatureFlagWire: true,
+    requiresSeparateRuntimeWritePathWire: true,
+    stage5Candidate: "role_knowledge_binding_foundation" as const,
+  };
 }
 
 /** Read-only Stage 4 integrated closure verdict — does not change runtime or routing. */
@@ -447,6 +484,7 @@ export function evaluateStage4IntegratedClosureVerdict(
     noRunChecklistSatisfiedCount: noRunCounts.satisfiedCount,
     recommendedNextActions: [...RECOMMENDED_NEXT_ACTIONS],
     separatedWorkItems: [...SEPARATED_WORK_ITEMS],
+    ...buildClosurePostureFields(decision),
     ...STAGE4_INTEGRATED_CLOSURE_NO_RUN_REPORT,
     findings,
   };
