@@ -4,15 +4,19 @@
  * Out of scope: RAG, knowledge-pack UI, prompt injection, runtime wire, DB/schema/migration.
  */
 
-import {
-  getDefaultRoleKnowledgeBindingsForAgent,
-  listDefaultKnowledgePackIds,
-} from "@/lib/agents/defaultRoleKnowledgeBindings";
+import { getDefaultRoleKnowledgeBindingsForAgent } from "@/lib/agents/defaultRoleKnowledgeBindings";
 import {
   STAGE5_A_BOUNDARY_CHECKLIST_ENTRIES,
   STAGE5_A_BOUNDARY_FINDING_SPECS,
   STAGE5_A_BOUNDARY_REPORT,
 } from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
+import {
+  appendRoleKnowledgeBindingInputHygieneFindings,
+  buildRoleKnowledgeBindingInputHygieneChecklist,
+  findUnknownKnowledgePackIds,
+  normalizeAvailableKnowledgePackIds,
+  sortedDefaultKnowledgePackIds,
+} from "@/lib/agents/roleKnowledgeBindingInputHygiene";
 import type {
   RoleKnowledgeBindingChecklistItem,
   RoleKnowledgeBindingFinding,
@@ -21,6 +25,12 @@ import type {
   RoleKnowledgeBindingDecision,
   RoleKnowledgePackBinding,
 } from "@/lib/agents/roleKnowledgeBindingTypes";
+
+export {
+  findUnknownKnowledgePackIds,
+  normalizeAvailableKnowledgePackIds,
+  sortedKnowledgePackIds,
+} from "@/lib/agents/roleKnowledgeBindingInputHygiene";
 
 type ChecklistEntry = {
   readonly item: string;
@@ -46,57 +56,6 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): RoleKnowledgeB
     satisfied: entry.satisfied,
     reason: checklistReason(entry),
   }));
-}
-
-function sortedIds(ids: readonly string[]): readonly string[] {
-  return [...ids].sort((a, b) => a.localeCompare(b));
-}
-
-/** Trim, drop blanks, dedupe, and sort available knowledge pack IDs (no input mutation). */
-export function normalizeAvailableKnowledgePackIds(inputIds: readonly string[]): {
-  readonly inputCount: number;
-  readonly normalizedIds: readonly string[];
-  readonly duplicatesRemoved: readonly string[];
-  readonly blankRemovedCount: number;
-} {
-  const inputCount = inputIds.length;
-  let blankRemovedCount = 0;
-  const occurrenceCount = new Map<string, number>();
-  const firstSeenOrder: string[] = [];
-
-  for (const raw of inputIds) {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      blankRemovedCount += 1;
-      continue;
-    }
-
-    const count = (occurrenceCount.get(trimmed) ?? 0) + 1;
-    occurrenceCount.set(trimmed, count);
-    if (count === 1) {
-      firstSeenOrder.push(trimmed);
-    }
-  }
-
-  const duplicatesRemoved = sortedIds(
-    [...occurrenceCount.entries()].filter(([, count]) => count > 1).map(([id]) => id),
-  );
-
-  return {
-    inputCount,
-    normalizedIds: sortedIds(firstSeenOrder),
-    duplicatesRemoved,
-    blankRemovedCount,
-  };
-}
-
-/** IDs present in normalized input but not in the default knowledge pack registry. */
-export function findUnknownKnowledgePackIds(input: {
-  readonly normalizedAvailableKnowledgePackIds: readonly string[];
-  readonly defaultKnowledgePackIds: readonly string[];
-}): readonly string[] {
-  const defaultSet = new Set(input.defaultKnowledgePackIds);
-  return sortedIds(input.normalizedAvailableKnowledgePackIds.filter((id) => !defaultSet.has(id)));
 }
 
 function parseReadinessInput(input?: RoleKnowledgeBindingReadinessInput) {
@@ -135,113 +94,43 @@ function resolveKnowledgeBindingDecision(input: {
   return "knowledge_binding_ready";
 }
 
-function buildInputHygieneChecklist(input: {
-  readonly availableKnowledgePackIdsInputCount: number;
-  readonly normalizedAvailableKnowledgePackIdCount: number;
-  readonly duplicateAvailableKnowledgePackIdsRemoved: readonly string[];
-  readonly blankAvailableKnowledgePackIdsRemovedCount: number;
-  readonly unknownAvailableKnowledgePackIds: readonly string[];
-  readonly sourceDefaultKnowledgePackIdCount: number;
-}): RoleKnowledgeBindingChecklistItem[] {
-  return mapChecklistEntries([
-    {
-      item: "available knowledge pack ids normalized",
-      satisfied: true,
-      detail: `inputCount=${input.availableKnowledgePackIdsInputCount}; normalizedCount=${input.normalizedAvailableKnowledgePackIdCount}`,
-    },
-    {
-      item: "blank available knowledge pack ids removed",
-      satisfied: input.blankAvailableKnowledgePackIdsRemovedCount === 0,
-      detail: `blankRemovedCount=${input.blankAvailableKnowledgePackIdsRemovedCount}`,
-    },
-    {
-      item: "duplicate available knowledge pack ids deduped",
-      satisfied: true,
-      detail:
-        input.duplicateAvailableKnowledgePackIdsRemoved.length > 0
-          ? `duplicatesRemoved=${input.duplicateAvailableKnowledgePackIdsRemoved.join(",")}`
-          : "no duplicates removed",
-    },
-    {
-      item: "unknown available knowledge pack ids reported",
-      satisfied: input.unknownAvailableKnowledgePackIds.length === 0,
-      detail:
-        input.unknownAvailableKnowledgePackIds.length > 0
-          ? `unknown=${input.unknownAvailableKnowledgePackIds.join(",")}`
-          : "no unknown ids",
-    },
-    {
-      item: "source default knowledge pack registry referenced",
-      satisfied: true,
-      detail: `sourceDefaultKnowledgePackIdCount=${input.sourceDefaultKnowledgePackIdCount}`,
-    },
-  ]);
+function resolveBindingGapContext(agentType: string, availableKnowledgePackIds: readonly string[]) {
+  const normalized = normalizeAvailableKnowledgePackIds(availableKnowledgePackIds);
+  const availableSet = new Set(normalized.normalizedIds);
+  const sourceDefaultKnowledgePackIds = sortedDefaultKnowledgePackIds();
+  const unknownAvailableKnowledgePackIds = findUnknownKnowledgePackIds({
+    normalizedAvailableKnowledgePackIds: normalized.normalizedIds,
+    defaultKnowledgePackIds: sourceDefaultKnowledgePackIds,
+  });
+
+  const bindings = getDefaultRoleKnowledgeBindingsForAgent(agentType);
+  const requiredBindings = bindings.filter((b) => b.required);
+  const optionalBindings = bindings.filter((b) => !b.required);
+
+  const missingRequiredBindingIds = requiredBindings
+    .filter((b) => !availableSet.has(b.knowledgePackId))
+    .map((b) => b.knowledgePackId);
+  const missingOptionalBindingIds = optionalBindings
+    .filter((b) => !availableSet.has(b.knowledgePackId))
+    .map((b) => b.knowledgePackId);
+
+  return {
+    normalized,
+    sourceDefaultKnowledgePackIds,
+    unknownAvailableKnowledgePackIds,
+    bindings,
+    requiredBindings,
+    optionalBindings,
+    missingRequiredBindingIds,
+    missingOptionalBindingIds,
+    satisfiedRequiredBindingCount: requiredBindings.length - missingRequiredBindingIds.length,
+    satisfiedOptionalBindingCount: optionalBindings.length - missingOptionalBindingIds.length,
+  };
 }
 
 function appendStage5ABoundaryFindings(findings: RoleKnowledgeBindingFinding[]): void {
   for (const spec of STAGE5_A_BOUNDARY_FINDING_SPECS) {
     findings.push(finding("info", spec.code, spec.message));
-  }
-}
-
-function appendInputHygieneFindings(input: {
-  readonly findings: RoleKnowledgeBindingFinding[];
-  readonly normalized: ReturnType<typeof normalizeAvailableKnowledgePackIds>;
-  readonly unknownAvailableKnowledgePackIds: readonly string[];
-  readonly missingOptionalBindingIds: readonly string[];
-  readonly sourceDefaultKnowledgePackIdCount: number;
-}): void {
-  const { findings, normalized, unknownAvailableKnowledgePackIds, missingOptionalBindingIds } = input;
-
-  findings.push(
-    finding("info", "available_knowledge_pack_ids_normalized", "Available knowledge pack IDs were normalized"),
-  );
-  findings.push(
-    finding(
-      "info",
-      "source_default_knowledge_pack_registry_referenced",
-      `Default knowledge pack registry referenced (${input.sourceDefaultKnowledgePackIdCount} ids)`,
-    ),
-  );
-
-  if (normalized.blankRemovedCount > 0) {
-    findings.push(
-      finding(
-        "warning",
-        "blank_available_knowledge_pack_id_removed",
-        `Removed ${normalized.blankRemovedCount} blank available knowledge pack id(s)`,
-      ),
-    );
-  }
-
-  if (normalized.duplicatesRemoved.length > 0) {
-    findings.push(
-      finding(
-        "info",
-        "duplicate_available_knowledge_pack_id_removed",
-        `Removed duplicate available knowledge pack ids: ${normalized.duplicatesRemoved.join(", ")}`,
-      ),
-    );
-  }
-
-  if (unknownAvailableKnowledgePackIds.length > 0) {
-    findings.push(
-      finding(
-        "warning",
-        "unknown_available_knowledge_pack_id_reported",
-        `Unknown available knowledge pack ids: ${unknownAvailableKnowledgePackIds.join(", ")}`,
-      ),
-    );
-  }
-
-  if (missingOptionalBindingIds.length > 0) {
-    findings.push(
-      finding(
-        "warning",
-        "missing_optional_knowledge_pack_reported",
-        `Missing optional knowledge pack ids: ${missingOptionalBindingIds.join(", ")}`,
-      ),
-    );
   }
 }
 
@@ -327,60 +216,40 @@ export function evaluateRoleKnowledgeBindingReadiness(
   input?: RoleKnowledgeBindingReadinessInput,
 ): RoleKnowledgeBindingReadinessReport {
   const parsed = parseReadinessInput(input);
-  const normalized = normalizeAvailableKnowledgePackIds(parsed.availableKnowledgePackIds);
-  const availableSet = new Set(normalized.normalizedIds);
-  const sourceDefaultKnowledgePackIds = sortedIds(listDefaultKnowledgePackIds());
-  const unknownAvailableKnowledgePackIds = findUnknownKnowledgePackIds({
-    normalizedAvailableKnowledgePackIds: normalized.normalizedIds,
-    defaultKnowledgePackIds: sourceDefaultKnowledgePackIds,
-  });
-
-  const bindings = getDefaultRoleKnowledgeBindingsForAgent(parsed.agentType);
-  const requiredBindings = bindings.filter((b) => b.required);
-  const optionalBindings = bindings.filter((b) => !b.required);
-
-  const missingRequiredBindingIds = requiredBindings
-    .filter((b) => !availableSet.has(b.knowledgePackId))
-    .map((b) => b.knowledgePackId);
-  const missingOptionalBindingIds = optionalBindings
-    .filter((b) => !availableSet.has(b.knowledgePackId))
-    .map((b) => b.knowledgePackId);
-
-  const satisfiedRequiredBindingCount = requiredBindings.length - missingRequiredBindingIds.length;
-  const satisfiedOptionalBindingCount = optionalBindings.length - missingOptionalBindingIds.length;
+  const gap = resolveBindingGapContext(parsed.agentType, parsed.availableKnowledgePackIds);
 
   const decision = resolveKnowledgeBindingDecision({
     agentType: parsed.agentType,
-    bindings,
-    missingRequiredBindingIds,
-    missingOptionalBindingIds,
+    bindings: gap.bindings,
+    missingRequiredBindingIds: gap.missingRequiredBindingIds,
+    missingOptionalBindingIds: gap.missingOptionalBindingIds,
     allowMissingOptionalBindings: parsed.allowMissingOptionalBindings,
   });
 
-  const inputHygieneChecklist = buildInputHygieneChecklist({
-    availableKnowledgePackIdsInputCount: normalized.inputCount,
-    normalizedAvailableKnowledgePackIdCount: normalized.normalizedIds.length,
-    duplicateAvailableKnowledgePackIdsRemoved: normalized.duplicatesRemoved,
-    blankAvailableKnowledgePackIdsRemovedCount: normalized.blankRemovedCount,
-    unknownAvailableKnowledgePackIds,
-    sourceDefaultKnowledgePackIdCount: sourceDefaultKnowledgePackIds.length,
+  const inputHygieneChecklist = buildRoleKnowledgeBindingInputHygieneChecklist({
+    availableKnowledgePackIdsInputCount: gap.normalized.inputCount,
+    normalizedAvailableKnowledgePackIdCount: gap.normalized.normalizedIds.length,
+    duplicateAvailableKnowledgePackIdsRemoved: gap.normalized.duplicatesRemoved,
+    blankAvailableKnowledgePackIdsRemovedCount: gap.normalized.blankRemovedCount,
+    unknownAvailableKnowledgePackIds: gap.unknownAvailableKnowledgePackIds,
+    sourceDefaultKnowledgePackIdCount: gap.sourceDefaultKnowledgePackIds.length,
   });
 
   const findings: RoleKnowledgeBindingFinding[] = [];
   appendStage5ABoundaryFindings(findings);
-  appendInputHygieneFindings({
+  appendRoleKnowledgeBindingInputHygieneFindings({
     findings,
-    normalized,
-    unknownAvailableKnowledgePackIds,
-    missingOptionalBindingIds,
-    sourceDefaultKnowledgePackIdCount: sourceDefaultKnowledgePackIds.length,
+    normalized: gap.normalized,
+    unknownAvailableKnowledgePackIds: gap.unknownAvailableKnowledgePackIds,
+    missingOptionalBindingIds: gap.missingOptionalBindingIds,
+    sourceDefaultKnowledgePackIdCount: gap.sourceDefaultKnowledgePackIds.length,
   });
   appendKnowledgeBindingDecisionFindings({
     findings,
     decision,
     agentType: parsed.agentType,
-    missingRequiredBindingIds,
-    missingOptionalBindingIds,
+    missingRequiredBindingIds: gap.missingRequiredBindingIds,
+    missingOptionalBindingIds: gap.missingOptionalBindingIds,
   });
 
   return {
@@ -389,30 +258,30 @@ export function evaluateRoleKnowledgeBindingReadiness(
     decision,
     agentType: parsed.agentType,
     taskType: parsed.taskType,
-    bindingCount: bindings.length,
-    requiredBindingCount: requiredBindings.length,
-    satisfiedRequiredBindingCount,
-    missingRequiredBindingIds,
-    missingOptionalBindingIds,
-    optionalBindingCount: optionalBindings.length,
-    satisfiedOptionalBindingCount,
-    availableKnowledgePackIdsInputCount: normalized.inputCount,
-    normalizedAvailableKnowledgePackIds: normalized.normalizedIds,
-    normalizedAvailableKnowledgePackIdCount: normalized.normalizedIds.length,
-    duplicateAvailableKnowledgePackIdsRemoved: normalized.duplicatesRemoved,
-    blankAvailableKnowledgePackIdsRemovedCount: normalized.blankRemovedCount,
-    unknownAvailableKnowledgePackIds,
-    unknownAvailableKnowledgePackIdCount: unknownAvailableKnowledgePackIds.length,
-    sourceDefaultKnowledgePackIds,
-    sourceDefaultKnowledgePackIdCount: sourceDefaultKnowledgePackIds.length,
+    bindingCount: gap.bindings.length,
+    requiredBindingCount: gap.requiredBindings.length,
+    satisfiedRequiredBindingCount: gap.satisfiedRequiredBindingCount,
+    missingRequiredBindingIds: gap.missingRequiredBindingIds,
+    missingOptionalBindingIds: gap.missingOptionalBindingIds,
+    optionalBindingCount: gap.optionalBindings.length,
+    satisfiedOptionalBindingCount: gap.satisfiedOptionalBindingCount,
+    availableKnowledgePackIdsInputCount: gap.normalized.inputCount,
+    normalizedAvailableKnowledgePackIds: gap.normalized.normalizedIds,
+    normalizedAvailableKnowledgePackIdCount: gap.normalized.normalizedIds.length,
+    duplicateAvailableKnowledgePackIdsRemoved: gap.normalized.duplicatesRemoved,
+    blankAvailableKnowledgePackIdsRemovedCount: gap.normalized.blankRemovedCount,
+    unknownAvailableKnowledgePackIds: gap.unknownAvailableKnowledgePackIds,
+    unknownAvailableKnowledgePackIdCount: gap.unknownAvailableKnowledgePackIds.length,
+    sourceDefaultKnowledgePackIds: gap.sourceDefaultKnowledgePackIds,
+    sourceDefaultKnowledgePackIdCount: gap.sourceDefaultKnowledgePackIds.length,
     inputHygieneChecklist,
-    selectedBindings: bindings,
+    selectedBindings: gap.bindings,
     checklist: buildReadinessChecklist({
       agentType: parsed.agentType,
       taskType: parsed.taskType,
-      requiredBindingCount: requiredBindings.length,
-      satisfiedRequiredBindingCount,
-      missingRequiredBindingIds,
+      requiredBindingCount: gap.requiredBindings.length,
+      satisfiedRequiredBindingCount: gap.satisfiedRequiredBindingCount,
+      missingRequiredBindingIds: gap.missingRequiredBindingIds,
       allowMissingOptionalBindings: parsed.allowMissingOptionalBindings,
     }),
     findings,
@@ -420,5 +289,4 @@ export function evaluateRoleKnowledgeBindingReadiness(
   };
 }
 
-/** All default platform knowledge pack IDs (for tests and bootstrap). */
-export { listDefaultKnowledgePackIds };
+export { listDefaultKnowledgePackIds } from "@/lib/agents/defaultRoleKnowledgeBindings";

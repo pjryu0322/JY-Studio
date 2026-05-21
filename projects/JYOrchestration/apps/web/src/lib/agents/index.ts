@@ -728,10 +728,17 @@ export {
 
 export {
   evaluateRoleKnowledgeBindingReadiness,
-  findUnknownKnowledgePackIds,
   listDefaultKnowledgePackIds,
-  normalizeAvailableKnowledgePackIds,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingReadiness";
+
+export {
+  appendRoleKnowledgeBindingInputHygieneFindings,
+  buildRoleKnowledgeBindingInputHygieneChecklist,
+  findUnknownKnowledgePackIds,
+  normalizeAvailableKnowledgePackIds,
+  sortedDefaultKnowledgePackIds,
+  sortedKnowledgePackIds,
+} from "@/lib/agents/roleKnowledgeBindingInputHygiene";
 
 export {
   buildStage4ClosureBaselineFields,
