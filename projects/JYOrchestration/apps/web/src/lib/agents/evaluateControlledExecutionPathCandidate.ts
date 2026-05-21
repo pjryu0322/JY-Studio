@@ -2,6 +2,7 @@
  * Evaluate controlled execution path candidate (read-only; no execution path/routing/connector/runtime/DB/git changes).
  */
 
+import { checklistCounts } from "@/lib/agents/agentFieldDecisionUtils";
 import { evaluateConnectorGatewayShadowRoutingPlan } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
 import type { ConnectorGatewayShadowRouteCandidate } from "@/lib/agents/connectorGatewayShadowRoutingPlanTypes";
 import type {
@@ -57,10 +58,18 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): ControlledExec
   }));
 }
 
-function checklistCounts<T extends { readonly satisfied: boolean }>(items: readonly T[]) {
+function buildSourceShadowRoutingTrace(
+  shadowPlan: ReturnType<typeof evaluateConnectorGatewayShadowRoutingPlan>,
+) {
+  const findingCodes = shadowPlan.findings.map((f) => f.code);
+
   return {
-    count: items.length,
-    satisfiedCount: items.filter((item) => item.satisfied).length,
+    sourceFindingCodes: findingCodes,
+    sourceShadowRoutingFindingCodes: findingCodes,
+    sourceShadowRoutingNoRunChecklistCount: shadowPlan.noRunChecklistCount,
+    sourceShadowRoutingNoRunChecklistSatisfiedCount: shadowPlan.noRunChecklistSatisfiedCount,
+    sourceShadowRoutingRouteCandidateCount: shadowPlan.routeCandidateCount,
+    sourceShadowRoutingRouteCandidateSatisfiedCount: shadowPlan.routeCandidateSatisfiedCount,
   };
 }
 
@@ -417,12 +426,7 @@ export function evaluateControlledExecutionPathCandidate(
     sourceRouteCandidateSatisfiedCount: shadowPlan.routeCandidateSatisfiedCount,
     sourceNoRunChecklistCount: shadowPlan.noRunChecklistCount,
     sourceNoRunChecklistSatisfiedCount: shadowPlan.noRunChecklistSatisfiedCount,
-    sourceFindingCodes: shadowPlan.findings.map((f) => f.code),
-    sourceShadowRoutingFindingCodes: shadowPlan.findings.map((f) => f.code),
-    sourceShadowRoutingNoRunChecklistCount: shadowPlan.noRunChecklistCount,
-    sourceShadowRoutingNoRunChecklistSatisfiedCount: shadowPlan.noRunChecklistSatisfiedCount,
-    sourceShadowRoutingRouteCandidateCount: shadowPlan.routeCandidateCount,
-    sourceShadowRoutingRouteCandidateSatisfiedCount: shadowPlan.routeCandidateSatisfiedCount,
+    ...buildSourceShadowRoutingTrace(shadowPlan),
     executionPathCandidates,
     executionPathCandidateCount,
     executionPathCandidateSatisfiedCount,

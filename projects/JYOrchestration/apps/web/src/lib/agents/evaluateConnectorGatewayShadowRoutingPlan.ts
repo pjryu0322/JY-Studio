@@ -2,6 +2,7 @@
  * Evaluate Connector Gateway shadow routing plan (read-only; no routing/connector/Cursor/GitHub/runtime execution).
  */
 
+import { checklistCounts } from "@/lib/agents/agentFieldDecisionUtils";
 import { evaluateRuntimeWireManualBranchVerification } from "@/lib/agents/evaluateRuntimeWireManualBranchVerification";
 import { buildRuntimeWireFeatureFlagName } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import type {
@@ -109,13 +110,6 @@ function countRouteCandidateSatisfied(candidates: readonly ConnectorGatewayShado
       candidate.shadowPath.trim().length > 0 &&
       candidate.connectorId.trim().length > 0,
   ).length;
-}
-
-function checklistCounts<T extends { readonly satisfied: boolean }>(items: readonly T[]) {
-  return {
-    count: items.length,
-    satisfiedCount: items.filter((item) => item.satisfied).length,
-  };
 }
 
 function buildManualVerificationSourceTrace(

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRuntimeWireExperimentReviewFingerprint,
   evaluateRuntimeWireExperimentReviewPackage,
+  resolveRuntimeWireExperimentReviewPackageDecision,
 } from "@/lib/agents/evaluateRuntimeWireExperimentReviewPackage";
 import { buildRuntimeWireFeatureFlagName } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as controlledCandidateModule from "@/lib/agents/evaluateControlledExecutionPathCandidate";
@@ -159,6 +160,41 @@ function fingerprintInputFromFlags(flags: typeof ALL_PACKAGE_REVIEWS) {
 describe("multi-agent runtime wire experiment review package stage 4-E", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe("resolveRuntimeWireExperimentReviewPackageDecision", () => {
+    it("returns blocked when source controlled execution path is blocked", () => {
+      expect(
+        resolveRuntimeWireExperimentReviewPackageDecision({
+          controlledExecutionPathDecision: "blocked",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 2,
+          ...ALL_PACKAGE_REVIEWS,
+        }),
+      ).toBe("blocked");
+    });
+
+    it("returns blocked when source no-run checklist counts mismatch", () => {
+      expect(
+        resolveRuntimeWireExperimentReviewPackageDecision({
+          controlledExecutionPathDecision: "ready_for_execution_path_review",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 1,
+          ...ALL_PACKAGE_REVIEWS,
+        }),
+      ).toBe("blocked");
+    });
+
+    it("returns ready when execution path ready and all package reviews satisfied", () => {
+      expect(
+        resolveRuntimeWireExperimentReviewPackageDecision({
+          controlledExecutionPathDecision: "ready_for_execution_path_review",
+          sourceNoRunChecklistCount: 2,
+          sourceNoRunChecklistSatisfiedCount: 2,
+          ...ALL_PACKAGE_REVIEWS,
+        }),
+      ).toBe("ready_for_stage4_closure_verdict");
+    });
   });
 
   it("mode is read_only_runtime_wire_experiment_review_package", () => {

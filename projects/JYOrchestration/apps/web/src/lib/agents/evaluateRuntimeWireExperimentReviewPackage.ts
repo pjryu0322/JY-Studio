@@ -2,6 +2,7 @@
  * Evaluate runtime wire experiment review package (read-only; no runtime/routing/execution path/DB/git changes).
  */
 
+import { checklistCounts } from "@/lib/agents/agentFieldDecisionUtils";
 import { evaluateControlledExecutionPathCandidate } from "@/lib/agents/evaluateControlledExecutionPathCandidate";
 import type {
   RuntimeWireExperimentReviewChecklistItem,
@@ -58,13 +59,6 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): RuntimeWireExp
     satisfied: entry.satisfied,
     reason: checklistReason(entry),
   }));
-}
-
-function checklistCounts<T extends { readonly satisfied: boolean }>(items: readonly T[]) {
-  return {
-    count: items.length,
-    satisfiedCount: items.filter((item) => item.satisfied).length,
-  };
 }
 
 /** Deterministic review package fingerprint for Stage 4-E trace. */
