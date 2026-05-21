@@ -2,9 +2,15 @@
  * Evaluate Agent / Operator write adapter design integration (read-only; no adapter wire, Prisma, or DB write).
  */
 
-import { evaluateAgentExecutionRecordWritePathDesign } from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
+import {
+  evaluateAgentExecutionRecordWritePathDesign,
+  normalizeAgentExecutionRecordWritePathTarget,
+} from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
 import { evaluateAgentExecutionRecordWritePathWireApprovalGate } from "@/lib/agents/evaluateAgentExecutionRecordWritePathWireApprovalGate";
-import { evaluateOperatorApprovalAuditWritePathDesign } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
+import {
+  evaluateOperatorApprovalAuditWritePathDesign,
+  normalizeOperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
 import { evaluateOperatorApprovalAuditWritePathWireApprovalGate } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathWireApprovalGate";
 import type {
   WriteAdapterDesignIntegrationChecklistItem,
@@ -60,11 +66,17 @@ function finding(
 }
 
 function resolveIntegrationDecision(input: {
+  readonly normalizedAgentTarget: string;
+  readonly normalizedOperatorTarget: string;
   readonly agentWireGateDecision: string;
   readonly operatorWireGateDecision: string;
   readonly agentWritePathDecision: string;
   readonly operatorWritePathDecision: string;
 }): WriteAdapterDesignIntegrationDecision {
+  if (input.normalizedAgentTarget === "unknown" || input.normalizedOperatorTarget === "unknown") {
+    return "blocked";
+  }
+
   if (
     input.agentWireGateDecision === "blocked" ||
     input.operatorWireGateDecision === "blocked" ||
@@ -257,8 +269,14 @@ export function evaluateWriteAdapterDesignIntegration(input?: {
   readonly operatorPermissionModelConfirmed?: boolean;
   readonly operatorAuditTrailConfirmed?: boolean;
 }): WriteAdapterDesignIntegrationReport {
-  const agentTarget = input?.agentTarget ?? "agent_execution_record";
-  const operatorTarget = input?.operatorTarget ?? "operator_approval";
+  const requestedAgentTarget = input?.agentTarget ?? "agent_execution_record";
+  const requestedOperatorTarget = input?.operatorTarget ?? "operator_approval";
+  const normalizedAgentTarget = normalizeAgentExecutionRecordWritePathTarget(requestedAgentTarget);
+  const normalizedOperatorTarget = normalizeOperatorApprovalAuditWritePathTarget(
+    requestedOperatorTarget,
+  );
+  const agentTarget = normalizedAgentTarget;
+  const operatorTarget = normalizedOperatorTarget;
 
   const agentWireGate = evaluateAgentExecutionRecordWritePathWireApprovalGate({
     target: agentTarget,
@@ -284,6 +302,8 @@ export function evaluateWriteAdapterDesignIntegration(input?: {
   const operatorWritePath = evaluateOperatorApprovalAuditWritePathDesign({ target: operatorTarget });
 
   const decision = resolveIntegrationDecision({
+    normalizedAgentTarget,
+    normalizedOperatorTarget,
     agentWireGateDecision: agentWireGate.decision,
     operatorWireGateDecision: operatorWireGate.decision,
     agentWritePathDecision: agentWritePath.decision,
@@ -331,6 +351,20 @@ export function evaluateWriteAdapterDesignIntegration(input?: {
   });
 
   const findings: WriteAdapterDesignIntegrationFinding[] = [];
+  if (normalizedAgentTarget === "unknown") {
+    findings.push(
+      finding("blocking", "unknown_agent_write_adapter_target", "unknown agent write adapter target is blocked"),
+    );
+  }
+  if (normalizedOperatorTarget === "unknown") {
+    findings.push(
+      finding(
+        "blocking",
+        "unknown_operator_write_adapter_target",
+        "unknown operator write adapter target is blocked",
+      ),
+    );
+  }
   appendIntegrationFindings({
     findings,
     decision,
@@ -343,10 +377,28 @@ export function evaluateWriteAdapterDesignIntegration(input?: {
   return {
     mode: "read_only_write_adapter_design_integration",
     decision,
+    requestedAgentTarget,
+    requestedOperatorTarget,
+    normalizedAgentTarget,
+    normalizedOperatorTarget,
     sourceAgentWireGateDecision: agentWireGate.decision,
     sourceOperatorWireGateDecision: operatorWireGate.decision,
     sourceAgentWritePathDecision: agentWritePath.decision,
     sourceOperatorWritePathDecision: operatorWritePath.decision,
+    sourceAgentSchemaApprovalDecision: agentWireGate.sourceSchemaApprovalDecision,
+    sourceOperatorSchemaApprovalDecision: operatorWireGate.sourceSchemaApprovalDecision,
+    sourceAgentSchemaApprovalTarget: agentWireGate.sourceSchemaApprovalTarget,
+    sourceOperatorSchemaApprovalTarget: operatorWireGate.sourceSchemaApprovalTarget,
+    sourceAgentSchemaApprovalReferenceOnly: agentWireGate.schemaApprovalReferenceOnly,
+    sourceOperatorSchemaApprovalReferenceOnly: operatorWireGate.schemaApprovalReferenceOnly,
+    sourceAgentBlockingFindingCodes: [...agentWireGate.sourceBlockingFindingCodes],
+    sourceOperatorBlockingFindingCodes: [...operatorWireGate.sourceBlockingFindingCodes],
+    sourceAgentApprovalChecklistItemCount: agentWireGate.approvalChecklist.length,
+    sourceOperatorApprovalChecklistItemCount: operatorWireGate.approvalChecklist.length,
+    sourceAgentRuntimeChecklistItemCount: agentWireGate.runtimeChecklist.length,
+    sourceOperatorRuntimeChecklistItemCount: operatorWireGate.runtimeChecklist.length,
+    sourceOperatorPermissionChecklistItemCount: operatorWireGate.permissionChecklist.length,
+    sourceOperatorAuditChecklistItemCount: operatorWireGate.auditChecklist.length,
     agentAdapterTarget: agentWritePath.target,
     operatorAdapterTarget: operatorWritePath.target,
     agentAdapterBoundaryName,

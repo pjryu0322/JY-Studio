@@ -499,7 +499,9 @@ export type {
 export { evaluateOperatorApprovalAuditWritePathWireApprovalGate } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathWireApprovalGate";
 
 export type {
+  ConnectorGatewayRoutingShadowBoundarySource,
   ConnectorGatewayRoutingShadowChecklistItem,
+  ConnectorGatewayRoutingShadowConnectorSource,
   ConnectorGatewayRoutingShadowDecision,
   ConnectorGatewayRoutingShadowFinding,
   ConnectorGatewayRoutingShadowReport,
@@ -517,6 +519,15 @@ export type {
 } from "@/lib/agents/writeAdapterDesignIntegrationTypes";
 
 export { evaluateWriteAdapterDesignIntegration } from "@/lib/agents/evaluateWriteAdapterDesignIntegration";
+
+export type {
+  SchemaMigrationPrReadinessIntegrationChecklistItem,
+  SchemaMigrationPrReadinessIntegrationDecision,
+  SchemaMigrationPrReadinessIntegrationFinding,
+  SchemaMigrationPrReadinessIntegrationReport,
+} from "@/lib/agents/schemaMigrationPrReadinessIntegrationTypes";
+
+export { evaluateSchemaMigrationPrReadinessIntegration } from "@/lib/agents/evaluateSchemaMigrationPrReadinessIntegration";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

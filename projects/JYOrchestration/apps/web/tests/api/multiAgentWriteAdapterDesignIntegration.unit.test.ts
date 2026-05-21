@@ -406,6 +406,78 @@ describe("multi-agent write adapter design integration stage 2-B", () => {
     expect(report.findings.some((f) => f.code === "write_adapter_design_blocked")).toBe(true);
   });
 
+  it("report includes sourceAgentSchemaApprovalDecision and sourceOperatorSchemaApprovalDecision", () => {
+    const report = evaluateWriteAdapterDesignIntegration();
+    expect(typeof report.sourceAgentSchemaApprovalDecision).toBe("string");
+    expect(typeof report.sourceOperatorSchemaApprovalDecision).toBe("string");
+  });
+
+  it("report includes sourceAgentBlockingFindingCodes as array", () => {
+    expect(Array.isArray(evaluateWriteAdapterDesignIntegration().sourceAgentBlockingFindingCodes)).toBe(
+      true,
+    );
+  });
+
+  it("report includes sourceOperatorBlockingFindingCodes as array", () => {
+    expect(Array.isArray(evaluateWriteAdapterDesignIntegration().sourceOperatorBlockingFindingCodes)).toBe(
+      true,
+    );
+  });
+
+  it("report includes sourceOperatorPermissionChecklistItemCount as number", () => {
+    expect(typeof evaluateWriteAdapterDesignIntegration().sourceOperatorPermissionChecklistItemCount).toBe(
+      "number",
+    );
+  });
+
+  it("report includes sourceOperatorAuditChecklistItemCount as number", () => {
+    expect(typeof evaluateWriteAdapterDesignIntegration().sourceOperatorAuditChecklistItemCount).toBe(
+      "number",
+    );
+  });
+
+  it("default targets are agent_execution_record and operator_approval", () => {
+    const report = evaluateWriteAdapterDesignIntegration();
+    expect(report.requestedAgentTarget).toBe("agent_execution_record");
+    expect(report.requestedOperatorTarget).toBe("operator_approval");
+    expect(report.normalizedAgentTarget).toBe("agent_execution_record");
+    expect(report.normalizedOperatorTarget).toBe("operator_approval");
+  });
+
+  it("unknown agent target does not become ready_for_adapter_design", () => {
+    vi.spyOn(agentWireGateModule, "evaluateAgentExecutionRecordWritePathWireApprovalGate").mockReturnValue(
+      mockAgentWireGateReady(),
+    );
+    vi.spyOn(operatorWireGateModule, "evaluateOperatorApprovalAuditWritePathWireApprovalGate").mockReturnValue(
+      mockOperatorWireGateReady(),
+    );
+    vi.spyOn(agentWritePathModule, "evaluateAgentExecutionRecordWritePathDesign").mockReturnValue(
+      mockAgentWritePathReady(),
+    );
+    vi.spyOn(operatorWritePathModule, "evaluateOperatorApprovalAuditWritePathDesign").mockReturnValue(
+      mockOperatorWritePathReady(),
+    );
+
+    const report = evaluateWriteAdapterDesignIntegration({
+      agentTarget: "unknown",
+      operatorTarget: "operator_approval",
+      ...ALL_AGENT_CONFIRMATIONS,
+      ...ALL_OPERATOR_CONFIRMATIONS,
+    });
+    expect(report.normalizedAgentTarget).toBe("unknown");
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "unknown_agent_write_adapter_target")).toBe(true);
+  });
+
+  it("all confirmations true without mock still defers because upstream write path is defer", () => {
+    const report = evaluateWriteAdapterDesignIntegration({
+      ...ALL_AGENT_CONFIRMATIONS,
+      ...ALL_OPERATOR_CONFIRMATIONS,
+    });
+    expect(report.decision).toBe("defer");
+    expect(report.findings.some((f) => f.code === "write_adapter_design_ready")).toBe(false);
+  });
+
   it("evaluator does not wire adapter DB Prisma schema or migration", () => {
     const agentGateSpy = vi.spyOn(
       agentWireGateModule,

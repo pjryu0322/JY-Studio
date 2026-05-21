@@ -23,10 +23,32 @@ export interface WriteAdapterDesignIntegrationReport {
   readonly mode: "read_only_write_adapter_design_integration";
   readonly decision: WriteAdapterDesignIntegrationDecision;
 
+  readonly requestedAgentTarget: string;
+  readonly requestedOperatorTarget: string;
+  readonly normalizedAgentTarget: string;
+  readonly normalizedOperatorTarget: string;
+
   readonly sourceAgentWireGateDecision: string;
   readonly sourceOperatorWireGateDecision: string;
   readonly sourceAgentWritePathDecision: string;
   readonly sourceOperatorWritePathDecision: string;
+
+  readonly sourceAgentSchemaApprovalDecision: string;
+  readonly sourceOperatorSchemaApprovalDecision: string;
+  readonly sourceAgentSchemaApprovalTarget: string;
+  readonly sourceOperatorSchemaApprovalTarget: string;
+  readonly sourceAgentSchemaApprovalReferenceOnly: boolean;
+  readonly sourceOperatorSchemaApprovalReferenceOnly: boolean;
+
+  readonly sourceAgentBlockingFindingCodes: readonly string[];
+  readonly sourceOperatorBlockingFindingCodes: readonly string[];
+
+  readonly sourceAgentApprovalChecklistItemCount: number;
+  readonly sourceOperatorApprovalChecklistItemCount: number;
+  readonly sourceAgentRuntimeChecklistItemCount: number;
+  readonly sourceOperatorRuntimeChecklistItemCount: number;
+  readonly sourceOperatorPermissionChecklistItemCount: number;
+  readonly sourceOperatorAuditChecklistItemCount: number;
 
   readonly agentAdapterTarget: string;
   readonly operatorAdapterTarget: string;

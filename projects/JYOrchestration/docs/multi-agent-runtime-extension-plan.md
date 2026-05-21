@@ -1432,6 +1432,47 @@ wire gate 또는 write path 미준비 → defer
 양쪽 wire gate ready + 양쪽 write path ready → ready_for_adapter_design
 ```
 
-### Stage 2-C 후보: Agent / Operator Schema/Migration PR Readiness 통합
+### Stage 2-B 보강 (소스 점검)
 
-Stage 2-C에서는 Agent / Operator Schema/Migration PR Readiness를 통합한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| RoutingShadow BoundarySource/ConnectorSource export | index.ts public export | 없음 | 누락 보완 |
+| WriteAdapter source trace | schema approval/blocking/checklist counts | 없음 | downstream 추적 |
+| WriteAdapter target 정규화 | requested/normalized target fields | 없음 | unknown 안전 처리 |
+| ready/defer finding 정책 | 테스트 고정 | 없음 | mock ready vs 실제 defer |
+
+### Stage 2-C Agent / Operator Schema-Migration PR Readiness Integration 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| 통합 Schema/Migration PR readiness 타입 | read-only integration report | 없음 | 실제 schema 변경 없음 |
+| 통합 evaluator | Agent schema readiness + Operator schema readiness + Write Adapter integration 조합 | 없음 | Prisma/DB 미호출 |
+| schemaChecklist | report field | 없음 | model/field/forbidden 검토 |
+| migrationChecklist | report field | 없음 | migration 후보 검토 |
+| rollbackChecklist | report field | 없음 | rollback/retention 검토 |
+| safetyChecklist | report field | 없음 | no schema/migration/DB/PR 보장 |
+| no-run flags | report field | 없음 | schema/migration/prisma/db/pr/adapter 미실행 |
+
+### Stage 2-C 원칙
+
+```text
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- PR을 생성하지 않는다.
+- adapter를 wire하지 않는다.
+- Agent/Operator schema readiness ready_for_schema_pr_plan + writeAdapterIntegrationConfirmed=true일 때만 readiness ready.
+```
+
+### Stage 2-C Decision 규칙 요약
+
+```text
+agent/operator schema blocked 또는 write adapter integration blocked → blocked
+schema readiness 미준비 또는 writeAdapterIntegrationConfirmed=false → defer
+양쪽 schema ready + writeAdapterIntegrationConfirmed=true → ready_for_schema_migration_pr_readiness
+```
+
+### Stage 2-D 후보: Agent / Operator Write Path Wire 후보 검증 통합
+
+Stage 2-D에서는 Agent / Operator Write Path Wire 후보 검증을 통합한다.
