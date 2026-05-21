@@ -9,6 +9,13 @@ export type ConnectorGatewayRoutingShadowRouteMode =
   | "shadow_compare"
   | "fallback_required";
 
+export type ConnectorGatewayRoutingShadowBoundarySource = "explicit" | "default" | "missing";
+
+export type ConnectorGatewayRoutingShadowConnectorSource =
+  | "explicit"
+  | "routing_experiment"
+  | "missing";
+
 export interface ConnectorGatewayRoutingShadowRequest {
   readonly target?: string;
   readonly boundaryIds?: readonly string[];
@@ -37,13 +44,18 @@ export interface ConnectorGatewayRoutingShadowReport {
 
   readonly target: string;
   readonly boundaryIds: readonly string[];
+  readonly boundarySource: ConnectorGatewayRoutingShadowBoundarySource;
   readonly connectorIds: readonly string[];
+  readonly connectorSource: ConnectorGatewayRoutingShadowConnectorSource;
 
   readonly sourceRoutingDecision: string;
   readonly sourceRoutingScope: string;
   readonly sourceRoutingRequiresStage1Regression: boolean;
   readonly sourceBranchManualVerificationDecision: string;
   readonly sourceBranchManualVerificationRollbackRequired: boolean;
+  readonly sourceManualVerificationUsesExternalResults: false;
+  readonly sourceManualVerificationActualBranchProvided: false;
+  readonly sourceManualVerificationRegressionResultsProvided: false;
 
   readonly featureFlagEnabled: boolean;
   readonly explicitShadowApproval: boolean;

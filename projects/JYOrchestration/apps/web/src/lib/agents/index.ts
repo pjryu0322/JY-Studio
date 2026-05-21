@@ -509,6 +509,15 @@ export type {
 
 export { evaluateConnectorGatewayRoutingShadow } from "@/lib/agents/evaluateConnectorGatewayRoutingShadow";
 
+export type {
+  WriteAdapterDesignIntegrationChecklistItem,
+  WriteAdapterDesignIntegrationDecision,
+  WriteAdapterDesignIntegrationFinding,
+  WriteAdapterDesignIntegrationReport,
+} from "@/lib/agents/writeAdapterDesignIntegrationTypes";
+
+export { evaluateWriteAdapterDesignIntegration } from "@/lib/agents/evaluateWriteAdapterDesignIntegration";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

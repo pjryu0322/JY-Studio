@@ -5,7 +5,9 @@
 import { evaluateConnectorGatewayExperimentBranchManualVerification } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchManualVerification";
 import { evaluateConnectorGatewayRoutingExperiment } from "@/lib/agents/evaluateConnectorGatewayRoutingExperiment";
 import type {
+  ConnectorGatewayRoutingShadowBoundarySource,
   ConnectorGatewayRoutingShadowChecklistItem,
+  ConnectorGatewayRoutingShadowConnectorSource,
   ConnectorGatewayRoutingShadowDecision,
   ConnectorGatewayRoutingShadowFinding,
   ConnectorGatewayRoutingShadowReport,
@@ -82,14 +84,59 @@ function defaultBoundaryIdsForTarget(target: string): readonly string[] {
   return [];
 }
 
-function normalizeBoundaryIds(boundaryIds: readonly string[] | undefined, target: string): string[] {
-  const provided = (boundaryIds ?? [])
-    .map((id) => String(id ?? "").trim())
-    .filter((id) => id.length > 0);
-  if (provided.length > 0) {
-    return [...new Set(provided)];
+export function normalizeConnectorGatewayRoutingShadowBoundaryIds(input: {
+  readonly boundaryIds?: readonly string[];
+  readonly target: string;
+}): {
+  readonly boundaryIds: readonly string[];
+  readonly boundarySource: ConnectorGatewayRoutingShadowBoundarySource;
+} {
+  if (input.boundaryIds !== undefined) {
+    const explicit = [
+      ...new Set(
+        input.boundaryIds.map((id) => String(id ?? "").trim()).filter((id) => id.length > 0),
+      ),
+    ];
+    if (explicit.length === 0) {
+      return { boundaryIds: [], boundarySource: "missing" };
+    }
+    return { boundaryIds: explicit, boundarySource: "explicit" };
   }
-  return [...defaultBoundaryIdsForTarget(target)];
+
+  if (input.target === "unknown") {
+    return { boundaryIds: [], boundarySource: "missing" };
+  }
+
+  const defaults = defaultBoundaryIdsForTarget(input.target);
+  if (defaults.length === 0) {
+    return { boundaryIds: [], boundarySource: "missing" };
+  }
+
+  return { boundaryIds: [...defaults], boundarySource: "default" };
+}
+
+function normalizeConnectorIds(input: {
+  readonly connectorIds?: readonly string[];
+  readonly routingExperimentConnectorIds: readonly string[];
+}): {
+  readonly connectorIds: readonly string[];
+  readonly connectorSource: ConnectorGatewayRoutingShadowConnectorSource;
+} {
+  const explicit = [
+    ...new Set(
+      (input.connectorIds ?? []).map((id) => String(id ?? "").trim()).filter((id) => id.length > 0),
+    ),
+  ];
+  if (explicit.length > 0) {
+    return { connectorIds: explicit, connectorSource: "explicit" };
+  }
+  if (input.routingExperimentConnectorIds.length > 0) {
+    return {
+      connectorIds: [...input.routingExperimentConnectorIds],
+      connectorSource: "routing_experiment",
+    };
+  }
+  return { connectorIds: [], connectorSource: "missing" };
 }
 
 function resolveRouteMode(decision: ConnectorGatewayRoutingShadowDecision): ConnectorGatewayRoutingShadowRouteMode {
@@ -100,6 +147,7 @@ function resolveRouteMode(decision: ConnectorGatewayRoutingShadowDecision): Conn
 
 function resolveShadowDecision(input: {
   readonly target: string;
+  readonly boundarySource: ConnectorGatewayRoutingShadowBoundarySource;
   readonly boundaryIds: readonly string[];
   readonly routingDecision: string;
   readonly routingScope: ConnectorGatewayRoutingExperimentScope;
@@ -107,7 +155,7 @@ function resolveShadowDecision(input: {
   readonly featureFlagEnabled: boolean;
   readonly explicitShadowApproval: boolean;
 }): ConnectorGatewayRoutingShadowDecision {
-  if (input.target === "unknown" || input.boundaryIds.length === 0) {
+  if (input.target === "unknown" || input.boundarySource === "missing" || input.boundaryIds.length === 0) {
     return "blocked";
   }
 
@@ -212,7 +260,6 @@ function appendShadowFindings(input: {
   readonly manualVerificationRollbackRequired: boolean;
   readonly featureFlagEnabled: boolean;
   readonly explicitShadowApproval: boolean;
-  readonly actualRuntimePath: string;
 }): void {
   const {
     findings,
@@ -224,7 +271,6 @@ function appendShadowFindings(input: {
     manualVerificationRollbackRequired,
     featureFlagEnabled,
     explicitShadowApproval,
-    actualRuntimePath,
   } = input;
 
   findings.push(finding("info", "routing_shadow_read_only", "routing shadow is read-only; no route or connector wire"));
@@ -287,20 +333,29 @@ export function evaluateConnectorGatewayRoutingShadow(
   input?: ConnectorGatewayRoutingShadowRequest,
 ): ConnectorGatewayRoutingShadowReport {
   const target = normalizeConnectorGatewayRoutingShadowTarget(input?.target);
-  const boundaryIds = normalizeBoundaryIds(input?.boundaryIds, target);
+  const { boundaryIds, boundarySource } = normalizeConnectorGatewayRoutingShadowBoundaryIds({
+    boundaryIds: input?.boundaryIds,
+    target,
+  });
   const featureFlagEnabled = input?.featureFlagEnabled === true;
   const explicitShadowApproval = input?.explicitShadowApproval === true;
   const actualRuntimePath = input?.actualRuntimePath?.trim() || DEFAULT_ACTUAL_RUNTIME_PATH;
 
-  const routingExperiment = evaluateConnectorGatewayRoutingExperiment({ boundaryIds });
+  const routingExperiment = evaluateConnectorGatewayRoutingExperiment({ boundaryIds: [...boundaryIds] });
   const manualVerification = evaluateConnectorGatewayExperimentBranchManualVerification({
-    boundaryIds,
+    boundaryIds: [...boundaryIds],
     explicitManualExecutionConfirmed: false,
     regressionResults: [],
   });
 
+  const { connectorIds, connectorSource } = normalizeConnectorIds({
+    connectorIds: input?.connectorIds,
+    routingExperimentConnectorIds: routingExperiment.connectorIds,
+  });
+
   const decision = resolveShadowDecision({
     target,
+    boundarySource,
     boundaryIds,
     routingDecision: routingExperiment.decision,
     routingScope: routingExperiment.scope,
@@ -310,10 +365,6 @@ export function evaluateConnectorGatewayRoutingShadow(
   });
 
   const routeMode = resolveRouteMode(decision);
-  const connectorIds =
-    input?.connectorIds && input.connectorIds.length > 0
-      ? [...new Set(input.connectorIds.map((id) => String(id).trim()).filter(Boolean))]
-      : [...routingExperiment.connectorIds];
 
   const routeChecklist = buildRouteChecklist({
     routingAvailable: routingExperiment.decision !== "blocked",
@@ -347,7 +398,6 @@ export function evaluateConnectorGatewayRoutingShadow(
     manualVerificationRollbackRequired: manualVerification.rollbackRequired,
     featureFlagEnabled,
     explicitShadowApproval,
-    actualRuntimePath,
   });
 
   return {
@@ -356,12 +406,17 @@ export function evaluateConnectorGatewayRoutingShadow(
     routeMode,
     target,
     boundaryIds,
+    boundarySource,
     connectorIds,
+    connectorSource,
     sourceRoutingDecision: routingExperiment.decision,
     sourceRoutingScope: routingExperiment.scope,
     sourceRoutingRequiresStage1Regression: routingExperiment.stage1RegressionRequired,
     sourceBranchManualVerificationDecision: manualVerification.decision,
     sourceBranchManualVerificationRollbackRequired: manualVerification.rollbackRequired,
+    sourceManualVerificationUsesExternalResults: false,
+    sourceManualVerificationActualBranchProvided: false,
+    sourceManualVerificationRegressionResultsProvided: false,
     featureFlagEnabled,
     explicitShadowApproval,
     actualRuntimePath,

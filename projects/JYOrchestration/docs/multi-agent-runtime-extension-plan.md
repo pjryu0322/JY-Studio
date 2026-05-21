@@ -1389,6 +1389,49 @@ cursor_only + routing ready + explicitShadowApproval=true → shadow_ready (shad
 github/mixed scope → defer + stage1_regression_required warning
 ```
 
-### Stage 2-B 후보: Agent / Operator Write Adapter 설계 통합
+### Stage 2-A 보강 (소스 점검)
 
-Stage 2-B에서는 Agent / Operator Write Adapter 설계를 통합한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| boundarySource | explicit / default / missing | 없음 | `[]` 명시 시 blocked |
+| connectorSource | explicit / routing_experiment / missing | 없음 | source trace |
+| manual verification trace | external result 미사용 flags | 없음 | branch/regression 미입력 |
+| github/mixed scope | explicit approval + routing ready여도 defer | 없음 | Stage1 regression |
+| routing_shadow_ready finding | ready 상태에만 info | 없음 | defer/blocked 제외 |
+
+### Stage 2-B Agent / Operator Write Adapter Design Integration 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| 통합 Write Adapter 설계 타입 | read-only integration report | 없음 | 실제 adapter 미구현 |
+| 통합 evaluator | Agent gate + Operator gate + 각 write path design 조합 | 없음 | DB/Prisma 미호출 |
+| Agent adapter target | report field | 없음 | 기본 agent_execution_record |
+| Operator adapter target | report field | 없음 | 기본 operator_approval |
+| adapterChecklist | report field | 없음 | boundary/sanitizer/guard 검증 |
+| safetyChecklist | report field | 없음 | no-write 보장 |
+| rollbackChecklist | report field | 없음 | rollback 설계 검토 |
+| no-run flags | report field | 없음 | adapter/schema/migration/feature flag 미실행 |
+
+### Stage 2-B 원칙
+
+```text
+- 실제 write adapter를 구현하거나 연결하지 않는다.
+- 실제 DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- feature flag를 wire하지 않는다.
+- Agent / Operator 양쪽 gate가 모두 ready일 때만 adapter design ready로 본다.
+```
+
+### Stage 2-B Decision 규칙 요약
+
+```text
+Agent/Operator wire gate 또는 write path design blocked → blocked
+wire gate 또는 write path 미준비 → defer
+양쪽 wire gate ready + 양쪽 write path ready → ready_for_adapter_design
+```
+
+### Stage 2-C 후보: Agent / Operator Schema/Migration PR Readiness 통합
+
+Stage 2-C에서는 Agent / Operator Schema/Migration PR Readiness를 통합한다.
