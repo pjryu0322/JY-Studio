@@ -2,6 +2,11 @@
  * Shared field-decision helpers for read-only design evaluators.
  */
 
+/** True when any no-run flag in the report is true (violation). */
+export function noRunFlagsViolated(flags: Record<string, boolean>): boolean {
+  return Object.values(flags).some((value) => value === true);
+}
+
 /** Counts checklist items and how many are satisfied. */
 export function checklistCounts<T extends { readonly satisfied: boolean }>(items: readonly T[]) {
   return {

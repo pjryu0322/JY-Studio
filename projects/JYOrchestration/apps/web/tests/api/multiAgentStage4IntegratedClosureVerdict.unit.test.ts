@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildStage4IntegratedClosureFingerprint,
   evaluateStage4IntegratedClosureVerdict,
-  resolveStage2Through4ClosureLocked,
   resolveStage4IntegratedClosureVerdictDecision,
 } from "@/lib/agents/evaluateStage4IntegratedClosureVerdict";
 import {
   MULTI_AGENT_ORCHESTRATION_MVP_BASELINE,
+  resolveStage2Through4ClosureLocked,
   STAGE2_THROUGH4_CLOSED_STAGES,
   STAGE2_THROUGH4_CLOSURE_SCOPE,
 } from "@/lib/agents/multiAgentOrchestrationMvpBaseline";
@@ -431,6 +431,7 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
           sourceReviewPackageDecision: report.sourceReviewPackageDecision,
           sourceNoRunChecklistCount: report.sourceNoRunChecklistCount,
           sourceNoRunChecklistSatisfiedCount: report.sourceNoRunChecklistSatisfiedCount,
+          closureNoRunViolated: false,
         }),
       ).toBe(false);
     });
