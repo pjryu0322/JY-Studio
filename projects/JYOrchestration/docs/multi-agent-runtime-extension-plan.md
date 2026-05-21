@@ -1104,6 +1104,50 @@ defer → defer
 blocked → blocked
 ```
 
-### Stage 2-26 후보: Agent Execution Record schema PR 실제 적용 여부 최종 승인
+## Stage 2-25 소스 보완 결과
 
-Stage 2-26에서는 Stage 2-23 readiness를 기준으로 schema PR을 실제로 만들지 여부를 결정한다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| source trace | readiness sourceScope/candidate/routing trace 포함 | blocked/defer에서도 유지 |
+| manual command safety | empty/unapproved/missing caution → blocked | manual_command_* findings |
+| structured preflight checklist | item/satisfied/reason 구조 | explicit approval 항목 분리 |
+| 실제 git 실행 | 없음 | manualCommands만 제공 |
+| 실제 feature flag/routing | 없음 | read-only 유지 |
+
+## Stage 2-26 Agent Execution Record Schema PR Approval Package 결과
+
+| 항목 | 반영 방식 | 실제 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema PR Approval Package 타입 | read-only approval report | 없음 | 최종 승인 패키지 |
+| Schema PR Approval evaluator | Stage 2-23 readiness 기반 | 없음 | schema.prisma 미수정 |
+| explicitUserApproval | input flag | 없음 | true여도 실제 변경 없음 |
+| modelDraft | report field | 없음 | 별도 PR 입력 후보 |
+| migrationChecklist | report field | 없음 | migration 미생성 |
+| rollbackChecklist | report field | 없음 | rollback 검토 |
+| retentionAccessChecklist | report field | 없음 | 보존/권한 검토 |
+| forbiddenFieldChecklist | report field | 없음 | raw/secret 필드 제외 확인 |
+
+구현: `agentExecutionRecordSchemaPrApprovalPackageTypes.ts`, `evaluateAgentExecutionRecordSchemaPrApprovalPackage.ts`
+
+### Stage 2-26 원칙
+
+```text
+- 실제 schema.prisma를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB write를 구현하지 않는다.
+- explicitUserApproval=true여도 approval package만 만든다.
+- 실제 schema PR 생성은 별도 승인 후 별도 작업으로 진행한다.
+```
+
+### Stage 2-26 Decision 규칙 요약
+
+```text
+ready_for_schema_pr_plan + explicitUserApproval=true → ready_for_explicit_schema_pr_approval
+ready_for_schema_pr_plan + explicitUserApproval=false → defer
+defer / timeline_event_link / audit_trail_link → defer
+blocked / unknown → blocked
+```
+
+### Stage 2-27 후보: Operator Approval/Audit schema PR 실제 적용 여부 최종 승인
+
+Stage 2-27에서는 Stage 2-24 readiness를 기준으로 Operator Approval/Audit schema PR 적용 승인 패키지를 만든다.

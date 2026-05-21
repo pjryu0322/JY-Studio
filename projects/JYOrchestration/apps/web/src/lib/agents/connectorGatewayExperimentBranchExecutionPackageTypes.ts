@@ -16,6 +16,12 @@ export interface ConnectorGatewayExperimentBranchExecutionCommand {
   readonly caution: string;
 }
 
+export interface ConnectorGatewayExperimentBranchExecutionPreflightChecklistItem {
+  readonly item: string;
+  readonly satisfied: boolean;
+  readonly reason: string;
+}
+
 export interface ConnectorGatewayExperimentBranchExecutionPackageFinding {
   readonly severity: "info" | "warning" | "blocking";
   readonly code: string;
@@ -27,12 +33,20 @@ export interface ConnectorGatewayExperimentBranchExecutionPackageReport {
   readonly decision: ConnectorGatewayExperimentBranchExecutionPackageDecision;
 
   readonly sourceReadinessDecision: string;
+  readonly sourceScope: string;
+  readonly sourceCandidateBoundaries: readonly string[];
+  readonly sourceCandidateConnectorIds: readonly string[];
+  readonly sourceCandidateBoundaryKinds: readonly string[];
+  readonly sourceBranchPlanDecision: string;
+  readonly sourceRoutingDecision: string;
+  readonly sourceRoutingScope: string;
+
   readonly recommendedBranchName: string;
   readonly featureFlagName: string;
   readonly featureFlagDefault: "off";
 
   readonly manualCommands: readonly ConnectorGatewayExperimentBranchExecutionCommand[];
-  readonly preflightChecklist: readonly string[];
+  readonly preflightChecklist: readonly ConnectorGatewayExperimentBranchExecutionPreflightChecklistItem[];
   readonly regressionChecklist: readonly string[];
   readonly rollbackCriteria: readonly string[];
 

@@ -446,10 +446,20 @@ export type {
   ConnectorGatewayExperimentBranchExecutionCommand,
   ConnectorGatewayExperimentBranchExecutionPackageDecision,
   ConnectorGatewayExperimentBranchExecutionPackageFinding,
+  ConnectorGatewayExperimentBranchExecutionPreflightChecklistItem,
   ConnectorGatewayExperimentBranchExecutionPackageReport,
 } from "@/lib/agents/connectorGatewayExperimentBranchExecutionPackageTypes";
 
 export { evaluateConnectorGatewayExperimentBranchExecutionPackage } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchExecutionPackage";
+
+export type {
+  AgentExecutionRecordSchemaPrApprovalChecklistItem,
+  AgentExecutionRecordSchemaPrApprovalDecision,
+  AgentExecutionRecordSchemaPrApprovalFinding,
+  AgentExecutionRecordSchemaPrApprovalPackageReport,
+} from "@/lib/agents/agentExecutionRecordSchemaPrApprovalPackageTypes";
+
+export { evaluateAgentExecutionRecordSchemaPrApprovalPackage } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrApprovalPackage";
 
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 

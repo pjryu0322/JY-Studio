@@ -84,6 +84,68 @@ describe("multi-agent connector gateway branch execution package stage 2-25", ()
     expect(report.manualCommands.length).toBeGreaterThan(0);
   });
 
+  it("report includes sourceScope", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.sourceScope).toBe("cursor_only");
+  });
+
+  it("report includes source candidate trace fields", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.sourceCandidateBoundaries.length).toBeGreaterThan(0);
+    expect(report.sourceCandidateConnectorIds.length).toBeGreaterThan(0);
+    expect(report.sourceCandidateBoundaryKinds.length).toBeGreaterThan(0);
+  });
+
+  it("report includes source branch and routing trace", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.sourceBranchPlanDecision.length).toBeGreaterThan(0);
+    expect(report.sourceRoutingDecision.length).toBeGreaterThan(0);
+    expect(report.sourceRoutingScope.length).toBeGreaterThan(0);
+  });
+
+  it("blocked github boundary retains source trace with empty manualCommands", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["github.pr.create.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.decision).toBe("defer");
+    expect(report.manualCommands).toEqual([]);
+    expect(report.sourceScope.length).toBeGreaterThan(0);
+  });
+
+  it("explicitUserApproval=true provides structured preflightChecklist", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.preflightChecklist.length).toBeGreaterThan(0);
+    expect(report.preflightChecklist[0]).toMatchObject({
+      item: expect.any(String),
+      satisfied: expect.any(Boolean),
+      reason: expect.any(String),
+    });
+  });
+
+  it("explicitUserApproval=false marks approval recorded checklist false", () => {
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: false,
+    });
+    const approvalItem = report.preflightChecklist.find(
+      (item) => item.item === "operator/user explicit approval recorded outside this evaluator",
+    );
+    expect(approvalItem?.satisfied).toBe(false);
+  });
+
   it("manualCommands sequence starts at 1", () => {
     const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
       boundaryIds: ["cursor.execution.before"],
@@ -113,7 +175,7 @@ describe("multi-agent connector gateway branch execution package stage 2-25", ()
     }
   });
 
-  it("all manualCommands include caution", () => {
+  it("all manualCommands include non-empty caution", () => {
     const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
       boundaryIds: ["cursor.execution.before"],
       explicitUserApproval: true,
@@ -121,6 +183,45 @@ describe("multi-agent connector gateway branch execution package stage 2-25", ()
     for (const command of report.manualCommands) {
       expect(command.caution.length).toBeGreaterThan(0);
     }
+  });
+
+  it("manualCommands only when readiness is ready and explicit approval is true", () => {
+    vi.spyOn(
+      branchCreationReadinessModule,
+      "evaluateConnectorGatewayExperimentBranchCreationReadiness",
+    ).mockReturnValue(mockReadyReadiness({ commandCandidates: [] }));
+
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.manualCommands).toEqual([]);
+  });
+
+  it("empty command caution blocks package", () => {
+    vi.spyOn(
+      branchCreationReadinessModule,
+      "evaluateConnectorGatewayExperimentBranchCreationReadiness",
+    ).mockReturnValue(
+      mockReadyReadiness({
+        commandCandidates: [
+          {
+            command: "git fetch origin",
+            purpose: "sync",
+            allowedAfterExplicitApproval: true,
+            caution: "",
+          },
+        ],
+      }),
+    );
+
+    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
+      boundaryIds: ["cursor.execution.before"],
+      explicitUserApproval: true,
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "manual_command_caution_missing")).toBe(true);
   });
 
   it("executesCommandsInThisStep is false", () => {
@@ -157,15 +258,6 @@ describe("multi-agent connector gateway branch execution package stage 2-25", ()
         explicitUserApproval: true,
       }).changesRoutingInThisStep,
     ).toBe(false);
-  });
-
-  it("github boundary returns defer", () => {
-    const report = evaluateConnectorGatewayExperimentBranchExecutionPackage({
-      boundaryIds: ["github.pr.create.before"],
-      explicitUserApproval: true,
-    });
-    expect(report.decision).toBe("defer");
-    expect(report.manualCommands).toEqual([]);
   });
 
   it("unknown boundary returns blocked", () => {
