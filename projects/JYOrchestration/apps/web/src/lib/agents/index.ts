@@ -538,6 +538,15 @@ export type {
 
 export { evaluateWritePathWireCandidateVerification } from "@/lib/agents/evaluateWritePathWireCandidateVerification";
 
+export type {
+  RuntimeChangeFinalApprovalPackageChecklistItem,
+  RuntimeChangeFinalApprovalPackageDecision,
+  RuntimeChangeFinalApprovalPackageFinding,
+  RuntimeChangeFinalApprovalPackageReport,
+} from "@/lib/agents/runtimeChangeFinalApprovalPackageTypes";
+
+export { evaluateRuntimeChangeFinalApprovalPackage } from "@/lib/agents/evaluateRuntimeChangeFinalApprovalPackage";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

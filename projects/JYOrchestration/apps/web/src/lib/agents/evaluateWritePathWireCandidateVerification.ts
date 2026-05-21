@@ -3,7 +3,11 @@
  */
 
 import { evaluateAgentExecutionRecordWritePathWireApprovalGate } from "@/lib/agents/evaluateAgentExecutionRecordWritePathWireApprovalGate";
+import { normalizeAgentExecutionRecordWritePathTarget } from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
 import { evaluateOperatorApprovalAuditWritePathWireApprovalGate } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathWireApprovalGate";
+import {
+  normalizeOperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
 import { evaluateSchemaMigrationPrReadinessIntegration } from "@/lib/agents/evaluateSchemaMigrationPrReadinessIntegration";
 import type {
   WritePathWireCandidateVerificationChecklistItem,
@@ -98,24 +102,28 @@ function resolveVerificationDecision(input: {
   return "ready_for_wire_candidate_verification";
 }
 
-function buildChecklist(
-  items: readonly string[],
-  satisfaction: Record<string, boolean>,
+function buildChecklistFromReasons(
+  items: readonly { readonly item: string; readonly satisfied: boolean; readonly reason: string }[],
 ): WritePathWireCandidateVerificationChecklistItem[] {
-  return items.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
+  return items.map((entry) => ({
+    item: entry.item,
+    satisfied: entry.satisfied,
+    reason: entry.reason,
   }));
 }
 
 function buildCandidateChecklist(input: {
   readonly agentWireGateReady: boolean;
   readonly operatorWireGateReady: boolean;
+  readonly agentWireGateDecision: string;
+  readonly operatorWireGateDecision: string;
   readonly schemaMigrationReadinessReady: boolean;
+  readonly schemaMigrationReadinessDecision: string;
   readonly schemaMigrationReadinessConfirmed: boolean;
+  readonly normalizedAgentTarget: string;
+  readonly normalizedOperatorTarget: string;
+  readonly sourceAgentFeatureFlagName: string;
+  readonly sourceOperatorFeatureFlagName: string;
   readonly agentExplicitUserApprovalProvided: boolean;
   readonly operatorExplicitUserApprovalProvided: boolean;
   readonly agentSchemaAppliedConfirmed: boolean;
@@ -129,39 +137,140 @@ function buildCandidateChecklist(input: {
   readonly operatorPermissionModelConfirmed: boolean;
   readonly operatorAuditTrailConfirmed: boolean;
 }): WritePathWireCandidateVerificationChecklistItem[] {
-  return buildChecklist(CANDIDATE_CHECKLIST_ITEMS, {
-    "agent wire gate ready": input.agentWireGateReady,
-    "operator wire gate ready": input.operatorWireGateReady,
-    "schema migration readiness ready": input.schemaMigrationReadinessReady,
-    "schema migration readiness confirmed": input.schemaMigrationReadinessConfirmed,
-    "agent explicit user approval provided": input.agentExplicitUserApprovalProvided,
-    "operator explicit user approval provided": input.operatorExplicitUserApprovalProvided,
-    "agent schema applied confirmed": input.agentSchemaAppliedConfirmed,
-    "operator schema applied confirmed": input.operatorSchemaAppliedConfirmed,
-    "agent migration applied confirmed": input.agentMigrationAppliedConfirmed,
-    "operator migration applied confirmed": input.operatorMigrationAppliedConfirmed,
-    "agent feature flag wire approved": input.agentFeatureFlagWireApproved,
-    "operator feature flag wire approved": input.operatorFeatureFlagWireApproved,
-    "agent write adapter implemented confirmed": input.agentWriteAdapterImplementedConfirmed,
-    "operator write adapter implemented confirmed": input.operatorWriteAdapterImplementedConfirmed,
-    "operator permission model confirmed": input.operatorPermissionModelConfirmed,
-    "operator audit trail confirmed": input.operatorAuditTrailConfirmed,
-  });
+  return buildChecklistFromReasons(
+    CANDIDATE_CHECKLIST_ITEMS.map((item) => {
+      switch (item) {
+        case "agent wire gate ready":
+          return {
+            item,
+            satisfied: input.agentWireGateReady,
+            reason: `agent wire gate decision=${input.agentWireGateDecision}; target=${input.normalizedAgentTarget}`,
+          };
+        case "operator wire gate ready":
+          return {
+            item,
+            satisfied: input.operatorWireGateReady,
+            reason: `operator wire gate decision=${input.operatorWireGateDecision}; target=${input.normalizedOperatorTarget}`,
+          };
+        case "schema migration readiness ready":
+          return {
+            item,
+            satisfied: input.schemaMigrationReadinessReady,
+            reason: `schema migration readiness decision=${input.schemaMigrationReadinessDecision}`,
+          };
+        case "schema migration readiness confirmed":
+          return {
+            item,
+            satisfied: input.schemaMigrationReadinessConfirmed,
+            reason: `operator confirmed Stage 2-C readiness review=${input.schemaMigrationReadinessConfirmed}`,
+          };
+        case "agent explicit user approval provided":
+          return {
+            item,
+            satisfied: input.agentExplicitUserApprovalProvided,
+            reason: `agent explicit user approval=${input.agentExplicitUserApprovalProvided}`,
+          };
+        case "operator explicit user approval provided":
+          return {
+            item,
+            satisfied: input.operatorExplicitUserApprovalProvided,
+            reason: `operator explicit user approval=${input.operatorExplicitUserApprovalProvided}`,
+          };
+        case "agent schema applied confirmed":
+          return {
+            item,
+            satisfied: input.agentSchemaAppliedConfirmed,
+            reason: `agent schema applied confirmation flag=${input.agentSchemaAppliedConfirmed} (report input only)`,
+          };
+        case "operator schema applied confirmed":
+          return {
+            item,
+            satisfied: input.operatorSchemaAppliedConfirmed,
+            reason: `operator schema applied confirmation flag=${input.operatorSchemaAppliedConfirmed} (report input only)`,
+          };
+        case "agent migration applied confirmed":
+          return {
+            item,
+            satisfied: input.agentMigrationAppliedConfirmed,
+            reason: `agent migration applied confirmation flag=${input.agentMigrationAppliedConfirmed} (report input only)`,
+          };
+        case "operator migration applied confirmed":
+          return {
+            item,
+            satisfied: input.operatorMigrationAppliedConfirmed,
+            reason: `operator migration applied confirmation flag=${input.operatorMigrationAppliedConfirmed} (report input only)`,
+          };
+        case "agent feature flag wire approved":
+          return {
+            item,
+            satisfied: input.agentFeatureFlagWireApproved,
+            reason: `agent feature flag=${input.sourceAgentFeatureFlagName}; approved=${input.agentFeatureFlagWireApproved}`,
+          };
+        case "operator feature flag wire approved":
+          return {
+            item,
+            satisfied: input.operatorFeatureFlagWireApproved,
+            reason: `operator feature flag=${input.sourceOperatorFeatureFlagName}; approved=${input.operatorFeatureFlagWireApproved}`,
+          };
+        case "agent write adapter implemented confirmed":
+          return {
+            item,
+            satisfied: input.agentWriteAdapterImplementedConfirmed,
+            reason: `agent write adapter implemented confirmed=${input.agentWriteAdapterImplementedConfirmed}`,
+          };
+        case "operator write adapter implemented confirmed":
+          return {
+            item,
+            satisfied: input.operatorWriteAdapterImplementedConfirmed,
+            reason: `operator write adapter implemented confirmed=${input.operatorWriteAdapterImplementedConfirmed}`,
+          };
+        case "operator permission model confirmed":
+          return {
+            item,
+            satisfied: input.operatorPermissionModelConfirmed,
+            reason: `operator permission model confirmed=${input.operatorPermissionModelConfirmed}`,
+          };
+        case "operator audit trail confirmed":
+          return {
+            item,
+            satisfied: input.operatorAuditTrailConfirmed,
+            reason: `operator audit trail confirmed=${input.operatorAuditTrailConfirmed}`,
+          };
+        default:
+          return { item, satisfied: false, reason: `${item} not evaluated` };
+      }
+    }),
+  );
 }
 
 function buildSafetyChecklist(): WritePathWireCandidateVerificationChecklistItem[] {
-  return buildChecklist(SAFETY_CHECKLIST_ITEMS, {
-    "wire candidate verification only": true,
-    "no write path wire in this step": true,
-    "no adapter wire in this step": true,
-    "no DB write in this step": true,
-    "no Prisma call in this step": true,
-    "no schema change in this step": true,
-    "no migration in this step": true,
-    "no feature flag wire in this step": true,
-    "no runtime route change in this step": true,
-    "existing execution path preserved": true,
-  });
+  return buildChecklistFromReasons(
+    SAFETY_CHECKLIST_ITEMS.map((item) => {
+      let reason = "read-only candidate verification only";
+      if (item === "no write path wire in this step") {
+        reason = "read-only candidate verification only; write path is not wired";
+      } else if (item === "no adapter wire in this step") {
+        reason = "read-only candidate verification only; write adapter is not wired";
+      } else if (item === "no DB write in this step") {
+        reason = "read-only candidate verification only; DB write is not performed";
+      } else if (item === "no Prisma call in this step") {
+        reason = "read-only candidate verification only; Prisma client is not called";
+      } else if (item === "no schema change in this step") {
+        reason = "read-only candidate verification only; schema.prisma is not modified";
+      } else if (item === "no migration in this step") {
+        reason = "read-only candidate verification only; migration is not created";
+      } else if (item === "no feature flag wire in this step") {
+        reason = "read-only candidate verification only; feature flag is not wired";
+      } else if (item === "no runtime route change in this step") {
+        reason = "read-only candidate verification only; runtime route is not changed";
+      } else if (item === "existing execution path preserved") {
+        reason = "existing Stage1/runtime execution path is preserved";
+      } else if (item === "wire candidate verification only") {
+        reason = "wire candidate verification report only; no actual wire";
+      }
+      return { item, satisfied: true, reason };
+    }),
+  );
 }
 
 function buildRollbackChecklist(input: {
@@ -173,15 +282,56 @@ function buildRollbackChecklist(input: {
   readonly operatorApprovalRequired: boolean;
   readonly auditTrailImpactReviewed: boolean;
 }): WritePathWireCandidateVerificationChecklistItem[] {
-  return buildChecklist(ROLLBACK_CHECKLIST_ITEMS, {
-    "agent rollback plan reviewed": input.agentRollbackReviewed,
-    "operator rollback plan reviewed": input.operatorRollbackReviewed,
-    "schema rollback reviewed": input.schemaRollbackReviewed,
-    "migration rollback reviewed": input.migrationRollbackReviewed,
-    "feature flag rollback reviewed": input.featureFlagRollbackReviewed,
-    "operator approval required before actual wire": input.operatorApprovalRequired,
-    "audit trail impact reviewed before actual wire": input.auditTrailImpactReviewed,
-  });
+  return buildChecklistFromReasons(
+    ROLLBACK_CHECKLIST_ITEMS.map((item) => {
+      switch (item) {
+        case "agent rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.agentRollbackReviewed,
+            reason: `agent rollback plan reviewed=${input.agentRollbackReviewed}`,
+          };
+        case "operator rollback plan reviewed":
+          return {
+            item,
+            satisfied: input.operatorRollbackReviewed,
+            reason: `operator rollback plan reviewed=${input.operatorRollbackReviewed}`,
+          };
+        case "schema rollback reviewed":
+          return {
+            item,
+            satisfied: input.schemaRollbackReviewed,
+            reason: `schema rollback reviewed=${input.schemaRollbackReviewed}`,
+          };
+        case "migration rollback reviewed":
+          return {
+            item,
+            satisfied: input.migrationRollbackReviewed,
+            reason: `migration rollback reviewed=${input.migrationRollbackReviewed}`,
+          };
+        case "feature flag rollback reviewed":
+          return {
+            item,
+            satisfied: input.featureFlagRollbackReviewed,
+            reason: `feature flag rollback reviewed=${input.featureFlagRollbackReviewed}`,
+          };
+        case "operator approval required before actual wire":
+          return {
+            item,
+            satisfied: input.operatorApprovalRequired,
+            reason: "operator approval is required before any actual write path wire",
+          };
+        case "audit trail impact reviewed before actual wire":
+          return {
+            item,
+            satisfied: input.auditTrailImpactReviewed,
+            reason: `audit trail impact reviewed=${input.auditTrailImpactReviewed}`,
+          };
+        default:
+          return { item, satisfied: false, reason: `${item} not evaluated` };
+      }
+    }),
+  );
 }
 
 function appendVerificationFindings(input: {
@@ -213,6 +363,23 @@ function appendVerificationFindings(input: {
   findings.push(finding("info", "no_db_write_in_this_step", "DB write is not performed in this step"));
   findings.push(finding("info", "no_prisma_call_in_this_step", "Prisma client is not called in this step"));
   findings.push(finding("info", "no_feature_flag_wire_in_this_step", "feature flag is not wired in this step"));
+
+  if (schemaMigrationReadinessConfirmed) {
+    findings.push(
+      finding(
+        "info",
+        "schema_migration_readiness_review_confirmed",
+        "operator confirmed Stage 2-C schema/migration PR readiness review",
+      ),
+    );
+  }
+
+  findings.push(
+    finding("info", "schema_not_applied_in_runtime", "schema is not applied in runtime by this report"),
+  );
+  findings.push(
+    finding("info", "migration_not_applied_in_runtime", "migration is not applied in runtime by this report"),
+  );
 
   if (decision === "blocked") {
     if (agentWireGateDecision === "blocked") {
@@ -276,6 +443,13 @@ function appendVerificationFindings(input: {
   findings.push(
     finding("info", "wire_candidate_verification_ready", "write path wire candidate verification is ready"),
   );
+  findings.push(
+    finding(
+      "info",
+      "wire_candidate_requires_final_runtime_approval",
+      "wire candidate is ready for review only; final runtime approval is required before actual wire",
+    ),
+  );
 }
 
 /** Read-only write path wire candidate verification — does not wire write paths, adapters, or modify schema. */
@@ -296,8 +470,10 @@ export function evaluateWritePathWireCandidateVerification(input?: {
   readonly operatorAuditTrailConfirmed?: boolean;
   readonly schemaMigrationReadinessConfirmed?: boolean;
 }): WritePathWireCandidateVerificationReport {
-  const agentTarget = input?.agentTarget ?? "agent_execution_record";
-  const operatorTarget = input?.operatorTarget ?? "operator_approval";
+  const requestedAgentTarget = input?.agentTarget ?? "agent_execution_record";
+  const requestedOperatorTarget = input?.operatorTarget ?? "operator_approval";
+  const normalizedAgentTarget = normalizeAgentExecutionRecordWritePathTarget(requestedAgentTarget);
+  const normalizedOperatorTarget = normalizeOperatorApprovalAuditWritePathTarget(requestedOperatorTarget);
 
   const agentExplicitUserApprovalProvided = input?.agentExplicitUserApproval === true;
   const operatorExplicitUserApprovalProvided = input?.operatorExplicitUserApproval === true;
@@ -311,10 +487,10 @@ export function evaluateWritePathWireCandidateVerification(input?: {
   const operatorWriteAdapterImplementedConfirmed = input?.operatorWriteAdapterImplementedConfirmed === true;
   const operatorPermissionModelConfirmed = input?.operatorPermissionModelConfirmed === true;
   const operatorAuditTrailConfirmed = input?.operatorAuditTrailConfirmed === true;
-  const schemaMigrationReadinessConfirmed = input?.schemaMigrationReadinessConfirmed === true;
+  const schemaMigrationReadinessReviewConfirmed = input?.schemaMigrationReadinessConfirmed === true;
 
   const agentWireGate = evaluateAgentExecutionRecordWritePathWireApprovalGate({
-    target: agentTarget,
+    target: normalizedAgentTarget,
     explicitUserApproval: input?.agentExplicitUserApproval,
     schemaAppliedConfirmed: input?.agentSchemaAppliedConfirmed,
     migrationAppliedConfirmed: input?.agentMigrationAppliedConfirmed,
@@ -323,7 +499,7 @@ export function evaluateWritePathWireCandidateVerification(input?: {
   });
 
   const operatorWireGate = evaluateOperatorApprovalAuditWritePathWireApprovalGate({
-    target: operatorTarget,
+    target: normalizedOperatorTarget,
     explicitUserApproval: input?.operatorExplicitUserApproval,
     schemaAppliedConfirmed: input?.operatorSchemaAppliedConfirmed,
     migrationAppliedConfirmed: input?.operatorMigrationAppliedConfirmed,
@@ -334,18 +510,18 @@ export function evaluateWritePathWireCandidateVerification(input?: {
   });
 
   const schemaMigrationReadiness = evaluateSchemaMigrationPrReadinessIntegration({
-    agentTarget,
-    operatorTarget,
+    agentTarget: normalizedAgentTarget,
+    operatorTarget: normalizedOperatorTarget,
     agentExplicitUserApproval: input?.agentExplicitUserApproval,
     operatorExplicitUserApproval: input?.operatorExplicitUserApproval,
-    writeAdapterIntegrationConfirmed: schemaMigrationReadinessConfirmed,
+    writeAdapterIntegrationConfirmed: schemaMigrationReadinessReviewConfirmed,
   });
 
   const decision = resolveVerificationDecision({
     agentWireGateDecision: agentWireGate.decision,
     operatorWireGateDecision: operatorWireGate.decision,
     schemaMigrationReadinessDecision: schemaMigrationReadiness.decision,
-    schemaMigrationReadinessConfirmed,
+    schemaMigrationReadinessConfirmed: schemaMigrationReadinessReviewConfirmed,
   });
 
   const agentWireGateReady = agentWireGate.decision === WIRE_GATE_READY_DECISION;
@@ -356,8 +532,15 @@ export function evaluateWritePathWireCandidateVerification(input?: {
   const candidateChecklist = buildCandidateChecklist({
     agentWireGateReady,
     operatorWireGateReady,
+    agentWireGateDecision: agentWireGate.decision,
+    operatorWireGateDecision: operatorWireGate.decision,
     schemaMigrationReadinessReady,
-    schemaMigrationReadinessConfirmed,
+    schemaMigrationReadinessDecision: schemaMigrationReadiness.decision,
+    schemaMigrationReadinessConfirmed: schemaMigrationReadinessReviewConfirmed,
+    normalizedAgentTarget,
+    normalizedOperatorTarget,
+    sourceAgentFeatureFlagName: agentWireGate.sourceWritePathFeatureFlagName,
+    sourceOperatorFeatureFlagName: operatorWireGate.sourceWritePathFeatureFlagName,
     agentExplicitUserApprovalProvided,
     operatorExplicitUserApprovalProvided,
     agentSchemaAppliedConfirmed,
@@ -395,15 +578,33 @@ export function evaluateWritePathWireCandidateVerification(input?: {
     agentWireGateDecision: agentWireGate.decision,
     operatorWireGateDecision: operatorWireGate.decision,
     schemaMigrationReadinessDecision: schemaMigrationReadiness.decision,
-    schemaMigrationReadinessConfirmed,
+    schemaMigrationReadinessConfirmed: schemaMigrationReadinessReviewConfirmed,
   });
 
   return {
     mode: "read_only_write_path_wire_candidate_verification",
     decision,
+    requestedAgentTarget,
+    requestedOperatorTarget,
+    normalizedAgentTarget,
+    normalizedOperatorTarget,
     sourceAgentWireGateDecision: agentWireGate.decision,
     sourceOperatorWireGateDecision: operatorWireGate.decision,
     sourceSchemaMigrationReadinessDecision: schemaMigrationReadiness.decision,
+    sourceSchemaMigrationRequestedAgentTarget: schemaMigrationReadiness.requestedAgentTarget,
+    sourceSchemaMigrationRequestedOperatorTarget: schemaMigrationReadiness.requestedOperatorTarget,
+    sourceSchemaMigrationNormalizedAgentTarget: schemaMigrationReadiness.normalizedAgentTarget,
+    sourceSchemaMigrationNormalizedOperatorTarget: schemaMigrationReadiness.normalizedOperatorTarget,
+    sourceSchemaMigrationAgentSchemaDecision: schemaMigrationReadiness.sourceAgentSchemaPrReadinessDecision,
+    sourceSchemaMigrationOperatorSchemaDecision:
+      schemaMigrationReadiness.sourceOperatorSchemaPrReadinessDecision,
+    sourceSchemaMigrationWriteAdapterDecision: schemaMigrationReadiness.sourceWriteAdapterIntegrationDecision,
+    sourceSchemaMigrationAgentRequiresSchemaChange: schemaMigrationReadiness.sourceAgentRequiresSchemaChange,
+    sourceSchemaMigrationOperatorRequiresSchemaChange:
+      schemaMigrationReadiness.sourceOperatorRequiresSchemaChange,
+    sourceSchemaMigrationAgentRequiresMigration: schemaMigrationReadiness.sourceAgentRequiresMigration,
+    sourceSchemaMigrationOperatorRequiresMigration:
+      schemaMigrationReadiness.sourceOperatorRequiresMigration,
     sourceAgentWritePathTarget: agentWireGate.sourceWritePathTarget,
     sourceOperatorWritePathTarget: operatorWireGate.sourceWritePathTarget,
     sourceAgentFeatureFlagName: agentWireGate.sourceWritePathFeatureFlagName,
@@ -414,9 +615,20 @@ export function evaluateWritePathWireCandidateVerification(input?: {
     sourceOperatorSchemaApprovalReferenceOnly: operatorWireGate.schemaApprovalReferenceOnly,
     sourceAgentBlockingFindingCodes: [...agentWireGate.sourceBlockingFindingCodes],
     sourceOperatorBlockingFindingCodes: [...operatorWireGate.sourceBlockingFindingCodes],
+    sourceAgentWireGateBlockingFindingCodes: [...agentWireGate.sourceBlockingFindingCodes],
+    sourceOperatorWireGateBlockingFindingCodes: [...operatorWireGate.sourceBlockingFindingCodes],
+    sourceAgentWireGateApprovalChecklistCount: agentWireGate.approvalChecklist.length,
+    sourceOperatorWireGateApprovalChecklistCount: operatorWireGate.approvalChecklist.length,
+    sourceAgentWireGateRuntimeChecklistCount: agentWireGate.runtimeChecklist.length,
+    sourceOperatorWireGateRuntimeChecklistCount: operatorWireGate.runtimeChecklist.length,
+    sourceOperatorWireGatePermissionChecklistCount: operatorWireGate.permissionChecklist.length,
+    sourceOperatorWireGateAuditChecklistCount: operatorWireGate.auditChecklist.length,
     agentExplicitUserApprovalProvided,
     operatorExplicitUserApprovalProvided,
-    schemaMigrationReadinessConfirmed,
+    schemaMigrationReadinessConfirmed: schemaMigrationReadinessReviewConfirmed,
+    schemaMigrationReadinessReviewConfirmed,
+    schemaAppliedInRuntime: false,
+    migrationAppliedInRuntime: false,
     agentWriteAdapterImplementedConfirmed,
     operatorWriteAdapterImplementedConfirmed,
     operatorPermissionModelConfirmed,

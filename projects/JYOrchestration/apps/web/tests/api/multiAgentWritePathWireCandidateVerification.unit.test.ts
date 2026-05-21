@@ -352,6 +352,11 @@ describe("multi-agent write path wire candidate verification stage 2-D", () => {
     const report = evaluateWritePathWireCandidateVerification(ALL_CONFIRMATIONS);
     expect(report.decision).toBe("ready_for_wire_candidate_verification");
     expect(report.findings.some((f) => f.code === "wire_candidate_verification_ready")).toBe(true);
+    expect(report.findings.some((f) => f.code === "wire_candidate_requires_final_runtime_approval")).toBe(
+      true,
+    );
+    expect(report.findings.some((f) => f.code === "schema_not_applied_in_runtime")).toBe(true);
+    expect(report.findings.some((f) => f.code === "migration_not_applied_in_runtime")).toBe(true);
   });
 
   it("candidateChecklist includes agent wire gate ready", () => {
@@ -432,6 +437,110 @@ describe("multi-agent write path wire candidate verification stage 2-D", () => {
     expect(report.findings.some((f) => f.code === "write_path_wire_candidate_verification_blocked")).toBe(
       true,
     );
+  });
+
+  it("report includes requested and normalized targets", () => {
+    const report = evaluateWritePathWireCandidateVerification();
+    expect(report.requestedAgentTarget).toBe("agent_execution_record");
+    expect(report.requestedOperatorTarget).toBe("operator_approval");
+    expect(report.normalizedAgentTarget).toBe("agent_execution_record");
+    expect(report.normalizedOperatorTarget).toBe("operator_approval");
+  });
+
+  it("report includes schema migration source trace fields", () => {
+    vi.spyOn(agentWireGateModule, "evaluateAgentExecutionRecordWritePathWireApprovalGate").mockReturnValue(
+      mockAgentWireGateReady(),
+    );
+    vi.spyOn(operatorWireGateModule, "evaluateOperatorApprovalAuditWritePathWireApprovalGate").mockReturnValue(
+      mockOperatorWireGateReady(),
+    );
+    vi.spyOn(schemaMigrationModule, "evaluateSchemaMigrationPrReadinessIntegration").mockReturnValue(
+      mockSchemaMigrationReady(),
+    );
+
+    const report = evaluateWritePathWireCandidateVerification(ALL_CONFIRMATIONS);
+    expect(report.sourceSchemaMigrationAgentSchemaDecision).toBe("ready_for_schema_pr_plan");
+    expect(report.sourceSchemaMigrationOperatorSchemaDecision).toBe("ready_for_schema_pr_plan");
+    expect(report.sourceSchemaMigrationWriteAdapterDecision).toBe("ready_for_adapter_design");
+    expect(typeof report.sourceSchemaMigrationAgentRequiresSchemaChange).toBe("boolean");
+    expect(typeof report.sourceSchemaMigrationOperatorRequiresMigration).toBe("boolean");
+    expect(Array.isArray(report.sourceAgentWireGateBlockingFindingCodes)).toBe(true);
+    expect(Array.isArray(report.sourceOperatorWireGateBlockingFindingCodes)).toBe(true);
+    expect(report.sourceOperatorWireGatePermissionChecklistCount).toBe(1);
+    expect(report.sourceOperatorWireGateAuditChecklistCount).toBe(1);
+  });
+
+  it("schemaMigrationReadinessReviewConfirmed true keeps schemaAppliedInRuntime false", () => {
+    vi.spyOn(agentWireGateModule, "evaluateAgentExecutionRecordWritePathWireApprovalGate").mockReturnValue(
+      mockAgentWireGateReady(),
+    );
+    vi.spyOn(operatorWireGateModule, "evaluateOperatorApprovalAuditWritePathWireApprovalGate").mockReturnValue(
+      mockOperatorWireGateReady(),
+    );
+    vi.spyOn(schemaMigrationModule, "evaluateSchemaMigrationPrReadinessIntegration").mockReturnValue(
+      mockSchemaMigrationReady(),
+    );
+
+    const report = evaluateWritePathWireCandidateVerification(ALL_CONFIRMATIONS);
+    expect(report.schemaMigrationReadinessReviewConfirmed).toBe(true);
+    expect(report.schemaAppliedInRuntime).toBe(false);
+    expect(report.migrationAppliedInRuntime).toBe(false);
+  });
+
+  it("agent wire gate ready reason includes source decision", () => {
+    vi.spyOn(agentWireGateModule, "evaluateAgentExecutionRecordWritePathWireApprovalGate").mockReturnValue(
+      mockAgentWireGateReady(),
+    );
+    vi.spyOn(operatorWireGateModule, "evaluateOperatorApprovalAuditWritePathWireApprovalGate").mockReturnValue(
+      mockOperatorWireGateReady(),
+    );
+    vi.spyOn(schemaMigrationModule, "evaluateSchemaMigrationPrReadinessIntegration").mockReturnValue(
+      mockSchemaMigrationReady(),
+    );
+
+    const reason = checklistItem(
+      evaluateWritePathWireCandidateVerification(ALL_CONFIRMATIONS),
+      "candidateChecklist",
+      "agent wire gate ready",
+    )?.reason;
+    expect(reason).toContain("ready_for_write_path_wire_approval");
+  });
+
+  it("schema migration readiness confirmed reason includes confirmation value", () => {
+    vi.spyOn(agentWireGateModule, "evaluateAgentExecutionRecordWritePathWireApprovalGate").mockReturnValue(
+      mockAgentWireGateReady(),
+    );
+    vi.spyOn(operatorWireGateModule, "evaluateOperatorApprovalAuditWritePathWireApprovalGate").mockReturnValue(
+      mockOperatorWireGateReady(),
+    );
+    vi.spyOn(schemaMigrationModule, "evaluateSchemaMigrationPrReadinessIntegration").mockReturnValue(
+      mockSchemaMigrationReady(),
+    );
+
+    const reason = checklistItem(
+      evaluateWritePathWireCandidateVerification(ALL_CONFIRMATIONS),
+      "candidateChecklist",
+      "schema migration readiness confirmed",
+    )?.reason;
+    expect(reason).toContain("true");
+  });
+
+  it("no write path wire in this step reason includes read-only phrase", () => {
+    const reason = checklistItem(
+      evaluateWritePathWireCandidateVerification(),
+      "safetyChecklist",
+      "no write path wire in this step",
+    )?.reason;
+    expect(reason?.toLowerCase()).toContain("read-only");
+  });
+
+  it("operator approval required before actual wire reason includes approval phrase", () => {
+    const reason = checklistItem(
+      evaluateWritePathWireCandidateVerification(),
+      "rollbackChecklist",
+      "operator approval required before actual wire",
+    )?.reason;
+    expect(reason?.toLowerCase()).toContain("approval");
   });
 
   it("evaluator does not wire write path DB Prisma schema migration feature flag or routing", () => {

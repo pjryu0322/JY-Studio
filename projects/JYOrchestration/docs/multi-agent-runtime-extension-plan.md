@@ -1517,6 +1517,51 @@ wire gate 미준비 또는 schema migration readiness 미준비 → defer
 | unknown target | normalized unknown → blocked | mock ready 불가 |
 | checklist reason | decision/count 기반 reason | 진단 가독성 |
 
-### Stage 2-E 후보
+### Stage 2-D 보강 (Stage 2-E 선행)
 
-Connector Gateway Routing Shadow 결과와 Write Path Wire Candidate 결과를 함께 검토하여, 실제 runtime route / write path 변경 전 최종 운영자 승인 패키지를 설계한다.
+| 항목 | 반영 방식 | 비고 |
+|---|---|---|
+| source trace | requested/normalized target, schema migration, wire gate counts | Stage 2-E 추적 |
+| confirmation 의미 분리 | schemaMigrationReadinessReviewConfirmed; schema/migration not applied in runtime | report input only |
+| checklist reason | decision/confirmation/target 기반 reason | 진단 가독성 |
+| ready finding | wire_candidate_requires_final_runtime_approval | 최종 runtime 승인 필요 |
+
+## Stage 2-E Runtime Change Final Approval Package 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Runtime Change Final Approval Package 타입 | read-only report | 없음 | 실제 runtime 변경 없음 |
+| 통합 evaluator | Routing Shadow + Write Path Wire Candidate 조합 | 없음 | Connector/GitHub/Cursor 미호출 |
+| finalApprovalChecklist | report field | 없음 | 운영자 최종 승인 확인 |
+| runtimeSafetyChecklist | report field | 없음 | no runtime/routing/write 보장 |
+| rollbackChecklist | report field | 없음 | 실제 변경 전 rollback 확인 |
+| operatorChecklist | report field | 없음 | approval/audit/override 검토 |
+| no-run flags | report field | 없음 | runtime/routing/write/db/schema/git 미실행 |
+
+### Stage 2-E 원칙
+
+```text
+- runtime route를 변경하지 않는다.
+- Connector Gateway routing을 변경하지 않는다.
+- write path를 wire하지 않는다.
+- feature flag를 wire하지 않는다.
+- DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- git/Cursor/GitHub를 호출하지 않는다.
+- 결과가 ready여도 실제 변경은 별도 Stage 2-F 또는 별도 PR/운영자 승인에서만 가능하다.
+```
+
+### Stage 2-E Decision 규칙 요약
+
+```text
+routing shadow 또는 wire candidate blocked → blocked
+review/approval confirmation 미충족 → defer
+Stage1 regression 또는 rollback review required 미충족 → defer
+모두 충족 → ready_for_final_runtime_change_approval
+```
+
+### Stage 2-F 후보
+
+Stage 2 전체 종료 판정과 실제 변경 전 승인 조건을 정리한다.

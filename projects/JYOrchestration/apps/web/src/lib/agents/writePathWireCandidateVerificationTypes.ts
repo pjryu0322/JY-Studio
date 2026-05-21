@@ -23,9 +23,26 @@ export interface WritePathWireCandidateVerificationReport {
   readonly mode: "read_only_write_path_wire_candidate_verification";
   readonly decision: WritePathWireCandidateVerificationDecision;
 
+  readonly requestedAgentTarget: string;
+  readonly requestedOperatorTarget: string;
+  readonly normalizedAgentTarget: string;
+  readonly normalizedOperatorTarget: string;
+
   readonly sourceAgentWireGateDecision: string;
   readonly sourceOperatorWireGateDecision: string;
   readonly sourceSchemaMigrationReadinessDecision: string;
+
+  readonly sourceSchemaMigrationRequestedAgentTarget: string;
+  readonly sourceSchemaMigrationRequestedOperatorTarget: string;
+  readonly sourceSchemaMigrationNormalizedAgentTarget: string;
+  readonly sourceSchemaMigrationNormalizedOperatorTarget: string;
+  readonly sourceSchemaMigrationAgentSchemaDecision: string;
+  readonly sourceSchemaMigrationOperatorSchemaDecision: string;
+  readonly sourceSchemaMigrationWriteAdapterDecision: string;
+  readonly sourceSchemaMigrationAgentRequiresSchemaChange: boolean;
+  readonly sourceSchemaMigrationOperatorRequiresSchemaChange: boolean;
+  readonly sourceSchemaMigrationAgentRequiresMigration: boolean;
+  readonly sourceSchemaMigrationOperatorRequiresMigration: boolean;
 
   readonly sourceAgentWritePathTarget: string;
   readonly sourceOperatorWritePathTarget: string;
@@ -39,10 +56,22 @@ export interface WritePathWireCandidateVerificationReport {
 
   readonly sourceAgentBlockingFindingCodes: readonly string[];
   readonly sourceOperatorBlockingFindingCodes: readonly string[];
+  readonly sourceAgentWireGateBlockingFindingCodes: readonly string[];
+  readonly sourceOperatorWireGateBlockingFindingCodes: readonly string[];
+
+  readonly sourceAgentWireGateApprovalChecklistCount: number;
+  readonly sourceOperatorWireGateApprovalChecklistCount: number;
+  readonly sourceAgentWireGateRuntimeChecklistCount: number;
+  readonly sourceOperatorWireGateRuntimeChecklistCount: number;
+  readonly sourceOperatorWireGatePermissionChecklistCount: number;
+  readonly sourceOperatorWireGateAuditChecklistCount: number;
 
   readonly agentExplicitUserApprovalProvided: boolean;
   readonly operatorExplicitUserApprovalProvided: boolean;
   readonly schemaMigrationReadinessConfirmed: boolean;
+  readonly schemaMigrationReadinessReviewConfirmed: boolean;
+  readonly schemaAppliedInRuntime: false;
+  readonly migrationAppliedInRuntime: false;
   readonly agentWriteAdapterImplementedConfirmed: boolean;
   readonly operatorWriteAdapterImplementedConfirmed: boolean;
   readonly operatorPermissionModelConfirmed: boolean;
