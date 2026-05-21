@@ -81,6 +81,17 @@ export interface RoleKnowledgeBindingClosureReport {
   readonly actualPromptInjectionAllowedInThisStep: false;
 }
 
+export type RoleKnowledgeBindingClosureDecisionInput = {
+  readonly hasBlocked: boolean;
+  readonly hasDefer: boolean;
+  readonly allReady: boolean;
+  readonly stage5AClosureReviewConfirmed: boolean;
+  readonly stage5ANotKnowledgePackImplementationConfirmed: boolean;
+  readonly stage5ANoRagConfirmed: boolean;
+  readonly stage5ANoPromptInjectionConfirmed: boolean;
+  readonly stage5ANoRuntimeDbUiConfirmed: boolean;
+};
+
 export interface RoleKnowledgeBindingClosureInput {
   readonly agentTypes?: readonly string[];
   readonly availableKnowledgePackIds?: readonly string[];
