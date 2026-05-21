@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import {
   evaluateKnowledgePackMetadataRegistryCandidate,
   resolveKnowledgePackMetadataRegistryCandidateDecision,
@@ -7,18 +8,11 @@ import {
 import { buildDefaultKnowledgePackMetadataCandidates } from "@/lib/agents/defaultKnowledgePackMetadataCandidates";
 import type { KnowledgePackMetadataCandidate } from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
 
-const ALL_CLOSURE_CONFIRMATIONS = {
-  stage5AClosure: {
-    stage5AClosureReviewConfirmed: true,
-    stage5ANotKnowledgePackImplementationConfirmed: true,
-    stage5ANoRagConfirmed: true,
-    stage5ANoPromptInjectionConfirmed: true,
-    stage5ANoRuntimeDbUiConfirmed: true,
-  },
-} as const;
-
 function evaluateReadyMetadata(input: Parameters<typeof evaluateKnowledgePackMetadataRegistryCandidate>[0] = {}) {
-  return evaluateKnowledgePackMetadataRegistryCandidate({ ...ALL_CLOSURE_CONFIRMATIONS, ...input });
+  return evaluateKnowledgePackMetadataRegistryCandidate({
+    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...input,
+  });
 }
 
 describe("multi-agent knowledge pack metadata registry candidate stage 5-B", () => {

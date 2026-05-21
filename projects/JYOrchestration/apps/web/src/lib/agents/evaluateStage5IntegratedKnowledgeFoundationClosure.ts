@@ -13,6 +13,7 @@ import {
   buildStage5IntegratedClosureChecklist,
   buildStage5IntegratedClosureSummary,
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  buildStage5IntegratedPipelineTraceFields,
   evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
@@ -50,13 +51,14 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
   const closureFingerprint = buildStage5IntegratedKnowledgeFoundationClosureFingerprint(sources);
 
   const findings: Stage5IntegratedKnowledgeFoundationClosureFinding[] = [];
-  appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources });
+  appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources, pipeline: { stage5A, stage5B, stage5C, stage5D } });
 
   return {
     mode: "read_only_stage5_integrated_knowledge_foundation_closure",
     stage: "stage_5_f_closure",
     decision,
     ...sources,
+    ...buildStage5IntegratedPipelineTraceFields({ stage5A, stage5B, stage5C, stage5D }),
     closureVersion: STAGE5_INTEGRATED_CLOSURE_VERSION,
     closureTitle: STAGE5_INTEGRATED_CLOSURE_TITLE,
     closureSummary: buildStage5IntegratedClosureSummary(decision),

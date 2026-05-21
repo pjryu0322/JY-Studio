@@ -25,6 +25,8 @@ import {
 
 export {
   buildRoleKnowledgeBindingClosureFingerprint,
+  buildStage5AClosureConfirmedInput,
+  REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS,
   resolveRoleKnowledgeBindingClosureDecision,
 } from "@/lib/agents/roleKnowledgeBindingClosureSupport";
 

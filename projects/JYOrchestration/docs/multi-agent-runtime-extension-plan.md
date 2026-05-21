@@ -2081,6 +2081,9 @@ Stage 5는 실제 지식팩 시스템 구현이 아니다.
 `stage5_knowledge_foundation_ready`는 실제 지식팩 기능 구현 완료가 아니다.  
 이는 역할별 지식 기반을 어떤 구조로 붙일지에 대한 read-only 설계·검증 기준선이 닫혔다는 의미다.
 
+Stage 5-F report는 pipeline source trace(`sourceStage5*Count`, `sourceStage5AClosureFingerprint`, `sourceStage5FInputMode`)와 Stage 5-B/C/D aggregate boundary flag를 노출한다.  
+Stage 5-A ready 입력은 `buildStage5AClosureConfirmedInput()` / `REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS`로 명시한다.
+
 ### 후속 후보
 
 - Runtime Execution Model Design
@@ -2165,14 +2168,22 @@ apps/web/src/lib/agents/evaluateRoleKnowledgeBindingReadiness.ts
 apps/web/tests/api/multiAgentRoleKnowledgeBindingReadiness.unit.test.ts
 ```
 
-### Stage 5 후속 후보 (5-A 이후, 별도 승인·단계)
+### Stage 5 단계 정의 (통합)
 
 ```text
-Stage 5-B: Knowledge Pack Metadata Registry
-Stage 5-C: Task Type → Knowledge Pack Binding
-Stage 5-D: Prompt Context Injection Candidate
-Stage 5-E: Knowledge Pack Version Trace in Agent Runtime Report
+Stage 5-A: Role Knowledge Binding Closure
+Stage 5-B: Knowledge Pack Metadata Registry Candidate
+Stage 5-C: Role Knowledge Pack Mapping Candidate
+Stage 5-D: Prompt Context Injection Design Candidate
+Stage 5-F: Integrated Knowledge Foundation Closure
 ```
+
+Stage 5-E는 현재 별도 구현하지 않는다.  
+Stage 5-F가 Stage 5 통합 closure 역할을 수행한다.  
+Stage 5는 지식팩 본구현이 아니라 read-only knowledge foundation이다.  
+실제 Knowledge Pack Management System은 별도 PR/단계로 분리한다.
+
+Stage 5-F `stage5_knowledge_foundation_ready` 이후 진입 후보는 **Stage 6 Runtime Execution Model Design 후보만** 제시한다 (`stage6EntryIsCandidateOnly=true`).
 
 ### Stage 3–4 빠른 진행 로드맵
 
@@ -2186,7 +2197,11 @@ Stage 4-C: Connector Gateway Shadow Routing Plan
 Stage 4-D: Controlled Execution Path Candidate
 Stage 4-E: Runtime Wire Experiment Review Package
 Stage 4-F: Stage 4 Integrated Closure Verdict
-Stage 5-A: Role Knowledge Binding Foundation
+Stage 5-A: Role Knowledge Binding Closure
+Stage 5-B: Knowledge Pack Metadata Registry Candidate
+Stage 5-C: Role Knowledge Pack Mapping Candidate
+Stage 5-D: Prompt Context Injection Design Candidate
+Stage 5-F: Integrated Knowledge Foundation Closure
 ```
 
 ### Stage 2 종료 판정 의미

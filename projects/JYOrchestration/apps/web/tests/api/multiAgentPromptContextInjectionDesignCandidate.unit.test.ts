@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import {
   buildDefaultPromptContextInjectionDesignCandidates,
   evaluatePromptContextInjectionDesignCandidate,
@@ -8,18 +9,11 @@ import {
 import { buildDefaultRoleKnowledgePackMappingCandidates } from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
 import type { PromptContextInjectionDesignCandidate } from "@/lib/agents/promptContextInjectionDesignCandidateTypes";
 
-const ALL_CLOSURE_CONFIRMATIONS = {
-  stage5AClosure: {
-    stage5AClosureReviewConfirmed: true,
-    stage5ANotKnowledgePackImplementationConfirmed: true,
-    stage5ANoRagConfirmed: true,
-    stage5ANoPromptInjectionConfirmed: true,
-    stage5ANoRuntimeDbUiConfirmed: true,
-  },
-} as const;
-
 function evaluateReadyDesign(input: Parameters<typeof evaluatePromptContextInjectionDesignCandidate>[0] = {}) {
-  return evaluatePromptContextInjectionDesignCandidate({ ...ALL_CLOSURE_CONFIRMATIONS, ...input });
+  return evaluatePromptContextInjectionDesignCandidate({
+    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...input,
+  });
 }
 
 describe("multi-agent prompt context injection design candidate stage 5-D", () => {

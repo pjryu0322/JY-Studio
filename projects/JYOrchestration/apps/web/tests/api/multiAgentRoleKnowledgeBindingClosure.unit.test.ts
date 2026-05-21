@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRoleKnowledgeBindingClosureFingerprint,
+  buildStage5AClosureConfirmedInput,
   evaluateRoleKnowledgeBindingClosure,
+  REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS,
   resolveRoleKnowledgeBindingClosureDecision,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import {
@@ -9,17 +11,9 @@ import {
   listDefaultRoleKnowledgeAgentTypes,
 } from "@/lib/agents/defaultRoleKnowledgeBindings";
 
-const ALL_CLOSURE_CONFIRMATIONS = {
-  stage5AClosureReviewConfirmed: true,
-  stage5ANotKnowledgePackImplementationConfirmed: true,
-  stage5ANoRagConfirmed: true,
-  stage5ANoPromptInjectionConfirmed: true,
-  stage5ANoRuntimeDbUiConfirmed: true,
-} as const;
-
 function evaluateReadyClosure(input: Parameters<typeof evaluateRoleKnowledgeBindingClosure>[0] = {}) {
   return evaluateRoleKnowledgeBindingClosure({
-    ...ALL_CLOSURE_CONFIRMATIONS,
+    ...buildStage5AClosureConfirmedInput(),
     ...input,
   });
 }
@@ -96,7 +90,7 @@ describe("multi-agent role knowledge binding closure stage 5-A", () => {
     expect(buildRoleKnowledgeBindingClosureFingerprint({
       agentSummaries: first.agentSummaries,
       sourceDefaultKnowledgePackIdCount: first.sourceDefaultKnowledgePackIdCount,
-      ...ALL_CLOSURE_CONFIRMATIONS,
+      ...buildStage5AClosureConfirmedInput(),
     })).toBe(first.closureFingerprint);
   });
 
@@ -200,6 +194,27 @@ describe("multi-agent role knowledge binding closure stage 5-A", () => {
     ).toBe(true);
   });
 
+  describe("Stage 5-A confirmation policy", () => {
+    it("REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS has length 5", () => {
+      expect(REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS).toHaveLength(5);
+    });
+
+    it("buildStage5AClosureConfirmedInput yields stage5_a_closure_ready", () => {
+      expect(evaluateRoleKnowledgeBindingClosure(buildStage5AClosureConfirmedInput()).decision).toBe(
+        "stage5_a_closure_ready",
+      );
+    });
+
+    it("missing any confirmation yields defer", () => {
+      expect(
+        evaluateRoleKnowledgeBindingClosure({
+          ...buildStage5AClosureConfirmedInput(),
+          stage5ANoRagConfirmed: false,
+        }).decision,
+      ).toBe("defer");
+    });
+  });
+
   describe("resolveRoleKnowledgeBindingClosureDecision", () => {
     it("returns blocked when hasBlocked", () => {
       expect(
@@ -207,7 +222,7 @@ describe("multi-agent role knowledge binding closure stage 5-A", () => {
           hasBlocked: true,
           hasDefer: false,
           allReady: false,
-          ...ALL_CLOSURE_CONFIRMATIONS,
+          ...buildStage5AClosureConfirmedInput(),
         }),
       ).toBe("blocked");
     });

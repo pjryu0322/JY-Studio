@@ -729,7 +729,9 @@ export {
 
 export {
   buildRoleKnowledgeBindingClosureFingerprint,
+  buildStage5AClosureConfirmedInput,
   evaluateRoleKnowledgeBindingClosure,
+  REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS,
   resolveRoleKnowledgeBindingClosureDecision,
 } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildStage5AClosureConfirmedInput } from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import {
   buildDefaultRoleKnowledgePackMappingCandidates,
   evaluateRoleKnowledgePackMappingCandidate,
@@ -6,18 +7,11 @@ import {
 } from "@/lib/agents/evaluateRoleKnowledgePackMappingCandidate";
 import { listDefaultRoleKnowledgeAgentTypes } from "@/lib/agents/defaultRoleKnowledgeBindings";
 
-const ALL_CLOSURE_CONFIRMATIONS = {
-  stage5AClosure: {
-    stage5AClosureReviewConfirmed: true,
-    stage5ANotKnowledgePackImplementationConfirmed: true,
-    stage5ANoRagConfirmed: true,
-    stage5ANoPromptInjectionConfirmed: true,
-    stage5ANoRuntimeDbUiConfirmed: true,
-  },
-} as const;
-
 function evaluateReadyMapping(input: Parameters<typeof evaluateRoleKnowledgePackMappingCandidate>[0] = {}) {
-  return evaluateRoleKnowledgePackMappingCandidate({ ...ALL_CLOSURE_CONFIRMATIONS, ...input });
+  return evaluateRoleKnowledgePackMappingCandidate({
+    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...input,
+  });
 }
 
 describe("multi-agent role knowledge pack mapping candidate stage 5-C", () => {

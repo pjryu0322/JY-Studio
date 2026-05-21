@@ -45,6 +45,32 @@ export const STAGE5_A_CLOSURE_ALWAYS_FINDING_SPECS = [
   },
 ] as const;
 
+/** Required boolean confirmations for Stage 5-A closure ready (explicit opt-in). */
+export const REQUIRED_STAGE5_A_CLOSURE_CONFIRMATIONS = [
+  "stage5AClosureReviewConfirmed",
+  "stage5ANotKnowledgePackImplementationConfirmed",
+  "stage5ANoRagConfirmed",
+  "stage5ANoPromptInjectionConfirmed",
+  "stage5ANoRuntimeDbUiConfirmed",
+] as const;
+
+export function buildStage5AClosureConfirmedInput(): Pick<
+  RoleKnowledgeBindingClosureInput,
+  | "stage5AClosureReviewConfirmed"
+  | "stage5ANotKnowledgePackImplementationConfirmed"
+  | "stage5ANoRagConfirmed"
+  | "stage5ANoPromptInjectionConfirmed"
+  | "stage5ANoRuntimeDbUiConfirmed"
+> {
+  return {
+    stage5AClosureReviewConfirmed: true,
+    stage5ANotKnowledgePackImplementationConfirmed: true,
+    stage5ANoRagConfirmed: true,
+    stage5ANoPromptInjectionConfirmed: true,
+    stage5ANoRuntimeDbUiConfirmed: true,
+  };
+}
+
 export const STAGE5_A_CLOSURE_BOUNDARY_CHECKLIST_ENTRIES = [
   { item: "stage5AClosureIsKnowledgePackImplementation=false", detail: "stage5AClosureIsKnowledgePackImplementation=false" },
   { item: "stage5AClosureUsesRag=false", detail: "stage5AClosureUsesRag=false" },

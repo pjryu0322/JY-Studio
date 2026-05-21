@@ -48,11 +48,11 @@ export const STAGE5_INTEGRATED_CLOSURE_TITLE =
   "Stage 5 Integrated Knowledge Foundation Closure (Read-Only)";
 
 export const RECOMMENDED_NEXT_PHASES = [
-  "prepare_runtime_execution_model_design",
-  "prepare_agent_execution_record_persistence_pr",
-  "prepare_operator_approval_audit_persistence_pr",
-  "prepare_knowledge_pack_metadata_registry_pr",
-  "continue_read_only_runtime_hardening",
+  "prepare_stage6_runtime_execution_model_design",
+  "prepare_agent_execution_record_persistence_separate_pr",
+  "prepare_operator_approval_audit_persistence_separate_pr",
+  "prepare_knowledge_pack_metadata_registry_separate_pr",
+  "continue_read_only_runtime_hardening_if_needed",
 ] as const;
 
 export const SEPARATED_WORK_ITEMS = [
@@ -189,6 +189,100 @@ export function buildStage5IntegratedClosureChecklist(
   ]);
 }
 
+export function buildStage5IntegratedPipelineTraceFields(
+  pipeline: Stage5KnowledgeFoundationPipelineReports,
+): {
+  readonly sourceStage5APipelineMode: "role_knowledge_binding_closure";
+  readonly sourceStage5BPipelineMode: "knowledge_pack_metadata_registry_candidate";
+  readonly sourceStage5CPipelineMode: "role_knowledge_pack_mapping_candidate";
+  readonly sourceStage5DPipelineMode: "prompt_context_injection_design_candidate";
+  readonly sourceStage5AAgentCount: number;
+  readonly sourceStage5BMetadataCandidateCount: number;
+  readonly sourceStage5CMappingCandidateCount: number;
+  readonly sourceStage5DPromptDesignCandidateCount: number;
+  readonly sourceStage5AClosureFingerprint: string;
+  readonly sourceStage5FInputMode: "shared_stage5_knowledge_foundation_input";
+  readonly sourceStage5BRegistryCandidateOnly: true;
+  readonly sourceStage5CMappingCandidateOnly: true;
+  readonly sourceStage5DPromptInjectionDesignOnly: true;
+  readonly sourceStage5BActualRegistryImplementationAllowed: false;
+  readonly sourceStage5CActualMappingWireAllowed: false;
+  readonly sourceStage5DActualPromptInjectionWireAllowed: false;
+  readonly sourceStage5DActualRagRetrievalAllowed: false;
+} {
+  const { stage5A, stage5B, stage5C, stage5D } = pipeline;
+  return {
+    sourceStage5APipelineMode: "role_knowledge_binding_closure",
+    sourceStage5BPipelineMode: "knowledge_pack_metadata_registry_candidate",
+    sourceStage5CPipelineMode: "role_knowledge_pack_mapping_candidate",
+    sourceStage5DPipelineMode: "prompt_context_injection_design_candidate",
+    sourceStage5AAgentCount: stage5A.agentCount,
+    sourceStage5BMetadataCandidateCount: stage5B.candidateCount,
+    sourceStage5CMappingCandidateCount: stage5C.mappingCandidateCount,
+    sourceStage5DPromptDesignCandidateCount: stage5D.designCandidateCount,
+    sourceStage5AClosureFingerprint: stage5A.closureFingerprint,
+    sourceStage5FInputMode: "shared_stage5_knowledge_foundation_input",
+    sourceStage5BRegistryCandidateOnly: true,
+    sourceStage5CMappingCandidateOnly: true,
+    sourceStage5DPromptInjectionDesignOnly: true,
+    sourceStage5BActualRegistryImplementationAllowed: false,
+    sourceStage5CActualMappingWireAllowed: false,
+    sourceStage5DActualPromptInjectionWireAllowed: false,
+    sourceStage5DActualRagRetrievalAllowed: false,
+  };
+}
+
+export function appendStage5IntegratedPipelineTraceFindings(
+  findings: Stage5IntegratedKnowledgeFoundationClosureFinding[],
+  pipeline: Stage5KnowledgeFoundationPipelineReports,
+): void {
+  const trace = buildStage5IntegratedPipelineTraceFields(pipeline);
+
+  findings.push(
+    finding("info", "stage5_pipeline_source_trace_recorded", "Stage 5 pipeline source trace recorded on closure report"),
+  );
+  findings.push(
+    finding("info", "stage5_a_source_fingerprint_recorded", `Stage 5-A closure fingerprint: ${trace.sourceStage5AClosureFingerprint}`),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage5_b_metadata_candidate_count_recorded",
+      `Stage 5-B metadata candidate count: ${trace.sourceStage5BMetadataCandidateCount}`,
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage5_c_mapping_candidate_count_recorded",
+      `Stage 5-C mapping candidate count: ${trace.sourceStage5CMappingCandidateCount}`,
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage5_d_prompt_design_candidate_count_recorded",
+      `Stage 5-D prompt design candidate count: ${trace.sourceStage5DPromptDesignCandidateCount}`,
+    ),
+  );
+  findings.push(
+    finding("info", "stage5_b_registry_candidate_only_confirmed", "Stage 5-B registry remains candidate only"),
+  );
+  findings.push(
+    finding("info", "stage5_c_mapping_candidate_only_confirmed", "Stage 5-C mapping remains candidate only"),
+  );
+  findings.push(
+    finding("info", "stage5_d_prompt_design_candidate_only_confirmed", "Stage 5-D prompt design remains candidate only"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "stage5_actual_registry_mapping_prompt_rag_disallowed",
+      "Actual registry implementation, mapping wire, prompt injection wire, and RAG retrieval remain disallowed",
+    ),
+  );
+}
+
 export function buildStage5IntegratedBoundaryChecklist(): Stage5IntegratedKnowledgeFoundationClosureChecklistItem[] {
   return mapChecklist(
     STAGE5_INTEGRATED_BOUNDARY_CHECKLIST_ENTRIES.map((entry) => ({
@@ -203,8 +297,11 @@ export function appendStage5IntegratedKnowledgeFoundationClosureFindings(input: 
   readonly findings: Stage5IntegratedKnowledgeFoundationClosureFinding[];
   readonly decision: Stage5IntegratedKnowledgeFoundationClosureDecision;
   readonly sources: Stage5IntegratedKnowledgeFoundationClosureDecisionInput;
+  readonly pipeline: Stage5KnowledgeFoundationPipelineReports;
 }): void {
-  const { findings, decision, sources } = input;
+  const { findings, decision, sources, pipeline } = input;
+
+  appendStage5IntegratedPipelineTraceFindings(findings, pipeline);
 
   findings.push(finding("info", "stage5_integrated_closure_evaluator_created", "Stage 5-F integrated closure evaluator created"));
   findings.push(finding("info", "stage5_integrated_read_only", "Stage 5 integrated closure is read-only"));

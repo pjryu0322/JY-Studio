@@ -34,6 +34,28 @@ export interface Stage5IntegratedKnowledgeFoundationClosureReport {
   readonly sourceStage5CDecision: RoleKnowledgePackMappingCandidateDecision;
   readonly sourceStage5DDecision: PromptContextInjectionDesignCandidateDecision;
 
+  readonly sourceStage5APipelineMode: "role_knowledge_binding_closure";
+  readonly sourceStage5BPipelineMode: "knowledge_pack_metadata_registry_candidate";
+  readonly sourceStage5CPipelineMode: "role_knowledge_pack_mapping_candidate";
+  readonly sourceStage5DPipelineMode: "prompt_context_injection_design_candidate";
+
+  readonly sourceStage5AAgentCount: number;
+  readonly sourceStage5BMetadataCandidateCount: number;
+  readonly sourceStage5CMappingCandidateCount: number;
+  readonly sourceStage5DPromptDesignCandidateCount: number;
+
+  readonly sourceStage5AClosureFingerprint: string;
+  readonly sourceStage5FInputMode: "shared_stage5_knowledge_foundation_input";
+
+  readonly sourceStage5BRegistryCandidateOnly: true;
+  readonly sourceStage5CMappingCandidateOnly: true;
+  readonly sourceStage5DPromptInjectionDesignOnly: true;
+
+  readonly sourceStage5BActualRegistryImplementationAllowed: false;
+  readonly sourceStage5CActualMappingWireAllowed: false;
+  readonly sourceStage5DActualPromptInjectionWireAllowed: false;
+  readonly sourceStage5DActualRagRetrievalAllowed: false;
+
   readonly closureVersion: "stage_5_integrated_knowledge_foundation_closure_v1";
   readonly closureTitle: string;
   readonly closureSummary: string;

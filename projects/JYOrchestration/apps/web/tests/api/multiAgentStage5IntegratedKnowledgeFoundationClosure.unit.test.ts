@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { listDefaultRoleKnowledgeAgentTypes } from "@/lib/agents/defaultRoleKnowledgeBindings";
+import {
+  buildStage5AClosureConfirmedInput,
+} from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
 import {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
@@ -7,23 +11,24 @@ import {
   SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
 
-const ALL_STAGE5_READY = {
-  stage5AClosure: {
-    stage5AClosureReviewConfirmed: true,
-    stage5ANotKnowledgePackImplementationConfirmed: true,
-    stage5ANoRagConfirmed: true,
-    stage5ANoPromptInjectionConfirmed: true,
-    stage5ANoRuntimeDbUiConfirmed: true,
-  },
-} as const;
-
 function evaluateReadyIntegrated(
   input: Parameters<typeof evaluateStage5IntegratedKnowledgeFoundationClosure>[0] = {},
 ) {
-  return evaluateStage5IntegratedKnowledgeFoundationClosure({ ...ALL_STAGE5_READY, ...input });
+  return evaluateStage5IntegratedKnowledgeFoundationClosure({
+    stage5AClosure: buildStage5AClosureConfirmedInput(),
+    ...input,
+  });
 }
 
 describe("multi-agent stage 5 integrated knowledge foundation closure stage 5-F", () => {
+  it("default input without confirmations defers", () => {
+    expect(evaluateStage5IntegratedKnowledgeFoundationClosure().decision).toBe("defer");
+  });
+
+  it("buildStage5AClosureConfirmedInput enables ready path", () => {
+    expect(evaluateReadyIntegrated().decision).toBe("stage5_knowledge_foundation_ready");
+  });
+
   it("all upstream ready yields stage5_knowledge_foundation_ready", () => {
     expect(evaluateReadyIntegrated().decision).toBe("stage5_knowledge_foundation_ready");
   });
@@ -42,6 +47,75 @@ describe("multi-agent stage 5 integrated knowledge foundation closure stage 5-F"
         stage5AClosure: { stage5AClosureReviewConfirmed: false },
       }).decision,
     ).toBe("defer");
+  });
+
+  it("exposes sourceStage5AAgentCount", () => {
+    expect(evaluateReadyIntegrated().sourceStage5AAgentCount).toBe(listDefaultRoleKnowledgeAgentTypes().length);
+  });
+
+  it("exposes sourceStage5BMetadataCandidateCount as number", () => {
+    expect(typeof evaluateReadyIntegrated().sourceStage5BMetadataCandidateCount).toBe("number");
+    expect(evaluateReadyIntegrated().sourceStage5BMetadataCandidateCount).toBeGreaterThan(0);
+  });
+
+  it("exposes sourceStage5CMappingCandidateCount as number", () => {
+    expect(typeof evaluateReadyIntegrated().sourceStage5CMappingCandidateCount).toBe("number");
+    expect(evaluateReadyIntegrated().sourceStage5CMappingCandidateCount).toBeGreaterThan(0);
+  });
+
+  it("exposes sourceStage5DPromptDesignCandidateCount as number", () => {
+    expect(typeof evaluateReadyIntegrated().sourceStage5DPromptDesignCandidateCount).toBe("number");
+    expect(evaluateReadyIntegrated().sourceStage5DPromptDesignCandidateCount).toBeGreaterThan(0);
+  });
+
+  it("exposes sourceStage5AClosureFingerprint", () => {
+    const report = evaluateReadyIntegrated();
+    expect(report.sourceStage5AClosureFingerprint.length).toBeGreaterThan(0);
+    expect(report.sourceStage5AClosureFingerprint).toContain("stage5-a-closure");
+  });
+
+  it("sourceStage5FInputMode is shared_stage5_knowledge_foundation_input", () => {
+    expect(evaluateReadyIntegrated().sourceStage5FInputMode).toBe("shared_stage5_knowledge_foundation_input");
+  });
+
+  it("findings include stage5_pipeline_source_trace_recorded", () => {
+    expect(
+      evaluateReadyIntegrated().findings.some((f) => f.code === "stage5_pipeline_source_trace_recorded"),
+    ).toBe(true);
+  });
+
+  it("sourceStage5BRegistryCandidateOnly is true", () => {
+    expect(evaluateReadyIntegrated().sourceStage5BRegistryCandidateOnly).toBe(true);
+  });
+
+  it("sourceStage5CMappingCandidateOnly is true", () => {
+    expect(evaluateReadyIntegrated().sourceStage5CMappingCandidateOnly).toBe(true);
+  });
+
+  it("sourceStage5DPromptInjectionDesignOnly is true", () => {
+    expect(evaluateReadyIntegrated().sourceStage5DPromptInjectionDesignOnly).toBe(true);
+  });
+
+  it("sourceStage5BActualRegistryImplementationAllowed is false", () => {
+    expect(evaluateReadyIntegrated().sourceStage5BActualRegistryImplementationAllowed).toBe(false);
+  });
+
+  it("sourceStage5CActualMappingWireAllowed is false", () => {
+    expect(evaluateReadyIntegrated().sourceStage5CActualMappingWireAllowed).toBe(false);
+  });
+
+  it("sourceStage5DActualPromptInjectionWireAllowed is false", () => {
+    expect(evaluateReadyIntegrated().sourceStage5DActualPromptInjectionWireAllowed).toBe(false);
+  });
+
+  it("sourceStage5DActualRagRetrievalAllowed is false", () => {
+    expect(evaluateReadyIntegrated().sourceStage5DActualRagRetrievalAllowed).toBe(false);
+  });
+
+  it("findings include stage5_actual_registry_mapping_prompt_rag_disallowed", () => {
+    expect(
+      evaluateReadyIntegrated().findings.some((f) => f.code === "stage5_actual_registry_mapping_prompt_rag_disallowed"),
+    ).toBe(true);
   });
 
   it("knowledgeFoundationOnly is true", () => {
@@ -100,13 +174,17 @@ describe("multi-agent stage 5 integrated knowledge foundation closure stage 5-F"
     expect(evaluateReadyIntegrated().closureVersion).toBe("stage_5_integrated_knowledge_foundation_closure_v1");
   });
 
-  it("recommendedNextPhases is non-empty", () => {
-    expect(evaluateReadyIntegrated().recommendedNextPhases.length).toBeGreaterThan(0);
-    expect(RECOMMENDED_NEXT_PHASES).toContain("prepare_runtime_execution_model_design");
+  it("recommendedNextPhases mentions stage6 or separate_pr", () => {
+    const phases = evaluateReadyIntegrated().recommendedNextPhases;
+    expect(phases.some((p) => p.includes("stage6") || p.includes("separate_pr"))).toBe(true);
+    expect(RECOMMENDED_NEXT_PHASES).toContain("prepare_stage6_runtime_execution_model_design");
   });
 
-  it("separatedWorkItems includes actual_knowledge_pack_crud", () => {
-    expect(evaluateReadyIntegrated().separatedWorkItems).toContain("actual_knowledge_pack_crud");
+  it("separatedWorkItems includes actual_knowledge_pack_crud and related items", () => {
+    const items = evaluateReadyIntegrated().separatedWorkItems;
+    expect(items).toContain("actual_knowledge_pack_crud");
+    expect(items).toContain("actual_rag_indexing");
+    expect(items).toContain("actual_prompt_context_injection_wire");
     expect(SEPARATED_WORK_ITEMS).toContain("actual_rag_indexing");
   });
 
