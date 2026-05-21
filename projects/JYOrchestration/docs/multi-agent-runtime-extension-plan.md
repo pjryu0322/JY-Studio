@@ -856,6 +856,16 @@ requiresOperatorApproval / requiresRegressionChecklist → true (non-blocked)
 approvalChecklist: branch/flag/rollback/regression/operator + no wire items
 ```
 
+## Stage 2-20 소스 보완 결과
+
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| schema source trace | 보완 | sourceSchemaDecision/target/table/requires* |
+| unknown/blocked report policy | 보완 | empty arrays, featureFlagName="", requires*=false |
+| candidate arrays dedupe | 보완 | `uniqueStrings` on entrypoints/sanitizers/guards/rollback |
+| validation checklist | 보완 | schema applied / write adapter 분리 |
+| 실제 DB/write path | 없음 | read-only design evaluator |
+
 ## Stage 2-20 Agent Execution Record Write Path 설계 결과
 
 | 항목 | 반영 방식 | 실제 write 여부 | 비고 |
@@ -891,13 +901,49 @@ ready_for_write_path_design 타입 유지, 현재 단계에서는 미반환
 featureFlagDefault=off; forbidden guards + sanitizers + rollback plan in report
 ```
 
-### Stage 2-21 후보: Operator Approval/Audit write path 설계
+## Stage 2-21 Operator Approval/Audit Write Path 설계 결과
 
-Stage 2-21에서는 Stage 2-18 schema decision을 바탕으로 approval/audit write path를 설계할지 판단한다.
+| 항목 | 반영 방식 | 실제 write 여부 | 비고 |
+|---|---|---|---|
+| Write Path Design 타입 | read-only write path design report | 없음 | schema 적용 전 단계 |
+| Write Path evaluator | operator schema decision 기반 판단 | 없음 | DB/Prisma 호출 없음 |
+| feature flag | JYO_OPERATOR_APPROVAL_AUDIT_WRITE_PATH / off | 없음 | 실제 wire 없음 |
+| proposed write entrypoints | report field | 없음 | 실제 연결 없음 |
+| permission guards | report field | 없음 | 실제 권한검사 구현 아님 |
+| audit integrity guards | report field | 없음 | 실제 감사 무결성 구현 아님 |
+| forbidden guards | report field | 없음 | 실제 guard wire 아님 |
+| validation checklist | report field | 없음 | schema/migration 미적용 표시 |
+| rollback plan | report field | 없음 | write disable 전제 |
+
+구현: `operatorApprovalAuditWritePathDesignTypes.ts`, `evaluateOperatorApprovalAuditWritePathDesign.ts`
+
+### Stage 2-21 원칙
+
+```text
+- 실제 Operator Approval/Audit write path를 구현하지 않는다.
+- 실제 Prisma/DB 저장을 호출하지 않는다.
+- 실제 schema/migration을 만들지 않는다.
+- write path는 schema/migration 적용 후 별도 승인한다.
+- 이번 단계는 read-only 설계 report만 만든다.
+```
+
+### Stage 2-21 Decision 규칙 요약
+
+```text
+ready_for_schema_proposal → defer (schema/migration 미적용)
+operator_override / rollback_approval → defer + target-specific warning
+blocked / unknown → blocked; empty proposed arrays
+ready_for_write_path_design 타입 유지, 현재 단계에서는 미반환
+permission/audit integrity/forbidden guards in report only
+```
+
+### Stage 2-22 후보: Connector Gateway 실험 브랜치 명시 승인 후 생성
+
+Stage 2-22에서는 Stage 2-19 approval readiness를 바탕으로 실제 실험 브랜치를 생성할지 결정한다.
 
 | 후보 | 설명 | 주의사항 |
 |---|---|---|
-| approval write path design | 승인/우회/감사 저장 진입점 설계 | schema 적용 후 가능 |
-| permission guard | actor/role 권한 검사 | 필수 |
-| audit integrity guard | 감사 무결성 검증 | 필수 |
-| feature flag | write path default off | 필수 |
+| branch creation command plan | git checkout -b 후보 | 명시 승인 필요 |
+| branch scope | cursor_only 우선 | github 포함은 defer |
+| feature flag wire plan | default off 위치 확정 | 별도 PR |
+| regression runbook | Stage1/ENV_TEST/Cursor/GitHub 회귀 | 필수 |

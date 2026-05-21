@@ -1,46 +1,51 @@
 /**
- * Read-only Agent execution record write path design (no Prisma/DB/write wire).
+ * Read-only Operator approval/audit write path design (no Prisma/DB/write wire).
  */
 
-export type AgentExecutionRecordWritePathDecision =
+export type OperatorApprovalAuditWritePathDecision =
   | "ready_for_write_path_design"
   | "defer"
   | "blocked";
 
-export type AgentExecutionRecordWritePathTarget =
-  | "agent_execution_record"
-  | "timeline_event_link"
-  | "audit_trail_link"
+export type OperatorApprovalAuditWritePathTarget =
+  | "operator_approval"
+  | "operator_override"
+  | "audit_event"
+  | "rollback_approval"
   | "unknown";
 
-export interface AgentExecutionRecordWritePathChecklistItem {
+export interface OperatorApprovalAuditWritePathChecklistItem {
   readonly item: string;
   readonly satisfied: boolean;
   readonly reason: string;
 }
 
-export interface AgentExecutionRecordWritePathFinding {
+export interface OperatorApprovalAuditWritePathFinding {
   readonly severity: "info" | "warning" | "blocking";
   readonly code: string;
   readonly message: string;
 }
 
-export interface AgentExecutionRecordWritePathDesignReport {
-  readonly mode: "read_only_agent_execution_record_write_path_design";
-  readonly decision: AgentExecutionRecordWritePathDecision;
-  readonly target: AgentExecutionRecordWritePathTarget;
+export interface OperatorApprovalAuditWritePathDesignReport {
+  readonly mode: "read_only_operator_approval_audit_write_path_design";
+  readonly decision: OperatorApprovalAuditWritePathDecision;
+  readonly target: OperatorApprovalAuditWritePathTarget;
 
   readonly featureFlagName: string;
   readonly featureFlagDefault: "off";
   readonly proposedWriteEntrypoints: readonly string[];
+  readonly proposedPermissionGuards: readonly string[];
+  readonly proposedAuditIntegrityGuards: readonly string[];
   readonly proposedSanitizers: readonly string[];
   readonly forbiddenFieldGuards: readonly string[];
-  readonly validationChecklist: readonly AgentExecutionRecordWritePathChecklistItem[];
+  readonly validationChecklist: readonly OperatorApprovalAuditWritePathChecklistItem[];
   readonly rollbackPlan: readonly string[];
 
   readonly requiresSchemaApplied: boolean;
   readonly requiresMigrationApplied: boolean;
   readonly requiresFeatureFlag: boolean;
+  readonly requiresPermissionGuard: boolean;
+  readonly requiresAuditIntegrityGuard: boolean;
   readonly requiresForbiddenFieldGuard: boolean;
   readonly requiresWritePathRollback: boolean;
   readonly requiresOperatorApproval: boolean;
@@ -51,5 +56,5 @@ export interface AgentExecutionRecordWritePathDesignReport {
   readonly sourceRequiresPrismaSchemaChange: boolean;
   readonly sourceRequiresMigration: boolean;
 
-  readonly findings: readonly AgentExecutionRecordWritePathFinding[];
+  readonly findings: readonly OperatorApprovalAuditWritePathFinding[];
 }

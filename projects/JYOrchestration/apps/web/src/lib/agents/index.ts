@@ -389,6 +389,19 @@ export {
   normalizeAgentExecutionRecordWritePathTarget,
 } from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
 
+export type {
+  OperatorApprovalAuditWritePathChecklistItem,
+  OperatorApprovalAuditWritePathDecision,
+  OperatorApprovalAuditWritePathDesignReport,
+  OperatorApprovalAuditWritePathFinding,
+  OperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/operatorApprovalAuditWritePathDesignTypes";
+
+export {
+  evaluateOperatorApprovalAuditWritePathDesign,
+  normalizeOperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */
