@@ -613,6 +613,20 @@ export type {
 
 export { evaluateControlledRuntimeWireCandidate } from "@/lib/agents/evaluateControlledRuntimeWireCandidate";
 
+export type {
+  RuntimeWireExperimentBranchManualCommand,
+  RuntimeWireExperimentBranchPlanChecklistItem,
+  RuntimeWireExperimentBranchPlanDecision,
+  RuntimeWireExperimentBranchPlanFinding,
+  RuntimeWireExperimentBranchPlanReport,
+} from "@/lib/agents/runtimeWireExperimentBranchPlanTypes";
+
+export {
+  buildRuntimeWireExperimentBranchName,
+  buildRuntimeWireFeatureFlagName,
+  evaluateRuntimeWireExperimentBranchPlan,
+} from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

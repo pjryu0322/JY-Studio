@@ -1690,20 +1690,42 @@ ready_for_controlled_runtime_wire_candidate는 Stage 3-C 후보 설계 가능 �
 ### Stage 3-C 원칙
 
 ```text
-Stage 3-C는 Stage 3-B Runtime Execution Approval Gate를 source로 받아 controlled runtime wire 후보를 설계하는 read-only 단계다.
-실제 실행, routing 변경, write path wire, feature flag wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
-ready_for_runtime_wire_experiment_branch는 Stage 4-A 실험 브랜치 단계로 넘길 수 있다는 의미이지 실제 브랜치 생성 또는 실행 허가가 아니다.
+Stage 3-C는 Stage 3-B Runtime Execution Approval Gate를 source로 받아 controlled runtime wire 후보를 생성하는 read-only 단계다.
+실제 runtime 실행, routing 변경, write path wire, feature flag wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
+ready_for_runtime_wire_experiment_branch는 Stage 4-A에서 실험 브랜치 계획을 검토할 수 있다는 의미이지 실제 브랜치 생성 또는 실행 허가가 아니다.
 ```
 
-### Stage 3 빠른 진행 로드맵
+## Stage 4-A Runtime Wire Experiment Branch Plan
+
+Stage 4-A는 Stage 3-C controlled runtime wire candidate를 source로 하여 실험 브랜치 생성을 위한 계획만 만든다. 실제 branch 생성, checkout, push, PR 생성은 하지 않는다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| recommendedBranchName | report field | 없음 |
+| recommendedFeatureFlagName | report field | 없음 |
+| manualCommandCandidates | report field | 없음 |
+| regressionSuites | report field | 없음 |
+| branchSafetyChecklist | report field | 없음 |
+| rollbackChecklist | report field | 없음 |
+| handoffChecklist | report field | 없음 |
+
+### Stage 4-A 원칙
+
+```text
+Stage 4-A는 read-only branch plan이다. recommendedBranchName과 manualCommandCandidates는 수동 승인 후에만 실행한다.
+ready_for_manual_branch_creation_approval은 Stage 4-B 수동 브랜치 생성 검증으로 넘길 수 있다는 의미이지 실제 git 실행 허가가 아니다.
+```
+
+### Stage 3–4 빠른 진행 로드맵
 
 ```text
 Stage 3-A: Runtime Execution Plan Package
 Stage 3-B: Runtime Execution Approval Gate
 Stage 3-C: Controlled Runtime Wire Candidate
-Stage 4-A: Runtime Wire Experimental Branch
-Stage 4-B: Connector Gateway Shadow Routing
-Stage 4-C: Controlled Execution Path
+Stage 4-A: Runtime Wire Experiment Branch Plan
+Stage 4-B: Manual Branch Creation Verification
+Stage 4-C: Connector Gateway Shadow Routing Plan
+Stage 4-D: Controlled Execution Path Candidate
 ```
 
 ### Stage 2 종료 판정 의미
