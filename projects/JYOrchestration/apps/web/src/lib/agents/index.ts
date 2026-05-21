@@ -644,6 +644,17 @@ export {
   sanitizeRuntimeWireRegressionResults,
 } from "@/lib/agents/evaluateRuntimeWireManualBranchVerification";
 
+export type {
+  ConnectorGatewayShadowRouteCandidate,
+  ConnectorGatewayShadowRoutingMode,
+  ConnectorGatewayShadowRoutingPlanChecklistItem,
+  ConnectorGatewayShadowRoutingPlanDecision,
+  ConnectorGatewayShadowRoutingPlanFinding,
+  ConnectorGatewayShadowRoutingPlanReport,
+} from "@/lib/agents/connectorGatewayShadowRoutingPlanTypes";
+
+export { evaluateConnectorGatewayShadowRoutingPlan } from "@/lib/agents/evaluateConnectorGatewayShadowRoutingPlan";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

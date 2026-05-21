@@ -2,6 +2,8 @@
  * Read-only manual branch creation verification (no branch/git/test/GitHub/PR execution).
  */
 
+import type { RuntimeWireExperimentBranchPlanSourceNoRunFlags } from "@/lib/agents/runtimeWireExperimentBranchPlanTypes";
+
 export type RuntimeWireManualBranchVerificationDecision =
   | "manual_branch_verified"
   | "defer"
@@ -35,6 +37,13 @@ export interface RuntimeWireManualBranchVerificationReport {
   readonly expectedBranchName: string;
   readonly actualBranchName: string;
   readonly branchMatches: boolean;
+
+  readonly sourceRecommendedBranchName: string;
+  readonly sourceRecommendedFeatureFlagName: string;
+  readonly sourceManualCommandCount: number;
+  readonly sourceRegressionSuiteCount: number;
+  readonly sourceBranchPlanFindingCodes: readonly string[];
+  readonly sourceBranchPlanNoRunFlags: RuntimeWireExperimentBranchPlanSourceNoRunFlags;
 
   readonly explicitManualExecutionConfirmed: boolean;
   readonly regressionResultsProvided: boolean;

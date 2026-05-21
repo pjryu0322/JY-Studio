@@ -4,6 +4,7 @@ import {
   buildRuntimeWireExperimentBranchName,
   buildRuntimeWireFeatureFlagName,
   evaluateRuntimeWireExperimentBranchPlan,
+  resolveRuntimeWireExperimentBranchPlanDecision,
   runtimeWireManualCommandCautionsValid,
 } from "@/lib/agents/evaluateRuntimeWireExperimentBranchPlan";
 import * as wireCandidateModule from "@/lib/agents/evaluateControlledRuntimeWireCandidate";
@@ -353,21 +354,17 @@ describe("multi-agent runtime wire experiment branch plan stage 4-A", () => {
       expect(commands.every((c) => c.caution.trim().length > 0)).toBe(true);
     });
 
-    it("returns blocked when manual command caution is missing", () => {
-      expect(runtimeWireManualCommandCautionsValid([{ caution: "" }])).toBe(false);
+    it("returns blocked when manual command caution is missing via pure decision helper", () => {
+      const invalidCommands = buildRuntimeWireExperimentBranchManualCommands(EXPECTED_BRANCH, "");
+      expect(runtimeWireManualCommandCautionsValid(invalidCommands)).toBe(false);
       expect(
-        runtimeWireManualCommandCautionsValid(
-          buildRuntimeWireExperimentBranchManualCommands(EXPECTED_BRANCH, ""),
-        ),
-      ).toBe(false);
-
-      spyWireCandidateReady();
-
-      expect(
-        evaluateRuntimeWireExperimentBranchPlan({
-          ...ALL_BRANCH_PLAN_CONFIRMATIONS,
-          __testInvalidManualCommandCaution: true,
-        }).decision,
+        resolveRuntimeWireExperimentBranchPlanDecision({
+          wireCandidateDecision: "ready_for_runtime_wire_experiment_branch",
+          manualBranchPlanReviewConfirmed: true,
+          branchNamingPolicyConfirmed: true,
+          rollbackPlanConfirmed: true,
+          manualCommandCautionsValid: false,
+        }),
       ).toBe("blocked");
     });
 

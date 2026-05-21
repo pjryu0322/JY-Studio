@@ -50,8 +50,6 @@ type RuntimeWireExperimentBranchPlanInput = Parameters<typeof evaluateControlled
   readonly manualBranchPlanReviewConfirmed?: boolean;
   readonly branchNamingPolicyConfirmed?: boolean;
   readonly rollbackPlanConfirmed?: boolean;
-  /** @internal Vitest only — forces manual command caution validation failure. */
-  readonly __testInvalidManualCommandCaution?: boolean;
 };
 
 type ChecklistEntry = {
@@ -171,7 +169,8 @@ function mapChecklistEntries(entries: readonly ChecklistEntry[]): RuntimeWireExp
   }));
 }
 
-function resolveBranchPlanDecision(input: {
+/** Pure branch plan decision from upstream state (no side effects). */
+export function resolveRuntimeWireExperimentBranchPlanDecision(input: {
   readonly wireCandidateDecision: string;
   readonly manualBranchPlanReviewConfirmed: boolean;
   readonly branchNamingPolicyConfirmed: boolean;
@@ -435,12 +434,9 @@ export function evaluateRuntimeWireExperimentBranchPlan(
   const recommendedBranchName = buildRuntimeWireExperimentBranchName();
   const recommendedFeatureFlagName = buildRuntimeWireFeatureFlagName();
   const manualCommandCandidates = buildRuntimeWireExperimentBranchManualCommands(recommendedBranchName);
-  const manualCommandCautionsValid =
-    input?.__testInvalidManualCommandCaution === true
-      ? false
-      : runtimeWireManualCommandCautionsValid(manualCommandCandidates);
+  const manualCommandCautionsValid = runtimeWireManualCommandCautionsValid(manualCommandCandidates);
 
-  const decision = resolveBranchPlanDecision({
+  const decision = resolveRuntimeWireExperimentBranchPlanDecision({
     wireCandidateDecision: wireCandidate.decision,
     manualBranchPlanReviewConfirmed,
     branchNamingPolicyConfirmed,

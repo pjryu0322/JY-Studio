@@ -54,7 +54,7 @@ export function sanitizeRuntimeWireRegressionResults(
       bySuite.set(suite, {
         suite,
         passed: false,
-        summary: !existing.passed ? existing.summary : normalized.summary,
+        summary: !normalized.passed ? normalized.summary : existing.summary,
       });
       continue;
     }
@@ -320,7 +320,7 @@ function appendVerificationFindings(input: {
 
   if (decision === "defer") {
     if (branchPlanDecision !== BRANCH_PLAN_READY) {
-      findings.push(finding("warning", "source_wire_candidate_not_ready", "Source branch plan is not ready"));
+      findings.push(finding("warning", "source_branch_plan_not_ready", "Source branch plan is not ready"));
     }
     if (!input.explicitManualExecutionConfirmed) {
       findings.push(
@@ -384,6 +384,12 @@ export function evaluateRuntimeWireManualBranchVerification(
     decision: resolved.decision,
     sourceBranchPlanDecision: branchPlan.decision,
     sourcePlanFingerprint: branchPlan.planFingerprint,
+    sourceRecommendedBranchName: branchPlan.recommendedBranchName,
+    sourceRecommendedFeatureFlagName: branchPlan.recommendedFeatureFlagName,
+    sourceManualCommandCount: branchPlan.manualCommandCandidates.length,
+    sourceRegressionSuiteCount: branchPlan.regressionSuites.length,
+    sourceBranchPlanFindingCodes: branchPlan.findings.map((f) => f.code),
+    sourceBranchPlanNoRunFlags: branchPlan.sourceNoRunFlags,
     expectedBranchName,
     actualBranchName,
     branchMatches: resolved.branchMatches,

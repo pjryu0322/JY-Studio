@@ -1756,6 +1756,46 @@ regression failed → blocked + rollbackRequired=true
 all satisfied → manual_branch_verified
 ```
 
+## Stage 4-C Connector Gateway Shadow Routing Plan
+
+Stage 4-C는 Stage 4-B Manual Branch Creation Verification을 source로 하여 Connector Gateway shadow routing 계획을 만드는 read-only 단계다.
+
+| 항목 | 반영 방식 | 실제 실행 여부 |
+|---|---|---|
+| sourceManualBranchDecision | Stage 4-B source | 없음 |
+| shadowRouteCandidates | report field | 없음 |
+| featureFlagName | report field | 없음 |
+| featureFlagDefault | off | 없음 |
+| shadowRoutingChecklist | report field | 없음 |
+| safetyChecklist | report field | 없음 |
+| rollbackChecklist | report field | 없음 |
+| noRunChecklist | report field | 없음 |
+
+### Stage 4-C 원칙
+
+```text
+- 실제 Connector Gateway routing을 변경하지 않는다.
+- 실제 Connector를 호출하지 않는다.
+- 실제 Cursor/GitHub를 호출하지 않는다.
+- 실제 runtime을 실행하지 않는다.
+- 실제 feature flag를 wire하지 않는다.
+- 실제 Git/PR을 실행하지 않는다.
+- ready_for_shadow_routing_review는 Stage 4-D Controlled Execution Path Candidate로 넘길 수 있다는 의미이지 routing 변경 허가가 아니다.
+```
+
+### Stage 4-C Decision 규칙 요약
+
+```text
+manual branch verification blocked → blocked
+manual branch verification not verified → defer
+rollbackRequired=true → blocked
+shadow routing review missing → defer
+connector gateway shadow mode missing → defer
+Stage1 regression review missing → defer
+rollback plan review missing → defer
+all satisfied → ready_for_shadow_routing_review
+```
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
@@ -1766,6 +1806,7 @@ Stage 4-A: Runtime Wire Experiment Branch Plan
 Stage 4-B: Manual Branch Creation Verification
 Stage 4-C: Connector Gateway Shadow Routing Plan
 Stage 4-D: Controlled Execution Path Candidate
+Stage 4-E: Runtime Wire Experiment Review Package
 ```
 
 ### Stage 2 종료 판정 의미

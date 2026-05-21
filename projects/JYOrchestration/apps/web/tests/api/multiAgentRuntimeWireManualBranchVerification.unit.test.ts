@@ -41,8 +41,13 @@ function mockBranchPlanReady(): ReturnType<typeof branchPlanModule.evaluateRunti
     planFingerprint: "plan-fp",
     recommendedBranchName: EXPECTED_BRANCH,
     recommendedFeatureFlagName: "JYO_RUNTIME_WIRE_EXPERIMENT",
-    manualCommandCandidates: [],
-    regressionSuites: [],
+    manualCommandCandidates: [
+      { sequence: 1, command: "git fetch", caution: "Manual execution only after explicit user approval. This report does not execute git.", executesInThisStep: false },
+      { sequence: 2, command: "git checkout main", caution: "Manual execution only after explicit user approval. This report does not execute git.", executesInThisStep: false },
+      { sequence: 3, command: "git pull", caution: "Manual execution only after explicit user approval. This report does not execute git.", executesInThisStep: false },
+      { sequence: 4, command: "git checkout -b branch", caution: "Manual execution only after explicit user approval. This report does not execute git.", executesInThisStep: false },
+    ],
+    regressionSuites: ["tests/api/multiAgent", "tests/api/requirementsOrchestrationPhase4Product.unit.test.ts"],
     branchSafetyChecklist: [],
     rollbackChecklist: [],
     handoffChecklist: [],
@@ -59,7 +64,9 @@ function mockBranchPlanReady(): ReturnType<typeof branchPlanModule.evaluateRunti
     createsMigrationInThisStep: false,
     callsCursorInThisStep: false,
     callsGitHubInThisStep: false,
-    findings: [],
+    findings: [
+      { severity: "info", code: "runtime_wire_experiment_branch_plan_read_only", message: "read-only" },
+    ],
   };
 }
 
@@ -384,5 +391,90 @@ describe("multi-agent runtime wire manual branch verification stage 4-B", () => 
         (f) => f.code === "manual_branch_verified",
       ),
     ).toBe(true);
+  });
+
+  describe("Stage 4-B source trace hardening", () => {
+    it("sourceRecommendedBranchName matches expectedBranchName", () => {
+      spyBranchPlanReady();
+      const report = evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT);
+      expect(report.sourceRecommendedBranchName).toBe(report.expectedBranchName);
+    });
+
+    it("sourceRecommendedFeatureFlagName is non-empty with JYO_ prefix", () => {
+      spyBranchPlanReady();
+      const report = evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT);
+      expect(report.sourceRecommendedFeatureFlagName.startsWith("JYO_")).toBe(true);
+      expect(report.sourceRecommendedFeatureFlagName.length).toBeGreaterThan(0);
+    });
+
+    it("sourceManualCommandCount is at least 4", () => {
+      spyBranchPlanReady();
+      expect(evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT).sourceManualCommandCount).toBeGreaterThanOrEqual(
+        4,
+      );
+    });
+
+    it("sourceRegressionSuiteCount is at least 1", () => {
+      spyBranchPlanReady();
+      expect(
+        evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT).sourceRegressionSuiteCount,
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    it("sourceBranchPlanFindingCodes includes runtime_wire_experiment_branch_plan_read_only", () => {
+      spyBranchPlanReady();
+      expect(
+        evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT).sourceBranchPlanFindingCodes,
+      ).toContain("runtime_wire_experiment_branch_plan_read_only");
+    });
+
+    it("sourceBranchPlanNoRunFlags are all false", () => {
+      spyBranchPlanReady();
+      const flags = evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT).sourceBranchPlanNoRunFlags;
+      expect(Object.values(flags).every((v) => v === false)).toBe(true);
+    });
+
+    it("defer when branch plan not ready uses source_branch_plan_not_ready finding", () => {
+      vi.spyOn(branchPlanModule, "evaluateRuntimeWireExperimentBranchPlan").mockReturnValue({
+        ...mockBranchPlanReady(),
+        decision: "defer",
+      });
+
+      const report = evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT);
+      expect(report.findings.some((f) => f.code === "source_branch_plan_not_ready")).toBe(true);
+    });
+
+    it("does not emit source_wire_candidate_not_ready finding", () => {
+      vi.spyOn(branchPlanModule, "evaluateRuntimeWireExperimentBranchPlan").mockReturnValue({
+        ...mockBranchPlanReady(),
+        decision: "defer",
+      });
+
+      expect(
+        evaluateRuntimeWireManualBranchVerification(ALL_VERIFICATION_INPUT).findings.some(
+          (f) => f.code === "source_wire_candidate_not_ready",
+        ),
+      ).toBe(false);
+    });
+
+    it("duplicate failed sanitizer uses last failed summary", () => {
+      const result = sanitizeRuntimeWireRegressionResults([
+        { suite: "multiAgent", passed: false, summary: "first fail" },
+        { suite: "multiAgent", passed: false, summary: "last fail" },
+      ]);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.summary).toBe("last fail");
+    });
+
+    it("unknown suite dedupe merges entries", () => {
+      const result = sanitizeRuntimeWireRegressionResults([
+        { suite: "  ", passed: true, summary: "a" },
+        { suite: "", passed: false, summary: "b" },
+      ]);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.suite).toBe("unknown");
+      expect(result[0]?.passed).toBe(false);
+      expect(result[0]?.summary).toBe("b");
+    });
   });
 });
