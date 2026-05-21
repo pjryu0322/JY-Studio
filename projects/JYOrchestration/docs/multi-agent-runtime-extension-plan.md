@@ -1289,6 +1289,52 @@ writePath/schema approval 미준비 또는 확인값 미충족 → defer
 unknown target / upstream blocked / unsafe blocking finding → blocked
 ```
 
-### Stage 2-30 후보: Operator Approval/Audit write path wire 전 승인 게이트
+### Stage 2-29 보강 (소스 점검)
 
-Stage 2-30에서는 Operator Approval/Audit write path를 실제로 wire하기 전 최종 승인 게이트를 설계한다.
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| sourceSchemaApprovalTarget | write path target 기준 schema target 매핑 | 없음 | agent_execution_record만 직접 연동 |
+| schemaApprovalReferenceOnly | timeline/audit link는 reference only | 없음 | schema ready 미요구 |
+| source rollback trace | feature flag/rollback plan/source counts | 없음 | 문자열 contains 제거 |
+| sourceBlockingFindingCodes | upstream blocking code trace | 없음 | reference only schema 제외 |
+| write_path_wire_approval_ready | ready 상태 info finding | 없음 | |
+
+### Stage 2-30 Operator Approval/Audit Write Path Wire Approval Gate 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Write Path Wire Approval 타입 | read-only gate report | 없음 | 실제 wire 전 승인 |
+| Write Path Wire Approval evaluator | Stage 2-21 + Stage 2-27 기반 | 없음 | DB 미호출 |
+| explicitUserApproval | input flag | 없음 | 승인 확인값 |
+| schemaAppliedConfirmed | input flag | 없음 | 실제 확인은 외부 |
+| migrationAppliedConfirmed | input flag | 없음 | 실제 확인은 외부 |
+| featureFlagWireApproved | input flag | 없음 | wire는 별도 PR |
+| writeAdapterImplementedConfirmed | input flag | 없음 | adapter 구현 확인 |
+| permissionModelConfirmed | input flag | 없음 | 권한 모델 확인 |
+| auditTrailConfirmed | input flag | 없음 | 감사 추적 확인 |
+| permissionChecklist / auditChecklist | report checklist | 없음 | operator 전용 |
+| no-run flags | report field | 없음 | write/schema/migration 미실행 |
+
+### Stage 2-30 원칙
+
+```text
+- 실제 OperatorApproval/OperatorAuditEvent write path를 연결하지 않는다.
+- 실제 DB write를 하지 않는다.
+- Prisma client를 호출하지 않는다.
+- schema.prisma를 변경하지 않는다.
+- migration을 생성하지 않는다.
+- 모든 확인값은 외부 입력으로만 판단한다.
+```
+
+### Stage 2-30 Decision 규칙 요약
+
+```text
+writePath ready + schema approval ready + 모든 확인값 true → ready_for_write_path_wire_approval
+미충족 → defer
+unknown / upstream blocked / unsafe blocking → blocked
+operator_override / rollback_approval → schemaApprovalReferenceOnly (defer)
+```
+
+### Stage 2-31 후보: Connector Gateway routing 실험 브랜치 read-only route shadowing
+
+Stage 2-31에서는 Connector Gateway routing 실험 브랜치 내 read-only route shadowing을 설계한다.

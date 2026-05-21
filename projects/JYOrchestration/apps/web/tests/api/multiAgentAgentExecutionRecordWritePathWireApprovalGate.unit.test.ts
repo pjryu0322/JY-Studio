@@ -235,6 +235,92 @@ describe("multi-agent agent execution record write path wire approval gate stage
     ).toBe("blocked");
   });
 
+  it("report includes sourceSchemaApprovalTarget for agent_execution_record", () => {
+    expect(
+      evaluateAgentExecutionRecordWritePathWireApprovalGate({ target: "agent_execution_record" })
+        .sourceSchemaApprovalTarget,
+    ).toBe("agent_execution_record");
+  });
+
+  it("report includes schemaApprovalReferenceOnly for timeline_event_link", () => {
+    const report = evaluateAgentExecutionRecordWritePathWireApprovalGate({
+      target: "timeline_event_link",
+    });
+    expect(report.schemaApprovalReferenceOnly).toBe(true);
+    expect(report.decision).toBe("defer");
+  });
+
+  it("report includes schemaApprovalReferenceOnly for audit_trail_link", () => {
+    const report = evaluateAgentExecutionRecordWritePathWireApprovalGate({
+      target: "audit_trail_link",
+    });
+    expect(report.schemaApprovalReferenceOnly).toBe(true);
+    expect(report.decision).toBe("defer");
+  });
+
+  it("report includes sourceBlockingFindingCodes", () => {
+    expect(
+      evaluateAgentExecutionRecordWritePathWireApprovalGate().sourceBlockingFindingCodes,
+    ).toBeDefined();
+  });
+
+  it("report includes sourceWritePathFeatureFlagName and sourceWritePathRollbackPlan", () => {
+    const report = evaluateAgentExecutionRecordWritePathWireApprovalGate();
+    expect(report.sourceWritePathFeatureFlagName.length).toBeGreaterThan(0);
+    expect(report.sourceWritePathRollbackPlan.length).toBeGreaterThan(0);
+  });
+
+  it("target timeline_event_link is not ready with all confirmations", () => {
+    vi.spyOn(writePathModule, "evaluateAgentExecutionRecordWritePathDesign").mockReturnValue(
+      mockWritePathReady(),
+    );
+    vi.spyOn(schemaApprovalModule, "evaluateAgentExecutionRecordSchemaPrApprovalPackage").mockReturnValue(
+      mockSchemaApprovalReady(),
+    );
+
+    expect(
+      evaluateAgentExecutionRecordWritePathWireApprovalGate({
+        target: "timeline_event_link",
+        ...ALL_CONFIRMATIONS,
+      }).decision,
+    ).toBe("defer");
+  });
+
+  it("target audit_trail_link is not ready with all confirmations", () => {
+    vi.spyOn(writePathModule, "evaluateAgentExecutionRecordWritePathDesign").mockReturnValue(
+      mockWritePathReady(),
+    );
+    vi.spyOn(schemaApprovalModule, "evaluateAgentExecutionRecordSchemaPrApprovalPackage").mockReturnValue(
+      mockSchemaApprovalReady(),
+    );
+
+    expect(
+      evaluateAgentExecutionRecordWritePathWireApprovalGate({
+        target: "audit_trail_link",
+        ...ALL_CONFIRMATIONS,
+      }).decision,
+    ).toBe("defer");
+  });
+
+  it("ready state includes write_path_wire_approval_ready finding", () => {
+    vi.spyOn(writePathModule, "evaluateAgentExecutionRecordWritePathDesign").mockReturnValue(
+      mockWritePathReady(),
+    );
+    vi.spyOn(schemaApprovalModule, "evaluateAgentExecutionRecordSchemaPrApprovalPackage").mockReturnValue(
+      mockSchemaApprovalReady(),
+    );
+
+    const report = evaluateAgentExecutionRecordWritePathWireApprovalGate(ALL_CONFIRMATIONS);
+    expect(report.decision).toBe("ready_for_write_path_wire_approval");
+    expect(report.findings.some((f) => f.code === "write_path_wire_approval_ready")).toBe(true);
+  });
+
+  it("unknown target has non-empty sourceBlockingFindingCodes", () => {
+    const report = evaluateAgentExecutionRecordWritePathWireApprovalGate({ target: "unknown" });
+    expect(report.decision).toBe("blocked");
+    expect(report.sourceBlockingFindingCodes.length).toBeGreaterThan(0);
+  });
+
   it("evaluator does not wire write path DB Prisma schema or migration", () => {
     const writeSpy = vi.spyOn(writePathModule, "evaluateAgentExecutionRecordWritePathDesign");
     const schemaSpy = vi.spyOn(

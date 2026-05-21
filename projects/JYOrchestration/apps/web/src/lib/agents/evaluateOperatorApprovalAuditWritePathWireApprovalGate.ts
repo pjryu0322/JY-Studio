@@ -1,23 +1,23 @@
 /**
- * Evaluate Agent execution record write path wire approval gate (read-only; no Prisma/DB/write wire).
+ * Evaluate Operator approval/audit write path wire approval gate (read-only; no Prisma/DB/write wire).
  */
 
-import type { AgentExecutionRecordSchemaPrApprovalPackageReport } from "@/lib/agents/agentExecutionRecordSchemaPrApprovalPackageTypes";
+import type { OperatorApprovalAuditSchemaPrApprovalPackageReport } from "@/lib/agents/operatorApprovalAuditSchemaPrApprovalPackageTypes";
 import type {
-  AgentExecutionRecordWritePathWireApprovalChecklistItem,
-  AgentExecutionRecordWritePathWireApprovalDecision,
-  AgentExecutionRecordWritePathWireApprovalFinding,
-  AgentExecutionRecordWritePathWireApprovalGateReport,
-} from "@/lib/agents/agentExecutionRecordWritePathWireApprovalGateTypes";
+  OperatorApprovalAuditWritePathWireApprovalChecklistItem,
+  OperatorApprovalAuditWritePathWireApprovalDecision,
+  OperatorApprovalAuditWritePathWireApprovalFinding,
+  OperatorApprovalAuditWritePathWireApprovalGateReport,
+} from "@/lib/agents/operatorApprovalAuditWritePathWireApprovalGateTypes";
 import type {
-  AgentExecutionRecordWritePathDesignReport,
-  AgentExecutionRecordWritePathTarget,
-} from "@/lib/agents/agentExecutionRecordWritePathDesignTypes";
-import { evaluateAgentExecutionRecordSchemaPrApprovalPackage } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrApprovalPackage";
+  OperatorApprovalAuditWritePathDesignReport,
+  OperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/operatorApprovalAuditWritePathDesignTypes";
+import { evaluateOperatorApprovalAuditSchemaPrApprovalPackage } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrApprovalPackage";
 import {
-  evaluateAgentExecutionRecordWritePathDesign,
-  normalizeAgentExecutionRecordWritePathTarget,
-} from "@/lib/agents/evaluateAgentExecutionRecordWritePathDesign";
+  evaluateOperatorApprovalAuditWritePathDesign,
+  normalizeOperatorApprovalAuditWritePathTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditWritePathDesign";
 
 const APPROVAL_CHECKLIST_ITEMS = [
   "explicit user approval confirmed",
@@ -26,6 +26,8 @@ const APPROVAL_CHECKLIST_ITEMS = [
   "migration applied confirmed",
   "feature flag wire approved",
   "write adapter implemented confirmed",
+  "permission model confirmed",
+  "audit trail confirmed",
   "separate PR reviewed",
   "no write path wire in this step",
   "no data write in this step",
@@ -39,7 +41,28 @@ const RUNTIME_CHECKLIST_ITEMS = [
   "write adapter boundary identified",
   "sanitizer policy available",
   "forbidden field policy available",
-  "audit/timeline link policy reviewed",
+  "operator approval flow reviewed",
+  "operator override flow reviewed",
+  "rollback approval flow reviewed",
+  "audit event flow reviewed",
+] as const;
+
+const PERMISSION_CHECKLIST_ITEMS = [
+  "operator identity required",
+  "actor role policy reviewed",
+  "approval permission boundary reviewed",
+  "override permission boundary reviewed",
+  "rollback permission boundary reviewed",
+  "least privilege reviewed",
+] as const;
+
+const AUDIT_CHECKLIST_ITEMS = [
+  "audit event model available",
+  "audit actor recorded",
+  "audit decision recorded",
+  "audit target recorded",
+  "audit timestamp recorded",
+  "audit integrity reviewed",
 ] as const;
 
 const ROLLBACK_CHECKLIST_ITEMS = [
@@ -49,32 +72,36 @@ const ROLLBACK_CHECKLIST_ITEMS = [
   "migration rollback risk reviewed",
   "data retention impact reviewed",
   "operator approval required for rollback",
+  "audit trail rollback impact reviewed",
 ] as const;
 
 function finding(
-  severity: AgentExecutionRecordWritePathWireApprovalFinding["severity"],
+  severity: OperatorApprovalAuditWritePathWireApprovalFinding["severity"],
   code: string,
   message: string,
-): AgentExecutionRecordWritePathWireApprovalFinding {
+): OperatorApprovalAuditWritePathWireApprovalFinding {
   return { severity, code, message };
 }
 
-function resolveAgentSchemaApprovalContext(target: AgentExecutionRecordWritePathTarget): {
+function resolveOperatorSchemaApprovalContext(target: OperatorApprovalAuditWritePathTarget): {
   readonly schemaApprovalTarget: string;
   readonly schemaApprovalReferenceOnly: boolean;
 } {
-  if (target === "agent_execution_record") {
-    return { schemaApprovalTarget: "agent_execution_record", schemaApprovalReferenceOnly: false };
+  if (target === "operator_approval") {
+    return { schemaApprovalTarget: "operator_approval", schemaApprovalReferenceOnly: false };
   }
-  if (target === "timeline_event_link" || target === "audit_trail_link") {
-    return { schemaApprovalTarget: "unknown", schemaApprovalReferenceOnly: true };
+  if (target === "audit_event") {
+    return { schemaApprovalTarget: "audit_event", schemaApprovalReferenceOnly: false };
+  }
+  if (target === "operator_override" || target === "rollback_approval") {
+    return { schemaApprovalTarget: target, schemaApprovalReferenceOnly: true };
   }
   return { schemaApprovalTarget: "unknown", schemaApprovalReferenceOnly: true };
 }
 
 function collectSourceBlockingFindingCodes(input: {
-  readonly writePath: AgentExecutionRecordWritePathDesignReport;
-  readonly schemaApproval: AgentExecutionRecordSchemaPrApprovalPackageReport;
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
   readonly schemaApprovalReferenceOnly: boolean;
 }): string[] {
   const schemaFindings = input.schemaApprovalReferenceOnly ? [] : input.schemaApproval.findings;
@@ -89,16 +116,18 @@ function hasUnsafeUpstreamFindings(sourceBlockingFindingCodes: readonly string[]
 
 function resolveWireApprovalDecision(input: {
   readonly target: string;
-  readonly writePath: AgentExecutionRecordWritePathDesignReport;
-  readonly schemaApproval: AgentExecutionRecordSchemaPrApprovalPackageReport;
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
   readonly schemaApprovalReferenceOnly: boolean;
   readonly explicitUserApproval: boolean;
   readonly schemaAppliedConfirmed: boolean;
   readonly migrationAppliedConfirmed: boolean;
   readonly featureFlagWireApproved: boolean;
   readonly writeAdapterImplementedConfirmed: boolean;
+  readonly permissionModelConfirmed: boolean;
+  readonly auditTrailConfirmed: boolean;
   readonly sourceBlockingFindingCodes: readonly string[];
-}): AgentExecutionRecordWritePathWireApprovalDecision {
+}): OperatorApprovalAuditWritePathWireApprovalDecision {
   if (input.target === "unknown") {
     return "blocked";
   }
@@ -131,12 +160,27 @@ function resolveWireApprovalDecision(input: {
     !input.schemaAppliedConfirmed ||
     !input.migrationAppliedConfirmed ||
     !input.featureFlagWireApproved ||
-    !input.writeAdapterImplementedConfirmed
+    !input.writeAdapterImplementedConfirmed ||
+    !input.permissionModelConfirmed ||
+    !input.auditTrailConfirmed
   ) {
     return "defer";
   }
 
   return "ready_for_write_path_wire_approval";
+}
+
+function buildChecklist(
+  items: readonly string[],
+  satisfaction: Record<string, boolean>,
+): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
+  return items.map((item) => ({
+    item,
+    satisfied: satisfaction[item] ?? false,
+    reason: (satisfaction[item] ?? false)
+      ? `${item} satisfied`
+      : `${item} not satisfied`,
+  }));
 }
 
 function buildApprovalChecklist(input: {
@@ -146,105 +190,124 @@ function buildApprovalChecklist(input: {
   readonly migrationAppliedConfirmed: boolean;
   readonly featureFlagWireApproved: boolean;
   readonly writeAdapterImplementedConfirmed: boolean;
-}): AgentExecutionRecordWritePathWireApprovalChecklistItem[] {
-  const satisfaction: Record<string, boolean> = {
+  readonly permissionModelConfirmed: boolean;
+  readonly auditTrailConfirmed: boolean;
+}): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
+  return buildChecklist(APPROVAL_CHECKLIST_ITEMS, {
     "explicit user approval confirmed": input.explicitUserApproval,
     "schema approval package ready": input.schemaApprovalReady,
     "schema applied confirmed": input.schemaAppliedConfirmed,
     "migration applied confirmed": input.migrationAppliedConfirmed,
     "feature flag wire approved": input.featureFlagWireApproved,
     "write adapter implemented confirmed": input.writeAdapterImplementedConfirmed,
+    "permission model confirmed": input.permissionModelConfirmed,
+    "audit trail confirmed": input.auditTrailConfirmed,
     "separate PR reviewed": input.schemaApprovalReady,
     "no write path wire in this step": true,
     "no data write in this step": true,
     "no Prisma call in this step": true,
-  };
-
-  return APPROVAL_CHECKLIST_ITEMS.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
-  }));
+  });
 }
 
 function buildRuntimeChecklist(input: {
   readonly writePathReady: boolean;
-  readonly writePath: AgentExecutionRecordWritePathDesignReport;
-}): AgentExecutionRecordWritePathWireApprovalChecklistItem[] {
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+}): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
   const { writePath, writePathReady } = input;
-  const sanitizersAvailable = writePath.proposedSanitizers.length > 0;
-  const forbiddenPolicyAvailable = writePath.forbiddenFieldGuards.length > 0;
-  const linkPolicyReviewed =
-    writePath.target === "agent_execution_record" ||
-    writePath.target === "timeline_event_link" ||
-    writePath.target === "audit_trail_link";
-
-  const satisfaction: Record<string, boolean> = {
+  return buildChecklist(RUNTIME_CHECKLIST_ITEMS, {
     "write path design ready": writePathReady,
     "runtime execution path unchanged": true,
     "feature flag default off before wire": writePath.featureFlagDefault === "off",
     "write adapter boundary identified": writePath.proposedWriteEntrypoints.length > 0,
-    "sanitizer policy available": sanitizersAvailable,
-    "forbidden field policy available": forbiddenPolicyAvailable,
-    "audit/timeline link policy reviewed": linkPolicyReviewed,
-  };
+    "sanitizer policy available": writePath.proposedSanitizers.length > 0,
+    "forbidden field policy available": writePath.forbiddenFieldGuards.length > 0,
+    "operator approval flow reviewed": writePath.target === "operator_approval",
+    "operator override flow reviewed":
+      writePath.target === "operator_override" || writePath.target === "operator_approval",
+    "rollback approval flow reviewed":
+      writePath.target === "rollback_approval" || writePath.target === "operator_approval",
+    "audit event flow reviewed": writePath.target === "audit_event" || writePath.target === "operator_approval",
+  });
+}
 
-  return RUNTIME_CHECKLIST_ITEMS.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
-  }));
+function buildPermissionChecklist(input: {
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
+  readonly permissionModelConfirmed: boolean;
+}): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
+  const permissionGuards = input.writePath.proposedPermissionGuards.length > 0;
+  const permissionChecklistReviewed = input.schemaApproval.permissionAccessChecklist.length > 0;
+
+  return buildChecklist(PERMISSION_CHECKLIST_ITEMS, {
+    "operator identity required": permissionGuards,
+    "actor role policy reviewed": permissionChecklistReviewed,
+    "approval permission boundary reviewed": permissionGuards,
+    "override permission boundary reviewed": permissionGuards,
+    "rollback permission boundary reviewed": permissionGuards,
+    "least privilege reviewed": input.permissionModelConfirmed && permissionChecklistReviewed,
+  });
+}
+
+function buildAuditChecklist(input: {
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
+  readonly auditTrailConfirmed: boolean;
+}): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
+  const auditGuards = input.writePath.proposedAuditIntegrityGuards.length > 0;
+  const auditChecklistReviewed = input.schemaApproval.auditIntegrityChecklist.length > 0;
+
+  return buildChecklist(AUDIT_CHECKLIST_ITEMS, {
+    "audit event model available": auditChecklistReviewed || input.writePath.target === "audit_event",
+    "audit actor recorded": auditGuards,
+    "audit decision recorded": auditGuards,
+    "audit target recorded": auditGuards,
+    "audit timestamp recorded": auditGuards,
+    "audit integrity reviewed": input.auditTrailConfirmed && auditChecklistReviewed,
+  });
 }
 
 function buildRollbackChecklist(input: {
-  readonly writePath: AgentExecutionRecordWritePathDesignReport;
-  readonly schemaApproval: AgentExecutionRecordSchemaPrApprovalPackageReport;
-}): AgentExecutionRecordWritePathWireApprovalChecklistItem[] {
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
+}): OperatorApprovalAuditWritePathWireApprovalChecklistItem[] {
   const featureFlagRollback =
     input.writePath.featureFlagName.trim().length > 0 && input.writePath.rollbackPlan.length > 0;
   const adapterRollback =
     input.writePath.proposedWriteEntrypoints.length > 0 && input.writePath.rollbackPlan.length > 0;
-  const schemaRollbackReviewed = input.schemaApproval.rollbackChecklist.length > 0;
-  const migrationRollbackReviewed = input.schemaApproval.migrationChecklist.length > 0;
-  const retentionReviewed = input.schemaApproval.retentionAccessChecklist.length > 0;
+  const auditTrailRollbackReviewed = input.writePath.proposedAuditIntegrityGuards.some((item) =>
+    item.toLowerCase().includes("audit"),
+  );
 
-  const satisfaction: Record<string, boolean> = {
+  return buildChecklist(ROLLBACK_CHECKLIST_ITEMS, {
     "feature flag rollback plan available": featureFlagRollback,
     "write adapter rollback plan available": adapterRollback,
-    "schema rollback risk reviewed": schemaRollbackReviewed,
-    "migration rollback risk reviewed": migrationRollbackReviewed,
-    "data retention impact reviewed": retentionReviewed,
+    "schema rollback risk reviewed": input.schemaApproval.rollbackChecklist.length > 0,
+    "migration rollback risk reviewed": input.schemaApproval.migrationChecklist.length > 0,
+    "data retention impact reviewed": input.schemaApproval.permissionAccessChecklist.length > 0,
     "operator approval required for rollback": input.writePath.requiresOperatorApproval,
-  };
-
-  return ROLLBACK_CHECKLIST_ITEMS.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
-  }));
+    "audit trail rollback impact reviewed": auditTrailRollbackReviewed,
+  });
 }
 
 function appendGateFindings(input: {
-  readonly findings: AgentExecutionRecordWritePathWireApprovalFinding[];
-  readonly decision: AgentExecutionRecordWritePathWireApprovalDecision;
-  readonly writePath: AgentExecutionRecordWritePathDesignReport;
-  readonly schemaApproval: AgentExecutionRecordSchemaPrApprovalPackageReport;
+  readonly findings: OperatorApprovalAuditWritePathWireApprovalFinding[];
+  readonly decision: OperatorApprovalAuditWritePathWireApprovalDecision;
+  readonly target: string;
+  readonly writePath: OperatorApprovalAuditWritePathDesignReport;
+  readonly schemaApproval: OperatorApprovalAuditSchemaPrApprovalPackageReport;
   readonly explicitUserApproval: boolean;
   readonly schemaAppliedConfirmed: boolean;
   readonly migrationAppliedConfirmed: boolean;
   readonly featureFlagWireApproved: boolean;
   readonly writeAdapterImplementedConfirmed: boolean;
+  readonly permissionModelConfirmed: boolean;
+  readonly auditTrailConfirmed: boolean;
   readonly unsafeUpstream: boolean;
 }): void {
   const {
     findings,
     decision,
+    target,
     writePath,
     schemaApproval,
     explicitUserApproval,
@@ -252,14 +315,16 @@ function appendGateFindings(input: {
     migrationAppliedConfirmed,
     featureFlagWireApproved,
     writeAdapterImplementedConfirmed,
+    permissionModelConfirmed,
+    auditTrailConfirmed,
     unsafeUpstream,
   } = input;
 
   findings.push(
     finding(
       "info",
-      "write_path_wire_gate_read_only",
-      "write path wire approval gate is read-only; no write/schema/migration wire",
+      "operator_write_path_wire_gate_read_only",
+      "operator write path wire approval gate is read-only; no write/schema/migration wire",
     ),
   );
   findings.push(finding("info", "no_write_path_wire_in_this_step", "write path is not wired in this step"));
@@ -267,15 +332,28 @@ function appendGateFindings(input: {
   findings.push(finding("info", "no_prisma_call_in_this_step", "Prisma client is not called in this step"));
 
   if (decision === "blocked") {
+    if (target === "unknown") {
+      findings.push(
+        finding("blocking", "unknown_operator_write_path_target", "unknown operator write path target is blocked"),
+      );
+    }
     if (writePath.decision === "blocked") {
-      findings.push(finding("blocking", "write_path_design_blocked", "write path design is blocked"));
+      findings.push(
+        finding("blocking", "operator_write_path_design_blocked", "operator write path design is blocked"),
+      );
     }
     if (schemaApproval.decision === "blocked") {
-      findings.push(finding("blocking", "schema_approval_blocked", "schema approval package is blocked"));
+      findings.push(
+        finding("blocking", "operator_schema_approval_blocked", "operator schema approval package is blocked"),
+      );
     }
     if (unsafeUpstream) {
       findings.push(
-        finding("blocking", "unsafe_write_path_wire", "unsafe upstream findings block write path wire approval"),
+        finding(
+          "blocking",
+          "unsafe_operator_write_path_wire",
+          "unsafe upstream findings block operator write path wire approval",
+        ),
       );
     }
     return;
@@ -303,11 +381,19 @@ function appendGateFindings(input: {
         finding("warning", "write_adapter_not_implemented", "write adapter implementation is not confirmed"),
       );
     }
+    if (!permissionModelConfirmed) {
+      findings.push(
+        finding("warning", "permission_model_not_confirmed", "permission model confirmation is missing"),
+      );
+    }
+    if (!auditTrailConfirmed) {
+      findings.push(finding("warning", "audit_trail_not_confirmed", "audit trail confirmation is missing"));
+    }
     findings.push(
       finding(
         "warning",
-        "write_path_wire_gate_deferred",
-        "write path wire approval gate defers until prerequisites are met",
+        "operator_write_path_wire_gate_deferred",
+        "operator write path wire approval gate defers until prerequisites are met",
       ),
     );
     return;
@@ -316,29 +402,37 @@ function appendGateFindings(input: {
   findings.push(finding("info", "schema_approval_package_ready", "schema approval package is ready"));
   findings.push(finding("info", "write_path_design_ready", "write path design is ready for wire approval"));
   findings.push(
-    finding("info", "write_path_wire_approval_ready", "write path wire approval gate is ready for wire approval"),
+    finding(
+      "info",
+      "operator_write_path_wire_approval_ready",
+      "operator write path wire approval gate is ready for wire approval",
+    ),
   );
 }
 
-/** Read-only write path wire approval gate — does not wire write path, call Prisma, or modify schema. */
-export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
+/** Read-only operator write path wire approval gate — does not wire write path, call Prisma, or modify schema. */
+export function evaluateOperatorApprovalAuditWritePathWireApprovalGate(input?: {
   readonly target?: string;
   readonly explicitUserApproval?: boolean;
   readonly schemaAppliedConfirmed?: boolean;
   readonly migrationAppliedConfirmed?: boolean;
   readonly featureFlagWireApproved?: boolean;
   readonly writeAdapterImplementedConfirmed?: boolean;
-}): AgentExecutionRecordWritePathWireApprovalGateReport {
-  const target = normalizeAgentExecutionRecordWritePathTarget(input?.target);
-  const { schemaApprovalTarget, schemaApprovalReferenceOnly } = resolveAgentSchemaApprovalContext(target);
+  readonly permissionModelConfirmed?: boolean;
+  readonly auditTrailConfirmed?: boolean;
+}): OperatorApprovalAuditWritePathWireApprovalGateReport {
+  const target = normalizeOperatorApprovalAuditWritePathTarget(input?.target);
+  const { schemaApprovalTarget, schemaApprovalReferenceOnly } = resolveOperatorSchemaApprovalContext(target);
   const explicitUserApproval = input?.explicitUserApproval === true;
   const schemaAppliedConfirmed = input?.schemaAppliedConfirmed === true;
   const migrationAppliedConfirmed = input?.migrationAppliedConfirmed === true;
   const featureFlagWireApproved = input?.featureFlagWireApproved === true;
   const writeAdapterImplementedConfirmed = input?.writeAdapterImplementedConfirmed === true;
+  const permissionModelConfirmed = input?.permissionModelConfirmed === true;
+  const auditTrailConfirmed = input?.auditTrailConfirmed === true;
 
-  const writePath = evaluateAgentExecutionRecordWritePathDesign({ target });
-  const schemaApproval = evaluateAgentExecutionRecordSchemaPrApprovalPackage({
+  const writePath = evaluateOperatorApprovalAuditWritePathDesign({ target });
+  const schemaApproval = evaluateOperatorApprovalAuditSchemaPrApprovalPackage({
     target: schemaApprovalTarget,
     explicitUserApproval: input?.explicitUserApproval,
   });
@@ -359,6 +453,8 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     migrationAppliedConfirmed,
     featureFlagWireApproved,
     writeAdapterImplementedConfirmed,
+    permissionModelConfirmed,
+    auditTrailConfirmed,
     sourceBlockingFindingCodes,
   });
 
@@ -374,15 +470,24 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     migrationAppliedConfirmed,
     featureFlagWireApproved,
     writeAdapterImplementedConfirmed,
+    permissionModelConfirmed,
+    auditTrailConfirmed,
   });
 
   const runtimeChecklist = buildRuntimeChecklist({ writePathReady, writePath });
+  const permissionChecklist = buildPermissionChecklist({
+    writePath,
+    schemaApproval,
+    permissionModelConfirmed,
+  });
+  const auditChecklist = buildAuditChecklist({ writePath, schemaApproval, auditTrailConfirmed });
   const rollbackChecklist = buildRollbackChecklist({ writePath, schemaApproval });
 
-  const findings: AgentExecutionRecordWritePathWireApprovalFinding[] = [];
+  const findings: OperatorApprovalAuditWritePathWireApprovalFinding[] = [];
   appendGateFindings({
     findings,
     decision,
+    target,
     writePath,
     schemaApproval,
     explicitUserApproval,
@@ -390,11 +495,13 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     migrationAppliedConfirmed,
     featureFlagWireApproved,
     writeAdapterImplementedConfirmed,
+    permissionModelConfirmed,
+    auditTrailConfirmed,
     unsafeUpstream,
   });
 
   return {
-    mode: "read_only_agent_execution_record_write_path_wire_approval_gate",
+    mode: "read_only_operator_approval_audit_write_path_wire_approval_gate",
     decision,
     sourceWritePathDecision: writePath.decision,
     sourceSchemaApprovalDecision: schemaApproval.decision,
@@ -406,6 +513,8 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     migrationAppliedConfirmed,
     featureFlagWireApproved,
     writeAdapterImplementedConfirmed,
+    permissionModelConfirmed,
+    auditTrailConfirmed,
     sourceWritePathFeatureFlagName: writePath.featureFlagName,
     sourceWritePathRollbackPlan: [...writePath.rollbackPlan],
     sourceSchemaApprovalRollbackItemCount: schemaApproval.rollbackChecklist.length,
@@ -414,11 +523,15 @@ export function evaluateAgentExecutionRecordWritePathWireApprovalGate(input?: {
     approvalChecklist,
     runtimeChecklist,
     rollbackChecklist,
+    permissionChecklist,
+    auditChecklist,
     requiresExplicitUserApproval: true,
     requiresSchemaApplied: true,
     requiresMigrationApplied: true,
     requiresFeatureFlagWireApproval: true,
     requiresWriteAdapterImplemented: true,
+    requiresPermissionModelConfirmed: true,
+    requiresAuditTrailConfirmed: true,
     wiresWritePathInThisStep: false,
     writesDataInThisStep: false,
     callsPrismaInThisStep: false,

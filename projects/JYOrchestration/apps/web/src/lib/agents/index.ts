@@ -489,6 +489,15 @@ export type {
 
 export { evaluateAgentExecutionRecordWritePathWireApprovalGate } from "@/lib/agents/evaluateAgentExecutionRecordWritePathWireApprovalGate";
 
+export type {
+  OperatorApprovalAuditWritePathWireApprovalChecklistItem,
+  OperatorApprovalAuditWritePathWireApprovalDecision,
+  OperatorApprovalAuditWritePathWireApprovalFinding,
+  OperatorApprovalAuditWritePathWireApprovalGateReport,
+} from "@/lib/agents/operatorApprovalAuditWritePathWireApprovalGateTypes";
+
+export { evaluateOperatorApprovalAuditWritePathWireApprovalGate } from "@/lib/agents/evaluateOperatorApprovalAuditWritePathWireApprovalGate";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */
