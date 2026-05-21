@@ -1148,6 +1148,52 @@ defer / timeline_event_link / audit_trail_link → defer
 blocked / unknown → blocked
 ```
 
-### Stage 2-27 후보: Operator Approval/Audit schema PR 실제 적용 여부 최종 승인
+## Stage 2-26 소스 보완 결과
 
-Stage 2-27에서는 Stage 2-24 readiness를 기준으로 Operator Approval/Audit schema PR 적용 승인 패키지를 만든다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| explicit approval semantics | `explicit user approval confirmed` | requires vs provided 분리 |
+| explicitUserApprovalProvided | report field 추가 | input과 동기화 |
+| modelDraft exposure policy | `ready_for_schema_pr_plan`일 때만 노출 | blocked/defer readiness는 빈 draft |
+| forbidden field recheck | approval package 단계 재검증 | forbidden draft → blocked |
+| 실제 schema/migration/DB write | 없음 | read-only 유지 |
+
+## Stage 2-27 Operator Approval/Audit Schema PR Approval Package 결과
+
+| 항목 | 반영 방식 | 실제 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema PR Approval Package 타입 | read-only approval report | 없음 | 최종 승인 패키지 |
+| Schema PR Approval evaluator | Stage 2-24 readiness 기반 | 없음 | schema.prisma 미수정 |
+| explicitUserApproval | input flag | 없음 | true여도 실제 변경 없음 |
+| explicitUserApprovalProvided | report field | 없음 | 승인 상태 표시 |
+| OperatorApproval modelDraft | report field | 없음 | operator_approval target |
+| OperatorAuditEvent modelDraft | report field | 없음 | audit_event target |
+| permissionAccessChecklist | report field | 없음 | 권한 검토 |
+| auditIntegrityChecklist | report field | 없음 | 감사 무결성 검토 |
+| migration/rollback checklist | report field | 없음 | migration 미생성 |
+| forbiddenFieldChecklist | report field | 없음 | raw/secret/contact 필드 제외 확인 |
+
+구현: `operatorApprovalAuditSchemaPrApprovalPackageTypes.ts`, `evaluateOperatorApprovalAuditSchemaPrApprovalPackage.ts`
+
+### Stage 2-27 원칙
+
+```text
+- 실제 schema.prisma를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB write를 구현하지 않는다.
+- explicitUserApproval=true여도 approval package만 만든다.
+- 실제 schema PR 생성은 별도 승인 후 별도 작업으로 진행한다.
+```
+
+### Stage 2-27 Decision 규칙 요약
+
+```text
+ready_for_schema_pr_plan + explicitUserApproval=true → ready_for_explicit_schema_pr_approval
+operator_approval → OperatorApproval draft / audit_event → OperatorAuditEvent draft
+operator_override / rollback_approval → defer, modelDraft=""
+blocked / unknown → blocked, modelDraft=""
+```
+
+### Stage 2-28 후보: Connector Gateway 실험 브랜치 수동 생성 후 회귀 검증
+
+Stage 2-28에서는 Stage 2-25 execution package의 manualCommands를 사용자가 수동 실행한 뒤, 실험 브랜치 상태와 회귀 테스트 기준을 검증하는 read-only verification package를 만든다.

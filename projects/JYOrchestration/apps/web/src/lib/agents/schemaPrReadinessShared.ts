@@ -27,11 +27,45 @@ function uniqueStrings(values: readonly string[]): string[] {
   return out;
 }
 
+export type SchemaPrApprovalDecision =
+  | "ready_for_explicit_schema_pr_approval"
+  | "defer"
+  | "blocked";
+
 export function modelDraftContainsForbiddenFields(
   modelDraft: string,
   forbiddenFields: readonly string[],
 ): boolean {
   return forbiddenFields.some((field) => new RegExp(`\\b${field}\\b`, "i").test(modelDraft));
+}
+
+export function detectForbiddenModelDraftInCandidates(input: {
+  readonly modelCandidates: readonly { readonly modelDraft: string }[];
+  readonly forbiddenFieldNames: readonly string[];
+}): boolean {
+  return input.modelCandidates.some((candidate) =>
+    modelDraftContainsForbiddenFields(candidate.modelDraft, input.forbiddenFieldNames),
+  );
+}
+
+export function resolveSchemaPrApprovalDecision(input: {
+  readonly readinessDecision: string;
+  readonly explicitUserApproval: boolean;
+  readonly forbiddenDraftDetected: boolean;
+}): SchemaPrApprovalDecision {
+  if (input.forbiddenDraftDetected) {
+    return "blocked";
+  }
+
+  switch (input.readinessDecision) {
+    case "ready_for_schema_pr_plan":
+      return input.explicitUserApproval ? "ready_for_explicit_schema_pr_approval" : "defer";
+    case "defer":
+      return "defer";
+    case "blocked":
+    default:
+      return "blocked";
+  }
 }
 
 export function modelDraftContainsRequiredFields(

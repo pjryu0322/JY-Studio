@@ -42,6 +42,7 @@ export interface AgentExecutionRecordSchemaPrApprovalPackageReport {
   readonly forbiddenFieldChecklist: readonly AgentExecutionRecordSchemaPrApprovalChecklistItem[];
 
   readonly requiresExplicitUserApproval: boolean;
+  readonly explicitUserApprovalProvided: boolean;
   readonly requiresSeparatePr: boolean;
   readonly modifiesSchemaInThisStep: false;
   readonly createsMigrationInThisStep: false;

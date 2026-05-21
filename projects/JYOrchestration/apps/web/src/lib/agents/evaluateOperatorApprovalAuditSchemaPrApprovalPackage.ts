@@ -1,15 +1,15 @@
 /**
- * Evaluate Agent execution record schema/migration PR final approval package (read-only; no schema/migration/DB wire).
+ * Evaluate Operator approval/audit schema/migration PR final approval package (read-only; no schema/migration/DB wire).
  */
 
-import { evaluateAgentExecutionRecordSchemaPrReadiness } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
+import { evaluateOperatorApprovalAuditSchemaPrReadiness } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrReadiness";
 import type {
-  AgentExecutionRecordSchemaPrApprovalChecklistItem,
-  AgentExecutionRecordSchemaPrApprovalDecision,
-  AgentExecutionRecordSchemaPrApprovalFinding,
-  AgentExecutionRecordSchemaPrApprovalPackageReport,
-} from "@/lib/agents/agentExecutionRecordSchemaPrApprovalPackageTypes";
-import type { AgentExecutionRecordSchemaPrChecklistItem } from "@/lib/agents/agentExecutionRecordSchemaPrReadinessTypes";
+  OperatorApprovalAuditSchemaPrApprovalChecklistItem,
+  OperatorApprovalAuditSchemaPrApprovalDecision,
+  OperatorApprovalAuditSchemaPrApprovalFinding,
+  OperatorApprovalAuditSchemaPrApprovalPackageReport,
+} from "@/lib/agents/operatorApprovalAuditSchemaPrApprovalPackageTypes";
+import type { OperatorApprovalAuditSchemaPrChecklistItem } from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
 import {
   detectForbiddenModelDraftInCandidates,
   resolveSchemaPrApprovalDecision,
@@ -22,7 +22,8 @@ const APPROVAL_CHECKLIST_ITEMS = [
   "forbidden fields excluded",
   "migration checklist reviewed",
   "rollback checklist reviewed",
-  "retention/access checklist reviewed",
+  "permission/access checklist reviewed",
+  "audit integrity checklist reviewed",
   "separate PR required",
   "no schema modification in this step",
   "no migration creation in this step",
@@ -30,16 +31,16 @@ const APPROVAL_CHECKLIST_ITEMS = [
 ] as const;
 
 function finding(
-  severity: AgentExecutionRecordSchemaPrApprovalFinding["severity"],
+  severity: OperatorApprovalAuditSchemaPrApprovalFinding["severity"],
   code: string,
   message: string,
-): AgentExecutionRecordSchemaPrApprovalFinding {
+): OperatorApprovalAuditSchemaPrApprovalFinding {
   return { severity, code, message };
 }
 
 function mapReadinessChecklist(
-  items: readonly AgentExecutionRecordSchemaPrChecklistItem[],
-): AgentExecutionRecordSchemaPrApprovalChecklistItem[] {
+  items: readonly OperatorApprovalAuditSchemaPrChecklistItem[],
+): OperatorApprovalAuditSchemaPrApprovalChecklistItem[] {
   return items.map((item) => ({
     item: item.item,
     satisfied: item.satisfied,
@@ -48,9 +49,9 @@ function mapReadinessChecklist(
 }
 
 function buildApprovalChecklist(input: {
-  readonly readiness: ReturnType<typeof evaluateAgentExecutionRecordSchemaPrReadiness>;
+  readonly readiness: ReturnType<typeof evaluateOperatorApprovalAuditSchemaPrReadiness>;
   readonly explicitUserApproval: boolean;
-}): AgentExecutionRecordSchemaPrApprovalChecklistItem[] {
+}): OperatorApprovalAuditSchemaPrApprovalChecklistItem[] {
   const readinessReady = input.readiness.decision === "ready_for_schema_pr_plan";
   const shouldExposeDraft = readinessReady;
   const modelDraftAvailable = shouldExposeDraft && input.readiness.modelCandidates.length > 0;
@@ -63,7 +64,8 @@ function buildApprovalChecklist(input: {
     "forbidden fields excluded": forbiddenExcluded,
     "migration checklist reviewed": input.readiness.migrationChecklist.length > 0,
     "rollback checklist reviewed": input.readiness.rollbackChecklist.length > 0,
-    "retention/access checklist reviewed": input.readiness.retentionAccessChecklist.length > 0,
+    "permission/access checklist reviewed": input.readiness.permissionAccessChecklist.length > 0,
+    "audit integrity checklist reviewed": input.readiness.auditIntegrityChecklist.length > 0,
     "separate PR required": true,
     "no schema modification in this step": true,
     "no migration creation in this step": true,
@@ -80,9 +82,9 @@ function buildApprovalChecklist(input: {
 }
 
 function appendApprovalFindings(input: {
-  readonly findings: AgentExecutionRecordSchemaPrApprovalFinding[];
-  readonly decision: AgentExecutionRecordSchemaPrApprovalDecision;
-  readonly readiness: ReturnType<typeof evaluateAgentExecutionRecordSchemaPrReadiness>;
+  readonly findings: OperatorApprovalAuditSchemaPrApprovalFinding[];
+  readonly decision: OperatorApprovalAuditSchemaPrApprovalDecision;
+  readonly readiness: ReturnType<typeof evaluateOperatorApprovalAuditSchemaPrReadiness>;
   readonly explicitUserApproval: boolean;
   readonly modelDraft: string;
   readonly forbiddenDraftDetected: boolean;
@@ -93,8 +95,8 @@ function appendApprovalFindings(input: {
   findings.push(
     finding(
       "info",
-      "schema_pr_approval_package_read_only",
-      "schema PR approval package is read-only; no schema/migration wire",
+      "operator_schema_pr_approval_package_read_only",
+      "operator schema PR approval package is read-only; no schema/migration wire",
     ),
   );
   findings.push(finding("info", "separate_pr_required", "schema/migration requires a separate PR"));
@@ -113,7 +115,7 @@ function appendApprovalFindings(input: {
   }
 
   if (decision === "blocked") {
-    findings.push(finding("blocking", "schema_pr_approval_blocked", "schema PR approval is blocked"));
+    findings.push(finding("blocking", "operator_schema_pr_approval_blocked", "operator schema PR approval is blocked"));
     if (readiness.decision === "blocked") {
       findings.push(finding("blocking", "source_readiness_blocked", "source schema PR readiness is blocked"));
     }
@@ -131,27 +133,33 @@ function appendApprovalFindings(input: {
   if (decision === "defer") {
     if (readiness.decision === "ready_for_schema_pr_plan" && !explicitUserApproval) {
       findings.push(
-        finding("warning", "explicit_schema_pr_approval_missing", "explicit schema PR approval is required"),
+        finding(
+          "warning",
+          "explicit_operator_schema_pr_approval_missing",
+          "explicit operator schema PR approval is required",
+        ),
       );
     }
     findings.push(
-      finding("warning", "schema_pr_approval_deferred", "schema PR approval defers until prerequisites are met"),
+      finding("warning", "operator_schema_pr_approval_deferred", "operator schema PR approval defers until prerequisites are met"),
     );
     return;
   }
 
   findings.push(
-    finding("info", "explicit_schema_pr_approval_confirmed", "explicit schema PR approval flag is set"),
+    finding("info", "explicit_operator_schema_pr_approval_confirmed", "explicit operator schema PR approval flag is set"),
   );
-  findings.push(finding("info", "schema_pr_package_ready", "schema PR approval package is ready for separate PR work"));
+  findings.push(
+    finding("info", "operator_schema_pr_package_ready", "operator schema PR approval package is ready for separate PR work"),
+  );
 }
 
-/** Read-only schema PR approval package — does not modify schema.prisma, create migrations, or write data. */
-export function evaluateAgentExecutionRecordSchemaPrApprovalPackage(input?: {
+/** Read-only operator schema PR approval package — does not modify schema.prisma, create migrations, or write data. */
+export function evaluateOperatorApprovalAuditSchemaPrApprovalPackage(input?: {
   readonly target?: string;
   readonly explicitUserApproval?: boolean;
-}): AgentExecutionRecordSchemaPrApprovalPackageReport {
-  const readiness = evaluateAgentExecutionRecordSchemaPrReadiness({
+}): OperatorApprovalAuditSchemaPrApprovalPackageReport {
+  const readiness = evaluateOperatorApprovalAuditSchemaPrReadiness({
     target: input?.target,
   });
   const explicitUserApproval = input?.explicitUserApproval === true;
@@ -177,10 +185,11 @@ export function evaluateAgentExecutionRecordSchemaPrApprovalPackage(input?: {
   const approvalChecklist = buildApprovalChecklist({ readiness, explicitUserApproval });
   const migrationChecklist = mapReadinessChecklist(readiness.migrationChecklist);
   const rollbackChecklist = mapReadinessChecklist(readiness.rollbackChecklist);
-  const retentionAccessChecklist = mapReadinessChecklist(readiness.retentionAccessChecklist);
+  const permissionAccessChecklist = mapReadinessChecklist(readiness.permissionAccessChecklist);
+  const auditIntegrityChecklist = mapReadinessChecklist(readiness.auditIntegrityChecklist);
   const forbiddenFieldChecklist = mapReadinessChecklist(readiness.forbiddenFieldChecklist);
 
-  const findings: AgentExecutionRecordSchemaPrApprovalFinding[] = [];
+  const findings: OperatorApprovalAuditSchemaPrApprovalFinding[] = [];
   appendApprovalFindings({
     findings,
     decision,
@@ -191,7 +200,7 @@ export function evaluateAgentExecutionRecordSchemaPrApprovalPackage(input?: {
   });
 
   return {
-    mode: "read_only_agent_execution_record_schema_pr_approval_package",
+    mode: "read_only_operator_approval_audit_schema_pr_approval_package",
     decision,
     target: readiness.target,
     sourceReadinessDecision: readiness.decision,
@@ -207,7 +216,8 @@ export function evaluateAgentExecutionRecordSchemaPrApprovalPackage(input?: {
     approvalChecklist,
     migrationChecklist,
     rollbackChecklist,
-    retentionAccessChecklist,
+    permissionAccessChecklist,
+    auditIntegrityChecklist,
     forbiddenFieldChecklist,
     requiresExplicitUserApproval: true,
     explicitUserApprovalProvided: explicitUserApproval,
