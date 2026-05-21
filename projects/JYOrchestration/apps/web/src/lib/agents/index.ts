@@ -723,8 +723,24 @@ export type {
 export {
   DEFAULT_ROLE_KNOWLEDGE_BINDINGS,
   listDefaultRoleKnowledgeBindings,
+  listDefaultRoleKnowledgeAgentTypes,
   getDefaultRoleKnowledgeBindingsForAgent,
 } from "@/lib/agents/defaultRoleKnowledgeBindings";
+
+export {
+  buildRoleKnowledgeBindingClosureFingerprint,
+  evaluateRoleKnowledgeBindingClosure,
+  resolveRoleKnowledgeBindingClosureDecision,
+} from "@/lib/agents/evaluateRoleKnowledgeBindingClosure";
+
+export type {
+  RoleKnowledgeBindingClosureAgentSummary,
+  RoleKnowledgeBindingClosureChecklistItem,
+  RoleKnowledgeBindingClosureDecision,
+  RoleKnowledgeBindingClosureFinding,
+  RoleKnowledgeBindingClosureInput,
+  RoleKnowledgeBindingClosureReport,
+} from "@/lib/agents/roleKnowledgeBindingClosureTypes";
 
 export {
   evaluateRoleKnowledgeBindingReadiness,

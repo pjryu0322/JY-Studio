@@ -106,6 +106,11 @@ export const DEFAULT_ROLE_KNOWLEDGE_BINDINGS: Readonly<Record<string, readonly R
   operator: OPERATOR_BINDINGS,
 };
 
+/** All default agent types with role knowledge bindings (sorted). */
+export function listDefaultRoleKnowledgeAgentTypes(): readonly string[] {
+  return Object.keys(DEFAULT_ROLE_KNOWLEDGE_BINDINGS).sort((a, b) => a.localeCompare(b));
+}
+
 /** Lists all default bindings across agent types. */
 export function listDefaultRoleKnowledgeBindings(): readonly RoleKnowledgePackBinding[] {
   return Object.values(DEFAULT_ROLE_KNOWLEDGE_BINDINGS).flat();

@@ -405,6 +405,30 @@ describe("multi-agent role knowledge binding readiness stage 5-A", () => {
     });
   });
 
+  describe("closure source field regression guard", () => {
+    it("exposes missingOptionalBindingIds for closure aggregation", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: requiredPackIdsForAgent("developer"),
+      });
+      expect(report.missingOptionalBindingIds).toEqual(["kp.platform.governance-policy.default"]);
+    });
+
+    it("exposes sourceDefaultKnowledgePackIds for closure trace", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({ agentType: "planner" });
+      expect(report.sourceDefaultKnowledgePackIds.length).toBeGreaterThan(0);
+      expect(report.sourceDefaultKnowledgePackIdCount).toBe(report.sourceDefaultKnowledgePackIds.length);
+    });
+
+    it("exposes unknownAvailableKnowledgePackIds for closure hygiene trace", () => {
+      const report = evaluateRoleKnowledgeBindingReadiness({
+        agentType: "developer",
+        availableKnowledgePackIds: [...requiredPackIdsForAgent("developer"), "kp.platform.unknown-pack.test"],
+      });
+      expect(report.unknownAvailableKnowledgePackIds).toContain("kp.platform.unknown-pack.test");
+    });
+  });
+
   it("selectedBindings are deterministic", () => {
     const input = {
       agentType: "architect",

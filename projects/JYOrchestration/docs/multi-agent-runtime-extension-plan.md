@@ -2052,6 +2052,47 @@ Stage 5-A는 실제 지식팩 구현이 아니라 role → knowledge pack ID rea
 unknown knowledgePackId는 입력 품질 경고로 남기되, required binding이 모두 충족된 경우 ready 판정을 막지 않는다.  
 단, required binding 누락은 기존과 동일하게 defer다.
 
+## Stage 5-A Closure Package
+
+Stage 5-A Closure Package는 Role Knowledge Binding Foundation이 다음 후보 단계로 넘어갈 수 있는지 확인하는 read-only aggregate gate다.
+
+### 하는 일
+
+- role별 readiness report를 aggregate한다.
+- 전체 required/optional binding 현황을 요약한다.
+- input hygiene 결과를 source trace로 남긴다.
+- Stage 5-A가 지식팩 본구현이 아님을 다시 확인한다.
+- Stage 5-B Knowledge Pack Metadata Registry는 후보로만 표시한다.
+
+### 하지 않는 일
+
+- 지식팩 metadata registry 실제 구현
+- 지식팩 CRUD
+- 지식팩 버전관리
+- 원천자료 업로드
+- RAG/embedding
+- prompt injection
+- runtime/DB/UI 변경
+
+### Decision
+
+```text
+source blocked -> blocked
+source defer -> defer
+confirmation missing -> defer
+all source ready + confirmations true -> stage5_a_closure_ready
+```
+
+`stage5_a_closure_ready`는 Stage 5-B 구현 허가가 아니라, Stage 5-A read-only foundation이 닫혔다는 의미다.
+
+### 구현 위치 (closure)
+
+```text
+apps/web/src/lib/agents/roleKnowledgeBindingClosureTypes.ts
+apps/web/src/lib/agents/evaluateRoleKnowledgeBindingClosure.ts
+apps/web/tests/api/multiAgentRoleKnowledgeBindingClosure.unit.test.ts
+```
+
 ### Decision (5-A 후보 evaluator)
 
 ```text
