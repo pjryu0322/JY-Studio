@@ -5,6 +5,7 @@ import {
   evaluateStage5IntegratedKnowledgeFoundationClosure,
   evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
+  resolveStage5IntegratedClosureDecision,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
   validateStage5SourceBoundary,
@@ -328,9 +329,8 @@ describe("validateStage5SourceBoundary", () => {
       sourceStage5CDecision: pipeline.stage5C.decision,
       sourceStage5DDecision: pipeline.stage5D.decision,
     };
-    const sourceDecision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
-    expect(sourceDecision).toBe("stage5_knowledge_foundation_ready");
-    const finalDecision = boundary.sourceBoundaryVerified ? sourceDecision : "blocked";
-    expect(finalDecision).toBe("blocked");
+    expect(
+      resolveStage5IntegratedClosureDecision({ sources, sourceBoundary: boundary }),
+    ).toBe("blocked");
   });
 });

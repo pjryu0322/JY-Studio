@@ -3,14 +3,28 @@
  */
 
 import type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
+import { STAGE5_INTEGRATED_BOUNDARY_CHECKLIST_ENTRIES } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureConstants";
+export {
+  RECOMMENDED_NEXT_PHASES,
+  SEPARATED_WORK_ITEMS,
+  STAGE5_INTEGRATED_CLOSURE_TITLE,
+  STAGE5_INTEGRATED_CLOSURE_VERSION,
+  STAGE5_INTEGRATED_POSTURE_REPORT,
+  STAGE6_ENTRY_GUARD_REPORT,
+} from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureConstants";
 import type {
   Stage5IntegratedKnowledgeFoundationClosureChecklistItem,
   Stage5IntegratedKnowledgeFoundationClosureDecision,
   Stage5IntegratedKnowledgeFoundationClosureDecisionInput,
   Stage5IntegratedKnowledgeFoundationClosureFinding,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
+import {
+  validateStage5SourceBoundary,
+  type Stage5SourceBoundaryValidation,
+} from "@/lib/agents/stage5SourceBoundaryValidation";
 
 export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
+export { validateStage5SourceBoundary, type Stage5SourceBoundaryValidation } from "@/lib/agents/stage5SourceBoundaryValidation";
 
 /** Map pipeline reports to Stage 5-F source decision fields. */
 export function buildStage5IntegratedSourceDecisions(
@@ -24,49 +38,16 @@ export function buildStage5IntegratedSourceDecisions(
   };
 }
 
-export const STAGE5_INTEGRATED_CLOSURE_VERSION = "stage_5_integrated_knowledge_foundation_closure_v1" as const;
-export const STAGE5_INTEGRATED_CLOSURE_TITLE =
-  "Stage 5 Integrated Knowledge Foundation Closure (Read-Only)";
-
-export const RECOMMENDED_NEXT_PHASES = [
-  "prepare_stage6_runtime_execution_model_design",
-  "prepare_agent_execution_record_persistence_separate_pr",
-  "prepare_operator_approval_audit_persistence_separate_pr",
-  "prepare_knowledge_pack_metadata_registry_separate_pr",
-  "continue_read_only_runtime_hardening_if_needed",
-] as const;
-
-export const SEPARATED_WORK_ITEMS = [
-  "actual_knowledge_pack_crud",
-  "actual_rag_indexing",
-  "actual_prompt_context_injection_wire",
-  "actual_runtime_execution_wire",
-  "actual_db_schema_migration",
-  "actual_knowledge_pack_management_ui",
-] as const;
-
-export const STAGE6_ENTRY_GUARD_REPORT = {
-  stage6EntryCandidate: "runtime_execution_model_design" as const,
-  stage6EntryMode: "design_candidate_only" as const,
-  stage6ActualRuntimeExecutionAllowed: false as const,
-  stage6RequiresSeparateApproval: true as const,
-  stage6EntryIsCandidateOnly: true as const,
-};
-
-export const STAGE5_INTEGRATED_BOUNDARY_CHECKLIST_ENTRIES = [
-  { item: "knowledgeFoundationOnly=true", detail: "knowledgeFoundationOnly=true" },
-  {
-    item: "actualKnowledgePackImplementationAllowedAfterStage5=false",
-    detail: "actualKnowledgePackImplementationAllowedAfterStage5=false",
-  },
-  { item: "actualKnowledgePackCrudAllowedAfterStage5=false", detail: "actualKnowledgePackCrudAllowedAfterStage5=false" },
-  { item: "actualRagIndexingAllowedAfterStage5=false", detail: "actualRagIndexingAllowedAfterStage5=false" },
-  { item: "actualPromptInjectionAllowedAfterStage5=false", detail: "actualPromptInjectionAllowedAfterStage5=false" },
-  { item: "actualRuntimeExecutionAllowedAfterStage5=false", detail: "actualRuntimeExecutionAllowedAfterStage5=false" },
-  { item: "actualDbMigrationAllowedAfterStage5=false", detail: "actualDbMigrationAllowedAfterStage5=false" },
-  { item: "actualUiImplementationAllowedAfterStage5=false", detail: "actualUiImplementationAllowedAfterStage5=false" },
-  { item: "stage6EntryIsCandidateOnly=true", detail: "stage6EntryIsCandidateOnly=true" },
-] as const;
+/** Apply source boundary gate on top of pure source-stage decision. */
+export function resolveStage5IntegratedClosureDecision(input: {
+  readonly sources: Stage5IntegratedKnowledgeFoundationClosureDecisionInput;
+  readonly sourceBoundary: Stage5SourceBoundaryValidation;
+}): Stage5IntegratedKnowledgeFoundationClosureDecision {
+  if (!input.sourceBoundary.sourceBoundaryVerified) {
+    return "blocked";
+  }
+  return resolveStage5IntegratedKnowledgeFoundationClosureDecision(input.sources);
+}
 
 type ChecklistEntry = {
   readonly item: string;
@@ -178,64 +159,6 @@ export function buildStage5IntegratedClosureChecklist(
   ]);
 }
 
-export function validateStage5SourceBoundary(pipeline: Stage5KnowledgeFoundationPipelineReports): {
-  readonly sourceBoundaryVerified: boolean;
-  readonly sourceBoundaryViolationCodes: readonly string[];
-} {
-  const { stage5B, stage5C, stage5D } = pipeline;
-  const violations: string[] = [];
-
-  if (stage5B.registryCandidateOnly !== true) {
-    violations.push("source_stage5_b_registry_candidate_only_violation");
-  }
-  if (stage5B.actualRegistryImplementationAllowedInThisStep !== false) {
-    violations.push("source_stage5_b_actual_registry_allowed_violation");
-  }
-  if (stage5B.actualKnowledgePackCrudAllowedInThisStep !== false) {
-    violations.push("source_stage5_b_crud_allowed_violation");
-  }
-  if (stage5B.actualDbWriteAllowedInThisStep !== false) {
-    violations.push("source_stage5_b_db_write_allowed_violation");
-  }
-  if (stage5B.actualRagIndexingAllowedInThisStep !== false) {
-    violations.push("source_stage5_b_rag_allowed_violation");
-  }
-  if (stage5B.actualUiAllowedInThisStep !== false) {
-    violations.push("source_stage5_b_ui_allowed_violation");
-  }
-
-  if (stage5C.mappingCandidateOnly !== true) {
-    violations.push("source_stage5_c_mapping_candidate_only_violation");
-  }
-  if (stage5C.actualRoleKnowledgePackMappingWireAllowedInThisStep !== false) {
-    violations.push("source_stage5_c_mapping_wire_allowed_violation");
-  }
-  if (stage5C.actualPromptInjectionAllowedInThisStep !== false) {
-    violations.push("source_stage5_c_prompt_injection_allowed_violation");
-  }
-  if (stage5C.actualRuntimeBindingAllowedInThisStep !== false) {
-    violations.push("source_stage5_c_runtime_binding_allowed_violation");
-  }
-
-  if (stage5D.promptInjectionDesignOnly !== true) {
-    violations.push("source_stage5_d_prompt_design_only_violation");
-  }
-  if (stage5D.actualPromptInjectionWireAllowedInThisStep !== false) {
-    violations.push("source_stage5_d_prompt_wire_allowed_violation");
-  }
-  if (stage5D.actualRagRetrievalAllowedInThisStep !== false) {
-    violations.push("source_stage5_d_rag_retrieval_allowed_violation");
-  }
-  if (stage5D.actualRuntimePromptBuilderChangeAllowedInThisStep !== false) {
-    violations.push("source_stage5_d_runtime_prompt_builder_allowed_violation");
-  }
-
-  return {
-    sourceBoundaryVerified: violations.length === 0,
-    sourceBoundaryViolationCodes: [...violations].sort((a, b) => a.localeCompare(b)),
-  };
-}
-
 export function buildStage5IntegratedPipelineTraceFields(
   pipeline: Stage5KnowledgeFoundationPipelineReports,
 ): {
@@ -345,7 +268,7 @@ export function appendStage5IntegratedKnowledgeFoundationClosureFindings(input: 
   readonly decision: Stage5IntegratedKnowledgeFoundationClosureDecision;
   readonly sources: Stage5IntegratedKnowledgeFoundationClosureDecisionInput;
   readonly pipeline: Stage5KnowledgeFoundationPipelineReports;
-  readonly sourceBoundary: ReturnType<typeof validateStage5SourceBoundary>;
+  readonly sourceBoundary: Stage5SourceBoundaryValidation;
 }): void {
   const { findings, decision, sources, pipeline, sourceBoundary } = input;
 

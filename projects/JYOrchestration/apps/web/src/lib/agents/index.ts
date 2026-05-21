@@ -807,11 +807,15 @@ export {
   buildStage5IntegratedSourceDecisions,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
   RECOMMENDED_NEXT_PHASES,
+  resolveStage5IntegratedClosureDecision,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
+  STAGE5_INTEGRATED_POSTURE_REPORT,
   STAGE6_ENTRY_GUARD_REPORT,
   validateStage5SourceBoundary,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
+
+export type { Stage5SourceBoundaryValidation } from "@/lib/agents/stage5SourceBoundaryValidation";
 
 export type { Stage6EntryCandidate, Stage6EntryMode } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 

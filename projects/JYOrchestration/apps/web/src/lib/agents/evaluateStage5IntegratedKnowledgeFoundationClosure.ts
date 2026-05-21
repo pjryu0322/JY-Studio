@@ -2,12 +2,19 @@
  * Stage 5-F integrated knowledge foundation closure (read-only).
  */
 
+import {
+  RECOMMENDED_NEXT_PHASES,
+  SEPARATED_WORK_ITEMS,
+  STAGE5_INTEGRATED_CLOSURE_TITLE,
+  STAGE5_INTEGRATED_CLOSURE_VERSION,
+  STAGE5_INTEGRATED_POSTURE_REPORT,
+  STAGE6_ENTRY_GUARD_REPORT,
+} from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureConstants";
 import type {
   Stage5IntegratedKnowledgeFoundationClosureFinding,
   Stage5IntegratedKnowledgeFoundationClosureInput,
   Stage5IntegratedKnowledgeFoundationClosureReport,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
-import { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 import {
   appendStage5IntegratedKnowledgeFoundationClosureFindings,
   buildStage5IntegratedBoundaryChecklist,
@@ -16,25 +23,27 @@ import {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   buildStage5IntegratedPipelineTraceFields,
   buildStage5IntegratedSourceDecisions,
-  RECOMMENDED_NEXT_PHASES,
+  resolveStage5IntegratedClosureDecision,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
-  SEPARATED_WORK_ITEMS,
-  STAGE5_INTEGRATED_CLOSURE_TITLE,
-  STAGE5_INTEGRATED_CLOSURE_VERSION,
-  STAGE6_ENTRY_GUARD_REPORT,
   validateStage5SourceBoundary,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
+import { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 
 export { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 export type { Stage5KnowledgeFoundationPipelineReports } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
 
 export {
-  buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
-  buildStage5IntegratedSourceDecisions,
-  resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   RECOMMENDED_NEXT_PHASES,
   SEPARATED_WORK_ITEMS,
+  STAGE5_INTEGRATED_POSTURE_REPORT,
   STAGE6_ENTRY_GUARD_REPORT,
+} from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureConstants";
+
+export {
+  buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
+  buildStage5IntegratedSourceDecisions,
+  resolveStage5IntegratedClosureDecision,
+  resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   validateStage5SourceBoundary,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
@@ -44,6 +53,8 @@ export type {
   Stage6EntryMode,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
+export type { Stage5SourceBoundaryValidation } from "@/lib/agents/stage5SourceBoundaryValidation";
+
 /** Read-only Stage 5-F integrated closure — aggregates 5-A through 5-D. */
 export function evaluateStage5IntegratedKnowledgeFoundationClosure(
   input?: Stage5IntegratedKnowledgeFoundationClosureInput,
@@ -51,9 +62,7 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
   const pipeline = evaluateStage5KnowledgeFoundationPipeline(input);
   const sources = buildStage5IntegratedSourceDecisions(pipeline);
   const sourceBoundary = validateStage5SourceBoundary(pipeline);
-
-  const sourceDecision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
-  const decision = sourceBoundary.sourceBoundaryVerified ? sourceDecision : "blocked";
+  const decision = resolveStage5IntegratedClosureDecision({ sources, sourceBoundary });
   const closureFingerprint = buildStage5IntegratedKnowledgeFoundationClosureFingerprint(sources);
 
   const findings: Stage5IntegratedKnowledgeFoundationClosureFinding[] = [];
@@ -73,19 +82,11 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
     ...buildStage5IntegratedPipelineTraceFields(pipeline),
     sourceBoundaryVerified: sourceBoundary.sourceBoundaryVerified,
     sourceBoundaryViolationCodes: sourceBoundary.sourceBoundaryViolationCodes,
-    stage5ActualImplementationDisallowed: true,
+    ...STAGE5_INTEGRATED_POSTURE_REPORT,
     closureVersion: STAGE5_INTEGRATED_CLOSURE_VERSION,
     closureTitle: STAGE5_INTEGRATED_CLOSURE_TITLE,
     closureSummary: buildStage5IntegratedClosureSummary(decision),
     closureFingerprint,
-    knowledgeFoundationOnly: true,
-    actualKnowledgePackImplementationAllowedAfterStage5: false,
-    actualKnowledgePackCrudAllowedAfterStage5: false,
-    actualRagIndexingAllowedAfterStage5: false,
-    actualPromptInjectionAllowedAfterStage5: false,
-    actualRuntimeExecutionAllowedAfterStage5: false,
-    actualDbMigrationAllowedAfterStage5: false,
-    actualUiImplementationAllowedAfterStage5: false,
     ...STAGE6_ENTRY_GUARD_REPORT,
     closureChecklist: buildStage5IntegratedClosureChecklist(sources),
     boundaryChecklist: buildStage5IntegratedBoundaryChecklist(),
