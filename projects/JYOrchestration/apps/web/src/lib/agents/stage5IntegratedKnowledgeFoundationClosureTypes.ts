@@ -7,6 +7,9 @@ import type { PromptContextInjectionDesignCandidateDecision } from "@/lib/agents
 import type { RoleKnowledgeBindingClosureDecision } from "@/lib/agents/roleKnowledgeBindingClosureTypes";
 import type { RoleKnowledgePackMappingCandidateDecision } from "@/lib/agents/roleKnowledgePackMappingCandidateTypes";
 
+export type Stage6EntryCandidate = "runtime_execution_model_design";
+export type Stage6EntryMode = "design_candidate_only";
+
 export type Stage5IntegratedKnowledgeFoundationClosureDecision =
   | "stage5_knowledge_foundation_ready"
   | "defer"
@@ -56,6 +59,10 @@ export interface Stage5IntegratedKnowledgeFoundationClosureReport {
   readonly sourceStage5DActualPromptInjectionWireAllowed: false;
   readonly sourceStage5DActualRagRetrievalAllowed: false;
 
+  readonly sourceBoundaryVerified: boolean;
+  readonly sourceBoundaryViolationCodes: readonly string[];
+  readonly stage5ActualImplementationDisallowed: true;
+
   readonly closureVersion: "stage_5_integrated_knowledge_foundation_closure_v1";
   readonly closureTitle: string;
   readonly closureSummary: string;
@@ -70,7 +77,10 @@ export interface Stage5IntegratedKnowledgeFoundationClosureReport {
   readonly actualDbMigrationAllowedAfterStage5: false;
   readonly actualUiImplementationAllowedAfterStage5: false;
 
-  readonly stage6EntryCandidate: "runtime_execution_model_design";
+  readonly stage6EntryCandidate: Stage6EntryCandidate;
+  readonly stage6EntryMode: Stage6EntryMode;
+  readonly stage6ActualRuntimeExecutionAllowed: false;
+  readonly stage6RequiresSeparateApproval: true;
   readonly stage6EntryIsCandidateOnly: true;
 
   readonly closureChecklist: readonly Stage5IntegratedKnowledgeFoundationClosureChecklistItem[];

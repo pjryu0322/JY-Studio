@@ -464,6 +464,16 @@ describe("multi-agent stage 4 integrated closure verdict stage 4-F", () => {
     });
   });
 
+  describe("Stage 5 final closure and stage 6 entry guard regression", () => {
+    it("stage2Through4ClosureLocked remains true after Stage 5 final closure guard", () => {
+      expect(evaluateReadyClosureVerdict().stage2Through4ClosureLocked).toBe(true);
+    });
+
+    it("mvpBaselinePreserved remains true after Stage 5 final closure guard", () => {
+      expect(evaluateReadyClosureVerdict().mvpBaselinePreserved).toBe(true);
+    });
+  });
+
   describe("Stage 5 integrated knowledge foundation package regression guard", () => {
     it("Stage 4-F closure remains closed after Stage 5 integrated package", () => {
       expect(evaluateReadyClosureVerdict().decision).toBe("stage4_closure_ready");

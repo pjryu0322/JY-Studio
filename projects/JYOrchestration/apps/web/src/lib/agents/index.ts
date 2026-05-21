@@ -809,7 +809,11 @@ export {
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
+  STAGE6_ENTRY_GUARD_REPORT,
+  validateStage5SourceBoundary,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
+
+export type { Stage6EntryCandidate, Stage6EntryMode } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
 export {
   buildStage5ReadyChainInput,

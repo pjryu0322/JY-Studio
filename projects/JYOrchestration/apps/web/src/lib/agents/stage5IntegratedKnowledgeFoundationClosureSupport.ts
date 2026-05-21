@@ -45,6 +45,14 @@ export const SEPARATED_WORK_ITEMS = [
   "actual_knowledge_pack_management_ui",
 ] as const;
 
+export const STAGE6_ENTRY_GUARD_REPORT = {
+  stage6EntryCandidate: "runtime_execution_model_design" as const,
+  stage6EntryMode: "design_candidate_only" as const,
+  stage6ActualRuntimeExecutionAllowed: false as const,
+  stage6RequiresSeparateApproval: true as const,
+  stage6EntryIsCandidateOnly: true as const,
+};
+
 export const STAGE5_INTEGRATED_BOUNDARY_CHECKLIST_ENTRIES = [
   { item: "knowledgeFoundationOnly=true", detail: "knowledgeFoundationOnly=true" },
   {
@@ -170,6 +178,64 @@ export function buildStage5IntegratedClosureChecklist(
   ]);
 }
 
+export function validateStage5SourceBoundary(pipeline: Stage5KnowledgeFoundationPipelineReports): {
+  readonly sourceBoundaryVerified: boolean;
+  readonly sourceBoundaryViolationCodes: readonly string[];
+} {
+  const { stage5B, stage5C, stage5D } = pipeline;
+  const violations: string[] = [];
+
+  if (stage5B.registryCandidateOnly !== true) {
+    violations.push("source_stage5_b_registry_candidate_only_violation");
+  }
+  if (stage5B.actualRegistryImplementationAllowedInThisStep !== false) {
+    violations.push("source_stage5_b_actual_registry_allowed_violation");
+  }
+  if (stage5B.actualKnowledgePackCrudAllowedInThisStep !== false) {
+    violations.push("source_stage5_b_crud_allowed_violation");
+  }
+  if (stage5B.actualDbWriteAllowedInThisStep !== false) {
+    violations.push("source_stage5_b_db_write_allowed_violation");
+  }
+  if (stage5B.actualRagIndexingAllowedInThisStep !== false) {
+    violations.push("source_stage5_b_rag_allowed_violation");
+  }
+  if (stage5B.actualUiAllowedInThisStep !== false) {
+    violations.push("source_stage5_b_ui_allowed_violation");
+  }
+
+  if (stage5C.mappingCandidateOnly !== true) {
+    violations.push("source_stage5_c_mapping_candidate_only_violation");
+  }
+  if (stage5C.actualRoleKnowledgePackMappingWireAllowedInThisStep !== false) {
+    violations.push("source_stage5_c_mapping_wire_allowed_violation");
+  }
+  if (stage5C.actualPromptInjectionAllowedInThisStep !== false) {
+    violations.push("source_stage5_c_prompt_injection_allowed_violation");
+  }
+  if (stage5C.actualRuntimeBindingAllowedInThisStep !== false) {
+    violations.push("source_stage5_c_runtime_binding_allowed_violation");
+  }
+
+  if (stage5D.promptInjectionDesignOnly !== true) {
+    violations.push("source_stage5_d_prompt_design_only_violation");
+  }
+  if (stage5D.actualPromptInjectionWireAllowedInThisStep !== false) {
+    violations.push("source_stage5_d_prompt_wire_allowed_violation");
+  }
+  if (stage5D.actualRagRetrievalAllowedInThisStep !== false) {
+    violations.push("source_stage5_d_rag_retrieval_allowed_violation");
+  }
+  if (stage5D.actualRuntimePromptBuilderChangeAllowedInThisStep !== false) {
+    violations.push("source_stage5_d_runtime_prompt_builder_allowed_violation");
+  }
+
+  return {
+    sourceBoundaryVerified: violations.length === 0,
+    sourceBoundaryViolationCodes: [...violations].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 export function buildStage5IntegratedPipelineTraceFields(
   pipeline: Stage5KnowledgeFoundationPipelineReports,
 ): {
@@ -203,13 +269,13 @@ export function buildStage5IntegratedPipelineTraceFields(
     sourceStage5DPromptDesignCandidateCount: stage5D.designCandidateCount,
     sourceStage5AClosureFingerprint: stage5A.closureFingerprint,
     sourceStage5FInputMode: "shared_stage5_knowledge_foundation_input",
-    sourceStage5BRegistryCandidateOnly: true,
-    sourceStage5CMappingCandidateOnly: true,
-    sourceStage5DPromptInjectionDesignOnly: true,
-    sourceStage5BActualRegistryImplementationAllowed: false,
-    sourceStage5CActualMappingWireAllowed: false,
-    sourceStage5DActualPromptInjectionWireAllowed: false,
-    sourceStage5DActualRagRetrievalAllowed: false,
+    sourceStage5BRegistryCandidateOnly: stage5B.registryCandidateOnly,
+    sourceStage5CMappingCandidateOnly: stage5C.mappingCandidateOnly,
+    sourceStage5DPromptInjectionDesignOnly: stage5D.promptInjectionDesignOnly,
+    sourceStage5BActualRegistryImplementationAllowed: stage5B.actualRegistryImplementationAllowedInThisStep,
+    sourceStage5CActualMappingWireAllowed: stage5C.actualRoleKnowledgePackMappingWireAllowedInThisStep,
+    sourceStage5DActualPromptInjectionWireAllowed: stage5D.actualPromptInjectionWireAllowedInThisStep,
+    sourceStage5DActualRagRetrievalAllowed: stage5D.actualRagRetrievalAllowedInThisStep,
   };
 }
 
@@ -279,8 +345,9 @@ export function appendStage5IntegratedKnowledgeFoundationClosureFindings(input: 
   readonly decision: Stage5IntegratedKnowledgeFoundationClosureDecision;
   readonly sources: Stage5IntegratedKnowledgeFoundationClosureDecisionInput;
   readonly pipeline: Stage5KnowledgeFoundationPipelineReports;
+  readonly sourceBoundary: ReturnType<typeof validateStage5SourceBoundary>;
 }): void {
-  const { findings, decision, sources, pipeline } = input;
+  const { findings, decision, sources, pipeline, sourceBoundary } = input;
 
   appendStage5IntegratedPipelineTraceFindings(findings, pipeline);
 
@@ -289,7 +356,19 @@ export function appendStage5IntegratedKnowledgeFoundationClosureFindings(input: 
   findings.push(finding("info", "stage5_not_knowledge_pack_implementation", "Stage 5 is not knowledge pack implementation"));
   findings.push(finding("info", "stage5_no_rag_indexing", "Stage 5 integrated closure does not allow RAG indexing"));
   findings.push(finding("info", "stage5_no_prompt_injection_wire", "Stage 5 integrated closure does not wire prompt injection"));
+  findings.push(finding("info", "stage5_actual_implementation_disallowed", "Stage 5 does not allow actual knowledge foundation implementation"));
   findings.push(finding("info", "stage6_entry_candidate_only", "Stage 6 runtime execution model design is candidate only"));
+
+  if (sourceBoundary.sourceBoundaryVerified) {
+    findings.push(finding("info", "source_stage5_boundary_verified", "Stage 5-B/C/D source boundary flags verified"));
+  } else {
+    findings.push(
+      finding("blocking", "source_stage5_boundary_violation_detected", "Stage 5 source boundary violation detected"),
+    );
+    for (const code of sourceBoundary.sourceBoundaryViolationCodes) {
+      findings.push(finding("blocking", code, `Source boundary violation: ${code}`));
+    }
+  }
 
   if (decision === "blocked") {
     if (sources.sourceStage5AClosureDecision === "blocked") {

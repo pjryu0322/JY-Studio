@@ -2183,7 +2183,18 @@ Stage 5-F가 Stage 5 통합 closure 역할을 수행한다.
 Stage 5는 지식팩 본구현이 아니라 read-only knowledge foundation이다.  
 실제 Knowledge Pack Management System은 별도 PR/단계로 분리한다.
 
-Stage 5-F `stage5_knowledge_foundation_ready` 이후 진입 후보는 **Stage 6 Runtime Execution Model Design 후보만** 제시한다 (`stage6EntryIsCandidateOnly=true`).
+Stage 5-F `stage5_knowledge_foundation_ready` 이후 진입 후보는 **Stage 6 Runtime Execution Model Design 후보만** 제시한다 (`stage6EntryMode=design_candidate_only`, `stage6RequiresSeparateApproval=true`).
+
+## Stage 5 Final Closure Boundary
+
+- Stage 5-F는 Stage 5-A~5-D read-only foundation의 통합 종료 판정이다.
+- Stage 5-F는 지식팩 본구현 완료가 아니다 (`stage5ActualImplementationDisallowed=true`).
+- Stage 5-F는 RAG, DB, prompt injection, runtime execution, UI 변경을 허가하지 않는다.
+- Stage 5-F는 `validateStage5SourceBoundary()`로 Stage 5-B/C/D source report boundary를 검증한다. 위반 시 `blocked`.
+- Stage 5-F ready 이후에도 Stage 6은 runtime execution model design 후보 단계다 (`stage6EntryMode=design_candidate_only`).
+- Stage 6은 실제 실행 wire가 아니라 별도 승인·단계가 필요한 설계 후보로 시작한다 (`stage6ActualRuntimeExecutionAllowed=false`).
+
+Stage 5-F ready 이후에도 **바로** 지식팩 구현, prompt injection wire, RAG indexing, runtime execution wire로 진행하지 않는다. 해당 항목은 `separatedWorkItems`와 `recommendedNextPhases`의 `separate_pr`/`stage6` 후보로만 안내된다.
 
 ### Stage 3–4 빠른 진행 로드맵
 

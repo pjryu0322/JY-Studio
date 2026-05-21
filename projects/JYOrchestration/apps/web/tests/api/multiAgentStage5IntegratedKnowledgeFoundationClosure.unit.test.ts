@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { listDefaultRoleKnowledgeAgentTypes } from "@/lib/agents/defaultRoleKnowledgeBindings";
-import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 import {
   buildStage5IntegratedKnowledgeFoundationClosureFingerprint,
   evaluateStage5IntegratedKnowledgeFoundationClosure,
+  evaluateStage5KnowledgeFoundationPipeline,
   RECOMMENDED_NEXT_PHASES,
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   SEPARATED_WORK_ITEMS,
+  validateStage5SourceBoundary,
 } from "@/lib/agents/evaluateStage5IntegratedKnowledgeFoundationClosure";
+import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
+import type { KnowledgePackMetadataRegistryCandidateReport } from "@/lib/agents/knowledgePackMetadataRegistryCandidateTypes";
 
 function evaluateReadyIntegrated(
   input: Parameters<typeof evaluateStage5IntegratedKnowledgeFoundationClosure>[0] = {},
@@ -225,5 +228,109 @@ describe("multi-agent stage 5 integrated knowledge foundation closure stage 5-F"
 
   it("closureSummary states not implementation permission when ready", () => {
     expect(evaluateReadyIntegrated().closureSummary).toContain("not knowledge pack implementation");
+  });
+
+  it("sourceBoundaryVerified is true on ready path", () => {
+    expect(evaluateReadyIntegrated().sourceBoundaryVerified).toBe(true);
+  });
+
+  it("sourceBoundaryViolationCodes is empty on ready path", () => {
+    expect(evaluateReadyIntegrated().sourceBoundaryViolationCodes).toEqual([]);
+  });
+
+  it("stage5ActualImplementationDisallowed is true", () => {
+    expect(evaluateReadyIntegrated().stage5ActualImplementationDisallowed).toBe(true);
+  });
+
+  it("findings include source_stage5_boundary_verified on ready path", () => {
+    expect(
+      evaluateReadyIntegrated().findings.some((f) => f.code === "source_stage5_boundary_verified"),
+    ).toBe(true);
+  });
+
+  it("findings include stage5_actual_implementation_disallowed", () => {
+    expect(
+      evaluateReadyIntegrated().findings.some((f) => f.code === "stage5_actual_implementation_disallowed"),
+    ).toBe(true);
+  });
+
+  it("stage6EntryMode is design_candidate_only", () => {
+    expect(evaluateReadyIntegrated().stage6EntryMode).toBe("design_candidate_only");
+  });
+
+  it("stage6ActualRuntimeExecutionAllowed is false", () => {
+    expect(evaluateReadyIntegrated().stage6ActualRuntimeExecutionAllowed).toBe(false);
+  });
+
+  it("stage6RequiresSeparateApproval is true", () => {
+    expect(evaluateReadyIntegrated().stage6RequiresSeparateApproval).toBe(true);
+  });
+
+  it("recommendedNextPhases only includes stage6 separate_pr or read_only_hardening patterns", () => {
+    const allowedPattern = /stage6|separate_pr|read_only/;
+    expect(
+      evaluateReadyIntegrated().recommendedNextPhases.every((phase) => allowedPattern.test(phase)),
+    ).toBe(true);
+  });
+
+  it("separatedWorkItems includes all actual implementation work items", () => {
+    const required = [
+      "actual_knowledge_pack_crud",
+      "actual_rag_indexing",
+      "actual_prompt_context_injection_wire",
+      "actual_runtime_execution_wire",
+      "actual_db_schema_migration",
+      "actual_knowledge_pack_management_ui",
+    ];
+    const items = evaluateReadyIntegrated().separatedWorkItems;
+    for (const item of required) {
+      expect(items).toContain(item);
+    }
+  });
+});
+
+describe("validateStage5SourceBoundary", () => {
+  it("passes for default ready pipeline", () => {
+    const pipeline = evaluateStage5KnowledgeFoundationPipeline(buildStage5ReadyChainInput());
+    const result = validateStage5SourceBoundary(pipeline);
+    expect(result.sourceBoundaryVerified).toBe(true);
+    expect(result.sourceBoundaryViolationCodes).toEqual([]);
+  });
+
+  it("detects registry candidate-only violation", () => {
+    const pipeline = evaluateStage5KnowledgeFoundationPipeline(buildStage5ReadyChainInput());
+    const tamperedStage5B = {
+      ...pipeline.stage5B,
+      registryCandidateOnly: false,
+    } as KnowledgePackMetadataRegistryCandidateReport;
+    const result = validateStage5SourceBoundary({ ...pipeline, stage5B: tamperedStage5B });
+    expect(result.sourceBoundaryVerified).toBe(false);
+    expect(result.sourceBoundaryViolationCodes).toContain("source_stage5_b_registry_candidate_only_violation");
+  });
+
+  it("forces blocked decision when source boundary is violated", () => {
+    const pipeline = evaluateStage5KnowledgeFoundationPipeline(buildStage5ReadyChainInput());
+    const tamperedStage5B = {
+      ...pipeline.stage5B,
+      actualRegistryImplementationAllowedInThisStep: true,
+    } as KnowledgePackMetadataRegistryCandidateReport;
+    const report = evaluateStage5IntegratedKnowledgeFoundationClosure(buildStage5ReadyChainInput());
+    expect(report.sourceBoundaryVerified).toBe(true);
+
+    const boundary = validateStage5SourceBoundary({
+      ...pipeline,
+      stage5B: tamperedStage5B,
+    });
+    expect(boundary.sourceBoundaryVerified).toBe(false);
+    const sources = {
+      sourceStage5AClosureDecision: pipeline.stage5A.decision,
+      sourceStage5BDecision: pipeline.stage5B.decision,
+      sourceStage5CDecision: pipeline.stage5C.decision,
+      sourceStage5DDecision: pipeline.stage5D.decision,
+    };
+    const sourceDecision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
+    expect(sourceDecision).toBe("stage5_knowledge_foundation_ready");
+    const finalDecision = boundary.sourceBoundaryVerified ? sourceDecision : "blocked";
+    expect(finalDecision).toBe("blocked");
   });
 });

@@ -21,6 +21,8 @@ import {
   SEPARATED_WORK_ITEMS,
   STAGE5_INTEGRATED_CLOSURE_TITLE,
   STAGE5_INTEGRATED_CLOSURE_VERSION,
+  STAGE6_ENTRY_GUARD_REPORT,
+  validateStage5SourceBoundary,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
 export { evaluateStage5KnowledgeFoundationPipeline } from "@/lib/agents/stage5KnowledgeFoundationPipeline";
@@ -32,9 +34,15 @@ export {
   resolveStage5IntegratedKnowledgeFoundationClosureDecision,
   RECOMMENDED_NEXT_PHASES,
   SEPARATED_WORK_ITEMS,
+  STAGE6_ENTRY_GUARD_REPORT,
+  validateStage5SourceBoundary,
 } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureSupport";
 
-export type { Stage5IntegratedKnowledgeFoundationClosureDecisionInput } from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
+export type {
+  Stage5IntegratedKnowledgeFoundationClosureDecisionInput,
+  Stage6EntryCandidate,
+  Stage6EntryMode,
+} from "@/lib/agents/stage5IntegratedKnowledgeFoundationClosureTypes";
 
 /** Read-only Stage 5-F integrated closure — aggregates 5-A through 5-D. */
 export function evaluateStage5IntegratedKnowledgeFoundationClosure(
@@ -42,12 +50,20 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
 ): Stage5IntegratedKnowledgeFoundationClosureReport {
   const pipeline = evaluateStage5KnowledgeFoundationPipeline(input);
   const sources = buildStage5IntegratedSourceDecisions(pipeline);
+  const sourceBoundary = validateStage5SourceBoundary(pipeline);
 
-  const decision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
+  const sourceDecision = resolveStage5IntegratedKnowledgeFoundationClosureDecision(sources);
+  const decision = sourceBoundary.sourceBoundaryVerified ? sourceDecision : "blocked";
   const closureFingerprint = buildStage5IntegratedKnowledgeFoundationClosureFingerprint(sources);
 
   const findings: Stage5IntegratedKnowledgeFoundationClosureFinding[] = [];
-  appendStage5IntegratedKnowledgeFoundationClosureFindings({ findings, decision, sources, pipeline });
+  appendStage5IntegratedKnowledgeFoundationClosureFindings({
+    findings,
+    decision,
+    sources,
+    pipeline,
+    sourceBoundary,
+  });
 
   return {
     mode: "read_only_stage5_integrated_knowledge_foundation_closure",
@@ -55,6 +71,9 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
     decision,
     ...sources,
     ...buildStage5IntegratedPipelineTraceFields(pipeline),
+    sourceBoundaryVerified: sourceBoundary.sourceBoundaryVerified,
+    sourceBoundaryViolationCodes: sourceBoundary.sourceBoundaryViolationCodes,
+    stage5ActualImplementationDisallowed: true,
     closureVersion: STAGE5_INTEGRATED_CLOSURE_VERSION,
     closureTitle: STAGE5_INTEGRATED_CLOSURE_TITLE,
     closureSummary: buildStage5IntegratedClosureSummary(decision),
@@ -67,8 +86,7 @@ export function evaluateStage5IntegratedKnowledgeFoundationClosure(
     actualRuntimeExecutionAllowedAfterStage5: false,
     actualDbMigrationAllowedAfterStage5: false,
     actualUiImplementationAllowedAfterStage5: false,
-    stage6EntryCandidate: "runtime_execution_model_design",
-    stage6EntryIsCandidateOnly: true,
+    ...STAGE6_ENTRY_GUARD_REPORT,
     closureChecklist: buildStage5IntegratedClosureChecklist(sources),
     boundaryChecklist: buildStage5IntegratedBoundaryChecklist(),
     findings,
