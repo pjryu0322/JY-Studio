@@ -1634,6 +1634,40 @@ Stage 3-2는 runtime execution plan 후보를 만드는 read-only 단계다.
 ready_for_runtime_execution_plan_review는 실행계획 리뷰 준비 상태이지 실행 허가가 아니다.
 ```
 
+앞으로 Stage 3 진행 기준은 **Stage 3-A 통합 package**를 우선한다. Stage 3-2 builder는 Stage 3-A 내부 구성요소로 유지한다.
+
+## Stage 3-A Runtime Execution Plan Package 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Runtime Execution Plan Package 타입 | read-only package report | 없음 | Stage 3-2/3-3/3-4 압축 |
+| evaluator | Stage 3-2 Plan Builder 기반 | 없음 | runtime 미실행 |
+| dryRunCandidate | simulated-only report field | 없음 | 실제 dry-run 실행 아님 |
+| approvalReadiness | 7개 readiness 집계 | 없음 | Stage 3-B 전제 |
+| executionPlanChecklist | report field | 없음 | plan/handoff/source 검토 |
+| dryRunChecklist | report field | 없음 | simulated/no-run 검토 |
+| approvalChecklist | report field | 없음 | 승인 준비 상태 |
+| safetyChecklist | report field | 없음 | no-run 재확인 |
+
+### Stage 3-A 원칙
+
+```text
+Stage 3-A는 기존 Stage 3-2/3-3/3-4를 압축한 Runtime Execution Plan Package 단계다.
+실제 실행, routing 변경, write path wire, feature flag wire, DB/schema/migration, Git/Cursor/GitHub 호출은 하지 않는다.
+ready_for_runtime_execution_approval_gate는 Stage 3-B 승인 gate로 넘길 수 있는 package 준비 상태이지 실행 허가가 아니다.
+```
+
+### Stage 3 빠른 진행 로드맵
+
+```text
+Stage 3-A: Runtime Execution Plan Package
+Stage 3-B: Runtime Execution Approval Gate
+Stage 3-C: Controlled Runtime Wire Candidate
+Stage 4-A: Runtime Wire Experimental Branch
+Stage 4-B: Connector Gateway Shadow Routing
+Stage 4-C: Controlled Execution Path
+```
+
 ### Stage 2 종료 판정 의미
 
 ```text

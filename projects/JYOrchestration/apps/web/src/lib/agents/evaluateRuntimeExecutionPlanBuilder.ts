@@ -13,8 +13,10 @@ import type {
 } from "@/lib/agents/runtimeExecutionPlanBuilderTypes";
 
 const HANDOFF_READY = "ready_for_runtime_execution_handoff_design";
+const PLAN_READY = "ready_for_runtime_execution_plan_review";
 
 type RuntimeExecutionPlanBuilderInput = Parameters<typeof evaluateRuntimeExecutionHandoffCandidate>[0] & {
+  readonly operatorApprovalConfirmed?: boolean;
   readonly finalOperatorConfirmationReady?: boolean;
   readonly rollbackPlanReviewed?: boolean;
   readonly stage1RegressionReviewed?: boolean;
@@ -64,6 +66,33 @@ function mapChecklistEntries(
   }));
 }
 
+function resolveOperatorApproval(input: {
+  readonly operatorApprovalConfirmed?: boolean;
+  readonly operatorAuditReviewConfirmed: boolean;
+}): { readonly satisfied: boolean; readonly detail: string } {
+  if (input.operatorApprovalConfirmed === true) {
+    return { satisfied: true, detail: "operatorApprovalConfirmed=true" };
+  }
+  if (input.operatorApprovalConfirmed === false) {
+    return { satisfied: false, detail: "operatorApprovalConfirmed=false" };
+  }
+  return {
+    satisfied: input.operatorAuditReviewConfirmed,
+    detail: `operatorApprovalConfirmed=undefined; fallback operatorAuditReviewConfirmed=${input.operatorAuditReviewConfirmed}`,
+  };
+}
+
+export function buildPlanFingerprint(input: {
+  readonly handoffDecision: string;
+  readonly stage2Decision: string;
+  readonly satisfiedStepCount: number;
+  readonly missingStepKinds: readonly RuntimeExecutionPlanStepKind[];
+}): string {
+  const missing =
+    input.missingStepKinds.length > 0 ? input.missingStepKinds.join(",") : "none";
+  return `runtime-plan-v1:${input.handoffDecision}:${input.stage2Decision}:satisfied-${input.satisfiedStepCount}:missing-${missing}`;
+}
+
 function resolvePlanBuilderDecision(input: {
   readonly handoffDecision: string;
   readonly finalOperatorConfirmationReady: boolean;
@@ -90,11 +119,11 @@ function resolvePlanBuilderDecision(input: {
     return "defer";
   }
 
-  return "ready_for_runtime_execution_plan_review";
+  return PLAN_READY;
 }
 
 function buildPlanSteps(input: {
-  readonly operatorAuditReviewConfirmed: boolean;
+  readonly operatorApproval: { readonly satisfied: boolean; readonly detail: string };
   readonly stage1RegressionReviewed: boolean;
   readonly schemaPrApproved: boolean;
   readonly operatorAuditSchemaPrApproved: boolean;
@@ -105,7 +134,7 @@ function buildPlanSteps(input: {
   readonly finalOperatorConfirmationReady: boolean;
 }): RuntimeExecutionPlanStepCandidate[] {
   const satisfactionByKind: Record<RuntimeExecutionPlanStepKind, boolean> = {
-    operator_approval: input.operatorAuditReviewConfirmed,
+    operator_approval: input.operatorApproval.satisfied,
     stage1_regression_check: input.stage1RegressionReviewed,
     schema_migration_pr_check: input.schemaPrApproved,
     operator_audit_schema_pr_check: input.operatorAuditSchemaPrApproved,
@@ -117,10 +146,10 @@ function buildPlanSteps(input: {
   };
 
   const reasonByKind: Record<RuntimeExecutionPlanStepKind, string> = {
-    operator_approval: `operatorAuditReviewConfirmed=${input.operatorAuditReviewConfirmed}`,
+    operator_approval: `operator_approval: ${input.operatorApproval.detail}`,
     stage1_regression_check: `stage1RegressionReviewed=${input.stage1RegressionReviewed}`,
     schema_migration_pr_check: `schemaPrApproved=${input.schemaPrApproved}`,
-    operator_audit_schema_pr_check: `operatorAuditSchemaPrApproved=${input.operatorAuditSchemaPrApproved}`,
+    operator_audit_schema_pr_check: `operatorAuditSchemaPrApproved=${input.operatorAuditSchemaPrApproved}; audit review upstream only`,
     connector_experiment_branch_check: `connectorExperimentBranchVerified=${input.connectorExperimentBranchVerified}`,
     feature_flag_check: `featureFlagWireDesignApproved=${input.featureFlagWireDesignApproved}`,
     dry_run_execution_plan: `handoffReady=${input.handoffReady}; dry-run planned only, executesInThisStep=false`,
@@ -167,7 +196,7 @@ function buildPlanChecklist(input: {
     },
     {
       item: "plan review ready",
-      satisfied: input.decision === "ready_for_runtime_execution_plan_review",
+      satisfied: input.decision === PLAN_READY,
       detail: `decision=${input.decision}`,
     },
   ]);
@@ -199,10 +228,10 @@ function buildPlanSummary(input: {
   readonly handoffDecision: string;
   readonly satisfiedStepCount: number;
 }): string {
-  if (input.decision === "ready_for_runtime_execution_plan_review") {
+  if (input.decision === PLAN_READY) {
     return (
-      `Runtime execution plan candidate is ready for review (${input.satisfiedStepCount}/9 steps satisfied). ` +
-      "This is a read-only plan builder; not actual execution permission. Actual execution requires a later runtime executor stage."
+      `Runtime execution plan review candidate only (${input.satisfiedStepCount}/9 steps satisfied). ` +
+      "Not actual runtime execution; actual execution requires Stage 3-B/3-C or later controlled executor."
     );
   }
 
@@ -279,14 +308,14 @@ function appendPlanBuilderFindings(input: {
     finding(
       "info",
       "runtime_execution_plan_candidate_created",
-      "Runtime execution plan candidate created for review; design candidate only, not actual execution permission",
+      "Runtime execution plan review candidate only; not actual execution permission",
     ),
   );
   findings.push(
     finding(
       "info",
       "actual_execution_requires_later_runtime_executor",
-      "Actual execution requires a later runtime executor stage with operator approval; no execution in this plan builder",
+      "Actual execution requires Stage 3-B/3-C or later controlled executor; no execution in this plan builder",
     ),
   );
 }
@@ -305,6 +334,10 @@ export function evaluateRuntimeExecutionPlanBuilder(
   const operatorAuditSchemaPrApproved = input?.operatorAuditSchemaPrApproved === true;
   const connectorExperimentBranchVerified = input?.connectorExperimentBranchVerified === true;
   const featureFlagWireDesignApproved = input?.featureFlagWireDesignApproved === true;
+  const operatorApproval = resolveOperatorApproval({
+    operatorApprovalConfirmed: input?.operatorApprovalConfirmed,
+    operatorAuditReviewConfirmed,
+  });
 
   const decision = resolvePlanBuilderDecision({
     handoffDecision: handoff.decision,
@@ -314,7 +347,7 @@ export function evaluateRuntimeExecutionPlanBuilder(
   });
 
   const planSteps = buildPlanSteps({
-    operatorAuditReviewConfirmed,
+    operatorApproval,
     stage1RegressionReviewed,
     schemaPrApproved,
     operatorAuditSchemaPrApproved,
@@ -326,6 +359,14 @@ export function evaluateRuntimeExecutionPlanBuilder(
   });
 
   const satisfiedStepCount = planSteps.filter((s) => s.satisfied).length;
+  const missingStepKinds = planSteps.filter((s) => s.required && !s.satisfied).map((s) => s.kind);
+  const planFingerprint = buildPlanFingerprint({
+    handoffDecision: handoff.decision,
+    stage2Decision: handoff.sourceStage2Decision,
+    satisfiedStepCount,
+    missingStepKinds,
+  });
+
   const planChecklist = buildPlanChecklist({
     handoffDecision: handoff.decision,
     planSteps,
@@ -342,7 +383,7 @@ export function evaluateRuntimeExecutionPlanBuilder(
     stage1RegressionReviewed,
   });
 
-  const planCandidateId = `runtime-execution-plan-candidate-v1-${handoff.sourceStage2Decision}`;
+  const planCandidateId = "runtime-execution-plan-candidate-v1";
 
   return {
     mode: "read_only_runtime_execution_plan_builder",
@@ -353,6 +394,7 @@ export function evaluateRuntimeExecutionPlanBuilder(
     sourceStage2ExitCriteriaSatisfied: handoff.sourceStage2ExitCriteriaSatisfied,
     sourceStage2HandoffReady: handoff.sourceStage2HandoffReady,
     planCandidateId,
+    planFingerprint,
     planVersion: 1,
     planTitle: "Runtime Execution Plan Candidate (Read-Only)",
     planSummary: buildPlanSummary({ decision, handoffDecision: handoff.decision, satisfiedStepCount }),

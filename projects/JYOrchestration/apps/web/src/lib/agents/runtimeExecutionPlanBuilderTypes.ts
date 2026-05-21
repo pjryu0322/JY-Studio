@@ -51,6 +51,7 @@ export interface RuntimeExecutionPlanBuilderReport {
   readonly sourceStage2HandoffReady: boolean;
 
   readonly planCandidateId: string;
+  readonly planFingerprint: string;
   readonly planVersion: 1;
   readonly planTitle: string;
   readonly planSummary: string;

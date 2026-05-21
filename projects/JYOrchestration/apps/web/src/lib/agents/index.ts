@@ -578,6 +578,18 @@ export type {
 
 export { evaluateRuntimeExecutionPlanBuilder } from "@/lib/agents/evaluateRuntimeExecutionPlanBuilder";
 
+export type {
+  RuntimeExecutionApprovalReadiness,
+  RuntimeExecutionDryRunCandidate,
+  RuntimeExecutionDryRunCandidateStatus,
+  RuntimeExecutionPlanPackageChecklistItem,
+  RuntimeExecutionPlanPackageDecision,
+  RuntimeExecutionPlanPackageFinding,
+  RuntimeExecutionPlanPackageReport,
+} from "@/lib/agents/runtimeExecutionPlanPackageTypes";
+
+export { evaluateRuntimeExecutionPlanPackage } from "@/lib/agents/evaluateRuntimeExecutionPlanPackage";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

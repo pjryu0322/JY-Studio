@@ -221,7 +221,15 @@ describe("multi-agent runtime execution plan builder stage 3-2", () => {
       (f) => f.code === "runtime_execution_plan_candidate_created",
     );
     expect(readyFinding?.message).toMatch(/not actual execution permission/i);
-    expect(readyFinding?.message).toMatch(/design candidate only/i);
+    expect(readyFinding?.message).toMatch(/review candidate only/i);
+  });
+
+  it("ready planSummary states not actual runtime execution", () => {
+    vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+    expect(evaluateRuntimeExecutionPlanBuilder(ALL_PLAN_REVIEW_INPUT).planSummary).toMatch(
+      /not actual runtime execution/i,
+    );
   });
 
   it("defer state excludes runtime_execution_plan_candidate_created finding", () => {
@@ -243,6 +251,66 @@ describe("multi-agent runtime execution plan builder stage 3-2", () => {
         (f) => f.code === "runtime_execution_plan_builder_blocked",
       ),
     ).toBe(true);
+  });
+
+  describe("Stage 3-2 hardening", () => {
+    it("operatorApprovalConfirmed=true satisfies operator_approval step", () => {
+      vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+      const step = evaluateRuntimeExecutionPlanBuilder({
+        ...ALL_PLAN_REVIEW_INPUT,
+        operatorApprovalConfirmed: true,
+        operatorAuditReviewConfirmed: false,
+      }).planSteps.find((s) => s.kind === "operator_approval");
+
+      expect(step?.satisfied).toBe(true);
+      expect(step?.reason).toContain("operatorApprovalConfirmed=true");
+    });
+
+    it("operatorApprovalConfirmed=false with audit true uses explicit false not fallback", () => {
+      vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+      const step = evaluateRuntimeExecutionPlanBuilder({
+        ...ALL_PLAN_REVIEW_INPUT,
+        operatorApprovalConfirmed: false,
+        operatorAuditReviewConfirmed: true,
+      }).planSteps.find((s) => s.kind === "operator_approval");
+
+      expect(step?.satisfied).toBe(false);
+      expect(step?.reason).toContain("operatorApprovalConfirmed=false");
+    });
+
+    it("operator approval fallback uses operatorAuditReviewConfirmed when approval undefined", () => {
+      vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+      const step = evaluateRuntimeExecutionPlanBuilder({
+        ...ALL_PLAN_REVIEW_INPUT,
+        operatorAuditReviewConfirmed: true,
+      }).planSteps.find((s) => s.kind === "operator_approval");
+
+      expect(step?.satisfied).toBe(true);
+      expect(step?.reason).toContain("fallback operatorAuditReviewConfirmed=true");
+    });
+
+    it("identical input yields identical planFingerprint", () => {
+      vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+      const a = evaluateRuntimeExecutionPlanBuilder(ALL_PLAN_REVIEW_INPUT);
+      const b = evaluateRuntimeExecutionPlanBuilder(ALL_PLAN_REVIEW_INPUT);
+      expect(a.planFingerprint).toBe(b.planFingerprint);
+      expect(a.planFingerprint).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    });
+
+    it("missing steps change planFingerprint", () => {
+      vi.spyOn(handoffModule, "evaluateRuntimeExecutionHandoffCandidate").mockReturnValue(mockHandoffReady());
+
+      const ready = evaluateRuntimeExecutionPlanBuilder(ALL_PLAN_REVIEW_INPUT);
+      const partial = evaluateRuntimeExecutionPlanBuilder({
+        ...ALL_PLAN_REVIEW_INPUT,
+        schemaPrApproved: false,
+      });
+      expect(partial.planFingerprint).not.toBe(ready.planFingerprint);
+    });
   });
 
   describe("integration via real handoff evaluator", () => {
