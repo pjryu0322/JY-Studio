@@ -50,7 +50,7 @@ type RuntimeWireExperimentBranchPlanInput = Parameters<typeof evaluateControlled
   readonly manualBranchPlanReviewConfirmed?: boolean;
   readonly branchNamingPolicyConfirmed?: boolean;
   readonly rollbackPlanConfirmed?: boolean;
-  /** @internal Unit tests only — forces manual command caution validation failure. */
+  /** @internal Vitest only — forces manual command caution validation failure. */
   readonly __testInvalidManualCommandCaution?: boolean;
 };
 
