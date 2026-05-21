@@ -48,6 +48,61 @@ export function detectForbiddenModelDraftInCandidates(input: {
   );
 }
 
+export interface SchemaPrApprovalChecklistInput {
+  readonly readinessReady: boolean;
+  readonly explicitUserApproval: boolean;
+  readonly modelDraftAvailable: boolean;
+  readonly forbiddenFieldsExcluded: boolean;
+  readonly migrationChecklistReviewed: boolean;
+  readonly rollbackChecklistReviewed: boolean;
+  readonly extraReviewed?: readonly { readonly item: string; readonly satisfied: boolean }[];
+}
+
+export function buildSchemaPrApprovalChecklist(
+  items: readonly string[],
+  input: SchemaPrApprovalChecklistInput,
+): SchemaPrChecklistItem[] {
+  const satisfaction: Record<string, boolean> = {
+    "schema readiness ready": input.readinessReady,
+    "explicit user approval confirmed": input.explicitUserApproval,
+    "model draft available": input.modelDraftAvailable,
+    "forbidden fields excluded": input.forbiddenFieldsExcluded,
+    "migration checklist reviewed": input.migrationChecklistReviewed,
+    "rollback checklist reviewed": input.rollbackChecklistReviewed,
+    "separate PR required": true,
+    "no schema modification in this step": true,
+    "no migration creation in this step": true,
+    "no DB write in this step": true,
+  };
+
+  for (const extra of input.extraReviewed ?? []) {
+    satisfaction[extra.item] = extra.satisfied;
+  }
+
+  return items.map((item) => ({
+    item,
+    satisfied: satisfaction[item] ?? false,
+    reason: (satisfaction[item] ?? false)
+      ? `${item} satisfied`
+      : `${item} not satisfied`,
+  }));
+}
+
+export function shouldReportModelDraftMissing(input: {
+  readonly decision: SchemaPrApprovalDecision;
+  readonly readinessDecision: string;
+  readonly modelDraft: string;
+  readonly forbiddenDraftDetected: boolean;
+}): boolean {
+  if (input.decision === "defer" || input.forbiddenDraftDetected) {
+    return false;
+  }
+  if (input.readinessDecision === "blocked") {
+    return false;
+  }
+  return input.decision === "blocked" && !input.modelDraft.trim();
+}
+
 export function resolveSchemaPrApprovalDecision(input: {
   readonly readinessDecision: string;
   readonly explicitUserApproval: boolean;

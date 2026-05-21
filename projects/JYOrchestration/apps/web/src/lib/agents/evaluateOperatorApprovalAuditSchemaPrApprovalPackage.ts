@@ -11,8 +11,10 @@ import type {
 } from "@/lib/agents/operatorApprovalAuditSchemaPrApprovalPackageTypes";
 import type { OperatorApprovalAuditSchemaPrChecklistItem } from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
 import {
+  buildSchemaPrApprovalChecklist,
   detectForbiddenModelDraftInCandidates,
   resolveSchemaPrApprovalDecision,
+  shouldReportModelDraftMissing,
 } from "@/lib/agents/schemaPrReadinessShared";
 
 const APPROVAL_CHECKLIST_ITEMS = [
@@ -48,39 +50,6 @@ function mapReadinessChecklist(
   }));
 }
 
-function buildApprovalChecklist(input: {
-  readonly readiness: ReturnType<typeof evaluateOperatorApprovalAuditSchemaPrReadiness>;
-  readonly explicitUserApproval: boolean;
-}): OperatorApprovalAuditSchemaPrApprovalChecklistItem[] {
-  const readinessReady = input.readiness.decision === "ready_for_schema_pr_plan";
-  const shouldExposeDraft = readinessReady;
-  const modelDraftAvailable = shouldExposeDraft && input.readiness.modelCandidates.length > 0;
-  const forbiddenExcluded = input.readiness.forbiddenFieldChecklist.every((item) => item.satisfied);
-
-  const satisfaction: Record<string, boolean> = {
-    "schema readiness ready": readinessReady,
-    "explicit user approval confirmed": input.explicitUserApproval,
-    "model draft available": modelDraftAvailable,
-    "forbidden fields excluded": forbiddenExcluded,
-    "migration checklist reviewed": input.readiness.migrationChecklist.length > 0,
-    "rollback checklist reviewed": input.readiness.rollbackChecklist.length > 0,
-    "permission/access checklist reviewed": input.readiness.permissionAccessChecklist.length > 0,
-    "audit integrity checklist reviewed": input.readiness.auditIntegrityChecklist.length > 0,
-    "separate PR required": true,
-    "no schema modification in this step": true,
-    "no migration creation in this step": true,
-    "no DB write in this step": true,
-  };
-
-  return APPROVAL_CHECKLIST_ITEMS.map((item) => ({
-    item,
-    satisfied: satisfaction[item] ?? false,
-    reason: (satisfaction[item] ?? false)
-      ? `${item} satisfied`
-      : `${item} not satisfied`,
-  }));
-}
-
 function appendApprovalFindings(input: {
   readonly findings: OperatorApprovalAuditSchemaPrApprovalFinding[];
   readonly decision: OperatorApprovalAuditSchemaPrApprovalDecision;
@@ -89,8 +58,7 @@ function appendApprovalFindings(input: {
   readonly modelDraft: string;
   readonly forbiddenDraftDetected: boolean;
 }): void {
-  const { findings, decision, readiness, explicitUserApproval, modelDraft, forbiddenDraftDetected } =
-    input;
+  const { findings, decision, readiness, explicitUserApproval, forbiddenDraftDetected } = input;
 
   findings.push(
     finding(
@@ -119,7 +87,14 @@ function appendApprovalFindings(input: {
     if (readiness.decision === "blocked") {
       findings.push(finding("blocking", "source_readiness_blocked", "source schema PR readiness is blocked"));
     }
-    if (!modelDraft.trim()) {
+    if (
+      shouldReportModelDraftMissing({
+        decision,
+        readinessDecision: readiness.decision,
+        modelDraft: input.modelDraft,
+        forbiddenDraftDetected,
+      })
+    ) {
       findings.push(finding("blocking", "model_draft_missing", "model draft is missing"));
     }
     if (!readiness.forbiddenFieldChecklist.every((item) => item.satisfied)) {
@@ -182,7 +157,26 @@ export function evaluateOperatorApprovalAuditSchemaPrApprovalPackage(input?: {
     forbiddenDraftDetected,
   });
 
-  const approvalChecklist = buildApprovalChecklist({ readiness, explicitUserApproval });
+  const readinessReady = readiness.decision === "ready_for_schema_pr_plan";
+  const approvalChecklist = buildSchemaPrApprovalChecklist(APPROVAL_CHECKLIST_ITEMS, {
+    readinessReady,
+    explicitUserApproval,
+    modelDraftAvailable: shouldExposeDraft && readiness.modelCandidates.length > 0,
+    forbiddenFieldsExcluded: readiness.forbiddenFieldChecklist.every((item) => item.satisfied),
+    migrationChecklistReviewed: readiness.migrationChecklist.length > 0,
+    rollbackChecklistReviewed: readiness.rollbackChecklist.length > 0,
+    extraReviewed: [
+      {
+        item: "permission/access checklist reviewed",
+        satisfied: readiness.permissionAccessChecklist.length > 0,
+      },
+      {
+        item: "audit integrity checklist reviewed",
+        satisfied: readiness.auditIntegrityChecklist.length > 0,
+      },
+    ],
+  });
+
   const migrationChecklist = mapReadinessChecklist(readiness.migrationChecklist);
   const rollbackChecklist = mapReadinessChecklist(readiness.rollbackChecklist);
   const permissionAccessChecklist = mapReadinessChecklist(readiness.permissionAccessChecklist);

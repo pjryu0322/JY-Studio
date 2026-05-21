@@ -470,6 +470,16 @@ export type {
 
 export { evaluateOperatorApprovalAuditSchemaPrApprovalPackage } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrApprovalPackage";
 
+export type {
+  ConnectorGatewayExperimentBranchManualVerificationChecklistItem,
+  ConnectorGatewayExperimentBranchManualVerificationDecision,
+  ConnectorGatewayExperimentBranchManualVerificationFinding,
+  ConnectorGatewayExperimentBranchManualVerificationReport,
+  ConnectorGatewayExperimentBranchRegressionResult,
+} from "@/lib/agents/connectorGatewayExperimentBranchManualVerificationTypes";
+
+export { evaluateConnectorGatewayExperimentBranchManualVerification } from "@/lib/agents/evaluateConnectorGatewayExperimentBranchManualVerification";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */

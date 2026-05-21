@@ -106,6 +106,7 @@ describe("multi-agent agent execution record schema PR approval package stage 2-
     expect(report.decision).toBe("blocked");
     expect(report.modelDraft).toBe("");
     expect(report.modelName).toBe("");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("modelDraft does not include forbidden fields", () => {
@@ -154,6 +155,7 @@ describe("multi-agent agent execution record schema PR approval package stage 2-
     expect(
       report.findings.some((f) => f.code === "approval_package_model_draft_contains_forbidden_field"),
     ).toBe(true);
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("requiresSeparatePr is true", () => {
@@ -207,6 +209,7 @@ describe("multi-agent agent execution record schema PR approval package stage 2-
     });
     expect(report.decision).toBe("defer");
     expect(report.modelDraft).toBe("");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("uses schema PR readiness only without Prisma migration or DB write", () => {

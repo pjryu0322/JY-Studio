@@ -1194,6 +1194,50 @@ operator_override / rollback_approval → defer, modelDraft=""
 blocked / unknown → blocked, modelDraft=""
 ```
 
-### Stage 2-28 후보: Connector Gateway 실험 브랜치 수동 생성 후 회귀 검증
+## Stage 2-26 소스 보완 결과
 
-Stage 2-28에서는 Stage 2-25 execution package의 manualCommands를 사용자가 수동 실행한 뒤, 실험 브랜치 상태와 회귀 테스트 기준을 검증하는 read-only verification package를 만든다.
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| explicit approval semantics | `explicit user approval confirmed` | requiresExplicitUserApproval 분리 |
+| explicitUserApprovalProvided | report field | input 동기화 |
+| modelDraft exposure policy | ready만 노출, defer/blocked는 `""` | review candidate 정책 |
+| forbidden field recheck | approval package 단계 재검증 | model_draft_missing 정책 보정 |
+| 실제 schema/migration/DB write | 없음 | read-only 유지 |
+
+## Stage 2-28 Connector Gateway Branch Manual Verification 결과
+
+| 항목 | 반영 방식 | 실제 실행 여부 | 비고 |
+|---|---|---|---|
+| Manual Verification 타입 | read-only verification report | 없음 | 수동 실행 후 검증 |
+| Manual Verification evaluator | Stage 2-25 execution package 기반 | 없음 | git 미실행 |
+| explicitManualExecutionConfirmed | input flag | 없음 | 수동 실행 확인값 |
+| actualBranchName | input field | 없음 | 실제 git 조회 아님 |
+| regressionResults | input field | 없음 | 외부 테스트 결과 입력 |
+| rollbackRequired | report field | 없음 | regression 실패 시 |
+| verificationChecklist | report field | 없음 | 검증 기준 |
+| no-run flags | report field | 없음 | git/test/flag/routing 미실행 |
+
+구현: `connectorGatewayExperimentBranchManualVerificationTypes.ts`, `evaluateConnectorGatewayExperimentBranchManualVerification.ts`
+
+### Stage 2-28 원칙
+
+```text
+- 실제 git 명령을 실행하지 않는다.
+- 실제 브랜치를 생성하지 않는다.
+- 실제 테스트를 실행하지 않는다.
+- regressionResults는 외부에서 수행된 결과를 입력받아 판단한다.
+- feature flag wire와 routing 변경은 별도 PR/별도 승인 대상이다.
+```
+
+### Stage 2-28 Decision 규칙 요약
+
+```text
+execution package ready + manual confirmed + branch match + regression pass → manual_branch_verified
+missing manual confirmation / branch / regression → defer
+branch mismatch / regression fail / package not ready → blocked
+regression failure → rollbackRequired=true
+```
+
+### Stage 2-29 후보: Agent Execution Record write path 실제 wire 전 승인 게이트
+
+Stage 2-29에서는 Agent Execution Record write path를 실제로 wire하기 전 최종 승인 게이트를 설계한다.

@@ -146,6 +146,7 @@ describe("multi-agent operator approval audit schema PR approval package stage 2
     });
     expect(report.decision).toBe("defer");
     expect(report.modelDraft).toBe("");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("rollback_approval returns defer with empty modelDraft", () => {
@@ -155,6 +156,7 @@ describe("multi-agent operator approval audit schema PR approval package stage 2
     });
     expect(report.decision).toBe("defer");
     expect(report.modelDraft).toBe("");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("unknown target returns blocked", () => {
@@ -164,6 +166,45 @@ describe("multi-agent operator approval audit schema PR approval package stage 2
     });
     expect(report.decision).toBe("blocked");
     expect(report.modelDraft).toBe("");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
+  });
+
+  it("forbidden model draft blocks without model_draft_missing finding", () => {
+    vi.spyOn(schemaPrReadinessModule, "evaluateOperatorApprovalAuditSchemaPrReadiness").mockReturnValue({
+      mode: "read_only_operator_approval_audit_schema_pr_readiness",
+      decision: "ready_for_schema_pr_plan",
+      target: "operator_approval",
+      sourceSchemaDecision: "ready_for_schema_proposal",
+      sourceProposedTableName: "OperatorApproval",
+      sourceRequiresPrismaSchemaChange: true,
+      sourceRequiresMigration: true,
+      sourceFieldProposalCount: 1,
+      sourceExcludedFieldCount: 1,
+      sourceForbiddenFieldNames: ["rawPrompt"],
+      modelCandidates: [
+        {
+          modelName: "OperatorApproval",
+          modelDraft: "model OperatorApproval { rawPrompt String }",
+          caution: "read-only",
+        },
+      ],
+      migrationChecklist: [],
+      rollbackChecklist: [],
+      permissionAccessChecklist: [],
+      auditIntegrityChecklist: [],
+      forbiddenFieldChecklist: [],
+      requiresSeparatePr: true,
+      modifiesSchemaInThisStep: false,
+      createsMigrationInThisStep: false,
+      writesDataInThisStep: false,
+      findings: [],
+    });
+
+    const report = evaluateOperatorApprovalAuditSchemaPrApprovalPackage({
+      explicitUserApproval: true,
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "model_draft_missing")).toBe(false);
   });
 
   it("modifiesSchemaInThisStep is false", () => {
