@@ -1,22 +1,23 @@
 /**
- * Evaluate Agent execution record schema/migration PR readiness (read-only; no schema/migration/DB wire).
+ * Evaluate Operator approval/audit schema/migration PR readiness (read-only; no schema/migration/DB wire).
  */
 
 import {
-  evaluateAgentExecutionRecordSchemaDecision,
-  normalizeAgentExecutionRecordSchemaTarget,
-} from "@/lib/agents/evaluateAgentExecutionRecordSchemaDecision";
+  evaluateOperatorApprovalAuditSchemaDecision,
+  normalizeOperatorApprovalAuditSchemaTarget,
+} from "@/lib/agents/evaluateOperatorApprovalAuditSchemaDecision";
 import type {
-  AgentExecutionRecordSchemaDecision,
-  AgentExecutionRecordSchemaDecisionReport,
-} from "@/lib/agents/agentExecutionRecordSchemaDecisionTypes";
+  OperatorApprovalAuditSchemaDecision,
+  OperatorApprovalAuditSchemaDecisionReport,
+  OperatorApprovalAuditSchemaFieldProposal,
+} from "@/lib/agents/operatorApprovalAuditSchemaDecisionTypes";
 import type {
-  AgentExecutionRecordSchemaPrChecklistItem,
-  AgentExecutionRecordSchemaPrFinding,
-  AgentExecutionRecordSchemaPrModelCandidate,
-  AgentExecutionRecordSchemaPrReadinessDecision,
-  AgentExecutionRecordSchemaPrReadinessReport,
-} from "@/lib/agents/agentExecutionRecordSchemaPrReadinessTypes";
+  OperatorApprovalAuditSchemaPrChecklistItem,
+  OperatorApprovalAuditSchemaPrFinding,
+  OperatorApprovalAuditSchemaPrModelCandidate,
+  OperatorApprovalAuditSchemaPrReadinessDecision,
+  OperatorApprovalAuditSchemaPrReadinessReport,
+} from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
 import {
   buildSchemaPrForbiddenFieldChecklist,
   buildSchemaPrModelDraft,
@@ -26,21 +27,44 @@ import {
 
 const MODEL_CAUTION = "read-only schema draft; do not apply without separate PR approval";
 
-const FORBIDDEN_IN_MODEL_DRAFT = [
+const REQUIRED_FORBIDDEN_FIELDS = [
+  "rawReason",
   "rawPrompt",
+  "promptText",
   "fullInput",
   "fullOutput",
   "codeDiff",
+  "fileContent",
   "token",
+  "secret",
+  "password",
+  "authorization",
   "apiKey",
-  "stackTraceRaw",
+  "privateKey",
+  "env",
+  "personalContact",
+  "phoneNumber",
+  "emailBody",
 ] as const;
 
-const REQUIRED_FORBIDDEN_FIELDS = [...FORBIDDEN_IN_MODEL_DRAFT] as const;
+const FORBIDDEN_IN_MODEL_DRAFT = [...REQUIRED_FORBIDDEN_FIELDS] as const;
+
+const REQUIRED_PERMISSION_FIELDS = ["actorId", "actorRole", "decision", "actionType"] as const;
+
+const REQUIRED_AUDIT_INTEGRITY_FIELDS = [
+  "auditEventId",
+  "actorId",
+  "targetType",
+  "targetId",
+  "reasonSummary",
+  "createdAt",
+] as const;
 
 const MIGRATION_CHECKLIST_ITEMS = [
   "separate PR required",
   "schema owner review required",
+  "permission model review required",
+  "audit integrity review required",
   "migration draft required",
   "staging migration rehearsal required",
   "backward compatibility review required",
@@ -53,22 +77,32 @@ const ROLLBACK_CHECKLIST_ITEMS = [
   "write path can remain disabled",
   "failed migration stops rollout",
   "forbidden field detection stops rollout",
+  "permission guard failure stops write",
+  "audit integrity guard failure stops write",
   "data cleanup plan required",
 ] as const;
 
-const RETENTION_ACCESS_ITEMS = [
-  "retention policy required",
-  "access control review required",
-  "project scoped access required",
-  "audit review required",
-  "summary-only storage confirmed",
+const PERMISSION_ACCESS_ITEMS = [
+  "operator role required",
+  "approval authority required",
+  "override authority reviewed",
+  "audit read/write authority reviewed",
+  "project scoped permission required",
+] as const;
+
+const AUDIT_INTEGRITY_ITEMS = [
+  "audit event append-only policy required",
+  "actor identity required",
+  "target reference required",
+  "decision reason summary required",
+  "audit timestamp immutable",
 ] as const;
 
 function finding(
-  severity: AgentExecutionRecordSchemaPrFinding["severity"],
+  severity: OperatorApprovalAuditSchemaPrFinding["severity"],
   code: string,
   message: string,
-): AgentExecutionRecordSchemaPrFinding {
+): OperatorApprovalAuditSchemaPrFinding {
   return { severity, code, message };
 }
 
@@ -77,8 +111,8 @@ export function modelDraftContainsForbiddenField(modelDraft: string): boolean {
 }
 
 function mapSchemaDecisionToPrReadiness(
-  schemaDecision: AgentExecutionRecordSchemaDecision,
-): AgentExecutionRecordSchemaPrReadinessDecision {
+  schemaDecision: OperatorApprovalAuditSchemaDecision,
+): OperatorApprovalAuditSchemaPrReadinessDecision {
   switch (schemaDecision) {
     case "ready_for_schema_proposal":
       return "ready_for_schema_pr_plan";
@@ -91,10 +125,18 @@ function mapSchemaDecisionToPrReadiness(
   }
 }
 
+function fieldProposalsInclude(
+  fieldProposals: readonly OperatorApprovalAuditSchemaFieldProposal[],
+  requiredFields: readonly string[],
+): boolean {
+  const present = new Set(fieldProposals.map((f) => f.field));
+  return requiredFields.every((field) => present.has(field));
+}
+
 function resolvePrReadinessDecision(input: {
-  readonly schemaDecision: AgentExecutionRecordSchemaDecisionReport;
-  readonly modelCandidates: readonly AgentExecutionRecordSchemaPrModelCandidate[];
-}): AgentExecutionRecordSchemaPrReadinessDecision {
+  readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
+  readonly modelCandidates: readonly OperatorApprovalAuditSchemaPrModelCandidate[];
+}): OperatorApprovalAuditSchemaPrReadinessDecision {
   let decision = mapSchemaDecisionToPrReadiness(input.schemaDecision.decision);
 
   if (decision === "ready_for_schema_pr_plan") {
@@ -106,6 +148,12 @@ function resolvePrReadinessDecision(input: {
       const excluded = new Set(input.schemaDecision.excludedFields.map((f) => f.field));
       const missingForbidden = REQUIRED_FORBIDDEN_FIELDS.filter((field) => !excluded.has(field));
       if (missingForbidden.length > 0) {
+        decision = "blocked";
+      } else if (!fieldProposalsInclude(input.schemaDecision.fieldProposals, REQUIRED_PERMISSION_FIELDS)) {
+        decision = "blocked";
+      } else if (
+        !fieldProposalsInclude(input.schemaDecision.fieldProposals, REQUIRED_AUDIT_INTEGRITY_FIELDS)
+      ) {
         decision = "blocked";
       }
     }
@@ -121,10 +169,9 @@ function resolvePrReadinessDecision(input: {
 }
 
 function buildModelCandidates(input: {
-  readonly decision: AgentExecutionRecordSchemaPrReadinessDecision;
-  readonly schemaDecision: AgentExecutionRecordSchemaDecisionReport;
-}): AgentExecutionRecordSchemaPrModelCandidate[] {
-  if (input.decision !== "ready_for_schema_pr_plan" || !input.schemaDecision.proposedTableName) {
+  readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
+}): OperatorApprovalAuditSchemaPrModelCandidate[] {
+  if (!input.schemaDecision.proposedTableName || input.schemaDecision.fieldProposals.length === 0) {
     return [];
   }
 
@@ -143,16 +190,20 @@ function buildModelCandidates(input: {
 }
 
 function appendPrReadinessFindings(input: {
-  readonly findings: AgentExecutionRecordSchemaPrFinding[];
-  readonly decision: AgentExecutionRecordSchemaPrReadinessDecision;
-  readonly schemaDecision: AgentExecutionRecordSchemaDecisionReport;
+  readonly findings: OperatorApprovalAuditSchemaPrFinding[];
+  readonly decision: OperatorApprovalAuditSchemaPrReadinessDecision;
+  readonly schemaDecision: OperatorApprovalAuditSchemaDecisionReport;
   readonly isReady: boolean;
-  readonly modelCandidates: readonly AgentExecutionRecordSchemaPrModelCandidate[];
+  readonly modelCandidates: readonly OperatorApprovalAuditSchemaPrModelCandidate[];
 }): void {
   const { findings, decision, schemaDecision } = input;
 
   findings.push(
-    finding("info", "schema_pr_readiness_read_only", "schema PR readiness is read-only; no schema/migration wire"),
+    finding(
+      "info",
+      "operator_schema_pr_readiness_read_only",
+      "operator schema PR readiness is read-only; no schema/migration wire",
+    ),
   );
   findings.push(finding("info", "no_schema_modification_in_this_step", "schema.prisma is not modified in this step"));
   findings.push(finding("info", "no_migration_created_in_this_step", "migration is not created in this step"));
@@ -167,14 +218,22 @@ function appendPrReadinessFindings(input: {
       findings.push(finding("blocking", "missing_field_proposals", "field proposals are required"));
     }
     const excluded = new Set(schemaDecision.excludedFields.map((f) => f.field));
-    const missing = REQUIRED_FORBIDDEN_FIELDS.filter((field) => !excluded.has(field));
-    if (missing.length > 0) {
+    const missingForbidden = REQUIRED_FORBIDDEN_FIELDS.filter((field) => !excluded.has(field));
+    if (missingForbidden.length > 0) {
       findings.push(
         finding(
           "blocking",
           "missing_forbidden_field",
           `missing forbidden excluded fields: ${missing.join(", ")}`,
         ),
+      );
+    }
+    if (!fieldProposalsInclude(schemaDecision.fieldProposals, REQUIRED_PERMISSION_FIELDS)) {
+      findings.push(finding("blocking", "missing_permission_field", "permission guard fields are missing"));
+    }
+    if (!fieldProposalsInclude(schemaDecision.fieldProposals, REQUIRED_AUDIT_INTEGRITY_FIELDS)) {
+      findings.push(
+        finding("blocking", "missing_audit_integrity_field", "audit integrity fields are missing"),
       );
     }
     if (input.modelCandidates.some((c) => modelDraftContainsForbiddenField(c.modelDraft))) {
@@ -187,6 +246,12 @@ function appendPrReadinessFindings(input: {
 
   findings.push(finding("info", "separate_pr_required", "schema/migration requires a separate PR"));
   findings.push(finding("info", "forbidden_fields_excluded", "forbidden fields are excluded from schema proposal"));
+  findings.push(
+    finding("info", "permission_access_review_required", "permission/access review is required before migration"),
+  );
+  findings.push(
+    finding("info", "audit_integrity_review_required", "audit integrity review is required before migration"),
+  );
   findings.push(finding("info", "summary_only_storage_required", "summary-only storage is required"));
 
   if (input.isReady) {
@@ -194,8 +259,8 @@ function appendPrReadinessFindings(input: {
   }
 
   findings.push(finding("warning", "migration_required", "migration will be required in a separate PR"));
-  findings.push(finding("warning", "retention_policy_required", "retention policy review is required"));
-  findings.push(finding("warning", "access_control_review_required", "access control review is required"));
+  findings.push(finding("warning", "permission_model_required", "permission model review is required"));
+  findings.push(finding("warning", "audit_integrity_policy_required", "audit integrity policy review is required"));
   findings.push(
     finding(
       "warning",
@@ -211,17 +276,14 @@ function appendPrReadinessFindings(input: {
   }
 }
 
-/** Read-only schema PR readiness — does not modify schema.prisma, create migrations, or write data. */
-export function evaluateAgentExecutionRecordSchemaPrReadiness(input?: {
+/** Read-only operator schema PR readiness — does not modify schema.prisma, create migrations, or write data. */
+export function evaluateOperatorApprovalAuditSchemaPrReadiness(input?: {
   readonly target?: string;
-}): AgentExecutionRecordSchemaPrReadinessReport {
-  const target = normalizeAgentExecutionRecordSchemaTarget(input?.target);
-  const schemaDecision = evaluateAgentExecutionRecordSchemaDecision({ target });
+}): OperatorApprovalAuditSchemaPrReadinessReport {
+  const target = normalizeOperatorApprovalAuditSchemaTarget(input?.target);
+  const schemaDecision = evaluateOperatorApprovalAuditSchemaDecision({ target });
 
-  const preliminaryCandidates = buildModelCandidates({
-    decision: "ready_for_schema_pr_plan",
-    schemaDecision,
-  });
+  const preliminaryCandidates = buildModelCandidates({ schemaDecision });
   const decision = resolvePrReadinessDecision({ schemaDecision, modelCandidates: preliminaryCandidates });
   const isReady = decision === "ready_for_schema_pr_plan";
   const isBlocked = decision === "blocked";
@@ -242,22 +304,29 @@ export function evaluateAgentExecutionRecordSchemaPrReadiness(input?: {
     "rollback checklist not applicable while blocked",
   );
 
-  const retentionAccessChecklist = buildSchemaPrStaticChecklist(
-    RETENTION_ACCESS_ITEMS,
+  const permissionAccessChecklist = buildSchemaPrStaticChecklist(
+    PERMISSION_ACCESS_ITEMS,
     !isBlocked,
-    "retention/access prerequisite documented",
-    "retention/access checklist not applicable while blocked",
+    "permission/access prerequisite documented",
+    "permission/access checklist not applicable while blocked",
+  );
+
+  const auditIntegrityChecklist = buildSchemaPrStaticChecklist(
+    AUDIT_INTEGRITY_ITEMS,
+    !isBlocked,
+    "audit integrity prerequisite documented",
+    "audit integrity checklist not applicable while blocked",
   );
 
   const forbiddenFieldChecklist = buildSchemaPrForbiddenFieldChecklist(
     schemaDecision.excludedFields,
     REQUIRED_FORBIDDEN_FIELDS,
-  ) as AgentExecutionRecordSchemaPrChecklistItem[];
+  ) as OperatorApprovalAuditSchemaPrChecklistItem[];
   const sourceForbiddenFieldNames = REQUIRED_FORBIDDEN_FIELDS.filter((field) =>
     schemaDecision.excludedFields.some((f) => f.field === field),
   );
 
-  const findings: AgentExecutionRecordSchemaPrFinding[] = [];
+  const findings: OperatorApprovalAuditSchemaPrFinding[] = [];
   appendPrReadinessFindings({
     findings,
     decision,
@@ -267,7 +336,7 @@ export function evaluateAgentExecutionRecordSchemaPrReadiness(input?: {
   });
 
   return {
-    mode: "read_only_agent_execution_record_schema_pr_readiness",
+    mode: "read_only_operator_approval_audit_schema_pr_readiness",
     decision,
     target,
     sourceSchemaDecision: schemaDecision.decision,
@@ -280,7 +349,8 @@ export function evaluateAgentExecutionRecordSchemaPrReadiness(input?: {
     modelCandidates,
     migrationChecklist,
     rollbackChecklist,
-    retentionAccessChecklist,
+    permissionAccessChecklist,
+    auditIntegrityChecklist,
     forbiddenFieldChecklist,
     requiresSeparatePr: true,
     modifiesSchemaInThisStep: false,

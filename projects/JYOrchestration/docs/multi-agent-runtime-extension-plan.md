@@ -1021,15 +1021,46 @@ ready_for_schema_proposal → ready_for_schema_pr_plan + modelCandidates
 defer / timeline_event_link / audit_trail_link → defer
 blocked / unknown → blocked; empty modelCandidates
 forbiddenFieldChecklist validates REQUIRED_FORBIDDEN_FIELDS in excludedFields
+modelDraftContainsForbiddenField → blocked + model_candidate_contains_forbidden_field
+sourceFieldProposalCount / sourceExcludedFieldCount / sourceForbiddenFieldNames source trace
 ```
 
-### Stage 2-24 후보: Operator Approval/Audit schema/migration PR readiness
+## Stage 2-24 Operator Approval/Audit Schema/Migration PR Readiness 결과
 
-Stage 2-24에서는 Stage 2-18 schema decision을 기반으로 Operator Approval/Audit schema/migration PR 준비 여부를 판단한다.
+| 항목 | 반영 방식 | 실제 변경 여부 | 비고 |
+|---|---|---|---|
+| Schema PR Readiness 타입 | read-only readiness report | 없음 | 별도 PR 준비 |
+| Schema PR evaluator | operator schema decision 기반 판단 | 없음 | schema.prisma 미수정 |
+| modelCandidates | Prisma model draft 문자열 | 없음 | 적용 금지 |
+| migrationChecklist | report field | 없음 | migration 미생성 |
+| rollbackChecklist | report field | 없음 | rollback 준비 |
+| permission/access checklist | report field | 없음 | 권한 검토 필요 |
+| audit integrity checklist | report field | 없음 | 감사 무결성 검토 필요 |
+| forbidden field checklist | report field | 없음 | raw/secret/contact 필드 제외 확인 |
 
-| 후보 | 설명 | 주의사항 |
-|---|---|---|
-| schema PR readiness | approval/audit schema PR 패키지 | DB 영향 검토 |
-| permission/audit integrity checklist | 운영 검토 | 필수 |
-| migration draft plan | migration 후보 | 별도 승인 |
-| rollback migration plan | rollback 후보 | 필수 |
+구현: `operatorApprovalAuditSchemaPrReadinessTypes.ts`, `evaluateOperatorApprovalAuditSchemaPrReadiness.ts`
+
+### Stage 2-24 원칙
+
+```text
+- 실제 schema.prisma를 변경하지 않는다.
+- migration을 만들지 않는다.
+- DB write를 구현하지 않는다.
+- Prisma model은 report 내 draft 문자열로만 제공한다.
+- schema/migration은 별도 PR과 별도 승인 후 진행한다.
+```
+
+### Stage 2-24 Decision 규칙 요약
+
+```text
+ready_for_schema_proposal → ready_for_schema_pr_plan + modelCandidates
+operator_override / rollback_approval → defer
+blocked / unknown → blocked; empty modelCandidates
+permission fields: actorId, actorRole, decision, actionType
+audit integrity fields: auditEventId, actorId, targetType, targetId, reasonSummary, createdAt
+19 forbidden excluded fields required; modelDraft forbidden guard
+```
+
+### Stage 2-25 후보: Connector Gateway 실험 브랜치 명시 승인 후 실행
+
+Stage 2-25에서는 Stage 2-22 readiness report의 commandCandidates를 사용자가 명시 승인한 후 수동 실행할지 결정한다.

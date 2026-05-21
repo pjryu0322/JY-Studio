@@ -34,6 +34,9 @@ export interface AgentExecutionRecordSchemaPrReadinessReport {
   readonly sourceProposedTableName: string;
   readonly sourceRequiresPrismaSchemaChange: boolean;
   readonly sourceRequiresMigration: boolean;
+  readonly sourceFieldProposalCount: number;
+  readonly sourceExcludedFieldCount: number;
+  readonly sourceForbiddenFieldNames: readonly string[];
 
   readonly modelCandidates: readonly AgentExecutionRecordSchemaPrModelCandidate[];
   readonly migrationChecklist: readonly AgentExecutionRecordSchemaPrChecklistItem[];

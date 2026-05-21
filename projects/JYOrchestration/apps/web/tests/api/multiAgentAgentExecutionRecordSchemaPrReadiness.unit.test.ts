@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateAgentExecutionRecordSchemaPrReadiness } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
+import {
+  evaluateAgentExecutionRecordSchemaPrReadiness,
+  modelDraftContainsForbiddenField,
+} from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
 import * as schemaDecisionModule from "@/lib/agents/evaluateAgentExecutionRecordSchemaDecision";
 
 const FORBIDDEN_IN_DRAFT = [
@@ -120,5 +123,78 @@ describe("multi-agent agent execution record schema PR readiness stage 2-23", ()
     const schemaSpy = vi.spyOn(schemaDecisionModule, "evaluateAgentExecutionRecordSchemaDecision");
     evaluateAgentExecutionRecordSchemaPrReadiness();
     expect(schemaSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("report includes sourceFieldProposalCount", () => {
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    expect(report.sourceFieldProposalCount).toBeGreaterThan(0);
+  });
+
+  it("report includes sourceExcludedFieldCount", () => {
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    expect(report.sourceExcludedFieldCount).toBeGreaterThan(0);
+  });
+
+  it("report includes sourceForbiddenFieldNames", () => {
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    expect(report.sourceForbiddenFieldNames.length).toBeGreaterThan(0);
+  });
+
+  it("all modelCandidates include caution", () => {
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    for (const candidate of report.modelCandidates) {
+      expect(candidate.caution.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("caution includes separate PR approval wording", () => {
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    expect(report.modelCandidates[0]?.caution).toContain("separate PR approval");
+  });
+
+  it("modelDraftContainsForbiddenField helper detects forbidden fields", () => {
+    expect(modelDraftContainsForbiddenField("  rawPrompt String")).toBe(true);
+    expect(modelDraftContainsForbiddenField("  recordId String")).toBe(false);
+  });
+
+  it("forbidden field in modelDraft blocks readiness", () => {
+    vi.spyOn(schemaDecisionModule, "evaluateAgentExecutionRecordSchemaDecision").mockReturnValue({
+      mode: "read_only_agent_execution_record_schema_decision",
+      decision: "ready_for_schema_proposal",
+      target: "agent_execution_record",
+      proposedTableName: "AgentExecutionRecord",
+      requiresPrismaSchemaChange: true,
+      requiresMigration: true,
+      requiresRollbackPlan: true,
+      requiresBackfillPlan: false,
+      requiresRetentionPolicy: true,
+      requiresAccessControlReview: true,
+      fieldProposals: [
+        {
+          field: "rawPrompt",
+          type: "String",
+          nullable: true,
+          indexed: false,
+          reason: "test",
+          sensitivity: "forbidden",
+        },
+      ],
+      excludedFields: FORBIDDEN_IN_DRAFT.map((field) => ({
+        field,
+        type: "Forbidden",
+        nullable: true,
+        indexed: false,
+        reason: "excluded",
+        sensitivity: "forbidden" as const,
+      })),
+      rolloutPlan: [],
+      rollbackPlan: [],
+      findings: [],
+    });
+    const report = evaluateAgentExecutionRecordSchemaPrReadiness();
+    expect(report.decision).toBe("blocked");
+    expect(report.findings.some((f) => f.code === "model_candidate_contains_forbidden_field")).toBe(
+      true,
+    );
   });
 });

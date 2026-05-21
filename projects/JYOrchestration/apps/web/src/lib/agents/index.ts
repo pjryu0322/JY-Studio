@@ -426,6 +426,16 @@ export type {
 
 export { evaluateAgentExecutionRecordSchemaPrReadiness } from "@/lib/agents/evaluateAgentExecutionRecordSchemaPrReadiness";
 
+export type {
+  OperatorApprovalAuditSchemaPrChecklistItem,
+  OperatorApprovalAuditSchemaPrFinding,
+  OperatorApprovalAuditSchemaPrModelCandidate,
+  OperatorApprovalAuditSchemaPrReadinessDecision,
+  OperatorApprovalAuditSchemaPrReadinessReport,
+} from "@/lib/agents/operatorApprovalAuditSchemaPrReadinessTypes";
+
+export { evaluateOperatorApprovalAuditSchemaPrReadiness } from "@/lib/agents/evaluateOperatorApprovalAuditSchemaPrReadiness";
+
 export type { ConnectorPassThroughRecordSource } from "@/lib/agents/connectorPassThroughBoundaryTypes";
 
 /** @internal Tests and registry bootstrap only. */
