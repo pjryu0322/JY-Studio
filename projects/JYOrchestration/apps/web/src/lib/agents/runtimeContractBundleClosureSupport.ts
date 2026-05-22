@@ -6,17 +6,17 @@ import { evaluateRuntimeApiContractDesign } from "@/lib/agents/evaluateRuntimeAp
 import type { RuntimeApiContractDesignReport } from "@/lib/agents/runtimeApiContractDesignTypes";
 import { buildRuntimeContractBundleClosureChecklists } from "@/lib/agents/runtimeContractBundleClosureChecklists";
 import { appendRuntimeContractBundleClosureFindings } from "@/lib/agents/runtimeContractBundleClosureFindings";
+import { buildRuntimeContractBundleItems } from "@/lib/agents/runtimeContractBundleClosureItems";
 import {
-  buildRuntimeContractBundleItems,
   computeStage8EntryReady,
   validateRuntimeContractBundleItems,
-} from "@/lib/agents/runtimeContractBundleClosureItems";
+} from "@/lib/agents/runtimeContractBundleClosureItemValidation";
 
+export { buildRuntimeContractBundleItems } from "@/lib/agents/runtimeContractBundleClosureItems";
 export {
-  buildRuntimeContractBundleItems,
   validateRuntimeContractBundleItems,
   computeStage8EntryReady,
-} from "@/lib/agents/runtimeContractBundleClosureItems";
+} from "@/lib/agents/runtimeContractBundleClosureItemValidation";
 
 export { buildRuntimeContractBundleClosureChecklists } from "@/lib/agents/runtimeContractBundleClosureChecklists";
 export { appendRuntimeContractBundleClosureFindings } from "@/lib/agents/runtimeContractBundleClosureFindings";

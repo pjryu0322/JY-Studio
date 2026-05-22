@@ -2509,7 +2509,7 @@ Stage 8-A 권장 최소 범위:
 - no Connector Gateway routing change
 - no UI by default
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`
+구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`, `runtimeContractBundleClosureItemValidation.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 
