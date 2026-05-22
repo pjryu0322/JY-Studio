@@ -24,6 +24,7 @@ import {
   resolveRuntimeExecutionModelReviewGateDecision,
   RUNTIME_EXECUTION_MODEL_REVIEW_GATE_TITLE,
   RUNTIME_EXECUTION_MODEL_REVIEW_GATE_VERSION,
+  SCHEMA_MIGRATION_BOUNDARY_SATISFIED,
   STAGE6_C_RECOMMENDED_NEXT_PHASES,
   STAGE6_C_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
@@ -41,8 +42,6 @@ export {
 
 export type { RuntimeExecutionModelReviewGateDecisionInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 
-const SCHEMA_MIGRATION_BOUNDARY_SATISFIED = true;
-
 /** Read-only Stage 6-C review gate — does not grant runtime execution permission. */
 export function evaluateRuntimeExecutionModelReviewGate(
   input: RuntimeExecutionModelReviewGateInput = {},
@@ -54,7 +53,7 @@ export function evaluateRuntimeExecutionModelReviewGate(
   const forbiddenFieldDetected = forbiddenFieldTrace.detected;
   const noRunBoundarySatisfied = computeNoRunBoundarySatisfied(source);
   const persistenceBoundarySatisfied = computePersistenceBoundarySatisfied(source);
-  const schemaMigrationBoundarySatisfied = SCHEMA_MIGRATION_BOUNDARY_SATISFIED;
+  const schemaMigrationBoundarySatisfied = SCHEMA_MIGRATION_BOUNDARY_SATISFIED === true;
 
   const decision = resolveRuntimeExecutionModelReviewGateDecision({
     sourceModelCandidateDecision: source.decision,

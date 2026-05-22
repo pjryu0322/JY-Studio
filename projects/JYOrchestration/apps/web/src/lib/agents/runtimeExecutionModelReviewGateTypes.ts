@@ -43,6 +43,16 @@ export interface RuntimeExecutionModelReviewGateFinding {
   readonly message: string;
 }
 
+export type ParsedRuntimeExecutionModelReviewGateInput = {
+  readonly runtimeModelReviewGateConfirmed: boolean;
+  readonly runtimeModelFieldContractReviewed: boolean;
+  readonly runtimeModelNoRunBoundaryReviewed: boolean;
+  readonly runtimeModelPersistenceBoundaryReviewed: boolean;
+  readonly runtimeModelApprovalBoundaryReviewed: boolean;
+  readonly confirmationsSatisfied: boolean;
+  readonly confirmationCount: number;
+};
+
 export interface RuntimeExecutionModelReviewGateInput {
   readonly modelCandidate?: RuntimeExecutionModelCandidateInput;
   readonly runtimeModelReviewGateConfirmed?: boolean;

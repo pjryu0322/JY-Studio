@@ -28,6 +28,25 @@ export const STAGE6_C_SEPARATED_WORK_ITEMS = [
   "actual_runtime_execution_ui",
 ] as const;
 
+import type { RuntimeExecutionModelCandidateKind } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
+import type { RuntimeExecutionModelReviewArea } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
+
+/** Stage 6-C disallows schema migration in this step (read-only gate). */
+export const SCHEMA_MIGRATION_BOUNDARY_SATISFIED = true as const;
+
+export const RUNTIME_EXECUTION_MODEL_KIND_TO_REVIEW_AREA: Record<
+  RuntimeExecutionModelCandidateKind,
+  RuntimeExecutionModelReviewArea
+> = {
+  RuntimeExecutionRequest: "request_model",
+  RuntimeExecutionPlan: "plan_model",
+  RuntimeExecutionStep: "step_model",
+  RuntimeExecutionResult: "result_model",
+  RuntimeExecutionFinding: "finding_model",
+  RuntimeExecutionApprovalState: "approval_state_model",
+  RuntimeExecutionRollbackPlan: "rollback_plan_model",
+};
+
 export const STAGE6_C_RECOMMENDED_NEXT_PHASES = [
   "stage_6_d_runtime_execution_contract_candidate",
   "stage_6_e_runtime_execution_dry_run_contract",
