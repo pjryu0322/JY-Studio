@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { buildDefaultRuntimeExecutionModelCandidates } from "@/lib/agents/evaluateRuntimeExecutionModelCandidate";
 import {
+  collectForbiddenFieldTraceInModelCandidates,
   evaluateRuntimeExecutionModelReviewGate,
   resolveRuntimeExecutionModelReviewGateDecision,
 } from "@/lib/agents/evaluateRuntimeExecutionModelReviewGate";
@@ -9,6 +11,7 @@ import {
   buildStage6CReadyReviewGateInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 import { REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS } from "@/lib/agents/runtimeExecutionModelCandidateConstants";
+import type { RuntimeExecutionModelReviewArea } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 
 function evaluateReadyReviewGate(input: Parameters<typeof evaluateRuntimeExecutionModelReviewGate>[0] = {}) {
   return evaluateRuntimeExecutionModelReviewGate({ ...buildStage6CReadyReviewGateInput(), ...input });
@@ -59,6 +62,21 @@ describe("multi-agent runtime execution model review gate stage 6-C", () => {
         forbiddenFieldDetected: false,
         noRunBoundarySatisfied: true,
         persistenceBoundarySatisfied: true,
+        schemaMigrationBoundarySatisfied: true,
+      }),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionModelReviewGateDecision blocks when schemaMigrationBoundarySatisfied is false", () => {
+    expect(
+      resolveRuntimeExecutionModelReviewGateDecision({
+        sourceModelCandidateDecision: "ready_for_runtime_execution_model_review",
+        sourceCandidateOnly: true,
+        confirmationsSatisfied: true,
+        forbiddenFieldDetected: false,
+        noRunBoundarySatisfied: true,
+        persistenceBoundarySatisfied: true,
+        schemaMigrationBoundarySatisfied: false,
       }),
     ).toBe("blocked");
   });
@@ -72,6 +90,7 @@ describe("multi-agent runtime execution model review gate stage 6-C", () => {
         forbiddenFieldDetected: false,
         noRunBoundarySatisfied: false,
         persistenceBoundarySatisfied: true,
+        schemaMigrationBoundarySatisfied: true,
       }),
     ).toBe("blocked");
   });
@@ -85,6 +104,7 @@ describe("multi-agent runtime execution model review gate stage 6-C", () => {
         forbiddenFieldDetected: false,
         noRunBoundarySatisfied: true,
         persistenceBoundarySatisfied: false,
+        schemaMigrationBoundarySatisfied: true,
       }),
     ).toBe("blocked");
   });
@@ -98,6 +118,7 @@ describe("multi-agent runtime execution model review gate stage 6-C", () => {
         forbiddenFieldDetected: false,
         noRunBoundarySatisfied: false,
         persistenceBoundarySatisfied: true,
+        schemaMigrationBoundarySatisfied: true,
       }),
     ).toBe("blocked");
   });
@@ -111,8 +132,98 @@ describe("multi-agent runtime execution model review gate stage 6-C", () => {
         forbiddenFieldDetected: true,
         noRunBoundarySatisfied: true,
         persistenceBoundarySatisfied: true,
+        schemaMigrationBoundarySatisfied: true,
       }),
     ).toBe("blocked");
+  });
+
+  it("report sourceCandidateOnly maps from source candidateOnly", () => {
+    const report = evaluateReadyReviewGate();
+    expect(report.sourceCandidateOnly).toBe(true);
+  });
+
+  it("report sourceActualExecutionWireAllowedInThisStep is false", () => {
+    expect(evaluateReadyReviewGate().sourceActualExecutionWireAllowedInThisStep).toBe(false);
+  });
+
+  it("report sourceActualPersistenceAllowedInThisStep is false", () => {
+    expect(evaluateReadyReviewGate().sourceActualPersistenceAllowedInThisStep).toBe(false);
+  });
+
+  it("report sourceActualExternalSideEffectAllowedInThisStep is false", () => {
+    expect(evaluateReadyReviewGate().sourceActualExternalSideEffectAllowedInThisStep).toBe(false);
+  });
+
+  it("report sourceNoRunBoundarySatisfied is true on ready path", () => {
+    expect(evaluateReadyReviewGate().sourceNoRunBoundarySatisfied).toBe(true);
+  });
+
+  it("report sourcePersistenceBoundarySatisfied is true on ready path", () => {
+    expect(evaluateReadyReviewGate().sourcePersistenceBoundarySatisfied).toBe(true);
+  });
+
+  it("report schemaMigrationBoundarySatisfied is true on ready path", () => {
+    expect(evaluateReadyReviewGate().schemaMigrationBoundarySatisfied).toBe(true);
+  });
+
+  it("reviewedModelKinds follows REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS order", () => {
+    expect(evaluateReadyReviewGate().reviewedModelKinds).toEqual([
+      ...REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS,
+    ]);
+  });
+
+  it("reviewGateFingerprint includes boundary trace segments", () => {
+    const fingerprint = evaluateReadyReviewGate().reviewGateFingerprint;
+    expect(fingerprint).toContain("candidateOnly:true");
+    expect(fingerprint).toContain("noRun:true");
+    expect(fingerprint).toContain("persistence:true");
+    expect(fingerprint).toContain("forbidden:false");
+  });
+
+  it("ready findings include runtime_schema_migration_boundary_disallowed", () => {
+    expect(
+      evaluateReadyReviewGate().findings.some((f) => f.code === "runtime_schema_migration_boundary_disallowed"),
+    ).toBe(true);
+  });
+
+  const MODEL_AREAS: RuntimeExecutionModelReviewArea[] = [
+    "request_model",
+    "plan_model",
+    "step_model",
+    "result_model",
+    "finding_model",
+    "approval_state_model",
+    "rollback_plan_model",
+  ];
+
+  for (const area of MODEL_AREAS) {
+    it(`reviewChecklist includes ${area} area`, () => {
+      expect(evaluateReadyReviewGate().reviewChecklist.some((item) => item.area === area)).toBe(true);
+    });
+  }
+
+  it("collectForbiddenFieldTraceInModelCandidates collects model kind and field name", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+      c.kind === "RuntimeExecutionResult"
+        ? { ...c, proposedFields: [...c.proposedFields, "prismaClientCall"] }
+        : c,
+    );
+    const trace = collectForbiddenFieldTraceInModelCandidates({ modelCandidates: candidates });
+    expect(trace.detected).toBe(true);
+    expect(trace.modelKinds).toContain("RuntimeExecutionResult");
+    expect(trace.fieldNames).toContain("prismaClientCall");
+  });
+
+  it("forbidden field trace message includes field name", () => {
+    const trace = collectForbiddenFieldTraceInModelCandidates({
+      modelCandidates: buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+        c.kind === "RuntimeExecutionPlan"
+          ? { ...c, proposedFields: [...c.proposedFields, "cursorApiToken"] }
+          : c,
+      ),
+    });
+    const message = `Forbidden field detected: fields=${trace.fieldNames.join(",")}`;
+    expect(message).toContain("cursorApiToken");
   });
 
   it("reviewedModelKinds includes all 7 required kinds", () => {

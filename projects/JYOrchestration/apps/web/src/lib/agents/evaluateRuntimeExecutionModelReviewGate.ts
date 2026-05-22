@@ -8,14 +8,16 @@ import type {
   RuntimeExecutionModelReviewGateReport,
 } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import {
+  collectForbiddenFieldTraceInModelCandidates,
+  computeNoRunBoundarySatisfied,
+  computePersistenceBoundarySatisfied,
+  computeReviewedModelTrace,
+} from "@/lib/agents/runtimeExecutionModelReviewGateBoundary";
+import {
   appendRuntimeExecutionModelReviewGateFindings,
   buildRuntimeExecutionModelReviewGateChecklists,
   buildRuntimeExecutionModelReviewGateFingerprint,
   buildRuntimeExecutionModelReviewGateSummary,
-  computeNoRunBoundarySatisfied,
-  computePersistenceBoundarySatisfied,
-  computeReviewedModelTrace,
-  detectForbiddenFieldsInModelCandidates,
   evaluateRuntimeExecutionModelReviewGateSource,
   parseRuntimeExecutionModelReviewGateInput,
   REQUIRED_STAGE6_C_MODEL_REVIEW_GATE_CONFIRMATIONS,
@@ -26,16 +28,20 @@ import {
   STAGE6_C_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
 
-export { resolveRuntimeExecutionModelReviewGateDecision } from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
+export {
+  buildRuntimeExecutionModelReviewGateFingerprint,
+  collectForbiddenFieldTraceInModelCandidates,
+  resolveRuntimeExecutionModelReviewGateDecision,
+} from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
 
 export {
   buildStage6CModelReviewGateConfirmedInput,
   buildStage6CReadyReviewGateInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
-export type {
-  RuntimeExecutionModelReviewGateDecisionInput,
-} from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
+export type { RuntimeExecutionModelReviewGateDecisionInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
+
+const SCHEMA_MIGRATION_BOUNDARY_SATISFIED = true;
 
 /** Read-only Stage 6-C review gate — does not grant runtime execution permission. */
 export function evaluateRuntimeExecutionModelReviewGate(
@@ -44,9 +50,11 @@ export function evaluateRuntimeExecutionModelReviewGate(
   const source = evaluateRuntimeExecutionModelReviewGateSource(input);
   const parsed = parseRuntimeExecutionModelReviewGateInput(input);
   const { reviewedModelKinds, reviewedModelCount, reviewedFieldCount } = computeReviewedModelTrace(source);
-  const forbiddenFieldDetected = detectForbiddenFieldsInModelCandidates(source);
+  const forbiddenFieldTrace = collectForbiddenFieldTraceInModelCandidates(source);
+  const forbiddenFieldDetected = forbiddenFieldTrace.detected;
   const noRunBoundarySatisfied = computeNoRunBoundarySatisfied(source);
   const persistenceBoundarySatisfied = computePersistenceBoundarySatisfied(source);
+  const schemaMigrationBoundarySatisfied = SCHEMA_MIGRATION_BOUNDARY_SATISFIED;
 
   const decision = resolveRuntimeExecutionModelReviewGateDecision({
     sourceModelCandidateDecision: source.decision,
@@ -55,6 +63,7 @@ export function evaluateRuntimeExecutionModelReviewGate(
     forbiddenFieldDetected,
     noRunBoundarySatisfied,
     persistenceBoundarySatisfied,
+    schemaMigrationBoundarySatisfied,
   });
 
   const reviewGateFingerprint = buildRuntimeExecutionModelReviewGateFingerprint({
@@ -62,6 +71,10 @@ export function evaluateRuntimeExecutionModelReviewGate(
     reviewedModelKinds,
     reviewedFieldCount,
     confirmationCount: parsed.confirmationCount,
+    sourceCandidateOnly: source.candidateOnly === true,
+    sourceNoRunBoundarySatisfied: noRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: persistenceBoundarySatisfied,
+    forbiddenFieldDetected,
   });
 
   const { reviewChecklist, noRunChecklist, persistenceChecklist } =
@@ -80,9 +93,10 @@ export function evaluateRuntimeExecutionModelReviewGate(
     decision,
     source,
     parsed,
-    forbiddenFieldDetected,
+    forbiddenFieldTrace,
     noRunBoundarySatisfied,
     persistenceBoundarySatisfied,
+    schemaMigrationBoundarySatisfied,
   });
 
   return {
@@ -92,7 +106,13 @@ export function evaluateRuntimeExecutionModelReviewGate(
     sourceModelCandidateDecision: source.decision,
     sourceModelCandidateVersion: source.modelCandidateVersion,
     sourceModelCandidateFingerprint: source.modelCandidateFingerprint,
-    sourceCandidateOnly: true,
+    sourceCandidateOnly: source.candidateOnly,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceCandidateOnlyBoundarySatisfied: source.candidateOnly === true,
+    sourceNoRunBoundarySatisfied: noRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: persistenceBoundarySatisfied,
     reviewGateVersion: RUNTIME_EXECUTION_MODEL_REVIEW_GATE_VERSION,
     reviewGateTitle: RUNTIME_EXECUTION_MODEL_REVIEW_GATE_TITLE,
     reviewGateSummary: buildRuntimeExecutionModelReviewGateSummary(decision),
@@ -103,6 +123,7 @@ export function evaluateRuntimeExecutionModelReviewGate(
     actualPersistenceAllowedInThisStep: false,
     actualExternalSideEffectAllowedInThisStep: false,
     actualSchemaMigrationAllowedInThisStep: false,
+    schemaMigrationBoundarySatisfied,
     requiredConfirmations: [...REQUIRED_STAGE6_C_MODEL_REVIEW_GATE_CONFIRMATIONS],
     reviewChecklist,
     noRunChecklist,
@@ -112,6 +133,8 @@ export function evaluateRuntimeExecutionModelReviewGate(
     reviewedModelCount,
     reviewedFieldCount,
     forbiddenFieldDetected,
+    forbiddenFieldModelKinds: forbiddenFieldTrace.modelKinds,
+    forbiddenFieldNames: forbiddenFieldTrace.fieldNames,
     recommendedNextPhases: [...STAGE6_C_RECOMMENDED_NEXT_PHASES],
     separatedWorkItems: [...STAGE6_C_SEPARATED_WORK_ITEMS],
   };

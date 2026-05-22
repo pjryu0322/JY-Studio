@@ -2276,6 +2276,29 @@ Stage 6-C에서도 다음은 금지된다.
 - persistence implementation
 - UI implementation
 
+#### Stage 6-C Hardening Boundary
+
+Stage 6-C는 Stage 6-B report를 source로 사용한다.  
+source의 candidate-only, no-run, persistence boundary는 report에 직접 trace로 남긴다.
+
+Stage 6-C의 ready decision은 `ready_for_runtime_execution_contract_candidate`이지만, 이는 실제 실행 허가가 아니다.  
+다음 Stage 6-D에서 runtime execution contract candidate를 설계할 수 있다는 의미다.
+
+Stage 6-C checklist는 7개 runtime execution model candidate 영역을 모두 검토해야 한다.
+
+- RuntimeExecutionRequest
+- RuntimeExecutionPlan
+- RuntimeExecutionStep
+- RuntimeExecutionResult
+- RuntimeExecutionFinding
+- RuntimeExecutionApprovalState
+- RuntimeExecutionRollbackPlan
+
+### Stage 6-D 후보 — Runtime Execution Contract Candidate
+
+Stage 6-D는 아직 구현하지 않는다.  
+Stage 6-C가 ready일 때만 다음 후보로 검토한다.
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

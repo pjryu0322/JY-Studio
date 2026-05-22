@@ -858,6 +858,8 @@ export {
 export {
   evaluateRuntimeExecutionModelReviewGate,
   resolveRuntimeExecutionModelReviewGateDecision,
+  collectForbiddenFieldTraceInModelCandidates,
+  buildRuntimeExecutionModelReviewGateFingerprint,
 } from "@/lib/agents/evaluateRuntimeExecutionModelReviewGate";
 
 export type {

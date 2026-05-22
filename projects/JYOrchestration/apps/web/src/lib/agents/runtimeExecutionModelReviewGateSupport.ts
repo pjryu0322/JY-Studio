@@ -7,6 +7,7 @@ import { REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS } from "@/lib/agents/r
 import type { RuntimeExecutionModelCandidateReport } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import type { RuntimeExecutionModelCandidateKind } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import {
+  collectForbiddenFieldTraceInModelCandidates,
   computeNoRunBoundarySatisfied,
   computePersistenceBoundarySatisfied,
   computeReviewedModelTrace,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/agents/runtimeExecutionModelReviewGateBoundary";
 
 export {
+  collectForbiddenFieldTraceInModelCandidates,
   computeNoRunBoundarySatisfied,
   computePersistenceBoundarySatisfied,
   computeReviewedModelTrace,
@@ -97,7 +99,8 @@ export function resolveRuntimeExecutionModelReviewGateDecision(
     input.sourceCandidateOnly !== true ||
     input.forbiddenFieldDetected ||
     input.noRunBoundarySatisfied !== true ||
-    input.persistenceBoundarySatisfied !== true
+    input.persistenceBoundarySatisfied !== true ||
+    input.schemaMigrationBoundarySatisfied !== true
   ) {
     return "blocked";
   }
@@ -118,13 +121,21 @@ export function buildRuntimeExecutionModelReviewGateFingerprint(input: {
   readonly reviewedModelKinds: readonly RuntimeExecutionModelCandidateKind[];
   readonly reviewedFieldCount: number;
   readonly confirmationCount: number;
+  readonly sourceCandidateOnly: boolean;
+  readonly sourceNoRunBoundarySatisfied: boolean;
+  readonly sourcePersistenceBoundarySatisfied: boolean;
+  readonly forbiddenFieldDetected: boolean;
 }): string {
   return [
     "runtime-execution-model-review-gate-v1",
     input.sourceModelCandidateFingerprint,
-    [...input.reviewedModelKinds].sort((a, b) => a.localeCompare(b)).join("|"),
+    input.reviewedModelKinds.join("|"),
     `fields:${input.reviewedFieldCount}`,
     `confirmations:${input.confirmationCount}`,
+    `candidateOnly:${input.sourceCandidateOnly}`,
+    `noRun:${input.sourceNoRunBoundarySatisfied}`,
+    `persistence:${input.sourcePersistenceBoundarySatisfied}`,
+    `forbidden:${input.forbiddenFieldDetected}`,
   ].join("::");
 }
 
@@ -156,6 +167,26 @@ export function buildRuntimeExecutionModelReviewGateChecklists(input: {
     input.reviewedModelKinds.includes(k),
   );
 
+  const modelKindToArea: Record<RuntimeExecutionModelCandidateKind, RuntimeExecutionModelReviewArea> = {
+    RuntimeExecutionRequest: "request_model",
+    RuntimeExecutionPlan: "plan_model",
+    RuntimeExecutionStep: "step_model",
+    RuntimeExecutionResult: "result_model",
+    RuntimeExecutionFinding: "finding_model",
+    RuntimeExecutionApprovalState: "approval_state_model",
+    RuntimeExecutionRollbackPlan: "rollback_plan_model",
+  };
+
+  const modelReviewEntries: ChecklistEntry[] = REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS.map((kind) => {
+    const reviewed = input.source.modelCandidates.some((c) => c.kind === kind);
+    return {
+      item: `${kind} reviewed`,
+      area: modelKindToArea[kind],
+      satisfied: reviewed,
+      detail: `${kind} present=${reviewed}`,
+    };
+  });
+
   const reviewChecklist = mapChecklist([
     {
       item: "model candidate decision ready",
@@ -169,6 +200,7 @@ export function buildRuntimeExecutionModelReviewGateChecklists(input: {
       satisfied: sevenKindsPresent && input.reviewedModelKinds.length === 7,
       detail: `reviewedModelCount=${input.reviewedModelKinds.length}`,
     },
+    ...modelReviewEntries,
     {
       item: "field contract reviewed",
       area: "request_model",
@@ -224,6 +256,12 @@ export function buildRuntimeExecutionModelReviewGateChecklists(input: {
       detail: "actualSchemaMigrationAllowedInThisStep=false",
     },
     {
+      item: "schema.prisma/migration is separated work",
+      area: "persistence_boundary",
+      satisfied: true,
+      detail: "schemaMigrationBoundarySatisfied=true",
+    },
+    {
       item: "persistenceCandidateOnly=true maintained",
       area: "persistence_boundary",
       satisfied:
@@ -240,12 +278,22 @@ export function appendRuntimeExecutionModelReviewGateFindings(input: {
   readonly decision: RuntimeExecutionModelReviewGateDecision;
   readonly source: RuntimeExecutionModelCandidateReport;
   readonly parsed: ReturnType<typeof parseRuntimeExecutionModelReviewGateInput>;
-  readonly forbiddenFieldDetected: boolean;
+  readonly forbiddenFieldTrace: ReturnType<typeof collectForbiddenFieldTraceInModelCandidates>;
   readonly noRunBoundarySatisfied: boolean;
   readonly persistenceBoundarySatisfied: boolean;
+  readonly schemaMigrationBoundarySatisfied: boolean;
 }): void {
-  const { findings, decision, source, parsed, forbiddenFieldDetected, noRunBoundarySatisfied, persistenceBoundarySatisfied } =
-    input;
+  const {
+    findings,
+    decision,
+    source,
+    parsed,
+    forbiddenFieldTrace,
+    noRunBoundarySatisfied,
+    persistenceBoundarySatisfied,
+    schemaMigrationBoundarySatisfied,
+  } = input;
+  const forbiddenFieldDetected = forbiddenFieldTrace.detected;
 
   findings.push(
     finding("info", "runtime_execution_model_review_gate_created", "Stage 6-C review gate evaluator created"),
@@ -298,8 +346,24 @@ export function appendRuntimeExecutionModelReviewGateFindings(input: {
 
   if (forbiddenFieldDetected) {
     findings.push(
-      finding("blocking", "runtime_model_forbidden_field_detected", "Forbidden field detected in model candidate proposedFields"),
+      finding(
+        "blocking",
+        "runtime_model_forbidden_field_detected",
+        `Forbidden field detected in model candidate proposedFields: kinds=${forbiddenFieldTrace.modelKinds.join(",")}, fields=${forbiddenFieldTrace.fieldNames.join(",")}`,
+      ),
     );
+    findings.push(
+      finding(
+        "blocking",
+        "runtime_model_forbidden_field_trace_collected",
+        `Forbidden field trace collected: ${forbiddenFieldTrace.fieldNames.join(", ")}`,
+      ),
+    );
+    findings.push(finding("blocking", "stage6_c_review_gate_blocked", "Stage 6-C review gate is blocked"));
+    return;
+  }
+
+  if (schemaMigrationBoundarySatisfied !== true) {
     findings.push(finding("blocking", "stage6_c_review_gate_blocked", "Stage 6-C review gate is blocked"));
     return;
   }
@@ -344,6 +408,13 @@ export function appendRuntimeExecutionModelReviewGateFindings(input: {
     return;
   }
 
+  findings.push(
+    finding(
+      "info",
+      "runtime_schema_migration_boundary_disallowed",
+      "Schema migration remains disallowed in Stage 6-C review gate",
+    ),
+  );
   findings.push(
     finding("info", "runtime_execution_contract_candidate_ready", "Ready for runtime execution contract candidate"),
   );

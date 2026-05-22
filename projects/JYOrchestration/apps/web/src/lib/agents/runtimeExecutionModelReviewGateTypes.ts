@@ -60,7 +60,14 @@ export interface RuntimeExecutionModelReviewGateReport {
   readonly sourceModelCandidateDecision: RuntimeExecutionModelCandidateDecision;
   readonly sourceModelCandidateVersion: string;
   readonly sourceModelCandidateFingerprint: string;
-  readonly sourceCandidateOnly: true;
+  readonly sourceCandidateOnly: boolean;
+
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceCandidateOnlyBoundarySatisfied: boolean;
+  readonly sourceNoRunBoundarySatisfied: boolean;
+  readonly sourcePersistenceBoundarySatisfied: boolean;
 
   readonly reviewGateVersion: "runtime_execution_model_review_gate_v1";
   readonly reviewGateTitle: string;
@@ -73,6 +80,7 @@ export interface RuntimeExecutionModelReviewGateReport {
   readonly actualPersistenceAllowedInThisStep: false;
   readonly actualExternalSideEffectAllowedInThisStep: false;
   readonly actualSchemaMigrationAllowedInThisStep: false;
+  readonly schemaMigrationBoundarySatisfied: boolean;
 
   readonly requiredConfirmations: readonly string[];
   readonly reviewChecklist: readonly RuntimeExecutionModelReviewGateChecklistItem[];
@@ -84,6 +92,8 @@ export interface RuntimeExecutionModelReviewGateReport {
   readonly reviewedModelCount: number;
   readonly reviewedFieldCount: number;
   readonly forbiddenFieldDetected: boolean;
+  readonly forbiddenFieldModelKinds: readonly RuntimeExecutionModelCandidateKind[];
+  readonly forbiddenFieldNames: readonly string[];
 
   readonly recommendedNextPhases: readonly string[];
   readonly separatedWorkItems: readonly string[];
@@ -96,4 +106,5 @@ export interface RuntimeExecutionModelReviewGateDecisionInput {
   readonly forbiddenFieldDetected: boolean;
   readonly noRunBoundarySatisfied: boolean;
   readonly persistenceBoundarySatisfied: boolean;
+  readonly schemaMigrationBoundarySatisfied: boolean;
 }
