@@ -69,6 +69,15 @@ export function resolveRuntimeExecutionContractClosureDecision(
     input.sourceNoRunBoundarySatisfied !== true ||
     input.sourcePersistenceBoundarySatisfied !== true ||
     input.sourceSchemaMigrationBoundarySatisfied !== true ||
+    input.sourceActualRuntimeExecutionAllowedInThisStep !== false ||
+    input.sourceActualExecutionRunnerAllowedInThisStep !== false ||
+    input.sourceActualDryRunRunnerAllowedInThisStep !== false ||
+    input.sourceActualExecutionWireAllowedInThisStep !== false ||
+    input.sourceActualPersistenceAllowedInThisStep !== false ||
+    input.sourceActualExternalSideEffectAllowedInThisStep !== false ||
+    input.sourceActualSchemaMigrationAllowedInThisStep !== false ||
+    input.sourceActualCursorGithubWireAllowedInThisStep !== false ||
+    input.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
     input.sourceDryRunContractItemCount < 7 ||
     input.sourceDryRunScenarioCount < 7 ||
     input.sourceDryRunAssertionCount < 14
@@ -90,6 +99,13 @@ export function buildRuntimeExecutionContractClosureFingerprint(input: {
   readonly sourceNoRunBoundarySatisfied: boolean;
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
 }): string {
   return [
     "runtime-execution-contract-closure-v1",
@@ -99,6 +115,13 @@ export function buildRuntimeExecutionContractClosureFingerprint(input: {
     `noRun:${input.sourceNoRunBoundarySatisfied}`,
     `persistence:${input.sourcePersistenceBoundarySatisfied}`,
     `schema:${input.sourceSchemaMigrationBoundarySatisfied}`,
+    `sourceActualRuntime:${input.sourceActualRuntimeExecutionAllowedInThisStep}`,
+    `sourceActualRunner:${input.sourceActualExecutionRunnerAllowedInThisStep}`,
+    `sourceActualDryRunRunner:${input.sourceActualDryRunRunnerAllowedInThisStep}`,
+    `sourceActualWire:${input.sourceActualExecutionWireAllowedInThisStep}`,
+    `sourceActualPersistence:${input.sourceActualPersistenceAllowedInThisStep}`,
+    `sourceActualSchema:${input.sourceActualSchemaMigrationAllowedInThisStep}`,
+    `sourceActualConnectorRouting:${input.sourceActualConnectorRoutingChangeAllowedInThisStep}`,
   ].join("::");
 }
 

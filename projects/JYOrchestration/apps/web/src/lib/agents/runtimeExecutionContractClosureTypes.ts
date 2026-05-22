@@ -62,6 +62,19 @@ export interface RuntimeExecutionContractClosureReport {
   readonly sourceDryRunAssertionCount: number;
   readonly sourceDryRunContractValidationValid: boolean;
 
+  readonly sourceNoRunBoundarySatisfied: boolean;
+  readonly sourcePersistenceBoundarySatisfied: boolean;
+  readonly sourceSchemaMigrationBoundarySatisfied: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
+
   readonly closureVersion: "runtime_execution_contract_closure_v1";
   readonly closureTitle: string;
   readonly closureSummary: string;
@@ -103,6 +116,15 @@ export interface RuntimeExecutionContractClosureDecisionInput {
   readonly sourceDryRunScenarioCount: number;
   readonly sourceDryRunAssertionCount: number;
   readonly confirmationsSatisfied: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
 }
 
 export type ParsedRuntimeExecutionContractClosureInput = {

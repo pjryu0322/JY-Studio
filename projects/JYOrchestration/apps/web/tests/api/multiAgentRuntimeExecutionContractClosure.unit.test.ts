@@ -21,6 +21,15 @@ function readyClosureDecisionInput(
     sourceNoRunBoundarySatisfied: true,
     sourcePersistenceBoundarySatisfied: true,
     sourceSchemaMigrationBoundarySatisfied: true,
+    sourceActualRuntimeExecutionAllowedInThisStep: false,
+    sourceActualExecutionRunnerAllowedInThisStep: false,
+    sourceActualDryRunRunnerAllowedInThisStep: false,
+    sourceActualExecutionWireAllowedInThisStep: false,
+    sourceActualPersistenceAllowedInThisStep: false,
+    sourceActualExternalSideEffectAllowedInThisStep: false,
+    sourceActualSchemaMigrationAllowedInThisStep: false,
+    sourceActualCursorGithubWireAllowedInThisStep: false,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: false,
     sourceDryRunContractItemCount: 7,
     sourceDryRunScenarioCount: 7,
     sourceDryRunAssertionCount: 14,
@@ -232,5 +241,87 @@ describe("multi-agent runtime execution contract closure stage 6-F", () => {
 
   it("stage6ContractClosed is true on ready path", () => {
     expect(evaluateReadyClosure().stage6ContractClosed).toBe(true);
+  });
+
+  it("report exposes source boundary trace fields", () => {
+    const report = evaluateReadyClosure();
+    expect(report.sourceNoRunBoundarySatisfied).toBe(true);
+    expect(report.sourcePersistenceBoundarySatisfied).toBe(true);
+    expect(report.sourceSchemaMigrationBoundarySatisfied).toBe(true);
+    expect(report.sourceActualRuntimeExecutionAllowedInThisStep).toBe(false);
+    expect(report.sourceActualExecutionRunnerAllowedInThisStep).toBe(false);
+    expect(report.sourceActualDryRunRunnerAllowedInThisStep).toBe(false);
+    expect(report.sourceActualExecutionWireAllowedInThisStep).toBe(false);
+    expect(report.sourceActualPersistenceAllowedInThisStep).toBe(false);
+    expect(report.sourceActualSchemaMigrationAllowedInThisStep).toBe(false);
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualRuntimeExecutionAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualRuntimeExecutionAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualExecutionRunnerAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualExecutionRunnerAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualDryRunRunnerAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualDryRunRunnerAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualExecutionWireAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualExecutionWireAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualPersistenceAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualPersistenceAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionContractClosureDecision blocks when sourceActualSchemaMigrationAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeExecutionContractClosureDecision(
+        readyClosureDecisionInput({ sourceActualSchemaMigrationAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("closureFingerprint includes source actual boundary segments", () => {
+    const fingerprint = evaluateReadyClosure().closureFingerprint;
+    expect(fingerprint).toContain("sourceActualRuntime:false");
+    expect(fingerprint).toContain("sourceActualRunner:false");
+    expect(fingerprint).toContain("sourceActualDryRunRunner:false");
+    expect(fingerprint).toContain("sourceActualWire:false");
+    expect(fingerprint).toContain("sourceActualPersistence:false");
+    expect(fingerprint).toContain("sourceActualSchema:false");
+    expect(fingerprint).toContain("sourceActualConnectorRouting:false");
+  });
+
+  it("ready findings include source_dry_run_contract_trace_copied", () => {
+    expect(evaluateReadyClosure().findings.some((f) => f.code === "source_dry_run_contract_trace_copied")).toBe(true);
+  });
+
+  it("ready findings include stage6_contract_closure_fingerprint_created", () => {
+    expect(evaluateReadyClosure().findings.some((f) => f.code === "stage6_contract_closure_fingerprint_created")).toBe(
+      true,
+    );
   });
 });

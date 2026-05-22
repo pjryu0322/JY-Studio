@@ -913,6 +913,21 @@ export type {
 } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 
 export {
+  evaluateRuntimeImplementationPlanningCandidate,
+  resolveRuntimeImplementationPlanningCandidateDecision,
+  validateRuntimeImplementationPlanningItems,
+} from "@/lib/agents/evaluateRuntimeImplementationPlanningCandidate";
+
+export type {
+  RuntimeImplementationPlanningCandidateDecision,
+  RuntimeImplementationPlanningCandidateInput,
+  RuntimeImplementationPlanningCandidateReport,
+  RuntimeImplementationPlanningCandidateArea,
+  RuntimeImplementationPlanningItem,
+  RuntimeImplementationPlanningValidationResult,
+} from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
+
+export {
   buildStage6AReadyBaselineInput,
   buildStage6AModelBaselineConfirmedInput,
   buildStage6BReadyCandidateInput,
@@ -925,6 +940,8 @@ export {
   buildStage6EDryRunContractConfirmedInput,
   buildStage6FReadyContractClosureInput,
   buildStage6FRuntimeExecutionContractClosureConfirmedInput,
+  buildStage7AReadyImplementationPlanningInput,
+  buildStage7AImplementationPlanningConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

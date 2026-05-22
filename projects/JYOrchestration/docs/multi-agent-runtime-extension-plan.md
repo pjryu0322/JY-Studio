@@ -2385,19 +2385,18 @@ Stage 6-E는 dry-run runner를 구현하지 않는다.
 
 ### Stage 6-F Runtime Execution Contract Closure
 
-Stage 6-F는 Stage 6-A~6-E의 read-only runtime execution model/contract design chain을 닫는 closure verdict다.
+Stage 6-F는 Stage 6-A~6-E의 read-only runtime execution model/contract chain을 닫는다.
 
-Stage 6-F는 실제 runtime execution을 허가하지 않는다.
+`stage6_runtime_execution_contract_closed`는 실제 실행 허가가 아니다.
 
-금지:
+Stage 6-F 이후에도 다음은 금지된다.
 
-- runtime execution API
-- execution runner
-- dry-run runner
+- actual runtime execution API
+- actual execution runner
+- actual dry-run runner
 - Cursor/GitHub wire
 - Connector Gateway routing change
-- DB write
-- schema.prisma/migration
+- DB/schema/migration
 - persistence implementation
 - UI implementation
 
@@ -2405,7 +2404,28 @@ Ready decision: `stage6_runtime_execution_contract_closed`
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionContractClosure.ts`, `runtimeExecutionContractClosureTypes.ts`, `runtimeExecutionContractClosureSupport.ts`
 
-이 decision은 Stage 6 read-only 설계 체인이 닫혔다는 의미이며, 실제 구현은 Stage 7 또는 별도 PR 승인 후 진행한다.
+Report는 Stage 6-E source trace(`sourceNoRunBoundarySatisfied`, `sourceActual*` boundary flags)를 노출한다.
+
+### Stage 7-A Runtime Implementation Planning Candidate
+
+Stage 7-A는 Stage 6-F closure를 source로 받아 실제 구현 PR 후보를 분리하는 read-only planning candidate다.
+
+`ready_for_runtime_implementation_pr_planning`은 실제 구현 허가가 아니다.
+
+Stage 7-A는 다음을 산출한다.
+
+- runtime API design PR 후보
+- execution runner design PR 후보
+- dry-run runner design PR 후보
+- Cursor/GitHub wire design PR 후보
+- Connector Gateway routing design PR 후보
+- persistence/schema approval PR 후보
+- feature flag wire design PR 후보
+- runtime UI design PR 후보
+
+실제 구현은 Stage 7-B 이후 또는 별도 승인 PR에서만 진행한다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeImplementationPlanningCandidate.ts`, `runtimeImplementationPlanningCandidateTypes.ts`, `runtimeImplementationPlanningCandidateSupport.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

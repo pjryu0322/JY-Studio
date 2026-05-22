@@ -22,8 +22,9 @@ export function appendRuntimeExecutionContractClosureFindings(input: {
   readonly decision: RuntimeExecutionContractClosureDecision;
   readonly source: RuntimeExecutionDryRunContractReport;
   readonly parsed: ParsedRuntimeExecutionContractClosureInput;
+  readonly closureFingerprint: string;
 }): void {
-  const { findings, decision, source, parsed } = input;
+  const { findings, decision, source, parsed, closureFingerprint } = input;
 
   findings.push(
     finding("info", "runtime_execution_contract_closure_created", "Stage 6-F contract closure evaluator created"),
@@ -49,6 +50,78 @@ export function appendRuntimeExecutionContractClosureFindings(input: {
   if (source.dryRunContractOnly !== true) {
     findings.push(
       finding("blocking", "source_dry_run_contract_boundary_violation", "Source dry-run contract boundary violation"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualRuntimeExecutionAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_runtime_boundary_violation", "Source actual runtime execution boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualExecutionRunnerAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_runner_boundary_violation", "Source actual execution runner boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualDryRunRunnerAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_dry_run_runner_boundary_violation", "Source actual dry-run runner boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualExecutionWireAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_wire_boundary_violation", "Source actual execution wire boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualPersistenceAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_persistence_boundary_violation", "Source actual persistence boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualExternalSideEffectAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_wire_boundary_violation", "Source actual external side-effect boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualSchemaMigrationAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_schema_boundary_violation", "Source actual schema migration boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualCursorGithubWireAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_wire_boundary_violation", "Source Cursor/GitHub wire boundary violated"),
+    );
+    findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
+    return;
+  }
+
+  if (source.actualConnectorRoutingChangeAllowedInThisStep !== false) {
+    findings.push(
+      finding("blocking", "stage6_source_actual_connector_routing_boundary_violation", "Source connector routing boundary violated"),
     );
     findings.push(finding("blocking", "stage6_contract_closure_blocked", "Stage 6-F contract closure is blocked"));
     return;
@@ -92,6 +165,31 @@ export function appendRuntimeExecutionContractClosureFindings(input: {
     return;
   }
 
+  findings.push(finding("info", "source_dry_run_contract_trace_copied", "Stage 6-E dry-run contract trace copied into closure report"));
+  findings.push(
+    finding("info", "stage6_source_actual_runtime_boundary_verified", "Source actual runtime execution boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_runner_boundary_verified", "Source actual execution runner boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_dry_run_runner_boundary_verified", "Source actual dry-run runner boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_wire_boundary_verified", "Source actual execution wire boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_persistence_boundary_verified", "Source actual persistence boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_schema_boundary_verified", "Source actual schema migration boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_source_actual_connector_routing_boundary_verified", "Source connector routing boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "stage6_contract_closure_fingerprint_created", `Closure fingerprint created: ${closureFingerprint}`),
+  );
   findings.push(finding("info", "stage6_chain_closed", "Stage 6-A through 6-E read-only design chain is closed"));
   findings.push(
     finding("info", "stage6_actual_runtime_execution_still_disallowed", "Actual runtime execution remains disallowed after Stage 6"),

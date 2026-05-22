@@ -47,6 +47,15 @@ export function evaluateRuntimeExecutionContractClosure(
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionRunnerAllowedInThisStep: source.actualExecutionRunnerAllowedInThisStep,
+    sourceActualDryRunRunnerAllowedInThisStep: source.actualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceActualCursorGithubWireAllowedInThisStep: source.actualCursorGithubWireAllowedInThisStep,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: source.actualConnectorRoutingChangeAllowedInThisStep,
     sourceDryRunContractItemCount: source.dryRunContractItemCount,
     sourceDryRunScenarioCount: source.dryRunScenarioCount,
     sourceDryRunAssertionCount: source.dryRunAssertionCount,
@@ -60,13 +69,26 @@ export function evaluateRuntimeExecutionContractClosure(
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionRunnerAllowedInThisStep: source.actualExecutionRunnerAllowedInThisStep,
+    sourceActualDryRunRunnerAllowedInThisStep: source.actualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: source.actualConnectorRoutingChangeAllowedInThisStep,
   });
 
   const { closureChecklist, boundaryChecklist, handoffChecklist } =
     buildRuntimeExecutionContractClosureChecklists({ parsed, source });
 
   const findings: RuntimeExecutionContractClosureFinding[] = [];
-  appendRuntimeExecutionContractClosureFindings({ findings, decision, source, parsed });
+  appendRuntimeExecutionContractClosureFindings({
+    findings,
+    decision,
+    source,
+    parsed,
+    closureFingerprint,
+  });
 
   const stage6ContractClosed = decision === "stage6_runtime_execution_contract_closed";
 
@@ -82,6 +104,18 @@ export function evaluateRuntimeExecutionContractClosure(
     sourceDryRunScenarioCount: source.dryRunScenarioCount,
     sourceDryRunAssertionCount: source.dryRunAssertionCount,
     sourceDryRunContractValidationValid: source.dryRunContractValidation.valid,
+    sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
+    sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionRunnerAllowedInThisStep: source.actualExecutionRunnerAllowedInThisStep,
+    sourceActualDryRunRunnerAllowedInThisStep: source.actualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceActualCursorGithubWireAllowedInThisStep: source.actualCursorGithubWireAllowedInThisStep,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: source.actualConnectorRoutingChangeAllowedInThisStep,
     closureVersion: RUNTIME_EXECUTION_CONTRACT_CLOSURE_VERSION,
     closureTitle: RUNTIME_EXECUTION_CONTRACT_CLOSURE_TITLE,
     closureSummary: buildRuntimeExecutionContractClosureSummary(decision),

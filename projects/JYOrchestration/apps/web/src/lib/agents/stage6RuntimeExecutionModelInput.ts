@@ -6,6 +6,7 @@ import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExe
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
 import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
+import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
 import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
@@ -161,5 +162,32 @@ export function buildStage6FReadyContractClosureInput(): RuntimeExecutionContrac
   return {
     dryRunContract: buildStage6EReadyDryRunContractInput(),
     ...buildStage6FRuntimeExecutionContractClosureConfirmedInput(),
+  };
+}
+
+export function buildStage7AImplementationPlanningConfirmedInput(): Required<
+  Pick<
+    RuntimeImplementationPlanningCandidateInput,
+    | "runtimeImplementationPlanningReviewed"
+    | "runtimeImplementationSeparatePrConfirmed"
+    | "runtimeImplementationNoActualExecutionConfirmed"
+    | "runtimeImplementationRollbackPlanReviewed"
+    | "runtimeImplementationOperatorApprovalRequiredConfirmed"
+  >
+> {
+  return {
+    runtimeImplementationPlanningReviewed: true,
+    runtimeImplementationSeparatePrConfirmed: true,
+    runtimeImplementationNoActualExecutionConfirmed: true,
+    runtimeImplementationRollbackPlanReviewed: true,
+    runtimeImplementationOperatorApprovalRequiredConfirmed: true,
+  };
+}
+
+/** Ready-path input for Stage 7-A (Stage 6-F ready + 7-A planning confirmations). */
+export function buildStage7AReadyImplementationPlanningInput(): RuntimeImplementationPlanningCandidateInput {
+  return {
+    contractClosure: buildStage6FReadyContractClosureInput(),
+    ...buildStage7AImplementationPlanningConfirmedInput(),
   };
 }
