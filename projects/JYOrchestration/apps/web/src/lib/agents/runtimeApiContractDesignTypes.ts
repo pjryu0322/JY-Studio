@@ -80,6 +80,14 @@ export interface RuntimeApiEndpointContractValidationResult {
   readonly insufficientErrorCodeEndpointIds: readonly string[];
   readonly missingAuditEventEndpointIds: readonly string[];
   readonly implementedInThisStepEndpointIds: readonly string[];
+  readonly invalidMethodEndpointIds: readonly string[];
+  readonly missingStatusTransitionEndpointIds: readonly string[];
+  readonly insufficientStatusTransitionEndpointIds: readonly string[];
+  readonly unsafePathPatternEndpointIds: readonly string[];
+  readonly nonRuntimeApiPathEndpointIds: readonly string[];
+  readonly missingSecurityErrorEndpointIds: readonly string[];
+  readonly missingApprovalErrorEndpointIds: readonly string[];
+  readonly missingAuditCorrelationEndpointIds: readonly string[];
 }
 
 export interface RuntimeApiContractDesignReport {
@@ -98,6 +106,10 @@ export interface RuntimeApiContractDesignReport {
   readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
   readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
   readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualUiImplementationAllowedInThisStep: boolean;
 
   readonly apiContractVersion: "runtime_api_contract_design_v1";
   readonly apiContractTitle: string;
@@ -143,6 +155,10 @@ export interface RuntimeApiContractDesignDecisionInput {
   readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
   readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
   readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualUiImplementationAllowedInThisStep: boolean;
   readonly endpointContractsValid: boolean;
   readonly confirmationsSatisfied: boolean;
 }

@@ -18,14 +18,28 @@ function finding(
   return { severity, code, message };
 }
 
+function endpointValidationPassed(validation: RuntimeApiEndpointContractValidationResult): boolean {
+  return (
+    validation.invalidMethodEndpointIds.length === 0 &&
+    validation.missingStatusTransitionEndpointIds.length === 0 &&
+    validation.insufficientStatusTransitionEndpointIds.length === 0 &&
+    validation.unsafePathPatternEndpointIds.length === 0 &&
+    validation.nonRuntimeApiPathEndpointIds.length === 0 &&
+    validation.missingSecurityErrorEndpointIds.length === 0 &&
+    validation.missingApprovalErrorEndpointIds.length === 0 &&
+    validation.missingAuditCorrelationEndpointIds.length === 0
+  );
+}
+
 export function appendRuntimeApiContractDesignFindings(input: {
   readonly findings: RuntimeApiContractDesignFinding[];
   readonly decision: RuntimeApiContractDesignDecision;
   readonly source: RuntimeImplementationPlanningCandidateReport;
   readonly parsed: ParsedRuntimeApiContractDesignInput;
   readonly endpointValidation: RuntimeApiEndpointContractValidationResult;
+  readonly apiContractFingerprint: string;
 }): void {
-  const { findings, decision, source, parsed, endpointValidation } = input;
+  const { findings, decision, source, parsed, endpointValidation, apiContractFingerprint } = input;
 
   findings.push(finding("info", "runtime_api_contract_design_created", "Stage 7-B API contract design evaluator created"));
   findings.push(
@@ -64,10 +78,14 @@ export function appendRuntimeApiContractDesignFindings(input: {
     source.planningItemCount < 10 ||
     source.sourceActualRuntimeExecutionAllowedInThisStep !== false ||
     source.sourceActualExecutionRunnerAllowedInThisStep !== false ||
+    source.sourceActualDryRunRunnerAllowedInThisStep !== false ||
+    source.sourceActualExecutionWireAllowedInThisStep !== false ||
     source.sourceActualPersistenceAllowedInThisStep !== false ||
+    source.sourceActualExternalSideEffectAllowedInThisStep !== false ||
     source.sourceActualSchemaMigrationAllowedInThisStep !== false ||
     source.sourceActualCursorGithubWireAllowedInThisStep !== false ||
     source.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
+    source.actualUiImplementationAllowedInThisStep !== false ||
     !endpointValidation.valid
   ) {
     if (!endpointValidation.valid) {
@@ -78,7 +96,28 @@ export function appendRuntimeApiContractDesignFindings(input: {
   }
 
   findings.push(finding("info", "source_planning_trace_copied", "Stage 7-A planning trace copied into API contract design report"));
+  findings.push(
+    finding("info", "source_actual_dry_run_runner_boundary_verified", "Source actual dry-run runner boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "source_actual_execution_wire_boundary_verified", "Source actual execution wire boundary verified as disallowed"),
+  );
+  findings.push(
+    finding("info", "source_actual_external_side_effect_boundary_verified", "Source actual external side-effect boundary verified as disallowed"),
+  );
+  findings.push(finding("info", "source_actual_ui_boundary_verified", "Source UI implementation boundary verified as disallowed"));
   findings.push(finding("info", "endpoint_contract_validation_passed", "All required endpoint contracts validated"));
+  if (endpointValidationPassed(endpointValidation)) {
+    findings.push(finding("info", "endpoint_method_validation_passed", "Endpoint method validation passed"));
+    findings.push(finding("info", "endpoint_status_transition_validation_passed", "Endpoint status transition validation passed"));
+    findings.push(finding("info", "endpoint_path_safety_validation_passed", "Endpoint path safety validation passed"));
+    findings.push(finding("info", "endpoint_security_error_validation_passed", "Endpoint security error validation passed"));
+    findings.push(finding("info", "endpoint_approval_error_validation_passed", "Endpoint approval error validation passed"));
+    findings.push(finding("info", "endpoint_audit_correlation_validation_passed", "Endpoint audit correlation validation passed"));
+  }
+  findings.push(
+    finding("info", "runtime_api_contract_fingerprint_created", `API contract fingerprint created: ${apiContractFingerprint}`),
+  );
   findings.push(finding("info", "api_endpoint_implementation_disallowed", "API endpoint implementation remains disallowed in Stage 7-B"));
   findings.push(finding("info", "runtime_execution_api_implementation_disallowed", "Runtime execution API implementation remains disallowed"));
   findings.push(finding("info", "execution_runner_implementation_disallowed", "Execution runner implementation remains disallowed"));

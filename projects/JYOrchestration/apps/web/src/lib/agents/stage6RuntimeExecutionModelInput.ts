@@ -7,6 +7,7 @@ import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeEx
 import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
 import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContractDesignTypes";
+import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
 import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
@@ -217,5 +218,32 @@ export function buildStage7BReadyRuntimeApiContractInput(): RuntimeApiContractDe
   return {
     implementationPlanning: buildStage7AReadyImplementationPlanningInput(),
     ...buildStage7BRuntimeApiContractConfirmedInput(),
+  };
+}
+
+export function buildStage7CContractBundleClosureConfirmedInput(): Required<
+  Pick<
+    RuntimeContractBundleClosureInput,
+    | "runtimeContractBundleReviewed"
+    | "runtimeContractBundleNoImplementationConfirmed"
+    | "runtimeContractBundleStage8EntryReviewed"
+    | "runtimeContractBundleSeparatedWorkConfirmed"
+    | "runtimeContractBundleRollbackReviewed"
+  >
+> {
+  return {
+    runtimeContractBundleReviewed: true,
+    runtimeContractBundleNoImplementationConfirmed: true,
+    runtimeContractBundleStage8EntryReviewed: true,
+    runtimeContractBundleSeparatedWorkConfirmed: true,
+    runtimeContractBundleRollbackReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 7-C (Stage 7-B ready + 7-C bundle closure confirmations). */
+export function buildStage7CReadyContractBundleClosureInput(): RuntimeContractBundleClosureInput {
+  return {
+    apiContractDesign: buildStage7BReadyRuntimeApiContractInput(),
+    ...buildStage7CContractBundleClosureConfirmedInput(),
   };
 }

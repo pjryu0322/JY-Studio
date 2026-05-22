@@ -56,10 +56,14 @@ export function evaluateRuntimeApiContractDesign(
     sourcePlanningItemCount: source.planningItemCount,
     sourceActualRuntimeExecutionAllowedInThisStep: source.sourceActualRuntimeExecutionAllowedInThisStep,
     sourceActualExecutionRunnerAllowedInThisStep: source.sourceActualExecutionRunnerAllowedInThisStep,
+    sourceActualDryRunRunnerAllowedInThisStep: source.sourceActualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.sourceActualExecutionWireAllowedInThisStep,
     sourceActualPersistenceAllowedInThisStep: source.sourceActualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.sourceActualExternalSideEffectAllowedInThisStep,
     sourceActualSchemaMigrationAllowedInThisStep: source.sourceActualSchemaMigrationAllowedInThisStep,
     sourceActualCursorGithubWireAllowedInThisStep: source.sourceActualCursorGithubWireAllowedInThisStep,
     sourceActualConnectorRoutingChangeAllowedInThisStep: source.sourceActualConnectorRoutingChangeAllowedInThisStep,
+    sourceActualUiImplementationAllowedInThisStep: source.actualUiImplementationAllowedInThisStep,
     endpointContractsValid,
     confirmationsSatisfied: parsed.confirmationsSatisfied,
   });
@@ -71,6 +75,17 @@ export function evaluateRuntimeApiContractDesign(
     errorCodeCount: trace.errorCodeCount,
     auditEventCount: trace.auditEventCount,
     confirmationCount: parsed.confirmationCount,
+    sourceActualDryRunRunnerAllowedInThisStep: source.sourceActualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.sourceActualExecutionWireAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.sourceActualExternalSideEffectAllowedInThisStep,
+    sourceActualUiImplementationAllowedInThisStep: source.actualUiImplementationAllowedInThisStep,
+    approvalCount: trace.approvalCount,
+    endpointDesignOnlyCount: trace.endpointDesignOnlyCount,
+    implementedEndpointCount: trace.implementedEndpointCount,
+    postEndpointCount: trace.postEndpointCount,
+    getEndpointCount: trace.getEndpointCount,
+    patchEndpointCount: trace.patchEndpointCount,
+    endpointContractsValid,
   });
 
   const { apiChecklist, boundaryChecklist, approvalChecklist } = buildRuntimeApiContractDesignChecklists({
@@ -90,6 +105,7 @@ export function evaluateRuntimeApiContractDesign(
     source,
     parsed,
     endpointValidation,
+    apiContractFingerprint,
   });
 
   return {
@@ -107,6 +123,10 @@ export function evaluateRuntimeApiContractDesign(
     sourceActualSchemaMigrationAllowedInThisStep: source.sourceActualSchemaMigrationAllowedInThisStep,
     sourceActualCursorGithubWireAllowedInThisStep: source.sourceActualCursorGithubWireAllowedInThisStep,
     sourceActualConnectorRoutingChangeAllowedInThisStep: source.sourceActualConnectorRoutingChangeAllowedInThisStep,
+    sourceActualDryRunRunnerAllowedInThisStep: source.sourceActualDryRunRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.sourceActualExecutionWireAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.sourceActualExternalSideEffectAllowedInThisStep,
+    sourceActualUiImplementationAllowedInThisStep: source.actualUiImplementationAllowedInThisStep,
     apiContractVersion: RUNTIME_API_CONTRACT_DESIGN_VERSION,
     apiContractTitle: RUNTIME_API_CONTRACT_DESIGN_TITLE,
     apiContractSummary: buildRuntimeApiContractDesignSummary(decision),
@@ -133,6 +153,12 @@ export function evaluateRuntimeApiContractDesign(
     statusTransitionCount: trace.statusTransitionCount,
     errorCodeCount: trace.errorCodeCount,
     auditEventCount: trace.auditEventCount,
+    approvalCount: trace.approvalCount,
+    endpointDesignOnlyCount: trace.endpointDesignOnlyCount,
+    implementedEndpointCount: trace.implementedEndpointCount,
+    postEndpointCount: trace.postEndpointCount,
+    getEndpointCount: trace.getEndpointCount,
+    patchEndpointCount: trace.patchEndpointCount,
     recommendedNextPhases: [...STAGE7_B_RECOMMENDED_NEXT_PHASES],
     separatedWorkItems: [...STAGE7_B_SEPARATED_WORK_ITEMS],
   };

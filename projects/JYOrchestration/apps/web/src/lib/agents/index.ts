@@ -913,6 +913,22 @@ export type {
 } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 
 export {
+  evaluateRuntimeContractBundleClosure,
+  resolveRuntimeContractBundleClosureDecision,
+  validateRuntimeContractBundleItems,
+  buildRuntimeContractBundleItems,
+} from "@/lib/agents/evaluateRuntimeContractBundleClosure";
+
+export type {
+  RuntimeContractBundleClosureDecision,
+  RuntimeContractBundleClosureInput,
+  RuntimeContractBundleClosureReport,
+  RuntimeContractBundleClosureArea,
+  RuntimeContractBundleItem,
+  RuntimeContractBundleValidationResult,
+} from "@/lib/agents/runtimeContractBundleClosureTypes";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
@@ -959,6 +975,8 @@ export {
   buildStage7AImplementationPlanningConfirmedInput,
   buildStage7BReadyRuntimeApiContractInput,
   buildStage7BRuntimeApiContractConfirmedInput,
+  buildStage7CReadyContractBundleClosureInput,
+  buildStage7CContractBundleClosureConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

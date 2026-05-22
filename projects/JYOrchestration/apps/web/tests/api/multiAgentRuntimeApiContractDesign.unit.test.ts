@@ -23,10 +23,14 @@ function readyApiDecisionInput(
     sourcePlanningItemCount: 10,
     sourceActualRuntimeExecutionAllowedInThisStep: false,
     sourceActualExecutionRunnerAllowedInThisStep: false,
+    sourceActualDryRunRunnerAllowedInThisStep: false,
+    sourceActualExecutionWireAllowedInThisStep: false,
     sourceActualPersistenceAllowedInThisStep: false,
+    sourceActualExternalSideEffectAllowedInThisStep: false,
     sourceActualSchemaMigrationAllowedInThisStep: false,
     sourceActualCursorGithubWireAllowedInThisStep: false,
     sourceActualConnectorRoutingChangeAllowedInThisStep: false,
+    sourceActualUiImplementationAllowedInThisStep: false,
     endpointContractsValid: true,
     confirmationsSatisfied: true,
     ...overrides,
@@ -272,5 +276,122 @@ describe("multi-agent runtime api contract design stage 7-B", () => {
   it("buildRuntimeApiEndpointContracts returns empty when source planning not ready", () => {
     const source = evaluateRuntimeImplementationPlanningCandidate();
     expect(buildRuntimeApiEndpointContracts(source)).toEqual([]);
+  });
+
+  it("report exposes sourceActualDryRunRunnerAllowedInThisStep false", () => {
+    expect(evaluateReadyApi().sourceActualDryRunRunnerAllowedInThisStep).toBe(false);
+  });
+
+  it("report exposes sourceActualExecutionWireAllowedInThisStep false", () => {
+    expect(evaluateReadyApi().sourceActualExecutionWireAllowedInThisStep).toBe(false);
+  });
+
+  it("report exposes sourceActualExternalSideEffectAllowedInThisStep false", () => {
+    expect(evaluateReadyApi().sourceActualExternalSideEffectAllowedInThisStep).toBe(false);
+  });
+
+  it("report exposes sourceActualUiImplementationAllowedInThisStep false", () => {
+    expect(evaluateReadyApi().sourceActualUiImplementationAllowedInThisStep).toBe(false);
+  });
+
+  it("resolveRuntimeApiContractDesignDecision blocks when sourceActualDryRunRunnerAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeApiContractDesignDecision(readyApiDecisionInput({ sourceActualDryRunRunnerAllowedInThisStep: true })),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeApiContractDesignDecision blocks when sourceActualExecutionWireAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeApiContractDesignDecision(readyApiDecisionInput({ sourceActualExecutionWireAllowedInThisStep: true })),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeApiContractDesignDecision blocks when sourceActualExternalSideEffectAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeApiContractDesignDecision(
+        readyApiDecisionInput({ sourceActualExternalSideEffectAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeApiContractDesignDecision blocks when sourceActualUiImplementationAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeApiContractDesignDecision(readyApiDecisionInput({ sourceActualUiImplementationAllowedInThisStep: true })),
+    ).toBe("blocked");
+  });
+
+  it("validation detects invalid method", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], method: "DELETE" as RuntimeApiEndpointContract["method"] };
+    expect(validateRuntimeApiEndpointContracts([invalid]).invalidMethodEndpointIds).toContain(endpoints[0].endpointId);
+  });
+
+  it("validation detects missing status transition", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], statusTransitions: [] as string[] };
+    expect(validateRuntimeApiEndpointContracts([invalid]).missingStatusTransitionEndpointIds).toContain(
+      endpoints[0].endpointId,
+    );
+  });
+
+  it("validation detects unsafe path pattern", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], pathPattern: "/api/other/executions" };
+    expect(validateRuntimeApiEndpointContracts([invalid]).unsafePathPatternEndpointIds).toContain(
+      endpoints[0].endpointId,
+    );
+  });
+
+  it("validation detects non-runtime API path", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], pathPattern: "/api/other/resource" };
+    expect(validateRuntimeApiEndpointContracts([invalid]).nonRuntimeApiPathEndpointIds).toContain(
+      endpoints[0].endpointId,
+    );
+  });
+
+  it("validation detects missing security error", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], errorCodes: ["ONLY_BUSINESS_ERROR", "ANOTHER_ERROR"] };
+    expect(validateRuntimeApiEndpointContracts([invalid]).missingSecurityErrorEndpointIds).toContain(
+      endpoints[0].endpointId,
+    );
+  });
+
+  it("validation detects missing approval error", () => {
+    const endpoints = evaluateReadyApi().endpointContracts;
+    const invalid = { ...endpoints[0], errorCodes: ["ERR_ONE", "ERR_TWO"], requiredApprovals: ["runtime_operator"] };
+    expect(validateRuntimeApiEndpointContracts([invalid]).missingApprovalErrorEndpointIds).toContain(
+      endpoints[0].endpointId,
+    );
+  });
+
+  it("ready report endpointDesignOnlyCount equals endpointContractCount", () => {
+    const report = evaluateReadyApi();
+    expect(report.endpointDesignOnlyCount).toBe(report.endpointContractCount);
+  });
+
+  it("ready report implementedEndpointCount is zero", () => {
+    expect(evaluateReadyApi().implementedEndpointCount).toBe(0);
+  });
+
+  it("ready report postEndpointCount and getEndpointCount are greater than zero", () => {
+    const report = evaluateReadyApi();
+    expect(report.postEndpointCount).toBeGreaterThan(0);
+    expect(report.getEndpointCount).toBeGreaterThan(0);
+  });
+
+  it("apiContractFingerprint includes method counts and endpointDesignOnlyCount", () => {
+    const report = evaluateReadyApi();
+    expect(report.apiContractFingerprint).toContain("endpointDesignOnlyCount:");
+    expect(report.apiContractFingerprint).toContain("methodCounts:post=");
+  });
+
+  it("ready findings include runtime_api_contract_fingerprint_created", () => {
+    expect(evaluateReadyApi().findings.some((f) => f.code === "runtime_api_contract_fingerprint_created")).toBe(true);
+  });
+
+  it("ready findings include endpoint_path_safety_validation_passed", () => {
+    expect(evaluateReadyApi().findings.some((f) => f.code === "endpoint_path_safety_validation_passed")).toBe(true);
   });
 });

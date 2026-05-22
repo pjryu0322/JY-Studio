@@ -2442,6 +2442,18 @@ Stage 7-A는 다음을 산출한다.
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeImplementationPlanningCandidate.ts`, `runtimeImplementationPlanningCandidateTypes.ts`, `runtimeImplementationPlanningCandidateSupport.ts`
 
+### Stage 7-B Runtime API Contract Design Hardening
+
+Stage 7-B는 API endpoint contract를 설계하지만 실제 endpoint를 구현하지 않는다.
+
+보강 기준:
+
+- source actual boundary trace 전체 노출
+- endpoint path safety 검증
+- security/approval error code 검증
+- endpoint design-only count 검증
+- implemented endpoint count 0 유지
+
 ### Stage 7-B Runtime API Contract Design
 
 Stage 7-B는 Runtime Execution API의 endpoint contract를 read-only로 설계한다.
@@ -2473,6 +2485,31 @@ Stage 7-B에서 금지되는 항목:
 - UI implementation
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeApiContractDesign.ts`, `runtimeApiContractDesignTypes.ts`, `runtimeApiContractDesignEndpoints.ts`
+
+### Stage 7-C Integrated Runtime Execution Contract Bundle Closure
+
+Stage 7-C는 압축형 Stage 7 종료 단계다.
+
+기존 세분화 계획의 API/runner/dry-run/Cursor-GitHub/persistence/schema/approval/security/rollback/audit 계약을 개별 구현하지 않고, Stage 8-A 진입을 위한 통합 bundle closure로 닫는다.
+
+Ready decision: `stage7_runtime_contract_bundle_closed`
+
+의미:
+
+- Stage 7 read-only contract bundle이 닫혔다.
+- Stage 8-A Minimal Runtime Execution Vertical Slice로 넘어갈 준비가 되었다.
+- 실제 runtime/API/runner/DB/GitHub 구현 허가는 아니다.
+
+Stage 8-A 권장 최소 범위:
+
+- in-memory runtime execution record
+- mock/dry-run runner only
+- no DB/schema/migration
+- no Cursor/GitHub actual call
+- no Connector Gateway routing change
+- no UI by default
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

@@ -74,10 +74,14 @@ export function resolveRuntimeApiContractDesignDecision(
     input.sourcePlanningItemCount < 10 ||
     input.sourceActualRuntimeExecutionAllowedInThisStep !== false ||
     input.sourceActualExecutionRunnerAllowedInThisStep !== false ||
+    input.sourceActualDryRunRunnerAllowedInThisStep !== false ||
+    input.sourceActualExecutionWireAllowedInThisStep !== false ||
     input.sourceActualPersistenceAllowedInThisStep !== false ||
+    input.sourceActualExternalSideEffectAllowedInThisStep !== false ||
     input.sourceActualSchemaMigrationAllowedInThisStep !== false ||
     input.sourceActualCursorGithubWireAllowedInThisStep !== false ||
     input.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
+    input.sourceActualUiImplementationAllowedInThisStep !== false ||
     !input.endpointContractsValid
   ) {
     return "blocked";
@@ -97,6 +101,17 @@ export function buildRuntimeApiContractDesignFingerprint(input: {
   readonly errorCodeCount: number;
   readonly auditEventCount: number;
   readonly confirmationCount: number;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualUiImplementationAllowedInThisStep: boolean;
+  readonly approvalCount: number;
+  readonly endpointDesignOnlyCount: number;
+  readonly implementedEndpointCount: number;
+  readonly postEndpointCount: number;
+  readonly getEndpointCount: number;
+  readonly patchEndpointCount: number;
+  readonly endpointContractsValid: boolean;
 }): string {
   return [
     "runtime-api-contract-design-v1",
@@ -106,6 +121,15 @@ export function buildRuntimeApiContractDesignFingerprint(input: {
     `errors:${input.errorCodeCount}`,
     `audits:${input.auditEventCount}`,
     `confirmations:${input.confirmationCount}`,
+    `sourceActualDryRunRunner:${input.sourceActualDryRunRunnerAllowedInThisStep}`,
+    `sourceActualExecutionWire:${input.sourceActualExecutionWireAllowedInThisStep}`,
+    `sourceActualExternalSideEffect:${input.sourceActualExternalSideEffectAllowedInThisStep}`,
+    `sourceActualUi:${input.sourceActualUiImplementationAllowedInThisStep}`,
+    `approvalCount:${input.approvalCount}`,
+    `endpointDesignOnlyCount:${input.endpointDesignOnlyCount}`,
+    `implementedEndpointCount:${input.implementedEndpointCount}`,
+    `methodCounts:post=${input.postEndpointCount},get=${input.getEndpointCount},patch=${input.patchEndpointCount}`,
+    `endpointValid:${input.endpointContractsValid}`,
   ].join("::");
 }
 

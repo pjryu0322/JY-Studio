@@ -62,7 +62,12 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionCreateResponse",
     statusTransitions: ["pending", "awaiting_approval"],
     requiredApprovals: ["runtime_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_INVALID_REQUEST", "RUNTIME_EXECUTION_NOT_ALLOWED"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_INVALID_REQUEST",
+      "RUNTIME_EXECUTION_UNAUTHORIZED",
+      "RUNTIME_EXECUTION_NOT_ALLOWED",
+      "RUNTIME_EXECUTION_APPROVAL_REQUIRED",
+    ],
     auditEvents: ["runtime_execution_create_requested"],
   },
   "get-runtime-execution-status": {
@@ -73,7 +78,12 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionStatusResponse",
     statusTransitions: ["pending", "running", "completed", "failed", "cancelled"],
     requiredApprovals: ["runtime_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_NOT_FOUND", "RUNTIME_EXECUTION_FORBIDDEN"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_NOT_FOUND",
+      "RUNTIME_EXECUTION_UNAUTHORIZED",
+      "RUNTIME_EXECUTION_FORBIDDEN",
+      "RUNTIME_EXECUTION_APPROVAL_REQUIRED",
+    ],
     auditEvents: ["runtime_execution_status_read"],
   },
   "list-runtime-execution-events": {
@@ -84,7 +94,12 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionEventsResponse",
     statusTransitions: ["event_recorded", "event_filtered"],
     requiredApprovals: ["runtime_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_NOT_FOUND", "RUNTIME_EXECUTION_EVENTS_FORBIDDEN"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_NOT_FOUND",
+      "RUNTIME_EXECUTION_UNAUTHORIZED",
+      "RUNTIME_EXECUTION_EVENTS_FORBIDDEN",
+      "RUNTIME_EXECUTION_APPROVAL_REQUIRED",
+    ],
     auditEvents: ["runtime_execution_events_listed"],
   },
   "request-runtime-execution-cancel": {
@@ -95,7 +110,12 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionCancelResponse",
     statusTransitions: ["running", "cancelling", "cancelled"],
     requiredApprovals: ["runtime_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_CANCEL_NOT_ALLOWED", "RUNTIME_EXECUTION_NOT_FOUND"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_CANCEL_NOT_ALLOWED",
+      "RUNTIME_EXECUTION_NOT_FOUND",
+      "RUNTIME_EXECUTION_FORBIDDEN",
+      "RUNTIME_EXECUTION_APPROVAL_REQUIRED",
+    ],
     auditEvents: ["runtime_execution_cancel_requested"],
   },
   "submit-runtime-execution-approval": {
@@ -106,7 +126,12 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionApprovalResponse",
     statusTransitions: ["awaiting_approval", "approved", "rejected"],
     requiredApprovals: ["runtime_operator", "security_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_APPROVAL_INVALID", "RUNTIME_EXECUTION_APPROVAL_DENIED"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_APPROVAL_INVALID",
+      "RUNTIME_EXECUTION_APPROVAL_DENIED",
+      "RUNTIME_EXECUTION_UNAUTHORIZED",
+      "RUNTIME_EXECUTION_FORBIDDEN",
+    ],
     auditEvents: ["runtime_execution_approval_submitted"],
   },
   "request-runtime-execution-rollback": {
@@ -117,7 +142,13 @@ export const STAGE7_B_ENDPOINT_SPECS: Record<(typeof STAGE7_B_REQUIRED_ENDPOINT_
     responseContract: "RuntimeExecutionRollbackResponse",
     statusTransitions: ["failed", "rolling_back", "rolled_back"],
     requiredApprovals: ["runtime_operator", "security_operator"],
-    errorCodes: ["RUNTIME_EXECUTION_ROLLBACK_NOT_ALLOWED", "RUNTIME_EXECUTION_ROLLBACK_FAILED"],
+    errorCodes: [
+      "RUNTIME_EXECUTION_ROLLBACK_NOT_ALLOWED",
+      "RUNTIME_EXECUTION_ROLLBACK_FAILED",
+      "RUNTIME_EXECUTION_UNAUTHORIZED",
+      "RUNTIME_EXECUTION_FORBIDDEN",
+      "RUNTIME_EXECUTION_APPROVAL_REQUIRED",
+    ],
     auditEvents: ["runtime_execution_rollback_requested"],
   },
 };
