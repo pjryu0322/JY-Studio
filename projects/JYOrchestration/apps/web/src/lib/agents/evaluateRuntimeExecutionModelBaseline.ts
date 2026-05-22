@@ -35,10 +35,12 @@ export {
   buildStage6AReadyBaselineInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
+export { resolveRuntimeExecutionModelBaselineDecision } from "@/lib/agents/runtimeExecutionModelBaselineSupport";
+
 export {
-  resolveRuntimeExecutionModelBaselineDecision,
+  findUnknownExecutionUnitKinds,
   uniqueRuntimeExecutionUnitKinds,
-} from "@/lib/agents/runtimeExecutionModelBaselineSupport";
+} from "@/lib/agents/runtimeExecutionModelBaselineInputHygiene";
 
 export type { RuntimeExecutionModelBaselineDecisionInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
 

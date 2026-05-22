@@ -26,8 +26,9 @@ import {
 export {
   buildDefaultRuntimeExecutionModelCandidates,
   resolveRuntimeExecutionModelCandidateDecision,
-  validateRuntimeExecutionModelCandidates,
 } from "@/lib/agents/runtimeExecutionModelCandidateSupport";
+
+export { validateRuntimeExecutionModelCandidates } from "@/lib/agents/runtimeExecutionModelCandidateValidation";
 
 export type { RuntimeExecutionModelCandidateValidationResult } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 

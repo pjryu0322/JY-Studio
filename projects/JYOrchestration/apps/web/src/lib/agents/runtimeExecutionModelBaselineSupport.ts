@@ -10,10 +10,16 @@ import type {
   RuntimeExecutionModelBaselineInput,
   RuntimeExecutionUnitKind,
 } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
+import { DEFAULT_RUNTIME_EXECUTION_UNIT_KINDS } from "@/lib/agents/runtimeExecutionModelBaselineConstants";
 import {
-  DEFAULT_RUNTIME_EXECUTION_UNIT_KINDS,
-  REQUIRED_STAGE6_A_MODEL_BASELINE_CONFIRMATIONS,
-} from "@/lib/agents/runtimeExecutionModelBaselineConstants";
+  findUnknownExecutionUnitKinds,
+  uniqueRuntimeExecutionUnitKinds,
+} from "@/lib/agents/runtimeExecutionModelBaselineInputHygiene";
+
+export {
+  findUnknownExecutionUnitKinds,
+  uniqueRuntimeExecutionUnitKinds,
+} from "@/lib/agents/runtimeExecutionModelBaselineInputHygiene";
 
 export {
   DEFAULT_RUNTIME_EXECUTION_BOUNDARIES,
@@ -24,8 +30,6 @@ export {
   STAGE6_A_RECOMMENDED_NEXT_PHASES,
   STAGE6_A_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/runtimeExecutionModelBaselineConstants";
-
-const VALID_EXECUTION_UNIT_KINDS = new Set<string>(DEFAULT_RUNTIME_EXECUTION_UNIT_KINDS);
 
 type ChecklistEntry = {
   readonly item: string;
@@ -47,12 +51,6 @@ function mapChecklist(entries: readonly ChecklistEntry[]): RuntimeExecutionModel
     satisfied: entry.satisfied,
     reason: `${entry.item}: ${entry.satisfied ? "satisfied" : "not satisfied"} — ${entry.detail}`,
   }));
-}
-
-export function uniqueRuntimeExecutionUnitKinds(
-  kinds: readonly RuntimeExecutionUnitKind[],
-): readonly RuntimeExecutionUnitKind[] {
-  return [...new Set(kinds)].sort((a, b) => a.localeCompare(b));
 }
 
 export function parseRuntimeExecutionModelBaselineInput(input?: RuntimeExecutionModelBaselineInput): {
@@ -89,12 +87,6 @@ export function parseRuntimeExecutionModelBaselineInput(input?: RuntimeExecution
       input?.stage6NoDbMigrationConfirmed === true &&
       input?.stage6NoFeatureFlagWireConfirmed === true,
   };
-}
-
-export function findUnknownExecutionUnitKinds(
-  kinds: readonly RuntimeExecutionUnitKind[],
-): readonly string[] {
-  return kinds.filter((k) => !VALID_EXECUTION_UNIT_KINDS.has(k)).sort((a, b) => a.localeCompare(b));
 }
 
 export function resolveRuntimeExecutionModelBaselineDecision(

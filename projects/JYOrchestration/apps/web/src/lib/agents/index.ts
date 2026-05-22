@@ -850,7 +850,10 @@ export {
   validateRuntimeExecutionModelCandidates,
 } from "@/lib/agents/evaluateRuntimeExecutionModelCandidate";
 
-export { uniqueRuntimeExecutionUnitKinds } from "@/lib/agents/evaluateRuntimeExecutionModelBaseline";
+export {
+  findUnknownExecutionUnitKinds,
+  uniqueRuntimeExecutionUnitKinds,
+} from "@/lib/agents/runtimeExecutionModelBaselineInputHygiene";
 
 export {
   buildStage6AReadyBaselineInput,
