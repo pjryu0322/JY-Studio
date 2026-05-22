@@ -152,6 +152,24 @@ const FEASIBILITY_EXPLICIT_RE =
 const BRAINSTORM_POSSIBILITY_RE =
   /가능한\s*(방향|아이디어|접근|시나리오|확장|기능)|확장\s*가능성|발전\s*가능성/i;
 
+function hasUrlInRecentContext(text: string): boolean {
+  return /https?:\/\//i.test(String(text ?? ""));
+}
+
+function isBareCheckAction(text: string): boolean {
+  return /확인해\s*줘|검토해\s*줘|점검해\s*줘|봐\s*줘|가능한가\??|될까\??/i.test(String(text ?? "").trim());
+}
+
+/** 이전 턴 URL + 마지막 턴 확인/검토/점검만 (수집 대상어 없음) */
+function isMultiturnUrlCheckFeasibility(last: string, blob: string): boolean {
+  const lastT = String(last ?? "").trim();
+  const blobT = String(blob ?? "").trim();
+  if (!lastT || !hasUrlInRecentContext(blobT) || !isBareCheckAction(lastT)) return false;
+  if (/확장|브레인스토밍|아이디어.*넓|참고해서.*확장/i.test(lastT)) return false;
+  if (BRAINSTORM_POSSIBILITY_RE.test(lastT) && !FEASIBILITY_OBJECT_RE.test(lastT)) return false;
+  return true;
+}
+
 function isFeasibilitySignalsInText(text: string): boolean {
   const t = String(text ?? "").trim();
   if (!t) return false;
@@ -162,9 +180,22 @@ function isFeasibilitySignalsInText(text: string): boolean {
   return false;
 }
 
+function isFeasibilitySignalsForTurn(last: string, blob: string): boolean {
+  const lastT = String(last ?? "").trim();
+  const blobT = String(blob ?? "").trim();
+  if (!lastT && !blobT) return false;
+  if (isMultiturnUrlCheckFeasibility(lastT, blobT)) return true;
+  if (isFeasibilitySignalsInText(lastT)) return true;
+  if (blobT && blobT !== lastT && isFeasibilitySignalsInText(blobT)) return true;
+  return false;
+}
+
 /** 마지막 user 발화가 가능 여부·수집 확인류인지 (rules 보정·LLM guard용) */
-export function looksLikeFeasibilityUtterance(lastUser: string): boolean {
-  return isFeasibilitySignalsInText(lastUser);
+export function looksLikeFeasibilityUtterance(lastUser: string, recentUserBlob?: string): boolean {
+  const blob = recentUserBlob?.trim()
+    ? `${recentUserBlob.trim()}\n${String(lastUser ?? "").trim()}`
+    : String(lastUser ?? "").trim();
+  return isFeasibilitySignalsForTurn(lastUser, blob);
 }
 
 /** LLM·rules·strict fallback을 합쳐 문서 협업 맥락 주입 여부 */
@@ -181,11 +212,12 @@ export function mergeConversationDocumentContext(
 export function mergeConversationIntentWithRulesGuard(
   rules: ConversationIntentClassification,
   parsed: ConversationIntentClassification,
-  lastUser: string
+  lastUser: string,
+  recentUserBlob?: string
 ): ConversationIntentClassification {
   if (rules.mode !== "feasibility_check") return parsed;
   if (parsed.mode === "feasibility_check") return parsed;
-  if (!looksLikeFeasibilityUtterance(lastUser)) return parsed;
+  if (!looksLikeFeasibilityUtterance(lastUser, recentUserBlob)) return parsed;
   return {
     ...parsed,
     mode: "feasibility_check",
@@ -225,17 +257,17 @@ export function classifyConversationIntentFromRules(input: {
   } else if (
     BRAINSTORM_POSSIBILITY_RE.test(last) &&
     !FEASIBILITY_OBJECT_RE.test(last) &&
-    !isFeasibilitySignalsInText(last)
+    !isFeasibilitySignalsForTurn(last, blob)
   ) {
     mode = "brainstorm";
     reason = "가능성·방향 탐색";
-  } else if (isFeasibilitySignalsInText(last) || isFeasibilitySignalsInText(blob)) {
+  } else if (isFeasibilitySignalsForTurn(last, blob)) {
     mode = "feasibility_check";
     reason = "가능 여부·수집·검토 확인 요청";
     openOptions.push("수집 가능성 점검", "공개 범위 확인", "대체 수집 방식 검토");
   } else if (
     /조사|검색해|리서치/i.test(last) &&
-    !isFeasibilitySignalsInText(last) &&
+    !isFeasibilitySignalsForTurn(last, blob) &&
     !/https?:\/\//i.test(last)
   ) {
     mode = "research_request";
@@ -327,7 +359,8 @@ export async function classifyConversationIntent(input: {
     if (!parsed) return rules;
     const docBlob = blobForDoc(input.transcript);
     const shouldInjectDocumentContext = mergeConversationDocumentContext(rules, parsed, docBlob);
-    const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last);
+    const userBlob = recentUserBlob(input.transcript);
+    const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last, userBlob);
     return {
       ...merged,
       shouldInjectDocumentContext,

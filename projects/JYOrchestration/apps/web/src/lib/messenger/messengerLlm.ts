@@ -5,7 +5,10 @@ import { recordMessengerOpenAi } from "@/lib/debug/promptTimelineStore";
 import { MESSENGER_DEFAULT_AI_CATALOG_KEY } from "@/lib/messenger/messengerConstants";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import { resolveUserOpenAiApiKey } from "@/lib/messenger/resolveUserOpenAiKey";
-import { classifyConversationIntent } from "@/lib/conversation-core/conversationIntentClassifier";
+import {
+  classifyConversationIntent,
+  classifyConversationIntentFromRules,
+} from "@/lib/conversation-core/conversationIntentClassifier";
 import type { ConversationIntentClassification } from "@/lib/conversation-core/conversationIntentTypes";
 import {
   resolveConversationParticipationMode,
@@ -171,6 +174,45 @@ function buildLegacyTailSystemContent(
   const parts: string[] = [buildMessengerSystemBlock(setup, personaLine)];
   if (contextNote.trim()) parts.push(contextNote.trim());
   return parts.join("\n\n");
+}
+
+/** OpenAI 없이 rules 분류만으로 턴 셋업 구성 (smoke·단위 테스트) */
+export function resolveMessengerTurnSetupFromRulesForTest(input: {
+  readonly transcript: readonly MessengerChatTurn[];
+  readonly logContext?: MessengerLlmLogContext;
+}): MessengerTurnSetup {
+  const scope = resolveConversationScope(input.logContext?.projectId ?? null);
+  const participationMode = resolveConversationParticipationMode(scope);
+  const layout = isMessengerFreeRoom(input.logContext) ? "free_windowed" : "legacy_tail";
+  const classification = classifyConversationIntentFromRules({
+    scope,
+    participationMode,
+    transcript: input.transcript,
+  });
+  const plannerMode = resolveAiPlannerPromptMode({
+    projectId: input.logContext?.projectId ?? null,
+    roomId: input.logContext?.roomId ?? null,
+    layout,
+  });
+  const contextBlocks = buildAiPlannerContextBlocksFromTranscript(input.transcript, plannerMode);
+  const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
+  const contextBlocksTimelineText = formatAiPlannerContextBlocksForTimeline(contextBlocks);
+  const docHint = classification.shouldInjectDocumentContext;
+  const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
+  const promptMeta = formatConversationPromptMeta(classification, {
+    layout,
+    roomId: input.logContext?.roomId,
+    projectId: input.logContext?.projectId ?? null,
+    domainContextInjected: [...domainContextInjected],
+    contextBlocks: contextBlocksTimelineText,
+  });
+  return {
+    classification,
+    contextBlocksText,
+    docHint,
+    domainContextInjected,
+    timelineMetaHeader: input.logContext ? promptMeta : "",
+  };
 }
 
 /** @internal 테스트용 */

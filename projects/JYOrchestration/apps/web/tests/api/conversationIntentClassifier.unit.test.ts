@@ -108,6 +108,28 @@ describe("classifyConversationIntentFromRules", () => {
     const c = classifyLast("PDF 문서를 같이 검토하고 주석을 달고 싶어");
     expect(c.shouldInjectDocumentContext).toBe(true);
   });
+
+  it("URL in prior turn + bare check in last turn becomes feasibility_check", () => {
+    const c = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [
+        { role: "user", content: "https://www.modoo.or.kr/idea/list" },
+        { role: "user", content: "확인해줘" },
+      ],
+    });
+    expect(c.mode).toBe("feasibility_check");
+  });
+
+  it("URL in prior turn + brainstorm last remains brainstorm", () => {
+    const c = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [
+        { role: "user", content: "https://example.com" },
+        { role: "user", content: "이걸 참고해서 아이디어를 확장해줘" },
+      ],
+    });
+    expect(c.mode).toBe("brainstorm");
+  });
 });
 
 describe("mergeConversationDocumentContext", () => {
@@ -162,8 +184,26 @@ describe("messenger system prompt by intent", () => {
     const sys = buildMessengerSystemBlockForTest(c);
     expect(sys).toContain("가능 여부");
     expect(sys).toContain("단정하지 않습니다");
-    expect(sys).toContain("요청과 무관한 확장 기능");
+    expect(sys).toContain("사용자가 요청하지 않은 확장 기능");
+    expect(sys).toContain("추천 시스템");
     expect(c.responsePolicy.mustProvideCheckItems).toBe(true);
+  });
+
+  it("feasibility prompt contains concrete website check criteria", () => {
+    const c = classifyLast("https://www.modoo.or.kr/idea/list 데이터 수집할 수 있는지 확인해줘");
+    const sys = buildMessengerSystemBlockForTest(c);
+    expect(sys).toContain("robots.txt");
+    expect(sys).toContain("이용약관");
+    expect(sys).toContain("페이지네이션");
+  });
+
+  it("promptMeta shows rules_guard override when reason includes rules_override", () => {
+    const c = {
+      ...classifyLast("https://example.com 데이터 수집 가능한지 확인해줘"),
+      reason: "llm: brainstorm / rules_override: 가능 여부·수집·검토 확인 요청",
+    };
+    const meta = formatConversationPromptMeta(c, { roomId: "room-1", layout: "free_windowed" });
+    expect(meta).toContain("modeOverride=rules_guard");
   });
 
   it("promptMeta block includes mode and scope", () => {

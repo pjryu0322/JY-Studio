@@ -29,6 +29,7 @@ export function formatConversationPromptMeta(
     `mode=${classification.mode}`,
     `confidence=${classification.confidence.toFixed(2)}`,
     `classifierSource=${classification.classifierSource ?? "rules"}`,
+    /rules_override/i.test(String(classification.reason ?? "")) ? "modeOverride=rules_guard" : "",
     `reason=${String(classification.reason ?? "").trim().slice(0, MAX_META_REASON)}`,
     `domainContextInjected=[${domainInjected.join(", ")}]`,
     classification.domainContextReason ? `domainContextReason=${classification.domainContextReason}` : "",
