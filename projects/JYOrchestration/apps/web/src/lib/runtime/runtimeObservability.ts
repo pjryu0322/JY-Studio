@@ -36,10 +36,31 @@ export type RuntimeTimelineRow = {
   readonly detail?: unknown;
 };
 
-function detailExecRunId(detail: unknown): string | null {
+function detailRecord(detail: unknown): Record<string, unknown> | null {
   if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
-  const id = (detail as { execRunId?: unknown }).execRunId;
-  return typeof id === "string" ? id : null;
+  return detail as Record<string, unknown>;
+}
+
+export function isRuntimeTimelineIncludeLegacyTaskEventsEnabled(): boolean {
+  return process.env.RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS === "1";
+}
+
+/** Strict execRun-scoped timeline rows (runtime events + holder-job persistence). */
+export function isRuntimeTimelineEventForExecRun(detail: unknown, execRunId: string): boolean {
+  const d = detailRecord(detail);
+  if (!d) return false;
+  if (d.execRunId !== execRunId) return false;
+  if (d.runtimeTimeline === true) return true;
+  if (typeof d.eventType === "string") return true;
+  return false;
+}
+
+function isLegacyTaskTimelineFallback(detail: unknown, execRunId: string): boolean {
+  if (!isRuntimeTimelineIncludeLegacyTaskEventsEnabled()) return false;
+  const d = detailRecord(detail);
+  if (!d) return false;
+  const id = d.execRunId;
+  return typeof id === "string" ? id === execRunId : false;
 }
 
 export function inferPhaseAndWorkerFromEventType(eventType: string): {
@@ -48,6 +69,9 @@ export function inferPhaseAndWorkerFromEventType(eventType: string): {
 } {
   if (eventType.startsWith("SELF_HEALING") || eventType.startsWith("AUTO_HEALING")) {
     return { phase: "SELF_HEALING", worker: "self-healing" };
+  }
+  if (eventType === "CURSOR_PIPELINE_CHAINED" || eventType === "CURSOR_PIPELINE_CHAIN_SKIPPED") {
+    return { phase: "PIPELINE", worker: "cursor" };
   }
   if (eventType === "CURSOR_STARTED") return { phase: "CURSOR", worker: "cursor" };
   if (eventType === "CURSOR_COMPLETED") return { phase: "REFLECTION", worker: "cursor" };
@@ -136,8 +160,8 @@ export async function listRuntimeTimelineForExecRun(
 
   const dbRows: RuntimeTimelineRow[] = eventRows
     .filter((r) => {
-      const detailId = detailExecRunId(r.detailJson);
-      return detailId === null || detailId === execRunId;
+      if (isRuntimeTimelineEventForExecRun(r.detailJson, execRunId)) return true;
+      return isLegacyTaskTimelineFallback(r.detailJson, execRunId);
     })
     .map((r) => {
       const detail = r.detailJson as { eventType?: string; workerName?: string | null } | null;

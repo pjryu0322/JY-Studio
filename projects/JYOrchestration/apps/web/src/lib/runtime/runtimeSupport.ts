@@ -60,7 +60,19 @@ export { resumePipelineAfterApprovalViaWorker } from "@/lib/runtime/pipelineResu
 export {
   inferPhaseAndWorkerFromEventType,
 } from "@/lib/runtime/runtimeObservability";
-export { isLegacyInlineNormalTaskPathActive } from "@/lib/executionLoop/legacyInlineNormalTaskExecution";
+export {
+  isLegacyInlineNormalTaskPathActive,
+  LEGACY_INLINE_REMOVAL_CONDITIONS,
+} from "@/lib/executionLoop/legacyInlineNormalTaskExecution";
+export {
+  maybeChainCursorJobToPipeline,
+  isRuntimeCursorChainPipelineEnabled,
+} from "@/lib/runtime/cursorToPipelineChain";
+export {
+  isRuntimeTimelineEventForExecRun,
+  isRuntimeTimelineIncludeLegacyTaskEventsEnabled,
+} from "@/lib/runtime/runtimeObservability";
+export { INTERNAL_NON_EXECUTABLE_JOB_TYPES, isExecutableQueueJobType } from "@/lib/service/executionJobTypes";
 export { confirmCursorGitReflection } from "@/lib/runtime/cursorExecutionReflection";
 export { runPipelineJobSynchronously } from "@/lib/runtime/pipelineExecutionJobSync";
 

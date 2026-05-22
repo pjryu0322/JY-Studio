@@ -102,6 +102,8 @@ export async function runNormalTaskViaRuntimeWorkers(
     projectId: input.projectId,
     actorUserId: input.actorUserId,
     singleTaskId: input.singleTaskId,
+    syncDispatch: true,
+    chainSource: "normal" as const,
   };
 
   const cursorRun = await runCursorJobSynchronously({

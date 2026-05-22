@@ -1,23 +1,25 @@
 /**
  * LEGACY_INLINE_NORMAL_TASK_ONLY
  *
- * Emergency fallback path when `EXECUTION_LOOP_FORCE_INLINE_CURSOR=1`.
- * The full inline cursor / review / SCM / merge implementation still lives in
- * `runExecutionLoop.ts` (marked with LEGACY_INLINE boundaries) until e2e validation
- * allows extraction or removal.
+ * Emergency fallback when `EXECUTION_LOOP_FORCE_INLINE_CURSOR=1`.
+ * Inline cursor / review / SCM / merge still lives in `runExecutionLoop.ts` between
+ * `LEGACY_INLINE_NORMAL_TASK_ONLY_START` and `LEGACY_INLINE_NORMAL_TASK_ONLY_END`.
  *
- * ENV_TEST Stage1/Stage2 paths are NOT part of this module — they remain in the
- * sync ENV_TEST branches of `runExecutionLoop.ts`.
+ * ENV_TEST Stage1/Stage2 are NOT in this module.
  */
 
 export function isLegacyInlineNormalTaskPathActive(): boolean {
   return process.env.EXECUTION_LOOP_FORCE_INLINE_CURSOR === "1";
 }
 
-/**
- * TODO(phase5): move inline normal-task block from runExecutionLoop into
- * `runLegacyInlineNormalTaskExecution()` and delete duplicate SCM/review paths.
- */
+/** Conditions before removing inline block from runExecutionLoop.ts */
+export const LEGACY_INLINE_REMOVAL_CONDITIONS = [
+  "normalTaskRuntimeWorkerFlow integration tests pass",
+  "cursorToPipelineChain + runtimeSelfHealingBridge tests pass",
+  "pipelineResumeAfterApproval tests pass",
+  "Production e2e: 3+ successful normal-task worker runs without FORCE_INLINE",
+] as const;
+
 export const LEGACY_INLINE_REMOVAL_TODOS = [
   "Extract inline cursor invoke block (non–ENV_TEST)",
   "Extract inline git reflection + compare block",

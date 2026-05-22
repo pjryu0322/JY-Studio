@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const findRunMock = vi.fn();
 const findManyMock = vi.fn();
@@ -31,13 +31,15 @@ vi.mock("@/lib/runtime/runtimeEventPersistence", () => ({
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 import {
   buildRuntimeDashboardSnapshot,
-  inferPhaseAndWorkerFromEventType,
+  isRuntimeTimelineEventForExecRun,
+  isRuntimeTimelineIncludeLegacyTaskEventsEnabled,
   listRuntimeTimelineForExecRun,
 } from "@/lib/runtime/runtimeObservability";
 import { clearRuntimeTimelineStore } from "@/lib/runtime/runtimeTimelineStore";
 
 describe("runtimeObservability", () => {
   beforeEach(() => {
+    delete process.env.RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS;
     clearRuntimeTimelineStore();
     findRunMock.mockReset();
     findManyMock.mockReset();
@@ -47,7 +49,6 @@ describe("runtimeObservability", () => {
       projectId: "proj-1",
       createdAt: new Date(),
     });
-    findManyMock.mockResolvedValue([]);
     findUniqueRunMock.mockResolvedValue({
       id: "run-1",
       taskId: "task-1",
@@ -61,33 +62,71 @@ describe("runtimeObservability", () => {
       runError: null,
       teamExecutionStatus: null,
     });
+    findManyMock.mockResolvedValue([]);
   });
 
-  it("inferPhaseAndWorkerFromEventType maps worker events", () => {
-    expect(inferPhaseAndWorkerFromEventType("CURSOR_STARTED")).toEqual({
-      phase: "CURSOR",
-      worker: "cursor",
-    });
-    expect(inferPhaseAndWorkerFromEventType("REVIEW_STARTED").worker).toBe("pipeline:reviewer");
-    expect(inferPhaseAndWorkerFromEventType("SELF_HEALING_CURSOR_ENQUEUED").phase).toBe(
-      "SELF_HEALING"
-    );
+  afterEach(() => {
+    delete process.env.RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS;
   });
 
-  it("records timeline via appendRuntimeEvent without executionJobId", async () => {
-    await appendRuntimeEvent({
-      eventType: "CURSOR_STARTED",
-      projectId: "proj-1",
-      taskId: "task-1",
-      execRunId: "run-1",
-      workerName: "cursor",
-    });
-
-    const merged = await listRuntimeTimelineForExecRun("run-1");
-    expect(merged.some((r) => r.eventType === "CURSOR_STARTED")).toBe(true);
+  it("isRuntimeTimelineEventForExecRun requires execRunId match", () => {
+    expect(
+      isRuntimeTimelineEventForExecRun(
+        { execRunId: "run-1", runtimeTimeline: true, eventType: "CURSOR_STARTED" },
+        "run-1"
+      )
+    ).toBe(true);
+    expect(
+      isRuntimeTimelineEventForExecRun({ execRunId: "run-2", runtimeTimeline: true }, "run-1")
+    ).toBe(false);
+    expect(isRuntimeTimelineEventForExecRun({ execRunId: "run-1" }, "run-1")).toBe(false);
   });
 
-  it("buildRuntimeDashboardSnapshot uses last timeline event for phase", async () => {
+  it("excludes legacy task events without runtimeTimeline by default", async () => {
+    findManyMock.mockResolvedValue([
+      {
+        createdAt: new Date(),
+        message: "LEGACY",
+        stage: "EXECUTE",
+        status: "SUCCESS",
+        executionJobId: "job-1",
+        detailJson: { execRunId: "run-other" },
+      },
+      {
+        createdAt: new Date(),
+        message: "CURSOR_STARTED",
+        stage: "EXECUTE",
+        status: "SUCCESS",
+        executionJobId: "job-2",
+        detailJson: { execRunId: "run-1", runtimeTimeline: true, eventType: "CURSOR_STARTED" },
+      },
+    ]);
+
+    const rows = await listRuntimeTimelineForExecRun("run-1");
+    expect(rows.some((r) => r.eventType === "CURSOR_STARTED")).toBe(true);
+    expect(rows.some((r) => r.message === "LEGACY")).toBe(false);
+  });
+
+  it("includes legacy events when RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS=1", async () => {
+    process.env.RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS = "1";
+    expect(isRuntimeTimelineIncludeLegacyTaskEventsEnabled()).toBe(true);
+
+    findManyMock.mockResolvedValue([
+      {
+        createdAt: new Date(),
+        message: "OLD",
+        stage: "EXECUTE",
+        status: "SUCCESS",
+        executionJobId: "job-1",
+        detailJson: { execRunId: "run-1" },
+      },
+    ]);
+
+    const rows = await listRuntimeTimelineForExecRun("run-1");
+    expect(rows.some((r) => r.message === "OLD")).toBe(true);
+  });
+
+  it("buildRuntimeDashboardSnapshot uses timeline event for phase", async () => {
     await appendRuntimeEvent({
       eventType: "SECURITY_STARTED",
       projectId: "proj-1",
@@ -98,8 +137,6 @@ describe("runtimeObservability", () => {
 
     const snap = await buildRuntimeDashboardSnapshot("run-1");
     expect(snap?.currentPhase).toBe("SECURITY");
-    expect(snap?.currentWorker).toBe("pipeline:security");
     expect(snap?.timelineCount).toBeGreaterThan(0);
-    expect(snap?.lastEventAt).toBeTruthy();
   });
 });

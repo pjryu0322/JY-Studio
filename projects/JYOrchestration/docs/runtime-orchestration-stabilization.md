@@ -1,74 +1,62 @@
 # Runtime Orchestration Stabilization
 
-AI Team Runtime을 ExecutionJob 기반 Worker 구조로 점진 이전한다.
-
-## Path policy (Phase 4)
+## Path policy
 
 | Task kind | Path |
 |-----------|------|
-| `ENV_TEST` / `ENV_TEST_STAGE2` | **Sync** `runExecutionLoop` (unchanged) |
-| Normal Task (default) | **Worker** `runNormalTaskViaRuntimeWorkers` |
-| Normal Task (emergency) | Legacy inline when `EXECUTION_LOOP_FORCE_INLINE_CURSOR=1` |
+| `ENV_TEST` / `ENV_TEST_STAGE2` | Sync `runExecutionLoop` (unchanged) |
+| Normal Task (default) | Worker path |
+| Normal Task (emergency) | Legacy inline (`EXECUTION_LOOP_FORCE_INLINE_CURSOR=1`) |
+
+## Sync vs background chain (Phase 5)
+
+| Path | Cursor | Reflection | Pipeline |
+|------|--------|------------|----------|
+| `runNormalTaskViaRuntimeWorkers` | sync job (`syncDispatch: true`) | inline in dispatch | sync job |
+| `handleCursorExecutionJob` (background) | worker | `maybeChainCursorJobToPipeline` | **enqueue only** |
+
+- `RUNTIME_CURSOR_CHAIN_PIPELINE=1` (default; set `0` to disable)
+- `syncDispatch: true` on cursor payload → handler **skips** chain (no duplicate pipeline)
+
+Self-healing auto cursor: `syncDispatch: false`, `chainSource: "self-healing"` → cursor worker chains to pipeline after reflection.
+
+## Self-healing (Phase 4–5)
+
+- `createSelfHealingExecutionRun()` — `branchName` = healing `branchPlan.branchName` (not source branch)
+- `RUNTIME_SELF_HEALING_AUTO_CURSOR=1` — cursor enqueue + background pipeline chain
+
+## Approval resume
+
+`resumePipelineAfterApprovalViaWorker()` — `resumeScmAfterApproval: true`, reviewer/security skipped in handler.
+
+## Runtime timeline
+
+- In-memory `runtimeTimelineStore` + holder job → `executionEventLog` (`runtimeTimeline: true`, `execRunId`)
+- Query: strict `isRuntimeTimelineEventForExecRun()`; legacy rows only if `RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS=1`
+- `runtime-timeline` jobs: **not claimable**, excluded from pending queue counts
+
+## Legacy inline
+
+Markers in `runExecutionLoop.ts`: `LEGACY_INLINE_NORMAL_TASK_ONLY_START` / `END`.  
+Removal conditions: `LEGACY_INLINE_REMOVAL_CONDITIONS` in `legacyInlineNormalTaskExecution.ts`.
+
+## ENV_TEST
+
+Stage1/Stage2 remain on sync loop only.
+
+## Modules
 
 ```text
-Normal Task (default)
-  → cursor job → reflection → pipeline job
-  → approval_waiting → resumePipelineAfterApprovalViaWorker (pipeline resumeScmAfterApproval)
-
-Review reject
-  → triggerSelfHealingLite → AUTO_HEALING tasks
-  → optional RUNTIME_SELF_HEALING_AUTO_CURSOR=1:
-       createSelfHealingExecutionRun(healingTaskId)
-       → cursor job (execRunId matches healing task)
-```
-
-## Self-healing execution run (Phase 4)
-
-`createSelfHealingExecutionRun()` creates a **new** `TaskExecutionRun` per healing task so `loadCursorExecutionInvokeContext()` matches `execRunId` + `taskId`.
-
-Events: `SELF_HEALING_EXEC_RUN_CREATED`, `SELF_HEALING_CURSOR_ENQUEUED`, `SELF_HEALING_CURSOR_ENQUEUE_FAILED`.
-
-## Approval resume (Phase 4)
-
-`resumePipelineAfterApprovalViaWorker()` — `runPipelineJobSynchronously({ resumeScmAfterApproval: true })`.  
-Used from `runExecutionLoop` for normal tasks (not ENV_TEST, not legacy inline).
-
-## Runtime timeline persistence (Phase 4)
-
-**Decision: B+ (holder job, no new Prisma model)**
-
-- `appendRuntimeEvent()` always records in-memory `runtimeTimelineStore`.
-- Without `executionJobId`, events also persist via `executionEventLog` using a per-execRun **`runtime-timeline` holder `ExecutionJob`** (`runtimeEventPersistence.ts`).
-- **Limitation:** in-memory store still lost on process restart; DB rows survive via holder job.
-- **Future:** dedicated `RuntimeEvent` Prisma model for multi-instance / analytics.
-
-`listRuntimeTimelineForExecRun()` priority: memory → progress log file → `executionEventLog` (filtered by `detailJson.execRunId`).
-
-## Legacy inline isolation
-
-`legacyInlineNormalTaskExecution.ts` — boundary marker + `EXECUTION_LOOP_FORCE_INLINE_CURSOR`.  
-Inline cursor/review/scm/merge remains in `runExecutionLoop.ts` between `LEGACY_INLINE_NORMAL_TASK_ONLY` comments until e2e validation.
-
-## Pipeline result codes
-
-`pipelineResultCodes.ts` — `PIPELINE_RESULT_CODE`, `pipelineMessageForCode()`.
-
-## ENV_TEST safety
-
-Stage1/Stage2 stay on sync loop. Workers return `ENV_TEST_REQUIRES_SYNC_LOOP` if mis-enqueued.
-
-## Modules (Phase 4 additions)
-
-```text
+cursorToPipelineChain.ts
 runtimeSelfHealingExecution.ts
-runtimeEventPersistence.ts
 pipelineResumeAfterApproval.ts
+runtimeEventPersistence.ts
+executionJobTypes.ts (INTERNAL_NON_EXECUTABLE_JOB_TYPES)
 legacyInlineNormalTaskExecution.ts
 ```
 
 ## Remaining follow-up
 
-- Extract legacy inline block into `legacyInlineNormalTaskExecution.ts`
-- Dedicated `RuntimeEvent` DB model
-- Full self-healing auto-run after healing cursor completes
-- E2E validation before removing inline fallback
+- Extract legacy inline into dedicated module
+- Dedicated `RuntimeEvent` Prisma model
+- Optional: process pipeline job immediately after chain enqueue

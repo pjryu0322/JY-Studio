@@ -18,6 +18,7 @@ import {
   isCursorInvokeContext,
   loadCursorExecutionInvokeContext,
 } from "@/lib/runtime/cursorExecutionJobInvoke";
+import { maybeChainCursorJobToPipeline } from "@/lib/runtime/cursorToPipelineChain";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 
 export { runCursorJobSynchronously } from "@/lib/runtime/cursorExecutionJobSync";
@@ -115,11 +116,25 @@ export async function handleCursorExecutionJob(job: ExecutionJob): Promise<Execu
     },
   });
 
+  const chain = await maybeChainCursorJobToPipeline({
+    projectId: payload.projectId,
+    taskId: payload.taskId,
+    execRunId: payload.execRunId,
+    actorUserId: payload.actorUserId,
+    cursorOutcome,
+    cursorJobId: job.id,
+    source: payload.chainSource ?? (payload.selfHealingFromExecRunId ? "self-healing" : "background"),
+    skipPipelineChain: payload.syncDispatch === true,
+  });
+
   const result: CursorExecutionJobResult = {
     ok: true,
     code: "CURSOR_COMPLETED",
-    message: "Cursor execution completed",
+    message: chain.chained
+      ? "Cursor execution completed; pipeline job enqueued"
+      : "Cursor execution completed",
     cursorOutcome,
+    pipelineChain: chain,
   };
   return { ok: true, code: result.code, message: result.message, data: result };
 }

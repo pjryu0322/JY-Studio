@@ -115,6 +115,8 @@ export async function maybeEnqueueSelfHealingFromReviewFailure(
           actorUserId: input.actorUserId,
           singleTaskId: healingTaskId,
           selfHealingFromExecRunId: input.execRunId,
+          syncDispatch: false,
+          chainSource: "self-healing",
         },
       });
 

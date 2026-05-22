@@ -769,6 +769,8 @@ export async function runExecutionLoop(params: {
         continue;
       }
 
+      // LEGACY_INLINE_NORMAL_TASK_ONLY_START — emergency fallback (EXECUTION_LOOP_FORCE_INLINE_CURSOR=1)
+
       if (!isEnvTestTask) {
         await runTeamRuntimeSafe("developer_running", () => markTeamRuntimeDeveloperRunning(teamCtx));
       }
@@ -1866,8 +1868,9 @@ export async function runExecutionLoop(params: {
       });
 
       } // !resumeScmAfterApproval
+      // LEGACY_INLINE_NORMAL_TASK_ONLY_END (cursor/review path above)
 
-      // ----- LEGACY_INLINE_NORMAL_TASK_ONLY: SCM / merge (skipped when pipeline worker resume handled above) -----
+      // LEGACY_INLINE_NORMAL_TASK_ONLY_START — SCM / merge (skipped when pipeline worker resume handled above)
       // 3) SCM Manager 단계: PR 생성 + merge (Cursor는 절대 PR/merge 하지 않음)
       const scmCount = await countScmManagerAiMembers(projectId);
       if (scmCount === 0) {

@@ -3,6 +3,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { INTERNAL_NON_EXECUTABLE_JOB_TYPES } from "@/lib/service/executionJobTypes";
 
 export type ExecutionQueueJobType = "git-apply" | "pipeline" | "cursor";
 
@@ -73,6 +74,7 @@ export async function getExecutionQueueStatus(projectId?: string): Promise<Execu
       where: {
         ...projectFilter,
         status: "PENDING",
+        type: { notIn: [...INTERNAL_NON_EXECUTABLE_JOB_TYPES] },
         OR: [{ availableAt: null }, { availableAt: { lte: now } }],
       },
     }),

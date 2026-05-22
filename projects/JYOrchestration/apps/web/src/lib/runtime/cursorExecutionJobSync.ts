@@ -21,7 +21,11 @@ export async function runCursorJobSynchronously(
   const enq = await enqueueExecution({
     projectId: input.projectId,
     type: "cursor",
-    payload: input as unknown as Prisma.InputJsonValue,
+    payload: {
+      ...input,
+      syncDispatch: true,
+      chainSource: "normal",
+    } as unknown as Prisma.InputJsonValue,
   });
   if (!enq.queued) {
     return { ok: false, message: enq.reason };

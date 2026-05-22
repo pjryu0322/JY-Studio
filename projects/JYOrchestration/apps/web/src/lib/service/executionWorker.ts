@@ -416,6 +416,7 @@ async function claimNextExecutableJob(workerId: string): Promise<ExecutionJob | 
   const next = await prisma.executionJob.findFirst({
     where: {
       status: "PENDING",
+      type: { not: "runtime-timeline" },
       OR: [{ availableAt: null }, { availableAt: { lte: now } }],
     },
     orderBy: { createdAt: "asc" },
@@ -429,6 +430,7 @@ async function claimNextExecutableJob(workerId: string): Promise<ExecutionJob | 
     where: {
       id: next.id,
       status: "PENDING",
+      type: { not: "runtime-timeline" },
       OR: [{ availableAt: null }, { availableAt: { lte: now } }],
     },
     data: {

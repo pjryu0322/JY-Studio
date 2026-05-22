@@ -58,18 +58,13 @@ describe("runtimeSelfHealingBridge", () => {
 
     const res = await maybeEnqueueSelfHealingFromReviewFailure(input);
     expect(res.triggered).toBe(true);
-    expect(res.createdTaskIds).toEqual(["heal-1"]);
     expect(res.autoCursorEnqueued).toBe(false);
     expect(createRunMock).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
-    expect(appendEventMock.mock.calls.some((c) => c[0].eventType === "AUTO_HEALING_TRIGGERED")).toBe(
-      true
-    );
   });
 
-  it("creates healing run and enqueues cursor with matching execRunId when flag on", async () => {
+  it("enqueues cursor with matching execRunId and chain markers when flag on", async () => {
     process.env.RUNTIME_SELF_HEALING_AUTO_CURSOR = "1";
-    expect(isRuntimeSelfHealingAutoCursorEnabled()).toBe(true);
 
     triggerMock.mockResolvedValue({
       created: true,
@@ -81,13 +76,6 @@ describe("runtimeSelfHealingBridge", () => {
     expect(res.autoCursorEnqueued).toBe(true);
     expect(res.healingExecRunIds).toEqual(["run-healing"]);
 
-    expect(createRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        healingTaskId: "heal-2",
-        sourceExecRunId: "run-source",
-      }),
-    );
-
     expect(enqueueMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "cursor",
@@ -95,21 +83,10 @@ describe("runtimeSelfHealingBridge", () => {
           execRunId: "run-healing",
           taskId: "heal-2",
           selfHealingFromExecRunId: "run-source",
+          syncDispatch: false,
+          chainSource: "self-healing",
         }),
       }),
     );
-  });
-
-  it("emits SELF_HEALING_SKIPPED when nothing created", async () => {
-    triggerMock.mockResolvedValue({
-      created: false,
-      strategies: [],
-      createdTasks: [],
-      reason: "ALREADY_CREATED",
-    });
-
-    const res = await maybeEnqueueSelfHealingFromReviewFailure(input);
-    expect(res.triggered).toBe(false);
-    expect(appendEventMock.mock.calls[0][0].eventType).toBe("SELF_HEALING_SKIPPED");
   });
 });

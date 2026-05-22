@@ -88,7 +88,7 @@ export async function createSelfHealingExecutionRun(
       taskId: input.healingTaskId,
       status: "running",
       teamExecutionStatus: AI_TEAM_EXECUTION_STATUS.REQUESTED,
-      branchName: sourceRun?.branchName ?? branchPlan.branchName,
+      branchName: branchPlan.branchName,
       promptSnapshot: prompt,
       retryCount: 0,
       workflowId: taskRow.sourceSpecVersionId ?? null,
@@ -109,6 +109,8 @@ export async function createSelfHealingExecutionRun(
       sourceExecRunId: input.sourceExecRunId,
       sourceTaskId: input.sourceTaskId,
       healingTaskId: input.healingTaskId,
+      sourceBranchName: sourceRun?.branchName ?? null,
+      healingBranchName: branchPlan.branchName,
     },
   });
 
