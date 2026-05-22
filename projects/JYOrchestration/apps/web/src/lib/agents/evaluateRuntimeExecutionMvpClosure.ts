@@ -8,6 +8,10 @@ import type {
   RuntimeExecutionMvpClosureReport,
 } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import {
+  buildRuntimeExecutionMvpClosureStage10ReportFields,
+  mapRuntimeExecutionMvpClosureSourceTrace,
+} from "@/lib/agents/runtimeExecutionMvpClosureStage10Trace";
+import {
   REQUIRED_STAGE9_B_CONFIRMATIONS,
   RUNTIME_EXECUTION_MVP_CLOSURE_TITLE,
   RUNTIME_EXECUTION_MVP_CLOSURE_VERSION,
@@ -15,17 +19,23 @@ import {
   STAGE10_ENTRY_SCOPE,
   STAGE9_B_RECOMMENDED_NEXT_PHASES,
   STAGE9_B_SEPARATED_WORK_ITEMS,
-  appendRuntimeExecutionMvpClosureFindings,
-  buildRuntimeExecutionMvpClosureChecklists,
+} from "@/lib/agents/runtimeExecutionMvpClosureConstants";
+import { appendRuntimeExecutionMvpClosureFindings } from "@/lib/agents/runtimeExecutionMvpClosureFindings";
+import { buildRuntimeExecutionMvpClosureChecklists } from "@/lib/agents/runtimeExecutionMvpClosureChecklists";
+import {
   buildRuntimeExecutionMvpClosureFingerprint,
-  buildRuntimeExecutionMvpClosureItems,
   buildRuntimeExecutionMvpClosureSummary,
-  computeStage10EntryReady,
-  evaluateRuntimeExecutionMvpClosureSource,
+} from "@/lib/agents/runtimeExecutionMvpClosureFingerprint";
+import { buildRuntimeExecutionMvpClosureItems } from "@/lib/agents/runtimeExecutionMvpClosureItems";
+import {
   parseRuntimeExecutionMvpClosureInput,
   resolveRuntimeExecutionMvpClosureDecision,
+} from "@/lib/agents/runtimeExecutionMvpClosureDecision";
+import {
+  computeStage10EntryReady,
   validateRuntimeExecutionMvpClosureItems,
-} from "@/lib/agents/runtimeExecutionMvpClosureSupport";
+} from "@/lib/agents/runtimeExecutionMvpClosureValidation";
+import { evaluateRuntimeExecutionMvpClosureSource } from "@/lib/agents/runtimeExecutionMvpClosureSupport";
 
 export { resolveRuntimeExecutionMvpClosureDecision } from "@/lib/agents/runtimeExecutionMvpClosureSupport";
 export { buildRuntimeExecutionMvpClosureFingerprint } from "@/lib/agents/runtimeExecutionMvpClosureFingerprint";
@@ -51,24 +61,7 @@ export function evaluateRuntimeExecutionMvpClosure(
   const stage10EntryReady = computeStage10EntryReady(closureItems, validation);
 
   const decision = resolveRuntimeExecutionMvpClosureDecision({
-    sourceStage9Decision: source.decision,
-    sourceStage9AClosureReady: source.stage9AClosureReady,
-    sourceRouteHandlerCount: source.routeHandlerCount,
-    sourceServiceActionCount: source.serviceActionCount,
-    sourceBoundaryReportIncludedInEveryResponse: source.boundaryReportIncludedInEveryResponse,
-    sourceApprovalActionImplemented: source.approvalActionImplemented,
-    sourceMockRunnerAdapterImplemented: source.mockRunnerAdapterImplemented,
-    sourceAuditQueryImplemented: source.auditQueryImplemented,
-    sourceStatusQueryImplemented: source.statusQueryImplemented,
-    sourceActualApiRouteImplementedInThisStep: source.actualApiRouteImplementedInThisStep,
-    sourceInMemoryStoreImplementedInThisStep: source.inMemoryStoreImplementedInThisStep,
-    sourceMockRunnerAdapterImplementedInThisStep: source.mockRunnerAdapterImplementedInThisStep,
-    sourceActualExternalExecutionAllowedInThisStep: source.actualExternalExecutionAllowedInThisStep,
-    sourceActualCursorGithubCallAllowedInThisStep: source.actualCursorGithubCallAllowedInThisStep,
-    sourceActualConnectorGatewayCallAllowedInThisStep: source.actualConnectorGatewayCallAllowedInThisStep,
-    sourceActualDbWriteAllowedInThisStep: source.actualDbWriteAllowedInThisStep,
-    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
-    sourceActualUiImplementationAllowedInThisStep: source.actualUiImplementationAllowedInThisStep,
+    ...mapRuntimeExecutionMvpClosureSourceTrace(source),
     validationValid: validation.valid,
     stage10EntryReady,
     confirmationsSatisfied: parsed.confirmationsSatisfied,
@@ -130,25 +123,9 @@ export function evaluateRuntimeExecutionMvpClosure(
     closureTitle: RUNTIME_EXECUTION_MVP_CLOSURE_TITLE,
     closureSummary: buildRuntimeExecutionMvpClosureSummary(decision),
     closureFingerprint,
-    stage10EntryCandidate: "external_execution_adapter_design",
-    stage10EntryMode: "external_execution_adapter_boundary_design",
-    stage10EntryReady,
+    ...buildRuntimeExecutionMvpClosureStage10ReportFields({ stage10EntryReady }),
     stage10EntryScope: [...STAGE10_ENTRY_SCOPE],
     stage10EntryOutOfScope: [...STAGE10_ENTRY_OUT_OF_SCOPE],
-    stage10RequiresSeparateApproval: true,
-    stage10ImplementationAllowedInThisStep: false,
-    stage10AdapterBoundaryDesignAllowed: true,
-    stage10CursorGithubBoundaryDesignAllowed: true,
-    stage10ConnectorBoundaryDesignAllowed: true,
-    stage10RunnerBoundaryDesignAllowed: true,
-    stage10DryRunSimulationDesignAllowed: true,
-    stage10RollbackBoundaryDesignAllowed: true,
-    stage10ActualCursorExecutionAllowed: false,
-    stage10ActualGithubWriteAllowed: false,
-    stage10ActualConnectorGatewayCallAllowed: false,
-    stage10ActualDbPersistenceAllowed: false,
-    stage10ActualProductionRunnerAllowed: false,
-    stage10ActualUiImplementationAllowed: false,
     closureItems,
     validation,
     requiredConfirmations: [...REQUIRED_STAGE9_B_CONFIRMATIONS],

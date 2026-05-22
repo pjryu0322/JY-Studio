@@ -15,19 +15,27 @@ import {
   STAGE10_A_SEPARATED_WORK_ITEMS,
   STAGE11_ENTRY_OUT_OF_SCOPE,
   STAGE11_ENTRY_SCOPE,
-  appendExternalExecutionAdapterBoundaryFindings,
-  buildExternalExecutionAdapterBoundaryChecklists,
+} from "@/lib/agents/externalExecutionAdapterBoundaryConstants";
+import { appendExternalExecutionAdapterBoundaryFindings } from "@/lib/agents/externalExecutionAdapterBoundaryFindings";
+import { buildExternalExecutionAdapterBoundaryChecklists } from "@/lib/agents/externalExecutionAdapterBoundaryChecklists";
+import {
   buildExternalExecutionAdapterBoundaryFingerprint,
-  buildExternalExecutionAdapterBoundaryItems,
   buildExternalExecutionAdapterBoundarySummary,
+} from "@/lib/agents/externalExecutionAdapterBoundaryFingerprint";
+import { buildExternalExecutionAdapterBoundaryItems } from "@/lib/agents/externalExecutionAdapterBoundaryItems";
+import { parseExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
+import { resolveExternalExecutionAdapterBoundaryDecision } from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
+import { evaluateExternalExecutionAdapterBoundarySource } from "@/lib/agents/externalExecutionAdapterBoundarySource";
+import {
+  buildExternalExecutionAdapterBoundaryStage11ReportFields,
+  mapExternalExecutionAdapterBoundaryDecisionInputFromSource,
+} from "@/lib/agents/externalExecutionAdapterBoundarySourceMapping";
+import {
   computeStage11EntryReady,
-  evaluateExternalExecutionAdapterBoundarySource,
-  parseExternalExecutionAdapterBoundaryInput,
-  resolveExternalExecutionAdapterBoundaryDecision,
   validateExternalExecutionAdapterBoundaryItems,
-} from "@/lib/agents/externalExecutionAdapterBoundarySupport";
+} from "@/lib/agents/externalExecutionAdapterBoundaryValidation";
 
-export { resolveExternalExecutionAdapterBoundaryDecision } from "@/lib/agents/externalExecutionAdapterBoundarySupport";
+export { resolveExternalExecutionAdapterBoundaryDecision } from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
 export { buildExternalExecutionAdapterBoundaryFingerprint } from "@/lib/agents/externalExecutionAdapterBoundaryFingerprint";
 
 export { buildExternalExecutionAdapterBoundaryItems } from "@/lib/agents/externalExecutionAdapterBoundaryItems";
@@ -50,28 +58,13 @@ export function evaluateExternalExecutionAdapterBoundary(
   const validation = validateExternalExecutionAdapterBoundaryItems(boundaryItems);
   const stage11EntryReady = computeStage11EntryReady(boundaryItems, validation);
 
-  const decision = resolveExternalExecutionAdapterBoundaryDecision({
-    sourceStage9Decision: source.decision,
-    sourceStage10EntryReady: source.stage10EntryReady,
-    sourceStage10EntryMode: source.stage10EntryMode,
-    sourceStage10AdapterBoundaryDesignAllowed: source.stage10AdapterBoundaryDesignAllowed,
-    sourceStage10CursorGithubBoundaryDesignAllowed: source.stage10CursorGithubBoundaryDesignAllowed,
-    sourceStage10ConnectorBoundaryDesignAllowed: source.stage10ConnectorBoundaryDesignAllowed,
-    sourceStage10RunnerBoundaryDesignAllowed: source.stage10RunnerBoundaryDesignAllowed,
-    sourceStage10DryRunSimulationDesignAllowed: source.stage10DryRunSimulationDesignAllowed,
-    sourceStage10RollbackBoundaryDesignAllowed: source.stage10RollbackBoundaryDesignAllowed,
-    sourceStage10ActualCursorExecutionAllowed: source.stage10ActualCursorExecutionAllowed,
-    sourceStage10ActualGithubWriteAllowed: source.stage10ActualGithubWriteAllowed,
-    sourceStage10ActualConnectorGatewayCallAllowed: source.stage10ActualConnectorGatewayCallAllowed,
-    sourceStage10ActualDbPersistenceAllowed: source.stage10ActualDbPersistenceAllowed,
-    sourceStage10ActualProductionRunnerAllowed: source.stage10ActualProductionRunnerAllowed,
-    sourceStage10ActualUiImplementationAllowed: source.stage10ActualUiImplementationAllowed,
-    validationValid: validation.valid,
-    stage11EntryReady,
-    confirmationsSatisfied: parsed.confirmationsSatisfied,
-    stage11RequiresSeparateApproval: true,
-    stage11ImplementationAllowedInThisStep: false,
-  });
+  const decision = resolveExternalExecutionAdapterBoundaryDecision(
+    mapExternalExecutionAdapterBoundaryDecisionInputFromSource(source, {
+      validationValid: validation.valid,
+      stage11EntryReady,
+      confirmationsSatisfied: parsed.confirmationsSatisfied,
+    }),
+  );
 
   const { checklist, boundaryChecklist } = buildExternalExecutionAdapterBoundaryChecklists({
     sourceStage9Decision: source.decision,
@@ -117,20 +110,9 @@ export function evaluateExternalExecutionAdapterBoundary(
     boundaryTitle: EXTERNAL_EXECUTION_ADAPTER_BOUNDARY_TITLE,
     boundarySummary: buildExternalExecutionAdapterBoundarySummary(decision),
     boundaryFingerprint,
-    adapterBoundaryOnly: true,
-    stage11EntryCandidate: "external_execution_adapter_dry_run_package",
-    stage11EntryReady,
+    ...buildExternalExecutionAdapterBoundaryStage11ReportFields({ stage11EntryReady }),
     stage11EntryScope: [...STAGE11_ENTRY_SCOPE],
     stage11EntryOutOfScope: [...STAGE11_ENTRY_OUT_OF_SCOPE],
-    stage11RequiresSeparateApproval: true,
-    stage11ImplementationAllowedInThisStep: false,
-    actualExternalExecutionImplementedInThisStep: false,
-    actualCursorExecutionImplementedInThisStep: false,
-    actualGithubWriteImplementedInThisStep: false,
-    actualConnectorGatewayCallImplementedInThisStep: false,
-    actualDbPersistenceImplementedInThisStep: false,
-    actualProductionRunnerImplementedInThisStep: false,
-    actualUiImplementationImplementedInThisStep: false,
     boundaryItems,
     validation,
     requiredConfirmations: [...REQUIRED_STAGE10_A_CONFIRMATIONS],

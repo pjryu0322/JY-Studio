@@ -47,6 +47,13 @@ export {
   STAGE9_B_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/runtimeExecutionMvpClosureConstants";
 
+export {
+  STAGE10_ENTRY_MODE,
+  STAGE10_ENTRY_CANDIDATE,
+  mapRuntimeExecutionMvpClosureSourceTrace,
+  buildRuntimeExecutionMvpClosureStage10ReportFields,
+} from "@/lib/agents/runtimeExecutionMvpClosureStage10Trace";
+
 export function evaluateRuntimeExecutionMvpClosureSource(
   input?: RuntimeExecutionMvpClosureInput,
 ): RuntimeExecutionApiMvpReport {

@@ -2782,7 +2782,7 @@ Ready decision:
 - 실제 Cursor/GitHub/Connector/DB/production runner 실행 허가는 아니다.
 - Stage 11에서 dry-run adapter package로 넘어가기 위한 기준선이다.
 
-구현: `apps/web/src/lib/agents/evaluateExternalExecutionAdapterBoundary.ts`, `externalExecutionAdapterBoundaryTypes.ts`, `externalExecutionAdapterBoundaryConstants.ts`, `externalExecutionAdapterBoundaryItems.ts`, `externalExecutionAdapterBoundaryValidation.ts`, `externalExecutionAdapterBoundarySupport.ts`, `externalExecutionAdapterBoundaryFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionAdapterBoundary.ts`, `externalExecutionAdapterBoundaryTypes.ts`, `externalExecutionAdapterBoundaryConstants.ts`, `externalExecutionAdapterBoundaryItems.ts`, `externalExecutionAdapterBoundaryValidation.ts`, `externalExecutionAdapterBoundarySource.ts`, `externalExecutionAdapterBoundarySourceMapping.ts`, `externalExecutionAdapterBoundarySupport.ts`, `externalExecutionAdapterBoundaryFindings.ts`, `runtimeExecutionMvpClosureStage10Trace.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

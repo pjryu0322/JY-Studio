@@ -2,7 +2,7 @@
  * Stage 10-A external execution adapter boundary support (read-only).
  */
 
-import { evaluateRuntimeExecutionMvpClosure } from "@/lib/agents/evaluateRuntimeExecutionMvpClosure";
+import { evaluateExternalExecutionAdapterBoundarySource } from "@/lib/agents/externalExecutionAdapterBoundarySource";
 import { buildExternalExecutionAdapterBoundaryChecklists } from "@/lib/agents/externalExecutionAdapterBoundaryChecklists";
 import {
   parseExternalExecutionAdapterBoundaryInput,
@@ -18,8 +18,13 @@ import {
   computeStage11EntryReady,
   validateExternalExecutionAdapterBoundaryItems,
 } from "@/lib/agents/externalExecutionAdapterBoundaryValidation";
-import type { ExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
-import type { RuntimeExecutionMvpClosureReport } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
+export { evaluateExternalExecutionAdapterBoundarySource } from "@/lib/agents/externalExecutionAdapterBoundarySource";
+
+export {
+  mapExternalExecutionAdapterBoundaryDecisionInputFromSource,
+  buildExternalExecutionAdapterBoundaryStage11ReportFields,
+  STAGE11_ENTRY_CANDIDATE,
+} from "@/lib/agents/externalExecutionAdapterBoundarySourceMapping";
 
 export { buildExternalExecutionAdapterBoundaryItems } from "@/lib/agents/externalExecutionAdapterBoundaryItems";
 export {
@@ -46,9 +51,3 @@ export {
   STAGE10_A_RECOMMENDED_NEXT_PHASES,
   STAGE10_A_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/externalExecutionAdapterBoundaryConstants";
-
-export function evaluateExternalExecutionAdapterBoundarySource(
-  input?: ExternalExecutionAdapterBoundaryInput,
-): RuntimeExecutionMvpClosureReport {
-  return evaluateRuntimeExecutionMvpClosure(input?.runtimeMvpClosure);
-}
