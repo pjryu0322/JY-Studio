@@ -78,6 +78,18 @@ export function appendRuntimeExecutionMvpClosureFindings(input: {
   findings.push(finding("info", "stage10_entry_candidate_defined", "Stage 10 entry candidate defined"));
   findings.push(finding("info", "stage10_separate_approval_required", "Stage 10 entry requires separate approval"));
   findings.push(finding("info", "stage10_implementation_disallowed", "Stage 10 implementation disallowed in this step"));
+  findings.push(finding("info", "stage9_source_route_handlers_verified", "Source route handler count verified"));
+  findings.push(finding("info", "stage9_source_service_actions_verified", "Source service action count verified"));
+  findings.push(finding("info", "stage9_source_boundary_response_verified", "Source boundary response verified"));
+  findings.push(finding("info", "stage10_adapter_boundary_design_allowed", "Stage 10 adapter boundary design allowed"));
+  findings.push(
+    finding("info", "stage10_cursor_github_boundary_design_allowed", "Stage 10 Cursor/GitHub boundary design allowed"),
+  );
+  findings.push(finding("info", "stage10_connector_boundary_design_allowed", "Stage 10 connector boundary design allowed"));
+  findings.push(finding("info", "stage10_runner_boundary_design_allowed", "Stage 10 runner boundary design allowed"));
+  findings.push(finding("info", "stage10_dry_run_simulation_design_allowed", "Stage 10 dry-run simulation design allowed"));
+  findings.push(finding("info", "stage10_rollback_boundary_design_allowed", "Stage 10 rollback boundary design allowed"));
+  findings.push(finding("info", "stage10_actual_execution_disallowed", "Stage 10 actual execution disallowed"));
 
   if (decision === "stage9_runtime_api_mvp_closed") {
     findings.push(finding("info", "stage9_runtime_api_mvp_closed", "Stage 9 runtime API MVP is closed"));

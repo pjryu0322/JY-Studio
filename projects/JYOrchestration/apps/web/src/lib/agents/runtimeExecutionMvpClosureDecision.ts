@@ -52,6 +52,18 @@ export function resolveRuntimeExecutionMvpClosureDecision(
   }
 
   if (
+    input.sourceRouteHandlerCount < 5 ||
+    input.sourceServiceActionCount < 6 ||
+    input.sourceBoundaryReportIncludedInEveryResponse !== true ||
+    input.sourceApprovalActionImplemented !== true ||
+    input.sourceMockRunnerAdapterImplemented !== true ||
+    input.sourceAuditQueryImplemented !== true ||
+    input.sourceStatusQueryImplemented !== true
+  ) {
+    return "blocked";
+  }
+
+  if (
     input.sourceActualApiRouteImplementedInThisStep !== true ||
     input.sourceInMemoryStoreImplementedInThisStep !== true ||
     input.sourceMockRunnerAdapterImplementedInThisStep !== true ||

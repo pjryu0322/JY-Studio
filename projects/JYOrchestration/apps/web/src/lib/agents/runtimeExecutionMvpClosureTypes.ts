@@ -78,6 +78,13 @@ export interface RuntimeExecutionMvpClosureChecklistItem {
 export interface RuntimeExecutionMvpClosureDecisionInput {
   readonly sourceStage9Decision: string;
   readonly sourceStage9AClosureReady: boolean;
+  readonly sourceRouteHandlerCount: number;
+  readonly sourceServiceActionCount: number;
+  readonly sourceBoundaryReportIncludedInEveryResponse: boolean;
+  readonly sourceApprovalActionImplemented: boolean;
+  readonly sourceMockRunnerAdapterImplemented: boolean;
+  readonly sourceAuditQueryImplemented: boolean;
+  readonly sourceStatusQueryImplemented: boolean;
   readonly sourceActualApiRouteImplementedInThisStep: boolean;
   readonly sourceInMemoryStoreImplementedInThisStep: boolean;
   readonly sourceMockRunnerAdapterImplementedInThisStep: boolean;
@@ -101,6 +108,14 @@ export interface RuntimeExecutionMvpClosureReport {
 
   readonly sourceStage9Decision: string;
   readonly sourceStage9AClosureReady: boolean;
+  readonly sourceRouteHandlerCount: number;
+  readonly sourceServiceActionCount: number;
+  readonly sourceStoreKind: string;
+  readonly sourceBoundaryReportIncludedInEveryResponse: boolean;
+  readonly sourceApprovalActionImplemented: boolean;
+  readonly sourceMockRunnerAdapterImplemented: boolean;
+  readonly sourceAuditQueryImplemented: boolean;
+  readonly sourceStatusQueryImplemented: boolean;
   readonly sourceActualApiRouteImplementedInThisStep: boolean;
   readonly sourceInMemoryStoreImplementedInThisStep: boolean;
   readonly sourceMockRunnerAdapterImplementedInThisStep: boolean;
@@ -117,11 +132,24 @@ export interface RuntimeExecutionMvpClosureReport {
   readonly closureFingerprint: string;
 
   readonly stage10EntryCandidate: "external_execution_adapter_design";
+  readonly stage10EntryMode: "external_execution_adapter_boundary_design";
   readonly stage10EntryReady: boolean;
   readonly stage10EntryScope: readonly string[];
   readonly stage10EntryOutOfScope: readonly string[];
   readonly stage10RequiresSeparateApproval: true;
   readonly stage10ImplementationAllowedInThisStep: false;
+  readonly stage10AdapterBoundaryDesignAllowed: true;
+  readonly stage10CursorGithubBoundaryDesignAllowed: true;
+  readonly stage10ConnectorBoundaryDesignAllowed: true;
+  readonly stage10RunnerBoundaryDesignAllowed: true;
+  readonly stage10DryRunSimulationDesignAllowed: true;
+  readonly stage10RollbackBoundaryDesignAllowed: true;
+  readonly stage10ActualCursorExecutionAllowed: false;
+  readonly stage10ActualGithubWriteAllowed: false;
+  readonly stage10ActualConnectorGatewayCallAllowed: false;
+  readonly stage10ActualDbPersistenceAllowed: false;
+  readonly stage10ActualProductionRunnerAllowed: false;
+  readonly stage10ActualUiImplementationAllowed: false;
 
   readonly closureItems: readonly RuntimeExecutionMvpClosureItem[];
   readonly validation: RuntimeExecutionMvpClosureValidationResult;

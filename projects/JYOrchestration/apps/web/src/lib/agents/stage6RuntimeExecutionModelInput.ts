@@ -10,6 +10,7 @@ import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContr
 import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
 import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundleTypes";
 import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
+import type { ExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 import type { RuntimeExecutionMvpClosureInput } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
@@ -376,5 +377,40 @@ export function buildStage9BReadyRuntimeExecutionMvpClosureInput(): RuntimeExecu
   return {
     apiMvp: buildStage9AReadyRuntimeExecutionApiMvpInput(),
     ...buildStage9BConfirmedRuntimeExecutionMvpClosureInput(),
+  };
+}
+
+export function buildStage10AConfirmedExternalExecutionAdapterBoundaryInput(): Required<
+  Pick<
+    ExternalExecutionAdapterBoundaryInput,
+    | "externalAdapterBoundaryReviewed"
+    | "cursorGithubBoundaryReviewed"
+    | "connectorBoundaryReviewed"
+    | "runnerBoundaryReviewed"
+    | "approvalBoundaryReviewed"
+    | "dryRunSimulationBoundaryReviewed"
+    | "rollbackBoundaryReviewed"
+    | "auditBoundaryReviewed"
+    | "stage11EntryReviewed"
+  >
+> {
+  return {
+    externalAdapterBoundaryReviewed: true,
+    cursorGithubBoundaryReviewed: true,
+    connectorBoundaryReviewed: true,
+    runnerBoundaryReviewed: true,
+    approvalBoundaryReviewed: true,
+    dryRunSimulationBoundaryReviewed: true,
+    rollbackBoundaryReviewed: true,
+    auditBoundaryReviewed: true,
+    stage11EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 10-A (Stage 9-B ready + 10-A boundary confirmations). */
+export function buildStage10AReadyExternalExecutionAdapterBoundaryInput(): ExternalExecutionAdapterBoundaryInput {
+  return {
+    runtimeMvpClosure: buildStage9BReadyRuntimeExecutionMvpClosureInput(),
+    ...buildStage10AConfirmedExternalExecutionAdapterBoundaryInput(),
   };
 }

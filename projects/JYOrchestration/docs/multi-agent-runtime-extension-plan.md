@@ -2711,6 +2711,24 @@ Ready decision:
 
 `stage9_runtime_execution_api_mvp_ready`
 
+### Stage 9-B Integrated Runtime Runner/Closure Bundle — Hardening
+
+Stage 9-B는 Stage 9-A Runtime API MVP를 닫고 Stage 10 진입 경계를 제공한다.
+
+Hardening 기준:
+
+- source route handler count 검증
+- source service action count 검증
+- boundary response 포함 여부 검증
+- approval/status/audit/mock runner adapter 구현 여부 검증
+- Stage 10 entry mode 명시 (`external_execution_adapter_boundary_design`)
+- Stage 10에서 허용되는 것은 adapter boundary design only
+- actual Cursor/GitHub/Connector/DB/production runner/UI 금지 유지
+
+Ready decision:
+
+`stage9_runtime_api_mvp_closed`
+
 ### Stage 9-B Integrated Runtime Runner/Closure Bundle
 
 Stage 9-B는 Stage 9를 닫고 Stage 10 외부 실행 adapter 설계 진입 경계를 만든다.
@@ -2737,6 +2755,34 @@ Ready decision:
 - 실제 Cursor/GitHub/DB/production runner 실행 허가는 아니다.
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionMvpClosure.ts`, `runtimeExecutionMvpClosureTypes.ts`, `runtimeExecutionMvpClosureConstants.ts`, `runtimeExecutionMvpClosureItems.ts`, `runtimeExecutionMvpClosureValidation.ts`, `runtimeExecutionMvpClosureStage10EntryValidation.ts`, `runtimeExecutionMvpClosureSupport.ts`, `runtimeExecutionMvpClosureFindings.ts`, `runtimeExecutionApiMvpClosureReady.ts`
+
+### Stage 10-A Integrated External Execution Adapter Boundary Design
+
+Stage 10-A는 Stage 9-B closure를 source로 하는 read-only 외부 실행 adapter 경계 설계 단계다.
+
+통합 범위:
+
+- External execution adapter contract
+- Cursor/GitHub execution boundary
+- Connector Gateway execution boundary
+- Runner process boundary
+- Operator approval boundary
+- Dry-run simulation boundary
+- Rollback boundary
+- Audit boundary
+- Stage 11 dry-run package entry candidate
+
+Ready decision:
+
+`stage10_external_execution_adapter_boundary_ready`
+
+의미:
+
+- 외부 실행을 붙이기 위한 adapter 경계와 승인 조건이 정의되었다.
+- 실제 Cursor/GitHub/Connector/DB/production runner 실행 허가는 아니다.
+- Stage 11에서 dry-run adapter package로 넘어가기 위한 기준선이다.
+
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionAdapterBoundary.ts`, `externalExecutionAdapterBoundaryTypes.ts`, `externalExecutionAdapterBoundaryConstants.ts`, `externalExecutionAdapterBoundaryItems.ts`, `externalExecutionAdapterBoundaryValidation.ts`, `externalExecutionAdapterBoundarySupport.ts`, `externalExecutionAdapterBoundaryFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

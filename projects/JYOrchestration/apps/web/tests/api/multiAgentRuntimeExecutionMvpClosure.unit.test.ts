@@ -20,6 +20,13 @@ function readyClosureDecisionInput(
   return {
     sourceStage9Decision: "stage9_runtime_execution_api_mvp_ready",
     sourceStage9AClosureReady: true,
+    sourceRouteHandlerCount: 5,
+    sourceServiceActionCount: 6,
+    sourceBoundaryReportIncludedInEveryResponse: true,
+    sourceApprovalActionImplemented: true,
+    sourceMockRunnerAdapterImplemented: true,
+    sourceAuditQueryImplemented: true,
+    sourceStatusQueryImplemented: true,
     sourceActualApiRouteImplementedInThisStep: true,
     sourceInMemoryStoreImplementedInThisStep: true,
     sourceMockRunnerAdapterImplementedInThisStep: true,
@@ -294,5 +301,115 @@ describe("multi-agent runtime execution MVP closure stage 9-B", () => {
   it("buildRuntimeExecutionMvpClosureItems returns empty when source is not ready", () => {
     const source = evaluateRuntimeExecutionApiMvp();
     expect(buildRuntimeExecutionMvpClosureItems(source)).toHaveLength(0);
+  });
+
+  it("ready report sourceRouteHandlerCount is at least 5", () => {
+    expect(evaluateReadyClosure().sourceRouteHandlerCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it("ready report sourceServiceActionCount is at least 6", () => {
+    expect(evaluateReadyClosure().sourceServiceActionCount).toBeGreaterThanOrEqual(6);
+  });
+
+  it("ready report sourceBoundaryReportIncludedInEveryResponse is true", () => {
+    expect(evaluateReadyClosure().sourceBoundaryReportIncludedInEveryResponse).toBe(true);
+  });
+
+  it("ready report sourceApprovalActionImplemented is true", () => {
+    expect(evaluateReadyClosure().sourceApprovalActionImplemented).toBe(true);
+  });
+
+  it("ready report sourceMockRunnerAdapterImplemented is true", () => {
+    expect(evaluateReadyClosure().sourceMockRunnerAdapterImplemented).toBe(true);
+  });
+
+  it("ready report sourceAuditQueryImplemented is true", () => {
+    expect(evaluateReadyClosure().sourceAuditQueryImplemented).toBe(true);
+  });
+
+  it("ready report sourceStatusQueryImplemented is true", () => {
+    expect(evaluateReadyClosure().sourceStatusQueryImplemented).toBe(true);
+  });
+
+  it("ready report stage10EntryMode is external_execution_adapter_boundary_design", () => {
+    expect(evaluateReadyClosure().stage10EntryMode).toBe("external_execution_adapter_boundary_design");
+  });
+
+  it("ready report stage10AdapterBoundaryDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10AdapterBoundaryDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10CursorGithubBoundaryDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10CursorGithubBoundaryDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10ConnectorBoundaryDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10ConnectorBoundaryDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10RunnerBoundaryDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10RunnerBoundaryDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10DryRunSimulationDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10DryRunSimulationDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10RollbackBoundaryDesignAllowed is true", () => {
+    expect(evaluateReadyClosure().stage10RollbackBoundaryDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage10ActualCursorExecutionAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualCursorExecutionAllowed).toBe(false);
+  });
+
+  it("ready report stage10ActualGithubWriteAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualGithubWriteAllowed).toBe(false);
+  });
+
+  it("ready report stage10ActualConnectorGatewayCallAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualConnectorGatewayCallAllowed).toBe(false);
+  });
+
+  it("ready report stage10ActualDbPersistenceAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualDbPersistenceAllowed).toBe(false);
+  });
+
+  it("ready report stage10ActualProductionRunnerAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualProductionRunnerAllowed).toBe(false);
+  });
+
+  it("ready report stage10ActualUiImplementationAllowed is false", () => {
+    expect(evaluateReadyClosure().stage10ActualUiImplementationAllowed).toBe(false);
+  });
+
+  it("resolveRuntimeExecutionMvpClosureDecision blocks when sourceRouteHandlerCount is insufficient", () => {
+    expect(
+      resolveRuntimeExecutionMvpClosureDecision(readyClosureDecisionInput({ sourceRouteHandlerCount: 4 })),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionMvpClosureDecision blocks when sourceServiceActionCount is insufficient", () => {
+    expect(
+      resolveRuntimeExecutionMvpClosureDecision(readyClosureDecisionInput({ sourceServiceActionCount: 5 })),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionMvpClosureDecision blocks when sourceBoundaryReportIncludedInEveryResponse is false", () => {
+    expect(
+      resolveRuntimeExecutionMvpClosureDecision(
+        readyClosureDecisionInput({ sourceBoundaryReportIncludedInEveryResponse: false }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("ready findings include stage10_adapter_boundary_design_allowed", () => {
+    expect(evaluateReadyClosure().findings.some((f) => f.code === "stage10_adapter_boundary_design_allowed")).toBe(
+      true,
+    );
+  });
+
+  it("ready findings include stage10_actual_execution_disallowed", () => {
+    expect(evaluateReadyClosure().findings.some((f) => f.code === "stage10_actual_execution_disallowed")).toBe(true);
   });
 });

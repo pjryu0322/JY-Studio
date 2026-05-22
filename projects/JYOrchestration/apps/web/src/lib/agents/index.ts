@@ -1035,6 +1035,41 @@ export type {
 } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 
 export {
+  evaluateExternalExecutionAdapterBoundary,
+} from "@/lib/agents/evaluateExternalExecutionAdapterBoundary";
+
+export {
+  buildExternalExecutionAdapterBoundaryItems,
+} from "@/lib/agents/externalExecutionAdapterBoundaryItems";
+
+export {
+  validateExternalExecutionAdapterBoundaryItems,
+  computeStage11EntryReady,
+} from "@/lib/agents/externalExecutionAdapterBoundaryValidation";
+
+export {
+  resolveExternalExecutionAdapterBoundaryDecision,
+  parseExternalExecutionAdapterBoundaryInput,
+} from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
+
+export {
+  buildExternalExecutionAdapterBoundaryFingerprint,
+} from "@/lib/agents/externalExecutionAdapterBoundaryFingerprint";
+
+export type {
+  ExternalExecutionAdapterBoundaryDecision,
+  ExternalExecutionAdapterBoundaryInput,
+  ExternalExecutionAdapterBoundaryReport,
+  ExternalExecutionAdapterBoundaryItem,
+  ExternalExecutionAdapterBoundaryValidationResult,
+} from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
+
+export {
+  buildStage10AReadyExternalExecutionAdapterBoundaryInput,
+  buildStage10AConfirmedExternalExecutionAdapterBoundaryInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
