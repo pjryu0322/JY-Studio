@@ -2484,7 +2484,7 @@ Stage 7-B에서 금지되는 항목:
 - persistence implementation
 - UI implementation
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeApiContractDesign.ts`, `runtimeApiContractDesignTypes.ts`, `runtimeApiContractDesignEndpoints.ts`
+구현: `apps/web/src/lib/agents/evaluateRuntimeApiContractDesign.ts`, `runtimeApiContractDesignTypes.ts`, `runtimeApiContractDesignEndpoints.ts`, `runtimeApiContractDesignDecision.ts`, `runtimeApiContractDesignFingerprint.ts`
 
 ### Stage 7-C Integrated Runtime Execution Contract Bundle Closure
 
@@ -2509,7 +2509,7 @@ Stage 8-A 권장 최소 범위:
 - no Connector Gateway routing change
 - no UI by default
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`, `runtimeContractBundleClosureItemValidation.ts`
+구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`, `runtimeContractBundleClosureItemSource.ts`, `runtimeContractBundleClosureItemValidation.ts`, `runtimeContractBundleClosureDecision.ts`, `runtimeContractBundleClosureFingerprint.ts`
 
 ### Stage 7-C Integrated Runtime Contract Bundle Closure — Hardening
 
