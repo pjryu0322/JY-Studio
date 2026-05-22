@@ -2651,6 +2651,48 @@ Stage 9 out-of-scope 기본값:
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeControlBundle.ts`, `runtimeControlBundleTypes.ts`, `runtimeControlBundleConstants.ts`, `runtimeControlBundleItems.ts`, `runtimeControlBundleItemSource.ts`, `runtimeControlBundleValidation.ts`, `runtimeControlBundleSupport.ts`, `runtimeControlBundleFindings.ts`
 
+### Stage 9-A Runtime Execution API + In-memory Store MVP
+
+Stage 9-A는 Stage 8-B `stage8_runtime_control_bundle_ready`를 source로 하는 첫 번째 Runtime Execution MVP다.
+
+구현 범위:
+
+- Runtime Execution API route handlers
+- In-memory Runtime Execution Store Service
+- Runtime Execution Status Query
+- Runtime Execution Approval Action
+- Runtime Execution Mock Runner Adapter
+- Runtime Execution Audit Query
+
+허용:
+
+- Next.js route handler
+- in-memory Map 기반 store
+- mock runner adapter
+- 상태 조회/승인/mock-run/audit 조회
+
+금지:
+
+- actual Cursor/GitHub execution
+- actual Connector Gateway routing change
+- actual DB write
+- schema.prisma / migration
+- background worker / queue
+- production runner
+- full runtime UI
+
+Ready decision:
+
+`stage9_runtime_execution_api_mvp_ready`
+
+의미:
+
+- 플랫폼 내부에서 실행 요청을 API로 생성·조회·승인·mock-run·audit 조회할 수 있다.
+- 실행은 mock runner/in-memory store에 한정된다.
+- 실제 외부 실행은 아직 허용되지 않는다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionApiMvp.ts`, `runtimeExecutionApiMvpService.ts`, `runtimeExecutionApiMvpStore.ts`, `runtimeExecutionApiMvpApproval.ts`, `runtimeExecutionApiMvpMockAdapter.ts`, `apps/web/src/app/api/jyo/runtime-executions/**`
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

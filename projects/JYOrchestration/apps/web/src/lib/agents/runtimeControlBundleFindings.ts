@@ -82,6 +82,12 @@ export function appendRuntimeControlBundleFindings(input: {
   findings.push(finding("info", "stage9_implementation_disallowed", "Stage 9 implementation disallowed in this step"));
 
   if (decision === "stage8_runtime_control_bundle_ready") {
+    findings.push(finding("info", "stage9_api_route_design_allowed", "Stage 9 API route design is allowed for in-memory MVP"));
+    findings.push(finding("info", "stage9_in_memory_store_allowed", "Stage 9 in-memory store is allowed"));
+    findings.push(finding("info", "stage9_mock_runner_adapter_allowed", "Stage 9 mock runner adapter is allowed"));
+    findings.push(finding("info", "stage9_external_execution_disallowed", "Stage 9 actual external execution remains disallowed"));
+    findings.push(finding("info", "stage9_db_persistence_disallowed", "Stage 9 DB persistence remains disallowed"));
+    findings.push(finding("info", "stage9_ui_implementation_disallowed", "Stage 9 UI implementation remains disallowed"));
     findings.push(finding("info", "stage8_runtime_control_bundle_ready", "Stage 8 runtime control bundle is ready"));
   }
 }

@@ -978,6 +978,38 @@ export type {
 } from "@/lib/agents/runtimeControlBundleTypes";
 
 export {
+  evaluateRuntimeExecutionApiMvp,
+} from "@/lib/agents/evaluateRuntimeExecutionApiMvp";
+
+export {
+  createRuntimeExecutionApiMvp,
+  buildRuntimeExecutionApiBoundaryReport,
+} from "@/lib/agents/runtimeExecutionApiMvpService";
+
+export {
+  createRuntimeExecutionApiMvpStore,
+  runtimeExecutionApiMvpStore,
+} from "@/lib/agents/runtimeExecutionApiMvpStore";
+
+export {
+  approveRuntimeExecutionInMemory,
+} from "@/lib/agents/runtimeExecutionApiMvpApproval";
+
+export {
+  runRuntimeExecutionMockAdapter,
+} from "@/lib/agents/runtimeExecutionApiMvpMockAdapter";
+
+export type {
+  RuntimeExecutionApiMvpDecision,
+  RuntimeExecutionApiMvpInput,
+  RuntimeExecutionApiMvpReport,
+  RuntimeExecutionApiCreateRequest,
+  RuntimeExecutionApiResponse,
+  RuntimeExecutionApiBoundaryReport,
+  RuntimeExecutionApiMvpStoreSnapshot,
+} from "@/lib/agents/runtimeExecutionApiMvpTypes";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
@@ -1031,6 +1063,8 @@ export {
   buildStage8AConfirmedVerticalSliceInput,
   buildStage8BReadyRuntimeControlBundleInput,
   buildStage8BConfirmedRuntimeControlBundleInput,
+  buildStage9AReadyRuntimeExecutionApiMvpInput,
+  buildStage9AConfirmedRuntimeExecutionApiMvpInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

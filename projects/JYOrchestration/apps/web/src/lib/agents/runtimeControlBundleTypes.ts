@@ -105,6 +105,14 @@ export interface RuntimeControlBundleReport {
   readonly stage9RequiresSeparateApproval: true;
   readonly stage9ImplementationAllowedInThisStep: false;
 
+  readonly stage9EntryMode: "in_memory_runtime_execution_api_mvp";
+  readonly stage9ApiRouteDesignAllowed: true;
+  readonly stage9InMemoryStoreAllowed: true;
+  readonly stage9MockRunnerAdapterAllowed: true;
+  readonly stage9ActualExternalExecutionAllowed: false;
+  readonly stage9DbPersistenceAllowed: false;
+  readonly stage9UiImplementationAllowed: false;
+
   readonly actualApiRouteImplementedInThisStep: false;
   readonly actualRunnerImplementedInThisStep: false;
   readonly actualDryRunRunnerImplementedInThisStep: false;

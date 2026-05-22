@@ -9,6 +9,7 @@ import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeE
 import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContractDesignTypes";
 import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
 import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundleTypes";
+import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
@@ -316,5 +317,34 @@ export function buildStage8BReadyRuntimeControlBundleInput(): RuntimeControlBund
   return {
     verticalSlice: buildStage8AReadyVerticalSliceInput(),
     ...buildStage8BConfirmedRuntimeControlBundleInput(),
+  };
+}
+
+export function buildStage9AConfirmedRuntimeExecutionApiMvpInput(): Required<
+  Pick<
+    RuntimeExecutionApiMvpInput,
+    | "operatorStage9ApprovalConfirmed"
+    | "apiRouteScopeConfirmed"
+    | "inMemoryStoreConfirmed"
+    | "mockRunnerAdapterConfirmed"
+    | "noDbPersistenceConfirmed"
+    | "noExternalExecutionConfirmed"
+  >
+> {
+  return {
+    operatorStage9ApprovalConfirmed: true,
+    apiRouteScopeConfirmed: true,
+    inMemoryStoreConfirmed: true,
+    mockRunnerAdapterConfirmed: true,
+    noDbPersistenceConfirmed: true,
+    noExternalExecutionConfirmed: true,
+  };
+}
+
+/** Ready-path input for Stage 9-A (Stage 8-B ready + 9-A API MVP confirmations). */
+export function buildStage9AReadyRuntimeExecutionApiMvpInput(): RuntimeExecutionApiMvpInput {
+  return {
+    runtimeControlBundle: buildStage8BReadyRuntimeControlBundleInput(),
+    ...buildStage9AConfirmedRuntimeExecutionApiMvpInput(),
   };
 }

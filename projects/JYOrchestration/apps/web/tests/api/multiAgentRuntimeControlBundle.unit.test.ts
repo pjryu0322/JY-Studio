@@ -313,4 +313,42 @@ describe("multi-agent runtime control bundle stage 8-B", () => {
     const source = evaluateRuntimeExecutionVerticalSlice();
     expect(buildRuntimeControlBundleItems(source)).toHaveLength(0);
   });
+
+  it("ready report stage9EntryMode is in_memory_runtime_execution_api_mvp", () => {
+    expect(evaluateReadyControlBundle().stage9EntryMode).toBe("in_memory_runtime_execution_api_mvp");
+  });
+
+  it("ready report stage9ApiRouteDesignAllowed is true", () => {
+    expect(evaluateReadyControlBundle().stage9ApiRouteDesignAllowed).toBe(true);
+  });
+
+  it("ready report stage9InMemoryStoreAllowed is true", () => {
+    expect(evaluateReadyControlBundle().stage9InMemoryStoreAllowed).toBe(true);
+  });
+
+  it("ready report stage9MockRunnerAdapterAllowed is true", () => {
+    expect(evaluateReadyControlBundle().stage9MockRunnerAdapterAllowed).toBe(true);
+  });
+
+  it("ready report stage9ActualExternalExecutionAllowed is false", () => {
+    expect(evaluateReadyControlBundle().stage9ActualExternalExecutionAllowed).toBe(false);
+  });
+
+  it("ready report stage9DbPersistenceAllowed is false", () => {
+    expect(evaluateReadyControlBundle().stage9DbPersistenceAllowed).toBe(false);
+  });
+
+  it("ready report stage9UiImplementationAllowed is false", () => {
+    expect(evaluateReadyControlBundle().stage9UiImplementationAllowed).toBe(false);
+  });
+
+  it("ready findings include stage9_api_route_design_allowed", () => {
+    expect(evaluateReadyControlBundle().findings.some((f) => f.code === "stage9_api_route_design_allowed")).toBe(true);
+  });
+
+  it("ready findings include stage9_external_execution_disallowed", () => {
+    expect(evaluateReadyControlBundle().findings.some((f) => f.code === "stage9_external_execution_disallowed")).toBe(
+      true,
+    );
+  });
 });
