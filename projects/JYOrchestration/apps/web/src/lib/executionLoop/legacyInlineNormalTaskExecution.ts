@@ -12,6 +12,14 @@ export function isLegacyInlineNormalTaskPathActive(): boolean {
   return process.env.EXECUTION_LOOP_FORCE_INLINE_CURSOR === "1";
 }
 
+/** Context for the inline block in `runExecutionLoop.ts` (extract target). */
+export type LegacyInlineNormalTaskExecutionContext = {
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly execRunId: string;
+  readonly actorUserId: string;
+};
+
 /** Conditions before removing inline block from runExecutionLoop.ts */
 export const LEGACY_INLINE_REMOVAL_CONDITIONS = [
   "normalTaskRuntimeWorkerFlow integration tests pass",

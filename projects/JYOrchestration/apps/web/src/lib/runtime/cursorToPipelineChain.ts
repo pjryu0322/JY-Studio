@@ -8,6 +8,7 @@ import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
 import { confirmCursorGitReflection } from "@/lib/runtime/cursorExecutionReflection";
 import { isCursorRunSuccessWithResult } from "@/lib/runtime/cursorExecutionJobPersist";
 import type { CursorChainSource } from "@/lib/runtime/cursorExecutionJobTypes";
+import { findExistingPipelineJobForExecRun } from "@/lib/runtime/pipelineChainIdempotency";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
@@ -15,6 +16,10 @@ import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
 
 export function isRuntimeCursorChainPipelineEnabled(): boolean {
   return process.env.RUNTIME_CURSOR_CHAIN_PIPELINE !== "0";
+}
+
+export function shouldProcessChainedPipelineImmediately(): boolean {
+  return process.env.RUNTIME_PROCESS_CHAINED_PIPELINE_IMMEDIATELY !== "0";
 }
 
 export type CursorToPipelineChainInput = {
@@ -26,13 +31,27 @@ export type CursorToPipelineChainInput = {
   readonly cursorJobId?: string | null;
   readonly source?: CursorChainSource;
   readonly skipPipelineChain?: boolean;
+  readonly selfHealingFromExecRunId?: string | null;
 };
 
 export type CursorToPipelineChainResult = {
   readonly chained: boolean;
   readonly reason?: string;
   readonly pipelineJobId?: string;
+  readonly pipelineProcessed?: boolean;
 };
+
+function chainEventDetail(
+  input: CursorToPipelineChainInput,
+  extra: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    source: input.source ?? "background",
+    cursorJobId: input.cursorJobId ?? null,
+    selfHealingFromExecRunId: input.selfHealingFromExecRunId ?? null,
+    ...extra,
+  };
+}
 
 export async function maybeChainCursorJobToPipeline(
   input: CursorToPipelineChainInput
@@ -63,6 +82,34 @@ export async function maybeChainCursorJobToPipeline(
     return { chained: false, reason: "setup_missing" };
   }
 
+  const existing = await findExistingPipelineJobForExecRun({
+    projectId: input.projectId,
+    taskId: input.taskId,
+    execRunId: input.execRunId,
+  });
+  if (existing.exists) {
+    await appendRuntimeEvent({
+      eventType: "CURSOR_PIPELINE_CHAIN_SKIPPED",
+      severity: "info",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      execRunId: input.execRunId,
+      actorUserId: input.actorUserId,
+      workerName: "cursor",
+      executionJobId: input.cursorJobId ?? null,
+      detail: chainEventDetail(input, {
+        reason: existing.reason ?? "pipeline_already_exists",
+        existingPipelineJobId: existing.jobId,
+        existingStatus: existing.status,
+      }),
+    });
+    return {
+      chained: false,
+      reason: existing.reason ?? "pipeline_already_exists",
+      pipelineJobId: existing.jobId,
+    };
+  }
+
   const cr = input.cursorOutcome.result;
   const reflection = await confirmCursorGitReflection({
     execRunId: input.execRunId,
@@ -87,7 +134,7 @@ export async function maybeChainCursorJobToPipeline(
       actorUserId: input.actorUserId,
       workerName: "cursor",
       executionJobId: input.cursorJobId ?? null,
-      detail: { reason: reflection.reason, source: input.source ?? "background" },
+      detail: chainEventDetail(input, { reason: reflection.reason }),
     });
     await refreshWorkflowStates(input.projectId);
     return { chained: false, reason: `reflection_not_confirmed:${reflection.reason}` };
@@ -105,6 +152,7 @@ export async function maybeChainCursorJobToPipeline(
       resumeScmAfterApproval: false,
       chainedFromCursorJobId: input.cursorJobId ?? null,
       chainSource: input.source ?? "background",
+      selfHealingFromExecRunId: input.selfHealingFromExecRunId ?? null,
     } as Prisma.InputJsonValue,
   });
 
@@ -117,9 +165,37 @@ export async function maybeChainCursorJobToPipeline(
       execRunId: input.execRunId,
       actorUserId: input.actorUserId,
       workerName: "cursor",
-      detail: { reason: enq.reason, source: input.source ?? "background" },
+      detail: chainEventDetail(input, { reason: enq.reason }),
     });
     return { chained: false, reason: enq.reason };
+  }
+
+  let pipelineProcessed = false;
+  if (shouldProcessChainedPipelineImmediately()) {
+    try {
+      const { processExecutionJobById } = await import("@/lib/service/executionWorker");
+      await processExecutionJobById(enq.jobId);
+      pipelineProcessed = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await appendRuntimeEvent({
+        eventType: "CURSOR_PIPELINE_CHAIN_PROCESS_FAILED",
+        severity: "error",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        execRunId: input.execRunId,
+        actorUserId: input.actorUserId,
+        workerName: "cursor",
+        detail: chainEventDetail(input, { pipelineJobId: enq.jobId, error: msg }),
+      });
+      await refreshWorkflowStates(input.projectId);
+      return {
+        chained: false,
+        reason: `pipeline_process_failed:${msg}`,
+        pipelineJobId: enq.jobId,
+        pipelineProcessed: false,
+      };
+    }
   }
 
   await appendRuntimeEvent({
@@ -130,13 +206,18 @@ export async function maybeChainCursorJobToPipeline(
     actorUserId: input.actorUserId,
     workerName: "cursor",
     executionJobId: input.cursorJobId ?? null,
-    detail: {
+    detail: chainEventDetail(input, {
       pipelineJobId: enq.jobId,
-      source: input.source ?? "background",
-    },
+      pipelineProcessed,
+      immediateProcess: shouldProcessChainedPipelineImmediately(),
+    }),
   });
 
   await refreshWorkflowStates(input.projectId);
 
-  return { chained: true, pipelineJobId: enq.jobId };
+  return {
+    chained: true,
+    pipelineJobId: enq.jobId,
+    pipelineProcessed,
+  };
 }

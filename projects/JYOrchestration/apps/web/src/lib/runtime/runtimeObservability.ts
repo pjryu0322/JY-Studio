@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
 import { isTaskProgressLogEnabled } from "@/lib/observability/taskProgressLog";
 import { prisma } from "@/lib/prisma";
+import { dedupeRuntimeTimelineRows } from "@/lib/runtime/runtimeTimelineDedupe";
 import { getRuntimeTimelineFromStore } from "@/lib/runtime/runtimeTimelineStore";
 
 export type RuntimeDashboardSnapshot = {
@@ -51,7 +52,7 @@ export function isRuntimeTimelineEventForExecRun(detail: unknown, execRunId: str
   if (!d) return false;
   if (d.execRunId !== execRunId) return false;
   if (d.runtimeTimeline === true) return true;
-  if (typeof d.eventType === "string") return true;
+  if (typeof d.eventType === "string" && d.eventType.length > 0) return true;
   return false;
 }
 
@@ -70,7 +71,11 @@ export function inferPhaseAndWorkerFromEventType(eventType: string): {
   if (eventType.startsWith("SELF_HEALING") || eventType.startsWith("AUTO_HEALING")) {
     return { phase: "SELF_HEALING", worker: "self-healing" };
   }
-  if (eventType === "CURSOR_PIPELINE_CHAINED" || eventType === "CURSOR_PIPELINE_CHAIN_SKIPPED") {
+  if (
+    eventType === "CURSOR_PIPELINE_CHAINED" ||
+    eventType === "CURSOR_PIPELINE_CHAIN_SKIPPED" ||
+    eventType === "CURSOR_PIPELINE_CHAIN_PROCESS_FAILED"
+  ) {
     return { phase: "PIPELINE", worker: "cursor" };
   }
   if (eventType === "CURSOR_STARTED") return { phase: "CURSOR", worker: "cursor" };
@@ -181,7 +186,7 @@ export async function listRuntimeTimelineForExecRun(
     ? await readProgressLogTimelineForExecRun(execRunId, run.taskId, limit)
     : [];
 
-  const merged = [...memoryRows, ...progressRows, ...dbRows];
+  const merged = dedupeRuntimeTimelineRows([...memoryRows, ...progressRows, ...dbRows]);
   merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return merged.slice(-limit);
 }

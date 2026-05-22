@@ -73,13 +73,18 @@ describe("runtimeObservability", () => {
     expect(
       isRuntimeTimelineEventForExecRun(
         { execRunId: "run-1", runtimeTimeline: true, eventType: "CURSOR_STARTED" },
-        "run-1"
-      )
+        "run-1",
+      ),
     ).toBe(true);
     expect(
-      isRuntimeTimelineEventForExecRun({ execRunId: "run-2", runtimeTimeline: true }, "run-1")
+      isRuntimeTimelineEventForExecRun({ execRunId: "run-2", runtimeTimeline: true }, "run-1"),
     ).toBe(false);
     expect(isRuntimeTimelineEventForExecRun({ execRunId: "run-1" }, "run-1")).toBe(false);
+    expect(isRuntimeTimelineEventForExecRun({ eventType: "CURSOR_STARTED" }, "run-1")).toBe(false);
+  });
+
+  it("legacy flag defaults off", () => {
+    expect(isRuntimeTimelineIncludeLegacyTaskEventsEnabled()).toBe(false);
   });
 
   it("excludes legacy task events without runtimeTimeline by default", async () => {

@@ -123,8 +123,11 @@ export async function handleCursorExecutionJob(job: ExecutionJob): Promise<Execu
     actorUserId: payload.actorUserId,
     cursorOutcome,
     cursorJobId: job.id,
-    source: payload.chainSource ?? (payload.selfHealingFromExecRunId ? "self-healing" : "background"),
+    source:
+      payload.chainSource ??
+      (payload.selfHealingFromExecRunId ? "self-healing" : "background"),
     skipPipelineChain: payload.syncDispatch === true,
+    selfHealingFromExecRunId: payload.selfHealingFromExecRunId ?? null,
   });
 
   const result: CursorExecutionJobResult = {
