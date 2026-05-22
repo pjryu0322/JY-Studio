@@ -8,7 +8,10 @@ import {
   CONTRACT_ID_TO_DRY_RUN_SPEC,
   REQUIRED_RUNTIME_EXECUTION_DRY_RUN_CONTRACT_IDS,
 } from "@/lib/agents/runtimeExecutionDryRunContractConstants";
-import type { RuntimeExecutionDryRunContractItem } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
+import type {
+  RuntimeExecutionDryRunContractItem,
+  RuntimeExecutionDryRunContractValidationResult,
+} from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 
 function sourceReadyForDryRunContracts(source: RuntimeExecutionContractCandidateReport): boolean {
   return (
@@ -59,22 +62,87 @@ export function buildRuntimeExecutionDryRunContractItems(
     .filter((item): item is RuntimeExecutionDryRunContractItem => item !== null);
 }
 
+const EMPTY_VALIDATION: RuntimeExecutionDryRunContractValidationResult = {
+  valid: true,
+  missingDryRunContractIds: [],
+  duplicateDryRunContractIds: [],
+  emptyRequiredInputContractIds: [],
+  insufficientAssertionContractIds: [],
+  invalidBoundaryRuleContractIds: [],
+  implementedInThisStepContractIds: [],
+};
+
+export function validateRuntimeExecutionDryRunContractItemDetails(
+  items: readonly RuntimeExecutionDryRunContractItem[],
+): RuntimeExecutionDryRunContractValidationResult {
+  const missingDryRunContractIds: string[] = [];
+  const duplicateDryRunContractIds: string[] = [];
+  const emptyRequiredInputContractIds: string[] = [];
+  const insufficientAssertionContractIds: string[] = [];
+  const invalidBoundaryRuleContractIds: string[] = [];
+  const implementedInThisStepContractIds: string[] = [];
+
+  const idCounts = new Map<string, number>();
+  for (const item of items) {
+    idCounts.set(item.dryRunContractId, (idCounts.get(item.dryRunContractId) ?? 0) + 1);
+  }
+
+  for (const requiredId of REQUIRED_RUNTIME_EXECUTION_DRY_RUN_CONTRACT_IDS) {
+    if (!idCounts.has(requiredId)) {
+      missingDryRunContractIds.push(requiredId);
+    }
+  }
+
+  for (const [dryRunContractId, count] of idCounts) {
+    if (count > 1) {
+      duplicateDryRunContractIds.push(dryRunContractId);
+    }
+  }
+
+  for (const item of items) {
+    if (item.requiredInputs.length < 2) {
+      emptyRequiredInputContractIds.push(item.dryRunContractId);
+    }
+    if (item.expectedAssertions.length < 2) {
+      insufficientAssertionContractIds.push(item.dryRunContractId);
+    }
+    if (item.boundaryRules.length < 2) {
+      invalidBoundaryRuleContractIds.push(item.dryRunContractId);
+    }
+    if (item.dryRunOnly !== true) {
+      invalidBoundaryRuleContractIds.push(item.dryRunContractId);
+    }
+    if (item.implementedInThisStep !== false) {
+      implementedInThisStepContractIds.push(item.dryRunContractId);
+    }
+  }
+
+  const valid =
+    items.length === REQUIRED_RUNTIME_EXECUTION_DRY_RUN_CONTRACT_IDS.length &&
+    missingDryRunContractIds.length === 0 &&
+    duplicateDryRunContractIds.length === 0 &&
+    emptyRequiredInputContractIds.length === 0 &&
+    insufficientAssertionContractIds.length === 0 &&
+    invalidBoundaryRuleContractIds.length === 0 &&
+    implementedInThisStepContractIds.length === 0;
+
+  if (valid) {
+    return EMPTY_VALIDATION;
+  }
+
+  return {
+    valid: false,
+    missingDryRunContractIds,
+    duplicateDryRunContractIds,
+    emptyRequiredInputContractIds,
+    insufficientAssertionContractIds,
+    invalidBoundaryRuleContractIds,
+    implementedInThisStepContractIds,
+  };
+}
+
 export function validateRuntimeExecutionDryRunContractItems(
   items: readonly RuntimeExecutionDryRunContractItem[],
 ): boolean {
-  if (items.length !== REQUIRED_RUNTIME_EXECUTION_DRY_RUN_CONTRACT_IDS.length) {
-    return false;
-  }
-  const ids = new Set(items.map((item) => item.dryRunContractId));
-  if (!REQUIRED_RUNTIME_EXECUTION_DRY_RUN_CONTRACT_IDS.every((id) => ids.has(id))) {
-    return false;
-  }
-  return items.every(
-    (item) =>
-      item.dryRunOnly === true &&
-      item.implementedInThisStep === false &&
-      item.requiredInputs.length >= 2 &&
-      item.expectedAssertions.length >= 2 &&
-      item.boundaryRules.length >= 2,
-  );
+  return validateRuntimeExecutionDryRunContractItemDetails(items).valid;
 }

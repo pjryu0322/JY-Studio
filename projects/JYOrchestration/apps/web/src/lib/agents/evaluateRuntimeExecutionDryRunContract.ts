@@ -22,10 +22,14 @@ import {
   RUNTIME_EXECUTION_DRY_RUN_CONTRACT_VERSION,
   STAGE6_E_RECOMMENDED_NEXT_PHASES,
   STAGE6_E_SEPARATED_WORK_ITEMS,
-  validateRuntimeExecutionDryRunContractItems,
+  validateRuntimeExecutionDryRunContractItemDetails,
 } from "@/lib/agents/runtimeExecutionDryRunContractSupport";
 
-export { resolveRuntimeExecutionDryRunContractDecision } from "@/lib/agents/runtimeExecutionDryRunContractSupport";
+export {
+  resolveRuntimeExecutionDryRunContractDecision,
+  validateRuntimeExecutionDryRunContractItemDetails,
+  validateRuntimeExecutionDryRunContractItems,
+} from "@/lib/agents/runtimeExecutionDryRunContractSupport";
 
 export {
   buildStage6EDryRunContractConfirmedInput,
@@ -41,12 +45,25 @@ export function evaluateRuntimeExecutionDryRunContract(
   const source = evaluateRuntimeExecutionDryRunContractSource(input);
   const parsed = parseRuntimeExecutionDryRunContractInput(input);
   const dryRunContractItems = buildRuntimeExecutionDryRunContractItems(source);
-  const dryRunContractItemsValid = validateRuntimeExecutionDryRunContractItems(dryRunContractItems);
+  const dryRunContractValidation = validateRuntimeExecutionDryRunContractItemDetails(dryRunContractItems);
+  const dryRunContractItemsValid = dryRunContractValidation.valid;
   const trace = computeRuntimeExecutionDryRunContractTrace(dryRunContractItems);
 
   const decision = resolveRuntimeExecutionDryRunContractDecision({
     sourceContractCandidateDecision: source.decision,
+    sourceReviewGateOnly: source.sourceReviewGateOnly,
+    sourceCandidateOnly: source.sourceCandidateOnly === true,
     sourceContractCandidateOnly: source.contractCandidateOnly === true,
+    sourceContractCandidateValidationValid: source.contractCandidateValidation.valid === true,
+    sourceForbiddenFieldDetected: source.sourceForbiddenFieldDetected === true,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionRunnerAllowedInThisStep: source.actualExecutionRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceActualCursorGithubWireAllowedInThisStep: source.actualCursorGithubWireAllowedInThisStep,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: source.actualConnectorRoutingChangeAllowedInThisStep,
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
@@ -61,6 +78,12 @@ export function evaluateRuntimeExecutionDryRunContract(
     dryRunScenarioCount: trace.dryRunScenarioCount,
     dryRunAssertionCount: trace.dryRunAssertionCount,
     confirmationCount: parsed.confirmationCount,
+    sourceContractCandidateOnly: source.contractCandidateOnly === true,
+    sourceContractCandidateValidationValid: source.contractCandidateValidation.valid === true,
+    sourceForbiddenFieldDetected: source.sourceForbiddenFieldDetected === true,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
@@ -77,7 +100,7 @@ export function evaluateRuntimeExecutionDryRunContract(
     decision,
     source,
     parsed,
-    dryRunContractItemsValid,
+    dryRunContractValidation,
   });
 
   return {
@@ -91,10 +114,29 @@ export function evaluateRuntimeExecutionDryRunContract(
     sourceContractCandidateCount: source.contractCandidateCount,
     sourceContractFieldCount: source.contractFieldCount,
     sourceContractBoundaryRuleCount: source.contractBoundaryRuleCount,
+    sourceReviewGateDecision: source.sourceReviewGateDecision,
+    sourceReviewGateOnly: source.sourceReviewGateOnly,
+    sourceCandidateOnly: source.sourceCandidateOnly,
+    sourceReviewedModelCount: source.sourceReviewedModelCount,
+    sourceReviewedFieldCount: source.sourceReviewedFieldCount,
+    sourceForbiddenFieldDetected: source.sourceForbiddenFieldDetected,
+    sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
+    sourceSchemaMigrationBoundarySatisfied: source.sourceSchemaMigrationBoundarySatisfied,
+    sourceContractCandidateValidationValid: source.contractCandidateValidation.valid,
+    sourceActualRuntimeExecutionAllowedInThisStep: source.actualRuntimeExecutionAllowedInThisStep,
+    sourceActualExecutionRunnerAllowedInThisStep: source.actualExecutionRunnerAllowedInThisStep,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceActualCursorGithubWireAllowedInThisStep: source.actualCursorGithubWireAllowedInThisStep,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: source.actualConnectorRoutingChangeAllowedInThisStep,
     dryRunContractVersion: RUNTIME_EXECUTION_DRY_RUN_CONTRACT_VERSION,
     dryRunContractTitle: RUNTIME_EXECUTION_DRY_RUN_CONTRACT_TITLE,
     dryRunContractSummary: buildRuntimeExecutionDryRunContractSummary(decision),
     dryRunContractFingerprint,
+    dryRunContractValidation,
     dryRunContractOnly: true,
     actualRuntimeExecutionAllowedInThisStep: false,
     actualExecutionRunnerAllowedInThisStep: false,

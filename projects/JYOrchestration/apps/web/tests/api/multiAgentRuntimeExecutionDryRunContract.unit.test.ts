@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateRuntimeExecutionDryRunContract,
   resolveRuntimeExecutionDryRunContractDecision,
+  validateRuntimeExecutionDryRunContractItemDetails,
 } from "@/lib/agents/evaluateRuntimeExecutionDryRunContract";
 import { validateRuntimeExecutionDryRunContractItems } from "@/lib/agents/runtimeExecutionDryRunContractSupport";
 import {
@@ -11,14 +12,29 @@ import {
   buildStage6EDryRunContractConfirmedInput,
   buildStage6EReadyDryRunContractInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
-import type { RuntimeExecutionDryRunContractDecisionInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
+import type {
+  RuntimeExecutionDryRunContractDecisionInput,
+  RuntimeExecutionDryRunContractItem,
+} from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 
 function readyDryRunDecisionInput(
   overrides: Partial<RuntimeExecutionDryRunContractDecisionInput> = {},
 ): RuntimeExecutionDryRunContractDecisionInput {
   return {
     sourceContractCandidateDecision: "ready_for_runtime_execution_dry_run_contract",
+    sourceReviewGateOnly: true,
+    sourceCandidateOnly: true,
     sourceContractCandidateOnly: true,
+    sourceContractCandidateValidationValid: true,
+    sourceForbiddenFieldDetected: false,
+    sourceActualRuntimeExecutionAllowedInThisStep: false,
+    sourceActualExecutionRunnerAllowedInThisStep: false,
+    sourceActualExecutionWireAllowedInThisStep: false,
+    sourceActualPersistenceAllowedInThisStep: false,
+    sourceActualExternalSideEffectAllowedInThisStep: false,
+    sourceActualSchemaMigrationAllowedInThisStep: false,
+    sourceActualCursorGithubWireAllowedInThisStep: false,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: false,
     sourceNoRunBoundarySatisfied: true,
     sourcePersistenceBoundarySatisfied: true,
     sourceSchemaMigrationBoundarySatisfied: true,
@@ -217,11 +233,166 @@ describe("multi-agent runtime execution dry-run contract stage 6-E", () => {
     const report = evaluateRuntimeExecutionDryRunContract({
       contractCandidate: {
         reviewGate: buildStage6CReadyReviewGateInput(),
-        ...buildStage6DReadyContractCandidateInput(),
+        ...buildStage6DContractCandidateConfirmedInput(),
       },
       ...buildStage6EDryRunContractConfirmedInput(),
     });
     expect(report.decision).toBe("ready_for_runtime_execution_contract_closure");
     expect(report.sourceContractCandidateCount).toBe(7);
+  });
+
+  it("source trace fields are exposed on report", () => {
+    const report = evaluateReadyDryRun();
+    expect(report.sourceReviewGateDecision).toBe("ready_for_runtime_execution_contract_candidate");
+    expect(report.sourceReviewGateOnly).toBe(true);
+    expect(report.sourceCandidateOnly).toBe(true);
+    expect(report.sourceReviewedModelCount).toBe(7);
+    expect(report.sourceReviewedFieldCount).toBeGreaterThan(0);
+    expect(report.sourceContractCandidateValidationValid).toBe(true);
+  });
+
+  it("sourceContractCandidateValidationValid false yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceContractCandidateValidationValid: false }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceForbiddenFieldDetected true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(readyDryRunDecisionInput({ sourceForbiddenFieldDetected: true })),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualRuntimeExecutionAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualRuntimeExecutionAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualExecutionRunnerAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualExecutionRunnerAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualExecutionWireAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualExecutionWireAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualPersistenceAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualPersistenceAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualExternalSideEffectAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualExternalSideEffectAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualSchemaMigrationAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualSchemaMigrationAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualCursorGithubWireAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualCursorGithubWireAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualConnectorRoutingChangeAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionDryRunContractDecision(
+        readyDryRunDecisionInput({ sourceActualConnectorRoutingChangeAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("dryRunContractValidation.valid is true on ready path", () => {
+    expect(evaluateReadyDryRun().dryRunContractValidation.valid).toBe(true);
+  });
+
+  it("validation detects missing dry-run contract id", () => {
+    const items = evaluateReadyDryRun().dryRunContractItems.slice(0, 6);
+    const validation = validateRuntimeExecutionDryRunContractItemDetails(items);
+    expect(validation.valid).toBe(false);
+    expect(validation.missingDryRunContractIds.length).toBeGreaterThan(0);
+  });
+
+  it("validation detects duplicate dry-run contract id", () => {
+    const items = evaluateReadyDryRun().dryRunContractItems;
+    const validation = validateRuntimeExecutionDryRunContractItemDetails([
+      items[0],
+      { ...items[1], dryRunContractId: items[0].dryRunContractId },
+      ...items.slice(2),
+    ]);
+    expect(validation.valid).toBe(false);
+    expect(validation.duplicateDryRunContractIds).toContain(items[0].dryRunContractId);
+  });
+
+  it("validation detects insufficient assertions", () => {
+    const items = evaluateReadyDryRun().dryRunContractItems;
+    const invalid = { ...items[0], expectedAssertions: [items[0].expectedAssertions[0]] };
+    const validation = validateRuntimeExecutionDryRunContractItemDetails([invalid, ...items.slice(1)]);
+    expect(validation.valid).toBe(false);
+    expect(validation.insufficientAssertionContractIds).toContain(items[0].dryRunContractId);
+  });
+
+  it("validation detects implementedInThisStep true", () => {
+    const items = evaluateReadyDryRun().dryRunContractItems;
+    const invalid = { ...items[0], implementedInThisStep: true } as RuntimeExecutionDryRunContractItem;
+    const validation = validateRuntimeExecutionDryRunContractItemDetails([invalid, ...items.slice(1)]);
+    expect(validation.valid).toBe(false);
+    expect(validation.implementedInThisStepContractIds).toContain(items[0].dryRunContractId);
+  });
+
+  it("ready finding includes source_contract_candidate_trace_copied", () => {
+    expect(
+      evaluateReadyDryRun().findings.some((f) => f.code === "source_contract_candidate_trace_copied"),
+    ).toBe(true);
+  });
+
+  it("ready finding includes source_contract_candidate_validation_passed", () => {
+    expect(
+      evaluateReadyDryRun().findings.some((f) => f.code === "source_contract_candidate_validation_passed"),
+    ).toBe(true);
+  });
+
+  it("ready finding includes dry_run_contract_validation_passed", () => {
+    expect(
+      evaluateReadyDryRun().findings.some((f) => f.code === "dry_run_contract_validation_passed"),
+    ).toBe(true);
+  });
+
+  it("dryRunContractFingerprint includes sourceCandidateOnly sourceValidation sourceForbidden actualRuntime actualWire actualPersistence", () => {
+    const fingerprint = evaluateReadyDryRun().dryRunContractFingerprint;
+    expect(fingerprint).toContain("sourceCandidateOnly:true");
+    expect(fingerprint).toContain("sourceValidation:true");
+    expect(fingerprint).toContain("sourceForbidden:false");
+    expect(fingerprint).toContain("actualRuntime:false");
+    expect(fingerprint).toContain("actualDryRunRunner:false");
+    expect(fingerprint).toContain("actualWire:false");
+    expect(fingerprint).toContain("actualPersistence:false");
   });
 });

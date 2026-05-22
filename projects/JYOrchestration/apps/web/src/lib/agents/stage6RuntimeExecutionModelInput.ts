@@ -5,6 +5,7 @@
 import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
@@ -133,5 +134,32 @@ export function buildStage6EReadyDryRunContractInput(): RuntimeExecutionDryRunCo
   return {
     contractCandidate: buildStage6DReadyContractCandidateInput(),
     ...buildStage6EDryRunContractConfirmedInput(),
+  };
+}
+
+export function buildStage6FRuntimeExecutionContractClosureConfirmedInput(): Required<
+  Pick<
+    RuntimeExecutionContractClosureInput,
+    | "runtimeExecutionContractClosureConfirmed"
+    | "runtimeExecutionNoActualRunnerConfirmed"
+    | "runtimeExecutionNoPersistenceConfirmed"
+    | "runtimeExecutionSeparatedWorkReviewed"
+    | "runtimeExecutionStage7HandoffReviewed"
+  >
+> {
+  return {
+    runtimeExecutionContractClosureConfirmed: true,
+    runtimeExecutionNoActualRunnerConfirmed: true,
+    runtimeExecutionNoPersistenceConfirmed: true,
+    runtimeExecutionSeparatedWorkReviewed: true,
+    runtimeExecutionStage7HandoffReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 6-F (Stage 6-E ready + 6-F closure confirmations). */
+export function buildStage6FReadyContractClosureInput(): RuntimeExecutionContractClosureInput {
+  return {
+    dryRunContract: buildStage6EReadyDryRunContractInput(),
+    ...buildStage6FRuntimeExecutionContractClosureConfirmedInput(),
   };
 }

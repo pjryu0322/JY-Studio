@@ -7,6 +7,7 @@ import type {
   ParsedRuntimeExecutionDryRunContractInput,
   RuntimeExecutionDryRunContractDecision,
   RuntimeExecutionDryRunContractFinding,
+  RuntimeExecutionDryRunContractValidationResult,
 } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 
 function finding(
@@ -17,14 +18,39 @@ function finding(
   return { severity, code, message };
 }
 
+function dryRunValidationFailureMessage(validation: RuntimeExecutionDryRunContractValidationResult): string {
+  return [
+    validation.missingDryRunContractIds.length > 0
+      ? `missing=${validation.missingDryRunContractIds.join(",")}`
+      : null,
+    validation.duplicateDryRunContractIds.length > 0
+      ? `duplicate=${validation.duplicateDryRunContractIds.join(",")}`
+      : null,
+    validation.emptyRequiredInputContractIds.length > 0
+      ? `emptyInputs=${validation.emptyRequiredInputContractIds.join(",")}`
+      : null,
+    validation.insufficientAssertionContractIds.length > 0
+      ? `insufficientAssertions=${validation.insufficientAssertionContractIds.join(",")}`
+      : null,
+    validation.invalidBoundaryRuleContractIds.length > 0
+      ? `invalidRules=${validation.invalidBoundaryRuleContractIds.join(",")}`
+      : null,
+    validation.implementedInThisStepContractIds.length > 0
+      ? `implemented=${validation.implementedInThisStepContractIds.join(",")}`
+      : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join("; ");
+}
+
 export function appendRuntimeExecutionDryRunContractFindings(input: {
   readonly findings: RuntimeExecutionDryRunContractFinding[];
   readonly decision: RuntimeExecutionDryRunContractDecision;
   readonly source: RuntimeExecutionContractCandidateReport;
   readonly parsed: ParsedRuntimeExecutionDryRunContractInput;
-  readonly dryRunContractItemsValid: boolean;
+  readonly dryRunContractValidation: RuntimeExecutionDryRunContractValidationResult;
 }): void {
-  const { findings, decision, source, parsed, dryRunContractItemsValid } = input;
+  const { findings, decision, source, parsed, dryRunContractValidation } = input;
 
   findings.push(
     finding("info", "runtime_execution_dry_run_contract_created", "Stage 6-E dry-run contract evaluator created"),
@@ -39,7 +65,123 @@ export function appendRuntimeExecutionDryRunContractFindings(input: {
     return;
   }
 
-  if (source.contractCandidateOnly !== true) {
+  if (source.forbiddenFieldDetected === true) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_forbidden_field_detected",
+        `Forbidden fields detected in contract candidate source`,
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualRuntimeExecutionAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_runtime_boundary_violation",
+        "Source actual runtime execution boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualExecutionRunnerAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_runner_boundary_violation",
+        "Source actual execution runner boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualExecutionWireAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_wire_boundary_violation",
+        "Source actual execution wire boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualPersistenceAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_persistence_boundary_violation",
+        "Source actual persistence boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualExternalSideEffectAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_wire_boundary_violation",
+        "Source actual external side-effect boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualSchemaMigrationAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_schema_migration_boundary_violation",
+        "Source schema migration boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualCursorGithubWireAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_wire_boundary_violation",
+        "Source Cursor/GitHub wire boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.actualConnectorRoutingChangeAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_contract_candidate_actual_wire_boundary_violation",
+        "Source connector routing change boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.contractCandidateValidation.valid !== true) {
+    findings.push(
+      finding("blocking", "source_contract_candidate_validation_failed", "Source contract candidate validation failed"),
+    );
+    findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
+    return;
+  }
+
+  if (source.sourceReviewGateOnly !== true || source.sourceCandidateOnly !== true || source.contractCandidateOnly !== true) {
     findings.push(
       finding("blocking", "source_contract_candidate_boundary_violation", "Source contract candidate boundary violation"),
     );
@@ -71,9 +213,13 @@ export function appendRuntimeExecutionDryRunContractFindings(input: {
     return;
   }
 
-  if (!dryRunContractItemsValid) {
+  if (!dryRunContractValidation.valid) {
     findings.push(
-      finding("blocking", "dry_run_contract_item_validation_failed", "Dry-run contract items failed validation"),
+      finding(
+        "blocking",
+        "dry_run_contract_validation_failed",
+        dryRunValidationFailureMessage(dryRunContractValidation),
+      ),
     );
     findings.push(finding("blocking", "stage6_e_dry_run_contract_blocked", "Stage 6-E dry-run contract is blocked"));
     return;
@@ -117,6 +263,13 @@ export function appendRuntimeExecutionDryRunContractFindings(input: {
     return;
   }
 
+  findings.push(
+    finding("info", "source_contract_candidate_trace_copied", "Stage 6-D contract candidate trace copied into dry-run report"),
+  );
+  findings.push(
+    finding("info", "source_contract_candidate_validation_passed", "Source contract candidate validation passed"),
+  );
+  findings.push(finding("info", "dry_run_contract_validation_passed", "Dry-run contract item validation passed"));
   findings.push(finding("info", "dry_run_runner_not_implemented", "Actual dry-run runner is not implemented in this step"));
   findings.push(
     finding("info", "dry_run_persistence_not_implemented", "Dry-run persistence is not implemented in this step"),

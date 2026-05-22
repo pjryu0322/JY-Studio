@@ -2370,10 +2370,42 @@ Stage 6-E에서 금지되는 항목:
 - persistence implementation
 - UI implementation
 
-### Stage 6-F 후보 — Runtime Execution Contract Closure
+#### Stage 6-E Hardening
 
-Stage 6-F는 아직 구현하지 않는다.  
-Stage 6-E가 ready일 때만 다음 후보로 검토한다.
+Stage 6-E는 Stage 6-D contract candidate source를 직접 추적한다.
+
+- source contract candidate validation
+- source no-run boundary
+- source persistence boundary
+- source schema boundary
+- actual runtime/dry-run/runner/wire/persistence/schema disallowed flags
+
+Stage 6-E는 dry-run runner를 구현하지 않는다.  
+`ready_for_runtime_execution_contract_closure`는 Stage 6-F closure로 넘기는 준비 상태일 뿐이다.
+
+### Stage 6-F Runtime Execution Contract Closure
+
+Stage 6-F는 Stage 6-A~6-E의 read-only runtime execution model/contract design chain을 닫는 closure verdict다.
+
+Stage 6-F는 실제 runtime execution을 허가하지 않는다.
+
+금지:
+
+- runtime execution API
+- execution runner
+- dry-run runner
+- Cursor/GitHub wire
+- Connector Gateway routing change
+- DB write
+- schema.prisma/migration
+- persistence implementation
+- UI implementation
+
+Ready decision: `stage6_runtime_execution_contract_closed`
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionContractClosure.ts`, `runtimeExecutionContractClosureTypes.ts`, `runtimeExecutionContractClosureSupport.ts`
+
+이 decision은 Stage 6 read-only 설계 체인이 닫혔다는 의미이며, 실제 구현은 Stage 7 또는 별도 PR 승인 후 진행한다.
 
 ### Stage 3–4 빠른 진행 로드맵
 

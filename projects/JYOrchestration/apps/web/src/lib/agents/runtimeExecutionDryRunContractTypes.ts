@@ -6,6 +6,7 @@ import type {
   RuntimeExecutionContractCandidateDecision,
   RuntimeExecutionContractCandidateInput,
 } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+import type { RuntimeExecutionModelReviewGateDecision } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 
 export type RuntimeExecutionDryRunContractDecision =
   | "ready_for_runtime_execution_contract_closure"
@@ -39,6 +40,16 @@ export interface RuntimeExecutionDryRunContractItem {
   readonly boundaryRules: readonly string[];
   readonly dryRunOnly: true;
   readonly implementedInThisStep: false;
+}
+
+export interface RuntimeExecutionDryRunContractValidationResult {
+  readonly valid: boolean;
+  readonly missingDryRunContractIds: readonly string[];
+  readonly duplicateDryRunContractIds: readonly string[];
+  readonly emptyRequiredInputContractIds: readonly string[];
+  readonly insufficientAssertionContractIds: readonly string[];
+  readonly invalidBoundaryRuleContractIds: readonly string[];
+  readonly implementedInThisStepContractIds: readonly string[];
 }
 
 export type RuntimeExecutionDryRunContractFindingSeverity = "info" | "warning" | "blocking";
@@ -78,10 +89,30 @@ export interface RuntimeExecutionDryRunContractReport {
   readonly sourceContractFieldCount: number;
   readonly sourceContractBoundaryRuleCount: number;
 
+  readonly sourceReviewGateDecision: RuntimeExecutionModelReviewGateDecision;
+  readonly sourceReviewGateOnly: boolean;
+  readonly sourceCandidateOnly: boolean;
+  readonly sourceReviewedModelCount: number;
+  readonly sourceReviewedFieldCount: number;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceNoRunBoundarySatisfied: boolean;
+  readonly sourcePersistenceBoundarySatisfied: boolean;
+  readonly sourceSchemaMigrationBoundarySatisfied: boolean;
+  readonly sourceContractCandidateValidationValid: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
+
   readonly dryRunContractVersion: "runtime_execution_dry_run_contract_v1";
   readonly dryRunContractTitle: string;
   readonly dryRunContractSummary: string;
   readonly dryRunContractFingerprint: string;
+  readonly dryRunContractValidation: RuntimeExecutionDryRunContractValidationResult;
 
   readonly dryRunContractOnly: true;
   readonly actualRuntimeExecutionAllowedInThisStep: false;
@@ -110,7 +141,19 @@ export interface RuntimeExecutionDryRunContractReport {
 
 export interface RuntimeExecutionDryRunContractDecisionInput {
   readonly sourceContractCandidateDecision: RuntimeExecutionContractCandidateDecision;
+  readonly sourceReviewGateOnly: boolean;
+  readonly sourceCandidateOnly: boolean;
   readonly sourceContractCandidateOnly: boolean;
+  readonly sourceContractCandidateValidationValid: boolean;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
   readonly sourceNoRunBoundarySatisfied: boolean;
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;

@@ -8,11 +8,13 @@ import { buildRuntimeExecutionDryRunContractChecklists } from "@/lib/agents/runt
 import { appendRuntimeExecutionDryRunContractFindings } from "@/lib/agents/runtimeExecutionDryRunContractFindings";
 import {
   buildRuntimeExecutionDryRunContractItems,
+  validateRuntimeExecutionDryRunContractItemDetails,
   validateRuntimeExecutionDryRunContractItems,
 } from "@/lib/agents/runtimeExecutionDryRunContractItems";
 
 export {
   buildRuntimeExecutionDryRunContractItems,
+  validateRuntimeExecutionDryRunContractItemDetails,
   validateRuntimeExecutionDryRunContractItems,
 } from "@/lib/agents/runtimeExecutionDryRunContractItems";
 
@@ -84,10 +86,22 @@ export function resolveRuntimeExecutionDryRunContractDecision(
   }
 
   if (
+    input.sourceReviewGateOnly !== true ||
+    input.sourceCandidateOnly !== true ||
     input.sourceContractCandidateOnly !== true ||
+    input.sourceContractCandidateValidationValid !== true ||
+    input.sourceForbiddenFieldDetected === true ||
     input.sourceNoRunBoundarySatisfied !== true ||
     input.sourcePersistenceBoundarySatisfied !== true ||
     input.sourceSchemaMigrationBoundarySatisfied !== true ||
+    input.sourceActualRuntimeExecutionAllowedInThisStep !== false ||
+    input.sourceActualExecutionRunnerAllowedInThisStep !== false ||
+    input.sourceActualExecutionWireAllowedInThisStep !== false ||
+    input.sourceActualPersistenceAllowedInThisStep !== false ||
+    input.sourceActualExternalSideEffectAllowedInThisStep !== false ||
+    input.sourceActualSchemaMigrationAllowedInThisStep !== false ||
+    input.sourceActualCursorGithubWireAllowedInThisStep !== false ||
+    input.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
     input.sourceContractCandidateCount < 7 ||
     !input.dryRunContractItemsValid
   ) {
@@ -107,6 +121,12 @@ export function buildRuntimeExecutionDryRunContractFingerprint(input: {
   readonly dryRunScenarioCount: number;
   readonly dryRunAssertionCount: number;
   readonly confirmationCount: number;
+  readonly sourceContractCandidateOnly: boolean;
+  readonly sourceContractCandidateValidationValid: boolean;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
   readonly sourceNoRunBoundarySatisfied: boolean;
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;
@@ -118,6 +138,13 @@ export function buildRuntimeExecutionDryRunContractFingerprint(input: {
     `scenarios:${input.dryRunScenarioCount}`,
     `assertions:${input.dryRunAssertionCount}`,
     `confirmations:${input.confirmationCount}`,
+    `sourceCandidateOnly:${input.sourceContractCandidateOnly}`,
+    `sourceValidation:${input.sourceContractCandidateValidationValid}`,
+    `sourceForbidden:${input.sourceForbiddenFieldDetected}`,
+    `actualRuntime:${input.sourceActualRuntimeExecutionAllowedInThisStep}`,
+    `actualDryRunRunner:false`,
+    `actualWire:${input.sourceActualExecutionWireAllowedInThisStep}`,
+    `actualPersistence:${input.sourceActualPersistenceAllowedInThisStep}`,
     `noRun:${input.sourceNoRunBoundarySatisfied}`,
     `persistence:${input.sourcePersistenceBoundarySatisfied}`,
     `schema:${input.sourceSchemaMigrationBoundarySatisfied}`,
