@@ -1087,6 +1087,23 @@ export {
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export {
+  evaluateExternalExecutionManualDryRunGate,
+} from "@/lib/agents/evaluateExternalExecutionManualDryRunGate";
+
+export type {
+  ExternalExecutionManualDryRunGateDecision,
+  ExternalExecutionManualDryRunGateInput,
+  ExternalExecutionManualDryRunGateReport,
+  ExternalExecutionManualDryRunGateItem,
+  ExternalExecutionManualDryRunGateValidationResult,
+} from "@/lib/agents/externalExecutionManualDryRunGateTypes";
+
+export {
+  buildStage12AReadyExternalExecutionManualDryRunGateInput,
+  buildStage12AConfirmedExternalExecutionManualDryRunGateInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,

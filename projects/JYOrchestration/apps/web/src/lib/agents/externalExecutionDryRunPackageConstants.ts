@@ -41,6 +41,9 @@ export const STAGE12_ENTRY_SCOPE = [
   "mock_external_adapter_result_package",
   "dry_run_audit_event_package",
   "rollback_plan_review_before_actual_execution",
+  "manual_dry_run_gate_boundary",
+  "operator_approved_manual_dry_run_request",
+  "no_side_effect_external_adapter_simulation",
 ] as const;
 
 export const STAGE12_ENTRY_OUT_OF_SCOPE = [
@@ -54,6 +57,9 @@ export const STAGE12_ENTRY_OUT_OF_SCOPE = [
   "agent_registry_crud",
   "agent_add_remove_deactivate_apply",
   "agent_management_ui",
+  "actual_manual_external_invocation",
+  "actual_adapter_side_effect",
+  "actual_agent_registry_mutation",
 ] as const;
 
 export const STAGE12_ENTRY_REQUIRED_FORBIDDEN_MARKERS = [
@@ -86,6 +92,9 @@ export const STAGE11_A_SEPARATED_WORK_ITEMS = [
   "mandatory_gate_agent_deactivation_policy",
   "agent_knowledge_binding_change_approval",
   "agent_change_audit_trail",
+  "actual_manual_external_invocation",
+  "actual_adapter_side_effect",
+  "actual_agent_registry_mutation",
 ] as const;
 
 const STAGE12_ENTRY_ITEM_ID = "stage12-manual-dry-run-gate-entry";

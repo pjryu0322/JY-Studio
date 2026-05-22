@@ -27,6 +27,10 @@ import { parseExternalExecutionDryRunPackageInput } from "@/lib/agents/externalE
 import { resolveExternalExecutionDryRunPackageDecision } from "@/lib/agents/externalExecutionDryRunPackageDecision";
 import { evaluateExternalExecutionDryRunPackageSource } from "@/lib/agents/externalExecutionDryRunPackageSource";
 import {
+  buildExternalExecutionDryRunPackageManualGateHardeningFields,
+  mapExternalExecutionDryRunPackageAgentRegistrySourceTrace,
+} from "@/lib/agents/externalExecutionDryRunPackageManualGateTrace";
+import {
   buildExternalExecutionDryRunPackageStage12ReportFields,
   mapExternalExecutionDryRunPackageDecisionInputFromSource,
   mapExternalExecutionDryRunPackageSourceTrace,
@@ -99,6 +103,8 @@ export function evaluateExternalExecutionDryRunPackage(
     stage: "stage_11_a_external_execution_adapter_dry_run_package",
     decision,
     ...mapExternalExecutionDryRunPackageSourceTrace(source),
+    ...mapExternalExecutionDryRunPackageAgentRegistrySourceTrace(source),
+    ...buildExternalExecutionDryRunPackageManualGateHardeningFields(),
     packageVersion: EXTERNAL_EXECUTION_DRY_RUN_PACKAGE_VERSION,
     packageTitle: EXTERNAL_EXECUTION_DRY_RUN_PACKAGE_TITLE,
     packageSummary: buildExternalExecutionDryRunPackageSummary(decision),

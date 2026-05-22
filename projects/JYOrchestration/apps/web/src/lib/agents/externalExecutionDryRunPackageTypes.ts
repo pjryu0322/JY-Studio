@@ -134,6 +134,23 @@ export interface ExternalExecutionDryRunPackageReport {
   readonly sourceDryRunSimulationOnly: boolean;
   readonly sourceStage11DryRunPackageRequiredBeforeActualExecution: boolean;
 
+  readonly sourceAgentRegistryChangeManagementOutOfScope: boolean;
+  readonly sourceAgentAddRemoveDeactivateOutOfScope: boolean;
+  readonly sourceAgentRoleSlotImpactAnalysisRequired: boolean;
+  readonly sourceMandatoryGateAgentDeactivationRequiresApproval: boolean;
+  readonly sourceAgentKnowledgeBindingChangeRequiresApproval: boolean;
+
+  readonly manualDryRunGateDesignAllowed: true;
+  readonly operatorApprovedDryRunInvocationAllowed: true;
+  readonly mockExternalAdapterResultPackageAllowed: true;
+  readonly dryRunAuditEventPackageAllowed: true;
+  readonly rollbackPlanReviewBeforeActualExecutionAllowed: true;
+  readonly stage12ManualGateRequiredBeforeActualExecution: true;
+
+  readonly actualManualExternalInvocationAllowedInThisStep: false;
+  readonly actualAdapterSideEffectAllowedInThisStep: false;
+  readonly actualAgentRegistryMutationAllowedInThisStep: false;
+
   readonly packageVersion: "external_execution_dry_run_package_v1";
   readonly packageTitle: string;
   readonly packageSummary: string;

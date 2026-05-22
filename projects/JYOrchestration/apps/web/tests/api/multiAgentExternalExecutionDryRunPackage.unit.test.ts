@@ -12,6 +12,7 @@ import {
   buildStage11AConfirmedExternalExecutionDryRunPackageInput,
   buildStage11AReadyExternalExecutionDryRunPackageInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
+import type { ExternalExecutionAdapterBoundaryReport } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 import type { ExternalExecutionDryRunPackageDecisionInput } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 import type { ExternalExecutionDryRunPackageItem } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 
@@ -468,5 +469,92 @@ describe("multi-agent external execution dry-run package stage 11-A", () => {
   it("buildExternalExecutionDryRunPackageItems returns empty when source is not ready", () => {
     const source = evaluateExternalExecutionAdapterBoundary();
     expect(buildExternalExecutionDryRunPackageItems(source)).toHaveLength(0);
+  });
+
+  it("ready report sourceAgentRegistryChangeManagementOutOfScope is true", () => {
+    expect(evaluateReadyDryRun().sourceAgentRegistryChangeManagementOutOfScope).toBe(true);
+  });
+
+  it("ready report sourceAgentAddRemoveDeactivateOutOfScope is true", () => {
+    expect(evaluateReadyDryRun().sourceAgentAddRemoveDeactivateOutOfScope).toBe(true);
+  });
+
+  it("ready report sourceAgentRoleSlotImpactAnalysisRequired is true", () => {
+    expect(evaluateReadyDryRun().sourceAgentRoleSlotImpactAnalysisRequired).toBe(true);
+  });
+
+  it("ready report sourceMandatoryGateAgentDeactivationRequiresApproval is true", () => {
+    expect(evaluateReadyDryRun().sourceMandatoryGateAgentDeactivationRequiresApproval).toBe(true);
+  });
+
+  it("ready report sourceAgentKnowledgeBindingChangeRequiresApproval is true", () => {
+    expect(evaluateReadyDryRun().sourceAgentKnowledgeBindingChangeRequiresApproval).toBe(true);
+  });
+
+  it("ready report manualDryRunGateDesignAllowed is true", () => {
+    expect(evaluateReadyDryRun().manualDryRunGateDesignAllowed).toBe(true);
+  });
+
+  it("ready report operatorApprovedDryRunInvocationAllowed is true", () => {
+    expect(evaluateReadyDryRun().operatorApprovedDryRunInvocationAllowed).toBe(true);
+  });
+
+  it("ready report mockExternalAdapterResultPackageAllowed is true", () => {
+    expect(evaluateReadyDryRun().mockExternalAdapterResultPackageAllowed).toBe(true);
+  });
+
+  it("ready report dryRunAuditEventPackageAllowed is true", () => {
+    expect(evaluateReadyDryRun().dryRunAuditEventPackageAllowed).toBe(true);
+  });
+
+  it("ready report rollbackPlanReviewBeforeActualExecutionAllowed is true", () => {
+    expect(evaluateReadyDryRun().rollbackPlanReviewBeforeActualExecutionAllowed).toBe(true);
+  });
+
+  it("ready report stage12ManualGateRequiredBeforeActualExecution is true", () => {
+    expect(evaluateReadyDryRun().stage12ManualGateRequiredBeforeActualExecution).toBe(true);
+  });
+
+  it("ready report actualManualExternalInvocationAllowedInThisStep is false", () => {
+    expect(evaluateReadyDryRun().actualManualExternalInvocationAllowedInThisStep).toBe(false);
+  });
+
+  it("ready report actualAdapterSideEffectAllowedInThisStep is false", () => {
+    expect(evaluateReadyDryRun().actualAdapterSideEffectAllowedInThisStep).toBe(false);
+  });
+
+  it("ready report actualAgentRegistryMutationAllowedInThisStep is false", () => {
+    expect(evaluateReadyDryRun().actualAgentRegistryMutationAllowedInThisStep).toBe(false);
+  });
+
+  it("buildExternalExecutionDryRunPackageItems returns empty when agent registry impact analysis is false", () => {
+    const readyBoundary = evaluateExternalExecutionAdapterBoundary(buildStage10AReadyExternalExecutionAdapterBoundaryInput());
+    const source: ExternalExecutionAdapterBoundaryReport = {
+      ...readyBoundary,
+      agentRoleSlotImpactAnalysisRequired: false,
+    };
+    expect(buildExternalExecutionDryRunPackageItems(source)).toHaveLength(0);
+  });
+
+  it("stage12EntryScope includes manual_dry_run_gate_boundary", () => {
+    expect(evaluateReadyDryRun().stage12EntryScope).toContain("manual_dry_run_gate_boundary");
+  });
+
+  it("stage12EntryOutOfScope includes actual_manual_external_invocation", () => {
+    expect(evaluateReadyDryRun().stage12EntryOutOfScope).toContain("actual_manual_external_invocation");
+  });
+
+  it("separatedWorkItems includes actual_adapter_side_effect", () => {
+    expect(evaluateReadyDryRun().separatedWorkItems).toContain("actual_adapter_side_effect");
+  });
+
+  it("ready findings include manual_dry_run_gate_design_allowed", () => {
+    expect(evaluateReadyDryRun().findings.some((f) => f.code === "manual_dry_run_gate_design_allowed")).toBe(true);
+  });
+
+  it("ready findings include actual_agent_registry_mutation_disallowed", () => {
+    expect(evaluateReadyDryRun().findings.some((f) => f.code === "actual_agent_registry_mutation_disallowed")).toBe(
+      true,
+    );
   });
 });

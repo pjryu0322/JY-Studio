@@ -12,6 +12,7 @@ import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundl
 import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import type { ExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 import type { ExternalExecutionDryRunPackageInput } from "@/lib/agents/externalExecutionDryRunPackageTypes";
+import type { ExternalExecutionManualDryRunGateInput } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 import type { RuntimeExecutionMvpClosureInput } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
@@ -450,5 +451,38 @@ export function buildStage11AReadyExternalExecutionDryRunPackageInput(): Externa
   return {
     adapterBoundary: buildStage10AReadyExternalExecutionAdapterBoundaryInput(),
     ...buildStage11AConfirmedExternalExecutionDryRunPackageInput(),
+  };
+}
+
+export function buildStage12AConfirmedExternalExecutionManualDryRunGateInput(): Required<
+  Pick<
+    ExternalExecutionManualDryRunGateInput,
+    | "manualGateReviewed"
+    | "operatorInvocationReviewed"
+    | "mockAdapterResultReviewed"
+    | "dryRunAuditReviewed"
+    | "rollbackReviewCompleted"
+    | "noSideEffectBoundaryReviewed"
+    | "agentRegistryBoundaryReviewed"
+    | "stage13EntryReviewed"
+  >
+> {
+  return {
+    manualGateReviewed: true,
+    operatorInvocationReviewed: true,
+    mockAdapterResultReviewed: true,
+    dryRunAuditReviewed: true,
+    rollbackReviewCompleted: true,
+    noSideEffectBoundaryReviewed: true,
+    agentRegistryBoundaryReviewed: true,
+    stage13EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 12-A (Stage 11-A ready + 12-A manual gate confirmations). */
+export function buildStage12AReadyExternalExecutionManualDryRunGateInput(): ExternalExecutionManualDryRunGateInput {
+  return {
+    dryRunPackage: buildStage11AReadyExternalExecutionDryRunPackageInput(),
+    ...buildStage12AConfirmedExternalExecutionManualDryRunGateInput(),
   };
 }

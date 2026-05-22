@@ -21,6 +21,9 @@ export function isSourceReadyForExternalExecutionDryRunPackage(
     source.actualProductionRunnerImplementedInThisStep === false &&
     source.actualUiImplementationImplementedInThisStep === false &&
     source.agentRegistryChangeManagementOutOfScope === true &&
-    source.agentAddRemoveDeactivateOutOfScope === true
+    source.agentAddRemoveDeactivateOutOfScope === true &&
+    source.agentRoleSlotImpactAnalysisRequired === true &&
+    source.mandatoryGateAgentDeactivationRequiresApproval === true &&
+    source.agentKnowledgeBindingChangeRequiresApproval === true
   );
 }

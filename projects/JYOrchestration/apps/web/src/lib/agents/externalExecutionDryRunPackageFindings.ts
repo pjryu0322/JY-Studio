@@ -79,6 +79,19 @@ export function appendExternalExecutionDryRunPackageFindings(input: {
   findings.push(finding("info", "agent_registry_change_boundary_separated", "Agent registry change boundary separated"));
   findings.push(finding("info", "agent_add_remove_deactivate_out_of_scope", "Agent add/remove/deactivate out of scope"));
   findings.push(finding("info", "stage12_entry_candidate_defined", "Stage 12 entry candidate defined"));
+  findings.push(finding("info", "manual_dry_run_gate_design_allowed", "Manual dry-run gate design allowed"));
+  findings.push(finding("info", "operator_approved_dry_run_invocation_allowed", "Operator-approved dry-run invocation allowed"));
+  findings.push(finding("info", "mock_external_adapter_result_package_allowed", "Mock external adapter result package allowed"));
+  findings.push(finding("info", "dry_run_audit_event_package_allowed", "Dry-run audit event package allowed"));
+  findings.push(
+    finding("info", "rollback_plan_review_before_actual_execution_allowed", "Rollback plan review before actual execution allowed"),
+  );
+  findings.push(
+    finding("info", "stage12_manual_gate_required_before_actual_execution", "Stage 12 manual gate required before actual execution"),
+  );
+  findings.push(finding("info", "actual_manual_external_invocation_disallowed", "Actual manual external invocation disallowed"));
+  findings.push(finding("info", "actual_adapter_side_effect_disallowed", "Actual adapter side-effect disallowed"));
+  findings.push(finding("info", "actual_agent_registry_mutation_disallowed", "Actual agent registry mutation disallowed"));
   findings.push(finding("info", "actual_cursor_execution_disallowed", "Actual Cursor execution disallowed"));
   findings.push(finding("info", "actual_github_write_disallowed", "Actual GitHub write disallowed"));
   findings.push(finding("info", "actual_connector_gateway_call_disallowed", "Actual Connector Gateway call disallowed"));
