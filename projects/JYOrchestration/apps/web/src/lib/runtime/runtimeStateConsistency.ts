@@ -85,7 +85,25 @@ export async function validateRuntimeStateConsistency(input: {
       job.type === "cursor"
         ? parseCursorExecutionJobPayload(job.payload)
         : parsePipelineExecutionJobPayload(job.payload);
-    if (!payload || payload.execRunId !== input.execRunId || payload.taskId !== input.taskId) {
+    if (!payload) continue;
+
+    if (payload.execRunId === input.execRunId && payload.taskId !== input.taskId) {
+      issues.push({
+        code: job.type === "cursor" ? "CURSOR_JOB_PAYLOAD_MISMATCH" : "PIPELINE_JOB_PAYLOAD_MISMATCH",
+        message: `${job.type} job payload.taskId does not match input taskId`,
+        severity: "error",
+      });
+    }
+
+    if (payload.taskId === input.taskId && payload.execRunId !== input.execRunId) {
+      issues.push({
+        code: job.type === "cursor" ? "CURSOR_JOB_PAYLOAD_MISMATCH" : "PIPELINE_JOB_PAYLOAD_MISMATCH",
+        message: `${job.type} job payload.execRunId does not match input execRunId`,
+        severity: "error",
+      });
+    }
+
+    if (payload.execRunId !== input.execRunId || payload.taskId !== input.taskId) {
       continue;
     }
     if (job.type === "cursor" && !latestCursor) latestCursor = job;

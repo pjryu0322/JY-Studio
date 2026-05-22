@@ -61,4 +61,20 @@ describe("runtimeEventService", () => {
     });
     expect(persistCompatMock).not.toHaveBeenCalled();
   });
+
+  it("warns but does not throw when RuntimeEvent create fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createRuntimeEventMock.mockRejectedValueOnce(new Error("db down"));
+    await appendRuntimeEvent({
+      eventType: "CURSOR_STARTED",
+      projectId: "p1",
+      taskId: "t1",
+      execRunId: "run-1",
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[runtime-event] failed to persist RuntimeEvent",
+      expect.objectContaining({ eventType: "CURSOR_STARTED" }),
+    );
+    warnSpy.mockRestore();
+  });
 });

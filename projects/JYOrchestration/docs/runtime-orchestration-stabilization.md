@@ -116,8 +116,42 @@ runtimeTimelineDedupe.ts
 |----------|---------|---------|
 | `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE` | off | `manual` strategy uses `baseBranch` directly (legacy) |
 
+## Git Repository Provisioning MVP
+
+API: `POST /api/projects/[projectId]/git-repository/provision`
+
+| action | Purpose |
+|--------|---------|
+| `prepare` | Project name → repo candidate, GitHub lookup, analysis, `nextActions` |
+| `create_and_bind` | Create repo if missing (explicit), bind `ExecutionSetup` |
+| `analyze_existing` | Read-only structure analysis |
+| `bind_existing` | Connect existing repo (`confirmExistingRepo: true`) |
+
+Modules:
+
+```text
+apps/web/src/lib/git-provisioning/repoNamePolicy.ts
+apps/web/src/lib/git-provisioning/githubRepoLookup.ts
+apps/web/src/lib/git-provisioning/githubRepoCreate.ts
+apps/web/src/lib/git-provisioning/githubRepoAnalyzer.ts
+apps/web/src/lib/git-provisioning/gitRepositoryProvisioningService.ts
+```
+
+Policies:
+
+- Repo creation only via explicit `create_and_bind` (no delete/force-push/init wipe)
+- `feature-per-task` + `branchPrefix: orch` on bind
+- GitHub token from project `ExecutionSetup` or peer project (same owner, validated)
+- Token never returned in API responses
+
+## RuntimeEvent schema (verified)
+
+- `packages/db/schema.prisma` — `model RuntimeEvent`
+- Migration: `packages/db/migrations/20260519180000_runtime_events`
+
 ## Remaining follow-up
 
 - Move ENV_TEST monolithic block from `runExecutionLoop.ts` into `envTestSyncExecution.ts`
 - Remove holder-job compat path after `runtime_events` backfill
+- Org-owned GitHub repo creation (currently personal `/user/repos` MVP)
 - Production soak: 3+ normal-task runs without `FORCE_INLINE`

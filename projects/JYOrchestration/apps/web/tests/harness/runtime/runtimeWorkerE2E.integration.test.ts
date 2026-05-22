@@ -16,6 +16,7 @@ import {
 } from "@/lib/runtime/runtimeSelfHealingBridge";
 import { shouldUseRuntimeWorkerPathForTask } from "@/lib/runtime/normalTaskWorkerDispatch";
 import { resumePipelineAfterApprovalViaWorker } from "@/lib/runtime/pipelineResumeAfterApproval";
+import { listRuntimeTimelineForExecRun } from "@/lib/runtime/runtimeObservability";
 import { validateRuntimeStateConsistency } from "@/lib/runtime/runtimeStateConsistency";
 import {
   RUNTIME_E2E_ACTOR_ID,
@@ -38,6 +39,9 @@ const enqueueMock = vi.fn();
 const processJobMock = vi.fn();
 const findUniqueTaskMock = vi.fn();
 const findUniqueSetupMock = vi.fn();
+const runtimeEventCreateMock = vi.fn();
+const runtimeEventFindManyMock = vi.fn();
+const executionEventLogFindManyMock = vi.fn();
 
 vi.mock("@/lib/runtime/pipelineChainIdempotency", () => ({
   findExistingPipelineJobForExecRun: (...args: unknown[]) => findExistingPipelineMock(...args),
@@ -82,6 +86,13 @@ vi.mock("@/lib/prisma", () => ({
     executionSetup: { findUnique: (...args: unknown[]) => findUniqueSetupMock(...args) },
     taskExecutionRun: { findUnique: (...args: unknown[]) => findRunMock(...args) },
     executionJob: { findMany: (...args: unknown[]) => findManyJobsMock(...args) },
+    runtimeEvent: {
+      create: (...args: unknown[]) => runtimeEventCreateMock(...args),
+      findMany: (...args: unknown[]) => runtimeEventFindManyMock(...args),
+    },
+    executionEventLog: {
+      findMany: (...args: unknown[]) => executionEventLogFindManyMock(...args),
+    },
   },
 }));
 
@@ -149,6 +160,12 @@ describe("runtimeWorkerE2E scenarios", () => {
       baseBranch: "main",
       githubAccessToken: null,
     });
+    runtimeEventCreateMock.mockReset();
+    runtimeEventFindManyMock.mockReset();
+    executionEventLogFindManyMock.mockReset();
+    runtimeEventCreateMock.mockResolvedValue({ id: "ev-e2e-1" });
+    runtimeEventFindManyMock.mockResolvedValue([]);
+    executionEventLogFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -156,6 +173,7 @@ describe("runtimeWorkerE2E scenarios", () => {
     delete process.env.RUNTIME_CURSOR_CHAIN_PIPELINE;
     delete process.env.RUNTIME_PROCESS_CHAINED_PIPELINE_IMMEDIATELY;
     delete process.env.RUNTIME_SELF_HEALING_AUTO_CURSOR;
+    delete process.env.RUNTIME_EVENT_COMPAT_EXECUTION_LOG;
   });
 
   it("3.1 normal task uses worker path by default", () => {
@@ -200,6 +218,35 @@ describe("runtimeWorkerE2E scenarios", () => {
     expect(enqOnly.chained).toBe(true);
     expect(enqOnly.pipelineProcessed).toBe(false);
     expect(processJobMock).not.toHaveBeenCalled();
+  });
+
+  it("3.4 chain path persists RuntimeEvent rows for timeline", async () => {
+    process.env.RUNTIME_EVENT_COMPAT_EXECUTION_LOG = "0";
+    const createdAt = new Date("2026-05-19T12:00:00.000Z");
+    runtimeEventFindManyMock.mockResolvedValue([
+      {
+        createdAt,
+        eventType: "CURSOR_PIPELINE_CHAINED",
+        severity: "info",
+        workerName: null,
+        detailJson: null,
+      },
+    ]);
+
+    const chained = await maybeChainCursorJobToPipeline({
+      projectId: RUNTIME_E2E_PROJECT_ID,
+      taskId: RUNTIME_E2E_TASK_ID,
+      execRunId: RUNTIME_E2E_EXEC_RUN_ID,
+      actorUserId: RUNTIME_E2E_ACTOR_ID,
+      cursorOutcome,
+    });
+    expect(chained.chained).toBe(true);
+    expect(runtimeEventCreateMock).toHaveBeenCalled();
+
+    const timeline = await listRuntimeTimelineForExecRun(RUNTIME_E2E_EXEC_RUN_ID, 10);
+    expect(
+      timeline.some((r) => r.source === "runtime_event" && r.eventType === "CURSOR_PIPELINE_CHAINED"),
+    ).toBe(true);
   });
 
   it("3.3 review reject triggers self-healing without auto cursor by default", async () => {
