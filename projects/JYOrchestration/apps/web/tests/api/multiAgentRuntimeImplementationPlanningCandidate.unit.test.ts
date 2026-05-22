@@ -29,6 +29,9 @@ function readyPlanningDecisionInput(
     sourceActualExecutionWireAllowedInThisStep: false,
     sourceActualPersistenceAllowedInThisStep: false,
     sourceActualSchemaMigrationAllowedInThisStep: false,
+    sourceActualExternalSideEffectAllowedInThisStep: false,
+    sourceActualCursorGithubWireAllowedInThisStep: false,
+    sourceActualConnectorRoutingChangeAllowedInThisStep: false,
     planningItemsValid: true,
     confirmationsSatisfied: true,
     ...overrides,
@@ -270,5 +273,103 @@ describe("multi-agent runtime implementation planning candidate stage 7-A", () =
   it("buildRuntimeImplementationPlanningItems returns empty when source not closed", () => {
     const source = evaluateRuntimeExecutionContractClosure();
     expect(buildRuntimeImplementationPlanningItems(source)).toEqual([]);
+  });
+
+  it("report exposes source actual boundary trace fields", () => {
+    const report = evaluateReadyPlanning();
+    expect(report.sourceActualRuntimeExecutionAllowedInThisStep).toBe(false);
+    expect(report.sourceActualExecutionRunnerAllowedInThisStep).toBe(false);
+    expect(report.sourceActualDryRunRunnerAllowedInThisStep).toBe(false);
+    expect(report.sourceActualExecutionWireAllowedInThisStep).toBe(false);
+    expect(report.sourceActualPersistenceAllowedInThisStep).toBe(false);
+    expect(report.sourceActualExternalSideEffectAllowedInThisStep).toBe(false);
+    expect(report.sourceActualSchemaMigrationAllowedInThisStep).toBe(false);
+    expect(report.sourceActualCursorGithubWireAllowedInThisStep).toBe(false);
+    expect(report.sourceActualConnectorRoutingChangeAllowedInThisStep).toBe(false);
+  });
+
+  it("resolveRuntimeImplementationPlanningCandidateDecision blocks when sourceActualExternalSideEffectAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeImplementationPlanningCandidateDecision(
+        readyPlanningDecisionInput({ sourceActualExternalSideEffectAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeImplementationPlanningCandidateDecision blocks when sourceActualCursorGithubWireAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeImplementationPlanningCandidateDecision(
+        readyPlanningDecisionInput({ sourceActualCursorGithubWireAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeImplementationPlanningCandidateDecision blocks when sourceActualConnectorRoutingChangeAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeImplementationPlanningCandidateDecision(
+        readyPlanningDecisionInput({ sourceActualConnectorRoutingChangeAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("broken source actual boundary yields empty planningItems", () => {
+    const closed = evaluateRuntimeExecutionContractClosure(buildStage6FReadyContractClosureInput());
+    const broken = { ...closed, actualRuntimeExecutionAllowedInThisStep: true };
+    expect(buildRuntimeImplementationPlanningItems(broken)).toEqual([]);
+  });
+
+  it("validation detects unknown dependency", () => {
+    const items = evaluateReadyPlanning().planningItems;
+    const invalid = { ...items[1], dependsOn: ["unknown-planning-item"] };
+    expect(validateRuntimeImplementationPlanningItems([invalid]).unknownDependencyItemIds).toContain(
+      items[1].planningItemId,
+    );
+  });
+
+  it("validation detects self dependency", () => {
+    const items = evaluateReadyPlanning().planningItems;
+    const invalid = { ...items[0], dependsOn: [items[0].planningItemId] };
+    expect(validateRuntimeImplementationPlanningItems([invalid]).selfDependencyItemIds).toContain(items[0].planningItemId);
+  });
+
+  it("validation detects missing dependency", () => {
+    const items = evaluateReadyPlanning().planningItems;
+    const invalid = { ...items[1], dependsOn: [] as string[] };
+    expect(validateRuntimeImplementationPlanningItems([invalid]).missingDependencyItemIds).toContain(items[1].planningItemId);
+  });
+
+  it("validation detects forbidden boundary coverage missing", () => {
+    const items = evaluateReadyPlanning().planningItems;
+    const invalid = { ...items[0], forbiddenInThisStep: ["other_forbidden"] };
+    expect(validateRuntimeImplementationPlanningItems([invalid]).forbiddenBoundaryCoverageMissingItemIds).toContain(
+      items[0].planningItemId,
+    );
+  });
+
+  it("planningFingerprint includes source actual boundary and planningValid segments", () => {
+    const fingerprint = evaluateReadyPlanning().planningFingerprint;
+    expect(fingerprint).toContain("sourceActualRuntime:false");
+    expect(fingerprint).toContain("sourceActualRunner:false");
+    expect(fingerprint).toContain("sourceActualDryRunRunner:false");
+    expect(fingerprint).toContain("sourceActualWire:false");
+    expect(fingerprint).toContain("sourceActualPersistence:false");
+    expect(fingerprint).toContain("sourceActualSchema:false");
+    expect(fingerprint).toContain("sourceActualCursorGithub:false");
+    expect(fingerprint).toContain("sourceActualConnectorRouting:false");
+    expect(fingerprint).toContain("planningValid:true");
+  });
+
+  it("ready findings include source_contract_closure_trace_copied", () => {
+    expect(evaluateReadyPlanning().findings.some((f) => f.code === "source_contract_closure_trace_copied")).toBe(true);
+  });
+
+  it("ready findings include planning_dependency_validation_passed", () => {
+    expect(evaluateReadyPlanning().findings.some((f) => f.code === "planning_dependency_validation_passed")).toBe(true);
+  });
+
+  it("ready findings include planning_forbidden_boundary_validation_passed", () => {
+    expect(evaluateReadyPlanning().findings.some((f) => f.code === "planning_forbidden_boundary_validation_passed")).toBe(
+      true,
+    );
   });
 });

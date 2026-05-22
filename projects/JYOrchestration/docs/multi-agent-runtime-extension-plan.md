@@ -2406,6 +2406,21 @@ Ready decision: `stage6_runtime_execution_contract_closed`
 
 Report는 Stage 6-E source trace(`sourceNoRunBoundarySatisfied`, `sourceActual*` boundary flags)를 노출한다.
 
+### Stage 7-A Hardening
+
+Stage 7-A planning candidate는 Stage 6-F closure source의 actual boundary를 직접 추적한다.
+
+- actual runtime execution
+- actual execution runner
+- actual dry-run runner
+- actual execution wire
+- actual persistence
+- actual schema migration
+- Cursor/GitHub wire
+- Connector Gateway routing change
+
+Stage 7-A ready는 실제 구현 허가가 아니라, Stage 7-B 이후 contract design PR로 넘어가기 위한 planning readiness다.
+
 ### Stage 7-A Runtime Implementation Planning Candidate
 
 Stage 7-A는 Stage 6-F closure를 source로 받아 실제 구현 PR 후보를 분리하는 read-only planning candidate다.
@@ -2426,6 +2441,38 @@ Stage 7-A는 다음을 산출한다.
 실제 구현은 Stage 7-B 이후 또는 별도 승인 PR에서만 진행한다.
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeImplementationPlanningCandidate.ts`, `runtimeImplementationPlanningCandidateTypes.ts`, `runtimeImplementationPlanningCandidateSupport.ts`
+
+### Stage 7-B Runtime API Contract Design
+
+Stage 7-B는 Runtime Execution API의 endpoint contract를 read-only로 설계한다.
+
+이 단계는 실제 API route 구현이 아니다.
+
+산출물:
+
+- create runtime execution request contract
+- get runtime execution status contract
+- list runtime execution events contract
+- request runtime execution cancel contract
+- submit runtime execution approval contract
+- request runtime execution rollback contract
+
+Ready decision: `ready_for_execution_runner_contract_design`
+
+Stage 7-B에서 금지되는 항목:
+
+- actual API route handler
+- actual runtime execution API
+- actual execution runner
+- actual dry-run runner
+- Cursor/GitHub wire
+- Connector Gateway routing change
+- DB write
+- schema.prisma/migration
+- persistence implementation
+- UI implementation
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeApiContractDesign.ts`, `runtimeApiContractDesignTypes.ts`, `runtimeApiContractDesignEndpoints.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

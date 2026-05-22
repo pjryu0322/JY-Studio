@@ -79,7 +79,10 @@ export function resolveRuntimeImplementationPlanningCandidateDecision(
     input.sourceActualDryRunRunnerAllowedInThisStep !== false ||
     input.sourceActualExecutionWireAllowedInThisStep !== false ||
     input.sourceActualPersistenceAllowedInThisStep !== false ||
+    input.sourceActualExternalSideEffectAllowedInThisStep !== false ||
     input.sourceActualSchemaMigrationAllowedInThisStep !== false ||
+    input.sourceActualCursorGithubWireAllowedInThisStep !== false ||
+    input.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
     !input.planningItemsValid
   ) {
     return "blocked";
@@ -97,6 +100,15 @@ export function buildRuntimeImplementationPlanningCandidateFingerprint(input: {
   readonly planningItemCount: number;
   readonly confirmationCount: number;
   readonly separatedPrCandidateCount: number;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
+  readonly planningItemsValid: boolean;
 }): string {
   return [
     "runtime-implementation-planning-candidate-v1",
@@ -104,6 +116,15 @@ export function buildRuntimeImplementationPlanningCandidateFingerprint(input: {
     `planningItems:${input.planningItemCount}`,
     `confirmations:${input.confirmationCount}`,
     `separatePr:${input.separatedPrCandidateCount}`,
+    `sourceActualRuntime:${input.sourceActualRuntimeExecutionAllowedInThisStep}`,
+    `sourceActualRunner:${input.sourceActualExecutionRunnerAllowedInThisStep}`,
+    `sourceActualDryRunRunner:${input.sourceActualDryRunRunnerAllowedInThisStep}`,
+    `sourceActualWire:${input.sourceActualExecutionWireAllowedInThisStep}`,
+    `sourceActualPersistence:${input.sourceActualPersistenceAllowedInThisStep}`,
+    `sourceActualSchema:${input.sourceActualSchemaMigrationAllowedInThisStep}`,
+    `sourceActualCursorGithub:${input.sourceActualCursorGithubWireAllowedInThisStep}`,
+    `sourceActualConnectorRouting:${input.sourceActualConnectorRoutingChangeAllowedInThisStep}`,
+    `planningValid:${input.planningItemsValid}`,
   ].join("::");
 }
 

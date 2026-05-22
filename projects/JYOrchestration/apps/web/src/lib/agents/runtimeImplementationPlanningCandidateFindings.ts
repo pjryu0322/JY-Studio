@@ -78,18 +78,43 @@ export function appendRuntimeImplementationPlanningCandidateFindings(input: {
     source.actualDryRunRunnerAllowedInThisStep !== false ||
     source.actualExecutionWireAllowedInThisStep !== false ||
     source.actualPersistenceAllowedInThisStep !== false ||
+    source.actualExternalSideEffectAllowedInThisStep !== false ||
     source.actualSchemaMigrationAllowedInThisStep !== false ||
+    source.actualCursorGithubWireAllowedInThisStep !== false ||
+    source.actualConnectorRoutingChangeAllowedInThisStep !== false ||
     !planningValidation.valid
   ) {
     if (!planningValidation.valid) {
       findings.push(finding("blocking", "planning_items_validation_failed", "Planning items validation failed"));
+      if (
+        planningValidation.missingDependencyItemIds.length > 0 ||
+        planningValidation.unknownDependencyItemIds.length > 0 ||
+        planningValidation.selfDependencyItemIds.length > 0
+      ) {
+        findings.push(finding("blocking", "planning_dependency_validation_failed", "Planning dependency validation failed"));
+      }
+      if (planningValidation.forbiddenBoundaryCoverageMissingItemIds.length > 0) {
+        findings.push(
+          finding("blocking", "planning_forbidden_boundary_validation_failed", "Planning forbidden boundary validation failed"),
+        );
+      }
     }
     findings.push(finding("blocking", "stage7_a_planning_candidate_blocked", "Stage 7-A planning candidate is blocked"));
     return;
   }
 
-  findings.push(finding("info", "source_stage6_closure_trace_copied", "Stage 6-F closure trace copied into planning candidate report"));
+  findings.push(finding("info", "source_contract_closure_trace_copied", "Stage 6-F closure trace copied into planning candidate report"));
+  findings.push(finding("info", "source_actual_runtime_boundary_verified", "Source actual runtime execution boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_runner_boundary_verified", "Source actual execution runner boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_dry_run_runner_boundary_verified", "Source actual dry-run runner boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_wire_boundary_verified", "Source actual execution wire boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_persistence_boundary_verified", "Source actual persistence boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_schema_boundary_verified", "Source actual schema migration boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_cursor_github_boundary_verified", "Source Cursor/GitHub wire boundary verified as disallowed"));
+  findings.push(finding("info", "source_actual_connector_routing_boundary_verified", "Source connector routing boundary verified as disallowed"));
   findings.push(finding("info", "planning_items_validation_passed", "All required planning items validated"));
+  findings.push(finding("info", "planning_dependency_validation_passed", "Planning dependency validation passed"));
+  findings.push(finding("info", "planning_forbidden_boundary_validation_passed", "Planning forbidden boundary validation passed"));
   findings.push(finding("info", "actual_runtime_execution_still_disallowed", "Actual runtime execution remains disallowed in Stage 7-A"));
   findings.push(finding("info", "actual_runner_still_disallowed", "Actual execution runner remains disallowed in Stage 7-A"));
   findings.push(finding("info", "actual_dry_run_runner_still_disallowed", "Actual dry-run runner remains disallowed in Stage 7-A"));

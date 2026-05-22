@@ -1,0 +1,111 @@
+
+JYOrchestration — Service-Flow Proposal Validation Recovery Phase 6
+JYOrchestration — Service-Flow Proposal Validation Recovery Phase 6
+현재 점검 결론
+최근 커밋 `5c0643af` 기준으로 bootstrap proposal-first UI 보존 문제는 개선되었다.
+확인된 개선:
+- bootstrap proposal-first 본문이 화면에서 축약되지 않음
+- 줄바꿈/목록 구조가 보존됨
+- quickReplies가 유지됨
+- AI 기획자 단일 화자 UX가 유지됨
+하지만 service-flow 단계 validation 실패 복구는 아직 보완이 필요하다.
+---
+핵심 문제
+현재 타임라인 기준:
+QUALITY: service-flow proposal-first 검증 실패
+- insufficient_flow_actors
+- insufficient_flow_steps
+- question_first_without_proposal
+즉 bootstrap은 정상이나,
+service-flow 단계에서 question-first fallback이 여전히 발생 가능하다.
+---
+작업 목표
+service-flow validation 실패 시에도
+사용자 화면에는 proposal-first 구조만 보이도록 수정한다.
+금지:
+- question-first fallback 노출
+- 서비스별 하드코딩
+- 정적 flow 템플릿
+유지:
+- LLM 기반 proposal generation
+- LLM validation
+- regeneration/fallback synthesis
+---
+작업 범위
+ONLY modify:
+projects/JYOrchestration/**
+---
+구현 목표
+### 1. service-flow fallback synthesis 보강
+bootstrap proposal_fallback_synthesis와 동일한 수준으로
+service-flow fallback synthesis를 추가/보강한다.
+예상 메타:
+routingDecision=service_flow_proposal_fallback_synthesis
+fallbackReason=SERVICE_FLOW_PROPOSAL_VALIDATION_FAILED
+---
+### 2. fallback synthesis 입력
+다음을 LLM에 전달:
+- projectName
+- projectDescription
+- currentFlow
+- rejectedUpdatedFlowPreview
+- rejectedAssistantMessage
+- validationIssues
+- recentConversation
+---
+### 3. fallback synthesis 출력 규칙
+updatedFlow:
+- actors &gt;= 2
+- steps &gt;= 3
+assistantMessage:
+- proposal-first 구조 유지
+- 예상 서비스 흐름 포함
+- 예상 액터 포함
+- question-first 금지
+quickReplies:
+- 추천안 적용
+- 일부 수정
+- 다른 대안 보기
+---
+사용자 화면 금지 문구
+아래 문구가 나오면 실패:
+- 어떤 액터가 필요하신가요?
+- 첫 단계는 무엇입니까?
+- 어떤 순서로 진행되나요?
+실패 상황에서도 proposal-first UI 유지 필요.
+---
+prompt trace 보강
+trace 기록:
+- service_flow_validation_failed
+- service_flow_regeneration_started
+- service_flow_regeneration_result
+- service_flow_fallback_synthesis_started
+- service_flow_fallback_synthesis_result
+---
+테스트 기준
+### Case 1
+정상 proposal
+기대:
+- SUCCESS
+- actors &gt;= 2
+- steps &gt;= 3
+### Case 2
+LLM이 question-first 반환
+기대:
+- validation reject
+- regeneration/fallback synthesis 수행
+- 최종 UI는 proposal-first
+### Case 3
+bootstrap 회귀 테스트
+기대:
+- proposal-first 본문 유지
+- quickReplies 유지
+---
+검증 명령
+cd projects/JYOrchestration/apps/web
+npx tsc --noEmit
+npx vitest run tests/api/ideationInterviewBootstrap.unit.test.ts
+---
+완료 기준
+service-flow validation 실패가 발생하더라도
+최종 사용자 visible message는 항상 proposal-first 구조여야 한다.

@@ -78,6 +78,10 @@ export interface RuntimeImplementationPlanningValidationResult {
   readonly emptyApprovalItemIds: readonly string[];
   readonly emptyForbiddenBoundaryItemIds: readonly string[];
   readonly implementedInThisStepItemIds: readonly string[];
+  readonly missingDependencyItemIds: readonly string[];
+  readonly unknownDependencyItemIds: readonly string[];
+  readonly selfDependencyItemIds: readonly string[];
+  readonly forbiddenBoundaryCoverageMissingItemIds: readonly string[];
 }
 
 export interface RuntimeImplementationPlanningCandidateReport {
@@ -91,6 +95,15 @@ export interface RuntimeImplementationPlanningCandidateReport {
   readonly sourceStage6ContractClosed: boolean;
   readonly sourceStage6ClosureOnly: boolean;
   readonly sourceActualRuntimeExecutionAllowedAfterStage6: boolean;
+  readonly sourceActualRuntimeExecutionAllowedInThisStep: boolean;
+  readonly sourceActualExecutionRunnerAllowedInThisStep: boolean;
+  readonly sourceActualDryRunRunnerAllowedInThisStep: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
 
   readonly planningVersion: "runtime_implementation_planning_candidate_v1";
   readonly planningTitle: string;
@@ -133,6 +146,9 @@ export interface RuntimeImplementationPlanningCandidateDecisionInput {
   readonly sourceActualExecutionWireAllowedInThisStep: boolean;
   readonly sourceActualPersistenceAllowedInThisStep: boolean;
   readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualCursorGithubWireAllowedInThisStep: boolean;
+  readonly sourceActualConnectorRoutingChangeAllowedInThisStep: boolean;
   readonly planningItemsValid: boolean;
   readonly confirmationsSatisfied: boolean;
 }

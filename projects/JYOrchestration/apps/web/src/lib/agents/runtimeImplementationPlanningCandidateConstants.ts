@@ -161,3 +161,35 @@ export const STAGE7_A_PLANNING_ITEM_SPECS: Record<
     forbiddenInThisStep: ["actual_runtime_execution_api", "actual_execution_runner"],
   },
 };
+
+export const STAGE7_A_REQUIRED_PLANNING_DEPENDENCIES: Record<
+  (typeof STAGE7_A_REQUIRED_PLANNING_ITEM_IDS)[number],
+  readonly string[]
+> = {
+  "runtime-api-design-pr": [],
+  "execution-runner-design-pr": ["runtime-api-design-pr"],
+  "dry-run-runner-design-pr": ["execution-runner-design-pr"],
+  "cursor-github-wire-design-pr": ["runtime-api-design-pr"],
+  "connector-gateway-routing-design-pr": ["runtime-api-design-pr"],
+  "persistence-design-pr": ["runtime-api-design-pr"],
+  "schema-migration-approval-pr": ["persistence-design-pr"],
+  "feature-flag-wire-design-pr": ["runtime-api-design-pr"],
+  "runtime-ui-design-pr": ["runtime-api-design-pr"],
+  "operator-approval-flow-design-pr": ["runtime-api-design-pr"],
+};
+
+export const STAGE7_A_REQUIRED_FORBIDDEN_BOUNDARIES: Record<
+  (typeof STAGE7_A_REQUIRED_PLANNING_ITEM_IDS)[number],
+  readonly string[]
+> = {
+  "runtime-api-design-pr": ["actual_runtime_execution_api"],
+  "execution-runner-design-pr": ["actual_execution_runner"],
+  "dry-run-runner-design-pr": ["actual_dry_run_runner"],
+  "cursor-github-wire-design-pr": ["actual_cursor_execution_wire", "actual_github_operation_wire"],
+  "connector-gateway-routing-design-pr": ["actual_connector_gateway_routing_change"],
+  "persistence-design-pr": ["actual_db_write", "actual_persistence_implementation"],
+  "schema-migration-approval-pr": ["actual_schema_migration"],
+  "feature-flag-wire-design-pr": ["actual_feature_flag_wire"],
+  "runtime-ui-design-pr": ["actual_runtime_execution_ui"],
+  "operator-approval-flow-design-pr": ["actual_runtime_execution_api", "actual_execution_runner"],
+};

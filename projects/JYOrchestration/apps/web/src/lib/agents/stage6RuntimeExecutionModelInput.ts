@@ -6,6 +6,7 @@ import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExe
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
 import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
+import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContractDesignTypes";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
 import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
@@ -189,5 +190,32 @@ export function buildStage7AReadyImplementationPlanningInput(): RuntimeImplement
   return {
     contractClosure: buildStage6FReadyContractClosureInput(),
     ...buildStage7AImplementationPlanningConfirmedInput(),
+  };
+}
+
+export function buildStage7BRuntimeApiContractConfirmedInput(): Required<
+  Pick<
+    RuntimeApiContractDesignInput,
+    | "runtimeApiContractReviewed"
+    | "runtimeApiNoEndpointImplementationConfirmed"
+    | "runtimeApiNoPersistenceConfirmed"
+    | "runtimeApiSecurityBoundaryReviewed"
+    | "runtimeApiApprovalBoundaryReviewed"
+  >
+> {
+  return {
+    runtimeApiContractReviewed: true,
+    runtimeApiNoEndpointImplementationConfirmed: true,
+    runtimeApiNoPersistenceConfirmed: true,
+    runtimeApiSecurityBoundaryReviewed: true,
+    runtimeApiApprovalBoundaryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 7-B (Stage 7-A ready + 7-B API contract confirmations). */
+export function buildStage7BReadyRuntimeApiContractInput(): RuntimeApiContractDesignInput {
+  return {
+    implementationPlanning: buildStage7AReadyImplementationPlanningInput(),
+    ...buildStage7BRuntimeApiContractConfirmedInput(),
   };
 }
