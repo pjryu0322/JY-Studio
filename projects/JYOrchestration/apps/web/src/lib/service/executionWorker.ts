@@ -466,6 +466,8 @@ async function executeJob(job: ExecutionJob): Promise<RunGitApplyCoreResult | St
       return handleCursorExecutionJob(job);
     case "pipeline":
       return handlePipelineExecutionJob(job);
+    case "runtime-timeline":
+      return { ok: true, code: "TIMELINE_HOLDER", message: "runtime timeline holder job" };
     default:
       return {
         ok: false,

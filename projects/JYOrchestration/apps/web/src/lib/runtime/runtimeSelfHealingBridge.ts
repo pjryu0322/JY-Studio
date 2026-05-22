@@ -1,8 +1,9 @@
 /**
- * Self-healing bridge — review failure → AUTO_HEALING task candidate creation.
+ * Self-healing bridge — review failure → AUTO_HEALING task + optional cursor enqueue.
  */
 
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
+import { createSelfHealingExecutionRun } from "@/lib/runtime/runtimeSelfHealingExecution";
 import { triggerSelfHealingLite } from "@/lib/service/selfHealingService";
 
 export type SelfHealingBridgeInput = {
@@ -18,6 +19,7 @@ export type SelfHealingBridgeResult = {
   readonly reason?: string;
   readonly createdTaskIds?: string[];
   readonly autoCursorEnqueued?: boolean;
+  readonly healingExecRunIds?: string[];
 };
 
 export function isRuntimeSelfHealingAutoCursorEnabled(): boolean {
@@ -71,14 +73,43 @@ export async function maybeEnqueueSelfHealingFromReviewFailure(
   });
 
   let autoCursorEnqueued = false;
+  const healingExecRunIds: string[] = [];
+
   if (isRuntimeSelfHealingAutoCursorEnabled() && createdTaskIds.length > 0) {
     const { enqueueExecution } = await import("@/lib/service/executionQueue");
+
     for (const healingTaskId of createdTaskIds) {
+      let healingRunId: string;
+      try {
+        const healingRun = await createSelfHealingExecutionRun({
+          projectId: input.projectId,
+          healingTaskId,
+          actorUserId: input.actorUserId,
+          sourceExecRunId: input.execRunId,
+          sourceTaskId: input.taskId,
+        });
+        healingRunId = healingRun.execRunId;
+        healingExecRunIds.push(healingRunId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await appendRuntimeEvent({
+          eventType: "SELF_HEALING_CURSOR_ENQUEUE_FAILED",
+          severity: "error",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          execRunId: input.execRunId,
+          actorUserId: input.actorUserId,
+          workerName: "self-healing",
+          detail: { healingTaskId, error: msg },
+        });
+        continue;
+      }
+
       const enq = await enqueueExecution({
         projectId: input.projectId,
         type: "cursor",
         payload: {
-          execRunId: input.execRunId,
+          execRunId: healingRunId,
           taskId: healingTaskId,
           projectId: input.projectId,
           actorUserId: input.actorUserId,
@@ -86,11 +117,36 @@ export async function maybeEnqueueSelfHealingFromReviewFailure(
           selfHealingFromExecRunId: input.execRunId,
         },
       });
+
       if (enq.queued) {
         autoCursorEnqueued = true;
+        await appendRuntimeEvent({
+          eventType: "SELF_HEALING_CURSOR_ENQUEUED",
+          projectId: input.projectId,
+          taskId: healingTaskId,
+          execRunId: healingRunId,
+          actorUserId: input.actorUserId,
+          workerName: "self-healing",
+          detail: {
+            cursorJobId: enq.jobId,
+            selfHealingFromExecRunId: input.execRunId,
+            sourceTaskId: input.taskId,
+          },
+        });
+      } else {
+        await appendRuntimeEvent({
+          eventType: "SELF_HEALING_CURSOR_ENQUEUE_FAILED",
+          severity: "warning",
+          projectId: input.projectId,
+          taskId: healingTaskId,
+          execRunId: healingRunId,
+          actorUserId: input.actorUserId,
+          workerName: "self-healing",
+          detail: { reason: enq.reason, healingTaskId },
+        });
       }
     }
   }
 
-  return { triggered: true, createdTaskIds, autoCursorEnqueued };
+  return { triggered: true, createdTaskIds, autoCursorEnqueued, healingExecRunIds };
 }

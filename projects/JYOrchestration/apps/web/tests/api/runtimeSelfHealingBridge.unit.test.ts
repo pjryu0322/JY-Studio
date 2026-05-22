@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const triggerMock = vi.fn();
+const createRunMock = vi.fn();
 const enqueueMock = vi.fn();
 const appendEventMock = vi.fn();
 
 vi.mock("@/lib/service/selfHealingService", () => ({
   triggerSelfHealingLite: (...args: unknown[]) => triggerMock(...args),
+}));
+
+vi.mock("@/lib/runtime/runtimeSelfHealingExecution", () => ({
+  createSelfHealingExecutionRun: (...args: unknown[]) => createRunMock(...args),
 }));
 
 vi.mock("@/lib/service/executionQueue", () => ({
@@ -25,24 +30,26 @@ describe("runtimeSelfHealingBridge", () => {
   const input = {
     projectId: "proj-1",
     taskId: "task-1",
-    execRunId: "run-1",
+    execRunId: "run-source",
     actorUserId: "user-1",
     reviewReason: "rejected",
   };
 
   beforeEach(() => {
     triggerMock.mockReset();
+    createRunMock.mockReset();
     enqueueMock.mockReset();
     appendEventMock.mockReset();
     appendEventMock.mockResolvedValue(undefined);
-    enqueueMock.mockResolvedValue({ queued: true, jobId: "job-1" });
+    enqueueMock.mockResolvedValue({ queued: true, jobId: "cursor-job-1" });
+    createRunMock.mockResolvedValue({ execRunId: "run-healing", promptSnapshot: "p" });
   });
 
   afterEach(() => {
     delete process.env.RUNTIME_SELF_HEALING_AUTO_CURSOR;
   });
 
-  it("creates healing candidates and emits AUTO_HEALING_TRIGGERED", async () => {
+  it("creates healing candidates without cursor enqueue by default", async () => {
     triggerMock.mockResolvedValue({
       created: true,
       strategies: ["retry"],
@@ -53,13 +60,14 @@ describe("runtimeSelfHealingBridge", () => {
     expect(res.triggered).toBe(true);
     expect(res.createdTaskIds).toEqual(["heal-1"]);
     expect(res.autoCursorEnqueued).toBe(false);
-    expect(appendEventMock).toHaveBeenCalled();
-    const eventType = appendEventMock.mock.calls[0][0].eventType;
-    expect(eventType).toBe("AUTO_HEALING_TRIGGERED");
+    expect(createRunMock).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
+    expect(appendEventMock.mock.calls.some((c) => c[0].eventType === "AUTO_HEALING_TRIGGERED")).toBe(
+      true
+    );
   });
 
-  it("enqueues cursor when RUNTIME_SELF_HEALING_AUTO_CURSOR=1", async () => {
+  it("creates healing run and enqueues cursor with matching execRunId when flag on", async () => {
     process.env.RUNTIME_SELF_HEALING_AUTO_CURSOR = "1";
     expect(isRuntimeSelfHealingAutoCursorEnabled()).toBe(true);
 
@@ -71,7 +79,25 @@ describe("runtimeSelfHealingBridge", () => {
 
     const res = await maybeEnqueueSelfHealingFromReviewFailure(input);
     expect(res.autoCursorEnqueued).toBe(true);
-    expect(enqueueMock).toHaveBeenCalled();
+    expect(res.healingExecRunIds).toEqual(["run-healing"]);
+
+    expect(createRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        healingTaskId: "heal-2",
+        sourceExecRunId: "run-source",
+      }),
+    );
+
+    expect(enqueueMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "cursor",
+        payload: expect.objectContaining({
+          execRunId: "run-healing",
+          taskId: "heal-2",
+          selfHealingFromExecRunId: "run-source",
+        }),
+      }),
+    );
   });
 
   it("emits SELF_HEALING_SKIPPED when nothing created", async () => {

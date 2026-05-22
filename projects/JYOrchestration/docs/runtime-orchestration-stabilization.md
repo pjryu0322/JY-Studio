@@ -2,90 +2,73 @@
 
 AI Team Runtime을 ExecutionJob 기반 Worker 구조로 점진 이전한다.
 
-## Worker types
-
-| Type | Handler | Responsibility |
-|------|---------|----------------|
-| `git-apply` | `runGitApplyJob` | Git change request apply |
-| `cursor` | `handleCursorExecutionJob` | Cursor invoke, ExecutionRun persist |
-| `pipeline` | `handlePipelineExecutionJob` | Reviewer → Security → SCM → Merge |
-
-## ExecutionRun-centric model
-
-- Primary runtime key: `TaskExecutionRun` (`execRunId`)
-- Worker payloads include `execRunId`, `taskId`, `projectId`, `actorUserId`
-
-## Path policy (Phase 3)
+## Path policy (Phase 4)
 
 | Task kind | Path |
 |-----------|------|
-| `ENV_TEST` / `ENV_TEST_STAGE2` | **Sync** `runExecutionLoop` (Stage1/Stage2) — unchanged |
+| `ENV_TEST` / `ENV_TEST_STAGE2` | **Sync** `runExecutionLoop` (unchanged) |
 | Normal Task (default) | **Worker** `runNormalTaskViaRuntimeWorkers` |
 | Normal Task (emergency) | Legacy inline when `EXECUTION_LOOP_FORCE_INLINE_CURSOR=1` |
 
-Deprecated: `EXECUTION_LOOP_CURSOR_VIA_JOB=1` (Phase 2 opt-in). Worker path is now default.
-
 ```text
-runExecutionLoop
-  → TaskExecutionRun
-  → runNormalTaskViaRuntimeWorkers
-      → cursor job (sync)
-      → confirmCursorGitReflection
-      → pipeline job (sync)
+Normal Task (default)
+  → cursor job → reflection → pipeline job
+  → approval_waiting → resumePipelineAfterApprovalViaWorker (pipeline resumeScmAfterApproval)
+
+Review reject
+  → triggerSelfHealingLite → AUTO_HEALING tasks
+  → optional RUNTIME_SELF_HEALING_AUTO_CURSOR=1:
+       createSelfHealingExecutionRun(healingTaskId)
+       → cursor job (execRunId matches healing task)
 ```
 
-Worker `steps` (merged into loop as `worker_step`):
+## Self-healing execution run (Phase 4)
 
-- `worker_dispatch` → `cursor_job` → `reflection` → `pipeline_job` → `pipeline_result`
+`createSelfHealingExecutionRun()` creates a **new** `TaskExecutionRun` per healing task so `loadCursorExecutionInvokeContext()` matches `execRunId` + `taskId`.
 
-## ENV_TEST safety
+Events: `SELF_HEALING_EXEC_RUN_CREATED`, `SELF_HEALING_CURSOR_ENQUEUED`, `SELF_HEALING_CURSOR_ENQUEUE_FAILED`.
 
-- `ENV_TEST` / `ENV_TEST_STAGE2` remain on **sync** `runExecutionLoop` paths.
-- Workers return `ENV_TEST_REQUIRES_SYNC_LOOP` when mis-enqueued.
+## Approval resume (Phase 4)
+
+`resumePipelineAfterApprovalViaWorker()` — `runPipelineJobSynchronously({ resumeScmAfterApproval: true })`.  
+Used from `runExecutionLoop` for normal tasks (not ENV_TEST, not legacy inline).
+
+## Runtime timeline persistence (Phase 4)
+
+**Decision: B+ (holder job, no new Prisma model)**
+
+- `appendRuntimeEvent()` always records in-memory `runtimeTimelineStore`.
+- Without `executionJobId`, events also persist via `executionEventLog` using a per-execRun **`runtime-timeline` holder `ExecutionJob`** (`runtimeEventPersistence.ts`).
+- **Limitation:** in-memory store still lost on process restart; DB rows survive via holder job.
+- **Future:** dedicated `RuntimeEvent` Prisma model for multi-instance / analytics.
+
+`listRuntimeTimelineForExecRun()` priority: memory → progress log file → `executionEventLog` (filtered by `detailJson.execRunId`).
+
+## Legacy inline isolation
+
+`legacyInlineNormalTaskExecution.ts` — boundary marker + `EXECUTION_LOOP_FORCE_INLINE_CURSOR`.  
+Inline cursor/review/scm/merge remains in `runExecutionLoop.ts` between `LEGACY_INLINE_NORMAL_TASK_ONLY` comments until e2e validation.
 
 ## Pipeline result codes
 
-Defined in `pipelineResultCodes.ts`: `APPROVAL_WAITING`, `MERGED`, `MERGE_PENDING`, `REVIEW_REJECTED`, `REVIEWER_NOT_CONFIGURED`, `SECURITY_FAILED`, `SCM_HOLD`, `SCM_NOT_CONFIGURED`, `PR_CREATE_FAILED`, `MERGE_FAILED`, etc.
+`pipelineResultCodes.ts` — `PIPELINE_RESULT_CODE`, `pipelineMessageForCode()`.
 
-User-facing messages: `pipelineMessageForCode()`.
+## ENV_TEST safety
 
-## Self-healing (Phase 3)
+Stage1/Stage2 stay on sync loop. Workers return `ENV_TEST_REQUIRES_SYNC_LOOP` if mis-enqueued.
 
-On pipeline review reject:
-
-1. `triggerSelfHealingLite()` → `AUTO_HEALING` tasks (when project spec exists)
-2. `AUTO_HEALING_TRIGGERED` runtime event
-3. Optional: `RUNTIME_SELF_HEALING_AUTO_CURSOR=1` enqueues `cursor` jobs for created tasks (default **off**)
-
-## Runtime events
-
-`appendRuntimeEvent()` + in-memory `runtimeTimelineStore` (execRunId-scoped).
-
-Timeline: `listRuntimeTimelineForExecRun()` merges memory store, optional progress log file (`JY_TASK_PROGRESS_LOG_FILE`), and `executionEventLog` (task-scoped; may omit events without `executionJobId`).
-
-Snapshot: `buildRuntimeDashboardSnapshot()` includes `timelineCount`, `lastEventAt`.
-
-## Retry policy
-
-`executionRetryPolicy.ts` — used from `runExecutionLoop`.
-
-## Modules
+## Modules (Phase 4 additions)
 
 ```text
-apps/web/src/lib/runtime/
-  normalTaskWorkerDispatch.ts
-  cursorExecutionReflection.ts
-  pipelineExecutionJobSync.ts
-  pipelineResultCodes.ts
-  runtimeSelfHealingBridge.ts
-  runtimeTimelineStore.ts
-  runtimeObservability.ts
-  … (cursor/pipeline handlers, phases, events)
+runtimeSelfHealingExecution.ts
+runtimeEventPersistence.ts
+pipelineResumeAfterApproval.ts
+legacyInlineNormalTaskExecution.ts
 ```
 
 ## Remaining follow-up
 
-- Remove legacy inline normal-task blocks after production validation
-- `resumeScmAfterApproval` via pipeline worker only
-- Dedicated runtime event DB model (optional)
-- Full self-healing auto-run policy
+- Extract legacy inline block into `legacyInlineNormalTaskExecution.ts`
+- Dedicated `RuntimeEvent` DB model
+- Full self-healing auto-run after healing cursor completes
+- E2E validation before removing inline fallback

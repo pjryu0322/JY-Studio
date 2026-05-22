@@ -4,6 +4,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { PIPELINE_RESULT_CODE } from "@/lib/runtime/pipelineResultCodes";
 import type {
   PipelineExecutionJobPayload,
   PipelineExecutionJobResult,
@@ -41,15 +42,23 @@ export async function runPipelineJobSynchronously(
 
   const data = job.result as { data?: PipelineExecutionJobResult; ok?: boolean; code?: string; message?: string } | null;
   const pipelineResult = data?.data;
-  const code = pipelineResult?.code ?? data?.code ?? (job.status !== "DONE" ? "PIPELINE_FAILED" : undefined);
+  const code =
+    pipelineResult?.code ??
+    data?.code ??
+    (job.status !== "DONE" ? PIPELINE_RESULT_CODE.MERGE_FAILED : undefined);
   const message = pipelineResult?.message ?? data?.message ?? job.error ?? "pipeline finished";
 
   if (job.status !== "DONE") {
     return { ok: false, message, jobId: enq.jobId, pipelineResult, code };
   }
 
-  const holdOk = code === "SCM_HOLD" || code === "APPROVAL_WAITING";
-  const successCodes = new Set(["MERGED", "MERGE_PENDING", "APPROVAL_WAITING"]);
+  const holdOk =
+    code === PIPELINE_RESULT_CODE.SCM_HOLD || code === PIPELINE_RESULT_CODE.APPROVAL_WAITING;
+  const successCodes = new Set<string>([
+    PIPELINE_RESULT_CODE.MERGED,
+    PIPELINE_RESULT_CODE.MERGE_PENDING,
+    PIPELINE_RESULT_CODE.APPROVAL_WAITING,
+  ]);
   const ok = Boolean(
     data?.ok ?? pipelineResult?.ok ?? (successCodes.has(code ?? "") || holdOk)
   );

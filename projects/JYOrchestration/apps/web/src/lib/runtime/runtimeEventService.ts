@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import type { RuntimeEventSeverity, RuntimeEventType } from "@/lib/runtime/runtimeEventTypes";
+import { persistRuntimeEventToExecutionLog } from "@/lib/runtime/runtimeEventPersistence";
 import { recordRuntimeTimelineEntry } from "@/lib/runtime/runtimeTimelineStore";
 
 export type AppendRuntimeEventInput = {
@@ -69,6 +70,16 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
       status: status === "FAILED" ? "FAILED" : "SUCCESS",
       message: input.eventType,
       detailJson: detail as Prisma.InputJsonValue,
+    }).catch(() => {});
+  } else {
+    await persistRuntimeEventToExecutionLog({
+      projectId: input.projectId,
+      taskId: input.taskId,
+      execRunId: input.execRunId,
+      eventType: input.eventType,
+      severity,
+      detail,
+      workerName: input.workerName,
     }).catch(() => {});
   }
 }

@@ -31,13 +31,17 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Exe
   if (!payload) {
     return {
       ok: false,
-      code: "INVALID_PIPELINE_PAYLOAD",
+      code: PIPELINE_RESULT_CODE.INVALID_PIPELINE_PAYLOAD,
       message: "Pipeline job payload must include execRunId, taskId, projectId, actorUserId",
     };
   }
 
   if (payload.projectId !== job.projectId) {
-    return { ok: false, code: "PROJECT_MISMATCH", message: "Job projectId does not match payload" };
+    return {
+      ok: false,
+      code: PIPELINE_RESULT_CODE.PROJECT_MISMATCH,
+      message: "Job projectId does not match payload",
+    };
   }
 
   await appendRuntimeEvent({

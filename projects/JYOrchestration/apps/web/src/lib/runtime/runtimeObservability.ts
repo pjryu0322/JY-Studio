@@ -36,6 +36,30 @@ export type RuntimeTimelineRow = {
   readonly detail?: unknown;
 };
 
+function detailExecRunId(detail: unknown): string | null {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
+  const id = (detail as { execRunId?: unknown }).execRunId;
+  return typeof id === "string" ? id : null;
+}
+
+export function inferPhaseAndWorkerFromEventType(eventType: string): {
+  phase: string;
+  worker: string | null;
+} {
+  if (eventType.startsWith("SELF_HEALING") || eventType.startsWith("AUTO_HEALING")) {
+    return { phase: "SELF_HEALING", worker: "self-healing" };
+  }
+  if (eventType === "CURSOR_STARTED") return { phase: "CURSOR", worker: "cursor" };
+  if (eventType === "CURSOR_COMPLETED") return { phase: "REFLECTION", worker: "cursor" };
+  if (eventType === "CURSOR_FAILED") return { phase: "CURSOR", worker: "cursor" };
+  if (eventType.startsWith("REVIEW_")) return { phase: "REVIEW", worker: "pipeline:reviewer" };
+  if (eventType.startsWith("SECURITY_")) return { phase: "SECURITY", worker: "pipeline:security" };
+  if (eventType.startsWith("SCM_")) return { phase: "SCM", worker: "pipeline:scm" };
+  if (eventType.startsWith("MERGE_")) return { phase: "MERGE", worker: "pipeline:merge" };
+  if (eventType.startsWith("PIPELINE_")) return { phase: "PIPELINE", worker: "pipeline" };
+  return { phase: "RUNTIME", worker: null };
+}
+
 async function readProgressLogTimelineForExecRun(
   execRunId: string,
   taskId: string,
@@ -99,7 +123,7 @@ export async function listRuntimeTimelineForExecRun(
   const eventRows = await prisma.executionEventLog.findMany({
     where: { taskId: run.taskId, projectId: run.projectId },
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: limit * 3,
     select: {
       createdAt: true,
       message: true,
@@ -110,15 +134,24 @@ export async function listRuntimeTimelineForExecRun(
     },
   });
 
-  const dbRows: RuntimeTimelineRow[] = eventRows.map((r) => ({
-    createdAt: r.createdAt.toISOString(),
-    source: "execution_event" as const,
-    eventType: r.message ?? r.stage ?? "execution_event",
-    status: r.status ?? undefined,
-    workerName: null,
-    message: r.message,
-    detail: r.detailJson,
-  }));
+  const dbRows: RuntimeTimelineRow[] = eventRows
+    .filter((r) => {
+      const detailId = detailExecRunId(r.detailJson);
+      return detailId === null || detailId === execRunId;
+    })
+    .map((r) => {
+      const detail = r.detailJson as { eventType?: string; workerName?: string | null } | null;
+      return {
+        createdAt: r.createdAt.toISOString(),
+        source: "execution_event" as const,
+        eventType: detail?.eventType ?? r.message ?? r.stage ?? "execution_event",
+        status: r.status ?? undefined,
+        workerName: detail?.workerName ?? null,
+        message: r.message,
+        detail: r.detailJson,
+      };
+    })
+    .slice(0, limit);
 
   const progressRows = isTaskProgressLogEnabled()
     ? await readProgressLogTimelineForExecRun(execRunId, run.taskId, limit)
@@ -127,6 +160,29 @@ export async function listRuntimeTimelineForExecRun(
   const merged = [...memoryRows, ...progressRows, ...dbRows];
   merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return merged.slice(-limit);
+}
+
+function inferSnapshotPhaseFromRun(
+  run: {
+    status: string;
+    prStatus: string | null;
+    evaluationDecision: string | null;
+  },
+  teamStatus: string | null,
+  lastEventType: string | null
+): { phase: string; worker: string | null } {
+  if (lastEventType) {
+    const fromEvent = inferPhaseAndWorkerFromEventType(lastEventType);
+    if (fromEvent.phase !== "RUNTIME") {
+      return fromEvent;
+    }
+  }
+  if (run.status === "running") return { phase: "CURSOR", worker: "cursor" };
+  if (run.status === "reviewing") return { phase: "REVIEW", worker: "pipeline:reviewer" };
+  if (teamStatus?.includes("merge")) return { phase: "SCM", worker: "pipeline:scm" };
+  if (run.prStatus === "merged") return { phase: "MERGED", worker: null };
+  if (run.status === "failed") return { phase: "FAILED", worker: null };
+  return { phase: run.status, worker: null };
 }
 
 export async function buildRuntimeDashboardSnapshot(execRunId: string): Promise<RuntimeDashboardSnapshot | null> {
@@ -151,31 +207,13 @@ export async function buildRuntimeDashboardSnapshot(execRunId: string): Promise<
   const teamStatus = run.teamExecutionStatus ?? (await readTeamExecutionStatus(run.id));
   const timeline = await listRuntimeTimelineForExecRun(execRunId, 40);
   const lastTimeline = timeline.length > 0 ? timeline[timeline.length - 1] : null;
+  const lastEventType = lastTimeline?.eventType ?? null;
 
-  const lastLog = await prisma.executionEventLog.findFirst({
-    where: { taskId: run.taskId },
-    orderBy: { createdAt: "desc" },
-    select: { message: true, stage: true, status: true },
-  });
-
-  const lastRuntimeEvent: string | null =
-    lastTimeline?.eventType ?? lastLog?.message ?? lastLog?.stage ?? null;
-
-  const currentPhase = (() => {
-    if (run.status === "running") return "CURSOR";
-    if (run.status === "reviewing") return "REVIEW";
-    if (teamStatus?.includes("merge")) return "SCM";
-    if (run.prStatus === "merged") return "MERGED";
-    if (run.status === "failed") return "FAILED";
-    return run.status;
-  })();
-
-  const currentWorker = (() => {
-    if (run.status === "running") return "cursor";
-    if (run.status === "reviewing") return "pipeline:reviewer";
-    if (teamStatus === "merge_running") return "pipeline:scm";
-    return null;
-  })();
+  const { phase: currentPhase, worker: currentWorker } = inferSnapshotPhaseFromRun(
+    run,
+    teamStatus,
+    lastEventType
+  );
 
   return {
     execRunId: run.id,
@@ -186,7 +224,7 @@ export async function buildRuntimeDashboardSnapshot(execRunId: string): Promise<
     currentExecutionRunStatus: run.status,
     teamExecutionStatus: teamStatus,
     retryCount: run.retryCount,
-    lastRuntimeEvent,
+    lastRuntimeEvent: lastEventType,
     reviewerResult: run.evaluationDecision,
     securityResult: teamStatus?.includes("security") ? teamStatus : null,
     scmResult: run.prStatus,

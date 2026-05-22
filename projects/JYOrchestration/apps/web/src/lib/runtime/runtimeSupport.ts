@@ -53,10 +53,16 @@ export {
 } from "@/lib/runtime/runtimeTimelineStore";
 export {
   isRuntimeSelfHealingAutoCursorEnabled,
+  maybeEnqueueSelfHealingFromReviewFailure,
 } from "@/lib/runtime/runtimeSelfHealingBridge";
+export { createSelfHealingExecutionRun } from "@/lib/runtime/runtimeSelfHealingExecution";
+export { resumePipelineAfterApprovalViaWorker } from "@/lib/runtime/pipelineResumeAfterApproval";
+export {
+  inferPhaseAndWorkerFromEventType,
+} from "@/lib/runtime/runtimeObservability";
+export { isLegacyInlineNormalTaskPathActive } from "@/lib/executionLoop/legacyInlineNormalTaskExecution";
 export { confirmCursorGitReflection } from "@/lib/runtime/cursorExecutionReflection";
 export { runPipelineJobSynchronously } from "@/lib/runtime/pipelineExecutionJobSync";
-export { maybeEnqueueSelfHealingFromReviewFailure } from "@/lib/runtime/runtimeSelfHealingBridge";
 
 export {
   parseCursorExecutionJobPayload,

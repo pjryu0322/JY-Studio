@@ -52,6 +52,7 @@ import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullReq
 import { shouldBlockRepeatedFailure } from "@/lib/runtime/executionRetryPolicy";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 import { runNormalTaskViaRuntimeWorkers, shouldUseRuntimeWorkerPathForTask } from "@/lib/runtime/normalTaskWorkerDispatch";
+import { resumePipelineAfterApprovalViaWorker } from "@/lib/runtime/pipelineResumeAfterApproval";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
 import { persistScmBlockReasonOnRun } from "@/lib/ai-team-runtime/scmBlockReason";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
@@ -691,6 +692,40 @@ export async function runExecutionLoop(params: {
       let evalPack!: Awaited<ReturnType<typeof buildEvalPackFromExecutionRun>>;
       let reviewerVerdict = "done";
 
+      // Approval resume: pipeline worker-only (normal Task; not ENV_TEST / not legacy inline).
+      if (
+        resumeScmAfterApproval &&
+        !isEnvTestTask &&
+        shouldUseRuntimeWorkerPathForTask(taskRow.taskKind)
+      ) {
+        steps.push({
+          phase: "evaluate",
+          taskId,
+          verdict: "resume_scm_after_runtime_approval",
+          summary: "AI팀 Runtime 승인 후 pipeline worker SCM/Merge 재개",
+        });
+        const resumeResult = await resumePipelineAfterApprovalViaWorker({
+          projectId,
+          taskId,
+          execRunId: execRun.id,
+          actorUserId,
+        });
+        steps.push({
+          phase: "worker_step",
+          taskId,
+          stepPhase: "pipeline_resume",
+          ok: resumeResult.ok,
+          code: resumeResult.code,
+          summary: resumeResult.message,
+          jobId: resumeResult.pipelineJobId,
+        });
+        await refreshWorkflowStates(projectId);
+        if (singleTaskId) {
+          return { ok: resumeResult.ok, steps, message: resumeResult.message };
+        }
+        continue;
+      }
+
       if (resumeScmAfterApproval) {
         cr = buildCursorResultFromExecutionRun(execRun);
         evalPack = buildEvalPackFromExecutionRun(execRun);
@@ -705,9 +740,9 @@ export async function runExecutionLoop(params: {
 
       if (!resumeScmAfterApproval) {
       // Path split:
-      // - ENV_TEST family: legacy sync path below (Stage1/Stage2)
+      // - ENV_TEST family: sync path below (Stage1/Stage2) — do not move to worker modules
       // - NORMAL_TASK: runtime worker path (default)
-      // - NORMAL_TASK legacy inline: EXECUTION_LOOP_FORCE_INLINE_CURSOR=1 only
+      // - LEGACY_INLINE_NORMAL_TASK_ONLY: EXECUTION_LOOP_FORCE_INLINE_CURSOR=1 (see legacyInlineNormalTaskExecution.ts)
       if (shouldUseRuntimeWorkerPathForTask(taskRow.taskKind)) {
         const workerResult = await runNormalTaskViaRuntimeWorkers({
           projectId,
@@ -1832,6 +1867,7 @@ export async function runExecutionLoop(params: {
 
       } // !resumeScmAfterApproval
 
+      // ----- LEGACY_INLINE_NORMAL_TASK_ONLY: SCM / merge (skipped when pipeline worker resume handled above) -----
       // 3) SCM Manager 단계: PR 생성 + merge (Cursor는 절대 PR/merge 하지 않음)
       const scmCount = await countScmManagerAiMembers(projectId);
       if (scmCount === 0) {
