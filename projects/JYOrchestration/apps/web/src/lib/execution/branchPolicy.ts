@@ -1,4 +1,9 @@
 import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
+import {
+  isExecutionAllowManualStayOnBase,
+  shortIdFromUuid,
+  toSafeBranchSlug,
+} from "@/lib/execution/branchSlug";
 
 function slugPart(s: string, max: number): string {
   const x = String(s ?? "")
@@ -27,31 +32,34 @@ export function isEnvTestHelloWorldBranchName(branchName: string): boolean {
   );
 }
 
+function projectSlugSegment(projectId: string, projectName?: string | null): string {
+  const shortProjectId = shortIdFromUuid(projectId, 8);
+  return toSafeBranchSlug(projectName ?? "", `p-${shortProjectId}`, 28);
+}
+
 /**
  * execution setup 전략에 따른 작업 브랜치 이름.
- * - taskKind === ENV_TEST | ENV_TEST_STAGE2 → 아래 첫 분기만 적용(Hello World 전용 이름). 그 외는 일반 Task 규칙.
- * - manual: baseBranch 유지
- * - feature-per-workflow: orch/{prefix}/w-{projectSlug}
- * - feature-per-task: orch/{prefix}/t-{shortId}-{titleSlug}
+ * - ENV_TEST / ENV_TEST_STAGE2 → Hello World 전용 (unchanged)
+ * - feature-per-workflow → {prefix}/{projectSlug}/w-{shortProjectId}
+ * - feature-per-task (and per_task alias) → {prefix}/{projectSlug}/t-{shortId}-{titleSlug}
+ * - manual → working branch under prefix/manual (not baseBranch unless EXECUTION_ALLOW_MANUAL_STAY_ON_BASE=1)
  */
 export function computeExecutionBranchPlan(params: {
   branchStrategy: string;
   branchPrefix: string | null;
   projectId: string;
+  projectName?: string | null;
   taskId: string;
   taskTitle: string;
   baseBranch: string;
-  /** 환경 연결 테스트 Task 전용 브랜치 (일반 feature 브랜치와 구분) */
   taskKind?: string | null;
 }): BranchPlan {
-  // ENV_TEST / Stage2: 동일 Hello World 브랜치 계약.
   const tk = String(params.taskKind ?? "").trim();
   if (tk === ENV_TEST_TASK_KIND || tk === ENV_TEST_STAGE2_TASK_KIND) {
     const shortId = params.taskId.replace(/-/g, "").slice(0, 8) || "test";
     return { branchName: `${ENV_TEST_HELLO_WORLD_BRANCH_PREFIX}${shortId}`, manualStayOnBase: false };
   }
 
-  // Normal-task-only: feature/manual 전략.
   const base = String(params.baseBranch ?? "").trim() || "main";
   const prefix = String(params.branchPrefix ?? "orch")
     .trim()
@@ -59,16 +67,33 @@ export function computeExecutionBranchPlan(params: {
     .replace(/^\/+|\/+$/g, "")
     .slice(0, 40) || "orch";
 
-  if (params.branchStrategy === "manual") {
-    return { branchName: base, manualStayOnBase: true };
+  const projectSlug = projectSlugSegment(params.projectId, params.projectName);
+  const shortProjectId = shortIdFromUuid(params.projectId, 8);
+  const shortTaskId = params.taskId.replace(/-/g, "").slice(0, 10);
+  const titleSlug = slugPart(params.taskTitle, 24);
+
+  const strategy = String(params.branchStrategy ?? "").trim();
+
+  if (strategy === "manual") {
+    if (isExecutionAllowManualStayOnBase()) {
+      return { branchName: base, manualStayOnBase: true };
+    }
+    return {
+      branchName: `${prefix}/manual/t-${shortTaskId}-${titleSlug}`,
+      manualStayOnBase: false,
+    };
   }
 
-  if (params.branchStrategy === "feature-per-workflow") {
-    const wid = slugPart(params.projectId.replace(/-/g, ""), 24);
-    return { branchName: `${prefix}/w-${wid}`, manualStayOnBase: false };
+  if (strategy === "feature-per-workflow") {
+    return {
+      branchName: `${prefix}/${projectSlug}/w-${shortProjectId}`,
+      manualStayOnBase: false,
+    };
   }
 
-  const shortId = params.taskId.replace(/-/g, "").slice(0, 10);
-  const title = slugPart(params.taskTitle, 24);
-  return { branchName: `${prefix}/t-${shortId}-${title}`, manualStayOnBase: false };
+  // feature-per-task, per_task, and default
+  return {
+    branchName: `${prefix}/${projectSlug}/t-${shortTaskId}-${titleSlug}`,
+    manualStayOnBase: false,
+  };
 }

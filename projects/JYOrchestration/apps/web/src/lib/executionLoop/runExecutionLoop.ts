@@ -537,6 +537,7 @@ export async function runExecutionLoop(params: {
         branchStrategy: setup.branchStrategy,
         branchPrefix: setup.branchPrefix,
         projectId,
+        projectName,
         taskId: taskRow.id,
         taskTitle: taskRow.name,
         baseBranch: setup.baseBranch,

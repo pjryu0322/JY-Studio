@@ -82,8 +82,42 @@ pipelineChainIdempotency.ts
 runtimeTimelineDedupe.ts
 ```
 
+## Phase 8 — RuntimeEvent alignment + Branch/Project naming
+
+### RuntimeEvent schema
+
+- `packages/db/schema.prisma` — `model RuntimeEvent` + `Project.runtimeEvents`
+- Migration: `packages/db/migrations/20260519180000_runtime_events`
+- `appendRuntimeEvent()` logs persist failures via `console.warn` (does not fail execution)
+- **Primary:** `runtime_events` table | **Compat mirror:** `executionEventLog` when `RUNTIME_EVENT_COMPAT_EXECUTION_LOG=1` | **Deprecated:** `runtime-timeline` holder job
+
+### Branch / project naming
+
+- `branchSlug.ts` — `toSafeBranchSlug()`, `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE`
+- `computeExecutionBranchPlan({ projectName, ... })`:
+  - ENV_TEST: unchanged `envcheck/t-hello-world-{8hex}`
+  - feature-per-workflow: `{prefix}/{projectSlug}/w-{shortProjectId}`
+  - feature-per-task / per_task: `{prefix}/{projectSlug}/t-{shortTaskId}-{titleSlug}`
+  - manual (default): `{prefix}/manual/t-{shortTaskId}-{titleSlug}` — never `main` unless `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE=1`
+- Call sites: `runExecutionLoop`, `cursorExecutionJobInvoke`, `runtimeSelfHealingExecution`
+- Tests: `branchPolicy.unit.test.ts`, `branchSlug.unit.test.ts`
+
+### ENV_TEST vs legacy boundary
+
+| Path | Module |
+|------|--------|
+| Normal + default | `normalTaskWorkerDispatch` |
+| Normal + `FORCE_INLINE` | `legacyInlineNormalTaskExecution` |
+| ENV_TEST sync | `runExecutionLoop` (`envTestSyncExecution.ts` context type; extraction TODO) |
+
+## Environment variables (branch)
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE` | off | `manual` strategy uses `baseBranch` directly (legacy) |
+
 ## Remaining follow-up
 
-- Extract ENV_TEST-only monolithic block from `runExecutionLoop.ts` into dedicated modules
+- Move ENV_TEST monolithic block from `runExecutionLoop.ts` into `envTestSyncExecution.ts`
 - Remove holder-job compat path after `runtime_events` backfill
 - Production soak: 3+ normal-task runs without `FORCE_INLINE`

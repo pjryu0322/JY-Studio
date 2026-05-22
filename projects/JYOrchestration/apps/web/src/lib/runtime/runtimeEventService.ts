@@ -77,7 +77,15 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
     retryReason: input.retryReason,
     runtimeState: input.runtimeState,
     detailJson: detail,
-  }).catch(() => {});
+  }).catch((e) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[runtime-event] failed to persist RuntimeEvent", {
+      eventType: input.eventType,
+      execRunId: input.execRunId,
+      taskId: input.taskId,
+      error: msg.slice(0, 500),
+    });
+  });
 
   if (input.executionJobId) {
     const status = severity === "error" ? "FAILED" : "SUCCESS";
@@ -99,6 +107,13 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
       severity,
       detail,
       workerName: input.workerName,
-    }).catch(() => {});
+    }).catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[runtime-event] compat executionEventLog mirror failed", {
+        eventType: input.eventType,
+        execRunId: input.execRunId,
+        error: msg.slice(0, 500),
+      });
+    });
   }
 }

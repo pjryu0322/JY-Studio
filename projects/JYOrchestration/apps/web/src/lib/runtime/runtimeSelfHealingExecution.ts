@@ -56,6 +56,7 @@ export async function createSelfHealingExecutionRun(
     branchStrategy: setup?.branchStrategy ?? "per_task",
     branchPrefix: setup?.branchPrefix ?? null,
     projectId: input.projectId,
+    projectName: projectRow?.name ?? null,
     taskId: taskRow.id,
     taskTitle: taskRow.name,
     baseBranch: setup?.baseBranch ?? "main",

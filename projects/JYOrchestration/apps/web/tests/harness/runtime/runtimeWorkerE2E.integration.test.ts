@@ -258,6 +258,20 @@ describe("runtimeWorkerE2E scenarios", () => {
     expect(check.issues.some((i) => i.code === "EXEC_RUN_MISSING")).toBe(true);
   });
 
+  it("state consistency passes for aligned worker fixtures", async () => {
+    findUniqueTaskMock.mockResolvedValue({
+      id: RUNTIME_E2E_TASK_ID,
+      status: "IN_PROGRESS",
+      executionWorkflowStatus: "running",
+    });
+    const check = await validateRuntimeStateConsistency({
+      projectId: RUNTIME_E2E_PROJECT_ID,
+      taskId: RUNTIME_E2E_TASK_ID,
+      execRunId: RUNTIME_E2E_EXEC_RUN_ID,
+    });
+    expect(check.ok).toBe(true);
+  });
+
   it("chain disabled when RUNTIME_CURSOR_CHAIN_PIPELINE=0", () => {
     process.env.RUNTIME_CURSOR_CHAIN_PIPELINE = "0";
     expect(isRuntimeCursorChainPipelineEnabled()).toBe(false);

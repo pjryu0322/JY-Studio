@@ -103,6 +103,7 @@ export async function loadCursorExecutionInvokeContext(
     branchStrategy: setupRow.branchStrategy,
     branchPrefix: setupRow.branchPrefix,
     projectId: payload.projectId,
+    projectName: project?.name ?? null,
     taskId: taskRow.id,
     taskTitle: taskRow.name,
     baseBranch: setupRow.baseBranch,
