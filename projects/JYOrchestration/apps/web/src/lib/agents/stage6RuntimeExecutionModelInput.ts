@@ -12,6 +12,7 @@ import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundl
 import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import type { ExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 import type { ExternalExecutionDryRunPackageInput } from "@/lib/agents/externalExecutionDryRunPackageTypes";
+import type { ActualExternalExecutionAdapterCandidateInput } from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
 import type { ExternalExecutionManualDryRunGateInput } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 import type { RuntimeExecutionMvpClosureInput } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
@@ -484,5 +485,44 @@ export function buildStage12AReadyExternalExecutionManualDryRunGateInput(): Exte
   return {
     dryRunPackage: buildStage11AReadyExternalExecutionDryRunPackageInput(),
     ...buildStage12AConfirmedExternalExecutionManualDryRunGateInput(),
+  };
+}
+
+export function buildStage13AConfirmedActualExternalExecutionAdapterCandidateInput(): Required<
+  Pick<
+    ActualExternalExecutionAdapterCandidateInput,
+    | "cursorAdapterCandidateReviewed"
+    | "githubAdapterCandidateReviewed"
+    | "connectorAdapterCandidateReviewed"
+    | "runnerAdapterCandidateReviewed"
+    | "adapterPermissionContractReviewed"
+    | "adapterResultContractReviewed"
+    | "adapterAuditContractReviewed"
+    | "adapterRollbackContractReviewed"
+    | "noSideEffectCandidateBoundaryReviewed"
+    | "agentRegistryBoundaryReviewed"
+    | "stage14EntryReviewed"
+  >
+> {
+  return {
+    cursorAdapterCandidateReviewed: true,
+    githubAdapterCandidateReviewed: true,
+    connectorAdapterCandidateReviewed: true,
+    runnerAdapterCandidateReviewed: true,
+    adapterPermissionContractReviewed: true,
+    adapterResultContractReviewed: true,
+    adapterAuditContractReviewed: true,
+    adapterRollbackContractReviewed: true,
+    noSideEffectCandidateBoundaryReviewed: true,
+    agentRegistryBoundaryReviewed: true,
+    stage14EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 13-A (Stage 12-A ready + 13-A adapter candidate confirmations). */
+export function buildStage13AReadyActualExternalExecutionAdapterCandidateInput(): ActualExternalExecutionAdapterCandidateInput {
+  return {
+    manualDryRunGate: buildStage12AReadyExternalExecutionManualDryRunGateInput(),
+    ...buildStage13AConfirmedActualExternalExecutionAdapterCandidateInput(),
   };
 }

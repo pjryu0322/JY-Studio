@@ -2844,32 +2844,51 @@ Ready decision:
 
 구현: `apps/web/src/lib/agents/evaluateExternalExecutionDryRunPackage.ts`, `externalExecutionDryRunPackageTypes.ts`, `externalExecutionDryRunPackageConstants.ts`, `externalExecutionDryRunPackageItems.ts`, `externalExecutionDryRunPackageItemSource.ts`, `externalExecutionDryRunPackageManualGateTrace.ts`, `externalExecutionDryRunPackageValidation.ts`, `externalExecutionDryRunPackageSource.ts`, `externalExecutionDryRunPackageSourceMapping.ts`, `externalExecutionDryRunPackageSupport.ts`, `externalExecutionDryRunPackageFindings.ts`
 
-### Stage 12-A External Execution Adapter Manual Dry-run Gate
+### Stage 12-A External Execution Adapter Manual Dry-run Gate — Hardening
 
-Stage 12-A는 Stage 11-A dry-run package를 source로 하는 read-only manual dry-run gate 단계다.
+Stage 12-A는 Stage 13-A actual external adapter candidate boundary 진입을 위한 manual dry-run gate다.
 
-통합 범위:
+Hardening 기준:
 
-- Manual dry-run gate
-- Operator-approved invocation request
-- Mock external adapter result package
-- Dry-run audit event package
-- Rollback plan review before actual execution
-- No-side-effect manual gate boundary
-- Agent Registry Change boundary
-- Stage 13 actual external adapter candidate entry
+- actual adapter candidate design allowed
+- actual adapter implementation disallowed in this step
+- Cursor/GitHub/Connector/Runner adapter candidate allowed
+- credential usage disallowed
+- network side-effect disallowed
+- Agent Registry mutation disallowed
 
 Ready decision:
 
 `stage12_external_execution_manual_dry_run_gate_ready`
 
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionManualDryRunGate.ts`, `externalExecutionManualDryRunGateTypes.ts`, `externalExecutionManualDryRunGateConstants.ts`, `externalExecutionManualDryRunGateItems.ts`, `externalExecutionManualDryRunGateItemSource.ts`, `externalExecutionManualDryRunGateAdapterCandidateTrace.ts`, `externalExecutionManualDryRunGateSourceTrace.ts`, `externalExecutionManualDryRunGateSource.ts`, `externalExecutionManualDryRunGateSourceMapping.ts`, `externalExecutionManualDryRunGateSupport.ts`, `externalExecutionManualDryRunGateFindings.ts`
+
+### Stage 13-A Actual External Execution Adapter Candidate Boundary
+
+Stage 13-A는 Stage 12-A manual dry-run gate를 source로 하는 read-only actual adapter candidate boundary 단계다.
+
+통합 범위:
+
+- Cursor execution adapter candidate
+- GitHub write adapter candidate
+- Connector Gateway call adapter candidate
+- Runner process adapter candidate
+- Adapter permission/result/audit/rollback contract
+- No-side-effect candidate boundary
+- Agent Registry Change boundary
+- Stage 14 operator-approved actual execution entry
+
+Ready decision:
+
+`stage13_actual_external_execution_adapter_candidate_ready`
+
 의미:
 
-- operator 승인 기반 manual dry-run gate가 설계되었다.
-- 실제 외부 실행은 아직 수행하지 않는다.
-- Stage 13 actual external adapter candidate로 넘어가기 위한 경계다.
+- 실제 외부 실행 adapter를 구현할 수 있는 후보 경계가 설계되었다.
+- 실제 Cursor/GitHub/Connector/Runner 호출은 아직 수행하지 않는다.
+- Stage 14 operator-approved actual external execution으로 넘어가기 위한 설계 준비 상태다.
 
-구현: `apps/web/src/lib/agents/evaluateExternalExecutionManualDryRunGate.ts`, `externalExecutionManualDryRunGateTypes.ts`, `externalExecutionManualDryRunGateConstants.ts`, `externalExecutionManualDryRunGateItems.ts`, `externalExecutionManualDryRunGateItemSource.ts`, `externalExecutionManualDryRunGateSourceTrace.ts`, `externalExecutionManualDryRunGateSource.ts`, `externalExecutionManualDryRunGateSourceMapping.ts`, `externalExecutionManualDryRunGateSupport.ts`, `externalExecutionManualDryRunGateFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateActualExternalExecutionAdapterCandidate.ts`, `actualExternalExecutionAdapterCandidateTypes.ts`, `actualExternalExecutionAdapterCandidateConstants.ts`, `actualExternalExecutionAdapterCandidateItems.ts`, `actualExternalExecutionAdapterCandidateSource.ts`, `actualExternalExecutionAdapterCandidateSourceMapping.ts`, `actualExternalExecutionAdapterCandidateSupport.ts`, `actualExternalExecutionAdapterCandidateFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

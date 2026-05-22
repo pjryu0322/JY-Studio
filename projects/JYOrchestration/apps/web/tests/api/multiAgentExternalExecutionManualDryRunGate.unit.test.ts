@@ -13,6 +13,7 @@ import {
   buildStage12AConfirmedExternalExecutionManualDryRunGateInput,
   buildStage12AReadyExternalExecutionManualDryRunGateInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
+import type { ExternalExecutionDryRunPackageReport } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 import type { ExternalExecutionManualDryRunGateDecisionInput } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 import type { ExternalExecutionManualDryRunGateItem } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 
@@ -435,5 +436,97 @@ describe("multi-agent external execution manual dry-run gate stage 12-A", () => 
   it("buildExternalExecutionManualDryRunGateItems returns empty when source is not ready", () => {
     const source = evaluateExternalExecutionDryRunPackage();
     expect(buildExternalExecutionManualDryRunGateItems(source)).toHaveLength(0);
+  });
+
+  it("ready report actualAdapterCandidateDesignAllowed is true", () => {
+    expect(evaluateReadyGate().actualAdapterCandidateDesignAllowed).toBe(true);
+  });
+
+  it("ready report actualAdapterImplementationAllowedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualAdapterImplementationAllowedInThisStep).toBe(false);
+  });
+
+  it("ready report cursorAdapterCandidateAllowed is true", () => {
+    expect(evaluateReadyGate().cursorAdapterCandidateAllowed).toBe(true);
+  });
+
+  it("ready report githubAdapterCandidateAllowed is true", () => {
+    expect(evaluateReadyGate().githubAdapterCandidateAllowed).toBe(true);
+  });
+
+  it("ready report connectorAdapterCandidateAllowed is true", () => {
+    expect(evaluateReadyGate().connectorAdapterCandidateAllowed).toBe(true);
+  });
+
+  it("ready report runnerAdapterCandidateAllowed is true", () => {
+    expect(evaluateReadyGate().runnerAdapterCandidateAllowed).toBe(true);
+  });
+
+  it("ready report stage13CandidateBoundaryRequiredBeforeActualImplementation is true", () => {
+    expect(evaluateReadyGate().stage13CandidateBoundaryRequiredBeforeActualImplementation).toBe(true);
+  });
+
+  it("ready report actualCursorAdapterImplementedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualCursorAdapterImplementedInThisStep).toBe(false);
+  });
+
+  it("ready report actualGithubAdapterImplementedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualGithubAdapterImplementedInThisStep).toBe(false);
+  });
+
+  it("ready report actualConnectorAdapterImplementedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualConnectorAdapterImplementedInThisStep).toBe(false);
+  });
+
+  it("ready report actualRunnerAdapterImplementedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualRunnerAdapterImplementedInThisStep).toBe(false);
+  });
+
+  it("ready report actualAdapterCredentialUsageAllowedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualAdapterCredentialUsageAllowedInThisStep).toBe(false);
+  });
+
+  it("ready report actualNetworkSideEffectAllowedInThisStep is false", () => {
+    expect(evaluateReadyGate().actualNetworkSideEffectAllowedInThisStep).toBe(false);
+  });
+
+  it("buildExternalExecutionManualDryRunGateItems returns [] when dry run package has sourceAgentRegistryChangeManagementOutOfScope false", () => {
+    const dryRun = evaluateExternalExecutionDryRunPackage({
+      ...buildStage11AReadyExternalExecutionDryRunPackageInput(),
+    });
+    const source = {
+      ...dryRun,
+      agentRegistryChangeManagementOutOfScope: false as true,
+      sourceAgentRegistryChangeManagementOutOfScope: false,
+    } as ExternalExecutionDryRunPackageReport;
+    expect(buildExternalExecutionManualDryRunGateItems(source)).toHaveLength(0);
+  });
+
+  it("stage13EntryScope includes cursor_adapter_candidate_boundary", () => {
+    expect(evaluateReadyGate().stage13EntryScope).toContain("cursor_adapter_candidate_boundary");
+  });
+
+  it("stage13EntryScope includes adapter_permission_contract_candidate", () => {
+    expect(evaluateReadyGate().stage13EntryScope).toContain("adapter_permission_contract_candidate");
+  });
+
+  it("stage13EntryOutOfScope includes actual_cursor_adapter_implementation", () => {
+    expect(evaluateReadyGate().stage13EntryOutOfScope).toContain("actual_cursor_adapter_implementation");
+  });
+
+  it("stage13EntryOutOfScope includes actual_network_side_effect", () => {
+    expect(evaluateReadyGate().stage13EntryOutOfScope).toContain("actual_network_side_effect");
+  });
+
+  it("separatedWorkItems includes actual_adapter_credential_usage", () => {
+    expect(evaluateReadyGate().separatedWorkItems).toContain("actual_adapter_credential_usage");
+  });
+
+  it("ready findings include actual_adapter_candidate_design_allowed", () => {
+    expect(evaluateReadyGate().findings.some((f) => f.code === "actual_adapter_candidate_design_allowed")).toBe(true);
+  });
+
+  it("ready findings include actual_network_side_effect_disallowed", () => {
+    expect(evaluateReadyGate().findings.some((f) => f.code === "actual_network_side_effect_disallowed")).toBe(true);
   });
 });

@@ -38,6 +38,14 @@ export const STAGE13_ENTRY_SCOPE = [
   "operator_confirmed_execution_window",
   "rollback_plan_required_before_actual_execution",
   "audit_event_required_before_actual_execution",
+  "cursor_adapter_candidate_boundary",
+  "github_write_adapter_candidate_boundary",
+  "connector_gateway_adapter_candidate_boundary",
+  "runner_process_adapter_candidate_boundary",
+  "adapter_permission_contract_candidate",
+  "adapter_result_contract_candidate",
+  "adapter_audit_contract_candidate",
+  "adapter_rollback_contract_candidate",
 ] as const;
 
 export const STAGE13_ENTRY_OUT_OF_SCOPE = [
@@ -46,6 +54,8 @@ export const STAGE13_ENTRY_OUT_OF_SCOPE = [
   "unapproved_connector_gateway_call",
   "unapproved_db_schema_migration",
   "unapproved_production_runner",
+  "actual_cursor_adapter_implementation",
+  "actual_network_side_effect",
   "full_runtime_ui",
   "agent_registry_crud",
   "agent_add_remove_deactivate_apply",
@@ -70,8 +80,14 @@ export const STAGE12_A_RECOMMENDED_NEXT_PHASES = [
 
 export const STAGE12_A_SEPARATED_WORK_ITEMS = [
   "actual_cursor_execution",
+  "actual_cursor_adapter_implementation",
   "actual_github_write",
+  "actual_github_adapter_implementation",
   "actual_connector_gateway_call",
+  "actual_connector_adapter_implementation",
+  "actual_runner_adapter_implementation",
+  "actual_adapter_credential_usage",
+  "actual_network_side_effect",
   "actual_db_schema_migration",
   "actual_persistent_database_write",
   "actual_production_runner",

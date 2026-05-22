@@ -84,6 +84,45 @@ export function appendExternalExecutionManualDryRunGateFindings(input: {
   findings.push(finding("info", "actual_db_persistence_disallowed", "Actual DB persistence disallowed"));
   findings.push(finding("info", "actual_production_runner_disallowed", "Actual production runner disallowed"));
   findings.push(finding("info", "actual_agent_registry_mutation_disallowed", "Actual agent registry mutation disallowed"));
+  findings.push(finding("info", "actual_adapter_candidate_design_allowed", "Actual adapter candidate design allowed"));
+  findings.push(
+    finding(
+      "info",
+      "actual_adapter_implementation_disallowed_in_this_step",
+      "Actual adapter implementation disallowed in this step",
+    ),
+  );
+  findings.push(finding("info", "cursor_adapter_candidate_allowed", "Cursor adapter candidate allowed"));
+  findings.push(finding("info", "github_adapter_candidate_allowed", "GitHub adapter candidate allowed"));
+  findings.push(finding("info", "connector_adapter_candidate_allowed", "Connector adapter candidate allowed"));
+  findings.push(finding("info", "runner_adapter_candidate_allowed", "Runner adapter candidate allowed"));
+  findings.push(
+    finding(
+      "info",
+      "stage13_candidate_boundary_required_before_actual_implementation",
+      "Stage 13 candidate boundary required before actual implementation",
+    ),
+  );
+  findings.push(
+    finding("info", "actual_cursor_adapter_implementation_disallowed", "Actual Cursor adapter implementation disallowed"),
+  );
+  findings.push(
+    finding("info", "actual_github_adapter_implementation_disallowed", "Actual GitHub adapter implementation disallowed"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "actual_connector_adapter_implementation_disallowed",
+      "Actual Connector adapter implementation disallowed",
+    ),
+  );
+  findings.push(
+    finding("info", "actual_runner_adapter_implementation_disallowed", "Actual runner adapter implementation disallowed"),
+  );
+  findings.push(
+    finding("info", "actual_adapter_credential_usage_disallowed", "Actual adapter credential usage disallowed"),
+  );
+  findings.push(finding("info", "actual_network_side_effect_disallowed", "Actual network side-effect disallowed"));
 
   if (decision === "stage12_external_execution_manual_dry_run_gate_ready") {
     findings.push(

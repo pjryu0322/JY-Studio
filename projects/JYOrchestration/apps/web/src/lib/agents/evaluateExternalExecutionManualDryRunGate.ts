@@ -30,6 +30,7 @@ import {
   buildExternalExecutionManualDryRunGateStage13ReportFields,
   mapExternalExecutionManualDryRunGateDecisionInputFromSource,
 } from "@/lib/agents/externalExecutionManualDryRunGateSourceMapping";
+import { buildExternalExecutionManualDryRunGateAdapterCandidateFields } from "@/lib/agents/externalExecutionManualDryRunGateAdapterCandidateTrace";
 import { mapExternalExecutionManualDryRunGateSourceTrace } from "@/lib/agents/externalExecutionManualDryRunGateSourceTrace";
 import {
   computeStage13EntryReady,
@@ -104,6 +105,7 @@ export function evaluateExternalExecutionManualDryRunGate(
     gateSummary: buildExternalExecutionManualDryRunGateSummary(decision),
     gateFingerprint,
     ...buildExternalExecutionManualDryRunGateStage13ReportFields({ stage13EntryReady }),
+    ...buildExternalExecutionManualDryRunGateAdapterCandidateFields(),
     stage13EntryScope: [...STAGE13_ENTRY_SCOPE],
     stage13EntryOutOfScope: [...STAGE13_ENTRY_OUT_OF_SCOPE],
     gateItems,

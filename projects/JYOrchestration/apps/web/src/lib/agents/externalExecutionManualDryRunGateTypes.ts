@@ -151,6 +151,20 @@ export interface ExternalExecutionManualDryRunGateReport {
   readonly actualUiImplementationImplementedInThisStep: false;
   readonly agentRegistryMutationImplementedInThisStep: false;
 
+  readonly actualAdapterCandidateDesignAllowed: true;
+  readonly actualAdapterImplementationAllowedInThisStep: false;
+  readonly cursorAdapterCandidateAllowed: true;
+  readonly githubAdapterCandidateAllowed: true;
+  readonly connectorAdapterCandidateAllowed: true;
+  readonly runnerAdapterCandidateAllowed: true;
+  readonly stage13CandidateBoundaryRequiredBeforeActualImplementation: true;
+  readonly actualCursorAdapterImplementedInThisStep: false;
+  readonly actualGithubAdapterImplementedInThisStep: false;
+  readonly actualConnectorAdapterImplementedInThisStep: false;
+  readonly actualRunnerAdapterImplementedInThisStep: false;
+  readonly actualAdapterCredentialUsageAllowedInThisStep: false;
+  readonly actualNetworkSideEffectAllowedInThisStep: false;
+
   readonly gateItems: readonly ExternalExecutionManualDryRunGateItem[];
   readonly validation: ExternalExecutionManualDryRunGateValidationResult;
   readonly requiredConfirmations: readonly string[];

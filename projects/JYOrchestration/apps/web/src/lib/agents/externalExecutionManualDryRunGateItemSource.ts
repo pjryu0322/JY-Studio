@@ -18,6 +18,11 @@ export function isSourceReadyForExternalExecutionManualDryRunGate(
     source.stage12ManualGateRequiredBeforeActualExecution === true &&
     source.actualManualExternalInvocationAllowedInThisStep === false &&
     source.actualAdapterSideEffectAllowedInThisStep === false &&
-    source.actualAgentRegistryMutationAllowedInThisStep === false
+    source.actualAgentRegistryMutationAllowedInThisStep === false &&
+    source.sourceAgentRegistryChangeManagementOutOfScope === true &&
+    source.sourceAgentAddRemoveDeactivateOutOfScope === true &&
+    source.sourceAgentRoleSlotImpactAnalysisRequired === true &&
+    source.sourceMandatoryGateAgentDeactivationRequiresApproval === true &&
+    source.sourceAgentKnowledgeBindingChangeRequiresApproval === true
   );
 }

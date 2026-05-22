@@ -1104,6 +1104,23 @@ export {
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export {
+  evaluateActualExternalExecutionAdapterCandidate,
+} from "@/lib/agents/evaluateActualExternalExecutionAdapterCandidate";
+
+export type {
+  ActualExternalExecutionAdapterCandidateDecision,
+  ActualExternalExecutionAdapterCandidateInput,
+  ActualExternalExecutionAdapterCandidateReport,
+  ActualExternalExecutionAdapterCandidateItem,
+  ActualExternalExecutionAdapterCandidateValidationResult,
+} from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
+
+export {
+  buildStage13AReadyActualExternalExecutionAdapterCandidateInput,
+  buildStage13AConfirmedActualExternalExecutionAdapterCandidateInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
