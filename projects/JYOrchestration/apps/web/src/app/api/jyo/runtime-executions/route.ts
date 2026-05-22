@@ -1,38 +1,29 @@
 import { NextRequest } from "next/server";
-import type { RuntimeExecutionApiCreateRequest } from "@/lib/agents/runtimeExecutionApiMvpTypes";
+import { normalizeRuntimeExecutionApiCreateRequest } from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import {
   getRuntimeExecutionApiMvp,
+  runtimeExecutionApiErrorJsonResponse,
   runtimeExecutionApiJsonResponse,
 } from "@/lib/agents/runtimeExecutionApiMvpRouteHandler";
 
 export async function POST(request: NextRequest) {
-  let body: Partial<RuntimeExecutionApiCreateRequest>;
+  let body: unknown;
   try {
-    body = (await request.json()) as Partial<RuntimeExecutionApiCreateRequest>;
+    body = await request.json();
   } catch {
-    return runtimeExecutionApiJsonResponse({
-      ok: false,
-      status: 400,
+    return runtimeExecutionApiErrorJsonResponse({
       action: "create",
-      error: { code: "invalid_json", message: "Request body must be valid JSON" },
-      boundary: {
-        inMemoryOnly: true,
-        actualExternalExecutionAllowed: false,
-        actualCursorGithubCallAllowed: false,
-        actualConnectorGatewayCallAllowed: false,
-        actualDbWriteAllowed: false,
-        actualSchemaMigrationAllowed: false,
-        actualUiMutationAllowed: false,
-      },
+      status: 400,
+      code: "invalid_json",
+      message: "Request body must be valid JSON",
     });
   }
 
-  const response = getRuntimeExecutionApiMvp().createExecution({
-    projectId: String(body.projectId ?? ""),
-    commandPreview: String(body.commandPreview ?? ""),
-    payloadPreview: body.payloadPreview === undefined ? "" : String(body.payloadPreview),
-    requestedBy: body.requestedBy === "system" ? "system" : "operator",
-  });
+  const response = getRuntimeExecutionApiMvp().createExecution(
+    normalizeRuntimeExecutionApiCreateRequest(
+      body as Parameters<typeof normalizeRuntimeExecutionApiCreateRequest>[0],
+    ),
+  );
   return runtimeExecutionApiJsonResponse(response);
 }
 

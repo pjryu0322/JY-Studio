@@ -9,7 +9,8 @@ import { runRuntimeExecutionMockAdapter } from "@/lib/agents/runtimeExecutionApi
 import {
   buildRuntimeExecutionApiErrorResponse,
   buildRuntimeExecutionApiOkResponse,
-  validateRuntimeExecutionApiCreateRequest,
+  normalizeRuntimeExecutionApiCreateRequest,
+  validateRuntimeExecutionApiCreateRequestDetails,
 } from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import {
   createRuntimeExecutionApiMvpStore,
@@ -31,7 +32,9 @@ export { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExec
 export {
   buildRuntimeExecutionApiOkResponse,
   buildRuntimeExecutionApiErrorResponse,
+  normalizeRuntimeExecutionApiCreateRequest,
   validateRuntimeExecutionApiCreateRequest,
+  validateRuntimeExecutionApiCreateRequestDetails,
 } from "@/lib/agents/runtimeExecutionApiMvpResponse";
 
 export function createRuntimeExecutionApiMvp(input: {
@@ -41,11 +44,11 @@ export function createRuntimeExecutionApiMvp(input: {
 
   return {
     createExecution(request: RuntimeExecutionApiCreateRequest): RuntimeExecutionApiResponse<RuntimeExecutionRecord> {
-      const validationError = validateRuntimeExecutionApiCreateRequest(request);
-      if (validationError) {
-        return buildRuntimeExecutionApiErrorResponse("create", 400, "invalid_request", validationError);
+      const validation = validateRuntimeExecutionApiCreateRequestDetails(request);
+      if (!validation.valid) {
+        return buildRuntimeExecutionApiErrorResponse("create", 400, "invalid_request", validation.reason);
       }
-      const record = store.create(request);
+      const record = store.create(normalizeRuntimeExecutionApiCreateRequest(request));
       return buildRuntimeExecutionApiOkResponse("create", 201, record);
     },
 

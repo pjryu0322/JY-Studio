@@ -22,7 +22,12 @@ import {
   evaluateRuntimeExecutionApiMvpSource,
   parseRuntimeExecutionApiMvpInput,
   resolveRuntimeExecutionApiMvpDecision,
+  computeStage9AClosureReady,
 } from "@/lib/agents/runtimeExecutionApiMvpSupport";
+import {
+  STAGE9_A_ROUTE_HANDLER_COUNT,
+  STAGE9_A_SERVICE_ACTION_COUNT,
+} from "@/lib/agents/runtimeExecutionApiMvpConstants";
 
 export { resolveRuntimeExecutionApiMvpDecision } from "@/lib/agents/runtimeExecutionApiMvpSupport";
 export { buildRuntimeExecutionApiMvpFingerprint } from "@/lib/agents/runtimeExecutionApiMvpFingerprint";
@@ -72,6 +77,8 @@ export function evaluateRuntimeExecutionApiMvp(
     endpointCount: STAGE9_A_ENDPOINT_CONTRACTS.length,
   });
 
+  const stage9AClosureReady = computeStage9AClosureReady({ decision });
+
   return {
     mode: "in_memory_runtime_execution_api_mvp",
     stage: "stage_9_a_runtime_execution_api_and_in_memory_store",
@@ -95,6 +102,15 @@ export function evaluateRuntimeExecutionApiMvp(
     actualDbWriteAllowedInThisStep: false,
     actualSchemaMigrationAllowedInThisStep: false,
     actualUiImplementationAllowedInThisStep: false,
+    routeHandlerCount: STAGE9_A_ROUTE_HANDLER_COUNT,
+    serviceActionCount: STAGE9_A_SERVICE_ACTION_COUNT,
+    storeKind: "in_memory_map",
+    boundaryReportIncludedInEveryResponse: true,
+    approvalActionImplemented: true,
+    mockRunnerAdapterImplemented: true,
+    auditQueryImplemented: true,
+    statusQueryImplemented: true,
+    stage9AClosureReady,
     supportedActions: [...STAGE9_A_SUPPORTED_ACTIONS],
     endpointContracts: [...STAGE9_A_ENDPOINT_CONTRACTS],
     requiredConfirmations: [...REQUIRED_STAGE9_A_CONFIRMATIONS],

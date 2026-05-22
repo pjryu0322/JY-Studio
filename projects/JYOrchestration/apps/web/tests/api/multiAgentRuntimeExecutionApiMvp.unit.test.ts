@@ -3,8 +3,16 @@ import {
   evaluateRuntimeExecutionApiMvp,
   resolveRuntimeExecutionApiMvpDecision,
 } from "@/lib/agents/evaluateRuntimeExecutionApiMvp";
+import { approveRuntimeExecutionInMemory } from "@/lib/agents/runtimeExecutionApiMvpApproval";
+import {
+  RUNTIME_EXECUTION_API_CREATE_COMMAND_PREVIEW_MAX,
+  RUNTIME_EXECUTION_API_CREATE_PAYLOAD_PREVIEW_MAX,
+  RUNTIME_EXECUTION_API_CREATE_PROJECT_ID_MAX,
+} from "@/lib/agents/runtimeExecutionApiMvpConstants";
+import { normalizeRuntimeExecutionApiCreateRequest } from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import { createRuntimeExecutionApiMvp } from "@/lib/agents/runtimeExecutionApiMvpService";
-import { createRuntimeExecutionApiMvpStore } from "@/lib/agents/runtimeExecutionApiMvpStore";
+import { createRuntimeExecutionApiMvpStore, type RuntimeExecutionApiMvpStore } from "@/lib/agents/runtimeExecutionApiMvpStore";
+import type { RuntimeExecutionRequest } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import {
   buildStage8BReadyRuntimeControlBundleInput,
   buildStage9AConfirmedRuntimeExecutionApiMvpInput,
@@ -169,6 +177,30 @@ describe("multi-agent runtime execution API MVP stage 9-A evaluator", () => {
       "stage_9_b_runtime_execution_runner_adapter_hardening",
     );
   });
+
+  it("evaluator report routeHandlerCount is at least 5", () => {
+    expect(evaluateReadyApiMvp().routeHandlerCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it("evaluator report serviceActionCount is at least 6", () => {
+    expect(evaluateReadyApiMvp().serviceActionCount).toBeGreaterThanOrEqual(6);
+  });
+
+  it("evaluator report storeKind is in_memory_map", () => {
+    expect(evaluateReadyApiMvp().storeKind).toBe("in_memory_map");
+  });
+
+  it("evaluator report boundaryReportIncludedInEveryResponse is true", () => {
+    expect(evaluateReadyApiMvp().boundaryReportIncludedInEveryResponse).toBe(true);
+  });
+
+  it("evaluator report stage9AClosureReady is true on ready path", () => {
+    expect(evaluateReadyApiMvp().stage9AClosureReady).toBe(true);
+  });
+
+  it("ready findings include stage9_a_closure_ready", () => {
+    expect(evaluateReadyApiMvp().findings.some((f) => f.code === "stage9_a_closure_ready")).toBe(true);
+  });
 });
 
 describe("multi-agent runtime execution API MVP stage 9-A service", () => {
@@ -322,5 +354,180 @@ describe("multi-agent runtime execution API MVP stage 9-A service", () => {
     });
     store.resetForTest();
     expect(api.listExecutions().data).toHaveLength(0);
+  });
+
+  it("createExecution returns 400 when payloadPreview is whitespace only", () => {
+    expect(
+      api.createExecution({
+        projectId: "p1",
+        commandPreview: "cmd",
+        payloadPreview: "   ",
+        requestedBy: "operator",
+      }).status,
+    ).toBe(400);
+  });
+
+  it("createExecution returns 400 when projectId exceeds max length", () => {
+    expect(
+      api.createExecution({
+        projectId: "x".repeat(RUNTIME_EXECUTION_API_CREATE_PROJECT_ID_MAX + 1),
+        commandPreview: "cmd",
+        payloadPreview: "pl",
+        requestedBy: "operator",
+      }).status,
+    ).toBe(400);
+  });
+
+  it("createExecution returns 400 when commandPreview exceeds max length", () => {
+    expect(
+      api.createExecution({
+        projectId: "p1",
+        commandPreview: "x".repeat(RUNTIME_EXECUTION_API_CREATE_COMMAND_PREVIEW_MAX + 1),
+        payloadPreview: "pl",
+        requestedBy: "operator",
+      }).status,
+    ).toBe(400);
+  });
+
+  it("createExecution returns 400 when payloadPreview exceeds max length", () => {
+    expect(
+      api.createExecution({
+        projectId: "p1",
+        commandPreview: "cmd",
+        payloadPreview: "x".repeat(RUNTIME_EXECUTION_API_CREATE_PAYLOAD_PREVIEW_MAX + 1),
+        requestedBy: "operator",
+      }).status,
+    ).toBe(400);
+  });
+
+  it("normalizeRuntimeExecutionApiCreateRequest trims fields", () => {
+    const normalized = normalizeRuntimeExecutionApiCreateRequest({
+      projectId: "  p1  ",
+      commandPreview: "  cmd  ",
+      payloadPreview: "  pl  ",
+      requestedBy: "operator",
+    });
+    expect(normalized.projectId).toBe("p1");
+    expect(normalized.commandPreview).toBe("cmd");
+    expect(normalized.payloadPreview).toBe("pl");
+  });
+
+  it("approveExecution only transitions requested status to validated", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    expect(api.approveExecution(id).data?.statusAfter).toBe("validated");
+    expect(api.getExecution(id).data?.status).toBe("validated");
+  });
+
+  it("approveExecution returns 409 when request metadata is missing", () => {
+    const base = createRuntimeExecutionApiMvpStore();
+    const created = base.create({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.executionId;
+    const stubStore: RuntimeExecutionApiMvpStore = {
+      ...base,
+      get: (executionId: string) => base.get(executionId),
+      getRequest: () => undefined,
+    };
+    expect(
+      approveRuntimeExecutionInMemory({
+        store: stubStore,
+        executionId: id,
+        approvedBy: "operator",
+        nowIso: "2026-05-19T00:00:00.000Z",
+      }).error?.code,
+    ).toBe("request_metadata_missing");
+  });
+
+  it("runMockExecution returns 409 when approvedForMockRun is false", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    store.setRequest(id, { ...store.getRequest(id)!, approvedForMockRun: false });
+    expect(api.runMockExecution(id).error?.code).toBe("mock_run_not_approved");
+  });
+
+  it("runMockExecution returns 409 when actualExecutionRequested is true", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    const request = store.getRequest(id)!;
+    store.setRequest(id, {
+      ...request,
+      approvedForMockRun: true,
+      actualExecutionRequested: true,
+    } as RuntimeExecutionRequest);
+    expect(api.runMockExecution(id).error?.code).toBe("actual_execution_requested");
+  });
+
+  it("runMockExecution success increases audit event count", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    const mockRun = api.runMockExecution(id);
+    expect(mockRun.data!.auditEventCountAfter).toBeGreaterThan(mockRun.data!.auditEventCountBefore);
+  });
+
+  it("mock_completed final record keeps actualRunnerInvoked false", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    api.runMockExecution(id);
+    expect(api.getExecution(id).data?.actualRunnerInvoked).toBe(false);
+  });
+
+  it("mock_completed final record keeps cursorGithubInvoked false", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    api.runMockExecution(id);
+    expect(api.getExecution(id).data?.cursorGithubInvoked).toBe(false);
+  });
+
+  it("mock_completed final record keeps dbWritten false", () => {
+    const created = api.createExecution({
+      projectId: "p1",
+      commandPreview: "cmd",
+      payloadPreview: "pl",
+      requestedBy: "operator",
+    });
+    const id = created.data!.executionId;
+    api.approveExecution(id);
+    api.runMockExecution(id);
+    expect(api.getExecution(id).data?.dbWritten).toBe(false);
   });
 });

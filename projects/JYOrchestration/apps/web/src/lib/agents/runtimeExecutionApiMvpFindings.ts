@@ -56,6 +56,13 @@ export function appendRuntimeExecutionApiMvpFindings(input: {
   findings.push(finding("info", "no_db_persistence_verified", "No DB persistence verified"));
 
   if (decision === "stage9_runtime_execution_api_mvp_ready") {
+    findings.push(finding("info", "stage9_api_route_handlers_ready", "Stage 9 API route handlers are ready"));
+    findings.push(finding("info", "stage9_in_memory_store_service_ready", "Stage 9 in-memory store service is ready"));
+    findings.push(finding("info", "stage9_mock_runner_adapter_ready", "Stage 9 mock runner adapter is ready"));
+    findings.push(finding("info", "stage9_status_query_ready", "Stage 9 status query is ready"));
+    findings.push(finding("info", "stage9_audit_query_ready", "Stage 9 audit query is ready"));
+    findings.push(finding("info", "stage9_boundary_response_verified", "Stage 9 boundary response verified on every API response"));
+    findings.push(finding("info", "stage9_a_closure_ready", "Stage 9-A closure is ready"));
     findings.push(finding("info", "stage9_runtime_execution_api_mvp_ready", "Stage 9 runtime execution API MVP is ready"));
   }
 }

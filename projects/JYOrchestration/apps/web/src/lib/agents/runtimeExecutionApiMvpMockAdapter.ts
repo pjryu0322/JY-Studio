@@ -57,13 +57,34 @@ export function runRuntimeExecutionMockAdapter(input: {
   if (!request) {
     return {
       ok: false,
-      status: 404,
+      status: 409,
       action: "mock_run",
-      error: { code: "request_not_found", message: `Request metadata not found for ${id}` },
+      error: { code: "request_metadata_missing", message: `Request metadata missing for ${id}` },
       boundary,
     };
   }
 
+  if (request.approvedForMockRun !== true) {
+    return {
+      ok: false,
+      status: 409,
+      action: "mock_run",
+      error: { code: "mock_run_not_approved", message: "Mock run requires approvedForMockRun=true" },
+      boundary,
+    };
+  }
+
+  if (request.actualExecutionRequested !== false) {
+    return {
+      ok: false,
+      status: 409,
+      action: "mock_run",
+      error: { code: "actual_execution_requested", message: "Actual execution is not allowed in Stage 9-A" },
+      boundary,
+    };
+  }
+
+  const auditEventCountBefore = input.store.getAuditEvents(id).length;
   const statusBefore = record.status;
   const mockResult = runMockRuntimeExecution({ request, record, nowIso: input.nowIso });
 
@@ -71,19 +92,29 @@ export function runRuntimeExecutionMockAdapter(input: {
   if (mockResult.success) {
     const running = transitionRuntimeExecutionRecord(record, "mock_running", input.nowIso);
     input.store.update(running);
+    input.store.appendAudit(
+      buildRuntimeExecutionAuditEvent({
+        executionId: running.executionId,
+        requestId: running.requestId,
+        eventType: "mock_runner_started",
+        statusBefore: record.status,
+        statusAfter: "mock_running",
+        message: "Mock runner started via Stage 9-A adapter.",
+        nowIso: input.nowIso,
+        sequence: input.store.getAuditEvents(id).length,
+      }),
+    );
     finalRecord = transitionRuntimeExecutionRecord(running, "mock_completed", input.nowIso);
   } else {
     finalRecord = transitionRuntimeExecutionRecord(record, "mock_failed", input.nowIso);
   }
   input.store.update(finalRecord);
 
-  const storedAuditEvents = [...mockResult.auditEvents];
   for (const [index, event] of mockResult.auditEvents.entries()) {
-    const stored = input.store.appendAudit({
+    input.store.appendAudit({
       ...event,
-      auditEventId: `audit-${event.executionId}-${event.eventType}-api-${index}`,
+      auditEventId: `audit-${event.executionId}-${event.eventType}-api-mock-${index}`,
     });
-    storedAuditEvents[index] = stored;
   }
 
   if (mockResult.success) {
@@ -98,14 +129,32 @@ export function runRuntimeExecutionMockAdapter(input: {
         sequence: input.store.getAuditEvents(id).length,
       }),
     );
+  } else {
+    input.store.appendAudit(
+      buildRuntimeExecutionAuditEvent({
+        executionId: finalRecord.executionId,
+        requestId: finalRecord.requestId,
+        eventType: "mock_runner_failed",
+        statusBefore,
+        statusAfter: "mock_failed",
+        message: mockResult.message,
+        nowIso: input.nowIso,
+        sequence: input.store.getAuditEvents(id).length,
+      }),
+    );
   }
 
+  const auditEventCountAfter = input.store.getAuditEvents(id).length;
   const data: RuntimeExecutionApiMvpMockRunResult = {
     executionId: finalRecord.executionId,
     statusBefore,
     statusAfter: finalRecord.status,
     success: mockResult.success,
     auditEvents: input.store.getAuditEvents(id),
+    auditEventCountBefore,
+    auditEventCountAfter,
+    externalSideEffect: false,
+    actualRunnerInvoked: false,
   };
 
   return {

@@ -10,6 +10,7 @@ import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContr
 import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
 import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundleTypes";
 import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
+import type { RuntimeExecutionMvpClosureInput } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
@@ -346,5 +347,34 @@ export function buildStage9AReadyRuntimeExecutionApiMvpInput(): RuntimeExecution
   return {
     runtimeControlBundle: buildStage8BReadyRuntimeControlBundleInput(),
     ...buildStage9AConfirmedRuntimeExecutionApiMvpInput(),
+  };
+}
+
+export function buildStage9BConfirmedRuntimeExecutionMvpClosureInput(): Required<
+  Pick<
+    RuntimeExecutionMvpClosureInput,
+    | "runtimeMvpClosureReviewed"
+    | "apiRouteReviewed"
+    | "storeLifecycleReviewed"
+    | "mockRunnerAdapterReviewed"
+    | "auditTrailReviewed"
+    | "stage10EntryReviewed"
+  >
+> {
+  return {
+    runtimeMvpClosureReviewed: true,
+    apiRouteReviewed: true,
+    storeLifecycleReviewed: true,
+    mockRunnerAdapterReviewed: true,
+    auditTrailReviewed: true,
+    stage10EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 9-B (Stage 9-A ready + 9-B MVP closure confirmations). */
+export function buildStage9BReadyRuntimeExecutionMvpClosureInput(): RuntimeExecutionMvpClosureInput {
+  return {
+    apiMvp: buildStage9AReadyRuntimeExecutionApiMvpInput(),
+    ...buildStage9BConfirmedRuntimeExecutionMvpClosureInput(),
   };
 }

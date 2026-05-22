@@ -59,9 +59,19 @@ export interface RuntimeExecutionApiResponse<T = unknown> {
   readonly boundary: RuntimeExecutionApiBoundaryReport;
 }
 
+export interface RuntimeExecutionApiCreateRequestValidationResult {
+  readonly valid: boolean;
+  readonly missingFields: readonly string[];
+  readonly invalidFields: readonly string[];
+  readonly reason: string;
+}
+
 export interface RuntimeExecutionApiMvpStoreSnapshot {
   readonly records: readonly RuntimeExecutionRecord[];
   readonly auditEvents: readonly RuntimeExecutionAuditEvent[];
+  readonly requestCount: number;
+  readonly recordCount: number;
+  readonly auditEventCount: number;
 }
 
 export interface RuntimeExecutionApiMvpApprovalResult {
@@ -78,6 +88,10 @@ export interface RuntimeExecutionApiMvpMockRunResult {
   readonly statusAfter: RuntimeExecutionStatus;
   readonly success: boolean;
   readonly auditEvents: readonly RuntimeExecutionAuditEvent[];
+  readonly auditEventCountBefore: number;
+  readonly auditEventCountAfter: number;
+  readonly externalSideEffect: false;
+  readonly actualRunnerInvoked: false;
 }
 
 export interface RuntimeExecutionApiMvpFinding {
@@ -128,6 +142,16 @@ export interface RuntimeExecutionApiMvpReport {
   readonly actualDbWriteAllowedInThisStep: false;
   readonly actualSchemaMigrationAllowedInThisStep: false;
   readonly actualUiImplementationAllowedInThisStep: false;
+
+  readonly routeHandlerCount: number;
+  readonly serviceActionCount: number;
+  readonly storeKind: "in_memory_map";
+  readonly boundaryReportIncludedInEveryResponse: true;
+  readonly approvalActionImplemented: true;
+  readonly mockRunnerAdapterImplemented: true;
+  readonly auditQueryImplemented: true;
+  readonly statusQueryImplemented: true;
+  readonly stage9AClosureReady: boolean;
 
   readonly supportedActions: readonly RuntimeExecutionApiAction[];
   readonly endpointContracts: readonly string[];

@@ -11,8 +11,6 @@ import type {
   RuntimeExecutionApiResponse,
 } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 
-const TERMINAL_STATUSES = new Set(["mock_completed", "rollback_requested", "cancelled"]);
-
 export function approveRuntimeExecutionInMemory(input: {
   readonly store: RuntimeExecutionApiMvpStore;
   readonly executionId: string;
@@ -42,15 +40,13 @@ export function approveRuntimeExecutionInMemory(input: {
     };
   }
 
-  if (TERMINAL_STATUSES.has(record.status)) {
+  const request = input.store.getRequest(id);
+  if (!request) {
     return {
       ok: false,
       status: 409,
       action: "approve",
-      error: {
-        code: "invalid_status",
-        message: `Cannot approve execution in status ${record.status}`,
-      },
+      error: { code: "request_metadata_missing", message: `Request metadata missing for ${id}` },
       boundary,
     };
   }
@@ -65,14 +61,23 @@ export function approveRuntimeExecutionInMemory(input: {
     };
   }
 
+  if (record.status !== "requested") {
+    return {
+      ok: false,
+      status: 409,
+      action: "approve",
+      error: {
+        code: "invalid_status",
+        message: `Cannot approve execution in status ${record.status}`,
+      },
+      boundary,
+    };
+  }
+
   const statusBefore = record.status;
   const updated = transitionRuntimeExecutionRecord(record, "validated", input.nowIso);
   input.store.update(updated);
-
-  const request = input.store.getRequest(id);
-  if (request) {
-    input.store.setRequest(id, { ...request, approvedForMockRun: true });
-  }
+  input.store.setRequest(id, { ...request, approvedForMockRun: true });
 
   const auditEvent = buildRuntimeExecutionAuditEvent({
     executionId: updated.executionId,

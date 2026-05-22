@@ -50,3 +50,10 @@ export const STAGE9_A_SEPARATED_WORK_ITEMS = [
 ] as const;
 
 export const STAGE9_A_DEFAULT_NOW_ISO = "2026-05-19T00:00:00.000Z" as const;
+
+export const RUNTIME_EXECUTION_API_CREATE_PROJECT_ID_MAX = 120 as const;
+export const RUNTIME_EXECUTION_API_CREATE_COMMAND_PREVIEW_MAX = 500 as const;
+export const RUNTIME_EXECUTION_API_CREATE_PAYLOAD_PREVIEW_MAX = 2000 as const;
+
+export const STAGE9_A_ROUTE_HANDLER_COUNT = 5 as const;
+export const STAGE9_A_SERVICE_ACTION_COUNT = 6 as const;

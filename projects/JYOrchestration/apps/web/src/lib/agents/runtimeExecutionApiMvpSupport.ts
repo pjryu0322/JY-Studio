@@ -13,8 +13,21 @@ import {
   buildRuntimeExecutionApiMvpFingerprint,
   buildRuntimeExecutionApiMvpSummary,
 } from "@/lib/agents/runtimeExecutionApiMvpFingerprint";
-import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
+import {
+  STAGE9_A_ROUTE_HANDLER_COUNT,
+  STAGE9_A_SERVICE_ACTION_COUNT,
+} from "@/lib/agents/runtimeExecutionApiMvpConstants";
+import type {
+  RuntimeExecutionApiMvpDecision,
+  RuntimeExecutionApiMvpInput,
+} from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import type { RuntimeControlBundleReport } from "@/lib/agents/runtimeControlBundleTypes";
+
+export function computeStage9AClosureReady(input: {
+  readonly decision: RuntimeExecutionApiMvpDecision;
+}): boolean {
+  return input.decision === "stage9_runtime_execution_api_mvp_ready";
+}
 
 export {
   REQUIRED_STAGE9_A_CONFIRMATIONS,

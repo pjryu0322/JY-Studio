@@ -2693,6 +2693,51 @@ Ready decision:
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionApiMvp.ts`, `runtimeExecutionApiMvpService.ts`, `runtimeExecutionApiMvpStore.ts`, `runtimeExecutionApiMvpResponse.ts`, `runtimeExecutionApiMvpFingerprint.ts`, `runtimeExecutionApiMvpChecklists.ts`, `runtimeExecutionApiMvpApproval.ts`, `runtimeExecutionApiMvpMockAdapter.ts`, `apps/web/src/app/api/jyo/runtime-executions/**`
 
+### Stage 9-A Runtime Execution API + In-memory Store MVP — Hardening
+
+Stage 9-A는 Runtime Execution API, in-memory store, approval action, mock runner adapter, status query, audit query를 제공한다.
+
+Hardening 기준:
+
+- create request validation 강화
+- route response boundary 중복 제거
+- in-memory store lifecycle trace
+- approval status guard
+- mock runner adapter audit/status consistency
+- 모든 응답에 no-run boundary 포함
+- actual Cursor/GitHub/DB/Connector/UI 금지 유지
+
+Ready decision:
+
+`stage9_runtime_execution_api_mvp_ready`
+
+### Stage 9-B Integrated Runtime Runner/Closure Bundle
+
+Stage 9-B는 Stage 9를 닫고 Stage 10 외부 실행 adapter 설계 진입 경계를 만든다.
+
+통합 범위:
+
+- Runtime API route MVP
+- In-memory store lifecycle
+- Approval action
+- Mock runner adapter
+- Status query
+- Audit query
+- No-run boundary
+- Stage 10 external execution entry candidate
+
+Ready decision:
+
+`stage9_runtime_api_mvp_closed`
+
+의미:
+
+- Runtime API MVP가 내부 mock/in-memory 범위에서 닫혔다.
+- Stage 10 external execution adapter design으로 넘어갈 수 있다.
+- 실제 Cursor/GitHub/DB/production runner 실행 허가는 아니다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionMvpClosure.ts`, `runtimeExecutionMvpClosureTypes.ts`, `runtimeExecutionMvpClosureConstants.ts`, `runtimeExecutionMvpClosureItems.ts`, `runtimeExecutionMvpClosureValidation.ts`, `runtimeExecutionMvpClosureSupport.ts`, `runtimeExecutionMvpClosureFindings.ts`
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

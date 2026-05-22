@@ -3,6 +3,7 @@
  */
 
 import { buildRuntimeExecutionAuditEvent } from "@/lib/agents/runtimeExecutionVerticalSliceAudit";
+import { normalizeRuntimeExecutionApiCreateRequest } from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import { STAGE9_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionApiMvpConstants";
 import type {
   RuntimeExecutionApiCreateRequest,
@@ -10,7 +11,6 @@ import type {
 } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import {
   createRuntimeExecutionRecord,
-  transitionRuntimeExecutionRecord,
 } from "@/lib/agents/runtimeExecutionVerticalSliceStore";
 import type {
   RuntimeExecutionAuditEvent,
@@ -21,12 +21,16 @@ import type {
 export interface RuntimeExecutionApiMvpStore {
   create(input: RuntimeExecutionApiCreateRequest): RuntimeExecutionRecord;
   get(executionId: string): RuntimeExecutionRecord | undefined;
+  has(executionId: string): boolean;
   list(): readonly RuntimeExecutionRecord[];
   update(record: RuntimeExecutionRecord): RuntimeExecutionRecord;
   appendAudit(event: RuntimeExecutionAuditEvent): RuntimeExecutionAuditEvent;
   getAuditEvents(executionId: string): readonly RuntimeExecutionAuditEvent[];
   getRequest(executionId: string): RuntimeExecutionRequest | undefined;
   setRequest(executionId: string, request: RuntimeExecutionRequest): void;
+  getRequestCount(): number;
+  getRecordCount(): number;
+  getAuditEventCount(): number;
   snapshot(): RuntimeExecutionApiMvpStoreSnapshot;
   resetForTest(): void;
 }
@@ -44,16 +48,17 @@ export function createRuntimeExecutionApiMvpStore(): RuntimeExecutionApiMvpStore
 
   return {
     create(input: RuntimeExecutionApiCreateRequest): RuntimeExecutionRecord {
+      const normalized = normalizeRuntimeExecutionApiCreateRequest(input);
       const nowIso = STAGE9_A_DEFAULT_NOW_ISO;
       const requestId = nextRequestId();
       const request: RuntimeExecutionRequest = {
         requestId,
-        projectId: input.projectId.trim(),
+        projectId: normalized.projectId,
         sourceStage: "stage_8_a",
-        requestedBy: input.requestedBy,
+        requestedBy: normalized.requestedBy,
         unitKind: "mock_runner",
-        commandPreview: input.commandPreview.trim(),
-        payloadPreview: input.payloadPreview,
+        commandPreview: normalized.commandPreview,
+        payloadPreview: normalized.payloadPreview,
         createdAtIso: nowIso,
         approvedForMockRun: false,
         actualExecutionRequested: false,
@@ -66,7 +71,7 @@ export function createRuntimeExecutionApiMvpStore(): RuntimeExecutionApiMvpStore
         requestId: request.requestId,
         eventType: "runtime_request_created",
         statusAfter: "requested",
-        message: "Runtime execution created via Stage 9-A API.",
+        message: `Runtime execution created via Stage 9-A API (request #${requestSeq}).`,
         nowIso,
         sequence: 0,
       });
@@ -76,6 +81,10 @@ export function createRuntimeExecutionApiMvpStore(): RuntimeExecutionApiMvpStore
 
     get(executionId: string): RuntimeExecutionRecord | undefined {
       return records.get(executionId);
+    },
+
+    has(executionId: string): boolean {
+      return records.has(executionId);
     },
 
     list(): readonly RuntimeExecutionRecord[] {
@@ -104,10 +113,25 @@ export function createRuntimeExecutionApiMvpStore(): RuntimeExecutionApiMvpStore
       requests.set(executionId, request);
     },
 
+    getRequestCount(): number {
+      return requests.size;
+    },
+
+    getRecordCount(): number {
+      return records.size;
+    },
+
+    getAuditEventCount(): number {
+      return auditEvents.length;
+    },
+
     snapshot(): RuntimeExecutionApiMvpStoreSnapshot {
       return {
         records: [...records.values()],
         auditEvents: [...auditEvents],
+        requestCount: requests.size,
+        recordCount: records.size,
+        auditEventCount: auditEvents.length,
       };
     },
 
@@ -121,5 +145,3 @@ export function createRuntimeExecutionApiMvpStore(): RuntimeExecutionApiMvpStore
 }
 
 export const runtimeExecutionApiMvpStore = createRuntimeExecutionApiMvpStore();
-
-export { transitionRuntimeExecutionRecord };

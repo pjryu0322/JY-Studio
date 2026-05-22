@@ -1010,6 +1010,31 @@ export type {
 } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 
 export {
+  evaluateRuntimeExecutionMvpClosure,
+} from "@/lib/agents/evaluateRuntimeExecutionMvpClosure";
+
+export {
+  buildRuntimeExecutionMvpClosureItems,
+} from "@/lib/agents/runtimeExecutionMvpClosureItems";
+
+export {
+  validateRuntimeExecutionMvpClosureItems,
+} from "@/lib/agents/runtimeExecutionMvpClosureValidation";
+
+export {
+  resolveRuntimeExecutionMvpClosureDecision,
+  buildRuntimeExecutionMvpClosureFingerprint,
+} from "@/lib/agents/runtimeExecutionMvpClosureSupport";
+
+export type {
+  RuntimeExecutionMvpClosureDecision,
+  RuntimeExecutionMvpClosureInput,
+  RuntimeExecutionMvpClosureReport,
+  RuntimeExecutionMvpClosureItem,
+  RuntimeExecutionMvpClosureValidationResult,
+} from "@/lib/agents/runtimeExecutionMvpClosureTypes";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
@@ -1065,6 +1090,8 @@ export {
   buildStage8BConfirmedRuntimeControlBundleInput,
   buildStage9AReadyRuntimeExecutionApiMvpInput,
   buildStage9AConfirmedRuntimeExecutionApiMvpInput,
+  buildStage9BReadyRuntimeExecutionMvpClosureInput,
+  buildStage9BConfirmedRuntimeExecutionMvpClosureInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

@@ -11,6 +11,19 @@ describe("runtime execution API MVP routes", () => {
     runtimeExecutionApiMvpStore.resetForTest();
   });
 
+  it("invalid JSON uses boundary builder via error helper", async () => {
+    const request = new NextRequest("http://localhost/api/jyo/runtime-executions", {
+      method: "POST",
+      body: "not-json",
+    });
+    const response = await POST(request);
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.boundary.inMemoryOnly).toBe(true);
+    expect(body.boundary.actualDbWriteAllowed).toBe(false);
+    expect(body.error?.code).toBe("invalid_json");
+  });
+
   it("POST /runtime-executions returns create response shape", async () => {
     const request = new NextRequest("http://localhost/api/jyo/runtime-executions", {
       method: "POST",
