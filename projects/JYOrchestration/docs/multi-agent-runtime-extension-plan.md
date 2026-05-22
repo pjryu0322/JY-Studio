@@ -2691,7 +2691,7 @@ Ready decision:
 - 실행은 mock runner/in-memory store에 한정된다.
 - 실제 외부 실행은 아직 허용되지 않는다.
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionApiMvp.ts`, `runtimeExecutionApiMvpService.ts`, `runtimeExecutionApiMvpStore.ts`, `runtimeExecutionApiMvpApproval.ts`, `runtimeExecutionApiMvpMockAdapter.ts`, `apps/web/src/app/api/jyo/runtime-executions/**`
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionApiMvp.ts`, `runtimeExecutionApiMvpService.ts`, `runtimeExecutionApiMvpStore.ts`, `runtimeExecutionApiMvpResponse.ts`, `runtimeExecutionApiMvpFingerprint.ts`, `runtimeExecutionApiMvpChecklists.ts`, `runtimeExecutionApiMvpApproval.ts`, `runtimeExecutionApiMvpMockAdapter.ts`, `apps/web/src/app/api/jyo/runtime-executions/**`
 
 ### Stage 3–4 빠른 진행 로드맵
 

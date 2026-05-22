@@ -7,62 +7,32 @@ import { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExec
 import { STAGE9_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionApiMvpConstants";
 import { runRuntimeExecutionMockAdapter } from "@/lib/agents/runtimeExecutionApiMvpMockAdapter";
 import {
+  buildRuntimeExecutionApiErrorResponse,
+  buildRuntimeExecutionApiOkResponse,
+  validateRuntimeExecutionApiCreateRequest,
+} from "@/lib/agents/runtimeExecutionApiMvpResponse";
+import {
   createRuntimeExecutionApiMvpStore,
   runtimeExecutionApiMvpStore,
   type RuntimeExecutionApiMvpStore,
 } from "@/lib/agents/runtimeExecutionApiMvpStore";
 import type {
-  RuntimeExecutionApiAction,
   RuntimeExecutionApiCreateRequest,
   RuntimeExecutionApiMvpApprovalResult,
   RuntimeExecutionApiMvpMockRunResult,
   RuntimeExecutionApiResponse,
 } from "@/lib/agents/runtimeExecutionApiMvpTypes";
-
-export { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExecutionApiMvpBoundary";
 import type {
   RuntimeExecutionAuditEvent,
   RuntimeExecutionRecord,
 } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 
-function boundary() {
-  return buildRuntimeExecutionApiBoundaryReport();
-}
-
-function okResponse<T>(
-  action: RuntimeExecutionApiAction,
-  status: number,
-  data: T,
-): RuntimeExecutionApiResponse<T> {
-  return { ok: true, status, action, data, boundary: boundary() };
-}
-
-function errResponse(
-  action: RuntimeExecutionApiAction,
-  status: number,
-  code: string,
-  message: string,
-): RuntimeExecutionApiResponse {
-  return { ok: false, status, action, error: { code, message }, boundary: boundary() };
-}
-
-function validateCreateRequest(
-  request: RuntimeExecutionApiCreateRequest | undefined,
-): string | null {
-  if (!request?.projectId?.trim()) {
-    return "projectId is required";
-  }
-  if (!request.commandPreview?.trim()) {
-    return "commandPreview is required";
-  }
-  if (request.payloadPreview === undefined || request.payloadPreview === null) {
-    return "payloadPreview is required";
-  }
-  if (request.requestedBy !== "operator" && request.requestedBy !== "system") {
-    return "requestedBy must be operator or system";
-  }
-  return null;
-}
+export { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExecutionApiMvpBoundary";
+export {
+  buildRuntimeExecutionApiOkResponse,
+  buildRuntimeExecutionApiErrorResponse,
+  validateRuntimeExecutionApiCreateRequest,
+} from "@/lib/agents/runtimeExecutionApiMvpResponse";
 
 export function createRuntimeExecutionApiMvp(input: {
   readonly store?: RuntimeExecutionApiMvpStore;
@@ -71,28 +41,28 @@ export function createRuntimeExecutionApiMvp(input: {
 
   return {
     createExecution(request: RuntimeExecutionApiCreateRequest): RuntimeExecutionApiResponse<RuntimeExecutionRecord> {
-      const validationError = validateCreateRequest(request);
+      const validationError = validateRuntimeExecutionApiCreateRequest(request);
       if (validationError) {
-        return errResponse("create", 400, "invalid_request", validationError);
+        return buildRuntimeExecutionApiErrorResponse("create", 400, "invalid_request", validationError);
       }
       const record = store.create(request);
-      return okResponse("create", 201, record);
+      return buildRuntimeExecutionApiOkResponse("create", 201, record);
     },
 
     getExecution(executionId: string): RuntimeExecutionApiResponse<RuntimeExecutionRecord> {
       const id = executionId.trim();
       if (!id) {
-        return errResponse("get", 400, "invalid_execution_id", "executionId is required");
+        return buildRuntimeExecutionApiErrorResponse("get", 400, "invalid_execution_id", "executionId is required");
       }
       const record = store.get(id);
       if (!record) {
-        return errResponse("get", 404, "execution_not_found", `Execution not found: ${id}`);
+        return buildRuntimeExecutionApiErrorResponse("get", 404, "execution_not_found", `Execution not found: ${id}`);
       }
-      return okResponse("get", 200, record);
+      return buildRuntimeExecutionApiOkResponse("get", 200, record);
     },
 
     listExecutions(): RuntimeExecutionApiResponse<readonly RuntimeExecutionRecord[]> {
-      return okResponse("list", 200, store.list());
+      return buildRuntimeExecutionApiOkResponse("list", 200, store.list());
     },
 
     approveExecution(executionId: string): RuntimeExecutionApiResponse<RuntimeExecutionApiMvpApprovalResult> {
@@ -115,12 +85,12 @@ export function createRuntimeExecutionApiMvp(input: {
     getAuditEvents(executionId: string): RuntimeExecutionApiResponse<readonly RuntimeExecutionAuditEvent[]> {
       const id = executionId.trim();
       if (!id) {
-        return errResponse("audit", 400, "invalid_execution_id", "executionId is required");
+        return buildRuntimeExecutionApiErrorResponse("audit", 400, "invalid_execution_id", "executionId is required");
       }
       if (!store.get(id)) {
-        return errResponse("audit", 404, "execution_not_found", `Execution not found: ${id}`);
+        return buildRuntimeExecutionApiErrorResponse("audit", 404, "execution_not_found", `Execution not found: ${id}`);
       }
-      return okResponse("audit", 200, store.getAuditEvents(id));
+      return buildRuntimeExecutionApiOkResponse("audit", 200, store.getAuditEvents(id));
     },
   };
 }

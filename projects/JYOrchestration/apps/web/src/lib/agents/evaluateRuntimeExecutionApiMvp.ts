@@ -24,10 +24,8 @@ import {
   resolveRuntimeExecutionApiMvpDecision,
 } from "@/lib/agents/runtimeExecutionApiMvpSupport";
 
-export {
-  resolveRuntimeExecutionApiMvpDecision,
-  buildRuntimeExecutionApiMvpFingerprint,
-} from "@/lib/agents/runtimeExecutionApiMvpSupport";
+export { resolveRuntimeExecutionApiMvpDecision } from "@/lib/agents/runtimeExecutionApiMvpSupport";
+export { buildRuntimeExecutionApiMvpFingerprint } from "@/lib/agents/runtimeExecutionApiMvpFingerprint";
 
 export {
   buildStage9AReadyRuntimeExecutionApiMvpInput,
