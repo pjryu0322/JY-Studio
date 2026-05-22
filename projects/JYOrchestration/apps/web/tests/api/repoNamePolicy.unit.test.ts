@@ -1,25 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { buildRepoNameCandidate, toSafeGithubRepoName } from "@/lib/git-provisioning/repoNamePolicy";
+import {
+  normalizeGithubRepoName,
+  repoSlugFromGitRepoName,
+  validateGithubRepoName,
+} from "@/lib/git-provisioning/repoNamePolicy";
 
-const projectId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-
-describe("repoNamePolicy", () => {
-  it("slugifies ASCII project names", () => {
-    expect(toSafeGithubRepoName("AI Runtime Worker", "jyo-fallback")).toMatch(/^jyo-ai-runtime/);
+describe("validateGithubRepoName", () => {
+  it("accepts valid ASCII repo names", () => {
+    expect(validateGithubRepoName("meeting-summary-service")).toEqual({
+      ok: true,
+      repoName: "meeting-summary-service",
+    });
+    expect(validateGithubRepoName("meeting_summary.service")).toEqual({
+      ok: true,
+      repoName: "meeting_summary.service",
+    });
   });
 
-  it("uses fallback for Korean-only names", () => {
-    const name = toSafeGithubRepoName("회의록 자동화", "jyo-p-a1b2c3d4");
-    expect(name).toBe("jyo-p-a1b2c3d4");
+  it("rejects Korean and spaces", () => {
+    expect(validateGithubRepoName("회의록자동화").ok).toBe(false);
+    expect(validateGithubRepoName("회의록자동화").reason).toBe("not_ascii");
+    expect(validateGithubRepoName("meeting summary").ok).toBe(false);
   });
 
-  it("buildRepoNameCandidate from project name", () => {
-    const c = buildRepoNameCandidate({ projectId, projectName: "Runtime Worker" });
-    expect(c.repoName).toMatch(/^jyo-runtime-worker/);
+  it("rejects owner/repo and URLs", () => {
+    expect(validateGithubRepoName("owner/repo").reason).toBe("owner_repo_format");
+    expect(validateGithubRepoName("https://github.com/owner/repo").reason).toBe("url_format");
   });
 
-  it("buildRepoNameCandidate fallback for Korean project", () => {
-    const c = buildRepoNameCandidate({ projectId, projectName: "회의록 자동화" });
-    expect(c.repoName).toMatch(/^jyo-p-a1b2c3d4/);
+  it("rejects missing, reserved, and too long names", () => {
+    expect(validateGithubRepoName("").reason).toBe("missing");
+    expect(validateGithubRepoName(".").reason).toBe("reserved");
+    expect(validateGithubRepoName("..").reason).toBe("reserved");
+    expect(validateGithubRepoName("a".repeat(101)).reason).toBe("too_long");
+  });
+});
+
+describe("normalizeGithubRepoName", () => {
+  it("trims whitespace", () => {
+    expect(normalizeGithubRepoName("  my-repo  ")).toBe("my-repo");
+  });
+});
+
+describe("repoSlugFromGitRepoName", () => {
+  it("extracts repo segment from owner/repo", () => {
+    expect(repoSlugFromGitRepoName("pjryu0322/meeting-summary-service")).toBe(
+      "meeting-summary-service"
+    );
+  });
+
+  it("returns bare repo name", () => {
+    expect(repoSlugFromGitRepoName("meeting-summary-service")).toBe("meeting-summary-service");
   });
 });

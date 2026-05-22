@@ -91,15 +91,17 @@ runtimeTimelineDedupe.ts
 - `appendRuntimeEvent()` logs persist failures via `console.warn` (does not fail execution)
 - **Primary:** `runtime_events` table | **Compat mirror:** `executionEventLog` when `RUNTIME_EVENT_COMPAT_EXECUTION_LOG=1` | **Deprecated:** `runtime-timeline` holder job
 
-### Branch / project naming
+### Branch / repository naming
 
 - `branchSlug.ts` — `toSafeBranchSlug()`, `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE`
-- `computeExecutionBranchPlan({ projectName, ... })`:
+- Branch slug priority: `ExecutionSetup.gitRepoName` repo segment → `projectName` fallback → `p-{shortProjectId}`
+- `Project.name` is not used for GitHub repo naming; platform project title may differ from repo name.
+- `computeExecutionBranchPlan({ repositoryName, projectName?, ... })`:
   - ENV_TEST: unchanged `envcheck/t-hello-world-{8hex}`
-  - feature-per-workflow: `{prefix}/{projectSlug}/w-{shortProjectId}`
-  - feature-per-task / per_task: `{prefix}/{projectSlug}/t-{shortTaskId}-{titleSlug}`
+  - feature-per-workflow: `{prefix}/{repoSlug}/w-{shortProjectId}`
+  - feature-per-task / per_task: `{prefix}/{repoSlug}/t-{shortTaskId}-{titleSlug}`
   - manual (default): `{prefix}/manual/t-{shortTaskId}-{titleSlug}` — never `main` unless `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE=1`
-- Call sites: `runExecutionLoop`, `cursorExecutionJobInvoke`, `runtimeSelfHealingExecution`
+- Call sites pass `repositoryName: setup.gitRepoName` from `runExecutionLoop`, `cursorExecutionJobInvoke`, `runtimeSelfHealingExecution`
 - Tests: `branchPolicy.unit.test.ts`, `branchSlug.unit.test.ts`
 
 ### ENV_TEST vs legacy boundary
@@ -116,21 +118,22 @@ runtimeTimelineDedupe.ts
 |----------|---------|---------|
 | `EXECUTION_ALLOW_MANUAL_STAY_ON_BASE` | off | `manual` strategy uses `baseBranch` directly (legacy) |
 
-## Git Repository Provisioning MVP
+## Git Repository Provisioning (Phase 2 policy)
 
 API: `POST /api/projects/[projectId]/git-repository/provision`
 
 | action | Purpose |
 |--------|---------|
-| `prepare` | Project name → repo candidate, GitHub lookup, analysis, `nextActions` |
-| `create_and_bind` | Create repo if missing (explicit), bind `ExecutionSetup` |
+| `prepare` | User-provided `owner` + `repo` (required), lookup, analysis, `nextActions` |
+| `create_and_bind` | Create personal repo if missing (explicit), bind `ExecutionSetup` |
 | `analyze_existing` | Read-only structure analysis |
-| `bind_existing` | Connect existing repo (`confirmExistingRepo: true`) |
+| `bind_existing` | Connect existing repo (`confirmExistingRepo` + optional `confirmHighRiskExistingRepo`) |
 
 Modules:
 
 ```text
-apps/web/src/lib/git-provisioning/repoNamePolicy.ts
+apps/web/src/lib/git-provisioning/repoNamePolicy.ts      # validateGithubRepoName, repoSlugFromGitRepoName
+apps/web/src/lib/git-provisioning/githubApiClient.ts     # getAuthenticatedGithubUser
 apps/web/src/lib/git-provisioning/githubRepoLookup.ts
 apps/web/src/lib/git-provisioning/githubRepoCreate.ts
 apps/web/src/lib/git-provisioning/githubRepoAnalyzer.ts
@@ -139,10 +142,13 @@ apps/web/src/lib/git-provisioning/gitRepositoryProvisioningService.ts
 
 Policies:
 
+- **No auto repo naming:** `Project.name` is never used to generate GitHub repo names; user enters ASCII `repo` explicitly.
+- **Validation:** `a-z`, `A-Z`, `0-9`, `-`, `_`, `.` only; rejects Korean, spaces, `owner/repo`, URLs, reserved `.` / `..`.
+- **Personal create MVP:** `POST /user/repos` — `owner` must match authenticated token login; org repo creation is not implemented yet (lookup/analyze/bind may still work with token access).
+- **High-risk bind:** `manual_review` repos require `confirmExistingRepo` and `confirmHighRiskExistingRepo` to bind.
 - Repo creation only via explicit `create_and_bind` (no delete/force-push/init wipe)
-- `feature-per-task` + `branchPrefix: orch` on bind
+- Bind sets `feature-per-task`, `branchPrefix: orch`, default `allowedPathGlobs`; responses include bind summary (no plain token).
 - GitHub token from project `ExecutionSetup` or peer project (same owner, validated)
-- Token never returned in API responses
 
 ## RuntimeEvent schema (verified)
 

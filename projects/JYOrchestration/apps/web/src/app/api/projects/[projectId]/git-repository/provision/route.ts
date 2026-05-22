@@ -12,10 +12,25 @@ type ProvisionBody = {
   readonly action?: string;
   readonly owner?: string;
   readonly repo?: string;
-  readonly repoNameOverride?: string | null;
   readonly private?: boolean;
   readonly confirmExistingRepo?: boolean;
+  readonly confirmHighRiskExistingRepo?: boolean;
 };
+
+function requireOwnerAndRepo(body: ProvisionBody): { owner: string; repo: string } | NextResponse {
+  const owner = String(body.owner ?? "").trim();
+  const repo = String(body.repo ?? "").trim();
+  if (!owner || !repo) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: owner ? "GitHub repository name is required." : "GitHub owner is required.",
+      },
+      { status: 400 }
+    );
+  }
+  return { owner, repo };
+}
 
 export async function POST(
   request: NextRequest,
@@ -52,69 +67,56 @@ export async function POST(
     }
 
     const action = String(body.action ?? "").trim();
-    const owner = String(body.owner ?? "").trim();
 
     if (action === "prepare") {
+      const ids = requireOwnerAndRepo(body);
+      if (ids instanceof NextResponse) return ids;
       const result = await prepareGitRepositoryProvisioning({
         projectId: pid,
         actorUserId: userId,
-        owner,
-        repoNameOverride: body.repoNameOverride ?? null,
+        owner: ids.owner,
+        repo: ids.repo,
       });
       return NextResponse.json({ success: result.ok, data: result });
     }
 
     if (action === "create_and_bind") {
-      const repo = String(body.repo ?? "").trim();
-      if (!owner || !repo) {
-        return NextResponse.json(
-          { success: false, message: "owner와 repo가 필요합니다." },
-          { status: 400 }
-        );
-      }
+      const ids = requireOwnerAndRepo(body);
+      if (ids instanceof NextResponse) return ids;
       const result = await createAndBindGithubRepository({
         projectId: pid,
         actorUserId: userId,
-        owner,
-        repo,
+        owner: ids.owner,
+        repo: ids.repo,
         private: body.private !== false,
       });
       return NextResponse.json({ success: result.ok, data: result }, { status: result.ok ? 200 : 400 });
     }
 
     if (action === "analyze_existing") {
-      const repo = String(body.repo ?? "").trim();
-      if (!owner || !repo) {
-        return NextResponse.json(
-          { success: false, message: "owner와 repo가 필요합니다." },
-          { status: 400 }
-        );
-      }
+      const ids = requireOwnerAndRepo(body);
+      if (ids instanceof NextResponse) return ids;
       const result = await bindExistingGithubRepository({
         projectId: pid,
         actorUserId: userId,
-        owner,
-        repo,
+        owner: ids.owner,
+        repo: ids.repo,
         mode: "analyze_only",
       });
       return NextResponse.json({ success: result.ok, data: result });
     }
 
     if (action === "bind_existing") {
-      const repo = String(body.repo ?? "").trim();
-      if (!owner || !repo) {
-        return NextResponse.json(
-          { success: false, message: "owner와 repo가 필요합니다." },
-          { status: 400 }
-        );
-      }
+      const ids = requireOwnerAndRepo(body);
+      if (ids instanceof NextResponse) return ids;
       const result = await bindExistingGithubRepository({
         projectId: pid,
         actorUserId: userId,
-        owner,
-        repo,
+        owner: ids.owner,
+        repo: ids.repo,
         mode: "connect_existing",
         confirmExistingRepo: body.confirmExistingRepo === true,
+        confirmHighRiskExistingRepo: body.confirmHighRiskExistingRepo === true,
       });
       return NextResponse.json({ success: result.ok, data: result }, { status: result.ok ? 200 : 400 });
     }

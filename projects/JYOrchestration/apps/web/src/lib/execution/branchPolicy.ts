@@ -4,6 +4,7 @@ import {
   shortIdFromUuid,
   toSafeBranchSlug,
 } from "@/lib/execution/branchSlug";
+import { repoSlugFromGitRepoName } from "@/lib/git-provisioning/repoNamePolicy";
 
 function slugPart(s: string, max: number): string {
   const x = String(s ?? "")
@@ -32,9 +33,18 @@ export function isEnvTestHelloWorldBranchName(branchName: string): boolean {
   );
 }
 
-function projectSlugSegment(projectId: string, projectName?: string | null): string {
+function projectSlugSegment(
+  projectId: string,
+  repositoryName?: string | null,
+  projectName?: string | null
+): string {
   const shortProjectId = shortIdFromUuid(projectId, 8);
-  return toSafeBranchSlug(projectName ?? "", `p-${shortProjectId}`, 28);
+  const fallback = `p-${shortProjectId}`;
+  const repoSlug = repoSlugFromGitRepoName(repositoryName);
+  if (repoSlug) {
+    return toSafeBranchSlug(repoSlug, fallback, 28);
+  }
+  return toSafeBranchSlug(projectName ?? "", fallback, 28);
 }
 
 /**
@@ -48,7 +58,10 @@ export function computeExecutionBranchPlan(params: {
   branchStrategy: string;
   branchPrefix: string | null;
   projectId: string;
+  /** @deprecated Use repositoryName (ExecutionSetup.gitRepoName) when available. */
   projectName?: string | null;
+  /** ExecutionSetup.gitRepoName or bare repo — preferred for branch slug. */
+  repositoryName?: string | null;
   taskId: string;
   taskTitle: string;
   baseBranch: string;
@@ -67,7 +80,11 @@ export function computeExecutionBranchPlan(params: {
     .replace(/^\/+|\/+$/g, "")
     .slice(0, 40) || "orch";
 
-  const projectSlug = projectSlugSegment(params.projectId, params.projectName);
+  const projectSlug = projectSlugSegment(
+    params.projectId,
+    params.repositoryName,
+    params.projectName
+  );
   const shortProjectId = shortIdFromUuid(params.projectId, 8);
   const shortTaskId = params.taskId.replace(/-/g, "").slice(0, 10);
   const titleSlug = slugPart(params.taskTitle, 24);

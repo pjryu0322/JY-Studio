@@ -104,6 +104,7 @@ export async function loadCursorExecutionInvokeContext(
     branchPrefix: setupRow.branchPrefix,
     projectId: payload.projectId,
     projectName: project?.name ?? null,
+    repositoryName: setupRow.gitRepoName,
     taskId: taskRow.id,
     taskTitle: taskRow.name,
     baseBranch: setupRow.baseBranch,

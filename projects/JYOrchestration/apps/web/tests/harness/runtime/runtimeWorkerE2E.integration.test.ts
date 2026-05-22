@@ -206,6 +206,7 @@ describe("runtimeWorkerE2E scenarios", () => {
       cursorOutcome,
     });
     expect(dup.chained).toBe(false);
+    expect(findExistingPipelineMock).toHaveBeenCalled();
 
     process.env.RUNTIME_PROCESS_CHAINED_PIPELINE_IMMEDIATELY = "0";
     const enqOnly = await maybeChainCursorJobToPipeline({

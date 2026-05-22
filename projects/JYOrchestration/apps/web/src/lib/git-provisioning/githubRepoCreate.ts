@@ -12,7 +12,7 @@ function parseRepoSummary(body: Record<string, unknown>): GithubRepositorySummar
     defaultBranch: String(body.default_branch ?? "main"),
     private: body.private === true,
     fork: body.fork === true,
-    archived: body.archived === false,
+    archived: body.archived === true,
     pushedAt: typeof body.pushed_at === "string" ? body.pushed_at : null,
     updatedAt: typeof body.updated_at === "string" ? body.updated_at : null,
     size: typeof body.size === "number" ? body.size : null,

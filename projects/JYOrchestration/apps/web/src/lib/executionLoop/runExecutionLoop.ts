@@ -538,6 +538,7 @@ export async function runExecutionLoop(params: {
         branchPrefix: setup.branchPrefix,
         projectId,
         projectName,
+        repositoryName: setup.gitRepoName,
         taskId: taskRow.id,
         taskTitle: taskRow.name,
         baseBranch: setup.baseBranch,

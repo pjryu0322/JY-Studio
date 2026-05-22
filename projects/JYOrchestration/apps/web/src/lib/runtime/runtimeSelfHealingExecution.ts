@@ -57,6 +57,7 @@ export async function createSelfHealingExecutionRun(
     branchPrefix: setup?.branchPrefix ?? null,
     projectId: input.projectId,
     projectName: projectRow?.name ?? null,
+    repositoryName: setup?.gitRepoName ?? null,
     taskId: taskRow.id,
     taskTitle: taskRow.name,
     baseBranch: setup?.baseBranch ?? "main",

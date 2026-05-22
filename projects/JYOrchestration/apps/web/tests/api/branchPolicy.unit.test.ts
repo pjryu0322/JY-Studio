@@ -45,7 +45,24 @@ describe("computeExecutionBranchPlan", () => {
     expect(plan.branchName.startsWith(ENV_TEST_HELLO_WORLD_BRANCH_PREFIX)).toBe(true);
   });
 
-  it("includes project slug in feature-per-task branch", () => {
+  it("prefers repositoryName over projectName for feature-per-task branch", () => {
+    const plan = computeExecutionBranchPlan({
+      branchStrategy: "feature-per-task",
+      branchPrefix: "orch",
+      projectId,
+      projectName: "회의록 자동화",
+      repositoryName: "myorg/meeting-summary-service",
+      taskId,
+      taskTitle: "Add Model",
+      baseBranch: "main",
+    });
+    expect(plan.branchName).toMatch(/^orch\/meeting-summary-service\/t-/);
+    expect(plan.branchName).not.toMatch(/p-a1b2c3d4/);
+    expect(plan.branchName).not.toBe("main");
+    expect(plan.manualStayOnBase).toBe(false);
+  });
+
+  it("includes project slug in feature-per-task branch when repositoryName absent", () => {
     const plan = computeExecutionBranchPlan({
       branchStrategy: "feature-per-task",
       branchPrefix: "orch",
@@ -60,12 +77,13 @@ describe("computeExecutionBranchPlan", () => {
     expect(plan.manualStayOnBase).toBe(false);
   });
 
-  it("includes project slug in feature-per-workflow branch", () => {
+  it("includes repository slug in feature-per-workflow branch", () => {
     const plan = computeExecutionBranchPlan({
       branchStrategy: "feature-per-workflow",
       branchPrefix: "orch",
       projectId,
       projectName: "My App",
+      repositoryName: "org/my-app",
       taskId,
       taskTitle: "ignored",
       baseBranch: "main",
