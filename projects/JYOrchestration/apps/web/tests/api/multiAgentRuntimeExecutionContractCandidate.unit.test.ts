@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateRuntimeExecutionContractCandidate,
   resolveRuntimeExecutionContractCandidateDecision,
+  validateRuntimeExecutionContractCandidateDetails,
   validateRuntimeExecutionContractCandidates,
 } from "@/lib/agents/evaluateRuntimeExecutionContractCandidate";
 import { buildRuntimeExecutionContractCandidates } from "@/lib/agents/runtimeExecutionContractCandidateSupport";
@@ -11,7 +12,33 @@ import {
   buildStage6DContractCandidateConfirmedInput,
   buildStage6DReadyContractCandidateInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
-import type { RuntimeExecutionContractArea } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+import type {
+  RuntimeExecutionContractArea,
+  RuntimeExecutionContractCandidateDecisionInput,
+  RuntimeExecutionContractCandidateItem,
+} from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+
+function readyDecisionInput(
+  overrides: Partial<RuntimeExecutionContractCandidateDecisionInput> = {},
+): RuntimeExecutionContractCandidateDecisionInput {
+  return {
+    sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
+    sourceReviewGateOnly: true,
+    sourceCandidateOnly: true,
+    sourceNoRunBoundarySatisfied: true,
+    sourcePersistenceBoundarySatisfied: true,
+    sourceSchemaMigrationBoundarySatisfied: true,
+    sourceForbiddenFieldDetected: false,
+    sourceActualExecutionWireAllowedInThisStep: false,
+    sourceActualPersistenceAllowedInThisStep: false,
+    sourceActualExternalSideEffectAllowedInThisStep: false,
+    sourceActualSchemaMigrationAllowedInThisStep: false,
+    sourceReviewedModelCount: 7,
+    confirmationsSatisfied: true,
+    contractCandidatesValid: true,
+    ...overrides,
+  };
+}
 
 function evaluateReadyContract(input: Parameters<typeof evaluateRuntimeExecutionContractCandidate>[0] = {}) {
   return evaluateRuntimeExecutionContractCandidate({ ...buildStage6DReadyContractCandidateInput(), ...input });
@@ -58,92 +85,40 @@ describe("multi-agent runtime execution contract candidate stage 6-D", () => {
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when sourceReviewGateOnly is false", () => {
-    expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: false,
-        sourceCandidateOnly: true,
-        sourceNoRunBoundarySatisfied: true,
-        sourcePersistenceBoundarySatisfied: true,
-        sourceSchemaMigrationBoundarySatisfied: true,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: true,
-      }),
-    ).toBe("blocked");
+    expect(resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourceReviewGateOnly: false }))).toBe(
+      "blocked",
+    );
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when sourceCandidateOnly is false", () => {
-    expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: true,
-        sourceCandidateOnly: false,
-        sourceNoRunBoundarySatisfied: true,
-        sourcePersistenceBoundarySatisfied: true,
-        sourceSchemaMigrationBoundarySatisfied: true,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: true,
-      }),
-    ).toBe("blocked");
+    expect(resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourceCandidateOnly: false }))).toBe(
+      "blocked",
+    );
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when sourceNoRunBoundarySatisfied is false", () => {
     expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: true,
-        sourceCandidateOnly: true,
-        sourceNoRunBoundarySatisfied: false,
-        sourcePersistenceBoundarySatisfied: true,
-        sourceSchemaMigrationBoundarySatisfied: true,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: true,
-      }),
+      resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourceNoRunBoundarySatisfied: false })),
     ).toBe("blocked");
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when sourcePersistenceBoundarySatisfied is false", () => {
     expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: true,
-        sourceCandidateOnly: true,
-        sourceNoRunBoundarySatisfied: true,
-        sourcePersistenceBoundarySatisfied: false,
-        sourceSchemaMigrationBoundarySatisfied: true,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: true,
-      }),
+      resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourcePersistenceBoundarySatisfied: false })),
     ).toBe("blocked");
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when sourceSchemaMigrationBoundarySatisfied is false", () => {
     expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: true,
-        sourceCandidateOnly: true,
-        sourceNoRunBoundarySatisfied: true,
-        sourcePersistenceBoundarySatisfied: true,
-        sourceSchemaMigrationBoundarySatisfied: false,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: true,
-      }),
+      resolveRuntimeExecutionContractCandidateDecision(
+        readyDecisionInput({ sourceSchemaMigrationBoundarySatisfied: false }),
+      ),
     ).toBe("blocked");
   });
 
   it("resolveRuntimeExecutionContractCandidateDecision blocks when contractCandidatesValid is false", () => {
     expect(
-      resolveRuntimeExecutionContractCandidateDecision({
-        sourceReviewGateDecision: "ready_for_runtime_execution_contract_candidate",
-        sourceReviewGateOnly: true,
-        sourceCandidateOnly: true,
-        sourceNoRunBoundarySatisfied: true,
-        sourcePersistenceBoundarySatisfied: true,
-        sourceSchemaMigrationBoundarySatisfied: true,
-        confirmationsSatisfied: true,
-        contractCandidatesValid: false,
-      }),
+      resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ contractCandidatesValid: false })),
     ).toBe("blocked");
   });
 
@@ -269,5 +244,128 @@ describe("multi-agent runtime execution contract candidate stage 6-D", () => {
     expect(report.sourceNoRunBoundarySatisfied).toBe(true);
     expect(report.sourcePersistenceBoundarySatisfied).toBe(true);
     expect(report.sourceSchemaMigrationBoundarySatisfied).toBe(true);
+  });
+
+  it("contract builder references source.reviewedModelKinds", () => {
+    const source = readyReviewGate();
+    const contracts = buildRuntimeExecutionContractCandidates(source);
+    expect(contracts.length).toBe(source.reviewedModelKinds.length);
+    expect(contracts.every((contract) => source.reviewedModelKinds.includes(contract.modelKind as never))).toBe(true);
+  });
+
+  it("sourceReviewedModelKinds is exposed on report", () => {
+    const source = readyReviewGate();
+    const report = evaluateReadyContract();
+    expect(report.sourceReviewedModelKinds).toEqual(source.reviewedModelKinds);
+  });
+
+  it("sourceReviewedModelCount is exposed on report", () => {
+    expect(evaluateReadyContract().sourceReviewedModelCount).toBe(7);
+  });
+
+  it("sourceReviewedFieldCount is exposed on report", () => {
+    expect(evaluateReadyContract().sourceReviewedFieldCount).toBeGreaterThan(0);
+  });
+
+  it("sourceForbiddenFieldDetected true yields blocked", () => {
+    expect(resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourceForbiddenFieldDetected: true }))).toBe(
+      "blocked",
+    );
+  });
+
+  it("sourceActualExecutionWireAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionContractCandidateDecision(
+        readyDecisionInput({ sourceActualExecutionWireAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualPersistenceAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionContractCandidateDecision(
+        readyDecisionInput({ sourceActualPersistenceAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualExternalSideEffectAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionContractCandidateDecision(
+        readyDecisionInput({ sourceActualExternalSideEffectAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceActualSchemaMigrationAllowedInThisStep true yields blocked", () => {
+    expect(
+      resolveRuntimeExecutionContractCandidateDecision(
+        readyDecisionInput({ sourceActualSchemaMigrationAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("sourceReviewedModelCount less than 7 yields blocked", () => {
+    expect(resolveRuntimeExecutionContractCandidateDecision(readyDecisionInput({ sourceReviewedModelCount: 6 }))).toBe(
+      "blocked",
+    );
+  });
+
+  it("contractCandidateValidation.valid is true on ready path", () => {
+    expect(evaluateReadyContract().contractCandidateValidation.valid).toBe(true);
+  });
+
+  it("validation detects missing contract id", () => {
+    const contracts = buildRuntimeExecutionContractCandidates(readyReviewGate()).slice(0, 6);
+    const validation = validateRuntimeExecutionContractCandidateDetails(contracts);
+    expect(validation.valid).toBe(false);
+    expect(validation.missingContractIds.length).toBeGreaterThan(0);
+  });
+
+  it("validation detects duplicate contract id", () => {
+    const contracts = buildRuntimeExecutionContractCandidates(readyReviewGate());
+    const validation = validateRuntimeExecutionContractCandidateDetails([
+      contracts[0],
+      { ...contracts[1], contractId: contracts[0].contractId },
+      ...contracts.slice(2),
+    ]);
+    expect(validation.valid).toBe(false);
+    expect(validation.duplicateContractIds).toContain(contracts[0].contractId);
+  });
+
+  it("validation detects empty required field contract id", () => {
+    const contracts = buildRuntimeExecutionContractCandidates(readyReviewGate());
+    const invalid = { ...contracts[0], requiredFields: [] };
+    const validation = validateRuntimeExecutionContractCandidateDetails([invalid, ...contracts.slice(1)]);
+    expect(validation.valid).toBe(false);
+    expect(validation.emptyRequiredFieldContractIds).toContain(contracts[0].contractId);
+  });
+
+  it("validation detects implementedInThisStep true contract id", () => {
+    const contracts = buildRuntimeExecutionContractCandidates(readyReviewGate());
+    const invalid = {
+      ...contracts[0],
+      implementedInThisStep: true,
+    } as RuntimeExecutionContractCandidateItem;
+    const validation = validateRuntimeExecutionContractCandidateDetails([invalid, ...contracts.slice(1)]);
+    expect(validation.valid).toBe(false);
+    expect(validation.implementedInThisStepContractIds).toContain(contracts[0].contractId);
+  });
+
+  it("ready finding includes source_review_gate_trace_copied", () => {
+    expect(evaluateReadyContract().findings.some((f) => f.code === "source_review_gate_trace_copied")).toBe(true);
+  });
+
+  it("ready finding includes runtime_contract_candidate_validation_passed", () => {
+    expect(
+      evaluateReadyContract().findings.some((f) => f.code === "runtime_contract_candidate_validation_passed"),
+    ).toBe(true);
+  });
+
+  it("contractCandidateFingerprint includes sourceModels sourceFields sourceForbidden segments", () => {
+    const fingerprint = evaluateReadyContract().contractCandidateFingerprint;
+    expect(fingerprint).toContain("sourceModels:7");
+    expect(fingerprint).toContain("sourceFields:");
+    expect(fingerprint).toContain("sourceForbidden:false");
   });
 });

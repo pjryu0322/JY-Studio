@@ -22,11 +22,12 @@ import {
   RUNTIME_EXECUTION_CONTRACT_CANDIDATE_VERSION,
   STAGE6_D_RECOMMENDED_NEXT_PHASES,
   STAGE6_D_SEPARATED_WORK_ITEMS,
-  validateRuntimeExecutionContractCandidates,
+  validateRuntimeExecutionContractCandidateDetails,
 } from "@/lib/agents/runtimeExecutionContractCandidateSupport";
 
 export {
   resolveRuntimeExecutionContractCandidateDecision,
+  validateRuntimeExecutionContractCandidateDetails,
   validateRuntimeExecutionContractCandidates,
 } from "@/lib/agents/runtimeExecutionContractCandidateSupport";
 
@@ -44,7 +45,8 @@ export function evaluateRuntimeExecutionContractCandidate(
   const source = evaluateRuntimeExecutionContractCandidateSource(input);
   const parsed = parseRuntimeExecutionContractCandidateInput(input);
   const contractCandidates = buildRuntimeExecutionContractCandidates(source);
-  const contractCandidatesValid = validateRuntimeExecutionContractCandidates(contractCandidates);
+  const contractCandidateValidation = validateRuntimeExecutionContractCandidateDetails(contractCandidates);
+  const contractCandidatesValid = contractCandidateValidation.valid;
   const trace = computeRuntimeExecutionContractCandidateTrace(contractCandidates, source);
 
   const decision = resolveRuntimeExecutionContractCandidateDecision({
@@ -54,6 +56,12 @@ export function evaluateRuntimeExecutionContractCandidate(
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.schemaMigrationBoundarySatisfied === true,
+    sourceForbiddenFieldDetected: source.forbiddenFieldDetected === true,
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
+    sourceReviewedModelCount: source.reviewedModelCount,
     confirmationsSatisfied: parsed.confirmationsSatisfied,
     contractCandidatesValid,
   });
@@ -64,9 +72,12 @@ export function evaluateRuntimeExecutionContractCandidate(
     contractFieldCount: trace.contractFieldCount,
     contractBoundaryRuleCount: trace.contractBoundaryRuleCount,
     confirmationCount: parsed.confirmationCount,
-    sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
-    sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
-    sourceSchemaMigrationBoundarySatisfied: source.schemaMigrationBoundarySatisfied === true,
+    sourceReviewedModelCount: trace.sourceReviewedModelCount,
+    sourceReviewedFieldCount: trace.sourceReviewedFieldCount,
+    sourceForbiddenFieldDetected: trace.sourceForbiddenFieldDetected,
+    sourceNoRunBoundarySatisfied: trace.sourceNoRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: trace.sourcePersistenceBoundarySatisfied,
+    sourceSchemaMigrationBoundarySatisfied: trace.sourceSchemaMigrationBoundarySatisfied,
   });
 
   const { contractChecklist, boundaryChecklist, dryRunChecklist } =
@@ -81,7 +92,7 @@ export function evaluateRuntimeExecutionContractCandidate(
     decision,
     source,
     parsed,
-    contractCandidatesValid,
+    contractCandidateValidation,
   });
 
   return {
@@ -96,10 +107,20 @@ export function evaluateRuntimeExecutionContractCandidate(
     sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
     sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
     sourceSchemaMigrationBoundarySatisfied: source.schemaMigrationBoundarySatisfied,
+    sourceReviewedModelKinds: [...source.reviewedModelKinds],
+    sourceReviewedModelCount: source.reviewedModelCount,
+    sourceReviewedFieldCount: source.reviewedFieldCount,
+    sourceForbiddenFieldDetected: source.forbiddenFieldDetected,
+    sourceForbiddenFieldNames: [...source.forbiddenFieldNames],
+    sourceActualExecutionWireAllowedInThisStep: source.actualExecutionWireAllowedInThisStep,
+    sourceActualPersistenceAllowedInThisStep: source.actualPersistenceAllowedInThisStep,
+    sourceActualExternalSideEffectAllowedInThisStep: source.actualExternalSideEffectAllowedInThisStep,
+    sourceActualSchemaMigrationAllowedInThisStep: source.actualSchemaMigrationAllowedInThisStep,
     contractCandidateVersion: RUNTIME_EXECUTION_CONTRACT_CANDIDATE_VERSION,
     contractCandidateTitle: RUNTIME_EXECUTION_CONTRACT_CANDIDATE_TITLE,
     contractCandidateSummary: buildRuntimeExecutionContractCandidateSummary(decision),
     contractCandidateFingerprint,
+    contractCandidateValidation,
     contractCandidateOnly: true,
     actualRuntimeExecutionAllowedInThisStep: false,
     actualExecutionRunnerAllowedInThisStep: false,

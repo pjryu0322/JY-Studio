@@ -42,6 +42,15 @@ export interface RuntimeExecutionContractCandidateItem {
   readonly implementedInThisStep: false;
 }
 
+export interface RuntimeExecutionContractCandidateValidationResult {
+  readonly valid: boolean;
+  readonly missingContractIds: readonly string[];
+  readonly duplicateContractIds: readonly string[];
+  readonly emptyRequiredFieldContractIds: readonly string[];
+  readonly invalidBoundaryRuleContractIds: readonly string[];
+  readonly implementedInThisStepContractIds: readonly string[];
+}
+
 export interface RuntimeExecutionContractCandidateChecklistItem {
   readonly item: string;
   readonly area: RuntimeExecutionContractArea;
@@ -80,10 +89,21 @@ export interface RuntimeExecutionContractCandidateReport {
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;
 
+  readonly sourceReviewedModelKinds: readonly string[];
+  readonly sourceReviewedModelCount: number;
+  readonly sourceReviewedFieldCount: number;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceForbiddenFieldNames: readonly string[];
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+
   readonly contractCandidateVersion: "runtime_execution_contract_candidate_v1";
   readonly contractCandidateTitle: string;
   readonly contractCandidateSummary: string;
   readonly contractCandidateFingerprint: string;
+  readonly contractCandidateValidation: RuntimeExecutionContractCandidateValidationResult;
 
   readonly contractCandidateOnly: true;
   readonly actualRuntimeExecutionAllowedInThisStep: false;
@@ -118,6 +138,12 @@ export interface RuntimeExecutionContractCandidateDecisionInput {
   readonly sourceNoRunBoundarySatisfied: boolean;
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceActualExecutionWireAllowedInThisStep: boolean;
+  readonly sourceActualPersistenceAllowedInThisStep: boolean;
+  readonly sourceActualExternalSideEffectAllowedInThisStep: boolean;
+  readonly sourceActualSchemaMigrationAllowedInThisStep: boolean;
+  readonly sourceReviewedModelCount: number;
   readonly confirmationsSatisfied: boolean;
   readonly contractCandidatesValid: boolean;
 }

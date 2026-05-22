@@ -7,6 +7,7 @@ import type {
   ParsedRuntimeExecutionContractCandidateInput,
   RuntimeExecutionContractCandidateDecision,
   RuntimeExecutionContractCandidateFinding,
+  RuntimeExecutionContractCandidateValidationResult,
 } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
 
 function finding(
@@ -17,14 +18,36 @@ function finding(
   return { severity, code, message };
 }
 
+function validationFailureMessage(validation: RuntimeExecutionContractCandidateValidationResult): string {
+  return [
+    validation.missingContractIds.length > 0
+      ? `missing=${validation.missingContractIds.join(",")}`
+      : null,
+    validation.duplicateContractIds.length > 0
+      ? `duplicate=${validation.duplicateContractIds.join(",")}`
+      : null,
+    validation.emptyRequiredFieldContractIds.length > 0
+      ? `emptyFields=${validation.emptyRequiredFieldContractIds.join(",")}`
+      : null,
+    validation.invalidBoundaryRuleContractIds.length > 0
+      ? `invalidRules=${validation.invalidBoundaryRuleContractIds.join(",")}`
+      : null,
+    validation.implementedInThisStepContractIds.length > 0
+      ? `implemented=${validation.implementedInThisStepContractIds.join(",")}`
+      : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join("; ");
+}
+
 export function appendRuntimeExecutionContractCandidateFindings(input: {
   readonly findings: RuntimeExecutionContractCandidateFinding[];
   readonly decision: RuntimeExecutionContractCandidateDecision;
   readonly source: RuntimeExecutionModelReviewGateReport;
   readonly parsed: ParsedRuntimeExecutionContractCandidateInput;
-  readonly contractCandidatesValid: boolean;
+  readonly contractCandidateValidation: RuntimeExecutionContractCandidateValidationResult;
 }): void {
-  const { findings, decision, source, parsed, contractCandidatesValid } = input;
+  const { findings, decision, source, parsed, contractCandidateValidation } = input;
 
   findings.push(
     finding("info", "runtime_execution_contract_candidate_created", "Stage 6-D contract candidate evaluator created"),
@@ -35,6 +58,66 @@ export function appendRuntimeExecutionContractCandidateFindings(input: {
 
   if (source.decision === "blocked") {
     findings.push(finding("blocking", "source_review_gate_blocked", "Source Stage 6-C review gate is blocked"));
+    findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
+    return;
+  }
+
+  if (source.forbiddenFieldDetected === true) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_review_gate_forbidden_field_detected",
+        `Forbidden fields detected: ${source.forbiddenFieldNames.join(",")}`,
+      ),
+    );
+    findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
+    return;
+  }
+
+  if (source.actualExecutionWireAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_review_gate_actual_execution_boundary_violation",
+        "Source actual execution wire boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
+    return;
+  }
+
+  if (source.actualPersistenceAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_review_gate_actual_persistence_boundary_violation",
+        "Source actual persistence boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
+    return;
+  }
+
+  if (source.actualExternalSideEffectAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_review_gate_actual_execution_boundary_violation",
+        "Source actual external side-effect boundary violated",
+      ),
+    );
+    findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
+    return;
+  }
+
+  if (source.actualSchemaMigrationAllowedInThisStep !== false) {
+    findings.push(
+      finding(
+        "blocking",
+        "source_review_gate_schema_migration_boundary_violation",
+        "Source schema migration boundary violated",
+      ),
+    );
     findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
     return;
   }
@@ -71,8 +154,14 @@ export function appendRuntimeExecutionContractCandidateFindings(input: {
     return;
   }
 
-  if (!contractCandidatesValid) {
-    findings.push(finding("blocking", "runtime_contract_candidate_invalid", "Runtime contract candidates are invalid"));
+  if (!contractCandidateValidation.valid) {
+    findings.push(
+      finding(
+        "blocking",
+        "runtime_contract_candidate_validation_failed",
+        validationFailureMessage(contractCandidateValidation),
+      ),
+    );
     findings.push(finding("blocking", "stage6_d_contract_candidate_blocked", "Stage 6-D contract candidate is blocked"));
     return;
   }
@@ -112,6 +201,12 @@ export function appendRuntimeExecutionContractCandidateFindings(input: {
     return;
   }
 
+  findings.push(
+    finding("info", "source_review_gate_trace_copied", "Stage 6-C review gate trace copied into contract candidate report"),
+  );
+  findings.push(
+    finding("info", "runtime_contract_candidate_validation_passed", "Runtime contract candidate validation passed"),
+  );
   findings.push(
     finding("info", "runtime_contract_no_run_boundary_enforced", "No-run boundary enforced in contract candidate step"),
   );

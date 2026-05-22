@@ -6,6 +6,7 @@ import { evaluateRuntimeExecutionModelReviewGate } from "@/lib/agents/evaluateRu
 import type { RuntimeExecutionModelReviewGateReport } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import {
   buildRuntimeExecutionContractCandidates,
+  validateRuntimeExecutionContractCandidateDetails,
   validateRuntimeExecutionContractCandidates,
 } from "@/lib/agents/runtimeExecutionContractCandidateContracts";
 import { buildRuntimeExecutionContractCandidateChecklists } from "@/lib/agents/runtimeExecutionContractCandidateChecklists";
@@ -13,6 +14,7 @@ import { appendRuntimeExecutionContractCandidateFindings } from "@/lib/agents/ru
 
 export {
   buildRuntimeExecutionContractCandidates,
+  validateRuntimeExecutionContractCandidateDetails,
   validateRuntimeExecutionContractCandidates,
 } from "@/lib/agents/runtimeExecutionContractCandidateContracts";
 
@@ -64,6 +66,12 @@ export function computeRuntimeExecutionContractCandidateTrace(
   readonly contractFieldCount: number;
   readonly contractBoundaryRuleCount: number;
   readonly reviewedModelCount: number;
+  readonly sourceReviewedModelCount: number;
+  readonly sourceReviewedFieldCount: number;
+  readonly sourceForbiddenFieldDetected: boolean;
+  readonly sourceNoRunBoundarySatisfied: boolean;
+  readonly sourcePersistenceBoundarySatisfied: boolean;
+  readonly sourceSchemaMigrationBoundarySatisfied: boolean;
 } {
   return {
     contractCandidateCount: candidates.length,
@@ -73,6 +81,12 @@ export function computeRuntimeExecutionContractCandidateTrace(
     ),
     contractBoundaryRuleCount: candidates.reduce((sum, c) => sum + c.boundaryRules.length, 0),
     reviewedModelCount: source.reviewedModelCount,
+    sourceReviewedModelCount: source.reviewedModelCount,
+    sourceReviewedFieldCount: source.reviewedFieldCount,
+    sourceForbiddenFieldDetected: source.forbiddenFieldDetected,
+    sourceNoRunBoundarySatisfied: source.sourceNoRunBoundarySatisfied,
+    sourcePersistenceBoundarySatisfied: source.sourcePersistenceBoundarySatisfied,
+    sourceSchemaMigrationBoundarySatisfied: source.schemaMigrationBoundarySatisfied,
   };
 }
 
@@ -83,22 +97,32 @@ export function resolveRuntimeExecutionContractCandidateDecision(
     return "blocked";
   }
 
+  if (input.sourceReviewGateDecision === "defer") {
+    return "defer";
+  }
+
+  if (input.sourceReviewGateDecision !== "ready_for_runtime_execution_contract_candidate") {
+    return "defer";
+  }
+
   if (
     input.sourceReviewGateOnly !== true ||
     input.sourceCandidateOnly !== true ||
     input.sourceNoRunBoundarySatisfied !== true ||
     input.sourcePersistenceBoundarySatisfied !== true ||
     input.sourceSchemaMigrationBoundarySatisfied !== true ||
+    input.sourceForbiddenFieldDetected === true ||
+    input.sourceActualExecutionWireAllowedInThisStep !== false ||
+    input.sourceActualPersistenceAllowedInThisStep !== false ||
+    input.sourceActualExternalSideEffectAllowedInThisStep !== false ||
+    input.sourceActualSchemaMigrationAllowedInThisStep !== false ||
+    input.sourceReviewedModelCount < 7 ||
     !input.contractCandidatesValid
   ) {
     return "blocked";
   }
 
-  if (
-    input.sourceReviewGateDecision === "defer" ||
-    input.sourceReviewGateDecision !== "ready_for_runtime_execution_contract_candidate" ||
-    !input.confirmationsSatisfied
-  ) {
+  if (!input.confirmationsSatisfied) {
     return "defer";
   }
 
@@ -111,6 +135,9 @@ export function buildRuntimeExecutionContractCandidateFingerprint(input: {
   readonly contractFieldCount: number;
   readonly contractBoundaryRuleCount: number;
   readonly confirmationCount: number;
+  readonly sourceReviewedModelCount: number;
+  readonly sourceReviewedFieldCount: number;
+  readonly sourceForbiddenFieldDetected: boolean;
   readonly sourceNoRunBoundarySatisfied: boolean;
   readonly sourcePersistenceBoundarySatisfied: boolean;
   readonly sourceSchemaMigrationBoundarySatisfied: boolean;
@@ -122,6 +149,9 @@ export function buildRuntimeExecutionContractCandidateFingerprint(input: {
     `fields:${input.contractFieldCount}`,
     `rules:${input.contractBoundaryRuleCount}`,
     `confirmations:${input.confirmationCount}`,
+    `sourceModels:${input.sourceReviewedModelCount}`,
+    `sourceFields:${input.sourceReviewedFieldCount}`,
+    `sourceForbidden:${input.sourceForbiddenFieldDetected}`,
     `noRun:${input.sourceNoRunBoundarySatisfied}`,
     `persistence:${input.sourcePersistenceBoundarySatisfied}`,
     `schema:${input.sourceSchemaMigrationBoundarySatisfied}`,

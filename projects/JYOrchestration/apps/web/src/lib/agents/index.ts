@@ -872,6 +872,7 @@ export type {
 export {
   evaluateRuntimeExecutionContractCandidate,
   resolveRuntimeExecutionContractCandidateDecision,
+  validateRuntimeExecutionContractCandidateDetails,
   validateRuntimeExecutionContractCandidates,
 } from "@/lib/agents/evaluateRuntimeExecutionContractCandidate";
 
@@ -881,7 +882,21 @@ export type {
   RuntimeExecutionContractCandidateReport,
   RuntimeExecutionContractCandidateItem,
   RuntimeExecutionContractArea,
+  RuntimeExecutionContractCandidateValidationResult,
 } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+
+export {
+  evaluateRuntimeExecutionDryRunContract,
+  resolveRuntimeExecutionDryRunContractDecision,
+} from "@/lib/agents/evaluateRuntimeExecutionDryRunContract";
+
+export type {
+  RuntimeExecutionDryRunContractDecision,
+  RuntimeExecutionDryRunContractInput,
+  RuntimeExecutionDryRunContractReport,
+  RuntimeExecutionDryRunContractItem,
+  RuntimeExecutionDryRunContractArea,
+} from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 
 export {
   buildStage6AReadyBaselineInput,
@@ -892,6 +907,8 @@ export {
   buildStage6CModelReviewGateConfirmedInput,
   buildStage6DReadyContractCandidateInput,
   buildStage6DContractCandidateConfirmedInput,
+  buildStage6EReadyDryRunContractInput,
+  buildStage6EDryRunContractConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

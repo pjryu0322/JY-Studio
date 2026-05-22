@@ -5,6 +5,7 @@
 import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
@@ -105,5 +106,32 @@ export function buildStage6DReadyContractCandidateInput(): RuntimeExecutionContr
   return {
     reviewGate: buildStage6CReadyReviewGateInput(),
     ...buildStage6DContractCandidateConfirmedInput(),
+  };
+}
+
+export function buildStage6EDryRunContractConfirmedInput(): Required<
+  Pick<
+    RuntimeExecutionDryRunContractInput,
+    | "runtimeExecutionDryRunContractConfirmed"
+    | "runtimeExecutionDryRunBoundaryReviewed"
+    | "runtimeExecutionDryRunNoRunnerConfirmed"
+    | "runtimeExecutionDryRunPersistenceReviewed"
+    | "runtimeExecutionDryRunRollbackReviewed"
+  >
+> {
+  return {
+    runtimeExecutionDryRunContractConfirmed: true,
+    runtimeExecutionDryRunBoundaryReviewed: true,
+    runtimeExecutionDryRunNoRunnerConfirmed: true,
+    runtimeExecutionDryRunPersistenceReviewed: true,
+    runtimeExecutionDryRunRollbackReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 6-E (Stage 6-D ready + 6-E dry-run confirmations). */
+export function buildStage6EReadyDryRunContractInput(): RuntimeExecutionDryRunContractInput {
+  return {
+    contractCandidate: buildStage6DReadyContractCandidateInput(),
+    ...buildStage6EDryRunContractConfirmedInput(),
   };
 }

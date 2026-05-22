@@ -2325,10 +2325,55 @@ Stage 6-D에서도 다음은 금지된다.
 - persistence implementation
 - UI implementation
 
-### Stage 6-E 후보 — Runtime Execution Dry-run Contract
+#### Stage 6-D Hardening
 
-Stage 6-E는 아직 구현하지 않는다.  
-Stage 6-D가 ready일 때만 다음 후보로 검토한다.
+Stage 6-D contract candidate는 Stage 6-C source report를 직접 추적한다.
+
+- source reviewed model kinds
+- source reviewed model count
+- source reviewed field count
+- source forbidden field state
+- source no-run/persistence/schema boundary
+
+Stage 6-D는 source가 ready이고 contract candidate validation이 통과한 경우에만 `ready_for_runtime_execution_dry_run_contract`를 반환한다.
+
+### Stage 6-E Runtime Execution Dry-run Contract
+
+Stage 6-E는 Stage 6-D의 `ready_for_runtime_execution_dry_run_contract`를 source로 사용한다.
+
+이 단계는 실제 dry-run runner 구현이 아니다.  
+향후 dry-run runner를 설계하기 위한 read-only contract package다.
+
+Stage 6-E 산출물:
+
+- dry-run request contract
+- dry-run plan contract
+- dry-run step contract
+- dry-run result contract
+- dry-run finding contract
+- dry-run approval contract
+- dry-run rollback contract
+
+Ready decision: `ready_for_runtime_execution_contract_closure`
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionDryRunContract.ts`, `runtimeExecutionDryRunContractTypes.ts`, `runtimeExecutionDryRunContractSupport.ts`
+
+Stage 6-E에서 금지되는 항목:
+
+- actual dry-run runner
+- actual runtime execution API
+- actual execution runner
+- Cursor/GitHub wire
+- Connector Gateway routing change
+- DB write
+- schema.prisma/migration
+- persistence implementation
+- UI implementation
+
+### Stage 6-F 후보 — Runtime Execution Contract Closure
+
+Stage 6-F는 아직 구현하지 않는다.  
+Stage 6-E가 ready일 때만 다음 후보로 검토한다.
 
 ### Stage 3–4 빠른 진행 로드맵
 
