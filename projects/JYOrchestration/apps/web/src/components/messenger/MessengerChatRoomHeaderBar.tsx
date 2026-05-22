@@ -27,6 +27,9 @@ export function MessengerChatRoomHeaderBar(p: {
   readonly onLeave: () => void;
   readonly onDelete: () => void;
   readonly onOpenMembers: () => void;
+  readonly onResetConversation: () => void;
+  readonly onDownloadConversationMarkdown: () => void;
+  readonly resetConversationBusy: boolean;
 }) {
   const title = p.detail?.room.title ?? "대화";
   const roomId = p.detail?.room.id ?? null;

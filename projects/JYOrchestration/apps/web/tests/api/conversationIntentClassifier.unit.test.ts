@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyConversationIntentFromRules,
+  enrichClassificationWithRequiredAction,
+  extractUrlsFromTranscript,
   mergeConversationDocumentContext,
   mergeConversationIntentWithRulesGuard,
 } from "@/lib/conversation-core/conversationIntentClassifier";
+import { promptPrescribesFeasibilityClosingPhrase } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import {
   defaultResponsePolicyForMode,
   messengerBasePromptForMode,
@@ -129,6 +132,29 @@ describe("classifyConversationIntentFromRules", () => {
       ],
     });
     expect(c.mode).toBe("brainstorm");
+    expect(c.requiredAction).toBe("none");
+  });
+
+  it("URL + check assigns website_inspection requiredAction", () => {
+    const transcript = [
+      { role: "user", content: "https://www.modoo.or.kr/idea/list" },
+      { role: "user", content: "확인해줘" },
+    ] as const;
+    const c = classifyConversationIntentFromRules({ ...pre, transcript: [...transcript] });
+    expect(c.mode).toBe("feasibility_check");
+    expect(c.requiredAction).toBe("website_inspection");
+    expect(c.targetUrls).toEqual(["https://www.modoo.or.kr/idea/list"]);
+    expect(extractUrlsFromTranscript(transcript)).toEqual(["https://www.modoo.or.kr/idea/list"]);
+  });
+
+  it("check without URL has no requiredAction", () => {
+    const base = classifyLast("가능한 방향을 제안해줘");
+    const c = enrichClassificationWithRequiredAction(
+      { ...base, mode: "feasibility_check" },
+      [{ role: "user", content: "접근해서 점검해줘" }]
+    );
+    expect(c.requiredAction).toBe("none");
+    expect(c.targetUrls).toEqual([]);
   });
 });
 
@@ -195,6 +221,16 @@ describe("messenger system prompt by intent", () => {
     expect(sys).toContain("robots.txt");
     expect(sys).toContain("이용약관");
     expect(sys).toContain("페이지네이션");
+    expect(sys).toContain("[inspectionResult]");
+    expect(promptPrescribesFeasibilityClosingPhrase(sys)).toBe(false);
+  });
+
+  it("feasibility prompt includes inspection block when provided", () => {
+    const c = classifyLast("https://example.com 데이터 수집 가능한지 확인해줘");
+    const sys = buildMessengerSystemBlockForTest(c, "", {
+      inspectionPromptText: "[inspectionResult]\nurl=https://example.com\nok=true\nstatus=200",
+    });
+    expect(sys).toContain("status=200");
   });
 
   it("promptMeta shows rules_guard override when reason includes rules_override", () => {

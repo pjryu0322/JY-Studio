@@ -87,6 +87,7 @@ export function MessengerHome() {
     try {
       await patchMessengerRoomTitle(renameRoomId, next);
       setRenameRoomId(null);
+      setRenameTitle("");
       await loadRooms();
     } catch (e) {
       setRenameError(e instanceof Error ? e.message : "저장 오류");

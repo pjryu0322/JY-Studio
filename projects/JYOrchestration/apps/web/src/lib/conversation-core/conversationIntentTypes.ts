@@ -11,6 +11,8 @@ export type ConversationIntentMode =
   | "project_execution_planning"
   | "general_chat";
 
+export type ConversationRequiredAction = "none" | "website_inspection";
+
 export type ConversationResponsePolicy = {
   readonly avoidBrainstormExpansion?: boolean;
   readonly avoidFeatureFinalization?: boolean;
@@ -19,6 +21,8 @@ export type ConversationResponsePolicy = {
   readonly shouldOfferAlternatives?: boolean;
   readonly shouldSummarizeDecisions?: boolean;
   readonly shouldPrepareProjectDraft?: boolean;
+  /** feasibility 체크리스트 반복 억제 */
+  readonly avoidChecklistRepetition?: boolean;
 };
 
 export type ConversationIntentClassification = {
@@ -35,6 +39,8 @@ export type ConversationIntentClassification = {
   readonly responsePolicy: ConversationResponsePolicy;
   /** rules | llm */
   readonly classifierSource?: "rules" | "llm";
+  readonly requiredAction?: ConversationRequiredAction;
+  readonly targetUrls?: readonly string[];
 };
 
 export function resolveConversationScope(projectId?: string | null): ConversationScope {

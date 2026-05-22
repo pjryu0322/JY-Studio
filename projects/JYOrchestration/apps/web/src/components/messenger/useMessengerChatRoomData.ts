@@ -40,6 +40,10 @@ export function useMessengerChatRoomData(roomId: string) {
     setDetail(await fetchMessengerChatRoomDetail(rid));
   }, [rid]);
 
+  const applyRoomDetail = useCallback((next: MessengerRoomDetail) => {
+    setDetail(next);
+  }, []);
+
   useEffect(() => {
     if (!rid) {
       setLoadError("대화방 ID가 없습니다.");
@@ -70,5 +74,6 @@ export function useMessengerChatRoomData(roomId: string) {
     loadError,
     reloadDetail,
     reloadMessages,
+    applyRoomDetail,
   };
 }

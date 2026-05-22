@@ -34,7 +34,13 @@ const MESSENGER_PRE_PROJECT_FEASIBILITY_SYSTEM = `당신은 플랫폼의 「AI �
   - 랭킹
   - 실시간 인기 아이디어
   - 참여 유도 기능
-- 마지막 문장: "다음에는 수집 가능성 점검 항목과 판단 기준을 정리하겠습니다"처럼 AI가 다음 산출물을 예고(질문 금지).
+- [inspectionResult]가 제공되면 반드시 그 결과를 먼저 반영합니다.
+- 실제 점검 결과가 있으면 "확인해야 합니다"만 반복하지 말고, 확인된 사실과 남은 확인 사항을 구분합니다.
+- [inspectionResult]가 실패했으면 실패 사유를 말하고, 대체 확인 방법을 제시합니다.
+- 마지막 문장은 상황에 맞게 작성합니다. 같은 마지막 문장을 반복하지 않습니다.
+  - 점검 결과가 있으면 "이 기준이면 1차 수집 방식은 ○○가 적합합니다."처럼 결론으로 끝냅니다.
+  - 점검 실패 시 "현재는 ○○ 때문에 자동 점검이 실패했으므로, 브라우저 개발자도구 또는 수동 확인이 필요합니다."처럼 끝냅니다.
+- 「다음에는 수집 가능성 점검 항목과 판단 기준을 정리하겠습니다」와 같은 고정 마지막 문장을 사용하지 마세요.
 
 금지:
 - "API가 있으면 API, 없으면 스크래핑"처럼 단정
@@ -128,6 +134,9 @@ function formatResponsePolicyBlock(policy: ConversationResponsePolicy): string {
   if (policy.shouldOfferAlternatives) lines.push("- 가능한 방향 2~3개를 제안할 수 있습니다.");
   if (policy.shouldSummarizeDecisions) lines.push("- 지금까지 내용을 요약·구분합니다.");
   if (policy.shouldPrepareProjectDraft) lines.push("- 프로젝트 초안 관점으로 구조화합니다.");
+  if (policy.avoidChecklistRepetition) {
+    lines.push("- 같은 확인 체크리스트를 반복하지 않고, 점검 결과·실행 가능한 다음 조치 중심으로 답합니다.");
+  }
   if (!lines.length) return "";
   return `[응답 정책]\n${lines.join("\n")}`;
 }
@@ -174,11 +183,13 @@ export function buildMessengerSystemPromptForIntent(input: {
   if (input.contextBlocksText?.trim()) parts.push(input.contextBlocksText.trim());
   const policyBlock = formatResponsePolicyBlock(c.responsePolicy);
   if (policyBlock) parts.push(policyBlock);
-  parts.push(
+  const intentCtx =
     c.scope === "pre_project"
-      ? `[요청 컨텍스트] intent=${c.mode}. 마지막 user 항목이 현재 요청입니다. 마지막 문장은 질문이 아니라 AI가 다음에 만들 산출물을 예고하세요.`
-      : `[요청 컨텍스트] intent=${c.mode}. 확정/미정/다음 작업 구조를 유지하세요.`
-  );
+      ? c.mode === "feasibility_check"
+        ? `[요청 컨텍스트] intent=${c.mode}. 마지막 user 항목이 현재 요청입니다. 가능한 범위에서 즉시 점검·결론 중심으로 답하세요.`
+        : `[요청 컨텍스트] intent=${c.mode}. 마지막 user 항목이 현재 요청입니다.`
+      : `[요청 컨텍스트] intent=${c.mode}. 확정/미정/다음 작업 구조를 유지하세요.`;
+  parts.push(intentCtx);
   return parts.join("\n\n");
 }
 

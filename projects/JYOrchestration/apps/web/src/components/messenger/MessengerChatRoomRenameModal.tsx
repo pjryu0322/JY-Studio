@@ -111,6 +111,41 @@ export function MessengerChatRoomRenameModal(p: {
         {p.error ? (
           <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 10, fontWeight: 700 }}>{p.error}</div>
         ) : null}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button
+            type="button"
+            disabled={p.saving}
+            onClick={revertAndClose}
+            style={{
+              padding: "8px 14px",
+              borderRadius: t.radiusMd,
+              border: `1px solid ${t.border}`,
+              background: t.bgCard,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: p.saving ? "not-allowed" : "pointer",
+            }}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            disabled={p.saving || !p.value.trim()}
+            onClick={() => void p.onSave()}
+            style={{
+              padding: "8px 14px",
+              borderRadius: t.radiusMd,
+              border: "none",
+              background: "#0f766e",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: p.saving || !p.value.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {p.saving ? "저장 중…" : "저장"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -14,8 +14,14 @@ import {
   resolveConversationParticipationMode,
   resolveConversationScope,
 } from "@/lib/conversation-core/conversationIntentTypes";
+import { buildFeasibilityRepetitionGuardBlock } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
 import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/conversationResponsePolicy";
+import {
+  formatWebsiteInspectionForPrompt,
+  inspectWebsite,
+  type WebsiteInspectionResult,
+} from "@/lib/conversation-core/websiteInspection";
 import {
   buildAiPlannerContextBlocksFromTranscript,
   formatAiPlannerContextBlocksForPrompt,
@@ -66,7 +72,78 @@ type MessengerTurnSetup = {
   readonly docHint: boolean;
   readonly domainContextInjected: readonly string[];
   readonly timelineMetaHeader: string;
+  readonly inspectionResult: WebsiteInspectionResult | null;
+  readonly inspectionPromptText: string;
+  readonly repetitionGuardText: string;
 };
+
+async function runWebsiteInspectionIfNeeded(
+  classification: ConversationIntentClassification
+): Promise<WebsiteInspectionResult | null> {
+  if (classification.requiredAction !== "website_inspection") return null;
+  const url = classification.targetUrls?.[0];
+  if (!url) return null;
+  try {
+    return await inspectWebsite(url);
+  } catch {
+    return {
+      url,
+      ok: false,
+      paginationHints: [],
+      listStructureHints: [],
+      dynamicLoadingHints: [],
+      risks: [],
+      recommendation: ["자동 점검 실패 — 브라우저 개발자도구·수동 확인 필요"],
+      error: "INSPECTION_FAILED",
+    };
+  }
+}
+
+async function assembleMessengerTurnSetup(input: {
+  readonly classification: ConversationIntentClassification;
+  readonly transcript: readonly MessengerChatTurn[];
+  readonly logContext?: MessengerLlmLogContext;
+  readonly skipInspection?: boolean;
+}): Promise<MessengerTurnSetup> {
+  const layout = isMessengerFreeRoom(input.logContext) ? "free_windowed" : "legacy_tail";
+  const plannerMode = resolveAiPlannerPromptMode({
+    projectId: input.logContext?.projectId ?? null,
+    roomId: input.logContext?.roomId ?? null,
+    layout,
+  });
+  const contextBlocks = buildAiPlannerContextBlocksFromTranscript(input.transcript, plannerMode);
+  const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
+  const contextBlocksTimelineText = formatAiPlannerContextBlocksForTimeline(contextBlocks);
+  const inspectionResult = input.skipInspection
+    ? null
+    : await runWebsiteInspectionIfNeeded(input.classification);
+  const inspectionPromptText = inspectionResult ? formatWebsiteInspectionForPrompt(inspectionResult) : "";
+  const repetitionGuardText =
+    input.classification.mode === "feasibility_check"
+      ? buildFeasibilityRepetitionGuardBlock(input.transcript)
+      : "";
+  const docHint = input.classification.shouldInjectDocumentContext;
+  const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
+  const promptMeta = formatConversationPromptMeta(input.classification, {
+    layout,
+    roomId: input.logContext?.roomId,
+    projectId: input.logContext?.projectId ?? null,
+    domainContextInjected: [...domainContextInjected],
+    contextBlocks: contextBlocksTimelineText,
+    inspection: inspectionResult,
+  });
+  const timelineMetaHeader = input.logContext ? promptMeta : "";
+  return {
+    classification: input.classification,
+    contextBlocksText,
+    docHint,
+    domainContextInjected,
+    timelineMetaHeader: timelineMetaHeader || "",
+    inspectionResult,
+    inspectionPromptText,
+    repetitionGuardText,
+  };
+}
 
 async function resolveMessengerTurnSetup(
   transcript: readonly MessengerChatTurn[],
@@ -75,7 +152,6 @@ async function resolveMessengerTurnSetup(
 ): Promise<MessengerTurnSetup> {
   const scope = resolveConversationScope(logContext?.projectId ?? null);
   const participationMode = resolveConversationParticipationMode(scope);
-  const layout = isMessengerFreeRoom(logContext) ? "free_windowed" : "legacy_tail";
   const classification = await classifyConversationIntent({
     userId,
     scope,
@@ -84,31 +160,7 @@ async function resolveMessengerTurnSetup(
     projectId: logContext?.projectId ?? null,
     roomId: logContext?.roomId ?? null,
   });
-  const plannerMode = resolveAiPlannerPromptMode({
-    projectId: logContext?.projectId ?? null,
-    roomId: logContext?.roomId ?? null,
-    layout,
-  });
-  const contextBlocks = buildAiPlannerContextBlocksFromTranscript(transcript, plannerMode);
-  const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
-  const contextBlocksTimelineText = formatAiPlannerContextBlocksForTimeline(contextBlocks);
-  const docHint = classification.shouldInjectDocumentContext;
-  const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
-  const promptMeta = formatConversationPromptMeta(classification, {
-    layout,
-    roomId: logContext?.roomId,
-    projectId: logContext?.projectId ?? null,
-    domainContextInjected: [...domainContextInjected],
-    contextBlocks: contextBlocksTimelineText,
-  });
-  const timelineMetaHeader = logContext ? promptMeta : "";
-  return {
-    classification,
-    contextBlocksText,
-    docHint,
-    domainContextInjected,
-    timelineMetaHeader: timelineMetaHeader || "",
-  };
+  return assembleMessengerTurnSetup({ classification, transcript, logContext });
 }
 
 /** 반복적인 저품질 assistant 안내 문구(요약·최근창에서 노출 억제). */
@@ -162,6 +214,8 @@ function buildMessengerSystemBlock(setup: MessengerTurnSetup, personaLine: strin
       contextBlocksText: setup.contextBlocksText,
     }),
   ];
+  if (setup.inspectionPromptText.trim()) parts.push(setup.inspectionPromptText.trim());
+  if (setup.repetitionGuardText.trim()) parts.push(setup.repetitionGuardText.trim());
   if (setup.docHint) parts.push(DOC_COLLABORATION_HINT);
   return parts.join("\n\n");
 }
@@ -177,56 +231,51 @@ function buildLegacyTailSystemContent(
 }
 
 /** OpenAI 없이 rules 분류만으로 턴 셋업 구성 (smoke·단위 테스트) */
-export function resolveMessengerTurnSetupFromRulesForTest(input: {
+export async function resolveMessengerTurnSetupFromRulesForTest(input: {
   readonly transcript: readonly MessengerChatTurn[];
   readonly logContext?: MessengerLlmLogContext;
-}): MessengerTurnSetup {
+  readonly skipInspection?: boolean;
+}): Promise<MessengerTurnSetup> {
   const scope = resolveConversationScope(input.logContext?.projectId ?? null);
   const participationMode = resolveConversationParticipationMode(scope);
-  const layout = isMessengerFreeRoom(input.logContext) ? "free_windowed" : "legacy_tail";
   const classification = classifyConversationIntentFromRules({
     scope,
     participationMode,
     transcript: input.transcript,
   });
-  const plannerMode = resolveAiPlannerPromptMode({
-    projectId: input.logContext?.projectId ?? null,
-    roomId: input.logContext?.roomId ?? null,
-    layout,
-  });
-  const contextBlocks = buildAiPlannerContextBlocksFromTranscript(input.transcript, plannerMode);
-  const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
-  const contextBlocksTimelineText = formatAiPlannerContextBlocksForTimeline(contextBlocks);
-  const docHint = classification.shouldInjectDocumentContext;
-  const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
-  const promptMeta = formatConversationPromptMeta(classification, {
-    layout,
-    roomId: input.logContext?.roomId,
-    projectId: input.logContext?.projectId ?? null,
-    domainContextInjected: [...domainContextInjected],
-    contextBlocks: contextBlocksTimelineText,
-  });
-  return {
+  return assembleMessengerTurnSetup({
     classification,
-    contextBlocksText,
-    docHint,
-    domainContextInjected,
-    timelineMetaHeader: input.logContext ? promptMeta : "",
-  };
+    transcript: input.transcript,
+    logContext: input.logContext,
+    skipInspection: input.skipInspection ?? true,
+  });
 }
 
 /** @internal 테스트용 */
 export function buildMessengerSystemBlockForTest(
   classification: ConversationIntentClassification,
-  contextBlocksText = ""
+  contextBlocksText = "",
+  options?: {
+    readonly inspectionPromptText?: string;
+    readonly transcript?: readonly MessengerChatTurn[];
+  }
 ): string {
+  const repetitionGuardText =
+    classification.mode === "feasibility_check" && options?.transcript?.length
+      ? buildFeasibilityRepetitionGuardBlock(options.transcript)
+      : "";
   return buildMessengerSystemBlock(
     {
       classification,
       contextBlocksText,
       docHint: classification.shouldInjectDocumentContext,
       domainContextInjected: classification.shouldInjectDocumentContext ? ["document_collaboration"] : [],
-      timelineMetaHeader: formatConversationPromptMeta(classification),
+      timelineMetaHeader: formatConversationPromptMeta(classification, {
+        inspection: null,
+      }),
+      inspectionResult: null,
+      inspectionPromptText: options?.inspectionPromptText ?? "",
+      repetitionGuardText,
     },
     ""
   );

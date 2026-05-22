@@ -1,4 +1,5 @@
 import type { ConversationIntentClassification } from "@/lib/conversation-core/conversationIntentTypes";
+import type { WebsiteInspectionResult } from "@/lib/conversation-core/websiteInspection";
 
 const MAX_META_REASON = 500;
 
@@ -17,6 +18,7 @@ export function formatConversationPromptMeta(
     readonly classifierRawPreview?: string;
     /** prompt에 주입된 contextBlocks (formatAiPlannerContextBlocksForTimeline) */
     readonly contextBlocks?: string;
+    readonly inspection?: WebsiteInspectionResult | null;
   }
 ): string {
   const domainInjected =
@@ -36,6 +38,15 @@ export function formatConversationPromptMeta(
     formatList("userConstraints", classification.userConstraints),
     formatList("discardedDirections", classification.discardedDirections),
     formatList("openOptions", classification.openOptions),
+    classification.requiredAction ? `requiredAction=${classification.requiredAction}` : "",
+    classification.targetUrls?.length ? `targetUrls=[${classification.targetUrls.join(", ")}]` : "",
+    extra?.inspection
+      ? `inspectionOk=${extra.inspection.ok}`
+      : classification.requiredAction === "website_inspection"
+        ? "inspectionOk=false"
+        : "",
+    extra?.inspection?.status != null ? `inspectionStatus=${extra.inspection.status}` : "",
+    extra?.inspection?.error ? `inspectionError=${extra.inspection.error}` : "",
     extra?.layout ? `layout=${extra.layout}` : "",
     extra?.roomId ? `roomId=${extra.roomId}` : "",
     extra?.projectId !== undefined ? `projectId=${String(extra.projectId ?? "").trim()}` : "",

@@ -85,7 +85,7 @@ export async function createMessengerChatRoom(payload: CreateMessengerChatRoomPa
 
 export async function fetchMessengerChatRoomDetail(roomId: string): Promise<MessengerRoomDetail> {
   const rid = roomId.trim();
-  const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(rid)}`);
+  const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(rid)}`, { cache: "no-store" });
   const json = (await res.json()) as {
     success?: boolean;
     data?: {
@@ -148,16 +148,25 @@ export async function patchMessengerRoomAiParticipation(roomId: string, mode: Me
   }
 }
 
-export async function patchMessengerRoomTitle(roomId: string, title: string): Promise<void> {
+export async function patchMessengerRoomTitle(
+  roomId: string,
+  title: string
+): Promise<MessengerRoomDetail> {
   const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(roomId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
+    cache: "no-store",
   });
-  const json = (await res.json()) as { success?: boolean; message?: string };
-  if (!res.ok || !json.success) {
+  const json = (await res.json()) as {
+    success?: boolean;
+    message?: string;
+    data?: Parameters<typeof normalizeMessengerRoomDetailWire>[0];
+  };
+  if (!res.ok || !json.success || !json.data?.room) {
     throw new Error(json.message || "저장에 실패했습니다.");
   }
+  return normalizeMessengerRoomDetailWire(json.data);
 }
 
 export async function deleteMessengerChatRoom(roomId: string): Promise<void> {

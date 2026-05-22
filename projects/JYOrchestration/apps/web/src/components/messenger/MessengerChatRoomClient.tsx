@@ -54,7 +54,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const router = useRouter();
   const { mode: workspaceMode } = useWorkspaceMode();
   const rid = roomId.trim();
-  const { sessionName, sessionUserId, detail, messages, loadError, reloadDetail, reloadMessages } =
+  const { sessionName, sessionUserId, detail, messages, loadError, reloadDetail, reloadMessages, applyRoomDetail } =
     useMessengerChatRoomData(roomId);
 
   const [input, setInput] = useState("");
@@ -238,15 +238,20 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     setRenameBusy(true);
     setRenameError(null);
     try {
-      await patchMessengerRoomTitle(rid, next);
-      setRenameOpen(false);
-      await reloadDetail();
+      const updated = await patchMessengerRoomTitle(rid, next);
+      flushSync(() => {
+        applyRoomDetail(updated);
+        setRenameInitialTitle(updated.room.title);
+        setRenameDraft(updated.room.title);
+        setRenameOpen(false);
+      });
+      void reloadDetail();
     } catch (e) {
       setRenameError(e instanceof Error ? e.message : "저장 오류");
     } finally {
       setRenameBusy(false);
     }
-  }, [rid, renameBusy, renameDraft, reloadDetail]);
+  }, [rid, renameBusy, renameDraft, reloadDetail, applyRoomDetail]);
 
   const deleteRoomInView = useCallback(async () => {
     if (!rid || roomLifecycleBusy) return;

@@ -14,8 +14,11 @@ import {
   resolveConversationParticipationMode,
   resolveConversationScope,
 } from "@/lib/conversation-core/conversationIntentTypes";
+import type { ConversationRequiredAction } from "@/lib/conversation-core/conversationIntentTypes";
+import { extractUrlsFromTranscript } from "@/lib/conversation-core/websiteInspection";
 
 export type { ConversationIntentClassification, ConversationIntentMode, ConversationScope };
+export { extractUrlsFromTranscript };
 
 const CLASSIFIER_SYSTEM = `당신은 대화 의도 분류기입니다.
 사용자의 마지막 발화와 최근 대화 맥락을 보고, AI기획자가 어떤 응답 모드로 답해야 하는지 JSON으로만 분류하세요.
@@ -128,7 +131,11 @@ export function parseConversationIntentJson(
       participationMode,
       shouldInjectDocumentContext,
       domainContextReason:
-        typeof j.domainContextReason === "string" ? j.domainContextReason.slice(0, 200) : shouldInjectDocumentContext ? "llm" : null,
+        typeof j.domainContextReason === "string"
+          ? j.domainContextReason.slice(0, 200)
+          : shouldInjectDocumentContext
+            ? "llm"
+            : null,
       userConstraints: coerceStringArray(j.userConstraints),
       discardedDirections: coerceStringArray(j.discardedDirections),
       openOptions: coerceStringArray(j.openOptions),
@@ -287,19 +294,45 @@ export function classifyConversationIntentFromRules(input: {
     // 문서 협업 명시 시 feasibility보다 brainstorm 유지 가능
   }
 
+  return enrichClassificationWithRequiredAction(
+    {
+      mode,
+      confidence: 0.75,
+      reason,
+      scope: input.scope,
+      participationMode: input.participationMode,
+      shouldInjectDocumentContext,
+      domainContextReason: shouldInjectDocumentContext ? "strict_keyword_fallback" : null,
+      userConstraints: [],
+      discardedDirections: [],
+      openOptions,
+      responsePolicy: defaultResponsePolicyForMode(mode),
+      classifierSource: "rules",
+    },
+    input.transcript
+  );
+}
+
+/** feasibility + 최근 user URL → website_inspection */
+export function enrichClassificationWithRequiredAction(
+  classification: ConversationIntentClassification,
+  transcript: readonly TranscriptTurn[]
+): ConversationIntentClassification {
+  const targetUrls = extractUrlsFromTranscript(transcript);
+  const requiredAction: ConversationRequiredAction =
+    classification.mode === "feasibility_check" && targetUrls.length > 0 ? "website_inspection" : "none";
+  const responsePolicy =
+    requiredAction === "website_inspection"
+      ? {
+          ...classification.responsePolicy,
+          avoidChecklistRepetition: true,
+        }
+      : classification.responsePolicy;
   return {
-    mode,
-    confidence: 0.75,
-    reason,
-    scope: input.scope,
-    participationMode: input.participationMode,
-    shouldInjectDocumentContext,
-    domainContextReason: shouldInjectDocumentContext ? "strict_keyword_fallback" : null,
-    userConstraints: [],
-    discardedDirections: [],
-    openOptions,
-    responsePolicy: defaultResponsePolicyForMode(mode),
-    classifierSource: "rules",
+    ...classification,
+    requiredAction,
+    targetUrls,
+    responsePolicy,
   };
 }
 
@@ -361,13 +394,14 @@ export async function classifyConversationIntent(input: {
     const shouldInjectDocumentContext = mergeConversationDocumentContext(rules, parsed, docBlob);
     const userBlob = recentUserBlob(input.transcript);
     const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last, userBlob);
-    return {
+    const withDoc = {
       ...merged,
       shouldInjectDocumentContext,
       domainContextReason: shouldInjectDocumentContext
         ? merged.domainContextReason ?? (parsed.shouldInjectDocumentContext ? "llm+strict" : "strict+rules")
         : null,
     };
+    return enrichClassificationWithRequiredAction(withDoc, input.transcript);
   } catch {
     return rules;
   }
