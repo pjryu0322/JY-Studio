@@ -929,6 +929,30 @@ export type {
 } from "@/lib/agents/runtimeContractBundleClosureTypes";
 
 export {
+  evaluateRuntimeExecutionVerticalSlice,
+  normalizeRuntimeExecutionRequest,
+  validateRuntimeExecutionRequest,
+  resolveRuntimeExecutionVerticalSliceDecision,
+  buildRuntimeExecutionVerticalSliceFingerprint,
+  createInitialRuntimeExecutionStore,
+  createRuntimeExecutionRecord,
+  appendRuntimeExecutionRecord,
+  transitionRuntimeExecutionRecord,
+  runMockRuntimeExecution,
+} from "@/lib/agents/evaluateRuntimeExecutionVerticalSlice";
+
+export type {
+  RuntimeExecutionVerticalSliceDecision,
+  RuntimeExecutionVerticalSliceInput,
+  RuntimeExecutionVerticalSliceReport,
+  RuntimeExecutionRequest,
+  RuntimeExecutionRecord,
+  RuntimeExecutionAuditEvent,
+  RuntimeExecutionVerticalSliceStore,
+  RuntimeExecutionMockRunnerResult,
+} from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
@@ -978,6 +1002,8 @@ export {
   buildStage7BRuntimeApiContractConfirmedInput,
   buildStage7CReadyContractBundleClosureInput,
   buildStage7CContractBundleClosureConfirmedInput,
+  buildStage8AReadyVerticalSliceInput,
+  buildStage8AConfirmedVerticalSliceInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

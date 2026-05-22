@@ -8,6 +8,8 @@ import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtim
 import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContractDesignTypes";
 import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
+import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
+import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
 import type { RuntimeExecutionDryRunContractInput } from "@/lib/agents/runtimeExecutionDryRunContractTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
@@ -245,5 +247,44 @@ export function buildStage7CReadyContractBundleClosureInput(): RuntimeContractBu
   return {
     apiContractDesign: buildStage7BReadyRuntimeApiContractInput(),
     ...buildStage7CContractBundleClosureConfirmedInput(),
+  };
+}
+
+export function buildStage8AConfirmedVerticalSliceInput(): Required<
+  Pick<
+    RuntimeExecutionVerticalSliceInput,
+    | "operatorStage8ApprovalConfirmed"
+    | "scopeBoundaryConfirmed"
+    | "mockRunnerOnlyConfirmed"
+    | "inMemoryOnlyConfirmed"
+    | "noExternalSideEffectConfirmed"
+  >
+> {
+  return {
+    operatorStage8ApprovalConfirmed: true,
+    scopeBoundaryConfirmed: true,
+    mockRunnerOnlyConfirmed: true,
+    inMemoryOnlyConfirmed: true,
+    noExternalSideEffectConfirmed: true,
+  };
+}
+
+/** Ready-path input for Stage 8-A (Stage 7-C closed + in-memory mock vertical slice confirmations). */
+export function buildStage8AReadyVerticalSliceInput(): RuntimeExecutionVerticalSliceInput {
+  return {
+    contractBundleClosure: buildStage7CReadyContractBundleClosureInput(),
+    request: {
+      requestId: "stage8a-request-001",
+      projectId: "jy-orchestration",
+      sourceStage: "stage_8_a",
+      requestedBy: "operator",
+      unitKind: "mock_runner",
+      commandPreview: "mock-runtime-execution",
+      payloadPreview: "in-memory vertical slice only",
+      createdAtIso: STAGE8_A_DEFAULT_NOW_ISO,
+      approvedForMockRun: true,
+      actualExecutionRequested: false,
+    },
+    ...buildStage8AConfirmedVerticalSliceInput(),
   };
 }

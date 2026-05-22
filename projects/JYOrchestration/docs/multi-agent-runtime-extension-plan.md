@@ -2556,6 +2556,41 @@ Stage 8-A out-of-scope:
 - actual schema migration
 - actual UI
 
+### Stage 8-A Minimal Runtime Execution Vertical Slice
+
+Stage 8-A는 Stage 7-C의 `stage7_runtime_contract_bundle_closed`를 전제로 하는 첫 번째 최소 실행 vertical slice다.
+
+범위:
+
+- in-memory runtime execution record
+- mock runtime runner
+- dry-run-like status transition
+- runtime execution audit object
+- unit tests only
+
+금지:
+
+- actual API route handler
+- actual runtime execution API
+- actual execution runner side effect
+- actual Cursor/GitHub call
+- actual Connector Gateway routing change
+- actual DB write
+- actual schema migration
+- actual UI
+
+Ready decision:
+
+`stage8_minimal_vertical_slice_ready`
+
+의미:
+
+- 플랫폼 내부에서 실행 요청 객체, mock runner, 상태 전이, audit object가 하나의 vertical chain으로 연결되었다.
+- 아직 외부 실행 권한은 없다.
+- Stage 8-B 이후 실제 API route 또는 runner adapter 설계로 분리한다.
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionVerticalSlice.ts`, `runtimeExecutionVerticalSliceTypes.ts`, `runtimeExecutionVerticalSliceStore.ts`, `runtimeExecutionVerticalSliceRunner.ts`, `runtimeExecutionVerticalSliceAudit.ts`
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text
