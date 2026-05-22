@@ -21,6 +21,7 @@ export {
 export {
   executeRuntimeExecutionVerticalSliceChain,
   buildSkippedRuntimeExecutionVerticalSliceChain,
+  resolveVerticalSliceChainExecution,
 } from "@/lib/agents/runtimeExecutionVerticalSliceChain";
 
 export {

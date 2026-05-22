@@ -21,6 +21,7 @@ import {
   buildRuntimeExecutionVerticalSliceSummary,
   buildSkippedRuntimeExecutionVerticalSliceChain,
   executeRuntimeExecutionVerticalSliceChain,
+  resolveVerticalSliceChainExecution,
   normalizeRuntimeExecutionRequest,
   parseRuntimeExecutionVerticalSliceInput,
   resolveRuntimeExecutionVerticalSliceDecision,
@@ -50,22 +51,7 @@ export {
   buildStage8AConfirmedVerticalSliceInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
-function resolveVerticalSliceChainExecution(input: {
-  readonly sourceStage7Decision: string;
-  readonly requestValid: boolean;
-  readonly rawActualExecutionRequested: boolean;
-}): { readonly chainExecuted: boolean; readonly chainSkippedReason: string } {
-  if (input.sourceStage7Decision !== "stage7_runtime_contract_bundle_closed") {
-    return { chainExecuted: false, chainSkippedReason: "stage7_contract_bundle_not_closed" };
-  }
-  if (input.rawActualExecutionRequested) {
-    return { chainExecuted: false, chainSkippedReason: "actual_execution_requested" };
-  }
-  if (!input.requestValid) {
-    return { chainExecuted: false, chainSkippedReason: "request_invalid" };
-  }
-  return { chainExecuted: true, chainSkippedReason: "" };
-}
+export { resolveVerticalSliceChainExecution } from "@/lib/agents/runtimeExecutionVerticalSliceSupport";
 
 /** Stage 8-A in-memory mock runtime execution vertical slice — no external side effects. */
 export function evaluateRuntimeExecutionVerticalSlice(
