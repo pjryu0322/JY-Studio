@@ -6,6 +6,8 @@ import { readFile } from "node:fs/promises";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
 import { isTaskProgressLogEnabled } from "@/lib/observability/taskProgressLog";
 import { prisma } from "@/lib/prisma";
+import { isRuntimeEventCompatExecutionLogEnabled } from "@/lib/runtime/runtimeEventPersistence";
+import { listRuntimeEventsForExecRun } from "@/lib/runtime/runtimeEventRepository";
 import { dedupeRuntimeTimelineRows } from "@/lib/runtime/runtimeTimelineDedupe";
 import { getRuntimeTimelineFromStore } from "@/lib/runtime/runtimeTimelineStore";
 
@@ -149,7 +151,10 @@ export async function listRuntimeTimelineForExecRun(
     detail: r.detail,
   }));
 
-  const eventRows = await prisma.executionEventLog.findMany({
+  const runtimeEventRows = await listRuntimeEventsForExecRun({ execRunId, limit });
+
+  const eventRows = isRuntimeEventCompatExecutionLogEnabled()
+    ? await prisma.executionEventLog.findMany({
     where: { taskId: run.taskId, projectId: run.projectId },
     orderBy: { createdAt: "desc" },
     take: limit * 3,
@@ -161,7 +166,8 @@ export async function listRuntimeTimelineForExecRun(
       executionJobId: true,
       detailJson: true,
     },
-  });
+  })
+    : [];
 
   const dbRows: RuntimeTimelineRow[] = eventRows
     .filter((r) => {
@@ -186,7 +192,12 @@ export async function listRuntimeTimelineForExecRun(
     ? await readProgressLogTimelineForExecRun(execRunId, run.taskId, limit)
     : [];
 
-  const merged = dedupeRuntimeTimelineRows([...memoryRows, ...progressRows, ...dbRows]);
+  const merged = dedupeRuntimeTimelineRows([
+    ...runtimeEventRows,
+    ...memoryRows,
+    ...progressRows,
+    ...dbRows,
+  ]);
   merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return merged.slice(-limit);
 }

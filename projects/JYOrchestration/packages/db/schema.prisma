@@ -571,6 +571,8 @@ model Project {
   executionJobs ExecutionJob[]
   /// 실행 이벤트 로그
   executionEventLogs ExecutionEventLog[]
+  /// AI Team Runtime 이벤트(전용 저장소)
+  runtimeEvents RuntimeEvent[]
   /// 멤버(주로 AI) 대상 액션 요청
   memberActions ProjectMemberAction[]
   /// AI 멤버 액션 승인·적용 정책(액션 유형별)
@@ -1063,6 +1065,30 @@ model ExecutionEventLog {
   @@index([executionJobId])
   @@index([stage])
   @@map("execution_event_logs")
+}
+
+/// AI Team Runtime 이벤트 (execRun-scoped observability)
+model RuntimeEvent {
+  id             String   @id @default(cuid())
+  projectId      String
+  taskId         String
+  execRunId      String
+  executionJobId String?
+  eventType      String
+  severity       String   @default("info")
+  workerName     String?
+  failurePhase   String?
+  retryReason    String?
+  runtimeState   String?
+  detailJson     Json?
+  createdAt      DateTime @default(now())
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, taskId, createdAt])
+  @@index([execRunId, createdAt])
+  @@index([executionJobId])
+  @@index([eventType, createdAt])
+  @@map("runtime_events")
 }
 
 model ProjectMember {

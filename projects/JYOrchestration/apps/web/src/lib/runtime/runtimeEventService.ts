@@ -1,12 +1,16 @@
 /**
- * Unified runtime event helper — Task progress log + optional execution job event log.
+ * Unified runtime event helper — progress log + memory + RuntimeEvent table (+ optional compat log).
  */
 
 import type { Prisma } from "@prisma/client";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import type { RuntimeEventSeverity, RuntimeEventType } from "@/lib/runtime/runtimeEventTypes";
-import { persistRuntimeEventToExecutionLog } from "@/lib/runtime/runtimeEventPersistence";
+import { createRuntimeEvent } from "@/lib/runtime/runtimeEventRepository";
+import {
+  isRuntimeEventCompatExecutionLogEnabled,
+  persistRuntimeEventToExecutionLog,
+} from "@/lib/runtime/runtimeEventPersistence";
 import { recordRuntimeTimelineEntry } from "@/lib/runtime/runtimeTimelineStore";
 
 export type AppendRuntimeEventInput = {
@@ -39,6 +43,7 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
     failurePhase: input.failurePhase ?? null,
     retryReason: input.retryReason ?? null,
     runtimeState: input.runtimeState ?? null,
+    runtimeTimeline: true,
     ...(input.detail ?? {}),
   };
 
@@ -60,6 +65,20 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
     detail,
   });
 
+  await createRuntimeEvent({
+    projectId: input.projectId,
+    taskId: input.taskId,
+    execRunId: input.execRunId,
+    executionJobId: input.executionJobId ?? null,
+    eventType: input.eventType,
+    severity,
+    workerName: input.workerName,
+    failurePhase: input.failurePhase,
+    retryReason: input.retryReason,
+    runtimeState: input.runtimeState,
+    detailJson: detail,
+  }).catch(() => {});
+
   if (input.executionJobId) {
     const status = severity === "error" ? "FAILED" : "SUCCESS";
     await logExecutionEvent({
@@ -71,7 +90,7 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
       message: input.eventType,
       detailJson: detail as Prisma.InputJsonValue,
     }).catch(() => {});
-  } else {
+  } else if (isRuntimeEventCompatExecutionLogEnabled()) {
     await persistRuntimeEventToExecutionLog({
       projectId: input.projectId,
       taskId: input.taskId,

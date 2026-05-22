@@ -1,6 +1,12 @@
 /**
- * Persist runtime events to executionEventLog via a per-execRun holder job (no Prisma migration).
+ * @deprecated Holder-job persistence for executionEventLog compat only.
+ * Primary path: `createRuntimeEvent()` in runtimeEventRepository.ts.
+ * Used when `RUNTIME_EVENT_COMPAT_EXECUTION_LOG=1` (default) and no executionJobId on the event.
  */
+
+export function isRuntimeEventCompatExecutionLogEnabled(): boolean {
+  return process.env.RUNTIME_EVENT_COMPAT_EXECUTION_LOG !== "0";
+}
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";

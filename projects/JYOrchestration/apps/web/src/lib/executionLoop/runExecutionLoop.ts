@@ -51,6 +51,10 @@ import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullReque
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { shouldBlockRepeatedFailure } from "@/lib/runtime/executionRetryPolicy";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
+import {
+  isLegacyInlineNormalTaskPathActive,
+  runLegacyInlineNormalTaskExecution,
+} from "@/lib/executionLoop/legacyInlineNormalTaskExecution";
 import { runNormalTaskViaRuntimeWorkers, shouldUseRuntimeWorkerPathForTask } from "@/lib/runtime/normalTaskWorkerDispatch";
 import { resumePipelineAfterApprovalViaWorker } from "@/lib/runtime/pipelineResumeAfterApproval";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
@@ -769,7 +773,33 @@ export async function runExecutionLoop(params: {
         continue;
       }
 
-      // LEGACY_INLINE_NORMAL_TASK_ONLY_START — emergency fallback (EXECUTION_LOOP_FORCE_INLINE_CURSOR=1)
+      if (isLegacyInlineNormalTaskPathActive() && !isEnvTestTask) {
+        const legacyOutcome = await runLegacyInlineNormalTaskExecution({
+          projectId,
+          taskId,
+          execRunId: execRun.id,
+          actorUserId,
+          singleTaskId,
+          taskKind: taskRow.taskKind,
+        });
+        if (legacyOutcome.kind === "return") {
+          return legacyOutcome.result;
+        }
+        for (const s of legacyOutcome.worker.steps) {
+          steps.push({
+            phase: "worker_step",
+            taskId,
+            stepPhase: s.phase,
+            ok: s.ok,
+            code: s.code,
+            summary: s.message,
+            jobId: s.jobId,
+          });
+        }
+        continue;
+      }
+
+      // LEGACY_INLINE_NORMAL_TASK_ONLY_START — ENV_TEST sync path (+ resume SCM inline)
 
       if (!isEnvTestTask) {
         await runTeamRuntimeSafe("developer_running", () => markTeamRuntimeDeveloperRunning(teamCtx));

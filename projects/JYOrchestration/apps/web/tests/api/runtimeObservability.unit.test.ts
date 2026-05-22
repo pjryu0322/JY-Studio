@@ -23,7 +23,15 @@ vi.mock("@/lib/ai-team-runtime/persist", () => ({
   readTeamExecutionStatus: vi.fn().mockResolvedValue(null),
 }));
 
+const listRuntimeEventsMock = vi.fn();
+
+vi.mock("@/lib/runtime/runtimeEventRepository", () => ({
+  listRuntimeEventsForExecRun: (...args: unknown[]) => listRuntimeEventsMock(...args),
+  createRuntimeEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/runtime/runtimeEventPersistence", () => ({
+  isRuntimeEventCompatExecutionLogEnabled: () => process.env.RUNTIME_EVENT_COMPAT_EXECUTION_LOG !== "0",
   persistRuntimeEventToExecutionLog: vi.fn().mockResolvedValue(undefined),
   getOrCreateRuntimeTimelineHolderJobId: vi.fn().mockResolvedValue("holder-job-1"),
 }));
@@ -40,6 +48,9 @@ import { clearRuntimeTimelineStore } from "@/lib/runtime/runtimeTimelineStore";
 describe("runtimeObservability", () => {
   beforeEach(() => {
     delete process.env.RUNTIME_TIMELINE_INCLUDE_LEGACY_TASK_EVENTS;
+    delete process.env.RUNTIME_EVENT_COMPAT_EXECUTION_LOG;
+    listRuntimeEventsMock.mockReset();
+    listRuntimeEventsMock.mockResolvedValue([]);
     clearRuntimeTimelineStore();
     findRunMock.mockReset();
     findManyMock.mockReset();
