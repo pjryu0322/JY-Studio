@@ -15,6 +15,8 @@ export function formatConversationPromptMeta(
     readonly projectId?: string | null;
     readonly domainContextInjected?: readonly string[];
     readonly classifierRawPreview?: string;
+    /** prompt에 주입된 contextBlocks (formatAiPlannerContextBlocksForTimeline) */
+    readonly contextBlocks?: string;
   }
 ): string {
   const domainInjected =
@@ -40,5 +42,8 @@ export function formatConversationPromptMeta(
       ? `classifierPreview=${extra.classifierRawPreview.trim().slice(0, 2000)}`
       : "",
   ].filter(Boolean);
-  return lines.join("\n");
+  const meta = lines.join("\n");
+  const blocks = String(extra?.contextBlocks ?? "").trim();
+  if (!blocks) return meta;
+  return `${meta}\n\n[contextBlocks]\n${blocks}`;
 }

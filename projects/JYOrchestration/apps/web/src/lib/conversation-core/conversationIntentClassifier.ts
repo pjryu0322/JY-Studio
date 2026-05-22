@@ -140,6 +140,50 @@ export function parseConversationIntentJson(
   }
 }
 
+const FEASIBILITY_LAST_RE =
+  /확인|가능|수집|검토|할\s*수\s*있는지|봐줘|점검|될까|가능한가|접근\s*가능|다운로드/i;
+
+/** 마지막 user 발화가 가능 여부·수집 확인류인지 (rules 보정·LLM guard용) */
+export function looksLikeFeasibilityUtterance(lastUser: string): boolean {
+  const last = String(lastUser ?? "").trim();
+  if (!last) return false;
+  return /https?:\/\//i.test(last) || FEASIBILITY_LAST_RE.test(last);
+}
+
+function isFeasibilitySignalsInText(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  return (
+    FEASIBILITY_LAST_RE.test(t) ||
+    (/https?:\/\//i.test(t) && /수집|데이터|api|크롤|다운로드|목록|접근/i.test(t))
+  );
+}
+
+/** LLM이 brainstorm 등으로 바꿔도 rules feasibility를 유지할지 */
+export function mergeConversationIntentWithRulesGuard(
+  rules: ConversationIntentClassification,
+  parsed: ConversationIntentClassification,
+  lastUser: string
+): ConversationIntentClassification {
+  if (rules.mode !== "feasibility_check") return parsed;
+  if (parsed.mode === "feasibility_check") return parsed;
+  if (!looksLikeFeasibilityUtterance(lastUser)) return parsed;
+  return {
+    ...parsed,
+    mode: "feasibility_check",
+    reason: `${parsed.reason} / rules_override: ${rules.reason}`.slice(0, 500),
+    responsePolicy: {
+      ...defaultResponsePolicyForMode("feasibility_check"),
+      ...parsed.responsePolicy,
+      avoidBrainstormExpansion: true,
+      avoidFeatureFinalization: true,
+      mustStateVerificationLimit: true,
+      mustProvideCheckItems: true,
+    },
+    classifierSource: parsed.classifierSource ?? "llm",
+  };
+}
+
 /** 규칙 기반 분류 — LLM 실패·테스트·NO_KEY 시 사용 */
 export function classifyConversationIntentFromRules(input: {
   readonly scope: ConversationScope;
@@ -160,16 +204,17 @@ export function classifyConversationIntentFromRules(input: {
   } else if (/지금까지\s*정리|대화\s*정리|요약해\s*줘/i.test(last)) {
     mode = "summary";
     reason = "대화 정리 요청";
-  } else if (/조사|검색해|리서치|외부.*확인/i.test(last) && !/확인해\s*줘|가능/i.test(last)) {
-    mode = "research_request";
-    reason = "외부 조사·검색 요청";
-  } else if (
-    /확인해\s*줘|가능해\??|수집할\s*수\s*있|검토해\s*줘|가능\s*여부|할\s*수\s*있는지/i.test(last) ||
-    (/https?:\/\//i.test(last) && /수집|데이터|api|크롤/i.test(blob))
-  ) {
+  } else if (isFeasibilitySignalsInText(last) || isFeasibilitySignalsInText(blob)) {
     mode = "feasibility_check";
     reason = "가능 여부·수집·검토 확인 요청";
     openOptions.push("수집 가능성 점검", "공개 범위 확인", "대체 수집 방식 검토");
+  } else if (
+    /조사|검색해|리서치/i.test(last) &&
+    !isFeasibilitySignalsInText(last) &&
+    !/https?:\/\//i.test(last)
+  ) {
+    mode = "research_request";
+    reason = "외부 조사·검색 요청(직접 조회 결과 단정 금지)";
   } else if (/확장|브레인스토밍|아이디어.*넓|방향.*제안/i.test(last)) {
     mode = "brainstorm";
     reason = "아이디어 확장·탐색";
@@ -258,10 +303,11 @@ export async function classifyConversationIntent(input: {
     const docBlob = blobForDoc(input.transcript);
     const strictDoc = shouldInjectDocumentCollaborationContextStrictFallback({ text: docBlob });
     const shouldInjectDocumentContext = parsed.shouldInjectDocumentContext && strictDoc;
+    const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last);
     return {
-      ...parsed,
+      ...merged,
       shouldInjectDocumentContext,
-      domainContextReason: shouldInjectDocumentContext ? parsed.domainContextReason ?? "llm+strict" : null,
+      domainContextReason: shouldInjectDocumentContext ? merged.domainContextReason ?? "llm+strict" : null,
     };
   } catch {
     return rules;

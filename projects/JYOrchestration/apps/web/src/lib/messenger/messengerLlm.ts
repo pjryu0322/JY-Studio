@@ -16,6 +16,7 @@ import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/con
 import {
   buildAiPlannerContextBlocksFromTranscript,
   formatAiPlannerContextBlocksForPrompt,
+  formatAiPlannerContextBlocksForTimeline,
 } from "@/lib/requirements/aiPlannerContextBlocks";
 import { DOC_COLLABORATION_HINT } from "@/lib/requirements/documentContextInjection";
 import { resolveAiPlannerPromptMode } from "@/lib/requirements/plannerPromptMode";
@@ -87,16 +88,17 @@ async function resolveMessengerTurnSetup(
   });
   const contextBlocks = buildAiPlannerContextBlocksFromTranscript(transcript, plannerMode);
   const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
+  const contextBlocksTimelineText = formatAiPlannerContextBlocksForTimeline(contextBlocks);
   const docHint = classification.shouldInjectDocumentContext;
   const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
-  const timelineMetaHeader =
-    logContext &&
-    formatConversationPromptMeta(classification, {
-      layout,
-      roomId: logContext.roomId,
-      projectId: logContext.projectId,
-      domainContextInjected: [...domainContextInjected],
-    });
+  const promptMeta = formatConversationPromptMeta(classification, {
+    layout,
+    roomId: logContext?.roomId,
+    projectId: logContext?.projectId ?? null,
+    domainContextInjected: [...domainContextInjected],
+    contextBlocks: contextBlocksTimelineText,
+  });
+  const timelineMetaHeader = logContext ? promptMeta : "";
   return {
     classification,
     contextBlocksText,
@@ -309,7 +311,7 @@ export async function runMessengerAiTurn(input: {
             projectId: input.logContext.projectId,
             layout,
             apiMessages: messages,
-            metaHeader: plannerSetup.timelineMetaHeader,
+            metaHeader: turnSetup.timelineMetaHeader,
           })
         : "";
     } catch {
@@ -320,7 +322,7 @@ export async function runMessengerAiTurn(input: {
       const contextNote = droppedEarlier
         ? "\n\n[컨텍스트] 토큰 한도로 앞부분이 생략된 최근 발화만 포함됩니다."
         : "";
-      const systemContent = buildLegacyTailSystemContent(plannerSetup, personaLine, contextNote);
+      const systemContent = buildLegacyTailSystemContent(turnSetup, personaLine, contextNote);
       messages = [{ role: "system", content: systemContent }, ...tail];
       layout = "legacy_tail";
       outboundForLog = input.logContext
