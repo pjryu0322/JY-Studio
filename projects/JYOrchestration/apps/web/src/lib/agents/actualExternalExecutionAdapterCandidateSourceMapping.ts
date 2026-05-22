@@ -4,7 +4,10 @@
 
 import type { ActualExternalExecutionAdapterCandidateDecisionInput } from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
 import type { ExternalExecutionManualDryRunGateReport } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
-import { mapActualExternalExecutionAdapterCandidateSourceTrace } from "@/lib/agents/actualExternalExecutionAdapterCandidateSourceTrace";
+import {
+  mapActualExternalExecutionAdapterCandidateAdapterImplementationBoundaryTrace,
+  mapActualExternalExecutionAdapterCandidateSourceTrace,
+} from "@/lib/agents/actualExternalExecutionAdapterCandidateSourceTrace";
 
 export const STAGE14_ENTRY_CANDIDATE = "operator_approved_actual_external_execution" as const;
 
@@ -18,12 +21,7 @@ export function mapActualExternalExecutionAdapterCandidateDecisionInputFromSourc
 ): ActualExternalExecutionAdapterCandidateDecisionInput {
   return {
     ...mapActualExternalExecutionAdapterCandidateSourceTrace(source),
-    sourceActualCursorAdapterImplementedInThisStep: source.actualCursorAdapterImplementedInThisStep,
-    sourceActualGithubAdapterImplementedInThisStep: source.actualGithubAdapterImplementedInThisStep,
-    sourceActualConnectorAdapterImplementedInThisStep: source.actualConnectorAdapterImplementedInThisStep,
-    sourceActualRunnerAdapterImplementedInThisStep: source.actualRunnerAdapterImplementedInThisStep,
-    sourceActualAdapterCredentialUsageAllowedInThisStep: source.actualAdapterCredentialUsageAllowedInThisStep,
-    sourceActualNetworkSideEffectAllowedInThisStep: source.actualNetworkSideEffectAllowedInThisStep,
+    ...mapActualExternalExecutionAdapterCandidateAdapterImplementationBoundaryTrace(source),
     validationValid: input.validationValid,
     stage14EntryReady: input.stage14EntryReady,
     confirmationsSatisfied: input.confirmationsSatisfied,

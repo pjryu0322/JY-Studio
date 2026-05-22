@@ -2888,7 +2888,7 @@ Ready decision:
 - 실제 Cursor/GitHub/Connector/Runner 호출은 아직 수행하지 않는다.
 - Stage 14 operator-approved actual external execution으로 넘어가기 위한 설계 준비 상태다.
 
-구현: `apps/web/src/lib/agents/evaluateActualExternalExecutionAdapterCandidate.ts`, `actualExternalExecutionAdapterCandidateTypes.ts`, `actualExternalExecutionAdapterCandidateConstants.ts`, `actualExternalExecutionAdapterCandidateItems.ts`, `actualExternalExecutionAdapterCandidateSource.ts`, `actualExternalExecutionAdapterCandidateSourceMapping.ts`, `actualExternalExecutionAdapterCandidateSupport.ts`, `actualExternalExecutionAdapterCandidateFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateActualExternalExecutionAdapterCandidate.ts`, `actualExternalExecutionAdapterCandidateTypes.ts`, `actualExternalExecutionAdapterCandidateConstants.ts`, `actualExternalExecutionAdapterCandidateItems.ts`, `actualExternalExecutionAdapterCandidateItemSource.ts`, `actualExternalExecutionAdapterCandidateSourceTrace.ts`, `actualExternalExecutionAdapterCandidateSource.ts`, `actualExternalExecutionAdapterCandidateSourceMapping.ts`, `actualExternalExecutionAdapterCandidateSupport.ts`, `actualExternalExecutionAdapterCandidateFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

@@ -6,7 +6,7 @@ import {
   STAGE13_A_CANDIDATE_ITEM_SPECS,
   STAGE13_A_REQUIRED_ITEM_IDS,
 } from "@/lib/agents/actualExternalExecutionAdapterCandidateConstants";
-import { isSourceReadyForActualExternalExecutionAdapterCandidate } from "@/lib/agents/actualExternalExecutionAdapterCandidateSource";
+import { isSourceReadyForActualExternalExecutionAdapterCandidate } from "@/lib/agents/actualExternalExecutionAdapterCandidateItemSource";
 import type { ActualExternalExecutionAdapterCandidateItem } from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
 import type { ExternalExecutionManualDryRunGateReport } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 

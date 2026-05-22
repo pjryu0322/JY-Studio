@@ -2,10 +2,9 @@
  * Stage 13-A adapter candidate support (read-only).
  */
 
-export {
-  evaluateActualExternalExecutionAdapterCandidateSource,
-  isSourceReadyForActualExternalExecutionAdapterCandidate,
-} from "@/lib/agents/actualExternalExecutionAdapterCandidateSource";
+export { evaluateActualExternalExecutionAdapterCandidateSource } from "@/lib/agents/actualExternalExecutionAdapterCandidateSource";
+
+export { isSourceReadyForActualExternalExecutionAdapterCandidate } from "@/lib/agents/actualExternalExecutionAdapterCandidateItemSource";
 
 export { buildActualExternalExecutionAdapterCandidateItems } from "@/lib/agents/actualExternalExecutionAdapterCandidateItems";
 
@@ -34,7 +33,10 @@ export {
   STAGE14_ENTRY_CANDIDATE,
 } from "@/lib/agents/actualExternalExecutionAdapterCandidateSourceMapping";
 
-export { mapActualExternalExecutionAdapterCandidateSourceTrace } from "@/lib/agents/actualExternalExecutionAdapterCandidateSourceTrace";
+export {
+  mapActualExternalExecutionAdapterCandidateSourceTrace,
+  mapActualExternalExecutionAdapterCandidateAdapterImplementationBoundaryTrace,
+} from "@/lib/agents/actualExternalExecutionAdapterCandidateSourceTrace";
 
 export {
   ACTUAL_EXTERNAL_EXECUTION_ADAPTER_CANDIDATE_VERSION,

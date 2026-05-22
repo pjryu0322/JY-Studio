@@ -2,7 +2,10 @@
  * Stage 13-A source trace from Stage 12-A manual dry-run gate (read-only).
  */
 
-import type { ActualExternalExecutionAdapterCandidateReport } from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
+import type {
+  ActualExternalExecutionAdapterCandidateDecisionInput,
+  ActualExternalExecutionAdapterCandidateReport,
+} from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
 import type { ExternalExecutionManualDryRunGateReport } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 
 export function mapActualExternalExecutionAdapterCandidateSourceTrace(
@@ -30,5 +33,26 @@ export function mapActualExternalExecutionAdapterCandidateSourceTrace(
     sourceRunnerAdapterCandidateAllowed: source.runnerAdapterCandidateAllowed,
     sourceStage13CandidateBoundaryRequiredBeforeActualImplementation:
       source.stage13CandidateBoundaryRequiredBeforeActualImplementation,
+  };
+}
+
+export function mapActualExternalExecutionAdapterCandidateAdapterImplementationBoundaryTrace(
+  source: ExternalExecutionManualDryRunGateReport,
+): Pick<
+  ActualExternalExecutionAdapterCandidateDecisionInput,
+  | "sourceActualCursorAdapterImplementedInThisStep"
+  | "sourceActualGithubAdapterImplementedInThisStep"
+  | "sourceActualConnectorAdapterImplementedInThisStep"
+  | "sourceActualRunnerAdapterImplementedInThisStep"
+  | "sourceActualAdapterCredentialUsageAllowedInThisStep"
+  | "sourceActualNetworkSideEffectAllowedInThisStep"
+> {
+  return {
+    sourceActualCursorAdapterImplementedInThisStep: source.actualCursorAdapterImplementedInThisStep,
+    sourceActualGithubAdapterImplementedInThisStep: source.actualGithubAdapterImplementedInThisStep,
+    sourceActualConnectorAdapterImplementedInThisStep: source.actualConnectorAdapterImplementedInThisStep,
+    sourceActualRunnerAdapterImplementedInThisStep: source.actualRunnerAdapterImplementedInThisStep,
+    sourceActualAdapterCredentialUsageAllowedInThisStep: source.actualAdapterCredentialUsageAllowedInThisStep,
+    sourceActualNetworkSideEffectAllowedInThisStep: source.actualNetworkSideEffectAllowedInThisStep,
   };
 }
