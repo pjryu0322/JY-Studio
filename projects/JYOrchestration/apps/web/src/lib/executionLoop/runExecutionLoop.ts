@@ -49,6 +49,8 @@ import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipelin
 import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
+import { shouldBlockRepeatedFailure } from "@/lib/runtime/executionRetryPolicy";
+import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
 import { persistScmBlockReasonOnRun } from "@/lib/ai-team-runtime/scmBlockReason";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
@@ -728,6 +730,15 @@ export async function runExecutionLoop(params: {
         taskId,
         userId: actorUserId,
         detail: { branch: branchPlan.branchName, runRecordId: execRun.id },
+      });
+      void appendRuntimeEvent({
+        eventType: "CURSOR_STARTED",
+        projectId,
+        taskId,
+        execRunId: execRun.id,
+        actorUserId,
+        workerName: "execution-loop",
+        runtimeState: "running",
       });
       if (isEnvTestFamilyTaskKind(taskRow.taskKind)) {
         appendTaskProgressLog({
@@ -2032,10 +2043,14 @@ export async function runExecutionLoop(params: {
         orderBy: { createdAt: "desc" },
       });
       if (
-        stopOnRepeatedFailure &&
-        verdict === "retry" &&
-        priorRetryEval?.evaluationReason &&
-        priorRetryEval.evaluationReason === evalR.reason
+        shouldBlockRepeatedFailure({
+          verdict,
+          evaluationReason: evalR.reason,
+          loopRetryCount: taskRow.loopRetryCount ?? 0,
+          maxLoopRetries: maxRetries,
+          stopOnRepeatedFailure,
+          priorRetryReason: priorRetryEval?.evaluationReason ?? null,
+        })
       ) {
         verdict = "failed";
         evalR = {

@@ -19,6 +19,8 @@ import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 import { triggerSelfHealingLite } from "@/lib/service/selfHealingService";
 import { triggerAutoHealingExecution } from "@/lib/service/autoHealingExecutionService";
 import { AUTO_HEALING_AUTO_RUN_ENABLED } from "@/lib/execution/autoHealingExecutionPolicy";
+import { handleCursorExecutionJob } from "@/lib/runtime/cursorExecutionJobHandler";
+import { handlePipelineExecutionJob } from "@/lib/runtime/pipelineExecutionJobHandler";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
   actorUserId: string;
@@ -460,13 +462,10 @@ async function executeJob(job: ExecutionJob): Promise<RunGitApplyCoreResult | St
   switch (job.type) {
     case "git-apply":
       return runGitApplyJob(job);
-    case "pipeline":
     case "cursor":
-      return {
-        ok: false,
-        code: "JOB_TYPE_NOT_IMPLEMENTED",
-        message: `Execution job type "${job.type}" is reserved for future worker handlers`,
-      };
+      return handleCursorExecutionJob(job);
+    case "pipeline":
+      return handlePipelineExecutionJob(job);
     default:
       return {
         ok: false,
