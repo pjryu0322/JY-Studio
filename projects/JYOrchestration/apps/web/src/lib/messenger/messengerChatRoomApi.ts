@@ -206,6 +206,16 @@ export async function postMessengerConfirmProject(
   return { projectId: json.data.projectId };
 }
 
+export async function clearMessengerChatRoomConversation(roomId: string): Promise<void> {
+  const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(roomId)}/clear-conversation`, {
+    method: "POST",
+  });
+  const json = (await res.json()) as { success?: boolean; message?: string };
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || "대화 초기화에 실패했습니다.");
+  }
+}
+
 export async function postMessengerAiSummaryBlockMessage(roomId: string, content: string): Promise<void> {
   const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(roomId)}/messages`, {
     method: "POST",

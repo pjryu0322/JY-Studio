@@ -5,6 +5,8 @@ import { getPromptTimelineEntries, listMessengerPromptTimelineEntriesForProject 
 import type { PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 import type { FeaturePlanningPromptLogStatus } from "@/lib/debug/featurePlanningPromptPurpose";
 import { prisma } from "@/lib/prisma";
+import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { formatAiPlannerContextBlocksForTimeline } from "@/lib/requirements/aiPlannerContextBlocks";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
@@ -14,20 +16,29 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
   const state = parseRequirementsStateJson(promptTimeline);
   const list = Array.isArray(state.promptTimeline) ? state.promptTimeline : [];
   const out: PromptTimelineEntry[] = [];
-  for (const e of list) {
-    const at = String((e as any).createdAt ?? "").trim();
-    const action = String((e as any).action ?? "").trim();
-    const stage = String((e as any).stage ?? "").trim();
-    const source = String((e as any).source ?? "").trim();
-    const promptText = String((e as any).promptText ?? (e as any).fallbackText ?? "").trim();
-    const responseText = String((e as any).responseText ?? "").trim();
-    const error = String((e as any).error ?? "").trim();
-    const model = (typeof (e as any).model === "string" || (e as any).model === null) ? ((e as any).model as string | null) : null;
-    const provider = String((e as any).provider ?? "").trim();
-    const routingDecision = String((e as any).routingDecision ?? "").trim();
-    const label = [stage || "requirements", action || "promptTrace"].filter(Boolean).join(" · ");
+  for (const raw of list) {
+    const e = coerceRequirementsPromptTimelineEntry(raw);
+    if (!e) continue;
+    const at = e.createdAt.trim();
+    const action = e.action.trim();
+    const stage = e.stage.trim();
+    const source = e.source.trim();
+    const promptText = String(e.promptText ?? e.fallbackText ?? "").trim();
+    const responseText = String(e.responseText ?? "").trim();
+    const error = String(e.error ?? "").trim();
+    const model = e.model ?? null;
+    const provider = String(e.provider ?? "").trim();
+    const routingDecision = String(e.routingDecision ?? "").trim();
+    const mode = e.aiPlannerMode ?? "project_single_chat";
+    const ctxLine = e.contextBlocks ? formatAiPlannerContextBlocksForTimeline(e.contextBlocks) : "";
+    const domainInjected = e.domainContextInjected ?? [];
+    const label = [stage || "requirements", action || "promptTrace", mode].filter(Boolean).join(" · ");
     const outbound = [
+      `mode=${mode}`,
       `projectId=${projectId}`,
+      e.roomId ? `roomId=${e.roomId}` : "",
+      `domainContextInjected=[${domainInjected.join(", ")}]`,
+      ctxLine,
       source ? `source=${source}` : "",
       provider ? `provider=${provider}` : "",
       routingDecision ? `routingDecision=${routingDecision}` : "",
@@ -42,7 +53,7 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
           ? `[FAILED]\n${error}`
           : "[response]\n(없음)";
     const status: FeaturePlanningPromptLogStatus = responseText ? "SUCCESS" : "FAILED";
-    const overlay = extractOverlayPromptTraceMetadata(e as Record<string, unknown>);
+    const overlay = extractOverlayPromptTraceMetadata(raw as Record<string, unknown>);
     const hasOverlayMetadata = Object.keys(overlay).length > 0;
     out.push({
       id: `req_${String(at || Date.now())}_${action || "trace"}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48),

@@ -19,9 +19,9 @@ import {
   requirementsWorkspaceMainRowStyle,
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
-import plusMenuStyles from "@/components/workspace/workspacePlusMenu.module.css";
 import { InlineAlert } from "@/components/ui";
 import {
+  clearMessengerChatRoomConversation,
   deleteMessengerChatRoom,
   patchMessengerRoomAiParticipation,
   patchMessengerRoomTitle,
@@ -31,6 +31,11 @@ import {
   postMessengerProjectDraft,
   postMessengerUserMessage,
 } from "@/lib/messenger/messengerChatRoomApi";
+import {
+  buildConversationMarkdown,
+  confirmResetConversation,
+  downloadConversationMarkdownFile,
+} from "@/lib/chat/conversationMarkdown";
 import { postWorkNoteSummarizeFromHtml } from "@/lib/worknote/workNotesSummarizeApi";
 import { messengerMembersToParticipants } from "@/lib/messenger/messengerRoomParticipantMapping";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
@@ -73,6 +78,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [roomLifecycleBusy, setRoomLifecycleBusy] = useState(false);
+  const [resetConversationBusy, setResetConversationBusy] = useState(false);
   const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   /** 레일에서 `?discardEmpty=1`로 연 방: 사용자(현재 세션)가 USER 메시지를 보내지 않고 창을 나가면 삭제 */
   const discardEmptyOnCloseRef = useRef(false);
@@ -284,6 +290,42 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [rid, roomLifecycleBusy, router]);
 
+  const onDownloadConversationMarkdown = useCallback(() => {
+    const list = messages ?? [];
+    if (!list.length) return;
+    const roomTitle = (detail?.room.title ?? "").trim() || "대화";
+    const md = buildConversationMarkdown({
+      heading: `# ${roomTitle} — 대화 내역`,
+      scopeLines: [
+        `- roomId: ${rid}`,
+        detail?.room.projectId ? `- projectId: ${detail.room.projectId}` : "- projectId: (없음)",
+        `- exportedAt: ${new Date().toISOString()}`,
+      ],
+      messages: list,
+      meLabel: sessionName.trim() || "나",
+    });
+    downloadConversationMarkdownFile({ markdown: md, filenameStem: roomTitle });
+  }, [detail?.room.projectId, detail?.room.title, messages, rid, sessionName]);
+
+  const onResetConversation = useCallback(async () => {
+    if (!rid || resetConversationBusy || busy || aiBusy || roomLifecycleBusy) return;
+    if (!confirmResetConversation({ message: "대화 내역을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다." })) {
+      return;
+    }
+    setResetConversationBusy(true);
+    setToast(null);
+    try {
+      await clearMessengerChatRoomConversation(rid);
+      setInput("");
+      await reloadMessages();
+      await reloadDetail();
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "대화 초기화 오류");
+    } finally {
+      setResetConversationBusy(false);
+    }
+  }, [aiBusy, busy, reloadDetail, reloadMessages, resetConversationBusy, rid, roomLifecycleBusy]);
+
   const runDraft = useCallback(async () => {
     if (!rid || draftBusy) return;
     setDraftBusy(true);
@@ -358,56 +400,6 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
 
   const composerPlaceholder = "메시지를 입력하세요";
 
-  const messengerPlusMenuRender = useCallback(
-    ({ close }: { readonly close: () => void }) => (
-      <>
-        <button
-          type="button"
-          role="menuitem"
-          className={plusMenuStyles.item}
-          onClick={() => {
-            setInput((v) => {
-              const t = v.trimEnd();
-              const sep = t.length ? " " : "";
-              return `${t}${sep}@@AI기획자 `;
-            });
-            close();
-            requestAnimationFrame(() => {
-              composerTextAreaRef.current?.focus();
-            });
-          }}
-        >
-          <span className={plusMenuStyles.stack}>
-            <span className={plusMenuStyles.title}>@@AI기획자 붙이기</span>
-            <span className={plusMenuStyles.sub}>AI 멘션만 삽입</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className={plusMenuStyles.item}
-          onClick={() => {
-            setInput((v) => {
-              const t = v.trimEnd();
-              const sep = t.length ? " " : "";
-              return `${t}${sep}@@기획자 `;
-            });
-            close();
-            requestAnimationFrame(() => {
-              composerTextAreaRef.current?.focus();
-            });
-          }}
-        >
-          <span className={plusMenuStyles.stack}>
-            <span className={plusMenuStyles.title}>@@기획자 붙이기</span>
-            <span className={plusMenuStyles.sub}>짧은 멘션만 삽입</span>
-          </span>
-        </button>
-      </>
-    ),
-    []
-  );
-
   const composer = projectLinkedId ? (
     <MessengerProjectLinkedComposerHint projectId={projectLinkedId} />
   ) : (
@@ -419,7 +411,6 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       busy={busy || aiBusy || summaryBusy}
       placeholder={composerPlaceholder}
       targetPickerItems={targetPickerItems}
-      plusMenuRender={messengerPlusMenuRender}
       onSendIdeation={handleComposerSend}
       onSendServiceFlow={handleComposerSend}
       onSendFeaturePlanning={handleComposerSend}
@@ -462,6 +453,9 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
             onLeave={() => void leaveRoomInView()}
             onDelete={() => void deleteRoomInView()}
             onOpenMembers={() => setMembersModalOpen(true)}
+            onResetConversation={() => void onResetConversation()}
+            onDownloadConversationMarkdown={() => onDownloadConversationMarkdown()}
+            resetConversationBusy={resetConversationBusy}
           />
 
           {loadError ? (

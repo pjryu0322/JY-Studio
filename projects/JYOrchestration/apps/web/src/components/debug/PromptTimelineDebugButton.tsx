@@ -1,9 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PromptTimelineDocIcon } from "@/components/debug/PromptTimelineDocIcon";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
+import {
+  resolvePromptTimelineExportStem,
+  resolvePromptTimelineFetchUrl,
+} from "@/lib/debug/promptTimelineApiPaths";
 import type { PromptTimelineChannel, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 import {
   buildDebugPromptTimelineMarkdown,
@@ -28,7 +33,17 @@ function ClipboardGlyph({ size = 16 }: { readonly size?: number }) {
   );
 }
 
-export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
+const DEFAULT_EMPTY_HINT =
+  "아직 기록된 호출이 없습니다. 기능 정리·초기화 등 OpenAI를 쓰는 작업을 하거나 Cursor 에이전트를 시작하면 여기에 쌓입니다.";
+
+export function PromptTimelinePanelButton(p: {
+  readonly projectId?: string | null;
+  readonly roomId?: string | null;
+  readonly disabled?: boolean;
+  readonly emptyHint?: string;
+}) {
+  const timelineFetchUrl = resolvePromptTimelineFetchUrl(p);
+  const exportStem = resolvePromptTimelineExportStem(p);
   const isNarrow = useMediaQuery("(max-width: 720px)");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -38,12 +53,12 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const id = p.projectId.trim();
-    if (!id) return;
+    const url = timelineFetchUrl;
+    if (!url) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/debug/prompt-timeline`, { method: "GET", cache: "no-store" });
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
       const json = (await res.json()) as ApiOk | ApiErr;
       if (!res.ok || !json.success) {
         setError((json as ApiErr).message ?? `HTTP ${res.status}`);
@@ -57,7 +72,7 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [p.projectId]);
+  }, [timelineFetchUrl]);
 
   useEffect(() => {
     if (open) void load();
@@ -90,12 +105,12 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
 
   const onExportMarkdown = useCallback(() => {
     if (!entries.length) return;
-    const stem = sanitizeTimelineExportBasename(p.projectId);
+    const stem = sanitizeTimelineExportBasename(exportStem);
     const md = buildDebugPromptTimelineMarkdown(entries);
     downloadDebugPromptTimelineMarkdown(`${stem}-prompt-timeline-${localDateSlug()}.md`, md);
-  }, [entries, p.projectId]);
+  }, [entries, exportStem]);
 
-  if (!p.projectId.trim()) return null;
+  if (!timelineFetchUrl) return null;
 
   return (
     <>
@@ -104,29 +119,29 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
         data-testid="prompt-timeline-open"
         aria-label="프롬프트 타임라인"
         title="프롬프트 타임라인 (디버그)"
+        disabled={p.disabled}
         onClick={(e) => {
           e.stopPropagation();
+          if (p.disabled) return;
           setOpen(true);
         }}
         style={{
           position: "relative",
-          border: "1px solid #cbd5e1",
-          background: "#fff",
+          border: "1px solid #e2e8f0",
+          background: p.disabled ? "#f8fafc" : "#fff",
           borderRadius: 10,
           width: 36,
           height: 36,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#0f172a",
-          cursor: "pointer",
+          color: p.disabled ? t.textMuted : "#0f172a",
+          cursor: p.disabled ? "not-allowed" : "pointer",
+          opacity: p.disabled ? 0.55 : 1,
           flexShrink: 0,
         }}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-        </svg>
+        <PromptTimelineDocIcon size={18} />
       </button>
 
       {open ? (
@@ -297,9 +312,7 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
               ) : error ? (
                 <div style={{ fontSize: 13, color: "#b91c1c" }}>{error}</div>
               ) : entries.length === 0 ? (
-                <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
-                  아직 기록된 호출이 없습니다. 기능 정리·초기화 등 OpenAI를 쓰는 작업을 하거나 Cursor 에이전트를 시작하면 여기에 쌓입니다.
-                </div>
+                <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>{p.emptyHint ?? DEFAULT_EMPTY_HINT}</div>
               ) : (
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
                   {entries.map((e) => (
@@ -492,4 +505,10 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
       ) : null}
     </>
   );
+}
+
+export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
+  const id = p.projectId.trim();
+  if (!id) return null;
+  return <PromptTimelinePanelButton projectId={id} />;
 }

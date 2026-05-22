@@ -5,6 +5,20 @@ import { recordMessengerOpenAi } from "@/lib/debug/promptTimelineStore";
 import { MESSENGER_DEFAULT_AI_CATALOG_KEY } from "@/lib/messenger/messengerConstants";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import { resolveUserOpenAiApiKey } from "@/lib/messenger/resolveUserOpenAiKey";
+import { classifyConversationIntent } from "@/lib/conversation-core/conversationIntentClassifier";
+import type { ConversationIntentClassification } from "@/lib/conversation-core/conversationIntentTypes";
+import {
+  resolveConversationParticipationMode,
+  resolveConversationScope,
+} from "@/lib/conversation-core/conversationIntentTypes";
+import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
+import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/conversationResponsePolicy";
+import {
+  buildAiPlannerContextBlocksFromTranscript,
+  formatAiPlannerContextBlocksForPrompt,
+} from "@/lib/requirements/aiPlannerContextBlocks";
+import { DOC_COLLABORATION_HINT } from "@/lib/requirements/documentContextInjection";
+import { resolveAiPlannerPromptMode } from "@/lib/requirements/plannerPromptMode";
 
 const MAX_LOG_TRANSCRIPT = 24_000;
 
@@ -13,35 +27,6 @@ export type MessengerLlmLogContext = {
   readonly roomTitle: string | null;
   readonly projectId: string | null;
 };
-
-/** 자유 대화방(projectId 없음) 전용 AI 기획자 — 단일 소스. */
-const MESSENGER_AI_SYSTEM = `당신은 플랫폼의 「AI 기획자」입니다. 사용자는 아직 프로젝트로 승격되지 않은 자유 대화방에서 아이디어를 탐색합니다.
-
-역할:
-- 사용자의 막연한 아이디어를 서비스 관점으로 정리합니다.
-- 질문을 반복하지 말고, 화면 구성·사용 흐름·기능 후보·우선순위를 구체적으로 제안합니다.
-- 사용자가 "모르겠다", "제안해줘", "정리해줘", "기술은 모른다", "기획자가 정리해줘"라고 말하면 질문보다 기획 정리를 우선합니다.
-- 기술 세부사항을 사용자에게 떠넘기지 않습니다.
-- 내부 용어는 사용자에게 노출하지 않습니다.
-
-응답 규칙:
-- 한국어로 답합니다.
-- 2~5문단 이내로 짧고 실무적으로 답합니다.
-- 첫 문장은 사용자의 핵심 의도를 서비스 관점으로 정리합니다.
-- 본문에는 구체 제안 1~3개를 포함합니다.
-- 가능하면 화면 구성, 사용자 흐름, 기능 후보, 우선순위 중 최소 2개 이상을 포함합니다.
-- 마지막 문장은 질문이 아니라 다음 행동 제안으로 끝냅니다.
-- 질문은 꼭 필요할 때만 1개만 사용합니다.
-
-금지:
-- "좋은 아이디어입니다" 반복
-- 일반론만 나열
-- "어떤 기능이 마음에 드시나요?" 같은 범용 질문
-- "어떤 부분을 더 깊이 논의하고 싶으신가요?" 같은 반복 질문
-- 오케스트레이션, 슬롯, 프로토타입 패키지, 하네스, Stage1, ENV_TEST, Cursor, GitHub Actions 같은 내부 용어 노출`;
-
-const DOC_COLLABORATION_HINT = `[문서 협업 맥락]
-사용자 발화에 문서·PDF·협업 관련 표현이 있습니다. 답변에는 가능한 범위에서 아래 주제 중 최소 2가지 이상을 구체적으로 다루세요: 원본 보존과 PDF 사본 관계, 문서 업로드 후 PDF 변환·공유 흐름, 실시간 참여자 표시, 상대의 페이지·커서·선택 영역, 주석/댓글, 태그/알림, 변경 이력, 문서 비교, PC 화면 구성, 모바일/반응형 화면, 초기 범위와 확장 범위.`;
 
 /** 프로젝트 연결 방 등 레거시 경로용: user/assistant 본문 합산 상한(system 별도). */
 const MESSENGER_TRANSCRIPT_CHAR_BUDGET = 36_000;
@@ -71,8 +56,54 @@ function combinedUserText(transcript: readonly { role: "user" | "assistant"; con
     .join("\n");
 }
 
-function userTextMentionsDocCollaboration(transcript: readonly { role: "user" | "assistant"; content: string }[]): boolean {
-  return /(문서|PDF|원본|사본|검토|주석|편집|비교|실시간\s*협업|반응형|직관적|UX|화면)/i.test(combinedUserText(transcript));
+type MessengerTurnSetup = {
+  readonly classification: ConversationIntentClassification;
+  readonly contextBlocksText: string;
+  readonly docHint: boolean;
+  readonly domainContextInjected: readonly string[];
+  readonly timelineMetaHeader: string;
+};
+
+async function resolveMessengerTurnSetup(
+  transcript: readonly MessengerChatTurn[],
+  logContext: MessengerLlmLogContext | undefined,
+  userId: string
+): Promise<MessengerTurnSetup> {
+  const scope = resolveConversationScope(logContext?.projectId ?? null);
+  const participationMode = resolveConversationParticipationMode(scope);
+  const layout = isMessengerFreeRoom(logContext) ? "free_windowed" : "legacy_tail";
+  const classification = await classifyConversationIntent({
+    userId,
+    scope,
+    participationMode,
+    transcript,
+    projectId: logContext?.projectId ?? null,
+    roomId: logContext?.roomId ?? null,
+  });
+  const plannerMode = resolveAiPlannerPromptMode({
+    projectId: logContext?.projectId ?? null,
+    roomId: logContext?.roomId ?? null,
+    layout,
+  });
+  const contextBlocks = buildAiPlannerContextBlocksFromTranscript(transcript, plannerMode);
+  const contextBlocksText = formatAiPlannerContextBlocksForPrompt(contextBlocks, plannerMode);
+  const docHint = classification.shouldInjectDocumentContext;
+  const domainContextInjected = docHint ? (["document_collaboration"] as const) : ([] as const);
+  const timelineMetaHeader =
+    logContext &&
+    formatConversationPromptMeta(classification, {
+      layout,
+      roomId: logContext.roomId,
+      projectId: logContext.projectId,
+      domainContextInjected: [...domainContextInjected],
+    });
+  return {
+    classification,
+    contextBlocksText,
+    docHint,
+    domainContextInjected,
+    timelineMetaHeader: timelineMetaHeader || "",
+  };
 }
 
 /** 반복적인 저품질 assistant 안내 문구(요약·최근창에서 노출 억제). */
@@ -118,14 +149,43 @@ function takeRecentPriorMessages(
   }));
 }
 
-function buildPlannerSystemBlock(personaLine: string, docHint: boolean): string {
-  const parts: string[] = [MESSENGER_AI_SYSTEM];
-  if (personaLine.trim()) parts.push(personaLine.trim());
-  if (docHint) parts.push(DOC_COLLABORATION_HINT);
-  parts.push(
-    "[요청 컨텍스트] 마지막 사용자 메시지는 이 배열의 마지막 user 항목으로 원문 전달됩니다. 앞의 [이전 대화 요약]은 user 발화만 줄인 누적 정리이며, 그 다음은 최근 2~4턴(assistant는 저품질 반복 응답은 생략)입니다. 과거 AI의 반복 질문 문구를 본문에서 재사용하지 마세요. 마지막 문장은 질문이 아니라 다음 행동 제안으로 끝내세요."
-  );
+function buildMessengerSystemBlock(setup: MessengerTurnSetup, personaLine: string): string {
+  const parts = [
+    buildMessengerSystemPromptForIntent({
+      classification: setup.classification,
+      personaLine,
+      contextBlocksText: setup.contextBlocksText,
+    }),
+  ];
+  if (setup.docHint) parts.push(DOC_COLLABORATION_HINT);
   return parts.join("\n\n");
+}
+
+function buildLegacyTailSystemContent(
+  setup: MessengerTurnSetup,
+  personaLine: string,
+  contextNote: string
+): string {
+  const parts: string[] = [buildMessengerSystemBlock(setup, personaLine)];
+  if (contextNote.trim()) parts.push(contextNote.trim());
+  return parts.join("\n\n");
+}
+
+/** @internal 테스트용 */
+export function buildMessengerSystemBlockForTest(
+  classification: ConversationIntentClassification,
+  contextBlocksText = ""
+): string {
+  return buildMessengerSystemBlock(
+    {
+      classification,
+      contextBlocksText,
+      docHint: classification.shouldInjectDocumentContext,
+      domainContextInjected: classification.shouldInjectDocumentContext ? ["document_collaboration"] : [],
+      timelineMetaHeader: formatConversationPromptMeta(classification),
+    },
+    ""
+  );
 }
 
 type MessengerChatTurn = { role: "user" | "assistant"; content: string };
@@ -136,7 +196,8 @@ type MessengerChatTurn = { role: "user" | "assistant"; content: string };
  */
 function buildFreeMessengerOpenAiMessages(
   transcript: readonly MessengerChatTurn[],
-  personaLine: string
+  personaLine: string,
+  setup: MessengerTurnSetup
 ): { role: "system" | "user" | "assistant"; content: string }[] {
   const last = transcript[transcript.length - 1]!;
   if (last.role !== "user") {
@@ -146,8 +207,7 @@ function buildFreeMessengerOpenAiMessages(
   const prior = transcript.slice(0, -1);
   const summary = buildUserOnlyConversationSummary(prior);
   const recent = takeRecentPriorMessages(prior);
-  const docHint = userTextMentionsDocCollaboration(transcript);
-  const systemContent = buildPlannerSystemBlock(personaLine, docHint);
+  const systemContent = buildMessengerSystemBlock(setup, personaLine);
 
   const out: { role: "system" | "user" | "assistant"; content: string }[] = [{ role: "system", content: systemContent }];
   if (summary.trim()) {
@@ -163,15 +223,20 @@ function serializeMessengerOpenAiMessagesForLog(p: {
   readonly projectId: string | null;
   readonly layout: "free_windowed" | "legacy_tail";
   readonly apiMessages: readonly { role: string; content: string }[];
+  readonly metaHeader?: string;
 }): string {
   const chars = p.apiMessages.reduce((acc, m) => acc + String(m.content ?? "").length, 0);
   const block = p.apiMessages.map((m) => `[${m.role}]\n${m.content}`).join("\n\n---\n\n");
   const conv = truncConversationTail(block, MAX_LOG_CONVERSATION_CHARS);
+  const tail = [
+    `layout=${p.layout} messages=${p.apiMessages.length} approxChars=${chars}`,
+    `[api_messages]\n${conv}`,
+  ].join("\n\n---\n\n");
+  if (p.metaHeader?.trim()) return `${p.metaHeader.trim()}\n\n---\n\n${tail}`;
   return [
     `roomId=${p.roomId.trim()}`,
     `projectId=${String(p.projectId ?? "").trim()}`,
-    `layout=${p.layout} messages=${p.apiMessages.length} approxChars=${chars}`,
-    `[api_messages]\n${conv}`,
+    tail,
   ].join("\n\n---\n\n");
 }
 
@@ -227,6 +292,7 @@ export async function runMessengerAiTurn(input: {
 }): Promise<MessengerAiTurnResult> {
   const ai = getPlatformAiMemberById(MESSENGER_DEFAULT_AI_CATALOG_KEY);
   const personaLine = ai?.persona ? `페르소나(참고): ${ai.persona}` : "";
+  const turnSetup = await resolveMessengerTurnSetup(input.transcript, input.logContext, input.userId);
 
   const freeRoom = isMessengerFreeRoom(input.logContext);
   let messages: { role: "system" | "user" | "assistant"; content: string }[];
@@ -235,7 +301,7 @@ export async function runMessengerAiTurn(input: {
 
   if (freeRoom) {
     try {
-      messages = buildFreeMessengerOpenAiMessages(input.transcript, personaLine);
+      messages = buildFreeMessengerOpenAiMessages(input.transcript, personaLine, turnSetup);
       layout = "free_windowed";
       outboundForLog = input.logContext
         ? serializeMessengerOpenAiMessagesForLog({
@@ -243,6 +309,7 @@ export async function runMessengerAiTurn(input: {
             projectId: input.logContext.projectId,
             layout,
             apiMessages: messages,
+            metaHeader: plannerSetup.timelineMetaHeader,
           })
         : "";
     } catch {
@@ -253,7 +320,7 @@ export async function runMessengerAiTurn(input: {
       const contextNote = droppedEarlier
         ? "\n\n[컨텍스트] 토큰 한도로 앞부분이 생략된 최근 발화만 포함됩니다."
         : "";
-      const systemContent = `${MESSENGER_AI_SYSTEM}\n\n${personaLine ? `${personaLine}\n\n` : ""}${contextNote}`.trim();
+      const systemContent = buildLegacyTailSystemContent(plannerSetup, personaLine, contextNote);
       messages = [{ role: "system", content: systemContent }, ...tail];
       layout = "legacy_tail";
       outboundForLog = input.logContext
@@ -262,6 +329,7 @@ export async function runMessengerAiTurn(input: {
             projectId: input.logContext.projectId,
             layout,
             apiMessages: messages,
+            metaHeader: turnSetup.timelineMetaHeader,
           })
         : "";
     }
@@ -273,7 +341,7 @@ export async function runMessengerAiTurn(input: {
     const contextNote = droppedEarlier
       ? "\n\n[컨텍스트] 토큰 한도로 앞부분이 생략된 최근 발화만 포함됩니다."
       : "";
-    const systemContent = `${MESSENGER_AI_SYSTEM}\n\n${personaLine ? `${personaLine}\n\n` : ""}${contextNote}`.trim();
+    const systemContent = buildLegacyTailSystemContent(turnSetup, personaLine, contextNote);
     messages = [{ role: "system", content: systemContent }, ...tail];
     layout = "legacy_tail";
     outboundForLog = input.logContext
@@ -282,6 +350,7 @@ export async function runMessengerAiTurn(input: {
           projectId: input.logContext.projectId,
           layout,
           apiMessages: messages,
+          metaHeader: turnSetup.timelineMetaHeader,
         })
       : "";
   }

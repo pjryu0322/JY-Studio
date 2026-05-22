@@ -72,6 +72,19 @@ export async function listChatMessages(roomId: string, userId: string): Promise<
   });
 }
 
+/** 대화방 메시지 전체 삭제(메신저·프로젝트 연결 방 공통) */
+export async function clearChatRoomConversation(roomId: string, userId: string): Promise<void> {
+  const room = await assertChatRoomAccess(roomId, userId);
+  await prisma.$transaction([
+    prisma.chatMessage.deleteMany({ where: { chatRoomId: room.id } }),
+    prisma.messengerPromptTimelineLog.deleteMany({ where: { roomId: room.id } }),
+    prisma.chatRoom.update({
+      where: { id: room.id },
+      data: { lastMessagePreview: null, updatedAt: new Date() },
+    }),
+  ]);
+}
+
 export async function appendChatMessage(input: {
   roomId: string;
   userId: string;

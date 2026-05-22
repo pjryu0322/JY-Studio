@@ -3,6 +3,7 @@
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
+import { ConversationChromeToolbar } from "@/components/workspace/ConversationChromeToolbar";
 import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
@@ -46,25 +47,6 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onClearLoadErrorAndRetry: () => void;
   onGoHome: () => void;
 }>;
-
-function RefreshIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M12 15V3" />
-    </svg>
-  );
-}
 
 function SparklesIcon() {
   return (
@@ -429,16 +411,14 @@ export function RequirementsWorkspaceTopChrome({
             <WorkspaceHubUsersIcon />
           </WorkspaceHubChromeIconButton>
         ) : null}
-        {onDownloadConversationMarkdown ? (
-          <WorkspaceHubChromeIconButton
-            title="대화 내역 마크다운 다운로드"
-            ariaLabel="대화 내역 마크다운 다운로드"
-            disabled={false}
-            onClick={() => onDownloadConversationMarkdown()}
-          >
-            <DownloadIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
+        <ConversationChromeToolbar
+          onDownloadConversationMarkdown={() =>
+            onDownloadConversationMarkdown ? void onDownloadConversationMarkdown() : undefined
+          }
+          onResetConversation={() => onResetConversation()}
+          downloadDisabled={!onDownloadConversationMarkdown}
+          resetDisabled={resetConversationDisabled}
+        />
         {onSummarizeConversation ? (
           <WorkspaceHubChromeIconButton
             title="대화 내역 AI 요약"
@@ -449,14 +429,6 @@ export function RequirementsWorkspaceTopChrome({
             <SparklesIcon />
           </WorkspaceHubChromeIconButton>
         ) : null}
-        <WorkspaceHubChromeIconButton
-          title="대화 초기화"
-          ariaLabel="대화 초기화"
-          disabled={resetConversationDisabled}
-          onClick={() => onResetConversation()}
-        >
-          <RefreshIcon />
-        </WorkspaceHubChromeIconButton>
       </div>
 
       {showOrganizeCta ? (

@@ -1,7 +1,10 @@
 "use client";
 
 import { MessengerRoomSettingsGearMenu } from "./MessengerRoomSettingsGearMenu";
+import { PromptTimelinePanelButton } from "@/components/debug/PromptTimelineDebugButton";
+import { ConversationChromeToolbar } from "@/components/workspace/ConversationChromeToolbar";
 import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
+import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 import { messengerAiModeShortLabel } from "@/lib/messenger/messengerAiParticipation";
 import type { MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
 import type { MessengerRoomDetail } from "@/lib/messenger/messengerRoomParticipantMapping";
@@ -26,7 +29,9 @@ export function MessengerChatRoomHeaderBar(p: {
   readonly onOpenMembers: () => void;
 }) {
   const title = p.detail?.room.title ?? "대화";
+  const roomId = p.detail?.room.id ?? null;
   const projectLinkedId = p.detail?.room.projectId ?? null;
+  const showPromptTimeline = isPromptTimelineDebugClient() && Boolean(roomId);
   const aiMode: MessengerAiMode = p.detail?.room.aiParticipationMode ?? "AUTO";
   const roomType = p.detail?.room.type ?? "SOLO";
   const isGroupFriendChat = roomType === "GROUP" && aiMode === "NONE";
@@ -54,6 +59,31 @@ export function MessengerChatRoomHeaderBar(p: {
           >
             {title}
           </div>
+          {showPromptTimeline ? (
+            <PromptTimelinePanelButton
+              projectId={projectLinkedId}
+              roomId={roomId}
+              disabled={p.roomLifecycleBusy}
+              emptyHint={
+                projectLinkedId
+                  ? "아직 기록된 호출이 없습니다. 이 프로젝트의 요구사항·메신저 AI 호출이 여기에 쌓입니다."
+                  : "아직 기록된 호출이 없습니다. 이 대화방에서 AI 기획자와 대화하면 OpenAI 호출 기록이 여기에 쌓입니다."
+              }
+            />
+          ) : null}
+          <ConversationChromeToolbar
+            onResetConversation={p.onResetConversation}
+            onDownloadConversationMarkdown={p.onDownloadConversationMarkdown}
+            resetDisabled={
+              p.roomLifecycleBusy ||
+              p.resetConversationBusy ||
+              p.busy ||
+              p.aiBusy ||
+              p.messages === null ||
+              !hasChatBody
+            }
+            downloadDisabled={p.roomLifecycleBusy || p.messages === null || !hasChatBody}
+          />
           <MessengerRoomSettingsGearMenu
             disabled={p.roomLifecycleBusy}
             showRename

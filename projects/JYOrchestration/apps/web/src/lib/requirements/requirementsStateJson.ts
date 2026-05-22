@@ -94,8 +94,28 @@ export type RequirementsPromptTimelineAgentRef = {
   readonly enginePreference?: string | null;
 };
 
+export type AiPlannerPromptModeWire = "pre_project_brainstorm" | "project_single_chat";
+
+export type RequirementsPromptTimelineContextBlocks = {
+  readonly explorationTopic?: readonly string[];
+  readonly userConstraints?: readonly string[];
+  readonly discardedDirections?: readonly string[];
+  readonly openOptions?: readonly string[];
+  readonly confirmedProjectDirection?: readonly string[];
+  readonly confirmedConstraints?: readonly string[];
+  readonly excludedScope?: readonly string[];
+  readonly openItems?: readonly string[];
+  readonly nextDeliverableCandidates?: readonly string[];
+};
+
 export type RequirementsPromptTimelineEntry = {
   stage: "ideation" | "service-flow" | "feature-planning" | string;
+  /** Pre-project 브레인스토밍 vs 프로젝트 SingleChat */
+  aiPlannerMode?: AiPlannerPromptModeWire;
+  contextBlocks?: RequirementsPromptTimelineContextBlocks;
+  domainContextInjected?: readonly string[];
+  domainContextReason?: string;
+  roomId?: string;
   /** 사용자 표시 절차 그룹(예: 서비스 기획) */
   stageGroup?: string;
   workspaceScreenKey?: string;

@@ -1,5 +1,7 @@
 import type {
+  AiPlannerPromptModeWire,
   RequirementsPromptTimelineAgentRef,
+  RequirementsPromptTimelineContextBlocks,
   RequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsStateJson";
 import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
@@ -167,6 +169,35 @@ function coerceOverlayPromptTraceExtensions(r: Record<string, unknown>): Partial
   return out;
 }
 
+function coerceAiPlannerMode(raw: unknown): AiPlannerPromptModeWire | undefined {
+  const s = String(raw ?? "").trim();
+  if (s === "pre_project_brainstorm" || s === "project_single_chat") return s;
+  return undefined;
+}
+
+function coerceContextBlocks(raw: unknown): RequirementsPromptTimelineContextBlocks | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const pick = (key: string): string[] | undefined => {
+    const v = r[key];
+    if (!Array.isArray(v)) return undefined;
+    const arr = v.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12);
+    return arr.length ? arr : undefined;
+  };
+  const out: RequirementsPromptTimelineContextBlocks = {
+    ...(pick("explorationTopic") ? { explorationTopic: pick("explorationTopic") } : {}),
+    ...(pick("userConstraints") ? { userConstraints: pick("userConstraints") } : {}),
+    ...(pick("discardedDirections") ? { discardedDirections: pick("discardedDirections") } : {}),
+    ...(pick("openOptions") ? { openOptions: pick("openOptions") } : {}),
+    ...(pick("confirmedProjectDirection") ? { confirmedProjectDirection: pick("confirmedProjectDirection") } : {}),
+    ...(pick("confirmedConstraints") ? { confirmedConstraints: pick("confirmedConstraints") } : {}),
+    ...(pick("excludedScope") ? { excludedScope: pick("excludedScope") } : {}),
+    ...(pick("openItems") ? { openItems: pick("openItems") } : {}),
+    ...(pick("nextDeliverableCandidates") ? { nextDeliverableCandidates: pick("nextDeliverableCandidates") } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
+}
+
 /**
  * `promptTimeline` 행·API `data.promptTrace` 등을 `RequirementsPromptTimelineEntry`로 정규화한다.
  * 필수 필드가 없으면 null(호출부에서 warn 로그 권장).
@@ -188,6 +219,20 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
     ...(typeof r.stageGroup === "string" ? { stageGroup: r.stageGroup } : {}),
     ...(typeof r.workspaceScreenKey === "string" ? { workspaceScreenKey: r.workspaceScreenKey } : {}),
+    ...(coerceAiPlannerMode(r.aiPlannerMode) ? { aiPlannerMode: coerceAiPlannerMode(r.aiPlannerMode) } : {}),
+    ...(coerceContextBlocks(r.contextBlocks) ? { contextBlocks: coerceContextBlocks(r.contextBlocks) } : {}),
+    ...(Array.isArray(r.domainContextInjected)
+      ? {
+          domainContextInjected: r.domainContextInjected
+            .map((x) => String(x ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 8),
+        }
+      : {}),
+    ...(typeof r.domainContextReason === "string" && r.domainContextReason.trim()
+      ? { domainContextReason: r.domainContextReason.trim().slice(0, 120) }
+      : {}),
+    ...(typeof r.roomId === "string" && r.roomId.trim() ? { roomId: r.roomId.trim().slice(0, 64) } : {}),
     ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
     ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
@@ -787,6 +832,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
     stage: params.timelineStage,
     stageGroup: params.stageGroup,
     workspaceScreenKey: params.workspaceScreenKey,
+    aiPlannerMode: "project_single_chat",
+    domainContextInjected: [],
     ...(agents.length ? { selectedAgents: agents } : {}),
     action: params.action,
     source: params.source,

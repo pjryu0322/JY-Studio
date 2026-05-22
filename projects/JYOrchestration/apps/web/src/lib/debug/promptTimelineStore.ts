@@ -92,6 +92,20 @@ export async function listMessengerPromptTimelineEntriesForProject(
   return rows.map(messengerLogRowToEntry);
 }
 
+export async function listMessengerPromptTimelineEntriesForRoom(
+  roomId: string,
+  take = 80
+): Promise<PromptTimelineEntry[]> {
+  const rid = roomId.trim();
+  if (!rid) return [];
+  const rows = await prisma.messengerPromptTimelineLog.findMany({
+    where: { roomId: rid },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+  return rows.map(messengerLogRowToEntry);
+}
+
 /**
  * 메신저 일반/AI 대화방의 Chat Completions 호출을 DB 타임라인에 남긴다(인메모리는 HMR·워커 분리로 비어 보일 수 있음).
  */

@@ -33,6 +33,11 @@ import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/w
 import { useRequirementsWorkspaceToasts } from "@/components/requirements/workspace/useRequirementsWorkspaceToasts";
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
+import {
+  buildConversationMarkdown,
+  confirmResetConversation,
+  downloadConversationMarkdownFile,
+} from "@/lib/chat/conversationMarkdown";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
@@ -1481,9 +1486,8 @@ export function RequirementsWorkspace({
     const remoteLockedLocal = !pid;
     if (remoteLockedLocal) return;
     if (busy || resetConversationBusy) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm("대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.");
-      if (!ok) return;
+    if (!confirmResetConversation({ message: "대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요? 이 작업은 되돌릴 수 없습니다." })) {
+      return;
     }
     setResetConversationBusy(true);
     try {
@@ -2253,35 +2257,14 @@ export function RequirementsWorkspace({
   const onDownloadConversationMarkdown = useCallback(() => {
     const pid = resolvedProjectId.trim();
     const projectLabel = (project?.name ?? "").trim() || "서비스기획";
-    const lines: string[] = [];
-    lines.push(`# 서비스 기획 대화 내역`);
-    lines.push("");
-    lines.push(`- projectId: ${pid || "(미연결)"}`);
-    lines.push(`- exportedAt: ${new Date().toISOString()}`);
-    lines.push("");
     const list = ideationConversationOnly.length ? ideationConversationOnly : conversationMessages;
-    const meLabel = String(sessionUser?.name ?? "").trim() || "나";
-    for (const m of list) {
-      const who =
-        m.role === "user" ? meLabel : m.role === "ai" ? (m.speakerName ? `AI(${m.speakerName})` : "AI") : m.role === "human" ? (m.speakerName ? `멤버(${m.speakerName})` : "멤버") : "시스템";
-      lines.push(`## ${who} · ${new Date(m.createdAt).toISOString()}`);
-      lines.push("");
-      lines.push(String(m.content ?? "").trim() || "(빈 메시지)");
-      lines.push("");
-      lines.push("---");
-      lines.push("");
-    }
-    const md = lines.join("\n");
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const safeName = projectLabel.replace(/[^\p{L}\p{N}\-_ ]/gu, "").trim().replace(/\s+/g, "_").slice(0, 48) || "service_planning";
-    a.download = `${safeName}_conversation.md`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const md = buildConversationMarkdown({
+      heading: "# 서비스 기획 대화 내역",
+      scopeLines: [`- projectId: ${pid || "(미연결)"}`, `- exportedAt: ${new Date().toISOString()}`],
+      messages: list,
+      meLabel: String(sessionUser?.name ?? "").trim() || "나",
+    });
+    downloadConversationMarkdownFile({ markdown: md, filenameStem: projectLabel });
   }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId, sessionUser?.name]);
 
   const [aiSummaryBusy, setAiSummaryBusy] = useState(false);
