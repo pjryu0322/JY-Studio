@@ -4,7 +4,10 @@
 
 import { buildRuntimeExecutionAuditEvent } from "@/lib/agents/runtimeExecutionVerticalSliceAudit";
 import { runMockRuntimeExecution } from "@/lib/agents/runtimeExecutionVerticalSliceRunner";
-import { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExecutionApiMvpBoundary";
+import {
+  buildRuntimeExecutionApiErrorResponse,
+  buildRuntimeExecutionApiOkResponse,
+} from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import type { RuntimeExecutionApiMvpStore } from "@/lib/agents/runtimeExecutionApiMvpStore";
 import { transitionRuntimeExecutionRecord } from "@/lib/agents/runtimeExecutionVerticalSliceStore";
 import type {
@@ -17,71 +20,61 @@ export function runRuntimeExecutionMockAdapter(input: {
   readonly executionId: string;
   readonly nowIso: string;
 }): RuntimeExecutionApiResponse<RuntimeExecutionApiMvpMockRunResult> {
-  const boundary = buildRuntimeExecutionApiBoundaryReport();
   const id = input.executionId.trim();
   if (!id) {
-    return {
-      ok: false,
-      status: 400,
-      action: "mock_run",
-      error: { code: "invalid_execution_id", message: "executionId is required" },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      400,
+      "invalid_execution_id",
+      "executionId is required",
+    );
   }
 
   const record = input.store.get(id);
   if (!record) {
-    return {
-      ok: false,
-      status: 404,
-      action: "mock_run",
-      error: { code: "execution_not_found", message: `Execution not found: ${id}` },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      404,
+      "execution_not_found",
+      `Execution not found: ${id}`,
+    );
   }
 
   if (record.status !== "validated") {
-    return {
-      ok: false,
-      status: 409,
-      action: "mock_run",
-      error: {
-        code: "invalid_status",
-        message: `Mock run requires validated status; current status is ${record.status}`,
-      },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      409,
+      "invalid_status",
+      `Mock run requires validated status; current status is ${record.status}`,
+    );
   }
 
   const request = input.store.getRequest(id);
   if (!request) {
-    return {
-      ok: false,
-      status: 409,
-      action: "mock_run",
-      error: { code: "request_metadata_missing", message: `Request metadata missing for ${id}` },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      409,
+      "request_metadata_missing",
+      `Request metadata missing for ${id}`,
+    );
   }
 
   if (request.approvedForMockRun !== true) {
-    return {
-      ok: false,
-      status: 409,
-      action: "mock_run",
-      error: { code: "mock_run_not_approved", message: "Mock run requires approvedForMockRun=true" },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      409,
+      "mock_run_not_approved",
+      "Mock run requires approvedForMockRun=true",
+    );
   }
 
   if (request.actualExecutionRequested !== false) {
-    return {
-      ok: false,
-      status: 409,
-      action: "mock_run",
-      error: { code: "actual_execution_requested", message: "Actual execution is not allowed in Stage 9-A" },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "mock_run",
+      409,
+      "actual_execution_requested",
+      "Actual execution is not allowed in Stage 9-A",
+    );
   }
 
   const auditEventCountBefore = input.store.getAuditEvents(id).length;
@@ -157,11 +150,12 @@ export function runRuntimeExecutionMockAdapter(input: {
     actualRunnerInvoked: false,
   };
 
-  return {
-    ok: mockResult.success,
-    status: mockResult.success ? 200 : 409,
-    action: "mock_run",
-    data,
-    boundary,
-  };
+  if (!mockResult.success) {
+    return {
+      ...buildRuntimeExecutionApiErrorResponse("mock_run", 409, "mock_run_failed", mockResult.message),
+      data,
+    };
+  }
+
+  return buildRuntimeExecutionApiOkResponse("mock_run", 200, data);
 }

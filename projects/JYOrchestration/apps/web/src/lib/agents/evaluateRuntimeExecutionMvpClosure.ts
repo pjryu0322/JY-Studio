@@ -27,10 +27,8 @@ import {
   validateRuntimeExecutionMvpClosureItems,
 } from "@/lib/agents/runtimeExecutionMvpClosureSupport";
 
-export {
-  resolveRuntimeExecutionMvpClosureDecision,
-  buildRuntimeExecutionMvpClosureFingerprint,
-} from "@/lib/agents/runtimeExecutionMvpClosureSupport";
+export { resolveRuntimeExecutionMvpClosureDecision } from "@/lib/agents/runtimeExecutionMvpClosureSupport";
+export { buildRuntimeExecutionMvpClosureFingerprint } from "@/lib/agents/runtimeExecutionMvpClosureFingerprint";
 
 export { buildRuntimeExecutionMvpClosureItems } from "@/lib/agents/runtimeExecutionMvpClosureItems";
 export { validateRuntimeExecutionMvpClosureItems } from "@/lib/agents/runtimeExecutionMvpClosureValidation";

@@ -3,7 +3,10 @@
  */
 
 import { buildRuntimeExecutionAuditEvent } from "@/lib/agents/runtimeExecutionVerticalSliceAudit";
-import { buildRuntimeExecutionApiBoundaryReport } from "@/lib/agents/runtimeExecutionApiMvpBoundary";
+import {
+  buildRuntimeExecutionApiErrorResponse,
+  buildRuntimeExecutionApiOkResponse,
+} from "@/lib/agents/runtimeExecutionApiMvpResponse";
 import type { RuntimeExecutionApiMvpStore } from "@/lib/agents/runtimeExecutionApiMvpStore";
 import { transitionRuntimeExecutionRecord } from "@/lib/agents/runtimeExecutionVerticalSliceStore";
 import type {
@@ -17,61 +20,52 @@ export function approveRuntimeExecutionInMemory(input: {
   readonly approvedBy: "operator" | "system";
   readonly nowIso: string;
 }): RuntimeExecutionApiResponse<RuntimeExecutionApiMvpApprovalResult> {
-  const boundary = buildRuntimeExecutionApiBoundaryReport();
   const id = input.executionId.trim();
   if (!id) {
-    return {
-      ok: false,
-      status: 400,
-      action: "approve",
-      error: { code: "invalid_execution_id", message: "executionId is required" },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "approve",
+      400,
+      "invalid_execution_id",
+      "executionId is required",
+    );
   }
 
   const record = input.store.get(id);
   if (!record) {
-    return {
-      ok: false,
-      status: 404,
-      action: "approve",
-      error: { code: "execution_not_found", message: `Execution not found: ${id}` },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "approve",
+      404,
+      "execution_not_found",
+      `Execution not found: ${id}`,
+    );
   }
 
   const request = input.store.getRequest(id);
   if (!request) {
-    return {
-      ok: false,
-      status: 409,
-      action: "approve",
-      error: { code: "request_metadata_missing", message: `Request metadata missing for ${id}` },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "approve",
+      409,
+      "request_metadata_missing",
+      `Request metadata missing for ${id}`,
+    );
   }
 
   if (record.status === "validated") {
-    return {
-      ok: false,
-      status: 409,
-      action: "approve",
-      error: { code: "already_approved", message: "Execution is already validated" },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "approve",
+      409,
+      "already_approved",
+      "Execution is already validated",
+    );
   }
 
   if (record.status !== "requested") {
-    return {
-      ok: false,
-      status: 409,
-      action: "approve",
-      error: {
-        code: "invalid_status",
-        message: `Cannot approve execution in status ${record.status}`,
-      },
-      boundary,
-    };
+    return buildRuntimeExecutionApiErrorResponse(
+      "approve",
+      409,
+      "invalid_status",
+      `Cannot approve execution in status ${record.status}`,
+    );
   }
 
   const statusBefore = record.status;
@@ -99,5 +93,5 @@ export function approveRuntimeExecutionInMemory(input: {
     auditEvent,
   };
 
-  return { ok: true, status: 200, action: "approve", data, boundary };
+  return buildRuntimeExecutionApiOkResponse("approve", 200, data);
 }

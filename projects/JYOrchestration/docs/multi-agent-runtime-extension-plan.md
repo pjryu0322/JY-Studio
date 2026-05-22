@@ -2736,7 +2736,7 @@ Ready decision:
 - Stage 10 external execution adapter design으로 넘어갈 수 있다.
 - 실제 Cursor/GitHub/DB/production runner 실행 허가는 아니다.
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionMvpClosure.ts`, `runtimeExecutionMvpClosureTypes.ts`, `runtimeExecutionMvpClosureConstants.ts`, `runtimeExecutionMvpClosureItems.ts`, `runtimeExecutionMvpClosureValidation.ts`, `runtimeExecutionMvpClosureSupport.ts`, `runtimeExecutionMvpClosureFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionMvpClosure.ts`, `runtimeExecutionMvpClosureTypes.ts`, `runtimeExecutionMvpClosureConstants.ts`, `runtimeExecutionMvpClosureItems.ts`, `runtimeExecutionMvpClosureValidation.ts`, `runtimeExecutionMvpClosureStage10EntryValidation.ts`, `runtimeExecutionMvpClosureSupport.ts`, `runtimeExecutionMvpClosureFindings.ts`, `runtimeExecutionApiMvpClosureReady.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

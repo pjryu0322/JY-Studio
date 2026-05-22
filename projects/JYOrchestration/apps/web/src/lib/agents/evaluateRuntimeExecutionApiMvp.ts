@@ -7,6 +7,7 @@ import type {
   RuntimeExecutionApiMvpInput,
   RuntimeExecutionApiMvpReport,
 } from "@/lib/agents/runtimeExecutionApiMvpTypes";
+import { computeStage9AClosureReady } from "@/lib/agents/runtimeExecutionApiMvpClosureReady";
 import {
   REQUIRED_STAGE9_A_CONFIRMATIONS,
   RUNTIME_EXECUTION_API_MVP_TITLE,
@@ -22,7 +23,6 @@ import {
   evaluateRuntimeExecutionApiMvpSource,
   parseRuntimeExecutionApiMvpInput,
   resolveRuntimeExecutionApiMvpDecision,
-  computeStage9AClosureReady,
 } from "@/lib/agents/runtimeExecutionApiMvpSupport";
 import {
   STAGE9_A_ROUTE_HANDLER_COUNT,
