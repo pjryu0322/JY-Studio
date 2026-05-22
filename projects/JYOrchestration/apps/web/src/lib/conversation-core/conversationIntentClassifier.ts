@@ -140,23 +140,41 @@ export function parseConversationIntentJson(
   }
 }
 
-const FEASIBILITY_LAST_RE =
-  /확인|가능|수집|검토|할\s*수\s*있는지|봐줘|점검|될까|가능한가|접근\s*가능|다운로드/i;
+const FEASIBILITY_ACTION_RE =
+  /확인해\s*줘|검토해\s*줘|점검해\s*줘|봐\s*줘|될까\??|가능한가\??|할\s*수\s*있는지|가능\s*여부/i;
 
-/** 마지막 user 발화가 가능 여부·수집 확인류인지 (rules 보정·LLM guard용) */
-export function looksLikeFeasibilityUtterance(lastUser: string): boolean {
-  const last = String(lastUser ?? "").trim();
-  if (!last) return false;
-  return /https?:\/\//i.test(last) || FEASIBILITY_LAST_RE.test(last);
-}
+const FEASIBILITY_OBJECT_RE =
+  /수집|데이터|API|api|크롤|크롤링|다운로드|목록|접근|조회|가져올|추출|스크래핑/i;
+
+const FEASIBILITY_EXPLICIT_RE =
+  /수집할\s*수\s*있는지|다운로드할\s*수\s*있는지|접근\s*가능한지|조회\s*가능한지/i;
+
+const BRAINSTORM_POSSIBILITY_RE =
+  /가능한\s*(방향|아이디어|접근|시나리오|확장|기능)|확장\s*가능성|발전\s*가능성/i;
 
 function isFeasibilitySignalsInText(text: string): boolean {
   const t = String(text ?? "").trim();
   if (!t) return false;
-  return (
-    FEASIBILITY_LAST_RE.test(t) ||
-    (/https?:\/\//i.test(t) && /수집|데이터|api|크롤|다운로드|목록|접근/i.test(t))
-  );
+  if (BRAINSTORM_POSSIBILITY_RE.test(t) && !FEASIBILITY_OBJECT_RE.test(t)) return false;
+  if (/https?:\/\//i.test(t) && FEASIBILITY_OBJECT_RE.test(t)) return true;
+  if (FEASIBILITY_ACTION_RE.test(t) && FEASIBILITY_OBJECT_RE.test(t)) return true;
+  if (FEASIBILITY_EXPLICIT_RE.test(t)) return true;
+  return false;
+}
+
+/** 마지막 user 발화가 가능 여부·수집 확인류인지 (rules 보정·LLM guard용) */
+export function looksLikeFeasibilityUtterance(lastUser: string): boolean {
+  return isFeasibilitySignalsInText(lastUser);
+}
+
+/** LLM·rules·strict fallback을 합쳐 문서 협업 맥락 주입 여부 */
+export function mergeConversationDocumentContext(
+  rules: ConversationIntentClassification,
+  parsed: ConversationIntentClassification,
+  docBlob: string
+): boolean {
+  const strictDoc = shouldInjectDocumentCollaborationContextStrictFallback({ text: docBlob });
+  return strictDoc && (parsed.shouldInjectDocumentContext || rules.shouldInjectDocumentContext);
 }
 
 /** LLM이 brainstorm 등으로 바꿔도 rules feasibility를 유지할지 */
@@ -204,6 +222,13 @@ export function classifyConversationIntentFromRules(input: {
   } else if (/지금까지\s*정리|대화\s*정리|요약해\s*줘/i.test(last)) {
     mode = "summary";
     reason = "대화 정리 요청";
+  } else if (
+    BRAINSTORM_POSSIBILITY_RE.test(last) &&
+    !FEASIBILITY_OBJECT_RE.test(last) &&
+    !isFeasibilitySignalsInText(last)
+  ) {
+    mode = "brainstorm";
+    reason = "가능성·방향 탐색";
   } else if (isFeasibilitySignalsInText(last) || isFeasibilitySignalsInText(blob)) {
     mode = "feasibility_check";
     reason = "가능 여부·수집·검토 확인 요청";
@@ -301,13 +326,14 @@ export async function classifyConversationIntent(input: {
     const parsed = parseConversationIntentJson(res.text, scope, participationMode);
     if (!parsed) return rules;
     const docBlob = blobForDoc(input.transcript);
-    const strictDoc = shouldInjectDocumentCollaborationContextStrictFallback({ text: docBlob });
-    const shouldInjectDocumentContext = parsed.shouldInjectDocumentContext && strictDoc;
+    const shouldInjectDocumentContext = mergeConversationDocumentContext(rules, parsed, docBlob);
     const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last);
     return {
       ...merged,
       shouldInjectDocumentContext,
-      domainContextReason: shouldInjectDocumentContext ? merged.domainContextReason ?? "llm+strict" : null,
+      domainContextReason: shouldInjectDocumentContext
+        ? merged.domainContextReason ?? (parsed.shouldInjectDocumentContext ? "llm+strict" : "strict+rules")
+        : null,
     };
   } catch {
     return rules;

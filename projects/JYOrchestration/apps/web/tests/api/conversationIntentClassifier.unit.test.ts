@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyConversationIntentFromRules,
+  mergeConversationDocumentContext,
   mergeConversationIntentWithRulesGuard,
 } from "@/lib/conversation-core/conversationIntentClassifier";
 import {
@@ -82,6 +83,54 @@ describe("classifyConversationIntentFromRules", () => {
     expect(c.mode).toBe("feasibility_check");
     expect(c.mode).not.toBe("research_request");
   });
+
+  it("가능한 방향/확장 가능성 wording remains brainstorm", () => {
+    expect(classifyLast("가능한 방향을 제안해줘").mode).toBe("brainstorm");
+    expect(classifyLast("이 아이디어의 확장 가능성을 브레인스토밍해줘").mode).toBe("brainstorm");
+    expect(classifyLast("발전 가능성이 있는 방향을 같이 생각해줘").mode).toBe("brainstorm");
+  });
+
+  it("URL without collection/check intent does not force feasibility", () => {
+    expect(classifyLast("https://example.com 이걸 참고해서 아이디어를 확장해줘").mode).toBe("brainstorm");
+  });
+
+  it("URL + collection/download/access remains feasibility", () => {
+    expect(classifyLast("https://example.com 목록 데이터를 수집할 수 있는지 확인해줘").mode).toBe(
+      "feasibility_check"
+    );
+    expect(classifyLast("https://example.com 목록을 다운로드 가능한지 봐줘").mode).toBe("feasibility_check");
+    expect(classifyLast("https://example.com 공개 데이터에 접근 가능한지 점검해줘").mode).toBe(
+      "feasibility_check"
+    );
+  });
+
+  it("strict document fallback preserves obvious PDF collaboration context", () => {
+    const c = classifyLast("PDF 문서를 같이 검토하고 주석을 달고 싶어");
+    expect(c.shouldInjectDocumentContext).toBe(true);
+  });
+});
+
+describe("mergeConversationDocumentContext", () => {
+  it("preserves document context when parsed llm says false but rules strict match", () => {
+    const last = "PDF 문서를 같이 검토하고 주석을 달고 싶어";
+    const rules = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [{ role: "user", content: last }],
+    });
+    expect(rules.shouldInjectDocumentContext).toBe(true);
+    const llmParsed = { ...rules, shouldInjectDocumentContext: false, classifierSource: "llm" as const };
+    expect(mergeConversationDocumentContext(rules, llmParsed, last)).toBe(true);
+  });
+
+  it("does not inject document context for UX-only wording when llm says true", () => {
+    const last = "대시보드 화면 UX를 직관적으로 구성하고 싶어";
+    const rules = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [{ role: "user", content: last }],
+    });
+    const llmParsed = { ...rules, shouldInjectDocumentContext: true, classifierSource: "llm" as const };
+    expect(mergeConversationDocumentContext(rules, llmParsed, last)).toBe(false);
+  });
 });
 
 describe("mergeConversationIntentWithRulesGuard", () => {
@@ -118,7 +167,7 @@ describe("messenger system prompt by intent", () => {
   });
 
   it("promptMeta block includes mode and scope", () => {
-    const c = classifyLast("확인해줘");
+    const c = classifyLast("https://example.com 데이터 수집 가능한지 확인해줘");
     const meta = formatConversationPromptMeta(c, { roomId: "room-1", layout: "free_windowed" });
     expect(meta).toContain("[promptMeta]");
     expect(meta).toContain("mode=feasibility_check");
