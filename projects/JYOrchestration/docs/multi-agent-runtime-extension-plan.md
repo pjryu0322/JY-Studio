@@ -2589,7 +2589,7 @@ Ready decision:
 - 아직 외부 실행 권한은 없다.
 - Stage 8-B 이후 실제 API route 또는 runner adapter 설계로 분리한다.
 
-구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionVerticalSlice.ts`, `runtimeExecutionVerticalSliceTypes.ts`, `runtimeExecutionVerticalSliceStore.ts`, `runtimeExecutionVerticalSliceRunner.ts`, `runtimeExecutionVerticalSliceAudit.ts`
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionVerticalSlice.ts`, `runtimeExecutionVerticalSliceTypes.ts`, `runtimeExecutionVerticalSliceStore.ts`, `runtimeExecutionVerticalSliceRunner.ts`, `runtimeExecutionVerticalSliceAudit.ts`, `runtimeExecutionVerticalSliceChain.ts`, `runtimeExecutionVerticalSliceRequestValidation.ts`, `runtimeExecutionVerticalSliceDecision.ts`, `runtimeExecutionVerticalSliceFingerprint.ts`, `runtimeExecutionVerticalSliceFindings.ts`, `runtimeExecutionVerticalSliceChecklists.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 
