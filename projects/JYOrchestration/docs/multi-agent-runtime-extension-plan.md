@@ -2248,16 +2248,33 @@ Stage 6-B는 실제 schema/prisma/migration이 아니라 model candidate report�
 - RuntimeExecutionApprovalState: `id`, `requestId`, `approvalStatus`, `approvedBy`, `approvedAt`
 - RuntimeExecutionRollbackPlan: `id`, `requestId`, `rollbackSteps`, `rollbackRequired`
 
-### Stage 6-C 후보
+### Stage 6-C Runtime Execution Model Review Gate
 
-Stage 6-C는 다음 단계 후보로만 남긴다. 이번 Stage 6-A/6-B hardening에서는 구현하지 않는다.
+Stage 6-C는 Stage 6-B의 runtime execution model candidate를 검토하는 read-only gate다.
 
-후보명:
+이 단계는 실제 실행 허가가 아니다. 다음만 수행한다.
 
-- Runtime Execution Model Review Gate
-- Controlled Runtime Execution Model Review Candidate
+- 후보 모델 7종 검토
+- field contract 검토
+- no-run boundary 검토
+- persistence/schema boundary 검토
+- approval boundary 검토
+- 다음 단계인 Stage 6-D runtime execution contract candidate로 넘길 수 있는지 판정
 
-주의: Stage 6-C도 실제 runtime execution API, runner, Cursor/GitHub wire, DB write를 허가하지 않는다.
+Ready decision: `ready_for_runtime_execution_contract_candidate`
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionModelReviewGate.ts`, `runtimeExecutionModelReviewGateTypes.ts`, `runtimeExecutionModelReviewGateSupport.ts`
+
+Stage 6-C에서도 다음은 금지된다.
+
+- actual runtime execution API
+- execution runner
+- Cursor/GitHub wire
+- Connector Gateway routing change
+- DB write
+- schema.prisma/migration
+- persistence implementation
+- UI implementation
 
 ### Stage 3–4 빠른 진행 로드맵
 

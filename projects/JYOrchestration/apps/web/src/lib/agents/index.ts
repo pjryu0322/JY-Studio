@@ -856,6 +856,20 @@ export {
 } from "@/lib/agents/runtimeExecutionModelBaselineInputHygiene";
 
 export {
+  evaluateRuntimeExecutionModelReviewGate,
+  buildStage6CReadyReviewGateInput,
+  buildStage6CModelReviewGateConfirmedInput,
+  resolveRuntimeExecutionModelReviewGateDecision,
+} from "@/lib/agents/evaluateRuntimeExecutionModelReviewGate";
+
+export type {
+  RuntimeExecutionModelReviewGateDecision,
+  RuntimeExecutionModelReviewGateInput,
+  RuntimeExecutionModelReviewGateReport,
+  RuntimeExecutionModelReviewArea,
+} from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
+
+export {
   buildStage6AReadyBaselineInput,
   buildStage6AModelBaselineConfirmedInput,
   buildStage6BReadyCandidateInput,
