@@ -29,6 +29,7 @@ import { evaluateExternalExecutionDryRunPackageSource } from "@/lib/agents/exter
 import {
   buildExternalExecutionDryRunPackageStage12ReportFields,
   mapExternalExecutionDryRunPackageDecisionInputFromSource,
+  mapExternalExecutionDryRunPackageSourceTrace,
 } from "@/lib/agents/externalExecutionDryRunPackageSourceMapping";
 import {
   computeStage12EntryReady,
@@ -97,11 +98,7 @@ export function evaluateExternalExecutionDryRunPackage(
     mode: "read_only_external_execution_dry_run_package",
     stage: "stage_11_a_external_execution_adapter_dry_run_package",
     decision,
-    sourceStage10Decision: source.decision,
-    sourceStage11EntryReady: source.stage11EntryReady,
-    sourceDryRunPackageDesignAllowed: source.dryRunPackageDesignAllowed,
-    sourceDryRunSimulationOnly: source.dryRunSimulationOnly,
-    sourceStage11DryRunPackageRequiredBeforeActualExecution: source.stage11DryRunPackageRequiredBeforeActualExecution,
+    ...mapExternalExecutionDryRunPackageSourceTrace(source),
     packageVersion: EXTERNAL_EXECUTION_DRY_RUN_PACKAGE_VERSION,
     packageTitle: EXTERNAL_EXECUTION_DRY_RUN_PACKAGE_TITLE,
     packageSummary: buildExternalExecutionDryRunPackageSummary(decision),

@@ -3,9 +3,29 @@
  */
 
 import type { ExternalExecutionAdapterBoundaryReport } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
-import type { ExternalExecutionDryRunPackageDecisionInput } from "@/lib/agents/externalExecutionDryRunPackageTypes";
+import type {
+  ExternalExecutionDryRunPackageDecisionInput,
+  ExternalExecutionDryRunPackageReport,
+} from "@/lib/agents/externalExecutionDryRunPackageTypes";
 
 export const STAGE12_ENTRY_CANDIDATE = "external_execution_adapter_manual_dry_run_gate" as const;
+
+export function mapExternalExecutionDryRunPackageSourceTrace(source: ExternalExecutionAdapterBoundaryReport): Pick<
+  ExternalExecutionDryRunPackageReport,
+  | "sourceStage10Decision"
+  | "sourceStage11EntryReady"
+  | "sourceDryRunPackageDesignAllowed"
+  | "sourceDryRunSimulationOnly"
+  | "sourceStage11DryRunPackageRequiredBeforeActualExecution"
+> {
+  return {
+    sourceStage10Decision: source.decision,
+    sourceStage11EntryReady: source.stage11EntryReady,
+    sourceDryRunPackageDesignAllowed: source.dryRunPackageDesignAllowed,
+    sourceDryRunSimulationOnly: source.dryRunSimulationOnly,
+    sourceStage11DryRunPackageRequiredBeforeActualExecution: source.stage11DryRunPackageRequiredBeforeActualExecution,
+  };
+}
 
 export function mapExternalExecutionDryRunPackageDecisionInputFromSource(
   source: ExternalExecutionAdapterBoundaryReport,

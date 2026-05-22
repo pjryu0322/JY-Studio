@@ -2,10 +2,9 @@
  * Stage 11-A external execution dry-run package support (read-only).
  */
 
-export {
-  evaluateExternalExecutionDryRunPackageSource,
-  isSourceReadyForExternalExecutionDryRunPackage,
-} from "@/lib/agents/externalExecutionDryRunPackageSource";
+export { evaluateExternalExecutionDryRunPackageSource } from "@/lib/agents/externalExecutionDryRunPackageSource";
+
+export { isSourceReadyForExternalExecutionDryRunPackage } from "@/lib/agents/externalExecutionDryRunPackageItemSource";
 
 export { buildExternalExecutionDryRunPackageItems } from "@/lib/agents/externalExecutionDryRunPackageItems";
 
@@ -30,6 +29,7 @@ export { appendExternalExecutionDryRunPackageFindings } from "@/lib/agents/exter
 
 export {
   mapExternalExecutionDryRunPackageDecisionInputFromSource,
+  mapExternalExecutionDryRunPackageSourceTrace,
   buildExternalExecutionDryRunPackageStage12ReportFields,
   STAGE12_ENTRY_CANDIDATE,
 } from "@/lib/agents/externalExecutionDryRunPackageSourceMapping";

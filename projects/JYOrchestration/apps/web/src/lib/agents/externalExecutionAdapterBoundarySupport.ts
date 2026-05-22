@@ -51,3 +51,8 @@ export {
   STAGE10_A_RECOMMENDED_NEXT_PHASES,
   STAGE10_A_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/externalExecutionAdapterBoundaryConstants";
+
+export {
+  countExternalAdapterContractAreas,
+  buildExternalExecutionAdapterBoundaryDryRunHardeningFields,
+} from "@/lib/agents/externalExecutionAdapterBoundaryDryRunTrace";

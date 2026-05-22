@@ -2826,7 +2826,7 @@ Ready decision:
 - Stage 12 manual dry-run gate로 넘어갈 수 있다.
 - 실제 Cursor/GitHub/Connector/DB/production runner 실행 허가는 아니다.
 
-구현: `apps/web/src/lib/agents/evaluateExternalExecutionDryRunPackage.ts`, `externalExecutionDryRunPackageTypes.ts`, `externalExecutionDryRunPackageConstants.ts`, `externalExecutionDryRunPackageItems.ts`, `externalExecutionDryRunPackageValidation.ts`, `externalExecutionDryRunPackageSource.ts`, `externalExecutionDryRunPackageSourceMapping.ts`, `externalExecutionDryRunPackageSupport.ts`, `externalExecutionDryRunPackageFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionDryRunPackage.ts`, `externalExecutionDryRunPackageTypes.ts`, `externalExecutionDryRunPackageConstants.ts`, `externalExecutionDryRunPackageItems.ts`, `externalExecutionDryRunPackageItemSource.ts`, `externalExecutionDryRunPackageValidation.ts`, `externalExecutionDryRunPackageSource.ts`, `externalExecutionDryRunPackageSourceMapping.ts`, `externalExecutionDryRunPackageSupport.ts`, `externalExecutionDryRunPackageFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

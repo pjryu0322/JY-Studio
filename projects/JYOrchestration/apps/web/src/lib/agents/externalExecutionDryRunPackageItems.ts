@@ -6,7 +6,7 @@ import {
   STAGE11_A_DRY_RUN_ITEM_SPECS,
   STAGE11_A_REQUIRED_ITEM_IDS,
 } from "@/lib/agents/externalExecutionDryRunPackageConstants";
-import { isSourceReadyForExternalExecutionDryRunPackage } from "@/lib/agents/externalExecutionDryRunPackageSource";
+import { isSourceReadyForExternalExecutionDryRunPackage } from "@/lib/agents/externalExecutionDryRunPackageItemSource";
 import type { ExternalExecutionAdapterBoundaryReport } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 import type { ExternalExecutionDryRunPackageItem } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 
