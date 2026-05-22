@@ -2,8 +2,8 @@
  * Pipeline worker phases: reviewer → security (team runtime) → SCM → merge.
  */
 
-import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import {
   countExecutionReviewAiMembers,
   type ExecutionReviewerStepRecord,
@@ -24,29 +24,20 @@ import {
 } from "@/lib/ai-team-runtime/teamRuntimeLoopBridge";
 import { buildCursorResultFromExecutionRun } from "@/lib/ai-team-runtime/roleSeparatedMergeResume";
 import { prisma } from "@/lib/prisma";
+import type {
+  MergePhaseResult,
+  PipelinePhaseContext,
+  ReviewerPhaseResult,
+  ScmPhaseResult,
+} from "@/lib/runtime/pipelineExecutionPhaseTypes";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 
-export type PipelinePhaseContext = {
-  readonly projectId: string;
-  readonly taskId: string;
-  readonly actorUserId: string;
-  readonly execRunId: string;
-  readonly executionJobId?: string;
-  readonly repoUrl: string;
-  readonly baseBranch: string;
-  readonly githubAccessToken: string | null;
-  readonly requireApprovalBeforeApply: boolean;
-  readonly mergedAllowedGlobs: readonly string[];
-  readonly stopOnTestFailure: boolean;
-  readonly stopOnOutOfScopeChange: boolean;
-  readonly taskTitle: string;
-  readonly taskDescription: string | null;
-  readonly acceptanceCriteriaJson: unknown;
-};
-
-export type ReviewerPhaseResult =
-  | { ok: true; verdict: "done"; evalPack: Awaited<ReturnType<typeof evaluateExecutionResult>> }
-  | { ok: false; code: string; message: string; verdict?: string };
+export type {
+  MergePhaseResult,
+  PipelinePhaseContext,
+  ReviewerPhaseResult,
+  ScmPhaseResult,
+} from "@/lib/runtime/pipelineExecutionPhaseTypes";
 
 export async function runReviewerPhase(ctx: PipelinePhaseContext): Promise<ReviewerPhaseResult> {
   await appendRuntimeEvent({
@@ -228,10 +219,6 @@ export async function runSecurityPhase(
   return { ok: true };
 }
 
-export type ScmPhaseResult =
-  | { ok: true; evalReason: string }
-  | { ok: false; code: string; message: string; hold?: boolean };
-
 export async function runScmPhase(
   ctx: PipelinePhaseContext,
   input: { reviewerVerdict: string; reviewerSummary: string }
@@ -286,11 +273,6 @@ export async function runScmPhase(
 
   return { ok: true, evalReason: input.reviewerSummary };
 }
-
-export type MergePhaseResult =
-  | { ok: true; merged: true; prUrl: string }
-  | { ok: true; merged: false; message: string }
-  | { ok: false; code: string; message: string };
 
 export async function runMergePhase(
   ctx: PipelinePhaseContext,

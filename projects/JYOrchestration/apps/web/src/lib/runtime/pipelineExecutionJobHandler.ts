@@ -6,10 +6,12 @@ import type { ExecutionJob } from "@prisma/client";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
-import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
 import { prisma } from "@/lib/prisma";
-import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
-import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import type { ExecutionWorkerStructuredResult } from "@/lib/runtime/executionWorkerStructuredResult";
+import {
+  isPipelinePhaseContext,
+  resolvePipelinePhaseContext,
+} from "@/lib/runtime/pipelineExecutionJobContext";
 import {
   parsePipelineExecutionJobPayload,
   type PipelineExecutionJobResult,
@@ -19,18 +21,10 @@ import {
   runReviewerPhase,
   runScmPhase,
   runSecurityPhase,
-  type PipelinePhaseContext,
 } from "@/lib/runtime/pipelineExecutionPhases";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
 
-type StructuredJobResult = {
-  ok: boolean;
-  code: string;
-  message: string;
-  data?: unknown;
-};
-
-export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<StructuredJobResult> {
+export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<ExecutionWorkerStructuredResult> {
   const payload = parsePipelineExecutionJobPayload(job.payload);
   if (!payload) {
     return {
@@ -54,52 +48,11 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Str
     executionJobId: job.id,
   });
 
-  const taskRow = await prisma.task.findUnique({
-    where: { id: payload.taskId },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      acceptanceCriteria: true,
-      taskKind: true,
-    },
-  });
-  if (!taskRow) {
-    return { ok: false, code: "TASK_NOT_FOUND", message: "Task not found" };
+  const resolved = await resolvePipelinePhaseContext(job, payload);
+  if (!isPipelinePhaseContext(resolved)) {
+    return resolved;
   }
-
-  if (isEnvTestFamilyTaskKind(taskRow.taskKind)) {
-    return {
-      ok: false,
-      code: "ENV_TEST_REQUIRES_SYNC_LOOP",
-      message: "ENV_TEST pipeline phases must run via runExecutionLoop sync orchestrator.",
-    };
-  }
-
-  const setup = await withExecutionSetupSchemaHealRetry(() =>
-    prisma.executionSetup.findUnique({ where: { projectId: payload.projectId } })
-  );
-  if (!setup?.gitRepoUrl?.trim()) {
-    return { ok: false, code: "SETUP_MISSING", message: "Execution setup missing" };
-  }
-
-  const phaseCtx: PipelinePhaseContext = {
-    projectId: payload.projectId,
-    taskId: payload.taskId,
-    actorUserId: payload.actorUserId,
-    execRunId: payload.execRunId,
-    executionJobId: job.id,
-    repoUrl: setup.gitRepoUrl.trim(),
-    baseBranch: setup.baseBranch,
-    githubAccessToken: setup.githubAccessToken ?? null,
-    requireApprovalBeforeApply: setup.requireApprovalBeforeApply === true,
-    mergedAllowedGlobs: parseStringArrayJson(setup.allowedPathGlobs),
-    stopOnTestFailure: setup.stopOnTestFailure !== false,
-    stopOnOutOfScopeChange: setup.stopOnOutOfScopeChange !== false,
-    taskTitle: taskRow.name,
-    taskDescription: taskRow.description,
-    acceptanceCriteriaJson: taskRow.acceptanceCriteria,
-  };
+  const phaseCtx = resolved;
 
   if (!payload.resumeScmAfterApproval) {
     const review = await runReviewerPhase(phaseCtx);
@@ -138,7 +91,7 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Str
       return { ok: false, code: security.code, message: security.message };
     }
 
-    if (setup.requireApprovalBeforeApply === true) {
+    if (phaseCtx.requireApprovalBeforeApply) {
       await haltTaskForTeamRuntimeApproval({ execRunId: payload.execRunId, taskId: payload.taskId });
       await refreshWorkflowStates(payload.projectId);
       const result: PipelineExecutionJobResult = {

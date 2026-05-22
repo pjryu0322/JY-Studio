@@ -45,13 +45,20 @@ Use `appendRuntimeEvent()` (`lib/runtime/runtimeEventService.ts`) for standardiz
 
 ```text
 apps/web/src/lib/runtime/
+  executionWorkerStructuredResult.ts
   cursorExecutionJobHandler.ts
+  cursorExecutionJobInvoke.ts
+  cursorExecutionJobPersist.ts
+  cursorExecutionJobSync.ts
   cursorExecutionJobTypes.ts
   pipelineExecutionJobHandler.ts
+  pipelineExecutionJobContext.ts
   pipelineExecutionPhases.ts
+  pipelineExecutionPhaseTypes.ts
   pipelineExecutionJobTypes.ts
   runtimeEventService.ts
   runtimeEventTypes.ts
   executionRetryPolicy.ts
   runtimeObservability.ts
+  runtimeSupport.ts
 ```
