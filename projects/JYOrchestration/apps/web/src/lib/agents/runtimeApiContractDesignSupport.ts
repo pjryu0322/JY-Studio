@@ -8,15 +8,12 @@ import { buildRuntimeApiContractDesignChecklists } from "@/lib/agents/runtimeApi
 import {
   buildRuntimeApiEndpointContracts,
   computeRuntimeApiContractTrace,
-  validateRuntimeApiEndpointContracts,
 } from "@/lib/agents/runtimeApiContractDesignEndpoints";
+import { validateRuntimeApiEndpointContracts } from "@/lib/agents/runtimeApiContractDesignEndpointValidation";
 import { appendRuntimeApiContractDesignFindings } from "@/lib/agents/runtimeApiContractDesignFindings";
 
-export {
-  buildRuntimeApiEndpointContracts,
-  validateRuntimeApiEndpointContracts,
-  computeRuntimeApiContractTrace,
-} from "@/lib/agents/runtimeApiContractDesignEndpoints";
+export { buildRuntimeApiEndpointContracts, computeRuntimeApiContractTrace } from "@/lib/agents/runtimeApiContractDesignEndpoints";
+export { validateRuntimeApiEndpointContracts } from "@/lib/agents/runtimeApiContractDesignEndpointValidation";
 
 export { buildRuntimeApiContractDesignChecklists } from "@/lib/agents/runtimeApiContractDesignChecklists";
 export { appendRuntimeApiContractDesignFindings } from "@/lib/agents/runtimeApiContractDesignFindings";

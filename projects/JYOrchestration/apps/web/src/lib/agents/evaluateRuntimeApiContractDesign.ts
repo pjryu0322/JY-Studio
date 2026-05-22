@@ -81,7 +81,6 @@ export function evaluateRuntimeApiContractDesign(
     statusTransitionCount: trace.statusTransitionCount,
     errorCodeCount: trace.errorCodeCount,
     auditEventCount: trace.auditEventCount,
-    endpoints: endpointContracts,
   });
 
   const findings: RuntimeApiContractDesignFinding[] = [];

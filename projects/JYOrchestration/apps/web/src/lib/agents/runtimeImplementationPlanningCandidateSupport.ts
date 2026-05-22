@@ -6,15 +6,11 @@ import { evaluateRuntimeExecutionContractClosure } from "@/lib/agents/evaluateRu
 import type { RuntimeExecutionContractClosureReport } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 import { buildRuntimeImplementationPlanningCandidateChecklists } from "@/lib/agents/runtimeImplementationPlanningCandidateChecklists";
 import { appendRuntimeImplementationPlanningCandidateFindings } from "@/lib/agents/runtimeImplementationPlanningCandidateFindings";
-import {
-  buildRuntimeImplementationPlanningItems,
-  validateRuntimeImplementationPlanningItems,
-} from "@/lib/agents/runtimeImplementationPlanningCandidateItems";
+import { buildRuntimeImplementationPlanningItems } from "@/lib/agents/runtimeImplementationPlanningCandidateItems";
+import { validateRuntimeImplementationPlanningItems } from "@/lib/agents/runtimeImplementationPlanningCandidateValidation";
 
-export {
-  buildRuntimeImplementationPlanningItems,
-  validateRuntimeImplementationPlanningItems,
-} from "@/lib/agents/runtimeImplementationPlanningCandidateItems";
+export { buildRuntimeImplementationPlanningItems } from "@/lib/agents/runtimeImplementationPlanningCandidateItems";
+export { validateRuntimeImplementationPlanningItems } from "@/lib/agents/runtimeImplementationPlanningCandidateValidation";
 
 export { buildRuntimeImplementationPlanningCandidateChecklists } from "@/lib/agents/runtimeImplementationPlanningCandidateChecklists";
 export { appendRuntimeImplementationPlanningCandidateFindings } from "@/lib/agents/runtimeImplementationPlanningCandidateFindings";

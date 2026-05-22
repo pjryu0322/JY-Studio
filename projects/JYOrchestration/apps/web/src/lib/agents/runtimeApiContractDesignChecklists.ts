@@ -7,7 +7,6 @@ import type { RuntimeImplementationPlanningCandidateReport } from "@/lib/agents/
 import type {
   ParsedRuntimeApiContractDesignInput,
   RuntimeApiContractDesignChecklistItem,
-  RuntimeApiEndpointContract,
 } from "@/lib/agents/runtimeApiContractDesignTypes";
 
 type ChecklistEntry = {
@@ -34,7 +33,6 @@ export function buildRuntimeApiContractDesignChecklists(input: {
   readonly statusTransitionCount: number;
   readonly errorCodeCount: number;
   readonly auditEventCount: number;
-  readonly endpoints: readonly RuntimeApiEndpointContract[];
 }): {
   readonly apiChecklist: readonly RuntimeApiContractDesignChecklistItem[];
   readonly boundaryChecklist: readonly RuntimeApiContractDesignChecklistItem[];
