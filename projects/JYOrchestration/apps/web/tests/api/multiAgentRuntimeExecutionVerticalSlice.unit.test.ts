@@ -233,4 +233,164 @@ describe("multi-agent runtime execution vertical slice stage 8-A", () => {
       }),
     ).toBe("blocked");
   });
+
+  it("ready report has rawActualExecutionRequested false", () => {
+    expect(evaluateReadySlice().rawActualExecutionRequested).toBe(false);
+  });
+
+  it("ready report has actualExecutionRequestBlocked false", () => {
+    expect(evaluateReadySlice().actualExecutionRequestBlocked).toBe(false);
+  });
+
+  it("ready report has chainExecuted true", () => {
+    expect(evaluateReadySlice().chainExecuted).toBe(true);
+  });
+
+  it("ready report has empty chainSkippedReason", () => {
+    expect(evaluateReadySlice().chainSkippedReason).toBe("");
+  });
+
+  it("raw actualExecutionRequested true sets actualExecutionRequestBlocked true", () => {
+    const report = evaluateRuntimeExecutionVerticalSlice({
+      ...buildStage8AReadyVerticalSliceInput(),
+      request: {
+        ...buildStage8AReadyVerticalSliceInput().request!,
+        actualExecutionRequested: true as false,
+      },
+    });
+    expect(report.actualExecutionRequestBlocked).toBe(true);
+  });
+
+  it("raw actualExecutionRequested true sets chainExecuted false", () => {
+    const report = evaluateRuntimeExecutionVerticalSlice({
+      ...buildStage8AReadyVerticalSliceInput(),
+      request: {
+        ...buildStage8AReadyVerticalSliceInput().request!,
+        actualExecutionRequested: true as false,
+      },
+    });
+    expect(report.chainExecuted).toBe(false);
+  });
+
+  it("raw actualExecutionRequested true sets chainSkippedReason actual_execution_requested", () => {
+    const report = evaluateRuntimeExecutionVerticalSlice({
+      ...buildStage8AReadyVerticalSliceInput(),
+      request: {
+        ...buildStage8AReadyVerticalSliceInput().request!,
+        actualExecutionRequested: true as false,
+      },
+    });
+    expect(report.chainSkippedReason).toBe("actual_execution_requested");
+  });
+
+  it("raw actualExecutionRequested true keeps normalized request actualExecutionRequested false", () => {
+    const report = evaluateRuntimeExecutionVerticalSlice({
+      ...buildStage8AReadyVerticalSliceInput(),
+      request: {
+        ...buildStage8AReadyVerticalSliceInput().request!,
+        actualExecutionRequested: true as false,
+      },
+    });
+    expect(report.request.actualExecutionRequested).toBe(false);
+  });
+
+  it("default input has chainExecuted false", () => {
+    expect(evaluateRuntimeExecutionVerticalSlice().chainExecuted).toBe(false);
+  });
+
+  it("default input has chainSkippedReason stage7_contract_bundle_not_closed", () => {
+    expect(evaluateRuntimeExecutionVerticalSlice().chainSkippedReason).toBe(
+      "stage7_contract_bundle_not_closed",
+    );
+  });
+
+  it("invalid request has chainExecuted false", () => {
+    expect(
+      evaluateReadySlice({
+        request: { ...buildStage8AReadyVerticalSliceInput().request!, requestId: "" },
+      }).chainExecuted,
+    ).toBe(false);
+  });
+
+  it("requestId with whitespace is blocked", () => {
+    expect(
+      evaluateReadySlice({
+        request: { ...buildStage8AReadyVerticalSliceInput().request!, requestId: "bad id" },
+      }).decision,
+    ).toBe("blocked");
+  });
+
+  it("projectId with whitespace is blocked", () => {
+    expect(
+      evaluateReadySlice({
+        request: { ...buildStage8AReadyVerticalSliceInput().request!, projectId: "bad id" },
+      }).decision,
+    ).toBe("blocked");
+  });
+
+  it("approvedForMockRun false is blocked", () => {
+    expect(
+      evaluateReadySlice({
+        request: { ...buildStage8AReadyVerticalSliceInput().request!, approvedForMockRun: false },
+      }).decision,
+    ).toBe("blocked");
+  });
+
+  it("unitKind other than mock_runner is blocked", () => {
+    expect(
+      evaluateReadySlice({
+        request: {
+          ...buildStage8AReadyVerticalSliceInput().request!,
+          unitKind: "execution_runner" as "mock_runner",
+        },
+      }).decision,
+    ).toBe("blocked");
+  });
+
+  it("missing payloadPreview is blocked", () => {
+    const { payloadPreview: _removed, ...requestWithoutPayload } = buildStage8AReadyVerticalSliceInput().request!;
+    expect(
+      evaluateReadySlice({
+        request: requestWithoutPayload,
+      }).decision,
+    ).toBe("blocked");
+  });
+
+  it("missing confirmation with valid source and request keeps chainExecuted true and defers", () => {
+    const report = evaluateRuntimeExecutionVerticalSlice({
+      contractBundleClosure: buildStage7CReadyContractBundleClosureInput(),
+      request: buildStage8AReadyVerticalSliceInput().request,
+      operatorStage8ApprovalConfirmed: false,
+      scopeBoundaryConfirmed: true,
+      mockRunnerOnlyConfirmed: true,
+      inMemoryOnlyConfirmed: true,
+      noExternalSideEffectConfirmed: true,
+    });
+    expect(report.chainExecuted).toBe(true);
+    expect(report.decision).toBe("defer");
+  });
+
+  it("fingerprint includes chainExecuted", () => {
+    expect(evaluateReadySlice().verticalSliceFingerprint).toContain("chainExecuted:true");
+  });
+
+  it("fingerprint includes actualExecutionRequestBlocked", () => {
+    expect(evaluateReadySlice().verticalSliceFingerprint).toContain("actualExecutionRequestBlocked:false");
+  });
+
+  it("ready findings include stage8_chain_executed", () => {
+    expect(evaluateReadySlice().findings.some((f) => f.code === "stage8_chain_executed")).toBe(true);
+  });
+
+  it("blocked findings include stage8_chain_skipped when chain skipped", () => {
+    expect(
+      evaluateRuntimeExecutionVerticalSlice({
+        ...buildStage8AReadyVerticalSliceInput(),
+        request: {
+          ...buildStage8AReadyVerticalSliceInput().request!,
+          actualExecutionRequested: true as false,
+        },
+      }).findings.some((f) => f.code === "stage8_chain_skipped"),
+    ).toBe(true);
+  });
 });

@@ -2591,6 +2591,66 @@ Ready decision:
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionVerticalSlice.ts`, `runtimeExecutionVerticalSliceTypes.ts`, `runtimeExecutionVerticalSliceStore.ts`, `runtimeExecutionVerticalSliceRunner.ts`, `runtimeExecutionVerticalSliceAudit.ts`, `runtimeExecutionVerticalSliceChain.ts`, `runtimeExecutionVerticalSliceRequestValidation.ts`, `runtimeExecutionVerticalSliceDecision.ts`, `runtimeExecutionVerticalSliceFingerprint.ts`, `runtimeExecutionVerticalSliceFindings.ts`, `runtimeExecutionVerticalSliceChecklists.ts`
 
+### Stage 8-A Minimal Runtime Execution Vertical Slice — Hardening
+
+Stage 8-A는 in-memory record, mock runner, status transition, audit event object를 하나의 내부 실행 체인으로 연결한다.
+
+Hardening 기준:
+
+- raw `actualExecutionRequested` 입력 차단
+- `chainExecuted` / `chainSkippedReason` 명시
+- request raw validation과 normalized validation 분리
+- invalid/defer 상태에서 mock completed로 오해되지 않도록 chain skip
+- 외부 부작용, DB, Cursor/GitHub, API route, UI 금지 유지
+
+Ready decision:
+
+`stage8_minimal_vertical_slice_ready`
+
+### Stage 8-B Integrated Runtime Control Bundle
+
+Stage 8-B는 Stage 8의 압축 종료 단계다.
+
+통합 범위:
+
+- API route design candidate
+- runner adapter design candidate
+- mock runner adapter candidate
+- state transition contract
+- audit/event trail contract
+- approval boundary
+- no-run boundary
+- Stage 9 entry candidate
+
+Ready decision:
+
+`stage8_runtime_control_bundle_ready`
+
+의미:
+
+- Stage 8-A vertical slice가 안정화되었다.
+- Stage 9 Runtime Execution Orchestration MVP로 넘어가기 위한 control bundle이 준비되었다.
+- 실제 API route, runner, Cursor/GitHub, DB, UI 구현 허가는 아니다.
+
+Stage 9 권장 진입 범위:
+
+- runtime execution API route handlers
+- runtime execution in-memory store service
+- runtime execution status query
+- runtime execution approval action
+- runtime execution mock runner adapter
+- runtime execution audit query
+
+Stage 9 out-of-scope 기본값:
+
+- actual Cursor/GitHub execution
+- actual DB schema migration
+- actual persistent database write
+- actual production runner
+- full runtime UI
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeControlBundle.ts`, `runtimeControlBundleTypes.ts`, `runtimeControlBundleConstants.ts`, `runtimeControlBundleItems.ts`, `runtimeControlBundleItemSource.ts`, `runtimeControlBundleValidation.ts`, `runtimeControlBundleSupport.ts`, `runtimeControlBundleFindings.ts`
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

@@ -8,6 +8,7 @@ import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtim
 import type { RuntimeExecutionContractClosureInput } from "@/lib/agents/runtimeExecutionContractClosureTypes";
 import type { RuntimeApiContractDesignInput } from "@/lib/agents/runtimeApiContractDesignTypes";
 import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeContractBundleClosureTypes";
+import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundleTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
 import type { RuntimeImplementationPlanningCandidateInput } from "@/lib/agents/runtimeImplementationPlanningCandidateTypes";
@@ -286,5 +287,34 @@ export function buildStage8AReadyVerticalSliceInput(): RuntimeExecutionVerticalS
       actualExecutionRequested: false,
     },
     ...buildStage8AConfirmedVerticalSliceInput(),
+  };
+}
+
+export function buildStage8BConfirmedRuntimeControlBundleInput(): Required<
+  Pick<
+    RuntimeControlBundleInput,
+    | "runtimeControlBundleReviewed"
+    | "apiRouteDesignReviewed"
+    | "runnerAdapterDesignReviewed"
+    | "stateTransitionReviewed"
+    | "auditTrailReviewed"
+    | "stage9EntryReviewed"
+  >
+> {
+  return {
+    runtimeControlBundleReviewed: true,
+    apiRouteDesignReviewed: true,
+    runnerAdapterDesignReviewed: true,
+    stateTransitionReviewed: true,
+    auditTrailReviewed: true,
+    stage9EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 8-B (Stage 8-A ready + 8-B control bundle confirmations). */
+export function buildStage8BReadyRuntimeControlBundleInput(): RuntimeControlBundleInput {
+  return {
+    verticalSlice: buildStage8AReadyVerticalSliceInput(),
+    ...buildStage8BConfirmedRuntimeControlBundleInput(),
   };
 }

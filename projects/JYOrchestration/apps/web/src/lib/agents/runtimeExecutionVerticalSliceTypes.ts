@@ -131,6 +131,11 @@ export interface RuntimeExecutionVerticalSliceReport {
   readonly verticalSliceSummary: string;
   readonly verticalSliceFingerprint: string;
 
+  readonly rawActualExecutionRequested: boolean;
+  readonly actualExecutionRequestBlocked: boolean;
+  readonly chainExecuted: boolean;
+  readonly chainSkippedReason: string;
+
   readonly inMemoryOnly: true;
   readonly mockRunnerOnly: true;
   readonly actualRuntimeExecutionAllowedInThisStep: false;

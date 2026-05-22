@@ -16,8 +16,12 @@ export {
 export {
   normalizeRuntimeExecutionRequest,
   validateRuntimeExecutionRequest,
+  validateRuntimeExecutionRequestInput,
 } from "@/lib/agents/runtimeExecutionVerticalSliceRequestValidation";
-export { executeRuntimeExecutionVerticalSliceChain } from "@/lib/agents/runtimeExecutionVerticalSliceChain";
+export {
+  executeRuntimeExecutionVerticalSliceChain,
+  buildSkippedRuntimeExecutionVerticalSliceChain,
+} from "@/lib/agents/runtimeExecutionVerticalSliceChain";
 
 export {
   REQUIRED_STAGE8_A_CONFIRMATIONS,

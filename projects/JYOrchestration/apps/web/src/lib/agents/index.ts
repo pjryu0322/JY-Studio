@@ -953,6 +953,31 @@ export type {
 } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 
 export {
+  evaluateRuntimeControlBundle,
+} from "@/lib/agents/evaluateRuntimeControlBundle";
+
+export {
+  buildRuntimeControlBundleItems,
+} from "@/lib/agents/runtimeControlBundleItems";
+
+export {
+  validateRuntimeControlBundleItems,
+} from "@/lib/agents/runtimeControlBundleValidation";
+
+export {
+  resolveRuntimeControlBundleDecision,
+  buildRuntimeControlBundleFingerprint,
+} from "@/lib/agents/runtimeControlBundleSupport";
+
+export type {
+  RuntimeControlBundleDecision,
+  RuntimeControlBundleInput,
+  RuntimeControlBundleReport,
+  RuntimeControlBundleItem,
+  RuntimeControlBundleValidationResult,
+} from "@/lib/agents/runtimeControlBundleTypes";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
@@ -1004,6 +1029,8 @@ export {
   buildStage7CContractBundleClosureConfirmedInput,
   buildStage8AReadyVerticalSliceInput,
   buildStage8AConfirmedVerticalSliceInput,
+  buildStage8BReadyRuntimeControlBundleInput,
+  buildStage8BConfirmedRuntimeControlBundleInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

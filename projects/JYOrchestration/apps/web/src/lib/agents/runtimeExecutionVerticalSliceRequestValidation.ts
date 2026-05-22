@@ -22,6 +22,59 @@ export function normalizeRuntimeExecutionRequest(
   };
 }
 
+export function validateRuntimeExecutionRequestInput(
+  input?: Partial<RuntimeExecutionRequest>,
+): {
+  readonly valid: boolean;
+  readonly missingFields: readonly string[];
+  readonly invalidFields: readonly string[];
+} {
+  const missingFields: string[] = [];
+  const invalidFields: string[] = [];
+
+  if (!input?.requestId || input.requestId.trim().length === 0) {
+    missingFields.push("requestId");
+  } else if (/\s/.test(input.requestId)) {
+    invalidFields.push("requestId");
+  }
+
+  if (!input?.projectId || input.projectId.trim().length === 0) {
+    missingFields.push("projectId");
+  } else if (/\s/.test(input.projectId)) {
+    invalidFields.push("projectId");
+  }
+
+  if (!input?.commandPreview || input.commandPreview.trim().length === 0) {
+    missingFields.push("commandPreview");
+  }
+
+  if (input?.payloadPreview === undefined || input.payloadPreview === null) {
+    missingFields.push("payloadPreview");
+  }
+
+  if (input?.sourceStage !== undefined && input.sourceStage !== "stage_8_a") {
+    invalidFields.push("sourceStage");
+  }
+
+  if (input?.approvedForMockRun !== true) {
+    invalidFields.push("approvedForMockRun");
+  }
+
+  if (input?.unitKind !== undefined && input.unitKind !== "mock_runner") {
+    invalidFields.push("unitKind");
+  }
+
+  if (input?.actualExecutionRequested === true) {
+    invalidFields.push("actualExecutionRequested");
+  }
+
+  return {
+    valid: missingFields.length === 0 && invalidFields.length === 0,
+    missingFields,
+    invalidFields,
+  };
+}
+
 export function validateRuntimeExecutionRequest(request: RuntimeExecutionRequest): {
   readonly valid: boolean;
   readonly missingFields: readonly string[];
@@ -38,6 +91,9 @@ export function validateRuntimeExecutionRequest(request: RuntimeExecutionRequest
   }
   if (request.commandPreview.trim().length === 0) {
     missingFields.push("commandPreview");
+  }
+  if (request.sourceStage !== "stage_8_a") {
+    invalidFields.push("sourceStage");
   }
   if (request.actualExecutionRequested !== false) {
     invalidFields.push("actualExecutionRequested");

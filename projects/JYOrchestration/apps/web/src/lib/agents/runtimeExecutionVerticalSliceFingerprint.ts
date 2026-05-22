@@ -10,6 +10,11 @@ export function buildRuntimeExecutionVerticalSliceFingerprint(input: {
   readonly finalStatus: string;
   readonly auditEventCount: number;
   readonly confirmationCount: number;
+  readonly chainExecuted: boolean;
+  readonly chainSkippedReason: string;
+  readonly rawActualExecutionRequested: boolean;
+  readonly actualExecutionRequestBlocked: boolean;
+  readonly recordCount: number;
 }): string {
   return [
     "runtime-execution-vertical-slice-v1",
@@ -18,6 +23,11 @@ export function buildRuntimeExecutionVerticalSliceFingerprint(input: {
     `finalStatus:${input.finalStatus}`,
     `auditEvents:${input.auditEventCount}`,
     `confirmations:${input.confirmationCount}`,
+    `chainExecuted:${input.chainExecuted}`,
+    `chainSkippedReason:${input.chainSkippedReason}`,
+    `rawActualExecutionRequested:${input.rawActualExecutionRequested}`,
+    `actualExecutionRequestBlocked:${input.actualExecutionRequestBlocked}`,
+    `recordCount:${input.recordCount}`,
   ].join("::");
 }
 

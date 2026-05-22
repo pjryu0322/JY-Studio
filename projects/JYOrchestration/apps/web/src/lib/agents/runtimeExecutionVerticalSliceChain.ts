@@ -85,3 +85,47 @@ export function executeRuntimeExecutionVerticalSliceChain(input: {
 
   return { initialRecord, finalRecord, store, mockRunnerResult };
 }
+
+export function buildSkippedRuntimeExecutionVerticalSliceChain(input: {
+  readonly request: RuntimeExecutionRequest;
+  readonly reason: string;
+  readonly nowIso: string;
+}): {
+  readonly initialRecord: RuntimeExecutionRecord;
+  readonly finalRecord: RuntimeExecutionRecord;
+  readonly store: RuntimeExecutionVerticalSliceStore;
+  readonly mockRunnerResult: RuntimeExecutionMockRunnerResult;
+} {
+  const { request, nowIso } = input;
+  const initialRecord = createRuntimeExecutionRecord({ request, nowIso });
+  const finalRecord = transitionRuntimeExecutionRecord(initialRecord, "mock_failed", nowIso);
+
+  let store = createInitialRuntimeExecutionStore();
+  store = appendRuntimeExecutionRecord(store, initialRecord);
+  store = appendRuntimeExecutionRecord(store, finalRecord);
+  store = appendRuntimeExecutionAuditEvent(
+    store,
+    buildRuntimeExecutionAuditEvent({
+      executionId: initialRecord.executionId,
+      requestId: request.requestId,
+      eventType: "runtime_request_created",
+      statusAfter: "requested",
+      message: `Chain skipped: ${input.reason}`,
+      nowIso,
+      sequence: 0,
+    }),
+  );
+
+  const mockRunnerResult: RuntimeExecutionMockRunnerResult = {
+    executionId: finalRecord.executionId,
+    requestId: request.requestId,
+    status: "mock_failed",
+    success: false,
+    message: `Vertical slice chain skipped (${input.reason}).`,
+    actualRunnerInvoked: false,
+    externalSideEffect: false,
+    auditEvents: [],
+  };
+
+  return { initialRecord, finalRecord, store, mockRunnerResult };
+}
