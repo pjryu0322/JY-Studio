@@ -99,7 +99,7 @@ export async function handleCursorExecutionJob(job: ExecutionJob): Promise<Execu
     return { ok: false, code: result.code, message: result.message, data: result };
   }
 
-  await persistCursorExecutionSuccess(payload.execRunId, cursorOutcome);
+  await persistCursorExecutionSuccess(payload.execRunId, cursorOutcome, loaded.branchName);
 
   await appendRuntimeEvent({
     eventType: "CURSOR_COMPLETED",

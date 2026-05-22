@@ -14,19 +14,30 @@ export function isCursorRunSuccessWithResult(
 
 export async function persistCursorExecutionSuccess(
   execRunId: string,
-  outcome: ExecuteCursorRunOutcome
+  outcome: ExecuteCursorRunOutcome,
+  branchNameFallback?: string | null
 ): Promise<void> {
   if (!isCursorRunSuccessWithResult(outcome)) return;
   const cr = outcome.result;
+  const branchName = cr.branchName || branchNameFallback || null;
+  const commitStatus = cr.commitHash ? "reported_by_cursor" : "reported_changed_files";
+
   await prisma.taskExecutionRun.update({
     where: { id: execRunId },
     data: {
       status: "awaiting_git_reflection",
       runError: null,
-      changedFiles: cr.changedFiles?.length ? (cr.changedFiles as Prisma.InputJsonValue) : undefined,
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary.slice(0, 24_000),
+      branchName,
       commitSha: cr.commitHash ?? null,
+      changedFiles: cr.changedFiles?.length ? (cr.changedFiles as Prisma.InputJsonValue) : undefined,
+      gitSummary: cr.summary.slice(0, 24_000),
+      commitStatus,
       pushStatus: cr.prUrl ? "pr_reported_by_cursor" : "delegated_to_cursor",
       prStatus: cr.prUrl ? `pr:${cr.prUrl}`.slice(0, 500) : undefined,
+      evaluationReason: "cursor_worker_completed",
+      evaluationDecision: null,
     },
   });
 }

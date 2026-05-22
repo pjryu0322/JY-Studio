@@ -51,6 +51,7 @@ import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullReque
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { shouldBlockRepeatedFailure } from "@/lib/runtime/executionRetryPolicy";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
+import { runNormalTaskViaRuntimeWorkers, shouldUseRuntimeWorkerPathForTask } from "@/lib/runtime/normalTaskWorkerDispatch";
 import { haltTaskForTeamRuntimeApproval } from "@/lib/ai-team-runtime/approvalHalt";
 import { persistScmBlockReasonOnRun } from "@/lib/ai-team-runtime/scmBlockReason";
 import { readTeamExecutionStatus } from "@/lib/ai-team-runtime/persist";
@@ -703,6 +704,28 @@ export async function runExecutionLoop(params: {
       }
 
       if (!resumeScmAfterApproval) {
+      // TODO(phase3): remove inline cursor/review/scm/merge when EXECUTION_LOOP_CURSOR_VIA_JOB is default.
+      if (shouldUseRuntimeWorkerPathForTask(taskRow.taskKind)) {
+        const workerResult = await runNormalTaskViaRuntimeWorkers({
+          projectId,
+          taskId,
+          actorUserId,
+          execRunId: execRun.id,
+          singleTaskId,
+        });
+        steps.push({
+          phase: "cursor",
+          taskId,
+          ok: workerResult.ok,
+          error: workerResult.ok ? undefined : workerResult.message,
+        });
+        await refreshWorkflowStates(projectId);
+        if (singleTaskId) {
+          return { ok: workerResult.ok, steps, message: workerResult.message };
+        }
+        continue;
+      }
+
       if (!isEnvTestTask) {
         await runTeamRuntimeSafe("developer_running", () => markTeamRuntimeDeveloperRunning(teamCtx));
       }

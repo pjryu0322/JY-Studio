@@ -20,9 +20,22 @@ AI Team Runtime을 ExecutionJob 기반 Worker 구조로 점진 이전한다.
 - `ENV_TEST` / `ENV_TEST_STAGE2` remain on **sync** `runExecutionLoop` paths (Stage2 GitHub source-of-truth).
 - Cursor/pipeline workers return `STAGE2_REQUIRES_SYNC_LOOP` / `ENV_TEST_REQUIRES_SYNC_LOOP` when mis-enqueued.
 
-## Optional cursor job dispatch
+## Normal Task worker dispatch (Phase 2)
 
-Set `EXECUTION_LOOP_CURSOR_VIA_JOB=1` to enqueue `cursor` jobs and process via `runCursorJobSynchronously` (non–ENV_TEST tasks).
+Set `EXECUTION_LOOP_CURSOR_VIA_JOB=1` so **non–ENV_TEST** tasks use the sync worker path:
+
+```text
+runExecutionLoop
+  → TaskExecutionRun
+  → runNormalTaskViaRuntimeWorkers
+      → cursor job (sync)
+      → confirmCursorGitReflection
+      → pipeline job (sync)
+```
+
+Default (flag off): legacy inline `runExecutionLoop` cursor/review/scm/merge blocks.
+
+ENV_TEST / ENV_TEST_STAGE2 always stay on the sync loop (workers return `ENV_TEST_REQUIRES_SYNC_LOOP` if mis-enqueued).
 
 ## Runtime events
 
@@ -61,4 +74,8 @@ apps/web/src/lib/runtime/
   executionRetryPolicy.ts
   runtimeObservability.ts
   runtimeSupport.ts
+  normalTaskWorkerDispatch.ts
+  cursorExecutionReflection.ts
+  pipelineExecutionJobSync.ts
+  runtimeSelfHealingBridge.ts
 ```

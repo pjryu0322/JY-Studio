@@ -216,6 +216,16 @@ export async function runSecurityPhase(
     return { ok: false, code: "SECURITY_FAILED", message: teamAfterReview.reason ?? "security_failed" };
   }
 
+  await appendRuntimeEvent({
+    eventType: "SECURITY_COMPLETED",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    execRunId: ctx.execRunId,
+    actorUserId: ctx.actorUserId,
+    workerName: "pipeline",
+    executionJobId: ctx.executionJobId ?? null,
+  });
+
   return { ok: true };
 }
 
@@ -268,8 +278,29 @@ export async function runScmPhase(
   if (!scmDecisionPack || scmDecisionPack.decision !== "approve_merge") {
     const msg = scmDecisionPack?.summary || "SCM hold";
     await persistScmBlockReasonOnRun(ctx.execRunId, msg);
+    await appendRuntimeEvent({
+      eventType: "SCM_HOLD",
+      severity: "warning",
+      projectId: ctx.projectId,
+      taskId: ctx.taskId,
+      execRunId: ctx.execRunId,
+      actorUserId: ctx.actorUserId,
+      workerName: "pipeline",
+      executionJobId: ctx.executionJobId ?? null,
+      detail: { message: msg },
+    });
     return { ok: false, code: "SCM_HOLD", message: msg, hold: true };
   }
+
+  await appendRuntimeEvent({
+    eventType: "SCM_APPROVED",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    execRunId: ctx.execRunId,
+    actorUserId: ctx.actorUserId,
+    workerName: "pipeline",
+    executionJobId: ctx.executionJobId ?? null,
+  });
 
   return { ok: true, evalReason: input.reviewerSummary };
 }
@@ -304,6 +335,17 @@ export async function runMergePhase(
     });
     if (!prCreate.ok) {
       await persistScmBlockReasonOnRun(ctx.execRunId, prCreate.message);
+      await appendRuntimeEvent({
+        eventType: "SCM_FAILED",
+        severity: "error",
+        projectId: ctx.projectId,
+        taskId: ctx.taskId,
+        execRunId: ctx.execRunId,
+        actorUserId: ctx.actorUserId,
+        workerName: "pipeline",
+        executionJobId: ctx.executionJobId ?? null,
+        detail: { message: prCreate.message },
+      });
       return { ok: false, code: "PR_CREATE_FAILED", message: prCreate.message };
     }
     prForMerge = {
@@ -313,7 +355,26 @@ export async function runMergePhase(
   }
 
   if (!isAutoMergeEnabled()) {
+    const prStatusValue = formatOpenPrStatusValue(prForMerge);
     await persistScmBlockReasonOnRun(ctx.execRunId, "PR ready; auto merge disabled");
+    await prisma.taskExecutionRun.update({
+      where: { id: ctx.execRunId },
+      data: { prStatus: prStatusValue },
+    });
+    await prisma.task.update({
+      where: { id: ctx.taskId },
+      data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING },
+    });
+    await appendRuntimeEvent({
+      eventType: "MERGE_COMPLETED",
+      projectId: ctx.projectId,
+      taskId: ctx.taskId,
+      execRunId: ctx.execRunId,
+      actorUserId: ctx.actorUserId,
+      workerName: "pipeline",
+      executionJobId: ctx.executionJobId ?? null,
+      detail: { merged: false, prUrl: prForMerge.pullRequestUrl },
+    });
     return { ok: true, merged: false, message: "PR ready; merge pending" };
   }
 

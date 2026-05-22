@@ -82,3 +82,44 @@ export async function buildRuntimeDashboardSnapshot(execRunId: string): Promise<
     mergeResult: run.prStatus === "merged" ? "merged" : run.pushStatus,
   };
 }
+
+export type RuntimeTimelineEntry = {
+  readonly at: Date;
+  readonly message: string | null;
+  readonly stage: string | null;
+  readonly status: string | null;
+  readonly executionJobId: string | null;
+};
+
+/** Recent execution event log rows for a Task (execRun-scoped via taskId). */
+export async function listRuntimeTimelineForExecRun(
+  execRunId: string,
+  limit = 40
+): Promise<RuntimeTimelineEntry[]> {
+  const run = await prisma.taskExecutionRun.findUnique({
+    where: { id: execRunId },
+    select: { taskId: true, projectId: true },
+  });
+  if (!run) return [];
+
+  const rows = await prisma.executionEventLog.findMany({
+    where: { taskId: run.taskId, projectId: run.projectId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      createdAt: true,
+      message: true,
+      stage: true,
+      status: true,
+      executionJobId: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    at: r.createdAt,
+    message: r.message,
+    stage: r.stage,
+    status: r.status,
+    executionJobId: r.executionJobId,
+  }));
+}

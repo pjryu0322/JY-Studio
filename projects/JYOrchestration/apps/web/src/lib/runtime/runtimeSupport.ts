@@ -35,7 +35,18 @@ export {
   shouldBlockRepeatedFailure,
   retryReasonForWorker,
 } from "@/lib/runtime/executionRetryPolicy";
-export { buildRuntimeDashboardSnapshot } from "@/lib/runtime/runtimeObservability";
+export {
+  buildRuntimeDashboardSnapshot,
+  listRuntimeTimelineForExecRun,
+} from "@/lib/runtime/runtimeObservability";
+export {
+  runNormalTaskViaRuntimeWorkers,
+  isNormalTaskWorkerDispatchEnabled,
+  shouldUseRuntimeWorkerPathForTask,
+} from "@/lib/runtime/normalTaskWorkerDispatch";
+export { confirmCursorGitReflection } from "@/lib/runtime/cursorExecutionReflection";
+export { runPipelineJobSynchronously } from "@/lib/runtime/pipelineExecutionJobSync";
+export { maybeEnqueueSelfHealingFromReviewFailure } from "@/lib/runtime/runtimeSelfHealingBridge";
 
 export {
   parseCursorExecutionJobPayload,

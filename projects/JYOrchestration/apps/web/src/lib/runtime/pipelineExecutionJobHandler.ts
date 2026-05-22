@@ -23,6 +23,7 @@ import {
   runSecurityPhase,
 } from "@/lib/runtime/pipelineExecutionPhases";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
+import { maybeEnqueueSelfHealingFromReviewFailure } from "@/lib/runtime/runtimeSelfHealingBridge";
 
 export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<ExecutionWorkerStructuredResult> {
   const payload = parsePipelineExecutionJobPayload(job.payload);
@@ -57,6 +58,13 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Exe
   if (!payload.resumeScmAfterApproval) {
     const review = await runReviewerPhase(phaseCtx);
     if (!review.ok) {
+      await maybeEnqueueSelfHealingFromReviewFailure({
+        projectId: payload.projectId,
+        taskId: payload.taskId,
+        execRunId: payload.execRunId,
+        actorUserId: payload.actorUserId,
+        reviewReason: review.message,
+      });
       await prisma.task.update({
         where: { id: payload.taskId },
         data: {
