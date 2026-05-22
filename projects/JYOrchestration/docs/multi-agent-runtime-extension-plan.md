@@ -2294,10 +2294,41 @@ Stage 6-C checklist는 7개 runtime execution model candidate 영역을 모두 �
 - RuntimeExecutionApprovalState
 - RuntimeExecutionRollbackPlan
 
-### Stage 6-D 후보 — Runtime Execution Contract Candidate
+### Stage 6-D Runtime Execution Contract Candidate
 
-Stage 6-D는 아직 구현하지 않는다.  
-Stage 6-C가 ready일 때만 다음 후보로 검토한다.
+Stage 6-D는 Stage 6-C의 `ready_for_runtime_execution_contract_candidate`를 source로 사용한다.
+
+이 단계는 실제 실행 구현이 아니라 runtime execution contract candidate를 정의하는 read-only 단계다.
+
+Stage 6-D 산출물:
+
+- RuntimeExecutionRequest contract
+- RuntimeExecutionPlan contract
+- RuntimeExecutionStep contract
+- RuntimeExecutionResult contract
+- RuntimeExecutionFinding contract
+- RuntimeExecutionApprovalState contract
+- RuntimeExecutionRollbackPlan contract
+
+Ready decision: `ready_for_runtime_execution_dry_run_contract`
+
+구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionContractCandidate.ts`, `runtimeExecutionContractCandidateTypes.ts`, `runtimeExecutionContractCandidateSupport.ts`
+
+Stage 6-D에서도 다음은 금지된다.
+
+- actual runtime execution API
+- execution runner
+- Cursor/GitHub wire
+- Connector Gateway routing change
+- DB write
+- schema.prisma/migration
+- persistence implementation
+- UI implementation
+
+### Stage 6-E 후보 — Runtime Execution Dry-run Contract
+
+Stage 6-E는 아직 구현하지 않는다.  
+Stage 6-D가 ready일 때만 다음 후보로 검토한다.
 
 ### Stage 3–4 빠른 진행 로드맵
 

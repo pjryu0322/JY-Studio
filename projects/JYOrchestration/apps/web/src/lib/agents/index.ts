@@ -870,12 +870,28 @@ export type {
 } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 
 export {
+  evaluateRuntimeExecutionContractCandidate,
+  resolveRuntimeExecutionContractCandidateDecision,
+  validateRuntimeExecutionContractCandidates,
+} from "@/lib/agents/evaluateRuntimeExecutionContractCandidate";
+
+export type {
+  RuntimeExecutionContractCandidateDecision,
+  RuntimeExecutionContractCandidateInput,
+  RuntimeExecutionContractCandidateReport,
+  RuntimeExecutionContractCandidateItem,
+  RuntimeExecutionContractArea,
+} from "@/lib/agents/runtimeExecutionContractCandidateTypes";
+
+export {
   buildStage6AReadyBaselineInput,
   buildStage6AModelBaselineConfirmedInput,
   buildStage6BReadyCandidateInput,
   buildStage6BRuntimeExecutionModelCandidateConfirmedInput,
   buildStage6CReadyReviewGateInput,
   buildStage6CModelReviewGateConfirmedInput,
+  buildStage6DReadyContractCandidateInput,
+  buildStage6DContractCandidateConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {

@@ -4,6 +4,7 @@
 
 import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
+import type { RuntimeExecutionContractCandidateInput } from "@/lib/agents/runtimeExecutionContractCandidateTypes";
 import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
@@ -77,5 +78,32 @@ export function buildStage6CReadyReviewGateInput(): RuntimeExecutionModelReviewG
   return {
     modelCandidate: buildStage6BReadyCandidateInput(),
     ...buildStage6CModelReviewGateConfirmedInput(),
+  };
+}
+
+export function buildStage6DContractCandidateConfirmedInput(): Required<
+  Pick<
+    RuntimeExecutionContractCandidateInput,
+    | "runtimeExecutionContractCandidateConfirmed"
+    | "runtimeExecutionBoundaryContractReviewed"
+    | "runtimeExecutionDryRunContractReviewed"
+    | "runtimeExecutionRollbackContractReviewed"
+    | "runtimeExecutionApprovalContractReviewed"
+  >
+> {
+  return {
+    runtimeExecutionContractCandidateConfirmed: true,
+    runtimeExecutionBoundaryContractReviewed: true,
+    runtimeExecutionDryRunContractReviewed: true,
+    runtimeExecutionRollbackContractReviewed: true,
+    runtimeExecutionApprovalContractReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 6-D (Stage 6-C ready + 6-D contract confirmations). */
+export function buildStage6DReadyContractCandidateInput(): RuntimeExecutionContractCandidateInput {
+  return {
+    reviewGate: buildStage6CReadyReviewGateInput(),
+    ...buildStage6DContractCandidateConfirmedInput(),
   };
 }
