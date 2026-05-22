@@ -704,7 +704,10 @@ export async function runExecutionLoop(params: {
       }
 
       if (!resumeScmAfterApproval) {
-      // TODO(phase3): remove inline cursor/review/scm/merge when EXECUTION_LOOP_CURSOR_VIA_JOB is default.
+      // Path split:
+      // - ENV_TEST family: legacy sync path below (Stage1/Stage2)
+      // - NORMAL_TASK: runtime worker path (default)
+      // - NORMAL_TASK legacy inline: EXECUTION_LOOP_FORCE_INLINE_CURSOR=1 only
       if (shouldUseRuntimeWorkerPathForTask(taskRow.taskKind)) {
         const workerResult = await runNormalTaskViaRuntimeWorkers({
           projectId,
@@ -713,12 +716,17 @@ export async function runExecutionLoop(params: {
           execRunId: execRun.id,
           singleTaskId,
         });
-        steps.push({
-          phase: "cursor",
-          taskId,
-          ok: workerResult.ok,
-          error: workerResult.ok ? undefined : workerResult.message,
-        });
+        for (const s of workerResult.steps) {
+          steps.push({
+            phase: "worker_step",
+            taskId,
+            stepPhase: s.phase,
+            ok: s.ok,
+            code: s.code,
+            summary: s.message,
+            jobId: s.jobId,
+          });
+        }
         await refreshWorkflowStates(projectId);
         if (singleTaskId) {
           return { ok: workerResult.ok, steps, message: workerResult.message };

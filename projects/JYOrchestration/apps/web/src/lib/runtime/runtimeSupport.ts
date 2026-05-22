@@ -42,8 +42,18 @@ export {
 export {
   runNormalTaskViaRuntimeWorkers,
   isNormalTaskWorkerDispatchEnabled,
+  isLegacyInlineCursorPathForced,
   shouldUseRuntimeWorkerPathForTask,
+  type WorkerDispatchStep,
 } from "@/lib/runtime/normalTaskWorkerDispatch";
+export { PIPELINE_RESULT_CODE, pipelineMessageForCode } from "@/lib/runtime/pipelineResultCodes";
+export {
+  getRuntimeTimelineFromStore,
+  clearRuntimeTimelineStore,
+} from "@/lib/runtime/runtimeTimelineStore";
+export {
+  isRuntimeSelfHealingAutoCursorEnabled,
+} from "@/lib/runtime/runtimeSelfHealingBridge";
 export { confirmCursorGitReflection } from "@/lib/runtime/cursorExecutionReflection";
 export { runPipelineJobSynchronously } from "@/lib/runtime/pipelineExecutionJobSync";
 export { maybeEnqueueSelfHealingFromReviewFailure } from "@/lib/runtime/runtimeSelfHealingBridge";

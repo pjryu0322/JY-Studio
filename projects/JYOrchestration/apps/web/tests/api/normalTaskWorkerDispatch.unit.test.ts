@@ -35,11 +35,14 @@ vi.mock("@/lib/executionLoop/workflowState", () => ({
 }));
 
 import {
-  isNormalTaskWorkerDispatchEnabled,
+  isLegacyInlineCursorPathForced,
   runNormalTaskViaRuntimeWorkers,
   shouldUseRuntimeWorkerPathForTask,
 } from "@/lib/runtime/normalTaskWorkerDispatch";
-import { ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
+import {
+  ENV_TEST_STAGE2_TASK_KIND,
+  ENV_TEST_TASK_KIND,
+} from "@/lib/execution/envTestTaskKind";
 
 describe("normalTaskWorkerDispatch", () => {
   const baseInput = {
@@ -58,6 +61,9 @@ describe("normalTaskWorkerDispatch", () => {
     findUniqueSetupMock.mockReset();
     refreshMock.mockReset();
 
+    delete process.env.EXECUTION_LOOP_FORCE_INLINE_CURSOR;
+    delete process.env.EXECUTION_LOOP_CURSOR_VIA_JOB;
+
     findUniqueTaskMock.mockResolvedValue({ taskKind: null });
     findUniqueSetupMock.mockResolvedValue({
       gitRepoUrl: "https://github.com/o/r",
@@ -74,22 +80,27 @@ describe("normalTaskWorkerDispatch", () => {
   });
 
   afterEach(() => {
+    delete process.env.EXECUTION_LOOP_FORCE_INLINE_CURSOR;
     delete process.env.EXECUTION_LOOP_CURSOR_VIA_JOB;
   });
 
-  it("shouldUseRuntimeWorkerPathForTask is false for ENV_TEST", () => {
-    process.env.EXECUTION_LOOP_CURSOR_VIA_JOB = "1";
-    expect(shouldUseRuntimeWorkerPathForTask(ENV_TEST_TASK_KIND)).toBe(false);
+  it("default policy: normal task uses worker path", () => {
     expect(shouldUseRuntimeWorkerPathForTask(null)).toBe(true);
+    expect(isLegacyInlineCursorPathForced()).toBe(false);
   });
 
-  it("isNormalTaskWorkerDispatchEnabled respects feature flag", () => {
-    expect(isNormalTaskWorkerDispatchEnabled()).toBe(false);
-    process.env.EXECUTION_LOOP_CURSOR_VIA_JOB = "1";
-    expect(isNormalTaskWorkerDispatchEnabled()).toBe(true);
+  it("EXECUTION_LOOP_FORCE_INLINE_CURSOR disables worker path", () => {
+    process.env.EXECUTION_LOOP_FORCE_INLINE_CURSOR = "1";
+    expect(shouldUseRuntimeWorkerPathForTask(null)).toBe(false);
+    expect(isLegacyInlineCursorPathForced()).toBe(true);
   });
 
-  it("cursor success enqueues pipeline; cursor failure skips pipeline", async () => {
+  it("ENV_TEST and ENV_TEST_STAGE2 never use worker path", () => {
+    expect(shouldUseRuntimeWorkerPathForTask(ENV_TEST_TASK_KIND)).toBe(false);
+    expect(shouldUseRuntimeWorkerPathForTask(ENV_TEST_STAGE2_TASK_KIND)).toBe(false);
+  });
+
+  it("records worker dispatch steps through pipeline", async () => {
     runCursorMock.mockResolvedValueOnce({
       ok: true,
       jobId: "cursor-job-1",
@@ -107,17 +118,22 @@ describe("normalTaskWorkerDispatch", () => {
       },
     });
 
-    const okRes = await runNormalTaskViaRuntimeWorkers(baseInput);
-    expect(okRes.ok).toBe(true);
-    expect(okRes.cursorJobId).toBe("cursor-job-1");
-    expect(okRes.pipelineJobId).toBe("pipe-job-1");
-    expect(runPipelineMock).toHaveBeenCalledOnce();
+    const res = await runNormalTaskViaRuntimeWorkers(baseInput);
+    const phases = res.steps.map((s) => s.phase);
+    expect(phases).toContain("worker_dispatch");
+    expect(phases).toContain("cursor_job");
+    expect(phases).toContain("reflection");
+    expect(phases).toContain("pipeline_job");
+    expect(phases).toContain("pipeline_result");
+    expect(res.ok).toBe(true);
+  });
 
+  it("cursor failure skips pipeline", async () => {
     runCursorMock.mockResolvedValueOnce({ ok: false, message: "cursor failed" });
-    runPipelineMock.mockClear();
-    const failRes = await runNormalTaskViaRuntimeWorkers(baseInput);
-    expect(failRes.ok).toBe(false);
+    const res = await runNormalTaskViaRuntimeWorkers(baseInput);
+    expect(res.ok).toBe(false);
     expect(runPipelineMock).not.toHaveBeenCalled();
+    expect(res.steps.some((s) => s.phase === "pipeline_job")).toBe(false);
   });
 
   it("reflection not confirmed skips pipeline", async () => {
@@ -127,20 +143,15 @@ describe("normalTaskWorkerDispatch", () => {
       jobId: "cursor-job-2",
       cursorOutcome: {
         ok: true,
-        result: {
-          runId: "c2",
-          summary: "s",
-          changedFiles: [],
-          branchName: "orch/t2",
-        },
+        result: { runId: "c2", summary: "s", changedFiles: [], branchName: "orch/t2" },
         logs: [],
       },
     });
 
     const res = await runNormalTaskViaRuntimeWorkers(baseInput);
     expect(res.ok).toBe(true);
-    expect(res.pipelineJobId).toBeUndefined();
     expect(runPipelineMock).not.toHaveBeenCalled();
+    expect(res.steps.find((s) => s.phase === "reflection")?.ok).toBe(false);
   });
 
   it("rejects ENV_TEST task kinds", async () => {

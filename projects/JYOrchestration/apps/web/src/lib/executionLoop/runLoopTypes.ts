@@ -16,6 +16,15 @@ export type LoopStepRecord =
       reason: string;
     }
   | { phase: "evaluate"; taskId: string; verdict: string; summary: string }
+  | {
+      phase: "worker_step";
+      taskId: string;
+      stepPhase: string;
+      ok?: boolean;
+      code?: string;
+      summary?: string;
+      jobId?: string;
+    }
   | { phase: "stop"; reason: string };
 
 export type RunExecutionLoopResult = {

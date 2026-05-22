@@ -23,6 +23,7 @@ import {
   runSecurityPhase,
 } from "@/lib/runtime/pipelineExecutionPhases";
 import { appendRuntimeEvent } from "@/lib/runtime/runtimeEventService";
+import { PIPELINE_RESULT_CODE } from "@/lib/runtime/pipelineResultCodes";
 import { maybeEnqueueSelfHealingFromReviewFailure } from "@/lib/runtime/runtimeSelfHealingBridge";
 
 export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<ExecutionWorkerStructuredResult> {
@@ -74,9 +75,15 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Exe
         },
       });
       await refreshWorkflowStates(payload.projectId);
+      const reviewCode =
+        review.code === PIPELINE_RESULT_CODE.REVIEW_REJECTED ||
+        review.code === PIPELINE_RESULT_CODE.REVIEWER_NOT_CONFIGURED ||
+        review.code === PIPELINE_RESULT_CODE.REVIEW_EXCEPTION
+          ? review.code
+          : PIPELINE_RESULT_CODE.REVIEW_REJECTED;
       const result: PipelineExecutionJobResult = {
         ok: false,
-        code: review.code,
+        code: reviewCode,
         message: review.message,
         reviewerVerdict: review.verdict,
       };
@@ -185,7 +192,7 @@ export async function handlePipelineExecutionJob(job: ExecutionJob): Promise<Exe
 
   const result: PipelineExecutionJobResult = {
     ok: true,
-    code: merge.merged ? "MERGED" : "MERGE_PENDING",
+    code: merge.merged ? PIPELINE_RESULT_CODE.MERGED : PIPELINE_RESULT_CODE.MERGE_PENDING,
     message: merge.merged ? "Merged to main" : merge.message,
     reviewerVerdict: "done",
     merged: merge.merged,

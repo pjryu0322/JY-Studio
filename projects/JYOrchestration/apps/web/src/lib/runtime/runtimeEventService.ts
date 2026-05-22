@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import type { RuntimeEventSeverity, RuntimeEventType } from "@/lib/runtime/runtimeEventTypes";
+import { recordRuntimeTimelineEntry } from "@/lib/runtime/runtimeTimelineStore";
 
 export type AppendRuntimeEventInput = {
   readonly eventType: RuntimeEventType;
@@ -46,6 +47,15 @@ export async function appendRuntimeEvent(input: AppendRuntimeEventInput): Promis
     projectId: input.projectId,
     taskId: input.taskId,
     userId: input.actorUserId ?? undefined,
+    detail,
+  });
+
+  recordRuntimeTimelineEntry(input.execRunId, {
+    source: "runtime_event",
+    eventType: input.eventType,
+    status: severity,
+    workerName: input.workerName ?? null,
+    message: input.eventType,
     detail,
   });
 

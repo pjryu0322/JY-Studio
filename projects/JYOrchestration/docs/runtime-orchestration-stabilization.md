@@ -15,14 +15,15 @@ AI Team Runtime을 ExecutionJob 기반 Worker 구조로 점진 이전한다.
 - Primary runtime key: `TaskExecutionRun` (`execRunId`)
 - Worker payloads include `execRunId`, `taskId`, `projectId`, `actorUserId`
 
-## ENV_TEST safety
+## Path policy (Phase 3)
 
-- `ENV_TEST` / `ENV_TEST_STAGE2` remain on **sync** `runExecutionLoop` paths (Stage2 GitHub source-of-truth).
-- Cursor/pipeline workers return `STAGE2_REQUIRES_SYNC_LOOP` / `ENV_TEST_REQUIRES_SYNC_LOOP` when mis-enqueued.
+| Task kind | Path |
+|-----------|------|
+| `ENV_TEST` / `ENV_TEST_STAGE2` | **Sync** `runExecutionLoop` (Stage1/Stage2) — unchanged |
+| Normal Task (default) | **Worker** `runNormalTaskViaRuntimeWorkers` |
+| Normal Task (emergency) | Legacy inline when `EXECUTION_LOOP_FORCE_INLINE_CURSOR=1` |
 
-## Normal Task worker dispatch (Phase 2)
-
-Set `EXECUTION_LOOP_CURSOR_VIA_JOB=1` so **non–ENV_TEST** tasks use the sync worker path:
+Deprecated: `EXECUTION_LOOP_CURSOR_VIA_JOB=1` (Phase 2 opt-in). Worker path is now default.
 
 ```text
 runExecutionLoop
@@ -33,49 +34,58 @@ runExecutionLoop
       → pipeline job (sync)
 ```
 
-Default (flag off): legacy inline `runExecutionLoop` cursor/review/scm/merge blocks.
+Worker `steps` (merged into loop as `worker_step`):
 
-ENV_TEST / ENV_TEST_STAGE2 always stay on the sync loop (workers return `ENV_TEST_REQUIRES_SYNC_LOOP` if mis-enqueued).
+- `worker_dispatch` → `cursor_job` → `reflection` → `pipeline_job` → `pipeline_result`
+
+## ENV_TEST safety
+
+- `ENV_TEST` / `ENV_TEST_STAGE2` remain on **sync** `runExecutionLoop` paths.
+- Workers return `ENV_TEST_REQUIRES_SYNC_LOOP` when mis-enqueued.
+
+## Pipeline result codes
+
+Defined in `pipelineResultCodes.ts`: `APPROVAL_WAITING`, `MERGED`, `MERGE_PENDING`, `REVIEW_REJECTED`, `REVIEWER_NOT_CONFIGURED`, `SECURITY_FAILED`, `SCM_HOLD`, `SCM_NOT_CONFIGURED`, `PR_CREATE_FAILED`, `MERGE_FAILED`, etc.
+
+User-facing messages: `pipelineMessageForCode()`.
+
+## Self-healing (Phase 3)
+
+On pipeline review reject:
+
+1. `triggerSelfHealingLite()` → `AUTO_HEALING` tasks (when project spec exists)
+2. `AUTO_HEALING_TRIGGERED` runtime event
+3. Optional: `RUNTIME_SELF_HEALING_AUTO_CURSOR=1` enqueues `cursor` jobs for created tasks (default **off**)
 
 ## Runtime events
 
-Use `appendRuntimeEvent()` (`lib/runtime/runtimeEventService.ts`) for standardized timeline entries:
+`appendRuntimeEvent()` + in-memory `runtimeTimelineStore` (execRunId-scoped).
 
-- `CURSOR_STARTED` / `CURSOR_COMPLETED` / `CURSOR_FAILED`
-- `REVIEW_STARTED` / `REVIEW_APPROVED` / `REVIEW_FAILED`
-- `SCM_STARTED` / `MERGE_COMPLETED` / `MERGE_FAILED`
-- `PIPELINE_STARTED` / `PIPELINE_COMPLETED`
+Timeline: `listRuntimeTimelineForExecRun()` merges memory store, optional progress log file (`JY_TASK_PROGRESS_LOG_FILE`), and `executionEventLog` (task-scoped; may omit events without `executionJobId`).
+
+Snapshot: `buildRuntimeDashboardSnapshot()` includes `timelineCount`, `lastEventAt`.
 
 ## Retry policy
 
-`lib/runtime/executionRetryPolicy.ts` — `shouldRetryExecution`, `shouldBlockRepeatedFailure` (used from `runExecutionLoop`).
-
-## Observability
-
-`buildRuntimeDashboardSnapshot(execRunId)` — current phase, worker, retry count, review/SCM/merge fields.
+`executionRetryPolicy.ts` — used from `runExecutionLoop`.
 
 ## Modules
 
 ```text
 apps/web/src/lib/runtime/
-  executionWorkerStructuredResult.ts
-  cursorExecutionJobHandler.ts
-  cursorExecutionJobInvoke.ts
-  cursorExecutionJobPersist.ts
-  cursorExecutionJobSync.ts
-  cursorExecutionJobTypes.ts
-  pipelineExecutionJobHandler.ts
-  pipelineExecutionJobContext.ts
-  pipelineExecutionPhases.ts
-  pipelineExecutionPhaseTypes.ts
-  pipelineExecutionJobTypes.ts
-  runtimeEventService.ts
-  runtimeEventTypes.ts
-  executionRetryPolicy.ts
-  runtimeObservability.ts
-  runtimeSupport.ts
   normalTaskWorkerDispatch.ts
   cursorExecutionReflection.ts
   pipelineExecutionJobSync.ts
+  pipelineResultCodes.ts
   runtimeSelfHealingBridge.ts
+  runtimeTimelineStore.ts
+  runtimeObservability.ts
+  … (cursor/pipeline handlers, phases, events)
 ```
+
+## Remaining follow-up
+
+- Remove legacy inline normal-task blocks after production validation
+- `resumeScmAfterApproval` via pipeline worker only
+- Dedicated runtime event DB model (optional)
+- Full self-healing auto-run policy

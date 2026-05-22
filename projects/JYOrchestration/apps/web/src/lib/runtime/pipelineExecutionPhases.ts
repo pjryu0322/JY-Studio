@@ -3,7 +3,9 @@
  */
 
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
+import { parseTeamReviewPhasesFromReviewerSteps } from "@/lib/ai-team-runtime/reviewerSteps";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+import { PIPELINE_RESULT_CODE } from "@/lib/runtime/pipelineResultCodes";
 import {
   countExecutionReviewAiMembers,
   type ExecutionReviewerStepRecord,
@@ -55,7 +57,7 @@ export async function runReviewerPhase(ctx: PipelinePhaseContext): Promise<Revie
   if (executionReviewerCount === 0) {
     return {
       ok: false,
-      code: "REVIEWER_NOT_CONFIGURED",
+      code: PIPELINE_RESULT_CODE.REVIEWER_NOT_CONFIGURED,
       message: "AI Reviewer가 설정되지 않았습니다.",
     };
   }
@@ -123,7 +125,7 @@ export async function runReviewerPhase(ctx: PipelinePhaseContext): Promise<Revie
       },
       { error: msg },
     );
-    return { ok: false, code: "REVIEW_EXCEPTION", message: msg };
+    return { ok: false, code: PIPELINE_RESULT_CODE.REVIEW_EXCEPTION, message: msg };
   }
 
   const verdict = evalPack.result.decision;
@@ -213,8 +215,21 @@ export async function runSecurityPhase(
       executionJobId: ctx.executionJobId ?? null,
       detail: { reason: teamAfterReview.reason },
     });
-    return { ok: false, code: "SECURITY_FAILED", message: teamAfterReview.reason ?? "security_failed" };
+    return {
+      ok: false,
+      code: PIPELINE_RESULT_CODE.SECURITY_FAILED,
+      message: teamAfterReview.reason ?? "security_failed",
+    };
   }
+
+  const phases = parseTeamReviewPhasesFromReviewerSteps(reviewerSteps);
+  const securityStatus = phases.security.configured
+    ? phases.security.status === "skipped"
+      ? "skipped_no_security_reviewer"
+      : phases.security.status === "completed"
+        ? "approved"
+        : phases.security.status
+    : "skipped_not_configured";
 
   await appendRuntimeEvent({
     eventType: "SECURITY_COMPLETED",
@@ -224,6 +239,11 @@ export async function runSecurityPhase(
     actorUserId: ctx.actorUserId,
     workerName: "pipeline",
     executionJobId: ctx.executionJobId ?? null,
+    detail: {
+      configured: phases.security.configured,
+      status: securityStatus,
+      issues: phases.security.issues?.length ?? 0,
+    },
   });
 
   return { ok: true };
@@ -247,7 +267,7 @@ export async function runScmPhase(
   if (scmCount === 0) {
     const msg = "SCM Manager 미설정";
     await persistScmBlockReasonOnRun(ctx.execRunId, msg);
-    return { ok: false, code: "SCM_NOT_CONFIGURED", message: msg, hold: true };
+    return { ok: false, code: PIPELINE_RESULT_CODE.SCM_NOT_CONFIGURED, message: msg, hold: true };
   }
 
   const execRun = await prisma.taskExecutionRun.findUnique({ where: { id: ctx.execRunId } });
@@ -289,7 +309,7 @@ export async function runScmPhase(
       executionJobId: ctx.executionJobId ?? null,
       detail: { message: msg },
     });
-    return { ok: false, code: "SCM_HOLD", message: msg, hold: true };
+    return { ok: false, code: PIPELINE_RESULT_CODE.SCM_HOLD, message: msg, hold: true };
   }
 
   await appendRuntimeEvent({
@@ -346,7 +366,7 @@ export async function runMergePhase(
         executionJobId: ctx.executionJobId ?? null,
         detail: { message: prCreate.message },
       });
-      return { ok: false, code: "PR_CREATE_FAILED", message: prCreate.message };
+      return { ok: false, code: PIPELINE_RESULT_CODE.PR_CREATE_FAILED, message: prCreate.message };
     }
     prForMerge = {
       pullRequestUrl: prCreate.data.pullRequestUrl,
@@ -398,7 +418,7 @@ export async function runMergePhase(
       executionJobId: ctx.executionJobId ?? null,
       detail: { message: mr.message },
     });
-    return { ok: false, code: "MERGE_FAILED", message: mr.message };
+    return { ok: false, code: PIPELINE_RESULT_CODE.MERGE_FAILED, message: mr.message };
   }
 
   await prisma.taskExecutionRun.update({
