@@ -2869,7 +2869,7 @@ Ready decision:
 - 실제 외부 실행은 아직 수행하지 않는다.
 - Stage 13 actual external adapter candidate로 넘어가기 위한 경계다.
 
-구현: `apps/web/src/lib/agents/evaluateExternalExecutionManualDryRunGate.ts`, `externalExecutionManualDryRunGateTypes.ts`, `externalExecutionManualDryRunGateConstants.ts`, `externalExecutionManualDryRunGateItems.ts`, `externalExecutionManualDryRunGateSource.ts`, `externalExecutionManualDryRunGateSourceMapping.ts`, `externalExecutionManualDryRunGateSupport.ts`, `externalExecutionManualDryRunGateFindings.ts`
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionManualDryRunGate.ts`, `externalExecutionManualDryRunGateTypes.ts`, `externalExecutionManualDryRunGateConstants.ts`, `externalExecutionManualDryRunGateItems.ts`, `externalExecutionManualDryRunGateItemSource.ts`, `externalExecutionManualDryRunGateSourceTrace.ts`, `externalExecutionManualDryRunGateSource.ts`, `externalExecutionManualDryRunGateSourceMapping.ts`, `externalExecutionManualDryRunGateSupport.ts`, `externalExecutionManualDryRunGateFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 

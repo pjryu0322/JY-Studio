@@ -6,7 +6,7 @@ import {
   STAGE12_A_GATE_ITEM_SPECS,
   STAGE12_A_REQUIRED_ITEM_IDS,
 } from "@/lib/agents/externalExecutionManualDryRunGateConstants";
-import { isSourceReadyForExternalExecutionManualDryRunGate } from "@/lib/agents/externalExecutionManualDryRunGateSource";
+import { isSourceReadyForExternalExecutionManualDryRunGate } from "@/lib/agents/externalExecutionManualDryRunGateItemSource";
 import type { ExternalExecutionDryRunPackageReport } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 import type { ExternalExecutionManualDryRunGateItem } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
 

@@ -2,10 +2,9 @@
  * Stage 12-A manual dry-run gate support (read-only).
  */
 
-export {
-  evaluateExternalExecutionManualDryRunGateSource,
-  isSourceReadyForExternalExecutionManualDryRunGate,
-} from "@/lib/agents/externalExecutionManualDryRunGateSource";
+export { evaluateExternalExecutionManualDryRunGateSource } from "@/lib/agents/externalExecutionManualDryRunGateSource";
+
+export { isSourceReadyForExternalExecutionManualDryRunGate } from "@/lib/agents/externalExecutionManualDryRunGateItemSource";
 
 export { buildExternalExecutionManualDryRunGateItems } from "@/lib/agents/externalExecutionManualDryRunGateItems";
 
@@ -30,10 +29,14 @@ export { appendExternalExecutionManualDryRunGateFindings } from "@/lib/agents/ex
 
 export {
   mapExternalExecutionManualDryRunGateDecisionInputFromSource,
-  mapExternalExecutionManualDryRunGateSourceTrace,
   buildExternalExecutionManualDryRunGateStage13ReportFields,
   STAGE13_ENTRY_CANDIDATE,
 } from "@/lib/agents/externalExecutionManualDryRunGateSourceMapping";
+
+export {
+  mapExternalExecutionManualDryRunGateSourceTrace,
+  mapExternalExecutionManualDryRunGateActualExecutionBoundaryTrace,
+} from "@/lib/agents/externalExecutionManualDryRunGateSourceTrace";
 
 export {
   EXTERNAL_EXECUTION_MANUAL_DRY_RUN_GATE_VERSION,

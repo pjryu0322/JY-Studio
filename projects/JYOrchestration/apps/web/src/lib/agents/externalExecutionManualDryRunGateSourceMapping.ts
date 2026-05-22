@@ -3,37 +3,13 @@
  */
 
 import type { ExternalExecutionDryRunPackageReport } from "@/lib/agents/externalExecutionDryRunPackageTypes";
-import type {
-  ExternalExecutionManualDryRunGateDecisionInput,
-  ExternalExecutionManualDryRunGateReport,
-} from "@/lib/agents/externalExecutionManualDryRunGateTypes";
+import type { ExternalExecutionManualDryRunGateDecisionInput } from "@/lib/agents/externalExecutionManualDryRunGateTypes";
+import {
+  mapExternalExecutionManualDryRunGateActualExecutionBoundaryTrace,
+  mapExternalExecutionManualDryRunGateSourceTrace,
+} from "@/lib/agents/externalExecutionManualDryRunGateSourceTrace";
 
 export const STAGE13_ENTRY_CANDIDATE = "actual_external_execution_adapter_candidate" as const;
-
-export function mapExternalExecutionManualDryRunGateSourceTrace(
-  source: ExternalExecutionDryRunPackageReport,
-): Pick<
-  ExternalExecutionManualDryRunGateReport,
-  | "sourceStage11Decision"
-  | "sourceStage12EntryReady"
-  | "sourceManualDryRunGateDesignAllowed"
-  | "sourceOperatorApprovedDryRunInvocationAllowed"
-  | "sourceMockExternalAdapterResultPackageAllowed"
-  | "sourceDryRunAuditEventPackageAllowed"
-  | "sourceRollbackPlanReviewBeforeActualExecutionAllowed"
-  | "sourceStage12ManualGateRequiredBeforeActualExecution"
-> {
-  return {
-    sourceStage11Decision: source.decision,
-    sourceStage12EntryReady: source.stage12EntryReady,
-    sourceManualDryRunGateDesignAllowed: source.manualDryRunGateDesignAllowed,
-    sourceOperatorApprovedDryRunInvocationAllowed: source.operatorApprovedDryRunInvocationAllowed,
-    sourceMockExternalAdapterResultPackageAllowed: source.mockExternalAdapterResultPackageAllowed,
-    sourceDryRunAuditEventPackageAllowed: source.dryRunAuditEventPackageAllowed,
-    sourceRollbackPlanReviewBeforeActualExecutionAllowed: source.rollbackPlanReviewBeforeActualExecutionAllowed,
-    sourceStage12ManualGateRequiredBeforeActualExecution: source.stage12ManualGateRequiredBeforeActualExecution,
-  };
-}
 
 export function mapExternalExecutionManualDryRunGateDecisionInputFromSource(
   source: ExternalExecutionDryRunPackageReport,
@@ -45,9 +21,7 @@ export function mapExternalExecutionManualDryRunGateDecisionInputFromSource(
 ): ExternalExecutionManualDryRunGateDecisionInput {
   return {
     ...mapExternalExecutionManualDryRunGateSourceTrace(source),
-    sourceActualManualExternalInvocationAllowedInThisStep: source.actualManualExternalInvocationAllowedInThisStep,
-    sourceActualAdapterSideEffectAllowedInThisStep: source.actualAdapterSideEffectAllowedInThisStep,
-    sourceActualAgentRegistryMutationAllowedInThisStep: source.actualAgentRegistryMutationAllowedInThisStep,
+    ...mapExternalExecutionManualDryRunGateActualExecutionBoundaryTrace(source),
     validationValid: input.validationValid,
     stage13EntryReady: input.stage13EntryReady,
     confirmationsSatisfied: input.confirmationsSatisfied,

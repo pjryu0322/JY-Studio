@@ -29,8 +29,8 @@ import { evaluateExternalExecutionManualDryRunGateSource } from "@/lib/agents/ex
 import {
   buildExternalExecutionManualDryRunGateStage13ReportFields,
   mapExternalExecutionManualDryRunGateDecisionInputFromSource,
-  mapExternalExecutionManualDryRunGateSourceTrace,
 } from "@/lib/agents/externalExecutionManualDryRunGateSourceMapping";
+import { mapExternalExecutionManualDryRunGateSourceTrace } from "@/lib/agents/externalExecutionManualDryRunGateSourceTrace";
 import {
   computeStage13EntryReady,
   validateExternalExecutionManualDryRunGateItems,
