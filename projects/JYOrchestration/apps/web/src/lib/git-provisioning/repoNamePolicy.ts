@@ -104,5 +104,5 @@ export function repoSlugFromGitRepoName(gitRepoName: string | null | undefined):
   if (!repoPart) return null;
 
   const validated = validateGithubRepoName(repoPart);
-  return validated.ok ? validated.repoName!.toLowerCase() : repoPart.toLowerCase();
+  return validated.ok ? validated.repoName!.toLowerCase() : null;
 }

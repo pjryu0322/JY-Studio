@@ -120,6 +120,34 @@ describe("computeExecutionBranchPlan", () => {
     expect(isExecutionAllowManualStayOnBase()).toBe(false);
   });
 
+  it("uses ASCII-safe task title slug with Korean fallback", () => {
+    const plan = computeExecutionBranchPlan({
+      branchStrategy: "feature-per-task",
+      branchPrefix: "orch",
+      projectId,
+      projectName: "회의록",
+      repositoryName: "org/meeting-summary-service",
+      taskId,
+      taskTitle: "런타임 이벤트 추가",
+      baseBranch: "main",
+    });
+    expect(plan.branchName).toMatch(/^orch\/meeting-summary-service\/t-.+-task$/);
+    expect(plan.branchName).not.toMatch(/[가-힣]/);
+  });
+
+  it("slugifies ASCII task titles", () => {
+    const plan = computeExecutionBranchPlan({
+      branchStrategy: "feature-per-task",
+      branchPrefix: "orch",
+      projectId,
+      repositoryName: "org/my-app",
+      taskId,
+      taskTitle: "runtime event model",
+      baseBranch: "main",
+    });
+    expect(plan.branchName).toMatch(/runtime-event-model/);
+  });
+
   it("manual stay-on-base only when EXECUTION_ALLOW_MANUAL_STAY_ON_BASE=1", () => {
     process.env.EXECUTION_ALLOW_MANUAL_STAY_ON_BASE = "1";
     expect(isExecutionAllowManualStayOnBase()).toBe(true);

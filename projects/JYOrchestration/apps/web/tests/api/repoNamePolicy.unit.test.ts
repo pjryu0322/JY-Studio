@@ -52,4 +52,10 @@ describe("repoSlugFromGitRepoName", () => {
   it("returns bare repo name", () => {
     expect(repoSlugFromGitRepoName("meeting-summary-service")).toBe("meeting-summary-service");
   });
+
+  it("returns null for invalid repo segments", () => {
+    expect(repoSlugFromGitRepoName("owner/회의록")).toBeNull();
+    expect(repoSlugFromGitRepoName("owner/repo name")).toBeNull();
+    expect(repoSlugFromGitRepoName("owner/valid-repo")).toBe("valid-repo");
+  });
 });

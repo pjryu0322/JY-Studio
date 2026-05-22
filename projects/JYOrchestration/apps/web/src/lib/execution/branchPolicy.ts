@@ -6,15 +6,6 @@ import {
 } from "@/lib/execution/branchSlug";
 import { repoSlugFromGitRepoName } from "@/lib/git-provisioning/repoNamePolicy";
 
-function slugPart(s: string, max: number): string {
-  const x = String(s ?? "")
-    .replace(/[^\w\uAC00-\uD7A3-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, max)
-    .toLowerCase();
-  return x || "task";
-}
-
 export type BranchPlan = {
   branchName: string;
   /** true면 새 브랜치를 만들지 않고 base만 체크아웃 */
@@ -87,7 +78,7 @@ export function computeExecutionBranchPlan(params: {
   );
   const shortProjectId = shortIdFromUuid(params.projectId, 8);
   const shortTaskId = params.taskId.replace(/-/g, "").slice(0, 10);
-  const titleSlug = slugPart(params.taskTitle, 24);
+  const titleSlug = toSafeBranchSlug(params.taskTitle, "task", 24);
 
   const strategy = String(params.branchStrategy ?? "").trim();
 

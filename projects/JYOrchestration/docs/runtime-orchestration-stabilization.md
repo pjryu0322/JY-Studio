@@ -149,14 +149,24 @@ Policies:
 - Repo creation only via explicit `create_and_bind` (no delete/force-push/init wipe)
 - Bind sets `feature-per-task`, `branchPrefix: orch`, default `allowedPathGlobs`; responses include bind summary (no plain token).
 - GitHub token from project `ExecutionSetup` or peer project (same owner, validated)
+- **Org repo creation:** not supported in MVP; use existing org repo bind/analyze when token has access
+- **User test guide:** [git-repository-provisioning-user-test.md](./git-repository-provisioning-user-test.md)
 
 ## RuntimeEvent schema (verified)
 
 - `packages/db/schema.prisma` — `model RuntimeEvent`
 - Migration: `packages/db/migrations/20260519180000_runtime_events`
 
+## User test readiness (Git Provisioning)
+
+- `repoSlugFromGitRepoName`: invalid segment → `null` (branch falls back to `p-{shortProjectId}`)
+- Task title slug: ASCII-safe via `toSafeBranchSlug` (Korean → `task`)
+- Smoke/unit: `gitRepositoryProvisionRoute`, `gitRepositoryProvisioning`, `repoNamePolicy`, `branchPolicy`
+- Manual UI wiring to provision API may still be pending; API is ready for Postman/curl user tests
+
 ## Remaining follow-up
 
+- Wire `ProjectExecutionEnvironmentPanel` to `git-repository/provision` actions
 - Move ENV_TEST monolithic block from `runExecutionLoop.ts` into `envTestSyncExecution.ts`
 - Remove holder-job compat path after `runtime_events` backfill
 - Org-owned GitHub repo creation (currently personal `/user/repos` MVP)

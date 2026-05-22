@@ -191,6 +191,70 @@ describe("gitRepositoryProvisioningService", () => {
     expect(upsertMock).toHaveBeenCalled();
   });
 
+  it("create_and_bind skips owner mismatch when repo already exists", async () => {
+    lookupMock.mockResolvedValue({
+      exists: true,
+      repo: {
+        fullName: "other-org/existing-repo",
+        htmlUrl: "https://github.com/other-org/existing-repo",
+        defaultBranch: "main",
+        private: true,
+        fork: false,
+        archived: false,
+      },
+    });
+    const res = await createAndBindGithubRepository({
+      projectId: "p1",
+      actorUserId: "u1",
+      owner: "other-org",
+      repo: "existing-repo",
+    });
+    expect(res.ok).toBe(true);
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(upsertMock).toHaveBeenCalled();
+  });
+
+  it("analyze_existing does not upsert ExecutionSetup", async () => {
+    lookupMock.mockResolvedValue({
+      exists: true,
+      repo: {
+        fullName: "myorg/existing-repo",
+        htmlUrl: "https://github.com/myorg/existing-repo",
+        defaultBranch: "main",
+        private: true,
+        fork: false,
+        archived: false,
+      },
+    });
+    analyzeMock.mockResolvedValue({
+      ok: true,
+      summary: {
+        defaultBranch: "main",
+        hasReadme: true,
+        hasPackageJson: false,
+        hasTsconfig: false,
+        hasNextConfig: false,
+        hasPrisma: false,
+        topLevelFiles: ["README.md"],
+        topLevelDirectories: [],
+        detectedStack: [],
+        riskLevel: "low",
+        recommendation: "connect_existing",
+        notes: [],
+      },
+    });
+    const res = await bindExistingGithubRepository({
+      projectId: "p1",
+      actorUserId: "u1",
+      owner: "myorg",
+      repo: "existing-repo",
+      mode: "analyze_only",
+    });
+    expect(res.ok).toBe(true);
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
   it("bind_existing blocks manual_review without confirmHighRiskExistingRepo", async () => {
     lookupMock.mockResolvedValue({
       exists: true,

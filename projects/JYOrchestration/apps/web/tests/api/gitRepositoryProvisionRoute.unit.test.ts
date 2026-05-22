@@ -74,6 +74,32 @@ describe("git-repository provision route", () => {
     expect(JSON.stringify(body)).not.toContain("ghp_");
   });
 
+  it("prepare rejects invalid Korean repo via service", async () => {
+    prepareMock.mockResolvedValue({
+      ok: false,
+      projectName: "회의록",
+      repoName: "",
+      exists: false,
+      lookupStatus: "not_ascii",
+      nextActions: [],
+      message: "Repository name must use ASCII letters, numbers, hyphen, underscore, or period.",
+    });
+    const req = new NextRequest("http://localhost/api/projects/p1/git-repository/provision", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "prepare",
+        owner: "myorg",
+        repo: "회의록 자동화",
+      }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ projectId: "p1" }) });
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(prepareMock).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: "회의록 자동화" })
+    );
+  });
+
   it("bind_existing forwards confirmHighRiskExistingRepo", async () => {
     bindExistingMock.mockResolvedValue({
       ok: true,
