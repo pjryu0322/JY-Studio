@@ -11,6 +11,7 @@ import type { RuntimeContractBundleClosureInput } from "@/lib/agents/runtimeCont
 import type { RuntimeControlBundleInput } from "@/lib/agents/runtimeControlBundleTypes";
 import type { RuntimeExecutionApiMvpInput } from "@/lib/agents/runtimeExecutionApiMvpTypes";
 import type { ExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
+import type { ExternalExecutionDryRunPackageInput } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 import type { RuntimeExecutionMvpClosureInput } from "@/lib/agents/runtimeExecutionMvpClosureTypes";
 import type { RuntimeExecutionVerticalSliceInput } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalSliceConstants";
@@ -412,5 +413,42 @@ export function buildStage10AReadyExternalExecutionAdapterBoundaryInput(): Exter
   return {
     runtimeMvpClosure: buildStage9BReadyRuntimeExecutionMvpClosureInput(),
     ...buildStage10AConfirmedExternalExecutionAdapterBoundaryInput(),
+  };
+}
+
+export function buildStage11AConfirmedExternalExecutionDryRunPackageInput(): Required<
+  Pick<
+    ExternalExecutionDryRunPackageInput,
+    | "adapterDryRunReviewed"
+    | "cursorGithubDryRunReviewed"
+    | "connectorDryRunReviewed"
+    | "runnerDryRunReviewed"
+    | "approvalBeforeDryRunReviewed"
+    | "rollbackBeforeDryRunReviewed"
+    | "auditBeforeDryRunReviewed"
+    | "noSideEffectBoundaryReviewed"
+    | "agentRegistryChangeBoundaryReviewed"
+    | "stage12EntryReviewed"
+  >
+> {
+  return {
+    adapterDryRunReviewed: true,
+    cursorGithubDryRunReviewed: true,
+    connectorDryRunReviewed: true,
+    runnerDryRunReviewed: true,
+    approvalBeforeDryRunReviewed: true,
+    rollbackBeforeDryRunReviewed: true,
+    auditBeforeDryRunReviewed: true,
+    noSideEffectBoundaryReviewed: true,
+    agentRegistryChangeBoundaryReviewed: true,
+    stage12EntryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 11-A (Stage 10-A ready + 11-A dry-run confirmations). */
+export function buildStage11AReadyExternalExecutionDryRunPackageInput(): ExternalExecutionDryRunPackageInput {
+  return {
+    adapterBoundary: buildStage10AReadyExternalExecutionAdapterBoundaryInput(),
+    ...buildStage11AConfirmedExternalExecutionDryRunPackageInput(),
   };
 }

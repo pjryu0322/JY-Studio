@@ -424,4 +424,68 @@ describe("multi-agent external execution adapter boundary stage 10-A", () => {
     const source = evaluateRuntimeExecutionMvpClosure();
     expect(buildExternalExecutionAdapterBoundaryItems(source)).toHaveLength(0);
   });
+
+  it("ready report dryRunPackageDesignAllowed is true", () => {
+    expect(evaluateReadyBoundary().dryRunPackageDesignAllowed).toBe(true);
+  });
+
+  it("ready report dryRunSimulationOnly is true", () => {
+    expect(evaluateReadyBoundary().dryRunSimulationOnly).toBe(true);
+  });
+
+  it("ready report externalAdapterContractCount is at least 4", () => {
+    expect(evaluateReadyBoundary().externalAdapterContractCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it("ready report stage11DryRunPackageRequiredBeforeActualExecution is true", () => {
+    expect(evaluateReadyBoundary().stage11DryRunPackageRequiredBeforeActualExecution).toBe(true);
+  });
+
+  it("ready report agentRegistryChangeManagementOutOfScope is true", () => {
+    expect(evaluateReadyBoundary().agentRegistryChangeManagementOutOfScope).toBe(true);
+  });
+
+  it("ready report agentAddRemoveDeactivateOutOfScope is true", () => {
+    expect(evaluateReadyBoundary().agentAddRemoveDeactivateOutOfScope).toBe(true);
+  });
+
+  it("ready report agentRoleSlotImpactAnalysisRequired is true", () => {
+    expect(evaluateReadyBoundary().agentRoleSlotImpactAnalysisRequired).toBe(true);
+  });
+
+  it("ready report mandatoryGateAgentDeactivationRequiresApproval is true", () => {
+    expect(evaluateReadyBoundary().mandatoryGateAgentDeactivationRequiresApproval).toBe(true);
+  });
+
+  it("ready report agentKnowledgeBindingChangeRequiresApproval is true", () => {
+    expect(evaluateReadyBoundary().agentKnowledgeBindingChangeRequiresApproval).toBe(true);
+  });
+
+  it("separatedWorkItems includes agent_registry_change_management", () => {
+    expect(evaluateReadyBoundary().separatedWorkItems).toContain("agent_registry_change_management");
+  });
+
+  it("separatedWorkItems includes agent_add_remove_deactivate_flow", () => {
+    expect(evaluateReadyBoundary().separatedWorkItems).toContain("agent_add_remove_deactivate_flow");
+  });
+
+  it("stage11EntryOutOfScope includes agent_registry_crud", () => {
+    expect(evaluateReadyBoundary().stage11EntryOutOfScope).toContain("agent_registry_crud");
+  });
+
+  it("stage11EntryOutOfScope includes agent_management_ui", () => {
+    expect(evaluateReadyBoundary().stage11EntryOutOfScope).toContain("agent_management_ui");
+  });
+
+  it("ready findings include agent_registry_change_management_separated", () => {
+    expect(
+      evaluateReadyBoundary().findings.some((f) => f.code === "agent_registry_change_management_separated"),
+    ).toBe(true);
+  });
+
+  it("ready findings include mandatory_gate_agent_deactivation_requires_approval", () => {
+    expect(
+      evaluateReadyBoundary().findings.some((f) => f.code === "mandatory_gate_agent_deactivation_requires_approval"),
+    ).toBe(true);
+  });
 });

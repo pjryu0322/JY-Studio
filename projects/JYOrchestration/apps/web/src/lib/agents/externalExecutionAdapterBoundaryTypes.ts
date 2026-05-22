@@ -150,6 +150,17 @@ export interface ExternalExecutionAdapterBoundaryReport {
   readonly actualProductionRunnerImplementedInThisStep: false;
   readonly actualUiImplementationImplementedInThisStep: false;
 
+  readonly dryRunPackageDesignAllowed: true;
+  readonly dryRunSimulationOnly: true;
+  readonly externalAdapterContractCount: number;
+  readonly stage11DryRunPackageRequiredBeforeActualExecution: true;
+
+  readonly agentRegistryChangeManagementOutOfScope: true;
+  readonly agentAddRemoveDeactivateOutOfScope: true;
+  readonly agentRoleSlotImpactAnalysisRequired: true;
+  readonly mandatoryGateAgentDeactivationRequiresApproval: true;
+  readonly agentKnowledgeBindingChangeRequiresApproval: true;
+
   readonly boundaryItems: readonly ExternalExecutionAdapterBoundaryItem[];
   readonly validation: ExternalExecutionAdapterBoundaryValidationResult;
   readonly requiredConfirmations: readonly string[];

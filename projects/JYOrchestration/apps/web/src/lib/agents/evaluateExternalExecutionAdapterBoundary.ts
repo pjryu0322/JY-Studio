@@ -26,6 +26,7 @@ import { buildExternalExecutionAdapterBoundaryItems } from "@/lib/agents/externa
 import { parseExternalExecutionAdapterBoundaryInput } from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
 import { resolveExternalExecutionAdapterBoundaryDecision } from "@/lib/agents/externalExecutionAdapterBoundaryDecision";
 import { evaluateExternalExecutionAdapterBoundarySource } from "@/lib/agents/externalExecutionAdapterBoundarySource";
+import { buildExternalExecutionAdapterBoundaryDryRunHardeningFields } from "@/lib/agents/externalExecutionAdapterBoundaryDryRunTrace";
 import {
   buildExternalExecutionAdapterBoundaryStage11ReportFields,
   mapExternalExecutionAdapterBoundaryDecisionInputFromSource,
@@ -111,6 +112,7 @@ export function evaluateExternalExecutionAdapterBoundary(
     boundarySummary: buildExternalExecutionAdapterBoundarySummary(decision),
     boundaryFingerprint,
     ...buildExternalExecutionAdapterBoundaryStage11ReportFields({ stage11EntryReady }),
+    ...buildExternalExecutionAdapterBoundaryDryRunHardeningFields({ boundaryItems }),
     stage11EntryScope: [...STAGE11_ENTRY_SCOPE],
     stage11EntryOutOfScope: [...STAGE11_ENTRY_OUT_OF_SCOPE],
     boundaryItems,

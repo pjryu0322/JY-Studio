@@ -1070,6 +1070,23 @@ export {
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export {
+  evaluateExternalExecutionDryRunPackage,
+} from "@/lib/agents/evaluateExternalExecutionDryRunPackage";
+
+export type {
+  ExternalExecutionDryRunPackageDecision,
+  ExternalExecutionDryRunPackageInput,
+  ExternalExecutionDryRunPackageReport,
+  ExternalExecutionDryRunPackageItem,
+  ExternalExecutionDryRunPackageValidationResult,
+} from "@/lib/agents/externalExecutionDryRunPackageTypes";
+
+export {
+  buildStage11AReadyExternalExecutionDryRunPackageInput,
+  buildStage11AConfirmedExternalExecutionDryRunPackageInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
+
+export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,

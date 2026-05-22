@@ -55,6 +55,9 @@ export const STAGE11_ENTRY_OUT_OF_SCOPE = [
   "actual_persistent_database_write",
   "actual_production_runner",
   "full_runtime_ui",
+  "agent_registry_crud",
+  "agent_add_remove_deactivate_apply",
+  "agent_management_ui",
 ] as const;
 
 export const STAGE11_ENTRY_REQUIRED_FORBIDDEN_MARKERS = [
@@ -81,6 +84,12 @@ export const STAGE10_A_SEPARATED_WORK_ITEMS = [
   "actual_persistent_database_write",
   "actual_production_runner",
   "full_runtime_ui",
+  "agent_registry_change_management",
+  "agent_add_remove_deactivate_flow",
+  "agent_role_slot_ownership_impact_analysis",
+  "mandatory_gate_agent_deactivation_policy",
+  "agent_knowledge_binding_change_approval",
+  "agent_change_audit_trail",
 ] as const;
 
 const STAGE11_ENTRY_ITEM_ID = "stage11-dry-run-package-entry";

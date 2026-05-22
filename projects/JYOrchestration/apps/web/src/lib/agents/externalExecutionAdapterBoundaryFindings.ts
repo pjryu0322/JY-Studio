@@ -79,6 +79,29 @@ export function appendExternalExecutionAdapterBoundaryFindings(input: {
   findings.push(finding("info", "rollback_boundary_defined", "Rollback boundary defined"));
   findings.push(finding("info", "audit_boundary_defined", "Audit boundary defined"));
   findings.push(finding("info", "stage11_entry_candidate_defined", "Stage 11 entry candidate defined"));
+  findings.push(finding("info", "stage11_dry_run_package_design_allowed", "Stage 11 dry-run package design allowed"));
+  findings.push(finding("info", "stage11_dry_run_simulation_only", "Stage 11 dry-run simulation only"));
+  findings.push(
+    finding("info", "agent_registry_change_management_separated", "Agent registry change management separated"),
+  );
+  findings.push(finding("info", "agent_add_remove_deactivate_out_of_scope", "Agent add/remove/deactivate out of scope"));
+  findings.push(
+    finding("info", "agent_role_slot_impact_analysis_required", "Agent role slot impact analysis required"),
+  );
+  findings.push(
+    finding(
+      "info",
+      "mandatory_gate_agent_deactivation_requires_approval",
+      "Mandatory gate agent deactivation requires approval",
+    ),
+  );
+  findings.push(
+    finding(
+      "info",
+      "agent_knowledge_binding_change_requires_approval",
+      "Agent knowledge binding change requires approval",
+    ),
+  );
   findings.push(finding("info", "actual_cursor_execution_disallowed", "Actual Cursor execution disallowed"));
   findings.push(finding("info", "actual_github_write_disallowed", "Actual GitHub write disallowed"));
   findings.push(finding("info", "actual_connector_gateway_call_disallowed", "Actual Connector Gateway call disallowed"));

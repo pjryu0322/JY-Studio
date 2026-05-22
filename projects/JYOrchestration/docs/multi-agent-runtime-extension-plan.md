@@ -2756,6 +2756,21 @@ Ready decision:
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeExecutionMvpClosure.ts`, `runtimeExecutionMvpClosureTypes.ts`, `runtimeExecutionMvpClosureConstants.ts`, `runtimeExecutionMvpClosureItems.ts`, `runtimeExecutionMvpClosureValidation.ts`, `runtimeExecutionMvpClosureStage10EntryValidation.ts`, `runtimeExecutionMvpClosureSupport.ts`, `runtimeExecutionMvpClosureFindings.ts`, `runtimeExecutionApiMvpClosureReady.ts`
 
+### Stage 10-A Integrated External Execution Adapter Boundary Design — Hardening
+
+Stage 10-A는 Stage 11-A dry-run package 진입을 위한 boundary를 제공한다.
+
+Hardening 기준:
+
+- dry-run package design allowed
+- dry-run simulation only
+- external adapter contract count
+- Stage 11 dry-run package required before actual execution
+- Agent Registry Change Management는 별도 작업축
+- AI멤버 추가/삭제/비활성화는 현재 runtime dry-run 범위 밖
+- 필수 gate 멤버 비활성화는 별도 승인 필요
+- 역할/슬롯/지식팩 영향분석 필요
+
 ### Stage 10-A Integrated External Execution Adapter Boundary Design
 
 Stage 10-A는 Stage 9-B closure를 source로 하는 read-only 외부 실행 adapter 경계 설계 단계다.
@@ -2782,7 +2797,36 @@ Ready decision:
 - 실제 Cursor/GitHub/Connector/DB/production runner 실행 허가는 아니다.
 - Stage 11에서 dry-run adapter package로 넘어가기 위한 기준선이다.
 
-구현: `apps/web/src/lib/agents/evaluateExternalExecutionAdapterBoundary.ts`, `externalExecutionAdapterBoundaryTypes.ts`, `externalExecutionAdapterBoundaryConstants.ts`, `externalExecutionAdapterBoundaryItems.ts`, `externalExecutionAdapterBoundaryValidation.ts`, `externalExecutionAdapterBoundarySource.ts`, `externalExecutionAdapterBoundarySourceMapping.ts`, `externalExecutionAdapterBoundarySupport.ts`, `externalExecutionAdapterBoundaryFindings.ts`, `runtimeExecutionMvpClosureStage10Trace.ts`
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionAdapterBoundary.ts`, `externalExecutionAdapterBoundaryTypes.ts`, `externalExecutionAdapterBoundaryConstants.ts`, `externalExecutionAdapterBoundaryItems.ts`, `externalExecutionAdapterBoundaryValidation.ts`, `externalExecutionAdapterBoundarySource.ts`, `externalExecutionAdapterBoundarySourceMapping.ts`, `externalExecutionAdapterBoundaryDryRunTrace.ts`, `externalExecutionAdapterBoundarySupport.ts`, `externalExecutionAdapterBoundaryFindings.ts`, `runtimeExecutionMvpClosureStage10Trace.ts`
+
+### Stage 11-A External Execution Adapter Dry-run Package
+
+Stage 11-A는 Stage 10-A boundary를 source로 하는 read-only dry-run package 단계다.
+
+통합 범위:
+
+- External execution adapter dry-run contract
+- Cursor/GitHub adapter dry-run contract
+- Connector Gateway adapter dry-run contract
+- Runner process adapter dry-run contract
+- Operator approval before dry-run
+- Rollback plan before external execution
+- Audit event before external execution
+- No side-effect boundary
+- Agent Registry Change boundary
+- Stage 12 manual dry-run gate entry candidate
+
+Ready decision:
+
+`stage11_external_execution_dry_run_package_ready`
+
+의미:
+
+- 외부 실행을 실제 호출하지 않고 dry-run package만 준비한다.
+- Stage 12 manual dry-run gate로 넘어갈 수 있다.
+- 실제 Cursor/GitHub/Connector/DB/production runner 실행 허가는 아니다.
+
+구현: `apps/web/src/lib/agents/evaluateExternalExecutionDryRunPackage.ts`, `externalExecutionDryRunPackageTypes.ts`, `externalExecutionDryRunPackageConstants.ts`, `externalExecutionDryRunPackageItems.ts`, `externalExecutionDryRunPackageValidation.ts`, `externalExecutionDryRunPackageSource.ts`, `externalExecutionDryRunPackageSourceMapping.ts`, `externalExecutionDryRunPackageSupport.ts`, `externalExecutionDryRunPackageFindings.ts`
 
 ### Stage 3–4 빠른 진행 로드맵
 
