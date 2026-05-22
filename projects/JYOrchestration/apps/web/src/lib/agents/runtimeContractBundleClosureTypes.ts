@@ -79,6 +79,9 @@ export interface RuntimeContractBundleValidationResult {
   readonly emptyForbiddenBoundaryItemIds: readonly string[];
   readonly missingStage8CandidateItemIds: readonly string[];
   readonly missingRequiredBeforeStage8ItemIds: readonly string[];
+  readonly nonDesignOnlyItemIds: readonly string[];
+  readonly missingStage8ScopeItemIds: readonly string[];
+  readonly missingSeparateApprovalItemIds: readonly string[];
 }
 
 export interface RuntimeContractBundleClosureReport {
@@ -112,6 +115,10 @@ export interface RuntimeContractBundleClosureReport {
   readonly contractBundleClosureOnly: true;
   readonly stage8EntryCandidate: "minimal_runtime_execution_vertical_slice";
   readonly stage8EntryReady: boolean;
+  readonly stage8EntryScope: readonly string[];
+  readonly stage8EntryOutOfScope: readonly string[];
+  readonly stage8EntryRequiresSeparateApproval: true;
+  readonly stage8EntryImplementationAllowedInThisStep: false;
 
   readonly actualApiEndpointImplementedInThisStep: false;
   readonly actualRuntimeExecutionAllowedInThisStep: false;
@@ -157,6 +164,8 @@ export interface RuntimeContractBundleClosureDecisionInput {
   readonly sourceActualUiImplementationAllowedInThisStep: boolean;
   readonly bundleItemsValid: boolean;
   readonly stage8EntryReady: boolean;
+  readonly stage8EntryRequiresSeparateApproval: boolean;
+  readonly stage8EntryImplementationAllowedInThisStep: boolean;
   readonly confirmationsSatisfied: boolean;
 }
 

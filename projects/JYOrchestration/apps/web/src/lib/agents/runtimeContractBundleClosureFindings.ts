@@ -95,7 +95,14 @@ export function appendRuntimeContractBundleClosureFindings(input: {
 
   findings.push(finding("info", "source_api_contract_trace_copied", "Stage 7-B API contract trace copied into bundle closure report"));
   findings.push(finding("info", "bundle_items_validation_passed", "All required bundle items validated"));
+  findings.push(finding("info", "bundle_items_design_only_verified", "All bundle items remain design-only"));
+  findings.push(finding("info", "bundle_items_stage8_scope_verified", "Stage 8 entry bundle item scope boundaries verified"));
+  findings.push(finding("info", "bundle_items_separate_approval_verified", "Stage 8 entry separate approval requirements verified"));
   findings.push(finding("info", "stage8_entry_candidate_defined", "Stage 8-A minimal vertical slice entry candidate is defined"));
+  findings.push(finding("info", "stage8_entry_scope_defined", "Stage 8-A minimal vertical slice scope is defined"));
+  findings.push(finding("info", "stage8_entry_out_of_scope_defined", "Stage 8-A out-of-scope boundaries are defined"));
+  findings.push(finding("info", "stage8_entry_separate_approval_required", "Stage 8 entry requires separate operator approval"));
+  findings.push(finding("info", "stage8_entry_implementation_disallowed", "Stage 8 implementation remains disallowed in this step"));
   findings.push(finding("info", "stage8_entry_requires_operator_approval", "Stage 8 entry requires operator approval"));
   findings.push(finding("info", "actual_api_endpoint_still_disallowed", "Actual API endpoints remain disallowed after Stage 7"));
   findings.push(finding("info", "actual_runtime_execution_still_disallowed", "Actual runtime execution remains disallowed"));
@@ -109,5 +116,8 @@ export function appendRuntimeContractBundleClosureFindings(input: {
   findings.push(finding("info", "ui_implementation_still_disallowed", "UI implementation remains disallowed"));
   if (decision === "stage7_runtime_contract_bundle_closed") {
     findings.push(finding("info", "stage7_contract_bundle_closed", "Stage 7 runtime contract bundle is closed"));
+    findings.push(
+      finding("info", "stage7_closure_to_stage8_handoff_ready", "Stage 7 closure handoff to Stage 8-A is ready for separate approval"),
+    );
   }
 }

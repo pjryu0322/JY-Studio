@@ -22,6 +22,8 @@ import {
   RUNTIME_CONTRACT_BUNDLE_CLOSURE_VERSION,
   STAGE7_C_RECOMMENDED_NEXT_PHASES,
   STAGE7_C_SEPARATED_WORK_ITEMS,
+  STAGE8_A_MINIMAL_VERTICAL_SLICE_SCOPE,
+  STAGE8_A_OUT_OF_SCOPE,
   STAGE8_ENTRY_CANDIDATE,
   validateRuntimeContractBundleItems,
 } from "@/lib/agents/runtimeContractBundleClosureSupport";
@@ -70,6 +72,8 @@ export function evaluateRuntimeContractBundleClosure(
     sourceActualUiImplementationAllowedInThisStep: source.sourceActualUiImplementationAllowedInThisStep,
     bundleItemsValid,
     stage8EntryReady,
+    stage8EntryRequiresSeparateApproval: true,
+    stage8EntryImplementationAllowedInThisStep: false,
     confirmationsSatisfied: parsed.confirmationsSatisfied,
   });
 
@@ -77,6 +81,10 @@ export function evaluateRuntimeContractBundleClosure(
     sourceApiContractFingerprint: source.apiContractFingerprint,
     bundleItemCount,
     stage8CandidateItemCount,
+    requiredBeforeStage8ItemCount,
+    stage8EntryReady,
+    stage8EntryRequiresSeparateApproval: true,
+    stage8EntryImplementationAllowedInThisStep: false,
     confirmationCount: parsed.confirmationCount,
   });
 
@@ -125,6 +133,10 @@ export function evaluateRuntimeContractBundleClosure(
     contractBundleClosureOnly: true,
     stage8EntryCandidate: STAGE8_ENTRY_CANDIDATE,
     stage8EntryReady,
+    stage8EntryScope: [...STAGE8_A_MINIMAL_VERTICAL_SLICE_SCOPE],
+    stage8EntryOutOfScope: [...STAGE8_A_OUT_OF_SCOPE],
+    stage8EntryRequiresSeparateApproval: true,
+    stage8EntryImplementationAllowedInThisStep: false,
     actualApiEndpointImplementedInThisStep: false,
     actualRuntimeExecutionAllowedInThisStep: false,
     actualExecutionRunnerAllowedInThisStep: false,

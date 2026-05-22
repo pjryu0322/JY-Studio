@@ -11,7 +11,10 @@ import {
   buildStage7BRuntimeApiContractConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 import type { RuntimeApiContractDesignDecisionInput } from "@/lib/agents/runtimeApiContractDesignTypes";
-import type { RuntimeApiEndpointContract } from "@/lib/agents/runtimeApiContractDesignTypes";
+import type {
+  RuntimeApiContractDesignReport,
+  RuntimeApiEndpointContract,
+} from "@/lib/agents/runtimeApiContractDesignTypes";
 import { evaluateRuntimeImplementationPlanningCandidate } from "@/lib/agents/evaluateRuntimeImplementationPlanningCandidate";
 
 function readyApiDecisionInput(
@@ -393,5 +396,19 @@ describe("multi-agent runtime api contract design stage 7-B", () => {
 
   it("ready findings include endpoint_path_safety_validation_passed", () => {
     expect(evaluateReadyApi().findings.some((f) => f.code === "endpoint_path_safety_validation_passed")).toBe(true);
+  });
+
+  it("ready report exposes approvalCount as number", () => {
+    expect(typeof evaluateReadyApi().approvalCount).toBe("number");
+  });
+
+  it("RuntimeApiContractDesignReport typed trace counts are accessible on ready path", () => {
+    const report: RuntimeApiContractDesignReport = evaluateReadyApi();
+    expect(report.approvalCount).toBeGreaterThan(0);
+    expect(report.endpointDesignOnlyCount).toBe(report.endpointContractCount);
+    expect(report.implementedEndpointCount).toBe(0);
+    expect(typeof report.postEndpointCount).toBe("number");
+    expect(typeof report.getEndpointCount).toBe("number");
+    expect(typeof report.patchEndpointCount).toBe("number");
   });
 });

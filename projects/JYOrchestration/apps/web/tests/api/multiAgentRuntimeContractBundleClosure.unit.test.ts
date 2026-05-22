@@ -34,6 +34,8 @@ function readyBundleDecisionInput(
     sourceActualUiImplementationAllowedInThisStep: false,
     bundleItemsValid: true,
     stage8EntryReady: true,
+    stage8EntryRequiresSeparateApproval: true,
+    stage8EntryImplementationAllowedInThisStep: false,
     confirmationsSatisfied: true,
     ...overrides,
   };
@@ -302,6 +304,104 @@ describe("multi-agent runtime contract bundle closure stage 7-C", () => {
     expect(report.bundleFingerprint).toContain(report.sourceApiContractFingerprint);
     expect(report.bundleFingerprint).toContain("bundleItems:12");
     expect(report.bundleFingerprint).toContain("stage8Candidates:");
+    expect(report.bundleFingerprint).toContain("requiredBeforeStage8:");
+    expect(report.bundleFingerprint).toContain("stage8Ready:true");
+    expect(report.bundleFingerprint).toContain("separateApproval:true");
+    expect(report.bundleFingerprint).toContain("implementationAllowed:false");
+  });
+
+  it("ready report stage8EntryScope includes in_memory_runtime_execution_record", () => {
+    expect(evaluateReadyBundle().stage8EntryScope).toContain("in_memory_runtime_execution_record");
+  });
+
+  it("ready report stage8EntryScope includes mock_runtime_runner", () => {
+    expect(evaluateReadyBundle().stage8EntryScope).toContain("mock_runtime_runner");
+  });
+
+  it("ready report stage8EntryOutOfScope includes actual_db_write", () => {
+    expect(evaluateReadyBundle().stage8EntryOutOfScope).toContain("actual_db_write");
+  });
+
+  it("ready report stage8EntryOutOfScope includes actual_schema_migration", () => {
+    expect(evaluateReadyBundle().stage8EntryOutOfScope).toContain("actual_schema_migration");
+  });
+
+  it("ready report stage8EntryOutOfScope includes actual_cursor_github_call", () => {
+    expect(evaluateReadyBundle().stage8EntryOutOfScope).toContain("actual_cursor_github_call");
+  });
+
+  it("ready report stage8EntryRequiresSeparateApproval is true", () => {
+    expect(evaluateReadyBundle().stage8EntryRequiresSeparateApproval).toBe(true);
+  });
+
+  it("ready report stage8EntryImplementationAllowedInThisStep is false", () => {
+    expect(evaluateReadyBundle().stage8EntryImplementationAllowedInThisStep).toBe(false);
+  });
+
+  it("resolveRuntimeContractBundleClosureDecision blocks when stage8EntryRequiresSeparateApproval is false", () => {
+    expect(
+      resolveRuntimeContractBundleClosureDecision(
+        readyBundleDecisionInput({ stage8EntryRequiresSeparateApproval: false }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("resolveRuntimeContractBundleClosureDecision blocks when stage8EntryImplementationAllowedInThisStep is true", () => {
+    expect(
+      resolveRuntimeContractBundleClosureDecision(
+        readyBundleDecisionInput({ stage8EntryImplementationAllowedInThisStep: true }),
+      ),
+    ).toBe("blocked");
+  });
+
+  it("validation detects nonDesignOnlyItemIds", () => {
+    const items = evaluateReadyBundle().bundleItems;
+    const invalid = { ...items[0], designOnly: false as true };
+    expect(validateRuntimeContractBundleItems([invalid]).nonDesignOnlyItemIds).toContain(items[0].bundleItemId);
+  });
+
+  it("validation detects missingStage8ScopeItemIds", () => {
+    const items = evaluateReadyBundle().bundleItems;
+    const invalidItems = items.map((item) =>
+      item.bundleItemId === "stage8-minimal-vertical-slice-entry"
+        ? { ...item, forbiddenInThisStep: ["actual_runtime_execution_api"] as readonly string[] }
+        : item,
+    );
+    expect(validateRuntimeContractBundleItems(invalidItems).missingStage8ScopeItemIds).toContain(
+      "stage8-minimal-vertical-slice-entry",
+    );
+  });
+
+  it("validation detects missingSeparateApprovalItemIds", () => {
+    const items = evaluateReadyBundle().bundleItems;
+    const invalidItems = items.map((item) =>
+      item.bundleItemId === "stage8-minimal-vertical-slice-entry"
+        ? { ...item, requiredApprovals: ["runtime_operator"] as readonly string[] }
+        : item,
+    );
+    expect(validateRuntimeContractBundleItems(invalidItems).missingSeparateApprovalItemIds).toContain(
+      "stage8-minimal-vertical-slice-entry",
+    );
+  });
+
+  it("ready findings include stage8_entry_scope_defined", () => {
+    expect(evaluateReadyBundle().findings.some((f) => f.code === "stage8_entry_scope_defined")).toBe(true);
+  });
+
+  it("ready findings include stage8_entry_out_of_scope_defined", () => {
+    expect(evaluateReadyBundle().findings.some((f) => f.code === "stage8_entry_out_of_scope_defined")).toBe(true);
+  });
+
+  it("ready findings include stage8_entry_separate_approval_required", () => {
+    expect(evaluateReadyBundle().findings.some((f) => f.code === "stage8_entry_separate_approval_required")).toBe(true);
+  });
+
+  it("ready findings include stage8_entry_implementation_disallowed", () => {
+    expect(evaluateReadyBundle().findings.some((f) => f.code === "stage8_entry_implementation_disallowed")).toBe(true);
+  });
+
+  it("ready findings include stage7_closure_to_stage8_handoff_ready", () => {
+    expect(evaluateReadyBundle().findings.some((f) => f.code === "stage7_closure_to_stage8_handoff_ready")).toBe(true);
   });
 
   it("buildRuntimeContractBundleItems returns empty when source api not ready", () => {

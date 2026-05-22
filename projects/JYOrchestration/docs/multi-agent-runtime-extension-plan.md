@@ -2511,6 +2511,51 @@ Stage 8-A 권장 최소 범위:
 
 구현: `apps/web/src/lib/agents/evaluateRuntimeContractBundleClosure.ts`, `runtimeContractBundleClosureTypes.ts`, `runtimeContractBundleClosureItems.ts`, `runtimeContractBundleClosureItemValidation.ts`
 
+### Stage 7-C Integrated Runtime Contract Bundle Closure — Hardening
+
+Stage 7-C는 Stage 7의 압축 종료 단계다.
+
+이 단계는 다음 계약 후보를 하나의 bundle로 닫는다.
+
+- Runtime API Contract
+- Execution Runner Contract 후보
+- Dry-run Runner Contract 후보
+- Cursor/GitHub Wire Contract 후보
+- Connector Gateway Contract 후보
+- Persistence/Schema Boundary 후보
+- Approval/Security Gate 후보
+- Rollback/Error/Audit 후보
+- Stage 8-A Minimal Vertical Slice 진입 후보
+
+Ready decision:
+
+`stage7_runtime_contract_bundle_closed`
+
+의미:
+
+- Stage 7 read-only contract bundle이 닫혔다.
+- Stage 8-A로 넘어갈 수 있다.
+- 실제 API route, runner, DB, Cursor/GitHub, UI 구현 허가는 아니다.
+
+Stage 8-A 최소 범위:
+
+- in-memory runtime execution record
+- mock runtime runner
+- dry-run-like status transition
+- runtime execution audit object
+- unit tests only
+
+Stage 8-A out-of-scope:
+
+- actual API route handlers
+- actual runtime execution API
+- actual execution runner side effects
+- actual Cursor/GitHub call
+- actual Connector Gateway routing change
+- actual DB write
+- actual schema migration
+- actual UI
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

@@ -24,7 +24,9 @@ function sourceReadyForBundleItems(source: RuntimeApiContractDesignReport): bool
     source.actualPersistenceAllowedInThisStep === false &&
     source.actualSchemaMigrationAllowedInThisStep === false &&
     source.actualCursorGithubWireAllowedInThisStep === false &&
-    source.actualConnectorRoutingChangeAllowedInThisStep === false
+    source.actualConnectorRoutingChangeAllowedInThisStep === false &&
+    source.sourceActualExternalSideEffectAllowedInThisStep === false &&
+    source.sourceActualUiImplementationAllowedInThisStep === false
   );
 }
 

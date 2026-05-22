@@ -140,6 +140,12 @@ export interface RuntimeApiContractDesignReport {
   readonly statusTransitionCount: number;
   readonly errorCodeCount: number;
   readonly auditEventCount: number;
+  readonly approvalCount: number;
+  readonly endpointDesignOnlyCount: number;
+  readonly implementedEndpointCount: number;
+  readonly postEndpointCount: number;
+  readonly getEndpointCount: number;
+  readonly patchEndpointCount: number;
 
   readonly recommendedNextPhases: readonly string[];
   readonly separatedWorkItems: readonly string[];

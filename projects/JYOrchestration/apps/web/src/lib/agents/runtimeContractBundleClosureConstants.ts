@@ -13,6 +13,36 @@ export const RUNTIME_CONTRACT_BUNDLE_CLOSURE_TITLE = "Runtime Contract Bundle Cl
 
 export const STAGE8_ENTRY_CANDIDATE = "minimal_runtime_execution_vertical_slice" as const;
 
+export const STAGE8_A_MINIMAL_VERTICAL_SLICE_SCOPE = [
+  "in_memory_runtime_execution_record",
+  "mock_runtime_runner",
+  "dry_run_like_status_transition",
+  "runtime_execution_audit_object",
+  "unit_tests_only",
+] as const;
+
+export const STAGE8_A_OUT_OF_SCOPE = [
+  "actual_api_route_handlers",
+  "actual_runtime_execution_api",
+  "actual_execution_runner_side_effects",
+  "actual_cursor_github_call",
+  "actual_connector_gateway_routing_change",
+  "actual_db_write",
+  "actual_schema_migration",
+  "actual_ui",
+] as const;
+
+export const STAGE8_ENTRY_REQUIRED_FORBIDDEN_MARKERS = [
+  "actual_db_write",
+  "actual_schema_migration",
+  "actual_cursor_github_wire",
+] as const;
+
+export const STAGE8_ENTRY_REQUIRED_APPROVALS = [
+  "operator_stage8_entry_approval",
+  "scope_boundary_approval",
+] as const;
+
 export const REQUIRED_STAGE7_C_BUNDLE_CLOSURE_CONFIRMATIONS = [
   "runtimeContractBundleReviewed",
   "runtimeContractBundleNoImplementationConfirmed",

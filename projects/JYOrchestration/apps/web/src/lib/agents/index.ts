@@ -932,6 +932,7 @@ export {
   evaluateRuntimeApiContractDesign,
   resolveRuntimeApiContractDesignDecision,
   validateRuntimeApiEndpointContracts,
+  buildRuntimeApiEndpointContracts,
 } from "@/lib/agents/evaluateRuntimeApiContractDesign";
 
 export type {

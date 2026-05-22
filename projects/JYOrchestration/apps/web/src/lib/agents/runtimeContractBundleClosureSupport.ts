@@ -27,6 +27,8 @@ export {
   RUNTIME_CONTRACT_BUNDLE_CLOSURE_VERSION,
   STAGE7_C_RECOMMENDED_NEXT_PHASES,
   STAGE7_C_SEPARATED_WORK_ITEMS,
+  STAGE8_A_MINIMAL_VERTICAL_SLICE_SCOPE,
+  STAGE8_A_OUT_OF_SCOPE,
   STAGE8_ENTRY_CANDIDATE,
 } from "@/lib/agents/runtimeContractBundleClosureConstants";
 
@@ -87,7 +89,9 @@ export function resolveRuntimeContractBundleClosureDecision(
     input.sourceActualCursorGithubWireAllowedInThisStep !== false ||
     input.sourceActualConnectorRoutingChangeAllowedInThisStep !== false ||
     input.sourceActualUiImplementationAllowedInThisStep !== false ||
-    !input.bundleItemsValid
+    !input.bundleItemsValid ||
+    input.stage8EntryRequiresSeparateApproval !== true ||
+    input.stage8EntryImplementationAllowedInThisStep !== false
   ) {
     return "blocked";
   }
@@ -103,6 +107,10 @@ export function buildRuntimeContractBundleClosureFingerprint(input: {
   readonly sourceApiContractFingerprint: string;
   readonly bundleItemCount: number;
   readonly stage8CandidateItemCount: number;
+  readonly requiredBeforeStage8ItemCount: number;
+  readonly stage8EntryReady: boolean;
+  readonly stage8EntryRequiresSeparateApproval: boolean;
+  readonly stage8EntryImplementationAllowedInThisStep: boolean;
   readonly confirmationCount: number;
 }): string {
   return [
@@ -110,6 +118,10 @@ export function buildRuntimeContractBundleClosureFingerprint(input: {
     input.sourceApiContractFingerprint,
     `bundleItems:${input.bundleItemCount}`,
     `stage8Candidates:${input.stage8CandidateItemCount}`,
+    `requiredBeforeStage8:${input.requiredBeforeStage8ItemCount}`,
+    `stage8Ready:${input.stage8EntryReady}`,
+    `separateApproval:${input.stage8EntryRequiresSeparateApproval}`,
+    `implementationAllowed:${input.stage8EntryImplementationAllowedInThisStep}`,
     `confirmations:${input.confirmationCount}`,
   ].join("::");
 }
