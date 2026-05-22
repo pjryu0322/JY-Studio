@@ -1,9 +1,10 @@
 /**
- * Shared Stage 6-A/6-B evaluator ready-path input (read-only chain).
+ * Shared Stage 6-A/6-B/6-C evaluator ready-path input (read-only chain).
  */
 
 import type { RuntimeExecutionModelBaselineInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
 import type { RuntimeExecutionModelCandidateInput } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
+import type { RuntimeExecutionModelReviewGateInput } from "@/lib/agents/runtimeExecutionModelReviewGateTypes";
 import { buildStage5ReadyChainInput } from "@/lib/agents/stage5KnowledgeFoundationInput";
 
 export function buildStage6AModelBaselineConfirmedInput(): Pick<
@@ -49,5 +50,32 @@ export function buildStage6BReadyCandidateInput(): RuntimeExecutionModelCandidat
   return {
     baseline: buildStage6AReadyBaselineInput(),
     ...buildStage6BRuntimeExecutionModelCandidateConfirmedInput(),
+  };
+}
+
+export function buildStage6CModelReviewGateConfirmedInput(): Required<
+  Pick<
+    RuntimeExecutionModelReviewGateInput,
+    | "runtimeModelReviewGateConfirmed"
+    | "runtimeModelFieldContractReviewed"
+    | "runtimeModelNoRunBoundaryReviewed"
+    | "runtimeModelPersistenceBoundaryReviewed"
+    | "runtimeModelApprovalBoundaryReviewed"
+  >
+> {
+  return {
+    runtimeModelReviewGateConfirmed: true,
+    runtimeModelFieldContractReviewed: true,
+    runtimeModelNoRunBoundaryReviewed: true,
+    runtimeModelPersistenceBoundaryReviewed: true,
+    runtimeModelApprovalBoundaryReviewed: true,
+  };
+}
+
+/** Ready-path input for Stage 6-C (Stage 6-B ready + 6-C review confirmations). */
+export function buildStage6CReadyReviewGateInput(): RuntimeExecutionModelReviewGateInput {
+  return {
+    modelCandidate: buildStage6BReadyCandidateInput(),
+    ...buildStage6CModelReviewGateConfirmedInput(),
   };
 }

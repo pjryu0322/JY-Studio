@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildStage6CModelReviewGateConfirmedInput,
-  buildStage6CReadyReviewGateInput,
   evaluateRuntimeExecutionModelReviewGate,
   resolveRuntimeExecutionModelReviewGateDecision,
 } from "@/lib/agents/evaluateRuntimeExecutionModelReviewGate";
-import { buildStage6BReadyCandidateInput } from "@/lib/agents/stage6RuntimeExecutionModelInput";
+import { buildStage6CModelReviewGateConfirmedInput } from "@/lib/agents/stage6RuntimeExecutionModelInput";
+import {
+  buildStage6BReadyCandidateInput,
+  buildStage6CReadyReviewGateInput,
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
 import { REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS } from "@/lib/agents/runtimeExecutionModelCandidateConstants";
 
 function evaluateReadyReviewGate(input: Parameters<typeof evaluateRuntimeExecutionModelReviewGate>[0] = {}) {

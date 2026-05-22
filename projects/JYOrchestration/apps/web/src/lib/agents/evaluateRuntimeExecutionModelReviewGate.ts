@@ -26,11 +26,12 @@ import {
   STAGE6_C_SEPARATED_WORK_ITEMS,
 } from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
 
+export { resolveRuntimeExecutionModelReviewGateDecision } from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
+
 export {
   buildStage6CModelReviewGateConfirmedInput,
   buildStage6CReadyReviewGateInput,
-  resolveRuntimeExecutionModelReviewGateDecision,
-} from "@/lib/agents/runtimeExecutionModelReviewGateSupport";
+} from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {
   RuntimeExecutionModelReviewGateDecisionInput,

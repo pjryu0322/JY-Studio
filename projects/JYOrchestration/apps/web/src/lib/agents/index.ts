@@ -857,8 +857,6 @@ export {
 
 export {
   evaluateRuntimeExecutionModelReviewGate,
-  buildStage6CReadyReviewGateInput,
-  buildStage6CModelReviewGateConfirmedInput,
   resolveRuntimeExecutionModelReviewGateDecision,
 } from "@/lib/agents/evaluateRuntimeExecutionModelReviewGate";
 
@@ -874,6 +872,8 @@ export {
   buildStage6AModelBaselineConfirmedInput,
   buildStage6BReadyCandidateInput,
   buildStage6BRuntimeExecutionModelCandidateConfirmedInput,
+  buildStage6CReadyReviewGateInput,
+  buildStage6CModelReviewGateConfirmedInput,
 } from "@/lib/agents/stage6RuntimeExecutionModelInput";
 
 export type {
