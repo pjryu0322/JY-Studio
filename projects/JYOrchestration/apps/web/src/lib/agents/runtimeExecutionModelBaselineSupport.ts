@@ -49,8 +49,16 @@ function mapChecklist(entries: readonly ChecklistEntry[]): RuntimeExecutionModel
   }));
 }
 
+export function uniqueRuntimeExecutionUnitKinds(
+  kinds: readonly RuntimeExecutionUnitKind[],
+): readonly RuntimeExecutionUnitKind[] {
+  return [...new Set(kinds)].sort((a, b) => a.localeCompare(b));
+}
+
 export function parseRuntimeExecutionModelBaselineInput(input?: RuntimeExecutionModelBaselineInput): {
   readonly executionUnitKinds: readonly RuntimeExecutionUnitKind[];
+  readonly executionUnitKindInputNormalized: boolean;
+  readonly executionUnitKindDuplicateRemovedCount: number;
   readonly confirmationsSatisfied: boolean;
   readonly stage6ModelReviewConfirmed: boolean;
   readonly stage6NoActualExecutionConfirmed: boolean;
@@ -58,13 +66,17 @@ export function parseRuntimeExecutionModelBaselineInput(input?: RuntimeExecution
   readonly stage6NoDbMigrationConfirmed: boolean;
   readonly stage6NoFeatureFlagWireConfirmed: boolean;
 } {
+  const rawRequested = input?.requestedExecutionUnitKinds;
   const executionUnitKinds =
-    input?.requestedExecutionUnitKinds === undefined
+    rawRequested === undefined
       ? [...DEFAULT_RUNTIME_EXECUTION_UNIT_KINDS]
-      : [...input.requestedExecutionUnitKinds].sort((a, b) => a.localeCompare(b));
+      : uniqueRuntimeExecutionUnitKinds(rawRequested);
 
   return {
     executionUnitKinds,
+    executionUnitKindInputNormalized: rawRequested !== undefined,
+    executionUnitKindDuplicateRemovedCount:
+      rawRequested === undefined ? 0 : rawRequested.length - executionUnitKinds.length,
     stage6ModelReviewConfirmed: input?.stage6ModelReviewConfirmed === true,
     stage6NoActualExecutionConfirmed: input?.stage6NoActualExecutionConfirmed === true,
     stage6NoConnectorRoutingChangeConfirmed: input?.stage6NoConnectorRoutingChangeConfirmed === true,
@@ -92,6 +104,7 @@ export function resolveRuntimeExecutionModelBaselineDecision(
     input.sourceStage5Decision === "blocked" ||
     input.sourceStage6EntryMode !== "design_candidate_only" ||
     input.sourceStage6ActualRuntimeExecutionAllowed !== false ||
+    input.sourceStage6RequiresSeparateApproval !== true ||
     input.hasUnknownExecutionUnitKind
   ) {
     return "blocked";
@@ -133,6 +146,7 @@ export function buildRuntimeExecutionModelBaselineChecklists(input: {
   readonly parsed: ReturnType<typeof parseRuntimeExecutionModelBaselineInput>;
   readonly sourceStage5Decision: RuntimeExecutionModelBaselineDecisionInput["sourceStage5Decision"];
   readonly sourceStage6EntryMode: RuntimeExecutionModelBaselineDecisionInput["sourceStage6EntryMode"];
+  readonly sourceStage6RequiresSeparateApproval: boolean;
 }): {
   readonly confirmationChecklist: readonly RuntimeExecutionModelBaselineChecklistItem[];
   readonly boundaryChecklist: readonly RuntimeExecutionModelBaselineChecklistItem[];
@@ -182,6 +196,11 @@ export function buildRuntimeExecutionModelBaselineChecklists(input: {
       satisfied: input.sourceStage5Decision === "stage5_knowledge_foundation_ready",
       detail: `sourceStage5Decision=${input.sourceStage5Decision}`,
     },
+    {
+      item: "sourceStage6RequiresSeparateApproval=true",
+      satisfied: input.sourceStage6RequiresSeparateApproval === true,
+      detail: `sourceStage6RequiresSeparateApproval=${input.sourceStage6RequiresSeparateApproval}`,
+    },
   ]);
 
   return { confirmationChecklist, boundaryChecklist };
@@ -209,7 +228,13 @@ export function appendRuntimeExecutionModelBaselineFindings(input: {
   }
 
   if (unknownUnitKinds.length > 0) {
-    findings.push(finding("blocking", "unknown_execution_unit_kind", "Unknown execution unit kind requested"));
+    findings.push(
+      finding(
+        "blocking",
+        "unknown_execution_unit_kind",
+        `Unknown execution unit kind requested: ${unknownUnitKinds.join(", ")}`,
+      ),
+    );
     findings.push(finding("blocking", "stage6_a_baseline_blocked", "Stage 6-A baseline is blocked"));
     return;
   }

@@ -4,9 +4,11 @@ import {
   buildStage6BReadyCandidateInput,
   buildStage6BRuntimeExecutionModelCandidateConfirmedInput,
   evaluateRuntimeExecutionModelCandidate,
+  resolveRuntimeExecutionModelCandidateDecision,
   validateRuntimeExecutionModelCandidates,
 } from "@/lib/agents/evaluateRuntimeExecutionModelCandidate";
 import { buildStage6AReadyBaselineInput } from "@/lib/agents/evaluateRuntimeExecutionModelBaseline";
+import type { RuntimeExecutionModelCandidateKind } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 
 function evaluateReadyCandidate(input: Parameters<typeof evaluateRuntimeExecutionModelCandidate>[0] = {}) {
   return evaluateRuntimeExecutionModelCandidate({ ...buildStage6BReadyCandidateInput(), ...input });
@@ -119,7 +121,94 @@ describe("multi-agent runtime execution model candidate stage 6-B", () => {
     const incomplete = buildDefaultRuntimeExecutionModelCandidates().filter(
       (c) => c.kind !== "RuntimeExecutionRollbackPlan",
     );
-    expect(validateRuntimeExecutionModelCandidates(incomplete).hasRequiredModelKinds).toBe(false);
+    const validation = validateRuntimeExecutionModelCandidates(incomplete);
+    expect(validation.hasRequiredModelKinds).toBe(false);
+    expect(validation.missingKinds).toContain("RuntimeExecutionRollbackPlan");
+    expect(
+      resolveRuntimeExecutionModelCandidateDecision({
+        sourceBaselineDecision: "ready_for_execution_model_candidate",
+        confirmationsSatisfied: true,
+        hasRequiredModelKinds: validation.hasRequiredModelKinds,
+        candidatePostureValid: validation.candidatePostureValid,
+      }),
+    ).toBe("blocked");
+  });
+
+  it("duplicate RuntimeExecutionPlan is blocked", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates();
+    const plan = candidates.find((c) => c.kind === "RuntimeExecutionPlan");
+    const validation = validateRuntimeExecutionModelCandidates([...candidates, plan!]);
+    expect(validation.duplicateKinds).toContain("RuntimeExecutionPlan");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("unknown candidate kind is blocked", () => {
+    const invalid = [
+      ...buildDefaultRuntimeExecutionModelCandidates(),
+      {
+        kind: "UnknownRuntimeExecutionModel" as RuntimeExecutionModelCandidateKind,
+        modelName: "UnknownRuntimeExecutionModel",
+        purpose: "invalid",
+        proposedFields: ["id"],
+        forbiddenFields: [],
+        persistenceCandidateOnly: true,
+      },
+    ];
+    const validation = validateRuntimeExecutionModelCandidates(invalid);
+    expect(validation.unknownKinds).toContain("UnknownRuntimeExecutionModel");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("empty purpose is blocked", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+      c.kind === "RuntimeExecutionRequest" ? { ...c, purpose: "   " } : c,
+    );
+    const validation = validateRuntimeExecutionModelCandidates(candidates);
+    expect(validation.emptyPurposeKinds).toContain("RuntimeExecutionRequest");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("empty modelName is blocked", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+      c.kind === "RuntimeExecutionPlan" ? { ...c, modelName: "" } : c,
+    );
+    const validation = validateRuntimeExecutionModelCandidates(candidates);
+    expect(validation.emptyModelNameKinds).toContain("RuntimeExecutionPlan");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("empty proposedFields is blocked", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+      c.kind === "RuntimeExecutionStep" ? { ...c, proposedFields: [] } : c,
+    );
+    const validation = validateRuntimeExecutionModelCandidates(candidates);
+    expect(validation.emptyProposedFieldKinds).toContain("RuntimeExecutionStep");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("forbidden field in proposedFields is blocked", () => {
+    const candidates = buildDefaultRuntimeExecutionModelCandidates().map((c) =>
+      c.kind === "RuntimeExecutionResult"
+        ? { ...c, proposedFields: [...c.proposedFields, "prismaClientCall"] }
+        : c,
+    );
+    const validation = validateRuntimeExecutionModelCandidates(candidates);
+    expect(validation.forbiddenFieldKinds).toContain("RuntimeExecutionResult");
+    expect(validation.candidatePostureValid).toBe(false);
+  });
+
+  it("RuntimeExecutionApprovalState uses requestId and approvalStatus fields", () => {
+    const model = evaluateReadyCandidate().modelCandidates.find((c) => c.kind === "RuntimeExecutionApprovalState");
+    expect(model?.proposedFields).toEqual(
+      expect.arrayContaining(["id", "requestId", "approvalStatus", "approvedBy", "approvedAt"]),
+    );
+  });
+
+  it("RuntimeExecutionRollbackPlan uses requestId and rollbackRequired fields", () => {
+    const model = evaluateReadyCandidate().modelCandidates.find((c) => c.kind === "RuntimeExecutionRollbackPlan");
+    expect(model?.proposedFields).toEqual(
+      expect.arrayContaining(["id", "requestId", "rollbackSteps", "rollbackRequired"]),
+    );
   });
 
   it("candidateOnly is true", () => {

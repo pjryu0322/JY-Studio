@@ -37,6 +37,7 @@ export {
 
 export {
   resolveRuntimeExecutionModelBaselineDecision,
+  uniqueRuntimeExecutionUnitKinds,
 } from "@/lib/agents/runtimeExecutionModelBaselineSupport";
 
 export type { RuntimeExecutionModelBaselineDecisionInput } from "@/lib/agents/runtimeExecutionModelBaselineTypes";
@@ -53,6 +54,7 @@ export function evaluateRuntimeExecutionModelBaseline(
     sourceStage5Decision: stage5Report.decision,
     sourceStage6EntryMode: stage5Report.stage6EntryMode,
     sourceStage6ActualRuntimeExecutionAllowed: stage5Report.stage6ActualRuntimeExecutionAllowed,
+    sourceStage6RequiresSeparateApproval: stage5Report.stage6RequiresSeparateApproval,
     confirmationsSatisfied: parsed.confirmationsSatisfied,
     hasUnknownExecutionUnitKind: unknownUnitKinds.length > 0,
   });
@@ -67,6 +69,7 @@ export function evaluateRuntimeExecutionModelBaseline(
     parsed,
     sourceStage5Decision: stage5Report.decision,
     sourceStage6EntryMode: stage5Report.stage6EntryMode,
+    sourceStage6RequiresSeparateApproval: stage5Report.stage6RequiresSeparateApproval,
   });
 
   const findings: RuntimeExecutionModelBaselineFinding[] = [];
@@ -85,8 +88,8 @@ export function evaluateRuntimeExecutionModelBaseline(
     sourceStage5Decision: stage5Report.decision,
     sourceStage6EntryCandidate: stage5Report.stage6EntryCandidate,
     sourceStage6EntryMode: stage5Report.stage6EntryMode,
-    sourceStage6ActualRuntimeExecutionAllowed: false,
-    sourceStage6RequiresSeparateApproval: true,
+    sourceStage6ActualRuntimeExecutionAllowed: stage5Report.stage6ActualRuntimeExecutionAllowed,
+    sourceStage6RequiresSeparateApproval: stage5Report.stage6RequiresSeparateApproval,
     modelBaselineVersion: MODEL_BASELINE_VERSION,
     modelBaselineTitle: MODEL_BASELINE_TITLE,
     modelBaselineSummary: buildRuntimeExecutionModelBaselineSummary(decision),
@@ -99,6 +102,9 @@ export function evaluateRuntimeExecutionModelBaseline(
     actualDbWriteAllowedInThisStep: false,
     actualFeatureFlagWireAllowedInThisStep: false,
     executionUnitKinds: parsed.executionUnitKinds,
+    unknownExecutionUnitKinds: unknownUnitKinds,
+    executionUnitKindInputNormalized: parsed.executionUnitKindInputNormalized,
+    executionUnitKindDuplicateRemovedCount: parsed.executionUnitKindDuplicateRemovedCount,
     executionBoundaries: [...DEFAULT_RUNTIME_EXECUTION_BOUNDARIES],
     requiredConfirmations: [...REQUIRED_STAGE6_A_MODEL_BASELINE_CONFIRMATIONS],
     confirmationChecklist,

@@ -2227,6 +2227,38 @@ Stage 6은 실제 runtime execution wire 구현이 아니라, runtime 실행을 
 - actual DB write
 - actual persistence implementation
 
+### Stage 6-A Hardening Rule
+
+Stage 6-A는 Stage 5-F의 `stage6RequiresSeparateApproval=true`를 명시적으로 검증한다.
+`sourceStage6ActualRuntimeExecutionAllowed=false`, `stage6EntryMode=design_candidate_only`,
+`stage6RequiresSeparateApproval=true`가 모두 충족되지 않으면 `blocked`가 된다.
+
+요청된 `requestedExecutionUnitKinds`는 dedupe·정렬 후 unknown kind 검사를 수행한다.
+
+### Stage 6-B Candidate Validation Rule
+
+Stage 6-B는 실제 schema/prisma/migration이 아니라 model candidate report만 생성한다.
+후보 모델은 7종으로 고정하며, 각 후보는 `purpose`, `modelName`, `proposedFields`,
+`persistenceCandidateOnly=true`를 충족해야 한다.
+
+금지 필드가 포함되거나, 후보가 누락/중복/unknown이면 `blocked`로 판정한다.
+
+표준 필드 기준:
+
+- RuntimeExecutionApprovalState: `id`, `requestId`, `approvalStatus`, `approvedBy`, `approvedAt`
+- RuntimeExecutionRollbackPlan: `id`, `requestId`, `rollbackSteps`, `rollbackRequired`
+
+### Stage 6-C 후보
+
+Stage 6-C는 다음 단계 후보로만 남긴다. 이번 Stage 6-A/6-B hardening에서는 구현하지 않는다.
+
+후보명:
+
+- Runtime Execution Model Review Gate
+- Controlled Runtime Execution Model Review Candidate
+
+주의: Stage 6-C도 실제 runtime execution API, runner, Cursor/GitHub wire, DB write를 허가하지 않는다.
+
 ### Stage 3–4 빠른 진행 로드맵
 
 ```text

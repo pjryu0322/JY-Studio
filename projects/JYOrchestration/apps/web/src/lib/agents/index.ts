@@ -846,7 +846,11 @@ export type {
 
 export {
   evaluateRuntimeExecutionModelCandidate,
+  buildDefaultRuntimeExecutionModelCandidates,
+  validateRuntimeExecutionModelCandidates,
 } from "@/lib/agents/evaluateRuntimeExecutionModelCandidate";
+
+export { uniqueRuntimeExecutionUnitKinds } from "@/lib/agents/evaluateRuntimeExecutionModelBaseline";
 
 export {
   buildStage6AReadyBaselineInput,
@@ -860,6 +864,7 @@ export type {
   RuntimeExecutionModelCandidateInput,
   RuntimeExecutionModelCandidateReport,
   RuntimeExecutionModelCandidateKind,
+  RuntimeExecutionModelCandidateValidationResult,
 } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 
 export {

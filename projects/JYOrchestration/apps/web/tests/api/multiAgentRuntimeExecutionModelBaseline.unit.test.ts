@@ -71,23 +71,73 @@ describe("multi-agent runtime execution model baseline stage 6-A", () => {
     expect(STAGE6_A_SEPARATED_WORK_ITEMS).toContain("actual_execution_runner");
   });
 
-  it("missing confirmation yields defer", () => {
-    expect(
-      evaluateRuntimeExecutionModelBaseline({
-        stage5Closure: buildStage5ReadyChainInput(),
-        ...buildStage6AModelBaselineConfirmedInput(),
-        stage6NoFeatureFlagWireConfirmed: false,
-      }).decision,
-    ).toBe("defer");
+  it("missing confirmation yields defer not blocked", () => {
+    const report = evaluateRuntimeExecutionModelBaseline({
+      stage5Closure: buildStage5ReadyChainInput(),
+      ...buildStage6AModelBaselineConfirmedInput(),
+      stage6NoFeatureFlagWireConfirmed: false,
+    });
+    expect(report.decision).toBe("defer");
+    expect(report.decision).not.toBe("blocked");
   });
 
   it("unknown execution unit kind yields blocked", () => {
+    const report = evaluateRuntimeExecutionModelBaseline({
+      ...buildStage6AReadyBaselineInput(),
+      requestedExecutionUnitKinds: ["unknown_execution_unit"],
+    });
+    expect(report.decision).toBe("blocked");
+    expect(report.unknownExecutionUnitKinds).toContain("unknown_execution_unit");
+    const unknownFinding = report.findings.find((f) => f.code === "unknown_execution_unit_kind");
+    expect(unknownFinding?.message).toContain("unknown_execution_unit");
+  });
+
+  it("duplicate requestedExecutionUnitKinds are deduped in report", () => {
+    const report = evaluateRuntimeExecutionModelBaseline({
+      ...buildStage6AReadyBaselineInput(),
+      requestedExecutionUnitKinds: ["github_operation", "github_operation", "review_gate"],
+    });
+    expect(report.executionUnitKinds).toEqual(["github_operation", "review_gate"]);
+    expect(report.executionUnitKindDuplicateRemovedCount).toBe(1);
+    expect(report.executionUnitKindInputNormalized).toBe(true);
+  });
+
+  it("resolveRuntimeExecutionModelBaselineDecision blocks when separate approval is false", () => {
     expect(
-      evaluateRuntimeExecutionModelBaseline({
-        ...buildStage6AReadyBaselineInput(),
-        requestedExecutionUnitKinds: ["unknown_execution_unit"],
-      }).decision,
+      resolveRuntimeExecutionModelBaselineDecision({
+        sourceStage5Decision: "stage5_knowledge_foundation_ready",
+        sourceStage6EntryMode: "design_candidate_only",
+        sourceStage6ActualRuntimeExecutionAllowed: false,
+        sourceStage6RequiresSeparateApproval: false,
+        confirmationsSatisfied: true,
+        hasUnknownExecutionUnitKind: false,
+      }),
     ).toBe("blocked");
+  });
+
+  it("resolveRuntimeExecutionModelBaselineDecision blocks when actual runtime execution is allowed", () => {
+    expect(
+      resolveRuntimeExecutionModelBaselineDecision({
+        sourceStage5Decision: "stage5_knowledge_foundation_ready",
+        sourceStage6EntryMode: "design_candidate_only",
+        sourceStage6ActualRuntimeExecutionAllowed: true,
+        sourceStage6RequiresSeparateApproval: true,
+        confirmationsSatisfied: true,
+        hasUnknownExecutionUnitKind: false,
+      }),
+    ).toBe("blocked");
+  });
+
+  it("ready path maps sourceStage6RequiresSeparateApproval from Stage 5-F", () => {
+    expect(evaluateReadyBaseline().sourceStage6RequiresSeparateApproval).toBe(true);
+  });
+
+  it("ready path keeps actualConnectorRoutingChangeAllowedInThisStep false", () => {
+    expect(evaluateReadyBaseline().actualConnectorRoutingChangeAllowedInThisStep).toBe(false);
+  });
+
+  it("ready path keeps actualFeatureFlagWireAllowedInThisStep false", () => {
+    expect(evaluateReadyBaseline().actualFeatureFlagWireAllowedInThisStep).toBe(false);
   });
 
   it("findings include runtime_execution_model_design_only", () => {
@@ -114,9 +164,11 @@ describe("multi-agent runtime execution model baseline stage 6-A", () => {
         sourceStage5Decision: "stage5_knowledge_foundation_ready",
         sourceStage6EntryMode: "design_candidate_only",
         sourceStage6ActualRuntimeExecutionAllowed: false,
+        sourceStage6RequiresSeparateApproval: true,
         confirmationsSatisfied: true,
         hasUnknownExecutionUnitKind: true,
       }),
     ).toBe("blocked");
   });
+
 });

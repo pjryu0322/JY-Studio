@@ -29,6 +29,8 @@ export {
   validateRuntimeExecutionModelCandidates,
 } from "@/lib/agents/runtimeExecutionModelCandidateSupport";
 
+export type { RuntimeExecutionModelCandidateValidationResult } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
+
 export {
   buildStage6BReadyCandidateInput,
   buildStage6BRuntimeExecutionModelCandidateConfirmedInput,

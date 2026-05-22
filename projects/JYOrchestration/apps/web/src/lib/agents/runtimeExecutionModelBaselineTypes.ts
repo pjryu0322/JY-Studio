@@ -79,6 +79,9 @@ export interface RuntimeExecutionModelBaselineReport {
   readonly actualFeatureFlagWireAllowedInThisStep: false;
 
   readonly executionUnitKinds: readonly RuntimeExecutionUnitKind[];
+  readonly unknownExecutionUnitKinds: readonly string[];
+  readonly executionUnitKindInputNormalized: boolean;
+  readonly executionUnitKindDuplicateRemovedCount: number;
   readonly executionBoundaries: readonly RuntimeExecutionBoundary[];
 
   readonly requiredConfirmations: readonly string[];
@@ -94,6 +97,7 @@ export type RuntimeExecutionModelBaselineDecisionInput = {
   readonly sourceStage5Decision: Stage5IntegratedKnowledgeFoundationClosureDecision;
   readonly sourceStage6EntryMode: Stage6EntryMode;
   readonly sourceStage6ActualRuntimeExecutionAllowed: boolean;
+  readonly sourceStage6RequiresSeparateApproval: boolean;
   readonly confirmationsSatisfied: boolean;
   readonly hasUnknownExecutionUnitKind: boolean;
 };

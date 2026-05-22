@@ -19,6 +19,18 @@ export type RuntimeExecutionModelCandidateKind =
   | "RuntimeExecutionApprovalState"
   | "RuntimeExecutionRollbackPlan";
 
+export interface RuntimeExecutionModelCandidateValidationResult {
+  readonly hasRequiredModelKinds: boolean;
+  readonly candidatePostureValid: boolean;
+  readonly missingKinds: readonly string[];
+  readonly unknownKinds: readonly string[];
+  readonly duplicateKinds: readonly string[];
+  readonly emptyPurposeKinds: readonly string[];
+  readonly emptyModelNameKinds: readonly string[];
+  readonly emptyProposedFieldKinds: readonly string[];
+  readonly forbiddenFieldKinds: readonly string[];
+}
+
 export interface RuntimeExecutionModelCandidate {
   readonly kind: RuntimeExecutionModelCandidateKind;
   readonly modelName: string;

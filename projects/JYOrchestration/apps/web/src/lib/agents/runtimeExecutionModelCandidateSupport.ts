@@ -10,6 +10,7 @@ import type {
   RuntimeExecutionModelCandidateFinding,
   RuntimeExecutionModelCandidateInput,
   RuntimeExecutionModelCandidateKind,
+  RuntimeExecutionModelCandidateValidationResult,
 } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import {
   REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS,
@@ -70,16 +71,16 @@ export function buildDefaultRuntimeExecutionModelCandidates(): readonly RuntimeE
     {
       kind: "RuntimeExecutionApprovalState",
       modelName: "RuntimeExecutionApprovalState",
-      purpose: "Operator approval state for a runtime execution plan",
-      proposedFields: ["id", "planId", "status", "approvedBy", "approvedAt"],
+      purpose: "Operator approval state for a runtime execution request",
+      proposedFields: ["id", "requestId", "approvalStatus", "approvedBy", "approvedAt"],
       forbiddenFields: [...RUNTIME_EXECUTION_MODEL_CANDIDATE_FORBIDDEN_FIELDS],
       persistenceCandidateOnly: true,
     },
     {
       kind: "RuntimeExecutionRollbackPlan",
       modelName: "RuntimeExecutionRollbackPlan",
-      purpose: "Rollback plan candidate linked to a runtime execution plan",
-      proposedFields: ["id", "planId", "rollbackSteps", "rollbackReason"],
+      purpose: "Rollback plan candidate linked to a runtime execution request",
+      proposedFields: ["id", "requestId", "rollbackSteps", "rollbackRequired"],
       forbiddenFields: [...RUNTIME_EXECUTION_MODEL_CANDIDATE_FORBIDDEN_FIELDS],
       persistenceCandidateOnly: true,
     },
@@ -125,21 +126,60 @@ export function parseRuntimeExecutionModelCandidateInput(input?: RuntimeExecutio
   };
 }
 
+const REQUIRED_KIND_SET = new Set<string>(REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS);
+const FORBIDDEN_FIELD_SET = new Set<string>(RUNTIME_EXECUTION_MODEL_CANDIDATE_FORBIDDEN_FIELDS);
+
+function isBlank(value: string): boolean {
+  return value.trim().length === 0;
+}
+
 export function validateRuntimeExecutionModelCandidates(
   candidates: readonly RuntimeExecutionModelCandidate[],
-): { readonly hasRequiredModelKinds: boolean; readonly candidatePostureValid: boolean; readonly missingKinds: readonly string[] } {
-  const kinds = new Set(candidates.map((c) => c.kind));
-  const missingKinds = REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS.filter((k) => !kinds.has(k));
-  const candidatePostureValid = candidates.every(
-    (c) =>
-      c.persistenceCandidateOnly === true &&
-      REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS.includes(c.kind),
+): RuntimeExecutionModelCandidateValidationResult {
+  const presentKinds = candidates.map((c) => c.kind);
+  const kindCounts = new Map<string, number>();
+  for (const kind of presentKinds) {
+    kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
+  }
+
+  const missingKinds = REQUIRED_RUNTIME_EXECUTION_MODEL_CANDIDATE_KINDS.filter((k) => !kindCounts.has(k));
+  const unknownKinds = [...new Set(presentKinds.filter((k) => !REQUIRED_KIND_SET.has(k)))].sort((a, b) =>
+    a.localeCompare(b),
   );
+  const duplicateKinds = [...kindCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([kind]) => kind)
+    .sort((a, b) => a.localeCompare(b));
+
+  const emptyPurposeKinds = candidates.filter((c) => isBlank(c.purpose)).map((c) => c.kind);
+  const emptyModelNameKinds = candidates.filter((c) => isBlank(c.modelName)).map((c) => c.kind);
+  const emptyProposedFieldKinds = candidates.filter((c) => c.proposedFields.length === 0).map((c) => c.kind);
+  const forbiddenFieldKinds = candidates
+    .filter((c) => c.proposedFields.some((field) => FORBIDDEN_FIELD_SET.has(field)))
+    .map((c) => c.kind);
+
+  const invalidPersistenceKinds = candidates.filter((c) => c.persistenceCandidateOnly !== true).map((c) => c.kind);
+
+  const candidatePostureValid =
+    missingKinds.length === 0 &&
+    unknownKinds.length === 0 &&
+    duplicateKinds.length === 0 &&
+    emptyPurposeKinds.length === 0 &&
+    emptyModelNameKinds.length === 0 &&
+    emptyProposedFieldKinds.length === 0 &&
+    forbiddenFieldKinds.length === 0 &&
+    invalidPersistenceKinds.length === 0;
 
   return {
     hasRequiredModelKinds: missingKinds.length === 0,
     candidatePostureValid,
     missingKinds,
+    unknownKinds,
+    duplicateKinds,
+    emptyPurposeKinds,
+    emptyModelNameKinds,
+    emptyProposedFieldKinds,
+    forbiddenFieldKinds,
   };
 }
 
@@ -261,8 +301,70 @@ export function appendRuntimeExecutionModelCandidateFindings(input: {
     return;
   }
 
-  if (!validation.hasRequiredModelKinds || !validation.candidatePostureValid) {
-    findings.push(finding("blocking", "required_model_kind_missing", "Required runtime execution model kind is missing"));
+  if (!validation.candidatePostureValid) {
+    if (validation.missingKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "required_model_kind_missing",
+          `Required runtime execution model kind is missing: ${validation.missingKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.unknownKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "unknown_model_candidate_kind",
+          `Unknown runtime execution model candidate kind: ${validation.unknownKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.duplicateKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "duplicate_model_candidate_kind",
+          `Duplicate runtime execution model candidate kind: ${validation.duplicateKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.emptyPurposeKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "model_candidate_empty_purpose",
+          `Model candidate purpose is empty: ${validation.emptyPurposeKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.emptyModelNameKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "model_candidate_empty_name",
+          `Model candidate name is empty: ${validation.emptyModelNameKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.emptyProposedFieldKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "model_candidate_empty_proposed_fields",
+          `Model candidate proposedFields is empty: ${validation.emptyProposedFieldKinds.join(", ")}`,
+        ),
+      );
+    }
+    if (validation.forbiddenFieldKinds.length > 0) {
+      findings.push(
+        finding(
+          "blocking",
+          "model_candidate_contains_forbidden_field",
+          `Model candidate proposedFields contains forbidden field: ${validation.forbiddenFieldKinds.join(", ")}`,
+        ),
+      );
+    }
     findings.push(finding("blocking", "stage6_b_candidate_blocked", "Stage 6-B candidate is blocked"));
     return;
   }
