@@ -7,9 +7,20 @@ export type WorkNoteSummarizeWire = {
   readonly priorityReason: string;
 };
 
+export type WorkNoteSummaryMode = "work_note" | "messenger_conversation";
+
 export type PostWorkNoteSummarizeBody =
-  | { readonly scope: "user"; readonly contentHtml: string }
-  | { readonly projectId: string; readonly contentHtml: string; readonly scope?: "project" };
+  | { readonly scope: "user"; readonly contentHtml: string; readonly summaryMode?: WorkNoteSummaryMode }
+  | {
+      readonly projectId: string;
+      readonly contentHtml: string;
+      readonly scope?: "project";
+      readonly summaryMode?: WorkNoteSummaryMode;
+    };
+
+export type MessengerConversationSummarizeWire = {
+  readonly summary: string;
+};
 
 function normalizeSummarizeWire(json: {
   data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
@@ -28,10 +39,16 @@ function normalizeSummarizeWire(json: {
 }
 
 export async function postWorkNoteSummarize(body: PostWorkNoteSummarizeBody): Promise<WorkNoteSummarizeWire> {
+  const summaryMode = body.summaryMode ?? "work_note";
   const payload =
     body.scope === "user"
-      ? { scope: "user", contentHtml: body.contentHtml }
-      : { projectId: body.projectId.trim(), scope: body.scope ?? "project", contentHtml: body.contentHtml };
+      ? { scope: "user", contentHtml: body.contentHtml, summaryMode }
+      : {
+          projectId: body.projectId.trim(),
+          scope: body.scope ?? "project",
+          contentHtml: body.contentHtml,
+          summaryMode,
+        };
 
   const res = await credentialsIncludeFetch("/api/work-notes/summarize", {
     method: "POST",
@@ -52,4 +69,16 @@ export async function postWorkNoteSummarize(body: PostWorkNoteSummarizeBody): Pr
 /** 로그인 사용자 개인 메모·메신저 등 `scope=user` 요약. */
 export async function postWorkNoteSummarizeFromHtml(contentHtml: string): Promise<WorkNoteSummarizeWire> {
   return postWorkNoteSummarize({ scope: "user", contentHtml });
+}
+
+/** Pre-Project 메신저 대화 요약(브레인스토밍 맥락, priority/requestType 없음). */
+export async function postMessengerConversationSummarizeFromHtml(
+  contentHtml: string
+): Promise<MessengerConversationSummarizeWire> {
+  const { summary } = await postWorkNoteSummarize({
+    scope: "user",
+    contentHtml,
+    summaryMode: "messenger_conversation",
+  });
+  return { summary };
 }

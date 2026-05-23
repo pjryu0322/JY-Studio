@@ -36,12 +36,16 @@ import {
   confirmResetConversation,
   downloadConversationMarkdownFile,
 } from "@/lib/chat/conversationMarkdown";
-import { postWorkNoteSummarizeFromHtml } from "@/lib/worknote/workNotesSummarizeApi";
+import { formatMessengerAiSummaryBlock, isMessengerSummaryRequest } from "@/lib/messenger/messengerSummaryIntent";
+import { postMessengerConversationSummarizeFromHtml } from "@/lib/worknote/workNotesSummarizeApi";
 import { messengerMembersToParticipants } from "@/lib/messenger/messengerRoomParticipantMapping";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
-import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
+import {
+  buildConversationContentHtmlForWorkNoteSummary,
+  shouldIncludeMessageForMessengerSummary,
+} from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
 import { textMentionsMessengerAiPlanner, type MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
 import { buildOptimisticMessengerUserMessage } from "@/lib/messenger/optimisticMessengerMessage";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -190,10 +194,45 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     return [...base, ...optimisticOutbound];
   }, [messages, optimisticOutbound]);
 
+  const handleWorkNoteSummarize = useCallback(async () => {
+    if (!rid || summaryBusy || busy || aiBusy) return;
+    const list = messages ?? [];
+    const hasBody = list.some(
+      (m) => shouldIncludeMessageForMessengerSummary(m) && String(m.content ?? "").trim()
+    );
+    if (!hasBody) {
+      setToast("요약할 대화 내용이 없습니다.");
+      return;
+    }
+    setSummaryBusy(true);
+    setToast(null);
+    try {
+      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(list, sessionName, {
+        maxMessages: 80,
+        forMessengerSummary: true,
+      });
+      const { summary } = await postMessengerConversationSummarizeFromHtml(contentHtml);
+      await postMessengerAiSummaryBlockMessage(rid, formatMessengerAiSummaryBlock(summary));
+      await reloadMessages();
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "AI 요약에 실패했습니다.");
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [rid, summaryBusy, busy, aiBusy, messages, sessionName, reloadMessages]);
+
   const handleComposerSend = useCallback(
     async (_payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
-      if (!rid || !text || busy || aiBusy || Boolean(projectLinkedId)) return;
+      if (!rid || !text || busy || aiBusy || summaryBusy || Boolean(projectLinkedId)) return;
+
+      if (isMessengerSummaryRequest(text)) {
+        const ok = window.confirm("현재 대화 내용을 AI요약으로 정리할까요?");
+        if (!ok) return;
+        setInput("");
+        await handleWorkNoteSummarize();
+        return;
+      }
       const mode = detail?.room.aiParticipationMode ?? "AUTO";
       const expectAiReply =
         mode === "AUTO" || (mode === "MENTION_ONLY" && textMentionsMessengerAiPlanner(text));
@@ -241,6 +280,8 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       reloadDetail,
       sessionName,
       sessionUserId,
+      summaryBusy,
+      handleWorkNoteSummarize,
     ]
   );
 
@@ -515,7 +556,8 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
             <div style={requirementsIdeationChatPanelShellStyle}>
               <RequirementsChatPanel
                 messages={displayMessages}
-                typingIndicator={aiBusy}
+                typingIndicator={aiBusy || summaryBusy}
+                typingIndicatorLabel={summaryBusy ? "AI 요약 정리 중입니다..." : undefined}
                 screenAiMemberId="ideation"
                 sessionUserDisplayName={sessionName}
                 composer={composer}

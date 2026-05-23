@@ -2,6 +2,13 @@ import type { ChatMessage } from "@prisma/client";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 
+function messengerRoomInternalType(metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return "messenger_room";
+  const source = String((metadata as Record<string, unknown>).source ?? "").trim();
+  if (source === "work_note_summarize") return "ai_work_note_summary";
+  return "messenger_room";
+}
+
 export function chatMessagesToRequirementsMessages(rows: readonly ChatMessage[]): RequirementsMessage[] {
   const out: RequirementsMessage[] = [];
   for (const r of rows) {
@@ -24,6 +31,7 @@ export function chatMessagesToRequirementsMessages(rows: readonly ChatMessage[])
       continue;
     }
     const isUser = r.senderType === "USER";
+    const internalType = messengerRoomInternalType(r.metadata);
     out.push(
       newRequirementsMessage({
         id: r.id,
@@ -35,7 +43,7 @@ export function chatMessagesToRequirementsMessages(rows: readonly ChatMessage[])
         content: r.content,
         createdAt: r.createdAt.toISOString(),
         meta: {
-          internalType: "messenger_room",
+          internalType,
           source: r.senderType === "AI" ? "llm" : undefined,
         },
       })

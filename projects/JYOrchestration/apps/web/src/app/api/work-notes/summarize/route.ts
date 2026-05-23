@@ -4,13 +4,19 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
+import { runMessengerConversationSummarizeLlm } from "@/lib/worknote/runMessengerConversationSummarizeLlm";
 import { runWorkNoteSummarizeLlm } from "@/lib/worknote/runWorkNoteSummarizeLlm";
 import { isUserMemoScopeParam } from "@/lib/worknote/workNoteMemoScope";
 
 const MAX_HTML = 400_000;
 const MAX_PLAIN = 120_000;
 
-type Body = { projectId?: string; scope?: string; contentHtml?: string };
+type Body = {
+  projectId?: string;
+  scope?: string;
+  contentHtml?: string;
+  summaryMode?: "work_note" | "messenger_conversation";
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,6 +72,25 @@ export async function POST(request: NextRequest) {
     }
 
     const model = resolveOpenAiModelFromEnv();
+    const summaryMode = String(body.summaryMode ?? "work_note").trim() as "work_note" | "messenger_conversation";
+
+    if (summaryMode === "messenger_conversation") {
+      if (!isPersonal) {
+        return NextResponse.json(
+          { success: false, message: "messenger_conversation 요약은 scope=user 만 지원합니다." },
+          { status: 400 }
+        );
+      }
+      const gen = await runMessengerConversationSummarizeLlm({ apiKey, model, plainText: plain });
+      if (!gen.ok) {
+        return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
+      }
+      return NextResponse.json({
+        success: true,
+        data: { summary: gen.summaryMarkdown },
+      });
+    }
+
     const gen = await runWorkNoteSummarizeLlm({ apiKey, model, plainText: plain });
     if (!gen.ok) {
       return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });

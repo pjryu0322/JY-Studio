@@ -99,6 +99,7 @@ export function RequirementsChatPanel({
   messages,
   composer,
   typingIndicator,
+  typingIndicatorLabel,
   typingIndicatorSpeakerLine,
   typingIndicatorResolvedSpeakerSource,
   ideationInterviewUi,
@@ -120,6 +121,8 @@ export function RequirementsChatPanel({
   readonly composer: ReactNode;
   /** AI 응답 대기 중 표시(채팅 타임라인에는 저장되지 않음) */
   readonly typingIndicator?: boolean;
+  /** typing bubble 본문(미지정 시 「생각 중입니다」) */
+  readonly typingIndicatorLabel?: string;
   /** typing bubble 표시용 speaker 라인(있으면 screenAiMemberId 기본 타이틀보다 우선) */
   readonly typingIndicatorSpeakerLine?: string | null;
   /** typing bubble speaker 결정 출처(진단용) */
@@ -702,7 +705,9 @@ export function RequirementsChatPanel({
                   </WorkspaceAiHeaderWithAvatar>
                 </div>
                 <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
-                  <span style={{ fontWeight: 800, marginRight: 6 }}>생각 중입니다</span>
+                  <span style={{ fontWeight: 800, marginRight: 6 }}>
+                    {String(typingIndicatorLabel ?? "").trim() || "생각 중입니다"}
+                  </span>
                   <span className="jyo-typing" aria-label="typing indicator">
                     <span className="jyo-dot" />
                     <span className="jyo-dot" />
