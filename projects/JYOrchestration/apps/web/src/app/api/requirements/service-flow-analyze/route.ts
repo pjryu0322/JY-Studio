@@ -64,6 +64,14 @@ import {
 } from "@/lib/requirements/serviceFlowActionGating";
 import { withServiceFlowConversationState } from "@/lib/requirements/serviceFlowConversationState";
 import { getServiceFlowSubIntentFromPolicy } from "@/lib/requirements/serviceFlowSubIntent";
+import {
+  enrichProjectSingleChatSlotOrchestration,
+  resolveServiceFlowSlotProjectionSource,
+} from "@/lib/requirements/singleChatSlotOrchestrationEnrichment";
+import type {
+  RequirementsSingleChatOrchestrationStateV1,
+  SingleChatOrchestrationSlotDefinition,
+} from "@/lib/requirements/singleChatOrchestrationTypes";
 
 type Body = {
   projectId?: string;
@@ -114,11 +122,41 @@ function buildAnalyzeSuccessResponse(input: {
   readonly forceVisibleMode?: "state_transition";
   readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
   readonly responsePolicy?: unknown;
+  readonly slotOrchestration?: Readonly<{
+    readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+    readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null;
+    readonly skipAssistantLead?: boolean;
+  }>;
 }) {
   let assistantMessage = input.parsed.assistantMessage;
   let nextQuestion = input.parsed.nextQuestion;
   let updatedFlow = hydrateServiceFlowStepsFromAlternativePayload(input.parsed.updatedFlow);
   let quickReplies = input.parsed.quickReplies;
+  let requirementsStatePatch = input.requirementsStatePatch ?? null;
+
+  if (input.slotOrchestration) {
+    const projectionSource = resolveServiceFlowSlotProjectionSource({
+      proposalDecision: input.proposalDecision,
+      responsePolicy: input.responsePolicy,
+    });
+    if (projectionSource) {
+      const enriched = enrichProjectSingleChatSlotOrchestration({
+        orchestration: input.slotOrchestration.orchestration,
+        definitions: input.slotOrchestration.definitions,
+        flow: updatedFlow,
+        projectionSource,
+        conversationQuickReplies: quickReplies ?? [],
+        assistantMessage,
+        proposalDecision: input.proposalDecision,
+        skipAssistantLead: input.slotOrchestration.skipAssistantLead,
+      });
+      quickReplies = [...enriched.quickReplies];
+      assistantMessage = enriched.assistantMessage;
+      if (enriched.requirementsStatePatch) {
+        requirementsStatePatch = { ...(requirementsStatePatch ?? {}), ...enriched.requirementsStatePatch };
+      }
+    }
+  }
 
   if (
     input.proposalDecision === "FLOW_APPROVE" &&
@@ -301,7 +339,7 @@ function buildAnalyzeSuccessResponse(input: {
     meta: {
       model: input.model,
       promptTrace,
-      ...(input.requirementsStatePatch ? { requirementsStatePatch: input.requirementsStatePatch } : {}),
+      ...(requirementsStatePatch ? { requirementsStatePatch } : {}),
     },
   });
 }
@@ -558,6 +596,11 @@ export async function POST(request: NextRequest) {
         agentCtx,
         forceVisibleMode: "state_transition",
         requirementsStatePatch: transitionEngineResult.requirementsStatePatch,
+        slotOrchestration: {
+          definitions: slotDefinitions,
+          orchestration: orchestrationAligned,
+          skipAssistantLead: true,
+        },
         timelineExtras: appendOrchestrationTransitionTimelineExtras({
           base: {
             timelineAction: fastPath.timelineAction,
@@ -700,6 +743,10 @@ export async function POST(request: NextRequest) {
       proposalFallbackApplied: result.proposalFallbackApplied,
       agentCtx,
       responsePolicy,
+      slotOrchestration: {
+        definitions: slotDefinitions,
+        orchestration: orchestrationAligned,
+      },
       timelineExtras: {
         ...(adviceToFlowApplyMode
           ? { routingDecision: "service_flow_advice_to_flow_apply" }

@@ -149,6 +149,8 @@ import {
   type RequirementsWorkspaceStage,
   type SessionUser,
 } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import { evaluateGenerationReadinessFromSlots } from "@/lib/requirements/singleChatSlotNextAction";
+import { projectServiceFlowResultToSingleChatSlots } from "@/lib/requirements/singleChatSlotResultProjection";
 import { RequirementsWorkspaceStageRenderer } from "@/components/requirements/RequirementsWorkspaceStageRenderer";
 import { buildPlatformMemberActivityFromRequirementsMessages } from "@/lib/ai-member/buildPlatformMemberActivityFromRequirementsMessages";
 import { extractHandoffSnippetFromRequirementsMessages } from "@/lib/ai-member/extractHandoffSnippetFromRequirementsMessages";
@@ -1060,6 +1062,16 @@ export function RequirementsWorkspace({
           ...(projectionRebuild.log.retried ? { projectionRebuildRetried: true } : {}),
         });
       }
+
+      const projectionSource = hydrated.flowApproved ? ("flow_approve" as const) : ("flow_draft" as const);
+      const projected = projectServiceFlowResultToSingleChatSlots({
+        orchestration: orchBase,
+        definitions: slotDefsForProgress,
+        flow: hydrated,
+        source: projectionSource,
+        nowIso: new Date().toISOString(),
+      });
+      if (projected) orchBase = projected;
 
       const sync = syncServiceFlowToOrchestrationSlots({
         flow: hydrated,
@@ -2143,34 +2155,66 @@ export function RequirementsWorkspace({
     if (busy || deliverableGenerateBusy || remoteLocked) return;
     const latestInterviewState = latestProblemInterviewStateForGate();
     const gate = ideationDraftGateStatus(latestInterviewState);
+    const slotReadiness = evaluateGenerationReadinessFromSlots({
+      orchestration: orchestrationAlignedState,
+      definitions: slotDefsForProgress,
+    });
     if (!gate.ready) {
       const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
-      const msg = missingRequired.length
-        ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
-        : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
+      const msg =
+        slotReadiness.missing.length > 0
+          ? `생성 단계로 가기 전 다음 기획 슬롯이 아직 확정되지 않았습니다.\n- ${slotReadiness.missing.join("\n- ")}`
+          : missingRequired.length
+            ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
+            : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
       setError(msg);
       showErrorToast(msg);
       return;
     }
     setPlannerTypePickerOpen(false);
     await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-  }, [busy, deliverableGenerateBusy, remoteLocked, latestProblemInterviewStateForGate, handleGenerateDeliverables, showErrorToast]);
+  }, [
+    busy,
+    deliverableGenerateBusy,
+    remoteLocked,
+    latestProblemInterviewStateForGate,
+    orchestrationAlignedState,
+    slotDefsForProgress,
+    handleGenerateDeliverables,
+    showErrorToast,
+  ]);
 
   const onForceGeneratePlanNow = useCallback(() => {
     if (busy || deliverableGenerateBusy || remoteLocked) return;
     const latestInterviewState = latestProblemInterviewStateForGate();
     const gate = ideationDraftGateStatus(latestInterviewState);
+    const slotReadiness = evaluateGenerationReadinessFromSlots({
+      orchestration: orchestrationAlignedState,
+      definitions: slotDefsForProgress,
+    });
     if (!gate.ready) {
       const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
-      const msg = missingRequired.length
-        ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
-        : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
+      const msg =
+        slotReadiness.missing.length > 0
+          ? `생성 단계로 가기 전 다음 기획 슬롯이 아직 확정되지 않았습니다.\n- ${slotReadiness.missing.join("\n- ")}`
+          : missingRequired.length
+            ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
+            : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
       setError(msg);
       showErrorToast(msg);
       return;
     }
     void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-  }, [busy, deliverableGenerateBusy, remoteLocked, latestProblemInterviewStateForGate, handleGenerateDeliverables, showErrorToast]);
+  }, [
+    busy,
+    deliverableGenerateBusy,
+    remoteLocked,
+    latestProblemInterviewStateForGate,
+    orchestrationAlignedState,
+    slotDefsForProgress,
+    handleGenerateDeliverables,
+    showErrorToast,
+  ]);
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName

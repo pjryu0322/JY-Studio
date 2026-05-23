@@ -13,6 +13,7 @@ import {
 import {
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
+  isPlannerStableEnough,
   mergeOrchestrationSlotPatches,
   normalizeSlotStatus,
   singleChatOrchestrationConfirmedProgress,
@@ -49,8 +50,14 @@ function statusRank(st: SingleChatOrchestrationSlotStatus): number {
   return 1;
 }
 
-function targetStatusForMode(mode: ServiceFlowSlotSyncMode): SingleChatOrchestrationSlotStatus {
-  if (mode === "service_flow_approve") return "confirmed";
+function targetStatusForMode(
+  mode: ServiceFlowSlotSyncMode,
+  orchestration: RequirementsSingleChatOrchestrationStateV1,
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+): SingleChatOrchestrationSlotStatus {
+  if (mode === "service_flow_approve") {
+    return isPlannerStableEnough(orchestration, definitions) ? "confirmed" : "partial";
+  }
   if (mode === "service_flow_apply") return "partial";
   return "candidate";
 }
@@ -112,9 +119,11 @@ function shouldPreserveConfirmed(prev: SingleChatOrchestrationSlotStatus): boole
 function pickStatus(
   prev: SingleChatOrchestrationSlotStatus,
   mode: ServiceFlowSlotSyncMode,
+  orchestration: RequirementsSingleChatOrchestrationStateV1,
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
 ): SingleChatOrchestrationSlotStatus | null {
   if (shouldPreserveConfirmed(prev)) return null;
-  const target = targetStatusForMode(mode);
+  const target = targetStatusForMode(mode, orchestration, definitions);
   if (statusRank(prev) >= statusRank(target)) return null;
   return target;
 }
@@ -155,7 +164,7 @@ export function syncServiceFlowToOrchestrationSlots(input: {
     if (!row) continue;
 
     const prevStatus = normalizeSlotStatus(String(row.status));
-    const nextStatus = pickStatus(prevStatus, mode);
+    const nextStatus = pickStatus(prevStatus, mode, base, input.definitions);
     if (!nextStatus) continue;
 
     const value = buildSlotValue(def, flow);

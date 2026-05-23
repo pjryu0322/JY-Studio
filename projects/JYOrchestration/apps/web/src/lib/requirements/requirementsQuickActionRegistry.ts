@@ -84,6 +84,7 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   APPLY_PROPOSAL: {
     id: "APPLY_PROPOSAL",
     defaultLabel: "추천안 적용",
+    labelAliases: ["분석 슬롯에 반영"],
     conversationProfiles: ["proposal"],
     proposalDecision: "APPLY",
     transitionSignal: null,
@@ -107,6 +108,7 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   DIRECT_INPUT: {
     id: "DIRECT_INPUT",
     defaultLabel: "직접 입력",
+    labelAliases: ["기획 핵심 정리", "주 사용자 정리", "핵심 문제 정리", "흐름 보완"],
     conversationProfiles: ["proposal"],
     proposalDecision: "DIRECT_INPUT",
     transitionSignal: null,
@@ -153,6 +155,7 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   START_FEATURE_DETAIL: {
     id: "START_FEATURE_DETAIL",
     defaultLabel: "세부 기능 정리",
+    labelAliases: ["기능 범위로 이어가기", "기능 범위 정리", "MVP 기능 정리"],
     conversationProfiles: ["review", "approved"],
     proposalDecision: "FEATURE_DETAIL",
     transitionSignal: "FEATURE_DETAIL_START",
