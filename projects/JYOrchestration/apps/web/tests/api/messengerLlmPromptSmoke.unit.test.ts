@@ -97,6 +97,14 @@ describe("messengerLlm prompt smoke (rules only)", () => {
     expect(meta).toContain("executionScope=pre_project");
   });
 
+  it("pre-project scope prompt includes boundary and excludes project execution actions", () => {
+    const prompt = messengerBasePromptForMode("pre_project", "brainstorm");
+
+    expect(prompt).toContain("[Scope: Pre-Project]");
+    expect(prompt).toContain("service-flow analyze");
+    expect(prompt).toMatch(/실행 액션을 사용하지 않습니다/);
+  });
+
   it("brainstorm prompt does not prescribe future comparison/draft promise", () => {
     const sys = messengerBasePromptForMode("pre_project", "brainstorm");
     expect(sys).not.toContain("다음에는 제가 비교안/초안/정리안을 만들겠습니다");

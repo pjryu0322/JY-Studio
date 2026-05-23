@@ -8,6 +8,7 @@ import {
   conversationScopeFromProjectId,
   isPreProjectWorkspaceScreenKey,
   PRE_PROJECT_EXECUTION_SCOPE_BOUNDARY_PROMPT,
+  sanitizePreProjectContaminatedResponse,
   shouldApplyStrongActionGuard,
 } from "@/lib/conversation/conversationScopeBoundary";
 import { buildServiceFlowResponsePolicyFromDispatch } from "@/lib/requirements/serviceFlowAdviceMode";
@@ -52,6 +53,47 @@ describe("conversationScopeBoundary", () => {
   it("detects forbidden execution markers in pre-project responses", () => {
     expect(containsPreProjectForbiddenExecutionMarkers("GENERATE_ALTERNATIVE 실행")).toBe(true);
     expect(containsPreProjectForbiddenExecutionMarkers("검수 절차를 단계별로 제안합니다.")).toBe(false);
+  });
+
+  it("detects pre-project execution contamination markers", () => {
+    expect(
+      containsPreProjectForbiddenExecutionMarkers(
+        "다음 [ProposalDecision] action: GENERATE_ALTERNATIVE 대안 비교 Viewer를 엽니다.",
+      ),
+    ).toBe(true);
+  });
+
+  it("sanitizes contaminated pre-project response", () => {
+    const result = sanitizePreProjectContaminatedResponse({
+      text: "검수절차를 제안합니다. [ProposalDecision] action: GENERATE_ALTERNATIVE 대안 비교 Viewer를 엽니다.",
+      fallbackUserMessage: "검수절차를 제안해줘",
+    });
+
+    expect(result.contaminated).toBe(true);
+    expect(result.text).not.toContain("[ProposalDecision]");
+    expect(result.text).not.toContain("GENERATE_ALTERNATIVE");
+    expect(result.text).not.toContain("대안 비교 Viewer");
+    expect(result.text).toContain("검수절차");
+  });
+
+  it("uses safe fallback when sanitized text is too short", () => {
+    const result = sanitizePreProjectContaminatedResponse({
+      text: "[ProposalDecision] GENERATE_ALTERNATIVE",
+      fallbackUserMessage: "다른 대안을 보여줘",
+    });
+
+    expect(result.contaminated).toBe(true);
+    expect(result.text.length).toBeGreaterThan(60);
+    expect(result.text).toContain("프로젝트 생성 전");
+    expect(result.text).not.toContain("GENERATE_ALTERNATIVE");
+    expect(result.text).toContain("다른 대안을 보여줘");
+  });
+
+  it("leaves clean pre-project response unchanged", () => {
+    const clean = "검수 절차는 1) 초안 검토 2) 승인 3) 반영 순으로 두는 것이 좋습니다.";
+    const result = sanitizePreProjectContaminatedResponse({ text: clean });
+    expect(result.contaminated).toBe(false);
+    expect(result.text).toBe(clean);
   });
 
   it("skips strong action guard outside project single chat", () => {

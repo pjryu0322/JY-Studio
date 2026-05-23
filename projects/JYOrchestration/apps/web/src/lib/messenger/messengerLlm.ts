@@ -27,7 +27,11 @@ import {
 } from "@/lib/conversation-core/conversationIntentTypes";
 import { buildFeasibilityRepetitionGuardBlock } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
-import { preProjectScopeContaminationReason } from "@/lib/conversation/conversationScopeBoundary";
+import {
+  formatPreProjectContaminationGuardTrace,
+  sanitizePreProjectContaminatedResponse,
+  type PreProjectContaminationSanitizeResult,
+} from "@/lib/conversation/conversationScopeBoundary";
 import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/conversationResponsePolicy";
 import { sanitizeUnsupportedFuturePromise } from "@/lib/conversation-core/futurePromiseGuard";
 import {
@@ -560,13 +564,28 @@ export async function runMessengerAiTurn(input: {
     }
     return { ok: false, code: res.code, message: res.message };
   }
-  const text = sanitizeUnsupportedFuturePromise(String(res.text ?? "").trim());
+  const rawText = sanitizeUnsupportedFuturePromise(String(res.text ?? "").trim());
+  let text = rawText;
+  let contamination: PreProjectContaminationSanitizeResult | null = null;
+
   if (turnSetup.classification.scope === "pre_project") {
-    const leakReason = preProjectScopeContaminationReason(text);
-    if (leakReason) {
-      console.warn("[messenger] pre-project execution scope contamination:", leakReason);
+    const fallbackUserMessage =
+      [...filteredTranscript].reverse().find((t) => t.role === "user")?.content ?? null;
+    contamination = sanitizePreProjectContaminatedResponse({
+      text: rawText,
+      fallbackUserMessage,
+    });
+    if (contamination.contaminated) {
+      console.warn("[messenger] pre-project execution scope contamination:", contamination.reason);
+      text = contamination.text;
     }
   }
+
+  const outboundForTimeline =
+    contamination?.contaminated && outboundForLog
+      ? `${outboundForLog}${formatPreProjectContaminationGuardTrace(contamination)}`
+      : outboundForLog;
+
   if (!text) {
     if (input.logContext) {
       await recordMessengerOpenAi({
@@ -576,7 +595,7 @@ export async function runMessengerAiTurn(input: {
         projectId: input.logContext.projectId,
         kind: "messenger_chat",
         model,
-        outbound: outboundForLog,
+        outbound: outboundForTimeline,
         ok: false,
         error: "모델 응답이 비어 있습니다.",
       });
@@ -591,7 +610,7 @@ export async function runMessengerAiTurn(input: {
       projectId: input.logContext.projectId,
       kind: "messenger_chat",
       model,
-      outbound: outboundForLog,
+      outbound: outboundForTimeline,
       ok: true,
       replyText: text,
     });
