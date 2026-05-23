@@ -40,6 +40,8 @@ export function useServiceFlowSingleChatBridge(params: {
   readonly onEnterActorEdit?: () => void;
   readonly onEnterFeatureDetailEdit?: () => void;
   readonly onOpenArtifactHub?: () => void;
+  /** Pre-Project에서 생성된 프로젝트 초기 진입 시 service-flow 자동 AI 메시지 억제 */
+  readonly suppressInitialAutoServiceFlowVisibleMessage?: boolean;
   /** expose send executor to parent without UI mount */
   readonly serviceFlowSendRef?: {
     current:
@@ -79,6 +81,7 @@ export function useServiceFlowSingleChatBridge(params: {
     onEnterActorEdit: params.onEnterActorEdit,
     onEnterFeatureDetailEdit: params.onEnterFeatureDetailEdit,
     onOpenArtifactHub: params.onOpenArtifactHub,
+    suppressInitialAutoServiceFlowVisibleMessage: params.suppressInitialAutoServiceFlowVisibleMessage,
   });
 
   useEffect(() => {

@@ -134,6 +134,7 @@ export function useServiceFlowWorkshopChat({
   onEnterActorEdit,
   onEnterFeatureDetailEdit,
   onOpenArtifactHub,
+  suppressInitialAutoServiceFlowVisibleMessage = false,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -161,6 +162,7 @@ export function useServiceFlowWorkshopChat({
   readonly onEnterActorEdit?: () => void;
   readonly onEnterFeatureDetailEdit?: () => void;
   readonly onOpenArtifactHub?: () => void;
+  readonly suppressInitialAutoServiceFlowVisibleMessage?: boolean;
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -810,6 +812,7 @@ export function useServiceFlowWorkshopChat({
   ]);
 
   useEffect(() => {
+    if (suppressInitialAutoServiceFlowVisibleMessage) return;
     if (structureLockedAt) return;
     if (draftGenerationCount <= 0) return;
     const timer = window.setTimeout(() => {
@@ -872,6 +875,7 @@ export function useServiceFlowWorkshopChat({
     structureLockedAt,
     workspaceMode,
     flow,
+    suppressInitialAutoServiceFlowVisibleMessage,
   ]);
 
   useEffect(() => {

@@ -52,6 +52,12 @@ import {
   normalizeIdeationBootstrapDisplayMessage,
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
+  buildPreProjectPlanningSummaryFromWorkspaceState,
+  hasPreProjectPlanningSummaryMessage,
+  isProjectSeededFromPreProjectChat,
+  PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+} from "@/lib/requirements/preProjectPlanningSummary";
+import {
   emptyProblemInterviewState,
   problemInterviewStateFromBootstrapSeedWire,
   problemInterviewStrictFilledCount,
@@ -1214,6 +1220,10 @@ export function RequirementsWorkspace({
     if (loadedConversationProjectId !== pid) return;
     if (onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
+    if (hasPreProjectPlanningSummaryMessage(existing)) {
+      setOnboardingAppliedKey(onboardingKey);
+      return;
+    }
     if (existing.length > 0) {
       setOnboardingAppliedKey(onboardingKey);
       return;
@@ -1236,6 +1246,7 @@ export function RequirementsWorkspace({
         readonly singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
         readonly interviewSuggestions?: readonly string[];
         readonly interviewAllowCustomInput?: boolean;
+        readonly bootstrapInternalType?: string;
       }): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
@@ -1247,7 +1258,7 @@ export function RequirementsWorkspace({
             speakerName: IDEATION_AI_DISPLAY_NAME,
             messageType: "ANSWER",
             meta: {
-              internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
+              internalType: params.bootstrapInternalType ?? IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
               source: params.source,
               ...(params.source === "fallback" && params.fallbackReason
                 ? { fallbackReason: params.fallbackReason }
@@ -2078,10 +2089,19 @@ export function RequirementsWorkspace({
           ? "불러오는 중…"
           : "이름 미설정";
 
+  const suppressInitialServiceFlowVisibleMessage = useMemo(() => {
+    if (conversationStatus !== "loaded") return false;
+    const st = parseRequirementsStateJson(project?.requirementsStateJson);
+    return (
+      isProjectSeededFromPreProjectChat(st, project) && serviceFlowWorkshopPersisted.length === 0
+    );
+  }, [conversationStatus, project, project?.requirementsStateJson, serviceFlowWorkshopPersisted.length, fetchNonce]);
+
   const serviceFlowAlternativeCanvas = useServiceFlowSingleChatBridge({
     projectId: resolvedProjectId.trim(),
     projectName: headerProjectName,
     projectDescription: String(project?.description ?? ""),
+    suppressInitialAutoServiceFlowVisibleMessage: suppressInitialServiceFlowVisibleMessage,
     ideationParticipantHumanMemberIds,
     ideationAssets: (stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
       type: a.type,
