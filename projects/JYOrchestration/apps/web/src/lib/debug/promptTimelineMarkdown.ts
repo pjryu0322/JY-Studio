@@ -1,6 +1,7 @@
 import type { PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 
 function channelLabel(ch: PromptTimelineEntry["channel"]): string {
+  if (ch === "platform") return "플랫폼";
   return ch === "openai" ? "OpenAI" : "Cursor";
 }
 

@@ -92,6 +92,18 @@ export function shouldRegeneratePlanningSummaryAfterConversationReset(input: {
   return input.consumedResetNonce !== input.resetNonce;
 }
 
+/** onboarding seed flight key — reset 재생성은 nonce별로 1회만 */
+export function buildOnboardingPlanningSummaryFlightKey(input: {
+  readonly onboardingKey: string;
+  readonly forceRegenerate: boolean;
+  readonly resetNonce: number;
+}): string {
+  if (input.forceRegenerate && input.resetNonce > 0) {
+    return `${input.onboardingKey}:reset:${input.resetNonce}`;
+  }
+  return input.onboardingKey;
+}
+
 export function buildPreProjectPlanningSummarySeedPromptTrace(input: {
   readonly projectId: string;
   readonly regenerated: boolean;

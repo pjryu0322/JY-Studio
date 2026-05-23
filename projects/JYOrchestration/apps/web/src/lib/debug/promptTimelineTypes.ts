@@ -1,7 +1,7 @@
 import type { FeaturePlanningPromptLogStatus, FeaturePlanningPromptPurpose } from "@/lib/debug/featurePlanningPromptPurpose";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 
-export type PromptTimelineChannel = "openai" | "cursor";
+export type PromptTimelineChannel = "openai" | "cursor" | "platform";
 
 /** 기능정리 v2 프롬프트 압축·토큰 추정(로깅 전용) */
 export type FeaturePlanningPromptMetricsV1 = {

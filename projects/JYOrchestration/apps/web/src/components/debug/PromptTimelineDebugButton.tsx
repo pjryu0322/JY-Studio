@@ -21,6 +21,7 @@ type ApiOk = { success: true; data: { entries: PromptTimelineEntry[] } };
 type ApiErr = { success: false; message?: string };
 
 function channelLabel(ch: PromptTimelineChannel): string {
+  if (ch === "platform") return "플랫폼";
   return ch === "openai" ? "OpenAI" : "Cursor";
 }
 

@@ -55,10 +55,12 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
     const status: FeaturePlanningPromptLogStatus = responseText ? "SUCCESS" : "FAILED";
     const overlay = extractOverlayPromptTraceMetadata(raw as Record<string, unknown>);
     const hasOverlayMetadata = Object.keys(overlay).length > 0;
+    const channel: PromptTimelineEntry["channel"] =
+      provider === "platform" || source === "platform" ? "platform" : "openai";
     out.push({
       id: `req_${String(at || Date.now())}_${action || "trace"}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48),
       at: at || new Date().toISOString(),
-      channel: "openai",
+      channel,
       label,
       model,
       outbound,

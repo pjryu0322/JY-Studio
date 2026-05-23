@@ -54,7 +54,8 @@ function messengerLogRowToEntry(row: {
   return {
     id: row.id,
     at: row.createdAt.toISOString(),
-    channel: row.channel === "cursor" ? "cursor" : "openai",
+    channel:
+      row.channel === "cursor" ? "cursor" : row.channel === "platform" ? "platform" : "openai",
     label: row.label,
     model: row.model,
     outbound: row.outbound,

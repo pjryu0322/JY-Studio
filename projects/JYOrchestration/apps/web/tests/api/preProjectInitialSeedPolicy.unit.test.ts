@@ -4,6 +4,7 @@ import {
   isProjectSeededFromPreProjectChat,
   shouldSuppressInitialServiceFlowOnProjectEntry,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
+  buildOnboardingPlanningSummaryFlightKey,
   shouldRegeneratePlanningSummaryAfterConversationReset,
   shouldSuppressInitialServiceFlowVisibleMessage,
   shouldSuppressInitialVisibleServiceFlowRun,
@@ -130,6 +131,23 @@ describe("preProjectInitialSeedPolicy", () => {
         forceRegenerate: true,
       })
     ).toBe(false);
+  });
+
+  it("buildOnboardingPlanningSummaryFlightKey isolates reset nonce flights", () => {
+    expect(
+      buildOnboardingPlanningSummaryFlightKey({
+        onboardingKey: "pid:abc",
+        forceRegenerate: true,
+        resetNonce: 2,
+      })
+    ).toBe("pid:abc:reset:2");
+    expect(
+      buildOnboardingPlanningSummaryFlightKey({
+        onboardingKey: "pid:abc",
+        forceRegenerate: false,
+        resetNonce: 2,
+      })
+    ).toBe("pid:abc");
   });
 
   it("shouldRegeneratePlanningSummaryAfterConversationReset when nonce not consumed", () => {

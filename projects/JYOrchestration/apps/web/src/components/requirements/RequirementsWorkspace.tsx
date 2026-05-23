@@ -57,6 +57,7 @@ import {
   hasPreProjectPlanningSummaryMessage,
   isProjectSeededFromPreProjectChat,
   PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+  buildOnboardingPlanningSummaryFlightKey,
   shouldRegeneratePlanningSummaryAfterConversationReset,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
   shouldSuppressInitialServiceFlowOnProjectEntry,
@@ -1245,11 +1246,15 @@ export function RequirementsWorkspace({
         return;
       }
     }
-    if (ideationBootstrapFlightRef.current === onboardingKey) return;
-    ideationBootstrapFlightRef.current = onboardingKey;
+    const flightKey = buildOnboardingPlanningSummaryFlightKey({
+      onboardingKey,
+      forceRegenerate: forceRegeneratePlanningSummary,
+      resetNonce: conversationResetNonce,
+    });
+    if (ideationBootstrapFlightRef.current === flightKey) return;
+    ideationBootstrapFlightRef.current = flightKey;
 
     let cancelled = false;
-    const flightKey = onboardingKey;
 
     void (async () => {
       const persistFirstQuestion = async (params: {
@@ -1345,6 +1350,9 @@ export function RequirementsWorkspace({
           forceRegenerate: forceRegeneratePlanningSummary,
         })
       ) {
+        if (forceRegeneratePlanningSummary) {
+          consumedResetSeedNonceRef.current = conversationResetNonce;
+        }
         const planningBody = buildPreProjectPlanningSummaryFromWorkspaceState({
           projectName: project.name ?? "",
           projectDescription: project.description ?? "",
@@ -1535,7 +1543,8 @@ export function RequirementsWorkspace({
 
     return () => {
       cancelled = true;
-      if (ideationBootstrapFlightRef.current === flightKey) {
+      // Reset 재seed 진행 중에는 room 갱신으로 effect가 재실행돼도 flight를 유지한다.
+      if (!flightKey.includes(":reset:") && ideationBootstrapFlightRef.current === flightKey) {
         ideationBootstrapFlightRef.current = null;
       }
     };
