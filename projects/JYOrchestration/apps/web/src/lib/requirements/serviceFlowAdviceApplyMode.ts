@@ -14,6 +14,49 @@ import type { ServiceFlowResponsePolicy } from "@/lib/requirements/serviceFlowAd
 export const SERVICE_FLOW_ADVICE_TO_FLOW_APPLY_INSTRUCTION =
   "직전 advice 응답을 실제 service-flow 초안으로 변환한다. updatedFlow.steps를 반드시 생성하고, assistantMessage에는 예상 액터와 예상 흐름을 구조화해서 제시한다." as const;
 
+export const ADVICE_TO_FLOW_QUALITY_USER_MESSAGE =
+  "서비스 흐름 초안을 생성하지 못했습니다. 직전 절차를 기준으로 액터와 단계가 포함된 초안을 다시 요청해 주세요." as const;
+
+export const ADVICE_TO_FLOW_QUALITY_FAILURE_CODE = "ADVICE_TO_FLOW_QUALITY" as const;
+
+export type ServiceFlowRegenerationTracePrefix =
+  | "service_flow_advice"
+  | "service_flow_advice_to_flow"
+  | "service_flow_proposal";
+
+export function serviceFlowRegenerationTracePrefix(input: {
+  readonly adviceMode: boolean;
+  readonly adviceToFlowApplyMode: boolean;
+}): ServiceFlowRegenerationTracePrefix {
+  if (input.adviceToFlowApplyMode) return "service_flow_advice_to_flow";
+  if (input.adviceMode) return "service_flow_advice";
+  return "service_flow_proposal";
+}
+
+/** proposal-first fallback synthesis는 일반 proposal mode에서만 사용 */
+export function shouldUseProposalFallbackSynthesis(input: {
+  readonly adviceMode: boolean;
+  readonly adviceToFlowApplyMode: boolean;
+}): boolean {
+  return !input.adviceMode && !input.adviceToFlowApplyMode;
+}
+
+export type AdviceToFlowQualityFailureResult = Readonly<{
+  ok: false;
+  code: typeof ADVICE_TO_FLOW_QUALITY_FAILURE_CODE;
+  message: string;
+  promptText: string;
+}>;
+
+export function buildAdviceToFlowQualityFailure(promptText: string): AdviceToFlowQualityFailureResult {
+  return {
+    ok: false,
+    code: ADVICE_TO_FLOW_QUALITY_FAILURE_CODE,
+    message: ADVICE_TO_FLOW_QUALITY_USER_MESSAGE,
+    promptText,
+  };
+}
+
 const MIN_ADVICE_TO_FLOW_STEPS = 3;
 const MIN_ADVICE_TO_FLOW_ACTORS = 2;
 

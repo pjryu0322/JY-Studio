@@ -51,6 +51,8 @@ import {
   isProjectSingleChatScope,
 } from "@/lib/conversation/conversationScopeBoundary";
 import {
+  ADVICE_TO_FLOW_QUALITY_FAILURE_CODE,
+  ADVICE_TO_FLOW_QUALITY_USER_MESSAGE,
   buildAdviceToFlowApplyResponsePolicy,
   isAdviceToFlowApplyMode,
   shouldUseAdviceToFlowApplyMode,
@@ -616,12 +618,17 @@ export async function POST(request: NextRequest) {
         ...(quickActionLabel ? { quickActionLabel } : {}),
         ...(proposalDecision ? { proposalDecision } : {}),
       });
+      const adviceToFlowQualityFailure = result.code === ADVICE_TO_FLOW_QUALITY_FAILURE_CODE;
       return NextResponse.json(
         {
           success: false,
           code: result.code,
-          message: result.message,
-          meta: { model: null, promptTrace },
+          message: adviceToFlowQualityFailure ? ADVICE_TO_FLOW_QUALITY_USER_MESSAGE : result.message,
+          meta: {
+            model: null,
+            promptTrace,
+            ...(adviceToFlowQualityFailure ? { userFacingMessage: ADVICE_TO_FLOW_QUALITY_USER_MESSAGE } : {}),
+          },
         },
         { status: result.code === "NO_KEY" ? 503 : 502 }
       );

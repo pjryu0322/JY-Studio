@@ -41,9 +41,11 @@ import {
   type ServiceFlowAnalyzeQualityIssueCode,
 } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import {
+  buildAdviceToFlowQualityFailure,
   buildServiceFlowAdviceToFlowApplyRegenerationUserPayload,
   buildServiceFlowAdviceToFlowApplySystemPromptBlock,
   isAdviceToFlowApplyMode,
+  serviceFlowRegenerationTracePrefix,
 } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import {
   buildServiceFlowAdviceRegenerationUserPayload,
@@ -2178,9 +2180,14 @@ ${input.userMessage.trim()}
     attempt = tryValidateModelOutput(retry.parsed, retry.text);
   }
 
+  const regenerationTracePrefix = serviceFlowRegenerationTracePrefix({
+    adviceMode,
+    adviceToFlowApplyMode,
+  });
+
   while (attempt && !attempt.ok && qualityRetryCount < 2) {
     qualityRetryCount += 1;
-    promptTextSf = `${promptTextSf}\n\n--- service_flow_regeneration_started ---\n${lastQualityIssues.join(", ")}`;
+    promptTextSf = `${promptTextSf}\n\n--- ${regenerationTracePrefix}_regeneration_started ---\n${lastQualityIssues.join(", ")}`;
     const regenUser = adviceMode
       ? buildServiceFlowAdviceRegenerationUserPayload({
           issues: lastQualityIssues,
@@ -2196,7 +2203,7 @@ ${input.userMessage.trim()}
           rejectedAssistantPreview: attempt.rejected.assistantMessage,
           rejectedNextQuestion: attempt.rejected.nextQuestion,
         });
-    promptTextSf = `${promptTextSf}\n\n--- service_flow_proposal_regeneration_${qualityRetryCount} ---\n${regenUser}`;
+    promptTextSf = `${promptTextSf}\n\n--- ${regenerationTracePrefix}_regeneration_${qualityRetryCount} ---\n${regenUser}`;
 
     const regen = await callModel([
       ...baseMessages,
@@ -2206,8 +2213,8 @@ ${input.userMessage.trim()}
     if (!regen.ok) return { ok: false, code: regen.code, message: regen.message, promptText: promptTextSf };
     attempt = tryValidateModelOutput(regen.parsed, regen.text);
     promptTextSf += attempt?.ok
-      ? `\n\n--- service_flow_regeneration_result_ok ---`
-      : `\n\n--- service_flow_regeneration_result_failed ---\n${lastQualityIssues.join(", ")}`;
+      ? `\n\n--- ${regenerationTracePrefix}_regeneration_result_ok ---`
+      : `\n\n--- ${regenerationTracePrefix}_regeneration_result_failed ---\n${lastQualityIssues.join(", ")}`;
   }
 
   const validated = attempt?.ok ? attempt.data : null;
@@ -2232,6 +2239,61 @@ ${input.userMessage.trim()}
   }
 
   const rejectedPack = attempt && !attempt.ok ? attempt.rejected : undefined;
+
+  if (adviceToFlowApplyMode) {
+    promptTextSf += `\n\n--- service_flow_advice_to_flow_validation_failed ---\n${lastQualityIssues.join(", ") || "unknown"}`;
+
+    const finalRegenUser = buildServiceFlowAdviceToFlowApplyRegenerationUserPayload({
+      issues: lastQualityIssues.length ? lastQualityIssues : ["advice_to_flow_apply_missing_steps"],
+      rejectedAssistantPreview: rejectedPack?.assistantMessage ?? "",
+    });
+
+    promptTextSf += `\n\n--- service_flow_advice_to_flow_final_regeneration ---\n${finalRegenUser}`;
+
+    const finalRegen = await callModel([
+      ...baseMessages,
+      ...(assistantRaw ? [{ role: "assistant" as const, content: assistantRaw }] : []),
+      { role: "user", content: finalRegenUser },
+    ]);
+
+    if (!finalRegen.ok) {
+      promptTextSf += `\n\n--- service_flow_advice_to_flow_final_regeneration_failed ---\n${finalRegen.code}: ${finalRegen.message}`;
+      return buildAdviceToFlowQualityFailure(promptTextSf);
+    }
+
+    const finalAttempt = tryValidateModelOutput(finalRegen.parsed, finalRegen.text);
+
+    if (finalAttempt?.ok) {
+      promptTextSf += `\n\n--- service_flow_advice_to_flow_final_regeneration_result_ok ---`;
+      return {
+        ok: true,
+        model,
+        promptText: promptTextSf,
+        data: {
+          ...finalAttempt.data,
+          assistantMessage: finalAttempt.data.assistantMessage,
+          nextQuestion: finalAttempt.data.nextQuestion,
+          updatedFlow: finalAttempt.data.updatedFlow,
+          intent: finalAttempt.data.intent as ServiceFlowAnalyzeIntent,
+        },
+      };
+    }
+
+    promptTextSf += `\n\n--- service_flow_advice_to_flow_quality_failed ---\n${lastQualityIssues.join(", ") || "unknown"}`;
+    return buildAdviceToFlowQualityFailure(promptTextSf);
+  }
+
+  if (adviceMode) {
+    promptTextSf += `\n\n--- service_flow_advice_validation_failed ---\n${lastQualityIssues.join(", ") || "unknown"}`;
+    promptTextSf += `\n\n--- service_flow_advice_quality_failed ---`;
+    return {
+      ok: false,
+      code: "ADVICE_QUALITY",
+      message: "기획 조언 응답 품질 기준을 충족하지 못했습니다. 다시 요청해 주세요.",
+      promptText: promptTextSf,
+    };
+  }
+
   promptTextSf += `\n\n--- service_flow_validation_failed ---\n${lastQualityIssues.join(", ") || "unknown"}`;
   promptTextSf += `\n\n--- service_flow_fallback_synthesis_started ---`;
 
