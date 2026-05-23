@@ -672,6 +672,12 @@ export function useServiceFlowWorkshopChat({
           directQuickActionLabel: quickAction?.label ?? null,
           directCtaId: directCtaId ?? undefined,
           messageSendSource,
+          ...(sendOpts?.routerStageIntentOverride ?
+            { routerStageIntentOverride: sendOpts.routerStageIntentOverride }
+          : {}),
+          ...(sendOpts?.routerServiceFlowSubIntentOverride ?
+            { routerServiceFlowSubIntentOverride: sendOpts.routerServiceFlowSubIntentOverride }
+          : {}),
           ctx: intentCtx,
           projectId,
           projectName,

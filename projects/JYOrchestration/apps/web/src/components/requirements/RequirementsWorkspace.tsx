@@ -52,8 +52,6 @@ import {
   normalizeIdeationBootstrapDisplayMessage,
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
-  buildPreProjectPlanningSummaryFromWorkspaceState,
-  buildPreProjectPlanningSummarySeedPromptTrace,
   hasPreProjectPlanningSummaryMessage,
   isProjectSeededFromPreProjectChat,
   PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
@@ -62,6 +60,10 @@ import {
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
   shouldSuppressInitialServiceFlowOnProjectEntry,
 } from "@/lib/requirements/preProjectPlanningSummary";
+import {
+  safeBuildPreProjectInitialProposalSeed,
+  type PreProjectInterviewSuggestionActionMeta,
+} from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import {
   emptyProblemInterviewState,
   problemInterviewStateFromBootstrapSeedWire,
@@ -175,6 +177,7 @@ import {
   dispatchServiceFlowSingleChatSend,
   interviewSuggestionPickToLabel,
   interviewSuggestionPickToQuickAction,
+  interviewSuggestionPickToRouterOverrides,
   storeInterviewSuggestionPick,
   type InterviewSuggestionPickWire,
   type ServiceFlowSingleChatSendOptions,
@@ -1268,6 +1271,7 @@ export function RequirementsWorkspace({
         readonly promptTrace?: RequirementsPromptTimelineEntry | null;
         readonly singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
         readonly interviewSuggestions?: readonly string[];
+        readonly interviewSuggestionActions?: readonly PreProjectInterviewSuggestionActionMeta[];
         readonly interviewAllowCustomInput?: boolean;
         readonly bootstrapInternalType?: string;
       }): Promise<boolean> => {
@@ -1286,11 +1290,12 @@ export function RequirementsWorkspace({
               ...(params.source === "fallback" && params.fallbackReason
                 ? { fallbackReason: params.fallbackReason }
                 : {}),
-              ...(params.bootstrapInternalType === PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE
-                ? {}
-                : params.interviewSuggestions?.length
-                  ? { interviewSuggestions: [...params.interviewSuggestions] }
-                  : {}),
+              ...(params.interviewSuggestions?.length
+                ? { interviewSuggestions: [...params.interviewSuggestions] }
+                : {}),
+              ...(params.interviewSuggestionActions?.length
+                ? { interviewSuggestionActions: [...params.interviewSuggestionActions] }
+                : {}),
               ...(params.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
               ...(params.promptTrace
                 ? (() => {
@@ -1354,21 +1359,30 @@ export function RequirementsWorkspace({
         if (forceRegeneratePlanningSummary) {
           consumedResetSeedNonceRef.current = conversationResetNonce;
         }
-        const planningBody = buildPreProjectPlanningSummaryFromWorkspaceState({
+        const initialSeed = safeBuildPreProjectInitialProposalSeed({
           projectName: project.name ?? "",
           projectDescription: project.description ?? "",
           state: workspaceState,
+          definitions: slotDefsForProgress,
+          existingOrchestration: orchestrationAlignedState,
+          projectId: pid,
+          regenerated: forceRegeneratePlanningSummary,
         });
         if (cancelled) return;
         const planningOk = await persistFirstQuestion({
-          bodyText: planningBody,
+          bodyText: initialSeed.bodyText,
           seedWire: null,
           source: "fallback",
           bootstrapInternalType: PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
-          promptTrace: buildPreProjectPlanningSummarySeedPromptTrace({
-            projectId: pid,
-            regenerated: forceRegeneratePlanningSummary,
-          }),
+          promptTrace: initialSeed.promptTrace,
+          ...(initialSeed.mode === "slot_based"
+            ? {
+                singleChatOrchestrationV1: initialSeed.orchestration,
+                interviewSuggestions: initialSeed.interviewSuggestions,
+                interviewSuggestionActions: initialSeed.interviewSuggestionActions,
+                interviewAllowCustomInput: true,
+              }
+            : {}),
         });
         if (planningOk && forceRegeneratePlanningSummary) {
           consumedResetSeedNonceRef.current = conversationResetNonce;
@@ -1559,6 +1573,8 @@ export function RequirementsWorkspace({
     room,
     persistRemote,
     conversationResetNonce,
+    slotDefsForProgress,
+    orchestrationAlignedState,
   ]);
 
   const onOrganizeRequirements = useCallback(async () => {

@@ -1,12 +1,28 @@
 import type { ServiceFlowQuickActionDispatch } from "@/components/service-flow/useServiceFlowWorkshopChat";
+import {
+  initialProposalSuggestionPickFromAction,
+  isInitialProposalSuggestionPick,
+  resolveInitialProposalQuickReplyAction,
+  type InitialProposalSuggestionPickWire,
+} from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import { quickActionDispatchFromLegacyLabel } from "@/lib/requirements/requirementsQuickActionRegistry";
-import { resolveProjectSingleChatCtaId, type ProjectSingleChatCtaId } from "@/lib/requirements/singleChatStageRouter";
+import type { ServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
+import {
+  resolveProjectSingleChatCtaId,
+  type ProjectSingleChatCtaId,
+  type ProjectSingleChatStageIntent,
+} from "@/lib/requirements/singleChatStageRouter";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
-export type InterviewSuggestionPickWire = string | ServiceFlowQuickActionDispatch;
+export type InterviewSuggestionPickWire =
+  | string
+  | ServiceFlowQuickActionDispatch
+  | InitialProposalSuggestionPickWire;
 
 export function storeInterviewSuggestionPick(label: string): InterviewSuggestionPickWire {
   const trimmed = String(label ?? "").trim();
+  const proposalAction = resolveInitialProposalQuickReplyAction(trimmed);
+  if (proposalAction) return initialProposalSuggestionPickFromAction(proposalAction);
   return quickActionDispatchFromLegacyLabel(trimmed) ?? trimmed;
 }
 
@@ -14,6 +30,7 @@ export function interviewSuggestionPickToLabel(
   pick: InterviewSuggestionPickWire | null | undefined,
 ): string | null {
   if (!pick) return null;
+  if (isInitialProposalSuggestionPick(pick)) return pick.label;
   return typeof pick === "string" ? pick : pick.label;
 }
 
@@ -21,8 +38,24 @@ export function interviewSuggestionPickToQuickAction(
   pick: InterviewSuggestionPickWire | null | undefined,
 ): ServiceFlowQuickActionDispatch | null {
   if (!pick) return null;
+  if (isInitialProposalSuggestionPick(pick)) return null;
   if (typeof pick !== "string") return pick;
   return quickActionDispatchFromLegacyLabel(pick);
+}
+
+export function interviewSuggestionPickToRouterOverrides(
+  pick: InterviewSuggestionPickWire | null | undefined,
+): Readonly<{
+  readonly routerStageIntentOverride: ProjectSingleChatStageIntent;
+  readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
+}> | null {
+  if (!isInitialProposalSuggestionPick(pick)) return null;
+  return {
+    routerStageIntentOverride: pick.stageIntent,
+    ...(pick.serviceFlowSubIntent ?
+      { routerServiceFlowSubIntentOverride: pick.serviceFlowSubIntent }
+    : {}),
+  };
 }
 
 export function shouldRouteFeaturePlanningSendViaServiceFlowAnalyze(input: {
@@ -46,6 +79,9 @@ export type ServiceFlowSingleChatSendOptions = Readonly<{
   readonly silentUserAppend?: boolean;
   readonly source?: ServiceFlowMessageSendSource;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  /** 초기 제안 quick reply 등 — LLM stageIntent보다 우선 */
+  readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
+  readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
 }>;
 
 export async function dispatchServiceFlowSingleChatSend(params: {
@@ -55,6 +91,8 @@ export async function dispatchServiceFlowSingleChatSend(params: {
   readonly quickActionLabel?: string | null;
   readonly silentUserAppend?: boolean;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
+  readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
   readonly sendRefCurrent:
     | ((
         payload: ServiceDesignHarnessPayload,
@@ -95,14 +133,17 @@ export async function dispatchServiceFlowSingleChatSend(params: {
         allowUserMessageLegacyCtaMatch: false,
       })
     : null);
+  const isExplicitQuickReply = Boolean(quickAction || params.routerStageIntentOverride);
   await fn(params.payload, text, quickAction, {
     ...(params.silentUserAppend ? { silentUserAppend: true } : {}),
-    ...(quickAction ?
-      {
-        source: "quick_reply" as const,
-        ...(directCtaId ? { directCtaId } : {}),
-      }
-    : { source: "typed_text" as const }),
+    ...(params.routerStageIntentOverride ?
+      { routerStageIntentOverride: params.routerStageIntentOverride }
+    : {}),
+    ...(params.routerServiceFlowSubIntentOverride ?
+      { routerServiceFlowSubIntentOverride: params.routerServiceFlowSubIntentOverride }
+    : {}),
+    source: isExplicitQuickReply ? ("quick_reply" as const) : ("typed_text" as const),
+    ...(isExplicitQuickReply && directCtaId ? { directCtaId } : {}),
   });
   params.onAfterDispatch();
   return { dispatched: true };

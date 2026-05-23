@@ -34,6 +34,7 @@ import { guardRequirementsAction, type GuardResult } from "@/lib/requirements/re
 import { mergeGuardWithStrongActionPolicy } from "@/lib/requirements/requirementsStrongActionPolicy";
 import {
   buildServiceFlowResponsePolicyFromDispatch,
+  formatServiceFlowResponsePolicyTrace,
   type ServiceFlowResponseMode,
   type ServiceFlowResponsePolicy,
 } from "@/lib/requirements/serviceFlowAdviceMode";
@@ -101,7 +102,9 @@ import {
   formatServiceFlowSubIntentGuardTrace,
   normalizeServiceFlowSubIntent,
   shouldBlockApplyProposalForServiceFlowSubIntent,
+  type ServiceFlowSubIntent,
 } from "@/lib/requirements/serviceFlowSubIntent";
+import type { ProjectSingleChatStageIntent } from "@/lib/requirements/singleChatStageRouter";
 import { serviceFlowHasMinimumDraftForApply } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import type { ServiceFlowMessageSendSource } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 import {
@@ -526,6 +529,7 @@ function finalizeDispatchResult(input: {
     directQuickActionId: input.directQuickActionId,
     executionScope,
   });
+  const responsePolicyTrace = formatServiceFlowResponsePolicyTrace(serviceFlowResponsePolicy);
   const serviceFlowExtras = {
     serviceFlowResponseMode: serviceFlowResponsePolicy.mode,
     serviceFlowResponsePolicy,
@@ -652,6 +656,7 @@ function finalizeDispatchResult(input: {
     formatAgentMetadataForTimeline(agentRuntimeMetadata),
     stageRoutingTrace,
     subIntentGuard.applyGuardTrace,
+    responsePolicyTrace,
   ].filter(Boolean);
   const timelineDetail = formatOrchestrationTimelineResponse({
     group: orchestrationTimelineGroupForAction("intentRouterGuard"),
@@ -778,6 +783,23 @@ export function dispatchRequirementsUserIntent(input: {
   });
 }
 
+function applyRouterIntentOverrides(
+  intent: IntentRoutingResult,
+  overrides?: Readonly<{
+    readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
+    readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
+  }>,
+): IntentRoutingResult {
+  if (!overrides?.routerStageIntentOverride) return intent;
+  return {
+    ...intent,
+    stageIntent: overrides.routerStageIntentOverride,
+    serviceFlowSubIntent:
+      overrides.routerServiceFlowSubIntentOverride ??
+      intent.serviceFlowSubIntent,
+  };
+}
+
 /** Async dispatch — LLM router for free text; direct path skips LLM. */
 export async function dispatchRequirementsUserIntentAsync(input: {
   readonly userMessage: string;
@@ -785,6 +807,8 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   readonly directQuickActionLabel?: string | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly messageSendSource?: ServiceFlowMessageSendSource;
+  readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
+  readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
   readonly ctx: RequirementsIntentDispatchContext;
   readonly projectId: string;
   readonly projectName?: string;
@@ -842,8 +866,13 @@ export async function dispatchRequirementsUserIntentAsync(input: {
       );
   }
 
+  const routedIntent = applyRouterIntentOverrides(intent, {
+    routerStageIntentOverride: input.routerStageIntentOverride,
+    routerServiceFlowSubIntentOverride: input.routerServiceFlowSubIntentOverride,
+  });
+
   const guard = guardRequirementsIntentAction({
-    intent,
+    intent: routedIntent,
     userMessage: input.userMessage,
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
@@ -851,14 +880,14 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   });
 
   return finalizeDispatchResult({
-    intent,
+    intent: routedIntent,
     guard,
     ctx: input.ctx,
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
     directCtaId: input.directCtaId,
     messageSendSource: input.messageSendSource,
-    skipLowConfidenceCheck: Boolean(directId),
+    skipLowConfidenceCheck: Boolean(directId || input.routerStageIntentOverride),
     routingState,
     userMessage: input.userMessage,
     recentMessageLines: input.recentMessageLines,
