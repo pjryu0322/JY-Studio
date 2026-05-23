@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   isProjectSeededFromPreProjectChat,
+  shouldSuppressInitialServiceFlowOnProjectEntry,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
   shouldSuppressInitialServiceFlowVisibleMessage,
   shouldSuppressInitialVisibleServiceFlowRun,
@@ -14,22 +15,14 @@ describe("preProjectInitialSeedPolicy", () => {
       originalProjectDescription: "녹취 파일을 회의록으로 정리하는 웹서비스",
       seededFromPreProjectChat: true,
     });
-    expect(
-      isProjectSeededFromPreProjectChat(state, {
-        description: "녹취 파일을 회의록으로 정리하는 웹서비스",
-      })
-    ).toBe(true);
+    expect(isProjectSeededFromPreProjectChat(state)).toBe(true);
   });
 
   it("does not treat general project with mirrored description as pre-project", () => {
     const state = parseRequirementsStateJson({
       originalProjectDescription: "녹취 파일을 회의록으로 정리하는 웹서비스",
     });
-    expect(
-      isProjectSeededFromPreProjectChat(state, {
-        description: "녹취 파일을 회의록으로 정리하는 웹서비스",
-      })
-    ).toBe(false);
+    expect(isProjectSeededFromPreProjectChat(state)).toBe(false);
   });
 
   it("detects legacy pre-project from draft-derived openIssues", () => {
@@ -99,6 +92,12 @@ describe("preProjectInitialSeedPolicy", () => {
         userMessageText: "서비스 흐름 정리해줘",
       })
     ).toBe(false);
+  });
+
+  it("shouldSuppressInitialServiceFlowOnProjectEntry when pre-project and no persisted flow", () => {
+    const state = parseRequirementsStateJson({ seededFromPreProjectChat: true });
+    expect(shouldSuppressInitialServiceFlowOnProjectEntry(state, 0)).toBe(true);
+    expect(shouldSuppressInitialServiceFlowOnProjectEntry(state, 2)).toBe(false);
   });
 
   it("shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry when pre-project and empty room", () => {

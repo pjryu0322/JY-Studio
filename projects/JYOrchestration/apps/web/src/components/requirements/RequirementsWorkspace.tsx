@@ -57,6 +57,7 @@ import {
   isProjectSeededFromPreProjectChat,
   PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
+  shouldSuppressInitialServiceFlowOnProjectEntry,
 } from "@/lib/requirements/preProjectPlanningSummary";
 import {
   emptyProblemInterviewState,
@@ -1222,7 +1223,7 @@ export function RequirementsWorkspace({
     if (onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
     const workspaceState = parseRequirementsStateJson(project.requirementsStateJson);
-    const seededFromPreProject = isProjectSeededFromPreProjectChat(workspaceState, project);
+    const seededFromPreProject = isProjectSeededFromPreProjectChat(workspaceState);
 
     if (hasPreProjectPlanningSummaryMessage(existing)) {
       setOnboardingAppliedKey(onboardingKey);
@@ -2127,10 +2128,8 @@ export function RequirementsWorkspace({
   const suppressInitialServiceFlowVisibleMessage = useMemo(() => {
     if (conversationStatus !== "loaded") return false;
     const st = parseRequirementsStateJson(project?.requirementsStateJson);
-    return (
-      isProjectSeededFromPreProjectChat(st, project) && serviceFlowWorkshopPersisted.length === 0
-    );
-  }, [conversationStatus, project, project?.requirementsStateJson, serviceFlowWorkshopPersisted.length, fetchNonce]);
+    return shouldSuppressInitialServiceFlowOnProjectEntry(st, serviceFlowWorkshopPersisted.length);
+  }, [conversationStatus, project?.requirementsStateJson, serviceFlowWorkshopPersisted.length, fetchNonce]);
 
   const serviceFlowAlternativeCanvas = useServiceFlowSingleChatBridge({
     projectId: resolvedProjectId.trim(),

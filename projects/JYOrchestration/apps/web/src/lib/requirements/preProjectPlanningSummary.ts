@@ -14,10 +14,7 @@ export function hasPreProjectPlanningSummaryMessage(messages: readonly Requireme
   );
 }
 
-export function isProjectSeededFromPreProjectChat(
-  state: RequirementsStateJson,
-  _project?: { readonly description?: string | null } | null
-): boolean {
+export function isProjectSeededFromPreProjectChat(state: RequirementsStateJson): boolean {
   if (state.seededFromPreProjectChat === true) return true;
   if (String(state.lastUserDraftText ?? "").trim()) return true;
   if (String(state.lastPromptText ?? "").trim()) return true;
@@ -76,6 +73,14 @@ export function shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry(input: {
   if (input.hasExistingPlanningSummary) return false;
   if (input.existingMessageCount > 0) return false;
   return input.seededFromPreProject;
+}
+
+/** Pre-Project 유래 프로젝트 첫 진입 시 service-flow 자동 visible append 억제 */
+export function shouldSuppressInitialServiceFlowOnProjectEntry(
+  state: RequirementsStateJson,
+  persistedServiceFlowMessageCount: number
+): boolean {
+  return persistedServiceFlowMessageCount === 0 && isProjectSeededFromPreProjectChat(state);
 }
 
 function splitLines(text: string | null | undefined, max = 8): string[] {
