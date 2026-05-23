@@ -31,6 +31,7 @@ describe("buildAiPlannerSystemPrompt", () => {
     const p = buildAiPlannerSystemPrompt({ mode: "pre_project_brainstorm" });
     expect(p).toContain("브레인스토밍");
     expect(p).toContain("요구사항 목록으로 바로 고정하지 않습니다");
+    expect(p).not.toContain("다음에는 제가 비교안/초안/정리안을 만들겠습니다");
     expect(p).not.toBe(PROJECT_SINGLE_CHAT_PLANNER_PROMPT);
   });
 

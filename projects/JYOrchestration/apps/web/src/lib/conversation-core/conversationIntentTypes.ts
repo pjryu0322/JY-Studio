@@ -7,6 +7,7 @@ export type ConversationIntentMode =
   | "feasibility_check"
   | "research_request"
   | "summary"
+  | "option_comparison"
   | "project_draft"
   | "project_execution_planning"
   | "general_chat";
@@ -23,6 +24,8 @@ export type ConversationResponsePolicy = {
   readonly shouldPrepareProjectDraft?: boolean;
   /** feasibility 체크리스트 반복 억제 */
   readonly avoidChecklistRepetition?: boolean;
+  /** 플랫폼이 실제로 수행하지 않는 다음 행동 약속 금지 */
+  readonly avoidFutureActionPromise?: boolean;
 };
 
 export type ConversationIntentClassification = {

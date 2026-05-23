@@ -28,11 +28,16 @@ const CLASSIFIER_SYSTEM = `당신은 대화 의도 분류기입니다.
 - feasibility_check: 가능 여부 확인, URL/자료/기능의 수집·구현 가능성 검토 요청
 - research_request: 실제 조사/검색/외부 확인이 필요한 요청
 - summary: 지금까지 대화 정리 요청
+- option_comparison: 비교안, 비교표, 장단점 비교, 대안 비교 요청
 - project_draft: 프로젝트 생성/프로토타입 준비/초안 생성 요청
 - project_execution_planning: 이미 구현/실행/작업지시로 넘어가는 요청
 - general_chat: 위에 해당하지 않는 일반 대화
 
 중요:
+- "비교안을 만들어줘"는 project_draft가 아니라 option_comparison입니다.
+- "비교표로 정리해줘", "대안 비교해줘", "장단점 비교해줘"도 option_comparison입니다.
+- "프로젝트로 만들어줘", "프로토타입 준비", "초안 생성"은 project_draft입니다.
+- "웹서비스를 만들고 싶어", "서비스 아이디어가 있어"처럼 아이디어를 말한 것은 project_draft가 아니라 brainstorm입니다.
 - "확인해줘", "가능해?", "수집할 수 있어?", "검토해줘"는 brainstorm이 아니라 feasibility_check일 가능성이 높다.
 - URL이 포함되고 데이터/API/수집/크롤링 가능 여부를 묻는 경우 feasibility_check로 분류한다.
 - 문서/PDF/파일 업로드/주석/댓글/문서 비교/공동 검토가 명확할 때만 shouldInjectDocumentContext=true.
@@ -87,7 +92,16 @@ function mergePolicy(raw: unknown, mode: ConversationIntentMode): ConversationRe
     ...(typeof r.shouldOfferAlternatives === "boolean" ? { shouldOfferAlternatives: r.shouldOfferAlternatives } : {}),
     ...(typeof r.shouldSummarizeDecisions === "boolean" ? { shouldSummarizeDecisions: r.shouldSummarizeDecisions } : {}),
     ...(typeof r.shouldPrepareProjectDraft === "boolean" ? { shouldPrepareProjectDraft: r.shouldPrepareProjectDraft } : {}),
+    ...(typeof r.avoidFutureActionPromise === "boolean" ? { avoidFutureActionPromise: r.avoidFutureActionPromise } : {}),
   };
+}
+
+/** 아이디어 소개·탐색 발화(프로젝트/초안 생성 요청이 아님) */
+export function looksLikeIdeaIntroduction(last: string): boolean {
+  const t = String(last ?? "").trim();
+  if (!t) return false;
+  if (/프로젝트(로)?\s*만들|프로토타입\s*준비|초안\s*생성/i.test(t)) return false;
+  return /만들고\s*싶어|서비스\s*아이디어|아이디어가\s*있어|구상하고\s*있어/i.test(t);
 }
 
 function coerceStringArray(raw: unknown, max = 8): string[] {
@@ -102,6 +116,7 @@ function parseMode(raw: unknown): ConversationIntentMode | null {
     "feasibility_check",
     "research_request",
     "summary",
+    "option_comparison",
     "project_draft",
     "project_execution_planning",
     "general_chat",
@@ -158,6 +173,9 @@ const FEASIBILITY_EXPLICIT_RE =
 
 const BRAINSTORM_POSSIBILITY_RE =
   /가능한\s*(방향|아이디어|접근|시나리오|확장|기능)|확장\s*가능성|발전\s*가능성/i;
+
+const OPTION_COMPARISON_RE =
+  /비교안|비교표|대안\s*비교|장단점\s*비교|비교해\s*줘|A안|B안|MVP.*확장|확장.*MVP/i;
 
 function hasUrlInRecentContext(text: string): boolean {
   return /https?:\/\//i.test(String(text ?? ""));
@@ -216,6 +234,24 @@ export function mergeConversationDocumentContext(
 }
 
 /** LLM이 brainstorm 등으로 바꿔도 rules feasibility를 유지할지 */
+/** LLM이 project_draft로 오분류해도 rules brainstorm·아이디어 소개면 brainstorm 유지 */
+export function mergeConversationIntentWithIdeaIntroductionGuard(
+  rules: ConversationIntentClassification,
+  parsed: ConversationIntentClassification,
+  lastUser: string
+): ConversationIntentClassification {
+  if (!looksLikeIdeaIntroduction(lastUser)) return parsed;
+  if (parsed.mode !== "project_draft") return parsed;
+  if (rules.mode !== "brainstorm") return parsed;
+  return {
+    ...parsed,
+    mode: "brainstorm",
+    reason: `${parsed.reason} / rules_override: 아이디어 소개는 pre-project brainstorm 유지`.slice(0, 500),
+    responsePolicy: defaultResponsePolicyForMode("brainstorm"),
+    classifierSource: parsed.classifierSource ?? "llm",
+  };
+}
+
 export function mergeConversationIntentWithRulesGuard(
   rules: ConversationIntentClassification,
   parsed: ConversationIntentClassification,
@@ -241,6 +277,17 @@ export function mergeConversationIntentWithRulesGuard(
   };
 }
 
+/** LLM 분류 결과에 rules 기반 보정(feasibility·아이디어 소개) 적용 */
+export function mergeConversationIntentGuards(
+  rules: ConversationIntentClassification,
+  parsed: ConversationIntentClassification,
+  lastUser: string,
+  recentUserBlob?: string
+): ConversationIntentClassification {
+  const afterFeasibility = mergeConversationIntentWithRulesGuard(rules, parsed, lastUser, recentUserBlob);
+  return mergeConversationIntentWithIdeaIntroductionGuard(rules, afterFeasibility, lastUser);
+}
+
 /** 규칙 기반 분류 — LLM 실패·테스트·NO_KEY 시 사용 */
 export function classifyConversationIntentFromRules(input: {
   readonly scope: ConversationScope;
@@ -258,6 +305,9 @@ export function classifyConversationIntentFromRules(input: {
   if (/프로젝트(로)?\s*만들|프로토타입\s*준비|초안\s*생성/i.test(last)) {
     mode = "project_draft";
     reason = "프로젝트·초안 생성 요청";
+  } else if (OPTION_COMPARISON_RE.test(last)) {
+    mode = "option_comparison";
+    reason = "비교안·대안 비교 요청";
   } else if (/지금까지\s*정리|대화\s*정리|요약해\s*줘/i.test(last)) {
     mode = "summary";
     reason = "대화 정리 요청";
@@ -279,6 +329,9 @@ export function classifyConversationIntentFromRules(input: {
   ) {
     mode = "research_request";
     reason = "외부 조사·검색 요청(직접 조회 결과 단정 금지)";
+  } else if (looksLikeIdeaIntroduction(last)) {
+    mode = "brainstorm";
+    reason = "아이디어 소개·탐색";
   } else if (/확장|브레인스토밍|아이디어.*넓|방향.*제안/i.test(last)) {
     mode = "brainstorm";
     reason = "아이디어 확장·탐색";
@@ -393,7 +446,7 @@ export async function classifyConversationIntent(input: {
     const docBlob = blobForDoc(input.transcript);
     const shouldInjectDocumentContext = mergeConversationDocumentContext(rules, parsed, docBlob);
     const userBlob = recentUserBlob(input.transcript);
-    const merged = mergeConversationIntentWithRulesGuard(rules, parsed, last, userBlob);
+    const merged = mergeConversationIntentGuards(rules, parsed, last, userBlob);
     const withDoc = {
       ...merged,
       shouldInjectDocumentContext,

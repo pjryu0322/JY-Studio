@@ -17,6 +17,7 @@ import {
 import { buildFeasibilityRepetitionGuardBlock } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
 import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/conversationResponsePolicy";
+import { sanitizeUnsupportedFuturePromise } from "@/lib/conversation-core/futurePromiseGuard";
 import {
   formatWebsiteInspectionForPrompt,
   inspectWebsite,
@@ -499,7 +500,7 @@ export async function runMessengerAiTurn(input: {
     }
     return { ok: false, code: res.code, message: res.message };
   }
-  const text = String(res.text ?? "").trim();
+  const text = sanitizeUnsupportedFuturePromise(String(res.text ?? "").trim());
   if (!text) {
     if (input.logContext) {
       await recordMessengerOpenAi({

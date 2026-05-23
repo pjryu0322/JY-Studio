@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyConversationIntentFromRules } from "@/lib/conversation-core/conversationIntentClassifier";
 import { promptPrescribesFeasibilityClosingPhrase } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
+import { messengerBasePromptForMode } from "@/lib/conversation-core/conversationResponsePolicy";
 import {
   buildMessengerSystemBlockForTest,
   resolveMessengerTurnSetupFromRulesForTest,
@@ -74,5 +75,24 @@ describe("messengerLlm prompt smoke (rules only)", () => {
     expect(sys).toContain("robots.txt");
     expect(sys).toContain("페이지네이션");
     expect(promptPrescribesFeasibilityClosingPhrase(sys)).toBe(false);
+  });
+
+  it("brainstorm prompt does not prescribe future comparison/draft promise", () => {
+    const sys = messengerBasePromptForMode("pre_project", "brainstorm");
+    expect(sys).not.toContain("다음에는 제가 비교안/초안/정리안을 만들겠습니다");
+    expect(sys).not.toContain("다음 산출물을 제안");
+  });
+
+  it("project draft prompt does not promise project promotion or json preparation", () => {
+    const sys = messengerBasePromptForMode("pre_project", "project_draft");
+    expect(sys).not.toContain("프로젝트 승격 또는 초안 JSON 준비");
+    expect(sys).not.toContain("다음 행동을 예고");
+  });
+
+  it("option comparison prompt requires current answer to produce comparison", () => {
+    const sys = messengerBasePromptForMode("pre_project", "option_comparison");
+    expect(sys).toContain("비교안");
+    expect(sys).toContain("현재 응답에서 바로 작성");
+    expect(sys).toContain("라고 말하지 않습니다");
   });
 });

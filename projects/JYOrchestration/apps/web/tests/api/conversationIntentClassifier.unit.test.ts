@@ -4,6 +4,7 @@ import {
   enrichClassificationWithRequiredAction,
   extractUrlsFromTranscript,
   mergeConversationDocumentContext,
+  mergeConversationIntentWithIdeaIntroductionGuard,
   mergeConversationIntentWithRulesGuard,
 } from "@/lib/conversation-core/conversationIntentClassifier";
 import { promptPrescribesFeasibilityClosingPhrase } from "@/lib/conversation-core/feasibilityRepetitionGuard";
@@ -43,6 +44,27 @@ describe("classifyConversationIntentFromRules", () => {
 
   it("project draft → project_draft", () => {
     expect(classifyLast("프로젝트로 만들어줘").mode).toBe("project_draft");
+  });
+
+  it("비교안을 만들어줘 → option_comparison", () => {
+    expect(classifyLast("비교안을 만들어줘").mode).toBe("option_comparison");
+  });
+
+  it("비교표로 정리해줘 → option_comparison", () => {
+    expect(classifyLast("MVP안과 확장안을 비교표로 정리해줘").mode).toBe("option_comparison");
+  });
+
+  it("장단점 비교해줘 → option_comparison", () => {
+    expect(classifyLast("두 가지 접근의 장단점을 비교해줘").mode).toBe("option_comparison");
+  });
+
+  it("프로젝트로 만들어줘 remains project_draft", () => {
+    expect(classifyLast("프로젝트로 만들어줘").mode).toBe("project_draft");
+    expect(classifyLast("비교안을 만들어줘").mode).not.toBe("project_draft");
+  });
+
+  it("웹서비스를 만들고 싶어 remains brainstorm", () => {
+    expect(classifyLast("녹취파일을 회의록으로 정리하는 웹서비스를 만들고 싶어").mode).toBe("brainstorm");
   });
 
   it("PDF review → document context", () => {
@@ -178,6 +200,27 @@ describe("mergeConversationDocumentContext", () => {
     });
     const llmParsed = { ...rules, shouldInjectDocumentContext: true, classifierSource: "llm" as const };
     expect(mergeConversationDocumentContext(rules, llmParsed, last)).toBe(false);
+  });
+});
+
+describe("mergeConversationIntentWithIdeaIntroductionGuard", () => {
+  it("keeps brainstorm when llm says project_draft for idea introduction", () => {
+    const last = "녹취파일을 회의록으로 정리하는 웹서비스를 만들고 싶어";
+    const rules = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [{ role: "user", content: last }],
+    });
+    expect(rules.mode).toBe("brainstorm");
+    const llmParsed = {
+      ...rules,
+      mode: "project_draft" as const,
+      reason: "llm: create project",
+      classifierSource: "llm" as const,
+      responsePolicy: defaultResponsePolicyForMode("project_draft"),
+    };
+    const merged = mergeConversationIntentWithIdeaIntroductionGuard(rules, llmParsed, last);
+    expect(merged.mode).toBe("brainstorm");
+    expect(merged.reason).toContain("rules_override");
   });
 });
 

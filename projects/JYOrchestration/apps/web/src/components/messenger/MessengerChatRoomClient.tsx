@@ -43,6 +43,8 @@ import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromC
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
 import { textMentionsMessengerAiPlanner, type MessengerAiMode } from "@/lib/messenger/messengerAiParticipation";
+import { buildOptimisticMessengerUserMessage } from "@/lib/messenger/optimisticMessengerMessage";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { openProjectRoomWindow } from "@/lib/ui/workspaceMode";
 
@@ -60,6 +62,8 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  /** 전송 직후 서버 반영 전까지 표시할 사용자 메시지(기획자 "생각 중"보다 먼저 보이게 함) */
+  const [optimisticOutbound, setOptimisticOutbound] = useState<readonly RequirementsMessage[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
   const [draftOpen, setDraftOpen] = useState(false);
@@ -88,6 +92,10 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
 
   const projectLinkedId = detail?.room.projectId ?? null;
   const aiMode = detail?.room.aiParticipationMode ?? "AUTO";
+
+  useEffect(() => {
+    setOptimisticOutbound([]);
+  }, [rid]);
 
   useEffect(() => {
     userPostedInRoomRef.current = false;
@@ -176,6 +184,12 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }));
   }, [participantOptions]);
 
+  const displayMessages = useMemo(() => {
+    if (!optimisticOutbound.length) return messages;
+    const base = messages ?? [];
+    return [...base, ...optimisticOutbound];
+  }, [messages, optimisticOutbound]);
+
   const handleComposerSend = useCallback(
     async (_payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
@@ -183,31 +197,51 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       const mode = detail?.room.aiParticipationMode ?? "AUTO";
       const expectAiReply =
         mode === "AUTO" || (mode === "MENTION_ONLY" && textMentionsMessengerAiPlanner(text));
+      const optimisticUserMessage = buildOptimisticMessengerUserMessage({
+        content: text,
+        speakerId: sessionUserId ?? undefined,
+        speakerName: sessionName,
+      });
+      setToast(null);
+      flushSync(() => {
+        setInput("");
+        setOptimisticOutbound([optimisticUserMessage]);
+      });
       setBusy(true);
       setAiBusy(expectAiReply);
-      setToast(null);
+      userPostedInRoomRef.current = true;
       try {
-        flushSync(() => {
-          setInput("");
-        });
+        sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
+      } catch {
+        /* noop */
+      }
+      try {
         const { aiError } = await postMessengerUserMessage(rid, text);
-        userPostedInRoomRef.current = true;
-        try {
-          sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
-        } catch {
-          /* noop */
-        }
         if (aiError) setToast(aiError);
+        setOptimisticOutbound([]);
         await reloadMessages();
         await reloadDetail();
       } catch (e) {
+        setOptimisticOutbound([]);
+        setInput(text);
         setToast(e instanceof Error ? e.message : "오류가 발생했습니다.");
       } finally {
         setAiBusy(false);
         setBusy(false);
       }
     },
-    [rid, input, busy, aiBusy, projectLinkedId, detail?.room.aiParticipationMode, reloadMessages, reloadDetail]
+    [
+      rid,
+      input,
+      busy,
+      aiBusy,
+      projectLinkedId,
+      detail?.room.aiParticipationMode,
+      reloadMessages,
+      reloadDetail,
+      sessionName,
+      sessionUserId,
+    ]
   );
 
   const saveAiSettings = useCallback(
@@ -322,6 +356,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     try {
       await clearMessengerChatRoomConversation(rid);
       setInput("");
+      setOptimisticOutbound([]);
       await reloadMessages();
       await reloadDetail();
     } catch (e) {
@@ -479,7 +514,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
           <div style={requirementsWorkspaceMainRowStyle} className="jyo-requirements-workspace-main">
             <div style={requirementsIdeationChatPanelShellStyle}>
               <RequirementsChatPanel
-                messages={messages}
+                messages={displayMessages}
                 typingIndicator={aiBusy}
                 screenAiMemberId="ideation"
                 sessionUserDisplayName={sessionName}
