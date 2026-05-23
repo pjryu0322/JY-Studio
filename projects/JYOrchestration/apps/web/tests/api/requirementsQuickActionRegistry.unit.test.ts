@@ -22,6 +22,7 @@ describe("requirementsQuickActionRegistry", () => {
 
   it("legacy string maps to actionId for display-only compat", () => {
     expect(resolveQuickActionIdFromLegacyLabel("흐름 승인하기")).toBe("APPROVE_FLOW");
+    expect(resolveQuickActionIdFromLegacyLabel("화면 구성 보기")).toBe("DEFINE_SCREEN");
     const decision = resolveProposalDecisionFromQuickActionInput({
       quickActionLabel: "흐름 승인하기",
     });

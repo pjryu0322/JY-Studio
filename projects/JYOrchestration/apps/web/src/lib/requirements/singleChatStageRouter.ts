@@ -8,6 +8,7 @@ import {
   type ConversationExecutionScope,
 } from "@/lib/conversation/conversationScopeBoundary";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import { routeProjectSingleChatOrchestrationTransition } from "@/lib/requirements/projectSingleChatTransitionAction";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { resolveQuickActionIdFromLegacyLabel } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
@@ -48,6 +49,7 @@ export type ProjectSingleChatStageRoutingResult = Readonly<{
   readonly stageIntent: ProjectSingleChatStageIntent;
   readonly serviceFlowSubIntent?: ServiceFlowSubIntent;
   readonly shouldRunServiceFlowAnalyze: boolean;
+  readonly shouldRunOrchestrationTransition?: boolean;
   readonly shouldRunAdviceToFlowApply: boolean;
   readonly shouldRunFlowReview: boolean;
   readonly shouldRunActorDefinition?: boolean;
@@ -126,13 +128,11 @@ function resolveStageIntentFromSignals(input: {
   if (fromRouter !== "general_advice") return fromRouter;
 
   if (input.effectiveActionId === "REVIEW_FLOW") return "flow_review";
+  if (input.effectiveActionId === "APPROVE_FLOW") return "flow_review";
   if (input.effectiveActionId === "DEFINE_SCREEN") return "screen_planning";
-  if (
-    input.effectiveActionId === "EDIT_FEATURES" ||
-    input.effectiveActionId === "START_FEATURE_DETAIL"
-  ) {
-    return "feature_planning";
-  }
+  if (input.effectiveActionId === "EDIT_FEATURES") return "feature_planning";
+  if (input.effectiveActionId === "START_FEATURE_DETAIL") return "feature_planning";
+  if (input.effectiveActionId === "NEXT_STAGE") return "feature_planning";
 
   return "general_advice";
 }
@@ -165,6 +165,10 @@ export function routeProjectSingleChatStage(input: {
       reason: "not_project_single_chat",
     };
   }
+
+  const transitionActionId = input.effectiveActionId ?? input.directQuickActionId ?? null;
+  const transitionRoute = routeProjectSingleChatOrchestrationTransition(transitionActionId);
+  if (transitionRoute) return transitionRoute;
 
   const stageIntent = resolveStageIntentFromSignals({
     routerStageIntent: input.routerStageIntent,

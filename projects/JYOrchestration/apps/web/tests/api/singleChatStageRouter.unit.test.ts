@@ -123,6 +123,34 @@ describe("singleChatStageRouter", () => {
     ).toBe("FLOW_REVIEW");
   });
 
+  it("routes APPROVE_FLOW to orchestration transition without general_advice no-op", () => {
+    const result = routeProjectSingleChatStage({
+      executionScope: "project_single_chat",
+      latestUserMessage: "흐름 확정",
+      effectiveActionId: "APPROVE_FLOW",
+      currentFlow: createSampleServiceFlow(),
+    });
+
+    expect(result.shouldRunOrchestrationTransition).toBe(true);
+    expect(result.shouldRunServiceFlowAnalyze).toBe(false);
+    expect(result.reason).toBe("flow_approve_transition");
+    expect(result.stageIntent).toBe("flow_review");
+  });
+
+  it("routes NEXT_STAGE to orchestration transition", () => {
+    const result = routeProjectSingleChatStage({
+      executionScope: "project_single_chat",
+      latestUserMessage: "다음 단계 진행",
+      effectiveActionId: "NEXT_STAGE",
+      currentFlow: createSampleServiceFlow({ conversationState: "APPROVED" }),
+    });
+
+    expect(result.shouldRunOrchestrationTransition).toBe(true);
+    expect(result.shouldRunServiceFlowAnalyze).toBe(false);
+    expect(result.reason).toBe("next_stage_transition");
+    expect(result.shouldRouteToFeaturePlanning).toBe(false);
+  });
+
   it("normalizes unknown stage intent to general_advice", () => {
     expect(normalizeProjectSingleChatStageIntent("unknown_stage")).toBe("general_advice");
   });

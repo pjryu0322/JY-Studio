@@ -67,6 +67,7 @@ import {
   shouldShowServiceFlowApplyActions,
 } from "@/lib/requirements/serviceFlowActionGating";
 import { shouldEnterManualActorEditFromSingleChat } from "@/lib/requirements/projectSingleChatBoundaryGuard";
+import { shouldCallAnalyzeForTransitionQuickAction } from "@/lib/requirements/projectSingleChatTransitionAction";
 import type { ServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
 import {
   stripAlternativeCanvasReopenFromQuickReplies,
@@ -842,6 +843,15 @@ export function useServiceFlowWorkshopChat({
             ...analyzeOpts,
             proposalDecision: "APPLY",
             ...(adviceToFlowDispatch.omitQuickAction ? {} : { quickAction: { id: "APPLY_PROPOSAL", label: "추천안 적용" } }),
+          });
+          scrollChatToBottom();
+          return;
+        }
+        if (shouldCallAnalyzeForTransitionQuickAction({ quickActionId: effectiveDispatch.id })) {
+          callAnalyze(body, {
+            ...analyzeOpts,
+            quickAction: effectiveDispatch,
+            quickActionLabel: effectiveDispatch.label,
           });
           scrollChatToBottom();
           return;

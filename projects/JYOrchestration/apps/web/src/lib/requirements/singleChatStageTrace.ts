@@ -48,6 +48,7 @@ export function formatProjectSingleChatStageRoutingTrace(input: {
     `routerStageIntent=${String(input.routerStageIntent ?? "").trim()}`,
     `routerServiceFlowSubIntent=${String(input.routerServiceFlowSubIntent ?? "").trim()}`,
     `shouldRunServiceFlowAnalyze=${String(route?.shouldRunServiceFlowAnalyze ?? false)}`,
+    `shouldRunOrchestrationTransition=${String(route?.shouldRunOrchestrationTransition ?? false)}`,
     `shouldRunAdviceToFlowApply=${String(route?.shouldRunAdviceToFlowApply ?? false)}`,
     `shouldRunFlowReview=${String(route?.shouldRunFlowReview ?? false)}`,
     `shouldRouteToScreenPlanning=${String(route?.shouldRouteToScreenPlanning ?? false)}`,

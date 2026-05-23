@@ -219,6 +219,7 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   DEFINE_SCREEN: {
     id: "DEFINE_SCREEN",
     defaultLabel: "화면 정의",
+    labelAliases: ["화면 구성 보기", "화면 구성부터 보기"],
     conversationProfiles: ["feature_detail"],
     proposalDecision: null,
     transitionSignal: "SCREEN_DEFINE_START",
