@@ -51,6 +51,65 @@ export function getServiceFlowSubIntentFromPolicy(responsePolicy: unknown): Serv
   return normalizeServiceFlowSubIntent(raw);
 }
 
+export function shouldBlockStrongActionForServiceFlowSubIntent(input: {
+  readonly suggestedActionId?: QuickActionId | null;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
+}): {
+  readonly blocked: boolean;
+  readonly reason: string | null;
+  readonly downgradedTo: QuickActionId | null;
+} {
+  const sub = normalizeServiceFlowSubIntent(input.serviceFlowSubIntent);
+  const suggested = input.suggestedActionId ?? null;
+
+  if (
+    suggested === "GENERATE_ALTERNATIVE" &&
+    (sub === "flow_draft" || sub === "flow_step_definition" || sub === "actor_definition")
+  ) {
+    return {
+      blocked: true,
+      reason: sub === "flow_draft" ? "flow_draft_is_not_alternative" : `${sub}_is_not_alternative`,
+      downgradedTo: "DIRECT_INPUT",
+    };
+  }
+
+  if (suggested !== "APPLY_PROPOSAL" && suggested !== "APPLY_ALTERNATIVE") {
+    return { blocked: false, reason: null, downgradedTo: null };
+  }
+
+  const reviewable = serviceFlowHasMinimumDraftForApply(input.currentFlow);
+
+  if (
+    (input.directQuickActionId === "APPLY_PROPOSAL" || input.directQuickActionId === "APPLY_ALTERNATIVE") &&
+    reviewable
+  ) {
+    return { blocked: false, reason: null, downgradedTo: null };
+  }
+
+  if (sub === "actor_definition") {
+    return { blocked: true, reason: "actor_definition_is_not_apply", downgradedTo: "DIRECT_INPUT" };
+  }
+  if (sub === "flow_step_definition") {
+    return { blocked: true, reason: "flow_step_definition_is_not_apply", downgradedTo: "DIRECT_INPUT" };
+  }
+  if (sub === "flow_draft") {
+    return { blocked: true, reason: "flow_draft_is_not_apply", downgradedTo: "DIRECT_INPUT" };
+  }
+
+  if (!reviewable) {
+    return { blocked: true, reason: "apply_requires_reviewable_flow", downgradedTo: "DIRECT_INPUT" };
+  }
+
+  if (sub === "flow_apply" && reviewable) {
+    return { blocked: false, reason: null, downgradedTo: null };
+  }
+
+  return { blocked: false, reason: null, downgradedTo: null };
+}
+
 export function shouldBlockApplyProposalForServiceFlowSubIntent(input: {
   readonly suggestedActionId?: QuickActionId | null;
   readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
@@ -58,36 +117,12 @@ export function shouldBlockApplyProposalForServiceFlowSubIntent(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
 }): { readonly blocked: boolean; readonly reason: string | null } {
-  if (input.suggestedActionId !== "APPLY_PROPOSAL") {
+  const check = shouldBlockStrongActionForServiceFlowSubIntent(input);
+  if (!check.blocked) return { blocked: false, reason: null };
+  if (input.suggestedActionId !== "APPLY_PROPOSAL" && input.suggestedActionId !== "APPLY_ALTERNATIVE") {
     return { blocked: false, reason: null };
   }
-
-  const reviewable = serviceFlowHasMinimumDraftForApply(input.currentFlow);
-  const sub = normalizeServiceFlowSubIntent(input.serviceFlowSubIntent);
-
-  if (input.directQuickActionId === "APPLY_PROPOSAL" && reviewable) {
-    return { blocked: false, reason: null };
-  }
-
-  if (sub === "actor_definition") {
-    return { blocked: true, reason: "actor_definition_is_not_apply" };
-  }
-  if (sub === "flow_step_definition") {
-    return { blocked: true, reason: "flow_step_definition_is_not_apply" };
-  }
-  if (sub === "flow_draft") {
-    return { blocked: true, reason: "flow_draft_is_not_apply" };
-  }
-
-  if (!reviewable) {
-    return { blocked: true, reason: "apply_requires_reviewable_flow" };
-  }
-
-  if (sub === "flow_apply" && reviewable) {
-    return { blocked: false, reason: null };
-  }
-
-  return { blocked: false, reason: null };
+  return { blocked: true, reason: check.reason };
 }
 
 export function formatServiceFlowSubIntentGuardTrace(input: {
@@ -123,11 +158,23 @@ export function buildServiceFlowActorDefinitionSystemPromptBlock(): string {
 export function buildServiceFlowStepDefinitionSystemPromptBlock(): string {
   return `[Service-flow Step Definition Mode]
 - 사용자는 액터 또는 현재 아이디어를 기준으로 서비스 흐름 단계를 정의하라고 요청했다.
+- actors가 있으면 재사용한다.
 - updatedFlow.steps를 최소 3개 이상 생성한다.
 - 각 step은 title, purpose(description), primaryActorId, order를 포함한다.
 - actor가 부족하면 기본 actor를 보강한다.
 - assistantMessage에는 실제 단계 목록을 표시한다.
 - "정의해 보겠습니다"만 말하지 않는다.`;
+}
+
+export function buildServiceFlowDraftSystemPromptBlock(): string {
+  return `[Service-flow Draft Mode]
+- 사용자는 현재 아이디어와 슬롯을 기준으로 기본 서비스 흐름 초안을 만들라고 요청했다.
+- 대안 비교(alternative proposal)가 아니다.
+- updatedFlow.actors와 updatedFlow.steps를 반드시 채운다.
+- steps는 최소 3개, 권장 4~6개.
+- assistantMessage에는 실제 단계 목록을 표시한다.
+- "기본 운영 흐름이 정리되었습니다"라고 말하려면 updatedFlow.steps가 최소 3개 이상이어야 한다.
+- GENERATE_ALTERNATIVE·이 대안 적용·다른 대안 다시 생성 UX를 제안하지 않는다.`;
 }
 
 export function buildServiceFlowSubIntentRegenerationUserPayload(input: {

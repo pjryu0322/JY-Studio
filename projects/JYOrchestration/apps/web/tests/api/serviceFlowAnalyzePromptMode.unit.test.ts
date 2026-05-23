@@ -12,6 +12,16 @@ describe("serviceFlowAnalyzePromptMode", () => {
     ).toBe("actor_definition");
   });
 
+  it("uses flow_draft prompt mode for flow_draft subIntent", () => {
+    expect(
+      resolveServiceFlowAnalyzePromptMode({
+        adviceToFlowApplyMode: false,
+        adviceMode: false,
+        serviceFlowSubIntent: "flow_draft",
+      }),
+    ).toBe("flow_draft");
+  });
+
   it("prioritizes flow_step_definition over advice mode", () => {
     expect(
       resolveServiceFlowAnalyzePromptMode({

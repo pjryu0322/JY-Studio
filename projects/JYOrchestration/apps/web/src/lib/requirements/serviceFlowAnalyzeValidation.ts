@@ -10,6 +10,7 @@ import {
 import {
   isAdviceToFlowApplyMode,
   isFutureOnlyAssistantMessage,
+  serviceFlowHasMinimumDraftForApply,
 } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import { getServiceFlowSubIntentFromPolicy } from "@/lib/requirements/serviceFlowSubIntent";
 import {
@@ -35,7 +36,8 @@ export type ServiceFlowAnalyzeQualityIssueCode =
   | "assistant_claims_flow_without_steps"
   | "actor_definition_missing_actors"
   | "actor_definition_not_reflected_in_message"
-  | "flow_step_definition_missing_steps";
+  | "flow_step_definition_missing_steps"
+  | "assistant_claims_reviewable_flow_without_reviewable_state";
 
 export type ServiceFlowAnalyzeParsed = Readonly<{
   assistantMessage: string;
@@ -118,6 +120,15 @@ function flowNamesReflectedInMessage(
     if (n.length >= 2 && msg.includes(n)) hits += 1;
   }
   return hits >= minHits;
+}
+
+/** 출력 품질 검증 — reviewable flow 준비 완료 주장 */
+export function assistantClaimsFlowReady(assistantMessage: string): boolean {
+  const t = String(assistantMessage ?? "").trim();
+  if (!t) return false;
+  return /(기본\s*운영\s*흐름이\s*정리|서비스\s*흐름이\s*정리|서비스\s*흐름을\s*구체화|검토해\s*주세요|이\s*초안을\s*기준|이\s*흐름을\s*검토|추가\s*수정사항이\s*있으면)/.test(
+    t,
+  );
 }
 
 /** 출력 품질 검증 — flow 구체화·검토 완료 주장 vs steps 불일치 */
@@ -254,6 +265,10 @@ export function validateServiceFlowAnalyzeResponse(input: {
 
   if (assistantClaimsFlowConcrete(assistant) && steps.length < 3) {
     issues.push("assistant_claims_flow_without_steps");
+  }
+
+  if (assistantClaimsFlowReady(assistant) && !serviceFlowHasMinimumDraftForApply(flow)) {
+    issues.push("assistant_claims_reviewable_flow_without_reviewable_state");
   }
 
   const subIntent = getServiceFlowSubIntentFromPolicy(input.responsePolicy);

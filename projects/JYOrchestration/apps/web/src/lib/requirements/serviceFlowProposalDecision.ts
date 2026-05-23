@@ -25,6 +25,7 @@ import {
   hydrateServiceFlowStepsFromAlternativePayload,
   stripAlternativeCanvasReopenFromQuickReplies,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import { canApplyServiceFlowProposal } from "@/lib/requirements/serviceFlowActionGating";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
 import { resolveProposalDecisionFromQuickActionInput } from "@/lib/requirements/requirementsQuickActionRegistry";
 
@@ -374,7 +375,7 @@ export function tryServiceFlowProposalDecisionFastPath(input: {
   }
 
   if (input.decision === "APPLY") {
-    if (!serviceFlowHasReviewableState(baseFlow)) return null;
+    if (!canApplyServiceFlowProposal(baseFlow).allowed) return null;
     const snapshot = buildServiceFlowStateSummaryMessage({ flow: baseFlow, heading: "", cta: "" });
     const flowReview = withServiceFlowConversationState(
       markFlowAsPrimaryProposalVariant(

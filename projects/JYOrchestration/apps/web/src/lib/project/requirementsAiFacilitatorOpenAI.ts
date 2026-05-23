@@ -56,6 +56,7 @@ import {
 import { resolveServiceFlowAnalyzePromptModeFromPolicy } from "@/lib/requirements/serviceFlowAnalyzePromptMode";
 import {
   buildServiceFlowActorDefinitionSystemPromptBlock,
+  buildServiceFlowDraftSystemPromptBlock,
   buildServiceFlowStepDefinitionSystemPromptBlock,
   buildServiceFlowSubIntentRegenerationUserPayload,
   getServiceFlowSubIntentFromPolicy,
@@ -1958,6 +1959,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   const adviceToFlowApplyMode = promptMode === "advice_to_flow_apply";
   const adviceMode = promptMode === "advice";
   const actorDefinitionMode = promptMode === "actor_definition";
+  const flowDraftMode = promptMode === "flow_draft";
   const flowStepDefinitionMode = promptMode === "flow_step_definition";
   const serviceFlowSubIntent = getServiceFlowSubIntentFromPolicy(input.responsePolicy);
   const flowForPrompt = flowForServiceFlowAnalyzePrompt(input.currentFlow, input.responsePolicy);
@@ -2013,6 +2015,21 @@ ${buildServiceFlowActorDefinitionSystemPromptBlock()}
 - 응답은 JSON 1개만(마크다운/코드펜스 금지).
 
 의도(intent): add_actor|update_actor|show_summary|unclear`
+    : flowDraftMode
+    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowDraftSystemPromptBlock()}
+
+목표:
+- updatedFlow.actors(최소 2)와 updatedFlow.steps(최소 3)를 생성한다.
+- assistantMessage에 실제 단계 목록을 표시한다.
+
+금지:
+- GENERATE_ALTERNATIVE·이 대안 적용·다른 대안 다시 생성 UX
+- "정의해 보겠습니다"만 말하고 steps를 비우기
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): add_step|update_step|show_summary|unclear`
     : flowStepDefinitionMode
     ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
 

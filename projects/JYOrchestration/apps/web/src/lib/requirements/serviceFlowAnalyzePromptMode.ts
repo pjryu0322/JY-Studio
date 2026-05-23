@@ -13,6 +13,7 @@ export type ServiceFlowAnalyzePromptMode =
   | "advice_to_flow_apply"
   | "actor_definition"
   | "flow_step_definition"
+  | "flow_draft"
   | "advice"
   | "proposal";
 
@@ -23,11 +24,8 @@ export function resolveServiceFlowAnalyzePromptMode(input: {
 }): ServiceFlowAnalyzePromptMode {
   if (input.adviceToFlowApplyMode) return "advice_to_flow_apply";
   if (input.serviceFlowSubIntent === "actor_definition") return "actor_definition";
-  if (
-    input.serviceFlowSubIntent === "flow_step_definition" ||
-    input.serviceFlowSubIntent === "flow_draft" ||
-    input.serviceFlowSubIntent === "flow_edit"
-  ) {
+  if (input.serviceFlowSubIntent === "flow_draft") return "flow_draft";
+  if (input.serviceFlowSubIntent === "flow_step_definition" || input.serviceFlowSubIntent === "flow_edit") {
     return "flow_step_definition";
   }
   if (input.adviceMode) return "advice";

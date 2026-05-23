@@ -3,6 +3,7 @@ import { parseLlmIntentJsonForTest } from "@/lib/requirements/requirementsIntent
 import {
   isServiceFlowStructuralSubIntent,
   shouldBlockApplyProposalForServiceFlowSubIntent,
+  shouldBlockStrongActionForServiceFlowSubIntent,
 } from "@/lib/requirements/serviceFlowSubIntent";
 import { createSampleServiceFlow } from "../orchestration/helpers/orchestrationRegressionHarness";
 
@@ -64,6 +65,18 @@ describe("serviceFlowSubIntent — APPLY guard", () => {
 
     expect(result.blocked).toBe(true);
     expect(result.reason).toBe("flow_draft_is_not_apply");
+  });
+});
+
+describe("serviceFlowSubIntent — GENERATE_ALTERNATIVE guard", () => {
+  it("blocks GENERATE_ALTERNATIVE for flow_step_definition", () => {
+    const result = shouldBlockStrongActionForServiceFlowSubIntent({
+      suggestedActionId: "GENERATE_ALTERNATIVE",
+      serviceFlowSubIntent: "flow_step_definition",
+      currentFlow: createSampleServiceFlow(),
+    });
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toBe("flow_step_definition_is_not_alternative");
   });
 });
 

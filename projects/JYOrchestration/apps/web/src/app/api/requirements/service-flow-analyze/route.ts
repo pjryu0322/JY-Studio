@@ -36,7 +36,7 @@ import {
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { resolveSingleChatAgentContext } from "@/lib/requirements/singleChatAgentContext";
 import { parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
-import { augmentUserMessageForLlm } from "@/lib/requirements/singleChatQuickAction";
+import { augmentUserMessageForLlm, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 import {
   resolveServiceFlowProposalDecision,
   shouldBlockServiceFlowProposalReplay,
@@ -58,6 +58,10 @@ import {
   shouldUseAdviceToFlowApplyMode,
 } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import { isServiceFlowAdviceMode } from "@/lib/requirements/serviceFlowAdviceMode";
+import {
+  filterQuickReplyLabelsForServiceFlowGating,
+  resolveBlockedStageTransitionRedirect,
+} from "@/lib/requirements/serviceFlowActionGating";
 import { withServiceFlowConversationState } from "@/lib/requirements/serviceFlowConversationState";
 
 type Body = {
@@ -323,7 +327,7 @@ export async function POST(request: NextRequest) {
     const executionScope = conversationScopeFromProjectId(projectId);
     let responsePolicy = body.responsePolicy;
 
-    const proposalDecision = resolveServiceFlowProposalDecision({
+    let proposalDecision = resolveServiceFlowProposalDecision({
       quickActionId: quickActionId || undefined,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
@@ -508,7 +512,10 @@ export async function POST(request: NextRequest) {
         state: mergedForStage,
         authoritativeStage: stage,
       });
-      const projectedQuickReplies = [...quickProjection.quickReplies];
+      const projectedQuickReplies = filterQuickReplyLabelsForServiceFlowGating(
+        [...quickProjection.quickReplies],
+        fastPath.updatedFlow,
+      );
 
       const fpAssistant = finalizeServiceFlowAssistantForResponse({
         assistantMessage: fastPath.assistantMessage,
@@ -559,26 +566,42 @@ export async function POST(request: NextRequest) {
     }
 
     if (transitionEngineResult.transitionResult === "blocked") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "단계 전환을 처리할 수 없습니다. 서비스 흐름(액터·단계)을 먼저 확정해 주세요.",
-          meta: {
-            model: null,
-            promptTrace: buildSingleChatPromptTimelineEntry({
-              action: "stageTransitionBlocked",
-              source: "internal",
-              timelineStage: agentCtx.timelineStage,
-              stageGroup: agentCtx.stageGroup,
-              workspaceScreenKey: agentCtx.workspaceScreenKey,
-              selectedAgents: agentCtx.selectedAgents,
-              ...(proposalDecision ? { proposalDecision } : {}),
-              routingDecision: "stage_transition_precondition_failed",
-            }),
+      const stageRedirect = resolveBlockedStageTransitionRedirect({
+        proposalDecision,
+        currentFlow,
+      });
+      if (stageRedirect) {
+        proposalDecision = null;
+        responsePolicy = {
+          mode: "flow_update",
+          serviceFlowSubIntent: stageRedirect.serviceFlowSubIntent,
+          instruction:
+            stageRedirect.serviceFlowSubIntent === "flow_step_definition"
+              ? "stage transition blocked — generate flow steps from existing actors."
+              : "stage transition blocked — define actors first.",
+        };
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "단계 전환을 처리할 수 없습니다. 서비스 흐름(액터·단계)을 먼저 확정해 주세요.",
+            meta: {
+              model: null,
+              promptTrace: buildSingleChatPromptTimelineEntry({
+                action: "stageTransitionBlocked",
+                source: "internal",
+                timelineStage: agentCtx.timelineStage,
+                stageGroup: agentCtx.stageGroup,
+                workspaceScreenKey: agentCtx.workspaceScreenKey,
+                selectedAgents: agentCtx.selectedAgents,
+                ...(proposalDecision ? { proposalDecision } : {}),
+                routingDecision: "stage_transition_precondition_failed",
+              }),
+            },
           },
-        },
-        { status: 422 },
-      );
+          { status: 422 },
+        );
+      }
     }
 
     const llmAugmentable =
@@ -588,7 +611,11 @@ export async function POST(request: NextRequest) {
         proposalDecision === "DIRECT_INPUT" ||
         proposalDecision === "HOLD");
     const llmUserMessage = llmAugmentable
-      ? augmentUserMessageForLlm(userMessage, quickActionLabel || userMessage, proposalDecision)
+      ? augmentUserMessageForLlm(
+          userMessage,
+          quickActionLabel || userMessage,
+          proposalDecision as ProposalDecision | null,
+        )
       : userMessage;
 
     const result = await runServiceFlowAnalyzeOpenAI({

@@ -99,9 +99,12 @@ import {
   inferProjectSingleChatStageRoutingSource,
 } from "@/lib/requirements/singleChatStageTrace";
 import {
+  resolveBlockedApplyRedirect,
+} from "@/lib/requirements/serviceFlowActionGating";
+import {
   formatServiceFlowSubIntentGuardTrace,
   normalizeServiceFlowSubIntent,
-  shouldBlockApplyProposalForServiceFlowSubIntent,
+  shouldBlockStrongActionForServiceFlowSubIntent,
   type ServiceFlowSubIntent,
 } from "@/lib/requirements/serviceFlowSubIntent";
 import type { ProjectSingleChatStageIntent } from "@/lib/requirements/singleChatStageRouter";
@@ -206,9 +209,10 @@ function applyServiceFlowSubIntentGuard(input: {
   readonly effectiveActionId: QuickActionId | null;
   readonly guard: GuardResult;
   readonly applyGuardTrace: string;
+  readonly intent: IntentRoutingResult;
 } {
   const subIntent = normalizeServiceFlowSubIntent(input.intent.serviceFlowSubIntent);
-  const applyCheck = shouldBlockApplyProposalForServiceFlowSubIntent({
+  const strongCheck = shouldBlockStrongActionForServiceFlowSubIntent({
     suggestedActionId: input.intent.suggestedActionId ?? input.effectiveActionId,
     serviceFlowSubIntent: subIntent,
     currentFlow: input.currentFlow,
@@ -216,29 +220,46 @@ function applyServiceFlowSubIntentGuard(input: {
     directCtaId: input.directCtaId,
   });
 
-  if (!applyCheck.blocked) {
-    return { effectiveActionId: input.effectiveActionId, guard: input.guard, applyGuardTrace: "" };
+  if (!strongCheck.blocked) {
+    return {
+      effectiveActionId: input.effectiveActionId,
+      guard: input.guard,
+      applyGuardTrace: "",
+      intent: input.intent,
+    };
   }
 
   const reviewable = serviceFlowHasMinimumDraftForApply(input.currentFlow);
+  const downgradedTo = strongCheck.downgradedTo ?? "DIRECT_INPUT";
+  const applyRedirect = resolveBlockedApplyRedirect({
+    suggestedActionId: input.intent.suggestedActionId ?? input.effectiveActionId,
+    currentFlow: input.currentFlow,
+  });
+  const redirectedSubIntent = applyRedirect?.serviceFlowSubIntent ?? subIntent;
+
   const trace = formatServiceFlowSubIntentGuardTrace({
     suggested: input.intent.suggestedActionId,
-    serviceFlowSubIntent: subIntent,
+    serviceFlowSubIntent: redirectedSubIntent,
     reviewable,
     blocked: true,
-    downgradedTo: "DIRECT_INPUT",
-    reason: applyCheck.reason,
+    downgradedTo,
+    reason: applyRedirect?.reason ?? strongCheck.reason,
   });
 
   return {
-    effectiveActionId: "DIRECT_INPUT",
+    effectiveActionId: downgradedTo,
     guard: {
       ...input.guard,
       allowed: true,
-      effectiveActionId: "DIRECT_INPUT",
-      warning: applyCheck.reason ?? input.guard.warning,
+      effectiveActionId: downgradedTo,
+      warning: applyRedirect?.reason ?? strongCheck.reason ?? input.guard.warning,
     },
     applyGuardTrace: trace,
+    intent: {
+      ...input.intent,
+      serviceFlowSubIntent: redirectedSubIntent,
+      ...(applyRedirect ? { stageIntent: "service_flow" as const } : {}),
+    },
   };
 }
 
@@ -508,11 +529,12 @@ function finalizeDispatchResult(input: {
   readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
   readonly projectId?: string;
 }): RequirementsIntentDispatchResult {
-  const suggested = input.intent.suggestedActionId;
+  let intent = input.intent;
+  const suggested = intent.suggestedActionId;
   let effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
   let guard = input.guard;
   const subIntentGuard = applyServiceFlowSubIntentGuard({
-    intent: input.intent,
+    intent,
     guard,
     effectiveActionId: effectiveId,
     currentFlow: input.routingState?.serviceFlowV1 ?? null,
@@ -521,9 +543,10 @@ function finalizeDispatchResult(input: {
   });
   effectiveId = subIntentGuard.effectiveActionId;
   guard = subIntentGuard.guard;
+  intent = subIntentGuard.intent;
   const executionScope = conversationScopeFromProjectId(input.projectId);
   const serviceFlowResponsePolicy = buildServiceFlowResponsePolicyFromDispatch({
-    intent: input.intent,
+    intent,
     guard,
     effectiveActionId: effectiveId,
     directQuickActionId: input.directQuickActionId,
@@ -550,7 +573,7 @@ function finalizeDispatchResult(input: {
   const stageRouting = buildProjectSingleChatStageRoutingForDispatch({
     projectId: input.projectId,
     userMessage: input.userMessage ?? "",
-    intent: input.intent,
+    intent,
     effectiveActionId: effectiveId,
     directQuickActionId: input.directQuickActionId,
     directQuickActionLabel: input.directQuickActionLabel,
@@ -569,15 +592,15 @@ function finalizeDispatchResult(input: {
   const stageRoutingSource = inferProjectSingleChatStageRoutingSource({
     directCtaId: resolvedCtaId,
     directQuickActionId: input.directQuickActionId,
-    routerStageIntent: input.intent.stageIntent,
+    routerStageIntent: intent.stageIntent,
     usedLegacyLabelMatch: usedLegacyLabel,
   });
   const stageRoutingTrace = formatProjectSingleChatStageRoutingTrace({
     route: stageRouting,
     source: stageRoutingSource,
     directCtaId: resolvedCtaId,
-    routerStageIntent: input.intent.stageIntent,
-    routerServiceFlowSubIntent: input.intent.serviceFlowSubIntent,
+    routerStageIntent: intent.stageIntent,
+    routerServiceFlowSubIntent: intent.serviceFlowSubIntent,
   });
   const stageExtras = { stageRouting } as const;
   const artifactHub = input.routingState

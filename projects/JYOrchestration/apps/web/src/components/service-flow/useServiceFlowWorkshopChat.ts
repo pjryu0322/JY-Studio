@@ -61,6 +61,12 @@ import {
   type QuickActionId,
 } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
+  buildServiceFlowGatedQuickReplyLabels,
+  filterQuickActionsForServiceFlowGating,
+  filterQuickReplyLabelsForServiceFlowGating,
+  shouldShowServiceFlowApplyActions,
+} from "@/lib/requirements/serviceFlowActionGating";
+import {
   stripAlternativeCanvasReopenFromQuickReplies,
   type AlternativeProposalPayloadWire,
 } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
@@ -486,16 +492,21 @@ export function useServiceFlowWorkshopChat({
           const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 
-          const normalizedActions = normalizeQuickRepliesToActions(
-            Array.isArray(data.quickReplies) ? data.quickReplies : [],
+          const normalizedActions = filterQuickActionsForServiceFlowGating(
+            normalizeQuickRepliesToActions(Array.isArray(data.quickReplies) ? data.quickReplies : []),
+            nextFlow,
           );
-          const replies = stripAlternativeCanvasReopenFromQuickReplies(
-            quickActionsToLabels(normalizedActions),
+          const replies = filterQuickReplyLabelsForServiceFlowGating(
+            stripAlternativeCanvasReopenFromQuickReplies(quickActionsToLabels(normalizedActions)),
+            nextFlow,
           );
-          const actionsAfterCanvas = normalizeQuickRepliesToActions(replies);
+          const actionsAfterCanvas = filterQuickActionsForServiceFlowGating(
+            normalizeQuickRepliesToActions(replies),
+            nextFlow,
+          );
           if (!suppressVisible) {
             setQuickActions(actionsAfterCanvas.length ? actionsAfterCanvas : null);
-            setQuickReplies(replies.length ? replies : null);
+            setQuickReplies(replies.length ? [...replies] : null);
           } else {
             setQuickActions(null);
             setQuickReplies(null);
@@ -613,13 +624,17 @@ export function useServiceFlowWorkshopChat({
 
   const appendIntentGuardAssistantReply = useCallback(
     async (message: string, fallbacks: readonly string[]) => {
+      const gatedFallbacks = filterQuickReplyLabelsForServiceFlowGating(
+        fallbacks.length ? fallbacks : [...buildServiceFlowGatedQuickReplyLabels(flowRef.current)],
+        flowRef.current,
+      );
       const aiPersisted = buildServiceFlowAiPersist(message, {
-        interviewSuggestions: [...fallbacks],
+        interviewSuggestions: [...gatedFallbacks],
       });
       autoScrollPendingRef.current = true;
       const nextSlice = await onAppendRef.current([aiPersisted]);
       messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-      setQuickReplies(fallbacks.length ? [...fallbacks] : null);
+      setQuickReplies(gatedFallbacks.length ? [...gatedFallbacks] : null);
       setQuickActions(null);
       scrollChatToBottom();
     },
