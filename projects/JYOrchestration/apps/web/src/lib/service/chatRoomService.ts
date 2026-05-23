@@ -333,6 +333,7 @@ export async function executeMessengerAiTurnForRoom(roomId: string, userId: stri
   const result = await runMessengerAiTurn({
     userId,
     transcript,
+    chatRows: rows,
     logContext: { roomId: room.id, roomTitle: room.title, projectId: room.projectId },
   });
   if (!result.ok) {

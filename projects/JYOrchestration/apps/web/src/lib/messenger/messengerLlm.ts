@@ -1,8 +1,19 @@
+import type { ChatMessage } from "@prisma/client";
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { getPlatformAiMemberById } from "@/lib/ai/platformAiMembers";
 import { recordMessengerOpenAi } from "@/lib/debug/promptTimelineStore";
+import {
+  buildMessengerHistoryTurnsFromChatRows,
+  mergeMessengerHistoryTurns,
+} from "@/lib/messenger/chatMessageToRequirementsMessage";
 import { MESSENGER_DEFAULT_AI_CATALOG_KEY } from "@/lib/messenger/messengerConstants";
+import {
+  filterMessengerHistoryTurnsForAiHistoryWithStats,
+  formatMessengerAiHistoryFilterStats,
+  type MessengerAiHistoryFilterStats,
+  type MessengerAiHistoryTurn,
+} from "@/lib/messenger/messengerAiHistoryFilter";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import { resolveUserOpenAiApiKey } from "@/lib/messenger/resolveUserOpenAiKey";
 import {
@@ -284,11 +295,45 @@ export function buildMessengerSystemBlockForTest(
 
 type MessengerChatTurn = { role: "user" | "assistant"; content: string };
 
+export function applyMessengerAiHistoryFilter(input: {
+  readonly transcript: readonly MessengerChatTurn[];
+  readonly classification: ConversationIntentClassification;
+  readonly chatRows?: readonly ChatMessage[];
+}): { readonly transcript: MessengerChatTurn[]; readonly stats: MessengerAiHistoryFilterStats } {
+  const last = input.transcript[input.transcript.length - 1];
+  if (!last) {
+    return {
+      transcript: [],
+      stats: { inputMessages: 0, includedMessages: 0, excludedByReason: {} },
+    };
+  }
+
+  const rawTurns: MessengerAiHistoryTurn[] = input.chatRows?.length
+    ? buildMessengerHistoryTurnsFromChatRows(input.chatRows)
+    : input.transcript.map((t) => ({ role: t.role, content: t.content }));
+
+  const { turns: filtered, stats } = filterMessengerHistoryTurnsForAiHistoryWithStats(
+    rawTurns,
+    input.classification
+  );
+  let merged = mergeMessengerHistoryTurns(filtered);
+  if (last.role === "user") {
+    const triggerText = String(last.content ?? "").trim();
+    const mergedLast = merged[merged.length - 1];
+    if (!mergedLast || mergedLast.role !== "user" || mergedLast.content !== triggerText) {
+      const prior = merged.at(-1)?.role === "user" ? merged.slice(0, -1) : merged;
+      merged = [...prior, { role: "user", content: triggerText }];
+    }
+  }
+
+  return { transcript: merged, stats };
+}
+
 /**
  * 자유 대화방: system + [이전 대화 요약](user만) + 최근 2~4턴 + 마지막 user 원문.
  * 과거 assistant 전문을 무제한 재주입하지 않는다.
  */
-function buildFreeMessengerOpenAiMessages(
+export function buildFreeMessengerOpenAiMessages(
   transcript: readonly MessengerChatTurn[],
   personaLine: string,
   setup: MessengerTurnSetup
@@ -310,6 +355,12 @@ function buildFreeMessengerOpenAiMessages(
   out.push(...recent);
   out.push({ role: "user", content: currentUser });
   return out;
+}
+
+function appendHistoryFilterToMetaHeader(metaHeader: string, stats: MessengerAiHistoryFilterStats | null): string {
+  if (!stats) return metaHeader;
+  const block = formatMessengerAiHistoryFilterStats(stats);
+  return metaHeader.trim() ? `${metaHeader.trim()}\n\n${block}` : block;
 }
 
 function serializeMessengerOpenAiMessagesForLog(p: {
@@ -382,11 +433,19 @@ export type MessengerAiTurnResult =
 export async function runMessengerAiTurn(input: {
   userId: string;
   transcript: readonly { role: "user" | "assistant"; content: string }[];
+  /** metadata-aware history filter (Pre-Project rooms) */
+  readonly chatRows?: readonly ChatMessage[];
   logContext?: MessengerLlmLogContext;
 }): Promise<MessengerAiTurnResult> {
   const ai = getPlatformAiMemberById(MESSENGER_DEFAULT_AI_CATALOG_KEY);
   const personaLine = ai?.persona ? `페르소나(참고): ${ai.persona}` : "";
   const turnSetup = await resolveMessengerTurnSetup(input.transcript, input.logContext, input.userId);
+  const { transcript: filteredTranscript, stats: historyFilterStats } = applyMessengerAiHistoryFilter({
+    transcript: input.transcript,
+    classification: turnSetup.classification,
+    chatRows: input.chatRows,
+  });
+  const logMetaHeader = appendHistoryFilterToMetaHeader(turnSetup.timelineMetaHeader, historyFilterStats);
 
   const freeRoom = isMessengerFreeRoom(input.logContext);
   let messages: { role: "system" | "user" | "assistant"; content: string }[];
@@ -395,7 +454,7 @@ export async function runMessengerAiTurn(input: {
 
   if (freeRoom) {
     try {
-      messages = buildFreeMessengerOpenAiMessages(input.transcript, personaLine, turnSetup);
+      messages = buildFreeMessengerOpenAiMessages(filteredTranscript, personaLine, turnSetup);
       layout = "free_windowed";
       outboundForLog = input.logContext
         ? serializeMessengerOpenAiMessagesForLog({
@@ -403,12 +462,12 @@ export async function runMessengerAiTurn(input: {
             projectId: input.logContext.projectId,
             layout,
             apiMessages: messages,
-            metaHeader: turnSetup.timelineMetaHeader,
+            metaHeader: logMetaHeader,
           })
         : "";
     } catch {
       const { messages: tail, droppedEarlier } = takeMessengerTranscriptForApi(
-        input.transcript,
+        filteredTranscript,
         MESSENGER_TRANSCRIPT_CHAR_BUDGET
       );
       const contextNote = droppedEarlier
@@ -423,13 +482,13 @@ export async function runMessengerAiTurn(input: {
             projectId: input.logContext.projectId,
             layout,
             apiMessages: messages,
-            metaHeader: turnSetup.timelineMetaHeader,
+            metaHeader: logMetaHeader,
           })
         : "";
     }
   } else {
     const { messages: tail, droppedEarlier } = takeMessengerTranscriptForApi(
-      input.transcript,
+      filteredTranscript,
       MESSENGER_TRANSCRIPT_CHAR_BUDGET
     );
     const contextNote = droppedEarlier
@@ -444,7 +503,7 @@ export async function runMessengerAiTurn(input: {
           projectId: input.logContext.projectId,
           layout,
           apiMessages: messages,
-          metaHeader: turnSetup.timelineMetaHeader,
+          metaHeader: logMetaHeader,
         })
       : "";
   }
