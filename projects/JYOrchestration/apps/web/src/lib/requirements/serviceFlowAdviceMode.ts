@@ -33,7 +33,7 @@ export type ServiceFlowResponsePolicy = Readonly<{
 }>;
 
 export const SERVICE_FLOW_ADVICE_INSTRUCTION =
-  "사용자의 요청은 플랫폼 실행 액션보다 기획 조언·절차 제안에 가깝다. updatedFlow 변경을 우선하지 말고, 사용자가 바로 이해할 수 있는 단계별 제안 텍스트를 충분히 작성한다. 대안 비교 Viewer를 열거나 대안 생성 문구로 답하지 않는다. 필요하면 마지막에 「이 절차를 서비스 흐름에 반영할까요?」 정도의 후속 질문만 제공한다." as const;
+  "사용자의 요청은 플랫폼 실행 액션보다 기획 조언·절차 제안에 가깝다. updatedFlow 변경을 우선하지 말고, assistantMessage는 첫 문단 요약 + 번호 목록(3~6개) + 각 항목 불릿(1~3개)으로 구성한다. 긴 단락 하나로 쓰지 않는다. nextQuestion과 같은 질문을 assistantMessage에 중복 작성하지 않는다. 대안 비교 Viewer를 열거나 대안 생성 문구로 답하지 않는다. nextQuestion은 null이거나 흐름 반영 여부 1문장만 제공한다." as const;
 
 const ADVICE_MODE_MIN_ASSISTANT_LENGTH = 160;
 
@@ -128,7 +128,21 @@ export function isWeakAdviceAssistantMessage(text: string): boolean {
   const t = String(text ?? "").trim();
   if (t.length < ADVICE_MODE_MIN_ASSISTANT_LENGTH) return true;
   if (/^[^.\n]{0,80}(제안합니다|제안드립니다)\.\s*$/u.test(t)) return true;
+
+  const numberedCount = (t.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length;
+  const bulletCount = (t.match(/(^|\n)\s*[-•]\s+/g) ?? []).length;
+  if (numberedCount < 2) return true;
+  if (bulletCount < 2) return true;
+
   return false;
+}
+
+function normalizeAdviceQuestionText(text: string): string {
+  return String(text ?? "")
+    .replace(/^다음\s*[:：]\s*/i, "")
+    .replace(/[?.。！？!]+$/g, "")
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 export function mergeServiceFlowAdviceUserFacingMessage(
@@ -138,10 +152,19 @@ export function mergeServiceFlowAdviceUserFacingMessage(
   const assistant = String(assistantMessage ?? "").trim();
   const nextQ = String(nextQuestion ?? "").trim();
   if (!nextQ) return assistant;
+
+  const normalizedAssistant = normalizeAdviceQuestionText(assistant);
+  const normalizedNext = normalizeAdviceQuestionText(nextQ);
+  if (normalizedNext && normalizedAssistant.includes(normalizedNext)) {
+    return assistant;
+  }
+
+  if (/이\s*초안을\s*기준|선택·수정해\s*주/.test(nextQ)) return assistant;
+
   if (/반영할까|흐름에\s*반영|절차를\s*흐름/.test(nextQ)) {
     return `${assistant}\n\n${/^다음\s*[:：]/i.test(nextQ) ? nextQ : `다음: ${nextQ}`}`;
   }
-  if (/이\s*초안을\s*기준|선택·수정해\s*주/.test(nextQ)) return assistant;
+
   return assistant;
 }
 
@@ -161,7 +184,9 @@ ${input.rejectedAssistantPreview.slice(0, 600) || "(없음)"}
 다시 출력할 때 반드시:
 - assistantMessage는 ${ADVICE_MODE_MIN_ASSISTANT_LENGTH}자 이상, 단계별 절차·항목을 구체적으로 제시
 - "제안합니다" 선언만 하고 끝내지 말 것
-- numbered list 또는 불릿으로 검수·승인·운영 절차를 상세히 작성
+- 번호 목록 3개 이상, 각 번호 항목에 불릿 1개 이상
+- 긴 문단 하나로 쓰지 말 것
+- assistantMessage 안에 nextQuestion과 같은 질문을 중복 작성하지 말 것
 - updatedFlow는 현재 flow를 유지하거나 최소 변경
 - nextQuestion은 null이거나 "이 절차를 서비스 흐름에 반영할까요?" 수준 1문장만
 - 대안 비교·Viewer·ALTERNATIVE 문구 금지
@@ -176,6 +201,19 @@ export function buildServiceFlowAdviceSystemPromptBlock(): string {
 - 사용자가 요청한 절차·검토·승인·운영 방식을 단계별로 제안한다.
 - "제안합니다"라고 선언만 하지 말고 실제 절차·확인 항목을 제시한다.
 - 대안 비교 Viewer·기존안 vs 후보안·ALTERNATIVE 생성 문구를 쓰지 않는다.
-- 마지막에는 필요할 경우 "이 절차를 서비스 흐름에 반영할까요?" 정도만 묻는다.
-- 현재 flow에 alternativeProposalPayload가 있어도 이번 턴은 대안 비교가 아니라 기획 조언이다.`;
+- nextQuestion은 null이거나 흐름 반영 여부 1문장만 제공한다(assistantMessage와 중복 금지).
+- 현재 flow에 alternativeProposalPayload가 있어도 이번 턴은 대안 비교가 아니라 기획 조언이다.
+
+[Advice Output Format]
+assistantMessage는 반드시 아래 형식을 따른다.
+- 첫 문단: 요청 주제에 대한 한 줄 요약
+- 빈 줄
+- 번호 목록 3~6개
+- 각 번호 항목은 제목 + 1~3개 불릿
+- 마지막 문단은 선택 사항이며, nextQuestion과 중복되면 쓰지 않는다.
+
+금지:
+- 번호 없이 긴 문단 하나로만 쓰기
+- "첫 번째 단계는", "두 번째 단계는"을 한 문단에 이어붙이기
+- assistantMessage 안에 nextQuestion과 같은 질문을 중복 작성하기`;
 }

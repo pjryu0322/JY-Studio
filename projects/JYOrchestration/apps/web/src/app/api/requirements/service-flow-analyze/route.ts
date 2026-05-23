@@ -21,6 +21,7 @@ import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requi
 import { appendOrchestrationTransitionTimelineExtras } from "@/lib/requirements/requirementsOrchestrationTimeline";
 import { applyRequirementsOrchestrationTransition } from "@/lib/requirements/requirementsTransitionEngine";
 import { runServiceFlowAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { mergeServiceFlowAdviceUserFacingMessage } from "@/lib/requirements/serviceFlowAdviceMode";
 import { mergeServiceFlowUserFacingMessage } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import {
   finalizeServiceFlowAssistantForResponse,
@@ -99,6 +100,7 @@ function buildAnalyzeSuccessResponse(input: {
   readonly timelineExtras?: Record<string, unknown>;
   readonly forceVisibleMode?: "state_transition";
   readonly requirementsStatePatch?: Partial<RequirementsStateJson>;
+  readonly responsePolicy?: unknown;
 }) {
   let assistantMessage = input.parsed.assistantMessage;
   let nextQuestion = input.parsed.nextQuestion;
@@ -128,7 +130,10 @@ function buildAnalyzeSuccessResponse(input: {
     nextQuestion = null;
   }
 
-  const mergedAssistant = mergeServiceFlowUserFacingMessage(assistantMessage, nextQuestion);
+  const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
+  const mergedAssistant = adviceMode
+    ? mergeServiceFlowAdviceUserFacingMessage(assistantMessage, nextQuestion)
+    : mergeServiceFlowUserFacingMessage(assistantMessage, nextQuestion);
   const presentation = resolveServiceFlowVisiblePresentation({
     userMessage: input.userMessage,
     currentFlow: input.currentFlow,
@@ -153,9 +158,10 @@ function buildAnalyzeSuccessResponse(input: {
     proposalDecision: input.proposalDecision,
     flowVariantMode: updatedFlow.proposalVariantMode ?? null,
   });
+  const omitSeparateNextQuestion = adviceMode || presentation.suppressVisibleMessage;
   const finalAssistant = finalizeServiceFlowAssistantForResponse({
     assistantMessage: mergedAssistant,
-    nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
+    nextQuestion: omitSeparateNextQuestion ? null : nextQuestion,
     quickReplies: responseQuickReplies,
     proposalVariantMode: presentationVariantMode,
   });
@@ -255,7 +261,7 @@ function buildAnalyzeSuccessResponse(input: {
         ? finalAssistant
         : presentation.visibleAssistantMessage || finalAssistant,
     updatedFlow,
-    nextQuestion: presentation.suppressVisibleMessage ? null : nextQuestion,
+    nextQuestion: omitSeparateNextQuestion ? null : nextQuestion,
     quickReplies: responseQuickReplies,
     intent: input.parsed.intent,
     readiness: input.parsed.readiness,
@@ -619,6 +625,7 @@ export async function POST(request: NextRequest) {
       promptText: result.promptText,
       proposalFallbackApplied: result.proposalFallbackApplied,
       agentCtx,
+      responsePolicy,
       timelineExtras: {
         ...(adviceMode
           ? { routingDecision: "service_flow_advice_mode" }

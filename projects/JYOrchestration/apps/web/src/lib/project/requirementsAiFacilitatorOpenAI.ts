@@ -45,7 +45,6 @@ import {
   buildServiceFlowAdviceSystemPromptBlock,
   flowForServiceFlowAnalyzePrompt,
   isServiceFlowAdviceMode,
-  mergeServiceFlowAdviceUserFacingMessage,
 } from "@/lib/requirements/serviceFlowAdviceMode";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
@@ -2159,11 +2158,16 @@ ${input.userMessage.trim()}
   while (attempt && !attempt.ok && qualityRetryCount < 2) {
     qualityRetryCount += 1;
     promptTextSf = `${promptTextSf}\n\n--- service_flow_regeneration_started ---\n${lastQualityIssues.join(", ")}`;
-    const regenUser = buildServiceFlowProposalRegenerationUserPayload({
-      issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
-      rejectedAssistantPreview: attempt.rejected.assistantMessage,
-      rejectedNextQuestion: attempt.rejected.nextQuestion,
-    });
+    const regenUser = adviceMode
+      ? buildServiceFlowAdviceRegenerationUserPayload({
+          issues: lastQualityIssues,
+          rejectedAssistantPreview: attempt.rejected.assistantMessage,
+        })
+      : buildServiceFlowProposalRegenerationUserPayload({
+          issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+          rejectedAssistantPreview: attempt.rejected.assistantMessage,
+          rejectedNextQuestion: attempt.rejected.nextQuestion,
+        });
     promptTextSf = `${promptTextSf}\n\n--- service_flow_proposal_regeneration_${qualityRetryCount} ---\n${regenUser}`;
 
     const regen = await callModel([
@@ -2181,9 +2185,6 @@ ${input.userMessage.trim()}
   const validated = attempt?.ok ? attempt.data : null;
 
   if (validated) {
-    const mergedAssistant = adviceMode
-      ? mergeServiceFlowAdviceUserFacingMessage(validated.assistantMessage, validated.nextQuestion)
-      : mergeServiceFlowUserFacingMessage(validated.assistantMessage, validated.nextQuestion);
     const updatedFlow =
       adviceMode && input.currentFlow ? { ...input.currentFlow, ...validated.updatedFlow } : validated.updatedFlow;
     return {
@@ -2192,7 +2193,8 @@ ${input.userMessage.trim()}
       promptText: promptTextSf,
       data: {
         ...validated,
-        assistantMessage: mergedAssistant,
+        assistantMessage: validated.assistantMessage,
+        nextQuestion: validated.nextQuestion,
         updatedFlow,
         intent: validated.intent as ServiceFlowAnalyzeIntent,
       },

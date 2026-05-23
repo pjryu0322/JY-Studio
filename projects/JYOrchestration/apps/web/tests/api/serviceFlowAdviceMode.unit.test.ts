@@ -11,6 +11,7 @@ import {
   flowForServiceFlowAnalyzePrompt,
   isServiceFlowAdviceMode,
   isWeakAdviceAssistantMessage,
+  mergeServiceFlowAdviceUserFacingMessage,
   mergeServiceFlowResponsePolicy,
   shouldOmitQuickActionForAdviceAnalyze,
   shouldUseServiceFlowAdviceMode,
@@ -97,7 +98,8 @@ describe("serviceFlowAdviceMode", () => {
   it("advice prompt block includes Advice Response Mode policy", () => {
     const block = buildServiceFlowAdviceSystemPromptBlock();
     expect(block).toContain("Advice Response Mode");
-    expect(block).toContain("단계별");
+    expect(block).toContain("[Advice Output Format]");
+    expect(block).toContain("번호 목록");
     expect(block).toContain("대안 비교");
   });
 
@@ -117,6 +119,29 @@ describe("serviceFlowAdviceMode", () => {
         "1. 자동 변환 결과 확인\n- 녹취가 텍스트로 변환되었는지 확인합니다.\n2. 발화자별 정리 검수\n- 발화자명이 올바른지 확인합니다.\n3. 주제별 요약 검수\n- 회의 주제와 요약이 일치하는지 확인합니다.\n4. TODO 검수\n- 담당·기한이 명확한지 확인합니다.\n5. 최종 확정\n- 수정본을 저장하고 공유합니다.",
       ),
     ).toBe(false);
+  });
+
+  it("flags long paragraph without numbered structure as weak advice", () => {
+    const text =
+      "검수 절차를 다음과 같이 구성할 수 있습니다. 첫 번째 단계는 시스템이 자동으로 정리한 회의록을 사용자에게 제공하는 것입니다. 두 번째 단계는 사용자가 검토하는 것입니다. 세 번째 단계는 검수자가 최종 검토하는 것입니다.";
+    expect(isWeakAdviceAssistantMessage(text)).toBe(true);
+  });
+
+  it("does not duplicate nextQuestion when assistant already includes the same question", () => {
+    const merged = mergeServiceFlowAdviceUserFacingMessage(
+      "검수 절차는 다음과 같습니다.\n\n다음: 이 절차를 서비스 흐름에 반영할까요?",
+      "이 절차를 서비스 흐름에 반영할까요?",
+    );
+    expect(merged.match(/서비스 흐름에 반영할까요/g)?.length).toBe(1);
+  });
+
+  it("adds nextQuestion once when assistant does not include it", () => {
+    const merged = mergeServiceFlowAdviceUserFacingMessage(
+      "검수 절차는 다음과 같습니다.\n\n1. 자동 정리 결과 확인\n- 결과를 확인합니다.",
+      "이 절차를 서비스 흐름에 반영할까요?",
+    );
+    expect(merged).toContain("다음: 이 절차를 서비스 흐름에 반영할까요?");
+    expect(merged.match(/서비스 흐름에 반영할까요/g)?.length).toBe(1);
   });
 
   it("dispatch: strong action downgrade yields advice response policy", () => {
