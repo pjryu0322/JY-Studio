@@ -22,7 +22,7 @@ import {
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 
-export type ServiceFlowResponseMode = "flow_update" | "advice";
+export type ServiceFlowResponseMode = "flow_update" | "advice" | "advice_to_flow_apply";
 
 export type ServiceFlowResponsePolicy = Readonly<{
   readonly mode: ServiceFlowResponseMode;

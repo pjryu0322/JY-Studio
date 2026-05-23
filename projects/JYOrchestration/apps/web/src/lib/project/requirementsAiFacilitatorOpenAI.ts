@@ -41,6 +41,11 @@ import {
   type ServiceFlowAnalyzeQualityIssueCode,
 } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 import {
+  buildServiceFlowAdviceToFlowApplyRegenerationUserPayload,
+  buildServiceFlowAdviceToFlowApplySystemPromptBlock,
+  isAdviceToFlowApplyMode,
+} from "@/lib/requirements/serviceFlowAdviceApplyMode";
+import {
   buildServiceFlowAdviceRegenerationUserPayload,
   buildServiceFlowAdviceSystemPromptBlock,
   flowForServiceFlowAnalyzePrompt,
@@ -1940,6 +1945,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   }
   const model = resolveOpenAiModelFromEnv();
   const nowIso = new Date().toISOString();
+  const adviceToFlowApplyMode = isAdviceToFlowApplyMode(input.responsePolicy);
   const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
   const flowForPrompt = flowForServiceFlowAnalyzePrompt(input.currentFlow, input.responsePolicy);
   const flowJson = JSON.stringify(flowForPrompt ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
@@ -1962,7 +1968,24 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
     ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
     : "";
 
-  const system = adviceMode
+  const system = adviceToFlowApplyMode
+    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowAdviceToFlowApplySystemPromptBlock()}
+
+목표:
+- 직전 advice를 바탕으로 updatedFlow.actors·updatedFlow.steps를 **실제로 생성**한다.
+- assistantMessage에 예상 액터·예상 흐름 초안을 제시한다.
+- nextQuestion은 null이거나 검토 CTA 1문장만.
+- quickReplies는 2~3개(검토·수정용).
+
+금지:
+- "정의해 보겠습니다"만 말하고 steps를 비우기
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): add_step|update_step|show_summary|unclear
+Readiness: actorsReady/stepsReady/readyForNext를 생성 결과에 맞게 true로 반영.`
+    : adviceMode
     ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
 
 ${buildServiceFlowAdviceSystemPromptBlock()}
@@ -2163,7 +2186,12 @@ ${input.userMessage.trim()}
           issues: lastQualityIssues,
           rejectedAssistantPreview: attempt.rejected.assistantMessage,
         })
-      : buildServiceFlowProposalRegenerationUserPayload({
+      : adviceToFlowApplyMode
+        ? buildServiceFlowAdviceToFlowApplyRegenerationUserPayload({
+            issues: lastQualityIssues,
+            rejectedAssistantPreview: attempt.rejected.assistantMessage,
+          })
+        : buildServiceFlowProposalRegenerationUserPayload({
           issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
           rejectedAssistantPreview: attempt.rejected.assistantMessage,
           rejectedNextQuestion: attempt.rejected.nextQuestion,
@@ -2186,7 +2214,9 @@ ${input.userMessage.trim()}
 
   if (validated) {
     const updatedFlow =
-      adviceMode && input.currentFlow ? { ...input.currentFlow, ...validated.updatedFlow } : validated.updatedFlow;
+      adviceMode && !adviceToFlowApplyMode && input.currentFlow
+        ? { ...input.currentFlow, ...validated.updatedFlow }
+        : validated.updatedFlow;
     return {
       ok: true,
       model,

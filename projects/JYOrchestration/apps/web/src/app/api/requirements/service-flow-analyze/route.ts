@@ -50,7 +50,13 @@ import {
   isPreProjectWorkspaceScreenKey,
   isProjectSingleChatScope,
 } from "@/lib/conversation/conversationScopeBoundary";
+import {
+  buildAdviceToFlowApplyResponsePolicy,
+  isAdviceToFlowApplyMode,
+  shouldUseAdviceToFlowApplyMode,
+} from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import { isServiceFlowAdviceMode } from "@/lib/requirements/serviceFlowAdviceMode";
+import { withServiceFlowConversationState } from "@/lib/requirements/serviceFlowConversationState";
 
 type Body = {
   projectId?: string;
@@ -311,17 +317,32 @@ export async function POST(request: NextRequest) {
     const quickActionId = typeof body.quickActionId === "string" ? String(body.quickActionId).trim() : "";
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
     const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
-    const responsePolicy = body.responsePolicy;
-    const adviceMode = isServiceFlowAdviceMode(responsePolicy);
+    const executionScope = conversationScopeFromProjectId(projectId);
+    let responsePolicy = body.responsePolicy;
 
-    const proposalDecision = adviceMode
-      ? null
-      : resolveServiceFlowProposalDecision({
+    const proposalDecision = resolveServiceFlowProposalDecision({
       quickActionId: quickActionId || undefined,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
       proposalDecisionRaw: body.proposalDecision,
     });
+
+    const adviceToFlowApplyMode =
+      !isServiceFlowAdviceMode(responsePolicy) &&
+      shouldUseAdviceToFlowApplyMode({
+        executionScope,
+        proposalDecision,
+        directQuickActionId: quickActionId || null,
+        currentFlow,
+        recentMessages,
+        latestUserMessage: userMessage,
+      });
+
+    if (adviceToFlowApplyMode) {
+      responsePolicy = buildAdviceToFlowApplyResponsePolicy();
+    }
+
+    const adviceMode = isServiceFlowAdviceMode(responsePolicy);
 
     if (!projectId) return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     if (!userMessage) return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -560,6 +581,7 @@ export async function POST(request: NextRequest) {
 
     const llmAugmentable =
       !adviceMode &&
+      !adviceToFlowApplyMode &&
       (proposalDecision === "PARTIAL_EDIT" ||
         proposalDecision === "DIRECT_INPUT" ||
         proposalDecision === "HOLD");
@@ -605,11 +627,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const nowIso = new Date().toISOString();
     const primaryFlow = adviceMode
       ? (currentFlow ?? result.data.updatedFlow)
-      : !result.data.updatedFlow.proposalVariantMode
-        ? markFlowAsPrimaryProposalVariant(result.data.updatedFlow)
-        : result.data.updatedFlow;
+      : adviceToFlowApplyMode
+        ? withServiceFlowConversationState(
+            markFlowAsPrimaryProposalVariant(result.data.updatedFlow, nowIso),
+            "PROPOSAL",
+            nowIso,
+          )
+        : !result.data.updatedFlow.proposalVariantMode
+          ? markFlowAsPrimaryProposalVariant(result.data.updatedFlow)
+          : result.data.updatedFlow;
 
     return buildAnalyzeSuccessResponse({
       parsed: { ...result.data, updatedFlow: primaryFlow },
@@ -627,11 +656,13 @@ export async function POST(request: NextRequest) {
       agentCtx,
       responsePolicy,
       timelineExtras: {
-        ...(adviceMode
-          ? { routingDecision: "service_flow_advice_mode" }
-          : proposalDecision
-            ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
-            : {}),
+        ...(adviceToFlowApplyMode
+          ? { routingDecision: "service_flow_advice_to_flow_apply" }
+          : adviceMode
+            ? { routingDecision: "service_flow_advice_mode" }
+            : proposalDecision
+              ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
+              : {}),
         proposalVariantMode: primaryFlow.proposalVariantMode ?? "PRIMARY",
         reviewMode: primaryFlow.reviewMode ?? "PRIMARY_REVIEW",
       },

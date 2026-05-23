@@ -8,6 +8,10 @@ import {
   hasProposalFirstStructure,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
+  isAdviceToFlowApplyMode,
+  isFutureOnlyAssistantMessage,
+} from "@/lib/requirements/serviceFlowAdviceApplyMode";
+import {
   isServiceFlowAdviceMode,
   isWeakAdviceAssistantMessage,
 } from "@/lib/requirements/serviceFlowAdviceMode";
@@ -15,6 +19,9 @@ import {
 export type ServiceFlowAnalyzeQualityIssueCode =
   | "missing_assistant_message"
   | "advice_message_too_short"
+  | "advice_to_flow_apply_missing_steps"
+  | "advice_to_flow_apply_missing_actors"
+  | "assistant_future_only_no_flow"
   | "question_first_without_proposal"
   | "insufficient_flow_actors"
   | "insufficient_flow_steps"
@@ -155,12 +162,51 @@ function validateServiceFlowAdviceAnalyzeResponse(input: {
   return { ok: issues.length === 0, issues: [...new Set(issues)] };
 }
 
+function validateAdviceToFlowApplyAnalyzeResponse(input: {
+  readonly parsed: ServiceFlowAnalyzeParsed;
+}): { readonly ok: boolean; readonly issues: readonly ServiceFlowAnalyzeQualityIssueCode[] } {
+  const issues: ServiceFlowAnalyzeQualityIssueCode[] = [];
+  const assistant = String(input.parsed.assistantMessage ?? "").trim();
+  const flow = input.parsed.updatedFlow;
+  const actors = flow.actors ?? [];
+  const steps = flow.steps ?? [];
+
+  if (!assistant) issues.push("missing_assistant_message");
+  if (actors.length < 2) issues.push("advice_to_flow_apply_missing_actors");
+  if (steps.length < 3) issues.push("advice_to_flow_apply_missing_steps");
+  if (isFutureOnlyAssistantMessage(assistant)) issues.push("assistant_future_only_no_flow");
+  if (!hasProposalFirstStructure(assistant)) issues.push("question_first_without_proposal");
+
+  const actorIds = new Set(actors.map((a) => a.id));
+  for (const step of steps) {
+    const pid = String(step.primaryActorId ?? "").trim();
+    if (pid && !actorIds.has(pid)) {
+      issues.push("advice_to_flow_apply_missing_actors");
+      break;
+    }
+  }
+
+  const actorNames = actors.map((a) => a.name).filter(Boolean);
+  const stepTitles = steps.map((s) => s.title).filter(Boolean);
+  if (actorNames.length >= 2 && !flowNamesReflectedInMessage(actorNames, assistant, 2)) {
+    issues.push("flow_actor_names_not_in_message");
+  }
+  if (stepTitles.length >= 3 && !flowNamesReflectedInMessage(stepTitles, assistant, 2)) {
+    issues.push("flow_step_titles_not_in_message");
+  }
+
+  return { ok: issues.length === 0, issues: [...new Set(issues)] };
+}
+
 export function validateServiceFlowAnalyzeResponse(input: {
   readonly parsed: ServiceFlowAnalyzeParsed;
   readonly userMessage: string;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
   readonly responsePolicy?: unknown;
 }): { readonly ok: boolean; readonly issues: readonly ServiceFlowAnalyzeQualityIssueCode[] } {
+  if (isAdviceToFlowApplyMode(input.responsePolicy)) {
+    return validateAdviceToFlowApplyAnalyzeResponse({ parsed: input.parsed });
+  }
   if (isServiceFlowAdviceMode(input.responsePolicy)) {
     return validateServiceFlowAdviceAnalyzeResponse({ parsed: input.parsed });
   }
