@@ -42,13 +42,12 @@ const HARNESS_STRING_FIELDS = [
 ] as const satisfies readonly (keyof HarnessDryRunRequest)[];
 
 function pickRequestFields(input: Partial<HarnessDryRunRequest>): HarnessDryRunRequest {
-  const out: HarnessDryRunRequest = {};
-  for (const key of HARNESS_STRING_FIELDS) {
+  const entries = HARNESS_STRING_FIELDS.flatMap((key) => {
     const value = trimOptional(input[key]);
-    if (value) out[key] = value;
-  }
-  if (input.source) out.source = input.source;
-  return out;
+    return value ? ([[key, value] as const] as const) : [];
+  });
+  const built = Object.fromEntries(entries) as HarnessDryRunRequest;
+  return input.source ? { ...built, source: input.source } : built;
 }
 
 export function buildHarnessDryRunRequest(

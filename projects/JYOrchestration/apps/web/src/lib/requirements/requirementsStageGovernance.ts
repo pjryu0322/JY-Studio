@@ -24,13 +24,8 @@ const STAGE_GOVERNANCE: Partial<Record<OrchestrationStage, StageGovernanceRule>>
   },
   SCREEN_DEFINE: {
     blockedActions: ["GENERATE_DOCUMENT"],
-    preferredActions: ["DEFINE_SCREEN"],
+    preferredActions: ["DEFINE_SCREEN", "DEFINE_API"],
     recommendationBias: { DEFINE_SCREEN: 15, DEFINE_API: 8 },
-  },
-  API_DEFINE: {
-    blockedActions: [],
-    preferredActions: ["DEFINE_API"],
-    recommendationBias: { DEFINE_API: 15, DEFINE_SCREEN: -5 },
   },
 };
 

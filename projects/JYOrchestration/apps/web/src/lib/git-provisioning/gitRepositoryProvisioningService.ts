@@ -242,7 +242,7 @@ export async function prepareGitRepositoryProvisioning(input: {
   const repoName = repoValidation.repoName!;
 
   const tokenRes = await resolveProvisioningGithubToken(input);
-  if (!tokenRes.token) {
+  if (tokenRes.token === null) {
     return {
       ok: false,
       projectName: project.name,
@@ -341,7 +341,7 @@ export async function createAndBindGithubRepository(input: {
   }
 
   const tokenRes = await resolveProvisioningGithubToken(input);
-  if (!tokenRes.token) {
+  if (tokenRes.token === null) {
     return { ok: false, message: tokenRes.message };
   }
 
@@ -435,7 +435,7 @@ export async function bindExistingGithubRepository(input: {
   }
 
   const tokenRes = await resolveProvisioningGithubToken(input);
-  if (!tokenRes.token) {
+  if (tokenRes.token === null) {
     return { ok: false, message: tokenRes.message };
   }
 

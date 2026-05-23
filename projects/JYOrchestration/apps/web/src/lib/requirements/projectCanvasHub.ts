@@ -19,7 +19,7 @@ export type CanvasArtifactType =
   | "review"
   | "security-review";
 
-export type CanvasArtifactStatus = "draft" | "candidate" | "confirmed" | "obsolete";
+export type CanvasArtifactStatus = "draft" | "candidate" | "partial" | "confirmed" | "obsolete";
 
 export type ProjectCanvasArtifact = Readonly<{
   readonly id: string;

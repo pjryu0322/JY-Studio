@@ -69,7 +69,10 @@ import {
   mergeIntentOrchestrationPatch,
   type RequirementsIntentOrchestrationV1,
 } from "@/lib/requirements/requirementsIntentOrchestrationWire";
-import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
+import {
+  buildIntentRouterStateFromOrchestrationContext,
+  type RequirementsOrchestrationContextWire,
+} from "@/lib/requirements/requirementsOrchestrationContextWire";
 import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
 import {
   buildRequirementsAgentMetadata,
@@ -77,8 +80,8 @@ import {
   type RequirementsAgentRuntimeMetadata,
 } from "@/lib/agents/requirementsDispatchAgentMetadata";
 
-export type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
-export { buildIntentRouterStateFromOrchestrationContext } from "@/lib/requirements/requirementsOrchestrationContextWire";
+export type { RequirementsOrchestrationContextWire };
+export { buildIntentRouterStateFromOrchestrationContext };
 
 export type RequirementsIntentDispatchContext = Readonly<{
   readonly authoritativeStage: OrchestrationStage;
@@ -142,7 +145,7 @@ export function buildRequirementsIntentDispatchContext(
       authoritativeStage,
       quickActions: chatQuickActions,
       featureDetail: projection.featureDetail,
-      conversationState: projection.conversationState,
+      conversationState: state.serviceFlowV1 ? resolveServiceFlowConversationState(state.serviceFlowV1) : null,
     },
   };
 }

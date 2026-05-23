@@ -10,7 +10,9 @@ import {
 import type { ExternalExecutionAdapterBoundaryItem } from "@/lib/agents/externalExecutionAdapterBoundaryTypes";
 
 function hasStage11EntryScope(item: ExternalExecutionAdapterBoundaryItem): boolean {
-  return item.forbiddenInThisStep.some((marker) => STAGE11_ENTRY_REQUIRED_FORBIDDEN_MARKERS.includes(marker));
+  return item.forbiddenInThisStep.some((marker) =>
+    (STAGE11_ENTRY_REQUIRED_FORBIDDEN_MARKERS as readonly string[]).includes(marker)
+  );
 }
 
 function hasStage11EntryApprovals(item: ExternalExecutionAdapterBoundaryItem): boolean {

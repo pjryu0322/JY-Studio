@@ -89,12 +89,12 @@ export function buildRuntimeExecutionApiOkResponse<T>(
   };
 }
 
-export function buildRuntimeExecutionApiErrorResponse(
+export function buildRuntimeExecutionApiErrorResponse<T = unknown>(
   action: RuntimeExecutionApiAction,
   status: number,
   code: string,
   message: string,
-): RuntimeExecutionApiResponse {
+): RuntimeExecutionApiResponse<T> {
   return {
     ok: false,
     status,

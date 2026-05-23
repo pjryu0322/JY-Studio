@@ -37,7 +37,7 @@ const CLASSIFIER_SYSTEM = `당신은 대화 의도 분류기입니다.
 - "비교안을 만들어줘"는 project_draft가 아니라 option_comparison입니다.
 - "비교표로 정리해줘", "대안 비교해줘", "장단점 비교해줘"도 option_comparison입니다.
 - "프로젝트로 만들어줘", "프로토타입 준비", "초안 생성"은 project_draft입니다.
-- "웹서비스를 만들고 싶어", "서비스 아이디어가 있어"처럼 아이디어를 말한 것은 project_draft가 아니라 brainstorm입니다.
+- "웹서비스를 만들고 싶어", "시스템이 필요해", "서비스가 필요해"처럼 아이디어를 말한 것은 project_draft가 아니라 brainstorm입니다.
 - "확인해줘", "가능해?", "수집할 수 있어?", "검토해줘"는 brainstorm이 아니라 feasibility_check일 가능성이 높다.
 - URL이 포함되고 데이터/API/수집/크롤링 가능 여부를 묻는 경우 feasibility_check로 분류한다.
 - 문서/PDF/파일 업로드/주석/댓글/문서 비교/공동 검토가 명확할 때만 shouldInjectDocumentContext=true.
@@ -96,12 +96,19 @@ function mergePolicy(raw: unknown, mode: ConversationIntentMode): ConversationRe
   };
 }
 
+/** 명시적 프로젝트·초안 생성 요청(아이디어 소개와 구분) */
+export const EXPLICIT_PROJECT_DRAFT_RE =
+  /프로젝트(로)?\s*만들|프로젝트화\s*해\s*줘|프로토타입\s*준비|프로토타입(으로)?\s*만들|초안\s*생성|프로젝트\s*초안/i;
+
+const IDEA_INTRODUCTION_RE =
+  /만들고\s*싶어|서비스\s*아이디어|아이디어가\s*있어|구상하고\s*있어|시스템이\s*필요해|서비스가\s*필요해|도구가\s*필요해|웹서비스가\s*필요해|이런\s*(시스템|서비스|도구|웹서비스)(이|가)?\s*필요/i;
+
 /** 아이디어 소개·탐색 발화(프로젝트/초안 생성 요청이 아님) */
 export function looksLikeIdeaIntroduction(last: string): boolean {
   const t = String(last ?? "").trim();
   if (!t) return false;
-  if (/프로젝트(로)?\s*만들|프로토타입\s*준비|초안\s*생성/i.test(t)) return false;
-  return /만들고\s*싶어|서비스\s*아이디어|아이디어가\s*있어|구상하고\s*있어/i.test(t);
+  if (EXPLICIT_PROJECT_DRAFT_RE.test(t)) return false;
+  return IDEA_INTRODUCTION_RE.test(t);
 }
 
 function coerceStringArray(raw: unknown, max = 8): string[] {
@@ -302,7 +309,7 @@ export function classifyConversationIntentFromRules(input: {
   let reason = "일반 대화";
   const openOptions: string[] = [];
 
-  if (/프로젝트(로)?\s*만들|프로토타입\s*준비|초안\s*생성/i.test(last)) {
+  if (EXPLICIT_PROJECT_DRAFT_RE.test(last)) {
     mode = "project_draft";
     reason = "프로젝트·초안 생성 요청";
   } else if (OPTION_COMPARISON_RE.test(last)) {

@@ -23,6 +23,7 @@ export type IntentRouterMode =
   | "direct"
   | "deterministic"
   | "llm"
+  | "cache"
   | "fallback"
   | "timeout_fallback"
   | "invalid_json_fallback"

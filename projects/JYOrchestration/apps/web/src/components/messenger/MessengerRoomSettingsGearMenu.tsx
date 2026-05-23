@@ -34,7 +34,7 @@ const menuItemDisabled: CSSProperties = {
 };
 
 /**
- * 제목 옆 설정(톱니) — 제목 변경·대화 설정·요약·현재 대화로 프로토타입 준비(선택)·나가기·삭제.
+ * 제목 옆 설정(톱니) — 제목 변경·대화 설정·요약·현재 대화를 프로젝트로 전환(선택)·나가기·삭제.
  */
 export function MessengerRoomSettingsGearMenu(p: {
   readonly disabled?: boolean;
@@ -182,7 +182,7 @@ export function MessengerRoomSettingsGearMenu(p: {
                 if (fn) closeAnd(fn);
               }}
             >
-              현재 대화로 프로토타입 준비
+              현재 대화를 프로젝트로 전환
             </button>
           ) : null}
           {p.showLeave ? (

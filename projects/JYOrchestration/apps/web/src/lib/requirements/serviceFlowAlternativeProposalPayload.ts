@@ -347,6 +347,7 @@ export function parseAlternativeProposalPayloadWire(raw: unknown): AlternativePr
       addedSteps: list(c.addedSteps, 12),
       removedSteps: list(c.removedSteps, 12),
       changedSteps: list(c.changedSteps, 12),
+      changedStepAssignments: list(c.changedStepAssignments, 12),
       baselineActors: list(c.baselineActors, 12),
       baselineSteps: list(c.baselineSteps, 16),
     },

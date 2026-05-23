@@ -13,6 +13,7 @@ import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { deriveServiceFlowApprovalFromFlow, type ServiceFlowStageSlotKey } from "@/components/service-flow/serviceFlowStageDerived";
 import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
+import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 
 export function useServiceFlowSingleChatBridge(params: {
@@ -34,12 +35,7 @@ export function useServiceFlowSingleChatBridge(params: {
   ) => Promise<readonly RequirementsMessage[]>;
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
   readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
-  readonly orchestrationContext?: Readonly<{
-    singleChatOrchestrationV1?: unknown;
-    requirementsOrchestrationStageV1?: unknown;
-    featurePlanningSlotsV1?: unknown;
-    featureDetailSlotsV1?: unknown;
-  }>;
+  readonly orchestrationContext?: RequirementsOrchestrationContextWire;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;
   readonly onEnterFeatureDetailEdit?: () => void;
@@ -51,6 +47,7 @@ export function useServiceFlowSingleChatBridge(params: {
           payload: ServiceDesignHarnessPayload,
           text: string,
           quickAction?: ServiceFlowQuickActionDispatch | null,
+          opts?: ServiceFlowSingleChatSendOptions,
         ) => void | Promise<void>)
       | null;
   };

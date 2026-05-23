@@ -67,6 +67,29 @@ describe("classifyConversationIntentFromRules", () => {
     expect(classifyLast("녹취파일을 회의록으로 정리하는 웹서비스를 만들고 싶어").mode).toBe("brainstorm");
   });
 
+  it("시스템이 필요해 발화는 project_draft가 아니라 brainstorm", () => {
+    const c = classifyLast(
+      "녹취된 파일을 발화자별로 정리하고 주제별로 요약하고 잔여업무를 TODO로 관리하는 시스템이 필요해"
+    );
+    expect(c.mode).toBe("brainstorm");
+  });
+
+  it("웹서비스가 필요해 발화는 brainstorm", () => {
+    expect(classifyLast("회의록을 자동 작성하는 웹서비스가 필요해").mode).toBe("brainstorm");
+  });
+
+  it("도구가 필요해 발화는 brainstorm", () => {
+    expect(classifyLast("녹취파일을 회의록으로 바꿔주는 도구가 필요해").mode).toBe("brainstorm");
+  });
+
+  it("프로젝트로 만들어줘는 project_draft 유지", () => {
+    expect(classifyLast("이 내용을 프로젝트로 만들어줘").mode).toBe("project_draft");
+  });
+
+  it("프로토타입 준비해줘는 project_draft 유지", () => {
+    expect(classifyLast("현재 대화로 프로토타입 준비해줘").mode).toBe("project_draft");
+  });
+
   it("PDF review → document context", () => {
     const c = classifyLast("PDF 문서를 같이 검토하고 주석을 달고 싶어");
     expect(c.shouldInjectDocumentContext).toBe(true);
@@ -221,6 +244,21 @@ describe("mergeConversationIntentWithIdeaIntroductionGuard", () => {
     const merged = mergeConversationIntentWithIdeaIntroductionGuard(rules, llmParsed, last);
     expect(merged.mode).toBe("brainstorm");
     expect(merged.reason).toContain("rules_override");
+  });
+
+  it("LLM이 project_draft로 오분류해도 시스템 필요 발화는 brainstorm으로 보정", () => {
+    const last = "회의록 자동 작성 시스템이 필요해";
+    const rules = classifyLast(last);
+    expect(rules.mode).toBe("brainstorm");
+    const llmParsed = {
+      ...rules,
+      mode: "project_draft" as const,
+      reason: "llm: 프로젝트 초안 요청으로 판단",
+      classifierSource: "llm" as const,
+      responsePolicy: defaultResponsePolicyForMode("project_draft"),
+    };
+    const merged = mergeConversationIntentWithIdeaIntroductionGuard(rules, llmParsed, last);
+    expect(merged.mode).toBe("brainstorm");
   });
 });
 

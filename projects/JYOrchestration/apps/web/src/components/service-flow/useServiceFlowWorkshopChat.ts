@@ -14,6 +14,7 @@ import {
   dispatchRequirementsUserIntentAsync,
   fallbackQuickReplyLabels,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildClarificationUserMessage,
@@ -110,27 +111,6 @@ const SLOT_RESOLVE_USER_MESSAGES: Record<ServiceFlowStageSlotKey, string> = {
   handoffToFeatures: "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다.",
 };
 
-type ServiceFlowOrchestrationContextWire = Readonly<{
-  readonly singleChatOrchestrationV1?: unknown;
-  readonly requirementsOrchestrationStageV1?: unknown;
-  readonly featurePlanningSlotsV1?: unknown;
-  readonly featureDetailSlotsV1?: unknown;
-}>;
-
-function buildIntentRouterStateFromContext(
-  flow: RequirementsServiceFlowV1 | null,
-  orchCtx: ServiceFlowOrchestrationContextWire | undefined,
-): RequirementsStateJson {
-  return {
-    serviceFlowV1: flow,
-    singleChatOrchestrationV1: orchCtx?.singleChatOrchestrationV1 as RequirementsStateJson["singleChatOrchestrationV1"],
-    requirementsOrchestrationStageV1:
-      orchCtx?.requirementsOrchestrationStageV1 as RequirementsStateJson["requirementsOrchestrationStageV1"],
-    featurePlanningSlotsV1: orchCtx?.featurePlanningSlotsV1 as RequirementsStateJson["featurePlanningSlotsV1"],
-    featureDetailSlotsV1: orchCtx?.featureDetailSlotsV1 as RequirementsStateJson["featureDetailSlotsV1"],
-  };
-}
-
 export function useServiceFlowWorkshopChat({
   projectId,
   projectName,
@@ -176,12 +156,7 @@ export function useServiceFlowWorkshopChat({
   readonly structureLockedAt: string | null | undefined;
   readonly derivedSlotsForDraftBootstrap: Record<ServiceFlowStageSlotKey, boolean>;
   readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
-  readonly orchestrationContext?: Readonly<{
-    singleChatOrchestrationV1?: unknown;
-    requirementsOrchestrationStageV1?: unknown;
-    featurePlanningSlotsV1?: unknown;
-    featureDetailSlotsV1?: unknown;
-  }>;
+  readonly orchestrationContext?: RequirementsOrchestrationContextWire;
   readonly onAnalyzeStatePatch?: (patch: Partial<RequirementsStateJson>) => void | Promise<void>;
   readonly onEnterActorEdit?: () => void;
   readonly onEnterFeatureDetailEdit?: () => void;

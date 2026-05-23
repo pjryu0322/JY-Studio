@@ -31,35 +31,30 @@ export function buildRuntimeExecutionDryRunContractItems(
     return [];
   }
 
-  return source.contractCandidates
-    .map((contract) => {
-      const spec = CONTRACT_ID_TO_DRY_RUN_SPEC[contract.contractId];
-      if (!spec) {
-        return null;
-      }
-      return {
-        dryRunContractId: spec.dryRunContractId,
-        area: spec.area,
-        sourceContractId: contract.contractId,
-        scenarioName: spec.scenarioName,
-        purpose: `Dry-run scenario for ${contract.contractName}; does not execute runtime.`,
-        requiredInputs: [
-          `${spec.dryRunContractId}:input:request`,
-          `${spec.dryRunContractId}:input:context`,
-        ],
-        expectedAssertions: [
-          `${spec.dryRunContractId}:assert:no_side_effect`,
-          `${spec.dryRunContractId}:assert:candidate_only`,
-        ],
-        boundaryRules: [
-          ...COMMON_DRY_RUN_BOUNDARY_RULES,
-          `source_contract:${contract.contractId}`,
-        ],
-        dryRunOnly: true,
-        implementedInThisStep: false,
-      } satisfies RuntimeExecutionDryRunContractItem;
-    })
-    .filter((item): item is RuntimeExecutionDryRunContractItem => item !== null);
+  const items: RuntimeExecutionDryRunContractItem[] = [];
+  for (const contract of source.contractCandidates) {
+    const spec = CONTRACT_ID_TO_DRY_RUN_SPEC[contract.contractId];
+    if (!spec) continue;
+    items.push({
+      dryRunContractId: spec.dryRunContractId,
+      area: spec.area,
+      sourceContractId: contract.contractId,
+      scenarioName: spec.scenarioName,
+      purpose: `Dry-run scenario for ${contract.contractName}; does not execute runtime.`,
+      requiredInputs: [
+        `${spec.dryRunContractId}:input:request`,
+        `${spec.dryRunContractId}:input:context`,
+      ],
+      expectedAssertions: [
+        `${spec.dryRunContractId}:assert:no_side_effect`,
+        `${spec.dryRunContractId}:assert:candidate_only`,
+      ],
+      boundaryRules: [...COMMON_DRY_RUN_BOUNDARY_RULES, `source_contract:${contract.contractId}`],
+      dryRunOnly: true,
+      implementedInThisStep: false,
+    });
+  }
+  return items;
 }
 
 const EMPTY_VALIDATION: RuntimeExecutionDryRunContractValidationResult = {

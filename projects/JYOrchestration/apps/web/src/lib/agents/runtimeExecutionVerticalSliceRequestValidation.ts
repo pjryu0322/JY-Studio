@@ -6,7 +6,7 @@ import { STAGE8_A_DEFAULT_NOW_ISO } from "@/lib/agents/runtimeExecutionVerticalS
 import type { RuntimeExecutionRequest } from "@/lib/agents/runtimeExecutionVerticalSliceTypes";
 
 export function normalizeRuntimeExecutionRequest(
-  input?: Partial<RuntimeExecutionRequest>,
+  input?: RuntimeExecutionRequestInput,
 ): RuntimeExecutionRequest {
   return {
     requestId: input?.requestId ?? "",
@@ -22,8 +22,12 @@ export function normalizeRuntimeExecutionRequest(
   };
 }
 
+type RuntimeExecutionRequestInput = Partial<Omit<RuntimeExecutionRequest, "actualExecutionRequested">> & {
+  readonly actualExecutionRequested?: boolean;
+};
+
 export function validateRuntimeExecutionRequestInput(
-  input?: Partial<RuntimeExecutionRequest>,
+  input?: RuntimeExecutionRequestInput,
 ): {
   readonly valid: boolean;
   readonly missingFields: readonly string[];

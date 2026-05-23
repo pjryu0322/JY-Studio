@@ -59,9 +59,9 @@ export function evaluateRuntimeExecutionVerticalSlice(
 ): RuntimeExecutionVerticalSliceReport {
   const source = evaluateRuntimeContractBundleClosure(input.contractBundleClosure);
   const parsed = parseRuntimeExecutionVerticalSliceInput(input);
-  const rawActualExecutionRequested = input.request?.actualExecutionRequested === true;
-  const actualExecutionRequestBlocked = rawActualExecutionRequested;
   const rawValidation = validateRuntimeExecutionRequestInput(input.request);
+  const rawActualExecutionRequested = rawValidation.invalidFields.includes("actualExecutionRequested");
+  const actualExecutionRequestBlocked = rawActualExecutionRequested;
   const request = normalizeRuntimeExecutionRequest(input.request);
   const normalizedValidation = validateRuntimeExecutionRequest(request);
   const requestValid =

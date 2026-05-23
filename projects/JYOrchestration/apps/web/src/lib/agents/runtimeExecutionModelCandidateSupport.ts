@@ -13,7 +13,9 @@ import type {
 } from "@/lib/agents/runtimeExecutionModelCandidateTypes";
 import { RUNTIME_EXECUTION_MODEL_CANDIDATE_FORBIDDEN_FIELDS } from "@/lib/agents/runtimeExecutionModelCandidateConstants";
 
-export { validateRuntimeExecutionModelCandidates } from "@/lib/agents/runtimeExecutionModelCandidateValidation";
+import { validateRuntimeExecutionModelCandidates } from "@/lib/agents/runtimeExecutionModelCandidateValidation";
+
+export { validateRuntimeExecutionModelCandidates };
 
 export {
   MODEL_CANDIDATE_TITLE,

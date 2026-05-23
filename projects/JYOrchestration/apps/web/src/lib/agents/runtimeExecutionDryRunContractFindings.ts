@@ -65,7 +65,7 @@ export function appendRuntimeExecutionDryRunContractFindings(input: {
     return;
   }
 
-  if (source.forbiddenFieldDetected === true) {
+  if (source.sourceForbiddenFieldDetected === true) {
     findings.push(
       finding(
         "blocking",

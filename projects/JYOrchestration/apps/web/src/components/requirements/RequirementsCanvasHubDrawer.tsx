@@ -27,6 +27,7 @@ const panelStyle: CSSProperties = {
 const statusLabel: Record<ProjectCanvasArtifact["status"], string> = {
   draft: "초안",
   candidate: "후보",
+  partial: "부분",
   confirmed: "확정",
   obsolete: "이전",
 };

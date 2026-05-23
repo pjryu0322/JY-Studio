@@ -95,7 +95,7 @@ export function evaluateConnectorInvocation(
         `unknown_agent:${agentId}`,
       ]);
     }
-    if (!agent.allowedConnectors.includes(request.connectorId)) {
+    if (!(agent.allowedConnectors as readonly string[]).includes(request.connectorId)) {
       return resultBase(
         request,
         "blocked",
@@ -112,7 +112,7 @@ export function evaluateConnectorInvocation(
     if (!cap) {
       warnings.push(`unknown_capability:${capabilityId}`);
     } else if (cap.requiredConnectors?.length) {
-      if (!cap.requiredConnectors.includes(request.connectorId)) {
+      if (!(cap.requiredConnectors as readonly string[]).includes(request.connectorId)) {
         return resultBase(
           request,
           "blocked",

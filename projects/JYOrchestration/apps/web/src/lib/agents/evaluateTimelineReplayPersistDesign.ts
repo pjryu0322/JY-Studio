@@ -88,7 +88,7 @@ function candidateHasField(
   candidate: AgentRuntimePersistenceCandidate,
   field: string,
 ): boolean {
-  const value = (candidate as Record<string, unknown>)[field];
+  const value = (candidate as unknown as Record<string, unknown>)[field];
   if (value === undefined || value === null) return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "string") return value.trim().length > 0;

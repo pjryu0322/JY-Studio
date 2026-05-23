@@ -10,7 +10,9 @@ import {
 import type { ActualExternalExecutionAdapterCandidateItem } from "@/lib/agents/actualExternalExecutionAdapterCandidateTypes";
 
 function hasStage14EntryScope(item: ActualExternalExecutionAdapterCandidateItem): boolean {
-  return item.forbiddenInThisStep.some((marker) => STAGE14_ENTRY_REQUIRED_FORBIDDEN_MARKERS.includes(marker));
+  return item.forbiddenInThisStep.some((marker) =>
+    (STAGE14_ENTRY_REQUIRED_FORBIDDEN_MARKERS as readonly string[]).includes(marker)
+  );
 }
 
 function hasStage14EntryApprovals(item: ActualExternalExecutionAdapterCandidateItem): boolean {

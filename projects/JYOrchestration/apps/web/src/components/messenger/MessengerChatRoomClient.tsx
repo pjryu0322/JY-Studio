@@ -36,6 +36,7 @@ import {
   confirmResetConversation,
   downloadConversationMarkdownFile,
 } from "@/lib/chat/conversationMarkdown";
+import { isMessengerProjectConvertRequest } from "@/lib/messenger/messengerProjectConvertIntent";
 import { formatMessengerAiSummaryBlock, isMessengerSummaryRequest } from "@/lib/messenger/messengerSummaryIntent";
 import { postMessengerConversationSummarizeFromHtml } from "@/lib/worknote/workNotesSummarizeApi";
 import { messengerMembersToParticipants } from "@/lib/messenger/messengerRoomParticipantMapping";
@@ -221,16 +222,41 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [rid, summaryBusy, busy, aiBusy, messages, sessionName, reloadMessages]);
 
+  const runDraft = useCallback(async () => {
+    if (!rid || draftBusy) return;
+    setDraftBusy(true);
+    setToast(null);
+    try {
+      const payload = await postMessengerProjectDraft(rid);
+      setDraftPayload(payload);
+      setProjectName(payload.chosenTitle);
+      setProjectDesc(payload.description);
+      setDraftOpen(true);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "초안 생성 오류");
+    } finally {
+      setDraftBusy(false);
+    }
+  }, [rid, draftBusy]);
+
   const handleComposerSend = useCallback(
     async (_payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
-      if (!rid || !text || busy || aiBusy || summaryBusy || Boolean(projectLinkedId)) return;
+      if (!rid || !text || busy || aiBusy || summaryBusy || draftBusy || Boolean(projectLinkedId)) return;
 
       if (isMessengerSummaryRequest(text)) {
         const ok = window.confirm("현재 대화 내용을 AI요약으로 정리할까요?");
         if (!ok) return;
         setInput("");
         await handleWorkNoteSummarize();
+        return;
+      }
+
+      if (isMessengerProjectConvertRequest(text)) {
+        const ok = window.confirm("현재 대화를 프로젝트로 전환할까요?");
+        if (!ok) return;
+        setInput("");
+        await runDraft();
         return;
       }
       const mode = detail?.room.aiParticipationMode ?? "AUTO";
@@ -281,7 +307,9 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       sessionName,
       sessionUserId,
       summaryBusy,
+      draftBusy,
       handleWorkNoteSummarize,
+      runDraft,
     ]
   );
 
@@ -407,23 +435,6 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [aiBusy, busy, reloadDetail, reloadMessages, resetConversationBusy, rid, roomLifecycleBusy]);
 
-  const runDraft = useCallback(async () => {
-    if (!rid || draftBusy) return;
-    setDraftBusy(true);
-    setToast(null);
-    try {
-      const payload = await postMessengerProjectDraft(rid);
-      setDraftPayload(payload);
-      setProjectName(payload.chosenTitle);
-      setProjectDesc(payload.description);
-      setDraftOpen(true);
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : "초안 생성 오류");
-    } finally {
-      setDraftBusy(false);
-    }
-  }, [rid, draftBusy]);
-
   const confirmProject = useCallback(async () => {
     if (!rid || confirmBusy) return;
     const name = projectName.trim();
@@ -461,7 +472,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
       textAreaRef={composerTextAreaRef}
       value={input}
       onChange={setInput}
-      busy={busy || aiBusy || summaryBusy}
+      busy={busy || aiBusy || summaryBusy || draftBusy}
       placeholder={composerPlaceholder}
       targetPickerItems={targetPickerItems}
       onSendIdeation={handleComposerSend}

@@ -68,6 +68,7 @@ type Body = {
   singleChatOrchestrationV1?: unknown;
   requirementsOrchestrationStageV1?: unknown;
   featurePlanningSlotsV1?: unknown;
+  featureDetailSlotsV1?: unknown;
 };
 
 function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {

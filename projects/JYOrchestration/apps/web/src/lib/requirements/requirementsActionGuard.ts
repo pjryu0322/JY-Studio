@@ -80,7 +80,8 @@ export function guardRequirementsAction(input: RequirementsActionGuardInput): Gu
   }
 
   if (isBlockedScreenApiWithoutConfirmedFeatures(actionId, input.featureMetrics)) {
-    const fallbacks = ["EDIT_FEATURES"].filter((id) => input.availableActionIds.includes(id));
+    const editFeatures: QuickActionId = "EDIT_FEATURES";
+    const fallbacks: QuickActionId[] = input.availableActionIds.includes(editFeatures) ? [editFeatures] : [];
     return {
       allowed: false,
       reason: "확정된 기능이 없습니다. 「기능 수정」으로 먼저 기능을 확정해 주세요.",
@@ -102,9 +103,10 @@ export function guardRequirementsAction(input: RequirementsActionGuardInput): Gu
     return {
       allowed: false,
       reason: policy.reason,
-      fallbackActionIds: fallbacks.length ? fallbacks : ["EDIT_FEATURES"].filter((id) =>
-        input.availableActionIds.includes(id),
-      ),
+      fallbackActionIds:
+        fallbacks.length ? fallbacks
+        : input.availableActionIds.includes("EDIT_FEATURES") ? (["EDIT_FEATURES"] as const)
+        : [],
       warning: category === "artifact_action" ? normalized.warning : undefined,
     };
   }

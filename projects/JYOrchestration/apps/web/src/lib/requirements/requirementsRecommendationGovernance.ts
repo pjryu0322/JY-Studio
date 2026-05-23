@@ -59,11 +59,12 @@ export function mergeGovernedRecommendations(input: {
       ...(prev?.rejected ? { rejected: true } : {}),
     };
 
-    if (prev && prev.reason === raw.reason && prev.actionId === raw.actionId) {
-      merged.score = Math.max(prev.score, raw.score);
-    }
+    const scored =
+      prev && prev.reason === raw.reason && prev.actionId === raw.actionId
+        ? { ...merged, score: Math.max(prev.score, raw.score) }
+        : merged;
 
-    byKey.set(key, withRecommendationStatus(merged, merged.dismissed ? "dismissed" : "pending"));
+    byKey.set(key, withRecommendationStatus(scored, scored.dismissed ? "dismissed" : "pending"));
   }
 
   return [...byKey.values()]

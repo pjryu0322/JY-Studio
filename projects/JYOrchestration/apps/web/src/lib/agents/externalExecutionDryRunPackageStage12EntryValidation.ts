@@ -10,7 +10,9 @@ import {
 import type { ExternalExecutionDryRunPackageItem } from "@/lib/agents/externalExecutionDryRunPackageTypes";
 
 function hasStage12EntryScope(item: ExternalExecutionDryRunPackageItem): boolean {
-  return item.forbiddenInThisStep.some((marker) => STAGE12_ENTRY_REQUIRED_FORBIDDEN_MARKERS.includes(marker));
+  return item.forbiddenInThisStep.some((marker) =>
+    (STAGE12_ENTRY_REQUIRED_FORBIDDEN_MARKERS as readonly string[]).includes(marker)
+  );
 }
 
 function hasStage12EntryApprovals(item: ExternalExecutionDryRunPackageItem): boolean {

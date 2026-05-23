@@ -59,7 +59,7 @@ export type ServiceFlowOrchestrationStageWire =
 
 export type ServiceFlowStageTransitionMeta = Readonly<{
   quickActionType: ServiceFlowTransitionSignal;
-  transitionTriggered: true;
+  transitionTriggered: boolean;
   fromStage: ServiceFlowOrchestrationStageWire;
   toStage: ServiceFlowOrchestrationStageWire;
   transitionMode: "fast_path";

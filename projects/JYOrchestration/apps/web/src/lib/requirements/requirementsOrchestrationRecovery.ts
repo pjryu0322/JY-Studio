@@ -25,16 +25,15 @@ export function recoverRequirementsIntentOrchestration(
     lastRecoveredAt: nowIso,
   });
 
-  if (orch.clarification?.pending) {
-    orch = {
-      ...orch,
-      clarification: enrichClarificationWithLifecycle(orch.clarification, nowMs),
-    };
-    if (isClarificationExpired(orch.clarification, nowMs)) {
+  const pendingClarification = orch.clarification;
+  if (pendingClarification?.pending) {
+    const enriched = enrichClarificationWithLifecycle(pendingClarification, nowMs);
+    orch = { ...orch, clarification: enriched };
+    if (isClarificationExpired(enriched, nowMs)) {
       orch = {
         ...orch,
         clarification: abandonClarification({
-          clarification: orch.clarification,
+          clarification: enriched,
           reason: "timeout",
           nowIso,
         }),

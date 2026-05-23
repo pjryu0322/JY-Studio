@@ -75,6 +75,7 @@ export type OrchestrationRecommendationWire = Readonly<{
   readonly dismissed?: boolean;
   readonly accepted?: boolean;
   readonly rejected?: boolean;
+  readonly status?: "pending" | "accepted" | "dismissed" | "expired" | "obsolete";
 }>;
 
 export type ArtifactLifecycleEntryWire = Readonly<{
@@ -287,11 +288,19 @@ export function parseRequirementsIntentOrchestrationV1(raw: unknown): Requiremen
           },
         }
       : {}),
-    ...(lastSuggested === null || isQuickActionId(lastSuggested)
-      ? { lastSuggestedActionId: lastSuggested === null ? null : (lastSuggested as QuickActionId) }
+    ...(lastSuggested === null ||
+    (typeof lastSuggested === "string" && isQuickActionId(lastSuggested))
+      ? {
+          lastSuggestedActionId:
+            lastSuggested === null ? null : (lastSuggested as QuickActionId),
+        }
       : {}),
-    ...(lastConfirmed === null || isQuickActionId(lastConfirmed)
-      ? { lastConfirmedActionId: lastConfirmed === null ? null : (lastConfirmed as QuickActionId) }
+    ...(lastConfirmed === null ||
+    (typeof lastConfirmed === "string" && isQuickActionId(lastConfirmed))
+      ? {
+          lastConfirmedActionId:
+            lastConfirmed === null ? null : (lastConfirmed as QuickActionId),
+        }
       : {}),
     ...(clarification ? { clarification } : {}),
     ...(typeof o.recentConversationSummary === "string"

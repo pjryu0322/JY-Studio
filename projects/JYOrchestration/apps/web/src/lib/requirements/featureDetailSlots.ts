@@ -272,22 +272,17 @@ function mapFeatureDetailSlot(
   featureId: string,
   map: (slot: FeatureDetailSlot) => FeatureDetailSlot,
 ): { readonly artifact: FeatureDetailSlotsV1; readonly previous: FeatureDetailSlot | null; readonly next: FeatureDetailSlot | null } {
-  let previous: FeatureDetailSlot | null = null;
-  let next: FeatureDetailSlot | null = null;
-  const slots = artifact.slots.map((slot) => {
-    if (slot.id !== featureId) return slot;
-    previous = slot;
-    next = map(slot);
-    return next;
-  });
-  if (!previous || !next) {
+  const index = artifact.slots.findIndex((slot) => slot.id === featureId);
+  if (index < 0) {
     return { artifact, previous: null, next: null };
   }
-  const at = next.updatedAt;
+  const previous = artifact.slots[index]!;
+  const mapped = map(previous);
+  const slots = artifact.slots.map((slot, i) => (i === index ? mapped : slot));
   return {
-    artifact: { ...artifact, slots, updatedAt: at },
+    artifact: { ...artifact, slots, updatedAt: mapped.updatedAt },
     previous,
-    next,
+    next: mapped,
   };
 }
 
