@@ -44,6 +44,11 @@ import {
   type ServiceFlowProposalDecision,
 } from "@/lib/requirements/serviceFlowProposalDecision";
 import type { ServiceFlowAnalyzeParsed } from "@/lib/requirements/serviceFlowAnalyzeValidation";
+import {
+  conversationScopeFromProjectId,
+  isPreProjectWorkspaceScreenKey,
+  isProjectSingleChatScope,
+} from "@/lib/conversation/conversationScopeBoundary";
 import { isServiceFlowAdviceMode } from "@/lib/requirements/serviceFlowAdviceMode";
 
 type Body = {
@@ -162,7 +167,9 @@ function buildAnalyzeSuccessResponse(input: {
     stageGroup: input.agentCtx.stageGroup,
     workspaceScreenKey: input.agentCtx.workspaceScreenKey,
     selectedAgents: input.agentCtx.selectedAgents,
-    ...(input.promptText ? { promptText: input.promptText } : {}),
+    ...(input.promptText
+      ? { promptText: `${input.promptText}\nexecutionScope=project_single_chat` }
+      : { promptText: "[service-flow]\nexecutionScope=project_single_chat" }),
     responseText: finalAssistant.slice(0, 4000),
     model: input.model,
     provider: input.timelineExtras?.llmCallSkipped ? undefined : "openai",
@@ -312,6 +319,18 @@ export async function POST(request: NextRequest) {
 
     if (!projectId) return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     if (!userMessage) return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
+    if (isPreProjectWorkspaceScreenKey(body.workspaceScreenKey)) {
+      return NextResponse.json(
+        { success: false, message: "Pre-Project 대화방에서는 service-flow analyze를 실행하지 않습니다." },
+        { status: 400 },
+      );
+    }
+    if (!isProjectSingleChatScope(conversationScopeFromProjectId(projectId))) {
+      return NextResponse.json(
+        { success: false, message: "service-flow analyze는 Project SingleChat에서만 실행할 수 있습니다." },
+        { status: 400 },
+      );
+    }
 
     try {
       await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/requirements/service-flow-analyze");

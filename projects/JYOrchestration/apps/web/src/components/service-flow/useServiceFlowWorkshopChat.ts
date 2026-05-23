@@ -68,6 +68,10 @@ import {
   type ServiceDesignHarnessPayload,
 } from "@/lib/service-design/serviceDesignTurnPayload";
 import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
+import {
+  conversationScopeFromProjectId,
+  isProjectSingleChatScope,
+} from "@/lib/conversation/conversationScopeBoundary";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
@@ -278,6 +282,10 @@ export function useServiceFlowWorkshopChat({
       }
     ) => {
       if (workspaceMode !== "chat") return;
+      if (!isProjectSingleChatScope(conversationScopeFromProjectId(projectId))) {
+        console.warn("[service-flow] blocked outside project_single_chat scope");
+        return;
+      }
       const body = userMessageText.trim();
       if (!body) return;
       const quickAction = opts?.quickAction ?? null;

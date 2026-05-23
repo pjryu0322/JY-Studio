@@ -121,6 +121,8 @@ export function buildPreProjectPlanningSummarySeedPromptTrace(input: {
     promptText: [
       "[platform_seed]",
       "type=pre_project_planning_summary",
+      "scope=pre_project",
+      "executionScope=pre_project",
       "source=pre_project_chat",
       `regenerated=${input.regenerated}`,
       ...(pid ? [`projectId=${pid}`] : []),

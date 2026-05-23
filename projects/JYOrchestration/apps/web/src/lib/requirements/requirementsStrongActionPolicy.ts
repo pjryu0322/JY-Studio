@@ -1,3 +1,11 @@
+/**
+ * Project SingleChat intent dispatch 전용 — Pre-Project messenger에는 적용하지 않는다.
+ */
+
+import {
+  shouldApplyStrongActionGuard,
+  type ConversationExecutionScope,
+} from "@/lib/conversation/conversationScopeBoundary";
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import { guardRequirementsAction, type GuardResult } from "@/lib/requirements/requirementsActionGuard";
 import {
@@ -116,7 +124,12 @@ export function mergeGuardWithStrongActionPolicy(input: {
   readonly featureMetrics: FeatureDetailProjectionMetrics;
   readonly chatVisibleActionIds?: readonly QuickActionId[];
   readonly conversationState?: string | null;
+  readonly executionScope?: ConversationExecutionScope;
 }): GuardResult {
+  if (input.executionScope && !shouldApplyStrongActionGuard(input.executionScope)) {
+    return input.guard;
+  }
+
   const suggested = input.suggestedActionId;
   if (!suggested) return input.guard;
 

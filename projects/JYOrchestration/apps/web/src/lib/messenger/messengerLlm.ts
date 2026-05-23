@@ -27,6 +27,7 @@ import {
 } from "@/lib/conversation-core/conversationIntentTypes";
 import { buildFeasibilityRepetitionGuardBlock } from "@/lib/conversation-core/feasibilityRepetitionGuard";
 import { formatConversationPromptMeta } from "@/lib/conversation-core/conversationPromptMeta";
+import { preProjectScopeContaminationReason } from "@/lib/conversation/conversationScopeBoundary";
 import { buildMessengerSystemPromptForIntent } from "@/lib/conversation-core/conversationResponsePolicy";
 import { sanitizeUnsupportedFuturePromise } from "@/lib/conversation-core/futurePromiseGuard";
 import {
@@ -560,6 +561,12 @@ export async function runMessengerAiTurn(input: {
     return { ok: false, code: res.code, message: res.message };
   }
   const text = sanitizeUnsupportedFuturePromise(String(res.text ?? "").trim());
+  if (turnSetup.classification.scope === "pre_project") {
+    const leakReason = preProjectScopeContaminationReason(text);
+    if (leakReason) {
+      console.warn("[messenger] pre-project execution scope contamination:", leakReason);
+    }
+  }
   if (!text) {
     if (input.logContext) {
       await recordMessengerOpenAi({

@@ -1,3 +1,14 @@
+/**
+ * Project SingleChat service-flow analyze 전용 advice response policy.
+ *
+ * 적용: requirements workspace / service-flow workshop
+ * 비적용: Pre-Project messenger room, 프로젝트 생성 전 브레인스토밍
+ */
+
+import {
+  isProjectSingleChatScope,
+  type ConversationExecutionScope,
+} from "@/lib/conversation/conversationScopeBoundary";
 import {
   isStrongExecutionAction,
 } from "@/lib/requirements/requirementsStrongActionPolicy";
@@ -68,7 +79,12 @@ export function buildServiceFlowResponsePolicyFromDispatch(input: {
   readonly guard: GuardResult;
   readonly effectiveActionId: QuickActionId | null;
   readonly directQuickActionId?: QuickActionId | null;
+  readonly executionScope?: ConversationExecutionScope;
 }): ServiceFlowResponsePolicy {
+  if (input.executionScope && !isProjectSingleChatScope(input.executionScope)) {
+    return { mode: "flow_update" };
+  }
+
   const suggested = input.intent.suggestedActionId;
   const strongActionGuarded = Boolean(
     suggested &&

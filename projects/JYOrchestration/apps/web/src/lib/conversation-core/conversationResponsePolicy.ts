@@ -4,6 +4,7 @@ import type {
   ConversationResponsePolicy,
   ConversationScope,
 } from "@/lib/conversation-core/conversationIntentTypes";
+import { PRE_PROJECT_EXECUTION_SCOPE_BOUNDARY_PROMPT } from "@/lib/conversation/conversationScopeBoundary";
 import { buildAiPlannerSystemPrompt } from "@/lib/requirements/aiPlannerSystemPrompt";
 import { PRE_PROJECT_BRAINSTORM_PLANNER_PROMPT } from "@/lib/requirements/aiPlannerSystemPrompt";
 
@@ -110,11 +111,12 @@ const MESSENGER_PRE_PROJECT_EXECUTION_SYSTEM = `당신은 플랫폼의 「AI 기
 
 역할:
 - 아직 프로젝트가 없으면 승격·범위 확정을 먼저 제안합니다.
-- 있으면 작업 단위·산출물·검증 포인트로 정리합니다.
+- 있으면 작업 단위·산출물·검증 포인트를 **텍스트로** 정리합니다 (service-flow·Viewer·실행 액션 없음).
 
 응답 규칙:
 - 한국어, 2~4문단.
-- 내부 용어(Cursor, 하네스 등) 노출 금지.`;
+- 내부 용어(Cursor, 하네스 등) 노출 금지.
+- GENERATE_ALTERNATIVE, APPLY_PROPOSAL, 대안 비교 Viewer, service-flow analyze를 언급·실행하지 않습니다.`;
 
 const MESSENGER_GENERAL_SYSTEM = `당신은 플랫폼의 「AI 기획자」입니다.
 자유 대화방에서 사용자와 짧고 실무적으로 대화합니다.
@@ -222,6 +224,7 @@ export function buildMessengerSystemPromptForIntent(input: {
     }
   }
   const parts = [base];
+  if (c.scope === "pre_project") parts.push(PRE_PROJECT_EXECUTION_SCOPE_BOUNDARY_PROMPT);
   if (input.personaLine?.trim()) parts.push(input.personaLine.trim());
   if (input.contextBlocksText?.trim()) parts.push(input.contextBlocksText.trim());
   const policyBlock = formatResponsePolicyBlock(c.responsePolicy);

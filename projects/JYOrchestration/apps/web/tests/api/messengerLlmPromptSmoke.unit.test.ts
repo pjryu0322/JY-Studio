@@ -81,6 +81,22 @@ describe("messengerLlm prompt smoke (rules only)", () => {
     expect(promptPrescribesFeasibilityClosingPhrase(sys)).toBe(false);
   });
 
+  it("pre-project planner prompt does not expose project single chat execution actions", () => {
+    const c = classifyConversationIntentFromRules({
+      ...pre,
+      transcript: [{ role: "user", content: "검수절차를 제안해줘" }],
+    });
+    const sys = buildMessengerSystemBlockForTest(c);
+    expect(sys).toContain("프로젝트 생성 전");
+    expect(sys).toContain("service-flow analyze");
+    expect(sys).toMatch(/GENERATE_ALTERNATIVE.*사용하지 않습니다/);
+    expect(sys).toMatch(/APPLY_PROPOSAL.*사용하지 않습니다/);
+    expect(sys).toContain("대안 비교 Viewer");
+    expect(sys).toContain("실행하지 않습니다");
+    const meta = formatConversationPromptMeta(c, { roomId: "r1", layout: "legacy_tail" });
+    expect(meta).toContain("executionScope=pre_project");
+  });
+
   it("brainstorm prompt does not prescribe future comparison/draft promise", () => {
     const sys = messengerBasePromptForMode("pre_project", "brainstorm");
     expect(sys).not.toContain("다음에는 제가 비교안/초안/정리안을 만들겠습니다");

@@ -1,3 +1,4 @@
+import { conversationScopeFromConversationScope } from "@/lib/conversation/conversationScopeBoundary";
 import type { ConversationIntentClassification } from "@/lib/conversation-core/conversationIntentTypes";
 import type { WebsiteInspectionResult } from "@/lib/conversation-core/websiteInspection";
 
@@ -27,6 +28,7 @@ export function formatConversationPromptMeta(
   const lines = [
     "[promptMeta]",
     `scope=${classification.scope}`,
+    `executionScope=${conversationScopeFromConversationScope(classification.scope)}`,
     `participationMode=${classification.participationMode}`,
     `mode=${classification.mode}`,
     `confidence=${classification.confidence.toFixed(2)}`,

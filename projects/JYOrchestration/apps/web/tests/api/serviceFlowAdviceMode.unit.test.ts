@@ -4,6 +4,7 @@ import {
   buildRequirementsIntentDispatchContext,
   dispatchRequirementsUserIntent,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import { canUseServiceFlowAnalyze } from "@/lib/conversation/conversationScopeBoundary";
 import {
   buildServiceFlowAdviceSystemPromptBlock,
   buildServiceFlowResponsePolicyFromDispatch,
@@ -45,6 +46,11 @@ function intent(partial: Partial<IntentRoutingResult>): IntentRoutingResult {
 }
 
 describe("serviceFlowAdviceMode", () => {
+  it("service-flow advice mode is project single chat scoped", () => {
+    expect(canUseServiceFlowAnalyze("project_single_chat")).toBe(true);
+    expect(canUseServiceFlowAnalyze("pre_project")).toBe(false);
+  });
+
   it("uses advice mode for ask_advice direct input without direct quick action", () => {
     expect(
       shouldUseServiceFlowAdviceMode({

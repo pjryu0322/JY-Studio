@@ -1,6 +1,9 @@
 /**
  * Unified Quick Action + free-text dispatch — Intent Router → Registry Guard → execution hints.
+ * Project SingleChat 전용 (requirements workspace). Pre-Project messenger는 사용하지 않는다.
  */
+
+import { conversationScopeFromProjectId } from "@/lib/conversation/conversationScopeBoundary";
 
 import type { FeatureDetailProjectionMetrics } from "@/lib/requirements/featureDetailSlots";
 import {
@@ -337,6 +340,7 @@ function guardRequirementsIntentAction(input: {
     featureMetrics: input.ctx.featureMetrics,
     chatVisibleActionIds: input.ctx.chatQuickActions.map((a) => a.id),
     conversationState: input.ctx.projectionSlice.conversationState ?? null,
+    executionScope: "project_single_chat",
   });
 }
 
@@ -380,11 +384,13 @@ function finalizeDispatchResult(input: {
 }): RequirementsIntentDispatchResult {
   const suggested = input.intent.suggestedActionId;
   const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  const executionScope = conversationScopeFromProjectId(input.projectId);
   const serviceFlowResponsePolicy = buildServiceFlowResponsePolicyFromDispatch({
     intent: input.intent,
     guard: input.guard,
     effectiveActionId: effectiveId,
     directQuickActionId: input.directQuickActionId,
+    executionScope,
   });
   const serviceFlowExtras = {
     serviceFlowResponseMode: serviceFlowResponsePolicy.mode,
