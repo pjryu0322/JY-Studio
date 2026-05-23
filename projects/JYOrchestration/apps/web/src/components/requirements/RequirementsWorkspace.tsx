@@ -973,9 +973,10 @@ export function RequirementsWorkspace({
   useEffect(() => {
     const orch = persistedPromptState.requirementsIntentOrchestrationV1;
     if (!orch?.lastRecoveredAt) return;
-    const key = `${orch.orchestrationSessionId ?? ""}:${orch.lastRecoveredAt}`;
-    if (recoveryTimelineKeyRef.current === key) return;
-    recoveryTimelineKeyRef.current = key;
+    const sessionKey = String(orch.orchestrationSessionId ?? "").trim();
+    if (!sessionKey) return;
+    if (recoveryTimelineKeyRef.current === sessionKey) return;
+    recoveryTimelineKeyRef.current = sessionKey;
     appendSingleChatPromptTimeline(
       buildOrchestrationRecoveryTimelineEntry({
         sessionId: orch.orchestrationSessionId,

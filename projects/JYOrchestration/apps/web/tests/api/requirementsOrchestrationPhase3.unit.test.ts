@@ -181,6 +181,12 @@ describe("orchestration runtime phase 3", () => {
     expect(reparsed?.requirementsIntentOrchestrationV1?.orchestrationSessionId).toBe(
       recovered.orchestrationSessionId,
     );
+    const firstRecoveredAt = reparsed?.requirementsIntentOrchestrationV1?.lastRecoveredAt;
+    const reparsedAgain = parseRequirementsStateJson({
+      serviceFlowV1: null,
+      requirementsIntentOrchestrationV1: reparsed?.requirementsIntentOrchestrationV1,
+    });
+    expect(reparsedAgain?.requirementsIntentOrchestrationV1?.lastRecoveredAt).toBe(firstRecoveredAt);
   });
 
   it("F: orchestration compaction trims long summary", () => {
