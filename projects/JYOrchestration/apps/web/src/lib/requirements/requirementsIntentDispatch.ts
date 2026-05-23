@@ -101,6 +101,7 @@ import {
 import {
   resolveBlockedApplyRedirect,
 } from "@/lib/requirements/serviceFlowActionGating";
+import { applyProjectSingleChatBoundaryGuard } from "@/lib/requirements/projectSingleChatBoundaryGuard";
 import {
   formatServiceFlowSubIntentGuardTrace,
   normalizeServiceFlowSubIntent,
@@ -545,6 +546,17 @@ function finalizeDispatchResult(input: {
   guard = subIntentGuard.guard;
   intent = subIntentGuard.intent;
   const executionScope = conversationScopeFromProjectId(input.projectId);
+  const boundaryGuard = applyProjectSingleChatBoundaryGuard({
+    intent,
+    guard,
+    effectiveActionId: effectiveId,
+    executionScope,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: input.directCtaId,
+  });
+  effectiveId = boundaryGuard.effectiveActionId;
+  guard = boundaryGuard.guard;
+  intent = boundaryGuard.intent;
   const serviceFlowResponsePolicy = buildServiceFlowResponsePolicyFromDispatch({
     intent,
     guard,
@@ -679,6 +691,7 @@ function finalizeDispatchResult(input: {
     formatAgentMetadataForTimeline(agentRuntimeMetadata),
     stageRoutingTrace,
     subIntentGuard.applyGuardTrace,
+    boundaryGuard.boundaryGuardTrace,
     responsePolicyTrace,
   ].filter(Boolean);
   const timelineDetail = formatOrchestrationTimelineResponse({

@@ -137,7 +137,7 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   },
   ADD_ACTOR: {
     id: "ADD_ACTOR",
-    defaultLabel: "액터 추가하기",
+    defaultLabel: "서비스 액터 수동 추가",
     conversationProfiles: ["review"],
     proposalDecision: null,
     transitionSignal: "ACTION_ENTER_ACTOR_EDIT",

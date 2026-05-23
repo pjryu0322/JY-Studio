@@ -72,7 +72,11 @@ export function shouldRouteFeaturePlanningSendViaServiceFlowAnalyze(input: {
   return Boolean(quickAction?.id);
 }
 
-export type ServiceFlowMessageSendSource = "typed_text" | "quick_reply" | "cta_button";
+export type ServiceFlowMessageSendSource =
+  | "typed_text"
+  | "quick_reply"
+  | "cta_button"
+  | "manual_editor";
 
 export type ServiceFlowSingleChatSendOptions = Readonly<{
   /** feature-planning mirror already appended the user turn — skip service-flow duplicate */

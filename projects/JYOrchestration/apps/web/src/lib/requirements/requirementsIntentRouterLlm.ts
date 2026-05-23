@@ -46,6 +46,11 @@ function intentTypeForAction(id: QuickActionId): IntentType {
   return "orchestration_action";
 }
 
+/** @internal — unit tests */
+export function buildIntentRouterSystemPromptForTest(): string {
+  return buildIntentRouterSystemPrompt();
+}
+
 function buildIntentRouterSystemPrompt(): string {
   return [
     "You are a requirements workshop intent classifier for JYOrchestration.",
@@ -77,6 +82,11 @@ function buildIntentRouterSystemPrompt(): string {
     "- flow_edit: modify part of existing flow.",
     "- general_service_flow: general service-flow advice.",
     "Do NOT return APPLY_PROPOSAL for actor_definition, flow_step_definition, or flow_draft unless user explicitly accepts an existing reviewable proposal.",
+    "Boundary rule (Project SingleChat):",
+    'Requests like "액터부터 정의하기", "액터를 정의해줘", "주요 액터를 정리해줘" are actor_definition — AI proposes service actors and roles for the project deliverable.',
+    "For actor_definition: stageIntent=service_flow, serviceFlowSubIntent=actor_definition, suggestedActionId=DIRECT_INPUT.",
+    "ADD_ACTOR opens the manual actor edit screen only when the user explicitly asks for manual add, direct add, or to open the edit screen.",
+    "Do NOT return ADD_ACTOR for actor_definition or general actor-definition phrasing.",
     "Schema:",
     '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","stageIntent":"service_flow|flow_review|screen_planning|feature_planning|generation_prepare|general_advice","serviceFlowSubIntent":"actor_definition|flow_step_definition|flow_draft|flow_review|flow_apply|flow_edit|general_service_flow","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
   ].join("\n");

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseLlmIntentJsonForTest } from "@/lib/requirements/requirementsIntentRouterLlm";
 import {
+  shouldBlockProjectOrchestrationActionForServiceFlowSubIntent,
+} from "@/lib/requirements/projectSingleChatBoundaryGuard";
+import {
   isServiceFlowStructuralSubIntent,
   shouldBlockApplyProposalForServiceFlowSubIntent,
   shouldBlockStrongActionForServiceFlowSubIntent,
@@ -65,6 +68,19 @@ describe("serviceFlowSubIntent — APPLY guard", () => {
 
     expect(result.blocked).toBe(true);
     expect(result.reason).toBe("flow_draft_is_not_apply");
+  });
+});
+
+describe("serviceFlowSubIntent — platform orchestration boundary", () => {
+  it("downgrades ADD_ACTOR for actor_definition via boundary guard", () => {
+    const result = shouldBlockProjectOrchestrationActionForServiceFlowSubIntent({
+      executionScope: "project_single_chat",
+      stageIntent: "service_flow",
+      serviceFlowSubIntent: "actor_definition",
+      suggestedActionId: "ADD_ACTOR",
+    });
+    expect(result.blocked).toBe(true);
+    expect(result.downgradedTo).toBe("DIRECT_INPUT");
   });
 });
 

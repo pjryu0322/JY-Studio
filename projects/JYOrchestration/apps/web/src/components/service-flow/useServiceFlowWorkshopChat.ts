@@ -66,6 +66,8 @@ import {
   filterQuickReplyLabelsForServiceFlowGating,
   shouldShowServiceFlowApplyActions,
 } from "@/lib/requirements/serviceFlowActionGating";
+import { shouldEnterManualActorEditFromSingleChat } from "@/lib/requirements/projectSingleChatBoundaryGuard";
+import type { ServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
 import {
   stripAlternativeCanvasReopenFromQuickReplies,
   type AlternativeProposalPayloadWire,
@@ -593,8 +595,21 @@ export function useServiceFlowWorkshopChat({
   }, []);
 
   const dispatchClientOnlyDecision = useCallback(
-    (decision: ServiceFlowProposalDecision, _chip: string | null, quickActionId?: QuickActionId | null): boolean => {
-      if (quickActionId === "ADD_ACTOR") {
+    (
+      decision: ServiceFlowProposalDecision,
+      _chip: string | null,
+      quickActionId?: QuickActionId | null,
+      sendOpts?: ServiceFlowSingleChatSendOptions | null,
+      serviceFlowSubIntent?: ServiceFlowSubIntent | null,
+    ): boolean => {
+      if (
+        shouldEnterManualActorEditFromSingleChat({
+          effectiveActionId: quickActionId,
+          serviceFlowSubIntent,
+          source: sendOpts?.source ?? null,
+          directCtaId: sendOpts?.directCtaId ?? null,
+        })
+      ) {
         onEnterActorEdit?.();
         return true;
       }
@@ -835,7 +850,19 @@ export function useServiceFlowWorkshopChat({
           scrollChatToBottom();
           return;
         }
-        if (effectiveDispatch.id === "ADD_ACTOR") {
+        if (stageRoute?.shouldRunActorDefinition) {
+          callAnalyze(body, analyzeOpts);
+          scrollChatToBottom();
+          return;
+        }
+        if (
+          shouldEnterManualActorEditFromSingleChat({
+            effectiveActionId: effectiveDispatch.id,
+            serviceFlowSubIntent: stageRoute?.serviceFlowSubIntent,
+            source: sendOpts?.source ?? null,
+            directCtaId: sendOpts?.directCtaId ?? null,
+          })
+        ) {
           onEnterActorEdit?.();
           return;
         }
@@ -853,7 +880,13 @@ export function useServiceFlowWorkshopChat({
         }
         if (
           decision &&
-          dispatchClientOnlyDecision(decision, effectiveDispatch.label, effectiveDispatch.id)
+          dispatchClientOnlyDecision(
+            decision,
+            effectiveDispatch.label,
+            effectiveDispatch.id,
+            sendOpts,
+            stageRoute?.serviceFlowSubIntent,
+          )
         ) {
           return;
         }
