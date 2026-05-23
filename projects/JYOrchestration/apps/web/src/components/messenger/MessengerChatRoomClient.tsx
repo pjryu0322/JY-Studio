@@ -424,34 +424,6 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [rid, draftBusy]);
 
-  const handleWorkNoteSummarize = useCallback(async () => {
-    if (!rid || summaryBusy || busy || aiBusy) return;
-    const list = messages ?? [];
-    const hasBody = list.some((m) => String(m.content ?? "").trim());
-    if (!hasBody) {
-      setToast("요약할 대화 내용이 없습니다.");
-      return;
-    }
-    setSummaryBusy(true);
-    setToast(null);
-    try {
-      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(list, sessionName, { maxMessages: 80 });
-      const sn = await postWorkNoteSummarizeFromHtml(contentHtml);
-      const meta = [
-        `요청 분류 ${sn.requestType}`,
-        `우선순위 추천 ${sn.priority}`,
-        ...(sn.priorityReason ? [`근거 ${sn.priorityReason}`] : []),
-      ].join("\n");
-      const block = ["【AI 요약 정리】", "", sn.summary, "", meta].join("\n");
-      await postMessengerAiSummaryBlockMessage(rid, block);
-      await reloadMessages();
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : "AI 요약에 실패했습니다.");
-    } finally {
-      setSummaryBusy(false);
-    }
-  }, [rid, summaryBusy, busy, aiBusy, messages, sessionName, reloadMessages]);
-
   const confirmProject = useCallback(async () => {
     if (!rid || confirmBusy) return;
     const name = projectName.trim();
