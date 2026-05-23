@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isWeakAdviceAssistantMessage } from "@/lib/requirements/serviceFlowAdviceMode";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { applyQuickReplyAwareAssistantPresentation } from "@/lib/requirements/serviceFlowAssistantPresentation";
 import {
@@ -156,5 +157,24 @@ describe("serviceFlowAnalyzeValidation", () => {
     });
     expect(r.ok).toBe(false);
     expect(r.issues).toContain("multi_question_cta");
+  });
+
+  it("validate — advice mode rejects short assistantMessage", () => {
+    const r = validateServiceFlowAnalyzeResponse({
+      parsed: {
+        assistantMessage: "검수 절차를 제안합니다.",
+        updatedFlow: sampleFlow(),
+        intent: "unclear",
+        nextQuestion: null,
+        quickReplies: null,
+        readiness: { score: 0, actorsReady: false, stepsReady: false, mappingReady: false, readyForNext: false },
+      },
+      userMessage: "검수절차를 제안해줘",
+      currentFlow: sampleFlow(),
+      responsePolicy: { mode: "advice" },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues).toContain("advice_message_too_short");
+    expect(isWeakAdviceAssistantMessage("검수 절차를 제안합니다.")).toBe(true);
   });
 });

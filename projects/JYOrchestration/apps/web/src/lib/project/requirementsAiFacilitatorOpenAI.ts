@@ -40,6 +40,13 @@ import {
   validateServiceFlowAnalyzeResponse,
   type ServiceFlowAnalyzeQualityIssueCode,
 } from "@/lib/requirements/serviceFlowAnalyzeValidation";
+import {
+  buildServiceFlowAdviceRegenerationUserPayload,
+  buildServiceFlowAdviceSystemPromptBlock,
+  flowForServiceFlowAnalyzePrompt,
+  isServiceFlowAdviceMode,
+  mergeServiceFlowAdviceUserFacingMessage,
+} from "@/lib/requirements/serviceFlowAdviceMode";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
@@ -1926,6 +1933,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   latestAiQuestion: string;
   priorScreenHandoff?: string;
   participatingAgentsPromptBlock?: string;
+  readonly responsePolicy?: unknown;
 }): Promise<ServiceFlowAnalyzeOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -1933,7 +1941,9 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   }
   const model = resolveOpenAiModelFromEnv();
   const nowIso = new Date().toISOString();
-  const flowJson = JSON.stringify(input.currentFlow ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
+  const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
+  const flowForPrompt = flowForServiceFlowAnalyzePrompt(input.currentFlow, input.responsePolicy);
+  const flowJson = JSON.stringify(flowForPrompt ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
   const recent = safeText(input.recentMessages, 18_000);
   const assetsBlock = (input.ideationAssets ?? [])
     .map((a) => {
@@ -1953,7 +1963,26 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
     ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
     : "";
 
-  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
+  const system = adviceMode
+    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowAdviceSystemPromptBlock()}
+
+목표:
+- assistantMessage에 사용자가 요청한 절차·검토·승인·운영 방식을 **단계별로 충분히** 작성한다.
+- updatedFlow는 currentFlow를 유지하거나 최소 변경만 한다.
+- nextQuestion은 null이거나 "이 절차를 서비스 흐름에 반영할까요?" 수준 1문장만.
+- quickReplies는 0~2개(선택, 반영 요청 시에만).
+
+금지:
+- "제안합니다" 선언만 하고 구체 절차 없이 끝내기
+- "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요." 같은 flow proposal CTA
+- 대안 비교·ALTERNATIVE·Viewer 유도 문구
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): show_summary|delegate_to_ai|unclear
+Readiness: currentFlow 기준으로 score만 반영(0~100).`
+    : `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
 사용자에게 보이는 톤은 **AI 기획자(코디네이터)** — 질문 위주 인터뷰어가 아닙니다.
 
 이 단계의 목적: 아이디어 구체화 산출물을 바탕으로 서비스 흐름(액터·단계·담당)을 **제안·검증·보정**한다.
@@ -2020,9 +2049,9 @@ ${input.userMessage.trim()}
 
 [출력 스키마]
 {
-  "assistantMessage": "사용자에게 보여줄 메시지(짧게)",
+  "assistantMessage": "${adviceMode ? "단계별 기획 조언 본문(충분한 길이)" : "사용자에게 보여줄 메시지(짧게)"}",
   "updatedFlow": { "createdAt": "...", "updatedAt": "...", "actors": [], "steps": [] },
-  "intent": "add_actor|update_actor|add_step|update_step|update_mapping|show_summary|delegate_to_ai|unclear",
+  "intent": "${adviceMode ? "show_summary|delegate_to_ai|unclear" : "add_actor|update_actor|add_step|update_step|update_mapping|show_summary|delegate_to_ai|unclear"}",
   "nextQuestion": "질문 한 문장?" | null,
   "quickReplies": ["선택지1", "선택지2", "선택지3"] | null,
   "readiness": { "score": 0, "actorsReady": true, "stepsReady": true, "mappingReady": true, "readyForNext": true }
@@ -2094,6 +2123,7 @@ ${input.userMessage.trim()}
       parsed: data,
       userMessage: input.userMessage,
       currentFlow: input.currentFlow,
+      responsePolicy: input.responsePolicy,
     });
 
     if (validation.ok) return { ok: true, data };
@@ -2151,10 +2181,11 @@ ${input.userMessage.trim()}
   const validated = attempt?.ok ? attempt.data : null;
 
   if (validated) {
-    const mergedAssistant = mergeServiceFlowUserFacingMessage(
-      validated.assistantMessage,
-      validated.nextQuestion,
-    );
+    const mergedAssistant = adviceMode
+      ? mergeServiceFlowAdviceUserFacingMessage(validated.assistantMessage, validated.nextQuestion)
+      : mergeServiceFlowUserFacingMessage(validated.assistantMessage, validated.nextQuestion);
+    const updatedFlow =
+      adviceMode && input.currentFlow ? { ...input.currentFlow, ...validated.updatedFlow } : validated.updatedFlow;
     return {
       ok: true,
       model,
@@ -2162,6 +2193,7 @@ ${input.userMessage.trim()}
       data: {
         ...validated,
         assistantMessage: mergedAssistant,
+        updatedFlow,
         intent: validated.intent as ServiceFlowAnalyzeIntent,
       },
     };

@@ -7,8 +7,14 @@ import {
   detectQuestionFirstUx,
   hasProposalFirstStructure,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import {
+  isServiceFlowAdviceMode,
+  isWeakAdviceAssistantMessage,
+} from "@/lib/requirements/serviceFlowAdviceMode";
+
 export type ServiceFlowAnalyzeQualityIssueCode =
   | "missing_assistant_message"
+  | "advice_message_too_short"
   | "question_first_without_proposal"
   | "insufficient_flow_actors"
   | "insufficient_flow_steps"
@@ -139,11 +145,26 @@ export function mergeServiceFlowUserFacingMessage(
   return dedupeDuplicateCtaLines(merged);
 }
 
+function validateServiceFlowAdviceAnalyzeResponse(input: {
+  readonly parsed: ServiceFlowAnalyzeParsed;
+}): { readonly ok: boolean; readonly issues: readonly ServiceFlowAnalyzeQualityIssueCode[] } {
+  const issues: ServiceFlowAnalyzeQualityIssueCode[] = [];
+  const assistant = String(input.parsed.assistantMessage ?? "").trim();
+  if (!assistant) issues.push("missing_assistant_message");
+  if (isWeakAdviceAssistantMessage(assistant)) issues.push("advice_message_too_short");
+  return { ok: issues.length === 0, issues: [...new Set(issues)] };
+}
+
 export function validateServiceFlowAnalyzeResponse(input: {
   readonly parsed: ServiceFlowAnalyzeParsed;
   readonly userMessage: string;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly responsePolicy?: unknown;
 }): { readonly ok: boolean; readonly issues: readonly ServiceFlowAnalyzeQualityIssueCode[] } {
+  if (isServiceFlowAdviceMode(input.responsePolicy)) {
+    return validateServiceFlowAdviceAnalyzeResponse({ parsed: input.parsed });
+  }
+
   const issues: ServiceFlowAnalyzeQualityIssueCode[] = [];
   const { parsed, userMessage, currentFlow } = input;
   const assistant = String(parsed.assistantMessage ?? "").trim();

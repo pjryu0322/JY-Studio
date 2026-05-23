@@ -13,7 +13,12 @@ import {
   buildRequirementsIntentDispatchContext,
   dispatchRequirementsUserIntentAsync,
   fallbackQuickReplyLabels,
+  shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import {
+  mergeServiceFlowResponsePolicy,
+  shouldOmitQuickActionForAdviceAnalyze,
+} from "@/lib/requirements/serviceFlowAdviceMode";
 import { shouldOpenAlternativeCanvasFromAnalyze } from "@/lib/requirements/requirementsStrongActionPolicy";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -262,7 +267,10 @@ export function useServiceFlowWorkshopChat({
     (
       userMessageText: string,
       opts?: {
+        /** ideation→service-flow 자동 handoff — 사용자 턴·visible analyze 모두 생략 */
         silentUserAppend?: boolean;
+        /** sendMessage 등에서 사용자 메시지를 이미 저장한 경우 중복 append 방지 */
+        skipUserAppend?: boolean;
         harness?: ServiceDesignHarnessPayload;
         responsePolicy?: unknown;
         quickAction?: ServiceFlowQuickActionDispatch | null;
@@ -321,7 +329,7 @@ export function useServiceFlowWorkshopChat({
 
       void (async () => {
         try {
-          if (!opts?.silentUserAppend) {
+          if (!opts?.silentUserAppend && !opts?.skipUserAppend) {
             autoScrollPendingRef.current = true;
             const userPersisted = buildServiceFlowUserPersist(body, currentUserId);
             const nextSlice = await onAppendRef.current([userPersisted]);
@@ -353,7 +361,7 @@ export function useServiceFlowWorkshopChat({
           });
 
           const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
-          const responsePolicy = harness.responsePolicy ?? opts?.responsePolicy ?? undefined;
+          const responsePolicy = mergeServiceFlowResponsePolicy(harness.responsePolicy, opts?.responsePolicy);
           const quickActionLabel =
             String(quickAction?.label ?? opts?.quickActionLabel ?? "").trim() || undefined;
           const quickActionId = quickAction?.id;
@@ -377,6 +385,7 @@ export function useServiceFlowWorkshopChat({
             ...(quickActionId ? { quickActionId } : {}),
             ...(quickActionLabel ? { quickActionLabel } : {}),
             ...(proposalDecision ? { proposalDecision } : {}),
+            ...(responsePolicy ? { responsePolicy } : {}),
             ...(orchCtx?.singleChatOrchestrationV1 !== undefined
               ? { singleChatOrchestrationV1: orchCtx.singleChatOrchestrationV1 }
               : {}),
@@ -607,6 +616,14 @@ export function useServiceFlowWorkshopChat({
       setInput("");
 
       void (async () => {
+        const userAlreadyAppended = !sendOpts?.silentUserAppend;
+        if (userAlreadyAppended) {
+          autoScrollPendingRef.current = true;
+          const userPersisted = buildServiceFlowUserPersist(body, currentUserId);
+          const userSlice = await onAppendRef.current([userPersisted]);
+          messagesRef.current = userSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+        }
+
         const intentState = buildIntentRouterStateFromOrchestrationContext(
           flowRef.current,
           orchestrationContextRef.current,
@@ -643,7 +660,25 @@ export function useServiceFlowWorkshopChat({
         const orchUi = buildOrchestrationUiProjection({ state: orchState });
 
         const effective = routed.effectiveQuickAction;
+        const analyzeOpts = {
+          harness: payload,
+          ...(userAlreadyAppended ? { skipUserAppend: true as const } : {}),
+          ...(sendOpts?.silentUserAppend ? { silentUserAppend: true as const } : {}),
+          ...(routed.serviceFlowResponsePolicy ? { responsePolicy: routed.serviceFlowResponsePolicy } : {}),
+        };
         if (!effective) {
+          if (
+            shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent({
+              effectiveActionId: routed.effectiveActionId,
+              intent: routed.intent,
+              directQuickActionId: quickAction?.id ?? null,
+            })
+          ) {
+            callAnalyze(body, analyzeOpts);
+            scrollChatToBottom();
+            return;
+          }
+
           const clarMsg = buildClarificationUserMessage(orchUi.clarification);
           let msg =
             clarMsg ||
@@ -694,11 +729,18 @@ export function useServiceFlowWorkshopChat({
         ) {
           return;
         }
+        const omitQuickActionForAdvice = shouldOmitQuickActionForAdviceAnalyze({
+          serviceFlowResponseMode: routed.serviceFlowResponseMode,
+          effectiveActionId: effectiveDispatch.id,
+        });
         callAnalyze(body, {
-          harness: payload,
-          ...(sendOpts?.silentUserAppend ? { silentUserAppend: true } : {}),
-          quickAction: effectiveDispatch,
-          quickActionLabel: effectiveDispatch.label,
+          ...analyzeOpts,
+          ...(omitQuickActionForAdvice
+            ? {}
+            : {
+                quickAction: effectiveDispatch,
+                quickActionLabel: effectiveDispatch.label,
+              }),
         });
         scrollChatToBottom();
       })();
@@ -706,6 +748,7 @@ export function useServiceFlowWorkshopChat({
     [
       workspaceMode,
       input,
+      currentUserId,
       projectId,
       projectName,
       projectDescription,

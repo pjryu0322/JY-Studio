@@ -3,7 +3,10 @@
  */
 
 import type { GuardResult } from "@/lib/requirements/requirementsActionGuard";
-import type { IntentRoutingResult } from "@/lib/requirements/requirementsIntentRouterTypes";
+import {
+  normalizeExecutionIntent,
+  type IntentRoutingResult,
+} from "@/lib/requirements/requirementsIntentRouterTypes";
 
 export type OrchestrationHumanExplainability = Readonly<{
   readonly humanReadableReason?: string;
@@ -17,6 +20,7 @@ export function buildOrchestrationHumanExplainability(input: {
 }): OrchestrationHumanExplainability {
   const mode = input.intent.routerMode;
   const action = input.intent.suggestedActionId;
+  const executionIntent = normalizeExecutionIntent(input.intent.executionIntent);
 
   let humanReadableReason: string | undefined;
   if (mode === "clarification_resolution") {
@@ -27,6 +31,12 @@ export function buildOrchestrationHumanExplainability(input: {
     humanReadableReason = "선택한 빠른 작업 버튼을 그대로 실행합니다.";
   } else if (input.intent.explainability?.focusReason) {
     humanReadableReason = "현재 선택된 작업 대상(포커스)을 기준으로 요청을 해석했습니다.";
+  } else if (executionIntent === "ask_advice") {
+    humanReadableReason = "기획·절차 제안 요청으로 이해했습니다.";
+  } else if (executionIntent === "ask_explain") {
+    humanReadableReason = "현재 기획·흐름에 대한 설명 요청으로 이해했습니다.";
+  } else if (input.intent.intentType === "question") {
+    humanReadableReason = "질문·상담 요청으로 이해했습니다.";
   } else if (action) {
     humanReadableReason = `대화 내용을 분석해 「${action}」 작업을 제안합니다.`;
   } else if (input.intent.clarificationQuestion) {

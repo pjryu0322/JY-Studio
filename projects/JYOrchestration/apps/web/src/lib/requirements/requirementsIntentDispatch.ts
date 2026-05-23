@@ -30,6 +30,11 @@ import { resolveServiceFlowConversationState } from "@/lib/requirements/serviceF
 import { guardRequirementsAction, type GuardResult } from "@/lib/requirements/requirementsActionGuard";
 import { mergeGuardWithStrongActionPolicy } from "@/lib/requirements/requirementsStrongActionPolicy";
 import {
+  buildServiceFlowResponsePolicyFromDispatch,
+  type ServiceFlowResponseMode,
+  type ServiceFlowResponsePolicy,
+} from "@/lib/requirements/serviceFlowAdviceMode";
+import {
   intentRouterTimelinePayload,
   isLowConfidenceIntent,
   routeRequirementsIntent,
@@ -74,7 +79,10 @@ import {
   buildIntentRouterStateFromOrchestrationContext,
   type RequirementsOrchestrationContextWire,
 } from "@/lib/requirements/requirementsOrchestrationContextWire";
-import type { RequirementsIntentRouterInput } from "@/lib/requirements/requirementsIntentRouterTypes";
+import {
+  normalizeExecutionIntent,
+  type RequirementsIntentRouterInput,
+} from "@/lib/requirements/requirementsIntentRouterTypes";
 import {
   buildRequirementsAgentMetadata,
   formatAgentMetadataForTimeline,
@@ -108,7 +116,22 @@ export type RequirementsIntentDispatchResult = Readonly<{
   readonly secondaryRecommendations?: readonly string[];
   readonly humanExplainability?: import("@/lib/requirements/requirementsOrchestrationExplainability").OrchestrationHumanExplainability;
   readonly agentRuntimeMetadata?: RequirementsAgentRuntimeMetadata;
+  readonly serviceFlowResponseMode?: ServiceFlowResponseMode;
+  readonly serviceFlowResponsePolicy?: ServiceFlowResponsePolicy;
 }>;
+
+/** Intent Router가 실행 액션을 정하지 못했지만, 자유 입력 기획·설명 요청은 service-flow analyze로 처리한다. */
+export function shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent(input: {
+  readonly effectiveActionId: QuickActionId | null;
+  readonly intent: IntentRoutingResult;
+  readonly directQuickActionId?: QuickActionId | null;
+}): boolean {
+  if (input.effectiveActionId || input.directQuickActionId) return false;
+  const executionIntent = normalizeExecutionIntent(input.intent.executionIntent);
+  if (executionIntent === "ask_advice" || executionIntent === "ask_explain") return true;
+  if (input.intent.intentType === "question" && input.intent.confidence >= 0.5) return true;
+  return false;
+}
 
 export function buildRequirementsIntentDispatchContext(
   state: RequirementsStateJson,
@@ -347,6 +370,7 @@ function finalizeDispatchResult(input: {
   readonly intent: IntentRoutingResult;
   readonly guard: GuardResult;
   readonly ctx: RequirementsIntentDispatchContext;
+  readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly skipLowConfidenceCheck?: boolean;
   readonly routingState?: RequirementsStateJson;
@@ -356,6 +380,16 @@ function finalizeDispatchResult(input: {
 }): RequirementsIntentDispatchResult {
   const suggested = input.intent.suggestedActionId;
   const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  const serviceFlowResponsePolicy = buildServiceFlowResponsePolicyFromDispatch({
+    intent: input.intent,
+    guard: input.guard,
+    effectiveActionId: effectiveId,
+    directQuickActionId: input.directQuickActionId,
+  });
+  const serviceFlowExtras = {
+    serviceFlowResponseMode: serviceFlowResponsePolicy.mode,
+    serviceFlowResponsePolicy,
+  } as const;
   const artifactHub = input.routingState
     ? buildArtifactHubOrchestrationState({ state: input.routingState })
     : undefined;
@@ -456,6 +490,7 @@ function finalizeDispatchResult(input: {
       secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
       humanExplainability,
       ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
+      ...serviceFlowExtras,
     };
   }
 
@@ -473,6 +508,7 @@ function finalizeDispatchResult(input: {
       secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
       humanExplainability,
       ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
+      ...serviceFlowExtras,
     };
   }
 
@@ -492,6 +528,7 @@ function finalizeDispatchResult(input: {
     secondaryRecommendations: prioritized.secondary.map((r) => r.reason),
     humanExplainability,
     ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
+    ...serviceFlowExtras,
   };
 }
 
@@ -534,6 +571,7 @@ export function dispatchRequirementsUserIntent(input: {
     intent,
     guard,
     ctx: input.ctx,
+    directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
     skipLowConfidenceCheck: Boolean(directId),
     routingState: input.routingState,
@@ -614,6 +652,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     intent,
     guard,
     ctx: input.ctx,
+    directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
     skipLowConfidenceCheck: Boolean(directId),
     routingState,

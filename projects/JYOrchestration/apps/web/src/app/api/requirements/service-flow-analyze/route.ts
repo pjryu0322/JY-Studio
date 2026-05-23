@@ -44,6 +44,7 @@ import {
   type ServiceFlowProposalDecision,
 } from "@/lib/requirements/serviceFlowProposalDecision";
 import type { ServiceFlowAnalyzeParsed } from "@/lib/requirements/serviceFlowAnalyzeValidation";
+import { isServiceFlowAdviceMode } from "@/lib/requirements/serviceFlowAdviceMode";
 
 type Body = {
   projectId?: string;
@@ -297,8 +298,12 @@ export async function POST(request: NextRequest) {
     const quickActionId = typeof body.quickActionId === "string" ? String(body.quickActionId).trim() : "";
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
     const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
+    const responsePolicy = body.responsePolicy;
+    const adviceMode = isServiceFlowAdviceMode(responsePolicy);
 
-    const proposalDecision = resolveServiceFlowProposalDecision({
+    const proposalDecision = adviceMode
+      ? null
+      : resolveServiceFlowProposalDecision({
       quickActionId: quickActionId || undefined,
       quickActionLabel: quickActionLabel || undefined,
       userMessage,
@@ -529,9 +534,10 @@ export async function POST(request: NextRequest) {
     }
 
     const llmAugmentable =
-      proposalDecision === "PARTIAL_EDIT" ||
-      proposalDecision === "DIRECT_INPUT" ||
-      proposalDecision === "HOLD";
+      !adviceMode &&
+      (proposalDecision === "PARTIAL_EDIT" ||
+        proposalDecision === "DIRECT_INPUT" ||
+        proposalDecision === "HOLD");
     const llmUserMessage = llmAugmentable
       ? augmentUserMessageForLlm(userMessage, quickActionLabel || userMessage, proposalDecision)
       : userMessage;
@@ -546,6 +552,7 @@ export async function POST(request: NextRequest) {
       latestAiQuestion,
       priorScreenHandoff: priorScreenHandoff || undefined,
       participatingAgentsPromptBlock: agentCtx.promptBlock,
+      responsePolicy,
     });
 
     if (!result.ok) {
@@ -573,9 +580,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const primaryFlow = !result.data.updatedFlow.proposalVariantMode
-      ? markFlowAsPrimaryProposalVariant(result.data.updatedFlow)
-      : result.data.updatedFlow;
+    const primaryFlow = adviceMode
+      ? (currentFlow ?? result.data.updatedFlow)
+      : !result.data.updatedFlow.proposalVariantMode
+        ? markFlowAsPrimaryProposalVariant(result.data.updatedFlow)
+        : result.data.updatedFlow;
 
     return buildAnalyzeSuccessResponse({
       parsed: { ...result.data, updatedFlow: primaryFlow },
@@ -592,9 +601,11 @@ export async function POST(request: NextRequest) {
       proposalFallbackApplied: result.proposalFallbackApplied,
       agentCtx,
       timelineExtras: {
-        ...(proposalDecision
-          ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
-          : {}),
+        ...(adviceMode
+          ? { routingDecision: "service_flow_advice_mode" }
+          : proposalDecision
+            ? { routingDecision: `service_flow_proposal_decision_${proposalDecision.toLowerCase()}` }
+            : {}),
         proposalVariantMode: primaryFlow.proposalVariantMode ?? "PRIMARY",
         reviewMode: primaryFlow.reviewMode ?? "PRIMARY_REVIEW",
       },

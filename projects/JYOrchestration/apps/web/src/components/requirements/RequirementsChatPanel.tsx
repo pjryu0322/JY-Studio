@@ -426,6 +426,33 @@ export function RequirementsChatPanel({
                 <SvgCopyIcon />
               </button>
             );
+            const headerReplyBtn =
+              showActions && canReply ? (
+                <button
+                  type="button"
+                  onClick={() => onSetReplyTo?.(m.id, formatSingleChatReplyReferenceLine(m))}
+                  style={{ ...iconActionBtn, flexShrink: 0 }}
+                  title="답글"
+                  aria-label="답글"
+                >
+                  <SvgReplyIcon />
+                </button>
+              ) : null;
+            const headerTrailingActions = (
+              <div
+                style={{
+                  display: "inline-flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                }}
+                aria-label="메시지 작업"
+              >
+                {headerReplyBtn}
+                {headerCopyBtn}
+              </div>
+            );
             const headerRowWithCopy: CSSProperties = {
               ...WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
               width: "100%",
@@ -434,7 +461,7 @@ export function RequirementsChatPanel({
               gap: 6,
             };
             const actionIconRow = (align: "start" | "end") =>
-              showActions ? (
+              showActions && repliesNavBtn ? (
                 <div
                   style={{
                     marginTop: 8,
@@ -445,19 +472,7 @@ export function RequirementsChatPanel({
                     gap: 8,
                     flexWrap: "wrap",
                   }}
-                  aria-label="메시지 작업"
                 >
-                  {canReply ? (
-                    <button
-                      type="button"
-                      onClick={() => onSetReplyTo?.(m.id, formatSingleChatReplyReferenceLine(m))}
-                      style={iconActionBtn}
-                      title="답글"
-                      aria-label="답글"
-                    >
-                      <SvgReplyIcon />
-                    </button>
-                  ) : null}
                   {repliesNavBtn}
                 </div>
               ) : null;
@@ -495,7 +510,7 @@ export function RequirementsChatPanel({
                         {showToMeta ? <span style={{ fontWeight: 600, color: t.textMuted }}> · To: {targetLine}</span> : null}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
-                      {headerCopyBtn}
+                      {headerTrailingActions}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                     {actionIconRow("end")}
@@ -530,7 +545,7 @@ export function RequirementsChatPanel({
                         멤버 · {memberName}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
-                      {headerCopyBtn}
+                      {headerTrailingActions}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                     {actionIconRow("start")}
@@ -616,7 +631,7 @@ export function RequirementsChatPanel({
                     {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
                     <div style={headerRowWithCopy}>
-                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={headerCopyBtn}>
+                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={headerTrailingActions}>
                         {aiSpeakerLine}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </WorkspaceAiHeaderWithAvatar>

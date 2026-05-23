@@ -95,6 +95,16 @@ describe("preProjectInitialSeedPolicy", () => {
         userMessageText: "서비스 흐름 정리해줘",
       })
     ).toBe(false);
+
+    expect(
+      shouldSuppressInitialVisibleServiceFlowRun({
+        suppressInitialAutoServiceFlowVisibleMessage: true,
+        silentUserAppend: false,
+        quickActionId: null,
+        quickActionLabel: null,
+        userMessageText: "검수절차를 제안해줘",
+      })
+    ).toBe(false);
   });
 
   it("shouldSuppressInitialServiceFlowOnProjectEntry when pre-project and no persisted flow", () => {
