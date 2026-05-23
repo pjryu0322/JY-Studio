@@ -67,6 +67,16 @@ describe("singleChatSlotNextAction", () => {
     expect(decision.ownerAgent).toBe("planner");
     expect(decision.shouldSuppressFlowApprove).toBe(true);
     expect(decision.quickReplies).toContain("기획 핵심 정리");
+    expect(decision.slotActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "CONFIRM_PLANNING_CORE",
+          label: "기획 핵심 정리",
+          focusArea: "planning",
+          ownerAgent: "planner",
+        }),
+      ]),
+    );
   });
 
   it("hides flow approve when planning core is not ready", () => {

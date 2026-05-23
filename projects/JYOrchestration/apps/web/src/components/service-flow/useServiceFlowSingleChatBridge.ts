@@ -14,6 +14,7 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 import { deriveServiceFlowApprovalFromFlow, type ServiceFlowStageSlotKey } from "@/components/service-flow/serviceFlowStageDerived";
 import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
+import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 
 export function useServiceFlowSingleChatBridge(params: {
@@ -42,6 +43,7 @@ export function useServiceFlowSingleChatBridge(params: {
   readonly onOpenArtifactHub?: () => void;
   /** Pre-Project에서 생성된 프로젝트 초기 진입 시 service-flow 자동 AI 메시지 억제 */
   readonly suppressInitialAutoServiceFlowVisibleMessage?: boolean;
+  readonly orchestrationSlotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   /** expose send executor to parent without UI mount */
   readonly serviceFlowSendRef?: {
     current:
@@ -82,6 +84,7 @@ export function useServiceFlowSingleChatBridge(params: {
     onEnterFeatureDetailEdit: params.onEnterFeatureDetailEdit,
     onOpenArtifactHub: params.onOpenArtifactHub,
     suppressInitialAutoServiceFlowVisibleMessage: params.suppressInitialAutoServiceFlowVisibleMessage,
+    orchestrationSlotDefinitions: params.orchestrationSlotDefinitions,
   });
 
   useEffect(() => {

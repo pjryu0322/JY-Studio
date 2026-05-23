@@ -180,6 +180,7 @@ import {
   interviewSuggestionPickToLabel,
   interviewSuggestionPickToQuickAction,
   interviewSuggestionPickToRouterOverrides,
+  interviewSuggestionPickToSlotAction,
   storeInterviewSuggestionPick,
   type InterviewSuggestionPickWire,
   type ServiceFlowSingleChatSendOptions,
@@ -1884,11 +1885,14 @@ export function RequirementsWorkspace({
       const text = input.trim();
       const pick = interviewSuggestionPickRef.current;
       interviewSuggestionPickRef.current = null;
+      const routerOverrides = interviewSuggestionPickToRouterOverrides(pick);
       await dispatchServiceFlowSingleChatSend({
         payload,
         text,
         quickAction: interviewSuggestionPickToQuickAction(pick),
         quickActionLabel: interviewSuggestionPickToLabel(pick),
+        slotAction: interviewSuggestionPickToSlotAction(pick),
+        ...(routerOverrides ?? {}),
         sendRefCurrent: serviceFlowSendRef.current,
         onAfterDispatch: () => setInput(""),
       });
@@ -2282,6 +2286,7 @@ export function RequirementsWorkspace({
     },
     onEnterFeatureDetailEdit: () => void featureDetailEditing.openEdit(),
     onOpenArtifactHub: () => setArtifactHubOpen(true),
+    orchestrationSlotDefinitions: slotDefsForProgress,
   });
 
   const handleActorEditSave = useCallback(

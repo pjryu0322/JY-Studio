@@ -3,6 +3,7 @@
  */
 
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import { isServiceFlowProposalBootstrapTurn } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 
@@ -26,7 +27,7 @@ export type ServiceFlowVisiblePresentation = Readonly<{
   suppressVisibleMessage: boolean;
   suppressReason?: string;
   visibleAssistantMessage: string;
-  visibleQuickReplies: string[] | null;
+  visibleQuickReplies: readonly QuickReplyWire[] | null;
   fingerprint: ProposalFingerprint;
 }>;
 
@@ -280,7 +281,7 @@ export function resolveServiceFlowVisiblePresentation(input: {
   readonly priorScreenHandoff: string;
   readonly assistantMessage: string;
   readonly nextQuestion: string | null;
-  readonly quickReplies: string[] | null;
+  readonly quickReplies: readonly QuickReplyWire[] | null;
   readonly updatedFlow: RequirementsServiceFlowV1;
   readonly recentMessages?: string;
   readonly forceVisibleProposal?: boolean;

@@ -7,9 +7,10 @@ import type { ServiceFlowProposalDecision } from "@/lib/requirements/serviceFlow
 import type { RequirementsServiceFlowV1, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   appendSlotOrchestrationAssistantLead,
-  buildSlotAwareQuickReplies,
+  buildSlotAwareQuickReplyWires,
   decideSingleChatSlotNextAction,
 } from "@/lib/requirements/singleChatSlotNextAction";
+import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
   projectServiceFlowResultToSingleChatSlots,
   type ServiceFlowSlotProjectionSource,
@@ -42,14 +43,14 @@ export function enrichProjectSingleChatSlotOrchestration(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly flow: RequirementsServiceFlowV1;
   readonly projectionSource: ServiceFlowSlotProjectionSource;
-  readonly conversationQuickReplies: readonly string[];
+  readonly conversationQuickReplies: readonly QuickReplyWire[] | readonly string[];
   readonly assistantMessage: string;
   readonly proposalDecision?: ServiceFlowProposalDecision | null;
   readonly skipAssistantLead?: boolean;
   readonly nowIso?: string;
 }): Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null;
-  readonly quickReplies: readonly string[];
+  readonly quickReplies: readonly QuickReplyWire[];
   readonly assistantMessage: string;
   readonly requirementsStatePatch: Partial<RequirementsStateJson> | null;
   readonly slotDecision: ReturnType<typeof decideSingleChatSlotNextAction>;
@@ -80,7 +81,7 @@ export function enrichProjectSingleChatSlotOrchestration(input: {
     flow: input.flow,
   });
 
-  const quickReplies = buildSlotAwareQuickReplies({
+  const quickReplies = buildSlotAwareQuickReplyWires({
     conversationQuickReplies: input.conversationQuickReplies,
     decision: slotDecision,
   });

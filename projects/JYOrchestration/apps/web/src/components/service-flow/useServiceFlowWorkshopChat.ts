@@ -56,10 +56,16 @@ import {
 import {
   normalizeQuickRepliesToActions,
   quickActionsToLabels,
+  quickReplyWiresToDisplayLabels,
   resolveProposalDecisionFromQuickActionInput,
   type QuickAction,
   type QuickActionId,
+  type QuickReplyWire,
 } from "@/lib/requirements/requirementsQuickActionRegistry";
+import { postSingleChatSlotAction } from "@/lib/requirements/singleChatSlotActionClient";
+import { routeSingleChatSlotAction } from "@/lib/requirements/singleChatSlotActionRouter";
+import type { SingleChatSlotActionWire } from "@/lib/requirements/singleChatSlotActionTypes";
+import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   buildServiceFlowGatedQuickReplyLabels,
   filterQuickActionsForServiceFlowGating,
@@ -173,6 +179,7 @@ export function useServiceFlowWorkshopChat({
   onEnterFeatureDetailEdit,
   onOpenArtifactHub,
   suppressInitialAutoServiceFlowVisibleMessage = false,
+  orchestrationSlotDefinitions = [],
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -201,6 +208,7 @@ export function useServiceFlowWorkshopChat({
   readonly onEnterFeatureDetailEdit?: () => void;
   readonly onOpenArtifactHub?: () => void;
   readonly suppressInitialAutoServiceFlowVisibleMessage?: boolean;
+  readonly orchestrationSlotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
 }) {
   const aiDisplayName = IDEATION_AI_DISPLAY_NAME;
   const displayMessages = useMemo(
@@ -254,6 +262,10 @@ export function useServiceFlowWorkshopChat({
   useEffect(() => {
     orchestrationContextRef.current = orchestrationContext;
   }, [orchestrationContext]);
+  const orchestrationSlotDefinitionsRef = useRef(orchestrationSlotDefinitions);
+  useEffect(() => {
+    orchestrationSlotDefinitionsRef.current = orchestrationSlotDefinitions;
+  }, [orchestrationSlotDefinitions]);
 
   const scrollChatToBottom = useCallback(() => {
     autoScrollPendingRef.current = true;
@@ -495,12 +507,16 @@ export function useServiceFlowWorkshopChat({
           const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ && !suppressVisible) setLatestAiQuestion(nextQ);
 
+          const replyWires = (Array.isArray(data.quickReplies) ? data.quickReplies : []) as QuickReplyWire[];
           const normalizedActions = filterQuickActionsForServiceFlowGating(
-            normalizeQuickRepliesToActions(Array.isArray(data.quickReplies) ? data.quickReplies : []),
+            normalizeQuickRepliesToActions(replyWires),
             nextFlow,
           );
+          const replyLabels = quickReplyWiresToDisplayLabels(replyWires);
           const replies = filterQuickReplyLabelsForServiceFlowGating(
-            stripAlternativeCanvasReopenFromQuickReplies(quickActionsToLabels(normalizedActions)),
+            stripAlternativeCanvasReopenFromQuickReplies(
+              replyLabels.length ? replyLabels : quickActionsToLabels(normalizedActions),
+            ),
             nextFlow,
           );
           const actionsAfterCanvas = filterQuickActionsForServiceFlowGating(
@@ -638,6 +654,98 @@ export function useServiceFlowWorkshopChat({
     [openAlternativeCanvas, onEnterActorEdit],
   );
 
+  const callSlotAction = useCallback(
+    async (
+      body: string,
+      slotAction: SingleChatSlotActionWire,
+      opts?: { readonly skipUserAppend?: boolean },
+    ) => {
+      setPendingStatusLabel("슬롯 제안을 준비하고 있습니다…");
+      setReplying(true);
+      analyzeInFlightRef.current = true;
+      setQuickReplies(null);
+      setQuickActions(null);
+
+      try {
+        const recentMessages = buildWorkshopRecentMessagesTranscript(messagesRef.current ?? []);
+        const orchCtx = orchestrationContextRef.current;
+        const result = await postSingleChatSlotAction({
+          projectId,
+          projectName,
+          projectDescription,
+          userMessage: body,
+          slotAction,
+          currentFlow: flowRef.current,
+          recentMessages,
+          ...(orchCtx?.singleChatOrchestrationV1 !== undefined
+            ? { singleChatOrchestrationV1: orchCtx.singleChatOrchestrationV1 }
+            : {}),
+        });
+
+        if (result.ok) {
+          emitPromptTrace(result.meta?.promptTrace);
+        }
+
+        if (!result.ok || !result.data) {
+          clearReplyingState();
+          autoScrollPendingRef.current = true;
+          const errSlice = await onAppendRef.current([buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE)]);
+          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+          return;
+        }
+
+        clearReplyingState();
+        const statePatch = result.meta?.requirementsStatePatch;
+        if (statePatch && onAnalyzeStatePatchRef.current) {
+          await Promise.resolve(onAnalyzeStatePatchRef.current(statePatch));
+        }
+
+        const wires = [...(result.data.quickReplies ?? [])] as QuickReplyWire[];
+        const labels = quickReplyWiresToDisplayLabels(wires);
+        const normalizedActions = filterQuickActionsForServiceFlowGating(
+          normalizeQuickRepliesToActions(wires),
+          flowRef.current,
+        );
+        const replies = filterQuickReplyLabelsForServiceFlowGating(
+          stripAlternativeCanvasReopenFromQuickReplies(labels),
+          flowRef.current,
+        );
+
+        setQuickActions(normalizedActions.length ? normalizedActions : null);
+        setQuickReplies(replies.length ? [...replies] : null);
+
+        const aiBody = String(result.data.assistantMessage ?? "").trim() || "반영했습니다.";
+        autoScrollPendingRef.current = true;
+        const okSlice = await onAppendRef.current([
+          buildServiceFlowAiPersist(aiBody, {
+            interviewSuggestions: replies.length ? replies : undefined,
+          }),
+        ]);
+        messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+      } catch {
+        clearReplyingState();
+        autoScrollPendingRef.current = true;
+        const errSlice = await onAppendRef.current([buildServiceFlowAiPersist(GENERIC_ANALYZE_FAILURE)]);
+        messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+      } finally {
+        analyzeInFlightRef.current = false;
+      }
+    },
+    [
+      projectId,
+      projectName,
+      projectDescription,
+      aiDisplayName,
+      emitPromptTrace,
+      clearReplyingState,
+    ],
+  );
+
+  const callSlotActionRef = useRef(callSlotAction);
+  useEffect(() => {
+    callSlotActionRef.current = callSlotAction;
+  }, [callSlotAction]);
+
   const appendIntentGuardAssistantReply = useCallback(
     async (message: string, fallbacks: readonly string[]) => {
       const gatedFallbacks = filterQuickReplyLabelsForServiceFlowGating(
@@ -683,6 +791,22 @@ export function useServiceFlowWorkshopChat({
           flowRef.current,
           orchestrationContextRef.current,
         );
+        const slotActionInput = sendOpts?.slotAction ?? null;
+        const slotRoute = routeSingleChatSlotAction({
+          executionScope: conversationScopeFromProjectId(projectId),
+          slotAction: slotActionInput,
+          quickActionLabel: quickAction?.label ?? body,
+          userMessage: body,
+          orchestration: intentState.singleChatOrchestrationV1 ?? null,
+          definitions: orchestrationSlotDefinitionsRef.current,
+        });
+        if (slotRoute.shouldRunSlotAction && slotRoute.slotAction && projectId.trim()) {
+          void callSlotActionRef.current(body, slotRoute.slotAction, {
+            skipUserAppend: !userAlreadyAppended,
+          });
+          return;
+        }
+
         const intentCtx = buildRequirementsIntentDispatchContext(intentState);
         const recentMessageLines = (messagesRef.current ?? []).slice(-8).map((m) => ({
           role: m.role === "user" ? ("user" as const) : ("ai" as const),

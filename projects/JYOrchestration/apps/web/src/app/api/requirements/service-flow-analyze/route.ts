@@ -72,6 +72,7 @@ import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
 
 type Body = {
   projectId?: string;
@@ -131,7 +132,7 @@ function buildAnalyzeSuccessResponse(input: {
   let assistantMessage = input.parsed.assistantMessage;
   let nextQuestion = input.parsed.nextQuestion;
   let updatedFlow = hydrateServiceFlowStepsFromAlternativePayload(input.parsed.updatedFlow);
-  let quickReplies = input.parsed.quickReplies;
+  let quickReplies: readonly QuickReplyWire[] | null = input.parsed.quickReplies;
   let requirementsStatePatch = input.requirementsStatePatch ?? null;
 
   if (input.slotOrchestration) {

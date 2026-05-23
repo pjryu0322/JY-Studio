@@ -9,6 +9,12 @@ import {
   isPlannerStableEnough,
   normalizeSlotStatus,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
+import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
+import {
+  resolveSlotActionIdFromLabel,
+  slotActionWire,
+  type SingleChatSlotActionWire,
+} from "@/lib/requirements/singleChatSlotActionTypes";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
@@ -51,8 +57,104 @@ export type SingleChatSlotNextActionDecision = Readonly<{
   readonly recommendedLabel: string;
   readonly assistantLeadText: string;
   readonly quickReplies: readonly string[];
+  readonly slotActions: readonly SingleChatSlotActionWire[];
   readonly shouldSuppressFlowApprove: boolean;
 }>;
+
+function attachSlotActions(
+  decision: Omit<SingleChatSlotNextActionDecision, "slotActions">,
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+): SingleChatSlotNextActionDecision {
+  const slotActions = buildSlotActionsForDecision(decision, definitions);
+  return { ...decision, slotActions };
+}
+
+export function buildSlotActionsForDecision(
+  decision: Pick<
+    SingleChatSlotNextActionDecision,
+    "focusArea" | "ownerAgent" | "quickReplies" | "recommendedActionId"
+  >,
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+): readonly SingleChatSlotActionWire[] {
+  if (decision.focusArea === "planning") {
+    const wires: SingleChatSlotActionWire[] = [];
+    for (const label of decision.quickReplies) {
+      const id = resolveSlotActionIdFromLabel(label);
+      if (!id) continue;
+      wires.push(
+        slotActionWire({
+          id,
+          label,
+          definitions,
+          focusArea: "planning",
+          ownerAgent: "planner",
+        }),
+      );
+    }
+    return wires;
+  }
+  if (decision.focusArea === "analysis") {
+    const out: SingleChatSlotActionWire[] = [];
+    if (decision.quickReplies.includes("분석 슬롯에 반영")) {
+      out.push(
+        slotActionWire({
+          id: "REFINE_SERVICE_FLOW",
+          definitions,
+          focusArea: "analysis",
+          ownerAgent: "analyst",
+        }),
+      );
+    }
+    if (decision.quickReplies.includes("흐름 보완")) {
+      out.push(
+        slotActionWire({
+          id: "REFINE_SERVICE_FLOW",
+          label: "흐름 보완",
+          definitions,
+          focusArea: "analysis",
+          ownerAgent: "analyst",
+        }),
+      );
+    }
+    if (decision.quickReplies.includes("기획 핵심 정리")) {
+      out.push(
+        slotActionWire({
+          id: "CONFIRM_PLANNING_CORE",
+          definitions,
+          focusArea: "planning",
+          ownerAgent: "planner",
+        }),
+      );
+    }
+    return out;
+  }
+  if (decision.focusArea === "architecture" || decision.focusArea === "design") {
+    return decision.quickReplies
+      .map((label) => {
+        if (label === "기능 범위 정리" || label === "MVP 기능 정리") {
+          return slotActionWire({
+            id: "DEFINE_FEATURE_SCOPE",
+            label,
+            definitions,
+            focusArea: "architecture",
+            ownerAgent: "architect",
+          });
+        }
+        if (label === "화면 구성 보기") {
+          return slotActionWire({
+            id: "DEFINE_SCREEN_STRUCTURE",
+            label,
+            definitions,
+            focusArea: "design",
+            ownerAgent: "designer",
+          });
+        }
+        return null;
+      })
+      .filter((x): x is SingleChatSlotActionWire => Boolean(x));
+  }
+  return [];
+}
 
 const PLANNING_CORE_SUFFIXES = [
   ".planning.servicePurpose",
@@ -220,11 +322,11 @@ function collectSlotsBySuffixes(
   return { missing, candidate, partial };
 }
 
-export function decideSingleChatSlotNextAction(input: {
+function decideSingleChatSlotNextActionCore(input: {
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly flow: RequirementsServiceFlowV1 | null | undefined;
-}): SingleChatSlotNextActionDecision {
+}): Omit<SingleChatSlotNextActionDecision, "slotActions"> {
   const flow = input.flow;
   const conv = flow ? resolveServiceFlowConversationState(flow) : "PROPOSAL";
   const flowReviewable = serviceFlowHasMinimumDraftForApply(flow ?? null);
@@ -368,8 +470,60 @@ export function decideSingleChatSlotNextAction(input: {
   };
 }
 
+export function decideSingleChatSlotNextAction(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly flow: RequirementsServiceFlowV1 | null | undefined;
+}): SingleChatSlotNextActionDecision {
+  return attachSlotActions(decideSingleChatSlotNextActionCore(input), input.definitions);
+}
+
 const FLOW_APPROVE_LABELS = new Set(["흐름 확정", "흐름 승인하기", "그대로 진행"]);
 
+export function buildSlotAwareQuickReplyWires(input: {
+  readonly conversationQuickReplies: readonly QuickReplyWire[] | readonly string[];
+  readonly decision: Pick<
+    SingleChatSlotNextActionDecision,
+    "shouldSuppressFlowApprove" | "quickReplies" | "slotActions"
+  >;
+}): readonly QuickReplyWire[] {
+  const out: QuickReplyWire[] = [...input.decision.slotActions];
+  const seen = new Set(out.map((w) => (typeof w === "string" ? w : w.label)));
+
+  for (const wire of input.conversationQuickReplies) {
+    const label = typeof wire === "string" ? wire.trim() : String(wire.label ?? "").trim();
+    if (!label) continue;
+    if (input.decision.shouldSuppressFlowApprove && FLOW_APPROVE_LABELS.has(label)) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    if (typeof wire === "string") {
+      const slotId = resolveSlotActionIdFromLabel(label);
+      if (slotId) continue;
+      out.push(label);
+    } else if ("kind" in wire && wire.kind === "slot_action") {
+      out.push(wire);
+    } else {
+      out.push(wire);
+    }
+  }
+
+  for (const label of input.decision.quickReplies) {
+    if (seen.has(label)) continue;
+    if (input.decision.shouldSuppressFlowApprove && FLOW_APPROVE_LABELS.has(label)) continue;
+    const action = input.decision.slotActions.find((a) => a.label === label);
+    if (action) {
+      out.push(action);
+      seen.add(label);
+      continue;
+    }
+    seen.add(label);
+    out.push(label);
+  }
+
+  return out.slice(0, 6);
+}
+
+/** @deprecated string-only — prefer buildSlotAwareQuickReplyWires */
 export function buildSlotAwareQuickReplies(input: {
   readonly conversationQuickReplies: readonly string[];
   readonly decision: Pick<SingleChatSlotNextActionDecision, "shouldSuppressFlowApprove" | "quickReplies">;

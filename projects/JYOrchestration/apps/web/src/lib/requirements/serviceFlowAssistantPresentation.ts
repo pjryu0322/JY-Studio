@@ -3,6 +3,10 @@
  */
 
 import type { ProposalVariantMode } from "@/lib/requirements/serviceFlowProposalVariant";
+import {
+  quickReplyWiresToDisplayLabels,
+  type QuickReplyWire,
+} from "@/lib/requirements/requirementsQuickActionRegistry";
 
 function norm(s: string): string {
   return String(s ?? "")
@@ -90,10 +94,10 @@ export function ensureAlternativeProposalIntro(assistantMessage: string): string
 /** quickReplies가 있으면 버튼과 중복되는 enumerated CTA 문장 제거 */
 export function applyQuickReplyAwareAssistantPresentation(
   assistantMessage: string,
-  quickReplies: readonly string[] | null | undefined,
+  quickReplies: readonly QuickReplyWire[] | readonly string[] | null | undefined,
 ): string {
   let text = dedupeDuplicateCtaLines(String(assistantMessage ?? "").trim());
-  const chips = (quickReplies ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+  const chips = quickReplyWiresToDisplayLabels(quickReplies ?? []);
   if (!chips.length) return text;
 
   text = stripEnumeratedChipCtaLines(text, chips);
@@ -123,10 +127,10 @@ export function resolveProposalPresentationVariantMode(input: {
 export function finalizeServiceFlowAssistantForResponse(input: {
   readonly assistantMessage: string;
   readonly nextQuestion: string | null | undefined;
-  readonly quickReplies: readonly string[] | null | undefined;
+  readonly quickReplies: readonly QuickReplyWire[] | readonly string[] | null | undefined;
   readonly proposalVariantMode?: ProposalVariantMode | null;
 }): string {
-  const chips = (input.quickReplies ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+  const chips = quickReplyWiresToDisplayLabels(input.quickReplies ?? []);
   let body = applyQuickReplyAwareAssistantPresentation(input.assistantMessage, chips);
 
   if (input.proposalVariantMode === "ALTERNATIVE") {

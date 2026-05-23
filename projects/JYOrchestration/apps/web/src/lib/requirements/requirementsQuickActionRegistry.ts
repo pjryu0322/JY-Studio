@@ -8,6 +8,7 @@ import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestr
 import type { ServiceFlowTransitionSignal } from "@/lib/requirements/serviceFlowStageTransition";
 import { classifyProposalDecision, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 import type { QuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
+import type { SingleChatSlotActionWire } from "@/lib/requirements/singleChatSlotActionTypes";
 
 export type QuickActionId =
   | "APPLY_PROPOSAL"
@@ -41,7 +42,8 @@ export type QuickReplyWire =
   | Readonly<{
       readonly id: QuickActionId;
       readonly label: string;
-    }>;
+    }>
+  | SingleChatSlotActionWire;
 
 export type QuickAction = Readonly<{
   readonly id: QuickActionId;
@@ -108,7 +110,6 @@ const QUICK_ACTION_REGISTRY_DRAFT = {
   DIRECT_INPUT: {
     id: "DIRECT_INPUT",
     defaultLabel: "직접 입력",
-    labelAliases: ["기획 핵심 정리", "주 사용자 정리", "핵심 문제 정리", "흐름 보완"],
     conversationProfiles: ["proposal"],
     proposalDecision: "DIRECT_INPUT",
     transitionSignal: null,
@@ -352,6 +353,9 @@ export function quickActionDispatchFromLegacyLabel(
 }
 
 export function normalizeQuickReplyWire(wire: QuickReplyWire): QuickAction | null {
+  if (typeof wire === "object" && wire !== null && "kind" in wire && wire.kind === "slot_action") {
+    return null;
+  }
   if (typeof wire === "string") {
     const label = wire.trim();
     if (!label) return null;
@@ -359,6 +363,7 @@ export function normalizeQuickReplyWire(wire: QuickReplyWire): QuickAction | nul
     if (!id) return null;
     return quickActionFromDefinition(getQuickActionDefinition(id), label);
   }
+  if (!isQuickActionId(wire.id)) return null;
   const id = wire.id;
   const label = String(wire.label ?? "").trim() || getQuickActionDefinition(id).defaultLabel;
   return quickActionFromDefinition(getQuickActionDefinition(id), label);
@@ -456,6 +461,18 @@ export function resolveTransitionSignalFromQuickActionInput(input: {
 
 export function quickActionsToLabels(actions: readonly QuickAction[]): readonly string[] {
   return actions.map((a) => a.label);
+}
+
+export function quickReplyWireToDisplayLabel(wire: QuickReplyWire): string {
+  if (typeof wire === "string") return wire.trim();
+  return String(wire.label ?? "").trim();
+}
+
+export function quickReplyWiresToDisplayLabels(
+  wires: readonly QuickReplyWire[] | readonly string[] | null | undefined,
+): readonly string[] {
+  if (!wires?.length) return [];
+  return wires.map((w) => quickReplyWireToDisplayLabel(w as QuickReplyWire)).filter(Boolean);
 }
 
 export function quickActionsToWires(actions: readonly QuickAction[]): readonly QuickReplyWire[] {

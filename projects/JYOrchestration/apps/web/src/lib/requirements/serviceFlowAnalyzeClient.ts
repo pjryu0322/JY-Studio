@@ -2,6 +2,7 @@ import type {
   RequirementsServiceFlowV1,
   RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 
 export type ServiceFlowAnalyzeRequestBody = {
@@ -42,7 +43,7 @@ export type ServiceFlowAnalyzeSuccessData = {
   assistantMessage?: string;
   updatedFlow?: RequirementsServiceFlowV1;
   nextQuestion?: string | null;
-  quickReplies?: string[] | null;
+  quickReplies?: readonly QuickReplyWire[] | null;
   readiness?: { score?: number; readyForNext?: boolean } | null;
   visibleMode?: ServiceFlowVisibleMode;
   visibleMessageSuppressed?: boolean;

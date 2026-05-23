@@ -6,6 +6,12 @@ import {
   type InitialProposalSuggestionPickWire,
 } from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import { quickActionDispatchFromLegacyLabel } from "@/lib/requirements/requirementsQuickActionRegistry";
+import {
+  isSingleChatSlotActionWire,
+  resolveSlotActionIdFromLabel,
+  slotActionWire,
+  type SingleChatSlotActionWire,
+} from "@/lib/requirements/singleChatSlotActionTypes";
 import type { ServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
 import {
   resolveProjectSingleChatCtaId,
@@ -17,10 +23,20 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 export type InterviewSuggestionPickWire =
   | string
   | ServiceFlowQuickActionDispatch
+  | SingleChatSlotActionWire
   | InitialProposalSuggestionPickWire;
 
 export function storeInterviewSuggestionPick(label: string): InterviewSuggestionPickWire {
   const trimmed = String(label ?? "").trim();
+  const slotId = resolveSlotActionIdFromLabel(trimmed);
+  if (slotId) {
+    return slotActionWire({
+      id: slotId,
+      label: trimmed,
+      focusArea: "planning",
+      ownerAgent: "planner",
+    });
+  }
   const proposalAction = resolveInitialProposalQuickReplyAction(trimmed);
   if (proposalAction) return initialProposalSuggestionPickFromAction(proposalAction);
   return quickActionDispatchFromLegacyLabel(trimmed) ?? trimmed;
@@ -39,8 +55,22 @@ export function interviewSuggestionPickToQuickAction(
 ): ServiceFlowQuickActionDispatch | null {
   if (!pick) return null;
   if (isInitialProposalSuggestionPick(pick)) return null;
+  if (isSingleChatSlotActionWire(pick)) return null;
   if (typeof pick !== "string") return pick;
   return quickActionDispatchFromLegacyLabel(pick);
+}
+
+export function interviewSuggestionPickToSlotAction(
+  pick: InterviewSuggestionPickWire | null | undefined,
+): SingleChatSlotActionWire | null {
+  if (!pick) return null;
+  if (isSingleChatSlotActionWire(pick)) return pick;
+  if (typeof pick === "string") {
+    const id = resolveSlotActionIdFromLabel(pick);
+    if (!id) return null;
+    return slotActionWire({ id, label: pick, focusArea: "planning", ownerAgent: "planner" });
+  }
+  return null;
 }
 
 export function interviewSuggestionPickToRouterOverrides(
@@ -83,6 +113,7 @@ export type ServiceFlowSingleChatSendOptions = Readonly<{
   readonly silentUserAppend?: boolean;
   readonly source?: ServiceFlowMessageSendSource;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly slotAction?: SingleChatSlotActionWire | null;
   /** 초기 제안 quick reply 등 — LLM stageIntent보다 우선 */
   readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
   readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
@@ -97,6 +128,7 @@ export async function dispatchServiceFlowSingleChatSend(params: {
   readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly routerStageIntentOverride?: ProjectSingleChatStageIntent;
   readonly routerServiceFlowSubIntentOverride?: ServiceFlowSubIntent;
+  readonly slotAction?: SingleChatSlotActionWire | null;
   readonly sendRefCurrent:
     | ((
         payload: ServiceDesignHarnessPayload,
@@ -146,6 +178,7 @@ export async function dispatchServiceFlowSingleChatSend(params: {
     ...(params.routerServiceFlowSubIntentOverride ?
       { routerServiceFlowSubIntentOverride: params.routerServiceFlowSubIntentOverride }
     : {}),
+    ...(params.slotAction ? { slotAction: params.slotAction } : {}),
     source: isExplicitQuickReply ? ("quick_reply" as const) : ("typed_text" as const),
     ...(isExplicitQuickReply && directCtaId ? { directCtaId } : {}),
   });
