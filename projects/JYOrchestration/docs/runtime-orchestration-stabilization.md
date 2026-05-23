@@ -151,6 +151,7 @@ Policies:
 - GitHub token from project `ExecutionSetup` or peer project (same owner, validated)
 - **Org repo creation:** not supported in MVP; use existing org repo bind/analyze when token has access
 - **User test guide:** [git-repository-provisioning-user-test.md](./git-repository-provisioning-user-test.md)
+- **Smoke runner:** `npm run smoke:git-provisioning` → [git-repository-provisioning-smoke-result.md](./git-repository-provisioning-smoke-result.md)
 
 ## RuntimeEvent schema (verified)
 

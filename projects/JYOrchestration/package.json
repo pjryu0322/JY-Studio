@@ -14,6 +14,7 @@
     "db:fix:task-execution-run-columns": "pnpm --filter web run db:fix:task-execution-run-columns",
     "db:fix:task-execution-run-columns:root-only": "prisma db execute --file scripts/ensure-task-execution-run-columns.sql --schema packages/db/schema.prisma",
     "seed:test": "node packages/db/scripts/seed-test-data.mjs",
+    "smoke:git-provisioning": "node apps/web/scripts/git-provisioning-api-smoke.mjs",
     "test:api": "node scripts/ensure-artifacts-dir.mjs && cross-env TEST_BASE_URL=http://127.0.0.1:3000 pnpm --filter web run test:api",
     "test:e2e": "node scripts/ensure-artifacts-dir.mjs && pnpm --filter web exec playwright test",
     "test:aggregate": "node apps/web/scripts/aggregate-test-results.mjs",

@@ -129,6 +129,23 @@ feature-per-task → orch/meeting-summary-service/t-{shortTaskId}-{titleSlug}
 
 ---
 
+## Cursor / CI smoke (API proxy)
+
+로컬 서버 + 시드 사용자로 Postman 대행:
+
+```bash
+cd projects/JYOrchestration
+npm run seed:test   # 최초 1회
+# ExecutionSetup에 GitHub token 저장 후:
+JYO_GITHUB_OWNER=<login> npm run smoke:git-provisioning
+```
+
+결과: `docs/git-repository-provisioning-smoke-result.md` (토큰·쿠키 미기록)
+
+`GIT_PROVISIONING_SKIP_CREATE=1` — GitHub repo 생성 단계 생략
+
+---
+
 ## 사용자테스트 가능 여부 (판정)
 
 다음이 모두 OK이면 **사용자테스트 진행**:
