@@ -1,5 +1,8 @@
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type {
+  RequirementsPromptTimelineEntry,
+  RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 
 export const PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE = "pre_project_planning_summary" as const;
 
@@ -65,14 +68,54 @@ export function shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry(input: {
   readonly hasExistingPlanningSummary: boolean;
   readonly existingMessageCount: number;
   readonly seededFromPreProject: boolean;
+  readonly forceRegenerate?: boolean;
 }): boolean {
   if (input.conversationStatus !== "loaded") return false;
   if (!input.hasProject) return false;
   if (!input.loadedConversationProjectMatches) return false;
+  if (!input.seededFromPreProject) return false;
+  if (input.forceRegenerate) return true;
   if (input.alreadyApplied) return false;
   if (input.hasExistingPlanningSummary) return false;
   if (input.existingMessageCount > 0) return false;
-  return input.seededFromPreProject;
+  return true;
+}
+
+/** 대화 초기화 후 아직 소비되지 않은 reset nonce이면 1차 기획 요약 재생성 */
+export function shouldRegeneratePlanningSummaryAfterConversationReset(input: {
+  readonly resetNonce: number;
+  readonly consumedResetNonce: number | null;
+  readonly seededFromPreProject: boolean;
+}): boolean {
+  if (!input.seededFromPreProject) return false;
+  if (input.resetNonce <= 0) return false;
+  return input.consumedResetNonce !== input.resetNonce;
+}
+
+export function buildPreProjectPlanningSummarySeedPromptTrace(input: {
+  readonly projectId: string;
+  readonly regenerated: boolean;
+  readonly createdAtIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const pid = String(input.projectId ?? "").trim();
+  return {
+    stage: "requirements",
+    action: "pre_project_planning_summary_seed",
+    aiMember: "AI 기획자",
+    source: "platform",
+    provider: "platform",
+    model: "deterministic",
+    responseText: "[platform_seed] type=pre_project_planning_summary",
+    promptText: [
+      "[platform_seed]",
+      "type=pre_project_planning_summary",
+      "source=pre_project_chat",
+      `regenerated=${input.regenerated}`,
+      ...(pid ? [`projectId=${pid}`] : []),
+    ].join("\n"),
+    createdAt: input.createdAtIso ?? new Date().toISOString(),
+    routingDecision: "pre_project_planning_summary_seed",
+  };
 }
 
 /** Pre-Project 유래 프로젝트 첫 진입 시 service-flow 자동 visible append 억제 */

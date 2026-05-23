@@ -53,9 +53,11 @@ import {
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
   buildPreProjectPlanningSummaryFromWorkspaceState,
+  buildPreProjectPlanningSummarySeedPromptTrace,
   hasPreProjectPlanningSummaryMessage,
   isProjectSeededFromPreProjectChat,
   PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+  shouldRegeneratePlanningSummaryAfterConversationReset,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
   shouldSuppressInitialServiceFlowOnProjectEntry,
 } from "@/lib/requirements/preProjectPlanningSummary";
@@ -261,6 +263,7 @@ export function RequirementsWorkspace({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [resetConversationBusy, setResetConversationBusy] = useState(false);
+  const [conversationResetNonce, setConversationResetNonce] = useState(0);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
@@ -297,6 +300,7 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  const consumedResetSeedNonceRef = useRef<number | null>(null);
   /** 아이디어 구체화: spec 단계 기본 AI(planner) 보강 요청 중복 방지 */
   const ideationEnsurePlannerInFlightRef = useRef(false);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
@@ -1220,18 +1224,26 @@ export function RequirementsWorkspace({
     if (!pid) return;
     if (!project) return;
     if (loadedConversationProjectId !== pid) return;
-    if (onboardingAppliedKey === onboardingKey) return;
-    const existing = room.requirementsConversation.messages;
     const workspaceState = parseRequirementsStateJson(project.requirementsStateJson);
     const seededFromPreProject = isProjectSeededFromPreProjectChat(workspaceState);
+    const forceRegeneratePlanningSummary = shouldRegeneratePlanningSummaryAfterConversationReset({
+      resetNonce: conversationResetNonce,
+      consumedResetNonce: consumedResetSeedNonceRef.current,
+      seededFromPreProject,
+    });
 
-    if (hasPreProjectPlanningSummaryMessage(existing)) {
-      setOnboardingAppliedKey(onboardingKey);
-      return;
-    }
-    if (existing.length > 0) {
-      setOnboardingAppliedKey(onboardingKey);
-      return;
+    if (!forceRegeneratePlanningSummary && onboardingAppliedKey === onboardingKey) return;
+    const existing = room.requirementsConversation.messages;
+
+    if (!forceRegeneratePlanningSummary) {
+      if (hasPreProjectPlanningSummaryMessage(existing)) {
+        setOnboardingAppliedKey(onboardingKey);
+        return;
+      }
+      if (existing.length > 0) {
+        setOnboardingAppliedKey(onboardingKey);
+        return;
+      }
     }
     if (ideationBootstrapFlightRef.current === onboardingKey) return;
     ideationBootstrapFlightRef.current = onboardingKey;
@@ -1330,6 +1342,7 @@ export function RequirementsWorkspace({
           hasExistingPlanningSummary: hasPreProjectPlanningSummaryMessage(existing),
           existingMessageCount: existing.length,
           seededFromPreProject,
+          forceRegenerate: forceRegeneratePlanningSummary,
         })
       ) {
         const planningBody = buildPreProjectPlanningSummaryFromWorkspaceState({
@@ -1343,7 +1356,14 @@ export function RequirementsWorkspace({
           seedWire: null,
           source: "fallback",
           bootstrapInternalType: PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+          promptTrace: buildPreProjectPlanningSummarySeedPromptTrace({
+            projectId: pid,
+            regenerated: forceRegeneratePlanningSummary,
+          }),
         });
+        if (planningOk && forceRegeneratePlanningSummary) {
+          consumedResetSeedNonceRef.current = conversationResetNonce;
+        }
         if (!planningOk && !cancelled) {
           ideationBootstrapFlightRef.current = null;
         }
@@ -1519,7 +1539,17 @@ export function RequirementsWorkspace({
         ideationBootstrapFlightRef.current = null;
       }
     };
-  }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
+  }, [
+    conversationStatus,
+    resolvedProjectId,
+    loadedConversationProjectId,
+    project,
+    onboardingAppliedKey,
+    onboardingKey,
+    room,
+    persistRemote,
+    conversationResetNonce,
+  ]);
 
   const onOrganizeRequirements = useCallback(async () => {
     // 플래너 검토형 정리 요청: 먼저 산출물 유형을 단일 선택
@@ -1550,6 +1580,8 @@ export function RequirementsWorkspace({
       setInput("");
       setOnboardingAppliedKey(null);
       ideationBootstrapFlightRef.current = null;
+      consumedResetSeedNonceRef.current = null;
+      setConversationResetNonce((n) => n + 1);
       // Clear prompt timeline + orchestration state so the next bootstrap turn starts clean.
       stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
         promptTimeline: [],

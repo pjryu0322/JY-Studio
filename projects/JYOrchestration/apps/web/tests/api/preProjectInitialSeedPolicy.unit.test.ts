@@ -4,9 +4,11 @@ import {
   isProjectSeededFromPreProjectChat,
   shouldSuppressInitialServiceFlowOnProjectEntry,
   shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
+  shouldRegeneratePlanningSummaryAfterConversationReset,
   shouldSuppressInitialServiceFlowVisibleMessage,
   shouldSuppressInitialVisibleServiceFlowRun,
   buildPreProjectPlanningSummaryMessage,
+  buildPreProjectPlanningSummarySeedPromptTrace,
 } from "@/lib/requirements/preProjectPlanningSummary";
 
 describe("preProjectInitialSeedPolicy", () => {
@@ -98,6 +100,65 @@ describe("preProjectInitialSeedPolicy", () => {
     const state = parseRequirementsStateJson({ seededFromPreProjectChat: true });
     expect(shouldSuppressInitialServiceFlowOnProjectEntry(state, 0)).toBe(true);
     expect(shouldSuppressInitialServiceFlowOnProjectEntry(state, 2)).toBe(false);
+  });
+
+  it("forceRegenerate allows planning summary seed when applied or existing flags would normally block", () => {
+    expect(
+      shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry({
+        conversationStatus: "loaded",
+        hasProject: true,
+        loadedConversationProjectMatches: true,
+        alreadyApplied: true,
+        hasExistingPlanningSummary: true,
+        existingMessageCount: 3,
+        seededFromPreProject: true,
+        forceRegenerate: true,
+      })
+    ).toBe(true);
+  });
+
+  it("forceRegenerate does not seed non pre-project projects", () => {
+    expect(
+      shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry({
+        conversationStatus: "loaded",
+        hasProject: true,
+        loadedConversationProjectMatches: true,
+        alreadyApplied: true,
+        hasExistingPlanningSummary: true,
+        existingMessageCount: 3,
+        seededFromPreProject: false,
+        forceRegenerate: true,
+      })
+    ).toBe(false);
+  });
+
+  it("shouldRegeneratePlanningSummaryAfterConversationReset when nonce not consumed", () => {
+    expect(
+      shouldRegeneratePlanningSummaryAfterConversationReset({
+        resetNonce: 1,
+        consumedResetNonce: null,
+        seededFromPreProject: true,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldRegeneratePlanningSummaryAfterConversationReset({
+        resetNonce: 1,
+        consumedResetNonce: 1,
+        seededFromPreProject: true,
+      })
+    ).toBe(false);
+  });
+
+  it("buildPreProjectPlanningSummarySeedPromptTrace uses platform provider", () => {
+    const trace = buildPreProjectPlanningSummarySeedPromptTrace({
+      projectId: "proj-1",
+      regenerated: true,
+    });
+    expect(trace.provider).toBe("platform");
+    expect(trace.model).toBe("deterministic");
+    expect(trace.action).toBe("pre_project_planning_summary_seed");
+    expect(trace.promptText).toContain("regenerated=true");
   });
 
   it("shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry when pre-project and empty room", () => {

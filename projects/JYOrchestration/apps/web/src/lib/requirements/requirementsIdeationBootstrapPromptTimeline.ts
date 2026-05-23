@@ -1144,7 +1144,8 @@ export function isIdeationBootstrapTimelineEntry(
       // Drawer should show bootstrap + orchestration traces regardless of stage naming,
       // since some server routes emit `stage: "requirements"` for bootstrap turns.
       (entry.action === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION ||
-        entry.action === "requirementsChatOrchestration")
+        entry.action === "requirementsChatOrchestration" ||
+        entry.action === "pre_project_planning_summary_seed")
   );
 }
 
