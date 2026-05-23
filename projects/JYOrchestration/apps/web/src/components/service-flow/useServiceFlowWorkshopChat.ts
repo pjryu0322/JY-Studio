@@ -15,8 +15,17 @@ import {
   fallbackQuickReplyLabels,
   shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import {
+  buildGenerationPrepareReadinessMessage,
+  buildScreenPlanningAssistantMessage,
+  validateScreenPlanningAssistantMessage,
+} from "@/lib/requirements/screenPlanningResponse";
+import { resolveProjectSingleChatCtaId } from "@/lib/requirements/singleChatStageRouter";
 import { mergeServiceFlowResponsePolicy, shouldOmitQuickActionForAdviceAnalyze } from "@/lib/requirements/serviceFlowAdviceMode";
-import { adviceToFlowApplyAnalyzeDispatchOptions } from "@/lib/requirements/serviceFlowAdviceApplyMode";
+import {
+  adviceToFlowApplyAnalyzeDispatchOptions,
+  serviceFlowHasMinimumDraftForApply,
+} from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import { shouldOpenAlternativeCanvasFromAnalyze } from "@/lib/requirements/requirementsStrongActionPolicy";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -648,10 +657,16 @@ export function useServiceFlowWorkshopChat({
           role: m.role === "user" ? ("user" as const) : ("ai" as const),
           body: m.body,
         }));
+        const directCtaId = resolveProjectSingleChatCtaId({
+          quickActionId: quickAction?.id ?? null,
+          quickActionLabel: quickAction?.label ?? null,
+          userMessage: body,
+        });
         const routed = await dispatchRequirementsUserIntentAsync({
           userMessage: body,
           directQuickActionId: quickAction?.id ?? null,
           directQuickActionLabel: quickAction?.label ?? null,
+          directCtaId: directCtaId ?? undefined,
           ctx: intentCtx,
           projectId,
           projectName,
@@ -661,6 +676,7 @@ export function useServiceFlowWorkshopChat({
           routingState: intentState,
           recentMessageLines,
         });
+        const stageRoute = routed.stageRouting;
         if (routed.intentOrchestrationPatch) {
           await onAnalyzeStatePatchRef.current?.({
             requirementsIntentOrchestrationV1: routed.intentOrchestrationPatch,
@@ -681,12 +697,43 @@ export function useServiceFlowWorkshopChat({
           ...(sendOpts?.silentUserAppend ? { silentUserAppend: true as const } : {}),
           ...(routed.serviceFlowResponsePolicy ? { responsePolicy: routed.serviceFlowResponsePolicy } : {}),
         };
+
+        if (stageRoute?.shouldRouteToScreenPlanning) {
+          const screenBody = buildScreenPlanningAssistantMessage({
+            projectName,
+            flow: flowRef.current,
+          });
+          validateScreenPlanningAssistantMessage(screenBody);
+          await appendIntentGuardAssistantReply(screenBody, [
+            "기능 범위 정리",
+            "흐름 검토하기",
+          ]);
+          scrollChatToBottom();
+          return;
+        }
+
+        if (stageRoute?.shouldRouteToFeaturePlanning) {
+          onEnterFeatureDetailEdit?.();
+          scrollChatToBottom();
+          return;
+        }
+
+        if (stageRoute?.shouldRouteToGenerationPrepare && !stageRoute.shouldRunAdviceToFlowApply) {
+          await appendIntentGuardAssistantReply(
+            buildGenerationPrepareReadinessMessage({ flow: flowRef.current }),
+            ["서비스 흐름에 반영해줘", "화면 구성 해줘"],
+          );
+          scrollChatToBottom();
+          return;
+        }
+
         if (!effective) {
           if (
             shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent({
               effectiveActionId: routed.effectiveActionId,
               intent: routed.intent,
               directQuickActionId: quickAction?.id ?? null,
+              stageRouting: stageRoute,
             })
           ) {
             callAnalyze(body, analyzeOpts);
@@ -714,14 +761,37 @@ export function useServiceFlowWorkshopChat({
           return;
         }
 
-        const effectiveDispatch: ServiceFlowQuickActionDispatch = {
+        let effectiveDispatch: ServiceFlowQuickActionDispatch = {
           id: effective.id,
           label: effective.label,
         };
+        if (stageRoute?.shouldRunFlowReview && effective.id !== "REVIEW_FLOW") {
+          effectiveDispatch = { id: "REVIEW_FLOW", label: "흐름 검토하기" };
+        }
         const decision = resolveDecisionFromQuickActionInput({
           quickAction: effectiveDispatch,
           labelFallback: effectiveDispatch.label,
         });
+        if (stageRoute?.shouldRunAdviceToFlowApply && !serviceFlowHasMinimumDraftForApply(flowRef.current)) {
+          const recentForAdviceToFlow = buildWorkshopRecentMessagesTranscript(messagesRef.current ?? []);
+          const adviceToFlowDispatch = adviceToFlowApplyAnalyzeDispatchOptions({
+            effectiveActionId: "APPLY_PROPOSAL",
+            explicitDirectQuickActionId: quickAction?.id ?? null,
+            currentFlow: flowRef.current,
+            recentMessages: recentForAdviceToFlow,
+          });
+          callAnalyze(body, {
+            ...analyzeOpts,
+            proposalDecision: "APPLY",
+            ...(adviceToFlowDispatch.omitQuickAction ? {} : { quickAction: { id: "APPLY_PROPOSAL", label: "추천안 적용" } }),
+          });
+          scrollChatToBottom();
+          return;
+        }
+        if (stageRoute && !stageRoute.shouldRunServiceFlowAnalyze) {
+          scrollChatToBottom();
+          return;
+        }
         if (effectiveDispatch.id === "ADD_ACTOR") {
           onEnterActorEdit?.();
           return;

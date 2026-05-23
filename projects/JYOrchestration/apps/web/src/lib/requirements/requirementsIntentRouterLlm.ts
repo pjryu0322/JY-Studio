@@ -7,6 +7,10 @@ import { resolveOpenAiFromEnv } from "@/lib/ai/openAiEnv";
 import { isQuickActionId, type QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import { getQuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
 import {
+  normalizeProjectSingleChatStageIntent,
+  type ProjectSingleChatStageIntent,
+} from "@/lib/requirements/singleChatStageRouter";
+import {
   actionIdsForLlmIntentRouter,
   normalizeActionInvocationStrength,
   normalizeExecutionIntent,
@@ -53,8 +57,15 @@ function buildIntentRouterSystemPrompt(): string {
     "If the user asks to propose a procedure, review process, approval process, or planning content, use ask_advice — do not force GENERATE_ALTERNATIVE.",
     "If the user asks to add or reflect a step into the flow, route to flow update / direct input — not alternative generation.",
     "Strong execution actions (GENERATE_ALTERNATIVE, APPLY_PROPOSAL, APPROVE_FLOW, NEXT_STAGE) require actionInvocationStrength=explicit for free-text user messages.",
+    "Also classify stageIntent for project single chat:",
+    "- service_flow: define/update/reflect service flow or process.",
+    "- flow_review: review current flow or flow-review CTA.",
+    "- screen_planning: screens, pages, UI structure, screen composition, UX flow (not service-flow repetition).",
+    "- feature_planning: features, MVP scope, function list.",
+    "- generation_prepare: generate/build/prepare system or prototype after planning.",
+    "- general_advice: general planning advice only.",
     "Schema:",
-    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
+    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","stageIntent":"service_flow|flow_review|screen_planning|feature_planning|generation_prepare|general_advice","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
   ].join("\n");
 }
 
@@ -128,6 +139,9 @@ function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): I
   const resolvedIntentType =
     suggestedActionId ? intentTypeForAction(suggestedActionId) : intentType;
 
+  const stageIntentRaw = typeof o.stageIntent === "string" ? o.stageIntent : undefined;
+  const stageIntent: ProjectSingleChatStageIntent = normalizeProjectSingleChatStageIntent(stageIntentRaw);
+
   return {
     intentType: resolvedIntentType,
     suggestedActionId,
@@ -142,6 +156,7 @@ function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): I
     actionInvocationStrength: normalizeActionInvocationStrength(
       typeof o.actionInvocationStrength === "string" ? o.actionInvocationStrength : undefined,
     ),
+    stageIntent,
   };
 }
 

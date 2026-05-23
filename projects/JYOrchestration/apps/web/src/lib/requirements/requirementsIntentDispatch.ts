@@ -87,6 +87,13 @@ import {
   type RequirementsIntentRouterInput,
 } from "@/lib/requirements/requirementsIntentRouterTypes";
 import {
+  normalizeProjectSingleChatStageIntent,
+  type ProjectSingleChatStageRoutingResult,
+  routeProjectSingleChatStage,
+  resolveProjectSingleChatCtaId,
+  type ProjectSingleChatCtaId,
+} from "@/lib/requirements/singleChatStageRouter";
+import {
   buildRequirementsAgentMetadata,
   formatAgentMetadataForTimeline,
   type RequirementsAgentRuntimeMetadata,
@@ -121,15 +128,66 @@ export type RequirementsIntentDispatchResult = Readonly<{
   readonly agentRuntimeMetadata?: RequirementsAgentRuntimeMetadata;
   readonly serviceFlowResponseMode?: ServiceFlowResponseMode;
   readonly serviceFlowResponsePolicy?: ServiceFlowResponsePolicy;
+  readonly stageRouting?: ProjectSingleChatStageRoutingResult;
 }>;
+
+function resolveDirectQuickActionIdForDispatch(input: {
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directQuickActionLabel?: string | null;
+  readonly userMessage?: string | null;
+}): QuickActionId | null {
+  return (
+    input.directQuickActionId ??
+    resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
+    resolveQuickActionIdFromLegacyLabel(input.userMessage) ??
+    null
+  );
+}
+
+export function buildProjectSingleChatStageRoutingForDispatch(input: {
+  readonly projectId?: string;
+  readonly userMessage: string;
+  readonly intent: IntentRoutingResult;
+  readonly effectiveActionId: QuickActionId | null;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly serviceFlowV1?: RequirementsServiceFlowV1 | null;
+  readonly recentMessages?: string;
+  readonly proposalDecision?: import("@/lib/requirements/serviceFlowProposalDecision").ServiceFlowProposalDecision | null;
+}): ProjectSingleChatStageRoutingResult {
+  const ctaId =
+    input.directCtaId ??
+    resolveProjectSingleChatCtaId({
+      quickActionId: input.directQuickActionId,
+      userMessage: input.userMessage,
+    });
+  return routeProjectSingleChatStage({
+    executionScope: conversationScopeFromProjectId(input.projectId),
+    latestUserMessage: input.userMessage,
+    effectiveActionId: input.effectiveActionId,
+    proposalDecision: input.proposalDecision ?? null,
+    currentFlow: input.serviceFlowV1 ?? null,
+    routerIntentType: input.intent.intentType,
+    routerExecutionIntent: input.intent.executionIntent,
+    routerStageIntent: input.intent.stageIntent,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: ctaId,
+    recentMessages: input.recentMessages,
+  });
+}
 
 /** Intent Router가 실행 액션을 정하지 못했지만, 자유 입력 기획·설명 요청은 service-flow analyze로 처리한다. */
 export function shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent(input: {
   readonly effectiveActionId: QuickActionId | null;
   readonly intent: IntentRoutingResult;
   readonly directQuickActionId?: QuickActionId | null;
+  readonly stageRouting?: ProjectSingleChatStageRoutingResult | null;
 }): boolean {
   if (input.effectiveActionId || input.directQuickActionId) return false;
+  if (input.stageRouting && !input.stageRouting.shouldRunServiceFlowAnalyze) return false;
+  const stage = input.stageRouting?.stageIntent ?? normalizeProjectSingleChatStageIntent(input.intent.stageIntent);
+  if (stage === "screen_planning" || stage === "feature_planning") return false;
+  if (stage === "generation_prepare" && !input.stageRouting?.shouldRunAdviceToFlowApply) return false;
   const executionIntent = normalizeExecutionIntent(input.intent.executionIntent);
   if (executionIntent === "ask_advice" || executionIntent === "ask_explain") return true;
   if (input.intent.intentType === "question" && input.intent.confidence >= 0.5) return true;
@@ -376,6 +434,7 @@ function finalizeDispatchResult(input: {
   readonly ctx: RequirementsIntentDispatchContext;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly skipLowConfidenceCheck?: boolean;
   readonly routingState?: RequirementsStateJson;
   readonly userMessage?: string;
@@ -396,6 +455,22 @@ function finalizeDispatchResult(input: {
     serviceFlowResponseMode: serviceFlowResponsePolicy.mode,
     serviceFlowResponsePolicy,
   } as const;
+  const recentMessages =
+    input.recentMessageLines
+      ?.map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
+      .join("\n")
+      .slice(0, 12000) ?? "";
+  const stageRouting = buildProjectSingleChatStageRoutingForDispatch({
+    projectId: input.projectId,
+    userMessage: input.userMessage ?? "",
+    intent: input.intent,
+    effectiveActionId: effectiveId,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: input.directCtaId,
+    serviceFlowV1: input.routingState?.serviceFlowV1 ?? null,
+    recentMessages,
+  });
+  const stageExtras = { stageRouting } as const;
   const artifactHub = input.routingState
     ? buildArtifactHubOrchestrationState({ state: input.routingState })
     : undefined;
@@ -497,6 +572,7 @@ function finalizeDispatchResult(input: {
       humanExplainability,
       ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
       ...serviceFlowExtras,
+      ...stageExtras,
     };
   }
 
@@ -515,6 +591,7 @@ function finalizeDispatchResult(input: {
       humanExplainability,
       ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
       ...serviceFlowExtras,
+      ...stageExtras,
     };
   }
 
@@ -535,6 +612,7 @@ function finalizeDispatchResult(input: {
     humanExplainability,
     ...(agentRuntimeMetadata ? { agentRuntimeMetadata } : {}),
     ...serviceFlowExtras,
+    ...stageExtras,
   };
 }
 
@@ -543,14 +621,16 @@ export function dispatchRequirementsUserIntent(input: {
   readonly userMessage: string;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly ctx: RequirementsIntentDispatchContext;
   readonly routingState?: RequirementsStateJson;
   readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
 }): RequirementsIntentDispatchResult {
-  const directId =
-    input.directQuickActionId ??
-    resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
-    null;
+  const directId = resolveDirectQuickActionIdForDispatch({
+    directQuickActionId: input.directQuickActionId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    userMessage: input.userMessage,
+  });
 
   const routerInput = buildRouterInput({
     userMessage: input.userMessage,
@@ -579,10 +659,12 @@ export function dispatchRequirementsUserIntent(input: {
     ctx: input.ctx,
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
+    directCtaId: input.directCtaId,
     skipLowConfidenceCheck: Boolean(directId),
     routingState: input.routingState,
     userMessage: input.userMessage,
     recentMessageLines: input.recentMessageLines,
+    projectId: undefined,
   });
 }
 
@@ -591,6 +673,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   readonly userMessage: string;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly ctx: RequirementsIntentDispatchContext;
   readonly projectId: string;
   readonly projectName?: string;
@@ -600,10 +683,11 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   readonly routingState?: RequirementsStateJson;
   readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
 }): Promise<RequirementsIntentDispatchResult> {
-  const directId =
-    input.directQuickActionId ??
-    resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
-    null;
+  const directId = resolveDirectQuickActionIdForDispatch({
+    directQuickActionId: input.directQuickActionId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    userMessage: input.userMessage,
+  });
 
   const routingState =
     input.routingState ??
@@ -660,6 +744,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     ctx: input.ctx,
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
+    directCtaId: input.directCtaId,
     skipLowConfidenceCheck: Boolean(directId),
     routingState,
     userMessage: input.userMessage,

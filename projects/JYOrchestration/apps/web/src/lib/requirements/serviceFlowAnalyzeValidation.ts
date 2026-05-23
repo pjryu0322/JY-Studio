@@ -30,7 +30,8 @@ export type ServiceFlowAnalyzeQualityIssueCode =
   | "duplicate_assistant_and_next_question"
   | "multi_question_cta"
   | "readiness_score_zero_on_proposal"
-  | "missing_quick_replies_on_proposal";
+  | "missing_quick_replies_on_proposal"
+  | "assistant_claims_flow_without_steps";
 
 export type ServiceFlowAnalyzeParsed = Readonly<{
   assistantMessage: string;
@@ -113,6 +114,18 @@ function flowNamesReflectedInMessage(
     if (n.length >= 2 && msg.includes(n)) hits += 1;
   }
   return hits >= minHits;
+}
+
+/** 출력 품질 검증 — flow 구체화·검토 완료 주장 vs steps 불일치 */
+export function assistantClaimsFlowConcrete(assistantMessage: string): boolean {
+  const t = String(assistantMessage ?? "").trim();
+  if (!t) return false;
+  if (/(예상\s*액터|예상\s*흐름)/.test(t) && (t.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length >= 2) {
+    return false;
+  }
+  return /(서비스\s*흐름을\s*구체화|흐름을\s*구체화|초안을\s*제안|검토해\s*주세요|반영했습니다|반영하였습니다)/.test(
+    t,
+  );
 }
 
 /** 최초 proposal·인터뷰 시작 턴 — 강한 proposal-first 검증 적용 */
@@ -234,6 +247,10 @@ export function validateServiceFlowAnalyzeResponse(input: {
   const questionCount =
     countLikelyQuestionSentences(assistant) + (nextQ && !messagesOverlap(assistant, nextQ) ? 1 : 0);
   if (questionCount > 1) issues.push("multi_question_cta");
+
+  if (assistantClaimsFlowConcrete(assistant) && steps.length < 3) {
+    issues.push("assistant_claims_flow_without_steps");
+  }
 
   if (proposalBootstrap) {
     if (actors.length < 2) issues.push("insufficient_flow_actors");

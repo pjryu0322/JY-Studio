@@ -28,6 +28,31 @@ describe("requirementsIntentAnalyzeFallback", () => {
     ).toBe(true);
   });
 
+  it("does not fall back to service-flow analyze for screen_planning stage", () => {
+    expect(
+      shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent({
+        effectiveActionId: null,
+        directQuickActionId: null,
+        intent: intent({
+          routerMode: "llm",
+          intentType: "question",
+          executionIntent: "ask_advice",
+          stageIntent: "screen_planning",
+        }),
+        stageRouting: {
+          stageIntent: "screen_planning",
+          shouldRunServiceFlowAnalyze: false,
+          shouldRunAdviceToFlowApply: false,
+          shouldRunFlowReview: false,
+          shouldRouteToScreenPlanning: true,
+          shouldRouteToFeaturePlanning: false,
+          shouldRouteToGenerationPrepare: false,
+          reason: "test",
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("falls back for high-confidence question without suggested action", () => {
     expect(
       shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent({
