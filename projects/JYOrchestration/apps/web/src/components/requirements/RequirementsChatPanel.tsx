@@ -34,6 +34,9 @@ import {
   WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
   workspaceStandardChatBubbleShell,
 } from "@/components/workspace/workspaceStandardChatMessage";
+import { useChatTextSelectionToolbar } from "@/components/workspace/useChatTextSelectionToolbar";
+import { resolveInitialProposalQuickReplyAction } from "@/lib/requirements/preProjectSingleChatInitialProposal";
+import { normalizeRequirementsChatSelectionText } from "@/lib/requirements/requirementsChatSelection";
 
 function aiCardShell(tone: "default" | "notice" | "error"): CSSProperties {
   const base = workspaceStandardChatBubbleShell("ai");
@@ -268,6 +271,25 @@ export function RequirementsChatPanel({
   const pinnedActionsMessageIdRef = useRef<string | null>(null);
   pinnedActionsMessageIdRef.current = pinnedActionsMessageId;
   const sessionLine = String(sessionUserDisplayName ?? "").trim() || "나";
+
+  const selectionToComposerEnabled = Boolean(onInsertComposerPrompt || onInterviewSuggestionPick);
+  const { chatRootRef, selectionToolbarRef, selectionBubble, clearSelectionBubble } =
+    useChatTextSelectionToolbar({ enabled: selectionToComposerEnabled });
+
+  const applySelectionToComposer = useCallback(
+    (raw: string) => {
+      const text = normalizeRequirementsChatSelectionText(raw);
+      if (!text) return;
+      if (onInterviewSuggestionPick && resolveInitialProposalQuickReplyAction(text)) {
+        onInterviewSuggestionPick(text);
+      } else {
+        onInsertComposerPrompt?.(text);
+      }
+      clearSelectionBubble();
+      window.getSelection()?.removeAllRanges();
+    },
+    [clearSelectionBubble, onInsertComposerPrompt, onInterviewSuggestionPick],
+  );
 
   useEffect(() => {
     const onDocDown = (e: MouseEvent) => {
@@ -743,26 +765,70 @@ export function RequirementsChatPanel({
   );
 
   return (
-    <WorkspaceShell
-      data-testid="requirements-chat-panel"
-      top={topChrome}
-      footer={
-        <div data-requirements-composer-root>
-          <WorkspaceComposerFooter>{composer}</WorkspaceComposerFooter>
-        </div>
-      }
-    >
-      <WorkspaceMessageList
-        endRef={endRef}
-        beforeMessages={
-          <>
-            <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
-            {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
-          </>
+    <>
+      <WorkspaceShell
+        data-testid="requirements-chat-panel"
+        top={topChrome}
+        footer={
+          <div data-requirements-composer-root>
+            <WorkspaceComposerFooter>{composer}</WorkspaceComposerFooter>
+          </div>
         }
       >
-        {messageBody}
-      </WorkspaceMessageList>
-    </WorkspaceShell>
+        <WorkspaceMessageList
+          scrollRootRef={selectionToComposerEnabled ? chatRootRef : undefined}
+          endRef={endRef}
+          beforeMessages={
+            <>
+              <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
+              {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
+            </>
+          }
+        >
+          {messageBody}
+        </WorkspaceMessageList>
+      </WorkspaceShell>
+      {selectionBubble && selectionToComposerEnabled ? (
+        <div
+          ref={selectionToolbarRef}
+          role="toolbar"
+          aria-label="선택 텍스트 작업"
+          style={{
+            position: "fixed",
+            zIndex: 50,
+            left: Math.max(12, Math.min(window.innerWidth - 12, selectionBubble.left)),
+            top: Math.max(8, selectionBubble.top - 48),
+            transform: "translateX(-50%)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 8px",
+            borderRadius: 10,
+            border: `1px solid ${t.borderStrong}`,
+            background: t.bgCard,
+            boxShadow: t.shadowModal,
+          }}
+        >
+          <button
+            type="button"
+            data-testid="requirements-chat-selection-to-composer"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => applySelectionToComposer(selectionBubble.text)}
+            style={{
+              border: 0,
+              borderRadius: 8,
+              padding: "6px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+              background: t.accentTeal,
+              color: "#fff",
+            }}
+          >
+            입력창에 넣기
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
