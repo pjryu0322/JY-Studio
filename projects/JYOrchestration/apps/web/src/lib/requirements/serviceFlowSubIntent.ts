@@ -160,9 +160,11 @@ export function buildServiceFlowStepDefinitionSystemPromptBlock(): string {
 - 사용자는 액터 또는 현재 아이디어를 기준으로 서비스 흐름 단계를 정의하라고 요청했다.
 - actors가 있으면 재사용한다.
 - updatedFlow.steps를 최소 3개 이상 생성한다.
-- 각 step은 title, purpose(description), primaryActorId, order를 포함한다.
-- actor가 부족하면 기본 actor를 보강한다.
-- assistantMessage에는 실제 단계 목록을 표시한다.
+- 각 step은 id, title, purpose, order, primaryActorId, secondaryActorIds, approved, updatedAt을 반드시 포함한다.
+- purpose 필드를 사용한다. description 필드는 step에 사용하지 않는다.
+- primaryActorId는 updatedFlow.actors[].id 중 하나여야 한다.
+- assistantMessage의 단계 제목은 updatedFlow.steps[].title과 일치해야 한다.
+- assistantMessage에는 "예상 흐름" 번호 목록을 표시한다.
 - "정의해 보겠습니다"만 말하지 않는다.`;
 }
 
@@ -172,7 +174,9 @@ export function buildServiceFlowDraftSystemPromptBlock(): string {
 - 대안 비교(alternative proposal)가 아니다.
 - updatedFlow.actors와 updatedFlow.steps를 반드시 채운다.
 - steps는 최소 3개, 권장 4~6개.
-- assistantMessage에는 실제 단계 목록을 표시한다.
+- 각 step은 id/title/purpose/order/primaryActorId/secondaryActorIds/approved/updatedAt을 포함한다.
+- purpose 필드를 사용한다. step.description을 쓰지 않는다.
+- assistantMessage에는 실제 단계 목록(예상 흐름 번호)을 표시한다.
 - "기본 운영 흐름이 정리되었습니다"라고 말하려면 updatedFlow.steps가 최소 3개 이상이어야 한다.
 - GENERATE_ALTERNATIVE·이 대안 적용·다른 대안 다시 생성 UX를 제안하지 않는다.`;
 }

@@ -16,13 +16,16 @@ export type ScreenPlanningLlmResult =
       readonly promptText?: string;
     };
 
-function buildScreenPlanningSystemPrompt(): string {
+function buildScreenPlanningSystemPrompt(hasServiceFlowSteps: boolean): string {
+  const flowBasis = hasServiceFlowSteps
+    ? "앞서 정리한 service flow와 최근 대화 맥락을 기준으로"
+    : "현재 아이디어·액터 후보와 최근 대화 맥락을 기준으로";
   return [
     "당신은 Project SingleChat의 AI 기획자다.",
     "현재 요청은 service-flow update가 아니라 화면 구성 제안이다.",
     "",
     "목표:",
-    "- 앞서 정리한 service flow와 최근 대화 맥락을 기준으로 화면 구성을 제안한다.",
+    `- ${flowBasis} 화면 구성을 제안한다.`,
     "- 최소 3개, 권장 4~6개 화면을 번호 목록으로 제안한다.",
     "- 각 화면은 목적, 주요 UI 요소, 사용자가 확인/수정할 정보가 포함되어야 한다.",
     "- service-flow analyze, APPLY_PROPOSAL, 대안 Viewer, flow update 문구를 쓰지 않는다.",
@@ -70,7 +73,7 @@ export async function runScreenPlanningLlm(input: {
     return { ok: false, code: "NO_KEY", message: env.message };
   }
 
-  const system = buildScreenPlanningSystemPrompt();
+  const system = buildScreenPlanningSystemPrompt((input.flow?.steps?.length ?? 0) >= 3);
   const user = buildScreenPlanningUserPrompt(input);
   const promptText = `${system}\n\n---\n\n${user}`;
 

@@ -202,6 +202,62 @@ describe("serviceFlowAnalyzeValidation", () => {
     expect(r.issues).toContain("assistant_future_only_no_flow");
   });
 
+  it("accepts actor names reflected with markdown bold", () => {
+    const flow: RequirementsServiceFlowV1 = {
+      createdAt: now,
+      updatedAt: now,
+      actors: [
+        { id: "a1", name: "사용자", kind: "human", description: "업로드" },
+        { id: "a2", name: "시스템", kind: "system", description: "정리" },
+        { id: "a3", name: "검수자", kind: "human", description: "검수" },
+      ],
+      steps: [],
+    };
+    const r = validateServiceFlowAnalyzeResponse({
+      parsed: {
+        assistantMessage:
+          "1. **사용자**\n- 녹취 파일을 업로드합니다.\n\n2. **시스템**\n- 자동 정리를 수행합니다.\n\n3. **검수자**\n- 최종 확인합니다.",
+        updatedFlow: flow,
+        intent: "add_actor",
+        nextQuestion: null,
+        quickReplies: null,
+        readiness: { score: 20, actorsReady: true, stepsReady: false, mappingReady: false, readyForNext: false },
+      },
+      userMessage: "액터부터 정의해줘",
+      currentFlow: flow,
+      responsePolicy: { mode: "flow_update", serviceFlowSubIntent: "actor_definition" },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects fallback-style feature scope text for flow_step_definition when steps are missing", () => {
+    const flow: RequirementsServiceFlowV1 = {
+      createdAt: now,
+      updatedAt: now,
+      actors: [
+        { id: "a1", name: "사용자", kind: "human", description: "" },
+        { id: "a2", name: "시스템", kind: "system", description: "" },
+      ],
+      steps: [],
+    };
+    const r = validateServiceFlowAnalyzeResponse({
+      parsed: {
+        assistantMessage:
+          "회의록 자동 정리 시스템의 기능 범위는 다음과 같습니다:\n- 사용자: 회의록 검수\n\n예상 흐름 번호: 1\n다음: 기능 범위에 대한 추가 의견을 주세요.",
+        updatedFlow: flow,
+        intent: "add_step",
+        nextQuestion: null,
+        quickReplies: null,
+        readiness: { score: 0, actorsReady: true, stepsReady: false, mappingReady: false, readyForNext: false },
+      },
+      userMessage: "서비스 흐름 단계 정리",
+      currentFlow: flow,
+      responsePolicy: { mode: "flow_update", serviceFlowSubIntent: "flow_step_definition" },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues).toContain("flow_step_definition_missing_steps");
+  });
+
   it("accepts actor definition response with actors reflected in message", () => {
     const flow: RequirementsServiceFlowV1 = {
       createdAt: now,

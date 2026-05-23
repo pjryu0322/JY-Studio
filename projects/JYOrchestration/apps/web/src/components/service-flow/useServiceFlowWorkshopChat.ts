@@ -856,6 +856,14 @@ export function useServiceFlowWorkshopChat({
           return;
         }
         if (
+          stageRoute?.shouldRunFlowStepDefinition ||
+          stageRoute?.serviceFlowSubIntent === "flow_draft"
+        ) {
+          callAnalyze(body, analyzeOpts);
+          scrollChatToBottom();
+          return;
+        }
+        if (
           shouldEnterManualActorEditFromSingleChat({
             effectiveActionId: effectiveDispatch.id,
             serviceFlowSubIntent: stageRoute?.serviceFlowSubIntent,

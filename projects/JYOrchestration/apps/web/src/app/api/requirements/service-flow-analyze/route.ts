@@ -63,6 +63,7 @@ import {
   resolveBlockedStageTransitionRedirect,
 } from "@/lib/requirements/serviceFlowActionGating";
 import { withServiceFlowConversationState } from "@/lib/requirements/serviceFlowConversationState";
+import { getServiceFlowSubIntentFromPolicy } from "@/lib/requirements/serviceFlowSubIntent";
 
 type Body = {
   projectId?: string;
@@ -335,6 +336,11 @@ export async function POST(request: NextRequest) {
     });
 
     let adviceToFlowApplyMode = isAdviceToFlowApplyMode(responsePolicy);
+    const structuralSubIntentBlocksAdviceToFlow = (sub: string | null | undefined) =>
+      sub === "flow_draft" || sub === "flow_step_definition" || sub === "actor_definition";
+    if (structuralSubIntentBlocksAdviceToFlow(getServiceFlowSubIntentFromPolicy(responsePolicy))) {
+      adviceToFlowApplyMode = false;
+    }
     if (!adviceToFlowApplyMode && !isServiceFlowAdviceMode(responsePolicy)) {
       adviceToFlowApplyMode = shouldUseAdviceToFlowApplyMode({
         executionScope,
@@ -343,7 +349,12 @@ export async function POST(request: NextRequest) {
         currentFlow,
         recentMessages,
       });
-      if (adviceToFlowApplyMode) {
+      if (
+        adviceToFlowApplyMode &&
+        structuralSubIntentBlocksAdviceToFlow(getServiceFlowSubIntentFromPolicy(responsePolicy))
+      ) {
+        adviceToFlowApplyMode = false;
+      } else if (adviceToFlowApplyMode) {
         responsePolicy = buildAdviceToFlowApplyResponsePolicy();
       }
     }

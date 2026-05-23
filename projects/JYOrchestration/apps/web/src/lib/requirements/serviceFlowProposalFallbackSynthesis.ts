@@ -11,6 +11,12 @@ import {
   hasProposalFirstStructure,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import { parseServiceFlowAnalyzeWire } from "@/lib/requirements/serviceFlowAnalyzeParse";
+import { buildServiceFlowAnalyzeJsonSchemaPromptBlock } from "@/lib/requirements/serviceFlowAnalyzeSchemaPrompt";
+import {
+  getServiceFlowSubIntentFromPolicy,
+  normalizeServiceFlowSubIntent,
+  type ServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
 import {
   mergeServiceFlowUserFacingMessage,
   validateServiceFlowAnalyzeResponse,
@@ -29,6 +35,34 @@ export type ServiceFlowProposalFallbackSynthesisResult =
 
 const DEFAULT_QUICK_REPLIES = ["추천안 적용", "일부 수정", "다른 대안 보기"];
 
+function buildFallbackSubIntentContextBlock(subIntent: ServiceFlowSubIntent): string {
+  if (subIntent === "flow_step_definition" || subIntent === "flow_draft") {
+    return [
+      "[fallback context]",
+      `serviceFlowSubIntent=${subIntent}`,
+      `requiredMode=${subIntent}`,
+      "",
+      "필수:",
+      "- 이 fallback은 기능 범위 정리가 아니다.",
+      "- updatedFlow.steps를 최소 3개 이상 생성한다.",
+      "- assistantMessage에는 \"예상 흐름\" 번호 목록을 표시한다.",
+      "- 기능 범위 목록만 출력하면 실패다.",
+    ].join("\n");
+  }
+  if (subIntent === "actor_definition") {
+    return [
+      "[fallback context]",
+      "serviceFlowSubIntent=actor_definition",
+      "",
+      "필수:",
+      "- updatedFlow.actors를 최소 2개 이상 생성한다.",
+      "- assistantMessage에 액터별 역할·책임을 번호/불릿으로 제시한다.",
+      "- steps는 비어 있어도 된다.",
+    ].join("\n");
+  }
+  return "";
+}
+
 export function buildServiceFlowProposalFallbackSynthesisUserPrompt(input: {
   readonly projectName: string;
   readonly projectDescription: string;
@@ -40,7 +74,15 @@ export function buildServiceFlowProposalFallbackSynthesisUserPrompt(input: {
   readonly rejectedAssistantPreview?: string;
   readonly rejectedNextQuestion?: string | null;
   readonly rejectedUpdatedFlowPreview?: string;
+  readonly responsePolicy?: unknown;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
 }): string {
+  const subIntent =
+    input.serviceFlowSubIntent ??
+    getServiceFlowSubIntentFromPolicy(input.responsePolicy) ??
+    "general_service_flow";
+  const subIntentBlock = buildFallbackSubIntentContextBlock(normalizeServiceFlowSubIntent(subIntent));
+
   const assetsBlock = (input.ideationAssets ?? [])
     .map((a) => {
       const type = String(a?.type ?? "").trim();
@@ -56,6 +98,7 @@ export function buildServiceFlowProposalFallbackSynthesisUserPrompt(input: {
     "[service-flow proposal fallback synthesis]",
     "직전 service-flow analyze 응답이 proposal-first 검증에 실패했습니다.",
     `실패 이슈: ${input.failureIssues.join(", ") || "(미상)"}`,
+    subIntentBlock,
     input.rejectedAssistantPreview
       ? `거절된 assistantMessage 미리보기: ${input.rejectedAssistantPreview.slice(0, 700)}`
       : "",
@@ -81,6 +124,8 @@ ${input.userMessage.trim().slice(0, 800)}`,
     "",
     assetsBlock ? `[ideation assets]\n${assetsBlock}` : "",
     "",
+    buildServiceFlowAnalyzeJsonSchemaPromptBlock(),
+    "",
     "JSON만 출력 (service-flow analyze와 동일 스키마):",
     `{
   "assistantMessage": "요약 + 예상 액터 불릿 + 예상 흐름 번호 + 단일 CTA",
@@ -93,7 +138,7 @@ ${input.userMessage.trim().slice(0, 800)}`,
     "",
     "규칙:",
     "- question-first 금지(첫 단계/어떤 액터/어떤 순서 질문 금지)",
-    "- updatedFlow.actors >= 2, steps >= 3 — 프로젝트·산출물에서 추론",
+    "- updatedFlow.actors >= 2, steps >= 3 — 프로젝트·산출물에서 추론 (actor_definition은 actors만)",
     "- assistantMessage의 액터·단계는 updatedFlow와 일치",
     "- 서비스명·도메인 if/else 하드코딩 금지",
   ]
@@ -139,7 +184,7 @@ export function buildServiceFlowDescriptionProposalSkeletonPack(input: {
       {
         id: "step_1",
         title: "사용자가 목표·입력을 제공한다",
-        purpose: "",
+        purpose: "사용자가 서비스 목표와 입력을 제공한다.",
         order: 1,
         primaryActorId: "actor_user",
         secondaryActorIds: [],
@@ -149,7 +194,7 @@ export function buildServiceFlowDescriptionProposalSkeletonPack(input: {
       {
         id: "step_2",
         title: "시스템이 요청을 처리한다",
-        purpose: "",
+        purpose: "시스템이 입력을 처리하고 결과를 생성한다.",
         order: 2,
         primaryActorId: "actor_system",
         secondaryActorIds: [],
@@ -159,7 +204,7 @@ export function buildServiceFlowDescriptionProposalSkeletonPack(input: {
       {
         id: "step_3",
         title: "결과를 확인·조정한다",
-        purpose: "",
+        purpose: "사용자가 결과를 확인하고 필요 시 수정한다.",
         order: 3,
         primaryActorId: "actor_user",
         secondaryActorIds: [],
@@ -196,8 +241,15 @@ export async function runServiceFlowProposalFallbackSynthesisOpenAI(input: {
   readonly rejectedAssistantPreview?: string;
   readonly rejectedNextQuestion?: string | null;
   readonly rejectedUpdatedFlowPreview?: string;
+  readonly responsePolicy?: unknown;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
 }): Promise<ServiceFlowProposalFallbackSynthesisResult> {
   const nowIso = new Date().toISOString();
+  const responsePolicy = input.responsePolicy;
+  const subIntent =
+    input.serviceFlowSubIntent ??
+    getServiceFlowSubIntentFromPolicy(responsePolicy) ??
+    "general_service_flow";
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     const skeleton = buildServiceFlowDescriptionProposalSkeletonPack({
@@ -205,6 +257,20 @@ export async function runServiceFlowProposalFallbackSynthesisOpenAI(input: {
       projectDescription: input.projectDescription,
       nowIso,
     });
+    const skValidation = validateServiceFlowAnalyzeResponse({
+      parsed: skeleton,
+      userMessage: input.userMessage,
+      currentFlow: input.currentFlow,
+      responsePolicy,
+    });
+    if (!skValidation.ok) {
+      return {
+        ok: false,
+        code: "QUALITY",
+        message: `fallback skeleton 검증 실패: ${skValidation.issues.join(", ")}`,
+        promptText: "[service-flow-fallback-synthesis] NO_KEY → skeleton validation failed",
+      };
+    }
     return {
       ok: true,
       data: skeleton,
@@ -217,7 +283,9 @@ export async function runServiceFlowProposalFallbackSynthesisOpenAI(input: {
   const model = resolveOpenAiModelFromEnv();
   const system = `${workspaceAiMemberSystemPrefix("actor_flow")}당신은 service-flow 검증 실패 복구용 **proposal-first 흐름 합성기**입니다.
 사용자에게 백지 질문(question-first)을 하지 않습니다. JSON 1개만 출력합니다.
-updatedFlow(actors>=2, steps>=3)와 구조화된 assistantMessage를 프로젝트·산출물에서 추론해 채우세요.`;
+updatedFlow(actors>=2, steps>=3)와 구조화된 assistantMessage를 프로젝트·산출물에서 추론해 채우세요.
+
+${buildServiceFlowAnalyzeJsonSchemaPromptBlock()}`;
 
   const user = buildServiceFlowProposalFallbackSynthesisUserPrompt(input);
   const promptText = `[service-flow-proposal-fallback-synthesis]\n[system]\n${system}\n\n[user]\n${user}`;
@@ -258,6 +326,7 @@ updatedFlow(actors>=2, steps>=3)와 구조화된 assistantMessage를 프로젝�
     parsed: wire.data,
     userMessage: input.userMessage,
     currentFlow: input.currentFlow,
+    responsePolicy,
   });
   if (!validation.ok) {
     const skeleton = buildServiceFlowDescriptionProposalSkeletonPack({
@@ -269,6 +338,7 @@ updatedFlow(actors>=2, steps>=3)와 구조화된 assistantMessage를 프로젝�
       parsed: skeleton,
       userMessage: input.userMessage,
       currentFlow: input.currentFlow,
+      responsePolicy,
     });
     if (skValidation.ok) {
       return {

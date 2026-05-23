@@ -10,6 +10,22 @@ import {
 import { validateServiceFlowAnalyzeResponse } from "@/lib/requirements/serviceFlowAnalyzeValidation";
 
 describe("serviceFlowProposalFallbackSynthesis", () => {
+  it("includes flow_step_definition context in fallback user prompt", () => {
+    const p = buildServiceFlowProposalFallbackSynthesisUserPrompt({
+      projectName: "P",
+      projectDescription: "D",
+      userMessage: "단계 정리",
+      currentFlow: null,
+      recentMessages: "",
+      failureIssues: ["flow_step_definition_missing_steps"],
+      serviceFlowSubIntent: "flow_step_definition",
+      responsePolicy: { mode: "flow_update", serviceFlowSubIntent: "flow_step_definition" },
+    });
+    expect(p).toContain("serviceFlowSubIntent=flow_step_definition");
+    expect(p).toContain("기능 범위 정리가 아니다");
+    expect(p).toContain("step.description을 쓰지 않는다");
+  });
+
   it("buildServiceFlowProposalFallbackSynthesisUserPrompt는 proposal-first 재생성 지시를 포함한다", () => {
     const p = buildServiceFlowProposalFallbackSynthesisUserPrompt({
       projectName: "회의록 자동화",

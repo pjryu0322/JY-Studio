@@ -29,7 +29,7 @@ describe("singleChatStageRouter", () => {
     expect(result.shouldRouteToScreenPlanning).toBe(true);
   });
 
-  it("does not review empty flow and requests flow draft generation first", () => {
+  it("redirects empty flow review to flow_step_definition instead of advice_to_flow_apply", () => {
     const result = routeProjectSingleChatStage({
       executionScope: "project_single_chat",
       currentStage: "service_flow",
@@ -45,8 +45,27 @@ describe("singleChatStageRouter", () => {
 - 발화자와 요약을 확인합니다.`,
     });
 
-    expect(result.shouldRunAdviceToFlowApply).toBe(true);
+    expect(result.shouldRunAdviceToFlowApply).toBe(false);
     expect(result.shouldRunFlowReview).toBe(false);
+    expect(result.shouldRunFlowStepDefinition).toBe(true);
+    expect(result.serviceFlowSubIntent).toBe("flow_step_definition");
+    expect(result.reason).toBe("flow_review_redirect_step_definition");
+  });
+
+  it("routes flow_draft as flow_update without advice_to_flow_apply", () => {
+    const result = routeProjectSingleChatStage({
+      executionScope: "project_single_chat",
+      latestUserMessage: "서비스 흐름 초안 만들기",
+      routerStageIntent: "service_flow",
+      routerServiceFlowSubIntent: "flow_draft",
+      currentFlow: createSampleServiceFlow({ steps: [] }),
+      recentMessages: `AI: 검수 절차는 다음과 같습니다.`,
+    });
+
+    expect(result.shouldRunServiceFlowAnalyze).toBe(true);
+    expect(result.shouldRunAdviceToFlowApply).toBe(false);
+    expect(result.serviceFlowSubIntent).toBe("flow_draft");
+    expect(result.reason).toBe("service_flow_flow_draft");
   });
 
   it("runs flow review when draft has minimum steps", () => {

@@ -54,6 +54,7 @@ import {
   isServiceFlowAdviceMode,
 } from "@/lib/requirements/serviceFlowAdviceMode";
 import { resolveServiceFlowAnalyzePromptModeFromPolicy } from "@/lib/requirements/serviceFlowAnalyzePromptMode";
+import { buildServiceFlowAnalyzeJsonSchemaPromptBlock } from "@/lib/requirements/serviceFlowAnalyzeSchemaPrompt";
 import {
   buildServiceFlowActorDefinitionSystemPromptBlock,
   buildServiceFlowDraftSystemPromptBlock,
@@ -2136,7 +2137,9 @@ ${input.userMessage.trim()}
   "nextQuestion": "질문 한 문장?" | null,
   "quickReplies": ["선택지1", "선택지2", "선택지3"] | null,
   "readiness": { "score": 0, "actorsReady": true, "stepsReady": true, "mappingReady": true, "readyForNext": true }
-}`;
+}
+
+${buildServiceFlowAnalyzeJsonSchemaPromptBlock()}`;
 
   let promptTextSf = `[service-flow-analyze]\n[system]\n${system}\n\n[user]\n${user}\n[internalRole=analyst userFacing=coordinator]`;
 
@@ -2372,6 +2375,8 @@ ${input.userMessage.trim()}
     rejectedAssistantPreview: rejectedPack?.assistantMessage ?? "",
     rejectedNextQuestion: rejectedPack?.nextQuestion ?? null,
     rejectedUpdatedFlowPreview: JSON.stringify(rejectedPack?.updatedFlow ?? input.currentFlow ?? {}).slice(0, 2000),
+    responsePolicy: input.responsePolicy,
+    serviceFlowSubIntent,
   });
 
   promptTextSf += `\n\n--- service_flow_fallback_synthesis ---\n${fallback.promptText ?? ""}`;

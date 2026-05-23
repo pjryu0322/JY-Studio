@@ -216,19 +216,19 @@ export function routeProjectSingleChatStage(input: {
 
   if (stageIntent === "flow_review") {
     if (!hasMinDraft) {
-      const canAdviceToFlow =
-        recentMessagesHasPriorAdviceResponse(recent) ||
-        input.proposalDecision === "APPLY" ||
-        input.directQuickActionId === "APPLY_PROPOSAL";
       return {
         stageIntent: "service_flow",
+        serviceFlowSubIntent: "flow_step_definition",
         shouldRunServiceFlowAnalyze: true,
-        shouldRunAdviceToFlowApply: canAdviceToFlow,
+        shouldRunAdviceToFlowApply: false,
         shouldRunFlowReview: false,
+        shouldRunFlowStepDefinition: true,
+        shouldBlockApplyProposal: true,
+        applyBlockReason: "flow_review_requires_steps",
         shouldRouteToScreenPlanning: false,
         shouldRouteToFeaturePlanning: false,
         shouldRouteToGenerationPrepare: false,
-        reason: "flow_review_blocked_empty_steps",
+        reason: "flow_review_redirect_step_definition",
       };
     }
     return {
@@ -289,16 +289,11 @@ export function routeProjectSingleChatStage(input: {
   }
 
   if (treatAsServiceFlow && serviceFlowSubIntent === "flow_draft") {
-    const canAdviceToFlow =
-      !hasMinDraft &&
-      (recentMessagesHasPriorAdviceResponse(recent) ||
-        input.proposalDecision === "APPLY" ||
-        input.directQuickActionId === "APPLY_PROPOSAL");
     return {
       stageIntent: "service_flow",
       serviceFlowSubIntent: "flow_draft",
       shouldRunServiceFlowAnalyze: true,
-      shouldRunAdviceToFlowApply: canAdviceToFlow,
+      shouldRunAdviceToFlowApply: false,
       shouldRunFlowReview: false,
       shouldRunActorDefinition: false,
       shouldRunFlowStepDefinition: false,
@@ -307,7 +302,7 @@ export function routeProjectSingleChatStage(input: {
       shouldRouteToScreenPlanning: false,
       shouldRouteToFeaturePlanning: false,
       shouldRouteToGenerationPrepare: false,
-      reason: canAdviceToFlow ? "service_flow_flow_draft_advice_apply" : "service_flow_flow_draft",
+      reason: "service_flow_flow_draft",
     };
   }
 

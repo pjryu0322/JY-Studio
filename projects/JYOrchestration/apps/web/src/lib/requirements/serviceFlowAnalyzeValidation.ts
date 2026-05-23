@@ -55,7 +55,20 @@ export type ServiceFlowAnalyzeParsed = Readonly<{
 }>;
 
 function norm(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, "");
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[*_`~>#\\-•·]/g, "")
+    .replace(/[()[\]{}<>]/g, "")
+    .replace(/\s+/g, "");
+}
+
+function actorDefinitionReflectedInMessage(actorNames: readonly string[], assistant: string): boolean {
+  if (actorNames.length >= 2 && flowNamesReflectedInMessage(actorNames, assistant, 2)) {
+    return true;
+  }
+  const numberedItems = (assistant.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length;
+  return numberedItems >= 2 && actorNames.length >= 2;
 }
 
 function countLikelyQuestionSentences(text: string): number {
@@ -288,7 +301,7 @@ export function validateServiceFlowAnalyzeResponse(input: {
 
   if (subIntent === "actor_definition") {
     if (actors.length < 2) issues.push("actor_definition_missing_actors");
-    if (actorNames.length >= 2 && !flowNamesReflectedInMessage(actorNames, assistant, 2)) {
+    if (actorNames.length >= 2 && !actorDefinitionReflectedInMessage(actorNames, assistant)) {
       issues.push("actor_definition_not_reflected_in_message");
     }
   }
