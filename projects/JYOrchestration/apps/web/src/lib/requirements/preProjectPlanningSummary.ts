@@ -16,14 +16,19 @@ export function hasPreProjectPlanningSummaryMessage(messages: readonly Requireme
 
 export function isProjectSeededFromPreProjectChat(
   state: RequirementsStateJson,
-  project?: { readonly description?: string | null } | null
+  _project?: { readonly description?: string | null } | null
 ): boolean {
-  if (String(state.originalProjectDescription ?? "").trim()) return true;
+  if (state.seededFromPreProjectChat === true) return true;
   if (String(state.lastUserDraftText ?? "").trim()) return true;
   if (String(state.lastPromptText ?? "").trim()) return true;
-  if (String(state.priorityFeatures ?? "").trim() && String(state.openIssues ?? "").trim()) return true;
-  const desc = String(project?.description ?? "").trim();
-  if (desc.length >= 24 && String(state.originalProjectDescription ?? "").trim() === desc) return true;
+  const openIssues = String(state.openIssues ?? "").trim();
+  const priorityFeatures = String(state.priorityFeatures ?? "").trim();
+  if (priorityFeatures && openIssues) return true;
+  // createProject mirrors description into originalProjectDescription for all projects;
+  // require draft-derived fields beyond bare description mirror.
+  if ((openIssues || priorityFeatures) && String(state.originalProjectDescription ?? "").trim()) {
+    return true;
+  }
   return false;
 }
 

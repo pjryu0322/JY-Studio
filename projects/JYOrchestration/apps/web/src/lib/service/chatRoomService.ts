@@ -589,6 +589,7 @@ export async function confirmProjectFromChatRoom(input: {
     const base = (cur?.requirementsStateJson ?? {}) as RequirementsStateJson;
     const patch: Partial<RequirementsStateJson> = {
       originalProjectDescription: desc || "",
+      seededFromPreProjectChat: true,
     };
     if (Array.isArray(payload.openQuestions) && payload.openQuestions.length) {
       patch.openIssues = payload.openQuestions.map((s) => String(s)).join("\n");

@@ -9,7 +9,19 @@ import {
 } from "@/lib/requirements/preProjectPlanningSummary";
 
 describe("preProjectInitialSeedPolicy", () => {
-  it("detects pre-project seeded project from original description", () => {
+  it("detects pre-project seeded project from explicit flag", () => {
+    const state = parseRequirementsStateJson({
+      originalProjectDescription: "녹취 파일을 회의록으로 정리하는 웹서비스",
+      seededFromPreProjectChat: true,
+    });
+    expect(
+      isProjectSeededFromPreProjectChat(state, {
+        description: "녹취 파일을 회의록으로 정리하는 웹서비스",
+      })
+    ).toBe(true);
+  });
+
+  it("does not treat general project with mirrored description as pre-project", () => {
     const state = parseRequirementsStateJson({
       originalProjectDescription: "녹취 파일을 회의록으로 정리하는 웹서비스",
     });
@@ -17,7 +29,15 @@ describe("preProjectInitialSeedPolicy", () => {
       isProjectSeededFromPreProjectChat(state, {
         description: "녹취 파일을 회의록으로 정리하는 웹서비스",
       })
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("detects legacy pre-project from draft-derived openIssues", () => {
+    const state = parseRequirementsStateJson({
+      originalProjectDescription: "회의록 서비스",
+      openIssues: "다국어는 1차 범위에서 제외",
+    });
+    expect(isProjectSeededFromPreProjectChat(state)).toBe(true);
   });
 
   it("builds summary without quick action phrases", () => {

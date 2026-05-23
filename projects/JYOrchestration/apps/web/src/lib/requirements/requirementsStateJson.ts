@@ -456,6 +456,8 @@ export type RequirementsStateJson = {
   selectedMembers?: Array<{ id: string; name: string }> | null;
   /** 프로젝트 생성 시 입력한 원본 설명(프로젝트 카드 표시는 이 값만 사용) */
   originalProjectDescription?: string | null;
+  /** Pre-Project 대화방에서 confirm-project로 승격된 프로젝트 */
+  seededFromPreProjectChat?: boolean;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
   /**
@@ -956,6 +958,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : undefined,
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
+    seededFromPreProjectChat:
+      typeof o.seededFromPreProjectChat === "boolean" ? o.seededFromPreProjectChat : undefined,
     ideationStageCompletedAt:
       typeof o.ideationStageCompletedAt === "string" ? o.ideationStageCompletedAt : undefined,
     ideationConfirmedAssetId:
