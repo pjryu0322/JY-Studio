@@ -177,4 +177,55 @@ describe("serviceFlowAnalyzeValidation", () => {
     expect(r.issues).toContain("advice_message_too_short");
     expect(isWeakAdviceAssistantMessage("검수 절차를 제안합니다.")).toBe(true);
   });
+
+  it("rejects future-only service flow response with no actors or steps", () => {
+    const emptyFlow: RequirementsServiceFlowV1 = {
+      createdAt: now,
+      updatedAt: now,
+      actors: [],
+      steps: [],
+    };
+    const r = validateServiceFlowAnalyzeResponse({
+      parsed: {
+        assistantMessage: "회의록 자동 정리 시스템의 서비스 흐름을 정의해 보겠습니다.",
+        updatedFlow: emptyFlow,
+        intent: "unclear",
+        nextQuestion: null,
+        quickReplies: null,
+        readiness: { score: 0, actorsReady: false, stepsReady: false, mappingReady: false, readyForNext: false },
+      },
+      userMessage: "액터부터 정의해줘",
+      currentFlow: emptyFlow,
+      responsePolicy: { mode: "flow_update", serviceFlowSubIntent: "actor_definition" },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues).toContain("assistant_future_only_no_flow");
+  });
+
+  it("accepts actor definition response with actors reflected in message", () => {
+    const flow: RequirementsServiceFlowV1 = {
+      createdAt: now,
+      updatedAt: now,
+      actors: [
+        { id: "a1", name: "사용자", kind: "human", description: "" },
+        { id: "a2", name: "시스템", kind: "system", description: "" },
+      ],
+      steps: [],
+    };
+    const r = validateServiceFlowAnalyzeResponse({
+      parsed: {
+        assistantMessage:
+          "1. 사용자\n- 녹취 파일을 업로드합니다.\n\n2. 시스템\n- 자동 정리를 수행합니다.\n\n다음: 이 액터를 기준으로 서비스 흐름 단계를 정리할 수 있습니다.",
+        updatedFlow: flow,
+        intent: "add_actor",
+        nextQuestion: null,
+        quickReplies: null,
+        readiness: { score: 20, actorsReady: true, stepsReady: false, mappingReady: false, readyForNext: false },
+      },
+      userMessage: "액터부터 정의해줘",
+      currentFlow: flow,
+      responsePolicy: { mode: "flow_update", serviceFlowSubIntent: "actor_definition" },
+    });
+    expect(r.ok).toBe(true);
+  });
 });

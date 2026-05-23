@@ -16,6 +16,10 @@ import {
 } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import type { ServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
 import { normalizeExecutionIntent } from "@/lib/requirements/requirementsIntentRouterTypes";
+import {
+  normalizeServiceFlowSubIntent,
+  type ServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
 
 export type ProjectSingleChatStageIntent =
   | "service_flow"
@@ -42,9 +46,14 @@ const STAGE_INTENTS = new Set<ProjectSingleChatStageIntent>([
 
 export type ProjectSingleChatStageRoutingResult = Readonly<{
   readonly stageIntent: ProjectSingleChatStageIntent;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent;
   readonly shouldRunServiceFlowAnalyze: boolean;
   readonly shouldRunAdviceToFlowApply: boolean;
   readonly shouldRunFlowReview: boolean;
+  readonly shouldRunActorDefinition?: boolean;
+  readonly shouldRunFlowStepDefinition?: boolean;
+  readonly shouldBlockApplyProposal?: boolean;
+  readonly applyBlockReason?: string | null;
   readonly shouldRouteToScreenPlanning: boolean;
   readonly shouldRouteToFeaturePlanning: boolean;
   readonly shouldRouteToGenerationPrepare: boolean;
@@ -139,6 +148,7 @@ export function routeProjectSingleChatStage(input: {
   readonly routerIntentType?: string | null;
   readonly routerExecutionIntent?: string | null;
   readonly routerStageIntent?: string | null;
+  readonly routerServiceFlowSubIntent?: string | null;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly recentMessages?: string;
@@ -240,8 +250,70 @@ export function routeProjectSingleChatStage(input: {
     input.proposalDecision === "PARTIAL_EDIT" ||
     input.proposalDecision === "DIRECT_INPUT";
 
+  const serviceFlowSubIntent = normalizeServiceFlowSubIntent(input.routerServiceFlowSubIntent);
+
+  if (treatAsServiceFlow && serviceFlowSubIntent === "actor_definition") {
+    return {
+      stageIntent: "service_flow",
+      serviceFlowSubIntent: "actor_definition",
+      shouldRunServiceFlowAnalyze: true,
+      shouldRunAdviceToFlowApply: false,
+      shouldRunFlowReview: false,
+      shouldRunActorDefinition: true,
+      shouldRunFlowStepDefinition: false,
+      shouldBlockApplyProposal: true,
+      applyBlockReason: "actor_definition_is_not_apply",
+      shouldRouteToScreenPlanning: false,
+      shouldRouteToFeaturePlanning: false,
+      shouldRouteToGenerationPrepare: false,
+      reason: "service_flow_actor_definition",
+    };
+  }
+
+  if (treatAsServiceFlow && serviceFlowSubIntent === "flow_step_definition") {
+    return {
+      stageIntent: "service_flow",
+      serviceFlowSubIntent: "flow_step_definition",
+      shouldRunServiceFlowAnalyze: true,
+      shouldRunAdviceToFlowApply: false,
+      shouldRunFlowReview: false,
+      shouldRunActorDefinition: false,
+      shouldRunFlowStepDefinition: true,
+      shouldBlockApplyProposal: true,
+      applyBlockReason: "flow_step_definition_is_not_apply",
+      shouldRouteToScreenPlanning: false,
+      shouldRouteToFeaturePlanning: false,
+      shouldRouteToGenerationPrepare: false,
+      reason: "service_flow_step_definition",
+    };
+  }
+
+  if (treatAsServiceFlow && serviceFlowSubIntent === "flow_draft") {
+    const canAdviceToFlow =
+      !hasMinDraft &&
+      (recentMessagesHasPriorAdviceResponse(recent) ||
+        input.proposalDecision === "APPLY" ||
+        input.directQuickActionId === "APPLY_PROPOSAL");
+    return {
+      stageIntent: "service_flow",
+      serviceFlowSubIntent: "flow_draft",
+      shouldRunServiceFlowAnalyze: true,
+      shouldRunAdviceToFlowApply: canAdviceToFlow,
+      shouldRunFlowReview: false,
+      shouldRunActorDefinition: false,
+      shouldRunFlowStepDefinition: false,
+      shouldBlockApplyProposal: !hasMinDraft,
+      applyBlockReason: hasMinDraft ? null : "flow_draft_is_not_apply",
+      shouldRouteToScreenPlanning: false,
+      shouldRouteToFeaturePlanning: false,
+      shouldRouteToGenerationPrepare: false,
+      reason: canAdviceToFlow ? "service_flow_flow_draft_advice_apply" : "service_flow_flow_draft",
+    };
+  }
+
   return {
     stageIntent: treatAsServiceFlow ? "service_flow" : "general_advice",
+    serviceFlowSubIntent: treatAsServiceFlow ? serviceFlowSubIntent : undefined,
     shouldRunServiceFlowAnalyze: treatAsServiceFlow || executionIntent === "ask_advice",
     shouldRunAdviceToFlowApply: false,
     shouldRunFlowReview: false,

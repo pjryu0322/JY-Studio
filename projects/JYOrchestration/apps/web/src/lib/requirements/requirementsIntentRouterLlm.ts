@@ -11,6 +11,10 @@ import {
   type ProjectSingleChatStageIntent,
 } from "@/lib/requirements/singleChatStageRouter";
 import {
+  normalizeServiceFlowSubIntent,
+  type ServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
+import {
   actionIdsForLlmIntentRouter,
   normalizeActionInvocationStrength,
   normalizeExecutionIntent,
@@ -64,8 +68,17 @@ function buildIntentRouterSystemPrompt(): string {
     "- feature_planning: features, MVP scope, function list.",
     "- generation_prepare: generate/build/prepare system or prototype after planning.",
     "- general_advice: general planning advice only.",
+    "When stageIntent=service_flow, also classify serviceFlowSubIntent:",
+    "- actor_definition: define actors/participants/roles — NOT APPLY_PROPOSAL.",
+    "- flow_step_definition: define process steps/phases — create steps, not apply unless reviewable proposal exists.",
+    "- flow_draft: draft/create service flow from discussion.",
+    "- flow_review: review current flow.",
+    "- flow_apply: explicitly apply/accept reviewable proposal.",
+    "- flow_edit: modify part of existing flow.",
+    "- general_service_flow: general service-flow advice.",
+    "Do NOT return APPLY_PROPOSAL for actor_definition, flow_step_definition, or flow_draft unless user explicitly accepts an existing reviewable proposal.",
     "Schema:",
-    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","stageIntent":"service_flow|flow_review|screen_planning|feature_planning|generation_prepare|general_advice","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
+    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","stageIntent":"service_flow|flow_review|screen_planning|feature_planning|generation_prepare|general_advice","serviceFlowSubIntent":"actor_definition|flow_step_definition|flow_draft|flow_review|flow_apply|flow_edit|general_service_flow","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
   ].join("\n");
 }
 
@@ -100,6 +113,14 @@ function buildIntentRouterUserPayload(input: RequirementsIntentRouterInput): str
     null,
     0,
   );
+}
+
+/** @internal — unit tests */
+export function parseLlmIntentJsonForTest(
+  text: string,
+  pickable: readonly QuickActionId[] = [],
+): IntentRoutingResult | null {
+  return parseLlmIntentJson(text, pickable);
 }
 
 function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): IntentRoutingResult | null {
@@ -141,6 +162,10 @@ function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): I
 
   const stageIntentRaw = typeof o.stageIntent === "string" ? o.stageIntent : undefined;
   const stageIntent: ProjectSingleChatStageIntent = normalizeProjectSingleChatStageIntent(stageIntentRaw);
+  const serviceFlowSubIntentRaw =
+    typeof o.serviceFlowSubIntent === "string" ? o.serviceFlowSubIntent : undefined;
+  const serviceFlowSubIntent: ServiceFlowSubIntent =
+    normalizeServiceFlowSubIntent(serviceFlowSubIntentRaw);
 
   return {
     intentType: resolvedIntentType,
@@ -157,6 +182,7 @@ function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): I
       typeof o.actionInvocationStrength === "string" ? o.actionInvocationStrength : undefined,
     ),
     stageIntent,
+    serviceFlowSubIntent,
   };
 }
 

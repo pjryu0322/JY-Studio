@@ -11,6 +11,7 @@ import type { ArtifactHubOrchestrationState } from "@/lib/requirements/requireme
 import type { OrchestrationConversationMemory } from "@/lib/requirements/requirementsConversationMemory";
 import type { ConversationFocusWire } from "@/lib/requirements/requirementsIntentOrchestrationWire";
 import type { ProjectSingleChatStageIntent } from "@/lib/requirements/singleChatStageRouter";
+import type { ServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
 
 export type IntentType =
   | "orchestration_action"
@@ -88,6 +89,8 @@ export type IntentRoutingResult = Readonly<{
   readonly actionInvocationStrength?: ActionInvocationStrength;
   /** LLM: Project SingleChat 단계 의도 (service-flow / screen / feature / generation) */
   readonly stageIntent?: ProjectSingleChatStageIntent;
+  /** LLM: stageIntent=service_flow일 때 하위 의도 */
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent;
 }>;
 
 export type RequirementsIntentRouterInput = Readonly<{

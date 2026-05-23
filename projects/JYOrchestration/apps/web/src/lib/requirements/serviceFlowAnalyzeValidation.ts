@@ -11,6 +11,7 @@ import {
   isAdviceToFlowApplyMode,
   isFutureOnlyAssistantMessage,
 } from "@/lib/requirements/serviceFlowAdviceApplyMode";
+import { getServiceFlowSubIntentFromPolicy } from "@/lib/requirements/serviceFlowSubIntent";
 import {
   isServiceFlowAdviceMode,
   isWeakAdviceAssistantMessage,
@@ -31,7 +32,10 @@ export type ServiceFlowAnalyzeQualityIssueCode =
   | "multi_question_cta"
   | "readiness_score_zero_on_proposal"
   | "missing_quick_replies_on_proposal"
-  | "assistant_claims_flow_without_steps";
+  | "assistant_claims_flow_without_steps"
+  | "actor_definition_missing_actors"
+  | "actor_definition_not_reflected_in_message"
+  | "flow_step_definition_missing_steps";
 
 export type ServiceFlowAnalyzeParsed = Readonly<{
   assistantMessage: string;
@@ -252,6 +256,32 @@ export function validateServiceFlowAnalyzeResponse(input: {
     issues.push("assistant_claims_flow_without_steps");
   }
 
+  const subIntent = getServiceFlowSubIntentFromPolicy(input.responsePolicy);
+  const actorNames = actors.map((a) => a.name).filter(Boolean);
+
+  if (
+    subIntent === "actor_definition" ||
+    subIntent === "flow_step_definition" ||
+    subIntent === "flow_draft"
+  ) {
+    if (isFutureOnlyAssistantMessage(assistant)) {
+      issues.push("assistant_future_only_no_flow");
+    }
+  } else if (isFutureOnlyAssistantMessage(assistant) && steps.length < 3 && actors.length < 2) {
+    issues.push("assistant_future_only_no_flow");
+  }
+
+  if (subIntent === "actor_definition") {
+    if (actors.length < 2) issues.push("actor_definition_missing_actors");
+    if (actorNames.length >= 2 && !flowNamesReflectedInMessage(actorNames, assistant, 2)) {
+      issues.push("actor_definition_not_reflected_in_message");
+    }
+  }
+
+  if (subIntent === "flow_step_definition" || subIntent === "flow_draft") {
+    if (steps.length < 3) issues.push("flow_step_definition_missing_steps");
+  }
+
   if (proposalBootstrap) {
     if (actors.length < 2) issues.push("insufficient_flow_actors");
     if (steps.length < 3) issues.push("insufficient_flow_steps");
@@ -259,7 +289,6 @@ export function validateServiceFlowAnalyzeResponse(input: {
     if (!parsed.quickReplies?.length) issues.push("missing_quick_replies_on_proposal");
     if (parsed.readiness.score <= 0) issues.push("readiness_score_zero_on_proposal");
 
-    const actorNames = actors.map((a) => a.name).filter(Boolean);
     const stepTitles = steps.map((s) => s.title).filter(Boolean);
     if (actorNames.length >= 2 && !flowNamesReflectedInMessage(actorNames, assistant, 2)) {
       issues.push("flow_actor_names_not_in_message");

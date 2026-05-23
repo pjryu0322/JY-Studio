@@ -36,14 +36,17 @@ export function formatProjectSingleChatStageRoutingTrace(input: {
   readonly source?: ProjectSingleChatStageRoutingSource;
   readonly directCtaId?: string | null;
   readonly routerStageIntent?: string | null;
+  readonly routerServiceFlowSubIntent?: string | null;
 }): string {
   const route = input.route;
   const lines = [
     "[projectSingleChatStageRouter]",
     `stageIntent=${route?.stageIntent ?? ""}`,
+    `serviceFlowSubIntent=${route?.serviceFlowSubIntent ?? input.routerServiceFlowSubIntent ?? ""}`,
     `source=${input.source ?? "fallback"}`,
     `directCtaId=${String(input.directCtaId ?? "").trim()}`,
     `routerStageIntent=${String(input.routerStageIntent ?? "").trim()}`,
+    `routerServiceFlowSubIntent=${String(input.routerServiceFlowSubIntent ?? "").trim()}`,
     `shouldRunServiceFlowAnalyze=${String(route?.shouldRunServiceFlowAnalyze ?? false)}`,
     `shouldRunAdviceToFlowApply=${String(route?.shouldRunAdviceToFlowApply ?? false)}`,
     `shouldRunFlowReview=${String(route?.shouldRunFlowReview ?? false)}`,

@@ -97,6 +97,12 @@ import {
   formatProjectSingleChatStageRoutingTrace,
   inferProjectSingleChatStageRoutingSource,
 } from "@/lib/requirements/singleChatStageTrace";
+import {
+  formatServiceFlowSubIntentGuardTrace,
+  normalizeServiceFlowSubIntent,
+  shouldBlockApplyProposalForServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
+import { serviceFlowHasMinimumDraftForApply } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import type { ServiceFlowMessageSendSource } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 import {
   buildRequirementsAgentMetadata,
@@ -179,10 +185,58 @@ export function buildProjectSingleChatStageRoutingForDispatch(input: {
     routerIntentType: input.intent.intentType,
     routerExecutionIntent: input.intent.executionIntent,
     routerStageIntent: input.intent.stageIntent,
+    routerServiceFlowSubIntent: input.intent.serviceFlowSubIntent,
     directQuickActionId: input.directQuickActionId,
     directCtaId: ctaId,
     recentMessages: input.recentMessages,
   });
+}
+
+function applyServiceFlowSubIntentGuard(input: {
+  readonly intent: IntentRoutingResult;
+  readonly guard: GuardResult;
+  readonly effectiveActionId: QuickActionId | null;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
+}): {
+  readonly effectiveActionId: QuickActionId | null;
+  readonly guard: GuardResult;
+  readonly applyGuardTrace: string;
+} {
+  const subIntent = normalizeServiceFlowSubIntent(input.intent.serviceFlowSubIntent);
+  const applyCheck = shouldBlockApplyProposalForServiceFlowSubIntent({
+    suggestedActionId: input.intent.suggestedActionId ?? input.effectiveActionId,
+    serviceFlowSubIntent: subIntent,
+    currentFlow: input.currentFlow,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: input.directCtaId,
+  });
+
+  if (!applyCheck.blocked) {
+    return { effectiveActionId: input.effectiveActionId, guard: input.guard, applyGuardTrace: "" };
+  }
+
+  const reviewable = serviceFlowHasMinimumDraftForApply(input.currentFlow);
+  const trace = formatServiceFlowSubIntentGuardTrace({
+    suggested: input.intent.suggestedActionId,
+    serviceFlowSubIntent: subIntent,
+    reviewable,
+    blocked: true,
+    downgradedTo: "DIRECT_INPUT",
+    reason: applyCheck.reason,
+  });
+
+  return {
+    effectiveActionId: "DIRECT_INPUT",
+    guard: {
+      ...input.guard,
+      allowed: true,
+      effectiveActionId: "DIRECT_INPUT",
+      warning: applyCheck.reason ?? input.guard.warning,
+    },
+    applyGuardTrace: trace,
+  };
 }
 
 /** Intent Router가 실행 액션을 정하지 못했지만, 자유 입력 기획·설명 요청은 service-flow analyze로 처리한다. */
@@ -452,11 +506,22 @@ function finalizeDispatchResult(input: {
   readonly projectId?: string;
 }): RequirementsIntentDispatchResult {
   const suggested = input.intent.suggestedActionId;
-  const effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  let effectiveId = resolveGuardedEffectiveActionId(suggested, input.guard);
+  let guard = input.guard;
+  const subIntentGuard = applyServiceFlowSubIntentGuard({
+    intent: input.intent,
+    guard,
+    effectiveActionId: effectiveId,
+    currentFlow: input.routingState?.serviceFlowV1 ?? null,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: input.directCtaId,
+  });
+  effectiveId = subIntentGuard.effectiveActionId;
+  guard = subIntentGuard.guard;
   const executionScope = conversationScopeFromProjectId(input.projectId);
   const serviceFlowResponsePolicy = buildServiceFlowResponsePolicyFromDispatch({
     intent: input.intent,
-    guard: input.guard,
+    guard,
     effectiveActionId: effectiveId,
     directQuickActionId: input.directQuickActionId,
     executionScope,
@@ -508,6 +573,7 @@ function finalizeDispatchResult(input: {
     source: stageRoutingSource,
     directCtaId: resolvedCtaId,
     routerStageIntent: input.intent.stageIntent,
+    routerServiceFlowSubIntent: input.intent.serviceFlowSubIntent,
   });
   const stageExtras = { stageRouting } as const;
   const artifactHub = input.routingState
@@ -540,7 +606,7 @@ function finalizeDispatchResult(input: {
   const proactiveLabel = prioritized.primary?.reason ?? proactive[0]?.reason;
   const humanExplainability = buildOrchestrationHumanExplainability({
     intent: input.intent,
-    guard: input.guard,
+    guard,
   });
   const focusLabel = input.routingState
     ? (() => {
@@ -558,7 +624,7 @@ function finalizeDispatchResult(input: {
       buildIntentOrchestrationPatchAfterDispatch({
         prev: input.routingState.requirementsIntentOrchestrationV1,
         intent: input.intent,
-        guard: input.guard,
+        guard,
         effectiveActionId: effectiveId,
         userMessage: input.userMessage,
         recentMessageLines: input.recentMessageLines,
@@ -567,7 +633,7 @@ function finalizeDispatchResult(input: {
       })
     : undefined;
 
-  const rawTimeline = intentRouterTimelinePayload(input.intent, input.guard, {
+  const rawTimeline = intentRouterTimelinePayload(input.intent, guard, {
     availableActionIds: input.ctx.availableActionIds,
     proactiveRecommendation: proactiveLabel,
     activeFocus: focusLabel,
@@ -585,6 +651,7 @@ function finalizeDispatchResult(input: {
     orchPatch?.lastReplaySnapshot ? replaySnapshotTimelineDetail(orchPatch.lastReplaySnapshot) : "",
     formatAgentMetadataForTimeline(agentRuntimeMetadata),
     stageRoutingTrace,
+    subIntentGuard.applyGuardTrace,
   ].filter(Boolean);
   const timelineDetail = formatOrchestrationTimelineResponse({
     group: orchestrationTimelineGroupForAction("intentRouterGuard"),
@@ -593,14 +660,14 @@ function finalizeDispatchResult(input: {
   });
 
   if (!effectiveId) {
-    const fallbackIds = input.guard.fallbackActionIds ?? [];
+    const fallbackIds = guard.fallbackActionIds ?? [];
     const fallbackQuickActions = fallbackIds
       .map((id) => quickActionFromDefinition(getQuickActionDefinition(id)))
       .filter((a) => input.ctx.availableActionIds.includes(a.id));
-    const parts = [input.guard.reason, input.guard.warning, input.intent.clarificationQuestion].filter(Boolean);
+    const parts = [guard.reason, guard.warning, input.intent.clarificationQuestion].filter(Boolean);
     return {
       intent: input.intent,
-      guard: input.guard,
+      guard,
       effectiveActionId: null,
       effectiveQuickAction: null,
       timelineDetail,
@@ -641,11 +708,11 @@ function finalizeDispatchResult(input: {
   );
   return {
     intent: input.intent,
-    guard: input.guard,
+    guard,
     effectiveActionId: effectiveId,
     effectiveQuickAction,
     timelineDetail,
-    ...(input.guard.warning ? { userFacingMessage: input.guard.warning } : {}),
+    ...(guard.warning ? { userFacingMessage: guard.warning } : {}),
     ...(orchPatch ? { intentOrchestrationPatch: orchPatch } : {}),
     proactiveRecommendations: prioritized.primary ? [prioritized.primary.reason] : proactive.map((p) => p.reason),
     secondaryRecommendations: prioritized.secondary.map((r) => r.reason),

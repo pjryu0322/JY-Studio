@@ -53,6 +53,12 @@ import {
   flowForServiceFlowAnalyzePrompt,
   isServiceFlowAdviceMode,
 } from "@/lib/requirements/serviceFlowAdviceMode";
+import {
+  buildServiceFlowActorDefinitionSystemPromptBlock,
+  buildServiceFlowStepDefinitionSystemPromptBlock,
+  buildServiceFlowSubIntentRegenerationUserPayload,
+  getServiceFlowSubIntentFromPolicy,
+} from "@/lib/requirements/serviceFlowSubIntent";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
@@ -1949,6 +1955,10 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   const nowIso = new Date().toISOString();
   const adviceToFlowApplyMode = isAdviceToFlowApplyMode(input.responsePolicy);
   const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
+  const serviceFlowSubIntent = getServiceFlowSubIntentFromPolicy(input.responsePolicy);
+  const actorDefinitionMode = serviceFlowSubIntent === "actor_definition";
+  const flowStepDefinitionMode =
+    serviceFlowSubIntent === "flow_step_definition" || serviceFlowSubIntent === "flow_draft";
   const flowForPrompt = flowForServiceFlowAnalyzePrompt(input.currentFlow, input.responsePolicy);
   const flowJson = JSON.stringify(flowForPrompt ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
   const recent = safeText(input.recentMessages, 18_000);
@@ -2006,6 +2016,35 @@ ${buildServiceFlowAdviceSystemPromptBlock()}
 
 의도(intent): show_summary|delegate_to_ai|unclear
 Readiness: currentFlow 기준으로 score만 반영(0~100).`
+    : actorDefinitionMode
+    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowActorDefinitionSystemPromptBlock()}
+
+목표:
+- updatedFlow.actors를 최소 2개 이상 생성한다.
+- assistantMessage에 액터별 역할·책임을 번호/불릿으로 제시한다.
+- steps는 비워도 되나, 미래형 선언만 하지 않는다.
+
+금지:
+- APPLY_PROPOSAL·대안 Viewer·"정의해 보겠습니다"만 말하기
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): add_actor|update_actor|show_summary|unclear`
+    : flowStepDefinitionMode
+    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowStepDefinitionSystemPromptBlock()}
+
+목표:
+- updatedFlow.steps를 최소 3개 이상 생성하고 primaryActorId를 actors에 연결한다.
+- assistantMessage에 실제 단계 목록을 표시한다.
+
+금지:
+- APPLY_PROPOSAL·대안 Viewer·미래형 선언만
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): add_step|update_step|show_summary|unclear`
     : `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
 사용자에게 보이는 톤은 **AI 기획자(코디네이터)** — 질문 위주 인터뷰어가 아닙니다.
 
@@ -2198,11 +2237,17 @@ ${input.userMessage.trim()}
             issues: lastQualityIssues,
             rejectedAssistantPreview: attempt.rejected.assistantMessage,
           })
-        : buildServiceFlowProposalRegenerationUserPayload({
-          issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
-          rejectedAssistantPreview: attempt.rejected.assistantMessage,
-          rejectedNextQuestion: attempt.rejected.nextQuestion,
-        });
+        : serviceFlowSubIntent && serviceFlowSubIntent !== "general_service_flow"
+          ? buildServiceFlowSubIntentRegenerationUserPayload({
+              subIntent: serviceFlowSubIntent,
+              issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+              rejectedAssistantPreview: attempt.rejected.assistantMessage,
+            })
+          : buildServiceFlowProposalRegenerationUserPayload({
+              issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+              rejectedAssistantPreview: attempt.rejected.assistantMessage,
+              rejectedNextQuestion: attempt.rejected.nextQuestion,
+            });
     promptTextSf = `${promptTextSf}\n\n--- ${regenerationTracePrefix}_regeneration_${qualityRetryCount} ---\n${regenUser}`;
 
     const regen = await callModel([

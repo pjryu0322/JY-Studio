@@ -107,6 +107,23 @@ describe("singleChatStageRouter", () => {
   it("normalizes unknown stage intent to general_advice", () => {
     expect(normalizeProjectSingleChatStageIntent("unknown_stage")).toBe("general_advice");
   });
+
+  it("routes actor definition inside service flow without apply", () => {
+    const result = routeProjectSingleChatStage({
+      executionScope: "project_single_chat",
+      currentStage: "service_flow",
+      latestUserMessage: "액터부터 정의해줘",
+      routerStageIntent: "service_flow",
+      routerServiceFlowSubIntent: "actor_definition",
+      effectiveActionId: "DIRECT_INPUT",
+      currentFlow: createSampleServiceFlow({ steps: [], actors: [] }),
+    });
+
+    expect(result.serviceFlowSubIntent).toBe("actor_definition");
+    expect(result.shouldRunActorDefinition).toBe(true);
+    expect(result.shouldRunServiceFlowAnalyze).toBe(true);
+    expect(result.shouldBlockApplyProposal).toBe(true);
+  });
 });
 
 describe("screenPlanningResponse (smoke)", () => {

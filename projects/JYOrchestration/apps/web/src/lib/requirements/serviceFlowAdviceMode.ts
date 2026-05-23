@@ -21,11 +21,16 @@ import {
 } from "@/lib/requirements/requirementsIntentRouterTypes";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import {
+  normalizeServiceFlowSubIntent,
+  type ServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
 
 export type ServiceFlowResponseMode = "flow_update" | "advice" | "advice_to_flow_apply";
 
 export type ServiceFlowResponsePolicy = Readonly<{
   readonly mode: ServiceFlowResponseMode;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent;
   readonly strongActionGuarded?: boolean;
   readonly blockedActionId?: QuickActionId | null;
   readonly downgradedTo?: QuickActionId | null;
@@ -101,12 +106,17 @@ export function buildServiceFlowResponsePolicyFromDispatch(input: {
     strongActionGuarded,
   });
 
+  const subIntent = normalizeServiceFlowSubIntent(input.intent.serviceFlowSubIntent);
+  const subIntentExtra =
+    subIntent !== "general_service_flow" ? { serviceFlowSubIntent: subIntent } : {};
+
   if (!useAdvice) {
-    return { mode: "flow_update" };
+    return { mode: "flow_update", ...subIntentExtra };
   }
 
   return {
     mode: "advice",
+    ...subIntentExtra,
     strongActionGuarded,
     blockedActionId: strongActionGuarded ? suggested : null,
     downgradedTo: input.effectiveActionId,
