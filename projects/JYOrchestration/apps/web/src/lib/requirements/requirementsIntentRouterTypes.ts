@@ -19,6 +19,35 @@ export type IntentType =
   | "question"
   | "unknown";
 
+export type ExecutionIntent =
+  | "explicit_execute"
+  | "ask_advice"
+  | "ask_explain"
+  | "ask_compare"
+  | "ambiguous";
+
+export type ActionInvocationStrength = "explicit" | "implicit" | "weak";
+
+export function normalizeExecutionIntent(raw?: string | null): ExecutionIntent {
+  const v = String(raw ?? "").trim();
+  if (
+    v === "explicit_execute" ||
+    v === "ask_advice" ||
+    v === "ask_explain" ||
+    v === "ask_compare" ||
+    v === "ambiguous"
+  ) {
+    return v;
+  }
+  return "ambiguous";
+}
+
+export function normalizeActionInvocationStrength(raw?: string | null): ActionInvocationStrength {
+  const v = String(raw ?? "").trim();
+  if (v === "explicit" || v === "implicit" || v === "weak") return v;
+  return "weak";
+}
+
 export type IntentRouterMode =
   | "direct"
   | "deterministic"
@@ -52,6 +81,10 @@ export type IntentRoutingResult = Readonly<{
     readonly stepIds?: readonly string[];
     readonly actorIds?: readonly string[];
   }>;
+  /** LLM: 사용자가 실행을 명시했는지 vs 조언/설명/비교 요청인지 */
+  readonly executionIntent?: ExecutionIntent;
+  /** LLM: strong action 호출 강도 — explicit일 때만 자유 입력에서 strong action 실행 */
+  readonly actionInvocationStrength?: ActionInvocationStrength;
 }>;
 
 export type RequirementsIntentRouterInput = Readonly<{

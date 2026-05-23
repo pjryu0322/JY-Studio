@@ -8,6 +8,8 @@ import { isQuickActionId, type QuickActionId } from "@/lib/requirements/requirem
 import { getQuickActionCategory } from "@/lib/requirements/requirementsQuickActionPolicy";
 import {
   actionIdsForLlmIntentRouter,
+  normalizeActionInvocationStrength,
+  normalizeExecutionIntent,
   type IntentRoutingResult,
   type IntentType,
   type RequirementsIntentRouterInput,
@@ -45,8 +47,14 @@ function buildIntentRouterSystemPrompt(): string {
     "For document/PDF/markdown/export requests, prefer OPEN_ARTIFACT_HUB over document generation actions.",
     "If uncertain, set suggestedActionId=null, intentType=unknown, and provide clarificationQuestion in Korean.",
     "confidence must be a number between 0 and 1.",
+    "Classify executionIntent: explicit_execute | ask_advice | ask_explain | ask_compare | ambiguous.",
+    "Classify actionInvocationStrength: explicit | implicit | weak.",
+    "GENERATE_ALTERNATIVE only when the user explicitly asks for another alternative, alternative comparison, A/B comparison, or a different option from the current proposal.",
+    "If the user asks to propose a procedure, review process, approval process, or planning content, use ask_advice — do not force GENERATE_ALTERNATIVE.",
+    "If the user asks to add or reflect a step into the flow, route to flow update / direct input — not alternative generation.",
+    "Strong execution actions (GENERATE_ALTERNATIVE, APPLY_PROPOSAL, APPROVE_FLOW, NEXT_STAGE) require actionInvocationStrength=explicit for free-text user messages.",
     "Schema:",
-    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
+    '{"intentType":"orchestration_action|artifact_action|view_action|edit_request|question|unknown","suggestedActionId":string|null,"confidence":number,"reason":string,"clarificationQuestion":string,"executionIntent":"explicit_execute|ask_advice|ask_explain|ask_compare|ambiguous","actionInvocationStrength":"explicit|implicit|weak","extractedTargets":{"featureIds":[],"stepIds":[],"actorIds":[]}}',
   ].join("\n");
 }
 
@@ -128,6 +136,12 @@ function parseLlmIntentJson(text: string, pickable: readonly QuickActionId[]): I
     clarificationQuestion,
     routerMode: "llm",
     extractedTargets,
+    executionIntent: normalizeExecutionIntent(
+      typeof o.executionIntent === "string" ? o.executionIntent : undefined,
+    ),
+    actionInvocationStrength: normalizeActionInvocationStrength(
+      typeof o.actionInvocationStrength === "string" ? o.actionInvocationStrength : undefined,
+    ),
   };
 }
 

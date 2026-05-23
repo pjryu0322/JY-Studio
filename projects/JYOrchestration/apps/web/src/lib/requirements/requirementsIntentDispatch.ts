@@ -28,6 +28,7 @@ import type {
 } from "@/lib/requirements/requirementsStateJson";
 import { resolveServiceFlowConversationState } from "@/lib/requirements/serviceFlowConversationState";
 import { guardRequirementsAction, type GuardResult } from "@/lib/requirements/requirementsActionGuard";
+import { mergeGuardWithStrongActionPolicy } from "@/lib/requirements/requirementsStrongActionPolicy";
 import {
   intentRouterTimelinePayload,
   isLowConfidenceIntent,
@@ -283,6 +284,39 @@ function buildIntentOrchestrationPatchAfterDispatch(input: {
   });
 }
 
+function guardRequirementsIntentAction(input: {
+  readonly intent: IntentRoutingResult;
+  readonly userMessage: string;
+  readonly directQuickActionId: QuickActionId | null;
+  readonly directQuickActionLabel?: string | null;
+  readonly ctx: RequirementsIntentDispatchContext;
+}): GuardResult {
+  const suggested = input.intent.suggestedActionId;
+  const baseGuard: GuardResult =
+    suggested ?
+      guardRequirementsAction({
+        suggestedActionId: suggested,
+        authoritativeStage: input.ctx.authoritativeStage,
+        availableActionIds: input.ctx.availableActionIds,
+        featureMetrics: input.ctx.featureMetrics,
+      })
+    : { allowed: false, reason: input.intent.clarificationQuestion ?? "요청을 이해하지 못했습니다." };
+
+  return mergeGuardWithStrongActionPolicy({
+    guard: baseGuard,
+    suggestedActionId: suggested,
+    userMessage: input.userMessage,
+    directQuickActionId: input.directQuickActionId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    intent: input.intent,
+    authoritativeStage: input.ctx.authoritativeStage,
+    availableActionIds: input.ctx.availableActionIds,
+    featureMetrics: input.ctx.featureMetrics,
+    chatVisibleActionIds: input.ctx.chatQuickActions.map((a) => a.id),
+    conversationState: input.ctx.projectionSlice.conversationState ?? null,
+  });
+}
+
 function resolveGuardedEffectiveActionId(
   suggested: QuickActionId | null,
   guard: GuardResult,
@@ -488,16 +522,13 @@ export function dispatchRequirementsUserIntent(input: {
         clarification: input.routingState?.requirementsIntentOrchestrationV1?.clarification,
       });
 
-  const suggested = intent.suggestedActionId;
-  const guard: GuardResult =
-    suggested ?
-      guardRequirementsAction({
-        suggestedActionId: suggested,
-        authoritativeStage: input.ctx.authoritativeStage,
-        availableActionIds: input.ctx.availableActionIds,
-        featureMetrics: input.ctx.featureMetrics,
-      })
-    : { allowed: false, reason: intent.clarificationQuestion ?? "요청을 이해하지 못했습니다." };
+  const guard = guardRequirementsIntentAction({
+    intent,
+    userMessage: input.userMessage,
+    directQuickActionId: directId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    ctx: input.ctx,
+  });
 
   return finalizeDispatchResult({
     intent,
@@ -571,16 +602,13 @@ export async function dispatchRequirementsUserIntentAsync(input: {
       );
   }
 
-  const guardSuggested = intent.suggestedActionId;
-  const guard: GuardResult =
-    guardSuggested ?
-      guardRequirementsAction({
-        suggestedActionId: guardSuggested,
-        authoritativeStage: input.ctx.authoritativeStage,
-        availableActionIds: input.ctx.availableActionIds,
-        featureMetrics: input.ctx.featureMetrics,
-      })
-    : { allowed: false, reason: intent.clarificationQuestion ?? "요청을 이해하지 못했습니다." };
+  const guard = guardRequirementsIntentAction({
+    intent,
+    userMessage: input.userMessage,
+    directQuickActionId: directId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    ctx: input.ctx,
+  });
 
   return finalizeDispatchResult({
     intent,

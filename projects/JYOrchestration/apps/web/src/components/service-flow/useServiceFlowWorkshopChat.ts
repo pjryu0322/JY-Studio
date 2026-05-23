@@ -14,6 +14,7 @@ import {
   dispatchRequirementsUserIntentAsync,
   fallbackQuickReplyLabels,
 } from "@/lib/requirements/requirementsIntentDispatch";
+import { shouldOpenAlternativeCanvasFromAnalyze } from "@/lib/requirements/requirementsStrongActionPolicy";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
@@ -423,7 +424,14 @@ export function useServiceFlowWorkshopChat({
           const altPayload = nextFlow?.alternativeProposalPayload ?? null;
           if (altPayload) {
             alternativePayloadRef.current = altPayload;
-            if (data.openAlternativeCanvas) setAlternativeCanvasOpen(true);
+            if (
+              shouldOpenAlternativeCanvasFromAnalyze({
+                openAlternativeCanvas: data.openAlternativeCanvas,
+                quickActionId,
+              })
+            ) {
+              setAlternativeCanvasOpen(true);
+            }
           }
           if (!nextFlow) {
             clearReplyingState();
