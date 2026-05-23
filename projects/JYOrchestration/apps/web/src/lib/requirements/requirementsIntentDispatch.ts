@@ -94,6 +94,11 @@ import {
   type ProjectSingleChatCtaId,
 } from "@/lib/requirements/singleChatStageRouter";
 import {
+  formatProjectSingleChatStageRoutingTrace,
+  inferProjectSingleChatStageRoutingSource,
+} from "@/lib/requirements/singleChatStageTrace";
+import type { ServiceFlowMessageSendSource } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
+import {
   buildRequirementsAgentMetadata,
   formatAgentMetadataForTimeline,
   type RequirementsAgentRuntimeMetadata,
@@ -135,13 +140,13 @@ function resolveDirectQuickActionIdForDispatch(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly userMessage?: string | null;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
 }): QuickActionId | null {
-  return (
-    input.directQuickActionId ??
-    resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel) ??
-    resolveQuickActionIdFromLegacyLabel(input.userMessage) ??
-    null
-  );
+  if (input.directQuickActionId) return input.directQuickActionId;
+  const fromLabel = resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel);
+  if (fromLabel) return fromLabel;
+  if (input.messageSendSource === "typed_text") return null;
+  return resolveQuickActionIdFromLegacyLabel(input.userMessage);
 }
 
 export function buildProjectSingleChatStageRoutingForDispatch(input: {
@@ -150,7 +155,9 @@ export function buildProjectSingleChatStageRoutingForDispatch(input: {
   readonly intent: IntentRoutingResult;
   readonly effectiveActionId: QuickActionId | null;
   readonly directQuickActionId?: QuickActionId | null;
+  readonly directQuickActionLabel?: string | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
   readonly serviceFlowV1?: RequirementsServiceFlowV1 | null;
   readonly recentMessages?: string;
   readonly proposalDecision?: import("@/lib/requirements/serviceFlowProposalDecision").ServiceFlowProposalDecision | null;
@@ -159,7 +166,9 @@ export function buildProjectSingleChatStageRoutingForDispatch(input: {
     input.directCtaId ??
     resolveProjectSingleChatCtaId({
       quickActionId: input.directQuickActionId,
-      userMessage: input.userMessage,
+      quickActionLabel: input.directQuickActionLabel,
+      userMessage: input.messageSendSource === "typed_text" ? null : input.userMessage,
+      allowUserMessageLegacyCtaMatch: input.messageSendSource !== "typed_text",
     });
   return routeProjectSingleChatStage({
     executionScope: conversationScopeFromProjectId(input.projectId),
@@ -435,6 +444,7 @@ function finalizeDispatchResult(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
   readonly skipLowConfidenceCheck?: boolean;
   readonly routingState?: RequirementsStateJson;
   readonly userMessage?: string;
@@ -460,15 +470,44 @@ function finalizeDispatchResult(input: {
       ?.map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
       .join("\n")
       .slice(0, 12000) ?? "";
+  const resolvedCtaId =
+    input.directCtaId ??
+    resolveProjectSingleChatCtaId({
+      quickActionId: input.directQuickActionId,
+      quickActionLabel: input.directQuickActionLabel,
+      userMessage: input.messageSendSource === "typed_text" ? null : input.userMessage,
+      allowUserMessageLegacyCtaMatch: input.messageSendSource !== "typed_text",
+    });
   const stageRouting = buildProjectSingleChatStageRoutingForDispatch({
     projectId: input.projectId,
     userMessage: input.userMessage ?? "",
     intent: input.intent,
     effectiveActionId: effectiveId,
     directQuickActionId: input.directQuickActionId,
-    directCtaId: input.directCtaId,
+    directQuickActionLabel: input.directQuickActionLabel,
+    directCtaId: resolvedCtaId,
+    messageSendSource: input.messageSendSource,
     serviceFlowV1: input.routingState?.serviceFlowV1 ?? null,
     recentMessages,
+  });
+  const usedLegacyLabel =
+    !resolvedCtaId &&
+    !input.directQuickActionId &&
+    Boolean(
+      input.directQuickActionLabel &&
+        resolveQuickActionIdFromLegacyLabel(input.directQuickActionLabel),
+    );
+  const stageRoutingSource = inferProjectSingleChatStageRoutingSource({
+    directCtaId: resolvedCtaId,
+    directQuickActionId: input.directQuickActionId,
+    routerStageIntent: input.intent.stageIntent,
+    usedLegacyLabelMatch: usedLegacyLabel,
+  });
+  const stageRoutingTrace = formatProjectSingleChatStageRoutingTrace({
+    route: stageRouting,
+    source: stageRoutingSource,
+    directCtaId: resolvedCtaId,
+    routerStageIntent: input.intent.stageIntent,
   });
   const stageExtras = { stageRouting } as const;
   const artifactHub = input.routingState
@@ -545,10 +584,11 @@ function finalizeDispatchResult(input: {
     orchPatch?.lastRuntimeMetrics ? formatRuntimeMetricsForTimeline(orchPatch.lastRuntimeMetrics) : "",
     orchPatch?.lastReplaySnapshot ? replaySnapshotTimelineDetail(orchPatch.lastReplaySnapshot) : "",
     formatAgentMetadataForTimeline(agentRuntimeMetadata),
+    stageRoutingTrace,
   ].filter(Boolean);
   const timelineDetail = formatOrchestrationTimelineResponse({
     group: orchestrationTimelineGroupForAction("intentRouterGuard"),
-    detail: [rawTimeline, ...timelineExtras].filter(Boolean).join(" "),
+    detail: [rawTimeline, ...timelineExtras].filter(Boolean).join("\n"),
     ...humanExplainability,
   });
 
@@ -622,6 +662,7 @@ export function dispatchRequirementsUserIntent(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
   readonly ctx: RequirementsIntentDispatchContext;
   readonly routingState?: RequirementsStateJson;
   readonly recentMessageLines?: readonly { readonly role: "user" | "ai"; readonly body: string }[];
@@ -630,6 +671,7 @@ export function dispatchRequirementsUserIntent(input: {
     directQuickActionId: input.directQuickActionId,
     directQuickActionLabel: input.directQuickActionLabel,
     userMessage: input.userMessage,
+    messageSendSource: input.messageSendSource,
   });
 
   const routerInput = buildRouterInput({
@@ -660,6 +702,7 @@ export function dispatchRequirementsUserIntent(input: {
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
     directCtaId: input.directCtaId,
+    messageSendSource: input.messageSendSource,
     skipLowConfidenceCheck: Boolean(directId),
     routingState: input.routingState,
     userMessage: input.userMessage,
@@ -674,6 +717,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
   readonly directQuickActionId?: QuickActionId | null;
   readonly directQuickActionLabel?: string | null;
   readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
   readonly ctx: RequirementsIntentDispatchContext;
   readonly projectId: string;
   readonly projectName?: string;
@@ -687,6 +731,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     directQuickActionId: input.directQuickActionId,
     directQuickActionLabel: input.directQuickActionLabel,
     userMessage: input.userMessage,
+    messageSendSource: input.messageSendSource,
   });
 
   const routingState =
@@ -745,6 +790,7 @@ export async function dispatchRequirementsUserIntentAsync(input: {
     directQuickActionId: directId,
     directQuickActionLabel: input.directQuickActionLabel,
     directCtaId: input.directCtaId,
+    messageSendSource: input.messageSendSource,
     skipLowConfidenceCheck: Boolean(directId),
     routingState,
     userMessage: input.userMessage,

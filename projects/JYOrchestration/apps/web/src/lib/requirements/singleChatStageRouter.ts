@@ -64,6 +64,8 @@ export function resolveProjectSingleChatCtaId(input: {
   readonly quickActionId?: QuickActionId | string | null;
   readonly quickActionLabel?: string | null;
   readonly userMessage?: string | null;
+  /** typed_text에서 userMessage exact label → CTA 매핑 (기본 false) */
+  readonly allowUserMessageLegacyCtaMatch?: boolean;
 }): ProjectSingleChatCtaId | null {
   const explicit = String(input.directCtaId ?? "").trim();
   if (explicit === "FLOW_REVIEW") return "FLOW_REVIEW";
@@ -77,12 +79,26 @@ export function resolveProjectSingleChatCtaId(input: {
   if (fromId === "EDIT_FEATURES") return "FEATURE_PLANNING";
   if (fromId === "START_FEATURE_DETAIL") return "FEATURE_PLANNING";
 
-  const label =
-    String(input.quickActionLabel ?? "").trim() || String(input.userMessage ?? "").trim();
-  const legacyId = resolveQuickActionIdFromLegacyLabel(label);
-  if (legacyId === "REVIEW_FLOW") return "FLOW_REVIEW";
-  if (legacyId === "DEFINE_SCREEN") return "SCREEN_PLANNING";
-  if (legacyId === "EDIT_FEATURES" || legacyId === "START_FEATURE_DETAIL") return "FEATURE_PLANNING";
+  const labelFromChip = String(input.quickActionLabel ?? "").trim();
+  if (labelFromChip) {
+    const legacyFromChip = resolveQuickActionIdFromLegacyLabel(labelFromChip);
+    if (legacyFromChip === "REVIEW_FLOW") return "FLOW_REVIEW";
+    if (legacyFromChip === "DEFINE_SCREEN") return "SCREEN_PLANNING";
+    if (legacyFromChip === "EDIT_FEATURES" || legacyFromChip === "START_FEATURE_DETAIL") {
+      return "FEATURE_PLANNING";
+    }
+  }
+
+  if (input.allowUserMessageLegacyCtaMatch) {
+    const legacyFromMessage = resolveQuickActionIdFromLegacyLabel(
+      String(input.userMessage ?? "").trim(),
+    );
+    if (legacyFromMessage === "REVIEW_FLOW") return "FLOW_REVIEW";
+    if (legacyFromMessage === "DEFINE_SCREEN") return "SCREEN_PLANNING";
+    if (legacyFromMessage === "EDIT_FEATURES" || legacyFromMessage === "START_FEATURE_DETAIL") {
+      return "FEATURE_PLANNING";
+    }
+  }
 
   return null;
 }

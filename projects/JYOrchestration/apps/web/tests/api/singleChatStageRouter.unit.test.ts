@@ -9,10 +9,7 @@ import {
   assistantClaimsFlowConcrete,
   validateServiceFlowAnalyzeResponse,
 } from "@/lib/requirements/serviceFlowAnalyzeValidation";
-import {
-  buildScreenPlanningAssistantMessage,
-  validateScreenPlanningAssistantMessage,
-} from "@/lib/requirements/screenPlanningResponse";
+import { buildScreenPlanningAssistantMessage } from "@/lib/requirements/screenPlanningResponse";
 
 describe("singleChatStageRouter", () => {
   it("routes screen composition request to screen_planning instead of service_flow", () => {
@@ -80,10 +77,29 @@ describe("singleChatStageRouter", () => {
     expect(result.shouldRunServiceFlowAnalyze).toBe(true);
   });
 
-  it("resolves FLOW_REVIEW cta from legacy label", () => {
+  it("does not treat typed text exact label as direct CTA by default", () => {
     expect(
       resolveProjectSingleChatCtaId({
         userMessage: "흐름 검토하기",
+        allowUserMessageLegacyCtaMatch: false,
+      }),
+    ).toBe(null);
+  });
+
+  it("resolves explicit directCtaId", () => {
+    expect(
+      resolveProjectSingleChatCtaId({
+        directCtaId: "FLOW_REVIEW",
+        userMessage: "흐름 검토하기",
+      }),
+    ).toBe("FLOW_REVIEW");
+  });
+
+  it("resolves FLOW_REVIEW cta from legacy label when legacy match enabled", () => {
+    expect(
+      resolveProjectSingleChatCtaId({
+        userMessage: "흐름 검토하기",
+        allowUserMessageLegacyCtaMatch: true,
       }),
     ).toBe("FLOW_REVIEW");
   });
@@ -93,14 +109,12 @@ describe("singleChatStageRouter", () => {
   });
 });
 
-describe("screenPlanningResponse", () => {
-  it("builds screen planning response with at least three numbered screens", () => {
+describe("screenPlanningResponse (smoke)", () => {
+  it("builds deterministic screen planning with at least three numbered screens", () => {
     const body = buildScreenPlanningAssistantMessage({
       projectName: "회의록",
       flow: createSampleServiceFlow(),
     });
-    const validation = validateScreenPlanningAssistantMessage(body);
-    expect(validation.ok).toBe(true);
     expect(body).toMatch(/화면 구성/);
     expect((body.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });

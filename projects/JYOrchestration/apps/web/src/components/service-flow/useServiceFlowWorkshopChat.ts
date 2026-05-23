@@ -17,10 +17,10 @@ import {
 } from "@/lib/requirements/requirementsIntentDispatch";
 import {
   buildGenerationPrepareReadinessMessage,
-  buildScreenPlanningAssistantMessage,
-  validateScreenPlanningAssistantMessage,
+  buildScreenPlanningResponse,
 } from "@/lib/requirements/screenPlanningResponse";
 import { resolveProjectSingleChatCtaId } from "@/lib/requirements/singleChatStageRouter";
+import type { ServiceFlowSingleChatSendOptions } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 import { mergeServiceFlowResponsePolicy, shouldOmitQuickActionForAdviceAnalyze } from "@/lib/requirements/serviceFlowAdviceMode";
 import {
   adviceToFlowApplyAnalyzeDispatchOptions,
@@ -631,7 +631,7 @@ export function useServiceFlowWorkshopChat({
       harnessFromComposer?: ServiceDesignHarnessPayload,
       overrideText?: string,
       quickAction?: ServiceFlowQuickActionDispatch | null,
-      sendOpts?: { readonly silentUserAppend?: boolean },
+      sendOpts?: ServiceFlowSingleChatSendOptions,
     ) => {
       if (workspaceMode !== "chat") return;
       const body = (overrideText ?? input).trim();
@@ -657,16 +657,21 @@ export function useServiceFlowWorkshopChat({
           role: m.role === "user" ? ("user" as const) : ("ai" as const),
           body: m.body,
         }));
+        const messageSendSource =
+          sendOpts?.source ?? (quickAction ? "quick_reply" : "typed_text");
         const directCtaId = resolveProjectSingleChatCtaId({
+          directCtaId: sendOpts?.directCtaId ?? null,
           quickActionId: quickAction?.id ?? null,
           quickActionLabel: quickAction?.label ?? null,
-          userMessage: body,
+          userMessage: messageSendSource === "typed_text" ? null : body,
+          allowUserMessageLegacyCtaMatch: messageSendSource !== "typed_text",
         });
         const routed = await dispatchRequirementsUserIntentAsync({
           userMessage: body,
           directQuickActionId: quickAction?.id ?? null,
           directQuickActionLabel: quickAction?.label ?? null,
           directCtaId: directCtaId ?? undefined,
+          messageSendSource,
           ctx: intentCtx,
           projectId,
           projectName,
@@ -699,12 +704,29 @@ export function useServiceFlowWorkshopChat({
         };
 
         if (stageRoute?.shouldRouteToScreenPlanning) {
-          const screenBody = buildScreenPlanningAssistantMessage({
+          const recentForScreen = buildWorkshopRecentMessagesTranscript(messagesRef.current ?? []);
+          const screenResult = await buildScreenPlanningResponse({
             projectName,
+            projectDescription,
             flow: flowRef.current,
+            recentMessages: recentForScreen,
+            userMessage: body,
           });
-          validateScreenPlanningAssistantMessage(screenBody);
-          await appendIntentGuardAssistantReply(screenBody, [
+          emitPromptTrace(
+            coerceRequirementsPromptTimelineEntry({
+              stage: "service-flow",
+              stageGroup: "service-planning",
+              workspaceScreenKey: "service_flow_workshop",
+              action: "screenPlanning",
+              source: "system",
+              provider: "internal",
+              createdAt: new Date().toISOString(),
+              routingDecision: screenResult.source,
+              promptText: body.slice(0, 500),
+              responseText: screenResult.promptTraceDetail,
+            }),
+          );
+          await appendIntentGuardAssistantReply(screenResult.assistantMessage, [
             "기능 범위 정리",
             "흐름 검토하기",
           ]);
@@ -1062,6 +1084,7 @@ export function useServiceFlowWorkshopChat({
       buildServiceDesignHarnessPayload("service-flow", "이 대안 적용"),
       "이 대안 적용",
       { id: "APPLY_ALTERNATIVE", label: "이 대안 적용" },
+      { source: "quick_reply" },
     );
   }, [sendMessage]);
 
@@ -1075,6 +1098,7 @@ export function useServiceFlowWorkshopChat({
       buildServiceDesignHarnessPayload("service-flow", "다른 대안 보기"),
       "다른 대안 보기",
       { id: "GENERATE_ALTERNATIVE", label: "다른 대안 다시 생성" },
+      { source: "quick_reply" },
     );
   }, [sendMessage]);
 

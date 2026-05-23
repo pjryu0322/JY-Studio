@@ -1,5 +1,6 @@
 import type { ServiceFlowQuickActionDispatch } from "@/components/service-flow/useServiceFlowWorkshopChat";
 import { quickActionDispatchFromLegacyLabel } from "@/lib/requirements/requirementsQuickActionRegistry";
+import { resolveProjectSingleChatCtaId, type ProjectSingleChatCtaId } from "@/lib/requirements/singleChatStageRouter";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
 export type InterviewSuggestionPickWire = string | ServiceFlowQuickActionDispatch;
@@ -38,9 +39,13 @@ export function shouldRouteFeaturePlanningSendViaServiceFlowAnalyze(input: {
   return Boolean(quickAction?.id);
 }
 
+export type ServiceFlowMessageSendSource = "typed_text" | "quick_reply" | "cta_button";
+
 export type ServiceFlowSingleChatSendOptions = Readonly<{
   /** feature-planning mirror already appended the user turn — skip service-flow duplicate */
   readonly silentUserAppend?: boolean;
+  readonly source?: ServiceFlowMessageSendSource;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
 }>;
 
 export async function dispatchServiceFlowSingleChatSend(params: {
@@ -49,6 +54,7 @@ export async function dispatchServiceFlowSingleChatSend(params: {
   readonly quickAction?: ServiceFlowQuickActionDispatch | null;
   readonly quickActionLabel?: string | null;
   readonly silentUserAppend?: boolean;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
   readonly sendRefCurrent:
     | ((
         payload: ServiceDesignHarnessPayload,
@@ -80,8 +86,23 @@ export async function dispatchServiceFlowSingleChatSend(params: {
     null;
   const quickAction =
     params.quickAction ?? (chip ? quickActionDispatchFromLegacyLabel(chip) : null);
+  const directCtaId =
+    params.directCtaId ??
+    (quickAction ?
+      resolveProjectSingleChatCtaId({
+        quickActionId: quickAction.id,
+        quickActionLabel: quickAction.label,
+        allowUserMessageLegacyCtaMatch: false,
+      })
+    : null);
   await fn(params.payload, text, quickAction, {
     ...(params.silentUserAppend ? { silentUserAppend: true } : {}),
+    ...(quickAction ?
+      {
+        source: "quick_reply" as const,
+        ...(directCtaId ? { directCtaId } : {}),
+      }
+    : { source: "typed_text" as const }),
   });
   params.onAfterDispatch();
   return { dispatched: true };
