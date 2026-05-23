@@ -1,6 +1,6 @@
 /**
- * Project SingleChat — block platform orchestration actions (e.g. ADD_ACTOR screen)
- * when the intent is AI-driven service actor definition (actor_definition).
+ * Project SingleChat — block platform orchestration actions (ADD_ACTOR) in general chat.
+ * Manual service-actor edit is allowed only from explicit manual_editor + CTA.
  */
 
 import type { ConversationExecutionScope } from "@/lib/conversation/conversationScopeBoundary";
@@ -27,13 +27,25 @@ export const MANUAL_SERVICE_ACTOR_ADD_CTA_ID = "MANUAL_SERVICE_ACTOR_ADD" as con
 
 export type ProjectSingleChatManualEditSource = "manual_editor";
 
-export function shouldBlockProjectOrchestrationActionForServiceFlowSubIntent(input: {
+export function isManualServiceActorAddRequest(input: {
+  readonly source?: ServiceFlowMessageSendSource | ProjectSingleChatManualEditSource | null;
+  readonly directCtaId?: string | null;
+}): boolean {
+  return (
+    input.source === "manual_editor" &&
+    String(input.directCtaId ?? "").trim() === MANUAL_SERVICE_ACTOR_ADD_CTA_ID
+  );
+}
+
+export function shouldBlockProjectSingleChatOrchestrationAction(input: {
   readonly suggestedActionId?: QuickActionId | null;
+  readonly effectiveActionId?: QuickActionId | null;
   readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
   readonly stageIntent?: ProjectSingleChatStageIntent | string | null;
   readonly executionScope?: ConversationExecutionScope | null;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directCtaId?: string | null;
+  readonly source?: ServiceFlowMessageSendSource | ProjectSingleChatManualEditSource | null;
 }): {
   readonly blocked: boolean;
   readonly reason: string | null;
@@ -43,27 +55,59 @@ export function shouldBlockProjectOrchestrationActionForServiceFlowSubIntent(inp
 
   if (!isProjectSingleChatScope(input.executionScope)) return none;
 
-  if (String(input.directCtaId ?? "").trim() === MANUAL_SERVICE_ACTOR_ADD_CTA_ID) {
+  const action =
+    input.suggestedActionId ??
+    input.effectiveActionId ??
+    input.directQuickActionId ??
+    null;
+
+  if (action !== "ADD_ACTOR") return none;
+
+  if (
+    isManualServiceActorAddRequest({
+      source: input.source,
+      directCtaId: input.directCtaId,
+    })
+  ) {
     return none;
   }
 
-  const stageIntent = normalizeProjectSingleChatStageIntent(input.stageIntent);
   const subIntent = normalizeServiceFlowSubIntent(input.serviceFlowSubIntent);
-  const suggested = input.suggestedActionId ?? input.directQuickActionId ?? null;
 
-  if (
-    stageIntent === "service_flow" &&
-    subIntent === "actor_definition" &&
-    suggested === "ADD_ACTOR"
-  ) {
-    return {
-      blocked: true,
-      reason: "actor_definition_is_not_manual_add_actor",
-      downgradedTo: "DIRECT_INPUT",
-    };
-  }
+  return {
+    blocked: true,
+    reason:
+      subIntent === "actor_definition"
+        ? "actor_definition_is_not_manual_add_actor"
+        : "project_single_chat_blocks_add_actor",
+    downgradedTo: "DIRECT_INPUT",
+  };
+}
 
-  return none;
+/** @deprecated Prefer shouldBlockProjectSingleChatOrchestrationAction — kept for call-site compatibility */
+export function shouldBlockProjectOrchestrationActionForServiceFlowSubIntent(input: {
+  readonly suggestedActionId?: QuickActionId | null;
+  readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
+  readonly stageIntent?: ProjectSingleChatStageIntent | string | null;
+  readonly executionScope?: ConversationExecutionScope | null;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directCtaId?: string | null;
+  readonly source?: ServiceFlowMessageSendSource | ProjectSingleChatManualEditSource | null;
+}): {
+  readonly blocked: boolean;
+  readonly reason: string | null;
+  readonly downgradedTo: QuickActionId | null;
+} {
+  return shouldBlockProjectSingleChatOrchestrationAction({
+    suggestedActionId: input.suggestedActionId,
+    effectiveActionId: input.suggestedActionId,
+    serviceFlowSubIntent: input.serviceFlowSubIntent,
+    stageIntent: input.stageIntent,
+    executionScope: input.executionScope,
+    directQuickActionId: input.directQuickActionId,
+    directCtaId: input.directCtaId,
+    source: input.source,
+  });
 }
 
 export function shouldEnterManualActorEditFromSingleChat(input: {
@@ -73,17 +117,14 @@ export function shouldEnterManualActorEditFromSingleChat(input: {
   readonly directCtaId?: string | null;
 }): boolean {
   if (input.effectiveActionId !== "ADD_ACTOR") return false;
-  if (normalizeServiceFlowSubIntent(input.serviceFlowSubIntent) === "actor_definition") {
-    return false;
-  }
-  return (
-    input.source === "manual_editor" &&
-    String(input.directCtaId ?? "").trim() === MANUAL_SERVICE_ACTOR_ADD_CTA_ID
-  );
+  return isManualServiceActorAddRequest(input);
 }
 
 export function formatProjectSingleChatBoundaryGuardTrace(input: {
   readonly suggested?: QuickActionId | null;
+  readonly effective?: QuickActionId | null;
+  readonly source?: ServiceFlowMessageSendSource | ProjectSingleChatManualEditSource | null;
+  readonly directCtaId?: string | null;
   readonly stageIntent?: ProjectSingleChatStageIntent | string | null;
   readonly serviceFlowSubIntent?: ServiceFlowSubIntent | null;
   readonly blocked: boolean;
@@ -93,6 +134,9 @@ export function formatProjectSingleChatBoundaryGuardTrace(input: {
   return [
     "[projectSingleChatBoundaryGuard]",
     `suggested=${input.suggested ?? ""}`,
+    `effective=${input.effective ?? ""}`,
+    `source=${input.source ?? ""}`,
+    `directCtaId=${input.directCtaId ?? ""}`,
     `stageIntent=${input.stageIntent ?? ""}`,
     `serviceFlowSubIntent=${input.serviceFlowSubIntent ?? ""}`,
     `blocked=${String(input.blocked)}`,
@@ -108,6 +152,7 @@ export function applyProjectSingleChatBoundaryGuard(input: {
   readonly executionScope: ConversationExecutionScope;
   readonly directQuickActionId?: QuickActionId | null;
   readonly directCtaId?: string | null;
+  readonly source?: ServiceFlowMessageSendSource | ProjectSingleChatManualEditSource | null;
 }): {
   readonly effectiveActionId: QuickActionId | null;
   readonly guard: GuardResult;
@@ -116,13 +161,40 @@ export function applyProjectSingleChatBoundaryGuard(input: {
 } {
   const stageIntent = normalizeProjectSingleChatStageIntent(input.intent.stageIntent);
   const subIntent = normalizeServiceFlowSubIntent(input.intent.serviceFlowSubIntent);
-  const check = shouldBlockProjectOrchestrationActionForServiceFlowSubIntent({
-    suggestedActionId: input.intent.suggestedActionId ?? input.effectiveActionId,
+  const suggested = input.intent.suggestedActionId ?? input.effectiveActionId;
+
+  if (
+    isManualServiceActorAddRequest({
+      source: input.source,
+      directCtaId: input.directCtaId,
+    })
+  ) {
+    return {
+      effectiveActionId: input.effectiveActionId,
+      guard: input.guard,
+      boundaryGuardTrace: formatProjectSingleChatBoundaryGuardTrace({
+        suggested,
+        effective: input.effectiveActionId,
+        source: input.source,
+        directCtaId: input.directCtaId,
+        stageIntent,
+        serviceFlowSubIntent: subIntent,
+        blocked: false,
+        reason: "manual_service_actor_add_allowed",
+      }),
+      intent: input.intent,
+    };
+  }
+
+  const check = shouldBlockProjectSingleChatOrchestrationAction({
+    suggestedActionId: suggested,
+    effectiveActionId: input.effectiveActionId,
     serviceFlowSubIntent: subIntent,
     stageIntent,
     executionScope: input.executionScope,
     directQuickActionId: input.directQuickActionId,
     directCtaId: input.directCtaId,
+    source: input.source,
   });
 
   if (!check.blocked || !check.downgradedTo) {
@@ -136,7 +208,10 @@ export function applyProjectSingleChatBoundaryGuard(input: {
 
   const downgradedTo = check.downgradedTo;
   const trace = formatProjectSingleChatBoundaryGuardTrace({
-    suggested: input.intent.suggestedActionId ?? input.effectiveActionId,
+    suggested,
+    effective: input.effectiveActionId,
+    source: input.source,
+    directCtaId: input.directCtaId,
     stageIntent,
     serviceFlowSubIntent: subIntent,
     blocked: true,

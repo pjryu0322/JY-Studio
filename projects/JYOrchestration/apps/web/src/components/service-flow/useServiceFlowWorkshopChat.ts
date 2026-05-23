@@ -859,8 +859,8 @@ export function useServiceFlowWorkshopChat({
           shouldEnterManualActorEditFromSingleChat({
             effectiveActionId: effectiveDispatch.id,
             serviceFlowSubIntent: stageRoute?.serviceFlowSubIntent,
-            source: sendOpts?.source ?? null,
-            directCtaId: sendOpts?.directCtaId ?? null,
+            source: sendOpts?.source ?? messageSendSource,
+            directCtaId: sendOpts?.directCtaId ?? directCtaId ?? null,
           })
         ) {
           onEnterActorEdit?.();

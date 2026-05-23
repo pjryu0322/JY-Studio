@@ -553,6 +553,7 @@ function finalizeDispatchResult(input: {
     executionScope,
     directQuickActionId: input.directQuickActionId,
     directCtaId: input.directCtaId,
+    source: input.messageSendSource,
   });
   effectiveId = boundaryGuard.effectiveActionId;
   guard = boundaryGuard.guard;
@@ -934,6 +935,43 @@ export async function dispatchRequirementsUserIntentAsync(input: {
 export function fallbackQuickReplyLabels(actions: readonly QuickAction[] | undefined): readonly string[] {
   if (!actions?.length) return [];
   return quickActionsToLabels(actions);
+}
+
+/** @internal — unit tests: run full dispatch finalize with a pre-built router intent */
+export function finalizeRequirementsIntentDispatchForTest(input: {
+  readonly userMessage: string;
+  readonly intent: IntentRoutingResult;
+  readonly projectId?: string;
+  readonly messageSendSource?: ServiceFlowMessageSendSource;
+  readonly directQuickActionId?: QuickActionId | null;
+  readonly directCtaId?: ProjectSingleChatCtaId | null;
+  readonly routingState?: RequirementsStateJson;
+}): RequirementsIntentDispatchResult {
+  const routingState = input.routingState ?? {};
+  const ctx = buildRequirementsIntentDispatchContext(routingState);
+  const directId =
+    input.directQuickActionId ??
+    (input.intent.suggestedActionId && ctx.availableActionIds.includes(input.intent.suggestedActionId) ?
+      input.intent.suggestedActionId
+    : null);
+  const guard = guardRequirementsIntentAction({
+    intent: input.intent,
+    userMessage: input.userMessage,
+    directQuickActionId: directId,
+    ctx,
+  });
+  return finalizeDispatchResult({
+    intent: input.intent,
+    guard,
+    ctx,
+    directQuickActionId: directId,
+    directCtaId: input.directCtaId ?? null,
+    messageSendSource: input.messageSendSource,
+    skipLowConfidenceCheck: true,
+    routingState,
+    userMessage: input.userMessage,
+    projectId: input.projectId ?? "project-test-1",
+  });
 }
 
 export function buildIntentRouterPromptTimelineEntry(input: {
