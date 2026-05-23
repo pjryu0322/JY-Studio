@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { parseLlmIntentJsonForTest } from "@/lib/requirements/requirementsIntentRouterLlm";
-import { shouldBlockApplyProposalForServiceFlowSubIntent } from "@/lib/requirements/serviceFlowSubIntent";
+import {
+  isServiceFlowStructuralSubIntent,
+  shouldBlockApplyProposalForServiceFlowSubIntent,
+} from "@/lib/requirements/serviceFlowSubIntent";
 import { createSampleServiceFlow } from "../orchestration/helpers/orchestrationRegressionHarness";
+
+describe("serviceFlowSubIntent — structural", () => {
+  it("identifies actor_definition as structural subIntent", () => {
+    expect(isServiceFlowStructuralSubIntent("actor_definition")).toBe(true);
+    expect(isServiceFlowStructuralSubIntent("flow_review")).toBe(false);
+    expect(isServiceFlowStructuralSubIntent("general_service_flow")).toBe(false);
+  });
+});
 
 describe("serviceFlowSubIntent — APPLY guard", () => {
   it("blocks APPLY_PROPOSAL for actor definition when flow is not reviewable", () => {

@@ -9,6 +9,7 @@ import {
   buildServiceFlowAdviceSystemPromptBlock,
   buildServiceFlowResponsePolicyFromDispatch,
   flowForServiceFlowAnalyzePrompt,
+  formatServiceFlowResponsePolicyTrace,
   isServiceFlowAdviceMode,
   isWeakAdviceAssistantMessage,
   mergeServiceFlowAdviceUserFacingMessage,
@@ -167,6 +168,79 @@ describe("serviceFlowAdviceMode", () => {
     expect(policy.mode).toBe("advice");
     expect(policy.strongActionGuarded).toBe(true);
     expect(isServiceFlowAdviceMode(policy)).toBe(true);
+  });
+
+  it("uses flow_update instead of advice for actor_definition after APPLY downgrade", () => {
+    const policy = buildServiceFlowResponsePolicyFromDispatch({
+      intent: intent({
+        intentType: "orchestration_action",
+        suggestedActionId: "APPLY_PROPOSAL",
+        executionIntent: "explicit_execute",
+        serviceFlowSubIntent: "actor_definition",
+        reason: "actor definition request misrouted as apply",
+      }),
+      guard: {
+        allowed: true,
+        effectiveActionId: "DIRECT_INPUT",
+        warning: "actor_definition_is_not_apply",
+      },
+      effectiveActionId: "DIRECT_INPUT",
+      directQuickActionId: null,
+      executionScope: "project_single_chat",
+    });
+
+    expect(policy.mode).toBe("flow_update");
+    expect(policy.serviceFlowSubIntent).toBe("actor_definition");
+    expect(policy.blockedActionId).toBe("APPLY_PROPOSAL");
+    expect(policy.downgradedTo).toBe("DIRECT_INPUT");
+  });
+
+  it("uses flow_update for flow_step_definition structural subIntent", () => {
+    const policy = buildServiceFlowResponsePolicyFromDispatch({
+      intent: intent({
+        intentType: "question",
+        suggestedActionId: "DIRECT_INPUT",
+        executionIntent: "ask_advice",
+        serviceFlowSubIntent: "flow_step_definition",
+      }),
+      guard: { allowed: true, effectiveActionId: "DIRECT_INPUT" },
+      effectiveActionId: "DIRECT_INPUT",
+      directQuickActionId: null,
+      executionScope: "project_single_chat",
+    });
+
+    expect(policy.mode).toBe("flow_update");
+    expect(policy.serviceFlowSubIntent).toBe("flow_step_definition");
+  });
+
+  it("keeps advice mode for pure advice without structural subIntent", () => {
+    const policy = buildServiceFlowResponsePolicyFromDispatch({
+      intent: intent({
+        intentType: "question",
+        suggestedActionId: "DIRECT_INPUT",
+        executionIntent: "ask_advice",
+        serviceFlowSubIntent: "general_service_flow",
+        reason: "advice request",
+      }),
+      guard: { allowed: true, effectiveActionId: "DIRECT_INPUT" },
+      effectiveActionId: "DIRECT_INPUT",
+      directQuickActionId: null,
+      executionScope: "project_single_chat",
+    });
+
+    expect(policy.mode).toBe("advice");
+  });
+
+  it("formatServiceFlowResponsePolicyTrace includes mode and subIntent", () => {
+    const trace = formatServiceFlowResponsePolicyTrace({
+      mode: "flow_update",
+      serviceFlowSubIntent: "actor_definition",
+      blockedActionId: "APPLY_PROPOSAL",
+      downgradedTo: "DIRECT_INPUT",
+    });
+    expect(trace).toContain("[serviceFlowResponsePolicy]");
+    expect(trace).toContain("mode=flow_update");
+    expect(trace).toContain("serviceFlowSubIntent=actor_definition");
   });
 
   it("dispatch integration: mock intent metadata surfaces advice mode on DIRECT_INPUT downgrade", () => {

@@ -53,6 +53,7 @@ import {
   flowForServiceFlowAnalyzePrompt,
   isServiceFlowAdviceMode,
 } from "@/lib/requirements/serviceFlowAdviceMode";
+import { resolveServiceFlowAnalyzePromptModeFromPolicy } from "@/lib/requirements/serviceFlowAnalyzePromptMode";
 import {
   buildServiceFlowActorDefinitionSystemPromptBlock,
   buildServiceFlowStepDefinitionSystemPromptBlock,
@@ -1953,12 +1954,12 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   }
   const model = resolveOpenAiModelFromEnv();
   const nowIso = new Date().toISOString();
-  const adviceToFlowApplyMode = isAdviceToFlowApplyMode(input.responsePolicy);
-  const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
+  const promptMode = resolveServiceFlowAnalyzePromptModeFromPolicy(input.responsePolicy);
+  const adviceToFlowApplyMode = promptMode === "advice_to_flow_apply";
+  const adviceMode = promptMode === "advice";
+  const actorDefinitionMode = promptMode === "actor_definition";
+  const flowStepDefinitionMode = promptMode === "flow_step_definition";
   const serviceFlowSubIntent = getServiceFlowSubIntentFromPolicy(input.responsePolicy);
-  const actorDefinitionMode = serviceFlowSubIntent === "actor_definition";
-  const flowStepDefinitionMode =
-    serviceFlowSubIntent === "flow_step_definition" || serviceFlowSubIntent === "flow_draft";
   const flowForPrompt = flowForServiceFlowAnalyzePrompt(input.currentFlow, input.responsePolicy);
   const flowJson = JSON.stringify(flowForPrompt ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
   const recent = safeText(input.recentMessages, 18_000);
@@ -1997,25 +1998,6 @@ ${buildServiceFlowAdviceToFlowApplySystemPromptBlock()}
 
 의도(intent): add_step|update_step|show_summary|unclear
 Readiness: actorsReady/stepsReady/readyForNext를 생성 결과에 맞게 true로 반영.`
-    : adviceMode
-    ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
-
-${buildServiceFlowAdviceSystemPromptBlock()}
-
-목표:
-- assistantMessage에 사용자가 요청한 절차·검토·승인·운영 방식을 **단계별로 충분히** 작성한다.
-- updatedFlow는 currentFlow를 유지하거나 최소 변경만 한다.
-- nextQuestion은 null이거나 "이 절차를 서비스 흐름에 반영할까요?" 수준 1문장만.
-- quickReplies는 0~2개(선택, 반영 요청 시에만).
-
-금지:
-- "제안합니다" 선언만 하고 구체 절차 없이 끝내기
-- "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요." 같은 flow proposal CTA
-- 대안 비교·ALTERNATIVE·Viewer 유도 문구
-- 응답은 JSON 1개만(마크다운/코드펜스 금지).
-
-의도(intent): show_summary|delegate_to_ai|unclear
-Readiness: currentFlow 기준으로 score만 반영(0~100).`
     : actorDefinitionMode
     ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
 
@@ -2045,7 +2027,26 @@ ${buildServiceFlowStepDefinitionSystemPromptBlock()}
 - 응답은 JSON 1개만(마크다운/코드펜스 금지).
 
 의도(intent): add_step|update_step|show_summary|unclear`
-    : `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
+    : adviceMode
+      ? `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **AI 기획자(코디네이터)** 입니다.
+
+${buildServiceFlowAdviceSystemPromptBlock()}
+
+목표:
+- assistantMessage에 사용자가 요청한 절차·검토·승인·운영 방식을 **단계별로 충분히** 작성한다.
+- updatedFlow는 currentFlow를 유지하거나 최소 변경만 한다.
+- nextQuestion은 null이거나 "이 절차를 서비스 흐름에 반영할까요?" 수준 1문장만.
+- quickReplies는 0~2개(선택, 반영 요청 시에만).
+
+금지:
+- "제안합니다" 선언만 하고 구체 절차 없이 끝내기
+- "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요." 같은 flow proposal CTA
+- 대안 비교·ALTERNATIVE·Viewer 유도 문구
+- 응답은 JSON 1개만(마크다운/코드펜스 금지).
+
+의도(intent): show_summary|delegate_to_ai|unclear
+Readiness: currentFlow 기준으로 score만 반영(0~100).`
+      : `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}당신은 service-flow 단계의 **내부 flow proposal contributor(analyst)** 입니다.
 사용자에게 보이는 톤은 **AI 기획자(코디네이터)** — 질문 위주 인터뷰어가 아닙니다.
 
 이 단계의 목적: 아이디어 구체화 산출물을 바탕으로 서비스 흐름(액터·단계·담당)을 **제안·검증·보정**한다.
@@ -2220,34 +2221,35 @@ ${input.userMessage.trim()}
   }
 
   const regenerationTracePrefix = serviceFlowRegenerationTracePrefix({
-    adviceMode,
+    adviceMode: promptMode === "advice",
     adviceToFlowApplyMode,
   });
 
   while (attempt && !attempt.ok && qualityRetryCount < 2) {
     qualityRetryCount += 1;
     promptTextSf = `${promptTextSf}\n\n--- ${regenerationTracePrefix}_regeneration_started ---\n${lastQualityIssues.join(", ")}`;
-    const regenUser = adviceMode
-      ? buildServiceFlowAdviceRegenerationUserPayload({
-          issues: lastQualityIssues,
-          rejectedAssistantPreview: attempt.rejected.assistantMessage,
-        })
-      : adviceToFlowApplyMode
-        ? buildServiceFlowAdviceToFlowApplyRegenerationUserPayload({
+    const regenUser =
+      promptMode === "advice"
+        ? buildServiceFlowAdviceRegenerationUserPayload({
             issues: lastQualityIssues,
             rejectedAssistantPreview: attempt.rejected.assistantMessage,
           })
-        : serviceFlowSubIntent && serviceFlowSubIntent !== "general_service_flow"
-          ? buildServiceFlowSubIntentRegenerationUserPayload({
-              subIntent: serviceFlowSubIntent,
-              issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+        : promptMode === "advice_to_flow_apply"
+          ? buildServiceFlowAdviceToFlowApplyRegenerationUserPayload({
+              issues: lastQualityIssues,
               rejectedAssistantPreview: attempt.rejected.assistantMessage,
             })
-          : buildServiceFlowProposalRegenerationUserPayload({
-              issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
-              rejectedAssistantPreview: attempt.rejected.assistantMessage,
-              rejectedNextQuestion: attempt.rejected.nextQuestion,
-            });
+          : promptMode === "actor_definition" || promptMode === "flow_step_definition"
+            ? buildServiceFlowSubIntentRegenerationUserPayload({
+                subIntent: serviceFlowSubIntent ?? "general_service_flow",
+                issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+                rejectedAssistantPreview: attempt.rejected.assistantMessage,
+              })
+            : buildServiceFlowProposalRegenerationUserPayload({
+                issues: lastQualityIssues as ServiceFlowAnalyzeQualityIssueCode[],
+                rejectedAssistantPreview: attempt.rejected.assistantMessage,
+                rejectedNextQuestion: attempt.rejected.nextQuestion,
+              });
     promptTextSf = `${promptTextSf}\n\n--- ${regenerationTracePrefix}_regeneration_${qualityRetryCount} ---\n${regenUser}`;
 
     const regen = await callModel([

@@ -32,6 +32,18 @@ export function normalizeServiceFlowSubIntent(raw?: string | null): ServiceFlowS
   return SUB_INTENTS.has(v) ? v : "general_service_flow";
 }
 
+/** actor/step/draft/edit — advice mode보다 flow_update(structural) 우선 */
+export function isServiceFlowStructuralSubIntent(
+  subIntent: ServiceFlowSubIntent | null | undefined,
+): boolean {
+  return (
+    subIntent === "actor_definition" ||
+    subIntent === "flow_step_definition" ||
+    subIntent === "flow_draft" ||
+    subIntent === "flow_edit"
+  );
+}
+
 export function getServiceFlowSubIntentFromPolicy(responsePolicy: unknown): ServiceFlowSubIntent | null {
   if (!responsePolicy || typeof responsePolicy !== "object") return null;
   const raw = (responsePolicy as { serviceFlowSubIntent?: string }).serviceFlowSubIntent;

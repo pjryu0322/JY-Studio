@@ -22,6 +22,7 @@ import {
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import {
+  isServiceFlowStructuralSubIntent,
   normalizeServiceFlowSubIntent,
   type ServiceFlowSubIntent,
 } from "@/lib/requirements/serviceFlowSubIntent";
@@ -109,19 +110,56 @@ export function buildServiceFlowResponsePolicyFromDispatch(input: {
   const subIntent = normalizeServiceFlowSubIntent(input.intent.serviceFlowSubIntent);
   const subIntentExtra =
     subIntent !== "general_service_flow" ? { serviceFlowSubIntent: subIntent } : {};
+  const structuralSubIntent = isServiceFlowStructuralSubIntent(subIntent);
+
+  const guardMeta = {
+    strongActionGuarded,
+    blockedActionId: strongActionGuarded ? suggested : null,
+    downgradedTo: input.effectiveActionId,
+  } as const;
+
+  if (structuralSubIntent) {
+    return {
+      mode: "flow_update",
+      ...subIntentExtra,
+      ...guardMeta,
+      instruction:
+        subIntent === "actor_definition"
+          ? "사용자는 액터 정의를 요청했다. advice가 아니라 actors를 구조화한다."
+          : subIntent === "flow_step_definition"
+            ? "사용자는 서비스 흐름 단계 정의를 요청했다. steps를 구조화한다."
+            : subIntent === "flow_draft"
+              ? "사용자는 서비스 흐름 초안 작성을 요청했다. actors·steps를 구조화한다."
+              : subIntent === "flow_edit"
+                ? "사용자는 기존 서비스 흐름 수정을 요청했다."
+                : undefined,
+    };
+  }
 
   if (!useAdvice) {
-    return { mode: "flow_update", ...subIntentExtra };
+    return { mode: "flow_update", ...subIntentExtra, ...guardMeta };
   }
 
   return {
     mode: "advice",
     ...subIntentExtra,
-    strongActionGuarded,
-    blockedActionId: strongActionGuarded ? suggested : null,
-    downgradedTo: input.effectiveActionId,
+    ...guardMeta,
     instruction: SERVICE_FLOW_ADVICE_INSTRUCTION,
   };
+}
+
+export function formatServiceFlowResponsePolicyTrace(
+  policy: ServiceFlowResponsePolicy,
+): string {
+  return [
+    "[serviceFlowResponsePolicy]",
+    `mode=${policy.mode}`,
+    `serviceFlowSubIntent=${policy.serviceFlowSubIntent ?? ""}`,
+    `blockedActionId=${policy.blockedActionId ?? ""}`,
+    `downgradedTo=${policy.downgradedTo ?? ""}`,
+    `strongActionGuarded=${String(policy.strongActionGuarded ?? false)}`,
+    policy.instruction ? `instruction=${policy.instruction.slice(0, 120)}` : "instruction=",
+  ].join("\n");
 }
 
 /** Advice mode prompt — alternative payload는 state에 남기되 주입만 축소 */
