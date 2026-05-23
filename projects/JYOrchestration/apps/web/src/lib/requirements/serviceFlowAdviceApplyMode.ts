@@ -8,10 +8,7 @@ import {
 } from "@/lib/conversation/conversationScopeBoundary";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import type { QuickActionId } from "@/lib/requirements/requirementsQuickActionRegistry";
-import {
-  serviceFlowHasReviewableState,
-  type ServiceFlowProposalDecision,
-} from "@/lib/requirements/serviceFlowProposalDecision";
+import type { ServiceFlowProposalDecision } from "@/lib/requirements/serviceFlowProposalDecision";
 import type { ServiceFlowResponsePolicy } from "@/lib/requirements/serviceFlowAdviceMode";
 
 export const SERVICE_FLOW_ADVICE_TO_FLOW_APPLY_INSTRUCTION =
@@ -32,18 +29,35 @@ export function buildAdviceToFlowApplyResponsePolicy(): ServiceFlowResponsePolic
   };
 }
 
+/** advice→flow apply에 필요한 최소 초안(actors·steps)이 있는지 */
+export function serviceFlowHasMinimumDraftForApply(flow: RequirementsServiceFlowV1 | null): boolean {
+  if (!flow) return false;
+  return (flow.actors?.length ?? 0) >= MIN_ADVICE_TO_FLOW_ACTORS && (flow.steps?.length ?? 0) >= MIN_ADVICE_TO_FLOW_STEPS;
+}
+
 /** recentMessages에 구조화된 AI advice 본문이 있는지 (의도 라우팅 아님, 상태 보조). */
 export function recentMessagesHasPriorAdviceResponse(recentMessages: string): boolean {
   const t = String(recentMessages ?? "");
   if (!t.trim()) return false;
   const numberedCount = (t.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length;
   const bulletCount = (t.match(/(^|\n)\s*[-•]\s+/g) ?? []).length;
-  return numberedCount >= 2 && bulletCount >= 2;
+  if (numberedCount >= 2 && bulletCount >= 2) return true;
+  if (numberedCount >= 1 && bulletCount >= 1 && t.length >= 120) return true;
+  if (numberedCount >= 1 && /(검수\s*절차|화면\s*구성|예상\s*흐름|서비스\s*흐름|반영할까)/.test(t)) return true;
+  return false;
 }
 
-function flowLacksReviewableProposal(flow: RequirementsServiceFlowV1 | null): boolean {
-  if (!flow) return true;
-  return !serviceFlowHasReviewableState(flow);
+function resolveApplyProposalDecision(input: {
+  readonly proposalDecision?: ServiceFlowProposalDecision | null;
+  readonly directQuickActionId?: QuickActionId | string | null;
+}): "APPLY" | null {
+  if (input.proposalDecision === "APPLY") return "APPLY";
+  if (String(input.directQuickActionId ?? "").trim() === "APPLY_PROPOSAL") return "APPLY";
+  return null;
+}
+
+function isExplicitApplyProposalQuickAction(directQuickActionId?: QuickActionId | string | null): boolean {
+  return String(directQuickActionId ?? "").trim() === "APPLY_PROPOSAL";
 }
 
 export function shouldUseAdviceToFlowApplyMode(input: {
@@ -52,23 +66,59 @@ export function shouldUseAdviceToFlowApplyMode(input: {
   readonly directQuickActionId?: QuickActionId | string | null;
   readonly currentFlow: RequirementsServiceFlowV1 | null;
   readonly recentMessages: string;
-  readonly latestUserMessage?: string;
 }): boolean {
   if (!isProjectSingleChatScope(input.executionScope)) return false;
-  if (String(input.directQuickActionId ?? "").trim() === "APPLY_PROPOSAL") return false;
-  if (input.proposalDecision !== "APPLY") return false;
-  if (!flowLacksReviewableProposal(input.currentFlow)) return false;
-  if (!recentMessagesHasPriorAdviceResponse(input.recentMessages)) return false;
-  return true;
+  if (resolveApplyProposalDecision(input) !== "APPLY") return false;
+  if (isExplicitApplyProposalQuickAction(input.directQuickActionId) && serviceFlowHasMinimumDraftForApply(input.currentFlow)) {
+    return false;
+  }
+  if (serviceFlowHasMinimumDraftForApply(input.currentFlow)) return false;
+  return recentMessagesHasPriorAdviceResponse(input.recentMessages);
+}
+
+/**
+ * Intent router가 APPLY_PROPOSAL을 내려도, UI 칩이 아니고 steps가 비어 있으면
+ * quickActionId를 analyze에 넘기지 않는다(서버 advice_to_flow_apply 진입 보조).
+ */
+export function shouldOmitQuickActionForAdviceToFlowApplyAnalyze(input: {
+  readonly effectiveActionId: QuickActionId;
+  readonly explicitDirectQuickActionId?: QuickActionId | null;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly recentMessages: string;
+}): boolean {
+  if (input.effectiveActionId !== "APPLY_PROPOSAL") return false;
+  if (isExplicitApplyProposalQuickAction(input.explicitDirectQuickActionId)) return false;
+  if (serviceFlowHasMinimumDraftForApply(input.currentFlow)) return false;
+  return recentMessagesHasPriorAdviceResponse(input.recentMessages);
+}
+
+/** Router APPLY_PROPOSAL → analyze 시 quickAction 생략·proposalDecision 전달 옵션 */
+export function adviceToFlowApplyAnalyzeDispatchOptions(input: {
+  readonly effectiveActionId: QuickActionId;
+  readonly explicitDirectQuickActionId?: QuickActionId | null;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly recentMessages: string;
+}): Readonly<{ readonly omitQuickAction: boolean; readonly proposalDecision?: "APPLY" }> {
+  const omitQuickAction = shouldOmitQuickActionForAdviceToFlowApplyAnalyze(input);
+  return omitQuickAction ? { omitQuickAction, proposalDecision: "APPLY" } : { omitQuickAction };
 }
 
 export function isFutureOnlyAssistantMessage(text: string): boolean {
   const t = String(text ?? "").trim();
   if (!t) return true;
   if ((t.match(/(^|\n)\s*\d+\.\s+/g) ?? []).length >= 2) return false;
-  return /(정의해\s*보겠습니다|구성해\s*보겠습니다|진행하겠습니다|초안을\s*만들겠습니다|반영하겠습니다)\s*\.?\s*$/u.test(
-    t.replace(/\n+/g, " "),
-  );
+  if (/(예상\s*액터|예상\s*흐름)/.test(t) && (t.match(/(^|\n)\s*[-•]\s+/g) ?? []).length >= 2) return false;
+  const compact = t.replace(/\n+/g, " ");
+  if (
+    /(정의해\s*보겠습니다|구성해\s*보겠습니다|진행하겠습니다|초안을\s*만들겠습니다|반영하겠습니다)\s*\.?\s*$/u.test(
+      compact,
+    )
+  ) {
+    return true;
+  }
+  if (/초안을\s*제안합니다/.test(compact) && !/(예상\s*액터|예상\s*흐름)/.test(t)) return true;
+  if (/구체화하기\s*위한\s*초안을\s*제안합니다/.test(compact)) return true;
+  return false;
 }
 
 export function buildServiceFlowAdviceToFlowApplySystemPromptBlock(): string {
@@ -88,7 +138,8 @@ export function buildServiceFlowAdviceToFlowApplySystemPromptBlock(): string {
 - nextQuestion은 null이거나 검토 CTA 1문장만(assistantMessage와 중복 금지).
 
 금지:
-- "정의해 보겠습니다"만 말하고 끝내기
+- "정의해 보겠습니다" / "초안을 제안합니다"만 말하고 끝내기
+- "다음: 이 초안을 기준으로 진행할지 선택·수정해 주세요."만 출력
 - steps 빈 배열
 - actors만 있고 steps 없음
 - advice 내용을 반복만 하고 flow 구조를 만들지 않음

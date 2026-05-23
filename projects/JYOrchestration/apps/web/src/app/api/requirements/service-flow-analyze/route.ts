@@ -137,6 +137,7 @@ function buildAnalyzeSuccessResponse(input: {
   }
 
   const adviceMode = isServiceFlowAdviceMode(input.responsePolicy);
+  const adviceToFlowApply = isAdviceToFlowApplyMode(input.responsePolicy);
   const mergedAssistant = adviceMode
     ? mergeServiceFlowAdviceUserFacingMessage(assistantMessage, nextQuestion)
     : mergeServiceFlowUserFacingMessage(assistantMessage, nextQuestion);
@@ -164,7 +165,7 @@ function buildAnalyzeSuccessResponse(input: {
     proposalDecision: input.proposalDecision,
     flowVariantMode: updatedFlow.proposalVariantMode ?? null,
   });
-  const omitSeparateNextQuestion = adviceMode || presentation.suppressVisibleMessage;
+  const omitSeparateNextQuestion = adviceMode || adviceToFlowApply || presentation.suppressVisibleMessage;
   const finalAssistant = finalizeServiceFlowAssistantForResponse({
     assistantMessage: mergedAssistant,
     nextQuestion: omitSeparateNextQuestion ? null : nextQuestion,
@@ -327,19 +328,18 @@ export async function POST(request: NextRequest) {
       proposalDecisionRaw: body.proposalDecision,
     });
 
-    const adviceToFlowApplyMode =
-      !isServiceFlowAdviceMode(responsePolicy) &&
-      shouldUseAdviceToFlowApplyMode({
+    let adviceToFlowApplyMode = isAdviceToFlowApplyMode(responsePolicy);
+    if (!adviceToFlowApplyMode && !isServiceFlowAdviceMode(responsePolicy)) {
+      adviceToFlowApplyMode = shouldUseAdviceToFlowApplyMode({
         executionScope,
         proposalDecision,
         directQuickActionId: quickActionId || null,
         currentFlow,
         recentMessages,
-        latestUserMessage: userMessage,
       });
-
-    if (adviceToFlowApplyMode) {
-      responsePolicy = buildAdviceToFlowApplyResponsePolicy();
+      if (adviceToFlowApplyMode) {
+        responsePolicy = buildAdviceToFlowApplyResponsePolicy();
+      }
     }
 
     const adviceMode = isServiceFlowAdviceMode(responsePolicy);

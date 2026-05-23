@@ -15,10 +15,8 @@ import {
   fallbackQuickReplyLabels,
   shouldFallbackToServiceFlowAnalyzeForUnresolvedIntent,
 } from "@/lib/requirements/requirementsIntentDispatch";
-import {
-  mergeServiceFlowResponsePolicy,
-  shouldOmitQuickActionForAdviceAnalyze,
-} from "@/lib/requirements/serviceFlowAdviceMode";
+import { mergeServiceFlowResponsePolicy, shouldOmitQuickActionForAdviceAnalyze } from "@/lib/requirements/serviceFlowAdviceMode";
+import { adviceToFlowApplyAnalyzeDispatchOptions } from "@/lib/requirements/serviceFlowAdviceApplyMode";
 import { shouldOpenAlternativeCanvasFromAnalyze } from "@/lib/requirements/requirementsStrongActionPolicy";
 import type { RequirementsOrchestrationContextWire } from "@/lib/requirements/requirementsOrchestrationContextWire";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -79,6 +77,17 @@ export type ServiceFlowQuickActionDispatch = Readonly<{
   readonly id: QuickActionId;
   readonly label: string;
 }>;
+
+const WORKSHOP_RECENT_MESSAGE_LIMIT = 24;
+const WORKSHOP_RECENT_MESSAGE_MAX_CHARS = 12_000;
+
+function buildWorkshopRecentMessagesTranscript(messages: readonly WorkshopMessage[]): string {
+  return messages
+    .slice(-WORKSHOP_RECENT_MESSAGE_LIMIT)
+    .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
+    .join("\n")
+    .slice(0, WORKSHOP_RECENT_MESSAGE_MAX_CHARS);
+}
 
 function resolveDecisionFromQuickActionInput(input: {
   readonly quickAction?: ServiceFlowQuickActionDispatch | null;
@@ -279,6 +288,7 @@ export function useServiceFlowWorkshopChat({
         responsePolicy?: unknown;
         quickAction?: ServiceFlowQuickActionDispatch | null;
         quickActionLabel?: string | null;
+        proposalDecision?: string;
       }
     ) => {
       if (workspaceMode !== "chat") return;
@@ -344,12 +354,7 @@ export function useServiceFlowWorkshopChat({
             messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           }
 
-          const transcript = [...(messagesRef.current ?? [])];
-          const recentMessages = transcript
-            .slice(-24)
-            .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
-            .join("\n")
-            .slice(0, 12000);
+          const recentMessages = buildWorkshopRecentMessagesTranscript(messagesRef.current ?? []);
 
           const priorScreenHandoff = takeActorFlowHandoff();
           const harness = await runServiceDesignHarnessTurn({
@@ -373,10 +378,12 @@ export function useServiceFlowWorkshopChat({
           const quickActionLabel =
             String(quickAction?.label ?? opts?.quickActionLabel ?? "").trim() || undefined;
           const quickActionId = quickAction?.id;
-          const proposalDecision = resolveDecisionFromQuickActionInput({
-            quickAction,
-            labelFallback: quickActionLabel,
-          });
+          const proposalDecision =
+            opts?.proposalDecision ??
+            resolveDecisionFromQuickActionInput({
+              quickAction,
+              labelFallback: quickActionLabel,
+            });
 
           const orchCtx = orchestrationContextRef.current;
           const result = await postServiceFlowAnalyze({
@@ -737,18 +744,27 @@ export function useServiceFlowWorkshopChat({
         ) {
           return;
         }
+        const recentForAdviceToFlow = buildWorkshopRecentMessagesTranscript(messagesRef.current ?? []);
         const omitQuickActionForAdvice = shouldOmitQuickActionForAdviceAnalyze({
           serviceFlowResponseMode: routed.serviceFlowResponseMode,
           effectiveActionId: effectiveDispatch.id,
         });
+        const adviceToFlowDispatch = adviceToFlowApplyAnalyzeDispatchOptions({
+          effectiveActionId: effectiveDispatch.id,
+          explicitDirectQuickActionId: quickAction?.id ?? null,
+          currentFlow: flowRef.current,
+          recentMessages: recentForAdviceToFlow,
+        });
+        const omitQuickAction = omitQuickActionForAdvice || adviceToFlowDispatch.omitQuickAction;
         callAnalyze(body, {
           ...analyzeOpts,
-          ...(omitQuickActionForAdvice
+          ...(omitQuickAction
             ? {}
             : {
                 quickAction: effectiveDispatch,
                 quickActionLabel: effectiveDispatch.label,
               }),
+          ...(adviceToFlowDispatch.proposalDecision ? { proposalDecision: adviceToFlowDispatch.proposalDecision } : {}),
         });
         scrollChatToBottom();
       })();
