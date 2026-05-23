@@ -7,6 +7,7 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
+import { PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE } from "@/lib/requirements/preProjectPlanningSummary";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
@@ -558,8 +559,7 @@ export function RequirementsChatPanel({
                 interviewSuggestions.length > 0 &&
                 !deliverPayload &&
                 !isErr &&
-                // 기존 인터뷰 턴뿐 아니라, 모든 AI 응답에 quick action chip을 허용한다.
-                true;
+                m.meta?.internalType !== PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE;
               const showBootstrapProposalPlain =
                 !deliverPayload &&
                 !isErr &&

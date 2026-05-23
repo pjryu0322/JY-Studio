@@ -56,6 +56,7 @@ import {
   hasPreProjectPlanningSummaryMessage,
   isProjectSeededFromPreProjectChat,
   PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+  shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry,
 } from "@/lib/requirements/preProjectPlanningSummary";
 import {
   emptyProblemInterviewState,
@@ -1220,6 +1221,9 @@ export function RequirementsWorkspace({
     if (loadedConversationProjectId !== pid) return;
     if (onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
+    const workspaceState = parseRequirementsStateJson(project.requirementsStateJson);
+    const seededFromPreProject = isProjectSeededFromPreProjectChat(workspaceState, project);
+
     if (hasPreProjectPlanningSummaryMessage(existing)) {
       setOnboardingAppliedKey(onboardingKey);
       return;
@@ -1263,9 +1267,11 @@ export function RequirementsWorkspace({
               ...(params.source === "fallback" && params.fallbackReason
                 ? { fallbackReason: params.fallbackReason }
                 : {}),
-              ...(params.interviewSuggestions?.length
-                ? { interviewSuggestions: [...params.interviewSuggestions] }
-                : {}),
+              ...(params.bootstrapInternalType === PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE
+                ? {}
+                : params.interviewSuggestions?.length
+                  ? { interviewSuggestions: [...params.interviewSuggestions] }
+                  : {}),
               ...(params.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
               ...(params.promptTrace
                 ? (() => {
@@ -1313,6 +1319,35 @@ export function RequirementsWorkspace({
           return false;
         }
       };
+
+      if (
+        shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry({
+          conversationStatus,
+          hasProject: true,
+          loadedConversationProjectMatches: loadedConversationProjectId === pid,
+          alreadyApplied: onboardingAppliedKey === onboardingKey,
+          hasExistingPlanningSummary: hasPreProjectPlanningSummaryMessage(existing),
+          existingMessageCount: existing.length,
+          seededFromPreProject,
+        })
+      ) {
+        const planningBody = buildPreProjectPlanningSummaryFromWorkspaceState({
+          projectName: project.name ?? "",
+          projectDescription: project.description ?? "",
+          state: workspaceState,
+        });
+        if (cancelled) return;
+        const planningOk = await persistFirstQuestion({
+          bodyText: planningBody,
+          seedWire: null,
+          source: "fallback",
+          bootstrapInternalType: PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE,
+        });
+        if (!planningOk && !cancelled) {
+          ideationBootstrapFlightRef.current = null;
+        }
+        return;
+      }
 
       try {
         const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {

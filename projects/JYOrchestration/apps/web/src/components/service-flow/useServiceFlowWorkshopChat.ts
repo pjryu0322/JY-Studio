@@ -56,6 +56,7 @@ import {
   type ServiceFlowOrchestrationSyncResult,
 } from "@/lib/requirements/serviceFlowOrchestrationSync";
 import { markFlowAsPrimaryProposalVariant } from "@/lib/requirements/serviceFlowProposalVariant";
+import { shouldSuppressInitialVisibleServiceFlowRun } from "@/lib/requirements/preProjectPlanningSummary";
 import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
@@ -273,6 +274,23 @@ export function useServiceFlowWorkshopChat({
       const quickAction = opts?.quickAction ?? null;
       const quickActionLabelEarly =
         String(quickAction?.label ?? opts?.quickActionLabel ?? "").trim() || null;
+
+      if (
+        shouldSuppressInitialVisibleServiceFlowRun({
+          suppressInitialAutoServiceFlowVisibleMessage,
+          silentUserAppend: opts?.silentUserAppend,
+          quickActionId: quickAction?.id ?? null,
+          quickActionLabel: quickActionLabelEarly,
+          userMessageText: body,
+        })
+      ) {
+        bootOnceRef.current = true;
+        setQuickActions(null);
+        setQuickReplies(null);
+        setPendingStatusLabel(null);
+        return;
+      }
+
       const pendingDecision = resolveDecisionFromQuickActionInput({
         quickAction,
         labelFallback: quickActionLabelEarly,
@@ -499,6 +517,7 @@ export function useServiceFlowWorkshopChat({
       takeActorFlowHandoff,
       emitPromptTrace,
       clearReplyingState,
+      suppressInitialAutoServiceFlowVisibleMessage,
     ],
   );
 
@@ -826,6 +845,10 @@ export function useServiceFlowWorkshopChat({
   }, [draftGenerationCount, derivedSlotsForDraftBootstrap, structureLockedAt]);
 
   useEffect(() => {
+    if (suppressInitialAutoServiceFlowVisibleMessage) {
+      bootOnceRef.current = true;
+      return;
+    }
     if (structureLockedAt) return;
     if (workspaceMode !== "chat") return;
     if (bootOnceRef.current) return;

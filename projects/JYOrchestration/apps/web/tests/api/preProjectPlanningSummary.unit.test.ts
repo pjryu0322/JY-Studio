@@ -46,6 +46,7 @@ describe("shouldSuppressInitialServiceFlowVisibleMessage", () => {
       shouldSuppressInitialServiceFlowVisibleMessage({
         isInitialProjectEntry: true,
         userInitiated: false,
+        quickActionId: null,
       })
     ).toBe(true);
   });
@@ -55,6 +56,7 @@ describe("shouldSuppressInitialServiceFlowVisibleMessage", () => {
       shouldSuppressInitialServiceFlowVisibleMessage({
         isInitialProjectEntry: true,
         userInitiated: true,
+        quickActionId: null,
       })
     ).toBe(false);
   });

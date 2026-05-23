@@ -38,6 +38,41 @@ export function shouldSuppressInitialServiceFlowVisibleMessage(input: {
   return true;
 }
 
+/** 초기 boot / silent auto handoff 시 service-flow analyze·visible append 차단 */
+export function shouldSuppressInitialVisibleServiceFlowRun(input: {
+  readonly suppressInitialAutoServiceFlowVisibleMessage: boolean;
+  readonly silentUserAppend?: boolean;
+  readonly quickActionId?: string | null;
+  readonly quickActionLabel?: string | null;
+  readonly userMessageText: string;
+}): boolean {
+  if (!input.suppressInitialAutoServiceFlowVisibleMessage) return false;
+  if (!input.silentUserAppend) return false;
+  if (String(input.quickActionId ?? "").trim()) return false;
+  if (String(input.quickActionLabel ?? "").trim()) return false;
+  const body = String(input.userMessageText ?? "").trim();
+  if (!body) return false;
+  return true;
+}
+
+export function shouldSeedPreProjectPlanningSummaryOnWorkspaceEntry(input: {
+  readonly conversationStatus: string;
+  readonly hasProject: boolean;
+  readonly loadedConversationProjectMatches: boolean;
+  readonly alreadyApplied: boolean;
+  readonly hasExistingPlanningSummary: boolean;
+  readonly existingMessageCount: number;
+  readonly seededFromPreProject: boolean;
+}): boolean {
+  if (input.conversationStatus !== "loaded") return false;
+  if (!input.hasProject) return false;
+  if (!input.loadedConversationProjectMatches) return false;
+  if (input.alreadyApplied) return false;
+  if (input.hasExistingPlanningSummary) return false;
+  if (input.existingMessageCount > 0) return false;
+  return input.seededFromPreProject;
+}
+
 function splitLines(text: string | null | undefined, max = 8): string[] {
   const lines = String(text ?? "")
     .split(/\n+/)
