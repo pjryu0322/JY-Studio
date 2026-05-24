@@ -7,7 +7,7 @@ import { ConversationChromeToolbar } from "@/components/workspace/ConversationCh
 import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { QUICK_DESIGN_LABEL, QUICK_DESIGN_TOOLTIP } from "@/lib/requirements/quickDesignLabels";
+import { QUICK_DESIGN_ACCESSIBLE_LABEL } from "@/lib/requirements/quickDesignLabels";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export type RequirementsWorkspaceTopChromeProps = Readonly<{
