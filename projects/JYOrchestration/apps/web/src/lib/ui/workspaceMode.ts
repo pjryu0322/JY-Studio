@@ -116,6 +116,11 @@ const PREVIEW_WIN: Record<WorkspaceMode, { w: number; h: number }> = {
   AUTO: { w: 1180, h: 860 },
 };
 
+/** 작업 모드(데스크톱/모바일/자동)에 맞춘 팝업 창 크기 */
+export function workspacePopupDimensions(mode: WorkspaceMode): Readonly<{ w: number; h: number }> {
+  return PREVIEW_WIN[mode];
+}
+
 /**
  * 현재 URL을 그대로 두고 화면 레이아웃 미리보기용 창을 연다(사용자 클릭 핸들러에서만 호출).
  * `noopener`로 오프너와 분리; 대상 탭은 URL·세션으로 모드를 잡는다.

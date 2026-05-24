@@ -1,9 +1,16 @@
 import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
-import type { WorkspaceEffectiveLayout } from "@/lib/ui/workspaceMode";
+import {
+  JYO_LAYOUT_PREVIEW_PARAM,
+  workspacePopupDimensions,
+  type WorkspaceEffectiveLayout,
+  type WorkspaceMode,
+} from "@/lib/ui/workspaceMode";
 
 export type OpenMessengerChatRoomWindowOptions = Readonly<{
   /** 현재 탭 화면 레이아웃과 맞추면, 새 창 크기를 모바일·데스크톱에 맞게 잡는다. */
   effectiveLayout?: WorkspaceEffectiveLayout;
+  /** 작업 모드 — 지정 시 창 크기·레이아웃 미리보기 쿼리를 프로젝트 룸과 동일하게 맞춘다. */
+  workspaceMode?: WorkspaceMode;
   /**
    * true이면 URL에 `discardEmpty=1`을 붙인다.
    * 레일에서 새 방을 연 뒤 사용자가 한 건도 보내지 않고 창을 나가면 클라이언트가 방 삭제(DELETE)를 요청한다.
@@ -19,15 +26,24 @@ export function openMessengerChatRoomWindow(roomId: string, options?: OpenMessen
   if (typeof window === "undefined") return null;
   const id = roomId.trim();
   if (!id) return null;
-  const q = options?.discardEmptyOnClose ? "?discardEmpty=1" : "";
-  const url = `${window.location.origin}/chat/${encodeURIComponent(id)}${q}`;
+  const params = new URLSearchParams();
+  if (options?.discardEmptyOnClose) params.set("discardEmpty", "1");
+  const workspaceMode = options?.workspaceMode;
+  if (workspaceMode) {
+    params.set(JYO_LAYOUT_PREVIEW_PARAM, workspaceMode.toLowerCase());
+  }
+  const qs = params.toString();
+  const url = `${window.location.origin}/chat/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`;
   const layout = options?.effectiveLayout ?? "DESKTOP";
 
   let w: number;
   let h: number;
-  if (layout === "MOBILE") {
+  if (workspaceMode) {
+    const dim = workspacePopupDimensions(workspaceMode);
+    w = Math.min(dim.w, Math.max(320, window.screen.availWidth - 24));
+    h = Math.min(dim.h, Math.max(400, window.screen.availHeight - 24));
+  } else if (layout === "MOBILE") {
     const margin = 12;
-    // 좁은 작업 영역(모바일 모드·분할 창)에 맞춰 폭을 잡고, 높이는 사용 가능한 세로 공간을 쓴다.
     w = Math.min(430, Math.max(300, window.innerWidth - margin));
     h = Math.min(window.screen.availHeight - margin * 2, Math.max(480, window.innerHeight - margin));
   } else {

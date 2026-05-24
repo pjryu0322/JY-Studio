@@ -1,40 +1,36 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ResponsivePageContainer, ResponsiveShell } from "@/components/layout";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { Button, Card, EmptyState, InlineAlert, LoadingState, uiTokens as t } from "@/components/ui";
-import { MessengerChatRoomRenameModal } from "@/components/messenger/MessengerChatRoomRenameModal";
-import { MessengerRoomSettingsGearMenu } from "@/components/messenger/MessengerRoomSettingsGearMenu";
+import {
+  MessengerRoomListActionButtons,
+  MessengerRoomListTitleField,
+} from "@/components/messenger/MessengerRoomListChrome";
 import { MessengerHomeMembersSection } from "@/components/messenger/MessengerHomeMembersSection";
 import { parseMessengerHomePanel } from "@/components/messenger/messengerHomePanel";
 import { createAndOpenMessengerAgentRoom } from "@/lib/messenger/createAndOpenMessengerAgentRoom";
 import {
   deleteMessengerChatRoom,
   fetchMessengerChatRooms,
-  patchMessengerRoomTitle,
   postMessengerChatRoomLeave,
   type MessengerChatRoomListRow,
 } from "@/lib/messenger/messengerChatRoomApi";
 import { openMessengerChatRoomWindow } from "@/lib/messenger/openMessengerChatRoomWindow";
 import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
+import { openProjectRoomWindow } from "@/lib/ui/workspaceMode";
 
 export function MessengerHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { effectiveLayout } = useWorkspaceMode();
+  const { effectiveLayout, mode: workspaceMode } = useWorkspaceMode();
   const panel = parseMessengerHomePanel(searchParams.get("panel"));
 
   const [rooms, setRooms] = useState<MessengerChatRoomListRow[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [renameRoomId, setRenameRoomId] = useState<string | null>(null);
-  const [renameTitle, setRenameTitle] = useState("");
-  const [renameInitialTitle, setRenameInitialTitle] = useState("");
-  const [renameBusy, setRenameBusy] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
   const [roomListBusyId, setRoomListBusyId] = useState<string | null>(null);
 
   const loadRooms = useCallback(async () => {
@@ -75,26 +71,27 @@ export function MessengerHome() {
     }
   }, [creating, effectiveLayout, loadRooms]);
 
-  const saveRenamedTitle = useCallback(async () => {
-    if (!renameRoomId || renameBusy) return;
-    const next = renameTitle.trim();
-    if (!next) {
-      setRenameError("제목을 입력해 주세요.");
-      return;
-    }
-    setRenameBusy(true);
-    setRenameError(null);
-    try {
-      await patchMessengerRoomTitle(renameRoomId, next);
-      setRenameRoomId(null);
-      setRenameTitle("");
-      await loadRooms();
-    } catch (e) {
-      setRenameError(e instanceof Error ? e.message : "저장 오류");
-    } finally {
-      setRenameBusy(false);
-    }
-  }, [renameRoomId, renameTitle, renameBusy, loadRooms]);
+  const openRoomInWorkModeWindow = useCallback(
+    (roomId: string) => {
+      const opened = openMessengerChatRoomWindow(roomId, { effectiveLayout, workspaceMode });
+      if (!opened) {
+        const path = `/chat/${encodeURIComponent(roomId)}`;
+        const w = window.open(path, "_blank", "noopener,noreferrer");
+        registerPlatformPopupFromOpenedUrl(w, path);
+      }
+    },
+    [effectiveLayout, workspaceMode],
+  );
+
+  const openLinkedProjectWindow = useCallback(
+    (projectId: string) => {
+      const opened = openProjectRoomWindow(projectId, workspaceMode);
+      if (!opened) {
+        setListError("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용한 뒤 다시 시도해 주세요.");
+      }
+    },
+    [workspaceMode],
+  );
 
   const deleteRoomFromList = useCallback(
     async (roomId: string) => {
@@ -110,7 +107,7 @@ export function MessengerHome() {
         setRoomListBusyId(null);
       }
     },
-    [loadRooms]
+    [loadRooms],
   );
 
   const leaveRoomFromList = useCallback(
@@ -127,7 +124,7 @@ export function MessengerHome() {
         setRoomListBusyId(null);
       }
     },
-    [loadRooms]
+    [loadRooms],
   );
 
   const showChatList = panel === "chat" || panel === "aichat";
@@ -178,78 +175,60 @@ export function MessengerHome() {
               />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {rooms.map((r) => (
-                  <Card key={r.id} compact>
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                        <a
-                          href={`/chat/${encodeURIComponent(r.id)}`}
-                          rel="noopener noreferrer"
-                          title="새 창에서 대화방 열기"
-                          onClick={(e) => {
-                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                            e.preventDefault();
-                            const opened = openMessengerChatRoomWindow(r.id, { effectiveLayout });
-                            if (!opened) {
-                              const path = `/chat/${encodeURIComponent(r.id)}`;
-                              const w = window.open(path, "_blank", "noopener,noreferrer");
-                              registerPlatformPopupFromOpenedUrl(w, path);
-                            }
-                          }}
-                          style={{
-                            display: "block",
-                            textDecoration: "none",
-                            color: "inherit",
-                            cursor: "pointer",
-                            marginBottom: 4,
-                          }}
-                        >
-                          <div style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary }}>{r.title}</div>
-                        </a>
-                        <Link
-                          href={`/chat/${encodeURIComponent(r.id)}`}
-                          style={{ display: "block", textDecoration: "none", color: "inherit" }}
-                        >
+                {rooms.map((r) => {
+                  const listBusy = roomListBusyId !== null;
+                  return (
+                    <Card key={r.id} compact>
+                      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                          <MessengerRoomListTitleField
+                            roomId={r.id}
+                            title={r.title}
+                            disabled={listBusy}
+                            onSaved={loadRooms}
+                          />
                           <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.4 }}>
                             {r.lastMessagePreview?.trim() || "메시지 없음"}
                             {r.projectId ? (
-                              <span style={{ marginLeft: 8, fontWeight: 800, color: t.accentTealFg }}>· 프로젝트 연결됨</span>
+                              <button
+                                type="button"
+                                disabled={listBusy}
+                                title="연결된 프로젝트 열기 (새 창)"
+                                aria-label="연결된 프로젝트 — 새 창에서 열기"
+                                onClick={() => openLinkedProjectWindow(r.projectId!)}
+                                style={{
+                                  marginLeft: 8,
+                                  padding: 0,
+                                  border: 0,
+                                  background: "transparent",
+                                  fontWeight: 800,
+                                  color: t.accentTealFg,
+                                  cursor: listBusy ? "not-allowed" : "pointer",
+                                  opacity: listBusy ? 0.55 : 1,
+                                  textDecoration: "underline",
+                                  textUnderlineOffset: 2,
+                                }}
+                              >
+                                · 프로젝트 연결됨
+                              </button>
                             ) : null}
                           </div>
-                        </Link>
+                        </div>
+                        <MessengerRoomListActionButtons
+                          disabled={listBusy}
+                          showDelete={r.isOwner === true && !r.projectId}
+                          onEnter={() => openRoomInWorkModeWindow(r.id)}
+                          onLeave={() => void leaveRoomFromList(r.id)}
+                          onDelete={() => void deleteRoomFromList(r.id)}
+                        />
                       </div>
-                      <MessengerRoomSettingsGearMenu
-                        disabled={roomListBusyId !== null}
-                        showRename
-                        showLeave
-                        showDelete={r.isOwner === true && !r.projectId}
-                        onRename={() => {
-                          setRenameRoomId(r.id);
-                          setRenameInitialTitle(r.title);
-                          setRenameTitle(r.title);
-                          setRenameError(null);
-                        }}
-                        onLeave={() => void leaveRoomFromList(r.id)}
-                        onDelete={() => void deleteRoomFromList(r.id)}
-                      />
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
         ) : null}
-
-        <MessengerChatRoomRenameModal
-          open={renameRoomId !== null}
-          initialTitle={renameInitialTitle}
-          value={renameTitle}
-          onChange={setRenameTitle}
-          onClose={() => !renameBusy && setRenameRoomId(null)}
-          onSave={() => void saveRenamedTitle()}
-          saving={renameBusy}
-          error={renameError}
-        />
       </ResponsivePageContainer>
     </ResponsiveShell>
   );
