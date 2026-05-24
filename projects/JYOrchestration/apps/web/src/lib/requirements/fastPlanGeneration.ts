@@ -18,16 +18,10 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { wireStageLabel } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
+import { buildFastPlanAssumptionMarkdownTable } from "@/lib/requirements/markdownTableCells";
 
 function newArtifactId(nowIso: string): string {
   return `artifact-fast-${nowIso.replace(/[^\d]/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function confidenceKo(c: string): string {
-  if (c === "confirmed") return "확정";
-  if (c === "partial") return "부분";
-  if (c === "candidate") return "후보";
-  return "프로토타입용 가정";
 }
 
 export function buildFastPlanGenerationContext(input: FastPlanGenerationInput): FastPlanGenerationContext {
@@ -75,12 +69,7 @@ export function buildFastPlanMarkdown(input: {
       c.screenCandidates.map((s) => `- ${s}`).join("\n")
     : "- 홈 / 목록 / 상세 / 설정 (기본 화면 후보)";
 
-  const assumptionRows = c.assumptions
-    .map(
-      (a) =>
-        `| ${a.label} | ${a.value.replace(/\|/g, "\\|").slice(0, 120)} | ${confidenceKo(a.confidence)} | ${a.reason.replace(/\|/g, "\\|")} |`,
-    )
-    .join("\n");
+  const assumptionTable = buildFastPlanAssumptionMarkdownTable(c.assumptions);
 
   return [
     "# 기획안",
@@ -109,9 +98,7 @@ export function buildFastPlanMarkdown(input: {
     screens,
     "",
     "## 8. AI 보완 후보/가정",
-    assumptionRows ?
-      ["| 항목 | 보완 내용 | 신뢰도 | 근거 |", "|---|---|---|---|", assumptionRows].join("\n")
-    : "_모든 핵심 항목이 기존 후보·대화에서 채워졌습니다._",
+    assumptionTable || "_모든 핵심 항목이 기존 후보·대화에서 채워졌습니다._",
     "",
     "## 9. 프로토타입 생성 범위",
     "- 핵심 사용자 시나리오 1~2개",

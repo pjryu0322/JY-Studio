@@ -54,7 +54,7 @@ export function ProjectRailWorkflowStrip({
         const active = isWorkflowStepNavActive(item.stepId, pathname, searchParams, effectiveProjectId);
         const participantKey = appFlowStepIdToRailParticipantKey(item.stepId);
         const badgeCount = participantKey ? (participantCounts[participantKey] ?? projectMembersCount) : 0;
-        const showBadge = participantKey !== null && badgeCount > 0;
+        const showBadge = item.stepId !== "requirements" && participantKey !== null && badgeCount > 0;
         const short = railShortLabel(item.stepId);
         return (
           <Link

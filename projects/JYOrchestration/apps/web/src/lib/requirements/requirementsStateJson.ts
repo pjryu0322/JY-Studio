@@ -17,6 +17,7 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
 import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
+import { parseFastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import type { PlatformMemberDraft, PlatformMemberRun } from "@/lib/platform-orchestration/types";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
@@ -1136,13 +1137,17 @@ function parseFastPlanDraftV1(raw: unknown): FastPlanDraftStateV1 | null {
       });
     }
   }
+  const statusRaw = String(o.status ?? "").trim();
+  const status = statusRaw === "confirmed" ? "confirmed" : "proposed";
+  const slotCandidatePatch = parseFastPlanDraftSlotCandidatePatchV1(o.slotCandidatePatch);
   return {
-    status: "proposed",
+    status,
     generatedAt,
     flowId: "fast_plan_draft",
     memberRuns,
     memberDrafts,
     assumptions,
+    ...(slotCandidatePatch ? { slotCandidatePatch } : {}),
     source: "current_conversation_and_slots",
   };
 }

@@ -3,12 +3,8 @@ import type { FastPlanAssumption } from "@/lib/requirements/fastPlanGenerationTy
 import type { FastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { formatFastPlanPlatformTimelineResponse } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
-import {
-  buildQuickDesignAreaShortfallWarnings,
-  countQuickDesignAreaCounts,
-  getQuickDesignPatchedSlotKeys,
-  type QuickDesignAreaCounts,
-} from "@/lib/requirements/quickDesignSlotArea";
+import type { QuickDesignAreaCounts } from "@/lib/requirements/quickDesignSlotArea";
+import { buildFastPlanAssumptionMarkdownTable } from "@/lib/requirements/markdownTableCells";
 
 export const QUICK_DESIGN_LABEL = "Quick Design" as const;
 export const QUICK_DESIGN_TOOLTIP = "AI팀이 기획·분석·설계·디자인 초안을 자동 구성합니다" as const;
@@ -33,28 +29,17 @@ const ROLE_HEADING: Readonly<Record<PlatformMemberRole, string>> = {
   vlm_analyst: "VLM 분석가",
 };
 
-function confidenceKo(c: string): string {
-  if (c === "confirmed") return "확정";
-  if (c === "partial") return "부분";
-  if (c === "candidate") return "후보";
-  return "프로토타입용 가정";
-}
+import { countQuickDesignAreaCounts } from "@/lib/requirements/quickDesignSlotArea";
 
 /** @deprecated use countQuickDesignAreaCounts from quickDesignSlotArea */
 export function countQuickDesignSlotsByArea(keys: readonly string[]): QuickDesignAreaCounts {
   return countQuickDesignAreaCounts(keys);
 }
 
-function resolveAreaCountsForMessage(
-  patch: FastPlanDraftSlotCandidatePatchV1 | null | undefined,
-): QuickDesignAreaCounts {
-  if (patch?.areaCounts) return patch.areaCounts;
-  return countQuickDesignAreaCounts(getQuickDesignPatchedSlotKeys(patch));
-}
-
 export function buildQuickDesignResultMessage(input: {
   readonly memberDrafts: readonly PlatformMemberDraft[];
   readonly assumptions: readonly FastPlanAssumption[];
+  /** @deprecated user-facing message no longer shows patch counts; kept for call-site compatibility */
   readonly slotCandidatePatch?: FastPlanDraftSlotCandidatePatchV1 | null;
 }): string {
   const sections = input.memberDrafts
@@ -62,45 +47,30 @@ export function buildQuickDesignResultMessage(input: {
     .map((d) => `### ${ROLE_HEADING[d.role] ?? d.role} 제안\n${d.content}`)
     .join("\n\n");
 
-  const assumptionRows = input.assumptions
-    .map(
-      (a) =>
-        `| ${a.label} | ${a.value.replace(/\|/g, "\\|").slice(0, 120)} | ${confidenceKo(a.confidence)} | ${a.reason.replace(/\|/g, "\\|")} |`,
-    )
-    .join("\n");
-
+  const assumptionTable = buildFastPlanAssumptionMarkdownTable(input.assumptions);
   const assumptionsBlock =
-    assumptionRows ?
-      ["### AI 보완 후보/가정", "| 항목 | 보완 내용 | 신뢰도 | 근거 |", "|---|---|---|---|", assumptionRows].join("\n")
-    : "";
+    assumptionTable ? ["### AI 보완 후보/가정", assumptionTable].join("\n") : "";
 
-  const patchKeys = getQuickDesignPatchedSlotKeys(input.slotCandidatePatch);
-  const areaCounts = resolveAreaCountsForMessage(input.slotCandidatePatch);
-  const shortfall = buildQuickDesignAreaShortfallWarnings(areaCounts);
-  const slotReflectBlock =
-    patchKeys.length > 0 ?
+  const uncertaintyNote =
+    input.assumptions.length > 0 ?
       [
-        "### 슬롯 후보 반영",
-        `- 기획 후보: ${areaCounts.planning}개`,
-        `- 분석 후보: ${areaCounts.analysis}개`,
-        `- 설계 후보: ${areaCounts.architecture}개`,
-        `- 디자인 후보: ${areaCounts.design}개`,
+        "",
+        "일부 항목은 현재 대화만으로 확정하기 어려워 AI팀이 후보로 보완했습니다.",
+        "필요하면 「일부 수정」 또는 「정밀 기획 계속하기」로 보완할 수 있습니다.",
       ].join("\n")
-    : "### 슬롯 후보 반영\n- (반영된 슬롯 없음)";
-  const warningBlock =
-    shortfall.length > 0 ? ["", "주의:", ...shortfall].join("\n") : "";
+    : "";
 
   return [
     "Quick Design 초안이 생성되었습니다.",
     "",
-    "AI팀이 현재 대화와 슬롯 후보를 기준으로 기획·분석·설계·디자인 초안을 구성했습니다.",
-    "확정되지 않은 항목은 후보 또는 프로토타입용 가정으로 반영했습니다.",
+    "AI팀이 현재 대화 내용을 바탕으로 기획·분석·설계·디자인 초안을 구성했습니다.",
+    "이미 확정된 항목은 유지하고, 부족하거나 불확실한 항목은 후보로 보완했습니다.",
+    "",
+    "확인 후 그대로 확정하거나 일부 수정할 수 있습니다.",
     "",
     sections,
     assumptionsBlock,
-    "",
-    slotReflectBlock,
-    warningBlock,
+    uncertaintyNote,
     "",
     "다음 작업을 선택해 주세요.",
   ]
@@ -167,15 +137,20 @@ export function buildQuickDesignSlotsPatchedTimelineEntry(input: {
   readonly updatedSlotKeys?: readonly string[];
   readonly areaCounts: QuickDesignAreaCounts;
   readonly runId: string;
+  readonly shortfallWarnings?: readonly string[];
+  readonly skippedConfirmedSlotKeys?: readonly string[];
 }): RequirementsPromptTimelineEntry {
   const keys = input.patchedSlotKeys.length ? input.patchedSlotKeys : (input.updatedSlotKeys ?? []);
   const detail = JSON.stringify({
     runId: input.runId,
+    areaCounts: input.areaCounts,
     planningCandidateCount: input.areaCounts.planning,
     analysisCandidateCount: input.areaCounts.analysis,
     architectureCandidateCount: input.areaCounts.architecture,
     designCandidateCount: input.areaCounts.design,
     patchedSlotKeys: keys,
+    shortfallWarnings: input.shortfallWarnings ?? [],
+    skippedConfirmedSlotKeys: input.skippedConfirmedSlotKeys ?? [],
   });
   return platformTimelineEntry({
     action: "quick_design_slots_patched",

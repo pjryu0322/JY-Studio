@@ -5,6 +5,7 @@ import {
   type SlotPatchInput,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
+import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
@@ -31,6 +32,8 @@ export type FastPlanDraftSlotCandidatePatchV1 = Readonly<{
   readonly candidateSlotKeys: readonly string[];
   readonly assumedSlotKeys: readonly string[];
   readonly patchedAt: string;
+  readonly skippedConfirmedSlotKeys?: readonly string[];
+  readonly missingTargetSlotKeys?: readonly string[];
 }>;
 
 export type BuildSlotCandidatePatchesResult = Readonly<{
@@ -40,6 +43,8 @@ export type BuildSlotCandidatePatchesResult = Readonly<{
   readonly candidateSlotKeys: readonly string[];
   readonly assumedSlotKeys: readonly string[];
   readonly confirmedSlotKeys: readonly string[];
+  readonly skippedConfirmedSlotKeys: readonly string[];
+  readonly missingTargetSlotKeys: readonly string[];
   readonly areaCounts: QuickDesignAreaCounts;
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly slotCandidatePatch: FastPlanDraftSlotCandidatePatchV1 | null;
@@ -52,21 +57,21 @@ const BULLET_PREFIX_BY_SUFFIX: Readonly<Record<string, readonly string[]>> = {
   ".planning.expectedOutcome": ["기대 효과"],
   ".planning.coreValue": ["기대 효과", "핵심 가치"],
   ".planning.mvpScope": ["MVP 범위"],
-  ".flow.actorTypes": ["주요 액터", "액터"],
+  ".flow.actorTypes": ["서비스 액터", "주요 액터", "액터"],
   ".flow.serviceFlow": ["기본 서비스 흐름", "서비스 흐름"],
   ".flow.approvalFlow": ["검토가 필요한 예외", "예외 흐름", "승인"],
   ".flow.exceptionFlow": ["예외 흐름"],
   ".flow.collaborationFlow": ["협업"],
   ".flow.externalIntegration": ["외부 연동"],
-  ".design.coreFeatures": ["MVP 기능", "핵심 기능"],
+  ".design.coreFeatures": ["MVP 기능", "핵심 기능", "기능 후보"],
+  ".design.dataFlow": ["데이터/API", "입력/출력", "데이터"],
   ".design.featurePriority": ["우선순위", "기능 우선순위"],
   ".design.mvpExclusions": ["제외"],
   ".architecture.automationLevel": ["자동화"],
   ".architecture.prototypeBoundary": ["프로토타입 경계", "경계"],
   ".design.requiredScreens": ["주요 화면", "화면"],
   ".design.prototypeScope": ["프로토타입 범위", "화면 범위"],
-  ".design.dataFlow": ["데이터", "API"],
-  ".design.userInteractionMode": ["상호작용"],
+  ".design.userInteractionMode": ["UI 구성", "상호작용"],
 };
 
 const PLACEHOLDER_BY_SUFFIX: Readonly<Record<string, string>> = {
@@ -165,6 +170,8 @@ export function buildSlotCandidatePatchesFromFastPlanDrafts(input: {
   const candidateSlotKeys: string[] = [];
   const assumedSlotKeys: string[] = [];
   const confirmedSlotKeys: string[] = [];
+  const skippedConfirmedSlotKeys: string[] = [];
+  const missingTargetSlotKeys: string[] = [];
 
   for (const draft of input.memberDrafts) {
     const keys = [...new Set(draft.targetSlotKeys ?? [])];
@@ -173,6 +180,7 @@ export function buildSlotCandidatePatchesFromFastPlanDrafts(input: {
       if (shouldSkipPatch(input.orchestration, slotKey)) {
         if (String(findSlotRow(input.orchestration, slotKey)?.status) === "confirmed") {
           confirmedSlotKeys.push(slotKey);
+          skippedConfirmedSlotKeys.push(slotKey);
         }
         continue;
       }
@@ -211,6 +219,8 @@ export function buildSlotCandidatePatchesFromFastPlanDrafts(input: {
       candidateSlotKeys,
       assumedSlotKeys,
       confirmedSlotKeys,
+      skippedConfirmedSlotKeys: [...new Set(skippedConfirmedSlotKeys)],
+      missingTargetSlotKeys: [...new Set(missingTargetSlotKeys)],
       areaCounts,
       orchestration: input.orchestration,
       slotCandidatePatch: null,
@@ -235,6 +245,8 @@ export function buildSlotCandidatePatchesFromFastPlanDrafts(input: {
     candidateSlotKeys: [...new Set(candidateSlotKeys)],
     assumedSlotKeys: [...new Set(assumedSlotKeys)],
     patchedAt: input.nowIso,
+    skippedConfirmedSlotKeys: [...new Set(skippedConfirmedSlotKeys)],
+    missingTargetSlotKeys: [...new Set(missingTargetSlotKeys)],
   };
 
   return {
@@ -244,8 +256,109 @@ export function buildSlotCandidatePatchesFromFastPlanDrafts(input: {
     candidateSlotKeys: slotCandidatePatch.candidateSlotKeys,
     assumedSlotKeys: slotCandidatePatch.assumedSlotKeys,
     confirmedSlotKeys,
+    skippedConfirmedSlotKeys: slotCandidatePatch.skippedConfirmedSlotKeys ?? [],
+    missingTargetSlotKeys: slotCandidatePatch.missingTargetSlotKeys ?? [],
     areaCounts,
     orchestration,
     slotCandidatePatch,
+  };
+}
+
+function parseStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x ?? "").trim()).filter(Boolean);
+}
+
+/** stateJson round-trip — legacy `updatedSlotKeys`-only blobs included */
+export function parseFastPlanDraftSlotCandidatePatchV1(raw: unknown): FastPlanDraftSlotCandidatePatchV1 | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const patchedSlotKeys = parseStringArray(o.patchedSlotKeys);
+  const updatedSlotKeys = parseStringArray(o.updatedSlotKeys);
+  const keys = patchedSlotKeys.length ? patchedSlotKeys : updatedSlotKeys;
+  if (!keys.length) return undefined;
+  const patchedAt = String(o.patchedAt ?? "").trim() || new Date().toISOString();
+  const runId = String(o.runId ?? "").trim() || "quick-design-legacy";
+  const areaRaw = o.areaCounts;
+  let areaCounts = countQuickDesignAreaCounts(keys);
+  if (areaRaw && typeof areaRaw === "object") {
+    const a = areaRaw as Record<string, unknown>;
+    areaCounts = {
+      planning: Number(a.planning) || 0,
+      analysis: Number(a.analysis) || 0,
+      architecture: Number(a.architecture) || 0,
+      design: Number(a.design) || 0,
+    };
+  }
+  const entries: QuickDesignSlotPatchEntry[] = [];
+  if (Array.isArray(o.entries)) {
+    for (const row of o.entries) {
+      if (!row || typeof row !== "object") continue;
+      const e = row as Record<string, unknown>;
+      const slotKey = String(e.slotKey ?? "").trim();
+      const area = classifyQuickDesignSlotArea(slotKey);
+      if (!slotKey || !area) continue;
+      const status = String(e.status ?? "candidate");
+      const patchStatus =
+        status === "partial" ? "partial"
+        : status === "assumed_for_prototype" ? "assumed_for_prototype"
+        : "candidate";
+      entries.push({
+        slotKey,
+        area,
+        status: patchStatus,
+        sourceRole: (String(e.sourceRole ?? "planner") as PlatformMemberRole),
+        sourceDraftId: String(e.sourceDraftId ?? ""),
+      });
+    }
+  }
+  return {
+    source: "quick_design",
+    runId,
+    patchedSlotKeys: keys,
+    updatedSlotKeys: keys,
+    areaCounts,
+    entries,
+    candidateSlotKeys: parseStringArray(o.candidateSlotKeys),
+    assumedSlotKeys: parseStringArray(o.assumedSlotKeys),
+    patchedAt,
+  };
+}
+
+export function prepareQuickDesignDraftForConfirm(input: {
+  readonly fastPlanDraftV1: FastPlanDraftStateV1;
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly nowIso: string;
+}): Readonly<{
+  readonly fastPlanDraftV1: FastPlanDraftStateV1;
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+}> {
+  const existing = input.fastPlanDraftV1.slotCandidatePatch;
+  const hasPatchKeys =
+    (existing?.patchedSlotKeys?.length ?? 0) > 0 || (existing?.updatedSlotKeys?.length ?? 0) > 0;
+  if (hasPatchKeys) {
+    return { fastPlanDraftV1: input.fastPlanDraftV1, orchestration: input.orchestration };
+  }
+  if (!input.fastPlanDraftV1.memberDrafts.length) {
+    return { fastPlanDraftV1: input.fastPlanDraftV1, orchestration: input.orchestration };
+  }
+  const runId =
+    existing?.runId ??
+    input.fastPlanDraftV1.memberRuns.find((r) => r.status === "completed")?.runId ??
+    input.fastPlanDraftV1.memberDrafts[0]?.runId;
+  const rebuilt = buildSlotCandidatePatchesFromFastPlanDrafts({
+    memberDrafts: input.fastPlanDraftV1.memberDrafts,
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+    nowIso: input.nowIso,
+    runId,
+  });
+  if (!rebuilt.slotCandidatePatch) {
+    return { fastPlanDraftV1: input.fastPlanDraftV1, orchestration: input.orchestration };
+  }
+  return {
+    fastPlanDraftV1: { ...input.fastPlanDraftV1, slotCandidatePatch: rebuilt.slotCandidatePatch },
+    orchestration: rebuilt.orchestration ?? input.orchestration,
   };
 }

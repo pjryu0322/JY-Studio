@@ -6,7 +6,11 @@ import {
   buildPlannerMemberDraft,
   collectFastPlanDraftContext,
 } from "@/lib/platform-orchestration/fastPlanMemberDrafts";
-import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
+import {
+  buildSlotCandidatePatchesFromFastPlanDrafts,
+  parseFastPlanDraftSlotCandidatePatchV1,
+} from "@/lib/requirements/fastPlanDraftSlotPatch";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { QUICK_DESIGN_MIN_AREA_COUNTS } from "@/lib/requirements/quickDesignSlotArea";
 import {
   buildDynamicServicePlanningSlotDefinitions,
@@ -141,5 +145,54 @@ describe("fastPlanDraftSlotPatch", () => {
     expect(result.patchedSlotKeys.length).toBeGreaterThan(0);
     expect(result.patches.every((p) => p.status !== "confirmed")).toBe(true);
     expect(result.orchestration).not.toBeNull();
+  });
+
+  it("persists slotCandidatePatch for confirmation", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p1",
+      projectName: "회의록",
+    });
+    const { orchestration, memberDrafts } = sampleQuickDesignDrafts(definitions);
+    const patch = buildSlotCandidatePatchesFromFastPlanDrafts({
+      memberDrafts,
+      orchestration,
+      definitions,
+      nowIso,
+      runId: "qd-confirm",
+    });
+    expect(patch.slotCandidatePatch).toBeTruthy();
+    expect(patch.slotCandidatePatch?.patchedSlotKeys.length).toBeGreaterThan(0);
+    expect(patch.slotCandidatePatch?.runId).toBe("qd-confirm");
+  });
+
+  it("round-trips slotCandidatePatch through requirements state json parse", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p1",
+      projectName: "회의록",
+    });
+    const { orchestration, memberDrafts } = sampleQuickDesignDrafts(definitions);
+    const patch = buildSlotCandidatePatchesFromFastPlanDrafts({
+      memberDrafts,
+      orchestration,
+      definitions,
+      nowIso,
+      runId: "qd-roundtrip",
+    });
+    const state = parseRequirementsStateJson({
+      fastPlanDraftV1: {
+        status: "proposed",
+        generatedAt: nowIso,
+        flowId: "fast_plan_draft",
+        memberRuns: [],
+        memberDrafts,
+        assumptions: [],
+        slotCandidatePatch: patch.slotCandidatePatch,
+        source: "current_conversation_and_slots",
+      },
+    });
+    expect(state.fastPlanDraftV1?.slotCandidatePatch?.patchedSlotKeys.length).toBeGreaterThan(0);
+    expect(parseFastPlanDraftSlotCandidatePatchV1({ updatedSlotKeys: ["a.planning.x"] })?.patchedSlotKeys).toEqual([
+      "a.planning.x",
+    ]);
   });
 });

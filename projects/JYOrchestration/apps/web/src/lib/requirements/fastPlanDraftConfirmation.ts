@@ -14,12 +14,13 @@ import type {
 import { buildFastPlanDraftConfirmedNextActions } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 import { buildQuickDesignConfirmedTimelineEntry } from "@/lib/requirements/quickDesignLabels";
 import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
+import { prepareQuickDesignDraftForConfirm } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { getQuickDesignPatchedSlotKeys } from "@/lib/requirements/quickDesignSlotArea";
 
 export const FAST_PLAN_DRAFT_CONFIRMED_INTERNAL_TYPE = "fast_plan_draft_confirmed" as const;
 
 export const QUICK_DESIGN_CONFIRM_BLOCKED_MESSAGE =
-  "확정할 Quick Design 슬롯 후보를 찾을 수 없습니다. Quick Design을 다시 실행해 주세요." as const;
+  "확정할 Quick Design 초안 정보를 찾을 수 없습니다. Quick Design을 다시 실행한 뒤 확인해 주세요." as const;
 
 export type ConfirmFastPlanDraftSlotsResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
@@ -41,7 +42,15 @@ export function confirmFastPlanDraftSlots(input: {
   readonly onlyPatchedSlotKeys?: boolean;
 }): ConfirmFastPlanDraftSlotsResult {
   const onlyPatched = input.onlyPatchedSlotKeys !== false;
-  const patchScope = getQuickDesignPatchedSlotKeys(input.fastPlanDraftV1.slotCandidatePatch);
+  const prepared = prepareQuickDesignDraftForConfirm({
+    fastPlanDraftV1: input.fastPlanDraftV1,
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+    nowIso: input.nowIso,
+  });
+  const fastPlanDraftV1 = prepared.fastPlanDraftV1;
+  const orchestrationBase = prepared.orchestration;
+  const patchScope = getQuickDesignPatchedSlotKeys(fastPlanDraftV1.slotCandidatePatch);
 
   if (onlyPatched && patchScope.length === 0) {
     const chatMessage = newRequirementsMessage({
@@ -65,7 +74,7 @@ export function confirmFastPlanDraftSlots(input: {
     });
     return {
       orchestration: input.orchestration,
-      fastPlanDraftV1: input.fastPlanDraftV1,
+      fastPlanDraftV1,
       confirmedSlotKeys: [],
       confirmedLabels: [],
       chatMessage,
@@ -80,7 +89,7 @@ export function confirmFastPlanDraftSlots(input: {
   const confirmedLabels: string[] = [];
 
   for (const slotKey of patchScope) {
-    const row = findSlotRow(input.orchestration, slotKey);
+    const row = findSlotRow(orchestrationBase, slotKey);
     if (!row) continue;
     const status = String(row.status);
     if (status === "confirmed") {
@@ -105,7 +114,7 @@ export function confirmFastPlanDraftSlots(input: {
   const orchestration =
     patches.length > 0
       ? mergeOrchestrationSlotPatches({
-          base: input.orchestration,
+          base: orchestrationBase,
           patches,
           nowIso: input.nowIso,
           definitions: input.definitions,
@@ -125,10 +134,10 @@ export function confirmFastPlanDraftSlots(input: {
     "아래 버튼에서 다음 동작을 선택해 주세요.",
   ];
 
-  const fastPlanDraftV1: FastPlanDraftStateV1 = {
-    ...input.fastPlanDraftV1,
+  const fastPlanDraftV1Confirmed: FastPlanDraftStateV1 = {
+    ...fastPlanDraftV1,
     status: "confirmed",
-    slotCandidatePatch: input.fastPlanDraftV1.slotCandidatePatch as FastPlanDraftSlotCandidatePatchV1 | undefined,
+    slotCandidatePatch: fastPlanDraftV1.slotCandidatePatch as FastPlanDraftSlotCandidatePatchV1 | undefined,
   };
 
   const generationReadiness = evaluatePlanningToGenerationReadiness({
@@ -164,7 +173,7 @@ export function confirmFastPlanDraftSlots(input: {
 
   return {
     orchestration,
-    fastPlanDraftV1,
+    fastPlanDraftV1: fastPlanDraftV1Confirmed,
     confirmedSlotKeys,
     confirmedLabels: uniqueLabels,
     chatMessage,

@@ -204,6 +204,7 @@ import {
 } from "@/lib/requirements/fastPlanDraftSuggestionPick";
 import { confirmFastPlanDraftSlots } from "@/lib/requirements/fastPlanDraftConfirmation";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
+import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
   buildFastPlanArtifactCreatedChatMessage,
   buildFastPlanArtifactCreatedTimelineEntry,
@@ -2271,7 +2272,10 @@ export function RequirementsWorkspace({
         nowIso,
       });
       let fastPlanDraftV1 = extractFastPlanDraftV1FromRunResult(result);
-      let orchestrationAfterDraft = orchestrationAlignedState;
+      let orchestrationAfterDraft = orchestrationAlignedState ?? orchestrationUiState;
+      if (!orchestrationAfterDraft && slotDefsForProgress.length) {
+        orchestrationAfterDraft = initialOrchestrationStateFromDefinitions(slotDefsForProgress, nowIso);
+      }
       if (fastPlanDraftV1 && orchestrationAfterDraft) {
         const quickDesignRunId =
           fastPlanDraftV1.memberRuns.find((r) => r.status === "completed")?.runId ??
@@ -2296,6 +2300,8 @@ export function RequirementsWorkspace({
               patchedSlotKeys: slotPatch.patchedSlotKeys,
               areaCounts: slotPatch.areaCounts,
               runId: slotPatch.slotCandidatePatch.runId,
+              shortfallWarnings: buildQuickDesignAreaShortfallWarnings(slotPatch.areaCounts),
+              skippedConfirmedSlotKeys: slotPatch.skippedConfirmedSlotKeys,
             }),
           );
         }
@@ -2351,6 +2357,7 @@ export function RequirementsWorkspace({
     persistStateJsonOnly,
     showErrorToast,
     showSuccessToast,
+    orchestrationUiState,
   ]);
 
   const lastFastPlanArtifactIdRef = useRef<string | null>(null);
@@ -2363,7 +2370,8 @@ export function RequirementsWorkspace({
       showErrorToast(`확인할 Quick Design 초안이 없습니다. 먼저 「${QUICK_DESIGN_LABEL}」을 실행해 주세요.`);
       return;
     }
-    if (!orchestrationAlignedState) {
+    const orchestrationForConfirm = orchestrationAlignedState ?? orchestrationUiState;
+    if (!orchestrationForConfirm) {
       showErrorToast("슬롯 상태를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
@@ -2371,14 +2379,14 @@ export function RequirementsWorkspace({
     try {
       const result = confirmFastPlanDraftSlots({
         fastPlanDraftV1: draft,
-        orchestration: orchestrationAlignedState,
+        orchestration: orchestrationForConfirm,
         definitions: slotDefsForProgress,
         nowIso,
         projectId: pid,
         onlyPatchedSlotKeys: true,
       });
       if (result.blocked) {
-        showErrorToast(result.blockReason ?? "확정할 Quick Design 슬롯 후보를 찾을 수 없습니다.");
+        showErrorToast(result.blockReason ?? "확정할 Quick Design 초안 정보를 찾을 수 없습니다.");
         return;
       }
       await persistStateJsonOnly({
@@ -2402,6 +2410,7 @@ export function RequirementsWorkspace({
     deliverableGenerateBusy,
     remoteLocked,
     orchestrationAlignedState,
+    orchestrationUiState,
     slotDefsForProgress,
     persistStateJsonOnly,
     appendServiceFlowWorkshopMessages,

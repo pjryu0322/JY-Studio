@@ -438,23 +438,6 @@ export function RequirementsWorkspaceTopChrome({
           gap: 8,
         }}
       >
-        {slotsUi ? (
-          <span
-            style={{
-              marginRight: "auto",
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#64748b",
-              lineHeight: 1.4,
-              minWidth: 0,
-            }}
-          >
-            서비스 기획 진행도 {slotsUi.readinessPercent}%
-            {slotsUi.statusCounts
-              ? ` · 확정 ${slotsUi.statusCounts.confirmed} / 부분 ${slotsUi.statusCounts.partial} / 후보 ${slotsUi.statusCounts.candidate}`
-              : ""}
-          </span>
-        ) : null}
         {slotPanel}
         {slotsUi ? (
           <WorkspaceHubChromeIconButton
