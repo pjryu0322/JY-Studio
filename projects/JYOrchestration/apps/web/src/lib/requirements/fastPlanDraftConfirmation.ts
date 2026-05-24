@@ -14,8 +14,12 @@ import type {
 import { buildFastPlanDraftConfirmedNextActions } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 import { buildQuickDesignConfirmedTimelineEntry } from "@/lib/requirements/quickDesignLabels";
 import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
+import { getQuickDesignPatchedSlotKeys } from "@/lib/requirements/quickDesignSlotArea";
 
 export const FAST_PLAN_DRAFT_CONFIRMED_INTERNAL_TYPE = "fast_plan_draft_confirmed" as const;
+
+export const QUICK_DESIGN_CONFIRM_BLOCKED_MESSAGE =
+  "확정할 Quick Design 슬롯 후보를 찾을 수 없습니다. Quick Design을 다시 실행해 주세요." as const;
 
 export type ConfirmFastPlanDraftSlotsResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
@@ -24,16 +28,9 @@ export type ConfirmFastPlanDraftSlotsResult = Readonly<{
   readonly confirmedLabels: readonly string[];
   readonly chatMessage: RequirementsMessage;
   readonly timelineEntry: RequirementsPromptTimelineEntry;
+  readonly blocked: boolean;
+  readonly blockReason?: string;
 }>;
-
-function collectDraftSlotKeys(
-  draft: FastPlanDraftStateV1,
-  memberDraftTargetKeys: readonly string[],
-): readonly string[] {
-  const fromPatch = draft.slotCandidatePatch?.updatedSlotKeys ?? [];
-  const merged = [...new Set([...fromPatch, ...memberDraftTargetKeys])];
-  return merged;
-}
 
 export function confirmFastPlanDraftSlots(input: {
   readonly fastPlanDraftV1: FastPlanDraftStateV1;
@@ -41,15 +38,48 @@ export function confirmFastPlanDraftSlots(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly nowIso: string;
   readonly projectId?: string;
+  readonly onlyPatchedSlotKeys?: boolean;
 }): ConfirmFastPlanDraftSlotsResult {
-  const memberKeys = input.fastPlanDraftV1.memberDrafts.flatMap((d) => d.targetSlotKeys ?? []);
-  const keysToConfirm = collectDraftSlotKeys(input.fastPlanDraftV1, memberKeys);
+  const onlyPatched = input.onlyPatchedSlotKeys !== false;
+  const patchScope = getQuickDesignPatchedSlotKeys(input.fastPlanDraftV1.slotCandidatePatch);
+
+  if (onlyPatched && patchScope.length === 0) {
+    const chatMessage = newRequirementsMessage({
+      role: "ai",
+      speakerType: "AI",
+      speakerId: "ai-planner",
+      speakerName: "AI기획자",
+      messageType: "NOTICE",
+      content: QUICK_DESIGN_CONFIRM_BLOCKED_MESSAGE,
+      createdAt: input.nowIso,
+      meta: {
+        stage: "REQUIREMENTS",
+        internalType: FAST_PLAN_DRAFT_CONFIRMED_INTERNAL_TYPE,
+        interviewAllowCustomInput: true,
+      },
+    });
+    const timelineEntry = buildQuickDesignConfirmedTimelineEntry({
+      projectId: String(input.projectId ?? "").trim() || "unknown",
+      nowIso: input.nowIso,
+      confirmedCount: 0,
+    });
+    return {
+      orchestration: input.orchestration,
+      fastPlanDraftV1: input.fastPlanDraftV1,
+      confirmedSlotKeys: [],
+      confirmedLabels: [],
+      chatMessage,
+      timelineEntry,
+      blocked: true,
+      blockReason: QUICK_DESIGN_CONFIRM_BLOCKED_MESSAGE,
+    };
+  }
 
   const patches: SlotPatchInput[] = [];
   const confirmedSlotKeys: string[] = [];
   const confirmedLabels: string[] = [];
 
-  for (const slotKey of keysToConfirm) {
+  for (const slotKey of patchScope) {
     const row = findSlotRow(input.orchestration, slotKey);
     if (!row) continue;
     const status = String(row.status);
@@ -66,7 +96,7 @@ export function confirmFastPlanDraftSlots(input: {
       status: "confirmed",
       value,
       confidence: 0.9,
-      derivedFrom: "fast_plan_draft_confirmed",
+      derivedFrom: "quick_design_confirmed",
     });
     confirmedSlotKeys.push(slotKey);
     confirmedLabels.push(row.label);
@@ -87,7 +117,7 @@ export function confirmFastPlanDraftSlots(input: {
   const bodyLines = [
     "Quick Design 초안을 확정했습니다.",
     "",
-    "확정된 슬롯:",
+    "이번 초안에서 확정된 슬롯:",
     ...(uniqueLabels.length ? uniqueLabels.map((l) => `- ${l}`) : ["- (반영된 슬롯 없음)"]),
     "",
     "이제 정석 경로로 다음 작업을 진행할 수 있습니다.",
@@ -139,5 +169,6 @@ export function confirmFastPlanDraftSlots(input: {
     confirmedLabels: uniqueLabels,
     chatMessage,
     timelineEntry,
+    blocked: false,
   };
 }

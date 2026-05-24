@@ -2273,22 +2273,29 @@ export function RequirementsWorkspace({
       let fastPlanDraftV1 = extractFastPlanDraftV1FromRunResult(result);
       let orchestrationAfterDraft = orchestrationAlignedState;
       if (fastPlanDraftV1 && orchestrationAfterDraft) {
+        const quickDesignRunId =
+          fastPlanDraftV1.memberRuns.find((r) => r.status === "completed")?.runId ??
+          fastPlanDraftV1.memberDrafts[0]?.runId ??
+          undefined;
         const slotPatch = buildSlotCandidatePatchesFromFastPlanDrafts({
           memberDrafts: fastPlanDraftV1.memberDrafts,
           orchestration: orchestrationAfterDraft,
           definitions: slotDefsForProgress,
           nowIso,
+          runId: quickDesignRunId,
         });
         if (slotPatch.orchestration) orchestrationAfterDraft = slotPatch.orchestration;
         if (slotPatch.slotCandidatePatch) {
           fastPlanDraftV1 = { ...fastPlanDraftV1, slotCandidatePatch: slotPatch.slotCandidatePatch };
         }
-        if (slotPatch.updatedSlotKeys.length) {
+        if (slotPatch.patchedSlotKeys.length && slotPatch.slotCandidatePatch) {
           appendSingleChatPromptTimeline(
             buildQuickDesignSlotsPatchedTimelineEntry({
               projectId: pid,
               nowIso,
-              updatedSlotKeys: slotPatch.updatedSlotKeys,
+              patchedSlotKeys: slotPatch.patchedSlotKeys,
+              areaCounts: slotPatch.areaCounts,
+              runId: slotPatch.slotCandidatePatch.runId,
             }),
           );
         }
@@ -2368,7 +2375,12 @@ export function RequirementsWorkspace({
         definitions: slotDefsForProgress,
         nowIso,
         projectId: pid,
+        onlyPatchedSlotKeys: true,
       });
+      if (result.blocked) {
+        showErrorToast(result.blockReason ?? "확정할 Quick Design 슬롯 후보를 찾을 수 없습니다.");
+        return;
+      }
       await persistStateJsonOnly({
         fastPlanDraftV1: result.fastPlanDraftV1,
         singleChatOrchestrationV1: result.orchestration,

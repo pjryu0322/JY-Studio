@@ -37,8 +37,25 @@ describe("quickDesignLabels", () => {
       ],
       assumptions: [],
       slotCandidatePatch: {
+        source: "quick_design",
+        runId: "qd-test",
         patchedAt: nowIso,
-        updatedSlotKeys: ["p.planning.servicePurpose", "p.flow.actors", "p.architecture.coreFeatures", "p.design.requiredScreens"],
+        patchedSlotKeys: [
+          "p.planning.servicePurpose",
+          "p.flow.actorTypes",
+          "p.architecture.automationLevel",
+          "p.design.requiredScreens",
+        ],
+        updatedSlotKeys: [
+          "p.planning.servicePurpose",
+          "p.flow.actorTypes",
+          "p.architecture.automationLevel",
+          "p.design.requiredScreens",
+        ],
+        areaCounts: { planning: 1, analysis: 1, architecture: 1, design: 1 },
+        entries: [],
+        candidateSlotKeys: [],
+        assumedSlotKeys: [],
       },
     });
 
@@ -48,17 +65,18 @@ describe("quickDesignLabels", () => {
     expect(message).toContain("분석 후보: 1개");
     expect(message).toContain("설계 후보: 1개");
     expect(message).toContain("디자인 후보: 1개");
+    expect(message).not.toContain("분석 후보: 0개");
   });
 
   it("counts slot keys by planning/flow/architecture/design areas", () => {
     expect(
       countQuickDesignSlotsByArea([
         "p.planning.servicePurpose",
-        "p.flow.actors",
-        "p.architecture.coreFeatures",
+        "p.flow.actorTypes",
+        "p.architecture.automationLevel",
         "p.design.requiredScreens",
       ]),
-    ).toEqual({ planning: 1, flow: 1, design: 1, architecture: 1 });
+    ).toEqual({ planning: 1, analysis: 1, architecture: 1, design: 1 });
   });
 
   it("creates drafts for planner, analyst, architect, and designer", () => {

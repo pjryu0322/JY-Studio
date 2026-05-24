@@ -171,7 +171,12 @@ export function runFastPlanDraftFlow(input: RunFastPlanDraftFlowInput): Platform
     ...flowBase,
     role: "planner",
     buildDraft: (runId) =>
-      buildPlannerMemberDraft({ runId, collected, definitions: input.slotDefinitions }),
+      buildPlannerMemberDraft({
+        runId,
+        collected,
+        definitions: input.slotDefinitions,
+        orchestration: input.orchestration,
+      }),
   });
   memberRuns.push(plannerResult.run);
   if (plannerResult.draft) memberDrafts.push(plannerResult.draft);

@@ -3,6 +3,12 @@ import type { FastPlanAssumption } from "@/lib/requirements/fastPlanGenerationTy
 import type { FastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { formatFastPlanPlatformTimelineResponse } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
+import {
+  buildQuickDesignAreaShortfallWarnings,
+  countQuickDesignAreaCounts,
+  getQuickDesignPatchedSlotKeys,
+  type QuickDesignAreaCounts,
+} from "@/lib/requirements/quickDesignSlotArea";
 
 export const QUICK_DESIGN_LABEL = "Quick Design" as const;
 export const QUICK_DESIGN_TOOLTIP = "AI팀이 기획·분석·설계·디자인 초안을 자동 구성합니다" as const;
@@ -34,24 +40,16 @@ function confidenceKo(c: string): string {
   return "프로토타입용 가정";
 }
 
-export function countQuickDesignSlotsByArea(keys: readonly string[]): Readonly<{
-  readonly planning: number;
-  readonly flow: number;
-  readonly design: number;
-  readonly architecture: number;
-}> {
-  let planning = 0;
-  let flow = 0;
-  let design = 0;
-  let architecture = 0;
-  for (const key of keys) {
-    const k = String(key ?? "");
-    if (k.includes(".planning.")) planning += 1;
-    else if (k.includes(".flow.")) flow += 1;
-    else if (k.includes(".architecture.")) architecture += 1;
-    else if (k.includes(".design.")) design += 1;
-  }
-  return { planning, flow, design, architecture };
+/** @deprecated use countQuickDesignAreaCounts from quickDesignSlotArea */
+export function countQuickDesignSlotsByArea(keys: readonly string[]): QuickDesignAreaCounts {
+  return countQuickDesignAreaCounts(keys);
+}
+
+function resolveAreaCountsForMessage(
+  patch: FastPlanDraftSlotCandidatePatchV1 | null | undefined,
+): QuickDesignAreaCounts {
+  if (patch?.areaCounts) return patch.areaCounts;
+  return countQuickDesignAreaCounts(getQuickDesignPatchedSlotKeys(patch));
 }
 
 export function buildQuickDesignResultMessage(input: {
@@ -76,18 +74,21 @@ export function buildQuickDesignResultMessage(input: {
       ["### AI 보완 후보/가정", "| 항목 | 보완 내용 | 신뢰도 | 근거 |", "|---|---|---|---|", assumptionRows].join("\n")
     : "";
 
-  const patchKeys = input.slotCandidatePatch?.updatedSlotKeys ?? [];
-  const areaCounts = countQuickDesignSlotsByArea(patchKeys);
+  const patchKeys = getQuickDesignPatchedSlotKeys(input.slotCandidatePatch);
+  const areaCounts = resolveAreaCountsForMessage(input.slotCandidatePatch);
+  const shortfall = buildQuickDesignAreaShortfallWarnings(areaCounts);
   const slotReflectBlock =
     patchKeys.length > 0 ?
       [
         "### 슬롯 후보 반영",
         `- 기획 후보: ${areaCounts.planning}개`,
-        `- 분석 후보: ${areaCounts.flow}개`,
+        `- 분석 후보: ${areaCounts.analysis}개`,
         `- 설계 후보: ${areaCounts.architecture}개`,
         `- 디자인 후보: ${areaCounts.design}개`,
       ].join("\n")
     : "### 슬롯 후보 반영\n- (반영된 슬롯 없음)";
+  const warningBlock =
+    shortfall.length > 0 ? ["", "주의:", ...shortfall].join("\n") : "";
 
   return [
     "Quick Design 초안이 생성되었습니다.",
@@ -99,6 +100,7 @@ export function buildQuickDesignResultMessage(input: {
     assumptionsBlock,
     "",
     slotReflectBlock,
+    warningBlock,
     "",
     "다음 작업을 선택해 주세요.",
   ]
@@ -161,14 +163,26 @@ export function buildQuickDesignDraftCreatedTimelineEntry(input: {
 export function buildQuickDesignSlotsPatchedTimelineEntry(input: {
   readonly projectId: string;
   readonly nowIso: string;
-  readonly updatedSlotKeys: readonly string[];
+  readonly patchedSlotKeys: readonly string[];
+  readonly updatedSlotKeys?: readonly string[];
+  readonly areaCounts: QuickDesignAreaCounts;
+  readonly runId: string;
 }): RequirementsPromptTimelineEntry {
+  const keys = input.patchedSlotKeys.length ? input.patchedSlotKeys : (input.updatedSlotKeys ?? []);
+  const detail = JSON.stringify({
+    runId: input.runId,
+    planningCandidateCount: input.areaCounts.planning,
+    analysisCandidateCount: input.areaCounts.analysis,
+    architectureCandidateCount: input.areaCounts.architecture,
+    designCandidateCount: input.areaCounts.design,
+    patchedSlotKeys: keys,
+  });
   return platformTimelineEntry({
     action: "quick_design_slots_patched",
     routingDecision: "quick_design_slots_patched",
     projectId: input.projectId,
     nowIso: input.nowIso,
-    detail: `slots=${input.updatedSlotKeys.join(",")}`,
+    detail,
   });
 }
 
