@@ -2538,13 +2538,6 @@ export function RequirementsWorkspace({
         serviceFlowAnalyzePending={serviceFlowChatPending}
         serviceFlowPendingStatusLabel={serviceFlowAlternativeCanvas.pendingStatusLabel}
         serviceDesignStage={activeStage}
-        proposalReadinessPercentVal={proposalReadinessPercentVal}
-        problemInterviewCovered={problemInterviewCovered}
-        progressSlotTotal={progressSlotTotal}
-        orchestrationSlotSections={orchestrationSlotSectionsForUi}
-        orchestrationStatusCounts={orchestrationStatusCounts}
-        remainingQuestionsEstimate={remainingQuestionsEstimate}
-        onForceGeneratePlanNow={onForceGeneratePlanNow}
         onInsertComposerPrompt={insertComposerPrompt}
         onInterviewSuggestionPick={(label) => {
           interviewSuggestionPickRef.current = storeInterviewSuggestionPick(label);

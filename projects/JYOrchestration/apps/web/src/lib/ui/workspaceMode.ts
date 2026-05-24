@@ -268,11 +268,17 @@ export function openProjectRoomWindow(projectId: string, mode: WorkspaceMode, pa
     const mustOpenSeparateWindow =
       window.name === name && !isCurrentWindowOnProjectRoomUrl(pid, path);
     const targetName = mustOpenSeparateWindow ? "_blank" : name;
-    let opened = window.open(href, targetName, `noopener,noreferrer,${feats}`);
+    // `noopener` in windowFeatures makes `window.open` return null even when the popup opens.
+    let opened = window.open(href, targetName, feats);
     if (!opened) {
-      opened = window.open(href, targetName, "noopener,noreferrer");
+      opened = window.open(href, targetName);
     }
     if (opened) {
+      try {
+        opened.opener = null;
+      } catch {
+        /* noop */
+      }
       try {
         opened.focus();
       } catch {

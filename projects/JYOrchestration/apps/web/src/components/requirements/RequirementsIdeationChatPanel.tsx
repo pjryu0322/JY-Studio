@@ -9,8 +9,6 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
-import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
@@ -30,14 +28,6 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   serviceDesignStage: RequirementsWorkspaceStage;
   /** 채팅 헤더 참가자 배지(통합 화면에서는 항상 전달 권장) */
   memberControls?: { count: number; onOpen: () => void } | null;
-  proposalReadinessPercentVal: number;
-  problemInterviewCovered: number;
-  /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */
-  progressSlotTotal: number;
-  orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
-  orchestrationStatusCounts?: SingleChatOrchestrationStatusCounts | null;
-  remainingQuestionsEstimate: number;
-  onForceGeneratePlanNow: () => void;
   onInsertComposerPrompt: (text: string) => void;
   /** 인터뷰 추천 칩 — 탭 시 입력창 프리필(또는 직접 입력 유도) */
   onInterviewSuggestionPick?: (label: string) => void;
@@ -81,13 +71,6 @@ export function RequirementsIdeationChatPanel({
   serviceFlowPendingStatusLabel = null,
   serviceDesignStage,
   memberControls,
-  proposalReadinessPercentVal,
-  problemInterviewCovered,
-  progressSlotTotal,
-  orchestrationSlotSections,
-  orchestrationStatusCounts,
-  remainingQuestionsEstimate,
-  onForceGeneratePlanNow,
   onInsertComposerPrompt,
   onInterviewSuggestionPick,
   onSetReplyTo,
@@ -123,20 +106,6 @@ export function RequirementsIdeationChatPanel({
     const last = chatMessages[chatMessages.length - 1];
     return last?.role !== "ai";
   }, [aiInvokePending, serviceFlowAnalyzePending, chatMessages]);
-
-  const ideationInterviewUi =
-    conversationStatus === "loaded"
-      ? {
-          active: true,
-          readinessPercent: proposalReadinessPercentVal,
-          covered: problemInterviewCovered,
-          total: progressSlotTotal,
-          statusCounts: orchestrationStatusCounts ?? null,
-          remainingQuestionsEstimate,
-          onForceGeneratePlanNow,
-          orchestrationSlotSections: orchestrationSlotSections ?? null,
-        }
-      : null;
 
   const composer: ReactNode = (
     <>
@@ -223,7 +192,6 @@ export function RequirementsIdeationChatPanel({
         memberControls={memberControls}
         promptTimeline={promptTimeline}
         onOpenPromptTimeline={onOpenPromptTimeline}
-        ideationInterviewUi={ideationInterviewUi}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}
         onSetReplyTo={(messageId, preview) => {

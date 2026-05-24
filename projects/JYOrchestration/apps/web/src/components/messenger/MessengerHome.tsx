@@ -85,6 +85,7 @@ export function MessengerHome() {
 
   const openLinkedProjectWindow = useCallback(
     (projectId: string) => {
+      setListError(null);
       const opened = openProjectRoomWindow(projectId, workspaceMode);
       if (!opened) {
         setListError("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용한 뒤 다시 시도해 주세요.");

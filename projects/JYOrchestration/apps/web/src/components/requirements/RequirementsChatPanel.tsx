@@ -17,7 +17,6 @@ import { formatSingleChatReplyReferenceLine } from "@/lib/requirements/singleCha
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceComposerFooter";
 import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
-import { WorkspaceProgressPill, type WorkspaceIdeationInterviewProgressUi } from "@/components/workspace/WorkspaceProgressPill";
 import { WorkspaceResultCard } from "@/components/workspace/WorkspaceResultCard";
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
@@ -106,7 +105,6 @@ export function RequirementsChatPanel({
   typingIndicatorLabel,
   typingIndicatorSpeakerLine,
   typingIndicatorResolvedSpeakerSource,
-  ideationInterviewUi,
   onInsertComposerPrompt,
   onInterviewSuggestionPick,
   onSetReplyTo,
@@ -131,7 +129,6 @@ export function RequirementsChatPanel({
   readonly typingIndicatorSpeakerLine?: string | null;
   /** typing bubble speaker 결정 출처(진단용) */
   readonly typingIndicatorResolvedSpeakerSource?: string | null;
-  readonly ideationInterviewUi?: WorkspaceIdeationInterviewProgressUi | null;
   readonly onInsertComposerPrompt?: (text: string) => void;
   /** SingleChat 인터뷰 추천 칩 선택 */
   readonly onInterviewSuggestionPick?: (label: string) => void;
@@ -355,15 +352,9 @@ export function RequirementsChatPanel({
     []
   );
 
-  const interviewUi = ideationInterviewUi ?? null;
   const membersUi = memberControls ?? null;
 
-  const topChrome = interviewUi ? (
-    <RequirementsChatHeaderRow
-      ref={headerRef}
-      leading={<WorkspaceProgressPill interviewUi={interviewUi} headerRef={headerRef} />}
-    />
-  ) : membersUi ? (
+  const topChrome = membersUi ? (
     <RequirementsChatHeaderRow ref={headerRef} memberControls={membersUi} leading={null} />
   ) : null;
 

@@ -90,6 +90,49 @@ function ArtifactHubIcon() {
   );
 }
 
+const SLOTS_PANEL_SIZE_STORAGE_KEY = "jyo:requirements-slots-popover-size";
+const SLOTS_PANEL_MIN_W = 360;
+const SLOTS_PANEL_MIN_H = 280;
+const SLOTS_PANEL_DEFAULT_W = 520;
+const SLOTS_PANEL_DEFAULT_H = 520;
+
+function readStoredSlotsPanelSize(): { readonly w: number; readonly h: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SLOTS_PANEL_SIZE_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { w?: unknown; h?: unknown };
+    const w = Number(p.w);
+    const h = Number(p.h);
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return null;
+    const margin = 24;
+    return {
+      w: Math.min(Math.max(SLOTS_PANEL_MIN_W, Math.round(w)), window.innerWidth - margin),
+      h: Math.min(Math.max(SLOTS_PANEL_MIN_H, Math.round(h)), window.innerHeight - margin),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSlotsPanelSize(w: number, h: number): void {
+  try {
+    window.sessionStorage.setItem(
+      SLOTS_PANEL_SIZE_STORAGE_KEY,
+      JSON.stringify({ w: Math.round(w), h: Math.round(h) }),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function defaultSlotsPanelSize(maxH: number): { readonly w: number; readonly h: number } {
+  const margin = 24;
+  const w = Math.min(SLOTS_PANEL_DEFAULT_W, window.innerWidth - margin);
+  const h = Math.min(Math.max(SLOTS_PANEL_MIN_H, maxH, SLOTS_PANEL_DEFAULT_H), window.innerHeight - margin);
+  return { w, h };
+}
+
 export function RequirementsWorkspaceTopChrome({
   showScreenLabels,
   showProjectWorkflowNav,
@@ -125,7 +168,9 @@ export function RequirementsWorkspaceTopChrome({
   const slotsUi = ideationInterviewUi ?? null;
   const [slotsOpen, setSlotsOpen] = useState(false);
   const slotsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const slotsPanelRef = useRef<HTMLDivElement | null>(null);
   const [slotsPos, setSlotsPos] = useState<{ top: number; right: number; maxH: number; narrow: boolean } | null>(null);
+  const [slotsPanelSize, setSlotsPanelSize] = useState<{ w: number; h: number } | null>(null);
   const useOrchestrationGrid = Boolean(slotsUi?.orchestrationSlotSections?.some((s) => s.slots.length));
 
   const computeSlotsPos = () => {
@@ -146,7 +191,27 @@ export function RequirementsWorkspaceTopChrome({
     if (!slotsOpen) return;
     const pos = computeSlotsPos();
     if (pos) setSlotsPos(pos);
+    if (pos && !pos.narrow) {
+      const stored = readStoredSlotsPanelSize();
+      setSlotsPanelSize(stored ?? defaultSlotsPanelSize(pos.maxH));
+    } else {
+      setSlotsPanelSize(null);
+    }
   }, [slotsOpen]);
+
+  useEffect(() => {
+    if (!slotsOpen || slotsPos?.narrow) return;
+    const el = slotsPanelRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w < SLOTS_PANEL_MIN_W || h < SLOTS_PANEL_MIN_H) return;
+      writeStoredSlotsPanelSize(w, h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [slotsOpen, slotsPos?.narrow]);
 
   useEffect(() => {
     if (!slotsOpen) return;
@@ -185,7 +250,10 @@ export function RequirementsWorkspaceTopChrome({
     if (!pos) return null;
     const sections = slotsUi.orchestrationSlotSections ?? [];
     const gridCols = pos.narrow ? 1 : 2;
-    const panelW = pos.narrow ? "min(96vw, 420px)" : "min(92vw, 520px)";
+    const panelW = pos.narrow ? "min(96vw, 420px)" : slotsPanelSize?.w ?? SLOTS_PANEL_DEFAULT_W;
+    const panelH = pos.narrow ? pos.maxH : slotsPanelSize?.h ?? pos.maxH;
+    const maxPanelW = Math.max(SLOTS_PANEL_MIN_W, window.innerWidth - 24);
+    const maxPanelH = Math.max(SLOTS_PANEL_MIN_H, window.innerHeight - 24);
     return (
       <>
         <div
@@ -199,6 +267,7 @@ export function RequirementsWorkspaceTopChrome({
           }}
         />
         <div
+          ref={slotsPanelRef}
           id="requirements-slots-popover"
           role="dialog"
           aria-label="서비스 기획 슬롯 상세"
@@ -209,7 +278,11 @@ export function RequirementsWorkspaceTopChrome({
             left: pos.narrow ? "max(10px, env(safe-area-inset-left, 0px))" : undefined,
             zIndex: 1100,
             width: pos.narrow ? "auto" : panelW,
-            maxHeight: pos.maxH,
+            height: pos.narrow ? undefined : panelH,
+            maxWidth: pos.narrow ? undefined : maxPanelW,
+            maxHeight: pos.narrow ? pos.maxH : maxPanelH,
+            minWidth: pos.narrow ? undefined : SLOTS_PANEL_MIN_W,
+            minHeight: pos.narrow ? undefined : SLOTS_PANEL_MIN_H,
             borderRadius: 14,
             border: "1px solid #e2e8f0",
             background: "#fff",
@@ -217,6 +290,11 @@ export function RequirementsWorkspaceTopChrome({
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
+            ...(!pos.narrow ?
+              {
+                resize: "both",
+              }
+            : {}),
           }}
         >
           <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
@@ -356,7 +434,7 @@ export function RequirementsWorkspaceTopChrome({
         </div>
       </>
     );
-  }, [slotsOpen, slotsUi, slotsPos, useOrchestrationGrid]);
+  }, [slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid]);
 
   return (
     <div className="jyo-requirements-workspace-top-chrome">
@@ -366,9 +444,10 @@ export function RequirementsWorkspaceTopChrome({
         {slotPanel}
         {slotsUi ? (
           <WorkspaceHubChromeIconButton
-            title="서비스 기획 슬롯 상세 보기"
-            ariaLabel="서비스 기획 슬롯 상세 보기"
+            title={`서비스 기획 슬롯 상세 보기 · 진행도 ${slotsUi.readinessPercent}%`}
+            ariaLabel={`서비스 기획 슬롯 상세 보기, 진행도 ${slotsUi.readinessPercent}퍼센트`}
             disabled={false}
+            badge={slotsUi.readinessPercent}
             buttonRef={(n) => {
               slotsBtnRef.current = n;
             }}
