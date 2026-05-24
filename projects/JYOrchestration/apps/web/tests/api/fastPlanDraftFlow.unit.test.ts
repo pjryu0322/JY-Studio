@@ -4,7 +4,7 @@ import { runFastPlanDraftFlow } from "@/lib/platform-orchestration/flows/fastPla
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
-  FAST_PLAN_DRAFT_ACTION_GENERATE,
+  FAST_PLAN_DRAFT_ACTION_CONFIRM,
   FAST_PLAN_DRAFT_ACTION_PARTIAL_EDIT,
   FAST_PLAN_DRAFT_ACTION_REGENERATE,
 } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
@@ -139,7 +139,7 @@ describe("fastPlanDraftFlow", () => {
 
     expect(result.nextActions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: FAST_PLAN_DRAFT_ACTION_GENERATE }),
+        expect.objectContaining({ label: FAST_PLAN_DRAFT_ACTION_CONFIRM }),
         expect.objectContaining({ label: FAST_PLAN_DRAFT_ACTION_PARTIAL_EDIT }),
         expect.objectContaining({ label: FAST_PLAN_DRAFT_ACTION_REGENERATE }),
       ]),

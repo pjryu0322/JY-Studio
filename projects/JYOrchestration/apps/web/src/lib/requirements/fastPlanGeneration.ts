@@ -83,7 +83,7 @@ export function buildFastPlanMarkdown(input: {
     .join("\n");
 
   return [
-    "# 빠른 프로토타입 기획안",
+    "# 기획안",
     "",
     `> 프로젝트: **${name}** · 생성 모드: 빠른 기획 (현재 대화·슬롯 기준)`,
     "",
@@ -122,13 +122,6 @@ export function buildFastPlanMarkdown(input: {
     "- 현재 기획안으로 프로토타입 만들기",
     "- 기획안 일부 수정",
     "- 정밀 기획 계속하기",
-    "",
-    "---",
-    "",
-    "현재까지의 대화와 후보 정보를 기준으로 빠른 기획안을 만들었습니다.",
-    "",
-    "일부 항목은 아직 확정되지 않아 AI가 임시 후보로 보완했습니다.",
-    "이 기획안은 빠른 프로토타입 제작을 위한 초안이며, 생성 후 화면을 보면서 수정할 수 있습니다.",
   ].join("\n");
 }
 
@@ -215,7 +208,7 @@ export function generateFastPlanFromCurrentContext(input: FastPlanGenerationInpu
   const artifact: ProjectArtifact = {
     id: artifactId,
     type: "fast_prototype_plan",
-    title: "빠른 프로토타입 기획안",
+    title: "기획안",
     createdAt: nowIso,
     createdBy: "ai",
     sourceStage: wireStageLabel(input.sourceStage),

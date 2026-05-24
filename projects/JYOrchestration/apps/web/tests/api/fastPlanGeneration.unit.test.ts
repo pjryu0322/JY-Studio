@@ -123,7 +123,7 @@ describe("fastPlanGeneration", () => {
       context: { ...context, assumptions: collected.assumptions },
     });
 
-    expect(md).toContain("# 빠른 프로토타입 기획안");
+    expect(md).toContain("# 기획안");
     expect(md).toContain("## 8. AI 보완 후보/가정");
     expect(md).toContain("현재 기획안으로 프로토타입 만들기");
   });

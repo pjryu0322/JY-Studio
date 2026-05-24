@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 import type { Project } from "@/components/project-spec/types";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsIdeationChatPanel } from "@/components/requirements/RequirementsIdeationChatPanel";
+import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/RequirementsIdeationDocumentDrawers";
 import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
 import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
@@ -201,18 +202,25 @@ import {
   normalizeFastPlanDraftChipLabel,
   resolveFastPlanDraftSuggestionAction,
 } from "@/lib/requirements/fastPlanDraftSuggestionPick";
+import { confirmFastPlanDraftSlots } from "@/lib/requirements/fastPlanDraftConfirmation";
+import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import {
   buildFastPlanArtifactCreatedChatMessage,
   buildFastPlanArtifactCreatedTimelineEntry,
   buildFastPlanDraftGenerationHandoffTimeline,
+  buildFastPlanDraftSlotsPatchedTimelineEntry,
   buildFastPlanDraftSuggestionPickedTimelineEntry,
   buildFastPlanGenerationBlockedTimelineEntry,
   buildFastPlanGenerationFailedTimelineEntry,
+  buildGenerationReadinessCheckedTimelineEntry,
   evaluateFastPlanGenerationHandoffReadiness,
   FAST_PLAN_DRAFT_ACTION_GENERATE,
   resolveFastPlanArtifactFollowUpAction,
   isFastPlanArtifactFollowUpLabel,
+  findLatestFastPlanArtifactIdFromMessages,
+  resolveFastPlanViewArtifactId,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
+import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -391,9 +399,6 @@ export function RequirementsWorkspace({
     setSummaryModalOpen(false);
     setPromptDrawerOpen(false);
     setDraftDrawerOpen(false);
-    setDeliverableViewerOpen(false);
-    setDeliverableViewerIds([]);
-    setDeliverableViewerFocusId(null);
     setPlannerTypePickerOpen(false);
     setReplyTo(null);
     setOrganizeState("idle");
@@ -929,10 +934,28 @@ export function RequirementsWorkspace({
     project?.requirementsStateJson,
   ]);
 
-  const deliverableViewerAssets = useMemo(
-    () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
-    [deliverableAssetsFromProject, deliverableViewerIds]
-  );
+  const deliverableViewerAssets = useMemo(() => {
+    const pid = resolvedProjectId.trim();
+    const fromDeliverables = deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id));
+    const knownIds = new Set(fromDeliverables.map((a) => a.id));
+    const projectArtifacts =
+      stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? [];
+    const extras = deliverableViewerIds.flatMap((id) => {
+      if (knownIds.has(id)) return [];
+      const artifact = projectArtifacts.find((a) => a.id === id);
+      if (!artifact || !pid) return [];
+      return [projectArtifactToDeliverableAsset(artifact, pid)];
+    });
+    return [...fromDeliverables, ...extras];
+  }, [
+    deliverableAssetsFromProject,
+    deliverableViewerIds,
+    persistedPromptState.projectArtifacts,
+    project?.requirementsStateJson,
+    resolvedProjectId,
+    saveState,
+    fetchNonce,
+  ]);
 
   const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
     setDeliverableViewerIds([...ids]);
@@ -2247,7 +2270,29 @@ export function RequirementsWorkspace({
         problemInterview: latestInterviewState,
         nowIso,
       });
-      const fastPlanDraftV1 = extractFastPlanDraftV1FromRunResult(result);
+      let fastPlanDraftV1 = extractFastPlanDraftV1FromRunResult(result);
+      let orchestrationAfterDraft = orchestrationAlignedState;
+      if (fastPlanDraftV1 && orchestrationAfterDraft) {
+        const slotPatch = buildSlotCandidatePatchesFromFastPlanDrafts({
+          memberDrafts: fastPlanDraftV1.memberDrafts,
+          orchestration: orchestrationAfterDraft,
+          definitions: slotDefsForProgress,
+          nowIso,
+        });
+        if (slotPatch.orchestration) orchestrationAfterDraft = slotPatch.orchestration;
+        if (slotPatch.slotCandidatePatch) {
+          fastPlanDraftV1 = { ...fastPlanDraftV1, slotCandidatePatch: slotPatch.slotCandidatePatch };
+        }
+        if (slotPatch.updatedSlotKeys.length) {
+          appendSingleChatPromptTimeline(
+            buildFastPlanDraftSlotsPatchedTimelineEntry({
+              projectId: pid,
+              nowIso,
+              updatedSlotKeys: slotPatch.updatedSlotKeys,
+            }),
+          );
+        }
+      }
       const proposalMessage = buildFastPlanDraftProposalMessage({
         content: String(result.userMessage ?? "").trim(),
         interviewSuggestions: platformNextActionLabelsForInterviewSuggestions(result.nextActions),
@@ -2255,9 +2300,12 @@ export function RequirementsWorkspace({
       });
       await appendServiceFlowWorkshopMessages([proposalMessage]);
       if (fastPlanDraftV1) {
-        await persistStateJsonOnly({ fastPlanDraftV1 });
+        await persistStateJsonOnly({
+          fastPlanDraftV1,
+          ...(orchestrationAfterDraft ? { singleChatOrchestrationV1: orchestrationAfterDraft } : {}),
+        });
       }
-      showSuccessToast("AI팀 빠른 기획 초안을 SingleChat에 제안했습니다.");
+      showSuccessToast("AI팀 초안을 슬롯 후보로 반영했습니다. SingleChat에서 확인해 주세요.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "빠른 기획 초안 생성 중 오류가 발생했습니다.";
       setError(msg);
@@ -2288,6 +2336,56 @@ export function RequirementsWorkspace({
 
   const lastFastPlanArtifactIdRef = useRef<string | null>(null);
 
+  const handleConfirmFastPlanDraftSlots = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
+    const draft = stateJsonRef.current.fastPlanDraftV1;
+    if (!draft?.memberDrafts?.length) {
+      showErrorToast("확인할 AI팀 초안이 없습니다. 먼저 「AI팀 빠른 기획 초안 받기」를 실행해 주세요.");
+      return;
+    }
+    if (!orchestrationAlignedState) {
+      showErrorToast("슬롯 상태를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    try {
+      const result = confirmFastPlanDraftSlots({
+        fastPlanDraftV1: draft,
+        orchestration: orchestrationAlignedState,
+        definitions: slotDefsForProgress,
+        nowIso,
+        projectId: pid,
+      });
+      await persistStateJsonOnly({
+        fastPlanDraftV1: result.fastPlanDraftV1,
+        singleChatOrchestrationV1: result.orchestration,
+      });
+      await appendServiceFlowWorkshopMessages([result.chatMessage]);
+      appendSingleChatPromptTimeline(result.timelineEntry);
+      showSuccessToast(
+        result.confirmedSlotKeys.length > 0
+          ? `${result.confirmedSlotKeys.length}개 슬롯을 확정했습니다.`
+          : "초안 확인을 완료했습니다.",
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "초안 확인 처리 중 오류가 발생했습니다.";
+      showErrorToast(msg);
+    }
+  }, [
+    resolvedProjectId,
+    busy,
+    deliverableGenerateBusy,
+    remoteLocked,
+    orchestrationAlignedState,
+    slotDefsForProgress,
+    persistStateJsonOnly,
+    appendServiceFlowWorkshopMessages,
+    appendSingleChatPromptTimeline,
+    showErrorToast,
+    showSuccessToast,
+  ]);
+
   const handleGenerateFastPlanFromCurrentContext = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     const nowIso = new Date().toISOString();
@@ -2300,7 +2398,7 @@ export function RequirementsWorkspace({
       projectLoaded: Boolean(project),
     });
     if (!readiness.ready) {
-      const reason = readiness.reason ?? "현재 빠른 기획안을 생성할 수 없습니다.";
+      const reason = readiness.reason ?? "현재 기획안을 생성할 수 없습니다.";
       showErrorToast(reason);
       appendSingleChatPromptTimeline(
         buildFastPlanGenerationBlockedTimelineEntry({
@@ -2331,7 +2429,7 @@ export function RequirementsWorkspace({
         definitions: slotDefsForProgress,
       });
       if (slotReadiness.missing.length > 0) {
-        showSuccessToast("부족한 항목은 AI가 후보로 보완해 빠른 기획안을 생성합니다.");
+        showSuccessToast("부족한 항목은 AI가 후보로 보완해 기획안을 생성합니다.");
       }
       const result = generateFastPlanFromCurrentContext({
         projectId: pid,
@@ -2349,7 +2447,7 @@ export function RequirementsWorkspace({
       const deliverable = projectArtifactToDeliverableAsset(result.artifact, pid);
       const priorArtifacts = (st.projectArtifacts ?? []).filter((a) => a.type !== "fast_prototype_plan");
       const priorDeliverables = (st.deliverableAssets ?? []).filter(
-        (d) => !String(d.title ?? "").includes("빠른 프로토타입"),
+        (d) => String(d.title ?? "").trim() !== "기획안",
       );
       await persistStateJsonOnly({
         projectArtifacts: [...priorArtifacts, result.artifact],
@@ -2374,7 +2472,7 @@ export function RequirementsWorkspace({
       openDeliverableViewer([deliverable.id], deliverable.id);
       showSuccessToast(result.userFacingSummary);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "빠른 기획안 생성 중 오류가 발생했습니다.";
+      const msg = e instanceof Error ? e.message : "기획안 생성 중 오류가 발생했습니다.";
       setError(msg);
       showErrorToast(msg);
       appendSingleChatPromptTimeline(
@@ -2420,18 +2518,37 @@ export function RequirementsWorkspace({
       const artifactFollowUp = resolveFastPlanArtifactFollowUpAction(trimmed);
       if (artifactFollowUp === "view_artifact") {
         const artifactId =
-          lastFastPlanArtifactIdRef.current ??
-          stateJsonRef.current.fastPlanGenerationV1?.artifactId ??
-          null;
+          resolveFastPlanViewArtifactId({ state: stateJsonRef.current }) ??
+          findLatestFastPlanArtifactIdFromMessages(conversationMessages) ??
+          lastFastPlanArtifactIdRef.current;
         if (artifactId) {
           openDeliverableViewer([artifactId], artifactId);
         } else {
-          showErrorToast("열 수 있는 빠른 기획안 산출물이 없습니다. 먼저 「이 초안으로 빠른 기획안 생성」을 실행해 주세요.");
+          showErrorToast("열 수 있는 기획안이 없습니다. 먼저 「기획안 생성」을 실행해 주세요.");
         }
         return;
       }
-      if (artifactFollowUp === "go_generation") {
-        showSuccessToast("왼쪽 「생성」 탭에서 참조자료로 빠른 프로토타입 기획안을 사용할 수 있습니다.");
+      if (artifactFollowUp === "check_generation_readiness") {
+        const readiness = evaluatePlanningToGenerationReadiness({
+          orchestration: orchestrationAlignedState,
+          definitions: slotDefsForProgress,
+        });
+        appendSingleChatPromptTimeline(
+          buildGenerationReadinessCheckedTimelineEntry({
+            projectId: pid,
+            nowIso,
+            ready: readiness.ready,
+            detail: readiness.reason ?? "generation_ready",
+          }),
+        );
+        if (readiness.ready) {
+          showSuccessToast("필수 슬롯이 확정되었습니다. 왼쪽 「생성」 탭에서 프로토타입 생성을 진행할 수 있습니다.");
+        } else {
+          showErrorToast(
+            readiness.reason ??
+              "생성 단계로 이동하려면 「초안 확인/확정」으로 필수 슬롯을 먼저 확정해 주세요.",
+          );
+        }
         return;
       }
       if (artifactFollowUp === "continue_planning") {
@@ -2455,12 +2572,36 @@ export function RequirementsWorkspace({
         );
       }
 
+      if (action === "confirm_draft_slots") {
+        void handleConfirmFastPlanDraftSlots();
+        return;
+      }
       if (action === "generate_artifact") {
         void handleGenerateFastPlanFromCurrentContext();
         return;
       }
       if (action === "request_draft") {
         void handleRequestFastPlanDraft();
+        return;
+      }
+      if (action === "check_generation_readiness") {
+        const readiness = evaluatePlanningToGenerationReadiness({
+          orchestration: orchestrationAlignedState,
+          definitions: slotDefsForProgress,
+        });
+        appendSingleChatPromptTimeline(
+          buildGenerationReadinessCheckedTimelineEntry({
+            projectId: pid,
+            nowIso,
+            ready: readiness.ready,
+            detail: readiness.reason ?? "generation_ready",
+          }),
+        );
+        if (readiness.ready) {
+          showSuccessToast("생성 단계 준비가 완료되었습니다. 왼쪽 「생성」 탭에서 진행할 수 있습니다.");
+        } else {
+          showErrorToast(readiness.reason ?? "필수 슬롯을 확정한 뒤 다시 시도해 주세요.");
+        }
         return;
       }
       const composerPrompt = action ? composerPromptForFastPlanDraftSuggestion(action) : null;
@@ -2473,11 +2614,15 @@ export function RequirementsWorkspace({
       insertComposerPrompt(label);
     },
     [
+      conversationMessages,
+      orchestrationAlignedState,
+      slotDefsForProgress,
+      handleConfirmFastPlanDraftSlots,
       handleGenerateFastPlanFromCurrentContext,
       handleRequestFastPlanDraft,
+      appendSingleChatPromptTimeline,
       insertComposerPrompt,
       openDeliverableViewer,
-      appendSingleChatPromptTimeline,
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,
@@ -3156,13 +3301,16 @@ export function RequirementsWorkspace({
           draftDrawerOpen={draftDrawerOpen}
           onCloseDraftDrawer={() => setDraftDrawerOpen(false)}
           draftDoc={draftDoc}
-          deliverableViewerOpen={deliverableViewerOpen}
-          onCloseDeliverableViewer={() => setDeliverableViewerOpen(false)}
-          deliverableViewerAssets={deliverableViewerAssets}
-          deliverableViewerFocusId={deliverableViewerFocusId}
           orchestrationDebugSummary={orchestrationUi.humanReadableDebugSummary}
         />
       ) : null}
+
+      <RequirementsDeliverableViewerModal
+        open={deliverableViewerOpen}
+        onClose={() => setDeliverableViewerOpen(false)}
+        assets={deliverableViewerAssets}
+        initialAssetId={deliverableViewerFocusId}
+      />
     </div>
   );
 }

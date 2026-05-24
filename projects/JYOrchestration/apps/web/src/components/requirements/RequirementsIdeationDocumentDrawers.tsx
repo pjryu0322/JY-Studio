@@ -1,11 +1,9 @@
 "use client";
 
-import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import type { RequirementsDraftDoc } from "@/lib/requirements/draftStore";
-import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -37,10 +35,6 @@ export type RequirementsIdeationDocumentDrawersProps = Readonly<{
   draftDrawerOpen: boolean;
   onCloseDraftDrawer: () => void;
   draftDoc: RequirementsDraftDoc | null;
-  deliverableViewerOpen: boolean;
-  onCloseDeliverableViewer: () => void;
-  deliverableViewerAssets: readonly IdeationDeliverableAsset[];
-  deliverableViewerFocusId: string | null;
   orchestrationDebugSummary?: string | null;
 }>;
 
@@ -71,10 +65,6 @@ export function RequirementsIdeationDocumentDrawers({
   draftDrawerOpen,
   onCloseDraftDrawer,
   draftDoc,
-  deliverableViewerOpen,
-  onCloseDeliverableViewer,
-  deliverableViewerAssets,
-  deliverableViewerFocusId,
   orchestrationDebugSummary,
 }: RequirementsIdeationDocumentDrawersProps) {
   return (
@@ -117,13 +107,6 @@ export function RequirementsIdeationDocumentDrawers({
           exportBaseName={exportBaseName}
         />
       ) : null}
-
-      <RequirementsDeliverableViewerModal
-        open={deliverableViewerOpen}
-        onClose={onCloseDeliverableViewer}
-        assets={deliverableViewerAssets}
-        initialAssetId={deliverableViewerFocusId}
-      />
     </>
   );
 }

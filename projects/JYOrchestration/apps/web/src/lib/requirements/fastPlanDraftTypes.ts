@@ -3,6 +3,7 @@
  */
 
 import type { FastPlanAssumption } from "@/lib/requirements/fastPlanGenerationTypes";
+import type { FastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import type {
   PlatformMemberDraft,
   PlatformMemberRun,
@@ -10,7 +11,7 @@ import type {
 
 export const FAST_PLAN_DRAFT_PROPOSAL_INTERNAL_TYPE = "fast_plan_draft_proposal" as const;
 
-export type FastPlanDraftStatus = "proposed";
+export type FastPlanDraftStatus = "proposed" | "confirmed";
 
 export type FastPlanDraftStateV1 = Readonly<{
   readonly status: FastPlanDraftStatus;
@@ -19,5 +20,6 @@ export type FastPlanDraftStateV1 = Readonly<{
   readonly memberRuns: readonly PlatformMemberRun[];
   readonly memberDrafts: readonly PlatformMemberDraft[];
   readonly assumptions: readonly FastPlanAssumption[];
+  readonly slotCandidatePatch?: FastPlanDraftSlotCandidatePatchV1;
   readonly source: "current_conversation_and_slots";
 }>;

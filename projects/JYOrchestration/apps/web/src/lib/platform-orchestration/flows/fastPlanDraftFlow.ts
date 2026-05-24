@@ -235,6 +235,16 @@ export function runFastPlanDraftFlow(input: RunFastPlanDraftFlowInput): Platform
     source: "current_conversation_and_slots",
   };
 
+  timelineEvents.push(
+    createPlatformTimelineEvent({
+      flowId: "fast_plan_draft",
+      eventType: "state_patched",
+      message: "fast_plan_draft_created",
+      at: nowIso,
+      detail: { draftCount: memberDrafts.length },
+    }),
+  );
+
   return createPlatformRunResult({
     flowId: "fast_plan_draft",
     trigger: input.trigger,
