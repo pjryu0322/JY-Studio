@@ -52,7 +52,16 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
         : error
           ? `[FAILED]\n${error}`
           : "[response]\n(없음)";
-    const status: FeaturePlanningPromptLogStatus = responseText ? "SUCCESS" : "FAILED";
+    const isPlatformTrace =
+      provider === "platform" ||
+      source === "platform" ||
+      String(e.orchestrationTraceGroup ?? "").trim() === "platform_fast_plan";
+    const status: FeaturePlanningPromptLogStatus =
+      error && !responseText ?
+        "FAILED"
+      : responseText || isPlatformTrace ?
+        "SUCCESS"
+      : "FAILED";
     const overlay = extractOverlayPromptTraceMetadata(raw as Record<string, unknown>);
     const hasOverlayMetadata = Object.keys(overlay).length > 0;
     const channel: PromptTimelineEntry["channel"] =

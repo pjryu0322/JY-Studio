@@ -40,7 +40,14 @@ describe("preProjectSingleChatInitialProposal", () => {
     expect(msg.bodyText).toContain("후보로 볼 내용");
     expect(msg.bodyText).toContain("아직 정해야 할 것");
     expect(msg.bodyText).toContain("AI기획자 제안");
-    expect(msg.interviewSuggestions).toContain("액터부터 정의하기");
+    expect(msg.bodyText).toContain("아래 버튼에서 다음 동작을 선택해 주세요.");
+    expect(msg.bodyText).not.toContain("1. 액터부터 정의하기");
+    expect(msg.interviewSuggestions).toEqual([
+      "액터부터 정의하기",
+      "서비스 흐름 초안 만들기",
+      "화면 구성부터 보기",
+      "MVP 기능 범위 정리하기",
+    ]);
   });
 
   it("creates non-zero weighted progress for pre-project seeded candidates", () => {

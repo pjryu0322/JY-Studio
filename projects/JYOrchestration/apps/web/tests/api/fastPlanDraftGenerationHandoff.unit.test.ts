@@ -3,6 +3,7 @@ import {
   buildFastPlanArtifactCreatedChatMessage,
   buildFastPlanArtifactCreatedTimelineEntry,
   buildFastPlanDraftGenerationHandoffTimeline,
+  buildFastPlanDraftSuggestionPickedTimelineEntry,
   evaluateFastPlanGenerationHandoffReadiness,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
 
@@ -29,6 +30,22 @@ describe("fastPlanDraftGenerationHandoff", () => {
     expect(entries.map((e) => e.action)).toEqual(
       expect.arrayContaining(["fast_plan_draft_suggestion_picked", "fast_plan_generation_requested"]),
     );
+    for (const entry of entries) {
+      expect(entry.provider).toBe("platform");
+      expect(String(entry.responseText ?? "").length).toBeGreaterThan(0);
+    }
+  });
+
+  it("builds suggestion picked timeline with non-empty response for prompt timeline UI", () => {
+    const entry = buildFastPlanDraftSuggestionPickedTimelineEntry({
+      actionLabel: "이 초안으로 빠른 기획안 생성",
+      routingDecision: "generate_artifact",
+      projectId: "p1",
+      nowIso: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(entry.source).toBe("platform");
+    expect(entry.responseText).toContain("generate_artifact");
   });
 
   it("records artifact created timeline after fast plan generation", () => {

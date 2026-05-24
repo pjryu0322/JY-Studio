@@ -322,8 +322,7 @@ export function buildPreProjectSingleChatInitialProposalMessage(input: {
     "AI기획자 제안",
     plannerAdvice,
     "",
-    "다음 중 하나를 선택해 진행할 수 있습니다.",
-    ...DEFAULT_PRE_PROJECT_INITIAL_PROPOSAL_ACTIONS.map((a, i) => `${i + 1}. ${a.label}`),
+    "아래 버튼에서 다음 동작을 선택해 주세요.",
   ];
 
   return {

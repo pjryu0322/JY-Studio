@@ -7,7 +7,6 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
-import { PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE } from "@/lib/requirements/preProjectPlanningSummary";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
@@ -586,8 +585,7 @@ export function RequirementsChatPanel({
                 Boolean(onInterviewSuggestionPick) &&
                 interviewSuggestions.length > 0 &&
                 !deliverPayload &&
-                !isErr &&
-                m.meta?.internalType !== PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE;
+                !isErr;
               const showBootstrapProposalPlain =
                 !deliverPayload &&
                 !isErr &&

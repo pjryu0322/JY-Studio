@@ -26,6 +26,14 @@ export type FastPlanGenerationHandoffReadiness = Readonly<{
 
 const PLATFORM_FAST_PLAN_TRACE_GROUP = "platform_fast_plan";
 
+export function formatFastPlanPlatformTimelineResponse(input: {
+  readonly routingDecision: string;
+  readonly detail?: string;
+}): string {
+  const detail = String(input.detail ?? "ok").trim();
+  return `[platform_fast_plan] routing=${input.routingDecision} ${detail}`;
+}
+
 export function evaluateFastPlanGenerationHandoffReadiness(input: {
   readonly projectId: string;
   readonly busy: boolean;
@@ -89,14 +97,19 @@ function baseTimelineEntry(input: {
   readonly responseText?: string;
   readonly error?: string;
 }): RequirementsPromptTimelineEntry {
+  const responseText =
+    String(input.responseText ?? "").trim() ||
+    (input.error ? "" : formatFastPlanPlatformTimelineResponse({ routingDecision: input.routingDecision }));
   return {
     stage: "requirements",
     action: input.action,
-    source: "system",
+    source: "platform",
+    provider: "platform",
+    model: "deterministic",
     routingDecision: input.routingDecision,
     orchestrationTraceGroup: PLATFORM_FAST_PLAN_TRACE_GROUP,
     promptText: input.promptText,
-    responseText: input.responseText,
+    responseText,
     error: input.error,
     createdAt: input.nowIso,
     aiMember: "AI 기획자",
@@ -115,7 +128,10 @@ export function buildFastPlanDraftSuggestionPickedTimelineEntry(input: {
     projectId: input.projectId,
     nowIso: input.nowIso,
     promptText: input.actionLabel,
-    responseText: "",
+    responseText: formatFastPlanPlatformTimelineResponse({
+      routingDecision: input.routingDecision,
+      detail: `label=${input.actionLabel}`,
+    }),
   });
 }
 
@@ -201,10 +217,7 @@ export function buildFastPlanArtifactCreatedChatMessage(input: {
     "- 상태: 후보/가정 포함",
     "- 다음 단계: 생성 단계에서 참조자료로 사용할 수 있습니다.",
     "",
-    "다음 중 하나를 선택할 수 있습니다.",
-    "1. 생성 단계로 이동",
-    "2. 기획안 보기",
-    "3. 기획 보완 계속하기",
+    "아래 버튼에서 다음 동작을 선택해 주세요.",
   ].join("\n");
 
   return newRequirementsMessage({

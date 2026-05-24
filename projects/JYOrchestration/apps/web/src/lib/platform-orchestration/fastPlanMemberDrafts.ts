@@ -258,11 +258,7 @@ export function buildFastPlanDraftUserMessage(input: {
     sections,
     assumptionsBlock,
     "",
-    "다음 중 하나를 선택할 수 있습니다.",
-    "1. 이 초안으로 빠른 기획안 생성",
-    "2. 일부 수정",
-    "3. 다른 방향으로 다시 제안",
-    "4. 정밀 기획 계속하기",
+    "아래 버튼에서 다음 동작을 선택해 주세요.",
   ]
     .filter(Boolean)
     .join("\n");
