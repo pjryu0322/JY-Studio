@@ -208,7 +208,6 @@ import {
   buildFastPlanArtifactCreatedChatMessage,
   buildFastPlanArtifactCreatedTimelineEntry,
   buildFastPlanDraftGenerationHandoffTimeline,
-  buildFastPlanDraftSlotsPatchedTimelineEntry,
   buildFastPlanDraftSuggestionPickedTimelineEntry,
   buildFastPlanGenerationBlockedTimelineEntry,
   buildFastPlanGenerationFailedTimelineEntry,
@@ -218,9 +217,17 @@ import {
   resolveFastPlanArtifactFollowUpAction,
   isFastPlanArtifactFollowUpLabel,
   findLatestFastPlanArtifactIdFromMessages,
-  resolveFastPlanViewArtifactId,
+  resolveLatestPlanningDeliverableAssetId,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
 import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
+import {
+  buildQuickDesignDraftCreatedTimelineEntry,
+  buildQuickDesignRequestedTimelineEntry,
+  buildQuickDesignResultMessage,
+  buildQuickDesignSlotsPatchedTimelineEntry,
+  buildPlanningArtifactViewRequestedTimelineEntry,
+  QUICK_DESIGN_LABEL,
+} from "@/lib/requirements/quickDesignLabels";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -2244,14 +2251,7 @@ export function RequirementsWorkspace({
     try {
       const st = stateJsonRef.current;
       const nowIso = new Date().toISOString();
-      appendSingleChatPromptTimeline(
-        buildFastPlanDraftSuggestionPickedTimelineEntry({
-          actionLabel: "AI팀 빠른 기획 초안 받기",
-          routingDecision: "request_draft",
-          projectId: pid,
-          nowIso,
-        }),
-      );
+      appendSingleChatPromptTimeline(buildQuickDesignRequestedTimelineEntry({ projectId: pid, nowIso }));
       const latestInterviewState = latestProblemInterviewStateForGate();
       const trigger = createFastPlanDraftPlatformTrigger({
         projectId: pid,
@@ -2285,7 +2285,7 @@ export function RequirementsWorkspace({
         }
         if (slotPatch.updatedSlotKeys.length) {
           appendSingleChatPromptTimeline(
-            buildFastPlanDraftSlotsPatchedTimelineEntry({
+            buildQuickDesignSlotsPatchedTimelineEntry({
               projectId: pid,
               nowIso,
               updatedSlotKeys: slotPatch.updatedSlotKeys,
@@ -2293,8 +2293,20 @@ export function RequirementsWorkspace({
           );
         }
       }
+      appendSingleChatPromptTimeline(
+        buildQuickDesignDraftCreatedTimelineEntry({
+          projectId: pid,
+          nowIso,
+          draftCount: fastPlanDraftV1?.memberDrafts.length ?? result.memberDrafts.length,
+        }),
+      );
+      const proposalContent = buildQuickDesignResultMessage({
+        memberDrafts: fastPlanDraftV1?.memberDrafts ?? result.memberDrafts,
+        assumptions: fastPlanDraftV1?.assumptions ?? [],
+        slotCandidatePatch: fastPlanDraftV1?.slotCandidatePatch ?? null,
+      });
       const proposalMessage = buildFastPlanDraftProposalMessage({
-        content: String(result.userMessage ?? "").trim(),
+        content: proposalContent,
         interviewSuggestions: platformNextActionLabelsForInterviewSuggestions(result.nextActions),
         nowIso,
       });
@@ -2305,9 +2317,9 @@ export function RequirementsWorkspace({
           ...(orchestrationAfterDraft ? { singleChatOrchestrationV1: orchestrationAfterDraft } : {}),
         });
       }
-      showSuccessToast("AI팀 초안을 슬롯 후보로 반영했습니다. SingleChat에서 확인해 주세요.");
+      showSuccessToast(`${QUICK_DESIGN_LABEL} 초안을 슬롯 후보로 반영했습니다. SingleChat에서 확인해 주세요.`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "빠른 기획 초안 생성 중 오류가 발생했습니다.";
+      const msg = e instanceof Error ? e.message : `${QUICK_DESIGN_LABEL} 실행 중 오류가 발생했습니다.`;
       setError(msg);
       showErrorToast(msg);
     } finally {
@@ -2341,7 +2353,7 @@ export function RequirementsWorkspace({
     if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
     const draft = stateJsonRef.current.fastPlanDraftV1;
     if (!draft?.memberDrafts?.length) {
-      showErrorToast("확인할 AI팀 초안이 없습니다. 먼저 「AI팀 빠른 기획 초안 받기」를 실행해 주세요.");
+      showErrorToast(`확인할 Quick Design 초안이 없습니다. 먼저 「${QUICK_DESIGN_LABEL}」을 실행해 주세요.`);
       return;
     }
     if (!orchestrationAlignedState) {
@@ -2518,9 +2530,19 @@ export function RequirementsWorkspace({
       const artifactFollowUp = resolveFastPlanArtifactFollowUpAction(trimmed);
       if (artifactFollowUp === "view_artifact") {
         const artifactId =
-          resolveFastPlanViewArtifactId({ state: stateJsonRef.current }) ??
+          resolveLatestPlanningDeliverableAssetId({ state: stateJsonRef.current }) ??
           findLatestFastPlanArtifactIdFromMessages(conversationMessages) ??
           lastFastPlanArtifactIdRef.current;
+        const pid = resolvedProjectId.trim();
+        if (pid) {
+          appendSingleChatPromptTimeline(
+            buildPlanningArtifactViewRequestedTimelineEntry({
+              projectId: pid,
+              nowIso: new Date().toISOString(),
+              artifactId,
+            }),
+          );
+        }
         if (artifactId) {
           openDeliverableViewer([artifactId], artifactId);
         } else {
@@ -2529,14 +2551,16 @@ export function RequirementsWorkspace({
         return;
       }
       if (artifactFollowUp === "check_generation_readiness") {
+        const readinessPid = resolvedProjectId.trim() || "unknown";
+        const readinessNowIso = new Date().toISOString();
         const readiness = evaluatePlanningToGenerationReadiness({
           orchestration: orchestrationAlignedState,
           definitions: slotDefsForProgress,
         });
         appendSingleChatPromptTimeline(
           buildGenerationReadinessCheckedTimelineEntry({
-            projectId: pid,
-            nowIso,
+            projectId: readinessPid,
+            nowIso: readinessNowIso,
             ready: readiness.ready,
             detail: readiness.reason ?? "generation_ready",
           }),

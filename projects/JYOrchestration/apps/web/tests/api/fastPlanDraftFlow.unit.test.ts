@@ -85,6 +85,7 @@ describe("fastPlanDraftFlow", () => {
     expect(result.flowId).toBe("fast_plan_draft");
     expect(result.memberRuns.length).toBeGreaterThan(0);
     expect(result.memberDrafts.some((d) => d.role === "planner")).toBe(true);
+    expect(result.userMessage).toContain("Quick Design 초안이 생성되었습니다");
     expect(result.userMessage).toContain("AI기획자");
   });
 

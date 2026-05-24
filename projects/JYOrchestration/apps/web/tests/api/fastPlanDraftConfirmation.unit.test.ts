@@ -59,6 +59,7 @@ describe("fastPlanDraftConfirmation", () => {
 
     expect(result.confirmedSlotKeys.length).toBeGreaterThan(0);
     expect(result.fastPlanDraftV1.status).toBe("confirmed");
-    expect(result.chatMessage.content).toContain("AI팀 초안을 확인 처리했습니다");
+    expect(result.chatMessage.content).toContain("Quick Design 초안을 확정했습니다");
+    expect(result.timelineEntry.action).toBe("quick_design_confirmed");
   });
 });

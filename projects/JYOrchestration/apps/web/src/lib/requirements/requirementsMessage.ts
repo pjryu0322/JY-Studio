@@ -25,6 +25,8 @@ export type RequirementsMessageMeta = {
   interviewSuggestions?: readonly string[];
   /** 기본 true — 항상 자유 입력 가능 */
   interviewAllowCustomInput?: boolean;
+  /** Quick Design / 기획안 생성 산출물 ID(기획안 보기 칩 연동) */
+  fastPlanArtifactId?: string;
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */

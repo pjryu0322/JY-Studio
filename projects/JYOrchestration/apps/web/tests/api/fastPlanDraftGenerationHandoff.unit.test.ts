@@ -68,7 +68,7 @@ describe("fastPlanDraftGenerationHandoff", () => {
       nowIso: "2026-01-01T00:00:00.000Z",
     });
 
-    expect(message.content).toContain("기획안을 생성했습니다");
+    expect(message.content).toContain("기획안 산출물을 생성했습니다");
     expect(message.content).not.toContain("빠른 기획안");
     expect(message.meta?.interviewSuggestions).toEqual(
       expect.arrayContaining(["기획안 보기", "생성 단계 준비", "기획 보완 계속하기"]),

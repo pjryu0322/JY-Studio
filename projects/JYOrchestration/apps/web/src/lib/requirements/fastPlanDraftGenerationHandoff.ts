@@ -251,11 +251,11 @@ export function buildFastPlanArtifactCreatedChatMessage(input: {
 }): RequirementsMessage {
   const title = String(input.artifactTitle ?? "기획안").trim() || "기획안";
   const content = [
-    "기획안을 생성했습니다.",
+    "기획안 산출물을 생성했습니다.",
     "",
     `- 산출물: ${title}`,
-    "- 상태: 확정 슬롯·후보 정보 반영",
-    "- 다음 단계: 생성 단계 준비 후 프로토타입 생성에 활용할 수 있습니다.",
+    "- 기준: 확정 슬롯 및 후보/가정 정보",
+    "- 다음 단계: 생성 단계 준비에서 참조자료로 사용할 수 있습니다.",
     "",
     "아래 버튼에서 다음 동작을 선택해 주세요.",
   ].join("\n");
@@ -315,13 +315,23 @@ export function findLatestFastPlanArtifactIdFromMessages(
   return null;
 }
 
-/** 빠른 기획안 산출물 ID — 메시지 meta → state → projectArtifacts 순으로 조회 */
+/** 기획안 산출물 ID — 메시지 meta → deliverableAssets → generation state → projectArtifacts 순으로 조회 */
 export function resolveFastPlanViewArtifactId(input: {
   readonly state: RequirementsStateJson;
   readonly messageArtifactId?: string | null;
 }): string | null {
   const fromMessage = String(input.messageArtifactId ?? "").trim();
   if (fromMessage) return fromMessage;
+
+  const deliverables = input.state.deliverableAssets ?? [];
+  for (let i = deliverables.length - 1; i >= 0; i--) {
+    const row = deliverables[i];
+    const title = String(row?.title ?? "").trim();
+    if (title === "기획안" || title.includes("기획안") || title.includes("빠른 프로토타입")) {
+      const id = String(row.id ?? "").trim();
+      if (id) return id;
+    }
+  }
 
   const fromGeneration = String(input.state.fastPlanGenerationV1?.artifactId ?? "").trim();
   if (fromGeneration) return fromGeneration;
@@ -335,15 +345,8 @@ export function resolveFastPlanViewArtifactId(input: {
     }
   }
 
-  const deliverables = input.state.deliverableAssets ?? [];
-  for (let i = deliverables.length - 1; i >= 0; i--) {
-    const row = deliverables[i];
-    const title = String(row?.title ?? "");
-    if (title.includes("기획안") || title.includes("빠른 프로토타입")) {
-      const id = String(row.id ?? "").trim();
-      if (id) return id;
-    }
-  }
-
   return null;
 }
+
+export const resolveLatestPlanningDeliverableAssetId = resolveFastPlanViewArtifactId;
+export const resolvePlanningDeliverableAssetId = resolveFastPlanViewArtifactId;

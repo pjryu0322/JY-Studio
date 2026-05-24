@@ -7,6 +7,7 @@ import {
 } from "@/lib/requirements/singleChatSlotNextAction";
 import { newPlatformOrchestrationId } from "@/lib/platform-orchestration/platformIds";
 import type { PlatformMemberDraft, PlatformMemberRole } from "@/lib/platform-orchestration/types";
+import { buildQuickDesignResultMessage } from "@/lib/requirements/quickDesignLabels";
 
 const ROLE_AGENT_ID: Readonly<Partial<Record<PlatformMemberRole, string>>> = {
   planner: ORCHESTRATION_ROLE_TO_AGENT_ID.planner ?? "ai-planner",
@@ -44,13 +45,6 @@ function slotText(
   const key = findOrchestrationSlotKeysBySuffix(definitions, suffix)[0];
   const v = key ? String(findSlotRow(orchestration, key)?.value ?? "").trim() : "";
   return v || fallback;
-}
-
-function confidenceKo(c: string): string {
-  if (c === "confirmed") return "확정";
-  if (c === "partial") return "부분";
-  if (c === "candidate") return "후보";
-  return "프로토타입용 가정";
 }
 
 export type FastPlanDraftCollected = ReturnType<typeof collectFastPlanFieldSnapshots>;
@@ -218,48 +212,8 @@ export function buildFastPlanDraftUserMessage(input: {
   readonly memberDrafts: readonly PlatformMemberDraft[];
   readonly assumptions: FastPlanDraftCollected["assumptions"];
 }): string {
-  const roleHeading: Readonly<Record<PlatformMemberRole, string>> = {
-    planner: "AI기획자",
-    analyst: "AI분석가",
-    architect: "AI설계자",
-    designer: "AI디자이너",
-    developer: "AI개발자",
-    reviewer: "검수자",
-    security: "보안관",
-    scm: "SCM",
-    aa: "AA",
-    da: "DA",
-    etl: "ETL",
-    eai: "EAI",
-    vlm_analyst: "VLM 분석가",
-  };
-
-  const sections = input.memberDrafts
-    .filter((d) => d.content.trim())
-    .map((d) => `### ${roleHeading[d.role] ?? d.role} 제안\n${d.content}`)
-    .join("\n\n");
-
-  const assumptionRows = input.assumptions
-    .map(
-      (a) =>
-        `| ${a.label} | ${a.value.replace(/\|/g, "\\|").slice(0, 120)} | ${confidenceKo(a.confidence)} | ${a.reason.replace(/\|/g, "\\|")} |`,
-    )
-    .join("\n");
-
-  const assumptionsBlock =
-    assumptionRows ?
-      ["### AI 보완 후보/가정", "| 항목 | 보완 내용 | 신뢰도 | 근거 |", "|---|---|---|---|", assumptionRows].join("\n")
-    : "";
-
-  return [
-    "현재까지의 대화와 슬롯 후보를 기준으로 AI팀 빠른 기획 초안을 제안합니다.",
-    "확정되지 않은 항목은 AI가 후보/가정으로 보완했습니다.",
-    "",
-    sections,
-    assumptionsBlock,
-    "",
-    "아래 버튼에서 다음 동작을 선택해 주세요.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return buildQuickDesignResultMessage({
+    memberDrafts: input.memberDrafts,
+    assumptions: input.assumptions,
+  });
 }

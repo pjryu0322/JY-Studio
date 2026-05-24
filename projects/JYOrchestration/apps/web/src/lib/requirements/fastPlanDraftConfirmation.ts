@@ -12,7 +12,7 @@ import type {
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { buildFastPlanDraftConfirmedNextActions } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
-import { formatFastPlanPlatformTimelineResponse } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
+import { buildQuickDesignConfirmedTimelineEntry } from "@/lib/requirements/quickDesignLabels";
 import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
 
 export const FAST_PLAN_DRAFT_CONFIRMED_INTERNAL_TYPE = "fast_plan_draft_confirmed" as const;
@@ -85,7 +85,7 @@ export function confirmFastPlanDraftSlots(input: {
 
   const uniqueLabels = [...new Set(confirmedLabels)].slice(0, 12);
   const bodyLines = [
-    "AI팀 초안을 확인 처리했습니다.",
+    "Quick Design 초안을 확정했습니다.",
     "",
     "확정된 슬롯:",
     ...(uniqueLabels.length ? uniqueLabels.map((l) => `- ${l}`) : ["- (반영된 슬롯 없음)"]),
@@ -126,24 +126,11 @@ export function confirmFastPlanDraftSlots(input: {
     },
   });
 
-  const timelineEntry: RequirementsPromptTimelineEntry = {
-    stage: "requirements",
-    action: "fast_plan_draft_confirmed",
-    source: "platform",
-    provider: "platform",
-    model: "deterministic",
-    routingDecision: "confirm_draft_slots",
-    orchestrationTraceGroup: "platform_fast_plan",
-    promptText: "초안 확인/확정",
-    responseText: formatFastPlanPlatformTimelineResponse({
-      routingDecision: "fast_plan_draft_confirmed",
-      detail: `confirmed=${confirmedSlotKeys.length}`,
-    }),
-    createdAt: input.nowIso,
-    aiMember: "AI 기획자",
-  };
-
-  void input.projectId;
+  const timelineEntry = buildQuickDesignConfirmedTimelineEntry({
+    projectId: String(input.projectId ?? "").trim() || "unknown",
+    nowIso: input.nowIso,
+    confirmedCount: confirmedSlotKeys.length,
+  });
 
   return {
     orchestration,

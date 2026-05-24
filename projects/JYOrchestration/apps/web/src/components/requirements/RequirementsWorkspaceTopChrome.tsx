@@ -7,6 +7,7 @@ import { ConversationChromeToolbar } from "@/components/workspace/ConversationCh
 import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { QUICK_DESIGN_LABEL, QUICK_DESIGN_TOOLTIP } from "@/lib/requirements/quickDesignLabels";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export type RequirementsWorkspaceTopChromeProps = Readonly<{
@@ -53,6 +54,14 @@ function SparklesIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
       <path d="M19 13l.8 2.4L22 16l-2.2.6L19 19l-.8-2.4L16 16l2.2-.6L19 13z" />
+    </svg>
+  );
+}
+
+function QuickDesignIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   );
 }
@@ -349,28 +358,6 @@ export function RequirementsWorkspaceTopChrome({
               <span>· 미확보 {slotsUi.statusCounts.empty}</span>
             </div>
           ) : null}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setSlotsOpen(false);
-                void slotsUi.onForceGeneratePlanNow();
-              }}
-              style={{
-                border: "1px solid #0f766e",
-                background: "#ecfdf5",
-                borderRadius: 10,
-                padding: "8px 10px",
-                fontSize: 12,
-                fontWeight: 900,
-                color: "#065f46",
-                cursor: "pointer",
-              }}
-            >
-              AI팀 빠른 기획 초안 받기
-            </button>
-          </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>표시:</span>
@@ -440,8 +427,47 @@ export function RequirementsWorkspaceTopChrome({
     <div className="jyo-requirements-workspace-top-chrome">
       <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} hideCompactWorkflowTitle />
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, marginBottom: 6, gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginTop: 6,
+          marginBottom: 6,
+          gap: 8,
+        }}
+      >
+        {slotsUi ? (
+          <span
+            style={{
+              marginRight: "auto",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#64748b",
+              lineHeight: 1.4,
+              minWidth: 0,
+            }}
+          >
+            서비스 기획 진행도 {slotsUi.readinessPercent}%
+            {slotsUi.statusCounts
+              ? ` · 확정 ${slotsUi.statusCounts.confirmed} / 부분 ${slotsUi.statusCounts.partial} / 후보 ${slotsUi.statusCounts.candidate}`
+              : ""}
+          </span>
+        ) : null}
         {slotPanel}
+        {slotsUi ? (
+          <WorkspaceHubChromeIconButton
+            title={QUICK_DESIGN_ACCESSIBLE_LABEL}
+            ariaLabel={QUICK_DESIGN_ACCESSIBLE_LABEL}
+            disabled={busy || remoteLocked}
+            onClick={() => {
+              void slotsUi.onForceGeneratePlanNow();
+            }}
+          >
+            <QuickDesignIcon />
+          </WorkspaceHubChromeIconButton>
+        ) : null}
         {slotsUi ? (
           <WorkspaceHubChromeIconButton
             title={`서비스 기획 슬롯 상세 보기 · 진행도 ${slotsUi.readinessPercent}%`}
