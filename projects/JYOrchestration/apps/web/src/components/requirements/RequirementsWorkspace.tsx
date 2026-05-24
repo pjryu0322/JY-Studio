@@ -189,6 +189,17 @@ import { fetchGenerateProjectArtifact } from "@/lib/requirements/projectArtifact
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import type { ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
 import { generateFastPlanFromCurrentContext } from "@/lib/requirements/fastPlanGeneration";
+import { buildFastPlanDraftProposalMessage } from "@/lib/requirements/fastPlanDraftChatMessage";
+import {
+  createFastPlanDraftPlatformTrigger,
+  platformNextActionLabelsForInterviewSuggestions,
+  runFastPlanDraftFlow,
+  extractFastPlanDraftV1FromRunResult,
+} from "@/lib/platform-orchestration";
+import {
+  composerPromptForFastPlanDraftSuggestion,
+  resolveFastPlanDraftSuggestionAction,
+} from "@/lib/requirements/fastPlanDraftSuggestionPick";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -2189,6 +2200,70 @@ export function RequirementsWorkspace({
     showErrorToast,
   ]);
 
+  const handleRequestFastPlanDraft = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
+    setDeliverableGenerateBusy(true);
+    setError(null);
+    try {
+      const st = stateJsonRef.current;
+      const nowIso = new Date().toISOString();
+      const latestInterviewState = latestProblemInterviewStateForGate();
+      const trigger = createFastPlanDraftPlatformTrigger({
+        projectId: pid,
+        userId: sessionUser?.id ?? null,
+        createdAt: nowIso,
+      });
+      const result = runFastPlanDraftFlow({
+        trigger,
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        conversationMessages: ideationConversationOnly.length ? ideationConversationOnly : conversationMessages,
+        serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+        orchestration: orchestrationAlignedState,
+        slotDefinitions: slotDefsForProgress,
+        featurePlanning: st.featurePlanningSlotsV1 ?? null,
+        problemInterview: latestInterviewState,
+        nowIso,
+      });
+      const fastPlanDraftV1 = extractFastPlanDraftV1FromRunResult(result);
+      const proposalMessage = buildFastPlanDraftProposalMessage({
+        content: String(result.userMessage ?? "").trim(),
+        interviewSuggestions: platformNextActionLabelsForInterviewSuggestions(result.nextActions),
+        nowIso,
+      });
+      await appendServiceFlowWorkshopMessages([proposalMessage]);
+      if (fastPlanDraftV1) {
+        await persistStateJsonOnly({ fastPlanDraftV1 });
+      }
+      showSuccessToast("AI팀 빠른 기획 초안을 SingleChat에 제안했습니다.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "빠른 기획 초안 생성 중 오류가 발생했습니다.";
+      setError(msg);
+      showErrorToast(msg);
+    } finally {
+      setDeliverableGenerateBusy(false);
+    }
+  }, [
+    resolvedProjectId,
+    busy,
+    deliverableGenerateBusy,
+    remoteLocked,
+    latestProblemInterviewStateForGate,
+    orchestrationAlignedState,
+    slotDefsForProgress,
+    project?.name,
+    project?.description,
+    ideationConversationOnly,
+    conversationMessages,
+    serviceFlow,
+    sessionUser?.id,
+    appendServiceFlowWorkshopMessages,
+    persistStateJsonOnly,
+    showErrorToast,
+    showSuccessToast,
+  ]);
+
   const handleGenerateFastPlanFromCurrentContext = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
@@ -2258,8 +2333,35 @@ export function RequirementsWorkspace({
   ]);
 
   const onForceGeneratePlanNow = useCallback(() => {
-    void handleGenerateFastPlanFromCurrentContext();
-  }, [handleGenerateFastPlanFromCurrentContext]);
+    void handleRequestFastPlanDraft();
+  }, [handleRequestFastPlanDraft]);
+
+  const handleFastPlanDraftSuggestionPick = useCallback(
+    (label: string) => {
+      const action = resolveFastPlanDraftSuggestionAction(label);
+      if (action === "generate_artifact") {
+        void handleGenerateFastPlanFromCurrentContext();
+        return;
+      }
+      if (action === "request_draft") {
+        void handleRequestFastPlanDraft();
+        return;
+      }
+      const composerPrompt = action ? composerPromptForFastPlanDraftSuggestion(action) : null;
+      if (composerPrompt) {
+        insertComposerPrompt(composerPrompt);
+        return;
+      }
+      if (action) return;
+      interviewSuggestionPickRef.current = storeInterviewSuggestionPick(label);
+      insertComposerPrompt(label);
+    },
+    [
+      handleGenerateFastPlanFromCurrentContext,
+      handleRequestFastPlanDraft,
+      insertComposerPrompt,
+    ],
+  );
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName
@@ -2539,10 +2641,7 @@ export function RequirementsWorkspace({
         serviceFlowPendingStatusLabel={serviceFlowAlternativeCanvas.pendingStatusLabel}
         serviceDesignStage={activeStage}
         onInsertComposerPrompt={insertComposerPrompt}
-        onInterviewSuggestionPick={(label) => {
-          interviewSuggestionPickRef.current = storeInterviewSuggestionPick(label);
-          insertComposerPrompt(label);
-        }}
+        onInterviewSuggestionPick={handleFastPlanDraftSuggestionPick}
         onSetReplyTo={(messageId, preview) => setReplyTo({ id: messageId, preview })}
         openDeliverableDocument={(id) => openDeliverableViewer([id], id)}
         openDeliverableList={(focusId) => openDeliverableList(focusId)}

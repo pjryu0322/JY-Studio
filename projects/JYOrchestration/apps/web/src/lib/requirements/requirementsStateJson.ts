@@ -16,6 +16,8 @@ import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeli
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
 import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
+import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
+import type { PlatformMemberDraft, PlatformMemberRun } from "@/lib/platform-orchestration/types";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
   parseRequirementsOrganizeContextV1,
@@ -520,6 +522,8 @@ export type RequirementsStateJson = {
   featurePlanningWorkspaceChatV1?: FeaturePlanningWorkspaceChatV1 | null;
   /** 빠른 프로토타입 기획안 생성 메타(현재 대화·슬롯 기준) */
   fastPlanGenerationV1?: FastPlanGenerationStateV1 | null;
+  /** AI팀 빠른 기획 초안(fast_plan_draft) — artifact 생성 전 단계 */
+  fastPlanDraftV1?: FastPlanDraftStateV1 | null;
   /** SingleChat AI 멤버 슬롯 오케스트레이션 상태(서비스 기획 그룹) */
   singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
   /** SingleChat 절차 단계(서비스 흐름 검토 → 기능 상세 등) */
@@ -949,6 +953,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     fastPlanGenerationV1 = parseFastPlanGenerationV1(fastPlanRaw);
   }
 
+  const fastPlanDraftRaw = "fastPlanDraftV1" in o ? (o.fastPlanDraftV1 as unknown) : undefined;
+  let fastPlanDraftV1: FastPlanDraftStateV1 | null | undefined;
+  if (fastPlanDraftRaw === undefined) fastPlanDraftV1 = undefined;
+  else if (fastPlanDraftRaw === null) fastPlanDraftV1 = null;
+  else {
+    fastPlanDraftV1 = parseFastPlanDraftV1(fastPlanDraftRaw);
+  }
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -1011,6 +1023,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
     ...(fastPlanGenerationV1 !== undefined ? { fastPlanGenerationV1 } : {}),
+    ...(fastPlanDraftV1 !== undefined ? { fastPlanDraftV1 } : {}),
     ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
     ...(requirementsOrchestrationStageV1 !== undefined
       ? { requirementsOrchestrationStageV1 }
@@ -1023,6 +1036,115 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
 
 export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: Partial<RequirementsStateJson>): RequirementsStateJson {
   return { ...base, ...patch };
+}
+
+function parsePlatformMemberRunRow(raw: unknown): PlatformMemberRun | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const runId = String(o.runId ?? "").trim();
+  const flowId = String(o.flowId ?? "").trim();
+  const agentId = String(o.agentId ?? "").trim();
+  const role = String(o.role ?? "").trim();
+  const status = String(o.status ?? "").trim();
+  if (!runId || !flowId || !agentId || !role || !status) return null;
+  return {
+    runId,
+    flowId: flowId as PlatformMemberRun["flowId"],
+    agentId,
+    role: role as PlatformMemberRun["role"],
+    status: status as PlatformMemberRun["status"],
+    targetSlotKeys: Array.isArray(o.targetSlotKeys) ? o.targetSlotKeys.map((x) => String(x)) : undefined,
+    inputSummary: typeof o.inputSummary === "string" ? o.inputSummary : undefined,
+    outputSummary: typeof o.outputSummary === "string" ? o.outputSummary : undefined,
+    traceId: typeof o.traceId === "string" ? o.traceId : null,
+    startedAt: typeof o.startedAt === "string" ? o.startedAt : null,
+    completedAt: typeof o.completedAt === "string" ? o.completedAt : null,
+  };
+}
+
+function parsePlatformMemberDraftRow(raw: unknown): PlatformMemberDraft | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const draftId = String(o.draftId ?? "").trim();
+  const runId = String(o.runId ?? "").trim();
+  const agentId = String(o.agentId ?? "").trim();
+  const role = String(o.role ?? "").trim();
+  const content = String(o.content ?? "").trim();
+  const confidence = String(o.confidence ?? "").trim();
+  if (!draftId || !runId || !agentId || !role || !content) return null;
+  const conf =
+    confidence === "confirmed" ||
+    confidence === "partial" ||
+    confidence === "candidate" ||
+    confidence === "assumed_for_prototype" ?
+      confidence
+    : "candidate";
+  return {
+    draftId,
+    runId,
+    agentId,
+    role: role as PlatformMemberDraft["role"],
+    targetSlotKeys: Array.isArray(o.targetSlotKeys) ? o.targetSlotKeys.map((x) => String(x)) : undefined,
+    content,
+    confidence: conf,
+    assumptions: Array.isArray(o.assumptions) ? o.assumptions.map((x) => String(x)) : undefined,
+  };
+}
+
+function parseFastPlanDraftV1(raw: unknown): FastPlanDraftStateV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (String(o.flowId ?? "").trim() !== "fast_plan_draft") return null;
+  const generatedAt = String(o.generatedAt ?? "").trim();
+  if (!generatedAt) return null;
+  const memberRuns: PlatformMemberRun[] = [];
+  if (Array.isArray(o.memberRuns)) {
+    for (const row of o.memberRuns) {
+      const parsed = parsePlatformMemberRunRow(row);
+      if (parsed) memberRuns.push(parsed);
+    }
+  }
+  const memberDrafts: PlatformMemberDraft[] = [];
+  if (Array.isArray(o.memberDrafts)) {
+    for (const row of o.memberDrafts) {
+      const parsed = parsePlatformMemberDraftRow(row);
+      if (parsed) memberDrafts.push(parsed);
+    }
+  }
+  const assumptions: FastPlanAssumption[] = [];
+  if (Array.isArray(o.assumptions)) {
+    for (const row of o.assumptions) {
+      if (!row || typeof row !== "object") continue;
+      const a = row as Record<string, unknown>;
+      const label = String(a.label ?? "").trim();
+      const value = String(a.value ?? "").trim();
+      if (!label || !value) continue;
+      const confidence = String(a.confidence ?? "").trim();
+      const conf =
+        confidence === "confirmed" ||
+        confidence === "partial" ||
+        confidence === "candidate" ||
+        confidence === "assumed_for_prototype" ?
+          confidence
+        : "assumed_for_prototype";
+      assumptions.push({
+        slotKey: String(a.slotKey ?? label),
+        label,
+        value,
+        confidence: conf,
+        reason: String(a.reason ?? "").trim() || "fast plan draft",
+      });
+    }
+  }
+  return {
+    status: "proposed",
+    generatedAt,
+    flowId: "fast_plan_draft",
+    memberRuns,
+    memberDrafts,
+    assumptions,
+    source: "current_conversation_and_slots",
+  };
 }
 
 function parseFastPlanGenerationV1(raw: unknown): FastPlanGenerationStateV1 | null {

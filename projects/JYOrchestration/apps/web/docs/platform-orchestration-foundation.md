@@ -65,13 +65,19 @@ Included:
 - Types, constants, pure helpers, unit tests, this document
 - No changes to existing routers, UI, DB, or execution loop
 
-## 8. Not Implemented Yet
+## 8. Phase 2 — fast_plan_draft (implemented)
 
-- Actual run engine / orchestration executor
-- DB persistence for `PlatformRunResult`
-- SingleChat trigger adapter
-- `fast_plan_draft` adapter wiring to `createPlatformRunResult`
+- `runFastPlanDraftFlow` — `apps/web/src/lib/platform-orchestration/flows/fastPlanDraftFlow.ts`
+- SingleChat CTA: **AI팀 빠른 기획 초안 받기** → member drafts message + `fastPlanDraftV1` in stateJson
+- **이 초안으로 빠른 기획안 생성** → existing `generateFastPlanFromCurrentContext` (artifact)
+
+When `projectAiTeam` is null, `defaultProjectAiTeamConfig()` enables the core platform roles.
+
+## 9. Not Implemented Yet
+
+- DB persistence for `PlatformRunResult` (beyond stateJson)
+- Full feedback loop: user edits → memberDraft/slot refinement
 - Execution runtime alignment with requirements state
-- UI surfaces for `memberDrafts` / platform timeline
+- Platform timeline UI
 
-Next phase (suggested): SingleChat + fast plan draft adapter on top of this contract.
+Next phase (suggested): Planning-Service-Feature flow alignment.

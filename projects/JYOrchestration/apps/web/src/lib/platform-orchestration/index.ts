@@ -5,3 +5,8 @@ export * from "@/lib/platform-orchestration/projectAiTeam";
 export * from "@/lib/platform-orchestration/knowledgeBinding";
 export * from "@/lib/platform-orchestration/runResultFactory";
 export { newPlatformOrchestrationId, platformOrchestrationNowIso } from "@/lib/platform-orchestration/platformIds";
+export * from "@/lib/platform-orchestration/projectAiTeamDefaults";
+export * from "@/lib/platform-orchestration/flows/fastPlanDraftFlow";
+export * from "@/lib/platform-orchestration/adapters/singleChatTriggerAdapter";
+export * from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
+export * from "@/lib/platform-orchestration/adapters/platformNextActionsToQuickReplies";
