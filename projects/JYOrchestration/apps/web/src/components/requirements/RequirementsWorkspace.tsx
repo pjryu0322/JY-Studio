@@ -188,6 +188,7 @@ import {
 import { fetchGenerateProjectArtifact } from "@/lib/requirements/projectArtifactClient";
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import type { ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
+import { generateFastPlanFromCurrentContext } from "@/lib/requirements/fastPlanGeneration";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -2188,37 +2189,77 @@ export function RequirementsWorkspace({
     showErrorToast,
   ]);
 
-  const onForceGeneratePlanNow = useCallback(() => {
-    if (busy || deliverableGenerateBusy || remoteLocked) return;
-    const latestInterviewState = latestProblemInterviewStateForGate();
-    const gate = ideationDraftGateStatus(latestInterviewState);
-    const slotReadiness = evaluateGenerationReadinessFromSlots({
-      orchestration: orchestrationAlignedState,
-      definitions: slotDefsForProgress,
-    });
-    if (!gate.ready) {
-      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
-      const msg =
-        slotReadiness.missing.length > 0
-          ? `생성 단계로 가기 전 다음 기획 슬롯이 아직 확정되지 않았습니다.\n- ${slotReadiness.missing.join("\n- ")}`
-          : missingRequired.length
-            ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
-            : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
+  const handleGenerateFastPlanFromCurrentContext = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
+    setDeliverableGenerateBusy(true);
+    setError(null);
+    try {
+      const st = stateJsonRef.current;
+      const nowIso = new Date().toISOString();
+      const latestInterviewState = latestProblemInterviewStateForGate();
+      const slotReadiness = evaluateGenerationReadinessFromSlots({
+        orchestration: orchestrationAlignedState,
+        definitions: slotDefsForProgress,
+      });
+      if (slotReadiness.missing.length > 0) {
+        showSuccessToast("부족한 항목은 AI가 후보로 보완해 빠른 기획안을 생성합니다.");
+      }
+      const result = generateFastPlanFromCurrentContext({
+        projectId: pid,
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        conversationMessages: ideationConversationOnly.length ? ideationConversationOnly : conversationMessages,
+        serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+        orchestration: orchestrationAlignedState,
+        slotDefinitions: slotDefsForProgress,
+        featurePlanning: st.featurePlanningSlotsV1 ?? null,
+        problemInterview: latestInterviewState,
+        sourceStage: resolveAuthoritativeOrchestrationStage(st),
+        nowIso,
+      });
+      const deliverable = projectArtifactToDeliverableAsset(result.artifact, pid);
+      const priorArtifacts = (st.projectArtifacts ?? []).filter((a) => a.type !== "fast_prototype_plan");
+      const priorDeliverables = (st.deliverableAssets ?? []).filter(
+        (d) => !String(d.title ?? "").includes("빠른 프로토타입"),
+      );
+      await persistStateJsonOnly({
+        projectArtifacts: [...priorArtifacts, result.artifact],
+        deliverableAssets: [...priorDeliverables, deliverable],
+        fastPlanGenerationV1: result.fastPlanGenerationV1,
+        ...(result.orchestration ? { singleChatOrchestrationV1: result.orchestration } : {}),
+      });
+      openDeliverableViewer([deliverable.id], deliverable.id);
+      showSuccessToast(result.userFacingSummary);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "빠른 기획안 생성 중 오류가 발생했습니다.";
       setError(msg);
       showErrorToast(msg);
-      return;
+    } finally {
+      setDeliverableGenerateBusy(false);
     }
-    void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
   }, [
+    resolvedProjectId,
     busy,
     deliverableGenerateBusy,
     remoteLocked,
     latestProblemInterviewStateForGate,
     orchestrationAlignedState,
     slotDefsForProgress,
-    handleGenerateDeliverables,
+    project?.name,
+    project?.description,
+    ideationConversationOnly,
+    conversationMessages,
+    serviceFlow,
+    persistStateJsonOnly,
+    openDeliverableViewer,
     showErrorToast,
+    showSuccessToast,
   ]);
+
+  const onForceGeneratePlanNow = useCallback(() => {
+    void handleGenerateFastPlanFromCurrentContext();
+  }, [handleGenerateFastPlanFromCurrentContext]);
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName

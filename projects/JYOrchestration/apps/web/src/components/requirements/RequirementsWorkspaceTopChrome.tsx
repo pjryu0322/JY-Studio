@@ -289,7 +289,7 @@ export function RequirementsWorkspaceTopChrome({
                 cursor: "pointer",
               }}
             >
-              지금까지 내용으로 기획안 만들기
+              지금까지 내용으로 빠른 기획안 만들기
             </button>
           </div>
 

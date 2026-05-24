@@ -15,6 +15,7 @@ import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/re
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
+import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
   parseRequirementsOrganizeContextV1,
@@ -517,6 +518,8 @@ export type RequirementsStateJson = {
   featureDetailSlotsV1?: FeatureDetailSlotsV1 | null;
   /** 기능 정리 워크스페이스 대화(요구사항 채팅과 분리) */
   featurePlanningWorkspaceChatV1?: FeaturePlanningWorkspaceChatV1 | null;
+  /** 빠른 프로토타입 기획안 생성 메타(현재 대화·슬롯 기준) */
+  fastPlanGenerationV1?: FastPlanGenerationStateV1 | null;
   /** SingleChat AI 멤버 슬롯 오케스트레이션 상태(서비스 기획 그룹) */
   singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
   /** SingleChat 절차 단계(서비스 흐름 검토 → 기능 상세 등) */
@@ -938,6 +941,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     requirementsIntentOrchestrationV1 = parsed ? recoverRequirementsIntentOrchestration(parsed) : null;
   }
 
+  const fastPlanRaw = "fastPlanGenerationV1" in o ? (o.fastPlanGenerationV1 as unknown) : undefined;
+  let fastPlanGenerationV1: FastPlanGenerationStateV1 | null | undefined;
+  if (fastPlanRaw === undefined) fastPlanGenerationV1 = undefined;
+  else if (fastPlanRaw === null) fastPlanGenerationV1 = null;
+  else {
+    fastPlanGenerationV1 = parseFastPlanGenerationV1(fastPlanRaw);
+  }
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -999,6 +1010,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
+    ...(fastPlanGenerationV1 !== undefined ? { fastPlanGenerationV1 } : {}),
     ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
     ...(requirementsOrchestrationStageV1 !== undefined
       ? { requirementsOrchestrationStageV1 }
@@ -1011,6 +1023,48 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
 
 export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: Partial<RequirementsStateJson>): RequirementsStateJson {
   return { ...base, ...patch };
+}
+
+function parseFastPlanGenerationV1(raw: unknown): FastPlanGenerationStateV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.mode ?? "").trim();
+  if (mode !== "fast_plan_from_current_context") return null;
+  const artifactId = String(o.artifactId ?? "").trim();
+  const generatedAt = String(o.generatedAt ?? "").trim();
+  if (!artifactId || !generatedAt) return null;
+  const assumptions: FastPlanAssumption[] = [];
+  if (Array.isArray(o.assumptions)) {
+    for (const row of o.assumptions) {
+      if (!row || typeof row !== "object") continue;
+      const a = row as Record<string, unknown>;
+      const label = String(a.label ?? "").trim();
+      const value = String(a.value ?? "").trim();
+      const slotKey = String(a.slotKey ?? "").trim();
+      const confidence = String(a.confidence ?? "").trim();
+      const reason = String(a.reason ?? "").trim();
+      if (!label || !value) continue;
+      const conf =
+        confidence === "confirmed" ||
+        confidence === "partial" ||
+        confidence === "candidate" ||
+        confidence === "assumed_for_prototype" ?
+          confidence
+        : "assumed_for_prototype";
+      assumptions.push({ slotKey: slotKey || label, label, value, confidence: conf, reason: reason || "fast plan" });
+    }
+  }
+  const missingAtGeneration = Array.isArray(o.missingAtGeneration)
+    ? o.missingAtGeneration.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  return {
+    mode: "fast_plan_from_current_context",
+    generatedAt,
+    source: "current_conversation_and_slots",
+    assumptions,
+    missingAtGeneration,
+    artifactId,
+  };
 }
 
 function parseProblemInterview(raw: unknown): ProblemInterviewState | null {

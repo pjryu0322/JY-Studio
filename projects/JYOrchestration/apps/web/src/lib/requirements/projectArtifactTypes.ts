@@ -10,6 +10,7 @@ export type ProjectArtifactType =
   | "screen-spec"
   | "api-spec"
   | "summary"
+  | "fast_prototype_plan"
   | "markdown-export"
   | "pdf-export";
 
@@ -29,6 +30,7 @@ export const PROJECT_ARTIFACT_LABELS: Record<ProjectArtifactType, string> = {
   "screen-spec": "화면 정의서",
   "api-spec": "API 명세서",
   summary: "프로젝트 요약서",
+  "fast_prototype_plan": "빠른 프로토타입 기획안",
   "markdown-export": "Markdown Export",
   "pdf-export": "PDF Export",
 };
