@@ -198,8 +198,21 @@ import {
 } from "@/lib/platform-orchestration";
 import {
   composerPromptForFastPlanDraftSuggestion,
+  normalizeFastPlanDraftChipLabel,
   resolveFastPlanDraftSuggestionAction,
 } from "@/lib/requirements/fastPlanDraftSuggestionPick";
+import {
+  buildFastPlanArtifactCreatedChatMessage,
+  buildFastPlanArtifactCreatedTimelineEntry,
+  buildFastPlanDraftGenerationHandoffTimeline,
+  buildFastPlanDraftSuggestionPickedTimelineEntry,
+  buildFastPlanGenerationBlockedTimelineEntry,
+  buildFastPlanGenerationFailedTimelineEntry,
+  evaluateFastPlanGenerationHandoffReadiness,
+  FAST_PLAN_DRAFT_ACTION_GENERATE,
+  resolveFastPlanArtifactFollowUpAction,
+  isFastPlanArtifactFollowUpLabel,
+} from "@/lib/requirements/fastPlanDraftGenerationHandoff";
 import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import { RequirementsCanvasHubDrawer } from "@/components/requirements/RequirementsCanvasHubDrawer";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -2208,6 +2221,14 @@ export function RequirementsWorkspace({
     try {
       const st = stateJsonRef.current;
       const nowIso = new Date().toISOString();
+      appendSingleChatPromptTimeline(
+        buildFastPlanDraftSuggestionPickedTimelineEntry({
+          actionLabel: "AI팀 빠른 기획 초안 받기",
+          routingDecision: "request_draft",
+          projectId: pid,
+          nowIso,
+        }),
+      );
       const latestInterviewState = latestProblemInterviewStateForGate();
       const trigger = createFastPlanDraftPlatformTrigger({
         projectId: pid,
@@ -2259,19 +2280,51 @@ export function RequirementsWorkspace({
     serviceFlow,
     sessionUser?.id,
     appendServiceFlowWorkshopMessages,
+    appendSingleChatPromptTimeline,
     persistStateJsonOnly,
     showErrorToast,
     showSuccessToast,
   ]);
 
+  const lastFastPlanArtifactIdRef = useRef<string | null>(null);
+
   const handleGenerateFastPlanFromCurrentContext = useCallback(async () => {
     const pid = resolvedProjectId.trim();
-    if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
+    const nowIso = new Date().toISOString();
+    const readiness = evaluateFastPlanGenerationHandoffReadiness({
+      projectId: pid,
+      busy,
+      deliverableGenerateBusy,
+      remoteLocked,
+      conversationStatus,
+      projectLoaded: Boolean(project),
+    });
+    if (!readiness.ready) {
+      const reason = readiness.reason ?? "현재 빠른 기획안을 생성할 수 없습니다.";
+      showErrorToast(reason);
+      appendSingleChatPromptTimeline(
+        buildFastPlanGenerationBlockedTimelineEntry({
+          projectId: pid || "unknown",
+          nowIso,
+          reason,
+          blockedBy: readiness.blockedBy ?? "blocked",
+        }),
+      );
+      return;
+    }
+
     setDeliverableGenerateBusy(true);
     setError(null);
     try {
       const st = stateJsonRef.current;
-      const nowIso = new Date().toISOString();
+      appendSingleChatPromptTimeline(
+        buildFastPlanDraftGenerationHandoffTimeline({
+          actionLabel: FAST_PLAN_DRAFT_ACTION_GENERATE,
+          projectId: pid,
+          nowIso,
+        })[1]!,
+      );
+
       const latestInterviewState = latestProblemInterviewStateForGate();
       const slotReadiness = evaluateGenerationReadinessFromSlots({
         orchestration: orchestrationAlignedState,
@@ -2304,12 +2357,33 @@ export function RequirementsWorkspace({
         fastPlanGenerationV1: result.fastPlanGenerationV1,
         ...(result.orchestration ? { singleChatOrchestrationV1: result.orchestration } : {}),
       });
+      lastFastPlanArtifactIdRef.current = deliverable.id;
+      const completionMessage = buildFastPlanArtifactCreatedChatMessage({
+        artifactTitle: result.artifact.title,
+        artifactId: deliverable.id,
+        nowIso,
+      });
+      await appendServiceFlowWorkshopMessages([completionMessage]);
+      appendSingleChatPromptTimeline(
+        buildFastPlanArtifactCreatedTimelineEntry({
+          artifactId: deliverable.id,
+          projectId: pid,
+          nowIso,
+        }),
+      );
       openDeliverableViewer([deliverable.id], deliverable.id);
       showSuccessToast(result.userFacingSummary);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "빠른 기획안 생성 중 오류가 발생했습니다.";
       setError(msg);
       showErrorToast(msg);
+      appendSingleChatPromptTimeline(
+        buildFastPlanGenerationFailedTimelineEntry({
+          projectId: pid,
+          nowIso,
+          error: msg,
+        }),
+      );
     } finally {
       setDeliverableGenerateBusy(false);
     }
@@ -2318,6 +2392,8 @@ export function RequirementsWorkspace({
     busy,
     deliverableGenerateBusy,
     remoteLocked,
+    conversationStatus,
+    project,
     latestProblemInterviewStateForGate,
     orchestrationAlignedState,
     slotDefsForProgress,
@@ -2327,6 +2403,8 @@ export function RequirementsWorkspace({
     conversationMessages,
     serviceFlow,
     persistStateJsonOnly,
+    appendServiceFlowWorkshopMessages,
+    appendSingleChatPromptTimeline,
     openDeliverableViewer,
     showErrorToast,
     showSuccessToast,
@@ -2338,7 +2416,45 @@ export function RequirementsWorkspace({
 
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
-      const action = resolveFastPlanDraftSuggestionAction(label);
+      const trimmed = normalizeFastPlanDraftChipLabel(label);
+      const artifactFollowUp = resolveFastPlanArtifactFollowUpAction(trimmed);
+      if (artifactFollowUp === "view_artifact") {
+        const artifactId =
+          lastFastPlanArtifactIdRef.current ??
+          stateJsonRef.current.fastPlanGenerationV1?.artifactId ??
+          null;
+        if (artifactId) {
+          openDeliverableViewer([artifactId], artifactId);
+        } else {
+          showErrorToast("열 수 있는 빠른 기획안 산출물이 없습니다. 먼저 「이 초안으로 빠른 기획안 생성」을 실행해 주세요.");
+        }
+        return;
+      }
+      if (artifactFollowUp === "go_generation") {
+        showSuccessToast("왼쪽 「생성」 탭에서 참조자료로 빠른 프로토타입 기획안을 사용할 수 있습니다.");
+        return;
+      }
+      if (artifactFollowUp === "continue_planning") {
+        insertComposerPrompt("기획 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.");
+        return;
+      }
+      if (isFastPlanArtifactFollowUpLabel(trimmed)) return;
+
+      const action = resolveFastPlanDraftSuggestionAction(trimmed);
+      const nowIso = new Date().toISOString();
+      const pid = resolvedProjectId.trim() || "unknown";
+
+      if (action) {
+        appendSingleChatPromptTimeline(
+          buildFastPlanDraftSuggestionPickedTimelineEntry({
+            actionLabel: trimmed,
+            routingDecision: action,
+            projectId: pid,
+            nowIso,
+          }),
+        );
+      }
+
       if (action === "generate_artifact") {
         void handleGenerateFastPlanFromCurrentContext();
         return;
@@ -2360,6 +2476,11 @@ export function RequirementsWorkspace({
       handleGenerateFastPlanFromCurrentContext,
       handleRequestFastPlanDraft,
       insertComposerPrompt,
+      openDeliverableViewer,
+      appendSingleChatPromptTimeline,
+      resolvedProjectId,
+      showErrorToast,
+      showSuccessToast,
     ],
   );
 

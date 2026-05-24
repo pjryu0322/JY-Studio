@@ -18,5 +18,5 @@ export function platformNextActionsToQuickReplies(
 export function platformNextActionLabelsForInterviewSuggestions(
   actions: readonly PlatformNextAction[],
 ): readonly string[] {
-  return actions.map((a) => a.label);
+  return actions.filter((a) => a.enabled).map((a) => a.label);
 }

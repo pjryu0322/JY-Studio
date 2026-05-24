@@ -12,8 +12,12 @@ export type FastPlanDraftSuggestionAction =
   | "partial_edit"
   | "precision";
 
+export function normalizeFastPlanDraftChipLabel(label: string): string {
+  return String(label ?? "").trim();
+}
+
 export function resolveFastPlanDraftSuggestionAction(label: string): FastPlanDraftSuggestionAction | null {
-  const trimmed = String(label ?? "").trim();
+  const trimmed = normalizeFastPlanDraftChipLabel(label);
   if (trimmed === FAST_PLAN_DRAFT_ACTION_GENERATE) return "generate_artifact";
   if (trimmed === FAST_PLAN_DRAFT_ACTION_REGENERATE) return "request_draft";
   if (trimmed === FAST_PLAN_DRAFT_ACTION_PARTIAL_EDIT) return "partial_edit";
@@ -28,5 +32,5 @@ export function composerPromptForFastPlanDraftSuggestion(action: FastPlanDraftSu
 }
 
 export function isKnownFastPlanDraftChipLabel(label: string): boolean {
-  return isFastPlanDraftActionLabel(String(label ?? "").trim());
+  return isFastPlanDraftActionLabel(normalizeFastPlanDraftChipLabel(label));
 }
