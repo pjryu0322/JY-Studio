@@ -138,7 +138,7 @@ describe("cursor execution readiness gate", () => {
       designOk: false,
     });
     expect(gate.allowed).toBe(false);
-    expect(formatCursorExecutionBlockedMessage(gate.missing)).toContain("아직 Cursor 실행 요청");
+    expect(formatCursorExecutionBlockedMessage(gate.missing)).toContain("아직 Cursor WIP 작업 요청");
   });
 
   it("allows cursor execution when plan, environment, and prompt quality are ready", () => {

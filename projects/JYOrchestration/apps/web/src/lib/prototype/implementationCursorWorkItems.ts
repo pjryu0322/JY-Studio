@@ -3,6 +3,7 @@ import {
   evaluateCursorWorkItemQuality,
   type CursorWorkItemQualityGate,
 } from "@/lib/prototype/implementationCursorPromptQuality";
+import { appendWipPolicyToCursorPrompt } from "@/lib/prototype/cursorWipExecution";
 import type { ImplementationTaskPlanItem, ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { evaluateImplementationTaskPlanReadiness } from "@/lib/prototype/implementationTaskPlan";
 
@@ -55,7 +56,7 @@ function toCursorWorkItem(item: ImplementationTaskPlanItem): CursorWorkItem {
     id: `cursor-wi-${item.id}`,
     taskId: item.id,
     title: item.title,
-    prompt: item.cursorPromptDraft,
+    prompt: appendWipPolicyToCursorPrompt(item.cursorPromptDraft),
     requiredFilesHint,
     expectedOutput: [
       "변경된 소스 파일 목록",
@@ -104,7 +105,7 @@ export function evaluateCursorExecutionRequestGate(input: CursorExecutionRequest
 
 export function formatCursorExecutionBlockedMessage(missing: readonly string[]): string {
   return [
-    "아직 Cursor 실행 요청을 진행할 수 없습니다.",
+    "아직 Cursor WIP 작업 요청을 진행할 수 없습니다.",
     "",
     "부족 항목:",
     ...missing.map((m) => `- ${m}`),

@@ -2,18 +2,31 @@
  * 구현 단계 SingleChat 인터뷰 칩 → 동작 라우팅.
  */
 
+import {
+  CURSOR_WIP_WORK_REQUEST_CHIP,
+  LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
+} from "@/lib/prototype/cursorWipExecution";
+
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
   readonly focusComposerForScopeEdit: () => void;
   readonly confirmImplementationTaskPlan: () => void;
-  readonly requestCursorExecution: () => void;
+  readonly requestCursorWipWork: () => void;
+  readonly viewWipChanges: () => void;
+  readonly requestRefactor: () => void;
+  readonly requestAdditionalEdit: () => void;
+  readonly approveDeveloperResult: () => void;
+  readonly discardWipWork: () => void;
+  readonly requestScmOfficialCommit: () => void;
   readonly prepareImplementationExecution: () => void;
   readonly confirmExecution: () => void;
   readonly refreshStatus: () => void;
   readonly showToast: (message: string) => void;
   readonly canConfirmImplementationTaskPlan: () => boolean;
-  readonly canRequestCursorExecution: () => boolean;
+  readonly canRequestCursorWipWork: () => boolean;
+  readonly canApproveDeveloperResult: () => boolean;
+  readonly canRequestScmOfficialCommit: () => boolean;
   readonly canConfirmExecution: () => boolean;
 }>;
 
@@ -38,9 +51,32 @@ export function tryHandlePrototypeExecutionChip(
       handlers.confirmImplementationTaskPlan();
       return true;
     }
-    case "Cursor 실행 요청": {
-      if (!handlers.canRequestCursorExecution()) return true;
-      handlers.requestCursorExecution();
+    case CURSOR_WIP_WORK_REQUEST_CHIP:
+    case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP: {
+      if (!handlers.canRequestCursorWipWork()) return true;
+      handlers.requestCursorWipWork();
+      return true;
+    }
+    case "변경사항 보기":
+      handlers.viewWipChanges();
+      return true;
+    case "리팩토링 요청":
+      handlers.requestRefactor();
+      return true;
+    case "추가 수정 요청":
+      handlers.requestAdditionalEdit();
+      return true;
+    case "구현 결과 승인": {
+      if (!handlers.canApproveDeveloperResult()) return true;
+      handlers.approveDeveloperResult();
+      return true;
+    }
+    case "작업 폐기":
+      handlers.discardWipWork();
+      return true;
+    case "SCM에게 공식 반영 요청": {
+      if (!handlers.canRequestScmOfficialCommit()) return true;
+      handlers.requestScmOfficialCommit();
       return true;
     }
     case "구현 실행 준비":

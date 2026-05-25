@@ -62,14 +62,14 @@ export function buildImplementationTaskPlanSummaryContent(
   ];
 
   if (plan.readiness.ready && stats.runnableCount === stats.workItemCount && stats.workItemCount > 0) {
-    lines.push("", "환경·설계·prompt 품질이 충족되었습니다. Cursor 실행 요청을 진행할 수 있습니다.");
+    lines.push("", "환경·설계·prompt 품질이 충족되었습니다. Cursor WIP 작업 요청을 진행할 수 있습니다.");
   } else if (!input.envOk || !input.designOk) {
     lines.push(
       "",
-      "환경·설계 준비가 부족하면 Cursor 실행 요청은 차단됩니다. [환경설정 열기]로 연결 상태를 먼저 완료해 주세요.",
+      "환경·설계 준비가 부족하면 Cursor WIP 작업 요청은 차단됩니다. [환경설정 열기]로 연결 상태를 먼저 완료해 주세요.",
     );
   } else {
-    lines.push("", "Cursor 실행 요청 전 보완이 필요한 항목이 있을 수 있습니다. task별 prompt·테스트 범위를 확인해 주세요.");
+    lines.push("", "Cursor WIP 작업 요청 전 보완이 필요한 항목이 있을 수 있습니다. task별 prompt·테스트 범위를 확인해 주세요.");
   }
 
   if (!plan.readiness.ready && plan.readiness.missing.length) {
@@ -98,7 +98,7 @@ export function implementationTaskPlanSummaryChips(input: {
         w.qualityGate.promptReady &&
         w.qualityGate.score >= CURSOR_WORK_ITEM_MIN_QUALITY_SCORE,
     );
-  if (readiness.ready && qualityOk) return [...base, "Cursor 실행 요청", "구현 실행 준비"];
+  if (readiness.ready && qualityOk) return [...base, "Cursor WIP 작업 요청", "구현 실행 준비"];
   return [...base, "구현 실행 준비"];
 }
 

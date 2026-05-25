@@ -21,8 +21,6 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
-export const CURSOR_EXECUTION_ACCEPTED_NOTICE =
-  "Cursor 실행 요청을 접수했습니다. 이 단계에서는 실제 Cursor API 호출은 수행하지 않으며, work item 단위 실행 준비만 완료됩니다.";
 
 export type ImplementationCursorGateContext = Readonly<{
   readonly plan: ImplementationTaskPlanV1 | null | undefined;
@@ -136,5 +134,5 @@ export function buildPrepareImplementationExecutionToast(
     return "먼저 [구현 작업안 확정]으로 task plan을 생성해 주세요.";
   }
   const ready = plan.items.filter((i) => i.status === "ready").length;
-  return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [Cursor 실행 요청]을 진행할 수 있습니다.`;
+  return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [Cursor WIP 작업 요청]을 진행할 수 있습니다.`;
 }

@@ -17,6 +17,8 @@ import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOr
 import { parseArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
+import type { CursorWipExecutionV1 } from "@/lib/prototype/cursorWipExecution";
+import { parseCursorWipExecutionV1 } from "@/lib/prototype/cursorWipExecutionStateWire";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import {
@@ -526,6 +528,8 @@ export type RequirementsStateJson = {
   implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   /** task plan → Cursor 실행 단위(JSON) */
   cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+  /** Cursor WIP 검토 루프 상태(JSON) */
+  cursorWipExecutionV1?: CursorWipExecutionV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -924,6 +928,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "implementationTaskPlanV1" in o ? o.implementationTaskPlanV1 : undefined,
   );
   const cursorWorkItemsV1 = parseCursorWorkItemsV1("cursorWorkItemsV1" in o ? o.cursorWorkItemsV1 : undefined);
+  const cursorWipExecutionV1 = parseCursorWipExecutionV1(
+    "cursorWipExecutionV1" in o ? o.cursorWipExecutionV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1057,6 +1064,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeExecutionSingleChatV1 !== undefined ? { prototypeExecutionSingleChatV1 } : {}),
     ...(implementationTaskPlanV1 !== undefined ? { implementationTaskPlanV1 } : {}),
     ...(cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1 } : {}),
+    ...(cursorWipExecutionV1 !== undefined ? { cursorWipExecutionV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),

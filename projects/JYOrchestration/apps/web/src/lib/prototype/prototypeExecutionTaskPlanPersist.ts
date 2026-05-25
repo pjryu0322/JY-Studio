@@ -1,3 +1,4 @@
+import type { CursorWipExecutionV1 } from "@/lib/prototype/cursorWipExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { summarizeTaskPlanExecutionStats } from "@/lib/prototype/implementationTaskPlanSummary";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -71,6 +72,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   };
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+  readonly cursorWipExecutionV1?: CursorWipExecutionV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -87,6 +89,7 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       ? { implementationTaskPlanV1: input.implementationTaskPlanV1 }
       : {}),
     ...(input.cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1: input.cursorWorkItemsV1 } : {}),
+    ...(input.cursorWipExecutionV1 !== undefined ? { cursorWipExecutionV1: input.cursorWipExecutionV1 } : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),
   });

@@ -29,11 +29,11 @@ import {
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
+import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
   buildPrepareImplementationExecutionToast,
-  CURSOR_EXECUTION_ACCEPTED_NOTICE,
   evaluateImplementationCursorGate,
   formatImplementationCursorBlockedNotice,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
@@ -326,6 +326,7 @@ export function PrototypePreviewPanel({
           ? [
               orchestrationPatch.implementationTaskPlanV1?.createdAt,
               orchestrationPatch.cursorWorkItemsV1?.length,
+              orchestrationPatch.cursorWipExecutionV1?.status,
               orchestrationPatch.promptTimeline?.length,
             ]
           : null,
@@ -1337,6 +1338,28 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  const wipChipHandlers = useMemo(
+    () =>
+      buildWipChipHandlerSlice({
+        projectId,
+        requirementsStateJson,
+        parsedState: parsedRequirementsState,
+        applyMessages: executionSingleChat.applyPersistedMessages,
+        appendNotice: (text) => executionSingleChat.appendAiNotice(text),
+        persistOrchestration: (chat, orch) => void persistChatToDb(chat, orch),
+        focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
+        showToast,
+      }),
+    [
+      projectId,
+      requirementsStateJson,
+      parsedRequirementsState,
+      executionSingleChat,
+      persistChatToDb,
+      showToast,
+    ],
+  );
+
   const handleImplementationChip = useCallback(
     (label: string) =>
       tryHandlePrototypeExecutionChip(label, {
@@ -1347,9 +1370,7 @@ export function PrototypePreviewPanel({
           queueMicrotask(() => chatInputRef.current?.focus());
         },
         confirmImplementationTaskPlan,
-        requestCursorExecution: () => {
-          executionSingleChat.appendAiNotice(CURSOR_EXECUTION_ACCEPTED_NOTICE);
-        },
+        ...wipChipHandlers,
         prepareImplementationExecution: () => {
           const toast = buildPrepareImplementationExecutionToast(
             parsedRequirementsState.implementationTaskPlanV1,
@@ -1366,7 +1387,7 @@ export function PrototypePreviewPanel({
           }
           return true;
         },
-        canRequestCursorExecution: () => {
+        canRequestCursorWipWork: () => {
           const gate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!gate.allowed) {
             executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
@@ -1385,6 +1406,7 @@ export function PrototypePreviewPanel({
     [
       envSettingsHref,
       confirmImplementationTaskPlan,
+      wipChipHandlers,
       parsedRequirementsState.implementationTaskPlanV1,
       implementationCursorGate,
       canRequestGeneration.designOk,

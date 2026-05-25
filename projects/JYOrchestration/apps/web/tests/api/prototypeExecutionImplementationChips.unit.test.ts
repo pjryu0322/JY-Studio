@@ -1,24 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 
+const baseHandlers = () => ({
+  openEnvSettings: vi.fn(),
+  openArtifactHub: vi.fn(),
+  focusComposerForScopeEdit: vi.fn(),
+  confirmImplementationTaskPlan: vi.fn(),
+  requestCursorWipWork: vi.fn(),
+  viewWipChanges: vi.fn(),
+  requestRefactor: vi.fn(),
+  requestAdditionalEdit: vi.fn(),
+  approveDeveloperResult: vi.fn(),
+  discardWipWork: vi.fn(),
+  requestScmOfficialCommit: vi.fn(),
+  prepareImplementationExecution: vi.fn(),
+  confirmExecution: vi.fn(),
+  refreshStatus: vi.fn(),
+  showToast: vi.fn(),
+  canConfirmImplementationTaskPlan: () => true,
+  canRequestCursorWipWork: () => true,
+  canApproveDeveloperResult: () => true,
+  canRequestScmOfficialCommit: () => true,
+  canConfirmExecution: () => true,
+});
+
 describe("tryHandlePrototypeExecutionChip", () => {
   it("routes implementation entry chips to handlers", () => {
     const openEnv = vi.fn();
     const openHub = vi.fn();
-    const handlers = {
-      openEnvSettings: openEnv,
-      openArtifactHub: openHub,
-      focusComposerForScopeEdit: vi.fn(),
-      confirmImplementationTaskPlan: vi.fn(),
-      requestCursorExecution: vi.fn(),
-      prepareImplementationExecution: vi.fn(),
-      confirmExecution: vi.fn(),
-      refreshStatus: vi.fn(),
-      showToast: vi.fn(),
-      canConfirmImplementationTaskPlan: () => true,
-      canRequestCursorExecution: () => true,
-      canConfirmExecution: () => true,
-    };
+    const handlers = { ...baseHandlers(), openEnvSettings: openEnv, openArtifactHub: openHub };
     expect(tryHandlePrototypeExecutionChip("환경설정 열기", handlers)).toBe(true);
     expect(openEnv).toHaveBeenCalledOnce();
     expect(tryHandlePrototypeExecutionChip("산출물 다시 보기", handlers)).toBe(true);
@@ -30,21 +40,13 @@ describe("tryHandlePrototypeExecutionChip", () => {
     const confirm = vi.fn();
     const toast = vi.fn();
     tryHandlePrototypeExecutionChip("구현 작업안 확정", {
-      openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
-      focusComposerForScopeEdit: vi.fn(),
+      ...baseHandlers(),
       confirmImplementationTaskPlan: confirm,
-      requestCursorExecution: vi.fn(),
-      prepareImplementationExecution: vi.fn(),
-      confirmExecution: vi.fn(),
-      refreshStatus: vi.fn(),
       showToast: toast,
       canConfirmImplementationTaskPlan: () => {
         toast("blocked");
         return false;
       },
-      canRequestCursorExecution: () => true,
-      canConfirmExecution: () => true,
     });
     expect(confirm).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith("blocked");
