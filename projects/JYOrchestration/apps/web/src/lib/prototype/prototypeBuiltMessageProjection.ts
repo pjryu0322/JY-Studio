@@ -1,4 +1,8 @@
 import type { PrototypeChatAction, PrototypeChatBlock, PrototypeChatBuiltMessage } from "@/lib/prototype/buildPrototypeChatMessages";
+import {
+  leadDeveloperMessageHasForbiddenEnvDetail,
+  sanitizeImplementationConversationMessages,
+} from "@/lib/prototype/implementationOrchestrationSummary";
 import { PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -73,12 +77,23 @@ export function buildPrototypeActionLabelMap(
   return map;
 }
 
+function isLegacyImplementationOrchestrationBuiltMessage(m: PrototypeChatBuiltMessage): boolean {
+  const text = builtMessagePlainText(m);
+  if (m.id === "ai-env-check" || m.id === "ai-env-ready") return true;
+  if (text.includes("현재 개발 준비 상태")) return true;
+  if (/^AI검수자:/m.test(text) || /^AI보안관:/m.test(text)) return true;
+  if (/^SCM:/m.test(text) && text.includes("Git 저장소")) return true;
+  if (leadDeveloperMessageHasForbiddenEnvDetail(text)) return true;
+  return false;
+}
+
 export function projectPrototypeBuiltMessagesToRequirements(
   built: readonly PrototypeChatBuiltMessage[],
 ): { readonly messages: readonly RequirementsMessage[]; readonly actionByLabel: ReadonlyMap<string, PrototypeChatAction> } {
+  const filtered = built.filter((m) => !isLegacyImplementationOrchestrationBuiltMessage(m));
   return {
-    messages: built.map(prototypeBuiltMessageToRequirementsMessage),
-    actionByLabel: buildPrototypeActionLabelMap(built),
+    messages: filtered.map(prototypeBuiltMessageToRequirementsMessage),
+    actionByLabel: buildPrototypeActionLabelMap(filtered),
   };
 }
 
@@ -99,5 +114,7 @@ export function mergePrototypeExecutionChatTimeline(
 export function filterPersistedPrototypeExecutionMessages(
   messages: readonly RequirementsMessage[],
 ): RequirementsMessage[] {
-  return messages.filter((m) => m.meta.internalType !== PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE).slice(-400);
+  return sanitizeImplementationConversationMessages(
+    messages.filter((m) => m.meta.internalType !== PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE),
+  ).slice(-400);
 }

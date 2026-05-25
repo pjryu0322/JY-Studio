@@ -314,10 +314,65 @@ export function buildImplementationRoleCheckDetailsTimelineEntry(input: {
   };
 }
 
+const FORBIDDEN_LEAD_DEVELOPER_ENV_MARKERS = [
+  "현재 개발 준비 상태",
+  "Git 저장소:",
+  "AI 개발 도구 연결:",
+] as const;
+
+const LEGACY_IMPLEMENTATION_MEMBER_SPEAKER_IDS = new Set([
+  "prototype_review",
+  "security_reviewer",
+  "memo",
+]);
+
+export function leadDeveloperMessageHasForbiddenEnvDetail(content: string): boolean {
+  const text = String(content ?? "");
+  return FORBIDDEN_LEAD_DEVELOPER_ENV_MARKERS.some((marker) => text.includes(marker));
+}
+
+export function isLegacyImplementationMemberBootstrapMessage(m: RequirementsMessage): boolean {
+  if (m.meta.internalType === IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE) return false;
+
+  if (
+    m.meta.serviceDesignStage === "implementation" &&
+    LEGACY_IMPLEMENTATION_MEMBER_SPEAKER_IDS.has(m.speakerId)
+  ) {
+    return true;
+  }
+
+  if (m.meta.internalType !== IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE) return false;
+
+  if (m.speakerId !== "prototype_build") return true;
+  if (m.meta.implementationBootstrapKind !== "lead_developer_summary") return true;
+  if (!m.content.includes("역할별 점검 요약")) return true;
+  if (leadDeveloperMessageHasForbiddenEnvDetail(m.content)) return true;
+  return false;
+}
+
+export function hasValidImplementationLeadBootstrap(
+  messages: readonly RequirementsMessage[] | null | undefined,
+): boolean {
+  return (messages ?? []).some((m) => {
+    if (m.meta.internalType !== IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE) return false;
+    if (m.meta.implementationBootstrapKind !== "lead_developer_summary") return false;
+    if (m.speakerId !== "prototype_build") return false;
+    if (!m.content.includes("역할별 점검 요약")) return false;
+    if (leadDeveloperMessageHasForbiddenEnvDetail(m.content)) return false;
+    return true;
+  });
+}
+
+export function sanitizeImplementationConversationMessages(
+  messages: readonly RequirementsMessage[] | null | undefined,
+): RequirementsMessage[] {
+  return (messages ?? []).filter((m) => !isLegacyImplementationMemberBootstrapMessage(m));
+}
+
 export function hasImplementationOrchestrationBootstrap(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): boolean {
-  return (messages ?? []).some((m) => m.meta.internalType === IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE);
+  return hasValidImplementationLeadBootstrap(messages);
 }
 
 export function hasImplementationRoleCheckDetailsShown(

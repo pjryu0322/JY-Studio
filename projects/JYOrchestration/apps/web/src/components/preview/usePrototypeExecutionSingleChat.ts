@@ -22,7 +22,8 @@ import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExt
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
   buildImplementationBootstrapBundle,
-  hasImplementationOrchestrationBootstrap,
+  hasValidImplementationLeadBootstrap,
+  sanitizeImplementationConversationMessages,
   type ImplementationOrchestrationSummaryInput,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 
@@ -90,24 +91,29 @@ export function usePrototypeExecutionSingleChat({
     }
     setConversationStatus("loading");
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    setConversationMessages(resolved.messages ?? []);
+    const sanitized = sanitizeImplementationConversationMessages(resolved.messages ?? []);
+    setConversationMessages(sanitized);
     setSlots(resolved.slots ?? []);
     setAnswers(resolved.answers ?? {});
     setCurrentSlotKey(resolved.currentSlotKey ?? null);
     setConversationStatus("loaded");
     slotsBootstrapRef.current = (resolved.slots?.length ?? 0) > 0;
-    implementationBootstrapRef.current = hasImplementationOrchestrationBootstrap(resolved.messages);
+    implementationBootstrapRef.current = hasValidImplementationLeadBootstrap(sanitized);
   }, [projectId, requirementsStateJson]);
 
   useEffect(() => {
     const pid = projectId.trim();
     if (!pid || conversationStatus !== "loaded" || envLoading) return;
     if (implementationBootstrapRef.current || !implementationBootstrapInput) return;
-    implementationBootstrapRef.current = true;
     const bootstrap = buildImplementationBootstrapBundle(implementationBootstrapInput);
     setConversationMessages((prev) => {
-      if (hasImplementationOrchestrationBootstrap(prev)) return prev;
-      const next = [...prev, ...bootstrap.messages];
+      const base = sanitizeImplementationConversationMessages(prev);
+      if (hasValidImplementationLeadBootstrap(base)) {
+        implementationBootstrapRef.current = true;
+        return base;
+      }
+      implementationBootstrapRef.current = true;
+      const next = [...base, ...bootstrap.messages];
       onPersistStateJson({
         messages: next,
         slots,
@@ -335,6 +341,7 @@ export function usePrototypeExecutionSingleChat({
     (messages: readonly RequirementsMessage[]) => {
       const persisted = filterPersistedPrototypeExecutionMessages(messages);
       setConversationMessages(persisted);
+      implementationBootstrapRef.current = hasValidImplementationLeadBootstrap(persisted);
     },
     [],
   );

@@ -1884,11 +1884,7 @@ export function PrototypePreviewPanel({
           : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
             ? "오류"
             : "대기";
-    const implMembers = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.filter((id) =>
-      prototypeScreenCatalogIds?.length ? prototypeScreenCatalogIds.includes(id) : true,
-    );
-    const memberIds =
-      implMembers.length > 0 ? implMembers : [...IMPLEMENTATION_MODE_PRIMARY_MEMBERS];
+    const memberIds = [...IMPLEMENTATION_MODE_PRIMARY_MEMBERS];
     const platformAi = buildWorkspaceAiParticipantOptions({
       currentMemberIds: memberIds,
       statusLabelForCurrent: aiStatus,
@@ -1912,12 +1908,7 @@ export function PrototypePreviewPanel({
     prototypeScreenCatalogIds,
   ]);
 
-  const implementationAiMemberCount = useMemo(() => {
-    const implMembers = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.filter((id) =>
-      prototypeScreenCatalogIds?.length ? prototypeScreenCatalogIds.includes(id) : true,
-    );
-    return implMembers.length > 0 ? implMembers.length : IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length;
-  }, [prototypeScreenCatalogIds]);
+  const implementationAiMemberCount = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length;
 
   const planningOrchestrationView = useMemo(
     () =>
