@@ -1,48 +1,21 @@
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
-import { buildFastPlanGenerationContext, buildFastPlanMarkdown } from "@/lib/requirements/fastPlanGeneration";
 import type { FastPlanGenerationInput } from "@/lib/requirements/fastPlanGenerationTypes";
 import {
-  QUICK_DESIGN_AREA_ARTIFACT_TITLES,
   QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS,
   IMPLEMENTATION_PREP_READY_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import { wireStageLabel } from "@/lib/requirements/projectArtifactTypes";
-import { buildProjectArtifactContent } from "@/lib/requirements/projectArtifactGenerate";
-import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
-import type { PlatformMemberDraft, PlatformMemberRole } from "@/lib/platform-orchestration/types";
+import { PROJECT_ARTIFACT_LABELS } from "@/lib/requirements/projectArtifactTypes";
+import {
+  generateArtifactsFromPlan,
+  mergePlannedArtifactsIntoState,
+  planProjectArtifactsFromOrchestrationContext,
+  REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES,
+  type PlannedProjectArtifact,
+} from "@/lib/requirements/projectArtifactPlan";
 import type { RequirementsOrchestrationStageV1 } from "@/lib/requirements/requirementsStateJson";
-
-function newArtifactId(nowIso: string, suffix: string): string {
-  return `artifact-qd-${suffix}-${nowIso.replace(/[^\d]/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function memberDraftBody(drafts: readonly PlatformMemberDraft[] | undefined, role: PlatformMemberRole): string {
-  const row = (drafts ?? []).find((d) => d.role === role);
-  const content = String(row?.content ?? "").trim();
-  return content;
-}
-
-function areaMarkdown(input: {
-  readonly title: string;
-  readonly projectName: string;
-  readonly roleSection: string;
-  readonly supplemental?: string;
-}): string {
-  const lines = [`# ${input.title}`, "", `> 프로젝트: **${input.projectName}** · Quick Design 확정 기준`];
-  if (input.roleSection) {
-    lines.push("", "## AI팀 제안 요약", "", input.roleSection);
-  }
-  if (input.supplemental?.trim()) {
-    lines.push("", "## 보조 자료", "", input.supplemental.trim());
-  }
-  if (!input.roleSection && !input.supplemental?.trim()) {
-    lines.push("", "_Quick Design 초안에서 추출한 내용이 아직 없습니다. 추가 보완으로 보강할 수 있습니다._");
-  }
-  return lines.join("\n");
-}
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -56,116 +29,107 @@ export type QuickDesignConfirmArtifactsResult = Readonly<{
   readonly deliverables: readonly IdeationDeliverableAsset[];
   readonly primaryArtifactId: string;
   readonly artifactIds: readonly string[];
+  readonly planned: readonly PlannedProjectArtifact[];
   readonly userFacingSummary: string;
 }>;
 
 export function generateQuickDesignConfirmArtifacts(
   input: QuickDesignConfirmArtifactsInput,
 ): QuickDesignConfirmArtifactsResult {
-  const nowIso = input.nowIso;
-  const projectName = String(input.projectName ?? "프로젝트").trim() || "프로젝트";
-  const stage = wireStageLabel(input.sourceStage);
-  const drafts = input.fastPlanDraftV1.memberDrafts;
-  const context = buildFastPlanGenerationContext(input);
-  const serviceDefinitionBody = areaMarkdown({
-    title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.serviceDefinition,
-    projectName,
-    roleSection: memberDraftBody(drafts, "planner"),
-    supplemental: buildFastPlanMarkdown({ projectName, context }),
-  });
-
-  const analysisSupplemental = buildProjectArtifactContent({
-    artifactType: "service-flow-doc",
-    projectName,
-    projectDescription: input.projectDescription,
-    sourceStage: stage,
+  const plan = planProjectArtifactsFromOrchestrationContext({
+    orchestration: input.orchestration!,
+    definitions: input.slotDefinitions,
     serviceFlow: input.serviceFlow,
-  });
-
-  const designSupplemental = buildProjectArtifactContent({
-    artifactType: "feature-spec",
-    projectName,
-    projectDescription: input.projectDescription,
-    sourceStage: stage,
     featurePlanning: input.featurePlanning,
+    memberDrafts: input.fastPlanDraftV1.memberDrafts,
   });
 
-  const uiDesignSupplemental = buildProjectArtifactContent({
-    artifactType: "screen-spec",
-    projectName,
-    projectDescription: input.projectDescription,
-    sourceStage: stage,
-    featurePlanning: input.featurePlanning,
+  const requiredForConfirm: PlannedProjectArtifact[] = [...plan.planned.filter((p) => p.priority === "required")];
+  for (const artifactType of REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES) {
+    if (requiredForConfirm.some((p) => p.artifactType === artifactType)) continue;
+    requiredForConfirm.push({
+      artifactType,
+      title: PROJECT_ARTIFACT_LABELS[artifactType] ?? artifactType,
+      priority: "required",
+      reason: "구현 준비 필수 표준 산출물",
+    });
+  }
+
+  const artifacts = generateArtifactsFromPlan({
+    plan: requiredForConfirm,
+    onlyRequired: false,
+    memberDrafts: input.fastPlanDraftV1.memberDrafts,
+    base: {
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      sourceStage: input.sourceStage,
+      serviceFlow: input.serviceFlow,
+      featurePlanning: input.featurePlanning,
+      nowIso: input.nowIso,
+      createdBy: "ai",
+      fastPlanContext: {
+        projectId: input.projectId,
+        projectName: input.projectName,
+        projectDescription: input.projectDescription,
+        conversationMessages: input.conversationMessages,
+        serviceFlow: input.serviceFlow,
+        orchestration: input.orchestration,
+        slotDefinitions: input.slotDefinitions,
+        featurePlanning: input.featurePlanning,
+        problemInterview: input.problemInterview,
+        sourceStage: input.sourceStage,
+      },
+    },
   });
 
-  const artifactSpecs: ReadonlyArray<{
-    readonly suffix: string;
-    readonly title: string;
-    readonly type: ProjectArtifact["type"];
-    readonly content: string;
-  }> = [
-    {
-      suffix: "svc-def",
-      title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.serviceDefinition,
-      type: "summary",
-      content: serviceDefinitionBody,
-    },
-    {
-      suffix: "analysis",
-      title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.analysis,
-      type: "service-flow-doc",
-      content: areaMarkdown({
-        title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.analysis,
-        projectName,
-        roleSection: memberDraftBody(drafts, "analyst"),
-        supplemental: analysisSupplemental,
-      }),
-    },
-    {
-      suffix: "design",
-      title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.design,
-      type: "feature-spec",
-      content: areaMarkdown({
-        title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.design,
-        projectName,
-        roleSection: memberDraftBody(drafts, "architect"),
-        supplemental: designSupplemental,
-      }),
-    },
-    {
-      suffix: "ui",
-      title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.uiDesign,
-      type: "screen-spec",
-      content: areaMarkdown({
-        title: QUICK_DESIGN_AREA_ARTIFACT_TITLES.uiDesign,
-        projectName,
-        roleSection: memberDraftBody(drafts, "designer"),
-        supplemental: uiDesignSupplemental,
-      }),
-    },
-  ];
-
-  const artifacts: ProjectArtifact[] = artifactSpecs.map((spec) => ({
-    id: newArtifactId(nowIso, spec.suffix),
-    type: spec.type,
-    title: spec.title,
-    createdAt: nowIso,
-    createdBy: "ai" as const,
-    sourceStage: stage,
-    content: spec.content,
+  const deliverables = artifacts.map((a) => ({
+    id: a.id,
+    projectId: input.projectId,
+    type: "full_plan" as const,
+    title: a.title,
+    version: 1,
+    content: a.content,
+    createdAt: a.createdAt,
   }));
 
-  const deliverables = artifacts.map((a) => projectArtifactToDeliverableAsset(a, input.projectId));
-  const primaryArtifactId = artifacts[0]?.id ?? "";
+  const prototype =
+    artifacts.find((a) => a.type === "fast_prototype_plan") ??
+    artifacts.find((a) => a.type === "summary") ??
+    artifacts[0];
+  const primaryArtifactId = prototype?.id ?? "";
+
+  const titles = artifacts.map((a) => PROJECT_ARTIFACT_LABELS[a.type] ?? a.title).join(", ");
 
   return {
     artifacts,
     deliverables,
     primaryArtifactId,
     artifactIds: artifacts.map((a) => a.id),
-    userFacingSummary:
-      "Quick Design을 확정하고 서비스 정의·분석·설계·디자인 산출물을 Artifact Hub에 저장했습니다.",
+    planned: plan.planned,
+    userFacingSummary: `Quick Design을 확정하고 표준 산출물(${titles})을 Artifact Hub에 저장했습니다.`,
   };
+}
+
+export function mergeQuickDesignArtifactsIntoState(input: {
+  readonly priorArtifacts: readonly ProjectArtifact[] | null | undefined;
+  readonly priorDeliverables: readonly IdeationDeliverableAsset[] | null | undefined;
+  readonly newArtifacts: readonly ProjectArtifact[];
+  readonly projectId: string;
+}): ReturnType<typeof mergePlannedArtifactsIntoState> {
+  return mergePlannedArtifactsIntoState({
+    priorArtifacts: input.priorArtifacts,
+    priorDeliverables: input.priorDeliverables,
+    newArtifacts: input.newArtifacts,
+    projectId: input.projectId,
+    replacedTypes: [
+      "summary",
+      "service-flow-doc",
+      "feature-spec",
+      "screen-spec",
+      "api-spec",
+      "fast_prototype_plan",
+    ],
+  });
 }
 
 export const QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE = "quick_design_implementation_ready" as const;
@@ -177,12 +141,12 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
 }): RequirementsMessage {
   const titles = input.artifactTitles.length
     ? input.artifactTitles.map((t) => `- ${t}`).join("\n")
-    : "- 서비스 정의 산출물\n- 분석 산출물\n- 설계 산출물\n- 디자인 산출물";
+    : "- 프로젝트 요약서\n- 서비스 흐름 문서\n- 기능 정의서";
 
   const content = [
     `**${IMPLEMENTATION_PREP_READY_HEADING}**`,
     "",
-    "AI팀이 구현에 필요한 서비스 정의/분석/설계/디자인 산출물을 구성했습니다.",
+    "확정된 슬롯을 바탕으로 AI팀이 업무 목적 표준 산출물을 생성해 Artifact Hub에 저장했습니다.",
     "Artifact Hub에서 결과를 확인하거나 바로 구현을 시작할 수 있습니다.",
     "",
     "생성된 산출물:",
@@ -208,25 +172,6 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       interviewAllowCustomInput: true,
     },
   });
-}
-
-/** 확정 직후 hub에 넣을 때 기존 동일 제목 Quick Design 산출물 제거 */
-export function mergeQuickDesignArtifactsIntoState(input: {
-  readonly priorArtifacts: readonly ProjectArtifact[] | null | undefined;
-  readonly priorDeliverables: readonly IdeationDeliverableAsset[] | null | undefined;
-  readonly newArtifacts: readonly ProjectArtifact[];
-  readonly newDeliverables: readonly IdeationDeliverableAsset[];
-}): Readonly<{
-  readonly projectArtifacts: readonly ProjectArtifact[];
-  readonly deliverableAssets: readonly IdeationDeliverableAsset[];
-}> {
-  const titles = new Set<string>(Object.values(QUICK_DESIGN_AREA_ARTIFACT_TITLES));
-  const priorArtifacts = (input.priorArtifacts ?? []).filter((a) => !titles.has(String(a.title ?? "").trim()));
-  const priorDeliverables = (input.priorDeliverables ?? []).filter((d) => !titles.has(String(d.title ?? "").trim()));
-  return {
-    projectArtifacts: [...priorArtifacts, ...input.newArtifacts],
-    deliverableAssets: [...priorDeliverables, ...input.newDeliverables],
-  };
 }
 
 function mergeOrchestrationStagePatch(input: {

@@ -482,8 +482,16 @@ export function RequirementsWorkspaceTopChrome({
         ) : null}
         {artifactHubControls ? (
           <WorkspaceHubChromeIconButton
-            title="Artifact Hub — 산출물 생성·조회"
-            ariaLabel="Artifact Hub 열기"
+            title={
+              artifactHubControls.count > 0
+                ? `Artifact Hub — 완성 산출물 ${artifactHubControls.count}건`
+                : "Artifact Hub — 산출물 생성·조회"
+            }
+            ariaLabel={
+              artifactHubControls.count > 0
+                ? `Artifact Hub 열기, 완성 산출물 ${artifactHubControls.count}건`
+                : "Artifact Hub 열기"
+            }
             disabled={false}
             badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
             badgeTone={artifactHubControls.hasStale ? "stale" : "default"}

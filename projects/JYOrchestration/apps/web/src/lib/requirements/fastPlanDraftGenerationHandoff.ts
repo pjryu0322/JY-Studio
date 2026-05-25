@@ -13,7 +13,8 @@ import {
 } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 
 export { FAST_PLAN_ACTION_GENERATE_PLAN as FAST_PLAN_DRAFT_ACTION_GENERATE };
-import { QUICK_DESIGN_AREA_ARTIFACT_TITLES } from "@/lib/requirements/implementationUxLabels";
+import { LEGACY_QUICK_DESIGN_AREA_TITLES } from "@/lib/requirements/projectArtifactPlan";
+import { PROJECT_ARTIFACT_LABELS } from "@/lib/requirements/projectArtifactTypes";
 
 export const FAST_PLAN_ARTIFACT_CREATED_INTERNAL_TYPE = "fast_plan_artifact_created" as const;
 export const QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE = "quick_design_implementation_ready" as const;
@@ -353,15 +354,15 @@ export function resolveFastPlanViewArtifactId(input: {
   if (fromMessage) return fromMessage;
 
   const deliverables = input.state.deliverableAssets ?? [];
-  const areaTitles = new Set<string>(Object.values(QUICK_DESIGN_AREA_ARTIFACT_TITLES));
+  const prototypeLabel = PROJECT_ARTIFACT_LABELS["fast_prototype_plan"];
   for (let i = deliverables.length - 1; i >= 0; i--) {
     const row = deliverables[i];
     const title = String(row?.title ?? "").trim();
     if (
-      areaTitles.has(title) ||
+      LEGACY_QUICK_DESIGN_AREA_TITLES.has(title) ||
+      title === prototypeLabel ||
       title === "기획안" ||
-      title.includes("기획안") ||
-      title.includes("빠른 프로토타입")
+      title.includes("프로토타입 기획안")
     ) {
       const id = String(row.id ?? "").trim();
       if (id) return id;

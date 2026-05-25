@@ -3,6 +3,8 @@
  */
 
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import type { FastPlanGenerationInput } from "@/lib/requirements/fastPlanGenerationTypes";
+import { buildFastPlanGenerationContext, buildFastPlanMarkdown } from "@/lib/requirements/fastPlanGeneration";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import {
   PROJECT_ARTIFACT_LABELS,
@@ -22,6 +24,9 @@ export type ProjectArtifactGenerateInput = Readonly<{
   readonly featurePlanning?: FeaturePlanningSlotsArtifactV1 | null;
   readonly nowIso?: string;
   readonly createdBy?: "ai" | "user";
+  readonly titleOverride?: string;
+  readonly contentOverride?: string;
+  readonly fastPlanContext?: Omit<FastPlanGenerationInput, "nowIso">;
 }>;
 
 function newArtifactId(nowIso: string): string {
@@ -127,6 +132,28 @@ export function buildProjectArtifactContent(input: ProjectArtifactGenerateInput)
         "_PDF Export는 Markdown 본문을 기준으로 뷰어에서 인쇄·저장할 수 있습니다._",
       ].join("\n");
 
+    case "fast_prototype_plan": {
+      if (input.fastPlanContext) {
+        const ctx = buildFastPlanGenerationContext({
+          ...input.fastPlanContext,
+          nowIso: input.nowIso ?? new Date().toISOString(),
+          projectName: input.projectName ?? input.fastPlanContext.projectName,
+          projectDescription: input.projectDescription ?? input.fastPlanContext.projectDescription,
+          serviceFlow: input.serviceFlow ?? input.fastPlanContext.serviceFlow,
+          featurePlanning: input.featurePlanning ?? input.fastPlanContext.featurePlanning,
+        });
+        return buildFastPlanMarkdown({
+          projectName: String(input.projectName ?? "프로젝트").trim() || "프로젝트",
+          context: ctx,
+        });
+      }
+      return [
+        `# ${projectName} — 프로토타입 기획안`,
+        "",
+        "_확정 슬롯·대화 정보가 부족해 본문을 생성하지 못했습니다._",
+      ].join("\n");
+    }
+
     default:
       return "";
   }
@@ -134,11 +161,13 @@ export function buildProjectArtifactContent(input: ProjectArtifactGenerateInput)
 
 export function generateProjectArtifact(input: ProjectArtifactGenerateInput): ProjectArtifact {
   const nowIso = input.nowIso ?? new Date().toISOString();
-  const content = buildProjectArtifactContent(input);
+  const content = String(input.contentOverride ?? "").trim() || buildProjectArtifactContent(input);
+  const title =
+    String(input.titleOverride ?? "").trim() || PROJECT_ARTIFACT_LABELS[input.artifactType] || input.artifactType;
   return {
     id: newArtifactId(nowIso),
     type: input.artifactType,
-    title: PROJECT_ARTIFACT_LABELS[input.artifactType],
+    title,
     createdAt: nowIso,
     createdBy: input.createdBy ?? "ai",
     sourceStage: wireStageLabel(input.sourceStage),

@@ -229,7 +229,7 @@ import {
   quickDesignArtifactIdsFromMessageMeta,
   resolveLatestPlanningDeliverableAssetId,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
-import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
+import { evaluateImplementationStartReadiness } from "@/lib/requirements/planningReadinessGate";
 import {
   buildQuickDesignDraftCreatedTimelineEntry,
   buildQuickDesignRequestedTimelineEntry,
@@ -248,6 +248,7 @@ import {
 } from "@/lib/requirements/projectCanvasHub";
 import {
   buildProjectArtifactHubCatalog,
+  countCompletedArtifactHubEntries,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
 import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
@@ -922,6 +923,11 @@ export function RequirementsWorkspace({
     fetchNonce,
     project?.requirementsStateJson,
   ]);
+
+  const artifactHubCompletedCount = useMemo(
+    () => countCompletedArtifactHubEntries(artifactHubCatalog),
+    [artifactHubCatalog],
+  );
 
   const artifactHubOrchestration = useMemo(() => {
     const st: RequirementsStateJson = {
@@ -2435,7 +2441,7 @@ export function RequirementsWorkspace({
         priorArtifacts: st.projectArtifacts,
         priorDeliverables: st.deliverableAssets,
         newArtifacts: artifactBundle.artifacts,
-        newDeliverables: artifactBundle.deliverables,
+        projectId: pid,
       });
       const readyMessage = buildQuickDesignImplementationReadyChatMessage({
         artifactIds: artifactBundle.artifactIds,
@@ -2544,9 +2550,10 @@ export function RequirementsWorkspace({
       });
       const deliverable = projectArtifactToDeliverableAsset(result.artifact, pid);
       const priorArtifacts = (st.projectArtifacts ?? []).filter((a) => a.type !== "fast_prototype_plan");
-      const priorDeliverables = (st.deliverableAssets ?? []).filter(
-        (d) => String(d.title ?? "").trim() !== "기획안",
-      );
+      const priorDeliverables = (st.deliverableAssets ?? []).filter((d) => {
+        const t = String(d.title ?? "").trim();
+        return t !== "기획안" && t !== "프로토타입 기획안";
+      });
       await persistStateJsonOnly({
         projectArtifacts: [...priorArtifacts, result.artifact],
         deliverableAssets: [...priorDeliverables, deliverable],
@@ -2628,9 +2635,10 @@ export function RequirementsWorkspace({
   const handleStartImplementation = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     if (!pid || busy || remoteLocked) return;
-    const readiness = evaluatePlanningToGenerationReadiness({
+    const readiness = evaluateImplementationStartReadiness({
       orchestration: orchestrationAlignedState,
       definitions: slotDefsForProgress,
+      projectArtifacts: stateJsonRef.current.projectArtifacts,
     });
     const nowIso = new Date().toISOString();
     appendSingleChatPromptTimeline(
@@ -3099,6 +3107,11 @@ export function RequirementsWorkspace({
       <RequirementsArtifactHubDrawer
         open={artifactHubOpen}
         items={artifactHubCatalog}
+        projectName={headerProjectName}
+        projectArtifacts={
+          stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined
+        }
+        deliverableAssets={deliverableAssetsFromProject}
         generateDisabled={busy || artifactGenerateBusy || remoteLocked || deliverableGenerateBusy}
         lifecycleSummary={orchestrationUi.artifactLifecycleLabels.map((r) => ({
           label: r.label,
@@ -3107,6 +3120,23 @@ export function RequirementsWorkspace({
         onClose={() => setArtifactHubOpen(false)}
         onSelectEntry={handleArtifactHubSelect}
         onGenerate={handleArtifactHubGenerate}
+        onExportFeedback={({ kind, count, blocked }) => {
+          if (blocked) {
+            showErrorToast(blocked);
+            return;
+          }
+          if (kind === "pdf") {
+            showSuccessToast(
+              count === 1
+                ? "선택한 산출물을 PDF로 저장할 수 있도록 인쇄 창을 열었습니다. 대상에서 「PDF로 저장」을 선택해 주세요."
+                : `선택한 산출물 ${count}건을 PDF로 저장할 수 있도록 인쇄 창을 열었습니다.`,
+            );
+            return;
+          }
+          showSuccessToast(
+            count === 1 ? "선택한 산출물을 Doc 파일로 내려받았습니다." : `선택한 산출물 ${count}건을 Doc 파일로 내려받았습니다.`,
+          );
+        }}
       />
 
       <ServiceFlowStateCanvasOverlay
@@ -3252,7 +3282,7 @@ export function RequirementsWorkspace({
         artifactHubControls={
           resolvedProjectId.trim()
             ? {
-                count: showWorkspaceHubBadges ? orchestrationUi.artifactBadgeCount : 0,
+                count: artifactHubCompletedCount,
                 hasStale: orchestrationUi.artifactBadgeHasStale,
                 onOpen: () => setArtifactHubOpen(true),
               }

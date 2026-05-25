@@ -20,10 +20,9 @@ export type ArtifactHubOrchestrationState = Readonly<{
 
 export function artifactHubTopChromeBadgeCount(
   catalogCount: number,
-  hub: ArtifactHubOrchestrationState,
+  _hub: ArtifactHubOrchestrationState,
 ): number {
-  if (!hub.badgeEligible) return 0;
-  return Math.max(catalogCount, hub.generatableCount, hub.staleArtifactCount);
+  return Math.max(0, catalogCount);
 }
 
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;

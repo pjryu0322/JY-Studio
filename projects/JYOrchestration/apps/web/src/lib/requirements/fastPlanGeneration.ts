@@ -195,7 +195,7 @@ export function generateFastPlanFromCurrentContext(input: FastPlanGenerationInpu
   const artifact: ProjectArtifact = {
     id: artifactId,
     type: "fast_prototype_plan",
-    title: "기획안",
+    title: "프로토타입 기획안",
     createdAt: nowIso,
     createdBy: "ai",
     sourceStage: wireStageLabel(input.sourceStage),

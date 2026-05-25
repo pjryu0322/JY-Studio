@@ -9,13 +9,6 @@ export const QUICK_DESIGN_CONFIRM_ACTION_LABEL = "Quick Design 확정" as const;
 export const IMPLEMENTATION_ARTIFACT_VIEW_LABEL = "Artifact 보기" as const;
 export const IMPLEMENTATION_REFINE_LABEL = "추가 보완" as const;
 
-export const QUICK_DESIGN_AREA_ARTIFACT_TITLES = {
-  serviceDefinition: "서비스 정의 산출물",
-  analysis: "분석 산출물",
-  design: "설계 산출물",
-  uiDesign: "디자인 산출물",
-} as const;
-
 export const QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS: readonly string[] = [
   IMPLEMENTATION_ARTIFACT_VIEW_LABEL,
   IMPLEMENTATION_START_LABEL,

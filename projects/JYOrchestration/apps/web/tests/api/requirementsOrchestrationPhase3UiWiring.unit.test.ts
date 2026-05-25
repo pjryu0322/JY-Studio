@@ -123,11 +123,11 @@ describe("orchestration phase3 UI wiring", () => {
     expect(split.secondary).toHaveLength(1);
   });
 
-  it("E: stale artifact count affects TopChrome badge", () => {
+  it("E: TopChrome artifact badge reflects completed catalog count", () => {
     const state = featureDetailState(1);
     const hub = buildArtifactHubOrchestrationState({ state });
-    const withStale = { ...hub, staleArtifactCount: 2, generatableCount: 1 };
-    expect(artifactHubTopChromeBadgeCount(1, withStale)).toBeGreaterThanOrEqual(2);
+    expect(artifactHubTopChromeBadgeCount(4, hub)).toBe(4);
+    expect(artifactHubTopChromeBadgeCount(0, { ...hub, staleArtifactCount: 2, generatableCount: 3 })).toBe(0);
   });
 
   it("F: timeline view model groups orchestration traces", () => {

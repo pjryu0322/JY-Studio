@@ -160,10 +160,10 @@ describe("intent router phase2 runtime wiring", () => {
     expect(hit?.routerMode).toBe("cache");
   });
 
-  it("E: TopChrome badge uses max(catalog, generatableCount)", () => {
+  it("E: TopChrome badge uses completed artifact catalog count", () => {
     const state = featureDetailState(1);
     const hub = buildArtifactHubOrchestrationState({ state });
-    expect(artifactHubTopChromeBadgeCount(2, { ...hub, generatableCount: 3 })).toBe(3);
+    expect(artifactHubTopChromeBadgeCount(2, { ...hub, generatableCount: 3 })).toBe(2);
     expect(hub.badgeEligible).toBe(true);
   });
 

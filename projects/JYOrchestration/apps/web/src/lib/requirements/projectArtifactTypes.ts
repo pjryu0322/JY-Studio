@@ -30,20 +30,26 @@ export const PROJECT_ARTIFACT_LABELS: Record<ProjectArtifactType, string> = {
   "screen-spec": "화면 정의서",
   "api-spec": "API 명세서",
   summary: "프로젝트 요약서",
-  "fast_prototype_plan": "빠른 프로토타입 기획안",
+  "fast_prototype_plan": "프로토타입 기획안",
   "markdown-export": "Markdown Export",
   "pdf-export": "PDF Export",
 };
 
-export const PROJECT_ARTIFACT_MENU_ORDER: readonly ProjectArtifactType[] = [
+/** Artifact Hub 「새로 생성」 — 업무 목적 표준 산출물 (Export는 헤더 아이콘) */
+export const STANDARD_ARTIFACT_HUB_GENERATE_ORDER: readonly ProjectArtifactType[] = [
+  "summary",
   "service-flow-doc",
   "feature-spec",
   "screen-spec",
   "api-spec",
-  "summary",
-  "markdown-export",
-  "pdf-export",
-];
+  "fast_prototype_plan",
+] as const;
+
+export const PROJECT_ARTIFACT_HUB_GENERATE_ORDER: readonly ProjectArtifactType[] =
+  STANDARD_ARTIFACT_HUB_GENERATE_ORDER;
+
+/** @deprecated Plus 메뉴 등 — Hub 생성 목록과 동일 */
+export const PROJECT_ARTIFACT_MENU_ORDER: readonly ProjectArtifactType[] = PROJECT_ARTIFACT_HUB_GENERATE_ORDER;
 
 export function isProjectArtifactType(raw: string | null | undefined): raw is ProjectArtifactType {
   return Boolean(raw && raw in PROJECT_ARTIFACT_LABELS);
