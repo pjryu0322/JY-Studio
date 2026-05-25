@@ -77,7 +77,9 @@ describe("quickDesignConfirmArtifacts", () => {
       },
     });
 
-    expect(result.artifacts.length).toBeGreaterThanOrEqual(6);
+    expect(result.artifacts.length).toBeGreaterThanOrEqual(2);
+    expect(result.artifactOrchestrationV1.requiredTypes.length).toBeGreaterThan(0);
+    expect(result.artifacts[0]?.orchestration?.trace?.length).toBeGreaterThan(0);
     const titles = result.artifacts.map((a) => a.title);
     for (const legacy of LEGACY_QUICK_DESIGN_AREA_TITLES) {
       expect(titles).not.toContain(legacy);

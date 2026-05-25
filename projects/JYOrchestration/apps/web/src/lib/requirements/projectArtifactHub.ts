@@ -5,7 +5,11 @@
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import { LEGACY_QUICK_DESIGN_AREA_TITLES } from "@/lib/requirements/projectArtifactPlan";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import { PROJECT_ARTIFACT_LABELS, type ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
+import {
+  PROJECT_ARTIFACT_HUB_GENERATE_ORDER,
+  PROJECT_ARTIFACT_LABELS,
+  type ProjectArtifactType,
+} from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveAuthoritativeOrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 
@@ -19,6 +23,13 @@ export type ProjectArtifactHubEntry = Readonly<{
   readonly sourceStage: string;
   readonly createdAt: string;
   readonly assetId: string;
+  /** Artifact orchestration — 생성 이유·추적 */
+  readonly hubReason?: string;
+  readonly hubSourceRoles?: readonly string[];
+  readonly hubSourceSlotKeys?: readonly string[];
+  readonly hubRequired?: boolean;
+  readonly hubCompletenessScore?: number;
+  readonly hubReadinessLabel?: string;
 }>;
 
 /** Artifact Hub에 표시할 완성(저장) 산출물 건수 — 카탈로그 항목 수와 동일 */
@@ -40,6 +51,8 @@ export function buildProjectArtifactHubCatalog(input: {
     if (!assetId) continue;
     const title = String(art.title ?? "").trim() || PROJECT_ARTIFACT_LABELS[art.type] || art.type;
     if (LEGACY_QUICK_DESIGN_AREA_TITLES.has(title)) continue;
+    const orch = art.orchestration;
+    const completeness = orch?.completenessScore ?? 0;
     byAssetId.set(assetId, {
       id: `artifact-${assetId}`,
       kind: "project-artifact",
@@ -48,6 +61,17 @@ export function buildProjectArtifactHubCatalog(input: {
       sourceStage: art.sourceStage,
       createdAt: art.createdAt,
       assetId,
+      ...(orch
+        ? {
+            hubReason: orch.reason,
+            hubSourceRoles: orch.sourceRoles,
+            hubSourceSlotKeys: orch.sourceSlotKeys,
+            hubRequired: orch.required,
+            hubCompletenessScore: completeness,
+            hubReadinessLabel:
+              completeness >= 0.85 ? "준비됨" : completeness >= 0.55 ? "보완 권장" : "초안",
+          }
+        : {}),
     });
   }
 
@@ -68,4 +92,19 @@ export function buildProjectArtifactHubCatalog(input: {
   }
 
   return [...byAssetId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Artifact Hub 「새로 생성」 — 저장된 catalog에 없는 표준 문서 유형만 */
+export function listArtifactHubMissingGenerateTypes(input: {
+  readonly catalog: readonly ProjectArtifactHubEntry[];
+  readonly order?: readonly ProjectArtifactType[];
+}): readonly ProjectArtifactType[] {
+  const order = input.order ?? PROJECT_ARTIFACT_HUB_GENERATE_ORDER;
+  const present = new Set<ProjectArtifactType>();
+  for (const entry of input.catalog) {
+    if (entry.kind !== "project-artifact") continue;
+    if (entry.artifactType === "deliverable") continue;
+    present.add(entry.artifactType);
+  }
+  return order.filter((type) => !present.has(type));
 }

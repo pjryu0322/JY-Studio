@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { PROJECT_ARTIFACT_LABELS, type ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
 import {
-  PROJECT_ARTIFACT_HUB_GENERATE_ORDER,
-  PROJECT_ARTIFACT_LABELS,
-  type ProjectArtifactType,
-} from "@/lib/requirements/projectArtifactTypes";
-import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
+  listArtifactHubMissingGenerateTypes,
+  type ProjectArtifactHubEntry,
+} from "@/lib/requirements/projectArtifactHub";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import {
@@ -296,6 +295,11 @@ function ArtifactHubBody({
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
 }) {
+  const missingGenerateTypes = useMemo(
+    () => listArtifactHubMissingGenerateTypes({ catalog: items }),
+    [items],
+  );
+
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 16 }}>
       {lifecycleSummary?.length ? (
@@ -327,26 +331,33 @@ function ArtifactHubBody({
           현재 프로젝트·슬롯 상태를 바탕으로 <strong>아직 없는 문서 유형</strong>을 새로 만듭니다. 생성되면 아래
           「저장된 산출물」에 추가됩니다.
         </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {PROJECT_ARTIFACT_HUB_GENERATE_ORDER.map((type) => (
-            <button
-              key={type}
-              type="button"
-              disabled={generateDisabled}
-              style={{
-                ...genBtnStyle,
-                opacity: generateDisabled ? 0.5 : 1,
-                cursor: generateDisabled ? "not-allowed" : "pointer",
-              }}
-              onClick={() => {
-                if (generateDisabled) return;
-                onGenerate(type);
-              }}
-            >
-              {PROJECT_ARTIFACT_LABELS[type]}
-            </button>
-          ))}
-        </div>
+        {missingGenerateTypes.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
+            표준 문서 유형이 모두 저장되어 있습니다. 내용을 바꾸려면 아래 항목을 열어 확인하거나, 해당 유형을 삭제한 뒤 다시
+            생성할 수 있습니다.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {missingGenerateTypes.map((type) => (
+              <button
+                key={type}
+                type="button"
+                disabled={generateDisabled}
+                style={{
+                  ...genBtnStyle,
+                  opacity: generateDisabled ? 0.5 : 1,
+                  cursor: generateDisabled ? "not-allowed" : "pointer",
+                }}
+                onClick={() => {
+                  if (generateDisabled) return;
+                  onGenerate(type);
+                }}
+              >
+                {PROJECT_ARTIFACT_LABELS[type]}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
       <section>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>
@@ -376,15 +387,49 @@ function ArtifactHubBody({
                 </label>
                 <button
                   type="button"
-                  style={itemBtnStyle}
-                  title={`${item.title} · ${item.sourceStage} · ${item.kind === "deliverable" ? "기획 산출물" : "문서"}`}
+                  style={{
+                    ...itemBtnStyle,
+                    whiteSpace: "normal",
+                    overflow: "visible",
+                    textOverflow: "clip",
+                  }}
+                  title={
+                    item.hubReason
+                      ? `${item.title}\n${item.hubReason}`
+                      : `${item.title} · ${item.sourceStage}`
+                  }
                   onClick={() => onSelectEntry(item)}
                 >
-                  <span style={{ fontWeight: 800 }}>{item.title}</span>
-                  <span style={{ fontWeight: 500, color: "#64748b" }}>
-                    {" "}
-                    · {item.sourceStage} · {item.kind === "deliverable" ? "기획 산출물" : "문서"}
+                  <span style={{ fontWeight: 800, display: "block" }}>{item.title}</span>
+                  <span style={{ fontWeight: 500, color: "#64748b", display: "block", fontSize: 12 }}>
+                    {item.sourceStage}
+                    {item.kind === "deliverable" ? " · 기획 산출물" : " · 문서"}
+                    {item.hubReadinessLabel ? ` · ${item.hubReadinessLabel}` : ""}
+                    {item.hubRequired === false ? " · 추천" : item.hubRequired ? " · 필수" : ""}
                   </span>
+                  {item.hubReason ? (
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        fontSize: 11,
+                        color: "#475569",
+                        lineHeight: 1.4,
+                        whiteSpace: "normal",
+                      }}
+                    >
+                      {item.hubReason}
+                    </span>
+                  ) : null}
+                  {item.hubSourceRoles?.length || item.hubSourceSlotKeys?.length ? (
+                    <span style={{ display: "block", marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+                      {item.hubSourceRoles?.length ? `AI: ${item.hubSourceRoles.join(", ")}` : ""}
+                      {item.hubSourceRoles?.length && item.hubSourceSlotKeys?.length ? " · " : ""}
+                      {item.hubSourceSlotKeys?.length
+                        ? `슬롯 ${item.hubSourceSlotKeys.length}건`
+                        : ""}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}

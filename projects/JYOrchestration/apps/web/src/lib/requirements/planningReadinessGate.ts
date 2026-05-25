@@ -1,5 +1,10 @@
 import {
-  REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES,
+  artifactHasMeaningfulContent,
+  evaluateArtifactOrchestrationReadiness,
+  type ArtifactOrchestrationStateV1,
+} from "@/lib/requirements/artifactOrchestration";
+import {
+  FALLBACK_IMPLEMENTATION_ARTIFACT_TYPES,
   LEGACY_QUICK_DESIGN_AREA_TITLES,
 } from "@/lib/requirements/projectArtifactPlan";
 import {
@@ -48,33 +53,51 @@ export type PlanningToGenerationReadiness = Readonly<{
 
 export type ImplementationStartReadiness = PlanningToGenerationReadiness;
 
-function hasArtifactType(artifacts: readonly ProjectArtifact[], type: ProjectArtifactType): boolean {
-  return artifacts.some((a) => {
-    if (LEGACY_QUICK_DESIGN_AREA_TITLES.has(String(a.title ?? "").trim())) return false;
-    return a.type === type && String(a.content ?? "").trim().length > 0;
-  });
+export function resolveRequiredImplementationArtifactTypes(input: {
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+}): readonly ProjectArtifactType[] {
+  const fromState = input.artifactOrchestrationV1?.requiredTypes;
+  if (fromState?.length) return fromState;
+  const fromArtifacts = [
+    ...new Set(
+      (input.projectArtifacts ?? [])
+        .filter((a) => a.orchestration?.required && artifactHasMeaningfulContent(a))
+        .map((a) => a.type),
+    ),
+  ] as ProjectArtifactType[];
+  if (fromArtifacts.length) return fromArtifacts;
+  return FALLBACK_IMPLEMENTATION_ARTIFACT_TYPES;
 }
 
 export function evaluateRequiredImplementationArtifacts(input: {
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+  readonly requiredTypes?: readonly ProjectArtifactType[];
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
 }): Readonly<{
   readonly ready: boolean;
   readonly missingRequiredArtifactTypes: readonly ProjectArtifactType[];
   readonly missingRequiredArtifactLabels: readonly string[];
+  readonly orchestrationReady: boolean;
+  readonly orchestrationDetail: ReturnType<typeof evaluateArtifactOrchestrationReadiness>;
 }> {
-  const artifacts = input.projectArtifacts ?? [];
-  const missingTypes: ProjectArtifactType[] = [];
-  const missingLabels: string[] = [];
-  for (const type of REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES) {
-    if (!hasArtifactType(artifacts, type)) {
-      missingTypes.push(type);
-      missingLabels.push(PROJECT_ARTIFACT_LABELS[type] ?? type);
-    }
-  }
+  const requiredTypes = input.requiredTypes ?? resolveRequiredImplementationArtifactTypes(input);
+  const artifacts = (input.projectArtifacts ?? []).filter((a) => {
+    if (LEGACY_QUICK_DESIGN_AREA_TITLES.has(String(a.title ?? "").trim())) return false;
+    return true;
+  });
+  const orchDetail = evaluateArtifactOrchestrationReadiness({
+    projectArtifacts: artifacts,
+    requiredTypes,
+  });
+  const missingTypes = orchDetail.missingRequiredArtifactTypes;
+  const missingLabels = orchDetail.missingRequiredArtifactLabels;
   return {
-    ready: missingTypes.length === 0,
+    ready: missingTypes.length === 0 && orchDetail.ready,
     missingRequiredArtifactTypes: missingTypes,
     missingRequiredArtifactLabels: missingLabels,
+    orchestrationReady: orchDetail.ready,
+    orchestrationDetail: orchDetail,
   };
 }
 
@@ -82,10 +105,14 @@ export function evaluateImplementationStartReadiness(input: {
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
 }): ImplementationStartReadiness {
   const slots = evaluatePlanningToGenerationReadiness(input);
+  const requiredTypes = resolveRequiredImplementationArtifactTypes(input);
   const artifacts = evaluateRequiredImplementationArtifacts({
     projectArtifacts: input.projectArtifacts,
+    requiredTypes,
+    artifactOrchestrationV1: input.artifactOrchestrationV1,
   });
 
   if (slots.ready && artifacts.ready) {
@@ -102,8 +129,16 @@ export function evaluateImplementationStartReadiness(input: {
   const parts: string[] = [];
   if (!slots.ready && slots.reason) parts.push(slots.reason);
   if (!artifacts.ready) {
-    const preview = artifacts.missingRequiredArtifactLabels.slice(0, 6).join(", ");
-    parts.push(`필수 산출물이 아직 준비되지 않았습니다. 부족: ${preview}`);
+    if (artifacts.missingRequiredArtifactLabels.length) {
+      const preview = artifacts.missingRequiredArtifactLabels.slice(0, 6).join(", ");
+      parts.push(`필수 산출물이 아직 준비되지 않았습니다. 부족: ${preview}`);
+    } else if (artifacts.orchestrationDetail.weakTraceTypes.length) {
+      parts.push("산출물 추적 정보(관련 슬롯·AI멤버)가 부족합니다. Quick Design 확정을 다시 실행해 주세요.");
+    } else if (artifacts.orchestrationDetail.lowCompletenessTypes.length) {
+      parts.push("산출물 본문이 아직 충분하지 않습니다. Artifact Hub에서 내용을 보완해 주세요.");
+    } else {
+      parts.push("필수 산출물이 아직 준비되지 않았습니다.");
+    }
   }
 
   return {

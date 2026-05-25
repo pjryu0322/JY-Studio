@@ -8,7 +8,10 @@ import {
   type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
+import { emptyProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
@@ -163,4 +166,63 @@ export function shouldShowWorkspaceHubNotificationBadges(input: {
   const c = input.statusCounts;
   if (!c) return false;
   return c.confirmed + c.partial + c.candidate > 0;
+}
+
+/**
+ * 대화 초기화 — 서비스 기획 세션(산출물·Canvas·슬롯·흐름)을 비우고 프로젝트 메타만 유지.
+ */
+export function buildRequirementsConversationResetStateJson(
+  base: RequirementsStateJson,
+  nowIso: string,
+): RequirementsStateJson {
+  return {
+    originalProjectDescription: base.originalProjectDescription ?? null,
+    seededFromPreProjectChat: base.seededFromPreProjectChat,
+    openIssues: base.openIssues,
+    priorityFeatures: base.priorityFeatures,
+    onboardingShown: false,
+    selectedTargetId: null,
+    selectedMembers: null,
+    problemInterview: emptyProblemInterviewState(nowIso),
+    problemInterviewHistory: null,
+    globalDelegation: false,
+    serviceFlowV1: null,
+    deliverableAssets: [],
+    projectArtifacts: [],
+    organizeContext: null,
+    organizePlannerState: null,
+    featurePlanningSlotsV1: null,
+    featureDetailSlotsV1: null,
+    featurePlanningWorkspaceChatV1: null,
+    fastPlanGenerationV1: null,
+    fastPlanDraftV1: null,
+    singleChatOrchestrationV1: null,
+    requirementsOrchestrationStageV1: null,
+    requirementsIntentOrchestrationV1: null,
+    artifactOrchestrationV1: null,
+    promptTimeline: [],
+    lastUserDraftText: "",
+    lastPromptView: null,
+  };
+}
+
+/** `stateJsonRef`에 키가 있으면(빈 배열 포함) 로컬 값을 우선 — 대화 초기화 직후 서버 JSON 폴백 방지 */
+export function resolveWorkspaceDeliverableAssets(input: {
+  readonly localState: RequirementsStateJson;
+  readonly persisted: readonly IdeationDeliverableAsset[] | null | undefined;
+}): readonly IdeationDeliverableAsset[] {
+  if (Object.prototype.hasOwnProperty.call(input.localState, "deliverableAssets")) {
+    return input.localState.deliverableAssets ?? [];
+  }
+  return input.persisted ?? [];
+}
+
+export function resolveWorkspaceProjectArtifacts(input: {
+  readonly localState: RequirementsStateJson;
+  readonly persisted: readonly ProjectArtifact[] | null | undefined;
+}): readonly ProjectArtifact[] {
+  if (Object.prototype.hasOwnProperty.call(input.localState, "projectArtifacts")) {
+    return input.localState.projectArtifacts ?? [];
+  }
+  return input.persisted ?? [];
 }

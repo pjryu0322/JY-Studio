@@ -140,8 +140,11 @@ import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import {
+  buildRequirementsConversationResetStateJson,
   ideationDraftGateStatus,
   ideationSendDevLog,
+  resolveWorkspaceDeliverableAssets,
+  resolveWorkspaceProjectArtifacts,
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
   IDEATION_DRAFT_REQUIRED_SLOTS,
@@ -881,47 +884,66 @@ export function RequirementsWorkspace({
    * - 초기 로드/새로고침 등 `stateJsonRef`가 비어 있을 때만 project JSON을 폴백으로 사용합니다.
    */
   const deliverableAssetsFromProject = useMemo(() => {
-    const local = stateJsonRef.current.deliverableAssets;
-    if (Array.isArray(local) && local.length) return local;
-    return persistedPromptState.deliverableAssets ?? [];
+    return resolveWorkspaceDeliverableAssets({
+      localState: stateJsonRef.current,
+      persisted: persistedPromptState.deliverableAssets,
+    });
   }, [
     persistedPromptState.deliverableAssets,
     project?.requirementsStateJson,
     saveState,
     fetchNonce,
     room.requirementsConversation.messages.length,
+    conversationResetNonce,
+  ]);
+
+  const projectArtifactsFromState = useMemo(() => {
+    return resolveWorkspaceProjectArtifacts({
+      localState: stateJsonRef.current,
+      persisted: persistedPromptState.projectArtifacts,
+    });
+  }, [
+    persistedPromptState.projectArtifacts,
+    project?.requirementsStateJson,
+    saveState,
+    fetchNonce,
+    conversationResetNonce,
   ]);
 
   const canvasHubCatalog = useMemo(() => {
     const st: RequirementsStateJson = {
       ...persistedPromptState,
-      serviceFlowV1: serviceFlow ?? persistedPromptState.serviceFlowV1 ?? undefined,
+      ...stateJsonRef.current,
+      serviceFlowV1: serviceFlow ?? stateJsonRef.current.serviceFlowV1 ?? persistedPromptState.serviceFlowV1 ?? null,
       featurePlanningSlotsV1:
-        stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1,
+        stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1 ?? null,
+      featureDetailSlotsV1:
+        stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1 ?? null,
     };
     return buildProjectCanvasHubCatalog({
       state: st,
       serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
     });
-  }, [persistedPromptState, serviceFlow, saveState, fetchNonce, project?.requirementsStateJson]);
+  }, [persistedPromptState, serviceFlow, saveState, fetchNonce, project?.requirementsStateJson, conversationResetNonce]);
 
   const artifactHubCatalog = useMemo(() => {
     const st: RequirementsStateJson = {
       ...persistedPromptState,
-      projectArtifacts:
-        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
+      projectArtifacts: [...projectArtifactsFromState],
     };
     return buildProjectArtifactHubCatalog({
       state: st,
       deliverableAssets: deliverableAssetsFromProject,
-      projectArtifacts: st.projectArtifacts ?? undefined,
+      projectArtifacts: [...projectArtifactsFromState],
     });
   }, [
     persistedPromptState,
     deliverableAssetsFromProject,
+    projectArtifactsFromState,
     saveState,
     fetchNonce,
     project?.requirementsStateJson,
+    conversationResetNonce,
   ]);
 
   const artifactHubCompletedCount = useMemo(
@@ -934,15 +956,22 @@ export function RequirementsWorkspace({
       ...persistedPromptState,
       featureDetailSlotsV1:
         stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1,
-      projectArtifacts:
-        stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined,
+      projectArtifacts: [...projectArtifactsFromState],
     };
     return buildArtifactHubOrchestrationState({
       state: st,
       deliverableAssets: deliverableAssetsFromProject,
-      projectArtifacts: st.projectArtifacts ?? undefined,
+      projectArtifacts: [...projectArtifactsFromState],
     });
-  }, [persistedPromptState, deliverableAssetsFromProject, saveState, fetchNonce, project?.requirementsStateJson]);
+  }, [
+    persistedPromptState,
+    deliverableAssetsFromProject,
+    projectArtifactsFromState,
+    saveState,
+    fetchNonce,
+    project?.requirementsStateJson,
+    conversationResetNonce,
+  ]);
 
   const orchestrationUi = useMemo(() => {
     const st: RequirementsStateJson = {
@@ -968,8 +997,7 @@ export function RequirementsWorkspace({
     const pid = resolvedProjectId.trim();
     const fromDeliverables = deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id));
     const knownIds = new Set(fromDeliverables.map((a) => a.id));
-    const projectArtifacts =
-      stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? [];
+    const projectArtifacts = projectArtifactsFromState;
     const extras = deliverableViewerIds.flatMap((id) => {
       if (knownIds.has(id)) return [];
       const artifact = projectArtifacts.find((a) => a.id === id);
@@ -980,11 +1008,12 @@ export function RequirementsWorkspace({
   }, [
     deliverableAssetsFromProject,
     deliverableViewerIds,
-    persistedPromptState.projectArtifacts,
+    projectArtifactsFromState,
     project?.requirementsStateJson,
     resolvedProjectId,
     saveState,
     fetchNonce,
+    conversationResetNonce,
   ]);
 
   const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
@@ -1705,23 +1734,22 @@ export function RequirementsWorkspace({
       ideationBootstrapFlightRef.current = null;
       consumedResetSeedNonceRef.current = null;
       setConversationResetNonce((n) => n + 1);
-      // Clear prompt timeline + orchestration state so the next bootstrap turn starts clean.
-      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
-        promptTimeline: [],
-        singleChatOrchestrationV1: null,
-      });
+      const resetState = buildRequirementsConversationResetStateJson(stateJsonRef.current, nowIso);
+      stateJsonRef.current = resetState;
+      setServiceFlow(null);
       setPromptTimelineUi([]);
-      await persistRemote(nextRoom, {}, {
-        onboardingShown: false,
-        problemInterview: emptyProblemInterviewState(nowIso),
-        lastUserDraftText: "",
-        promptTimeline: [],
-        singleChatOrchestrationV1: null,
-      });
+      setCanvasHubOpen(false);
+      setArtifactHubOpen(false);
+      setDeliverableViewerOpen(false);
+      setDeliverableViewerIds([]);
+      setDeliverableViewerFocusId(null);
+      setActiveCanvasView(null);
+      lastFastPlanArtifactIdRef.current = null;
+      await persistRemote(nextRoom, {}, resetState);
     } finally {
       setResetConversationBusy(false);
     }
-  }, [resolvedProjectId, busy, resetConversationBusy, persistRemote]);
+  }, [resolvedProjectId, busy, resetConversationBusy, persistRemote, setServiceFlow]);
 
 
   const handleGenerateProjectArtifact = useCallback(
@@ -2442,10 +2470,12 @@ export function RequirementsWorkspace({
         priorDeliverables: st.deliverableAssets,
         newArtifacts: artifactBundle.artifacts,
         projectId: pid,
+        replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
       });
       const readyMessage = buildQuickDesignImplementationReadyChatMessage({
         artifactIds: artifactBundle.artifactIds,
         artifactTitles: artifactBundle.artifacts.map((a) => a.title),
+        planningSummary: artifactBundle.artifactOrchestrationV1.planningSummary,
         nowIso,
       });
 
@@ -2454,6 +2484,7 @@ export function RequirementsWorkspace({
         singleChatOrchestrationV1: result.orchestration,
         projectArtifacts: [...merged.projectArtifacts],
         deliverableAssets: [...merged.deliverableAssets],
+        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
         requirementsOrchestrationStageV1: patchRequirementsStageForImplementationPrep({
           existing: st.requirementsOrchestrationStageV1,
           nowIso,
@@ -2639,6 +2670,7 @@ export function RequirementsWorkspace({
       orchestration: orchestrationAlignedState,
       definitions: slotDefsForProgress,
       projectArtifacts: stateJsonRef.current.projectArtifacts,
+      artifactOrchestrationV1: stateJsonRef.current.artifactOrchestrationV1,
     });
     const nowIso = new Date().toISOString();
     appendSingleChatPromptTimeline(

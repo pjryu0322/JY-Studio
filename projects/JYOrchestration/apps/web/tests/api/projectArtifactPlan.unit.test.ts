@@ -3,7 +3,7 @@ import {
   LEGACY_QUICK_DESIGN_AREA_TITLES,
   mergePlannedArtifactsIntoState,
   planProjectArtifactsFromOrchestrationContext,
-  REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES,
+  orchestrateArtifactPlanning,
 } from "@/lib/requirements/projectArtifactPlan";
 import { PROJECT_ARTIFACT_LABELS } from "@/lib/requirements/projectArtifactTypes";
 import {
@@ -30,7 +30,7 @@ describe("projectArtifactPlan", () => {
 
     expect(plan.requiredTypes).toContain("summary");
     expect(plan.requiredTypes).toContain("fast_prototype_plan");
-    expect(REQUIRED_IMPLEMENTATION_ARTIFACT_TYPES).toContain("fast_prototype_plan");
+    expect(plan.orchestration.planned.length).toBeGreaterThan(0);
     const proto = plan.planned.find((p) => p.artifactType === "fast_prototype_plan");
     expect(proto?.title).toBe(PROJECT_ARTIFACT_LABELS["fast_prototype_plan"]);
     expect(proto?.title).not.toBe("빠른 프로토타입 기획안");

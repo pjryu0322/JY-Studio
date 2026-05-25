@@ -124,26 +124,46 @@ describe("planningReadinessGate", () => {
       };
     }
     const orchestration = { ...base, slots };
-    const artifacts = [
-      "summary",
-      "service-flow-doc",
-      "feature-spec",
-      "screen-spec",
-      "api-spec",
-      "fast_prototype_plan",
-    ].map((type, i) => ({
+    const requiredTypes = ["summary", "fast_prototype_plan"] as const;
+    const artifacts = requiredTypes.map((type, i) => ({
       id: `a-${i}`,
-      type: type as "summary",
-      title: PROJECT_ARTIFACT_LABELS[type as keyof typeof PROJECT_ARTIFACT_LABELS] ?? type,
+      type,
+      title: PROJECT_ARTIFACT_LABELS[type],
       createdAt: nowIso,
       createdBy: "ai" as const,
       sourceStage: "IDEATION" as const,
-      content: "body",
+      content: "# 본문\n\n" + "내용\n".repeat(40),
+      orchestration: {
+        reason: "test",
+        required: true,
+        confidence: 0.9,
+        sourceRoles: ["AI기획자"],
+        sourceSlotKeys: ["slot.k"],
+        trace: [
+          {
+            artifactType: type,
+            section: PROJECT_ARTIFACT_LABELS[type],
+            sourceSlots: ["slot.k"],
+            sourceMessages: [],
+            sourceRoles: ["AI기획자"],
+          },
+        ],
+        completenessScore: 0.9,
+        plannedAt: nowIso,
+      },
     }));
     const readiness = evaluateImplementationStartReadiness({
       orchestration,
       definitions,
       projectArtifacts: artifacts,
+      artifactOrchestrationV1: {
+        plannedAt: nowIso,
+        serviceProfile: "standard",
+        requiredTypes: [...requiredTypes],
+        planned: [],
+        memberRoles: ["planner"],
+        planningSummary: "test",
+      },
     });
     expect(readiness.ready).toBe(true);
   });

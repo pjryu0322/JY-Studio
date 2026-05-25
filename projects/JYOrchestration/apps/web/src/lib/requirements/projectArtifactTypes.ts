@@ -2,7 +2,10 @@
  * Project artifacts — side-action document outputs (not stage transitions).
  */
 
+import type { ProjectArtifactOrchestrationMeta } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsOrchestrationStageWire } from "@/lib/requirements/requirementsStateJson";
+
+export type { ProjectArtifactOrchestrationMeta } from "@/lib/requirements/artifactOrchestration";
 
 export type ProjectArtifactType =
   | "service-flow-doc"
@@ -22,6 +25,7 @@ export type ProjectArtifact = Readonly<{
   readonly createdBy: "ai" | "user";
   readonly sourceStage: string;
   readonly content: string;
+  readonly orchestration?: ProjectArtifactOrchestrationMeta;
 }>;
 
 export const PROJECT_ARTIFACT_LABELS: Record<ProjectArtifactType, string> = {
@@ -68,6 +72,43 @@ export function parseProjectArtifactsFromState(raw: unknown): ProjectArtifact[] 
     const content = String(o.content ?? "");
     const createdAt = String(o.createdAt ?? "").trim();
     if (!isProjectArtifactType(type) || !id || !title || !createdAt) continue;
+    const orchRaw = o.orchestration;
+    let orchestration: ProjectArtifactOrchestrationMeta | undefined;
+    if (orchRaw && typeof orchRaw === "object") {
+      const oc = orchRaw as Record<string, unknown>;
+      orchestration = {
+        reason: String(oc.reason ?? "").trim() || "AI팀 판단",
+        required: Boolean(oc.required),
+        confidence: Number(oc.confidence) || 0.7,
+        sourceRoles: Array.isArray(oc.sourceRoles) ? oc.sourceRoles.map((r) => String(r).trim()).filter(Boolean) : [],
+        sourceSlotKeys: Array.isArray(oc.sourceSlotKeys) ? oc.sourceSlotKeys.map((k) => String(k).trim()).filter(Boolean) : [],
+        trace: Array.isArray(oc.trace)
+          ? oc.trace
+              .map((t) => {
+                if (!t || typeof t !== "object") return null;
+                const tr = t as Record<string, unknown>;
+                return {
+                  artifactType: type,
+                  section: String(tr.section ?? title).trim(),
+                  sourceSlots: Array.isArray(tr.sourceSlots) ? tr.sourceSlots.map((s) => String(s).trim()).filter(Boolean) : [],
+                  sourceMessages: Array.isArray(tr.sourceMessages)
+                    ? tr.sourceMessages.map((m) => String(m).trim()).filter(Boolean)
+                    : [],
+                  sourceRoles: Array.isArray(tr.sourceRoles) ? tr.sourceRoles.map((r) => String(r).trim()).filter(Boolean) : [],
+                };
+              })
+              .filter((x): x is NonNullable<typeof x> => Boolean(x))
+          : [],
+        completenessScore: Number(oc.completenessScore) || 0.5,
+        serviceProfile:
+          oc.serviceProfile === "static_prototype" || oc.serviceProfile === "external_integration"
+            ? oc.serviceProfile
+            : oc.serviceProfile === "standard"
+              ? "standard"
+              : undefined,
+        plannedAt: String(oc.plannedAt ?? createdAt).trim() || createdAt,
+      };
+    }
     out.push({
       id,
       type,
@@ -76,6 +117,7 @@ export function parseProjectArtifactsFromState(raw: unknown): ProjectArtifact[] 
       createdBy: o.createdBy === "user" ? "user" : "ai",
       sourceStage: String(o.sourceStage ?? "").trim() || "unknown",
       content,
+      ...(orchestration ? { orchestration } : {}),
     });
   }
   return out;

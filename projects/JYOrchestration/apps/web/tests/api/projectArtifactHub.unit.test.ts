@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildProjectArtifactHubCatalog,
   countCompletedArtifactHubEntries,
+  listArtifactHubMissingGenerateTypes,
 } from "@/lib/requirements/projectArtifactHub";
+import { PROJECT_ARTIFACT_HUB_GENERATE_ORDER } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 const now = "2026-05-19T00:00:00.000Z";
@@ -78,5 +80,23 @@ describe("projectArtifactHub", () => {
     expect(catalog[0]?.kind).toBe("project-artifact");
     expect(catalog[0]?.title).toBe("프로젝트 요약서");
     expect(countCompletedArtifactHubEntries(catalog)).toBe(1);
+  });
+
+  it("listArtifactHubMissingGenerateTypes excludes types already in catalog", () => {
+    const catalog = PROJECT_ARTIFACT_HUB_GENERATE_ORDER.map((type, i) => ({
+      id: `artifact-${i}`,
+      kind: "project-artifact" as const,
+      artifactType: type,
+      title: type,
+      sourceStage: "IDEATION",
+      createdAt: now,
+      assetId: `a-${i}`,
+    }));
+    expect(listArtifactHubMissingGenerateTypes({ catalog })).toEqual([]);
+    expect(
+      listArtifactHubMissingGenerateTypes({
+        catalog: catalog.filter((e) => e.artifactType !== "api-spec"),
+      }),
+    ).toEqual(["api-spec"]);
   });
 });

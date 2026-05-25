@@ -13,6 +13,8 @@ import { parseFeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featu
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
+import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
+import { parseArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
 import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
@@ -531,6 +533,8 @@ export type RequirementsStateJson = {
   requirementsOrchestrationStageV1?: RequirementsOrchestrationStageV1 | null;
   /** Intent router continuity — focus, clarification, last actions (phase 2) */
   requirementsIntentOrchestrationV1?: RequirementsIntentOrchestrationV1 | null;
+  /** Artifact planning orchestration — 마지막 Quick Design 확정·계획 스냅샷 */
+  artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
 };
 
 export type RequirementsOrchestrationStageWire =
@@ -954,6 +958,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     fastPlanGenerationV1 = parseFastPlanGenerationV1(fastPlanRaw);
   }
 
+  const artifactOrchRaw = "artifactOrchestrationV1" in o ? (o.artifactOrchestrationV1 as unknown) : undefined;
+  const artifactOrchestrationV1 =
+    artifactOrchRaw === undefined
+      ? undefined
+      : artifactOrchRaw === null
+        ? null
+        : parseArtifactOrchestrationStateV1(artifactOrchRaw);
+
   const fastPlanDraftRaw = "fastPlanDraftV1" in o ? (o.fastPlanDraftV1 as unknown) : undefined;
   let fastPlanDraftV1: FastPlanDraftStateV1 | null | undefined;
   if (fastPlanDraftRaw === undefined) fastPlanDraftV1 = undefined;
@@ -1032,6 +1044,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(requirementsIntentOrchestrationV1 !== undefined
       ? { requirementsIntentOrchestrationV1 }
       : {}),
+    ...(artifactOrchestrationV1 !== undefined ? { artifactOrchestrationV1 } : {}),
   };
 }
 
