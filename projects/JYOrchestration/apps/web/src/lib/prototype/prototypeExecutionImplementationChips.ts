@@ -9,6 +9,11 @@ import {
 } from "@/lib/prototype/codeAgentWipExecution";
 
 import { IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  DATA_MODEL_DRAFT_CHIP,
+  DB_INTEGRATION_REVIEW_CHIP,
+  MOCK_IMPLEMENTATION_CHIP,
+} from "@/lib/prototype/implementationDbStrategy";
 
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
@@ -23,6 +28,9 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly approveDeveloperResult: () => void;
   readonly discardWipWork: () => void;
   readonly requestScmOfficialCommit: () => void;
+  readonly reviewDbIntegrationNeed: () => void;
+  readonly generateDataModelDraft: () => void;
+  readonly confirmMockImplementationMode: () => void;
   readonly prepareImplementationExecution: () => void;
   readonly confirmExecution: () => void;
   readonly refreshStatus: () => void;
@@ -87,6 +95,15 @@ export function tryHandlePrototypeExecutionChip(
       handlers.requestScmOfficialCommit();
       return true;
     }
+    case DB_INTEGRATION_REVIEW_CHIP:
+      handlers.reviewDbIntegrationNeed();
+      return true;
+    case DATA_MODEL_DRAFT_CHIP:
+      handlers.generateDataModelDraft();
+      return true;
+    case MOCK_IMPLEMENTATION_CHIP:
+      handlers.confirmMockImplementationMode();
+      return true;
     case "구현 실행 준비":
       handlers.prepareImplementationExecution();
       return true;

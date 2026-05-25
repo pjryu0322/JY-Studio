@@ -7,7 +7,9 @@ import {
   derivedImplementationArtifactToHubEntry,
 } from "@/lib/prototype/implementationArtifacts";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
+import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
 import { buildImplementationSlotsFromContext } from "@/lib/prototype/implementationSlots";
+import { buildDbIntegrationReviewResult } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
 import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
 import { buildInitialCodeAgentWipExecution, buildStubCodeAgentWipCommit } from "@/lib/prototype/codeAgentWipExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -53,6 +55,68 @@ describe("buildDerivedImplementationArtifacts", () => {
     expect(types).toContain("wip-result-report");
     expect(types).toContain("review-criteria-summary");
     expect(types).toContain("security-criteria-summary");
+  });
+
+  it("includes DB artifacts after DB integration review", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["회의"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: workItems,
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+    });
+    const review = buildDbIntegrationReviewResult({
+      requirementsStateJson: {},
+      implementationSlotsV1: slots,
+      implementationTaskPlanV1: plan,
+      projectArtifacts: [],
+    });
+    expect(review.kind).toBe("applied");
+    if (review.kind !== "applied") return;
+
+    const derived = buildDerivedImplementationArtifacts({
+      projectId: "p1",
+      implementationTaskPlanV1: plan,
+      implementationSlotsV1: review.orchestrationPatch.implementationSlotsV1,
+      implementationDbStrategyV1: review.orchestrationPatch.implementationDbStrategyV1,
+    });
+    expect(derived.map((d) => d.type)).toContain("db-integration-decision");
+  });
+
+  it("does not include DB decision before review CTA", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["회의"],
+      envOk: true,
+      designOk: true,
+    });
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: buildCursorWorkItemsFromImplementationTaskPlan(plan),
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+    });
+    const derived = buildDerivedImplementationArtifacts({
+      projectId: "p1",
+      implementationTaskPlanV1: plan,
+      implementationSlotsV1: slots,
+      implementationDbStrategyV1: defaultImplementationDbStrategy(),
+    });
+    expect(derived.map((d) => d.type)).not.toContain("db-integration-decision");
   });
 });
 

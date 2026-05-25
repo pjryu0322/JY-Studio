@@ -40,7 +40,7 @@ describe("buildImplementationSlotsFromContext", () => {
       envCursorBadge: "ok",
     });
     expect(slots.version).toBe("implementation_slots_v1");
-    expect(slots.slots.length).toBe(12);
+    expect(slots.slots.length).toBe(21);
     expect(slots.slots.find((s) => s.key === "implementation_tasks")?.status).toBe("confirmed");
     expect(slots.slots.find((s) => s.key === "wip_branch_name")?.value).toMatch(/^wip\/cursor\//);
     expect(slots.slots.find((s) => s.key === "wip_policy")?.status).toBe("confirmed");
@@ -164,7 +164,8 @@ describe("implementation slots state persistence", () => {
     expect(parsed.implementationSlotsV1?.version).toBe("implementation_slots_v1");
     expect(parsed.implementationSlotsV1?.readiness.ready).toBe(true);
     const roundTrip = parseImplementationSlotsV1(parsed.implementationSlotsV1);
-    expect(roundTrip?.slots.length).toBe(12);
+    expect(roundTrip?.slots.length).toBe(21);
+    expect(parsed.implementationDbStrategyV1?.version).toBe("implementation_db_strategy_v1");
   });
 });
 
@@ -185,6 +186,57 @@ describe("implementation slots timeline", () => {
     );
     expect(entry?.responseText).toContain("type=implementation_slots_built");
     expect(entry?.responseText).toContain("owners=");
+    const dbEntry = result.orchestrationPatch.promptTimeline.find(
+      (e) => e.action === "implementation_db_slots_built",
+    );
+    expect(dbEntry?.responseText).toContain("dataPersistenceMode=mock");
+    expect(dbEntry?.responseText).toContain("dbRequired=false");
+  });
+});
+
+describe("implementation DB slots", () => {
+  it("sets mock persistence as default implementation data strategy", () => {
+    const plan = samplePlan(true, true);
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: workItems,
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+    });
+    expect(slots.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("mock");
+    expect(slots.slots.find((s) => s.key === "db_required")?.value).toBe(false);
+    expect(slots.slots.find((s) => s.key === "storage_strategy")?.status).toBe("confirmed");
+    expect(slots.slots.find((s) => s.key === "db_trigger_condition")?.status).toBe("candidate");
+  });
+
+  it("does not block mock-based WIP request when DB slots are candidate", () => {
+    const plan = samplePlan(true, true);
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: workItems,
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+    });
+    expect(slots.slots.find((s) => s.key === "data_entities")?.status).toBe("candidate");
+    const gate = evaluateImplementationCursorGate(
+      buildImplementationCursorGateContext(
+        {
+          implementationTaskPlanV1: plan,
+          cursorWorkItemsV1: workItems,
+          implementationSlotsV1: slots,
+        },
+        { envOk: true, designOk: true },
+      ),
+    );
+    expect(gate.allowed).toBe(true);
   });
 });
 

@@ -20,6 +20,7 @@ import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/sin
 
 const OWNER_SECTION_TITLES: Record<ImplementationSlotOwner, string> = {
   ai_developer: "AI개발자",
+  ai_designer: "AI설계자(참조)",
   ai_reviewer: "AI검수자",
   ai_security: "AI보안관",
   scm: "SCM",
@@ -27,6 +28,7 @@ const OWNER_SECTION_TITLES: Record<ImplementationSlotOwner, string> = {
 
 const OWNER_SECTION_ORDER: readonly ImplementationSlotOwner[] = [
   "ai_developer",
+  "ai_designer",
   "ai_reviewer",
   "ai_security",
   "scm",

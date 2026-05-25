@@ -78,6 +78,8 @@ export function buildArtifactHubView(input: {
     projectId: input.projectId.trim(),
     implementationTaskPlanV1: input.state.implementationTaskPlanV1,
     implementationSlotsV1: input.state.implementationSlotsV1,
+    implementationDbStrategyV1: input.state.implementationDbStrategyV1,
+    projectArtifacts: input.projectArtifacts,
     cursorWorkItemsV1: input.state.cursorWorkItemsV1,
     codeAgentWipExecutionV1: input.state.codeAgentWipExecutionV1,
   });

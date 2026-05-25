@@ -5,6 +5,11 @@ import {
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import {
+  defaultImplementationDbStrategy,
+  type ImplementationDbStrategyV1,
+} from "@/lib/prototype/implementationDbStrategy";
+import {
+  buildImplementationDbSlotsTimelineEntry,
   buildImplementationSlotsFromContext,
   buildImplementationSlotsTimelineEntry,
   formatImplementationSlotsBlockedMessage,
@@ -91,6 +96,7 @@ export type ConfirmImplementationTaskPlanResult =
         readonly implementationTaskPlanV1: ImplementationTaskPlanV1;
         readonly cursorWorkItemsV1: readonly CursorWorkItem[];
         readonly implementationSlotsV1: ImplementationSlotsV1;
+        readonly implementationDbStrategyV1: ImplementationDbStrategyV1;
         readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
       };
     }>;
@@ -137,6 +143,8 @@ export function buildConfirmImplementationTaskPlanResult(
     designOk: input.designOk,
   });
   const slotsTimeline = buildImplementationSlotsTimelineEntry({ slots: implementationSlotsV1 });
+  const dbSlotsTimeline = buildImplementationDbSlotsTimelineEntry({ slots: implementationSlotsV1 });
+  const implementationDbStrategyV1 = defaultImplementationDbStrategy();
   return {
     kind: "created",
     plan,
@@ -151,9 +159,10 @@ export function buildConfirmImplementationTaskPlanResult(
       implementationTaskPlanV1: plan,
       cursorWorkItemsV1: workItems,
       implementationSlotsV1,
+      implementationDbStrategyV1,
       promptTimeline: appendPromptTimeline(
-        appendPromptTimeline(input.promptTimeline, taskPlanTimeline),
-        slotsTimeline,
+        appendPromptTimeline(appendPromptTimeline(input.promptTimeline, taskPlanTimeline), slotsTimeline),
+        dbSlotsTimeline,
       ),
     },
   };

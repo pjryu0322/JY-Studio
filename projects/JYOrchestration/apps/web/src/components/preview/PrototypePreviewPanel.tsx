@@ -42,6 +42,11 @@ import {
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
+  buildDataModelDraftResult,
+  buildDbIntegrationReviewResult,
+  buildMockImplementationModeResult,
+} from "@/lib/prototype/prototypeExecutionDbStrategyActions";
+import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
   buildPrepareImplementationExecutionToast,
@@ -368,15 +373,7 @@ export function PrototypePreviewPanel({
         chatPatch || orchestrationPatch
           ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJson, {
               ...(chatPatch ? { chat: chatPatch } : {}),
-              ...(orchestrationPatch?.implementationTaskPlanV1 !== undefined
-                ? { implementationTaskPlanV1: orchestrationPatch.implementationTaskPlanV1 }
-                : {}),
-              ...(orchestrationPatch?.cursorWorkItemsV1 !== undefined
-                ? { cursorWorkItemsV1: orchestrationPatch.cursorWorkItemsV1 }
-                : {}),
-              ...(orchestrationPatch?.promptTimeline !== undefined
-                ? { promptTimeline: orchestrationPatch.promptTimeline }
-                : {}),
+              ...(orchestrationPatch ?? {}),
             })
           : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJson), {
               prototypeWorkspaceTimelineCardsV1: tc,
@@ -1424,6 +1421,87 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  const applyDbStrategyResult = useCallback(
+    (
+      result:
+        | ReturnType<typeof buildDbIntegrationReviewResult>
+        | ReturnType<typeof buildDataModelDraftResult>
+        | ReturnType<typeof buildMockImplementationModeResult>,
+    ) => {
+      if (result.kind === "blocked") {
+        showToast(result.message);
+        return;
+      }
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      executionSingleChat.applyPersistedMessages(result.messages);
+      void persistChatToDb(
+        {
+          messages: result.messages,
+          slots: resolved.slots ?? [],
+          answers: resolved.answers ?? {},
+          currentSlotKey: resolved.currentSlotKey ?? null,
+        },
+        result.orchestrationPatch,
+      );
+    },
+    [requirementsStateJson, executionSingleChat, persistChatToDb, showToast],
+  );
+
+  const reviewDbIntegrationNeed = useCallback(() => {
+    applyDbStrategyResult(
+      buildDbIntegrationReviewResult({
+        requirementsStateJson,
+        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
+        implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+        projectArtifacts: executionArtifacts.projectArtifacts,
+        promptTimeline: parsedRequirementsState.promptTimeline,
+      }),
+    );
+  }, [
+    applyDbStrategyResult,
+    requirementsStateJson,
+    parsedRequirementsState.implementationSlotsV1,
+    parsedRequirementsState.implementationDbStrategyV1,
+    parsedRequirementsState.implementationTaskPlanV1,
+    parsedRequirementsState.promptTimeline,
+    executionArtifacts.projectArtifacts,
+  ]);
+
+  const generateDataModelDraft = useCallback(() => {
+    applyDbStrategyResult(
+      buildDataModelDraftResult({
+        requirementsStateJson,
+        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
+        promptTimeline: parsedRequirementsState.promptTimeline,
+      }),
+    );
+  }, [
+    applyDbStrategyResult,
+    requirementsStateJson,
+    parsedRequirementsState.implementationSlotsV1,
+    parsedRequirementsState.implementationDbStrategyV1,
+    parsedRequirementsState.promptTimeline,
+  ]);
+
+  const confirmMockImplementationMode = useCallback(() => {
+    applyDbStrategyResult(
+      buildMockImplementationModeResult({
+        requirementsStateJson,
+        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
+        promptTimeline: parsedRequirementsState.promptTimeline,
+      }),
+    );
+  }, [
+    applyDbStrategyResult,
+    requirementsStateJson,
+    parsedRequirementsState.implementationSlotsV1,
+    parsedRequirementsState.implementationDbStrategyV1,
+    parsedRequirementsState.promptTimeline,
+  ]);
+
   const wipChipHandlers = useMemo(
     () =>
       buildWipChipHandlerSlice({
@@ -1457,6 +1535,9 @@ export function PrototypePreviewPanel({
         },
         showRoleCheckDetails,
         confirmImplementationTaskPlan,
+        reviewDbIntegrationNeed,
+        generateDataModelDraft,
+        confirmMockImplementationMode,
         ...wipChipHandlers,
         prepareImplementationExecution: () => {
           const toast = buildPrepareImplementationExecutionToast(
@@ -1494,6 +1575,9 @@ export function PrototypePreviewPanel({
       envSettingsHref,
       showRoleCheckDetails,
       confirmImplementationTaskPlan,
+      reviewDbIntegrationNeed,
+      generateDataModelDraft,
+      confirmMockImplementationMode,
       wipChipHandlers,
       parsedRequirementsState.implementationTaskPlanV1,
       implementationCursorGate,

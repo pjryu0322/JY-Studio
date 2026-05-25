@@ -12,7 +12,14 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 
 export const IMPLEMENTATION_SLOTS_VERSION = "implementation_slots_v1" as const;
 
-export type ImplementationSlotOwner = "ai_developer" | "ai_reviewer" | "ai_security" | "scm";
+export type ImplementationSlotOwner =
+  | "ai_developer"
+  | "ai_designer"
+  | "ai_reviewer"
+  | "ai_security"
+  | "scm";
+
+export type DataPersistenceMode = "none" | "mock" | "local" | "db" | "external_api";
 
 export type ImplementationSlotKey =
   | "implementation_scope"
@@ -26,7 +33,16 @@ export type ImplementationSlotKey =
   | "forbidden_paths"
   | "developer_review_required"
   | "official_commit_owner"
-  | "pr_required";
+  | "pr_required"
+  | "data_persistence_mode"
+  | "db_required"
+  | "db_trigger_condition"
+  | "data_entities"
+  | "storage_strategy"
+  | "migration_required"
+  | "data_security_level"
+  | "backup_retention_policy"
+  | "db_owner";
 
 export type ImplementationSlotStatus = "empty" | "candidate" | "partial" | "confirmed" | "blocked";
 
@@ -101,7 +117,27 @@ export const IMPLEMENTATION_SLOT_META: Record<
   developer_review_required: { label: "개발자 검토 필요", owner: "ai_developer", required: true },
   official_commit_owner: { label: "공식 반영 담당", owner: "scm", required: true },
   pr_required: { label: "PR 필요", owner: "scm", required: true },
+  data_persistence_mode: { label: "저장 방식", owner: "ai_developer", required: false },
+  db_required: { label: "DB 필요 여부", owner: "ai_developer", required: false },
+  db_trigger_condition: { label: "DB 전환 조건", owner: "ai_developer", required: false },
+  data_entities: { label: "저장 대상 엔티티", owner: "ai_designer", required: false },
+  storage_strategy: { label: "초기 저장 전략", owner: "ai_developer", required: false },
+  migration_required: { label: "migration 필요", owner: "scm", required: false },
+  data_security_level: { label: "데이터 보안 수준", owner: "ai_security", required: false },
+  backup_retention_policy: { label: "백업·보존 정책", owner: "scm", required: false },
+  db_owner: { label: "DB 운영 책임", owner: "scm", required: false },
 };
+
+/** DB 연동 task 생성·판단서 확정 시 confirmed 필요(DB 슬롯은 WIP gate에 포함하지 않음) */
+export const DB_INTEGRATION_GATE_CONFIRMED_KEYS: readonly ImplementationSlotKey[] = [
+  "db_required",
+  "data_persistence_mode",
+  "data_entities",
+  "storage_strategy",
+  "migration_required",
+  "data_security_level",
+  "db_owner",
+];
 
 /** WIP 요청 직전: confirmed 필수 + wip_branch는 candidate 이상 */
 const CONFIRMED_REQUIRED_KEYS: readonly ImplementationSlotKey[] = [
@@ -201,6 +237,104 @@ function collectForbiddenPaths(workItems: readonly CursorWorkItem[] | null | und
   const fromWork = uniqueStrings((workItems ?? []).flatMap((w) => w.forbiddenPaths));
   if (fromWork.length) return fromWork;
   return [...COMMON_FORBIDDEN_PATHS];
+}
+
+function collectDataEntityCandidates(input: BuildImplementationSlotsInput): readonly string[] {
+  const plan = input.implementationTaskPlanV1;
+  const fromTasks = (plan?.items ?? []).map((i) => i.title.trim()).filter(Boolean);
+  const fromArtifacts = input.projectArtifacts
+    .map((a) => String(a.title ?? "").trim())
+    .filter(Boolean);
+  const merged = uniqueStrings([...fromTasks, ...fromArtifacts]);
+  if (merged.length) return merged.slice(0, 12);
+  return ["회의", "발화자", "요약", "TODO", "검토상태"];
+}
+
+export function evaluateDbIntegrationSlotsReadiness(
+  slots: ImplementationSlotsV1 | null | undefined,
+): ImplementationSlotsReadiness {
+  if (!slots?.slots.length) {
+    return {
+      ready: false,
+      confirmed: 0,
+      required: DB_INTEGRATION_GATE_CONFIRMED_KEYS.length,
+      missing: [...DB_INTEGRATION_GATE_CONFIRMED_KEYS],
+      blocked: [],
+      candidate: 0,
+      partial: 0,
+    };
+  }
+  const byKey = new Map(slots.slots.map((s) => [s.key, s]));
+  const missing: ImplementationSlotKey[] = [];
+  const blocked: ImplementationSlotKey[] = [];
+  let confirmed = 0;
+  let candidate = 0;
+  let partial = 0;
+
+  for (const key of DB_INTEGRATION_GATE_CONFIRMED_KEYS) {
+    const slot = byKey.get(key);
+    if (!slot || slot.status === "empty") missing.push(key);
+    else if (slot.status === "blocked") blocked.push(key);
+    else if (slot.status === "confirmed") confirmed += 1;
+    else missing.push(key);
+  }
+
+  for (const s of slots.slots) {
+    if (s.status === "candidate") candidate += 1;
+    if (s.status === "partial") partial += 1;
+  }
+
+  return {
+    ready: missing.length === 0 && blocked.length === 0,
+    confirmed,
+    required: DB_INTEGRATION_GATE_CONFIRMED_KEYS.length,
+    missing,
+    blocked,
+    candidate,
+    partial,
+  };
+}
+
+export function patchImplementationSlotsValues(
+  current: ImplementationSlotsV1,
+  updates: readonly Readonly<{
+    key: ImplementationSlotKey;
+    status: ImplementationSlotStatus;
+    value: ImplementationSlotValue | null;
+    reason?: string;
+    source?: readonly string[];
+  }>[],
+  nowIso?: string,
+): ImplementationSlotsV1 {
+  const now = nowIso ?? new Date().toISOString();
+  const byKey = new Map(current.slots.map((s) => [s.key, s]));
+  for (const u of updates) {
+    const prev = byKey.get(u.key);
+    byKey.set(
+      u.key,
+      makeSlot(u.key, {
+        status: u.status,
+        value: u.value,
+        source: u.source ?? prev?.source ?? [],
+        reason: u.reason ?? prev?.reason ?? "",
+        nowIso: now,
+      }),
+    );
+  }
+  const bundle: ImplementationSlotsV1 = {
+    ...current,
+    updatedAt: now,
+    slots: [...byKey.values()],
+    readiness: { ready: false, confirmed: 0, required: 0, missing: [], blocked: [], candidate: 0, partial: 0 },
+  };
+  return { ...bundle, readiness: evaluateImplementationSlotsReadiness(bundle) };
+}
+
+export function getImplementationSlotValue(
+  slots: ImplementationSlotsV1 | null | undefined,
+  key: ImplementationSlotKey,
+): ImplementationSlotValue | null {
+  return slots?.slots.find((s) => s.key === key)?.value ?? null;
 }
 
 export function evaluateImplementationSlotsReadiness(
@@ -392,6 +526,69 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
       reason: "공식 반영 시 PR 필요",
       nowIso: now,
     }),
+    makeSlot("data_persistence_mode", {
+      status: "confirmed",
+      value: "mock",
+      source: ["implementation_db_strategy"],
+      reason: "초기 구현은 Mock JSON·정적 프로토타입 우선",
+      nowIso: now,
+    }),
+    makeSlot("db_required", {
+      status: "confirmed",
+      value: false,
+      source: ["implementation_db_strategy"],
+      reason: "초기 단계 DB 연동 불필요",
+      nowIso: now,
+    }),
+    makeSlot("db_trigger_condition", {
+      status: "candidate",
+      value: "사용자 검토 후 저장·조회·CRUD 검증이 필요할 때",
+      source: ["implementation_db_strategy"],
+      reason: "DB 전환 Gate 조건",
+      nowIso: now,
+    }),
+    makeSlot("data_entities", {
+      status: "candidate",
+      value: collectDataEntityCandidates(input),
+      source: ["implementationTaskPlanV1", "projectArtifacts"],
+      reason: "저장 대상 엔티티 후보",
+      nowIso: now,
+    }),
+    makeSlot("storage_strategy", {
+      status: "confirmed",
+      value: "Mock JSON / local state",
+      source: ["implementation_db_strategy"],
+      reason: "프로토타입 검토용 초기 저장",
+      nowIso: now,
+    }),
+    makeSlot("migration_required", {
+      status: "confirmed",
+      value: false,
+      source: ["implementation_db_strategy"],
+      reason: "Mock 단계 migration 없음",
+      nowIso: now,
+    }),
+    makeSlot("data_security_level", {
+      status: "partial",
+      value: "개인정보·민감정보 가능성 검토 필요",
+      source: ["implementationTaskPlanV1", "projectArtifacts"],
+      reason: "DB 전환 전 보안 기준 후보",
+      nowIso: now,
+    }),
+    makeSlot("backup_retention_policy", {
+      status: "candidate",
+      value: "운영 전환 전 별도 정의",
+      source: ["implementation_db_strategy"],
+      reason: "백업·보존은 운영 Gate에서 확정",
+      nowIso: now,
+    }),
+    makeSlot("db_owner", {
+      status: "confirmed",
+      value: "SCM",
+      source: ["implementation_policy"],
+      reason: "DB 설정·migration·운영 반영",
+      nowIso: now,
+    }),
   ];
 
   const bundle: ImplementationSlotsV1 = {
@@ -442,6 +639,32 @@ export function formatImplementationSlotsBlockedMessage(
     ...r.blocked.map((k) => `구현 슬롯(차단): ${implementationSlotLabel(k)}`),
     ...r.missing.map((k) => `구현 슬롯(미확정): ${implementationSlotLabel(k)}`),
   ];
+}
+
+export function buildImplementationDbSlotsTimelineEntry(input: {
+  readonly slots: ImplementationSlotsV1;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const mode = String(getImplementationSlotValue(input.slots, "data_persistence_mode") ?? "mock");
+  const dbRequired = getImplementationSlotValue(input.slots, "db_required") === true;
+  const entities = getImplementationSlotValue(input.slots, "data_entities");
+  const dataEntityCount = Array.isArray(entities) ? entities.length : 0;
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: "implementation_db_slots_built",
+    source: "system",
+    responseText: [
+      "type=implementation_db_slots_built",
+      "mode=implementation",
+      `dataPersistenceMode=${mode}`,
+      `dbRequired=${dbRequired}`,
+      `dataEntityCount=${dataEntityCount}`,
+    ].join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
 }
 
 export function buildImplementationSlotsTimelineEntry(input: {

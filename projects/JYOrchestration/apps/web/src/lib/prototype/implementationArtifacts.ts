@@ -1,6 +1,15 @@
 import { codeAgentProviderLabel } from "@/lib/prototype/codeAgentProvider";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  buildDataModelDraftMarkdown,
+  buildDbIntegrationDecisionMarkdown,
+  buildStorageStrategyMarkdown,
+  shouldIncludeDataModelDraftArtifact,
+  shouldIncludeDbIntegrationDecisionArtifact,
+  shouldIncludeStorageStrategyArtifact,
+  type ImplementationDbStrategyV1,
+} from "@/lib/prototype/implementationDbStrategy";
 import { formatImplementationSlotsReadinessSummary } from "@/lib/prototype/implementationSlots";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -16,7 +25,14 @@ export type ImplementationArtifactType =
   | "refactor-request-report"
   | "scm-official-commit-ready"
   | "review-criteria-summary"
-  | "security-criteria-summary";
+  | "security-criteria-summary"
+  | "db-integration-decision"
+  | "data-model-draft"
+  | "storage-strategy"
+  | "api-db-mapping"
+  | "migration-plan"
+  | "data-security-policy"
+  | "backup-retention-policy";
 
 export type DerivedImplementationArtifactStatus = "draft" | "ready" | "blocked" | "completed";
 
@@ -41,6 +57,13 @@ const TYPE_LABELS: Record<ImplementationArtifactType, string> = {
   "scm-official-commit-ready": "SCM 공식 반영 준비서",
   "review-criteria-summary": "검수 기준서",
   "security-criteria-summary": "보안 점검 기준서",
+  "db-integration-decision": "DB 연동 판단서",
+  "data-model-draft": "데이터 모델 초안",
+  "storage-strategy": "저장 전략서",
+  "api-db-mapping": "API-DB 매핑표",
+  "migration-plan": "Migration 계획서",
+  "data-security-policy": "데이터 보안 기준서",
+  "backup-retention-policy": "백업·복구 기준서",
 };
 
 export function implementationArtifactTypeLabel(type: ImplementationArtifactType): string {
@@ -56,6 +79,8 @@ export function buildDerivedImplementationArtifacts(input: {
   readonly projectId: string;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
+  readonly implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
+  readonly projectArtifacts?: readonly import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[];
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly nowIso?: string;
@@ -252,6 +277,58 @@ export function buildDerivedImplementationArtifacts(input: {
       status: wip.status === "scm_commit_pending" ? "ready" : "completed",
       createdAt: wip.requestedAt,
       updatedAt: wip.developerReview?.reviewedAt ?? wip.requestedAt,
+    });
+  }
+
+  const dbStrategy = input.implementationDbStrategyV1;
+  const projectArtifacts = input.projectArtifacts ?? [];
+
+  if (
+    slots &&
+    shouldIncludeDbIntegrationDecisionArtifact({ slots, dbStrategy })
+  ) {
+    out.push({
+      id: `impl-artifact-db-decision-${slots.updatedAt}`,
+      type: "db-integration-decision",
+      stage: "implementation",
+      title: TYPE_LABELS["db-integration-decision"],
+      body: buildDbIntegrationDecisionMarkdown({
+        slots,
+        projectArtifacts,
+        plan: plan ?? null,
+      }),
+      source: ["implementationSlotsV1", "implementationDbStrategyV1"],
+      status: "ready",
+      createdAt: slots.createdAt,
+      updatedAt: slots.updatedAt,
+    });
+  }
+
+  if (slots && shouldIncludeDataModelDraftArtifact({ slots, dbStrategy })) {
+    out.push({
+      id: `impl-artifact-data-model-${slots.updatedAt}`,
+      type: "data-model-draft",
+      stage: "implementation",
+      title: TYPE_LABELS["data-model-draft"],
+      body: buildDataModelDraftMarkdown({ slots, plan: plan ?? null }),
+      source: ["implementationSlotsV1", "implementationDbStrategyV1"],
+      status: "draft",
+      createdAt: slots.createdAt,
+      updatedAt: slots.updatedAt,
+    });
+  }
+
+  if (slots && shouldIncludeStorageStrategyArtifact({ slots, dbStrategy })) {
+    out.push({
+      id: `impl-artifact-storage-${slots.updatedAt}`,
+      type: "storage-strategy",
+      stage: "implementation",
+      title: TYPE_LABELS["storage-strategy"],
+      body: buildStorageStrategyMarkdown(slots),
+      source: ["implementationSlotsV1", "implementationDbStrategyV1"],
+      status: "ready",
+      createdAt: slots.createdAt,
+      updatedAt: slots.updatedAt,
     });
   }
 

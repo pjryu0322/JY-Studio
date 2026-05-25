@@ -25,6 +25,8 @@ import {
   parseCursorWorkItemsV1,
   parseImplementationTaskPlanV1,
 } from "@/lib/prototype/implementationTaskPlanStateWire";
+import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
+import { parseImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parseImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parsePrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -532,6 +534,8 @@ export type RequirementsStateJson = {
   cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   /** 구현 슬롯(범위·WIP·검수·보안·SCM) — 작업안 확정 시 생성 */
   implementationSlotsV1?: ImplementationSlotsV1 | null;
+  /** 구현 DB 연동 판단·Mock 전략(JSON) */
+  implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
   /** Code Agent WIP 검토 루프 상태(JSON) */
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   /**
@@ -935,6 +939,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationSlotsV1 = parseImplementationSlotsV1(
     "implementationSlotsV1" in o ? o.implementationSlotsV1 : undefined,
   );
+  const implementationDbStrategyV1 = parseImplementationDbStrategyV1(
+    "implementationDbStrategyV1" in o ? o.implementationDbStrategyV1 : undefined,
+  );
   const codeAgentWipExecutionV1 = parseCodeAgentWipExecutionFromState(
     "codeAgentWipExecutionV1" in o ? o.codeAgentWipExecutionV1 : undefined,
     "cursorWipExecutionV1" in o ? o.cursorWipExecutionV1 : undefined,
@@ -1073,6 +1080,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationTaskPlanV1 !== undefined ? { implementationTaskPlanV1 } : {}),
     ...(cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1 } : {}),
     ...(implementationSlotsV1 !== undefined ? { implementationSlotsV1 } : {}),
+    ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
     ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),

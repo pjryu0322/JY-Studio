@@ -2,6 +2,7 @@ import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecut
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { summarizeTaskPlanExecutionStats } from "@/lib/prototype/implementationTaskPlanSummary";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { buildPrototypeExecutionSingleChatPersistPatch } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
@@ -74,6 +75,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
+  readonly implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
@@ -93,6 +95,9 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
     ...(input.cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1: input.cursorWorkItemsV1 } : {}),
     ...(input.implementationSlotsV1 !== undefined
       ? { implementationSlotsV1: input.implementationSlotsV1 }
+      : {}),
+    ...(input.implementationDbStrategyV1 !== undefined
+      ? { implementationDbStrategyV1: input.implementationDbStrategyV1 }
       : {}),
     ...(input.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
