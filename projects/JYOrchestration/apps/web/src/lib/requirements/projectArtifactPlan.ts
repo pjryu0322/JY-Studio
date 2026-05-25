@@ -208,12 +208,14 @@ export function generateArtifactsFromPlan(input: {
       continue;
     }
 
+    const slotContext = input.base.slotContext ?? input.base.fastPlanContext;
     const artifact = generateProjectArtifact({
       ...input.base,
       nowIso,
       artifactType: legacyRow.artifactType,
       titleOverride: legacyRow.title,
-      fastPlanContext: legacyRow.artifactType === "fast_prototype_plan" ? input.base.fastPlanContext : undefined,
+      slotContext,
+      memberDrafts: input.memberDrafts ?? input.base.memberDrafts,
     });
     out.push(
       attachOrchestrationToArtifact({

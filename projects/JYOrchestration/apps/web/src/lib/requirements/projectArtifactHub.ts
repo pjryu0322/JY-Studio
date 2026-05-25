@@ -68,8 +68,7 @@ export function buildProjectArtifactHubCatalog(input: {
             hubSourceSlotKeys: orch.sourceSlotKeys,
             hubRequired: orch.required,
             hubCompletenessScore: completeness,
-            hubReadinessLabel:
-              completeness >= 0.85 ? "준비됨" : completeness >= 0.55 ? "보완 권장" : "초안",
+            hubReadinessLabel: orch.hubReadinessLabel,
           }
         : {}),
     });

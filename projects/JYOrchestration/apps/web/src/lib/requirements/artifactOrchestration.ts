@@ -16,6 +16,10 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
+import {
+  evaluateArtifactContentQuality,
+  isPlaceholderOnlyArtifactContent,
+} from "@/lib/requirements/artifactContentGeneration";
 
 export type ArtifactServiceProfile = "standard" | "static_prototype" | "external_integration";
 
@@ -54,6 +58,9 @@ export type ProjectArtifactOrchestrationMeta = Readonly<{
   readonly sourceSlotKeys: readonly string[];
   readonly trace: readonly ArtifactTrace[];
   readonly completenessScore: number;
+  readonly hubReadinessLabel: string;
+  readonly improvementHint?: string;
+  readonly isPlaceholderOnly?: boolean;
   readonly serviceProfile?: ArtifactServiceProfile;
   readonly plannedAt: string;
 }>;
@@ -406,33 +413,33 @@ export function attachOrchestrationToArtifact(input: {
   readonly conversationMessages?: readonly RequirementsMessage[];
 }): ProjectArtifact {
   const content = String(input.artifact.content ?? "").trim();
-  const completenessScore = content.length >= 120 ? 1 : content.length >= 40 ? 0.7 : 0.4;
+  const quality = evaluateArtifactContentQuality({
+    artifactType: input.artifact.type,
+    content,
+  });
   const meta: ProjectArtifactOrchestrationMeta = {
     reason: input.planRow.reason,
     required: input.planRow.required,
-    confidence: input.planRow.confidence,
+    confidence: input.planRow.confidence * (quality.isPlaceholderOnly ? 0.5 : 1),
     sourceRoles: input.planRow.sourceRoles.map((r) => roleLabel(r)),
     sourceSlotKeys: input.planRow.sourceSlotKeys,
     trace: buildArtifactTraceForPlannedRow(input.planRow, input.conversationMessages),
-    completenessScore,
+    completenessScore: quality.completenessScore,
+    hubReadinessLabel: quality.hubReadinessLabel,
+    ...(quality.improvementHint ? { improvementHint: quality.improvementHint } : {}),
+    isPlaceholderOnly: quality.isPlaceholderOnly,
     serviceProfile: input.serviceProfile,
     plannedAt: input.nowIso,
   };
   return { ...input.artifact, orchestration: meta };
 }
 
-const PLACEHOLDER_MARKERS = [
-  "_아직 비어",
-  "_아직 없습니다",
-  "내용이 부족",
-  "다시 생성해 주세요",
-] as const;
-
 export function artifactHasMeaningfulContent(artifact: ProjectArtifact): boolean {
   const content = String(artifact.content ?? "").trim();
-  if (content.length < 24) return false;
-  if (PLACEHOLDER_MARKERS.some((m) => content.includes(m))) return false;
-  return true;
+  if (artifact.orchestration?.isPlaceholderOnly) return false;
+  if (isPlaceholderOnlyArtifactContent(content)) return false;
+  if ((artifact.orchestration?.completenessScore ?? 0) < 0.55) return false;
+  return content.length >= 24;
 }
 
 export function evaluateArtifactOrchestrationReadiness(input: {

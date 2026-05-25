@@ -1,10 +1,15 @@
 /**
- * Deterministic artifact body builders — no service-flow-analyze / stage transition.
+ * Deterministic artifact body builders — slot/context section generation.
  */
 
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import type { FastPlanGenerationInput } from "@/lib/requirements/fastPlanGenerationTypes";
 import { buildFastPlanGenerationContext, buildFastPlanMarkdown } from "@/lib/requirements/fastPlanGeneration";
+import {
+  buildRichArtifactContent,
+  type ArtifactSlotContext,
+} from "@/lib/requirements/artifactContentGeneration";
+import type { PlatformMemberDraft } from "@/lib/platform-orchestration/types";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import {
   PROJECT_ARTIFACT_LABELS,
@@ -12,8 +17,6 @@ import {
   type ProjectArtifactType,
   wireStageLabel,
 } from "@/lib/requirements/projectArtifactTypes";
-import { buildServiceFlowStateSummaryMessage } from "@/lib/requirements/serviceFlowProposalDecision";
-import { hydrateServiceFlowStepsFromAlternativePayload } from "@/lib/requirements/serviceFlowAlternativeProposalPayload";
 
 export type ProjectArtifactGenerateInput = Readonly<{
   readonly artifactType: ProjectArtifactType;
@@ -27,136 +30,48 @@ export type ProjectArtifactGenerateInput = Readonly<{
   readonly titleOverride?: string;
   readonly contentOverride?: string;
   readonly fastPlanContext?: Omit<FastPlanGenerationInput, "nowIso">;
+  /** 슬롯·대화·인터뷰 통합 — fastPlanContext와 동일 구조 */
+  readonly slotContext?: ArtifactSlotContext | null;
+  readonly memberDrafts?: readonly PlatformMemberDraft[];
 }>;
 
 function newArtifactId(nowIso: string): string {
   return `artifact-${nowIso.replace(/[^\d]/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function featurePlanningMarkdown(artifact: FeaturePlanningSlotsArtifactV1 | null | undefined): string {
-  const slots = (artifact?.slots ?? []).filter((s) => !s.legacy);
-  if (!slots.length) {
-    return "_기능 정의 슬롯이 아직 비어 있습니다. 세부 기능 정의를 진행한 뒤 다시 생성해 주세요._";
-  }
-  const lines = ["## 기능 정의", ""];
-  for (const slot of slots) {
-    const title = String(slot.slotName ?? slot.slotKey ?? "기능").trim();
-    const body = String(slot.slotDescription ?? slot.reason ?? "").trim() || "_내용 없음_";
-    lines.push(`### ${title}`, "", body, "");
-    for (const item of slot.items ?? []) {
-      const name = String(item.name ?? "").trim();
-      const desc = String(item.description ?? "").trim();
-      if (name) lines.push(`- **${name}**${desc ? `: ${desc}` : ""}`);
-    }
-    lines.push("");
-  }
-  return lines.join("\n").trim();
-}
-
-function screenSpecMarkdown(artifact: FeaturePlanningSlotsArtifactV1 | null | undefined): string {
-  const screenSlots = (artifact?.slots ?? []).filter(
-    (s) => !s.legacy && (s.slotType === "SCREEN" || s.slotType === "UI" || /screen|화면|ui/i.test(`${s.slotKey} ${s.slotName}`)),
-  );
-  if (!screenSlots.length) {
-    return ["## 화면 정의", "", "_화면 정의 슬롯이 아직 없습니다._"].join("\n");
-  }
-  return featurePlanningMarkdown({ ...(artifact as FeaturePlanningSlotsArtifactV1), slots: screenSlots });
-}
-
-function apiSpecMarkdown(artifact: FeaturePlanningSlotsArtifactV1 | null | undefined): string {
-  const apiSlots = (artifact?.slots ?? []).filter(
-    (s) => !s.legacy && (s.slotType === "DATA" || /api|endpoint|interface/i.test(`${s.slotKey} ${s.slotName}`)),
-  );
-  if (!apiSlots.length) {
-    return ["## API 정의", "", "_API 슬롯이 아직 없습니다. API 정의 작업 후 다시 생성해 주세요._"].join("\n");
-  }
-  return featurePlanningMarkdown({ ...(artifact as FeaturePlanningSlotsArtifactV1), slots: apiSlots });
+function resolveSlotContext(input: ProjectArtifactGenerateInput): ArtifactSlotContext | null {
+  return input.slotContext ?? input.fastPlanContext ?? null;
 }
 
 export function buildProjectArtifactContent(input: ProjectArtifactGenerateInput): string {
   const projectName = String(input.projectName ?? "프로젝트").trim() || "프로젝트";
-  const desc = String(input.projectDescription ?? "").trim();
-  const flow = input.serviceFlow ? hydrateServiceFlowStepsFromAlternativePayload(input.serviceFlow) : null;
   const stage = wireStageLabel(input.sourceStage);
+  const slotContext = resolveSlotContext(input);
 
-  switch (input.artifactType) {
-    case "service-flow-doc":
-      if (!flow || !(flow.steps?.length ?? 0)) {
-        return ["# 서비스 흐름 문서", "", "_서비스 흐름 데이터가 없습니다._"].join("\n");
-      }
-      return [
-        `# ${projectName} — 서비스 흐름 문서`,
-        "",
-        `구현 단계: ${stage}`,
-        "",
-        buildServiceFlowStateSummaryMessage({ flow, heading: "서비스 흐름", cta: "" }),
-      ].join("\n");
-
-    case "feature-spec":
-      return [`# ${projectName} — 기능 정의서`, "", `구현 단계: ${stage}`, "", featurePlanningMarkdown(input.featurePlanning)].join(
-        "\n",
-      );
-
-    case "screen-spec":
-      return [`# ${projectName} — 화면 정의서`, "", `구현 단계: ${stage}`, "", screenSpecMarkdown(input.featurePlanning)].join(
-        "\n",
-      );
-
-    case "api-spec":
-      return [`# ${projectName} — API 명세서`, "", `구현 단계: ${stage}`, "", apiSpecMarkdown(input.featurePlanning)].join("\n");
-
-    case "summary":
-      return [
-        `# ${projectName} — 프로젝트 요약서`,
-        "",
-        desc ? `## 개요\n\n${desc}` : "## 개요\n\n_설명 없음_",
-        "",
-        flow ? buildServiceFlowStateSummaryMessage({ flow, heading: "현재 흐름 스냅샷", cta: "" }) : "",
-        "",
-        input.featurePlanning ? featurePlanningMarkdown(input.featurePlanning) : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-    case "markdown-export": {
-      const body = buildProjectArtifactContent({ ...input, artifactType: "summary" });
-      return body;
-    }
-
-    case "pdf-export":
-      return [
-        buildProjectArtifactContent({ ...input, artifactType: "summary" }),
-        "",
-        "---",
-        "",
-        "_PDF Export는 Markdown 본문을 기준으로 뷰어에서 인쇄·저장할 수 있습니다._",
-      ].join("\n");
-
-    case "fast_prototype_plan": {
-      if (input.fastPlanContext) {
-        const ctx = buildFastPlanGenerationContext({
-          ...input.fastPlanContext,
-          nowIso: input.nowIso ?? new Date().toISOString(),
-          projectName: input.projectName ?? input.fastPlanContext.projectName,
-          projectDescription: input.projectDescription ?? input.fastPlanContext.projectDescription,
-          serviceFlow: input.serviceFlow ?? input.fastPlanContext.serviceFlow,
-          featurePlanning: input.featurePlanning ?? input.fastPlanContext.featurePlanning,
-        });
-        return buildFastPlanMarkdown({
-          projectName: String(input.projectName ?? "프로젝트").trim() || "프로젝트",
-          context: ctx,
-        });
-      }
-      return [
-        `# ${projectName} — 프로토타입 기획안`,
-        "",
-        "_확정 슬롯·대화 정보가 부족해 본문을 생성하지 못했습니다._",
-      ].join("\n");
-    }
-
-    default:
-      return "";
+  if (input.artifactType === "fast_prototype_plan" && slotContext) {
+    const ctx = buildFastPlanGenerationContext({
+      ...slotContext,
+      nowIso: input.nowIso ?? new Date().toISOString(),
+      projectName: input.projectName ?? slotContext.projectName,
+      projectDescription: input.projectDescription ?? slotContext.projectDescription,
+      serviceFlow: input.serviceFlow ?? slotContext.serviceFlow,
+      featurePlanning: input.featurePlanning ?? slotContext.featurePlanning,
+    });
+    return buildFastPlanMarkdown({ projectName, context: ctx });
   }
+
+  return buildRichArtifactContent({
+    artifactType: input.artifactType,
+    projectName,
+    projectDescription: String(
+      input.projectDescription ?? slotContext?.projectDescription ?? "",
+    ).trim(),
+    sourceStage: stage,
+    serviceFlow: input.serviceFlow ?? slotContext?.serviceFlow ?? null,
+    featurePlanning: input.featurePlanning ?? slotContext?.featurePlanning ?? null,
+    slotContext,
+    memberDrafts: input.memberDrafts,
+  });
 }
 
 export function generateProjectArtifact(input: ProjectArtifactGenerateInput): ProjectArtifact {

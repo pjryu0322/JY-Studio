@@ -149,6 +149,7 @@ describe("planningReadinessGate", () => {
           },
         ],
         completenessScore: 0.9,
+        hubReadinessLabel: "구현 가능",
         plannedAt: nowIso,
       },
     }));

@@ -3,6 +3,7 @@ import {
   evaluateArtifactOrchestrationReadiness,
   type ArtifactOrchestrationStateV1,
 } from "@/lib/requirements/artifactOrchestration";
+import { improvementHintForType } from "@/lib/requirements/artifactContentGeneration";
 import {
   FALLBACK_IMPLEMENTATION_ARTIFACT_TYPES,
   LEGACY_QUICK_DESIGN_AREA_TITLES,
@@ -135,7 +136,16 @@ export function evaluateImplementationStartReadiness(input: {
     } else if (artifacts.orchestrationDetail.weakTraceTypes.length) {
       parts.push("산출물 추적 정보(관련 슬롯·AI멤버)가 부족합니다. Quick Design 확정을 다시 실행해 주세요.");
     } else if (artifacts.orchestrationDetail.lowCompletenessTypes.length) {
-      parts.push("산출물 본문이 아직 충분하지 않습니다. Artifact Hub에서 내용을 보완해 주세요.");
+      const lowType = artifacts.orchestrationDetail.lowCompletenessTypes[0];
+      const lowArt = (input.projectArtifacts ?? []).find(
+        (a) => a.type === lowType && a.orchestration?.improvementHint,
+      );
+      const hint =
+        lowArt?.orchestration?.improvementHint ??
+        (lowType ? improvementHintForType(lowType) : null);
+      parts.push(
+        hint ?? "산출물 본문이 아직 충분하지 않습니다. Artifact Hub에서 내용을 보완해 주세요.",
+      );
     } else {
       parts.push("필수 산출물이 아직 준비되지 않았습니다.");
     }

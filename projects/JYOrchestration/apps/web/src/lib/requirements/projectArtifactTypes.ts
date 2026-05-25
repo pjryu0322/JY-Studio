@@ -100,6 +100,19 @@ export function parseProjectArtifactsFromState(raw: unknown): ProjectArtifact[] 
               .filter((x): x is NonNullable<typeof x> => Boolean(x))
           : [],
         completenessScore: Number(oc.completenessScore) || 0.5,
+        hubReadinessLabel: (() => {
+          const label = String(oc.hubReadinessLabel ?? "").trim();
+          if (label) return label;
+          const score = Number(oc.completenessScore) || 0.5;
+          if (score >= 0.85) return "구현 가능";
+          if (score >= 0.55) return "부분 구성";
+          if (score >= 0.35) return "보완 필요";
+          return "초안";
+        })(),
+        ...(String(oc.improvementHint ?? "").trim()
+          ? { improvementHint: String(oc.improvementHint).trim() }
+          : {}),
+        ...(oc.isPlaceholderOnly === true ? { isPlaceholderOnly: true } : {}),
         serviceProfile:
           oc.serviceProfile === "static_prototype" || oc.serviceProfile === "external_integration"
             ? oc.serviceProfile
