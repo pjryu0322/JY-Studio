@@ -2,47 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
-import { IDEATION_DELIVERABLE_LABELS, isIdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
+import {
+  buildDeliverableAssetPickerLabel,
+  computeLatestVersionByDeliverableType,
+  formatDeliverableCreatedAt,
+  resolveDeliverablePickerLabel,
+  sortDeliverableAssetsForPicker,
+} from "@/lib/requirements/deliverableAssetPicker";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
+import {
+  artifactExportIconButtonStyle,
+  DocExportIcon,
+  PdfExportIcon,
+} from "@/components/requirements/artifactExportIcons";
 import { downloadDeliverableMarkdownAsDocFile } from "@/lib/requirements/deliverableDocDownload";
+import { openArtifactHubSelectionAsPdf } from "@/lib/requirements/artifactHubExport";
 
-function formatCreatedAt(ts: string): string {
-  const d = new Date(ts);
-  if (!Number.isFinite(d.getTime())) return ts;
-  try {
-    return d.toLocaleString("ko-KR");
-  } catch {
-    return d.toISOString();
-  }
-}
-
-function sortAssetsForPicker(assets: readonly IdeationDeliverableAsset[]): IdeationDeliverableAsset[] {
-  return [...assets].sort((a, b) => {
-    const at = String(a.type).localeCompare(String(b.type));
-    if (at !== 0) return at;
-    return String(b.createdAt).localeCompare(String(a.createdAt));
-  });
-}
-
-function buildAssetPickerLabel(
-  asset: IdeationDeliverableAsset,
-  input: {
-    readonly onlyFullPlanAssets: boolean;
-    readonly isLatest: boolean;
-    readonly isConfirmed: boolean;
-  },
-): string {
-  const parts: string[] = [asset.title || "산출물"];
-  if (!input.onlyFullPlanAssets) {
-    const typeLabel = isIdeationDeliverableType(asset.type) ? IDEATION_DELIVERABLE_LABELS[asset.type] : String(asset.type);
-    parts.push(typeLabel);
-  }
-  if (typeof asset.version === "number") parts.push(`v${asset.version}`);
-  parts.push(formatCreatedAt(asset.createdAt));
-  parts.push(input.isLatest ? "최신" : "과거");
-  parts.push(input.isConfirmed ? "확정" : "미확정");
-  return parts.join(" · ");
-}
+/** Artifact Hub(1160) 위에 산출물 뷰어가 겹치도록 */
+const VIEWER_BACKDROP_Z = 1170;
+const VIEWER_DIALOG_Z = 1180;
 
 export function RequirementsDeliverableViewerModal({
   open,
@@ -59,16 +37,9 @@ export function RequirementsDeliverableViewerModal({
     () => [...assets].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
     [assets],
   );
-  const pickerItems = useMemo(() => sortAssetsForPicker(ordered), [ordered]);
+  const pickerItems = useMemo(() => sortDeliverableAssetsForPicker(ordered), [ordered]);
   const [activeId, setActiveId] = useState<string>("");
-  const latestVersionByType = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const a of ordered) {
-      const prev = m.get(a.type) ?? -1;
-      if (typeof a.version === "number" && a.version > prev) m.set(a.type, a.version);
-    }
-    return m;
-  }, [ordered]);
+  const latestVersionByType = useMemo(() => computeLatestVersionByDeliverableType(ordered), [ordered]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,10 +70,18 @@ export function RequirementsDeliverableViewerModal({
     });
   }, [active]);
 
+  const handleDownloadPdf = useCallback(() => {
+    if (!active) return;
+    openArtifactHubSelectionAsPdf({
+      projectName: active.title,
+      sections: [{ title: active.title, markdown: active.content }],
+    });
+  }, [active]);
+
   if (!open) return null;
 
   const onlyFullPlanAssets = ordered.length > 0 && ordered.every((a) => a.type === "full_plan");
-  const pickerLabel = onlyFullPlanAssets ? "기획안 버전" : "문서";
+  const pickerLabel = resolveDeliverablePickerLabel(ordered);
   const showPicker = pickerItems.length > 1;
 
   return (
@@ -113,7 +92,7 @@ export function RequirementsDeliverableViewerModal({
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: 80,
+          zIndex: VIEWER_BACKDROP_Z,
           border: 0,
           padding: 0,
           margin: 0,
@@ -128,7 +107,7 @@ export function RequirementsDeliverableViewerModal({
         aria-label="산출물 보기"
         style={{
           position: "fixed",
-          zIndex: 81,
+          zIndex: VIEWER_DIALOG_Z,
           left: "max(12px, 50% - min(94vw, 960px) / 2)",
           top: "max(12px, 6vh)",
           width: "min(94vw, 960px)",
@@ -191,7 +170,7 @@ export function RequirementsDeliverableViewerModal({
                   const isConfirmed = Boolean(a.confirmedAt);
                   return (
                     <option key={a.id} value={a.id}>
-                      {buildAssetPickerLabel(a, { onlyFullPlanAssets, isLatest, isConfirmed })}
+                      {buildDeliverableAssetPickerLabel(a, { onlyFullPlanAssets, isLatest, isConfirmed })}
                     </option>
                   );
                 })}
@@ -209,30 +188,41 @@ export function RequirementsDeliverableViewerModal({
             >
               {typeof active.version === "number" ? `v${active.version}` : null}
               {active.version != null ? " · " : ""}
-              {formatCreatedAt(active.createdAt)}
+              {formatDeliverableCreatedAt(active.createdAt)}
             </span>
           ) : (
             <span style={{ marginRight: "auto" }} />
           )}
-          <button
-            type="button"
-            onClick={handleDownloadDoc}
-            disabled={!active}
-            style={{
-              border: "1px solid #0f766e",
-              background: "#ecfdf5",
-              borderRadius: 10,
-              padding: "8px 14px",
-              fontSize: 13,
-              fontWeight: 800,
-              color: "#0f766e",
-              cursor: active ? "pointer" : "not-allowed",
-              opacity: active ? 1 : 0.5,
-              flexShrink: 0,
-            }}
-          >
-            DOC 다운로드
-          </button>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              title="Doc 다운로드"
+              aria-label="Doc 다운로드"
+              onClick={handleDownloadDoc}
+              disabled={!active}
+              style={{
+                ...artifactExportIconButtonStyle,
+                opacity: active ? 1 : 0.45,
+                cursor: active ? "pointer" : "not-allowed",
+              }}
+            >
+              <DocExportIcon />
+            </button>
+            <button
+              type="button"
+              title="PDF로 저장 (인쇄 대화상자)"
+              aria-label="PDF로 저장"
+              onClick={handleDownloadPdf}
+              disabled={!active}
+              style={{
+                ...artifactExportIconButtonStyle,
+                opacity: active ? 1 : 0.45,
+                cursor: active ? "pointer" : "not-allowed",
+              }}
+            >
+              <PdfExportIcon />
+            </button>
+          </span>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px 22px" }}>
           {active ? (

@@ -38,7 +38,6 @@ export const FAST_PLAN_DRAFT_NEXT_ACTION_LABELS: readonly string[] = [
 
 /** @deprecated 확정 후 칩 — 구현 준비 완료 칩으로 대체 */
 export const FAST_PLAN_DRAFT_CONFIRMED_NEXT_LABELS: readonly string[] = [
-  FAST_PLAN_ACTION_VIEW_ARTIFACTS,
   FAST_PLAN_ACTION_START_IMPLEMENTATION,
   FAST_PLAN_ACTION_REFINE_PLAN,
 ] as const;

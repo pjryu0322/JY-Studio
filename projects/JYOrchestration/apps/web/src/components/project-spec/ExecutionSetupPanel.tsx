@@ -913,7 +913,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                 {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
                 {sectionCard(
                   "4. 실행 정책",
-                  "프로토타입 자동화에 필요한 최소 옵션만 표시합니다.",
+                  "프로젝트 자동화에 필요한 최소 옵션만 표시합니다.",
                   <PrototypeSimpleExecutionPolicy
                     projectId={projectId}
                     canEdit={canEdit}

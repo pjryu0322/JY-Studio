@@ -90,7 +90,7 @@ describe("quickDesignConfirmArtifacts", () => {
     expect(result.deliverables).toHaveLength(result.artifacts.length);
   });
 
-  it("builds implementation-ready message with Artifact 보기 and 구현 시작 chips", () => {
+  it("builds implementation-ready message with 구현 시작 and 추가 보완 chips", () => {
     const message = buildQuickDesignImplementationReadyChatMessage({
       artifactIds: ["a1", "a2"],
       artifactTitles: ["프로젝트 요약서", "프로토타입 기획안"],
@@ -103,7 +103,8 @@ describe("quickDesignConfirmArtifacts", () => {
     expect(message.content).not.toContain("서비스 정의 산출물");
     expect(message.meta?.internalType).toBe(QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE);
     expect(message.meta?.interviewSuggestions).toEqual(
-      expect.arrayContaining(["Artifact 보기", "구현 시작", "추가 보완"]),
+      expect.arrayContaining(["구현 시작", "추가 보완"]),
     );
+    expect(message.meta?.interviewSuggestions).not.toContain("Artifact 보기");
   });
 });

@@ -5,6 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
 import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
+import {
+  copyTextToClipboard,
+  WorkspaceMessageHeaderActions,
+  WorkspaceMessageReplyContextLine,
+} from "@/components/workspace/workspaceMessageHeaderActions";
+import { WORKSPACE_STANDARD_CHAT_HEADER_STYLE } from "@/components/workspace/workspaceStandardChatMessage";
 import type { PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 import type { PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { PROTOTYPE_TEMPLATES } from "@/lib/templates/prototypeTemplates";
@@ -14,6 +20,7 @@ import {
   type PrototypeChatBlock,
   type PrototypeChatBuiltMessage,
 } from "@/lib/prototype/buildPrototypeChatMessages";
+import { prototypeBuiltMessagePlainText, prototypeReplyPreviewLine } from "@/lib/prototype/prototypeChatMessageText";
 import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 
@@ -68,6 +75,8 @@ function toneColor(tone: string): string {
 export function PrototypeActionChips(p: {
   readonly actions: readonly PrototypeChatAction[];
   readonly onAction: (a: PrototypeChatAction) => void;
+  /** 우클릭: 칩 라벨을 입력창에 넣기(SingleChat 칩 복사) */
+  readonly onChipPrefillComposer?: (label: string) => void;
 }) {
   if (!p.actions?.length) return null;
   return (
@@ -77,6 +86,16 @@ export function PrototypeActionChips(p: {
           key={a.id}
           type="button"
           disabled={Boolean(a.disabled)}
+          title={p.onChipPrefillComposer ? `${a.label} (우클릭: 입력창에 넣기)` : a.label}
+          onContextMenu={
+            p.onChipPrefillComposer
+              ? (e) => {
+                  e.preventDefault();
+                  if (a.disabled) return;
+                  p.onChipPrefillComposer?.(a.label);
+                }
+              : undefined
+          }
           onClick={() => {
             if (a.disabled) return;
             p.onAction(a);
@@ -263,7 +282,7 @@ export type PrototypeInlineTemplatePickerProps = Readonly<{
   disabled: boolean;
 }>;
 
-function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
+export function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const recName = PROTOTYPE_TEMPLATES.find((t) => t.id === p.recommendedTemplateId)?.nameKo ?? p.recommendedTemplateId;
@@ -502,11 +521,22 @@ const PROTOTYPE_BUILD_AI_CARD_HEADER_STYLE: CSSProperties = {
   gap: 8,
 };
 
-function PrototypeBuildAiCardHeaderBar() {
+function PrototypeBuildAiCardHeaderBar(p: {
+  readonly trailing?: ReactNode;
+}) {
   return (
-    <div style={PROTOTYPE_BUILD_AI_CARD_HEADER_STYLE}>
-      <WorkspaceAiMemberAvatar memberId="prototype_build" size={26} />
-      <span style={{ minWidth: 0 }}>AI · {displayedWorkspaceAiTitle("prototype_build")}</span>
+    <div
+      style={{
+        ...PROTOTYPE_BUILD_AI_CARD_HEADER_STYLE,
+        justifyContent: "space-between",
+        gap: 6,
+      }}
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <WorkspaceAiMemberAvatar memberId="prototype_build" size={26} />
+        <span style={{ minWidth: 0 }}>AI · {displayedWorkspaceAiTitle("prototype_build")}</span>
+      </span>
+      {p.trailing}
     </div>
   );
 }
@@ -515,11 +545,17 @@ export function PrototypeAiMessage(p: {
   readonly message: PrototypeChatBuiltMessage;
   readonly onAction: (a: PrototypeChatAction) => void;
   readonly templatePicker?: PrototypeInlineTemplatePickerProps | null;
+  readonly onSetReplyTo?: (messageId: string, preview: string) => void;
+  readonly onChipPrefillComposer?: (label: string) => void;
 }) {
   const m = p.message;
   const showPicker = Boolean(m.inlineTemplatePicker && p.templatePicker);
+  const [hovered, setHovered] = useState(false);
+  const plain = useMemo(() => prototypeBuiltMessagePlainText(m), [m]);
+  const showActions = hovered;
   return (
     <div
+      data-prototype-message-id={m.id}
       style={{
         alignSelf: "flex-start",
         width: "min(100%, 640px)",
@@ -531,8 +567,22 @@ export function PrototypeAiMessage(p: {
         boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
         overflow: showPicker ? "visible" : "hidden",
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <PrototypeBuildAiCardHeaderBar />
+      <PrototypeBuildAiCardHeaderBar
+        trailing={
+          <WorkspaceMessageHeaderActions
+            show={showActions}
+            onCopy={() => void copyTextToClipboard(plain)}
+            onReply={
+              p.onSetReplyTo
+                ? () => p.onSetReplyTo?.(m.id, prototypeReplyPreviewLine(m))
+                : undefined
+            }
+          />
+        }
+      />
       <div style={{ padding: "12px 14px 14px" }}>
         {m.title ? (
           <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{m.title}</div>
@@ -542,16 +592,48 @@ export function PrototypeAiMessage(p: {
         ) : null}
         {renderBlocks(m.blocks)}
         {showPicker && p.templatePicker ? <InlineTemplatePickerRow {...p.templatePicker} /> : null}
-        {m.actions?.length ? <PrototypeActionChips actions={m.actions} onAction={p.onAction} /> : null}
+        {m.actions?.length ? (
+          <PrototypeActionChips
+            actions={m.actions}
+            onAction={p.onAction}
+            onChipPrefillComposer={p.onChipPrefillComposer}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
-export function PrototypeUserMessage(p: { readonly text: string; readonly atLabel?: string }) {
+export function PrototypeUserMessage(p: {
+  readonly id: string;
+  readonly text: string;
+  readonly replyContextLine?: string | null;
+  readonly onSetReplyTo?: (messageId: string, preview: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const preview = p.text.trim().length > 80 ? `↪ ${p.text.trim().slice(0, 80)}…` : `↪ ${p.text.trim()}`;
   return (
-    <div style={{ alignSelf: "flex-end", display: "flex", flexDirection: "column", gap: 6, maxWidth: "100%" }}>
-      <div style={{ fontSize: 11, color: "#71717a", paddingRight: 4, textAlign: "right", fontWeight: 800 }}>사용자</div>
+    <div
+      data-prototype-message-id={p.id}
+      style={{ alignSelf: "flex-end", display: "flex", flexDirection: "column", gap: 6, maxWidth: "100%", width: "min(100%, 520px)" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        style={{
+          ...WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
+          justifyContent: "flex-end",
+          paddingRight: 4,
+        }}
+      >
+        <span style={{ fontWeight: 700, color: "#71717a" }}>나</span>
+        <WorkspaceMessageHeaderActions
+          show={hovered}
+          onCopy={() => void copyTextToClipboard(p.text)}
+          onReply={p.onSetReplyTo ? () => p.onSetReplyTo?.(p.id, preview) : undefined}
+        />
+      </div>
+      {p.replyContextLine ? <WorkspaceMessageReplyContextLine label={p.replyContextLine} /> : null}
       <div style={userBubbleStandard}>
         <div style={{ fontSize: 15, fontWeight: 650, whiteSpace: "pre-wrap" }}>{p.text}</div>
       </div>
@@ -592,7 +674,13 @@ export function PrototypeSystemMessage(p: { readonly text: string }) {
   );
 }
 
-export type TimelineUserBubble = Readonly<{ id: string; text: string; at: number }>;
+export type TimelineUserBubble = Readonly<{
+  id: string;
+  text: string;
+  at: number;
+  replyToId?: string | null;
+  replyContextLine?: string | null;
+}>;
 export type TimelineEphemeralAi = Readonly<{ id: string; text: string; at: number }>;
 
 /** 서비스 흐름 워크숍에서 쓰던 채팅 확대/축소 아이콘과 동일 SVG */
@@ -618,6 +706,46 @@ export function PrototypeChatExpandIcon({ expanded }: { readonly expanded: boole
   );
 }
 
+function PrototypeEphemeralAiMessage(p: {
+  readonly message: TimelineEphemeralAi;
+  readonly onSetReplyTo?: (messageId: string, preview: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const preview =
+    p.message.text.trim().length > 80 ? `↪ ${p.message.text.trim().slice(0, 80)}…` : `↪ ${p.message.text.trim()}`;
+  return (
+    <div
+      data-prototype-message-id={p.message.id}
+      style={{
+        alignSelf: "flex-start",
+        width: "min(100%, 640px)",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        borderRadius: 14,
+        border: "1px solid #e2e8f0",
+        background: "#fff",
+        boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
+        overflow: "hidden",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <PrototypeBuildAiCardHeaderBar
+        trailing={
+          <WorkspaceMessageHeaderActions
+            show={hovered}
+            onCopy={() => void copyTextToClipboard(p.message.text)}
+            onReply={p.onSetReplyTo ? () => p.onSetReplyTo?.(p.message.id, preview) : undefined}
+          />
+        }
+      />
+      <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+        {p.message.text}
+      </div>
+    </div>
+  );
+}
+
 export function PrototypeChatTimeline(p: {
   readonly derived: readonly PrototypeChatBuiltMessage[];
   readonly userBubbles: readonly TimelineUserBubble[];
@@ -628,6 +756,8 @@ export function PrototypeChatTimeline(p: {
   readonly timelineInScrollParent?: boolean;
   /** 템플릿 미선택 시 AI 말풍선 안 콤보에 연결 */
   readonly templatePicker?: PrototypeInlineTemplatePickerProps | null;
+  readonly onSetReplyTo?: (messageId: string, preview: string) => void;
+  readonly onChipPrefillComposer?: (label: string) => void;
 }) {
   const rows = useMemo(() => {
     type Row =
@@ -682,33 +812,23 @@ export function PrototypeChatTimeline(p: {
                 message={row.m}
                 onAction={handleAction}
                 templatePicker={p.templatePicker ?? null}
+                onSetReplyTo={p.onSetReplyTo}
+                onChipPrefillComposer={p.onChipPrefillComposer}
               />
             );
           }
           if (row.kind === "user") {
-            return <PrototypeUserMessage key={row.u.id} text={row.u.text} />;
+            return (
+              <PrototypeUserMessage
+                key={row.u.id}
+                id={row.u.id}
+                text={row.u.text}
+                replyContextLine={row.u.replyContextLine ?? null}
+                onSetReplyTo={p.onSetReplyTo}
+              />
+            );
           }
-          return (
-            <div
-              key={row.e.id}
-              style={{
-                alignSelf: "flex-start",
-                width: "min(100%, 640px)",
-                maxWidth: "100%",
-                boxSizing: "border-box",
-                borderRadius: 14,
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
-                overflow: "hidden",
-              }}
-            >
-              <PrototypeBuildAiCardHeaderBar />
-              <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
-                {row.e.text}
-              </div>
-            </div>
-          );
+          return <PrototypeEphemeralAiMessage key={row.e.id} message={row.e} onSetReplyTo={p.onSetReplyTo} />;
         })}
       </div>
 

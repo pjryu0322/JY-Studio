@@ -113,6 +113,7 @@ export function RequirementsChatPanel({
   onRegenerateDeliverables,
   onConfirmDeliverables,
   memberControls,
+  headerLeading,
   screenAiMemberId = "ideation",
   sessionUserDisplayName = "나",
   promptTimeline,
@@ -141,6 +142,8 @@ export function RequirementsChatPanel({
   readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
   /** 아이디어 구체화 참여 멤버 보기(상단 아이콘) */
   readonly memberControls?: { count: number; onOpen: () => void } | null;
+  /** 구현 단계 등: 헤더 왼쪽 상태 pill */
+  readonly headerLeading?: ReactNode;
   /** 이 채팅 패널이 속한 화면의 전담 AI(표시명·내부 에이전트 병행 시 폴백) */
   readonly screenAiMemberId?: WorkspaceAiMemberId;
   /** 내 메시지 헤더에 표시할 닉네임(세션 사용자 표시명) */
@@ -353,9 +356,10 @@ export function RequirementsChatPanel({
 
   const membersUi = memberControls ?? null;
 
-  const topChrome = membersUi ? (
-    <RequirementsChatHeaderRow ref={headerRef} memberControls={membersUi} leading={null} />
-  ) : null;
+  const topChrome =
+    membersUi || headerLeading ? (
+      <RequirementsChatHeaderRow ref={headerRef} memberControls={membersUi} leading={headerLeading ?? null} />
+    ) : null;
 
   const messageBody = (
     <>

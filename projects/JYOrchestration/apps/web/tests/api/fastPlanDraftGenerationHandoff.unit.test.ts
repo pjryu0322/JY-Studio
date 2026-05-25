@@ -71,8 +71,9 @@ describe("fastPlanDraftGenerationHandoff", () => {
     expect(message.content).toContain("기획안 산출물을 생성했습니다");
     expect(message.content).not.toContain("빠른 기획안");
     expect(message.meta?.interviewSuggestions).toEqual(
-      expect.arrayContaining(["Artifact 보기", "구현 시작", "추가 보완"]),
+      expect.arrayContaining(["구현 시작", "추가 보완"]),
     );
+    expect(message.meta?.interviewSuggestions).not.toContain("Artifact 보기");
     expect(message.meta?.fastPlanArtifactId).toBe("artifact-1");
   });
 

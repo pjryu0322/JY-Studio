@@ -20,8 +20,9 @@ describe("implementationUxLabels", () => {
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("기획안 생성");
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("생성 단계 준비");
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).toEqual(
-      expect.arrayContaining(["Artifact 보기", "구현 시작", "추가 보완"]),
+      expect.arrayContaining(["구현 시작", "추가 보완"]),
     );
+    expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("Artifact 보기");
   });
 
   it("uses implementation phase wording", () => {

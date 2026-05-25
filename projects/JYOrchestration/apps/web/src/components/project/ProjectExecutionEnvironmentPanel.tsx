@@ -2229,7 +2229,7 @@ export function ProjectExecutionEnvironmentPanel({
                 lineHeight: 1.25,
               }}
             >
-              프로토타입 자동 생성 환경설정
+              프로젝트 자동 생성 환경설정
             </h1>
             {prototypeMvpToolbar}
           </div>

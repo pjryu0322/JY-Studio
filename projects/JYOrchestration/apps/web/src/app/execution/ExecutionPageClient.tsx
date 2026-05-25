@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
+import {
+  requirementsWorkspaceMainRowStyle,
+  requirementsWorkspaceShellStyle,
+} from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { fetchProjectById } from "@/components/project-spec/api";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -67,18 +71,23 @@ export function ExecutionPageClient() {
   }, [requirementsStateJson]);
 
   return (
-    <WorkflowStageChrome title={null} subtitle={undefined}>
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          padding: 14,
-          boxSizing: "border-box",
-        }}
-      >
+    <WorkflowStageChrome
+      title={null}
+      subtitle={undefined}
+      hideWorkflowNav
+      workNoteProjectId={projectId || undefined}
+      stageLayoutStyle={{
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        border: "none",
+        background: "transparent",
+        borderRadius: 0,
+      }}
+    >
+      <div style={requirementsWorkspaceShellStyle}>
+        <div style={requirementsWorkspaceMainRowStyle} className="jyo-execution-workspace-main">
         {!projectId ? (
           <EmptyState title="프로젝트가 지정되지 않았습니다." description="URL에 ?projectId= 를 붙여 다시 열어 주세요." />
         ) : loading ? (
@@ -102,6 +111,7 @@ export function ExecutionPageClient() {
             />
           </div>
         )}
+        </div>
       </div>
     </WorkflowStageChrome>
   );

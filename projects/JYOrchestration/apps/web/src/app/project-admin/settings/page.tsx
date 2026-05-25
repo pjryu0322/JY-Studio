@@ -90,8 +90,6 @@ function ProjectAdminSettingsInner() {
     [projectRole]
   );
 
-  const backHref = projectId ? `/requirements?projectId=${encodeURIComponent(projectId)}&preview=1` : "/";
-
   useEffect(() => {
     if (!projectId) return;
     if (typeof window === "undefined") return;
@@ -110,15 +108,6 @@ function ProjectAdminSettingsInner() {
 
   return (
     <main data-testid="project-admin-settings-page" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
-      <div style={{ marginBottom: 16 }}>
-        <Link
-          href={backHref}
-          style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
-        >
-          ← 프로토타입 미리보기로 돌아가기
-        </Link>
-      </div>
-
       {!projectId ? (
         <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
           <p style={{ margin: "0 0 10px 0" }}>

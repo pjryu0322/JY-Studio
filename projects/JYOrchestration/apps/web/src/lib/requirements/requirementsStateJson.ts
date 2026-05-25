@@ -17,6 +17,8 @@ import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOr
 import { parseArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
+import { parsePrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatWire";
+import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
 import { parseFastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastPlanDraftSlotPatch";
@@ -507,11 +509,13 @@ export type RequirementsStateJson = {
    * 충분하면 산출물 생성(writer)로 이어진다.
    */
   organizePlannerState?: RequirementsOrganizePlannerState | null;
-  /** 프로토타입 생성 워크스페이스 채팅(영구 저장, v1) */
+  /** 프로토타입 생성 워크스페이스 채팅(영구 저장, v1) — 레거시; 신규는 prototypeExecutionSingleChatV1 */
   prototypeWorkspaceChatV1?: {
     userLog: Array<{ id: string; text: string; at: number }>;
     aiLog: Array<{ id: string; text: string; at: number }>;
   } | null;
+  /** 구현 단계 SingleChat 대화(RequirementsMessage, 영구 저장) */
+  prototypeExecutionSingleChatV1?: PrototypeExecutionSingleChatV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -902,6 +906,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "prototypeWorkspaceTimelineCardsV1" in o ? (o.prototypeWorkspaceTimelineCardsV1 as unknown) : undefined;
   const prototypeWorkspaceTimelineCardsV1 = parseProtoTimelineCards(protoTimelineRaw);
 
+  const protoExecChatRaw =
+    "prototypeExecutionSingleChatV1" in o ? (o.prototypeExecutionSingleChatV1 as unknown) : undefined;
+  const prototypeExecutionSingleChatV1 = parsePrototypeExecutionSingleChatV1(protoExecChatRaw);
+
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
   if (featurePlanningRaw === undefined) featurePlanningSlotsV1 = undefined;
@@ -1031,6 +1039,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : parseOrganizePlannerState(o.organizePlannerState) ?? null,
     ...(prototypeWorkspaceChatV1 !== undefined ? { prototypeWorkspaceChatV1 } : {}),
+    ...(prototypeExecutionSingleChatV1 !== undefined ? { prototypeExecutionSingleChatV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),

@@ -6,9 +6,8 @@ import { PlatformTopNav } from "@/components/layout/PlatformTopNav";
 
 /**
  * 플랫폼 좌측 레일(내비·작업메모 등) 표시 여부.
- * 프로젝트 목록(홈 `/`)·일반 설정 화면에서는 표시하고,
- * 아이디어 구체화 및 그 이후 워크플로·프로젝트 작업 화면에서는 숨긴다.
- * 로그인·회원가입(`/login`)은 비로그인 전용이므로 레일을 두지 않는다.
+ * 서비스 기획·구현·검토 등 프로젝트 워크플로 단계 화면과 홈·지식팩 등에서는 표시한다.
+ * 로그인·회원가입(`/login`)·메신저 전용 창 등은 레일을 두지 않는다.
  */
 export function platformTopNavVisibleForPath(pathname: string): boolean {
   const p = (pathname.split("?")[0] || "/").trim() || "/";
@@ -25,12 +24,12 @@ export function platformTopNavVisibleForPath(pathname: string): boolean {
 
   if (p === "/knowledge-packs" || p.startsWith("/knowledge-packs/")) return true;
 
-  // 요구사항 화면은 좌측 레일(작업메모/알림/설정 등) 접근이 필요하므로 표시한다.
+  // 프로젝트 워크플로 단계 — 레일에서 기획·구현·검토 전환 시에도 유지
   if (p === "/requirements" || p.startsWith("/requirements/")) return true;
+  if (p === "/execution" || p.startsWith("/execution/")) return true;
+  if (p === "/prototype-review" || p.startsWith("/prototype-review/")) return true;
   if (p === "/features") return false;
   if (p === "/tasks") return false;
-  if (p === "/execution") return false;
-  if (p === "/prototype-review") return false;
   if (p === "/trace") return false;
   if (p === "/planning-execution") return false;
   if (p.startsWith("/projects/")) return false;

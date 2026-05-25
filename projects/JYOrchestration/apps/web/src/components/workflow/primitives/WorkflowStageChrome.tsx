@@ -18,6 +18,7 @@ export function WorkflowStageChrome({
   backLabel,
   stageLayoutStyle,
   workNoteProjectId,
+  hideWorkflowNav,
   children,
 }: {
   readonly title?: string | null;
@@ -29,6 +30,8 @@ export function WorkflowStageChrome({
   readonly stageLayoutStyle?: CSSProperties;
   /** 지정 시 대화 선택 → 작업메모 브리지(내비의 작업메모 버튼과 동일 projectId) */
   readonly workNoteProjectId?: string;
+  /** 프로젝트 레일에 단계가 있을 때 중복 워크플로 내비(모바일 단계 타이틀 포함) 숨김 */
+  readonly hideWorkflowNav?: boolean;
   readonly children: ReactNode;
 }) {
   const hasHeader = Boolean(String(title ?? "").trim()) || Boolean(String(subtitle ?? "").trim()) || Boolean(right) || Boolean(backHref);
@@ -38,11 +41,22 @@ export function WorkflowStageChrome({
         <WorkflowPageHeader title={title} subtitle={subtitle} right={right} backHref={backHref} backLabel={backLabel} />
       ) : null}
 
-      <div style={{ marginTop: hasHeader ? 12 : 0, marginBottom: 4, flexShrink: 0 }}>
-        <ProjectWorkflowNav />
-      </div>
+      {hideWorkflowNav ? null : (
+        <div style={{ marginTop: hasHeader ? 12 : 0, marginBottom: 4, flexShrink: 0 }}>
+          <ProjectWorkflowNav />
+        </div>
+      )}
 
-      <div style={{ marginTop: 14, flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div
+        style={{
+          marginTop: hideWorkflowNav ? 0 : 14,
+          flex: "1 1 auto",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+        }}
+      >
         <StageWorkspaceLayout style={stageLayoutStyle}>{children}</StageWorkspaceLayout>
       </div>
     </div>

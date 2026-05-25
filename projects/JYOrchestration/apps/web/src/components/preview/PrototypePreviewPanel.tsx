@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
@@ -12,12 +12,14 @@ import {
   type PrototypePrePlanGate,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
+  PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
-  PrototypeChatInput,
-  PrototypeChatTimeline,
-  type PrototypeInlineTemplatePickerProps,
-  type TimelineEphemeralAi,
-} from "@/components/preview/prototypeChatTimeline";
+} from "@/components/preview/PrototypeExecutionChatPanel";
+import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
+import {
+  buildPrototypeExecutionSingleChatPersistPatch,
+  usePrototypeExecutionSingleChat,
+} from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
@@ -65,12 +67,9 @@ import {
   parseRequirementsStateJson,
   type PrototypeWorkspaceTimelineCardV1,
 } from "@/lib/requirements/requirementsStateJson";
-import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
-import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
-import { ChatWindowScreenLabelBottom, ChatWindowScreenLabelTop } from "@/components/workspace/ChatWindowScreenLabelBoundaries";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
@@ -86,13 +85,6 @@ type EnvStatus = Readonly<{
   runnable: EnvBadge;
   message: string | null;
 }>;
-
-const prototypeComposerColumnStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  minWidth: 0,
-};
 
 function githubPagesSettingsUrlFromSuggestedPreview(suggested: string | null | undefined): string | null {
   const s = String(suggested ?? "").trim();
@@ -116,18 +108,6 @@ function isLikelyPreviewUrl(url: string): boolean {
   if (!u) return false;
   return /^https?:\/\//i.test(u);
 }
-
-/** 요구사항 협업실과 동일: 단일 열 채팅 셸 */
-const prototypeStageShell: CSSProperties = {
-  flex: "1 1 auto",
-  minHeight: 0,
-  minWidth: 0,
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  overflow: "hidden",
-  background: "#fff",
-};
 
 export function PrototypePreviewPanel({
   projectId,
@@ -179,16 +159,14 @@ export function PrototypePreviewPanel({
   /** 작업계획 생성 중복 클릭 방지 — state와 달리 동기적으로 잠금 */
   const planRequestInFlightRef = useRef(false);
   // --- chat-led UX (transient, state-derived) ---
-  const [chatInput, setChatInput] = useState("");
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [chatUserLog, setChatUserLog] = useState<Array<{ id: string; text: string; at: number }>>([]);
-  const [ephemeralAiReplies, setEphemeralAiReplies] = useState<TimelineEphemeralAi[]>([]);
   /** DB에 저장하는 타임라인 카드(작업계획·WorkUnit 완료), 재실행 후에도 유지 */
   const [timelineCards, setTimelineCards] = useState<readonly PrototypeWorkspaceTimelineCardV1[]>([]);
   const lastTimelineSnapRef = useRef<string>("");
   /** 작업계획 API 호출 전: 생성 버튼 → 프롬프트/작업 시작 대기 */
   const [prePlanGate, setPrePlanGate] = useState<PrototypePrePlanGate>("idle");
   const prePlannerNotesRef = useRef("");
+  const appendExecutionNoticeRef = useRef<(text: string) => void>(() => {});
   /** [확정]까지 눌러야 true — 콤보만으로는 true가 되지 않음 */
   const [templateConfirmed, setTemplateConfirmed] = useState(false);
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
@@ -294,51 +272,41 @@ export function PrototypePreviewPanel({
      * 2) 로컬(sessionStorage) — DB 미연동/오프라인 대비
      */
     const db = parseRequirementsStateJson(requirementsStateJson);
-    const dbChat = db.prototypeWorkspaceChatV1;
-    const userFromDb = dbChat?.userLog?.length ? dbChat.userLog : null;
-    const aiFromDb = dbChat?.aiLog?.length ? dbChat.aiLog : null;
-    setChatUserLog(userFromDb ? [...userFromDb] : r.chatUserLog ? [...r.chatUserLog] : []);
-    setEphemeralAiReplies(aiFromDb ? [...aiFromDb] : r.chatAiLog ? [...r.chatAiLog] : []);
     const tc = db.prototypeWorkspaceTimelineCardsV1;
     setTimelineCards(Array.isArray(tc) && tc.length ? [...tc] : []);
     lastTimelineSnapRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
   }, [projectId]);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      savePrototypeGenerationRecord(projectId, {
-        chatUserLog: chatUserLog.slice(-200),
-        chatAiLog: ephemeralAiReplies.slice(-200),
-      });
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [projectId, chatUserLog, ephemeralAiReplies]);
-
   const lastPersistedChatFingerprintRef = useRef<string>("");
-  const persistChatToDb = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const userLog = chatUserLog.slice(-200);
-    const aiLog = ephemeralAiReplies.slice(-200);
-    const tc = [...timelineCards].slice(-300);
-    const fingerprint = JSON.stringify({
-      u: userLog.map((x) => [x.id, x.at]),
-      a: aiLog.map((x) => [x.id, x.at]),
-      t: tc.map((c) => [c.id, c.at]),
-    });
-    if (fingerprint === lastPersistedChatFingerprintRef.current) return;
-    lastPersistedChatFingerprintRef.current = fingerprint;
+  const persistChatToDb = useCallback(
+    async (chatPatch?: {
+      messages: readonly import("@/lib/requirements/requirementsMessage").RequirementsMessage[];
+      slots: readonly import("@/lib/prototype/prototypeExecutionSingleChatTypes").PrototypeExecutionInterviewSlot[];
+      answers: Readonly<Record<string, string>>;
+      currentSlotKey: string | null;
+    }) => {
+      const pid = projectId.trim();
+      if (!pid) return;
+      const tc = [...timelineCards].slice(-300);
+      const fingerprint = JSON.stringify({
+        c: chatPatch?.messages?.map((m) => [m.id, m.createdAt]) ?? [],
+        t: tc.map((c) => [c.id, c.at]),
+      });
+      if (fingerprint === lastPersistedChatFingerprintRef.current) return;
+      lastPersistedChatFingerprintRef.current = fingerprint;
 
-    const base = parseRequirementsStateJson(requirementsStateJson);
-    const merged = mergeRequirementsStateJson(base, {
-      prototypeWorkspaceChatV1: { userLog, aiLog },
-      prototypeWorkspaceTimelineCardsV1: tc,
-      lastSavedAt: new Date().toISOString(),
-    });
+      const merged = chatPatch
+        ? buildPrototypeExecutionSingleChatPersistPatch(requirementsStateJson, chatPatch)
+        : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJson), {
+            prototypeWorkspaceTimelineCardsV1: tc,
+            lastSavedAt: new Date().toISOString(),
+          });
 
-    void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
-  }, [projectId, chatUserLog, ephemeralAiReplies, timelineCards, requirementsStateJson]);
+      void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
+    },
+    [projectId, timelineCards, requirementsStateJson],
+  );
 
   useEffect(() => {
     const t = window.setTimeout(() => void persistChatToDb(), 1200);
@@ -499,11 +467,6 @@ export function PrototypePreviewPanel({
     return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "prototype_build");
   }, [workspaceAiGraph]);
 
-  /** 작업계획 경로는 토스트 대신 타임라인에 남는 한 줄(사라지지 않음) */
-  const pushEphemeralPlannerNotice = useCallback((text: string) => {
-    const t = Date.now();
-    setEphemeralAiReplies((prev) => [...prev, { id: `planner-line-${t}`, text, at: t }]);
-  }, []);
 
   useEffect(
     () => () => {
@@ -571,7 +534,7 @@ export function PrototypePreviewPanel({
     async (prePlanUserNote?: string) => {
       if (!canRequestGeneration.designOk) return;
       if (!projectId.trim()) {
-        pushEphemeralPlannerNotice("프로젝트 정보가 없어 작업계획 요청을 보낼 수 없습니다.");
+        appendExecutionNoticeRef.current("프로젝트 정보가 없어 작업계획 요청을 보낼 수 없습니다.");
         return;
       }
       const note = String(prePlanUserNote ?? "").trim();
@@ -609,18 +572,18 @@ export function PrototypePreviewPanel({
             return;
           }
           /** 서버가 메시지 없이 같은 run만 돌려준 경우(플래너 진행 중 중복 요청 등)는 타임라인 카드만 유지 */
-          if (wuN === 0 && serverMsg) pushEphemeralPlannerNotice(serverMsg);
+          if (wuN === 0 && serverMsg) appendExecutionNoticeRef.current(serverMsg);
         } else {
-          pushEphemeralPlannerNotice(res.message?.trim() || "작업계획 생성에 실패했습니다.");
+          appendExecutionNoticeRef.current(res.message?.trim() || "작업계획 생성에 실패했습니다.");
         }
       } catch {
-        pushEphemeralPlannerNotice("네트워크 오류로 작업계획 요청에 실패했습니다.");
+        appendExecutionNoticeRef.current("네트워크 오류로 작업계획 요청에 실패했습니다.");
       } finally {
         setProtoBusy(false);
         void refreshLatestRun();
       }
     },
-    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun, pushEphemeralPlannerNotice],
+    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun],
   );
 
   /**
@@ -1133,6 +1096,110 @@ export function PrototypePreviewPanel({
     [derivedChatMessages, timelineCardsForMerge],
   );
 
+  const ideationSummaryForChat = useMemo(
+    () =>
+      ideationAssets
+        .map((a) => `${String(a.title ?? "").trim()}: ${String(a.content ?? "").trim()}`.trim())
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 8000),
+    [ideationAssets],
+  );
+
+  const actorFlowSummaryForChat = useMemo(
+    () => flowSteps.map((s) => `${s.title}: ${String(s.purpose ?? "").trim()}`).join("\n").slice(0, 8000),
+    [flowSteps],
+  );
+
+  const executionSingleChat = usePrototypeExecutionSingleChat({
+    projectId,
+    projectName: projectName || "프로젝트",
+    projectDescription,
+    requirementsStateJson,
+    mergedBuiltMessages: mergedChatMessages,
+    envOk: canRequestGeneration.envOk,
+    templateName: effectiveTemplateDef?.nameKo ?? effectiveTemplate,
+    ideationSummary: ideationSummaryForChat,
+    actorFlowSummary: actorFlowSummaryForChat,
+    protoBusy,
+    inputBlocked: isMessageInputBlocked,
+    onPersistStateJson: (patch) => {
+      void persistChatToDb(patch);
+    },
+    onOperationalSend: async (text) => {
+      const wantsExecutionPlan =
+        canRequestGeneration.envOk &&
+        canRequestGeneration.designOk &&
+        !isRunningState &&
+        /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
+          text,
+        );
+
+      if (wantsExecutionPlan) {
+        if (!templateConfirmed) {
+          appendExecutionNoticeRef.current(
+            canRequestGeneration.envOk
+              ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
+              : "먼저 실행 환경 점검을 완료해 주세요.",
+          );
+          return "handled";
+        }
+        startWorkPlanGenerationFromChat();
+        return "handled";
+      }
+
+      if (isDraftGenerationComplete) {
+        appendExecutionNoticeRef.current(
+          "새 요청은 「처음부터 다시 생성」으로 진행해 주세요. 타임라인의 버튼을 사용하거나 실행 설정에서 다시 시작할 수 있습니다.",
+        );
+        return "handled";
+      }
+
+      if (isRunningState) {
+        appendExecutionNoticeRef.current("실행 중에는 작업계획을 수정할 수 없습니다. 중단 후 재계획할 수 있습니다.");
+        return "handled";
+      }
+
+      const run = latestRun;
+      if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
+        setProtoBusy(true);
+        try {
+          const r = await postPrototypeRegeneratePlan(run.id, {
+            projectId,
+            userFeedback: text,
+            plannerContext: plannerContextPayload,
+          });
+          if (r.success && r.data?.run) setLatestRun(r.data.run);
+          if (r.message) showToast(r.message);
+        } finally {
+          setProtoBusy(false);
+          void refreshLatestRun();
+        }
+        return "handled";
+      }
+
+      if (!templateConfirmed) {
+        appendExecutionNoticeRef.current(
+          canRequestGeneration.envOk
+            ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
+            : "먼저 실행 환경 점검을 완료해 주세요.",
+        );
+        return "handled";
+      }
+
+      if (!run?.id) {
+        const cur = prePlannerNotesRef.current.trim();
+        prePlannerNotesRef.current = cur ? `${cur}\n\n${text}` : text;
+        return "handled";
+      }
+
+      showToast("지금 단계에서는 입력을 처리할 수 없습니다. 상태를 확인해 주세요.");
+      return "handled";
+    },
+  });
+
+  appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
+
   useEffect(() => {
     const run = latestRun;
     if (!run?.id) return;
@@ -1191,131 +1258,6 @@ export function PrototypePreviewPanel({
       return [...prev, ...additions].slice(-300);
     });
   }, [latestRun]);
-
-  const onSendChatMessage = useCallback(async () => {
-    const text = chatInput.trim();
-    if (!text) return;
-    if (isMessageInputBlocked) return;
-
-    const now = Date.now();
-    const wantsExecutionPlan =
-      canRequestGeneration.envOk &&
-      canRequestGeneration.designOk &&
-      !isRunningState &&
-      /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
-        text,
-      );
-
-    setChatUserLog((prev) => [...prev, { id: `user-${now}-${Math.random()}`, text, at: now }]);
-    setChatInput("");
-
-    if (wantsExecutionPlan) {
-      if (!templateConfirmed) {
-        setEphemeralAiReplies((prev) => [
-          ...prev,
-          {
-            id: `ai-${now}-need-tmpl`,
-            text: canRequestGeneration.envOk
-              ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
-              : "먼저 실행 환경 점검을 완료해 주세요.",
-            at: now,
-          },
-        ]);
-        return;
-      }
-      startWorkPlanGenerationFromChat();
-      return;
-    }
-
-    if (isDraftGenerationComplete) {
-      setEphemeralAiReplies((prev) => [
-        ...prev,
-        {
-          id: `ai-${now}-done-hint`,
-          text: "새 요청은 「처음부터 다시 생성」으로 진행해 주세요. 타임라인의 버튼을 사용하거나 실행 설정에서 다시 시작할 수 있습니다.",
-          at: now,
-        },
-      ]);
-      return;
-    }
-
-    if (isRunningState) {
-      setEphemeralAiReplies((prev) => [
-        ...prev,
-        {
-          id: `ai-${now}-run-guard`,
-          text: "실행 중에는 작업계획을 수정할 수 없습니다. 중단 후 재계획할 수 있습니다.",
-          at: now,
-        },
-      ]);
-      return;
-    }
-
-    const run = latestRun;
-    if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
-      setProtoBusy(true);
-      try {
-        const r = await postPrototypeRegeneratePlan(run.id, {
-          projectId,
-          userFeedback: text,
-          plannerContext: plannerContextPayload,
-        });
-        if (r.success && r.data?.run) setLatestRun(r.data.run);
-        if (r.message) showToast(r.message);
-      } finally {
-        setProtoBusy(false);
-        void refreshLatestRun();
-      }
-      return;
-    }
-
-    if (!templateConfirmed) {
-      setEphemeralAiReplies((prev) => [
-        ...prev,
-        {
-          id: `ai-${now}-need-tmpl`,
-          text: canRequestGeneration.envOk
-            ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
-            : "먼저 실행 환경 점검을 완료해 주세요.",
-          at: now,
-        },
-      ]);
-      return;
-    }
-
-    if (!run?.id) {
-      const cur = prePlannerNotesRef.current.trim();
-      prePlannerNotesRef.current = cur ? `${cur}\n\n${text}` : text;
-      return;
-    }
-
-    showToast("지금 단계에서는 입력을 처리할 수 없습니다. 상태를 확인해 주세요.");
-  }, [
-    chatInput,
-    isMessageInputBlocked,
-    isRunningState,
-    latestRun,
-    projectId,
-    canRequestGeneration.envOk,
-    canRequestGeneration.designOk,
-    plannerContextPayload,
-    refreshLatestRun,
-    templateConfirmed,
-    startWorkPlanGenerationFromChat,
-    isDraftGenerationComplete,
-  ]);
-
-  const onChatTextareaKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key !== "Enter") return;
-      if (e.nativeEvent.isComposing) return;
-      if (e.shiftKey) return;
-      e.preventDefault();
-      if (isMessageInputBlocked || !chatInput.trim()) return;
-      void onSendChatMessage();
-    },
-    [chatInput, isMessageInputBlocked, onSendChatMessage],
-  );
 
   const handleChatIntent = useCallback(
     (a: PrototypeChatAction) => {
@@ -1579,16 +1521,16 @@ export function PrototypePreviewPanel({
   const prototypeHeaderPill = useMemo(() => {
     const run = latestRun;
     if (!run) {
-      return { left: "프로토타입 생성", right: null as string | null };
+      return { left: "구현", right: null as string | null };
     }
     const total = run.totalWorkUnits > 0 ? run.totalWorkUnits : run.workUnits.length;
     if (!total) {
       if (run.status === "PLANNER_ANALYZING") return { left: "작업계획", right: "생성 중" };
-      return { left: "프로토타입 생성", right: "준비" };
+      return { left: "구현", right: "준비" };
     }
     const done = run.workUnits.filter((u) => u.status === "MERGED" || u.status === "SKIPPED").length;
     const pct = Math.min(100, Math.round((done / total) * 100));
-    return { left: `프로토타입 작업 ${pct}%`, right: `${done}/${total}` };
+    return { left: `구현 작업 ${pct}%`, right: `${done}/${total}` };
   }, [latestRun]);
 
   return (
@@ -1596,12 +1538,14 @@ export function PrototypePreviewPanel({
       className="jyo-prototype-generation-root"
       style={{
         position: "relative",
-        flex: 1,
+        flex: "1 1 auto",
         minHeight: 0,
         minWidth: 0,
         height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       <style>{`
@@ -1619,145 +1563,91 @@ export function PrototypePreviewPanel({
         </div>
       ) : null}
 
-      <div className="jyo-prototype-stage-shell" style={{ ...prototypeStageShell, height: "100%" }}>
-        <div
-          data-testid="prototype-generation-chat-panel"
-          className="chat-viewport"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            flex: "1 1 auto",
-            height: "100%",
-            minHeight: 0,
-            minWidth: 280,
-            maxWidth: "100%",
-            overflow: "hidden",
+      <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+        <PrototypeExecutionChatPanel
+          conversationStatus={executionSingleChat.conversationStatus}
+          chatMessages={executionSingleChat.chatMessages}
+          memberControls={{
+            count: prototypeModalParticipants.length,
+            onOpen: () => setProtoMembersModalOpen(true),
           }}
-          role="region"
-          aria-label="프로토타입 생성 채팅"
-        >
-          <div className="chat-header">
-            <ChatWindowScreenLabelTop />
-          <RequirementsChatHeaderRow
-            memberControls={{
-              count: prototypeModalParticipants.length,
-              onOpen: () => setProtoMembersModalOpen(true),
-            }}
-            leading={
-              <div style={{ position: "relative", minWidth: 0 }}>
-                <div
-                  role="status"
-                  aria-live="polite"
-                  title="현재 진행 상태"
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    maxWidth: "min(100%, 420px)",
-                  }}
-                >
-                  <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
-                  <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
-                  {prototypeHeaderPill.right ? (
-                    <>
-                      <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
-                      <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            }
-          />
-          </div>
-
+          statusPill={
+            <div style={{ position: "relative", minWidth: 0 }}>
               <div
-                className="chat-messages"
+                role="status"
+                aria-live="polite"
+                title="현재 진행 상태"
                 style={{
-                  position: "relative",
-                  padding: "18px 18px 12px",
-                  background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  color: "#0f172a",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  maxWidth: "min(100%, 420px)",
                 }}
               >
-                <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", minWidth: 0 }}>
-                  <PrototypeChatTimeline
-                    derived={mergedChatMessages}
-                    userBubbles={chatUserLog}
-                    ephemeralAi={ephemeralAiReplies}
-                    onAction={handleChatIntent}
-                    cursorPromptResolver={(order) => sortedWorkUnitsForSidebar.find((x) => x.order === order) ?? null}
-                    timelineInScrollParent
-                    templatePicker={chatInlineTemplatePicker}
-                  />
-                  {isNextPublicDevWorkflowToolsEnabled() ? (
-                    <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, marginTop: 12 }}>
-                      <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
-                      <pre
-                        style={{
-                          marginTop: 8,
-                          fontSize: 10,
-                          lineHeight: 1.35,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          background: "#fff",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 8,
-                          padding: 8,
-                        }}
-                      >
-                        {JSON.stringify(
-                          {
-                            executionSlots,
-                            plannerSource: latestRun?.plannerSource ?? null,
-                            plannerError: latestRun?.plannerError ?? null,
-                          },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </details>
-                  ) : null}
-                </div>
+                <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
+                <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
+                {prototypeHeaderPill.right ? (
+                  <>
+                    <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
+                    <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
+                  </>
+                ) : null}
               </div>
-
-              <div className="chat-input">
-                <ChatWindowScreenLabelBottom />
-              <RequirementsChatComposerFooter>
-                <div style={prototypeComposerColumnStyle}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-end",
-                      gap: 10,
-                      borderRadius: 22,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
-                      padding: "8px 10px",
-                    }}
-                  >
-                    <PrototypeChatInput
-                      value={chatInput}
-                      onChange={setChatInput}
-                      onSend={() => void onSendChatMessage()}
-                      onKeyDown={onChatTextareaKeyDown}
-                      placeholder={chatPlaceholder}
-                      disabled={isMessageInputBlocked}
-                      inputRef={chatInputRef}
-                      embedInComposer
-                      targetPickerItems={prototypeComposerAtAtItems}
-                    />
-                  </div>
-                </div>
-              </RequirementsChatComposerFooter>
-              </div>
-        </div>
+            </div>
+          }
+          input={executionSingleChat.input}
+          onInputChange={executionSingleChat.setInput}
+          onSend={() => void executionSingleChat.sendMessage()}
+          busy={protoBusy}
+          inputDisabled={isMessageInputBlocked}
+          composerPlaceholder={chatPlaceholder}
+          textAreaRef={chatInputRef}
+          targetPickerItems={prototypeComposerAtAtItems}
+          replyTo={executionSingleChat.replyTo}
+          onClearReplyTo={() => executionSingleChat.setReplyTo(null)}
+          onSetReplyTo={(id, preview) => executionSingleChat.setReplyTo({ id, preview })}
+          onInterviewSuggestionPick={(label) => {
+            const picked = executionSingleChat.handleInterviewSuggestionPick(label);
+            if (picked.kind === "action") handleChatIntent(picked.action);
+          }}
+          aiInvokePending={executionSingleChat.aiInvokePending}
+          templatePicker={chatInlineTemplatePicker}
+        />
+        {isNextPublicDevWorkflowToolsEnabled() ? (
+          <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, margin: "0 18px 12px" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
+            <pre
+              style={{
+                marginTop: 8,
+                fontSize: 10,
+                lineHeight: 1.35,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                background: "#fff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                padding: 8,
+              }}
+            >
+              {JSON.stringify(
+                {
+                  executionSlots,
+                  plannerSource: latestRun?.plannerSource ?? null,
+                  plannerError: latestRun?.plannerError ?? null,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </details>
+        ) : null}
       </div>
 
       <WorkspaceParticipantsModal

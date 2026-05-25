@@ -44,6 +44,8 @@ export type RequirementsMessageMeta = {
    * 사용자 메시지에는 저장하지 않는 것이 일반적이다.
    */
   messageOverlayExplainability?: ExtractedOverlayPromptTraceMetadata | null;
+  /** 구현 단계: 파생(상태) 메시지 정렬 키 — 영구 저장하지 않음 */
+  prototypeOrderKey?: number;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

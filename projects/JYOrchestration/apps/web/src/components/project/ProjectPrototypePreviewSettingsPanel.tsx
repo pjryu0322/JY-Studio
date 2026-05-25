@@ -16,9 +16,9 @@ export function ProjectPrototypePreviewSettingsPanel(p: { readonly projectId: st
         background: t.bgCard,
       }}
     >
-      <h2 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프로토타입 Preview</h2>
+      <h2 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프로젝트 Preview</h2>
       <p style={{ margin: "0 0 14px 0", fontSize: 13, color: t.textSecondary, lineHeight: 1.55 }}>
-        이 프로젝트의 프로토타입 검토 화면에 적용됩니다. 값은 이 브라우저·프로젝트에만 저장됩니다.
+        이 프로젝트의 미리보기·검토 화면에 적용됩니다. 값은 이 브라우저·프로젝트에만 저장됩니다.
       </p>
       <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 800, color: t.textMuted }}>화면 레이아웃 (뷰포트)</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>

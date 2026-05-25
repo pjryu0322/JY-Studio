@@ -136,6 +136,32 @@ html:has(.jyo-requirements-route-root) body {
   width: 100%;
 }
 
+html:has(.jyo-execution-route-root) {
+  height: 100%;
+  overflow: hidden;
+}
+
+html:has(.jyo-execution-route-root) body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.jyo-execution-route-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+}
+
+.jyo-execution-workspace-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .jyo-platform-main {
   padding: 20px 24px 32px;
   max-width: 1600px;

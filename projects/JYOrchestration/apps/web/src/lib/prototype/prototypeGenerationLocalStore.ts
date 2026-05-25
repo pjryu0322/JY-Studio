@@ -8,6 +8,8 @@ export type PrototypeWorkspaceChatLine = Readonly<{
   id: string;
   text: string;
   at: number;
+  replyToId?: string | null;
+  replyContextLine?: string | null;
 }>;
 
 export type PrototypeGenerationLocalRecord = Readonly<{
@@ -92,7 +94,10 @@ export function loadPrototypeGenerationRecord(projectId: string): PrototypeGener
         const text = typeof r.text === "string" ? r.text : "";
         const at = typeof r.at === "number" && Number.isFinite(r.at) ? r.at : 0;
         if (!id || !text || !at) continue;
-        out.push({ id, text: text.slice(0, 8000), at });
+        const replyToId = typeof r.replyToId === "string" && r.replyToId.trim() ? r.replyToId.trim() : null;
+        const replyContextLine =
+          typeof r.replyContextLine === "string" && r.replyContextLine.trim() ? r.replyContextLine.trim().slice(0, 200) : null;
+        out.push({ id, text: text.slice(0, 8000), at, replyToId, replyContextLine });
       }
       out.sort((a, b) => a.at - b.at);
       return out.slice(-200);

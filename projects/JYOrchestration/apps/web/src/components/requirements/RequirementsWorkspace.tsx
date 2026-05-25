@@ -254,6 +254,7 @@ import {
   countCompletedArtifactHubEntries,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
+import { collectDeliverableViewerAssetIds } from "@/lib/requirements/deliverableAssetPicker";
 import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
 import { buildOrchestrationUiProjection } from "@/lib/requirements/requirementsOrchestrationUiProjection";
@@ -992,6 +993,23 @@ export function RequirementsWorkspace({
     fetchNonce,
     project?.requirementsStateJson,
   ]);
+
+  const deliverableViewerAssetIds = useMemo(
+    () =>
+      collectDeliverableViewerAssetIds({
+        deliverableAssets: deliverableAssetsFromProject,
+        projectArtifacts: projectArtifactsFromState,
+        projectId: resolvedProjectId.trim(),
+      }),
+    [
+      deliverableAssetsFromProject,
+      projectArtifactsFromState,
+      resolvedProjectId,
+      saveState,
+      fetchNonce,
+      conversationResetNonce,
+    ],
+  );
 
   const deliverableViewerAssets = useMemo(() => {
     const pid = resolvedProjectId.trim();
@@ -2984,10 +3002,10 @@ export function RequirementsWorkspace({
 
   const handleArtifactHubSelect = useCallback(
     (entry: ProjectArtifactHubEntry) => {
-      setArtifactHubOpen(false);
-      openDeliverableViewer([entry.assetId], entry.assetId);
+      const ids = deliverableViewerAssetIds.length ? deliverableViewerAssetIds : [entry.assetId];
+      openDeliverableViewer(ids, entry.assetId);
     },
-    [openDeliverableViewer],
+    [deliverableViewerAssetIds, openDeliverableViewer],
   );
 
   const handleArtifactHubGenerate = useCallback(
@@ -3140,6 +3158,7 @@ export function RequirementsWorkspace({
         open={artifactHubOpen}
         items={artifactHubCatalog}
         projectName={headerProjectName}
+        projectId={resolvedProjectId.trim() || undefined}
         projectArtifacts={
           stateJsonRef.current.projectArtifacts ?? persistedPromptState.projectArtifacts ?? undefined
         }
@@ -3150,6 +3169,7 @@ export function RequirementsWorkspace({
           hint: r.hint,
         }))}
         onClose={() => setArtifactHubOpen(false)}
+        closeOnEscape={!deliverableViewerOpen}
         onSelectEntry={handleArtifactHubSelect}
         onGenerate={handleArtifactHubGenerate}
         onExportFeedback={({ kind, count, blocked }) => {

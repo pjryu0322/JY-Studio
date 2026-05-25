@@ -13,6 +13,18 @@ import {
   downloadArtifactHubSelectionAsDoc,
   openArtifactHubSelectionAsPdf,
 } from "@/lib/requirements/artifactHubExport";
+import {
+  artifactExportIconButtonStyle,
+  DocExportIcon,
+  PdfExportIcon,
+} from "@/components/requirements/artifactExportIcons";
+import {
+  buildDeliverableAssetPickerLabel,
+  buildMergedDeliverablePickerAssets,
+  computeLatestVersionByDeliverableType,
+  pickDefaultDeliverableAssetId,
+  resolveDeliverablePickerLabel,
+} from "@/lib/requirements/deliverableAssetPicker";
 
 const backdropStyle: CSSProperties = {
   position: "fixed",
@@ -72,20 +84,6 @@ const genBtnStyle: CSSProperties = {
   color: "#0f172a",
 };
 
-const headerIconBtnStyle: CSSProperties = {
-  border: "1px solid #e2e8f0",
-  background: "#fff",
-  borderRadius: 8,
-  width: 34,
-  height: 34,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-  color: "#0f172a",
-  padding: 0,
-};
-
 const sectionHintStyle: CSSProperties = {
   fontSize: 12,
   color: "#64748b",
@@ -97,6 +95,7 @@ export function RequirementsArtifactHubDrawer({
   open,
   items,
   projectName,
+  projectId,
   projectArtifacts,
   deliverableAssets,
   generateDisabled,
@@ -105,10 +104,12 @@ export function RequirementsArtifactHubDrawer({
   onSelectEntry,
   onGenerate,
   onExportFeedback,
+  closeOnEscape = true,
 }: {
   readonly open: boolean;
   readonly items: readonly ProjectArtifactHubEntry[];
   readonly projectName?: string;
+  readonly projectId?: string;
   readonly projectArtifacts?: readonly ProjectArtifact[];
   readonly deliverableAssets?: readonly IdeationDeliverableAsset[];
   readonly generateDisabled?: boolean;
@@ -117,16 +118,50 @@ export function RequirementsArtifactHubDrawer({
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
   readonly onExportFeedback?: (input: { readonly kind: "doc" | "pdf"; readonly count: number; readonly blocked?: string }) => void;
+  /** 산출물 뷰어 등 상위 레이어가 열려 있을 때 Hub만 Esc로 닫히지 않게 */
+  readonly closeOnEscape?: boolean;
 }) {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [versionAssetId, setVersionAssetId] = useState("");
+
+  const pickerAssets = useMemo(
+    () =>
+      buildMergedDeliverablePickerAssets({
+        deliverableAssets: deliverableAssets ?? [],
+        projectArtifacts,
+        projectId: String(projectId ?? deliverableAssets?.[0]?.projectId ?? "").trim(),
+      }),
+    [deliverableAssets, projectArtifacts, projectId],
+  );
+  const showVersionPicker = pickerAssets.length > 1;
+  const pickerLabel = resolveDeliverablePickerLabel(pickerAssets);
+  const latestVersionByType = useMemo(
+    () => computeLatestVersionByDeliverableType(pickerAssets),
+    [pickerAssets],
+  );
+  const onlyFullPlanAssets = pickerAssets.length > 0 && pickerAssets.every((a) => a.type === "full_plan");
 
   useEffect(() => {
     if (!open) return;
     setSelectedIds(new Set(items.map((item) => item.id)));
-  }, [open, items]);
+    setVersionAssetId(pickDefaultDeliverableAssetId(pickerAssets));
+  }, [open, items, pickerAssets]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !showVersionPicker) return;
+    const entry = items.find((item) => item.assetId === versionAssetId);
+    if (entry) {
+      setSelectedIds((prev) => {
+        if (prev.has(entry.id)) return prev;
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+    }
+  }, [open, showVersionPicker, versionAssetId, items]);
+
+  useEffect(() => {
+    if (!open || !closeOnEscape) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -135,7 +170,7 @@ export function RequirementsArtifactHubDrawer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, closeOnEscape, onClose]);
 
   const selectedEntries = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
@@ -230,7 +265,7 @@ export function RequirementsArtifactHubDrawer({
                   aria-label="선택한 산출물 Doc 다운로드"
                   disabled={exportDisabled}
                   style={{
-                    ...headerIconBtnStyle,
+                    ...artifactExportIconButtonStyle,
                     opacity: exportDisabled ? 0.45 : 1,
                     cursor: exportDisabled ? "not-allowed" : "pointer",
                   }}
@@ -244,7 +279,7 @@ export function RequirementsArtifactHubDrawer({
                   aria-label="선택한 산출물 PDF로 저장"
                   disabled={exportDisabled}
                   style={{
-                    ...headerIconBtnStyle,
+                    ...artifactExportIconButtonStyle,
                     opacity: exportDisabled ? 0.45 : 1,
                     cursor: exportDisabled ? "not-allowed" : "pointer",
                   }}
@@ -259,6 +294,52 @@ export function RequirementsArtifactHubDrawer({
                 ? `완성 산출물 ${items.length}건 · 체크한 항목만 Doc/PDF`
                 : "산출물 생성·조회"}
             </div>
+            {showVersionPicker ? (
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  marginTop: 10,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#475569",
+                }}
+              >
+                <span>{pickerLabel}</span>
+                <select
+                  value={versionAssetId}
+                  onChange={(e) => setVersionAssetId(e.target.value)}
+                  aria-label={pickerLabel}
+                  style={{
+                    width: "100%",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  {pickerAssets.map((a) => {
+                    const maxVer = latestVersionByType.get(a.type) ?? a.version;
+                    const isLatest =
+                      typeof a.version === "number" && typeof maxVer === "number" ? a.version === maxVer : false;
+                    return (
+                      <option key={a.id} value={a.id}>
+                        {buildDeliverableAssetPickerLabel(a, {
+                          onlyFullPlanAssets,
+                          isLatest,
+                          isConfirmed: Boolean(a.confirmedAt),
+                        })}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            ) : null}
           </div>
           <button type="button" onClick={onClose} aria-label="닫기" style={closeBtnStyle}>
             ×
@@ -267,6 +348,7 @@ export function RequirementsArtifactHubDrawer({
         <ArtifactHubBody
           items={items}
           selectedIds={selectedIds}
+          highlightedAssetId={versionAssetId}
           generateDisabled={generateDisabled}
           lifecycleSummary={lifecycleSummary}
           onToggleSelected={toggleSelected}
@@ -281,6 +363,7 @@ export function RequirementsArtifactHubDrawer({
 function ArtifactHubBody({
   items,
   selectedIds,
+  highlightedAssetId,
   generateDisabled,
   lifecycleSummary,
   onToggleSelected,
@@ -289,6 +372,7 @@ function ArtifactHubBody({
 }: {
   readonly items: readonly ProjectArtifactHubEntry[];
   readonly selectedIds: ReadonlySet<string>;
+  readonly highlightedAssetId?: string;
   readonly generateDisabled?: boolean;
   readonly lifecycleSummary?: readonly Readonly<{ readonly label: string; readonly hint: string }>[];
   readonly onToggleSelected: (entryId: string, checked: boolean) => void;
@@ -392,6 +476,13 @@ function ArtifactHubBody({
                     whiteSpace: "normal",
                     overflow: "visible",
                     textOverflow: "clip",
+                    ...(highlightedAssetId && item.assetId === highlightedAssetId
+                      ? {
+                          borderColor: "#0d9488",
+                          background: "#ecfdf5",
+                          boxShadow: "0 0 0 1px #0d9488",
+                        }
+                      : {}),
                   }}
                   title={
                     item.hubReason
@@ -437,30 +528,6 @@ function ArtifactHubBody({
         )}
       </section>
     </div>
-  );
-}
-
-function DocExportIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M8 13h2" />
-      <path d="M8 17h8" />
-      <path d="M14 13h2" />
-    </svg>
-  );
-}
-
-function PdfExportIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M7 14h3v4H7z" />
-      <path d="M13 14h4v4h-4z" />
-      <path d="M7 10h10" />
-    </svg>
   );
 }
 
