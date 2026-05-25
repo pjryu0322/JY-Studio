@@ -18,7 +18,7 @@ import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecut
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { IMPLEMENTATION_MODE_PRIMARY_MEMBERS } from "@/lib/requirements/modeOrchestrationConfig";
 
-describe("cursor Wip execution", () => {
+describe("cursor Wip execution (legacy aliases)", () => {
   const plan = buildImplementationTaskPlan({
     projectId: "p1",
     projectArtifacts: [],
@@ -41,7 +41,7 @@ describe("cursor Wip execution", () => {
     expect(appendWipPolicyToCursorPrompt("x").trim()).toContain(CURSOR_WIP_POLICY_SECTION.slice(0, 20));
   });
 
-  it("creates cursor WIP execution state when Cursor WIP 작업 요청 is selected", () => {
+  it("creates WIP execution via legacy cursor action wrapper", () => {
     const result = buildRequestCursorWipWorkResult({
       projectId: "p1",
       requirementsStateJson: {},
@@ -52,10 +52,10 @@ describe("cursor Wip execution", () => {
     expect(result.kind).toBe("created");
     if (result.kind !== "created") return;
     expect(result.orchestrationPatch.cursorWipExecutionV1.status).toBe("developer_reviewing");
-    expect(result.orchestrationPatch.cursorWipExecutionV1.commits.length).toBe(1);
+    expect(result.orchestrationPatch.cursorWipExecutionV1.provider).toBe("cursor");
     expect(result.orchestrationPatch.cursorWipExecutionV1.branchName).toMatch(/^wip\/cursor\//);
     expect(result.chatPatch.messages.some((m) => m.content.includes("실행 도구: Cursor"))).toBe(true);
-    expect(result.orchestrationPatch.promptTimeline.some((e) => e.action === "cursor_wip_requested")).toBe(
+    expect(result.orchestrationPatch.promptTimeline.some((e) => e.action === "code_agent_wip_requested")).toBe(
       true,
     );
   });
@@ -98,21 +98,32 @@ describe("cursor Wip execution", () => {
     expect(scm.chatPatch.messages.some((m) => m.speakerId === "memo")).toBe(true);
   });
 
-  it("persists cursorWipExecutionV1 in requirements state json", () => {
+  it("reads legacy cursorWipExecutionV1 from requirements state json", () => {
     const wip = buildInitialCursorWipExecution({ projectId: "p1", plan, workItems });
-    const parsed = parseRequirementsStateJson({ cursorWipExecutionV1: wip });
-    expect(parsed.cursorWipExecutionV1?.branchName).toBe(wip.branchName);
-    expect(parseCursorWipExecutionV1(wip)?.projectId).toBe("p1");
+    const legacyBlob = {
+      version: "cursor_wip_execution_v1",
+      projectId: wip.projectId,
+      status: wip.status,
+      branchName: wip.branchName,
+      requestedAt: wip.requestedAt,
+      requestedBy: wip.requestedBy,
+      workItems: wip.workItems,
+      commits: [],
+      refactorRequests: [],
+    };
+    const parsed = parseRequirementsStateJson({ cursorWipExecutionV1: legacyBlob });
+    expect(parsed.codeAgentWipExecutionV1?.branchName).toBe(wip.branchName);
+    expect(parseCursorWipExecutionV1(legacyBlob)?.projectId).toBe("p1");
   });
 
-  it("routes Cursor WIP 작업 요청 chip", () => {
+  it("routes legacy Cursor WIP chip label", () => {
     const request = vi.fn();
     tryHandlePrototypeExecutionChip("Cursor WIP 작업 요청", {
       openEnvSettings: vi.fn(),
       openArtifactHub: vi.fn(),
       focusComposerForScopeEdit: vi.fn(),
       confirmImplementationTaskPlan: vi.fn(),
-      requestCursorWipWork: request,
+      requestCodeAgentWipWork: request,
       viewWipChanges: vi.fn(),
       requestRefactor: vi.fn(),
       requestAdditionalEdit: vi.fn(),
@@ -124,7 +135,7 @@ describe("cursor Wip execution", () => {
       refreshStatus: vi.fn(),
       showToast: vi.fn(),
       canConfirmImplementationTaskPlan: () => true,
-      canRequestCursorWipWork: () => true,
+      canRequestCodeAgentWipWork: () => true,
       canApproveDeveloperResult: () => true,
       canRequestScmOfficialCommit: () => true,
       canConfirmExecution: () => true,

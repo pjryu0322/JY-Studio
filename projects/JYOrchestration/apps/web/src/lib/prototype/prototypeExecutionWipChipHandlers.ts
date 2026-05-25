@@ -1,19 +1,21 @@
 import {
-  buildCursorWipTimelineEntry,
+  buildCodeAgentWipTimelineEntry,
   evaluateDeveloperApprovalGate,
-} from "@/lib/prototype/cursorWipExecution";
+} from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildDeveloperApproveWipResult,
   buildRefactorRequestWipState,
-  buildRequestCursorWipWorkResult,
+  buildRequestCodeAgentWipWorkResult,
   buildScmOfficialCommitRequestResult,
   formatWipChangesView,
   REFACTOR_REQUEST_PROMPT,
-  type CursorWipChatPatch,
-  type CursorWipOrchestrationPatch,
-} from "@/lib/prototype/prototypeExecutionCursorWipActions";
+  type CodeAgentWipChatPatch,
+} from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
 import type { PrototypeExecutionChipHandlers } from "@/lib/prototype/prototypeExecutionImplementationChips";
-import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import {
+  appendPromptTimeline,
+  type PrototypeExecutionOrchestrationPersistInput,
+} from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type WipChipHandlerDeps = Readonly<{
@@ -23,14 +25,14 @@ export type WipChipHandlerDeps = Readonly<{
     RequirementsStateJson,
     | "implementationTaskPlanV1"
     | "cursorWorkItemsV1"
-    | "cursorWipExecutionV1"
+    | "codeAgentWipExecutionV1"
     | "promptTimeline"
   >;
-  readonly applyMessages: (messages: CursorWipChatPatch["messages"]) => void;
+  readonly applyMessages: (messages: CodeAgentWipChatPatch["messages"]) => void;
   readonly appendNotice: (text: string) => void;
   readonly persistOrchestration: (
-    chat?: CursorWipChatPatch,
-    orch?: CursorWipOrchestrationPatch,
+    chat?: CodeAgentWipChatPatch,
+    orch?: PrototypeExecutionOrchestrationPersistInput,
   ) => void;
   readonly focusComposer: () => void;
   readonly showToast: (message: string) => void;
@@ -38,7 +40,13 @@ export type WipChipHandlerDeps = Readonly<{
 
 function persistWipResult(
   deps: WipChipHandlerDeps,
-  result: { readonly chatPatch: CursorWipChatPatch; readonly orchestrationPatch: CursorWipOrchestrationPatch },
+  result: {
+    readonly chatPatch: CodeAgentWipChatPatch;
+    readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput & {
+      readonly codeAgentWipExecutionV1: NonNullable<PrototypeExecutionOrchestrationPersistInput["codeAgentWipExecutionV1"]>;
+      readonly promptTimeline: NonNullable<PrototypeExecutionOrchestrationPersistInput["promptTimeline"]>;
+    };
+  },
 ): void {
   deps.applyMessages(result.chatPatch.messages);
   deps.persistOrchestration(result.chatPatch, result.orchestrationPatch);
@@ -50,7 +58,7 @@ function appendBlockedNotice(deps: WipChipHandlerDeps, title: string, missing: r
 
 export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
   PrototypeExecutionChipHandlers,
-  | "requestCursorWipWork"
+  | "requestCodeAgentWipWork"
   | "viewWipChanges"
   | "requestRefactor"
   | "requestAdditionalEdit"
@@ -61,7 +69,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
   | "canRequestScmOfficialCommit"
 > {
   return {
-    requestCursorWipWork: () => {
+    requestCodeAgentWipWork: () => {
       const pid = deps.projectId.trim();
       const plan = deps.parsedState.implementationTaskPlanV1;
       const workItems = deps.parsedState.cursorWorkItemsV1;
@@ -69,22 +77,22 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         deps.showToast("먼저 [구현 작업안 확정]을 완료해 주세요.");
         return;
       }
-      const result = buildRequestCursorWipWorkResult({
+      const result = buildRequestCodeAgentWipWorkResult({
         projectId: pid,
         requirementsStateJson: deps.requirementsStateJson,
         plan,
         workItems,
-        existingWip: deps.parsedState.cursorWipExecutionV1,
+        existingWip: deps.parsedState.codeAgentWipExecutionV1,
         promptTimeline: deps.parsedState.promptTimeline,
       });
       if (result.kind === "already_active") {
-        deps.showToast("이미 Cursor WIP 작업이 진행 중입니다.");
+        deps.showToast("이미 Code Agent WIP 작업이 진행 중입니다.");
         return;
       }
       persistWipResult(deps, result);
     },
     viewWipChanges: () => {
-      const wip = deps.parsedState.cursorWipExecutionV1;
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip?.commits.length) {
         deps.showToast("표시할 WIP commit이 없습니다.");
         return;
@@ -92,21 +100,21 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       deps.appendNotice(formatWipChangesView(wip));
     },
     requestRefactor: () => {
-      const wip = deps.parsedState.cursorWipExecutionV1;
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
-        deps.showToast("먼저 Cursor WIP 작업을 요청해 주세요.");
+        deps.showToast("먼저 코드 에이전트 WIP 작업을 요청해 주세요.");
         return;
       }
       const updated = buildRefactorRequestWipState({ wip });
       const timeline = appendPromptTimeline(
         deps.parsedState.promptTimeline,
-        buildCursorWipTimelineEntry({
+        buildCodeAgentWipTimelineEntry({
           action: "refactor_requested",
           wip: updated,
           actor: "ai_developer",
         }),
       );
-      deps.persistOrchestration(undefined, { cursorWipExecutionV1: updated, promptTimeline: timeline });
+      deps.persistOrchestration(undefined, { codeAgentWipExecutionV1: updated, promptTimeline: timeline });
       deps.showToast(REFACTOR_REQUEST_PROMPT);
       deps.focusComposer();
     },
@@ -115,7 +123,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       deps.focusComposer();
     },
     approveDeveloperResult: () => {
-      const wip = deps.parsedState.cursorWipExecutionV1;
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
         deps.showToast("WIP 검토 대상이 없습니다.");
         return;
@@ -132,13 +140,13 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       persistWipResult(deps, result);
     },
     discardWipWork: () => {
-      const wip = deps.parsedState.cursorWipExecutionV1;
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) return;
-      deps.persistOrchestration(undefined, { cursorWipExecutionV1: { ...wip, status: "failed" } });
+      deps.persistOrchestration(undefined, { codeAgentWipExecutionV1: { ...wip, status: "failed" } });
       deps.showToast("WIP 작업을 폐기했습니다.");
     },
     requestScmOfficialCommit: () => {
-      const wip = deps.parsedState.cursorWipExecutionV1;
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
         deps.showToast("WIP 승인 상태가 없습니다.");
         return;
@@ -155,7 +163,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       persistWipResult(deps, result);
     },
     canApproveDeveloperResult: () => {
-      const gate = evaluateDeveloperApprovalGate(deps.parsedState.cursorWipExecutionV1);
+      const gate = evaluateDeveloperApprovalGate(deps.parsedState.codeAgentWipExecutionV1);
       if (!gate.allowed) {
         appendBlockedNotice(deps, "구현 결과 승인 전 확인이 필요합니다.", gate.missing);
         return false;
@@ -163,7 +171,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       return true;
     },
     canRequestScmOfficialCommit: () => {
-      if (deps.parsedState.cursorWipExecutionV1?.status !== "developer_approved") {
+      if (deps.parsedState.codeAgentWipExecutionV1?.status !== "developer_approved") {
         deps.showToast("AI개발자 [구현 결과 승인] 후 SCM 공식 반영을 요청할 수 있습니다.");
         return false;
       }

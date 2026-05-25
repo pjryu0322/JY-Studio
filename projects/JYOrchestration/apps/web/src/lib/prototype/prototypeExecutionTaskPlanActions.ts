@@ -5,6 +5,12 @@ import {
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import {
+  buildImplementationSlotsFromContext,
+  buildImplementationSlotsTimelineEntry,
+  formatImplementationSlotsBlockedMessage,
+  type ImplementationSlotsV1,
+} from "@/lib/prototype/implementationSlots";
+import {
   buildImplementationTaskPlan,
   hasImplementationTaskPlanSummary,
   type ImplementationTaskPlanV1,
@@ -25,24 +31,33 @@ import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/l
 export type ImplementationCursorGateContext = Readonly<{
   readonly plan: ImplementationTaskPlanV1 | null | undefined;
   readonly workItems: readonly CursorWorkItem[] | null | undefined;
+  readonly implementationSlotsV1: ImplementationSlotsV1 | null | undefined;
   readonly envOk: boolean;
   readonly designOk: boolean;
 }>;
 
 export function buildImplementationCursorGateContext(
-  state: Pick<RequirementsStateJson, "implementationTaskPlanV1" | "cursorWorkItemsV1">,
+  state: Pick<
+    RequirementsStateJson,
+    "implementationTaskPlanV1" | "cursorWorkItemsV1" | "implementationSlotsV1"
+  >,
   readiness: { readonly envOk: boolean; readonly designOk: boolean },
 ): ImplementationCursorGateContext {
   return {
     plan: state.implementationTaskPlanV1,
     workItems: state.cursorWorkItemsV1,
+    implementationSlotsV1: state.implementationSlotsV1,
     envOk: readiness.envOk,
     designOk: readiness.designOk,
   };
 }
 
 export function evaluateImplementationCursorGate(ctx: ImplementationCursorGateContext) {
-  return evaluateCursorExecutionRequestGate(ctx);
+  const base = evaluateCursorExecutionRequestGate(ctx);
+  const slotMissing = formatImplementationSlotsBlockedMessage(ctx.implementationSlotsV1);
+  if (!slotMissing.length) return base;
+  const missing = [...base.missing, ...slotMissing];
+  return { allowed: false, missing: [...new Set(missing)] };
 }
 
 export function formatImplementationCursorBlockedNotice(ctx: ImplementationCursorGateContext): string {
@@ -75,6 +90,7 @@ export type ConfirmImplementationTaskPlanResult =
       readonly orchestrationPatch: {
         readonly implementationTaskPlanV1: ImplementationTaskPlanV1;
         readonly cursorWorkItemsV1: readonly CursorWorkItem[];
+        readonly implementationSlotsV1: ImplementationSlotsV1;
         readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
       };
     }>;
@@ -97,18 +113,30 @@ export function buildConfirmImplementationTaskPlanResult(
     designOk: input.designOk,
   });
   const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
-    const summaryMsg = buildImplementationTaskPlanSummaryMessage(plan, {
-      workItems,
-      envOk: input.envOk,
-      designOk: input.designOk,
-    });
+  const implementationSlotsV1 = buildImplementationSlotsFromContext({
+    projectId: pid,
+    projectArtifacts: input.projectArtifacts,
+    artifactOrchestrationV1: input.artifactOrchestrationV1,
+    implementationTaskPlanV1: plan,
+    cursorWorkItemsV1: workItems,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    envCursorBadge: input.envOk ? "ok" : "needs",
+  });
+  const summaryMsg = buildImplementationTaskPlanSummaryMessage(plan, {
+    workItems,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    implementationSlotsV1,
+  });
   const nextMessages = [...prior, summaryMsg];
-  const timelineEntry = buildImplementationTaskPlanTimelineEntry({
+  const taskPlanTimeline = buildImplementationTaskPlanTimelineEntry({
     plan,
     workItems,
     envOk: input.envOk,
     designOk: input.designOk,
   });
+  const slotsTimeline = buildImplementationSlotsTimelineEntry({ slots: implementationSlotsV1 });
   return {
     kind: "created",
     plan,
@@ -122,7 +150,11 @@ export function buildConfirmImplementationTaskPlanResult(
     orchestrationPatch: {
       implementationTaskPlanV1: plan,
       cursorWorkItemsV1: workItems,
-      promptTimeline: appendPromptTimeline(input.promptTimeline, timelineEntry),
+      implementationSlotsV1,
+      promptTimeline: appendPromptTimeline(
+        appendPromptTimeline(input.promptTimeline, taskPlanTimeline),
+        slotsTimeline,
+      ),
     },
   };
 }
@@ -134,5 +166,5 @@ export function buildPrepareImplementationExecutionToast(
     return "먼저 [구현 작업안 확정]으로 task plan을 생성해 주세요.";
   }
   const ready = plan.items.filter((i) => i.status === "ready").length;
-  return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [Cursor WIP 작업 요청]을 진행할 수 있습니다.`;
+  return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [코드 에이전트 WIP 작업 요청]을 진행할 수 있습니다.`;
 }

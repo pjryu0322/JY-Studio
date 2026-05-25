@@ -52,6 +52,6 @@ describe("buildPrototypeExecutionPlanningOrchestrationView", () => {
       projectDescription: "",
     });
     expect(view.showArtifactHubBadge).toBe(false);
-    expect(view.planningProgressUi).toBeNull();
+    expect(view.planningProgressUi.readinessPercent).toBeGreaterThanOrEqual(0);
   });
 });

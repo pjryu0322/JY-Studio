@@ -2,6 +2,7 @@
  * Artifact Hub — project orchestration state 기반 산출물 카탈로그 (not messageId).
  */
 
+import type { ArtifactHubSection, ArtifactStage } from "@/lib/prototype/artifactHubStage";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import { LEGACY_QUICK_DESIGN_AREA_TITLES } from "@/lib/requirements/projectArtifactPlan";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -30,6 +31,13 @@ export type ProjectArtifactHubEntry = Readonly<{
   readonly hubRequired?: boolean;
   readonly hubCompletenessScore?: number;
   readonly hubReadinessLabel?: string;
+  /** Artifact Hub 단계 필터 */
+  readonly artifactStage?: ArtifactStage;
+  /** 구현 Hub 섹션 구분 */
+  readonly hubSection?: ArtifactHubSection;
+  /** derived 구현 산출물 본문(markdown) */
+  readonly derivedMarkdown?: string;
+  readonly implementationArtifactType?: string;
 }>;
 
 /** Artifact Hub에 표시할 완성(저장) 산출물 건수 — 카탈로그 항목 수와 동일 */

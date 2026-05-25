@@ -13,15 +13,20 @@ export const RequirementsChatHeaderRow = forwardRef<
   {
     readonly leading: ReactNode;
     readonly memberControls?: { readonly count: number; readonly onOpen: () => void } | null;
+    /** 기획 단계 TopChrome과 동일한 대화 허브 아이콘(빠른실행·슬롯·마크다운 등) */
+    readonly iconToolbar?: ReactNode;
     /** 참여 멤버 버튼 앞(화면라벨 등) */
     readonly memberBefore?: ReactNode;
     /** `panel`: 연한 회색 배경(기능 정리 대화창 헤더 등) */
     readonly variant?: "card" | "panel";
     readonly memberButtonTestId?: string;
   }
->(function RequirementsChatHeaderRow({ leading, memberControls, memberBefore, variant = "card", memberButtonTestId }, ref) {
+>(function RequirementsChatHeaderRow(
+  { leading, memberControls, iconToolbar, memberBefore, variant = "card", memberButtonTestId },
+  ref,
+) {
   const membersUi = memberControls ?? null;
-  const showRight = Boolean(membersUi);
+  const showRight = Boolean(iconToolbar) || Boolean(membersUi);
   const variantClass = variant === "panel" ? styles.variantPanel : styles.variantCard;
 
   return (
@@ -29,16 +34,17 @@ export const RequirementsChatHeaderRow = forwardRef<
       <div className={styles.leading}>{leading}</div>
       {showRight ? (
         <div className={styles.right}>
-          <div className={styles.memberCluster}>
-            {memberBefore}
-            {membersUi ? (
+          {iconToolbar}
+          {membersUi && !iconToolbar ? (
+            <div className={styles.memberCluster}>
+              {memberBefore}
               <WorkspaceParticipantButton
                 count={membersUi.count}
                 onOpen={() => membersUi.onOpen()}
                 testId={memberButtonTestId ?? "requirements-members-open"}
               />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

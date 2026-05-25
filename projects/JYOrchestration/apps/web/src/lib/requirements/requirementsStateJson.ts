@@ -17,14 +17,16 @@ import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOr
 import { parseArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
-import type { CursorWipExecutionV1 } from "@/lib/prototype/cursorWipExecution";
-import { parseCursorWipExecutionV1 } from "@/lib/prototype/cursorWipExecutionStateWire";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import { parseCodeAgentWipExecutionFromState } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import {
   parseCursorWorkItemsV1,
   parseImplementationTaskPlanV1,
 } from "@/lib/prototype/implementationTaskPlanStateWire";
+import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
+import { parseImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parsePrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import type { FastPlanAssumption, FastPlanGenerationStateV1 } from "@/lib/requirements/fastPlanGenerationTypes";
@@ -528,8 +530,10 @@ export type RequirementsStateJson = {
   implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   /** task plan → Cursor 실행 단위(JSON) */
   cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
-  /** Cursor WIP 검토 루프 상태(JSON) */
-  cursorWipExecutionV1?: CursorWipExecutionV1 | null;
+  /** 구현 슬롯(범위·WIP·검수·보안·SCM) — 작업안 확정 시 생성 */
+  implementationSlotsV1?: ImplementationSlotsV1 | null;
+  /** Code Agent WIP 검토 루프 상태(JSON) */
+  codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -928,7 +932,11 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "implementationTaskPlanV1" in o ? o.implementationTaskPlanV1 : undefined,
   );
   const cursorWorkItemsV1 = parseCursorWorkItemsV1("cursorWorkItemsV1" in o ? o.cursorWorkItemsV1 : undefined);
-  const cursorWipExecutionV1 = parseCursorWipExecutionV1(
+  const implementationSlotsV1 = parseImplementationSlotsV1(
+    "implementationSlotsV1" in o ? o.implementationSlotsV1 : undefined,
+  );
+  const codeAgentWipExecutionV1 = parseCodeAgentWipExecutionFromState(
+    "codeAgentWipExecutionV1" in o ? o.codeAgentWipExecutionV1 : undefined,
     "cursorWipExecutionV1" in o ? o.cursorWipExecutionV1 : undefined,
   );
 
@@ -1064,7 +1072,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeExecutionSingleChatV1 !== undefined ? { prototypeExecutionSingleChatV1 } : {}),
     ...(implementationTaskPlanV1 !== undefined ? { implementationTaskPlanV1 } : {}),
     ...(cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1 } : {}),
-    ...(cursorWipExecutionV1 !== undefined ? { cursorWipExecutionV1 } : {}),
+    ...(implementationSlotsV1 !== undefined ? { implementationSlotsV1 } : {}),
+    ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),

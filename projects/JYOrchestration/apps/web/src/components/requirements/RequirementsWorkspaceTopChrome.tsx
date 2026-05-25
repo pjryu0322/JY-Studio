@@ -3,17 +3,8 @@
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
-import { ConversationChromeToolbar } from "@/components/workspace/ConversationChromeToolbar";
-import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/components/workspace/WorkspaceHubChromeIconButton";
+import { WorkspaceConversationHubIconRow } from "@/components/workspace/WorkspaceConversationHubIconRow";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { uiTokens as t } from "@/components/ui/tokens";
-import { QUICK_DESIGN_ACCESSIBLE_LABEL } from "@/lib/requirements/quickDesignLabels";
-import {
-  SERVICE_DEFINITION_DETAIL_ARIA_LABEL,
-  SERVICE_DEFINITION_PROGRESS_LABEL,
-} from "@/lib/requirements/servicePlanningUserLabels";
-import { useEffect, useMemo, useRef, useState } from "react";
-
 export type RequirementsWorkspaceTopChromeProps = Readonly<{
   showScreenLabels: boolean;
   showProjectWorkflowNav: boolean;
@@ -29,7 +20,6 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onResetConversation: () => void | Promise<void>;
   resetConversationDisabled: boolean;
   memberControls?: { readonly count: number; readonly onOpen: () => void } | null;
-  /** 서비스 정의 진행도(표시) + 상세(아이콘 팝오버) */
   ideationInterviewUi?: {
     readonly readinessPercent: number;
     readonly covered: number;
@@ -53,99 +43,6 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onGoHome: () => void;
 }>;
 
-function SparklesIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
-      <path d="M19 13l.8 2.4L22 16l-2.2.6L19 19l-.8-2.4L16 16l2.2-.6L19 13z" />
-    </svg>
-  );
-}
-
-function QuickDesignIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
-  );
-}
-
-function SlotsIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  );
-}
-
-function CanvasHubIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M3 9h18" />
-      <path d="M9 21V9" />
-    </svg>
-  );
-}
-
-function ArtifactHubIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
-      <path d="M10 9H8" />
-    </svg>
-  );
-}
-
-const SLOTS_PANEL_SIZE_STORAGE_KEY = "jyo:requirements-slots-popover-size";
-const SLOTS_PANEL_MIN_W = 360;
-const SLOTS_PANEL_MIN_H = 280;
-const SLOTS_PANEL_DEFAULT_W = 520;
-const SLOTS_PANEL_DEFAULT_H = 520;
-
-function readStoredSlotsPanelSize(): { readonly w: number; readonly h: number } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(SLOTS_PANEL_SIZE_STORAGE_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as { w?: unknown; h?: unknown };
-    const w = Number(p.w);
-    const h = Number(p.h);
-    if (!Number.isFinite(w) || !Number.isFinite(h)) return null;
-    const margin = 24;
-    return {
-      w: Math.min(Math.max(SLOTS_PANEL_MIN_W, Math.round(w)), window.innerWidth - margin),
-      h: Math.min(Math.max(SLOTS_PANEL_MIN_H, Math.round(h)), window.innerHeight - margin),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredSlotsPanelSize(w: number, h: number): void {
-  try {
-    window.sessionStorage.setItem(
-      SLOTS_PANEL_SIZE_STORAGE_KEY,
-      JSON.stringify({ w: Math.round(w), h: Math.round(h) }),
-    );
-  } catch {
-    /* ignore quota */
-  }
-}
-
-function defaultSlotsPanelSize(maxH: number): { readonly w: number; readonly h: number } {
-  const margin = 24;
-  const w = Math.min(SLOTS_PANEL_DEFAULT_W, window.innerWidth - margin);
-  const h = Math.min(Math.max(SLOTS_PANEL_MIN_H, maxH, SLOTS_PANEL_DEFAULT_H), window.innerHeight - margin);
-  return { w, h };
-}
-
 export function RequirementsWorkspaceTopChrome({
   showScreenLabels,
   showProjectWorkflowNav,
@@ -153,8 +50,6 @@ export function RequirementsWorkspaceTopChrome({
   inIdeationStage,
   conversationStatus,
   ideationComplete,
-  problemInterviewState,
-  problemInterviewStrictFilled,
   busy,
   remoteLocked,
   onOrganizeRequirements,
@@ -175,257 +70,7 @@ export function RequirementsWorkspaceTopChrome({
     Boolean(resolvedProjectIdTrimmed) &&
     inIdeationStage &&
     conversationStatus === "loaded" &&
-    ideationComplete &&
-    true;
-
-  const slotsUi = ideationInterviewUi ?? null;
-  const [slotsOpen, setSlotsOpen] = useState(false);
-  const slotsBtnRef = useRef<HTMLButtonElement | null>(null);
-  const slotsPanelRef = useRef<HTMLDivElement | null>(null);
-  const [slotsPos, setSlotsPos] = useState<{ top: number; right: number; maxH: number; narrow: boolean } | null>(null);
-  const [slotsPanelSize, setSlotsPanelSize] = useState<{ w: number; h: number } | null>(null);
-  const useOrchestrationGrid = Boolean(slotsUi?.orchestrationSlotSections?.some((s) => s.slots.length));
-
-  const computeSlotsPos = () => {
-    const btn = slotsBtnRef.current;
-    if (!btn) return null;
-    const r = btn.getBoundingClientRect();
-    const margin = 12;
-    const top = Math.min(window.innerHeight - margin, r.bottom + 8);
-    const right = Math.max(margin, window.innerWidth - r.right);
-    const narrow = window.innerWidth < 820;
-    const maxH = narrow
-      ? Math.max(220, Math.floor((window.innerHeight - 20) * 0.5))
-      : Math.max(220, Math.floor((window.innerHeight - top - margin) * 0.5));
-    return { top, right, maxH, narrow };
-  };
-
-  useEffect(() => {
-    if (!slotsOpen) return;
-    const pos = computeSlotsPos();
-    if (pos) setSlotsPos(pos);
-    if (pos && !pos.narrow) {
-      const stored = readStoredSlotsPanelSize();
-      setSlotsPanelSize(stored ?? defaultSlotsPanelSize(pos.maxH));
-    } else {
-      setSlotsPanelSize(null);
-    }
-  }, [slotsOpen]);
-
-  useEffect(() => {
-    if (!slotsOpen || slotsPos?.narrow) return;
-    const el = slotsPanelRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      if (w < SLOTS_PANEL_MIN_W || h < SLOTS_PANEL_MIN_H) return;
-      writeStoredSlotsPanelSize(w, h);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [slotsOpen, slotsPos?.narrow]);
-
-  useEffect(() => {
-    if (!slotsOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      setSlotsOpen(false);
-    };
-    const onResize = () => {
-      const pos = computeSlotsPos();
-      if (pos) setSlotsPos(pos);
-    };
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (slotsBtnRef.current?.contains(t)) return;
-      const panel = document.getElementById("requirements-slots-popover");
-      if (panel && panel.contains(t)) return;
-      setSlotsOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onResize, true);
-    document.addEventListener("mousedown", onDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onResize, true);
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [slotsOpen]);
-
-  const slotPanel = useMemo(() => {
-    if (!slotsOpen || !slotsUi) return null;
-    const pos = slotsPos ?? computeSlotsPos();
-    if (!pos) return null;
-    const sections = slotsUi.orchestrationSlotSections ?? [];
-    const gridCols = pos.narrow ? 1 : 2;
-    const panelW = pos.narrow ? "min(96vw, 420px)" : slotsPanelSize?.w ?? SLOTS_PANEL_DEFAULT_W;
-    const panelH = pos.narrow ? pos.maxH : slotsPanelSize?.h ?? pos.maxH;
-    const maxPanelW = Math.max(SLOTS_PANEL_MIN_W, window.innerWidth - 24);
-    const maxPanelH = Math.max(SLOTS_PANEL_MIN_H, window.innerHeight - 24);
-    return (
-      <>
-        <div
-          aria-hidden
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1090,
-            background: "rgba(15, 23, 42, 0.35)",
-            backdropFilter: "blur(2px)",
-          }}
-        />
-        <div
-          ref={slotsPanelRef}
-          id="requirements-slots-popover"
-          role="dialog"
-          aria-label={SERVICE_DEFINITION_DETAIL_ARIA_LABEL}
-          style={{
-            position: "fixed",
-            top: pos.narrow ? "max(10px, env(safe-area-inset-top, 0px))" : pos.top,
-            right: pos.narrow ? "max(10px, env(safe-area-inset-right, 0px))" : pos.right,
-            left: pos.narrow ? "max(10px, env(safe-area-inset-left, 0px))" : undefined,
-            zIndex: 1100,
-            width: pos.narrow ? "auto" : panelW,
-            height: pos.narrow ? undefined : panelH,
-            maxWidth: pos.narrow ? undefined : maxPanelW,
-            maxHeight: pos.narrow ? pos.maxH : maxPanelH,
-            minWidth: pos.narrow ? undefined : SLOTS_PANEL_MIN_W,
-            minHeight: pos.narrow ? undefined : SLOTS_PANEL_MIN_H,
-            borderRadius: 14,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-            boxShadow: "0 24px 64px -28px rgba(15, 23, 42, 0.35)",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            ...(!pos.narrow ?
-              {
-                resize: "both",
-              }
-            : {}),
-          }}
-        >
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
-                {SERVICE_DEFINITION_PROGRESS_LABEL} {slotsUi.readinessPercent}%
-                {slotsUi.statusCounts ?
-                  ` · 확정 ${slotsUi.statusCounts.confirmed} / 부분 ${slotsUi.statusCounts.partial} / 후보 ${slotsUi.statusCounts.candidate}`
-                : ` · ${slotsUi.covered}/${slotsUi.total}`}
-              </div>
-              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-                <div style={{ height: "100%", borderRadius: 999, background: "#0f766e", width: `${Math.min(100, Math.max(0, slotsUi.readinessPercent))}%` }} />
-              </div>
-            </div>
-          <button
-            type="button"
-            onClick={() => setSlotsOpen(false)}
-            aria-label="슬롯 상세 닫기"
-            title="닫기"
-            style={{
-              flexShrink: 0,
-              width: 30,
-              height: 30,
-              borderRadius: 10,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              color: "#0f172a",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 900,
-            }}
-          >
-            ×
-          </button>
-          </div>
-          <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, overflow: "auto", flex: 1, minHeight: 0 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-              확정 {slotsUi.covered} / 전체 {slotsUi.total}
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-              예상 남은 질문: {Math.max(0, slotsUi.remainingQuestionsEstimate)}개
-            </div>
-          </div>
-          {slotsUi.statusCounts ? (
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <span>부분 {slotsUi.statusCounts.partial}</span>
-              <span>· 후보 {slotsUi.statusCounts.candidate}</span>
-              <span>· stale {slotsUi.statusCounts.stale}</span>
-              <span>· 미확보 {slotsUi.statusCounts.empty}</span>
-            </div>
-          ) : null}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>표시:</span>
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>{useOrchestrationGrid ? "✔ 확정" : "✔ 완료"}</span>
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>△ 부분</span>
-              <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>{useOrchestrationGrid ? "□ 미확정" : "□ 미확보"}</span>
-            </div>
-
-            {useOrchestrationGrid ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {sections.map((sec) =>
-                  sec.slots.length ? (
-                    <details key={sec.sectionTitle} open style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}>
-                      <summary style={{ listStyle: "none", cursor: "pointer", padding: "10px 12px", fontSize: 12.5, fontWeight: 900, color: "#0f172a", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sec.sectionTitle}</span>
-                        <span style={{ fontSize: 11.5, fontWeight: 900, color: "#64748b" }}>{sec.slots.length}</span>
-                      </summary>
-                      <div style={{ padding: "0 12px 12px" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, gap: 8 }}>
-                        {sec.slots.map((cell, idx) => {
-                          const level = cell.level;
-                          const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
-                          const color = level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
-                          const bg = level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
-                          const border = level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
-                          return (
-                            <div
-                              key={`${sec.sectionTitle}-${idx}-${cell.label}`}
-                              style={{
-                                border,
-                                background: bg,
-                                borderRadius: 12,
-                                padding: "10px 10px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 10,
-                              }}
-                            >
-                              <span style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>{cell.label}</span>
-                              <span style={{ fontSize: 13, fontWeight: 900, color }}>{icon}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      </div>
-                    </details>
-                  ) : null
-                )}
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                <div style={{ border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 12, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>오케스트레이션 슬롯을 불러오는 중…</span>
-                  <span style={{ fontSize: 12, fontWeight: 900, color: "#475569" }}>□</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        </div>
-      </>
-    );
-  }, [slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid]);
+    ideationComplete;
 
   return (
     <div className="jyo-requirements-workspace-top-chrome">
@@ -442,93 +87,19 @@ export function RequirementsWorkspaceTopChrome({
           gap: 8,
         }}
       >
-        {slotPanel}
-        {slotsUi ? (
-          <WorkspaceHubChromeIconButton
-            title={QUICK_DESIGN_ACCESSIBLE_LABEL}
-            ariaLabel={QUICK_DESIGN_ACCESSIBLE_LABEL}
-            disabled={busy || remoteLocked}
-            onClick={() => {
-              void slotsUi.onForceGeneratePlanNow();
-            }}
-          >
-            <QuickDesignIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
-        {slotsUi ? (
-          <WorkspaceHubChromeIconButton
-            title={`${SERVICE_DEFINITION_DETAIL_ARIA_LABEL} · ${SERVICE_DEFINITION_PROGRESS_LABEL} ${slotsUi.readinessPercent}%`}
-            ariaLabel={`${SERVICE_DEFINITION_DETAIL_ARIA_LABEL}, ${SERVICE_DEFINITION_PROGRESS_LABEL} ${slotsUi.readinessPercent}퍼센트`}
-            disabled={false}
-            badge={slotsUi.readinessPercent}
-            buttonRef={(n) => {
-              slotsBtnRef.current = n;
-            }}
-            onClick={() => setSlotsOpen((v) => !v)}
-          >
-            <SlotsIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
-        {canvasHubControls ? (
-          <WorkspaceHubChromeIconButton
-            title="Canvas Hub — 프로젝트 상태 Viewer"
-            ariaLabel="Canvas Hub 열기"
-            disabled={false}
-            badge={canvasHubControls.count > 0 ? canvasHubControls.count : undefined}
-            onClick={() => canvasHubControls.onOpen()}
-          >
-            <CanvasHubIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
-        {artifactHubControls ? (
-          <WorkspaceHubChromeIconButton
-            title={
-              artifactHubControls.count > 0
-                ? `Artifact Hub — 완성 산출물 ${artifactHubControls.count}건`
-                : "Artifact Hub — 산출물 생성·조회"
-            }
-            ariaLabel={
-              artifactHubControls.count > 0
-                ? `Artifact Hub 열기, 완성 산출물 ${artifactHubControls.count}건`
-                : "Artifact Hub 열기"
-            }
-            disabled={false}
-            badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
-            badgeTone={artifactHubControls.hasStale ? "stale" : "default"}
-            onClick={() => artifactHubControls.onOpen()}
-          >
-            <ArtifactHubIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
-        {memberControls ? (
-          <WorkspaceHubChromeIconButton
-            title="참여 멤버/AI 보기"
-            ariaLabel="참여 멤버/AI 보기"
-            disabled={false}
-            badge={memberControls.count}
-            onClick={() => memberControls.onOpen()}
-          >
-            <WorkspaceHubUsersIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
-        <ConversationChromeToolbar
-          onDownloadConversationMarkdown={() =>
-            onDownloadConversationMarkdown ? void onDownloadConversationMarkdown() : undefined
-          }
-          onResetConversation={() => onResetConversation()}
+        <WorkspaceConversationHubIconRow
+          busy={busy}
+          remoteLocked={remoteLocked}
+          interviewUi={ideationInterviewUi}
+          memberControls={memberControls}
+          canvasHubControls={canvasHubControls}
+          artifactHubControls={artifactHubControls}
+          onDownloadConversationMarkdown={onDownloadConversationMarkdown}
+          onResetConversation={onResetConversation}
+          onSummarizeConversation={onSummarizeConversation}
+          resetConversationDisabled={resetConversationDisabled}
           downloadDisabled={!onDownloadConversationMarkdown}
-          resetDisabled={resetConversationDisabled}
         />
-        {onSummarizeConversation ? (
-          <WorkspaceHubChromeIconButton
-            title="대화 내역 AI 요약"
-            ariaLabel="대화 내역 AI 요약"
-            disabled={busy || remoteLocked}
-            onClick={() => onSummarizeConversation()}
-          >
-            <SparklesIcon />
-          </WorkspaceHubChromeIconButton>
-        ) : null}
       </div>
 
       {showOrganizeCta ? (
@@ -627,7 +198,6 @@ export function RequirementsWorkspaceTopChrome({
           </button>
         </div>
       ) : null}
-
     </div>
   );
 }

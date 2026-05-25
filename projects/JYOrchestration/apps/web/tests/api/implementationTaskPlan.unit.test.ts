@@ -16,7 +16,12 @@ import {
 } from "@/lib/prototype/implementationTaskPlan";
 import { buildImplementationTaskPlanSummaryMessage } from "@/lib/prototype/implementationTaskPlanSummary";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
-import { buildConfirmImplementationTaskPlanResult } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
+import {
+  buildConfirmImplementationTaskPlanResult,
+  buildImplementationCursorGateContext,
+  evaluateImplementationCursorGate,
+} from "@/lib/prototype/prototypeExecutionTaskPlanActions";
+import { buildImplementationSlotsFromContext } from "@/lib/prototype/implementationSlots";
 import {
   appendPromptTimeline,
   buildImplementationTaskPlanTimelineEntry,
@@ -138,7 +143,7 @@ describe("cursor execution readiness gate", () => {
       designOk: false,
     });
     expect(gate.allowed).toBe(false);
-    expect(formatCursorExecutionBlockedMessage(gate.missing)).toContain("아직 Cursor WIP 작업 요청");
+    expect(formatCursorExecutionBlockedMessage(gate.missing)).toContain("아직 코드 에이전트 WIP 작업 요청");
   });
 
   it("allows cursor execution when plan, environment, and prompt quality are ready", () => {
@@ -152,6 +157,22 @@ describe("cursor execution readiness gate", () => {
     const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
     const gate = evaluateCursorExecutionRequestGate({ plan, workItems, envOk: true, designOk: true });
     expect(gate.allowed).toBe(true);
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: workItems,
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+    });
+    const fullGate = evaluateImplementationCursorGate(
+      buildImplementationCursorGateContext(
+        { implementationTaskPlanV1: plan, cursorWorkItemsV1: workItems, implementationSlotsV1: slots },
+        { envOk: true, designOk: true },
+      ),
+    );
+    expect(fullGate.allowed).toBe(true);
   });
 });
 
@@ -170,6 +191,11 @@ describe("buildConfirmImplementationTaskPlanResult", () => {
     expect(result.plan.items[0]?.executionHints).toBeDefined();
     expect(result.workItems[0]?.qualityGate.promptReady).toBe(true);
     expect(result.chatPatch.messages[0]?.content).toContain("구현 task:");
+    expect(result.chatPatch.messages[0]?.content).toContain("구현 슬롯 준비 상태:");
+    expect(result.orchestrationPatch.implementationSlotsV1.slots.length).toBe(12);
+    expect(
+      result.orchestrationPatch.promptTimeline.some((e) => e.action === "implementation_slots_built"),
+    ).toBe(true);
   });
 });
 

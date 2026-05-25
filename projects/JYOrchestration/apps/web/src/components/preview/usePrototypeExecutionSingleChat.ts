@@ -21,7 +21,7 @@ import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator
 import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExtract";
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
-  buildImplementationOrchestrationSummary,
+  buildImplementationBootstrapBundle,
   hasImplementationOrchestrationBootstrap,
   type ImplementationOrchestrationSummaryInput,
 } from "@/lib/prototype/implementationOrchestrationSummary";
@@ -62,6 +62,7 @@ export function usePrototypeExecutionSingleChat({
     slots: readonly PrototypeExecutionInterviewSlot[];
     answers: Readonly<Record<string, string>>;
     currentSlotKey: string | null;
+    readonly bootstrapTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
   }) => void;
   readonly implementationBootstrapInput?: ImplementationOrchestrationSummaryInput | null;
   readonly envLoading?: boolean;
@@ -103,15 +104,16 @@ export function usePrototypeExecutionSingleChat({
     if (!pid || conversationStatus !== "loaded" || envLoading) return;
     if (implementationBootstrapRef.current || !implementationBootstrapInput) return;
     implementationBootstrapRef.current = true;
-    const bootstrap = buildImplementationOrchestrationSummary(implementationBootstrapInput);
+    const bootstrap = buildImplementationBootstrapBundle(implementationBootstrapInput);
     setConversationMessages((prev) => {
       if (hasImplementationOrchestrationBootstrap(prev)) return prev;
-      const next = [...prev, ...bootstrap];
+      const next = [...prev, ...bootstrap.messages];
       onPersistStateJson({
         messages: next,
         slots,
         answers,
         currentSlotKey,
+        bootstrapTimeline: bootstrap.timelineEntries,
       });
       return next;
     });

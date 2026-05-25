@@ -46,6 +46,8 @@ export type RequirementsMessageMeta = {
   messageOverlayExplainability?: ExtractedOverlayPromptTraceMetadata | null;
   /** 구현 단계: 파생(상태) 메시지 정렬 키 — 영구 저장하지 않음 */
   prototypeOrderKey?: number;
+  /** 구현 진입 bootstrap: lead_developer_summary 등 */
+  implementationBootstrapKind?: string;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

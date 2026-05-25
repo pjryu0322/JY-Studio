@@ -3,16 +3,20 @@
  */
 
 import {
-  CURSOR_WIP_WORK_REQUEST_CHIP,
+  CODE_AGENT_WIP_WORK_REQUEST_CHIP,
   LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
-} from "@/lib/prototype/cursorWipExecution";
+  LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
+} from "@/lib/prototype/codeAgentWipExecution";
+
+import { IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP } from "@/lib/prototype/implementationOrchestrationSummary";
 
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
   readonly focusComposerForScopeEdit: () => void;
+  readonly showRoleCheckDetails: () => void;
   readonly confirmImplementationTaskPlan: () => void;
-  readonly requestCursorWipWork: () => void;
+  readonly requestCodeAgentWipWork: () => void;
   readonly viewWipChanges: () => void;
   readonly requestRefactor: () => void;
   readonly requestAdditionalEdit: () => void;
@@ -24,7 +28,7 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly refreshStatus: () => void;
   readonly showToast: (message: string) => void;
   readonly canConfirmImplementationTaskPlan: () => boolean;
-  readonly canRequestCursorWipWork: () => boolean;
+  readonly canRequestCodeAgentWipWork: () => boolean;
   readonly canApproveDeveloperResult: () => boolean;
   readonly canRequestScmOfficialCommit: () => boolean;
   readonly canConfirmExecution: () => boolean;
@@ -46,15 +50,19 @@ export function tryHandlePrototypeExecutionChip(
     case "작업 범위 수정":
       handlers.focusComposerForScopeEdit();
       return true;
+    case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:
+      handlers.showRoleCheckDetails();
+      return true;
     case "구현 작업안 확정": {
       if (!handlers.canConfirmImplementationTaskPlan()) return true;
       handlers.confirmImplementationTaskPlan();
       return true;
     }
-    case CURSOR_WIP_WORK_REQUEST_CHIP:
+    case CODE_AGENT_WIP_WORK_REQUEST_CHIP:
+    case LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP:
     case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP: {
-      if (!handlers.canRequestCursorWipWork()) return true;
-      handlers.requestCursorWipWork();
+      if (!handlers.canRequestCodeAgentWipWork()) return true;
+      handlers.requestCodeAgentWipWork();
       return true;
     }
     case "변경사항 보기":

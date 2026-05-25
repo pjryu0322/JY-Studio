@@ -38,7 +38,7 @@ export type PrototypeExecutionPlanningOrchestrationView = Readonly<{
   readonly showArtifactHubBadge: boolean;
   readonly orchestrationUi: ReturnType<typeof buildOrchestrationUiProjection>;
   readonly orchestrationUiState: RequirementsSingleChatOrchestrationStateV1;
-  readonly planningProgressUi: WorkspaceIdeationInterviewProgressUi | null;
+  readonly planningProgressUi: WorkspaceIdeationInterviewProgressUi;
   readonly deliverableViewerAssetIds: readonly string[];
 }>;
 
@@ -95,18 +95,16 @@ export function buildPrototypeExecutionPlanningOrchestrationView(input: {
     catalogCount: artifactHubCatalog.length,
   });
 
-  const planningProgressUi: WorkspaceIdeationInterviewProgressUi | null = showArtifactHubBadge
-    ? {
-        active: true,
-        readinessPercent: weighted.percent,
-        covered: confirmed.confirmed,
-        total: confirmed.total,
-        statusCounts,
-        remainingQuestionsEstimate: Math.max(0, confirmed.total - confirmed.confirmed),
-        onForceGeneratePlanNow: () => {},
-        orchestrationSlotSections: slotSections,
-      }
-    : null;
+  const planningProgressUi: WorkspaceIdeationInterviewProgressUi = {
+    active: showArtifactHubBadge,
+    readinessPercent: weighted.percent,
+    covered: confirmed.confirmed,
+    total: confirmed.total,
+    statusCounts,
+    remainingQuestionsEstimate: Math.max(0, confirmed.total - confirmed.confirmed),
+    onForceGeneratePlanNow: () => {},
+    orchestrationSlotSections: slotSections,
+  };
 
   const deliverableViewerAssetIds = collectDeliverableViewerAssetIds({
     deliverableAssets,

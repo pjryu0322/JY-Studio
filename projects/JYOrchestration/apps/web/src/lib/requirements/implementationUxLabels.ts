@@ -1,6 +1,9 @@
 /** 사용자-facing 구현 단계 용어 (내부 generation 이름과 분리) */
 
 export const IMPLEMENTATION_PHASE_LABEL = "구현 단계" as const;
+export const IMPLEMENTATION_PROGRESS_LABEL = "구현 진행도" as const;
+export const IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL = "구현 슬롯 상세" as const;
+export const IMPLEMENTATION_ARTIFACT_HUB_LABEL = "구현 산출물" as const;
 export const IMPLEMENTATION_START_LABEL = "구현 시작" as const;
 export const IMPLEMENTATION_PREP_READY_HEADING = "구현 준비 완료" as const;
 

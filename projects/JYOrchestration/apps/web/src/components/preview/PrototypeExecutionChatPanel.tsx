@@ -17,7 +17,7 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   conversationStatus: "idle" | "loading" | "loaded";
   chatMessages: readonly RequirementsMessage[];
   memberControls: { count: number; onOpen: () => void };
-  statusPill: ReactNode;
+  statusPill?: ReactNode | null;
   input: string;
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
@@ -33,6 +33,7 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   aiInvokePending: boolean;
   templatePicker?: PrototypeInlineTemplatePickerProps | null;
   headerLeading?: ReactNode;
+  headerIconToolbar?: ReactNode;
 }>;
 
 /** 구현 단계 — 기획 `RequirementsIdeationChatPanel`과 동일 SingleChat 셸 */
@@ -40,7 +41,7 @@ export function PrototypeExecutionChatPanel({
   conversationStatus,
   chatMessages,
   memberControls,
-  statusPill,
+  statusPill = null,
   input,
   onInputChange,
   onSend,
@@ -55,6 +56,7 @@ export function PrototypeExecutionChatPanel({
   onInterviewSuggestionPick,
   aiInvokePending,
   templatePicker,
+  headerIconToolbar,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
     aiInvokePending &&
@@ -94,6 +96,7 @@ export function PrototypeExecutionChatPanel({
         typingIndicatorSpeakerLine={aiInvokePending ? "AI 개발자가 응답을 준비하고 있습니다…" : null}
         memberControls={memberControls}
         headerLeading={statusPill}
+        headerIconToolbar={headerIconToolbar}
         onSetReplyTo={(id, preview) => {
           onSetReplyTo(id, preview);
           window.setTimeout(() => textAreaRef.current?.focus(), 0);

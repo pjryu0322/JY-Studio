@@ -23,6 +23,9 @@ export function resolveArtifactHubEntryMarkdown(input: {
   const assetId = String(input.entry.assetId ?? "").trim();
   if (!assetId) return null;
 
+  const derived = String(input.entry.derivedMarkdown ?? "").trim();
+  if (derived) return derived;
+
   const artifact = (input.projectArtifacts ?? []).find((a) => a.id === assetId);
   if (artifact) {
     const body = String(artifact.content ?? "").trim();

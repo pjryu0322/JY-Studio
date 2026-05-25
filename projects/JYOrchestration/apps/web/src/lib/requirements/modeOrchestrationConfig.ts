@@ -42,7 +42,8 @@ const IMPLEMENTATION_CONFIG: ModeOrchestrationConfig = {
   readinessEvaluator: "implementationReadiness",
   nextActions: [
     "구현 작업안 확정",
-    "Cursor WIP 작업 요청",
+    "역할별 점검 보기",
+    "코드 에이전트 WIP 작업 요청",
     "구현 실행 준비",
     "환경설정 열기",
     "구현 범위 수정",

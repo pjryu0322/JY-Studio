@@ -6,6 +6,12 @@ import {
   IMPLEMENTATION_TASK_PLAN_SUMMARY_INTERNAL_TYPE,
   type ImplementationTaskPlanV1,
 } from "@/lib/prototype/implementationTaskPlan";
+import { implementationTaskPlanConfirmedChips } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  evaluateImplementationSlotsReadiness,
+  formatImplementationSlotsReadinessSummary,
+  type ImplementationSlotsV1,
+} from "@/lib/prototype/implementationSlots";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 
 export function summarizeTaskPlanExecutionStats(
@@ -40,7 +46,12 @@ export function summarizeTaskPlanExecutionStats(
 
 export function buildImplementationTaskPlanSummaryContent(
   plan: ImplementationTaskPlanV1,
-  input: { readonly workItems: readonly CursorWorkItem[]; readonly envOk: boolean; readonly designOk: boolean },
+  input: {
+    readonly workItems: readonly CursorWorkItem[];
+    readonly envOk: boolean;
+    readonly designOk: boolean;
+    readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
+  },
 ): string {
   const stats = summarizeTaskPlanExecutionStats(plan, input.workItems);
   const lines = [
@@ -59,17 +70,28 @@ export function buildImplementationTaskPlanSummaryContent(
     ...stats.primaryTestCommands.map((c) => `- \`${c}\``),
     "",
     "각 task prompt에는 작업 목적·예상 수정 위치·테스트 명령·검수/보안 기준·금지사항이 포함되어 있습니다.",
+    "",
+    formatImplementationSlotsReadinessSummary(input.implementationSlotsV1),
   ];
 
-  if (plan.readiness.ready && stats.runnableCount === stats.workItemCount && stats.workItemCount > 0) {
-    lines.push("", "환경·설계·prompt 품질이 충족되었습니다. Cursor WIP 작업 요청을 진행할 수 있습니다.");
+  const slotsReady = input.implementationSlotsV1
+    ? evaluateImplementationSlotsReadiness(input.implementationSlotsV1).ready
+    : false;
+
+  if (
+    plan.readiness.ready &&
+    slotsReady &&
+    stats.runnableCount === stats.workItemCount &&
+    stats.workItemCount > 0
+  ) {
+    lines.push("", "환경·설계·prompt 품질이 충족되었습니다. 코드 에이전트 WIP 작업 요청을 진행할 수 있습니다.");
   } else if (!input.envOk || !input.designOk) {
     lines.push(
       "",
-      "환경·설계 준비가 부족하면 Cursor WIP 작업 요청은 차단됩니다. [환경설정 열기]로 연결 상태를 먼저 완료해 주세요.",
+      "환경·설계 준비가 부족하면 코드 에이전트 WIP 작업 요청은 차단됩니다. [환경설정 열기]로 연결 상태를 먼저 완료해 주세요.",
     );
   } else {
-    lines.push("", "Cursor WIP 작업 요청 전 보완이 필요한 항목이 있을 수 있습니다. task별 prompt·테스트 범위를 확인해 주세요.");
+    lines.push("", "코드 에이전트 WIP 작업 요청 전 보완이 필요한 항목이 있을 수 있습니다. task별 prompt·테스트 범위를 확인해 주세요.");
   }
 
   if (!plan.readiness.ready && plan.readiness.missing.length) {
@@ -83,13 +105,17 @@ export function implementationTaskPlanSummaryChips(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly envOk: boolean;
   readonly designOk: boolean;
+  readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
 }): readonly string[] {
-  const base = ["작업 범위 수정", "산출물 다시 보기", "환경설정 열기"];
+  const base = implementationTaskPlanConfirmedChips().filter((c) => c !== "코드 에이전트 WIP 작업 요청");
   const readiness = evaluateImplementationTaskPlanReadiness({
     plan: input.plan,
     envOk: input.envOk,
     designOk: input.designOk,
   });
+  const slotsReady = input.implementationSlotsV1
+    ? evaluateImplementationSlotsReadiness(input.implementationSlotsV1).ready
+    : false;
   const qualityOk =
     input.workItems.length > 0 &&
     input.workItems.every(
@@ -98,7 +124,7 @@ export function implementationTaskPlanSummaryChips(input: {
         w.qualityGate.promptReady &&
         w.qualityGate.score >= CURSOR_WORK_ITEM_MIN_QUALITY_SCORE,
     );
-  if (readiness.ready && qualityOk) return [...base, "Cursor WIP 작업 요청", "구현 실행 준비"];
+  if (readiness.ready && slotsReady && qualityOk) return [...implementationTaskPlanConfirmedChips(), "구현 실행 준비"];
   return [...base, "구현 실행 준비"];
 }
 
@@ -108,6 +134,7 @@ export function buildImplementationTaskPlanSummaryMessage(
     readonly workItems: readonly CursorWorkItem[];
     readonly envOk: boolean;
     readonly designOk: boolean;
+    readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
     readonly nowIso?: string;
   },
 ): RequirementsMessage {
@@ -117,6 +144,7 @@ export function buildImplementationTaskPlanSummaryMessage(
     workItems: input.workItems,
     envOk: input.envOk,
     designOk: input.designOk,
+    implementationSlotsV1: input.implementationSlotsV1,
   });
   return newRequirementsMessage({
     id: `impl-task-plan-summary-${plan.createdAt}`,

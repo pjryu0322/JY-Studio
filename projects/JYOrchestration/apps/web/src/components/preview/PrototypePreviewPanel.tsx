@@ -15,7 +15,18 @@ import {
   PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
-import { PrototypeExecutionWorkspaceChrome } from "@/components/preview/PrototypeExecutionWorkspaceChrome";
+
+import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
+import {
+  buildImplementationArtifactsTimelineEntry,
+  derivedHubEntryToDeliverableAsset,
+} from "@/lib/prototype/implementationArtifacts";
+import { buildImplementationSlotsInterviewUi } from "@/lib/prototype/prototypeExecutionImplementationChrome";
+import {
+  IMPLEMENTATION_ARTIFACT_HUB_LABEL,
+  IMPLEMENTATION_PROGRESS_LABEL,
+  IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
+} from "@/lib/requirements/implementationUxLabels";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
@@ -38,9 +49,17 @@ import {
   formatImplementationCursorBlockedNotice,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
 import {
+  appendPromptTimeline,
   buildPrototypeExecutionOrchestrationPersistPatch,
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import {
+  buildImplementationRoleCheckDetailsMessage,
+  buildImplementationRoleCheckDetailsTimelineEntry,
+  buildImplementationRoleCheckSummary,
+  hasImplementationRoleCheckDetailsShown,
+} from "@/lib/prototype/implementationOrchestrationSummary";
+import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
@@ -94,9 +113,16 @@ import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
+import { WorkspaceConversationHubIconRow } from "@/components/workspace/WorkspaceConversationHubIconRow";
+import {
+  buildConversationMarkdown,
+  confirmResetConversation,
+  downloadConversationMarkdownFile,
+} from "@/lib/chat/conversationMarkdown";
+import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/buildConversationContentHtmlForWorkNoteSummary";
+import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
-import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
@@ -196,9 +222,13 @@ export function PrototypePreviewPanel({
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
+  const [executionAiSummaryBusy, setExecutionAiSummaryBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<readonly string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
+  const [viewerDerivedAssets, setViewerDerivedAssets] = useState<
+    readonly import("@/lib/requirements/ideationDeliverables").IdeationDeliverableAsset[]
+  >([]);
   const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
   /** 추천·병합 지식팩 컨텍스트(프로토타입 프롬프트 미리보기용, 실패 시 비움) */
   const [knowledgePackContextText, setKnowledgePackContextText] = useState<string | undefined>(undefined);
@@ -326,7 +356,7 @@ export function PrototypePreviewPanel({
           ? [
               orchestrationPatch.implementationTaskPlanV1?.createdAt,
               orchestrationPatch.cursorWorkItemsV1?.length,
-              orchestrationPatch.cursorWipExecutionV1?.status,
+              orchestrationPatch.codeAgentWipExecutionV1?.status,
               orchestrationPatch.promptTimeline?.length,
             ]
           : null,
@@ -1217,7 +1247,20 @@ export function PrototypePreviewPanel({
     implementationBootstrapInput,
     envLoading: executionEnvLoading,
     onPersistStateJson: (patch) => {
-      void persistChatToDb(patch);
+      const parsed = parseRequirementsStateJson(requirementsStateJson);
+      let timeline = parsed.promptTimeline;
+      for (const entry of patch.bootstrapTimeline ?? []) {
+        timeline = appendPromptTimeline(timeline, entry);
+      }
+      void persistChatToDb(
+        {
+          messages: patch.messages,
+          slots: patch.slots,
+          answers: patch.answers,
+          currentSlotKey: patch.currentSlotKey,
+        },
+        patch.bootstrapTimeline?.length ? { promptTimeline: timeline } : undefined,
+      );
     },
     onOperationalSend: async (text) => {
       const wantsExecutionPlan =
@@ -1338,6 +1381,49 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  const showRoleCheckDetails = useCallback(() => {
+    if (!implementationBootstrapInput) {
+      showToast("환경 정보를 불러오는 중입니다.");
+      return;
+    }
+    const prior = executionSingleChat.chatMessages;
+    if (hasImplementationRoleCheckDetailsShown(prior)) {
+      showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
+      return;
+    }
+    const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
+    const detailMessage = buildImplementationRoleCheckDetailsMessage({
+      summaryInput: implementationBootstrapInput,
+      roleCheckSummary,
+    });
+    const nextMessages = [...prior, detailMessage];
+    executionSingleChat.applyPersistedMessages(nextMessages);
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+    const timeline = appendPromptTimeline(
+      parsedRequirementsState.promptTimeline,
+      buildImplementationRoleCheckDetailsTimelineEntry({
+        summaryInput: implementationBootstrapInput,
+        roleCheckSummary,
+      }),
+    );
+    void persistChatToDb(
+      {
+        messages: nextMessages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      },
+      { promptTimeline: timeline },
+    );
+  }, [
+    implementationBootstrapInput,
+    executionSingleChat,
+    requirementsStateJson,
+    parsedRequirementsState.promptTimeline,
+    persistChatToDb,
+    showToast,
+  ]);
+
   const wipChipHandlers = useMemo(
     () =>
       buildWipChipHandlerSlice({
@@ -1369,6 +1455,7 @@ export function PrototypePreviewPanel({
           showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
           queueMicrotask(() => chatInputRef.current?.focus());
         },
+        showRoleCheckDetails,
         confirmImplementationTaskPlan,
         ...wipChipHandlers,
         prepareImplementationExecution: () => {
@@ -1387,7 +1474,7 @@ export function PrototypePreviewPanel({
           }
           return true;
         },
-        canRequestCursorWipWork: () => {
+        canRequestCodeAgentWipWork: () => {
           const gate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!gate.allowed) {
             executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
@@ -1405,6 +1492,7 @@ export function PrototypePreviewPanel({
       }),
     [
       envSettingsHref,
+      showRoleCheckDetails,
       confirmImplementationTaskPlan,
       wipChipHandlers,
       parsedRequirementsState.implementationTaskPlanV1,
@@ -1740,20 +1828,12 @@ export function PrototypePreviewPanel({
     prototypeScreenCatalogIds,
   ]);
 
-  const prototypeHeaderPill = useMemo(() => {
-    const run = latestRun;
-    if (!run) {
-      return { left: "구현", right: null as string | null };
-    }
-    const total = run.totalWorkUnits > 0 ? run.totalWorkUnits : run.workUnits.length;
-    if (!total) {
-      if (run.status === "PLANNER_ANALYZING") return { left: "작업계획", right: "생성 중" };
-      return { left: "구현", right: "준비" };
-    }
-    const done = run.workUnits.filter((u) => u.status === "MERGED" || u.status === "SKIPPED").length;
-    const pct = Math.min(100, Math.round((done / total) * 100));
-    return { left: `구현 작업 ${pct}%`, right: `${done}/${total}` };
-  }, [latestRun]);
+  const implementationAiMemberCount = useMemo(() => {
+    const implMembers = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.filter((id) =>
+      prototypeScreenCatalogIds?.length ? prototypeScreenCatalogIds.includes(id) : true,
+    );
+    return implMembers.length > 0 ? implMembers.length : IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length;
+  }, [prototypeScreenCatalogIds]);
 
   const planningOrchestrationView = useMemo(
     () =>
@@ -1778,8 +1858,12 @@ export function PrototypePreviewPanel({
       if (!artifact || !pid) return [];
       return [projectArtifactToDeliverableAsset(artifact, pid)];
     });
-    return [...fromDeliverables, ...extras];
-  }, [planningOrchestrationView, projectId]);
+    const byId = new Map<string, import("@/lib/requirements/ideationDeliverables").IdeationDeliverableAsset>();
+    for (const a of [...fromDeliverables, ...extras, ...viewerDerivedAssets]) {
+      byId.set(a.id, a);
+    }
+    return [...byId.values()];
+  }, [planningOrchestrationView, projectId, viewerDerivedAssets]);
 
   const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
     setDeliverableViewerIds([...ids]);
@@ -1787,46 +1871,212 @@ export function PrototypePreviewPanel({
     setDeliverableViewerOpen(true);
   }, []);
 
+  const implementationArtifactHubView = useMemo(
+    () =>
+      buildArtifactHubView({
+        mode: "implementation",
+        state: parsedRequirementsState,
+        projectId: projectId.trim(),
+        deliverableAssets: planningOrchestrationView.deliverableAssets,
+        projectArtifacts: planningOrchestrationView.projectArtifacts,
+      }),
+    [
+      parsedRequirementsState,
+      projectId,
+      planningOrchestrationView.deliverableAssets,
+      planningOrchestrationView.projectArtifacts,
+    ],
+  );
+
+  const artifactHubOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!artifactHubOpen) {
+      artifactHubOpenedRef.current = false;
+      return;
+    }
+    if (artifactHubOpenedRef.current) return;
+    artifactHubOpenedRef.current = true;
+    const timeline = appendPromptTimeline(
+      parsedRequirementsState.promptTimeline,
+      buildImplementationArtifactsTimelineEntry({
+        action: "implementation_artifact_hub_opened",
+        implementationArtifactCount: implementationArtifactHubView.implementationPrimary.length,
+        planningReferenceCount: implementationArtifactHubView.planningReference.length,
+        types: implementationArtifactHubView.derivedTypes,
+      }),
+    );
+    void persistChatToDb(undefined, { promptTimeline: timeline });
+  }, [artifactHubOpen, implementationArtifactHubView, parsedRequirementsState.promptTimeline, persistChatToDb]);
+
   const handleArtifactHubSelect = useCallback(
     (entry: ProjectArtifactHubEntry) => {
+      const pid = projectId.trim();
+      const derived = derivedHubEntryToDeliverableAsset(entry, pid);
+      if (derived) {
+        setViewerDerivedAssets((prev) => (prev.some((a) => a.id === derived.id) ? prev : [...prev, derived]));
+        openDeliverableViewer([derived.id], derived.id);
+        const timeline = appendPromptTimeline(
+          parsedRequirementsState.promptTimeline,
+          buildImplementationArtifactsTimelineEntry({
+            action: "implementation_artifact_viewed",
+            implementationArtifactCount: implementationArtifactHubView.implementationPrimary.length,
+            planningReferenceCount: implementationArtifactHubView.planningReference.length,
+            types: implementationArtifactHubView.derivedTypes,
+            viewedType: entry.implementationArtifactType ?? entry.title,
+          }),
+        );
+        void persistChatToDb(undefined, { promptTimeline: timeline });
+        return;
+      }
       const ids = planningOrchestrationView.deliverableViewerAssetIds.length
         ? planningOrchestrationView.deliverableViewerAssetIds
         : [entry.assetId];
       openDeliverableViewer(ids, entry.assetId);
     },
-    [openDeliverableViewer, planningOrchestrationView.deliverableViewerAssetIds],
+    [
+      projectId,
+      openDeliverableViewer,
+      planningOrchestrationView.deliverableViewerAssetIds,
+      parsedRequirementsState.promptTimeline,
+      implementationArtifactHubView,
+      persistChatToDb,
+    ],
   );
 
-  const executionStatusPill = (
-    <div style={{ position: "relative", minWidth: 0 }}>
-      <div
-        role="status"
-        aria-live="polite"
-        title="현재 진행 상태"
-        style={{
-          border: "1px solid #cbd5e1",
-          background: "#fff",
-          borderRadius: 999,
-          padding: "6px 12px",
-          fontSize: 12,
-          fontWeight: 900,
-          color: "#0f172a",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          maxWidth: "min(100%, 420px)",
+  const onImplementationQuickExecution = useCallback(() => {
+    if (!parsedRequirementsState.implementationTaskPlanV1) {
+      confirmImplementationTaskPlan();
+      return;
+    }
+    const gate = evaluateImplementationCursorGate(implementationCursorGate);
+    if (gate.allowed) {
+      wipChipHandlers.requestCodeAgentWipWork();
+      return;
+    }
+    const toast = buildPrepareImplementationExecutionToast(parsedRequirementsState.implementationTaskPlanV1);
+    if (toast) showToast(toast);
+    else executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+  }, [
+    parsedRequirementsState.implementationTaskPlanV1,
+    implementationCursorGate,
+    confirmImplementationTaskPlan,
+    wipChipHandlers,
+    executionSingleChat,
+    showToast,
+  ]);
+
+  const implementationInterviewUi = useMemo(
+    () =>
+      buildImplementationSlotsInterviewUi({
+        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        onQuickExecution: onImplementationQuickExecution,
+      }),
+    [parsedRequirementsState.implementationSlotsV1, onImplementationQuickExecution],
+  );
+
+  const onDownloadImplementationConversationMarkdown = useCallback(() => {
+    const pid = projectId.trim();
+    const md = buildConversationMarkdown({
+      heading: "# 구현 단계 대화 내역",
+      scopeLines: [`- projectId: ${pid || "(미연결)"}`, `- exportedAt: ${new Date().toISOString()}`],
+      messages: executionSingleChat.chatMessages,
+      meLabel: "나",
+    });
+    downloadConversationMarkdownFile({ markdown: md, filenameStem: (projectName || "구현").trim() || "구현" });
+  }, [executionSingleChat.chatMessages, projectId, projectName]);
+
+  const onResetImplementationConversation = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid || protoBusy) return;
+    if (
+      !confirmResetConversation({
+        message: "구현 단계 대화 내역을 삭제하고 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.",
+      })
+    ) {
+      return;
+    }
+    executionSingleChat.applyPersistedMessages([]);
+    void persistChatToDb({
+      messages: [],
+      slots: [],
+      answers: {},
+      currentSlotKey: null,
+    });
+    showToast("구현 대화를 초기화했습니다.");
+  }, [projectId, protoBusy, executionSingleChat, persistChatToDb, showToast]);
+
+  const onSummarizeImplementationConversation = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid || protoBusy || executionAiSummaryBusy) return;
+    if (!executionSingleChat.chatMessages.length) {
+      showToast("요약할 대화가 없습니다.");
+      return;
+    }
+    setExecutionAiSummaryBusy(true);
+    try {
+      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(executionSingleChat.chatMessages, "나", {
+        maxMessages: 80,
+      });
+      const wire = await postWorkNoteSummarize({ projectId: pid, scope: "project", contentHtml });
+      executionSingleChat.appendAiNotice(
+        [
+          "AI 요약",
+          "",
+          wire.summary,
+          "",
+          `요청 분류 ${wire.requestType}`,
+          `우선순위 추천 ${wire.priority}`,
+          ...(wire.priorityReason?.trim() ? [`근거 ${wire.priorityReason.trim()}`] : []),
+        ].join("\n"),
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "AI 요약에 실패했습니다.");
+    } finally {
+      setExecutionAiSummaryBusy(false);
+    }
+  }, [projectId, protoBusy, executionAiSummaryBusy, executionSingleChat, showToast]);
+
+  const executionConversationIconToolbar = useMemo(
+    () => (
+      <WorkspaceConversationHubIconRow
+        busy={protoBusy || executionAiSummaryBusy}
+        interviewUi={implementationInterviewUi}
+        slotsChromeLabels={{
+          progressLabel: IMPLEMENTATION_PROGRESS_LABEL,
+          detailAriaLabel: IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
         }}
-      >
-        <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
-        <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
-        {prototypeHeaderPill.right ? (
-          <>
-            <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
-            <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
-          </>
-        ) : null}
-      </div>
-    </div>
+        quickExecutionTitle="빠른 실행: 구현 작업안·WIP"
+        quickExecutionAriaLabel="빠른 실행: 구현 작업안 확정 또는 코드 에이전트 WIP 작업 요청"
+        memberControls={{
+          count: implementationAiMemberCount,
+          onOpen: () => setProtoMembersModalOpen(true),
+        }}
+        artifactHubControls={{
+          count: implementationArtifactHubView.badgeCount,
+          hasStale: false,
+          title: IMPLEMENTATION_ARTIFACT_HUB_LABEL,
+          onOpen: () => setArtifactHubOpen(true),
+        }}
+        onDownloadConversationMarkdown={onDownloadImplementationConversationMarkdown}
+        onResetConversation={onResetImplementationConversation}
+        onSummarizeConversation={onSummarizeImplementationConversation}
+        resetConversationDisabled={
+          protoBusy || executionSingleChat.conversationStatus !== "loaded" || !executionSingleChat.chatMessages.length
+        }
+      />
+    ),
+    [
+      protoBusy,
+      executionAiSummaryBusy,
+      implementationInterviewUi,
+      implementationAiMemberCount,
+      implementationArtifactHubView.badgeCount,
+      onDownloadImplementationConversationMarkdown,
+      onResetImplementationConversation,
+      onSummarizeImplementationConversation,
+      executionSingleChat.conversationStatus,
+      executionSingleChat.chatMessages.length,
+    ],
   );
 
   return (
@@ -1864,19 +2114,10 @@ export function PrototypePreviewPanel({
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={executionSingleChat.chatMessages}
           memberControls={{
-            count: prototypeModalParticipants.length,
+            count: implementationAiMemberCount,
             onOpen: () => setProtoMembersModalOpen(true),
           }}
-          statusPill={
-            <PrototypeExecutionWorkspaceChrome
-              statusPill={executionStatusPill}
-              artifactHubCount={planningOrchestrationView.artifactHubCompletedCount}
-              artifactHubHasStale={planningOrchestrationView.orchestrationUi.artifactBadgeHasStale}
-              showArtifactHubBadge={planningOrchestrationView.showArtifactHubBadge}
-              onOpenArtifactHub={() => setArtifactHubOpen(true)}
-              planningProgressUi={planningOrchestrationView.planningProgressUi}
-            />
-          }
+          headerIconToolbar={executionConversationIconToolbar}
           input={executionSingleChat.input}
           onInputChange={executionSingleChat.setInput}
           onSend={() => void executionSingleChat.sendMessage()}
@@ -1928,7 +2169,8 @@ export function PrototypePreviewPanel({
 
       <RequirementsArtifactHubDrawer
         open={artifactHubOpen}
-        items={planningOrchestrationView.artifactHubCatalog}
+        artifactHubView={implementationArtifactHubView}
+        items={implementationArtifactHubView.entries}
         projectName={projectName || "프로젝트"}
         projectId={projectId.trim() || undefined}
         projectArtifacts={planningOrchestrationView.projectArtifacts}

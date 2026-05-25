@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPrototypeChatMessages } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
-  buildImplementationOrchestrationSummary,
+  buildImplementationBootstrapBundle,
   hasImplementationOrchestrationBootstrap,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
@@ -26,6 +26,7 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(planning.primaryMembers).toEqual(PLANNING_MODE_PRIMARY_MEMBERS);
     expect(impl.primaryMembers).toEqual(IMPLEMENTATION_MODE_PRIMARY_MEMBERS);
     expect(impl.nextActions).toContain("환경설정 열기");
+    expect(impl.nextActions).toContain("역할별 점검 보기");
   });
 
   it("uses implementation AI members in implementation mode config", () => {
@@ -76,8 +77,8 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(built.some((m) => m.id === "ai-env-check")).toBe(false);
   });
 
-  it("creates implementation orchestration summary messages on implementation entry", () => {
-    const messages = buildImplementationOrchestrationSummary({
+  it("creates single lead developer bootstrap on implementation entry", () => {
+    const bundle = buildImplementationBootstrapBundle({
       projectId: "p1",
       env: { git: "ok", github: "needs", cursor: "error", connectionTest: "needs" },
       envOk: false,
@@ -87,10 +88,11 @@ describe("workspace SingleChat mode orchestration", () => {
       artifactOrchestrationV1: null,
       designOk: true,
     });
-    expect(messages.length).toBe(4);
-    expect(hasImplementationOrchestrationBootstrap(messages)).toBe(true);
-    expect(messages.some((m) => m.speakerId === "prototype_build" && m.content.includes("업로드"))).toBe(true);
-    expect(messages.some((m) => m.speakerId === "memo" && m.speakerName === "SCM")).toBe(true);
-    expect(messages.some((m) => m.meta.interviewSuggestions?.includes("환경설정 열기"))).toBe(true);
+    expect(bundle.messages.length).toBe(1);
+    expect(hasImplementationOrchestrationBootstrap(bundle.messages)).toBe(true);
+    expect(bundle.messages[0]?.speakerId).toBe("prototype_build");
+    expect(bundle.messages[0]?.content).toContain("업로드");
+    expect(bundle.messages.some((m) => m.speakerId === "memo")).toBe(false);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("역할별 점검 보기")).toBe(true);
   });
 });
