@@ -33,6 +33,7 @@ import {
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import { WorkspaceAiMemberDetailModal, WorkspaceAiPersonaPromptModal } from "@/components/project-members/WorkspaceAiMemberPersonaDialogs";
 import { MEDIA_QUERY } from "@/components/ui/breakpoints";
+import { SERVICE_DEFINITION_AREA_LABEL } from "@/lib/requirements/servicePlanningUserLabels";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 
 type AiDraftMemberRow = {
@@ -126,7 +127,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   const [aiPromptMemberId, setAiPromptMemberId] = useState<WorkspaceAiMemberId | null>(null);
   const [aiDirty, setAiDirty] = useState(false);
   const [aiAutoSaveTick, setAiAutoSaveTick] = useState(0);
-  /** AI Agent 탭: 카탈로그 멤버별 서비스 기획 슬롯 미리보기(절차 표 위) */
+  /** AI Agent 탭: 카탈로그 멤버별 서비스 정의 슬롯 미리보기(절차 표 위) */
   const [aiSlotPreviewCatalogId, setAiSlotPreviewCatalogId] = useState<WorkspaceAiMemberId | null>(null);
 
   /** SSR/CSR 동일 문자열 — 전체 URL은 복사 시에만 붙여 하이드레이션 불일치를 막습니다. */
@@ -968,8 +969,8 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                               </button>
                               <button
                                 type="button"
-                                title="서비스 기획 슬롯 보기"
-                                aria-label={`${agentTitle} 서비스 기획 슬롯 보기`}
+                                title={`${SERVICE_DEFINITION_AREA_LABEL} 슬롯 보기`}
+                                aria-label={`${agentTitle} ${SERVICE_DEFINITION_AREA_LABEL} 슬롯 보기`}
                                 aria-expanded={aiSlotPreviewCatalogId === primaryId}
                                 aria-controls="workspace-ai-slot-preview"
                                 onClick={() =>
@@ -1063,7 +1064,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                 <div
                   id="workspace-ai-slot-preview"
                   role="region"
-                  aria-label="서비스 기획 슬롯 미리보기"
+                  aria-label={`${SERVICE_DEFINITION_AREA_LABEL} 슬롯 미리보기`}
                   style={{
                     marginBottom: 16,
                     border: "1px solid #e2e8f0",
@@ -1082,7 +1083,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                       background: "#f8fafc",
                     }}
                   >
-                    서비스 기획 슬롯 —{" "}
+                    {SERVICE_DEFINITION_AREA_LABEL} 슬롯 —{" "}
                     {uiAiCatalog.find((r) => r.uiId === aiSlotPreviewCatalogId)?.title ?? aiSlotPreviewCatalogId}
                   </div>
                   <div
@@ -1150,7 +1151,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                         ) : (
                           <tr>
                             <td colSpan={2} style={{ padding: "12px 12px", color: "#64748b", textAlign: "center" }}>
-                              이 Agent에 매핑된 서비스 기획 슬롯이 없습니다.
+                              이 Agent에 매핑된 {SERVICE_DEFINITION_AREA_LABEL} 슬롯이 없습니다.
                             </td>
                           </tr>
                         )}

@@ -1,4 +1,5 @@
 import type { PlatformMemberRole } from "@/lib/platform-orchestration/types";
+import { SERVICE_DEFINITION_AREA_LABEL } from "@/lib/requirements/servicePlanningUserLabels";
 
 export type QuickDesignSlotArea = "planning" | "analysis" | "architecture" | "design";
 
@@ -87,7 +88,7 @@ export function buildQuickDesignAreaShortfallWarnings(counts: QuickDesignAreaCou
   const warnings: string[] = [];
   if (counts.planning < QUICK_DESIGN_MIN_AREA_COUNTS.planning) {
     warnings.push(
-      `- 기획 후보가 부족합니다(${counts.planning}/${QUICK_DESIGN_MIN_AREA_COUNTS.planning}). 서비스 목적·핵심 사용자·문제 정의·MVP 범위를 추가 확인해야 합니다.`,
+      `- ${SERVICE_DEFINITION_AREA_LABEL} 후보가 부족합니다(${counts.planning}/${QUICK_DESIGN_MIN_AREA_COUNTS.planning}). 서비스 목적·핵심 사용자·문제 정의·MVP 범위를 추가 확인해야 합니다.`,
     );
   }
   if (counts.analysis < QUICK_DESIGN_MIN_AREA_COUNTS.analysis) {

@@ -35,7 +35,7 @@ describe("preProjectSingleChatInitialProposal", () => {
       definitions,
     });
 
-    expect(msg.bodyText).toContain("1차 기획 슬롯");
+    expect(msg.bodyText).toContain("1차 서비스 정의");
     expect(msg.bodyText).toContain("확정에 가까운 내용");
     expect(msg.bodyText).toContain("후보로 볼 내용");
     expect(msg.bodyText).toContain("아직 정해야 할 것");

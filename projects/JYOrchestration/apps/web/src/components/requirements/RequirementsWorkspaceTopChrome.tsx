@@ -8,6 +8,10 @@ import { WorkspaceHubChromeIconButton, WorkspaceHubUsersIcon } from "@/component
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { QUICK_DESIGN_ACCESSIBLE_LABEL } from "@/lib/requirements/quickDesignLabels";
+import {
+  SERVICE_DEFINITION_DETAIL_ARIA_LABEL,
+  SERVICE_DEFINITION_PROGRESS_LABEL,
+} from "@/lib/requirements/servicePlanningUserLabels";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export type RequirementsWorkspaceTopChromeProps = Readonly<{
@@ -25,7 +29,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onResetConversation: () => void | Promise<void>;
   resetConversationDisabled: boolean;
   memberControls?: { readonly count: number; readonly onOpen: () => void } | null;
-  /** 서비스 기획 진행도(표시) + 슬롯 상세(아이콘 팝오버) */
+  /** 서비스 정의 진행도(표시) + 상세(아이콘 팝오버) */
   ideationInterviewUi?: {
     readonly readinessPercent: number;
     readonly covered: number;
@@ -279,7 +283,7 @@ export function RequirementsWorkspaceTopChrome({
           ref={slotsPanelRef}
           id="requirements-slots-popover"
           role="dialog"
-          aria-label="서비스 기획 슬롯 상세"
+          aria-label={SERVICE_DEFINITION_DETAIL_ARIA_LABEL}
           style={{
             position: "fixed",
             top: pos.narrow ? "max(10px, env(safe-area-inset-top, 0px))" : pos.top,
@@ -309,7 +313,7 @@ export function RequirementsWorkspaceTopChrome({
           <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
-                서비스 기획 진행도 {slotsUi.readinessPercent}%
+                {SERVICE_DEFINITION_PROGRESS_LABEL} {slotsUi.readinessPercent}%
                 {slotsUi.statusCounts ?
                   ` · 확정 ${slotsUi.statusCounts.confirmed} / 부분 ${slotsUi.statusCounts.partial} / 후보 ${slotsUi.statusCounts.candidate}`
                 : ` · ${slotsUi.covered}/${slotsUi.total}`}
@@ -453,8 +457,8 @@ export function RequirementsWorkspaceTopChrome({
         ) : null}
         {slotsUi ? (
           <WorkspaceHubChromeIconButton
-            title={`서비스 기획 슬롯 상세 보기 · 진행도 ${slotsUi.readinessPercent}%`}
-            ariaLabel={`서비스 기획 슬롯 상세 보기, 진행도 ${slotsUi.readinessPercent}퍼센트`}
+            title={`${SERVICE_DEFINITION_DETAIL_ARIA_LABEL} · ${SERVICE_DEFINITION_PROGRESS_LABEL} ${slotsUi.readinessPercent}%`}
+            ariaLabel={`${SERVICE_DEFINITION_DETAIL_ARIA_LABEL}, ${SERVICE_DEFINITION_PROGRESS_LABEL} ${slotsUi.readinessPercent}퍼센트`}
             disabled={false}
             badge={slotsUi.readinessPercent}
             buttonRef={(n) => {

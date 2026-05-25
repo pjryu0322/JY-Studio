@@ -41,7 +41,7 @@ export function ProjectRailSecondaryTools({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 4 : 5, alignItems: "center", flexShrink: 0 }}>
       <div style={{ position: "relative", display: "inline-flex" }}>
-        <ProjectWorkNoteButton notesProjectId={effectiveProjectId} railFooterLabel="문서" />
+        <ProjectWorkNoteButton notesProjectId={effectiveProjectId} railFooterLabel="메모" />
         <ProjectRailCountBadge count={projectWorkNotesCount} />
       </div>
       {Boolean(me) ? (

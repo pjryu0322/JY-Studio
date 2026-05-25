@@ -19,7 +19,7 @@ function railShortLabel(stepId: AppFlowStepId): string {
     case "requirements":
       return "기획";
     case "execution":
-      return "생성";
+      return "구현";
     case "prototype_review":
       return "검토";
     default:

@@ -14,7 +14,7 @@ export function hasPreProjectPlanningSummaryMessage(messages: readonly Requireme
     (m) =>
       m.meta?.internalType === PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE ||
       String(m.content ?? "").includes("프로젝트 생성 전 대화를 바탕으로 1차 기획 요약") ||
-      String(m.content ?? "").includes("프로젝트 생성 전 대화를 기준으로 1차 기획 슬롯")
+      String(m.content ?? "").includes("프로젝트 생성 전 대화를 기준으로 1차 서비스 정의")
   );
 }
 

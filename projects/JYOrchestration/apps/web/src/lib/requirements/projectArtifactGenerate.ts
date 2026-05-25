@@ -82,23 +82,23 @@ export function buildProjectArtifactContent(input: ProjectArtifactGenerateInput)
       return [
         `# ${projectName} — 서비스 흐름 문서`,
         "",
-        `생성 단계: ${stage}`,
+        `구현 단계: ${stage}`,
         "",
         buildServiceFlowStateSummaryMessage({ flow, heading: "서비스 흐름", cta: "" }),
       ].join("\n");
 
     case "feature-spec":
-      return [`# ${projectName} — 기능 정의서`, "", `생성 단계: ${stage}`, "", featurePlanningMarkdown(input.featurePlanning)].join(
+      return [`# ${projectName} — 기능 정의서`, "", `구현 단계: ${stage}`, "", featurePlanningMarkdown(input.featurePlanning)].join(
         "\n",
       );
 
     case "screen-spec":
-      return [`# ${projectName} — 화면 정의서`, "", `생성 단계: ${stage}`, "", screenSpecMarkdown(input.featurePlanning)].join(
+      return [`# ${projectName} — 화면 정의서`, "", `구현 단계: ${stage}`, "", screenSpecMarkdown(input.featurePlanning)].join(
         "\n",
       );
 
     case "api-spec":
-      return [`# ${projectName} — API 명세서`, "", `생성 단계: ${stage}`, "", apiSpecMarkdown(input.featurePlanning)].join("\n");
+      return [`# ${projectName} — API 명세서`, "", `구현 단계: ${stage}`, "", apiSpecMarkdown(input.featurePlanning)].join("\n");
 
     case "summary":
       return [

@@ -308,7 +308,7 @@ export function buildPreProjectSingleChatInitialProposalMessage(input: {
   ].slice(0, 8);
 
   const parts: string[] = [
-    "프로젝트 생성 전 대화를 기준으로 1차 기획 슬롯을 정리했습니다.",
+    "프로젝트 생성 전 대화를 기준으로 1차 서비스 정의를 정리했습니다.",
     "",
     "확정에 가까운 내용",
     ...(nearConfirmed.length ? nearConfirmed.map((l) => `- ${l}`) : ["- (아직 없음)"]),

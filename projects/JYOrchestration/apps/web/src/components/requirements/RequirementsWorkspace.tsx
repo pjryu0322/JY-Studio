@@ -145,6 +145,7 @@ import {
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
   IDEATION_DRAFT_REQUIRED_SLOTS,
+  resolveWorkspaceSingleChatOrchestration,
   shouldShowWorkspaceHubNotificationBadges,
   type MemberRow,
   type RequirementsWorkspaceStage,
@@ -203,6 +204,13 @@ import {
   resolveFastPlanDraftSuggestionAction,
 } from "@/lib/requirements/fastPlanDraftSuggestionPick";
 import { confirmFastPlanDraftSlots } from "@/lib/requirements/fastPlanDraftConfirmation";
+import {
+  buildQuickDesignImplementationReadyChatMessage,
+  generateQuickDesignConfirmArtifacts,
+  mergeQuickDesignArtifactsIntoState,
+  patchRequirementsStageForImplementationPrep,
+  patchRequirementsStageForImplementationStart,
+} from "@/lib/requirements/quickDesignConfirmArtifacts";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
@@ -218,6 +226,7 @@ import {
   resolveFastPlanArtifactFollowUpAction,
   isFastPlanArtifactFollowUpLabel,
   findLatestFastPlanArtifactIdFromMessages,
+  quickDesignArtifactIdsFromMessageMeta,
   resolveLatestPlanningDeliverableAssetId,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
 import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
@@ -776,10 +785,17 @@ export function RequirementsWorkspace({
   const orchestrationSlotDefsHash = useMemo(() => hashSlotDefinitions(slotDefsForProgress), [slotDefsForProgress]);
 
   const orchestrationAlignedState = useMemo(() => {
-    const orch = persistedPromptState.singleChatOrchestrationV1 ?? null;
-    if (!orch || orch.slotDefinitionsHash !== orchestrationSlotDefsHash) return null;
-    return orch;
-  }, [persistedPromptState.singleChatOrchestrationV1, orchestrationSlotDefsHash]);
+    return resolveWorkspaceSingleChatOrchestration({
+      localState: stateJsonRef.current,
+      persistedOrchestration: persistedPromptState.singleChatOrchestrationV1,
+      slotDefinitionsHash: orchestrationSlotDefsHash,
+    });
+  }, [
+    persistedPromptState.singleChatOrchestrationV1,
+    orchestrationSlotDefsHash,
+    conversationResetNonce,
+    fetchNonce,
+  ]);
 
   const orchestrationUiState = useMemo(() => {
     // Source-of-truth: singleChatOrchestrationV1.
@@ -1431,9 +1447,15 @@ export function RequirementsWorkspace({
         const initialSeed = safeBuildPreProjectInitialProposalSeed({
           projectName: project.name ?? "",
           projectDescription: project.description ?? "",
-          state: workspaceState,
+          state:
+            forceRegeneratePlanningSummary ?
+              mergeRequirementsStateJson(workspaceState, {
+                promptTimeline: stateJsonRef.current.promptTimeline ?? [],
+                singleChatOrchestrationV1: stateJsonRef.current.singleChatOrchestrationV1 ?? null,
+              })
+            : workspaceState,
           definitions: slotDefsForProgress,
-          existingOrchestration: orchestrationAlignedState,
+          existingOrchestration: forceRegeneratePlanningSummary ? null : orchestrationAlignedState,
           projectId: pid,
           regenerated: forceRegeneratePlanningSummary,
         });
@@ -2223,7 +2245,7 @@ export function RequirementsWorkspace({
       const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
       const msg =
         slotReadiness.missing.length > 0
-          ? `생성 단계로 가기 전 다음 기획 슬롯이 아직 확정되지 않았습니다.\n- ${slotReadiness.missing.join("\n- ")}`
+          ? `구현 단계로 가기 전 다음 서비스 정의 항목이 아직 확정되지 않았습니다.\n- ${slotReadiness.missing.join("\n- ")}`
           : missingRequired.length
             ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
             : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
@@ -2330,7 +2352,9 @@ export function RequirementsWorkspace({
           ...(orchestrationAfterDraft ? { singleChatOrchestrationV1: orchestrationAfterDraft } : {}),
         });
       }
-      showSuccessToast(`${QUICK_DESIGN_LABEL} 초안을 슬롯 후보로 반영했습니다. SingleChat에서 확인해 주세요.`);
+      showSuccessToast(
+        `${QUICK_DESIGN_LABEL} 초안을 서비스 정의·분석·설계·디자인 후보로 반영했습니다. SingleChat에서 확인해 주세요.`,
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : `${QUICK_DESIGN_LABEL} 실행 중 오류가 발생했습니다.`;
       setError(msg);
@@ -2376,6 +2400,7 @@ export function RequirementsWorkspace({
       return;
     }
     const nowIso = new Date().toISOString();
+    setDeliverableGenerateBusy(true);
     try {
       const result = confirmFastPlanDraftSlots({
         fastPlanDraftV1: draft,
@@ -2389,20 +2414,54 @@ export function RequirementsWorkspace({
         showErrorToast(result.blockReason ?? "확정할 Quick Design 초안 정보를 찾을 수 없습니다.");
         return;
       }
+
+      const st = stateJsonRef.current;
+      const latestInterviewState = latestProblemInterviewStateForGate();
+      const artifactBundle = generateQuickDesignConfirmArtifacts({
+        projectId: pid,
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        conversationMessages: ideationConversationOnly.length ? ideationConversationOnly : conversationMessages,
+        serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
+        orchestration: result.orchestration,
+        slotDefinitions: slotDefsForProgress,
+        featurePlanning: st.featurePlanningSlotsV1 ?? null,
+        problemInterview: latestInterviewState,
+        sourceStage: resolveAuthoritativeOrchestrationStage(st),
+        nowIso,
+        fastPlanDraftV1: result.fastPlanDraftV1,
+      });
+      const merged = mergeQuickDesignArtifactsIntoState({
+        priorArtifacts: st.projectArtifacts,
+        priorDeliverables: st.deliverableAssets,
+        newArtifacts: artifactBundle.artifacts,
+        newDeliverables: artifactBundle.deliverables,
+      });
+      const readyMessage = buildQuickDesignImplementationReadyChatMessage({
+        artifactIds: artifactBundle.artifactIds,
+        artifactTitles: artifactBundle.artifacts.map((a) => a.title),
+        nowIso,
+      });
+
       await persistStateJsonOnly({
         fastPlanDraftV1: result.fastPlanDraftV1,
         singleChatOrchestrationV1: result.orchestration,
+        projectArtifacts: [...merged.projectArtifacts],
+        deliverableAssets: [...merged.deliverableAssets],
+        requirementsOrchestrationStageV1: patchRequirementsStageForImplementationPrep({
+          existing: st.requirementsOrchestrationStageV1,
+          nowIso,
+        }),
       });
-      await appendServiceFlowWorkshopMessages([result.chatMessage]);
+      lastFastPlanArtifactIdRef.current = artifactBundle.primaryArtifactId;
+      await appendServiceFlowWorkshopMessages([readyMessage]);
       appendSingleChatPromptTimeline(result.timelineEntry);
-      showSuccessToast(
-        result.confirmedSlotKeys.length > 0
-          ? `${result.confirmedSlotKeys.length}개 슬롯을 확정했습니다.`
-          : "초안 확인을 완료했습니다.",
-      );
+      showSuccessToast(artifactBundle.userFacingSummary);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "초안 확인 처리 중 오류가 발생했습니다.";
+      const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
       showErrorToast(msg);
+    } finally {
+      setDeliverableGenerateBusy(false);
     }
   }, [
     resolvedProjectId,
@@ -2412,6 +2471,12 @@ export function RequirementsWorkspace({
     orchestrationAlignedState,
     orchestrationUiState,
     slotDefsForProgress,
+    project?.name,
+    project?.description,
+    ideationConversationOnly,
+    conversationMessages,
+    serviceFlow,
+    latestProblemInterviewStateForGate,
     persistStateJsonOnly,
     appendServiceFlowWorkshopMessages,
     appendSingleChatPromptTimeline,
@@ -2545,59 +2610,93 @@ export function RequirementsWorkspace({
     void handleRequestFastPlanDraft();
   }, [handleRequestFastPlanDraft]);
 
+  const resolveQuickDesignArtifactIdsForView = useCallback((): readonly string[] => {
+    for (let i = conversationMessages.length - 1; i >= 0; i--) {
+      const meta = conversationMessages[i]?.meta;
+      const ids = quickDesignArtifactIdsFromMessageMeta(meta);
+      if (ids.length) return ids;
+    }
+    const st = stateJsonRef.current;
+    const fromDeliverables = (st.deliverableAssets ?? [])
+      .map((d) => String(d.id ?? "").trim())
+      .filter(Boolean);
+    if (fromDeliverables.length) return fromDeliverables;
+    const fallback = lastFastPlanArtifactIdRef.current;
+    return fallback ? [fallback] : [];
+  }, [conversationMessages]);
+
+  const handleStartImplementation = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || busy || remoteLocked) return;
+    const readiness = evaluatePlanningToGenerationReadiness({
+      orchestration: orchestrationAlignedState,
+      definitions: slotDefsForProgress,
+    });
+    const nowIso = new Date().toISOString();
+    appendSingleChatPromptTimeline(
+      buildGenerationReadinessCheckedTimelineEntry({
+        projectId: pid,
+        nowIso,
+        ready: readiness.ready,
+        detail: readiness.reason ?? "implementation_start",
+      }),
+    );
+    if (!readiness.ready) {
+      showErrorToast(
+        readiness.reason ?? "구현을 시작하려면 Quick Design 확정으로 필수 슬롯을 먼저 확정해 주세요.",
+      );
+      return;
+    }
+    await persistStateJsonOnly({
+      requirementsOrchestrationStageV1: patchRequirementsStageForImplementationStart({
+        existing: stateJsonRef.current.requirementsOrchestrationStageV1,
+        nowIso,
+      }),
+    });
+    router.replace(`/execution?projectId=${encodeURIComponent(pid)}`);
+    showSuccessToast("구현 단계로 이동합니다.");
+  }, [
+    resolvedProjectId,
+    busy,
+    remoteLocked,
+    orchestrationAlignedState,
+    slotDefsForProgress,
+    persistStateJsonOnly,
+    appendSingleChatPromptTimeline,
+    router,
+    showErrorToast,
+    showSuccessToast,
+  ]);
+
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
       const artifactFollowUp = resolveFastPlanArtifactFollowUpAction(trimmed);
-      if (artifactFollowUp === "view_artifact") {
-        const artifactId =
-          resolveLatestPlanningDeliverableAssetId({ state: stateJsonRef.current }) ??
-          findLatestFastPlanArtifactIdFromMessages(conversationMessages) ??
-          lastFastPlanArtifactIdRef.current;
+      if (artifactFollowUp === "view_artifacts") {
+        const artifactIds = resolveQuickDesignArtifactIdsForView();
         const pid = resolvedProjectId.trim();
         if (pid) {
           appendSingleChatPromptTimeline(
             buildPlanningArtifactViewRequestedTimelineEntry({
               projectId: pid,
               nowIso: new Date().toISOString(),
-              artifactId,
+              artifactId: artifactIds[0] ?? null,
             }),
           );
         }
-        if (artifactId) {
-          openDeliverableViewer([artifactId], artifactId);
+        if (artifactIds.length) {
+          openDeliverableViewer(artifactIds, artifactIds[0] ?? null);
         } else {
-          showErrorToast("열 수 있는 기획안이 없습니다. 먼저 「기획안 생성」을 실행해 주세요.");
+          setArtifactHubOpen(true);
         }
         return;
       }
-      if (artifactFollowUp === "check_generation_readiness") {
-        const readinessPid = resolvedProjectId.trim() || "unknown";
-        const readinessNowIso = new Date().toISOString();
-        const readiness = evaluatePlanningToGenerationReadiness({
-          orchestration: orchestrationAlignedState,
-          definitions: slotDefsForProgress,
-        });
-        appendSingleChatPromptTimeline(
-          buildGenerationReadinessCheckedTimelineEntry({
-            projectId: readinessPid,
-            nowIso: readinessNowIso,
-            ready: readiness.ready,
-            detail: readiness.reason ?? "generation_ready",
-          }),
-        );
-        if (readiness.ready) {
-          showSuccessToast("필수 슬롯이 확정되었습니다. 왼쪽 「생성」 탭에서 프로토타입 생성을 진행할 수 있습니다.");
-        } else {
-          showErrorToast(
-            readiness.reason ??
-              "생성 단계로 이동하려면 「초안 확인/확정」으로 필수 슬롯을 먼저 확정해 주세요.",
-          );
-        }
+      if (artifactFollowUp === "start_implementation") {
+        void handleStartImplementation();
         return;
       }
-      if (artifactFollowUp === "continue_planning") {
-        insertComposerPrompt("기획 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.");
+      if (artifactFollowUp === "refine") {
+        insertComposerPrompt("추가 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.");
         return;
       }
       if (isFastPlanArtifactFollowUpLabel(trimmed)) return;
@@ -2621,32 +2720,21 @@ export function RequirementsWorkspace({
         void handleConfirmFastPlanDraftSlots();
         return;
       }
-      if (action === "generate_artifact") {
-        void handleGenerateFastPlanFromCurrentContext();
+      if (action === "view_artifacts") {
+        const artifactIds = resolveQuickDesignArtifactIdsForView();
+        if (artifactIds.length) {
+          openDeliverableViewer(artifactIds, artifactIds[0] ?? null);
+        } else {
+          setArtifactHubOpen(true);
+        }
+        return;
+      }
+      if (action === "start_implementation") {
+        void handleStartImplementation();
         return;
       }
       if (action === "request_draft") {
         void handleRequestFastPlanDraft();
-        return;
-      }
-      if (action === "check_generation_readiness") {
-        const readiness = evaluatePlanningToGenerationReadiness({
-          orchestration: orchestrationAlignedState,
-          definitions: slotDefsForProgress,
-        });
-        appendSingleChatPromptTimeline(
-          buildGenerationReadinessCheckedTimelineEntry({
-            projectId: pid,
-            nowIso,
-            ready: readiness.ready,
-            detail: readiness.reason ?? "generation_ready",
-          }),
-        );
-        if (readiness.ready) {
-          showSuccessToast("생성 단계 준비가 완료되었습니다. 왼쪽 「생성」 탭에서 진행할 수 있습니다.");
-        } else {
-          showErrorToast(readiness.reason ?? "필수 슬롯을 확정한 뒤 다시 시도해 주세요.");
-        }
         return;
       }
       const composerPrompt = action ? composerPromptForFastPlanDraftSuggestion(action) : null;
@@ -2659,15 +2747,16 @@ export function RequirementsWorkspace({
       insertComposerPrompt(label);
     },
     [
-      conversationMessages,
+      resolveQuickDesignArtifactIdsForView,
       orchestrationAlignedState,
       slotDefsForProgress,
       handleConfirmFastPlanDraftSlots,
-      handleGenerateFastPlanFromCurrentContext,
+      handleStartImplementation,
       handleRequestFastPlanDraft,
       appendSingleChatPromptTimeline,
       insertComposerPrompt,
       openDeliverableViewer,
+      setArtifactHubOpen,
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,

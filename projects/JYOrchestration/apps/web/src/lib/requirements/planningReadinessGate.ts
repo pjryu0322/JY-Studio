@@ -68,6 +68,6 @@ export function evaluatePlanningToGenerationReadiness(input: {
     ready: false,
     missingRequiredSlotKeys: missingKeys,
     missingRequiredLabels: missingLabels,
-    reason: `생성 단계로 이동하려면 필수 슬롯을 먼저 확정해 주세요. 부족: ${preview}${missingLabels.length > 6 ? " …" : ""}`,
+    reason: `구현 단계로 이동하려면 필수 슬롯을 먼저 확정해 주세요. 부족: ${preview}${missingLabels.length > 6 ? " …" : ""}`,
   };
 }

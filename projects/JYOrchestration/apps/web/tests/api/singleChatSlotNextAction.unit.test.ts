@@ -66,12 +66,12 @@ describe("singleChatSlotNextAction", () => {
     expect(decision.focusArea).toBe("planning");
     expect(decision.ownerAgent).toBe("planner");
     expect(decision.shouldSuppressFlowApprove).toBe(true);
-    expect(decision.quickReplies).toContain("기획 핵심 정리");
+    expect(decision.quickReplies).toContain("서비스 정의 핵심 정리");
     expect(decision.slotActions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "CONFIRM_PLANNING_CORE",
-          label: "기획 핵심 정리",
+          label: "서비스 정의 핵심 정리",
           focusArea: "planning",
           ownerAgent: "planner",
         }),
@@ -84,12 +84,12 @@ describe("singleChatSlotNextAction", () => {
       conversationQuickReplies: ["흐름 확정", "단계 수정하기"],
       decision: {
         shouldSuppressFlowApprove: true,
-        quickReplies: ["기획 핵심 정리", "흐름 보완"],
+        quickReplies: ["서비스 정의 핵심 정리", "흐름 보완"],
       },
     });
 
     expect(actions).not.toContain("흐름 확정");
-    expect(actions).toContain("기획 핵심 정리");
+    expect(actions).toContain("서비스 정의 핵심 정리");
   });
 
   it("allows next stage style actions after planning core and analysis flow are ready", () => {

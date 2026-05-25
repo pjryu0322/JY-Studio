@@ -27,6 +27,8 @@ export type RequirementsMessageMeta = {
   interviewAllowCustomInput?: boolean;
   /** Quick Design / 기획안 생성 산출물 ID(기획안 보기 칩 연동) */
   fastPlanArtifactId?: string;
+  /** Quick Design 확정 후 4영역 산출물 ID 목록 */
+  quickDesignArtifactIds?: readonly string[];
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */

@@ -6,23 +6,25 @@ import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirem
 import {
   FAST_PLAN_ACTION_GENERATE_PLAN,
   FAST_PLAN_ACTION_GENERATION_PREP,
+  FAST_PLAN_ACTION_REFINE_PLAN,
+  FAST_PLAN_ACTION_START_IMPLEMENTATION,
+  FAST_PLAN_ACTION_VIEW_ARTIFACTS,
   PLANNING_ARTIFACT_FOLLOW_UP_LABELS,
 } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 
 export { FAST_PLAN_ACTION_GENERATE_PLAN as FAST_PLAN_DRAFT_ACTION_GENERATE };
+import { QUICK_DESIGN_AREA_ARTIFACT_TITLES } from "@/lib/requirements/implementationUxLabels";
 
 export const FAST_PLAN_ARTIFACT_CREATED_INTERNAL_TYPE = "fast_plan_artifact_created" as const;
+export const QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE = "quick_design_implementation_ready" as const;
 
-export const FAST_PLAN_ARTIFACT_ACTION_VIEW = "기획안 보기" as const;
-export const FAST_PLAN_ARTIFACT_ACTION_GO_GENERATION = FAST_PLAN_ACTION_GENERATION_PREP;
-export const FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING = "기획 보완 계속하기" as const;
+export const FAST_PLAN_ARTIFACT_ACTION_VIEW = FAST_PLAN_ACTION_VIEW_ARTIFACTS;
+export const FAST_PLAN_ARTIFACT_ACTION_GO_GENERATION = FAST_PLAN_ACTION_START_IMPLEMENTATION;
+export const FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING = FAST_PLAN_ACTION_REFINE_PLAN;
 
 export const FAST_PLAN_ARTIFACT_FOLLOW_UP_LABELS = PLANNING_ARTIFACT_FOLLOW_UP_LABELS;
 
-export type FastPlanArtifactFollowUpAction =
-  | "view_artifact"
-  | "check_generation_readiness"
-  | "continue_planning";
+export type FastPlanArtifactFollowUpAction = "view_artifacts" | "start_implementation" | "refine";
 
 export type FastPlanGenerationHandoffReadiness = Readonly<{
   readonly ready: boolean;
@@ -255,7 +257,7 @@ export function buildFastPlanArtifactCreatedChatMessage(input: {
     "",
     `- 산출물: ${title}`,
     "- 기준: 확정 슬롯 및 후보/가정 정보",
-    "- 다음 단계: 생성 단계 준비에서 참조자료로 사용할 수 있습니다.",
+    "- 다음 단계: Artifact Hub에서 확인하거나 구현을 시작할 수 있습니다.",
     "",
     "아래 버튼에서 다음 동작을 선택해 주세요.",
   ].join("\n");
@@ -280,11 +282,20 @@ export function buildFastPlanArtifactCreatedChatMessage(input: {
 
 export function resolveFastPlanArtifactFollowUpAction(label: string): FastPlanArtifactFollowUpAction | null {
   const trimmed = String(label ?? "").trim();
-  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_VIEW) return "view_artifact";
-  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_GO_GENERATION || trimmed === "생성 단계로 이동") {
-    return "check_generation_readiness";
+  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_VIEW || trimmed === "기획안 보기" || trimmed === "Artifact 보기") {
+    return "view_artifacts";
   }
-  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING) return "continue_planning";
+  if (
+    trimmed === FAST_PLAN_ARTIFACT_ACTION_GO_GENERATION ||
+    trimmed === FAST_PLAN_ACTION_START_IMPLEMENTATION ||
+    trimmed === "생성 단계로 이동" ||
+    trimmed === "생성 단계 준비"
+  ) {
+    return "start_implementation";
+  }
+  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING || trimmed === "기획 보완 계속하기") {
+    return "refine";
+  }
   return null;
 }
 
@@ -308,11 +319,29 @@ export function findLatestFastPlanArtifactIdFromMessages(
 ): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m?.meta?.internalType !== FAST_PLAN_ARTIFACT_CREATED_INTERNAL_TYPE) continue;
+    const internalType = m?.meta?.internalType;
+    if (
+      internalType !== FAST_PLAN_ARTIFACT_CREATED_INTERNAL_TYPE &&
+      internalType !== QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE
+    ) {
+      continue;
+    }
+    const ids = quickDesignArtifactIdsFromMessageMeta(m.meta);
+    if (ids.length) return ids[0] ?? null;
     const id = fastPlanArtifactIdFromMessageMeta(m.meta);
     if (id) return id;
   }
   return null;
+}
+
+export function quickDesignArtifactIdsFromMessageMeta(meta: unknown): readonly string[] {
+  if (!meta || typeof meta !== "object") return [];
+  const o = meta as { quickDesignArtifactIds?: unknown; fastPlanArtifactId?: unknown };
+  if (Array.isArray(o.quickDesignArtifactIds)) {
+    return o.quickDesignArtifactIds.map((id) => String(id ?? "").trim()).filter(Boolean);
+  }
+  const single = String(o.fastPlanArtifactId ?? "").trim();
+  return single ? [single] : [];
 }
 
 /** 기획안 산출물 ID — 메시지 meta → deliverableAssets → generation state → projectArtifacts 순으로 조회 */
@@ -324,10 +353,16 @@ export function resolveFastPlanViewArtifactId(input: {
   if (fromMessage) return fromMessage;
 
   const deliverables = input.state.deliverableAssets ?? [];
+  const areaTitles = new Set<string>(Object.values(QUICK_DESIGN_AREA_ARTIFACT_TITLES));
   for (let i = deliverables.length - 1; i >= 0; i--) {
     const row = deliverables[i];
     const title = String(row?.title ?? "").trim();
-    if (title === "기획안" || title.includes("기획안") || title.includes("빠른 프로토타입")) {
+    if (
+      areaTitles.has(title) ||
+      title === "기획안" ||
+      title.includes("기획안") ||
+      title.includes("빠른 프로토타입")
+    ) {
       const id = String(row.id ?? "").trim();
       if (id) return id;
     }

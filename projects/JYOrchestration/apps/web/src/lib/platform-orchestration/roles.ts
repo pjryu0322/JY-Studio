@@ -46,7 +46,7 @@ export const PLATFORM_ROLE_DEFINITIONS: readonly PlatformRoleDefinition[] = [
   {
     role: "planner",
     labelKo: "AI기획자",
-    description: "서비스 목적·범위·기획 슬롯과 산출물 초안을 담당한다.",
+    description: "서비스 목적·범위·서비스 정의와 산출물 초안을 담당한다.",
     defaultCapabilities: ["planning"],
     requiredForFlows: ["fast_plan_draft", "fast_plan_generation"],
     defaultEnabled: true,

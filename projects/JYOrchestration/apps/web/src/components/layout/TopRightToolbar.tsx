@@ -257,7 +257,7 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
     <>
       {p.workNotesProjectId?.trim() ? <WorkNotePendingChatNav projectId={p.workNotesProjectId} /> : null}
       {vertical && !p.workNotesProjectId?.trim() ? null : (
-        <ProjectWorkNoteButton notesProjectId={p.workNotesProjectId} railFooterLabel={vertical ? "문서" : undefined} />
+        <ProjectWorkNoteButton notesProjectId={p.workNotesProjectId} railFooterLabel={vertical ? "메모" : undefined} />
       )}
     </>
   ) : null;

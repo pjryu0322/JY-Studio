@@ -11,9 +11,7 @@ import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
-import { buildFastPlanDraftConfirmedNextActions } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 import { buildQuickDesignConfirmedTimelineEntry } from "@/lib/requirements/quickDesignLabels";
-import { evaluatePlanningToGenerationReadiness } from "@/lib/requirements/planningReadinessGate";
 import { prepareQuickDesignDraftForConfirm } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { getQuickDesignPatchedSlotKeys } from "@/lib/requirements/quickDesignSlotArea";
 
@@ -122,46 +120,25 @@ export function confirmFastPlanDraftSlots(input: {
         })
       : input.orchestration;
 
-  const uniqueLabels = [...new Set(confirmedLabels)].slice(0, 12);
-  const bodyLines = [
-    "Quick Design 초안을 확정했습니다.",
-    "",
-    "이번 초안에서 확정된 슬롯:",
-    ...(uniqueLabels.length ? uniqueLabels.map((l) => `- ${l}`) : ["- (반영된 슬롯 없음)"]),
-    "",
-    "이제 정석 경로로 다음 작업을 진행할 수 있습니다.",
-    "",
-    "아래 버튼에서 다음 동작을 선택해 주세요.",
-  ];
-
   const fastPlanDraftV1Confirmed: FastPlanDraftStateV1 = {
     ...fastPlanDraftV1,
     status: "confirmed",
     slotCandidatePatch: fastPlanDraftV1.slotCandidatePatch as FastPlanDraftSlotCandidatePatchV1 | undefined,
   };
 
-  const generationReadiness = evaluatePlanningToGenerationReadiness({
-    orchestration,
-    definitions: input.definitions,
-  });
-  const followUpChips = buildFastPlanDraftConfirmedNextActions({
-    generationPrepReady: generationReadiness.ready,
-    generationPrepReason: generationReadiness.reason,
-  });
-
+  /** 사용자 메시지는 확정 직후 산출물 생성과 함께 workspace에서 구현 준비 완료 메시지로 대체 */
   const chatMessage = newRequirementsMessage({
     role: "ai",
     speakerType: "AI",
     speakerId: "ai-planner",
     speakerName: "AI기획자",
     messageType: "NOTICE",
-    content: bodyLines.join("\n"),
+    content: "",
     createdAt: input.nowIso,
     meta: {
       stage: "REQUIREMENTS",
       internalType: FAST_PLAN_DRAFT_CONFIRMED_INTERNAL_TYPE,
-      interviewSuggestions: [...followUpChips],
-      interviewAllowCustomInput: true,
+      interviewAllowCustomInput: false,
     },
   });
 
@@ -175,7 +152,7 @@ export function confirmFastPlanDraftSlots(input: {
     orchestration,
     fastPlanDraftV1: fastPlanDraftV1Confirmed,
     confirmedSlotKeys,
-    confirmedLabels: uniqueLabels,
+    confirmedLabels: [...new Set(confirmedLabels)].slice(0, 12),
     chatMessage,
     timelineEntry,
     blocked: false,

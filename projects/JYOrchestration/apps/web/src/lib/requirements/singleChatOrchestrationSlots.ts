@@ -8,6 +8,7 @@ import type {
   SingleChatOrchestrationSlotV1,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { SERVICE_DEFINITION_AREA_LABEL } from "@/lib/requirements/servicePlanningUserLabels";
 
 export const SINGLE_CHAT_SERVICE_PLANNING_GROUP = "service-planning" as const;
 
@@ -175,21 +176,21 @@ function orchestrationSlotDisplayLevel(statusRaw: string): "filled" | "partial" 
   return "empty";
 }
 
-/** 슬롯 요약 패널 — 기획 / 분석 / 설계 역할 구역 */
+/** 슬롯 요약 패널 — 서비스 정의 / 분석 / 설계 / 디자인 역할 구역 */
 export function buildOrchestrationSlotSummarySections(
   definitions: readonly SingleChatOrchestrationSlotDefinition[],
   state: RequirementsSingleChatOrchestrationStateV1 | null | undefined
 ): readonly OrchestrationSlotSummarySection[] {
   if (!state?.slots) return [];
-  const sectionOrder = ["기획", "분석", "설계", "디자인"] as const;
+  const sectionOrder = [SERVICE_DEFINITION_AREA_LABEL, "분석", "설계", "디자인"] as const;
   const ownerToSection = (owner: string): (typeof sectionOrder)[number] => {
-    if (owner === PLANNER_AGENT) return "기획";
+    if (owner === PLANNER_AGENT) return SERVICE_DEFINITION_AREA_LABEL;
     if (owner === "service-designer" || owner === "domain-expert") return "분석";
     if (owner === "ui-designer") return "디자인";
     return "설계";
   };
   const buckets: Record<(typeof sectionOrder)[number], { label: string; level: "filled" | "partial" | "empty" }[]> = {
-    기획: [],
+    [SERVICE_DEFINITION_AREA_LABEL]: [],
     분석: [],
     설계: [],
     디자인: [],

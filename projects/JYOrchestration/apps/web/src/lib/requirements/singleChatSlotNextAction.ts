@@ -12,9 +12,15 @@ import {
 import type { QuickReplyWire } from "@/lib/requirements/requirementsQuickActionRegistry";
 import {
   resolveSlotActionIdFromLabel,
+  SLOT_ACTION_DEFAULT_LABEL,
   slotActionWire,
   type SingleChatSlotActionWire,
 } from "@/lib/requirements/singleChatSlotActionTypes";
+import {
+  SERVICE_DEFINITION_AREA_LABEL,
+  SERVICE_PLANNING_TEAM_AREAS_PHRASE,
+  serviceDefinitionSlotPathLabel,
+} from "@/lib/requirements/servicePlanningUserLabels";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
@@ -116,7 +122,7 @@ export function buildSlotActionsForDecision(
         }),
       );
     }
-    if (decision.quickReplies.includes("기획 핵심 정리")) {
+    if (decision.quickReplies.includes(SLOT_ACTION_DEFAULT_LABEL.CONFIRM_PLANNING_CORE)) {
       out.push(
         slotActionWire({
           id: "CONFIRM_PLANNING_CORE",
@@ -371,10 +377,15 @@ function decideSingleChatSlotNextActionCore(input: {
       candidateSlotKeys: planningSlots.candidate,
       partialSlotKeys: planningSlots.partial,
       recommendedActionId: "CONFIRM_PLANNING_CORE",
-      recommendedLabel: "기획 핵심 정리",
+      recommendedLabel: SLOT_ACTION_DEFAULT_LABEL.CONFIRM_PLANNING_CORE,
       assistantLeadText:
-        "AI기획자 제안:\n전체 기획 슬롯을 먼저 정리한 뒤 흐름을 확정하는 것이 좋습니다.",
-      quickReplies: ["기획 핵심 정리", "주 사용자 정리", "핵심 문제 정리", "흐름 보완"],
+        `AI기획자 제안:\n${SERVICE_DEFINITION_AREA_LABEL} 항목을 먼저 정리한 뒤 흐름을 확정하는 것이 좋습니다.`,
+      quickReplies: [
+        SLOT_ACTION_DEFAULT_LABEL.CONFIRM_PLANNING_CORE,
+        "주 사용자 정리",
+        "핵심 문제 정리",
+        "흐름 보완",
+      ],
       shouldSuppressFlowApprove: true,
     };
   }
@@ -443,7 +454,8 @@ function decideSingleChatSlotNextActionCore(input: {
       partialSlotKeys: [],
       recommendedActionId: "PREPARE_GENERATION",
       recommendedLabel: "생성 준비",
-      assistantLeadText: "AI기획자 제안:\n핵심 슬롯이 정리되어 생성 단계 준비를 검토할 수 있습니다.",
+      assistantLeadText:
+        "AI기획자 제안:\n핵심 서비스 정의 항목이 정리되어 구현 준비를 검토할 수 있습니다.",
       quickReplies: ["다음 단계 진행", "세부 기능 정리", "화면 구성 보기"],
       shouldSuppressFlowApprove: false,
     };
@@ -463,7 +475,7 @@ function decideSingleChatSlotNextActionCore(input: {
     recommendedActionId: "REFINE_SERVICE_FLOW",
     recommendedLabel: shouldSuppressFlowApprove ? "분석 슬롯에 반영" : "흐름 확정",
     assistantLeadText: shouldSuppressFlowApprove
-      ? "AI분석가 제안:\n흐름 후보는 정리되었습니다. 다음은 기획·분석 슬롯을 맞춘 뒤 확정하세요."
+      ? `AI분석가 제안:\n흐름 후보는 정리되었습니다. 다음은 ${SERVICE_PLANNING_TEAM_AREAS_PHRASE} 항목을 맞춘 뒤 확정하세요.`
       : "AI분석가 제안:\n흐름 검토 후 확정하거나 일부 수정할 수 있습니다.",
     quickReplies: reviewQuickReplies,
     shouldSuppressFlowApprove,
@@ -584,8 +596,18 @@ export function buildSlotOrchestrationAssistantLead(input: {
   const slotLines = [
     slotStatusLine(input.orchestration, input.definitions, ".flow.actorTypes", "분석 > 서비스 액터"),
     slotStatusLine(input.orchestration, input.definitions, ".flow.serviceFlow", "분석 > 서비스 흐름"),
-    slotStatusLine(input.orchestration, input.definitions, ".planning.coreUsers", "기획 > 주 사용자"),
-    slotStatusLine(input.orchestration, input.definitions, ".planning.problem", "기획 > 핵심 문제"),
+    slotStatusLine(
+      input.orchestration,
+      input.definitions,
+      ".planning.coreUsers",
+      serviceDefinitionSlotPathLabel("주 사용자"),
+    ),
+    slotStatusLine(
+      input.orchestration,
+      input.definitions,
+      ".planning.problem",
+      serviceDefinitionSlotPathLabel("핵심 문제"),
+    ),
   ].filter((l): l is string => Boolean(l));
 
   if (slotLines.length) {

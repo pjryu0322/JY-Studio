@@ -114,8 +114,8 @@ export function ProjectWorkNoteButton(p: WorkNoteButtonProps) {
         href={href}
         prefetch={false}
         data-testid="work-note-open-project"
-        aria-label="문서 · 프로젝트 작업메모로 이동"
-        title="프로젝트 작업메모 (문서)"
+        aria-label="메모 · 프로젝트 작업메모로 이동"
+        title="프로젝트 작업메모"
         style={railTextCell(label, false)}
       >
         <span style={platformRailNavPrimaryText}>{label}</span>
@@ -139,8 +139,8 @@ export function ProjectWorkNoteButton(p: WorkNoteButtonProps) {
       href={href}
       prefetch={false}
       data-testid="work-note-open-project"
-      aria-label="문서 · 프로젝트 작업메모로 이동"
-      title="프로젝트 작업메모 (문서)"
+      aria-label="메모 · 프로젝트 작업메모로 이동"
+      title="프로젝트 작업메모"
       style={iconButtonStyle()}
     >
       <FileTextGlyph />

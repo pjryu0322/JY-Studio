@@ -4,11 +4,15 @@ import type { FastPlanDraftSlotCandidatePatchV1 } from "@/lib/requirements/fastP
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { formatFastPlanPlatformTimelineResponse } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
 import type { QuickDesignAreaCounts } from "@/lib/requirements/quickDesignSlotArea";
+import { countQuickDesignAreaCounts } from "@/lib/requirements/quickDesignSlotArea";
 import { buildFastPlanAssumptionMarkdownTable } from "@/lib/requirements/markdownTableCells";
+import { SERVICE_PLANNING_TEAM_AREAS_PHRASE } from "@/lib/requirements/servicePlanningUserLabels";
 
 export const QUICK_DESIGN_LABEL = "Quick Design" as const;
-export const QUICK_DESIGN_TOOLTIP = "AI팀이 기획·분석·설계·디자인 초안을 자동 구성합니다" as const;
-export const QUICK_DESIGN_DESCRIPTION = "Quick Design: AI팀이 필수 슬롯 초안을 생성합니다." as const;
+export const QUICK_DESIGN_TOOLTIP =
+  `AI팀이 ${SERVICE_PLANNING_TEAM_AREAS_PHRASE} 초안을 자동 구성합니다` as const;
+export const QUICK_DESIGN_DESCRIPTION =
+  `Quick Design: AI팀이 ${SERVICE_PLANNING_TEAM_AREAS_PHRASE} 필수 항목 초안을 생성합니다.` as const;
 
 /** Icon button title / aria-label (compact UI). */
 export const QUICK_DESIGN_ACCESSIBLE_LABEL = `${QUICK_DESIGN_LABEL}: ${QUICK_DESIGN_TOOLTIP}` as const;
@@ -28,8 +32,6 @@ const ROLE_HEADING: Readonly<Record<PlatformMemberRole, string>> = {
   eai: "EAI",
   vlm_analyst: "VLM 분석가",
 };
-
-import { countQuickDesignAreaCounts } from "@/lib/requirements/quickDesignSlotArea";
 
 /** @deprecated use countQuickDesignAreaCounts from quickDesignSlotArea */
 export function countQuickDesignSlotsByArea(keys: readonly string[]): QuickDesignAreaCounts {
@@ -63,7 +65,7 @@ export function buildQuickDesignResultMessage(input: {
   return [
     "Quick Design 초안이 생성되었습니다.",
     "",
-    "AI팀이 현재 대화 내용을 바탕으로 기획·분석·설계·디자인 초안을 구성했습니다.",
+    `AI팀이 현재 대화 내용을 바탕으로 ${SERVICE_PLANNING_TEAM_AREAS_PHRASE} 초안을 구성했습니다.`,
     "이미 확정된 항목은 유지하고, 부족하거나 불확실한 항목은 후보로 보완했습니다.",
     "",
     "확인 후 그대로 확정하거나 일부 수정할 수 있습니다.",
@@ -171,7 +173,7 @@ export function buildQuickDesignConfirmedTimelineEntry(input: {
     routingDecision: "quick_design_confirmed",
     projectId: input.projectId,
     nowIso: input.nowIso,
-    promptText: "초안 확인/확정",
+    promptText: "Quick Design 확정",
     detail: `confirmed=${input.confirmedCount}`,
   });
 }

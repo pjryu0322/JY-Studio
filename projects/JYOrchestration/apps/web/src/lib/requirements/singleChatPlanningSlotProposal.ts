@@ -9,6 +9,7 @@ import {
   findOrchestrationSlotKeysBySuffix,
   findSlotRow,
 } from "@/lib/requirements/singleChatSlotNextAction";
+import { serviceDefinitionSlotPathLabel } from "@/lib/requirements/servicePlanningUserLabels";
 import {
   PLANNING_FOLLOWUP_SLOT_ACTION_WIRES,
   planningCoreSlotKeys,
@@ -128,10 +129,10 @@ function buildPlanningCoreProposalText(input: {
   lines.push(
     "",
     "슬롯 반영 후보:",
-    "- 기획 > 서비스 목적: 후보",
-    "- 기획 > 주 사용자: 후보",
-    "- 기획 > 핵심 문제: 후보",
-    "- 기획 > 기대 효과: 후보",
+    `- ${serviceDefinitionSlotPathLabel("서비스 목적")}: 후보`,
+    `- ${serviceDefinitionSlotPathLabel("주 사용자")}: 후보`,
+    `- ${serviceDefinitionSlotPathLabel("핵심 문제")}: 후보`,
+    `- ${serviceDefinitionSlotPathLabel("기대 효과")}: 후보`,
     "",
     "다음 중 하나를 선택할 수 있습니다.",
     "1. 이 기준으로 반영",
@@ -395,7 +396,7 @@ export function executeSingleChatSlotAction(input: {
     return buildSingleSlotRefineProposal({
       ...input,
       slotSuffix: ".planning.coreUsers",
-      sectionTitle: "기획 > 주 사용자",
+      sectionTitle: serviceDefinitionSlotPathLabel("주 사용자"),
       draftValue: drafts.users,
     });
   }
@@ -403,7 +404,7 @@ export function executeSingleChatSlotAction(input: {
     return buildSingleSlotRefineProposal({
       ...input,
       slotSuffix: ".planning.problem",
-      sectionTitle: "기획 > 핵심 문제",
+      sectionTitle: serviceDefinitionSlotPathLabel("핵심 문제"),
       draftValue: drafts.problem,
     });
   }
@@ -411,7 +412,7 @@ export function executeSingleChatSlotAction(input: {
     return buildSingleSlotRefineProposal({
       ...input,
       slotSuffix: ".planning.expectedOutcome",
-      sectionTitle: "기획 > 기대 효과",
+      sectionTitle: serviceDefinitionSlotPathLabel("기대 효과"),
       draftValue: drafts.outcome,
     });
   }

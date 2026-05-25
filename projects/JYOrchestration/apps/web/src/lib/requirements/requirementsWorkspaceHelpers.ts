@@ -10,6 +10,7 @@ import {
 } from "@/lib/requirements/problemInterview";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
+import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
 export type RequirementsWorkspaceStage = "ideation" | "service-flow" | "feature-planning";
 
@@ -132,8 +133,25 @@ export function ideationInterviewMilestoneLine(
   if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL) return "필요한 핵심 정보가 모두 모였습니다.";
   if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL - 1 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL - 1) return "마지막 정보 1개만 더 확인하겠습니다.";
   if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL / 2 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL / 2)
-    return "서비스 기획 진행도가 절반을 넘었습니다.";
+    return "서비스 정의 진행도가 절반을 넘었습니다.";
   return "";
+}
+
+/**
+ * In-memory `stateJsonRef` wins over persisted project JSON when the key is present
+ * (e.g. conversation reset clears orchestration before the project refetch).
+ */
+export function resolveWorkspaceSingleChatOrchestration(input: {
+  readonly localState: RequirementsStateJson;
+  readonly persistedOrchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly slotDefinitionsHash: string;
+}): RequirementsSingleChatOrchestrationStateV1 | null {
+  const useLocal = Object.prototype.hasOwnProperty.call(input.localState, "singleChatOrchestrationV1");
+  const orch = useLocal
+    ? (input.localState.singleChatOrchestrationV1 ?? null)
+    : (input.persistedOrchestration ?? null);
+  if (!orch || orch.slotDefinitionsHash !== input.slotDefinitionsHash) return null;
+  return orch;
 }
 
 /** 오케스트레이션 0%·슬롯 미확보 초기 상태에서는 Hub 알림 배지를 숨깁니다. */

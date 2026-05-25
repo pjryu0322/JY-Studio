@@ -34,7 +34,7 @@ export type SingleChatSlotActionWire = Readonly<{
 }>;
 
 export const SLOT_ACTION_DEFAULT_LABEL: Readonly<Record<SingleChatSlotActionId, string>> = {
-  CONFIRM_PLANNING_CORE: "기획 핵심 정리",
+  CONFIRM_PLANNING_CORE: "서비스 정의 핵심 정리",
   REFINE_TARGET_USERS: "주 사용자 정리",
   REFINE_CORE_PROBLEM: "핵심 문제 정리",
   REFINE_EXPECTED_OUTCOME: "기대 효과 정리",
@@ -42,7 +42,7 @@ export const SLOT_ACTION_DEFAULT_LABEL: Readonly<Record<SingleChatSlotActionId, 
   REFINE_SERVICE_FLOW: "흐름 보완",
   DEFINE_FEATURE_SCOPE: "기능 범위 정리",
   DEFINE_SCREEN_STRUCTURE: "화면 구성 보기",
-  REVIEW_SLOT_GAPS: "슬롯 누락 검토",
+  REVIEW_SLOT_GAPS: "서비스 정의 누락 검토",
   PREPARE_GENERATION: "생성 준비",
   APPLY_SLOT_PROPOSAL: "이 기준으로 반영",
   EDIT_SLOT_PROPOSAL: "일부 수정",

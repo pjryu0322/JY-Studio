@@ -3,6 +3,7 @@
 import type { RefObject } from "react";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import styles from "@/components/workspace/workspaceProgressPill.module.css";
+import { SERVICE_DEFINITION_PROGRESS_LABEL } from "@/lib/requirements/servicePlanningUserLabels";
 
 export type WorkspaceIdeationInterviewProgressUi = {
   readonly active: boolean;
@@ -30,9 +31,11 @@ export function WorkspaceProgressPill({
   readonly headerRef?: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className={styles.root} title="서비스 기획 진행도 (가중치: 확정 1 · 부분 0.5 · 후보 0.25)">
-      <div className={styles.trigger} aria-label="서비스 기획 진행도">
-        <span className={styles.nowrap}>서비스 기획 진행도 {interviewUi.readinessPercent}%</span>
+    <div className={styles.root} title={`${SERVICE_DEFINITION_PROGRESS_LABEL} (가중치: 확정 1 · 부분 0.5 · 후보 0.25)`}>
+      <div className={styles.trigger} aria-label={SERVICE_DEFINITION_PROGRESS_LABEL}>
+        <span className={styles.nowrap}>
+          {SERVICE_DEFINITION_PROGRESS_LABEL} {interviewUi.readinessPercent}%
+        </span>
         {interviewUi.statusCounts ? (
           <>
             <span className={styles.sep}>·</span>
