@@ -22,6 +22,13 @@ import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifact
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import { IMPLEMENTATION_MODE_PRIMARY_MEMBERS } from "@/lib/requirements/modeOrchestrationConfig";
+import {
+  buildImplementationBootstrapInput,
+  isPrototypeExecutionEnvLoading,
+  pickExecutionStateArtifacts,
+  toPrototypeChatEnvSnapshot,
+} from "@/lib/prototype/prototypeExecutionEnvSnapshot";
+import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import {
   buildPrototypeExecutionSingleChatPersistPatch,
@@ -1033,59 +1040,59 @@ export function PrototypePreviewPanel({
     [projectId],
   );
 
-  const executionEnvLoading = useMemo(
+  const executionEnvSnapshot = useMemo(
     () =>
-      envStatus.git === "loading" ||
-      envStatus.github === "loading" ||
-      envStatus.cursor === "loading" ||
-      envStatus.connectionTest === "loading",
+      toPrototypeChatEnvSnapshot({
+        git: envStatus.git,
+        github: envStatus.github,
+        cursor: envStatus.cursor,
+        connectionTest: envStatus.connectionTest,
+      }),
     [envStatus],
   );
+
+  const executionEnvLoading = useMemo(() => isPrototypeExecutionEnvLoading(executionEnvSnapshot), [executionEnvSnapshot]);
 
   const parsedRequirementsState = useMemo(
     () => parseRequirementsStateJson(requirementsStateJson),
     [requirementsStateJson],
   );
 
-  const implementationBootstrapInput = useMemo(() => {
-    if (executionEnvLoading) return null;
-    return {
+  const executionArtifacts = useMemo(
+    () => pickExecutionStateArtifacts(parsedRequirementsState),
+    [parsedRequirementsState],
+  );
+
+  const implementationBootstrapInput = useMemo(
+    () =>
+      buildImplementationBootstrapInput({
+        envLoading: executionEnvLoading,
+        projectId,
+        env: executionEnvSnapshot,
+        envOk: canRequestGeneration.envOk,
+        envSettingsHref,
+        featureDraftTitles: featureDraftTitles ?? [],
+        projectArtifacts: executionArtifacts.projectArtifacts,
+        artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
+        designOk: canRequestGeneration.designOk,
+      }),
+    [
+      executionEnvLoading,
       projectId,
-      env: {
-        git: envStatus.git,
-        github: envStatus.github,
-        cursor: envStatus.cursor,
-        connectionTest: envStatus.connectionTest,
-      },
-      envOk: canRequestGeneration.envOk,
+      executionEnvSnapshot,
+      canRequestGeneration.envOk,
+      canRequestGeneration.designOk,
       envSettingsHref,
-      featureDraftTitles: featureDraftTitles ?? [],
-      projectArtifacts: parsedRequirementsState.projectArtifacts ?? [],
-      artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-      designOk: canRequestGeneration.designOk,
-    };
-  }, [
-    executionEnvLoading,
-    projectId,
-    envStatus,
-    canRequestGeneration.envOk,
-    canRequestGeneration.designOk,
-    envSettingsHref,
-    featureDraftTitles,
-    parsedRequirementsState.projectArtifacts,
-    parsedRequirementsState.artifactOrchestrationV1,
-  ]);
+      featureDraftTitles,
+      executionArtifacts,
+    ],
+  );
 
   const derivedChatMessages = useMemo(
     () =>
       buildPrototypeChatMessages({
         omitEnvReadinessCard: true,
-        env: {
-          git: envStatus.git,
-          github: envStatus.github,
-          cursor: envStatus.cursor,
-          connectionTest: envStatus.connectionTest,
-        },
+        env: executionEnvSnapshot,
         canRequestGenerationEnvOk: canRequestGeneration.envOk,
         canRequestGenerationDesignOk: canRequestGeneration.designOk,
         envSettingsHref,
@@ -1112,10 +1119,7 @@ export function PrototypePreviewPanel({
         projectId,
       }),
     [
-      envStatus.git,
-      envStatus.github,
-      envStatus.cursor,
-      envStatus.connectionTest,
+      executionEnvSnapshot,
       canRequestGeneration.envOk,
       canRequestGeneration.designOk,
       envSettingsHref,
@@ -1167,47 +1171,37 @@ export function PrototypePreviewPanel({
   );
 
   const handleImplementationChip = useCallback(
-    (label: string): boolean => {
-      const t = label.trim();
-      if (t === "환경설정 열기") {
-        window.location.assign(envSettingsHref);
-        return true;
-      }
-      if (t === "산출물 다시 보기") {
-        setArtifactHubOpen(true);
-        return true;
-      }
-      if (t === "구현 범위 수정") {
-        showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
-        queueMicrotask(() => chatInputRef.current?.focus());
-        return true;
-      }
-      if (t === "구현 작업안 확정") {
-        if (!templateConfirmed) {
-          showToast("타임라인에서 템플릿을 [확정]한 뒤 작업안을 확정할 수 있습니다.");
+    (label: string) =>
+      tryHandlePrototypeExecutionChip(label, {
+        openEnvSettings: () => window.location.assign(envSettingsHref),
+        openArtifactHub: () => setArtifactHubOpen(true),
+        focusComposerForScopeEdit: () => {
+          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
+          queueMicrotask(() => chatInputRef.current?.focus());
+        },
+        confirmWorkPlan: () => startWorkPlanGenerationFromChat(),
+        confirmExecution: () => confirmExecution(),
+        refreshStatus: () => void onRefreshPrototypeStatus(),
+        showToast,
+        canConfirmWorkPlan: () => {
+          if (!templateConfirmed) {
+            showToast("타임라인에서 템플릿을 [확정]한 뒤 작업안을 확정할 수 있습니다.");
+            return false;
+          }
+          if (!canRequestGeneration.envOk) {
+            showToast("환경 준비 후 작업안을 확정할 수 있습니다.");
+            return false;
+          }
           return true;
-        }
-        if (!canRequestGeneration.envOk) {
-          showToast("환경 준비 후 작업안을 확정할 수 있습니다.");
+        },
+        canConfirmExecution: () => {
+          if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
+            showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
+            return false;
+          }
           return true;
-        }
-        startWorkPlanGenerationFromChat();
-        return true;
-      }
-      if (t === "구현 실행") {
-        if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
-          showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
-          return true;
-        }
-        confirmExecution();
-        return true;
-      }
-      if (t === "상태 새로고침") {
-        void onRefreshPrototypeStatus();
-        return true;
-      }
-      return false;
-    },
+        },
+      }),
     [
       envSettingsHref,
       templateConfirmed,
