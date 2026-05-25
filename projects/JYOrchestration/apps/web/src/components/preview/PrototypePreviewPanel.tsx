@@ -15,6 +15,12 @@ import {
   PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
+import { PrototypeExecutionWorkspaceChrome } from "@/components/preview/PrototypeExecutionWorkspaceChrome";
+import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
+import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
+import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
+import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
+import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import {
   buildPrototypeExecutionSingleChatPersistPatch,
@@ -172,6 +178,10 @@ export function PrototypePreviewPanel({
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
+  const [artifactHubOpen, setArtifactHubOpen] = useState(false);
+  const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
+  const [deliverableViewerIds, setDeliverableViewerIds] = useState<readonly string[]>([]);
+  const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
   /** 추천·병합 지식팩 컨텍스트(프로토타입 프롬프트 미리보기용, 실패 시 비움) */
   const [knowledgePackContextText, setKnowledgePackContextText] = useState<string | undefined>(undefined);
@@ -1533,6 +1543,80 @@ export function PrototypePreviewPanel({
     return { left: `구현 작업 ${pct}%`, right: `${done}/${total}` };
   }, [latestRun]);
 
+  const planningOrchestrationView = useMemo(
+    () =>
+      buildPrototypeExecutionPlanningOrchestrationView({
+        requirementsStateJson,
+        projectId,
+        projectName: projectName || "프로젝트",
+        projectDescription,
+        servicePlanningAgentCatalogKeys: prototypeScreenCatalogIds,
+      }),
+    [requirementsStateJson, projectId, projectName, projectDescription, prototypeScreenCatalogIds],
+  );
+
+  const deliverableViewerAssets = useMemo(() => {
+    const pid = projectId.trim();
+    const ids = planningOrchestrationView.deliverableViewerAssetIds;
+    const fromDeliverables = planningOrchestrationView.deliverableAssets.filter((a) => ids.includes(a.id));
+    const knownIds = new Set(fromDeliverables.map((a) => a.id));
+    const extras = ids.flatMap((id) => {
+      if (knownIds.has(id)) return [];
+      const artifact = planningOrchestrationView.projectArtifacts.find((a) => a.id === id);
+      if (!artifact || !pid) return [];
+      return [projectArtifactToDeliverableAsset(artifact, pid)];
+    });
+    return [...fromDeliverables, ...extras];
+  }, [planningOrchestrationView, projectId]);
+
+  const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
+    setDeliverableViewerIds([...ids]);
+    setDeliverableViewerFocusId(focusId ?? null);
+    setDeliverableViewerOpen(true);
+  }, []);
+
+  const handleArtifactHubSelect = useCallback(
+    (entry: ProjectArtifactHubEntry) => {
+      const ids = planningOrchestrationView.deliverableViewerAssetIds.length
+        ? planningOrchestrationView.deliverableViewerAssetIds
+        : [entry.assetId];
+      openDeliverableViewer(ids, entry.assetId);
+    },
+    [openDeliverableViewer, planningOrchestrationView.deliverableViewerAssetIds],
+  );
+
+  const executionStatusPill = (
+    <div style={{ position: "relative", minWidth: 0 }}>
+      <div
+        role="status"
+        aria-live="polite"
+        title="현재 진행 상태"
+        style={{
+          border: "1px solid #cbd5e1",
+          background: "#fff",
+          borderRadius: 999,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 900,
+          color: "#0f172a",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          maxWidth: "min(100%, 420px)",
+        }}
+      >
+        <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
+        <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
+        {prototypeHeaderPill.right ? (
+          <>
+            <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
+            <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="jyo-prototype-generation-root"
@@ -1572,35 +1656,14 @@ export function PrototypePreviewPanel({
             onOpen: () => setProtoMembersModalOpen(true),
           }}
           statusPill={
-            <div style={{ position: "relative", minWidth: 0 }}>
-              <div
-                role="status"
-                aria-live="polite"
-                title="현재 진행 상태"
-                style={{
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
-                  borderRadius: 999,
-                  padding: "6px 12px",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  color: "#0f172a",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  maxWidth: "min(100%, 420px)",
-                }}
-              >
-                <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
-                <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
-                {prototypeHeaderPill.right ? (
-                  <>
-                    <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
-                    <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
-                  </>
-                ) : null}
-              </div>
-            </div>
+            <PrototypeExecutionWorkspaceChrome
+              statusPill={executionStatusPill}
+              artifactHubCount={planningOrchestrationView.artifactHubCompletedCount}
+              artifactHubHasStale={planningOrchestrationView.orchestrationUi.artifactBadgeHasStale}
+              showArtifactHubBadge={planningOrchestrationView.showArtifactHubBadge}
+              onOpenArtifactHub={() => setArtifactHubOpen(true)}
+              planningProgressUi={planningOrchestrationView.planningProgressUi}
+            />
           }
           input={executionSingleChat.input}
           onInputChange={executionSingleChat.setInput}
@@ -1649,6 +1712,50 @@ export function PrototypePreviewPanel({
           </details>
         ) : null}
       </div>
+
+      <RequirementsArtifactHubDrawer
+        open={artifactHubOpen}
+        items={planningOrchestrationView.artifactHubCatalog}
+        projectName={projectName || "프로젝트"}
+        projectId={projectId.trim() || undefined}
+        projectArtifacts={planningOrchestrationView.projectArtifacts}
+        deliverableAssets={planningOrchestrationView.deliverableAssets}
+        generateDisabled
+        lifecycleSummary={planningOrchestrationView.orchestrationUi.artifactLifecycleLabels.map((r) => ({
+          label: r.label,
+          hint: r.hint,
+        }))}
+        onClose={() => setArtifactHubOpen(false)}
+        closeOnEscape={!deliverableViewerOpen}
+        onSelectEntry={handleArtifactHubSelect}
+        onGenerate={() => {
+          showToast("문서 생성은 서비스 기획(/requirements) 화면에서 진행할 수 있습니다.");
+        }}
+        onExportFeedback={({ kind, count, blocked }) => {
+          if (blocked) {
+            showToast(blocked);
+            return;
+          }
+          if (kind === "pdf") {
+            showToast(
+              count === 1
+                ? "선택한 산출물 PDF 인쇄 창을 열었습니다."
+                : `선택한 산출물 ${count}건 PDF 인쇄 창을 열었습니다.`,
+            );
+            return;
+          }
+          showToast(
+            count === 1 ? "선택한 산출물을 Doc으로 내려받았습니다." : `선택한 산출물 ${count}건을 Doc으로 내려받았습니다.`,
+          );
+        }}
+      />
+
+      <RequirementsDeliverableViewerModal
+        open={deliverableViewerOpen}
+        onClose={() => setDeliverableViewerOpen(false)}
+        assets={deliverableViewerAssets}
+        initialAssetId={deliverableViewerFocusId}
+      />
 
       <WorkspaceParticipantsModal
         open={protoMembersModalOpen}
