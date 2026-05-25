@@ -52,7 +52,7 @@ export function prototypeBuiltMessageToRequirementsMessage(m: PrototypeChatBuilt
     createdAt: syntheticCreatedAt(m.orderKey),
     meta: {
       internalType: PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE,
-      serviceDesignStage: "feature-planning",
+      serviceDesignStage: "implementation",
       interviewSuggestions: suggestions.length ? suggestions : undefined,
       interviewAllowCustomInput: true,
       prototypeOrderKey: m.orderKey,

@@ -15,6 +15,11 @@ import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/re
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExtract";
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
+import {
+  buildImplementationOrchestrationSummary,
+  hasImplementationOrchestrationBootstrap,
+  type ImplementationOrchestrationSummaryInput,
+} from "@/lib/prototype/implementationOrchestrationSummary";
 
 export type PrototypeExecutionOperationalSendResult = "handled" | "continue";
 
@@ -32,6 +37,8 @@ export function usePrototypeExecutionSingleChat({
   inputBlocked,
   onOperationalSend,
   onPersistStateJson,
+  implementationBootstrapInput,
+  envLoading = false,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -51,6 +58,8 @@ export function usePrototypeExecutionSingleChat({
     answers: Readonly<Record<string, string>>;
     currentSlotKey: string | null;
   }) => void;
+  readonly implementationBootstrapInput?: ImplementationOrchestrationSummaryInput | null;
+  readonly envLoading?: boolean;
 }) {
   const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded">("idle");
   const [conversationMessages, setConversationMessages] = useState<readonly RequirementsMessage[]>([]);
@@ -61,6 +70,7 @@ export function usePrototypeExecutionSingleChat({
   const [input, setInput] = useState("");
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const slotsBootstrapRef = useRef(false);
+  const implementationBootstrapRef = useRef(false);
   const actionByLabelRef = useRef<ReadonlyMap<string, PrototypeChatAction>>(new Map());
 
   const aiTitle = displayedWorkspaceAiTitle("prototype_build");
@@ -80,7 +90,36 @@ export function usePrototypeExecutionSingleChat({
     setCurrentSlotKey(resolved.currentSlotKey ?? null);
     setConversationStatus("loaded");
     slotsBootstrapRef.current = (resolved.slots?.length ?? 0) > 0;
+    implementationBootstrapRef.current = hasImplementationOrchestrationBootstrap(resolved.messages);
   }, [projectId, requirementsStateJson]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid || conversationStatus !== "loaded" || envLoading) return;
+    if (implementationBootstrapRef.current || !implementationBootstrapInput) return;
+    implementationBootstrapRef.current = true;
+    const bootstrap = buildImplementationOrchestrationSummary(implementationBootstrapInput);
+    setConversationMessages((prev) => {
+      if (hasImplementationOrchestrationBootstrap(prev)) return prev;
+      const next = [...prev, ...bootstrap];
+      onPersistStateJson({
+        messages: next,
+        slots,
+        answers,
+        currentSlotKey,
+      });
+      return next;
+    });
+  }, [
+    projectId,
+    conversationStatus,
+    envLoading,
+    implementationBootstrapInput,
+    onPersistStateJson,
+    slots,
+    answers,
+    currentSlotKey,
+  ]);
 
   const { messages: derivedMessages, actionByLabel } = useMemo(
     () => projectPrototypeBuiltMessagesToRequirements(mergedBuiltMessages),

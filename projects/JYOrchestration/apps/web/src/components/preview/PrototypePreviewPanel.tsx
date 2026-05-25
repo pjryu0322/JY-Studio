@@ -21,6 +21,7 @@ import { RequirementsDeliverableViewerModal } from "@/components/requirements/Re
 import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
+import { IMPLEMENTATION_MODE_PRIMARY_MEMBERS } from "@/lib/requirements/modeOrchestrationConfig";
 import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import {
   buildPrototypeExecutionSingleChatPersistPatch,
@@ -1032,9 +1033,53 @@ export function PrototypePreviewPanel({
     [projectId],
   );
 
+  const executionEnvLoading = useMemo(
+    () =>
+      envStatus.git === "loading" ||
+      envStatus.github === "loading" ||
+      envStatus.cursor === "loading" ||
+      envStatus.connectionTest === "loading",
+    [envStatus],
+  );
+
+  const parsedRequirementsState = useMemo(
+    () => parseRequirementsStateJson(requirementsStateJson),
+    [requirementsStateJson],
+  );
+
+  const implementationBootstrapInput = useMemo(() => {
+    if (executionEnvLoading) return null;
+    return {
+      projectId,
+      env: {
+        git: envStatus.git,
+        github: envStatus.github,
+        cursor: envStatus.cursor,
+        connectionTest: envStatus.connectionTest,
+      },
+      envOk: canRequestGeneration.envOk,
+      envSettingsHref,
+      featureDraftTitles: featureDraftTitles ?? [],
+      projectArtifacts: parsedRequirementsState.projectArtifacts ?? [],
+      artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+      designOk: canRequestGeneration.designOk,
+    };
+  }, [
+    executionEnvLoading,
+    projectId,
+    envStatus,
+    canRequestGeneration.envOk,
+    canRequestGeneration.designOk,
+    envSettingsHref,
+    featureDraftTitles,
+    parsedRequirementsState.projectArtifacts,
+    parsedRequirementsState.artifactOrchestrationV1,
+  ]);
+
   const derivedChatMessages = useMemo(
     () =>
       buildPrototypeChatMessages({
+        omitEnvReadinessCard: true,
         env: {
           git: envStatus.git,
           github: envStatus.github,
@@ -1121,6 +1166,60 @@ export function PrototypePreviewPanel({
     [flowSteps],
   );
 
+  const handleImplementationChip = useCallback(
+    (label: string): boolean => {
+      const t = label.trim();
+      if (t === "환경설정 열기") {
+        window.location.assign(envSettingsHref);
+        return true;
+      }
+      if (t === "산출물 다시 보기") {
+        setArtifactHubOpen(true);
+        return true;
+      }
+      if (t === "구현 범위 수정") {
+        showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
+        queueMicrotask(() => chatInputRef.current?.focus());
+        return true;
+      }
+      if (t === "구현 작업안 확정") {
+        if (!templateConfirmed) {
+          showToast("타임라인에서 템플릿을 [확정]한 뒤 작업안을 확정할 수 있습니다.");
+          return true;
+        }
+        if (!canRequestGeneration.envOk) {
+          showToast("환경 준비 후 작업안을 확정할 수 있습니다.");
+          return true;
+        }
+        startWorkPlanGenerationFromChat();
+        return true;
+      }
+      if (t === "구현 실행") {
+        if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
+          showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
+          return true;
+        }
+        confirmExecution();
+        return true;
+      }
+      if (t === "상태 새로고침") {
+        void onRefreshPrototypeStatus();
+        return true;
+      }
+      return false;
+    },
+    [
+      envSettingsHref,
+      templateConfirmed,
+      canRequestGeneration.envOk,
+      canRequestGeneration.designOk,
+      startWorkPlanGenerationFromChat,
+      confirmExecution,
+      onRefreshPrototypeStatus,
+      showToast,
+    ],
+  );
+
   const executionSingleChat = usePrototypeExecutionSingleChat({
     projectId,
     projectName: projectName || "프로젝트",
@@ -1133,6 +1232,8 @@ export function PrototypePreviewPanel({
     actorFlowSummary: actorFlowSummaryForChat,
     protoBusy,
     inputBlocked: isMessageInputBlocked,
+    implementationBootstrapInput,
+    envLoading: executionEnvLoading,
     onPersistStateJson: (patch) => {
       void persistChatToDb(patch);
     },
@@ -1505,8 +1606,13 @@ export function PrototypePreviewPanel({
           : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
             ? "오류"
             : "대기";
+    const implMembers = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.filter((id) =>
+      prototypeScreenCatalogIds?.length ? prototypeScreenCatalogIds.includes(id) : true,
+    );
+    const memberIds =
+      implMembers.length > 0 ? implMembers : [...IMPLEMENTATION_MODE_PRIMARY_MEMBERS];
     const platformAi = buildWorkspaceAiParticipantOptions({
-      currentMemberIds: prototypeScreenCatalogIds?.length ? [...prototypeScreenCatalogIds] : ["prototype_build"],
+      currentMemberIds: memberIds,
       statusLabelForCurrent: aiStatus,
     });
     return [
@@ -1677,6 +1783,7 @@ export function PrototypePreviewPanel({
           onClearReplyTo={() => executionSingleChat.setReplyTo(null)}
           onSetReplyTo={(id, preview) => executionSingleChat.setReplyTo({ id, preview })}
           onInterviewSuggestionPick={(label) => {
+            if (handleImplementationChip(label)) return;
             const picked = executionSingleChat.handleInterviewSuggestionPick(label);
             if (picked.kind === "action") handleChatIntent(picked.action);
           }}

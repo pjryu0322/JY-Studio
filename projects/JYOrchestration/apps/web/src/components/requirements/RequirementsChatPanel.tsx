@@ -48,6 +48,7 @@ function serviceDesignStageBadge(meta: unknown): string | null {
   const m = meta as { serviceDesignStage?: string };
   const s = String(m.serviceDesignStage ?? "").trim();
   if (s === "feature-planning") return "기능정리";
+  if (s === "implementation") return "구현";
   if (s === "service-flow") return "액터/흐름";
   if (s === "ideation") return "아이디어";
   return null;

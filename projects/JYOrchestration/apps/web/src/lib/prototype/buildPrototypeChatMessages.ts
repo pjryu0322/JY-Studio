@@ -119,6 +119,10 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   plannerProgressStep: number;
   /** 검토 화면 이동 링크용 */
   projectId: string;
+  /**
+   * true면 환경 점검 카드(구현 첫 화면)를 생략 — Implementation Orchestration bootstrap 메시지가 readiness를 담당.
+   */
+  omitEnvReadinessCard?: boolean;
 }>;
 
 function envLineState(b: PrototypeChatEnvBadge): "완료" | "필요" | "오류" | "대기" {
@@ -180,35 +184,39 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  const envTable: PrototypeChatBlock = {
-    kind: "env_table",
-    rows: [
-      { key: "git", label: "Git 저장소", state: envLineState(p.env.git) },
-      { key: "gh", label: "GitHub 인증", state: envLineState(p.env.github) },
-      { key: "cursor", label: "Cursor API", state: envLineState(p.env.cursor) },
-      { key: "conn", label: "연결 테스트", state: envLineState(p.env.connectionTest) },
-    ],
-  };
+  if (!p.omitEnvReadinessCard) {
+    const envTable: PrototypeChatBlock = {
+      kind: "env_table",
+      rows: [
+        { key: "git", label: "Git 저장소", state: envLineState(p.env.git) },
+        { key: "gh", label: "GitHub 인증", state: envLineState(p.env.github) },
+        { key: "cursor", label: "Cursor API", state: envLineState(p.env.cursor) },
+        { key: "conn", label: "연결 테스트", state: envLineState(p.env.connectionTest) },
+      ],
+    };
 
-  out.push({
-    id: "ai-env-check",
-    role: "ai",
-    orderKey: nextKey(),
-    title: "프로토타입 실행 환경을 점검했습니다.",
-    blocks: [envTable],
-    actions: p.canRequestGenerationEnvOk
-      ? undefined
-      : [{ id: "a-env", label: "환경설정 열기", intent: "OPEN_ENV_SETTINGS" }],
-  });
-
-  if (p.canRequestGenerationEnvOk) {
     out.push({
-      id: "ai-env-ready",
+      id: "ai-env-check",
       role: "ai",
       orderKey: nextKey(),
-      body: "환경이 준비되었습니다.",
+      title: "프로토타입 실행 환경을 점검했습니다.",
+      blocks: [envTable],
+      actions: p.canRequestGenerationEnvOk
+        ? undefined
+        : [{ id: "a-env", label: "환경설정 열기", intent: "OPEN_ENV_SETTINGS" }],
     });
-  } else {
+
+    if (p.canRequestGenerationEnvOk) {
+      out.push({
+        id: "ai-env-ready",
+        role: "ai",
+        orderKey: nextKey(),
+        body: "환경이 준비되었습니다.",
+      });
+    } else {
+      return out;
+    }
+  } else if (!p.canRequestGenerationEnvOk) {
     return out;
   }
 
