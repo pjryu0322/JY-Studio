@@ -1,7 +1,15 @@
-import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
+import { buildCursorPromptDraft } from "@/lib/prototype/implementationCursorPromptDraft";
+import {
+  buildImplementationTaskExecutionHints,
+  type ImplementationTaskExecutionHints,
+} from "@/lib/prototype/implementationExecutionHints";
+
+export { buildCursorPromptDraft } from "@/lib/prototype/implementationCursorPromptDraft";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
-import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { PROJECT_ARTIFACT_LABELS, type ProjectArtifact, type ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
+
+export type { ImplementationTaskExecutionHints } from "@/lib/prototype/implementationExecutionHints";
 
 export const IMPLEMENTATION_TASK_PLAN_SUMMARY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_PLAN_SUMMARY_V1";
 
@@ -25,6 +33,7 @@ export type ImplementationTaskPlanItem = Readonly<{
   acceptanceCriteria: readonly string[];
   securityChecks: readonly string[];
   reviewChecks: readonly string[];
+  executionHints: ImplementationTaskExecutionHints;
   cursorPromptDraft: string;
   status: ImplementationTaskStatus;
   blockers: readonly string[];
@@ -96,46 +105,6 @@ function deriveTaskTitles(input: BuildImplementationTaskPlanInput): readonly { t
   ];
 }
 
-function buildCursorPromptDraft(item: {
-  title: string;
-  description: string;
-  artifactLabels: string[];
-  acceptanceCriteria: readonly string[];
-  securityChecks: readonly string[];
-  reviewChecks: readonly string[];
-}): string {
-  const lines = [
-    `# Cursor 작업 지시 — ${item.title}`,
-    "",
-    "## 작업 목적",
-    item.description,
-    "",
-    "## 참조 산출물",
-    ...item.artifactLabels.map((l) => `- ${l}`),
-    "",
-    "## 구현 요구사항",
-    "- 기획 산출물 범위 안에서 최소 변경으로 구현한다.",
-    "- 기존 프로젝트 컨벤션·타입·테스트 스타일을 따른다.",
-    "",
-    "## 검수 기준",
-    ...item.acceptanceCriteria.map((c) => `- ${c}`),
-    "",
-    "## 보안 기준",
-    ...item.securityChecks.map((c) => `- ${c}`),
-    "",
-    "## 완료 보고 형식",
-    "- 변경 파일 목록",
-    "- 핵심 동작 요약",
-    "- 미해결 리스크(있을 경우)",
-    "",
-    "## 금지사항",
-    "- projects/JYOrchestration 외 수정 금지",
-    "- Stage1/Stage2/ENV_TEST 실행 파이프라인 수정 금지",
-    "- package.json / lockfile 수정 금지",
-  ];
-  return lines.join("\n");
-}
-
 function scmBlockers(envOk: boolean, designOk: boolean): readonly string[] {
   const blockers: string[] = [];
   if (!envOk) blockers.push("실행 환경(Git/GitHub/Cursor/연결 테스트) 미완료");
@@ -151,6 +120,12 @@ export function buildImplementationTaskPlan(input: BuildImplementationTaskPlanIn
   const items: ImplementationTaskPlanItem[] = titles.map((row, index) => {
     const priority: ImplementationTaskPriority = index === 0 ? "P0" : index < 3 ? "P1" : "P2";
     const artifactLabels = row.artifactTypes.map((t) => PROJECT_ARTIFACT_LABELS[t as ProjectArtifactType] ?? t);
+    const executionHints = buildImplementationTaskExecutionHints({
+      taskTitle: row.title,
+      sourceArtifactTypes: row.artifactTypes,
+      projectArtifacts: input.projectArtifacts,
+      featureDraftTitles: input.featureDraftTitles,
+    });
     const acceptanceCriteria = [
       "정상·예외 입력에 대한 사용자 피드백이 있다.",
       "기능 정의서·화면 정의서 범위를 벗어나지 않는다.",
@@ -180,13 +155,15 @@ export function buildImplementationTaskPlan(input: BuildImplementationTaskPlanIn
       acceptanceCriteria,
       securityChecks,
       reviewChecks,
+      executionHints,
       cursorPromptDraft: buildCursorPromptDraft({
         title: row.title,
-        description: `${row.title} 구현`,
+        description: `${row.title} — 기획 산출물(${artifactLabels.join(", ")})을 반영한 구현 작업입니다.`,
         artifactLabels,
         acceptanceCriteria,
         securityChecks,
         reviewChecks,
+        executionHints,
       }),
       status,
       blockers: itemBlockers,
@@ -227,42 +204,10 @@ export function evaluateImplementationTaskPlanReadiness(input: {
     if (!item.acceptanceCriteria.length) missing.push(`${item.title}: 검수 기준`);
     if (!item.securityChecks.length) missing.push(`${item.title}: 보안 기준`);
     if (!item.cursorPromptDraft.trim()) missing.push(`${item.title}: Cursor prompt`);
+    if (!item.executionHints.testCommands.length) missing.push(`${item.title}: 테스트 명령`);
   }
   const uniq = [...new Set(missing)];
   return { ready: uniq.length === 0, missing: uniq };
-}
-
-export function buildImplementationTaskPlanSummaryContent(plan: ImplementationTaskPlanV1): string {
-  const lines = [
-    "구현 작업안을 정리했습니다.",
-    "",
-    "우선 구현 task:",
-    ...plan.items.map((it, i) => `${i + 1}. ${it.title}${it.blockers.length ? " (차단: 환경·설계)" : ""}`),
-    "",
-    "각 task에는 검수 기준과 보안 기준, Cursor prompt 초안을 함께 연결했습니다.",
-    plan.readiness.ready
-      ? "환경·설계 준비가 완료되었습니다. Cursor 실행 요청을 진행할 수 있습니다."
-      : "환경·설계 준비가 부족하면 Cursor 실행 요청은 차단됩니다. [환경설정 열기]로 연결 상태를 먼저 완료해 주세요.",
-  ];
-  if (!plan.readiness.ready && plan.readiness.missing.length) {
-    lines.push("", "부족 항목:", ...plan.readiness.missing.map((m) => `- ${m}`));
-  }
-  return lines.join("\n");
-}
-
-export function implementationTaskPlanSummaryChips(input: {
-  readonly plan: ImplementationTaskPlanV1;
-  readonly envOk: boolean;
-  readonly designOk: boolean;
-}): readonly string[] {
-  const base = ["작업 범위 수정", "산출물 다시 보기", "환경설정 열기"];
-  const gate = evaluateImplementationTaskPlanReadiness({
-    plan: input.plan,
-    envOk: input.envOk,
-    designOk: input.designOk,
-  });
-  if (gate.ready) return [...base, "Cursor 실행 요청", "구현 실행 준비"];
-  return [...base, "구현 실행 준비"];
 }
 
 export function hasImplementationTaskPlanSummary(
@@ -271,30 +216,9 @@ export function hasImplementationTaskPlanSummary(
   return (messages ?? []).some((m) => m.meta.internalType === IMPLEMENTATION_TASK_PLAN_SUMMARY_INTERNAL_TYPE);
 }
 
-export function buildImplementationTaskPlanSummaryMessage(
-  plan: ImplementationTaskPlanV1,
-  input: { readonly envOk: boolean; readonly designOk: boolean; readonly nowIso?: string },
-): RequirementsMessage {
-  const def = getWorkspaceAiMember("prototype_build");
-  const chips = implementationTaskPlanSummaryChips({
-    plan,
-    envOk: input.envOk,
-    designOk: input.designOk,
-  });
-  return newRequirementsMessage({
-    id: `impl-task-plan-summary-${plan.createdAt}`,
-    role: "ai",
-    speakerType: "AI",
-    speakerId: "prototype_build",
-    speakerName: def?.title ?? "AI개발자",
-    messageType: "STATEMENT",
-    content: buildImplementationTaskPlanSummaryContent(plan),
-    createdAt: input.nowIso ?? new Date().toISOString(),
-    meta: {
-      internalType: IMPLEMENTATION_TASK_PLAN_SUMMARY_INTERNAL_TYPE,
-      serviceDesignStage: "implementation",
-      interviewSuggestions: [...chips],
-      interviewAllowCustomInput: true,
-    },
-  });
-}
+export {
+  buildImplementationTaskPlanSummaryContent,
+  buildImplementationTaskPlanSummaryMessage,
+  implementationTaskPlanSummaryChips,
+  summarizeTaskPlanExecutionStats,
+} from "@/lib/prototype/implementationTaskPlanSummary";

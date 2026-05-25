@@ -6,10 +6,10 @@ import {
 } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   buildImplementationTaskPlan,
-  buildImplementationTaskPlanSummaryMessage,
   hasImplementationTaskPlanSummary,
   type ImplementationTaskPlanV1,
 } from "@/lib/prototype/implementationTaskPlan";
+import { buildImplementationTaskPlanSummaryMessage } from "@/lib/prototype/implementationTaskPlanSummary";
 import {
   appendPromptTimeline,
   buildImplementationTaskPlanTimelineEntry,
@@ -99,10 +99,11 @@ export function buildConfirmImplementationTaskPlanResult(
     designOk: input.designOk,
   });
   const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
-  const summaryMsg = buildImplementationTaskPlanSummaryMessage(plan, {
-    envOk: input.envOk,
-    designOk: input.designOk,
-  });
+    const summaryMsg = buildImplementationTaskPlanSummaryMessage(plan, {
+      workItems,
+      envOk: input.envOk,
+      designOk: input.designOk,
+    });
   const nextMessages = [...prior, summaryMsg];
   const timelineEntry = buildImplementationTaskPlanTimelineEntry({
     plan,

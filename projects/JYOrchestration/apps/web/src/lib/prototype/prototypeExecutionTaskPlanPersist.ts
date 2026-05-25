@@ -1,4 +1,5 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { summarizeTaskPlanExecutionStats } from "@/lib/prototype/implementationTaskPlanSummary";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { buildPrototypeExecutionSingleChatPersistPatch } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
@@ -20,6 +21,14 @@ export function buildImplementationTaskPlanTimelineEntry(input: {
   const sourceArtifacts = [
     ...new Set(input.plan.items.flatMap((i) => i.sourceArtifactTypes)),
   ].join(",");
+  const stats = summarizeTaskPlanExecutionStats(input.plan, input.workItems);
+  const qualityScores = input.workItems.map((w) => w.qualityGate.score.toFixed(2)).join(",");
+  const testCommands = stats.primaryTestCommands.join("|");
+  const candidateDirectories = [
+    ...new Set(input.plan.items.flatMap((i) => i.executionHints.candidateDirectories)),
+  ]
+    .slice(0, 8)
+    .join("|");
   return {
     stage: "implementation",
     stageGroup: "구현",
@@ -28,9 +37,15 @@ export function buildImplementationTaskPlanTimelineEntry(input: {
     source: "system",
     responseText: [
       "type=implementation_task_plan",
+      "type=implementation_cursor_prompt_quality",
       "mode=implementation",
-      `taskCount=${input.plan.items.length}`,
-      `cursorWorkItemCount=${input.workItems.length}`,
+      `taskCount=${stats.taskCount}`,
+      `cursorWorkItemCount=${stats.workItemCount}`,
+      `promptReadyCount=${stats.promptReadyCount}`,
+      `blockedCount=${stats.blockedCount}`,
+      `qualityScores=${qualityScores || "none"}`,
+      `testCommands=${testCommands || "none"}`,
+      `candidateDirectories=${candidateDirectories || "none"}`,
       `sourceArtifacts=${sourceArtifacts || "none"}`,
       `envOk=${input.envOk}`,
       `designOk=${input.designOk}`,

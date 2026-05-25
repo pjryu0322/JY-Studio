@@ -1,4 +1,9 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { evaluateCursorWorkItemQuality } from "@/lib/prototype/implementationCursorPromptQuality";
+import {
+  buildImplementationTaskExecutionHints,
+  type ImplementationTaskExecutionHints,
+} from "@/lib/prototype/implementationExecutionHints";
 import type {
   ImplementationTaskPlanItem,
   ImplementationTaskPlanV1,
@@ -17,6 +22,50 @@ const STATUSES = new Set<ImplementationTaskStatus>([
   "failed",
 ]);
 
+function parseStringArray(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.map((x) => String(x)).filter(Boolean) : [];
+}
+
+function parseExecutionHints(raw: unknown, fallbackTitle: string): ImplementationTaskExecutionHints {
+  if (!raw || typeof raw !== "object") {
+    return buildImplementationTaskExecutionHints({
+      taskTitle: fallbackTitle,
+      sourceArtifactTypes: [],
+      projectArtifacts: [],
+    });
+  }
+  const o = raw as Record<string, unknown>;
+  const base = buildImplementationTaskExecutionHints({
+    taskTitle: fallbackTitle,
+    sourceArtifactTypes: [],
+    projectArtifacts: [],
+  });
+  return {
+    candidateDirectories: parseStringArray(o.candidateDirectories).length
+      ? parseStringArray(o.candidateDirectories)
+      : base.candidateDirectories,
+    candidateFiles: parseStringArray(o.candidateFiles).length ? parseStringArray(o.candidateFiles) : base.candidateFiles,
+    candidateApiRoutes: parseStringArray(o.candidateApiRoutes).length
+      ? parseStringArray(o.candidateApiRoutes)
+      : base.candidateApiRoutes,
+    candidateComponents: parseStringArray(o.candidateComponents).length
+      ? parseStringArray(o.candidateComponents)
+      : base.candidateComponents,
+    candidateTests: parseStringArray(o.candidateTests).length ? parseStringArray(o.candidateTests) : base.candidateTests,
+    forbiddenPaths: parseStringArray(o.forbiddenPaths).length ? parseStringArray(o.forbiddenPaths) : base.forbiddenPaths,
+    testCommands: parseStringArray(o.testCommands).length ? parseStringArray(o.testCommands) : base.testCommands,
+    manualVerification: parseStringArray(o.manualVerification).length
+      ? parseStringArray(o.manualVerification)
+      : base.manualVerification,
+    expectedBehavior: parseStringArray(o.expectedBehavior).length
+      ? parseStringArray(o.expectedBehavior)
+      : base.expectedBehavior,
+    regressionScope: parseStringArray(o.regressionScope).length
+      ? parseStringArray(o.regressionScope)
+      : base.regressionScope,
+  };
+}
+
 function parseTaskItem(raw: unknown): ImplementationTaskPlanItem | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -25,23 +74,22 @@ function parseTaskItem(raw: unknown): ImplementationTaskPlanItem | null {
   if (!id || !title) return null;
   const priority = String(o.priority ?? "P1").trim() as ImplementationTaskPriority;
   const status = String(o.status ?? "draft").trim() as ImplementationTaskStatus;
+  const sourceArtifactTypes = parseStringArray(o.sourceArtifactTypes);
+  const executionHints = parseExecutionHints(o.executionHints, title);
   return {
     id,
     title,
     description: String(o.description ?? "").trim() || title,
     priority: PRIORITIES.has(priority) ? priority : "P1",
-    sourceArtifactTypes: Array.isArray(o.sourceArtifactTypes)
-      ? o.sourceArtifactTypes.map((x) => String(x)).filter(Boolean)
-      : [],
-    sourceRoles: Array.isArray(o.sourceRoles) ? o.sourceRoles.map((x) => String(x)).filter(Boolean) : [],
-    acceptanceCriteria: Array.isArray(o.acceptanceCriteria)
-      ? o.acceptanceCriteria.map((x) => String(x)).filter(Boolean)
-      : [],
-    securityChecks: Array.isArray(o.securityChecks) ? o.securityChecks.map((x) => String(x)).filter(Boolean) : [],
-    reviewChecks: Array.isArray(o.reviewChecks) ? o.reviewChecks.map((x) => String(x)).filter(Boolean) : [],
+    sourceArtifactTypes,
+    sourceRoles: parseStringArray(o.sourceRoles),
+    acceptanceCriteria: parseStringArray(o.acceptanceCriteria),
+    securityChecks: parseStringArray(o.securityChecks),
+    reviewChecks: parseStringArray(o.reviewChecks),
+    executionHints,
     cursorPromptDraft: String(o.cursorPromptDraft ?? "").trim(),
     status: STATUSES.has(status) ? status : "draft",
-    blockers: Array.isArray(o.blockers) ? o.blockers.map((x) => String(x)).filter(Boolean) : [],
+    blockers: parseStringArray(o.blockers),
   };
 }
 
@@ -75,6 +123,18 @@ export function parseImplementationTaskPlanV1(raw: unknown): ImplementationTaskP
   };
 }
 
+function parseQualityGate(raw: unknown, item: CursorWorkItem): CursorWorkItem["qualityGate"] {
+  if (!raw || typeof raw !== "object") return evaluateCursorWorkItemQuality(item);
+  const o = raw as Record<string, unknown>;
+  const score = typeof o.score === "number" ? o.score : Number(o.score);
+  const missing = parseStringArray(o.missing);
+  const promptReady = Boolean(o.promptReady);
+  if (Number.isFinite(score)) {
+    return { promptReady, missing, score };
+  }
+  return evaluateCursorWorkItemQuality(item);
+}
+
 export function parseCursorWorkItemsV1(raw: unknown): readonly CursorWorkItem[] | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
@@ -87,18 +147,20 @@ export function parseCursorWorkItemsV1(raw: unknown): readonly CursorWorkItem[] 
     const taskId = String(o.taskId ?? "").trim();
     const title = String(o.title ?? "").trim();
     if (!id || !taskId || !title) continue;
-    out.push({
+    const draft: CursorWorkItem = {
       id,
       taskId,
       title,
       prompt: String(o.prompt ?? "").trim(),
-      requiredFilesHint: Array.isArray(o.requiredFilesHint)
-        ? o.requiredFilesHint.map((x) => String(x)).filter(Boolean)
-        : [],
-      expectedOutput: Array.isArray(o.expectedOutput) ? o.expectedOutput.map((x) => String(x)).filter(Boolean) : [],
+      requiredFilesHint: parseStringArray(o.requiredFilesHint),
+      expectedOutput: parseStringArray(o.expectedOutput),
+      testCommands: parseStringArray(o.testCommands),
+      forbiddenPaths: parseStringArray(o.forbiddenPaths),
       blocked: Boolean(o.blocked),
-      blockers: Array.isArray(o.blockers) ? o.blockers.map((x) => String(x)).filter(Boolean) : [],
-    });
+      blockers: parseStringArray(o.blockers),
+      qualityGate: { promptReady: false, missing: [], score: 0 },
+    };
+    out.push({ ...draft, qualityGate: parseQualityGate(o.qualityGate, draft) });
   }
   return out;
 }
