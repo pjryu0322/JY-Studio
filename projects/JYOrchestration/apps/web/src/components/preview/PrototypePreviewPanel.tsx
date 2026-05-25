@@ -29,11 +29,20 @@ import {
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
-import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import {
-  buildPrototypeExecutionSingleChatPersistPatch,
-  usePrototypeExecutionSingleChat,
-} from "@/components/preview/usePrototypeExecutionSingleChat";
+  buildConfirmImplementationTaskPlanResult,
+  buildImplementationCursorGateContext,
+  buildPrepareImplementationExecutionToast,
+  CURSOR_EXECUTION_ACCEPTED_NOTICE,
+  evaluateImplementationCursorGate,
+  formatImplementationCursorBlockedNotice,
+} from "@/lib/prototype/prototypeExecutionTaskPlanActions";
+import {
+  buildPrototypeExecutionOrchestrationPersistPatch,
+  type PrototypeExecutionOrchestrationPersistInput,
+} from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
+import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
@@ -298,28 +307,50 @@ export function PrototypePreviewPanel({
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
   const persistChatToDb = useCallback(
-    async (chatPatch?: {
-      messages: readonly import("@/lib/requirements/requirementsMessage").RequirementsMessage[];
-      slots: readonly import("@/lib/prototype/prototypeExecutionSingleChatTypes").PrototypeExecutionInterviewSlot[];
-      answers: Readonly<Record<string, string>>;
-      currentSlotKey: string | null;
-    }) => {
+    async (
+      chatPatch?: {
+        messages: readonly import("@/lib/requirements/requirementsMessage").RequirementsMessage[];
+        slots: readonly import("@/lib/prototype/prototypeExecutionSingleChatTypes").PrototypeExecutionInterviewSlot[];
+        answers: Readonly<Record<string, string>>;
+        currentSlotKey: string | null;
+      },
+      orchestrationPatch?: Omit<PrototypeExecutionOrchestrationPersistInput, "chat">,
+    ) => {
       const pid = projectId.trim();
       if (!pid) return;
       const tc = [...timelineCards].slice(-300);
       const fingerprint = JSON.stringify({
         c: chatPatch?.messages?.map((m) => [m.id, m.createdAt]) ?? [],
         t: tc.map((c) => [c.id, c.at]),
+        o: orchestrationPatch
+          ? [
+              orchestrationPatch.implementationTaskPlanV1?.createdAt,
+              orchestrationPatch.cursorWorkItemsV1?.length,
+              orchestrationPatch.promptTimeline?.length,
+            ]
+          : null,
       });
       if (fingerprint === lastPersistedChatFingerprintRef.current) return;
       lastPersistedChatFingerprintRef.current = fingerprint;
 
-      const merged = chatPatch
-        ? buildPrototypeExecutionSingleChatPersistPatch(requirementsStateJson, chatPatch)
-        : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJson), {
-            prototypeWorkspaceTimelineCardsV1: tc,
-            lastSavedAt: new Date().toISOString(),
-          });
+      const merged =
+        chatPatch || orchestrationPatch
+          ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJson, {
+              ...(chatPatch ? { chat: chatPatch } : {}),
+              ...(orchestrationPatch?.implementationTaskPlanV1 !== undefined
+                ? { implementationTaskPlanV1: orchestrationPatch.implementationTaskPlanV1 }
+                : {}),
+              ...(orchestrationPatch?.cursorWorkItemsV1 !== undefined
+                ? { cursorWorkItemsV1: orchestrationPatch.cursorWorkItemsV1 }
+                : {}),
+              ...(orchestrationPatch?.promptTimeline !== undefined
+                ? { promptTimeline: orchestrationPatch.promptTimeline }
+                : {}),
+            })
+          : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJson), {
+              prototypeWorkspaceTimelineCardsV1: tc,
+              lastSavedAt: new Date().toISOString(),
+            });
 
       void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
     },
@@ -1170,50 +1201,6 @@ export function PrototypePreviewPanel({
     [flowSteps],
   );
 
-  const handleImplementationChip = useCallback(
-    (label: string) =>
-      tryHandlePrototypeExecutionChip(label, {
-        openEnvSettings: () => window.location.assign(envSettingsHref),
-        openArtifactHub: () => setArtifactHubOpen(true),
-        focusComposerForScopeEdit: () => {
-          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
-          queueMicrotask(() => chatInputRef.current?.focus());
-        },
-        confirmWorkPlan: () => startWorkPlanGenerationFromChat(),
-        confirmExecution: () => confirmExecution(),
-        refreshStatus: () => void onRefreshPrototypeStatus(),
-        showToast,
-        canConfirmWorkPlan: () => {
-          if (!templateConfirmed) {
-            showToast("타임라인에서 템플릿을 [확정]한 뒤 작업안을 확정할 수 있습니다.");
-            return false;
-          }
-          if (!canRequestGeneration.envOk) {
-            showToast("환경 준비 후 작업안을 확정할 수 있습니다.");
-            return false;
-          }
-          return true;
-        },
-        canConfirmExecution: () => {
-          if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
-            showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
-            return false;
-          }
-          return true;
-        },
-      }),
-    [
-      envSettingsHref,
-      templateConfirmed,
-      canRequestGeneration.envOk,
-      canRequestGeneration.designOk,
-      startWorkPlanGenerationFromChat,
-      confirmExecution,
-      onRefreshPrototypeStatus,
-      showToast,
-    ],
-  );
-
   const executionSingleChat = usePrototypeExecutionSingleChat({
     projectId,
     projectName: projectName || "프로젝트",
@@ -1304,6 +1291,109 @@ export function PrototypePreviewPanel({
   });
 
   appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
+
+  const implementationCursorGate = useMemo(
+    () =>
+      buildImplementationCursorGateContext(parsedRequirementsState, {
+        envOk: canRequestGeneration.envOk,
+        designOk: canRequestGeneration.designOk,
+      }),
+    [
+      parsedRequirementsState,
+      canRequestGeneration.envOk,
+      canRequestGeneration.designOk,
+    ],
+  );
+
+  const confirmImplementationTaskPlan = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const result = buildConfirmImplementationTaskPlanResult({
+      projectId: pid,
+      requirementsStateJson,
+      projectArtifacts: executionArtifacts.projectArtifacts,
+      artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
+      featureDraftTitles: featureDraftTitles ?? [],
+      envOk: canRequestGeneration.envOk,
+      designOk: canRequestGeneration.designOk,
+      promptTimeline: parsedRequirementsState.promptTimeline,
+    });
+    if (result.kind === "already_confirmed") {
+      showToast("이미 구현 작업안이 확정되었습니다.");
+      return;
+    }
+    executionSingleChat.applyPersistedMessages(result.chatPatch.messages);
+    void persistChatToDb(result.chatPatch, result.orchestrationPatch);
+  }, [
+    projectId,
+    requirementsStateJson,
+    executionArtifacts,
+    featureDraftTitles,
+    canRequestGeneration.envOk,
+    canRequestGeneration.designOk,
+    parsedRequirementsState.promptTimeline,
+    executionSingleChat,
+    persistChatToDb,
+    showToast,
+  ]);
+
+  const handleImplementationChip = useCallback(
+    (label: string) =>
+      tryHandlePrototypeExecutionChip(label, {
+        openEnvSettings: () => window.location.assign(envSettingsHref),
+        openArtifactHub: () => setArtifactHubOpen(true),
+        focusComposerForScopeEdit: () => {
+          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
+          queueMicrotask(() => chatInputRef.current?.focus());
+        },
+        confirmImplementationTaskPlan,
+        requestCursorExecution: () => {
+          executionSingleChat.appendAiNotice(CURSOR_EXECUTION_ACCEPTED_NOTICE);
+        },
+        prepareImplementationExecution: () => {
+          const toast = buildPrepareImplementationExecutionToast(
+            parsedRequirementsState.implementationTaskPlanV1,
+          );
+          if (toast) showToast(toast);
+        },
+        confirmExecution: () => confirmExecution(),
+        refreshStatus: () => void onRefreshPrototypeStatus(),
+        showToast,
+        canConfirmImplementationTaskPlan: () => {
+          if (!canRequestGeneration.designOk) {
+            showToast("기획 산출물 준비 후 작업안을 확정할 수 있습니다.");
+            return false;
+          }
+          return true;
+        },
+        canRequestCursorExecution: () => {
+          const gate = evaluateImplementationCursorGate(implementationCursorGate);
+          if (!gate.allowed) {
+            executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+            return false;
+          }
+          return true;
+        },
+        canConfirmExecution: () => {
+          if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
+            showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
+            return false;
+          }
+          return true;
+        },
+      }),
+    [
+      envSettingsHref,
+      confirmImplementationTaskPlan,
+      parsedRequirementsState.implementationTaskPlanV1,
+      implementationCursorGate,
+      canRequestGeneration.designOk,
+      confirmExecution,
+      onRefreshPrototypeStatus,
+      executionSingleChat,
+      showToast,
+    ],
+  );
 
   useEffect(() => {
     const run = latestRun;

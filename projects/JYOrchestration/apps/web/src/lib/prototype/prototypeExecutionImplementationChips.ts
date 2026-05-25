@@ -6,11 +6,14 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
   readonly focusComposerForScopeEdit: () => void;
-  readonly confirmWorkPlan: () => void;
+  readonly confirmImplementationTaskPlan: () => void;
+  readonly requestCursorExecution: () => void;
+  readonly prepareImplementationExecution: () => void;
   readonly confirmExecution: () => void;
   readonly refreshStatus: () => void;
   readonly showToast: (message: string) => void;
-  readonly canConfirmWorkPlan: () => boolean;
+  readonly canConfirmImplementationTaskPlan: () => boolean;
+  readonly canRequestCursorExecution: () => boolean;
   readonly canConfirmExecution: () => boolean;
 }>;
 
@@ -27,13 +30,22 @@ export function tryHandlePrototypeExecutionChip(
       handlers.openArtifactHub();
       return true;
     case "구현 범위 수정":
+    case "작업 범위 수정":
       handlers.focusComposerForScopeEdit();
       return true;
     case "구현 작업안 확정": {
-      if (!handlers.canConfirmWorkPlan()) return true;
-      handlers.confirmWorkPlan();
+      if (!handlers.canConfirmImplementationTaskPlan()) return true;
+      handlers.confirmImplementationTaskPlan();
       return true;
     }
+    case "Cursor 실행 요청": {
+      if (!handlers.canRequestCursorExecution()) return true;
+      handlers.requestCursorExecution();
+      return true;
+    }
+    case "구현 실행 준비":
+      handlers.prepareImplementationExecution();
+      return true;
     case "구현 실행": {
       if (!handlers.canConfirmExecution()) return true;
       handlers.confirmExecution();

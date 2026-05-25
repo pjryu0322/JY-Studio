@@ -1,10 +1,15 @@
+import { filterPersistedPrototypeExecutionMessages } from "@/lib/prototype/prototypeBuiltMessageProjection";
 import {
   isRequirementsMessage,
   newRequirementsMessage,
   type RequirementsMessage,
 } from "@/lib/requirements/requirementsMessage";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  mergeRequirementsStateJson,
+  parseRequirementsStateJson,
+  type RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import {
   type PrototypeExecutionInterviewSlot,
   type PrototypeExecutionSingleChatV1,
@@ -121,4 +126,26 @@ export function resolvePrototypeExecutionSingleChatFromState(
     answers: {},
     currentSlotKey: null,
   };
+}
+
+export function buildPrototypeExecutionSingleChatPersistPatch(
+  requirementsStateJson: unknown,
+  patch: {
+    messages: readonly RequirementsMessage[];
+    slots: readonly PrototypeExecutionInterviewSlot[];
+    answers: Readonly<Record<string, string>>;
+    currentSlotKey: string | null;
+  },
+): RequirementsStateJson {
+  const base = parseRequirementsStateJson(requirementsStateJson);
+  return mergeRequirementsStateJson(base, {
+    prototypeExecutionSingleChatV1: {
+      messages: filterPersistedPrototypeExecutionMessages(patch.messages),
+      slots: patch.slots,
+      answers: patch.answers,
+      currentSlotKey: patch.currentSlotKey,
+      updatedAt: new Date().toISOString(),
+    },
+    lastSavedAt: new Date().toISOString(),
+  });
 }

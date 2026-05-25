@@ -9,7 +9,12 @@ import {
 } from "@/lib/prototype/prototypeBuiltMessageProjection";
 import { postPrototypeChatSlots, postPrototypeChatTurn } from "@/lib/prototype/prototypeExecutionSingleChatClient";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
-import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
+import {
+  buildPrototypeExecutionSingleChatPersistPatch,
+  resolvePrototypeExecutionSingleChatFromState,
+} from "@/lib/prototype/prototypeExecutionSingleChatWire";
+
+export { buildPrototypeExecutionSingleChatPersistPatch };
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -324,6 +329,14 @@ export function usePrototypeExecutionSingleChat({
     return { kind: "prefill" as const };
   }, []);
 
+  const applyPersistedMessages = useCallback(
+    (messages: readonly RequirementsMessage[]) => {
+      const persisted = filterPersistedPrototypeExecutionMessages(messages);
+      setConversationMessages(persisted);
+    },
+    [],
+  );
+
   return {
     conversationStatus,
     chatMessages,
@@ -333,30 +346,10 @@ export function usePrototypeExecutionSingleChat({
     setReplyTo,
     sendMessage,
     appendAiNotice,
+    applyPersistedMessages,
     handleInterviewSuggestionPick,
     aiInvokePending,
     actionByLabelRef,
   };
 }
 
-export function buildPrototypeExecutionSingleChatPersistPatch(
-  requirementsStateJson: unknown,
-  patch: {
-    messages: readonly RequirementsMessage[];
-    slots: readonly PrototypeExecutionInterviewSlot[];
-    answers: Readonly<Record<string, string>>;
-    currentSlotKey: string | null;
-  },
-) {
-  const base = parseRequirementsStateJson(requirementsStateJson);
-  return mergeRequirementsStateJson(base, {
-    prototypeExecutionSingleChatV1: {
-      messages: filterPersistedPrototypeExecutionMessages(patch.messages),
-      slots: patch.slots,
-      answers: patch.answers,
-      currentSlotKey: patch.currentSlotKey,
-      updatedAt: new Date().toISOString(),
-    },
-    lastSavedAt: new Date().toISOString(),
-  });
-}
