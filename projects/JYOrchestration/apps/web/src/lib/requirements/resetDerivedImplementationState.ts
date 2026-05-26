@@ -11,7 +11,8 @@ import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeEx
 /** 기획 단계 대화 초기화 확인 메시지(구현 파생 데이터 동시 삭제 안내). */
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
   "대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요?\n\n" +
-  "기획단계를 초기화하면, 기존 기획 산출물을 기반으로 만들어진 구현 작업안, 구현 Seed, Code Agent 작업 지시도 함께 초기화됩니다.\n" +
+  "기획단계를 초기화하면, 기존 기획 산출물을 기반으로 만들어진 구현 준비 데이터도 함께 초기화됩니다.\n" +
+  "구현 작업안, 구현 Seed, Code Agent 작업 지시도 함께 삭제됩니다.\n" +
   "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
   "이 작업은 되돌릴 수 없습니다.";
 
@@ -78,6 +79,13 @@ export const DERIVED_IMPLEMENTATION_STATE_NULL_PATCH: Pick<
   implementationWorkPlanDraftV1: null,
   codeAgentWipExecutionV1: null,
 };
+
+/** 레거시/미타입 JSON 키 — merge·DB 잔존 방지용 명시 null */
+const LEGACY_DERIVED_IMPLEMENTATION_NULL_FIELDS = {
+  cursorWipExecutionV1: null,
+  codeAgentWorkItemsV1: null,
+  implementationRoleCheckShownV1: null,
+} as const;
 
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {
   const internalType = String(message.meta.internalType ?? "");
@@ -200,8 +208,13 @@ export function clearDerivedImplementationStateFromRequirementsJson(
   return {
     ...state,
     ...DERIVED_IMPLEMENTATION_STATE_NULL_PATCH,
+    ...LEGACY_DERIVED_IMPLEMENTATION_NULL_FIELDS,
     prototypeExecutionSingleChatV1,
     projectArtifacts: filteredArtifacts,
     promptTimeline,
   };
 }
+
+/** @alias clearDerivedImplementationStateFromRequirementsJson — 프롬프트/문서 명칭 호환 */
+export const resetDerivedImplementationStateFromRequirementsJson =
+  clearDerivedImplementationStateFromRequirementsJson;

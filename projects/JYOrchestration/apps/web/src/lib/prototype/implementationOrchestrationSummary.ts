@@ -159,7 +159,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
   const refLines =
     referenceArtifacts.length > 0
       ? referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`)
-      : ["1. (참조 기획 산출물 없음 — 기획 단계 산출물을 먼저 준비해 주세요)"];
+      : ["1. 기획 산출물이 아직 없어 구현 준비 상태를 점검할 수 없습니다."];
   const lines = [
     IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
     "",

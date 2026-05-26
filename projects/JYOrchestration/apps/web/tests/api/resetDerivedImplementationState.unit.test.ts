@@ -6,8 +6,10 @@ import {
   clearDerivedImplementationStateFromRequirementsJson,
   filterImplementationPromptTimeline,
   isImplementationSingleChatMessage,
+  resetDerivedImplementationStateFromRequirementsJson,
   resetImplementationSingleChatMessages,
 } from "@/lib/requirements/resetDerivedImplementationState";
+import { IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   buildImplementationConversationResetStateJson,
   buildRequirementsConversationResetStateJson,
@@ -82,13 +84,22 @@ describe("resetDerivedImplementationState", () => {
     ).toBe(false);
   });
 
-  it("clears implementation single chat messages when planning is reset via message filter", () => {
+  it("clears implementation single chat messages when planning is reset", () => {
     const bootstrap = msg({
       id: "impl-boot",
       content: "구현 진입",
       meta: {
         stage: "REQUIREMENTS",
         internalType: IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
+        serviceDesignStage: "implementation",
+      },
+    });
+    const roleCheck = msg({
+      id: "impl-role",
+      content: "역할별 점검",
+      meta: {
+        stage: "REQUIREMENTS",
+        internalType: IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE,
         serviceDesignStage: "implementation",
       },
     });
@@ -99,14 +110,49 @@ describe("resetDerivedImplementationState", () => {
     });
 
     const filtered = resetImplementationSingleChatMessages({
-      messages: [bootstrap, planning],
+      messages: [bootstrap, roleCheck, planning],
       slots: [],
       answers: {},
     });
 
     expect(filtered?.messages.map((m) => m.id)).toEqual(["plan-msg"]);
     expect(isImplementationSingleChatMessage(bootstrap)).toBe(true);
+    expect(isImplementationSingleChatMessage(roleCheck)).toBe(true);
     expect(isImplementationSingleChatMessage(planning)).toBe(false);
+  });
+
+  it("strips implementation project artifacts while keeping planning artifacts", () => {
+    const cleared = clearDerivedImplementationStateFromRequirementsJson({
+      projectArtifacts: [
+        {
+          id: "plan",
+          type: "feature-spec",
+          title: "기능 정의서",
+          createdAt: nowIso,
+          createdBy: "ai",
+          sourceStage: "feature-planning",
+          content: "body",
+        },
+        {
+          id: "impl",
+          type: "implementation-seed",
+          title: "Seed",
+          createdAt: nowIso,
+          createdBy: "ai",
+          sourceStage: "implementation",
+          content: "seed",
+        },
+      ],
+      implementationSeedV1: { version: "implementation_seed_v1" } as never,
+    });
+    expect(cleared.projectArtifacts?.map((a) => a.id)).toEqual(["plan"]);
+    expect(cleared.implementationSeedV1).toBeNull();
+  });
+
+  it("exposes resetDerivedImplementationStateFromRequirementsJson alias", () => {
+    expect(resetDerivedImplementationStateFromRequirementsJson).toBe(
+      clearDerivedImplementationStateFromRequirementsJson,
+    );
   });
 
   it("clears implementation timeline traces when planning is reset", () => {
@@ -197,6 +243,7 @@ describe("resetDerivedImplementationState", () => {
   });
 
   it("shows reset warning that implementation derived data will be cleared but environment settings remain", () => {
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 준비 데이터");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 작업안");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 Seed");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("Code Agent");
