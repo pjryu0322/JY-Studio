@@ -31,6 +31,10 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  parseImplementationUserFeedbackPatchesV1,
+  type ImplementationUserFeedbackPatchV1,
+} from "@/lib/prototype/implementationUserFeedback";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parseImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parsePrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -544,6 +548,8 @@ export type RequirementsStateJson = {
   implementationSeedV1?: ImplementationSeedV1 | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
+  /** 구현단계 사용자 피드백 patch 누적 */
+  implementationUserFeedbackPatchesV1?: readonly ImplementationUserFeedbackPatchV1[] | null;
   /** Code Agent WIP 검토 루프 상태(JSON) */
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   /**
@@ -956,6 +962,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
+  const implementationUserFeedbackPatchesV1 = parseImplementationUserFeedbackPatchesV1(
+    "implementationUserFeedbackPatchesV1" in o ? o.implementationUserFeedbackPatchesV1 : undefined,
+  );
   const codeAgentWipExecutionV1 = parseCodeAgentWipExecutionFromState(
     "codeAgentWipExecutionV1" in o ? o.codeAgentWipExecutionV1 : undefined,
     "cursorWipExecutionV1" in o ? o.cursorWipExecutionV1 : undefined,
@@ -1097,6 +1106,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
     ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
+    ...(implementationUserFeedbackPatchesV1 !== undefined
+      ? { implementationUserFeedbackPatchesV1 }
+      : {}),
     ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),

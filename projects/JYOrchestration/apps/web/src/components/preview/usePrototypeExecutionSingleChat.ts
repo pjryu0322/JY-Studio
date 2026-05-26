@@ -26,6 +26,12 @@ import {
   sanitizeImplementationConversationMessages,
   type ImplementationOrchestrationSummaryInput,
 } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  buildImplementationUserFeedbackAppliedMessage,
+  buildImplementationUserFeedbackPatchIfRelevant,
+  buildImplementationUserFeedbackOrchestrationPatch,
+} from "@/lib/prototype/implementationUserFeedback";
+import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 
 export type PrototypeExecutionOperationalSendResult = "handled" | "continue";
 
@@ -65,6 +71,7 @@ export function usePrototypeExecutionSingleChat({
     answers: Readonly<Record<string, string>>;
     currentSlotKey: string | null;
     readonly bootstrapTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+    readonly orchestration?: PrototypeExecutionOrchestrationPersistInput;
   }) => void;
   readonly implementationBootstrapInput?: ImplementationOrchestrationSummaryInput | null;
   readonly envLoading?: boolean;
@@ -228,8 +235,36 @@ export function usePrototypeExecutionSingleChat({
       messageType: "STATEMENT",
       content: text,
       replyTo: replySnapshot?.id ?? null,
-      meta: { serviceDesignStage: "feature-planning" },
+      meta: { serviceDesignStage: "implementation" },
     });
+
+    const feedbackPatch = buildImplementationUserFeedbackPatchIfRelevant({
+      text,
+      sourceMessageId: userMsg.id,
+    });
+    if (feedbackPatch) {
+      const orchestrationPatch = buildImplementationUserFeedbackOrchestrationPatch({
+        requirementsStateJson,
+        patch: feedbackPatch,
+      });
+      const aiMsg = buildImplementationUserFeedbackAppliedMessage({
+        patch: feedbackPatch,
+        envOk,
+      });
+      setConversationMessages((prev) => {
+        const next = [...prev, userMsg, aiMsg];
+        const persisted = filterPersistedPrototypeExecutionMessages(next);
+        onPersistStateJson({
+          messages: persisted,
+          slots,
+          answers,
+          currentSlotKey,
+          orchestration: orchestrationPatch,
+        });
+        return persisted;
+      });
+      return;
+    }
 
     const operational = await onOperationalSend(text);
     if (operational === "handled") {
@@ -332,12 +367,15 @@ export function usePrototypeExecutionSingleChat({
     projectName,
     projectDescription,
     templateName,
+    requirementsStateJson,
+    conversationMessages,
     envOk,
     slots,
     answers,
     currentSlotKey,
     aiTitle,
     persistConversation,
+    onPersistStateJson,
   ]);
 
   const handleInterviewSuggestionPick = useCallback((label: string) => {

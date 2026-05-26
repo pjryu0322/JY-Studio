@@ -55,6 +55,8 @@ describe("implementationOrchestrationSummary", () => {
     const bundle = buildImplementationBootstrapBundle(baseInput);
     expect(bundle.messages.length).toBe(1);
     expect(hasImplementationOrchestrationBootstrap(bundle.messages)).toBe(true);
+    const chips = bundle.messages[0]?.meta?.interviewSuggestions ?? [];
+    expect(new Set(chips).size).toBe(chips.length);
     expect(bundle.messages[0]?.speakerId).toBe("prototype_build");
     expect(bundle.messages.some((m) => m.speakerId === "prototype_review")).toBe(false);
     expect(bundle.messages.some((m) => m.speakerId === "security_reviewer")).toBe(false);

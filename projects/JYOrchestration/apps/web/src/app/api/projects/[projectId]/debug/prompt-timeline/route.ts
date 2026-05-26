@@ -10,13 +10,15 @@ import { formatAiPlannerContextBlocksForTimeline } from "@/lib/requirements/aiPl
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { extractOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+import { buildRequirementsPromptTimelineDebugEntryId } from "@/lib/debug/requirementsPromptTimelineDebugEntry";
 
 function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, projectId: string): PromptTimelineEntry[] {
   // `proj.requirementsStateJson` 전체를 받아도 promptTimeline을 파싱할 수 있어야 한다.
   const state = parseRequirementsStateJson(promptTimeline);
   const list = Array.isArray(state.promptTimeline) ? state.promptTimeline : [];
   const out: PromptTimelineEntry[] = [];
-  for (const raw of list) {
+  for (let i = 0; i < list.length; i++) {
+    const raw = list[i];
     const e = coerceRequirementsPromptTimelineEntry(raw);
     if (!e) continue;
     const at = e.createdAt.trim();
@@ -67,7 +69,7 @@ function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, pr
     const channel: PromptTimelineEntry["channel"] =
       provider === "platform" || source === "platform" ? "platform" : "openai";
     out.push({
-      id: `req_${String(at || Date.now())}_${action || "trace"}`.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48),
+      id: buildRequirementsPromptTimelineDebugEntryId({ createdAt: at, action, ordinal: i }),
       at: at || new Date().toISOString(),
       channel,
       label,

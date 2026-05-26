@@ -1262,6 +1262,9 @@ export function PrototypePreviewPanel({
       for (const entry of patch.bootstrapTimeline ?? []) {
         timeline = appendPromptTimeline(timeline, entry);
       }
+      if (patch.orchestration?.promptTimeline) {
+        timeline = [...patch.orchestration.promptTimeline];
+      }
       void persistChatToDb(
         {
           messages: patch.messages,
@@ -1269,19 +1272,20 @@ export function PrototypePreviewPanel({
           answers: patch.answers,
           currentSlotKey: patch.currentSlotKey,
         },
-        patch.bootstrapTimeline?.length ? { promptTimeline: timeline } : undefined,
+        {
+          ...(patch.orchestration ?? {}),
+          ...(timeline ? { promptTimeline: timeline } : {}),
+        },
       );
     },
     onOperationalSend: async (text) => {
-      const wantsExecutionPlan =
-        canRequestGeneration.envOk &&
-        canRequestGeneration.designOk &&
+      const wantsWorkPlanGeneration =
         !isRunningState &&
         /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
           text,
         );
 
-      if (wantsExecutionPlan) {
+      if (wantsWorkPlanGeneration) {
         if (!templateConfirmed) {
           appendExecutionNoticeRef.current(
             canRequestGeneration.envOk
@@ -1324,23 +1328,7 @@ export function PrototypePreviewPanel({
         return "handled";
       }
 
-      if (!templateConfirmed) {
-        appendExecutionNoticeRef.current(
-          canRequestGeneration.envOk
-            ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
-            : "먼저 실행 환경 점검을 완료해 주세요.",
-        );
-        return "handled";
-      }
-
-      if (!run?.id) {
-        const cur = prePlannerNotesRef.current.trim();
-        prePlannerNotesRef.current = cur ? `${cur}\n\n${text}` : text;
-        return "handled";
-      }
-
-      showToast("지금 단계에서는 입력을 처리할 수 없습니다. 상태를 확인해 주세요.");
-      return "handled";
+      return "continue";
     },
   });
 

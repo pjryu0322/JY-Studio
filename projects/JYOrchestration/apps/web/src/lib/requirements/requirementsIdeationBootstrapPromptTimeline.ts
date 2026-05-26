@@ -1166,3 +1166,13 @@ export function appendIdeationBootstrapPromptTimeline(
   const base = Array.isArray(existing) ? [...existing] : [];
   return [...base, entry].slice(-MAX_PROMPT_TIMELINE);
 }
+
+export function appendIdeationBootstrapPromptTimelineBatch(
+  existing: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+  entries: readonly RequirementsPromptTimelineEntry[],
+): RequirementsPromptTimelineEntry[] {
+  const base = Array.isArray(existing) ? [...existing] : [];
+  const next = entries.filter(Boolean);
+  if (!next.length) return base;
+  return [...base, ...next].slice(-MAX_PROMPT_TIMELINE);
+}

@@ -8,6 +8,10 @@ import {
   IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE,
   type ImplementationWorkPlanDraftV1,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  mergeUserFeedbackPatchesIntoWorkPlanDraft,
+  parseImplementationUserFeedbackPatchesV1,
+} from "@/lib/prototype/implementationUserFeedback";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import {
@@ -111,7 +115,9 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
     };
   }
 
-  const draft = buildImplementationWorkPlanDraft({
+  const feedbackPatches =
+    parseImplementationUserFeedbackPatchesV1(stateRecord.implementationUserFeedbackPatchesV1) ?? [];
+  const draftBase = buildImplementationWorkPlanDraft({
     projectId: input.projectId,
     projectArtifacts: input.projectArtifacts,
     seed,
@@ -119,6 +125,10 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
     designOk: input.designOk,
     nowIso: input.nowIso,
   });
+  const draft =
+    feedbackPatches.length > 0
+      ? mergeUserFeedbackPatchesIntoWorkPlanDraft(draftBase, feedbackPatches)
+      : draftBase;
   const draftMsg = buildWorkPlanDraftMessage(draft, { nowIso: input.nowIso });
   const timeline = appendPromptTimeline(
     appendPromptTimeline(

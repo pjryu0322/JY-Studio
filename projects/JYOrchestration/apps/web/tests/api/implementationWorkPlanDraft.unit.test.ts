@@ -120,6 +120,11 @@ describe("implementation entry copy", () => {
 });
 
 describe("implementation entry CTA", () => {
+  it("uses unique labels on implementation entry chips (no duplicate CTAs)", () => {
+    const chips = implementationEntryChips();
+    expect(new Set(chips).size).toBe(chips.length);
+  });
+
   it("shows draft generation CTA before implementation work plan confirmation", () => {
     const chips = implementationEntryChips();
     expect(chips).toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);

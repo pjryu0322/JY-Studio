@@ -107,6 +107,7 @@ import {
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   appendIdeationBootstrapPromptTimeline,
+  appendIdeationBootstrapPromptTimelineBatch,
   buildIdeationBootstrapContextualFallbackQuestion,
   buildIdeationBootstrapFallbackPromptTrace,
   coerceBootstrapPromptTrace,
@@ -2533,10 +2534,12 @@ export function RequirementsWorkspace({
       });
       lastFastPlanArtifactIdRef.current = artifactBundle.primaryArtifactId;
       await appendServiceFlowWorkshopMessages([readyMessage]);
-      appendSingleChatPromptTimeline(result.timelineEntry);
-      for (const entry of prep.timelineEntries) {
-        appendSingleChatPromptTimeline(entry);
-      }
+      void persistStateJsonOnly({
+        promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
+          result.timelineEntry,
+          ...prep.timelineEntries,
+        ]),
+      });
       showSuccessToast(artifactBundle.userFacingSummary);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";

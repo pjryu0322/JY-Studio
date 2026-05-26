@@ -13,6 +13,7 @@ import {
   parseIdeationDeliverableChatPayload,
 } from "@/lib/requirements/ideationDeliverables";
 import { formatSingleChatReplyReferenceLine } from "@/lib/requirements/singleChatReplyReference";
+import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceComposerFooter";
 import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
@@ -48,7 +49,8 @@ function serviceDesignStageBadge(meta: unknown): string | null {
   const m = meta as { serviceDesignStage?: string };
   const s = String(m.serviceDesignStage ?? "").trim();
   if (s === "feature-planning") return "기능정리";
-  if (s === "implementation") return "구현";
+  /** 구현 단계는 사이드바·헤더로 구분 — 메시지 버블 상단 pill 생략 */
+  if (s === "implementation") return null;
   if (s === "service-flow") return "액터/흐름";
   if (s === "ideation") return "아이디어";
   return null;
@@ -592,7 +594,7 @@ export function RequirementsChatPanel({
               const interviewSuggestionsRaw = m.meta?.interviewSuggestions;
               const interviewSuggestions =
                 Array.isArray(interviewSuggestionsRaw) && interviewSuggestionsRaw.length
-                  ? interviewSuggestionsRaw.map((x) => String(x ?? "").trim()).filter(Boolean)
+                  ? normalizeLlmInterviewSuggestions(interviewSuggestionsRaw, 8)
                   : [];
               const showInterviewChips =
                 Boolean(onInterviewSuggestionPick) &&
