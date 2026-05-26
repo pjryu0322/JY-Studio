@@ -10,6 +10,10 @@ import {
 } from "@/lib/requirements/problemInterview";
 import { emptyProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  clearDerivedImplementationStateFromRequirementsJson,
+  filterImplementationPromptTimeline,
+} from "@/lib/requirements/resetDerivedImplementationState";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
@@ -175,7 +179,7 @@ export function buildRequirementsConversationResetStateJson(
   base: RequirementsStateJson,
   nowIso: string,
 ): RequirementsStateJson {
-  return {
+  const planningCleared: RequirementsStateJson = {
     originalProjectDescription: base.originalProjectDescription ?? null,
     seededFromPreProjectChat: base.seededFromPreProjectChat,
     openIssues: base.openIssues,
@@ -204,6 +208,28 @@ export function buildRequirementsConversationResetStateJson(
     lastUserDraftText: "",
     lastPromptView: null,
   };
+  return clearDerivedImplementationStateFromRequirementsJson(planningCleared, {
+    nowIso,
+    appendPlanningResetTrace: true,
+    nullSingleChat: true,
+  });
+}
+
+/**
+ * 구현 단계 대화 초기화 — 구현 SingleChat·작업안·Seed·WIP·타임라인 카드를 비우고 기획 산출물·슬롯은 유지.
+ */
+export function buildImplementationConversationResetStateJson(
+  base: RequirementsStateJson,
+  nowIso: string,
+): RequirementsStateJson {
+  return clearDerivedImplementationStateFromRequirementsJson(
+    {
+      ...base,
+      promptTimeline: filterImplementationPromptTimeline(base.promptTimeline ?? []),
+      lastSavedAt: nowIso,
+    },
+    { nullSingleChat: true },
+  );
 }
 
 /** `stateJsonRef`에 키가 있으면(빈 배열 포함) 로컬 값을 우선 — 대화 초기화 직후 서버 JSON 폴백 방지 */

@@ -1,4 +1,13 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
+import {
+  buildImplementationScopeFromSeed,
+  type ActorCapabilityRow,
+  type CommonDetailFeature,
+  type DataModelSeed,
+  type ImplementationSeedV1,
+  type ProcessImplementationItem,
+  type ScreenImplementationItem,
+} from "@/lib/requirements/implementationSeed";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
@@ -36,18 +45,27 @@ export type ReferencePlanningArtifactRef = Readonly<{
   readonly title: string;
 }>;
 
+export type ImplementationWorkPlanDraftSource = "planning_artifacts" | "implementation_seed";
+
 export type ImplementationWorkPlanDraftV1 = Readonly<{
   version: typeof IMPLEMENTATION_WORK_PLAN_DRAFT_VERSION;
   projectId: string;
   createdAt: string;
   updatedAt: string;
-  source: "planning_artifacts";
+  source: ImplementationWorkPlanDraftSource;
   referenceArtifacts: readonly ReferencePlanningArtifactRef[];
+  referenceArtifactIds?: readonly string[];
   implementationScope: readonly string[];
   implementationApproach: readonly string[];
   assumptions: readonly string[];
   blockers: readonly string[];
   status: ImplementationWorkPlanDraftStatus;
+  processItems?: readonly ProcessImplementationItem[];
+  screenItems?: readonly ScreenImplementationItem[];
+  actorCapabilityMatrix?: readonly ActorCapabilityRow[];
+  commonDetailFeatures?: readonly CommonDetailFeature[];
+  dataModelSeed?: DataModelSeed;
+  implementationSeedId?: string;
 }>;
 
 export function collectReferencePlanningArtifacts(
@@ -110,13 +128,61 @@ const DEFAULT_IMPLEMENTATION_APPROACH = [
   "WIP 작업 결과는 AI개발자가 검토한 뒤 SCM 공식 반영 단계로 넘깁니다.",
 ] as const;
 
-export function buildImplementationWorkPlanDraft(input: {
+export function buildImplementationWorkPlanDraftFromSeed(input: {
   readonly projectId: string;
+  readonly seed: ImplementationSeedV1;
   readonly projectArtifacts: readonly ProjectArtifact[];
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly nowIso?: string;
 }): ImplementationWorkPlanDraftV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
+  const blockers: string[] = [];
+  if (!input.seed.readiness.ready) blockers.push("Implementation Seed 준비도 미충족");
+  if (!input.designOk) blockers.push("기획 산출물·설계 readiness 미완료");
+  if (!input.envOk) blockers.push("실행 환경(Git/GitHub/Code Agent) 미완료");
+
+  return {
+    version: IMPLEMENTATION_WORK_PLAN_DRAFT_VERSION,
+    projectId: input.projectId.trim(),
+    createdAt: now,
+    updatedAt: now,
+    source: "implementation_seed",
+    referenceArtifacts,
+    referenceArtifactIds: referenceArtifacts.map((r) => r.id),
+    implementationScope: buildImplementationScopeFromSeed(input.seed),
+    implementationApproach: [...DEFAULT_IMPLEMENTATION_APPROACH],
+    assumptions: [...input.seed.assumptions],
+    blockers,
+    status: "draft",
+    processItems: input.seed.processImplementationItems,
+    screenItems: input.seed.screenImplementationItems,
+    actorCapabilityMatrix: input.seed.actorCapabilityMatrix,
+    commonDetailFeatures: input.seed.commonDetailFeatures,
+    dataModelSeed: input.seed.dataModelSeed,
+    implementationSeedId: input.seed.createdAt,
+  };
+}
+
+export function buildImplementationWorkPlanDraft(input: {
+  readonly projectId: string;
+  readonly projectArtifacts: readonly ProjectArtifact[];
+  readonly seed?: ImplementationSeedV1 | null;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly nowIso?: string;
+}): ImplementationWorkPlanDraftV1 {
+  if (input.seed?.readiness.ready) {
+    return buildImplementationWorkPlanDraftFromSeed({
+      projectId: input.projectId,
+      seed: input.seed,
+      projectArtifacts: input.projectArtifacts,
+      envOk: input.envOk,
+      designOk: input.designOk,
+      nowIso: input.nowIso,
+    });
+  }
   const now = input.nowIso ?? new Date().toISOString();
   const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
   const blockers: string[] = [];
@@ -154,6 +220,9 @@ export function parseImplementationWorkPlanDraftV1(
   const statusRaw = String(o.status ?? "draft").trim();
   const status: ImplementationWorkPlanDraftStatus =
     statusRaw === "confirmed" || statusRaw === "revised" ? statusRaw : "draft";
+  const sourceRaw = String(o.source ?? "planning_artifacts").trim();
+  const source: ImplementationWorkPlanDraftSource =
+    sourceRaw === "implementation_seed" ? "implementation_seed" : "planning_artifacts";
 
   const referenceArtifacts: ReferencePlanningArtifactRef[] = [];
   for (const row of Array.isArray(o.referenceArtifacts) ? o.referenceArtifacts : []) {
@@ -181,13 +250,28 @@ export function parseImplementationWorkPlanDraftV1(
     projectId,
     createdAt,
     updatedAt: String(o.updatedAt ?? createdAt).trim(),
-    source: "planning_artifacts",
+    source,
     referenceArtifacts,
+    referenceArtifactIds: strList("referenceArtifactIds"),
     implementationScope: strList("implementationScope"),
     implementationApproach: strList("implementationApproach"),
     assumptions: strList("assumptions"),
     blockers: strList("blockers"),
     status,
+    ...(Array.isArray(o.processItems) ? { processItems: o.processItems as ProcessImplementationItem[] } : {}),
+    ...(Array.isArray(o.screenItems) ? { screenItems: o.screenItems as ScreenImplementationItem[] } : {}),
+    ...(Array.isArray(o.actorCapabilityMatrix)
+      ? { actorCapabilityMatrix: o.actorCapabilityMatrix as ActorCapabilityRow[] }
+      : {}),
+    ...(Array.isArray(o.commonDetailFeatures)
+      ? { commonDetailFeatures: o.commonDetailFeatures as CommonDetailFeature[] }
+      : {}),
+    ...(o.dataModelSeed && typeof o.dataModelSeed === "object"
+      ? { dataModelSeed: o.dataModelSeed as DataModelSeed }
+      : {}),
+    ...(String(o.implementationSeedId ?? "").trim()
+      ? { implementationSeedId: String(o.implementationSeedId).trim() }
+      : {}),
   };
 }
 
@@ -296,16 +380,40 @@ export function buildWorkPlanDraftMessage(
   const def = getWorkspaceAiMember("prototype_build");
   const now = input?.nowIso ?? new Date().toISOString();
   const lines = [
-    "기획 산출물을 바탕으로 구현 작업안 초안을 생성했습니다.",
+    draft.source === "implementation_seed"
+      ? "Implementation Seed를 바탕으로 구현 작업안 초안을 생성했습니다."
+      : "기획 산출물을 바탕으로 구현 작업안 초안을 생성했습니다.",
     "",
     "구현 범위:",
     ...draft.implementationScope.map((s, i) => `${i + 1}. ${s}`),
-    "",
-    "구현 방식:",
-    ...draft.implementationApproach.map((a) => `- ${a}`),
-    "",
-    "다음 작업을 선택해 주세요.",
   ];
+  if (draft.processItems?.length) {
+    lines.push("", "프로세스별 구현 항목:");
+    draft.processItems.slice(0, 6).forEach((p, i) => {
+      const screen = p.screens[0] ? ` → ${p.screens[0]}` : "";
+      lines.push(`${i + 1}. ${p.processName}${screen}`);
+    });
+  }
+  if (draft.screenItems?.length) {
+    lines.push("", "화면별 구현 항목:");
+    draft.screenItems.slice(0, 6).forEach((s, i) => {
+      const act = s.actions.length ? `: ${s.actions.slice(0, 3).join(", ")}` : "";
+      lines.push(`${i + 1}. ${s.screenName}${act}`);
+    });
+  }
+  if (draft.actorCapabilityMatrix?.length) {
+    lines.push("", "액터별 기능/권한:");
+    draft.actorCapabilityMatrix.slice(0, 4).forEach((a, i) => {
+      lines.push(`${i + 1}. ${a.actor}: ${a.capabilities.slice(0, 3).join(", ") || "(권한 정의)"}`);
+    });
+  }
+  if (draft.commonDetailFeatures?.length) {
+    lines.push("", "공통 상세기능:", ...draft.commonDetailFeatures.slice(0, 6).map((c) => `- ${c.name}`));
+  }
+  if (draft.dataModelSeed?.entities.length) {
+    lines.push("", "데이터/상태:", `- 엔티티: ${draft.dataModelSeed.entities.slice(0, 5).join(", ")}`);
+  }
+  lines.push("", "구현 방식:", ...draft.implementationApproach.map((a) => `- ${a}`), "", "다음 작업을 선택해 주세요.");
 
   return newRequirementsMessage({
     id: `impl-work-plan-draft-msg-${draft.createdAt}`,
@@ -335,14 +443,32 @@ export function hasImplementationWorkPlanDraftMessage(
 }
 
 export function formatWorkPlanDraftMarkdown(draft: ImplementationWorkPlanDraftV1): string {
+  const seedSections: string[] = [];
+  if (draft.processItems?.length) {
+    seedSections.push(
+      "## 프로세스별 구현 항목",
+      ...draft.processItems.map((p, i) => `${i + 1}. ${p.processName}`),
+      "",
+    );
+  }
+  if (draft.screenItems?.length) {
+    seedSections.push(
+      "## 화면별 구현 항목",
+      ...draft.screenItems.map((s, i) => `${i + 1}. ${s.screenName}`),
+      "",
+    );
+  }
   return [
     "# 구현 작업안 초안",
+    "",
+    `출처: ${draft.source}`,
     "",
     "## 참조 기획 산출물",
     ...(draft.referenceArtifacts.length
       ? draft.referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`)
       : ["- (없음)"]),
     "",
+    ...seedSections,
     "## 구현 범위",
     ...draft.implementationScope.map((s, i) => `${i + 1}. ${s}`),
     "",

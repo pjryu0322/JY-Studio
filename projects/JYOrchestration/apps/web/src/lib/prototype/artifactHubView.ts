@@ -80,6 +80,7 @@ export function buildArtifactHubView(input: {
     implementationSlotsV1: input.state.implementationSlotsV1,
     implementationDbStrategyV1: input.state.implementationDbStrategyV1,
     implementationWorkPlanDraftV1: input.state.implementationWorkPlanDraftV1,
+    implementationSeedV1: input.state.implementationSeedV1,
     projectArtifacts: input.projectArtifacts,
     cursorWorkItemsV1: input.state.cursorWorkItemsV1,
     codeAgentWipExecutionV1: input.state.codeAgentWipExecutionV1,

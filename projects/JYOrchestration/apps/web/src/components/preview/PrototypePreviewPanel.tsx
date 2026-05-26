@@ -50,6 +50,7 @@ import {
   buildMockImplementationModeResult,
 } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
+import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -119,6 +120,8 @@ import {
   parseRequirementsStateJson,
   type PrototypeWorkspaceTimelineCardV1,
 } from "@/lib/requirements/requirementsStateJson";
+import { buildImplementationConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
@@ -179,11 +182,13 @@ export function PrototypePreviewPanel({
   featureDraftTitles,
   checklistGapLabels,
   designFingerprint,
+  onRequirementsStateJsonChange,
 }: {
   readonly projectId: string;
   readonly projectName: string;
   readonly projectDescription: string;
   readonly requirementsStateJson: unknown;
+  readonly onRequirementsStateJsonChange?: (next: unknown) => void;
   readonly ideationAssets: ReadonlyArray<PrototypeWorkspaceIdeationAsset>;
   readonly flowSteps: ReadonlyArray<PrototypePreviewFlowStep>;
   readonly actors: ReadonlyArray<PrototypePreviewActor>;
@@ -211,6 +216,8 @@ export function PrototypePreviewPanel({
   const [automationAvailable, setAutomationAvailable] = useState(false);
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
+  const [implementationResetBusy, setImplementationResetBusy] = useState(false);
+  const [implementationConversationResetNonce, setImplementationConversationResetNonce] = useState(0);
   /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
   const [plannerCreatePending, setPlannerCreatePending] = useState(false);
   const [plannerProgressStep, setPlannerProgressStep] = useState(1);
@@ -1248,6 +1255,7 @@ export function PrototypePreviewPanel({
     inputBlocked: isMessageInputBlocked,
     implementationBootstrapInput,
     envLoading: executionEnvLoading,
+    conversationResetNonce: implementationConversationResetNonce,
     onPersistStateJson: (patch) => {
       const parsed = parseRequirementsStateJson(requirementsStateJson);
       let timeline = parsed.promptTimeline;
@@ -1398,6 +1406,15 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  const planningSlotDefinitions = useMemo(
+    () =>
+      buildDynamicServicePlanningSlotDefinitions({
+        projectName: projectName.trim() || "프로젝트",
+        projectDescription: projectDescription ?? "",
+      }),
+    [projectName, projectDescription],
+  );
+
   const generateImplementationWorkPlanDraft = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -1405,10 +1422,17 @@ export function PrototypePreviewPanel({
       requirementsStateJson,
       projectId: pid,
       projectArtifacts: executionArtifacts.projectArtifacts,
+      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+      slotDefinitions: planningSlotDefinitions,
+      implementationSeedV1: parsedRequirementsState.implementationSeedV1,
       envOk: canRequestGeneration.envOk,
       designOk: canRequestGeneration.designOk,
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
+    if (result.kind === "blocked") {
+      showToast(result.message);
+      return;
+    }
     if (result.kind === "already_exists") {
       showToast("이미 구현 작업안 초안이 생성되었습니다.");
       return;
@@ -1431,6 +1455,9 @@ export function PrototypePreviewPanel({
     canRequestGeneration.envOk,
     canRequestGeneration.designOk,
     parsedRequirementsState.promptTimeline,
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.implementationSeedV1,
+    planningSlotDefinitions,
     executionSingleChat,
     persistChatToDb,
     showToast,
@@ -2129,23 +2156,49 @@ export function PrototypePreviewPanel({
 
   const onResetImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
-    if (!pid || protoBusy) return;
+    if (!pid || protoBusy || implementationResetBusy) return;
     if (
       !confirmResetConversation({
-        message: "구현 단계 대화 내역을 삭제하고 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.",
+        message:
+          "구현 대화·작업안·Seed·WIP 진행 상태를 모두 삭제하고 구현 단계를 다시 시작할까요? 기획 산출물과 슬롯은 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
       })
     ) {
       return;
     }
-    executionSingleChat.applyPersistedMessages([]);
-    void persistChatToDb({
-      messages: [],
-      slots: [],
-      answers: {},
-      currentSlotKey: null,
-    });
-    showToast("구현 대화를 초기화했습니다.");
-  }, [projectId, protoBusy, executionSingleChat, persistChatToDb, showToast]);
+    setImplementationResetBusy(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const resetState = buildImplementationConversationResetStateJson(
+        parseRequirementsStateJson(requirementsStateJson),
+        nowIso,
+      );
+      lastPersistedChatFingerprintRef.current = "";
+      setTimelineCards([]);
+      lastTimelineSnapRef.current = "";
+      setImplementationConversationResetNonce((n) => n + 1);
+      onRequirementsStateJsonChange?.(resetState);
+
+      const { res, json: raw } = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: resetState });
+      const json = raw as SpecWorkspaceProjectPatchResponseBody;
+      if (!res.ok || !json.success || json.data?.patchApplied === false || !json.data?.project) {
+        showToast(json.message ?? "구현 대화 초기화에 실패했습니다.");
+        return;
+      }
+      onRequirementsStateJsonChange?.(json.data.project.requirementsStateJson ?? resetState);
+      showToast("구현 세션을 초기화했습니다. AI개발자 진입 안내를 다시 표시합니다.");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "구현 대화 초기화 중 오류가 발생했습니다.");
+    } finally {
+      setImplementationResetBusy(false);
+    }
+  }, [
+    projectId,
+    protoBusy,
+    implementationResetBusy,
+    requirementsStateJson,
+    onRequirementsStateJsonChange,
+    showToast,
+  ]);
 
   const onSummarizeImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
@@ -2181,7 +2234,7 @@ export function PrototypePreviewPanel({
   const executionConversationIconToolbar = useMemo(
     () => (
       <WorkspaceConversationHubIconRow
-        busy={protoBusy || executionAiSummaryBusy}
+        busy={protoBusy || executionAiSummaryBusy || implementationResetBusy}
         interviewUi={implementationInterviewUi}
         slotsChromeLabels={{
           progressLabel: IMPLEMENTATION_PROGRESS_LABEL,
@@ -2203,7 +2256,10 @@ export function PrototypePreviewPanel({
         onResetConversation={onResetImplementationConversation}
         onSummarizeConversation={onSummarizeImplementationConversation}
         resetConversationDisabled={
-          protoBusy || executionSingleChat.conversationStatus !== "loaded" || !executionSingleChat.chatMessages.length
+          protoBusy ||
+          implementationResetBusy ||
+          executionSingleChat.conversationStatus !== "loaded" ||
+          !executionSingleChat.chatMessages.length
         }
       />
     ),

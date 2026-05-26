@@ -17,11 +17,17 @@ import {
   formatWorkPlanDraftMarkdown,
   type ImplementationWorkPlanDraftV1,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  IMPLEMENTATION_SEED_GAP_LABELS,
+  type ImplementationSeedV1,
+} from "@/lib/requirements/implementationSeed";
 import type { ArtifactStage } from "@/lib/prototype/artifactHubStage";
 import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type ImplementationArtifactType =
+  | "implementation-readiness-report"
+  | "implementation-seed"
   | "implementation-work-plan-draft"
   | "implementation-task-plan"
   | "code-agent-work-instruction"
@@ -54,6 +60,8 @@ export type DerivedImplementationArtifact = Readonly<{
 }>;
 
 const TYPE_LABELS: Record<ImplementationArtifactType, string> = {
+  "implementation-readiness-report": "구현 준비도 점검서",
+  "implementation-seed": "Implementation Seed",
   "implementation-work-plan-draft": "구현 작업안 초안",
   "implementation-task-plan": "구현 작업안",
   "code-agent-work-instruction": "Code Agent 작업 지시서",
@@ -81,8 +89,37 @@ function mdSection(title: string, lines: readonly string[]): string {
   return body ? `## ${title}\n\n${body}\n` : "";
 }
 
+export function formatImplementationSeedMarkdown(seed: ImplementationSeedV1): string {
+  const gapLines = seed.gaps.map((g) => `- [${g.severity}] ${g.label}: ${g.reason}`);
+  return [
+    "# Implementation Seed",
+    "",
+    `준비도: ${Math.round(seed.readiness.score * 100)}% (${seed.readiness.ready ? "ready" : "not ready"})`,
+    `상태: ${seed.lifecycleStatus}`,
+    "",
+    mdSection("프로세스별 구현 항목", seed.processImplementationItems.map((p, i) => `${i + 1}. ${p.processName}`)),
+    mdSection(
+      "화면별 구현 항목",
+      seed.screenImplementationItems.map((s, i) => `${i + 1}. ${s.screenName}`),
+    ),
+    mdSection(
+      "액터별 기능/권한",
+      seed.actorCapabilityMatrix.map((a, i) => `${i + 1}. ${a.actor}`),
+    ),
+    mdSection("공통 상세기능", seed.commonDetailFeatures.map((c) => `- ${c.name}`)),
+    mdSection("데이터 엔티티", seed.dataModelSeed.entities.map((e) => `- ${e}`)),
+    mdSection(
+      "부족 항목",
+      gapLines.length
+        ? gapLines
+        : seed.readiness.missing.map((k) => `- ${IMPLEMENTATION_SEED_GAP_LABELS[k]}`),
+    ),
+  ].join("\n");
+}
+
 export function buildDerivedImplementationArtifacts(input: {
   readonly projectId: string;
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
@@ -95,10 +132,46 @@ export function buildDerivedImplementationArtifacts(input: {
   const now = input.nowIso ?? new Date().toISOString();
   const out: DerivedImplementationArtifact[] = [];
   const plan = input.implementationTaskPlanV1;
+  const seed = input.implementationSeedV1;
   const draft = input.implementationWorkPlanDraftV1;
   const slots = input.implementationSlotsV1;
   const workItems = input.cursorWorkItemsV1 ?? [];
   const wip = input.codeAgentWipExecutionV1;
+
+  if (seed) {
+    out.push({
+      id: `impl-artifact-readiness-${seed.createdAt}`,
+      type: "implementation-readiness-report",
+      stage: "implementation",
+      title: TYPE_LABELS["implementation-readiness-report"],
+      body: [
+        "# 구현 준비도 점검서",
+        "",
+        `- 준비도: ${Math.round(seed.readiness.score * 100)}%`,
+        `- ready: ${seed.readiness.ready}`,
+        `- lifecycle: ${seed.lifecycleStatus}`,
+        "",
+        ...(seed.readiness.missing.length
+          ? ["## 부족 항목", ...seed.readiness.missing.map((k) => `- ${IMPLEMENTATION_SEED_GAP_LABELS[k]}`)]
+          : ["## 상태", "- Implementation Seed Gate 충족"]),
+      ].join("\n"),
+      source: ["implementationSeedV1"],
+      status: seed.readiness.ready ? "ready" : "blocked",
+      createdAt: seed.createdAt,
+      updatedAt: seed.updatedAt,
+    });
+    out.push({
+      id: `impl-artifact-seed-${seed.createdAt}`,
+      type: "implementation-seed",
+      stage: "implementation",
+      title: TYPE_LABELS["implementation-seed"],
+      body: formatImplementationSeedMarkdown(seed),
+      source: ["implementationSeedV1"],
+      status: seed.lifecycleStatus === "confirmed" ? "ready" : "draft",
+      createdAt: seed.createdAt,
+      updatedAt: seed.updatedAt,
+    });
+  }
 
   if (draft?.implementationScope.length && !plan?.items.length) {
     out.push({

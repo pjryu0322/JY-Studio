@@ -27,6 +27,8 @@ import {
 } from "@/lib/prototype/implementationTaskPlanStateWire";
 import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
 import { parseImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
@@ -538,6 +540,8 @@ export type RequirementsStateJson = {
   implementationSlotsV1?: ImplementationSlotsV1 | null;
   /** 구현 DB 연동 판단·Mock 전략(JSON) */
   implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
+  /** 제품화 수준 구현 Seed — 기획 슬롯·산출물 정규화 */
+  implementationSeedV1?: ImplementationSeedV1 | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** Code Agent WIP 검토 루프 상태(JSON) */
@@ -946,6 +950,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationDbStrategyV1 = parseImplementationDbStrategyV1(
     "implementationDbStrategyV1" in o ? o.implementationDbStrategyV1 : undefined,
   );
+  const implementationSeedV1 = parseImplementationSeedV1(
+    "implementationSeedV1" in o ? o.implementationSeedV1 : undefined,
+  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1088,6 +1095,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1 } : {}),
     ...(implementationSlotsV1 !== undefined ? { implementationSlotsV1 } : {}),
     ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
+    ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),

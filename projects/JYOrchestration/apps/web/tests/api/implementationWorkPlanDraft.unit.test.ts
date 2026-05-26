@@ -5,6 +5,16 @@ import {
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { buildImplementationBootstrapBundle } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
+  buildImplementationSeedFromPlanning,
+  IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
+  IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
+} from "@/lib/requirements/implementationSeed";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  initialOrchestrationStateFromDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
+import {
   buildDerivedImplementationArtifacts,
 } from "@/lib/prototype/implementationArtifacts";
 import {
@@ -15,6 +25,37 @@ import {
   WORK_PLAN_DRAFT_GENERATE_CHIP,
 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+
+const nowIso = "2026-05-25T10:00:00.000Z";
+
+function seedReadyState() {
+  const definitions = buildDynamicServicePlanningSlotDefinitions({
+    projectName: "demo",
+    projectDescription: "demo",
+  });
+  const base = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+  const slots = { ...base.slots };
+  for (const gapKey of IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const key = findOrchestrationSlotKeysBySuffix(definitions, suffix)[0];
+    if (!key || !slots[key]) continue;
+    slots[key] = {
+      ...slots[key],
+      status: "confirmed",
+      value: "confirmed slot value for seed gate",
+      updatedAt: nowIso,
+    };
+  }
+  const orchestration = { ...base, slots };
+  const seed = buildImplementationSeedFromPlanning({
+    projectId: "p1",
+    orchestration,
+    definitions,
+    lifecycleStatus: "confirmed",
+    nowIso,
+  });
+  return { orchestration, definitions, seed };
+}
 
 const planningArtifacts: ProjectArtifact[] = [
   {
@@ -108,10 +149,14 @@ describe("implementation work plan draft flow", () => {
   });
 
   it("generates draft and allows confirmation afterward", () => {
+    const { orchestration, definitions, seed } = seedReadyState();
     const gen = buildGenerateImplementationWorkPlanDraftResult({
-      requirementsStateJson: {},
+      requirementsStateJson: { singleChatOrchestrationV1: orchestration, implementationSeedV1: seed },
       projectId: "p1",
       projectArtifacts: planningArtifacts,
+      orchestration,
+      slotDefinitions: definitions,
+      implementationSeedV1: seed,
       envOk: true,
       designOk: true,
     });

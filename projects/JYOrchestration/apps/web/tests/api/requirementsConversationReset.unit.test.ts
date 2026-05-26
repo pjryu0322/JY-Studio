@@ -37,7 +37,11 @@ describe("requirementsConversationReset", () => {
     expect(reset.featurePlanningSlotsV1).toBeNull();
     expect(reset.fastPlanDraftV1).toBeNull();
     expect(reset.singleChatOrchestrationV1).toBeNull();
-    expect(reset.promptTimeline).toEqual([]);
+    expect(reset.implementationSeedV1).toBeNull();
+    expect(reset.prototypeExecutionSingleChatV1).toBeNull();
+    expect(reset.promptTimeline?.some((e) => e.action === "planning_reset_cleared_implementation_derivatives")).toBe(
+      true,
+    );
   });
 
   it("resolveWorkspaceDeliverableAssets honors empty local array after reset", () => {

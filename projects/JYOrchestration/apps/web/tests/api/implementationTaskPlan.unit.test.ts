@@ -22,6 +22,16 @@ import {
   evaluateImplementationCursorGate,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
+import {
+  buildImplementationSeedFromPlanning,
+  IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
+  IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
+} from "@/lib/requirements/implementationSeed";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  initialOrchestrationStateFromDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
 import { buildImplementationSlotsFromContext } from "@/lib/prototype/implementationSlots";
 import {
   appendPromptTimeline,
@@ -177,12 +187,46 @@ describe("cursor execution readiness gate", () => {
   });
 });
 
+function seedReadyForTaskPlan(now: string) {
+  const definitions = buildDynamicServicePlanningSlotDefinitions({
+    projectName: "demo",
+    projectDescription: "demo",
+  });
+  const base = initialOrchestrationStateFromDefinitions(definitions, now);
+  const slots = { ...base.slots };
+  for (const gapKey of IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const key = findOrchestrationSlotKeysBySuffix(definitions, suffix)[0];
+    if (!key || !slots[key]) continue;
+    slots[key] = {
+      ...slots[key],
+      status: "confirmed",
+      value: "confirmed slot value for seed gate",
+      updatedAt: now,
+    };
+  }
+  const orchestration = { ...base, slots };
+  const seed = buildImplementationSeedFromPlanning({
+    projectId: "p1",
+    orchestration,
+    definitions,
+    lifecycleStatus: "confirmed",
+    nowIso: now,
+  });
+  return { orchestration, definitions, seed };
+}
+
 describe("buildConfirmImplementationTaskPlanResult", () => {
   it("returns created patch with task plan and cursor work items", () => {
+    const now = "2026-05-19T02:00:00.000Z";
+    const { orchestration, definitions, seed } = seedReadyForTaskPlan(now);
     const draftGen = buildGenerateImplementationWorkPlanDraftResult({
-      requirementsStateJson: {},
+      requirementsStateJson: { singleChatOrchestrationV1: orchestration, implementationSeedV1: seed },
       projectId: "p1",
       projectArtifacts: [],
+      orchestration,
+      slotDefinitions: definitions,
+      implementationSeedV1: seed,
       envOk: true,
       designOk: true,
     });

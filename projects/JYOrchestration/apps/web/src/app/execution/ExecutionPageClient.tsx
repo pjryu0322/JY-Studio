@@ -102,6 +102,7 @@ export function ExecutionPageClient() {
               projectName={projectName || "프로젝트"}
               projectDescription={projectDescription}
               requirementsStateJson={requirementsStateJson}
+              onRequirementsStateJsonChange={setRequirementsStateJson}
               ideationAssets={derived.ideationAssets}
               actors={derived.actors}
               flowSteps={derived.flowSteps}

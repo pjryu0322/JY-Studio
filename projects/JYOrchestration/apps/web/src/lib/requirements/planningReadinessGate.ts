@@ -13,6 +13,11 @@ import {
   type ProjectArtifact,
   type ProjectArtifactType,
 } from "@/lib/requirements/projectArtifactTypes";
+import {
+  evaluateImplementationSeedReadiness,
+  IMPLEMENTATION_SEED_GAP_LABELS,
+  type ImplementationSeedReadiness,
+} from "@/lib/requirements/implementationSeed";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
 import { normalizeSlotStatus } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type {
@@ -53,6 +58,37 @@ export type PlanningToGenerationReadiness = Readonly<{
 }>;
 
 export type ImplementationStartReadiness = PlanningToGenerationReadiness;
+
+/** Planning Minimum Gate — Quick Design / 기획 산출물 생성 (기존 동작 유지) */
+export type PlanningMinimumReadiness = PlanningToGenerationReadiness;
+
+/** Implementation Seed Gate — 구현 작업안 초안 생성 가능 여부 */
+export type ImplementationSeedGateReadiness = ImplementationSeedReadiness & Readonly<{
+  readonly reason: string | null;
+}>;
+
+export function evaluatePlanningMinimumReadiness(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+}): PlanningMinimumReadiness {
+  return evaluatePlanningToGenerationReadiness(input);
+}
+
+export function evaluateImplementationSeedGateReadiness(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+}): ImplementationSeedGateReadiness {
+  const seed = evaluateImplementationSeedReadiness(input);
+  if (seed.ready) {
+    return { ...seed, reason: null };
+  }
+  const labels = seed.missing.map((k) => IMPLEMENTATION_SEED_GAP_LABELS[k]);
+  const preview = labels.slice(0, 5).join(", ");
+  return {
+    ...seed,
+    reason: `구현 작업안 초안을 위해 제품화 수준 기획 정보가 부족합니다. 부족: ${preview}${labels.length > 5 ? " …" : ""}`,
+  };
+}
 
 export function resolveRequiredImplementationArtifactTypes(input: {
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;

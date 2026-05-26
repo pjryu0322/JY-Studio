@@ -139,6 +139,7 @@ import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/b
 import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
+import { PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE } from "@/lib/requirements/resetDerivedImplementationState";
 import {
   buildRequirementsConversationResetStateJson,
   ideationDraftGateStatus,
@@ -232,6 +233,16 @@ import {
   quickDesignArtifactIdsFromMessageMeta,
   resolveLatestPlanningDeliverableAssetId,
 } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
+import {
+  PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
+  PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP,
+  PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_CHIP,
+} from "@/lib/requirements/implementationSeed";
+import {
+  buildPlanningImplementationSeedCheckResult,
+  buildPlanningImplementationSeedGenerateCandidateResult,
+  buildPlanningImplementationSeedSupplementResult,
+} from "@/lib/requirements/planningImplementationSeedActions";
 import { evaluateImplementationStartReadiness } from "@/lib/requirements/planningReadinessGate";
 import {
   buildQuickDesignDraftCreatedTimelineEntry,
@@ -1733,7 +1744,7 @@ export function RequirementsWorkspace({
     const remoteLockedLocal = !pid;
     if (remoteLockedLocal) return;
     if (busy || resetConversationBusy) return;
-    if (!confirmResetConversation({ message: "대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요? 이 작업은 되돌릴 수 없습니다." })) {
+    if (!confirmResetConversation({ message: PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE })) {
       return;
     }
     setResetConversationBusy(true);
@@ -2726,9 +2737,93 @@ export function RequirementsWorkspace({
     showSuccessToast,
   ]);
 
+  const handlePlanningImplementationSeedChip = useCallback(
+    async (label: string) => {
+      const trimmed = String(label ?? "").trim();
+      const pid = resolvedProjectId.trim();
+      if (!pid || busy || remoteLocked) return;
+      const orch = orchestrationAlignedState;
+      const defs = slotDefsForProgress;
+      const timeline = stateJsonRef.current.promptTimeline;
+      const nowIso = new Date().toISOString();
+
+      if (trimmed === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP) {
+        const result = buildPlanningImplementationSeedCheckResult({
+          projectId: pid,
+          orchestration: orch,
+          definitions: defs,
+          promptTimeline: timeline,
+          nowIso,
+        });
+        await appendServiceFlowWorkshopMessages([result.message]);
+        await persistStateJsonOnly({
+          ...result.orchestrationPatch,
+          promptTimeline: [...result.orchestrationPatch.promptTimeline],
+        });
+        showSuccessToast(
+          result.seed.readiness.ready
+            ? "구현 작업안 초안 생성이 가능한 준비도입니다."
+            : "구현 준비도 점검 결과를 확인해 주세요.",
+        );
+        return;
+      }
+      if (trimmed === PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_CHIP) {
+        const result = buildPlanningImplementationSeedSupplementResult({
+          projectId: pid,
+          orchestration: orch,
+          definitions: defs,
+          promptTimeline: timeline,
+          nowIso,
+        });
+        await appendServiceFlowWorkshopMessages([result.message]);
+        await persistStateJsonOnly({
+          ...result.orchestrationPatch,
+          promptTimeline: [...result.orchestrationPatch.promptTimeline],
+        });
+        showSuccessToast("부족 슬롯에 AI 후보를 반영했습니다. 확인 후 확정해 주세요.");
+        return;
+      }
+      if (trimmed === PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP) {
+        const result = buildPlanningImplementationSeedGenerateCandidateResult({
+          projectId: pid,
+          projectName: project?.name,
+          orchestration: orch,
+          definitions: defs,
+          promptTimeline: timeline,
+          nowIso,
+        });
+        await appendServiceFlowWorkshopMessages([result.message]);
+        await persistStateJsonOnly({
+          ...result.orchestrationPatch,
+          promptTimeline: [...result.orchestrationPatch.promptTimeline],
+        });
+        showSuccessToast("Implementation Seed 후보를 생성했습니다 (candidate, 자동 확정 없음).");
+      }
+    },
+    [
+      resolvedProjectId,
+      busy,
+      remoteLocked,
+      orchestrationAlignedState,
+      slotDefsForProgress,
+      appendServiceFlowWorkshopMessages,
+      persistStateJsonOnly,
+      showSuccessToast,
+      project?.name,
+    ],
+  );
+
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
+      if (
+        trimmed === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP ||
+        trimmed === PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_CHIP ||
+        trimmed === PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP
+      ) {
+        void handlePlanningImplementationSeedChip(trimmed);
+        return;
+      }
       const artifactFollowUp = resolveFastPlanArtifactFollowUpAction(trimmed);
       if (artifactFollowUp === "view_artifacts") {
         const artifactIds = resolveQuickDesignArtifactIdsForView();
@@ -2818,6 +2913,7 @@ export function RequirementsWorkspace({
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,
+      handlePlanningImplementationSeedChip,
     ],
   );
 

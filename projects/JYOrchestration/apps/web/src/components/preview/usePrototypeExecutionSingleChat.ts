@@ -45,6 +45,7 @@ export function usePrototypeExecutionSingleChat({
   onPersistStateJson,
   implementationBootstrapInput,
   envLoading = false,
+  conversationResetNonce = 0,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -67,6 +68,7 @@ export function usePrototypeExecutionSingleChat({
   }) => void;
   readonly implementationBootstrapInput?: ImplementationOrchestrationSummaryInput | null;
   readonly envLoading?: boolean;
+  readonly conversationResetNonce?: number;
 }) {
   const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded">("idle");
   const [conversationMessages, setConversationMessages] = useState<readonly RequirementsMessage[]>([]);
@@ -96,10 +98,17 @@ export function usePrototypeExecutionSingleChat({
     setSlots(resolved.slots ?? []);
     setAnswers(resolved.answers ?? {});
     setCurrentSlotKey(resolved.currentSlotKey ?? null);
+    setReplyTo(null);
+    setInput("");
     setConversationStatus("loaded");
     slotsBootstrapRef.current = (resolved.slots?.length ?? 0) > 0;
     implementationBootstrapRef.current = hasValidImplementationLeadBootstrap(sanitized);
-  }, [projectId, requirementsStateJson]);
+  }, [projectId, requirementsStateJson, conversationResetNonce]);
+
+  useEffect(() => {
+    slotsBootstrapRef.current = false;
+    implementationBootstrapRef.current = false;
+  }, [conversationResetNonce]);
 
   useEffect(() => {
     const pid = projectId.trim();
@@ -132,6 +141,7 @@ export function usePrototypeExecutionSingleChat({
     slots,
     answers,
     currentSlotKey,
+    conversationResetNonce,
   ]);
 
   const { messages: derivedMessages, actionByLabel } = useMemo(
