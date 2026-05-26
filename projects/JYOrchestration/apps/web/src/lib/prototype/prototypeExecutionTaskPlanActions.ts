@@ -16,6 +16,14 @@ import {
   type ImplementationSlotsV1,
 } from "@/lib/prototype/implementationSlots";
 import {
+  canConfirmImplementationWorkPlanDraft,
+  type ImplementationWorkPlanDraftV1,
+} from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  buildWorkPlanDraftConfirmedTimeline,
+  markImplementationWorkPlanDraftConfirmed,
+} from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
+import {
   buildImplementationTaskPlan,
   hasImplementationTaskPlanSummary,
   type ImplementationTaskPlanV1,
@@ -75,12 +83,14 @@ export type ConfirmImplementationTaskPlanInput = Readonly<{
   readonly projectArtifacts: readonly ProjectArtifact[];
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
   readonly featureDraftTitles?: readonly string[];
+  readonly implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
 export type ConfirmImplementationTaskPlanResult =
+  | Readonly<{ readonly kind: "blocked"; readonly message: string }>
   | Readonly<{ readonly kind: "already_confirmed" }>
   | Readonly<{
       readonly kind: "created";
@@ -97,6 +107,7 @@ export type ConfirmImplementationTaskPlanResult =
         readonly cursorWorkItemsV1: readonly CursorWorkItem[];
         readonly implementationSlotsV1: ImplementationSlotsV1;
         readonly implementationDbStrategyV1: ImplementationDbStrategyV1;
+        readonly implementationWorkPlanDraftV1: ImplementationWorkPlanDraftV1;
         readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
       };
     }>;
@@ -110,11 +121,19 @@ export function buildConfirmImplementationTaskPlanResult(
   if (hasImplementationTaskPlanSummary(prior)) {
     return { kind: "already_confirmed" };
   }
+  if (!canConfirmImplementationWorkPlanDraft(input.implementationWorkPlanDraftV1)) {
+    return {
+      kind: "blocked",
+      message: "먼저 [구현 작업안 초안 생성]으로 구현 범위 초안을 만든 뒤 [구현 작업안 확정]을 진행해 주세요.",
+    };
+  }
+  const confirmedDraft = markImplementationWorkPlanDraftConfirmed(input.implementationWorkPlanDraftV1!);
   const plan = buildImplementationTaskPlan({
     projectId: pid,
     projectArtifacts: input.projectArtifacts,
     artifactOrchestrationV1: input.artifactOrchestrationV1,
     featureDraftTitles: input.featureDraftTitles,
+    implementationScope: confirmedDraft.implementationScope,
     envOk: input.envOk,
     designOk: input.designOk,
   });
@@ -145,6 +164,10 @@ export function buildConfirmImplementationTaskPlanResult(
   const slotsTimeline = buildImplementationSlotsTimelineEntry({ slots: implementationSlotsV1 });
   const dbSlotsTimeline = buildImplementationDbSlotsTimelineEntry({ slots: implementationSlotsV1 });
   const implementationDbStrategyV1 = defaultImplementationDbStrategy();
+  const draftConfirmedTimeline = buildWorkPlanDraftConfirmedTimeline(
+    confirmedDraft,
+    input.promptTimeline,
+  );
   return {
     kind: "created",
     plan,
@@ -160,8 +183,12 @@ export function buildConfirmImplementationTaskPlanResult(
       cursorWorkItemsV1: workItems,
       implementationSlotsV1,
       implementationDbStrategyV1,
+      implementationWorkPlanDraftV1: confirmedDraft,
       promptTimeline: appendPromptTimeline(
-        appendPromptTimeline(appendPromptTimeline(input.promptTimeline, taskPlanTimeline), slotsTimeline),
+        appendPromptTimeline(
+          appendPromptTimeline(draftConfirmedTimeline, taskPlanTimeline),
+          slotsTimeline,
+        ),
         dbSlotsTimeline,
       ),
     },
@@ -172,7 +199,7 @@ export function buildPrepareImplementationExecutionToast(
   plan: ImplementationTaskPlanV1 | null | undefined,
 ): string | null {
   if (!plan?.items?.length) {
-    return "먼저 [구현 작업안 확정]으로 task plan을 생성해 주세요.";
+    return "먼저 [구현 작업안 초안 생성] 후 [구현 작업안 확정]으로 task plan을 생성해 주세요.";
   }
   const ready = plan.items.filter((i) => i.status === "ready").length;
   return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [코드 에이전트 WIP 작업 요청]을 진행할 수 있습니다.`;

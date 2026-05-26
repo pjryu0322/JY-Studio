@@ -14,12 +14,17 @@ import {
   DB_INTEGRATION_REVIEW_CHIP,
   MOCK_IMPLEMENTATION_CHIP,
 } from "@/lib/prototype/implementationDbStrategy";
+import {
+  WORK_PLAN_DRAFT_GENERATE_CHIP,
+  WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
+} from "@/lib/prototype/implementationWorkPlanDraft";
 
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
   readonly focusComposerForScopeEdit: () => void;
   readonly showRoleCheckDetails: () => void;
+  readonly generateImplementationWorkPlanDraft: () => void;
   readonly confirmImplementationTaskPlan: () => void;
   readonly requestCodeAgentWipWork: () => void;
   readonly viewWipChanges: () => void;
@@ -54,9 +59,13 @@ export function tryHandlePrototypeExecutionChip(
     case "산출물 다시 보기":
       handlers.openArtifactHub();
       return true;
+    case WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP:
     case "구현 범위 수정":
     case "작업 범위 수정":
       handlers.focusComposerForScopeEdit();
+      return true;
+    case WORK_PLAN_DRAFT_GENERATE_CHIP:
+      handlers.generateImplementationWorkPlanDraft();
       return true;
     case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:
       handlers.showRoleCheckDetails();

@@ -25,6 +25,10 @@ export const IMPLEMENTATION_MODE_PRIMARY_MEMBERS: readonly WorkspaceAiMemberId[]
   "memo",
 ];
 
+/** 구현 단계 툴바 멤버 배지: AI 기본 4명 + 프로젝트 사용자(OWNER) 1명 */
+export const IMPLEMENTATION_MODE_PARTICIPANT_COUNT =
+  IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length + 1;
+
 const PLANNING_CONFIG: ModeOrchestrationConfig = {
   mode: "planning",
   primaryMembers: PLANNING_MODE_PRIMARY_MEMBERS,
@@ -41,7 +45,7 @@ const IMPLEMENTATION_CONFIG: ModeOrchestrationConfig = {
   proposalBuilder: "implementationMemberProposal",
   readinessEvaluator: "implementationReadiness",
   nextActions: [
-    "구현 작업안 확정",
+    "구현 작업안 초안 생성",
     "역할별 점검 보기",
     "코드 에이전트 WIP 작업 요청",
     "구현 실행 준비",

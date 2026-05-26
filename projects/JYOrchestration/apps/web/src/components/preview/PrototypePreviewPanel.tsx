@@ -32,7 +32,10 @@ import { RequirementsDeliverableViewerModal } from "@/components/requirements/Re
 import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
 import { projectArtifactToDeliverableAsset } from "@/lib/requirements/projectArtifactViewer";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
-import { IMPLEMENTATION_MODE_PRIMARY_MEMBERS } from "@/lib/requirements/modeOrchestrationConfig";
+import {
+  IMPLEMENTATION_MODE_PARTICIPANT_COUNT,
+  IMPLEMENTATION_MODE_PRIMARY_MEMBERS,
+} from "@/lib/requirements/modeOrchestrationConfig";
 import {
   buildImplementationBootstrapInput,
   isPrototypeExecutionEnvLoading,
@@ -46,6 +49,8 @@ import {
   buildDbIntegrationReviewResult,
   buildMockImplementationModeResult,
 } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
+import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
+import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
@@ -1355,21 +1360,74 @@ export function PrototypePreviewPanel({
       projectArtifacts: executionArtifacts.projectArtifacts,
       artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
       featureDraftTitles: featureDraftTitles ?? [],
+      implementationWorkPlanDraftV1: parsedRequirementsState.implementationWorkPlanDraftV1,
       envOk: canRequestGeneration.envOk,
       designOk: canRequestGeneration.designOk,
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
+    if (result.kind === "blocked") {
+      showToast(result.message);
+      return;
+    }
     if (result.kind === "already_confirmed") {
       showToast("이미 구현 작업안이 확정되었습니다.");
       return;
     }
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     executionSingleChat.applyPersistedMessages(result.chatPatch.messages);
-    void persistChatToDb(result.chatPatch, result.orchestrationPatch);
+    void persistChatToDb(
+      {
+        messages: result.chatPatch.messages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      },
+      result.orchestrationPatch,
+    );
   }, [
     projectId,
     requirementsStateJson,
     executionArtifacts,
     featureDraftTitles,
+    parsedRequirementsState.implementationWorkPlanDraftV1,
+    canRequestGeneration.envOk,
+    canRequestGeneration.designOk,
+    parsedRequirementsState.promptTimeline,
+    executionSingleChat,
+    persistChatToDb,
+    showToast,
+  ]);
+
+  const generateImplementationWorkPlanDraft = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const result = buildGenerateImplementationWorkPlanDraftResult({
+      requirementsStateJson,
+      projectId: pid,
+      projectArtifacts: executionArtifacts.projectArtifacts,
+      envOk: canRequestGeneration.envOk,
+      designOk: canRequestGeneration.designOk,
+      promptTimeline: parsedRequirementsState.promptTimeline,
+    });
+    if (result.kind === "already_exists") {
+      showToast("이미 구현 작업안 초안이 생성되었습니다.");
+      return;
+    }
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+    executionSingleChat.applyPersistedMessages(result.messages);
+    void persistChatToDb(
+      {
+        messages: result.messages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      },
+      result.orchestrationPatch,
+    );
+  }, [
+    projectId,
+    requirementsStateJson,
+    executionArtifacts.projectArtifacts,
     canRequestGeneration.envOk,
     canRequestGeneration.designOk,
     parsedRequirementsState.promptTimeline,
@@ -1534,6 +1592,7 @@ export function PrototypePreviewPanel({
           queueMicrotask(() => chatInputRef.current?.focus());
         },
         showRoleCheckDetails,
+        generateImplementationWorkPlanDraft,
         confirmImplementationTaskPlan,
         reviewDbIntegrationNeed,
         generateDataModelDraft,
@@ -1549,6 +1608,10 @@ export function PrototypePreviewPanel({
         refreshStatus: () => void onRefreshPrototypeStatus(),
         showToast,
         canConfirmImplementationTaskPlan: () => {
+          if (!hasImplementationWorkPlanDraftReady(parsedRequirementsState.implementationWorkPlanDraftV1)) {
+            showToast("먼저 [구현 작업안 초안 생성]을 진행해 주세요.");
+            return false;
+          }
           if (!canRequestGeneration.designOk) {
             showToast("기획 산출물 준비 후 작업안을 확정할 수 있습니다.");
             return false;
@@ -1575,9 +1638,11 @@ export function PrototypePreviewPanel({
       envSettingsHref,
       showRoleCheckDetails,
       confirmImplementationTaskPlan,
+      generateImplementationWorkPlanDraft,
       reviewDbIntegrationNeed,
       generateDataModelDraft,
       confirmMockImplementationMode,
+      parsedRequirementsState.implementationWorkPlanDraftV1,
       wipChipHandlers,
       parsedRequirementsState.implementationTaskPlanV1,
       implementationCursorGate,
@@ -1905,10 +1970,12 @@ export function PrototypePreviewPanel({
     isDraftGenerationComplete,
     latestRun?.status,
     latestRun?.publicUrl,
-    prototypeScreenCatalogIds,
   ]);
 
-  const implementationAiMemberCount = IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length;
+  const implementationParticipantCount = useMemo(
+    () => Math.max(prototypeModalParticipants.length, IMPLEMENTATION_MODE_PARTICIPANT_COUNT),
+    [prototypeModalParticipants],
+  );
 
   const planningOrchestrationView = useMemo(
     () =>
@@ -2123,7 +2190,7 @@ export function PrototypePreviewPanel({
         quickExecutionTitle="빠른 실행: 구현 작업안·WIP"
         quickExecutionAriaLabel="빠른 실행: 구현 작업안 확정 또는 코드 에이전트 WIP 작업 요청"
         memberControls={{
-          count: implementationAiMemberCount,
+          count: implementationParticipantCount,
           onOpen: () => setProtoMembersModalOpen(true),
         }}
         artifactHubControls={{
@@ -2144,7 +2211,7 @@ export function PrototypePreviewPanel({
       protoBusy,
       executionAiSummaryBusy,
       implementationInterviewUi,
-      implementationAiMemberCount,
+      implementationParticipantCount,
       implementationArtifactHubView.badgeCount,
       onDownloadImplementationConversationMarkdown,
       onResetImplementationConversation,
@@ -2189,7 +2256,7 @@ export function PrototypePreviewPanel({
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={executionSingleChat.chatMessages}
           memberControls={{
-            count: implementationAiMemberCount,
+            count: implementationParticipantCount,
             onOpen: () => setProtoMembersModalOpen(true),
           }}
           headerIconToolbar={executionConversationIconToolbar}

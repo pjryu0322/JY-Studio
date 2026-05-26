@@ -13,7 +13,10 @@ import {
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { IMPLEMENTATION_MODE_PRIMARY_MEMBERS } from "@/lib/requirements/modeOrchestrationConfig";
+import {
+  IMPLEMENTATION_MODE_PARTICIPANT_COUNT,
+  IMPLEMENTATION_MODE_PRIMARY_MEMBERS,
+} from "@/lib/requirements/modeOrchestrationConfig";
 
 const baseInput = {
   projectId: "p1",
@@ -65,9 +68,10 @@ describe("implementationOrchestrationSummary", () => {
     expect(hasImplementationRoleCheckDetailsShown([...bootstrap, detail])).toBe(true);
   });
 
-  it("includes role check view chip in bootstrap entry chips", () => {
+  it("includes draft generation and role check chips in bootstrap entry chips", () => {
     expect(implementationEntryChips(baseInput)).toContain("역할별 점검 보기");
-    expect(implementationEntryChips(baseInput)).toContain("구현 작업안 확정");
+    expect(implementationEntryChips(baseInput)).toContain("구현 작업안 초안 생성");
+    expect(implementationEntryChips(baseInput)).not.toContain("구현 작업안 확정");
   });
 
   it("treats only lead developer implementation bootstrap as valid", () => {
@@ -129,8 +133,9 @@ describe("implementationOrchestrationSummary", () => {
     expect(lead?.content).not.toContain("현재 개발 준비 상태:");
   });
 
-  it("uses implementation primary members count for implementation member badge", () => {
+  it("uses implementation participant count including human owner for member badge", () => {
     expect(IMPLEMENTATION_MODE_PRIMARY_MEMBERS.length).toBe(4);
+    expect(IMPLEMENTATION_MODE_PARTICIPANT_COUNT).toBe(5);
   });
 
   it("does not expose Cursor or Code Agent as SingleChat member", () => {

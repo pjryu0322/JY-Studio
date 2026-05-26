@@ -4,7 +4,11 @@ import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOr
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import { PROJECT_ARTIFACT_LABELS, type ProjectArtifactType } from "@/lib/requirements/projectArtifactTypes";
+import {
+  collectReferencePlanningArtifacts,
+  IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
+  implementationEntryChips as workPlanDraftEntryChips,
+} from "@/lib/prototype/implementationWorkPlanDraft";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
 export const IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_ROLE_CHECK_DETAILS_V1";
@@ -80,17 +84,6 @@ function countScmIssues(env: PrototypeChatEnvSnapshot): number {
   return n;
 }
 
-function defaultTaskTitles(input: ImplementationOrchestrationSummaryInput): string[] {
-  const fromFeatures = input.featureDraftTitles.map((t) => String(t ?? "").trim()).filter(Boolean);
-  if (fromFeatures.length) return fromFeatures.slice(0, 8);
-  const fromArtifacts = input.projectArtifacts
-    .map((a) => String(a.title ?? PROJECT_ARTIFACT_LABELS[a.type as ProjectArtifactType] ?? a.type).trim())
-    .filter(Boolean);
-  if (fromArtifacts.length) return fromArtifacts.slice(0, 8);
-  const planned = input.artifactOrchestrationV1?.planned ?? [];
-  return planned.map((p) => String(p.title ?? "").trim()).filter(Boolean).slice(0, 8);
-}
-
 export function buildImplementationRoleCheckSummary(
   input: ImplementationOrchestrationSummaryInput,
 ): ImplementationRoleCheckSummary {
@@ -128,14 +121,9 @@ function developerScmReferenceLine(input: ImplementationOrchestrationSummaryInpu
   return "SCM 점검 결과, 환경설정이 필요합니다.";
 }
 
+/** @deprecated — `implementationWorkPlanDraft.implementationEntryChips` */
 export function implementationEntryChips(_input: ImplementationOrchestrationSummaryInput): readonly string[] {
-  return [
-    "구현 작업안 확정",
-    IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
-    "환경설정 열기",
-    "구현 범위 수정",
-    "산출물 다시 보기",
-  ];
+  return workPlanDraftEntryChips();
 }
 
 export function implementationTaskPlanConfirmedChips(): readonly string[] {
@@ -166,13 +154,17 @@ function buildLeadDeveloperBootstrapMessage(input: {
   readonly nowIso: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
-  const tasks = defaultTaskTitles(input.summaryInput);
+  const referenceArtifacts = collectReferencePlanningArtifacts(input.summaryInput.projectArtifacts);
   const scmRef = developerScmReferenceLine(input.summaryInput);
+  const refLines =
+    referenceArtifacts.length > 0
+      ? referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`)
+      : ["1. (참조 기획 산출물 없음 — 기획 단계 산출물을 먼저 준비해 주세요)"];
   const lines = [
-    "현재 산출물 기준으로 구현 작업안을 준비했습니다.",
+    IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
     "",
-    "우선 구현 task:",
-    ...(tasks.length ? tasks.map((t, i) => `${i + 1}. ${t}`) : ["1. (범위 미정 — 구현 범위 수정으로 알려 주세요)"]),
+    "참조 기획 산출물:",
+    ...refLines,
     "",
     ...roleCheckSummaryLines(input.roleCheckSummary),
     ...(scmRef ? ["", scmRef] : []),
@@ -193,7 +185,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
       internalType: IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
       implementationBootstrapKind: "lead_developer_summary",
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationEntryChips(input.summaryInput)],
+      interviewSuggestions: [...workPlanDraftEntryChips()],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1000,
     },
@@ -249,6 +241,7 @@ export function buildImplementationBootstrapTimelineEntries(input: {
 }): readonly RequirementsPromptTimelineEntry[] {
   const now = input.nowIso ?? new Date().toISOString();
   const s = input.roleCheckSummary;
+  const referenceArtifacts = collectReferencePlanningArtifacts(input.summaryInput.projectArtifacts);
   const payload = [
     "type=implementation_bootstrap_lead_developer_summary",
     "mode=implementation",
@@ -258,9 +251,24 @@ export function buildImplementationBootstrapTimelineEntries(input: {
     `scmIssueCount=${s.scm.issueCount}`,
     "codeAgentProvider=cursor",
     `envReady=${input.summaryInput.envOk}`,
+    `referenceArtifactCount=${referenceArtifacts.length}`,
   ].join(" ");
 
   return [
+    {
+      stage: "implementation",
+      stageGroup: "구현",
+      workspaceScreenKey: "prototype_execution",
+      action: "implementation_entry_reference_artifacts_checked",
+      source: "system",
+      responseText: [
+        "type=implementation_entry_reference_artifacts_checked",
+        "mode=implementation",
+        `referenceArtifactCount=${referenceArtifacts.length}`,
+      ].join(" "),
+      createdAt: now,
+      orchestrationTraceGroup: "implementation_orchestration",
+    },
     {
       stage: "implementation",
       stageGroup: "구현",
@@ -345,7 +353,10 @@ export function isLegacyImplementationMemberBootstrapMessage(m: RequirementsMess
 
   if (m.speakerId !== "prototype_build") return true;
   if (m.meta.implementationBootstrapKind !== "lead_developer_summary") return true;
+  if (!m.content.includes(IMPLEMENTATION_ENTRY_READINESS_HEADLINE)) return true;
   if (!m.content.includes("역할별 점검 요약")) return true;
+  if (m.content.includes("우선 구현 task:")) return true;
+  if (m.content.includes("현재 산출물 기준으로 구현 작업안을 준비했습니다.")) return true;
   if (leadDeveloperMessageHasForbiddenEnvDetail(m.content)) return true;
   return false;
 }
@@ -357,6 +368,8 @@ export function hasValidImplementationLeadBootstrap(
     if (m.meta.internalType !== IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE) return false;
     if (m.meta.implementationBootstrapKind !== "lead_developer_summary") return false;
     if (m.speakerId !== "prototype_build") return false;
+    if (!m.content.includes(IMPLEMENTATION_ENTRY_READINESS_HEADLINE)) return false;
+    if (!m.content.includes("참조 기획 산출물:")) return false;
     if (!m.content.includes("역할별 점검 요약")) return false;
     if (leadDeveloperMessageHasForbiddenEnvDetail(m.content)) return false;
     return true;

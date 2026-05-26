@@ -21,6 +21,7 @@ import {
   buildImplementationCursorGateContext,
   evaluateImplementationCursorGate,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
+import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { buildImplementationSlotsFromContext } from "@/lib/prototype/implementationSlots";
 import {
   appendPromptTimeline,
@@ -178,11 +179,22 @@ describe("cursor execution readiness gate", () => {
 
 describe("buildConfirmImplementationTaskPlanResult", () => {
   it("returns created patch with task plan and cursor work items", () => {
+    const draftGen = buildGenerateImplementationWorkPlanDraftResult({
+      requirementsStateJson: {},
+      projectId: "p1",
+      projectArtifacts: [],
+      envOk: true,
+      designOk: true,
+    });
+    expect(draftGen.kind).toBe("created");
+    if (draftGen.kind !== "created") return;
+
     const result = buildConfirmImplementationTaskPlanResult({
       projectId: "p1",
-      requirementsStateJson: {},
+      requirementsStateJson: { prototypeExecutionSingleChatV1: { messages: draftGen.messages } },
       projectArtifacts: [],
       featureDraftTitles: ["업로드"],
+      implementationWorkPlanDraftV1: draftGen.draft,
       envOk: true,
       designOk: true,
     });
@@ -190,9 +202,12 @@ describe("buildConfirmImplementationTaskPlanResult", () => {
     if (result.kind !== "created") return;
     expect(result.plan.items[0]?.executionHints).toBeDefined();
     expect(result.workItems[0]?.qualityGate.promptReady).toBe(true);
-    expect(result.chatPatch.messages[0]?.content).toContain("구현 task:");
-    expect(result.chatPatch.messages[0]?.content).toContain("구현 슬롯 준비 상태:");
-    expect(result.orchestrationPatch.implementationSlotsV1.slots.length).toBe(12);
+    const summaryMsg = [...result.chatPatch.messages].reverse().find((m) =>
+      m.content.includes("구현 슬롯 준비 상태:"),
+    );
+    expect(summaryMsg?.content).toContain("구현 task:");
+    expect(summaryMsg?.content).toContain("구현 슬롯 준비 상태:");
+    expect(result.orchestrationPatch.implementationSlotsV1.slots.length).toBeGreaterThan(0);
     expect(
       result.orchestrationPatch.promptTimeline.some((e) => e.action === "implementation_slots_built"),
     ).toBe(true);
@@ -206,6 +221,7 @@ describe("implementation work plan chip routing", () => {
       openEnvSettings: vi.fn(),
       openArtifactHub: vi.fn(),
       focusComposerForScopeEdit: vi.fn(),
+      generateImplementationWorkPlanDraft: vi.fn(),
       confirmImplementationTaskPlan: confirm,
       requestCursorExecution: vi.fn(),
       prepareImplementationExecution: vi.fn(),

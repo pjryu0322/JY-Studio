@@ -4,7 +4,9 @@ import {
   buildImplementationBootstrapBundle,
   hasImplementationOrchestrationBootstrap,
 } from "@/lib/prototype/implementationOrchestrationSummary";
+import { IMPLEMENTATION_ENTRY_READINESS_HEADLINE } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
+  IMPLEMENTATION_MODE_PARTICIPANT_COUNT,
   IMPLEMENTATION_MODE_PRIMARY_MEMBERS,
   PLANNING_MODE_PRIMARY_MEMBERS,
   resolveModeOrchestrationConfig,
@@ -35,6 +37,7 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(impl.primaryMembers).toContain("prototype_review");
     expect(impl.primaryMembers).toContain("security_reviewer");
     expect(impl.primaryMembers).toContain("memo");
+    expect(IMPLEMENTATION_MODE_PARTICIPANT_COUNT).toBe(impl.primaryMembers.length + 1);
   });
 
   it("uses SingleChat surface for implementation mode (RequirementsWorkspaceStageRenderer)", () => {
@@ -91,8 +94,10 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(bundle.messages.length).toBe(1);
     expect(hasImplementationOrchestrationBootstrap(bundle.messages)).toBe(true);
     expect(bundle.messages[0]?.speakerId).toBe("prototype_build");
-    expect(bundle.messages[0]?.content).toContain("업로드");
+    expect(bundle.messages[0]?.content).toContain(IMPLEMENTATION_ENTRY_READINESS_HEADLINE);
+    expect(bundle.messages[0]?.content).toContain("참조 기획 산출물:");
     expect(bundle.messages.some((m) => m.speakerId === "memo")).toBe(false);
     expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("역할별 점검 보기")).toBe(true);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("구현 작업안 초안 생성")).toBe(true);
   });
 });

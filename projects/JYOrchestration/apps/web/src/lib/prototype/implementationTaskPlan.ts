@@ -56,6 +56,7 @@ export type BuildImplementationTaskPlanInput = Readonly<{
   projectArtifacts: readonly ProjectArtifact[];
   artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
   featureDraftTitles?: readonly string[];
+  implementationScope?: readonly string[];
   envOk: boolean;
   designOk: boolean;
   nowIso?: string;
@@ -79,6 +80,11 @@ function slugId(prefix: string, title: string, index: number): string {
 }
 
 function deriveTaskTitles(input: BuildImplementationTaskPlanInput): readonly { title: string; artifactTypes: string[] }[] {
+  const fromDraftScope = (input.implementationScope ?? []).map((t) => String(t ?? "").trim()).filter(Boolean);
+  if (fromDraftScope.length) {
+    return fromDraftScope.map((title) => ({ title, artifactTypes: ["feature-spec"] }));
+  }
+
   const fromFeatures = (input.featureDraftTitles ?? []).map((t) => String(t ?? "").trim()).filter(Boolean);
   if (fromFeatures.length) {
     return fromFeatures.map((title) => ({ title, artifactTypes: ["feature-spec"] }));

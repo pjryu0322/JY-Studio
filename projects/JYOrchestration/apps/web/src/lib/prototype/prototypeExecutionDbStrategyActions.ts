@@ -59,7 +59,7 @@ export function buildDbIntegrationReviewResult(input: {
     }> {
   const now = input.nowIso ?? new Date().toISOString();
   if (!input.implementationSlotsV1) {
-    return { kind: "blocked", message: "먼저 [구현 작업안 확정]으로 슬롯을 생성해 주세요." };
+    return { kind: "blocked", message: "먼저 [구현 작업안 초안 생성] 후 [구현 작업안 확정]을 진행해 주세요." };
   }
 
   const slots = applyDbIntegrationReviewSlots(input.implementationSlotsV1, now);
@@ -129,7 +129,7 @@ export function buildDataModelDraftResult(input: {
     }> {
   const now = input.nowIso ?? new Date().toISOString();
   if (!input.implementationSlotsV1) {
-    return { kind: "blocked", message: "먼저 [구현 작업안 확정]으로 슬롯을 생성해 주세요." };
+    return { kind: "blocked", message: "먼저 [구현 작업안 초안 생성] 후 [구현 작업안 확정]을 진행해 주세요." };
   }
 
   const priorEntities = input.implementationSlotsV1.slots.find((s) => s.key === "data_entities")?.value;
@@ -204,7 +204,7 @@ export function buildMockImplementationModeResult(input: {
     }> {
   const now = input.nowIso ?? new Date().toISOString();
   if (!input.implementationSlotsV1) {
-    return { kind: "blocked", message: "먼저 [구현 작업안 확정]으로 슬롯을 생성해 주세요." };
+    return { kind: "blocked", message: "먼저 [구현 작업안 초안 생성] 후 [구현 작업안 확정]을 진행해 주세요." };
   }
 
   const slots = applyMockImplementationModeSlots(input.implementationSlotsV1, now);

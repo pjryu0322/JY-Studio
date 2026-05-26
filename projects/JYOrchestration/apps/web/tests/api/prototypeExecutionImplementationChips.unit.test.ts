@@ -5,6 +5,7 @@ const baseHandlers = () => ({
   openEnvSettings: vi.fn(),
   openArtifactHub: vi.fn(),
   focusComposerForScopeEdit: vi.fn(),
+  generateImplementationWorkPlanDraft: vi.fn(),
   confirmImplementationTaskPlan: vi.fn(),
   showRoleCheckDetails: vi.fn(),
   requestCodeAgentWipWork: vi.fn(),

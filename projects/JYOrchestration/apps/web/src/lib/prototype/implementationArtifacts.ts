@@ -13,11 +13,16 @@ import {
 import { formatImplementationSlotsReadinessSummary } from "@/lib/prototype/implementationSlots";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import {
+  formatWorkPlanDraftMarkdown,
+  type ImplementationWorkPlanDraftV1,
+} from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ArtifactStage } from "@/lib/prototype/artifactHubStage";
 import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type ImplementationArtifactType =
+  | "implementation-work-plan-draft"
   | "implementation-task-plan"
   | "code-agent-work-instruction"
   | "wip-result-report"
@@ -49,6 +54,7 @@ export type DerivedImplementationArtifact = Readonly<{
 }>;
 
 const TYPE_LABELS: Record<ImplementationArtifactType, string> = {
+  "implementation-work-plan-draft": "구현 작업안 초안",
   "implementation-task-plan": "구현 작업안",
   "code-agent-work-instruction": "Code Agent 작업 지시서",
   "wip-result-report": "WIP 작업 결과 보고서",
@@ -77,6 +83,7 @@ function mdSection(title: string, lines: readonly string[]): string {
 
 export function buildDerivedImplementationArtifacts(input: {
   readonly projectId: string;
+  readonly implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
   readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
   readonly implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
@@ -88,9 +95,24 @@ export function buildDerivedImplementationArtifacts(input: {
   const now = input.nowIso ?? new Date().toISOString();
   const out: DerivedImplementationArtifact[] = [];
   const plan = input.implementationTaskPlanV1;
+  const draft = input.implementationWorkPlanDraftV1;
   const slots = input.implementationSlotsV1;
   const workItems = input.cursorWorkItemsV1 ?? [];
   const wip = input.codeAgentWipExecutionV1;
+
+  if (draft?.implementationScope.length && !plan?.items.length) {
+    out.push({
+      id: `impl-artifact-work-plan-draft-${draft.createdAt}`,
+      type: "implementation-work-plan-draft",
+      stage: "implementation",
+      title: TYPE_LABELS["implementation-work-plan-draft"],
+      body: formatWorkPlanDraftMarkdown(draft),
+      source: ["implementationWorkPlanDraftV1"],
+      status: draft.status === "confirmed" ? "ready" : "draft",
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+    });
+  }
 
   if (plan?.items.length) {
     const taskLines = plan.items.map(
