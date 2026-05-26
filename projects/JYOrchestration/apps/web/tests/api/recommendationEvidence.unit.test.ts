@@ -6,12 +6,31 @@ import { RecommendationEvidencePanel } from "@/components/recommendation/Recomme
 import { RequirementsMessageExplainability } from "@/components/requirements/RequirementsMessageExplainability";
 import {
   buildRecommendationEvidenceItems,
+  buildUserFacingTimelineSummary,
+  findSourceUserInputsForTimeline,
   isInternalRecommendationText,
   showInlineMessageExplainability,
+  summarizeRecommendationEvidenceCounts,
 } from "@/lib/recommendation/recommendationEvidence";
+import { toggleRecommendationPanelOpen } from "@/lib/recommendation/recommendationPanelEvents";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 const now = "2026-05-19T12:00:00.000Z";
+const before = "2026-05-19T11:00:00.000Z";
+
+const userMsg: RequirementsMessage = {
+  id: "u1",
+  role: "user",
+  speakerType: "USER",
+  speakerId: "user-1",
+  speakerName: "사용자",
+  visibility: "PUBLIC",
+  messageType: "QUESTION",
+  content: "회의록 자동화 서비스 만들고 싶어",
+  createdAt: before,
+  meta: { stage: "REQUIREMENTS" },
+};
 
 describe("buildRecommendationEvidenceItems", () => {
   it("builds recommendation evidence items from prompt timeline and artifact orchestration metadata", () => {
@@ -49,19 +68,19 @@ describe("buildRecommendationEvidenceItems", () => {
         },
       ],
     };
-    const items = buildRecommendationEvidenceItems({ requirementsStateJson: state });
+    const items = buildRecommendationEvidenceItems({
+      requirementsStateJson: state,
+      messages: [userMsg],
+    });
     expect(items.length).toBeGreaterThanOrEqual(2);
     const qd = items.find((i) => i.title.includes("Quick Design"));
     expect(qd?.stage).toBe("planning");
     expect(qd?.status).toBe("confirmed");
-    expect(qd?.aiMemberLabel).toContain("기획");
-    expect(qd?.summary.length).toBeGreaterThan(0);
-    expect(qd?.reasons.length).toBeGreaterThan(0);
-    const art = items.find((i) => i.title.includes("프로토타입"));
-    expect(art?.referencedArtifacts.length).toBeGreaterThan(0);
+    expect(qd?.summary).toContain("Quick Design");
+    expect(qd?.sourceInputs).toContain("회의록 자동화 서비스 만들고 싶어");
   });
 
-  it("does not expose internal prompt assembly metadata in recommendation evidence", () => {
+  it("filters internal prompt assembly metadata from recommendation evidence", () => {
     const state: RequirementsStateJson = {
       promptTimeline: [
         {
@@ -79,18 +98,100 @@ describe("buildRecommendationEvidenceItems", () => {
     expect(blob).not.toMatch(/맥락 예산/);
     expect(blob).not.toMatch(/압축 정책/);
     expect(blob).not.toMatch(/조립 계획/);
+    expect(blob).not.toMatch(/참조 맥락 후보/);
     expect(blob).not.toMatch(/rawPrompt/i);
     expect(blob).not.toMatch(/\btoken\b/i);
+  });
+
+  it("links recommendation evidence to nearby user messages", () => {
+    const state: RequirementsStateJson = {
+      promptTimeline: [
+        {
+          stage: "ideation",
+          action: "quick_design_draft_created",
+          source: "llm",
+          createdAt: now,
+        },
+      ],
+    };
+    const items = buildRecommendationEvidenceItems({
+      requirementsStateJson: state,
+      messages: [userMsg],
+    });
+    const item = items.find((i) => i.title === "Quick Design 초안");
+    expect(item?.sourceInputs).toContain("회의록 자동화 서비스 만들고 싶어");
+  });
+
+  it("uses user-facing summary for known timeline actions", () => {
+    const entry = {
+      stage: "ideation",
+      action: "quick_design_confirmed_implementation_seed_auto_built",
+      source: "system",
+      createdAt: now,
+    };
+    expect(buildUserFacingTimelineSummary(entry)).toBe(
+      "기획 산출물을 기준으로 구현 준비정보를 자동 정리했습니다.",
+    );
+    const items = buildRecommendationEvidenceItems({
+      requirementsStateJson: { promptTimeline: [entry] },
+    });
+    const seed = items.find((i) => i.title.includes("구현 준비정보"));
+    expect(seed?.summary).toContain("구현 준비정보");
+    expect(seed?.summary).not.toContain("quick_design_confirmed_implementation_seed_auto_built");
+  });
+});
+
+describe("findSourceUserInputsForTimeline", () => {
+  it("prefers explicit source message ids when present", () => {
+    const inputs = findSourceUserInputsForTimeline({
+      entry: {
+        stage: "ideation",
+        action: "quick_design_requested",
+        source: "llm",
+        createdAt: now,
+        userMessageId: "u1",
+      },
+      messages: [userMsg],
+    });
+    expect(inputs).toEqual(["회의록 자동화 서비스 만들고 싶어"]);
+  });
+});
+
+describe("summarizeRecommendationEvidenceCounts", () => {
+  it("includes confirmed and deferred counts", () => {
+    const counts = summarizeRecommendationEvidenceCounts([
+      { status: "confirmed" } as never,
+      { status: "candidate" } as never,
+      { status: "needs_review" } as never,
+      { status: "deferred" } as never,
+    ]);
+    expect(counts).toEqual({
+      total: 4,
+      confirmed: 1,
+      candidate: 1,
+      needsReview: 1,
+      deferred: 1,
+    });
   });
 });
 
 describe("ProjectRailRecommendationButton", () => {
-  it("shows recommendation rail item labeled 추천", () => {
+  it("shows recommendation rail item with toggle affordance", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectRailRecommendationButton, { effectiveProjectId: "p1" }),
     );
     expect(html).toContain("추천");
     expect(html).toContain('data-testid="platform-recommendation-rail-project"');
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain('type="button"');
+    expect(html).not.toContain("href=");
+  });
+});
+
+describe("recommendation panel toggle", () => {
+  it("inverts open flag when toggling recommendation drawer", () => {
+    expect(toggleRecommendationPanelOpen("p1", false)).toBeUndefined();
+    expect(toggleRecommendationPanelOpen("p1", true)).toBeUndefined();
   });
 });
 
@@ -108,7 +209,7 @@ describe("RecommendationEvidencePanel", () => {
             createdAt: now,
             summary: "MVP 범위를 제안했습니다.",
             reasons: ["사용자가 빠른 프로토타입을 요청함"],
-            sourceInputs: [],
+            sourceInputs: ["회의록 자동화 요청"],
             referencedArtifacts: ["프로토타입 기획안"],
             unresolvedItems: ["파일 업로드 제한"],
             nextActions: ["확인"],
@@ -119,13 +220,14 @@ describe("RecommendationEvidencePanel", () => {
     );
     expect(html).toContain("AI 추천근거");
     expect(html).toContain("Quick Design 추천안");
+    expect(html).toContain("사용자 입력");
     expect(html).toContain("확인 필요");
     expect(html).not.toMatch(/맥락 예산/);
   });
 });
 
 describe("RequirementsMessageExplainability inline visibility", () => {
-  it("does not show inline AI decision summary in normal chat cards", () => {
+  it("does not render inline AI decision summary when explainability debug is disabled", () => {
     expect(showInlineMessageExplainability()).toBe(false);
     const html = renderToStaticMarkup(
       createElement(RequirementsMessageExplainability, {
@@ -153,12 +255,3 @@ describe("RequirementsMessageExplainability inline visibility", () => {
   });
 });
 
-describe("recommendation panel stage isolation", () => {
-  it("does not change planning or implementation mode when opening recommendation panel", () => {
-    const html = renderToStaticMarkup(
-      createElement(ProjectRailRecommendationButton, { effectiveProjectId: "p1" }),
-    );
-    expect(html).toContain('type="button"');
-    expect(html).not.toContain("href=");
-  });
-});

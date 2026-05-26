@@ -15,6 +15,10 @@ export function dispatchRecommendationPanelOpen(projectId: string, open = true):
   );
 }
 
+export function toggleRecommendationPanelOpen(projectId: string, currentlyOpen: boolean): void {
+  dispatchRecommendationPanelOpen(projectId, !currentlyOpen);
+}
+
 export function subscribeRecommendationPanel(
   projectId: string,
   handler: (open: boolean) => void,

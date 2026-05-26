@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   platformRailMessengerActiveShell,
   platformRailMessengerActiveText,
   platformRailNavPrimaryText,
   platformRailNavTextCell,
 } from "@/lib/layout/platformTopNavConstants";
-import { dispatchRecommendationPanelOpen } from "@/lib/recommendation/recommendationPanelEvents";
+import {
+  subscribeRecommendationPanel,
+  toggleRecommendationPanelOpen,
+} from "@/lib/recommendation/recommendationPanelEvents";
 
 function LightbulbIcon() {
   return (
@@ -20,11 +24,17 @@ function LightbulbIcon() {
 
 type Props = Readonly<{
   effectiveProjectId: string;
-  active?: boolean;
 }>;
 
-export function ProjectRailRecommendationButton({ effectiveProjectId, active = false }: Props) {
+export function ProjectRailRecommendationButton({ effectiveProjectId }: Props) {
   const projectId = effectiveProjectId.trim();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    return subscribeRecommendationPanel(projectId, setOpen);
+  }, [projectId]);
+
   if (!projectId) return null;
 
   return (
@@ -33,10 +43,11 @@ export function ProjectRailRecommendationButton({ effectiveProjectId, active = f
       data-testid="platform-recommendation-rail-project"
       aria-label="추천 · AI 추천근거"
       title="AI 추천근거"
-      onClick={() => dispatchRecommendationPanelOpen(projectId, true)}
+      aria-pressed={open}
+      onClick={() => toggleRecommendationPanelOpen(projectId, open)}
       style={{
         ...platformRailNavTextCell,
-        ...(active ? platformRailMessengerActiveShell : {}),
+        ...(open ? platformRailMessengerActiveShell : {}),
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -45,7 +56,7 @@ export function ProjectRailRecommendationButton({ effectiveProjectId, active = f
       }}
     >
       <LightbulbIcon />
-      <span style={active ? platformRailMessengerActiveText : platformRailNavPrimaryText}>추천</span>
+      <span style={open ? platformRailMessengerActiveText : platformRailNavPrimaryText}>추천</span>
     </button>
   );
 }

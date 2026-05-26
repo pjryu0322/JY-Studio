@@ -2089,9 +2089,16 @@ export function PrototypePreviewPanel({
     () =>
       buildRecommendationEvidenceItems({
         requirementsStateJson: parsedRequirementsState,
+        messages: executionSingleChat.chatMessages,
         projectArtifacts: planningOrchestrationView.projectArtifacts,
+        projectDescription,
       }),
-    [parsedRequirementsState, planningOrchestrationView.projectArtifacts],
+    [
+      parsedRequirementsState,
+      executionSingleChat.chatMessages,
+      planningOrchestrationView.projectArtifacts,
+      projectDescription,
+    ],
   );
 
   const closeRecommendationPanel = useCallback(() => {

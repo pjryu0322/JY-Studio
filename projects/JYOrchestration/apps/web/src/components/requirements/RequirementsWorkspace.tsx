@@ -985,9 +985,11 @@ export function RequirementsWorkspace({
     () =>
       buildRecommendationEvidenceItems({
         requirementsStateJson: workspaceEvidenceState,
+        messages: conversationMessages,
         projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
+        projectDescription: project?.description ?? "",
       }),
-    [workspaceEvidenceState],
+    [workspaceEvidenceState, conversationMessages, project?.description],
   );
 
   const closeRecommendationPanel = useCallback(() => {

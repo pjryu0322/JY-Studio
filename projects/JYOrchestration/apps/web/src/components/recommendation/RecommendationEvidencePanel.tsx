@@ -131,6 +131,11 @@ export function RecommendationEvidencePanel({
             <span>
               전체 <strong>{counts.total}</strong>건
             </span>
+            {counts.confirmed > 0 ? (
+              <span>
+                확정 <strong>{counts.confirmed}</strong>건
+              </span>
+            ) : null}
             {counts.candidate > 0 ? (
               <span>
                 후보 <strong>{counts.candidate}</strong>건
@@ -139,6 +144,11 @@ export function RecommendationEvidencePanel({
             {counts.needsReview > 0 ? (
               <span>
                 확인필요 <strong>{counts.needsReview}</strong>건
+              </span>
+            ) : null}
+            {counts.deferred > 0 ? (
+              <span>
+                보류 <strong>{counts.deferred}</strong>건
               </span>
             ) : null}
           </div>
