@@ -1,4 +1,7 @@
-import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE,
+  IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
+} from "@/lib/prototype/implementationOrchestrationSummary";
 import { PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -89,6 +92,7 @@ const LEGACY_DERIVED_IMPLEMENTATION_NULL_FIELDS = {
 
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {
   const internalType = String(message.meta.internalType ?? "");
+  if (internalType === IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE) return true;
   if (message.meta.serviceDesignStage === "implementation") return true;
   if ((message.meta as { mode?: string }).mode === "implementation") return true;
   if (internalType === PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE) return true;

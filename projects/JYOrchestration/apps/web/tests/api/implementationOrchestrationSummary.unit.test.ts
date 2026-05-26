@@ -6,17 +6,33 @@ import {
   buildImplementationRoleCheckSummary,
   hasImplementationOrchestrationBootstrap,
   hasImplementationRoleCheckDetailsShown,
+  hasValidImplementationBlockedBootstrap,
   hasValidImplementationLeadBootstrap,
+  IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
   IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
   implementationEntryChips,
   isLegacyImplementationMemberBootstrapMessage,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
+import { implementationBlockedEntryChips } from "@/lib/prototype/implementationWorkPlanDraft";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   IMPLEMENTATION_MODE_PARTICIPANT_COUNT,
   IMPLEMENTATION_MODE_PRIMARY_MEMBERS,
 } from "@/lib/requirements/modeOrchestrationConfig";
+
+const planningArtifacts: readonly ProjectArtifact[] = [
+  {
+    id: "a1",
+    type: "fast_prototype_plan",
+    title: "프로토타입 기획안",
+    content: "# plan",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    createdBy: "ai",
+    sourceStage: "IDEATION",
+  },
+];
 
 const baseInput = {
   projectId: "p1",
@@ -24,9 +40,14 @@ const baseInput = {
   envOk: false,
   envSettingsHref: "/settings#execution",
   featureDraftTitles: ["업로드", "요약"],
-  projectArtifacts: [],
+  projectArtifacts: planningArtifacts,
   artifactOrchestrationV1: null,
   designOk: true,
+};
+
+const blockedInput = {
+  ...baseInput,
+  projectArtifacts: [] as readonly ProjectArtifact[],
 };
 
 describe("implementationOrchestrationSummary", () => {
@@ -41,6 +62,16 @@ describe("implementationOrchestrationSummary", () => {
     expect(bundle.timelineEntries.some((e) => e.action === "implementation_bootstrap_lead_developer_summary")).toBe(
       true,
     );
+  });
+
+  it("shows blocked bootstrap when no planning artifacts exist", () => {
+    const bundle = buildImplementationBootstrapBundle(blockedInput);
+    expect(bundle.messages[0]?.content).toContain(IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE);
+    expect(hasValidImplementationBlockedBootstrap(bundle.messages)).toBe(true);
+    expect(bundle.timelineEntries.some((e) => e.action === "implementation_blocked_missing_planning_artifacts")).toBe(
+      true,
+    );
+    expect(bundle.messages[0]?.meta.interviewSuggestions).toEqual([...implementationBlockedEntryChips()]);
   });
 
   it("does not put raw env readiness lines in AI developer bootstrap message", () => {

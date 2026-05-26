@@ -80,7 +80,7 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(built.some((m) => m.id === "ai-env-check")).toBe(false);
   });
 
-  it("creates single lead developer bootstrap on implementation entry", () => {
+  it("creates blocked bootstrap on implementation entry when planning artifacts are missing", () => {
     const bundle = buildImplementationBootstrapBundle({
       projectId: "p1",
       env: { git: "ok", github: "needs", cursor: "error", connectionTest: "needs" },
@@ -94,10 +94,10 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(bundle.messages.length).toBe(1);
     expect(hasImplementationOrchestrationBootstrap(bundle.messages)).toBe(true);
     expect(bundle.messages[0]?.speakerId).toBe("prototype_build");
-    expect(bundle.messages[0]?.content).toContain(IMPLEMENTATION_ENTRY_READINESS_HEADLINE);
-    expect(bundle.messages[0]?.content).toContain("참조 기획 산출물:");
+    expect(bundle.messages[0]?.content).toContain("기획 산출물이 없어 구현단계를 시작할 수 없습니다.");
+    expect(bundle.messages[0]?.content).not.toContain(IMPLEMENTATION_ENTRY_READINESS_HEADLINE);
     expect(bundle.messages.some((m) => m.speakerId === "memo")).toBe(false);
-    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("역할별 점검 보기")).toBe(true);
-    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("구현 작업안 초안 생성")).toBe(true);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("기획단계로 돌아가기")).toBe(true);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("구현 작업안 초안 생성")).toBe(false);
   });
 });

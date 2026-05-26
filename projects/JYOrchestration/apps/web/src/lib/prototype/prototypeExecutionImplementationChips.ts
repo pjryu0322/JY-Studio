@@ -15,6 +15,8 @@ import {
   MOCK_IMPLEMENTATION_CHIP,
 } from "@/lib/prototype/implementationDbStrategy";
 import {
+  IMPLEMENTATION_BLOCKED_GENERATE_PLANNING_ARTIFACTS_CHIP,
+  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
   WORK_PLAN_DRAFT_GENERATE_CHIP,
   WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
 } from "@/lib/prototype/implementationWorkPlanDraft";
@@ -22,6 +24,8 @@ import {
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
+  readonly returnToPlanningStage?: () => void;
+  readonly openPlanningArtifactGeneration?: () => void;
   readonly focusComposerForScopeEdit: () => void;
   readonly showRoleCheckDetails: () => void;
   readonly generateImplementationWorkPlanDraft: () => void;
@@ -58,6 +62,20 @@ export function tryHandlePrototypeExecutionChip(
       return true;
     case "산출물 다시 보기":
       handlers.openArtifactHub();
+      return true;
+    case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
+      if (handlers.returnToPlanningStage) {
+        handlers.returnToPlanningStage();
+      } else {
+        handlers.showToast("기획단계 화면으로 이동해 주세요.");
+      }
+      return true;
+    case IMPLEMENTATION_BLOCKED_GENERATE_PLANNING_ARTIFACTS_CHIP:
+      if (handlers.openPlanningArtifactGeneration) {
+        handlers.openPlanningArtifactGeneration();
+      } else {
+        handlers.showToast("기획 산출물 생성은 서비스 기획 화면에서 진행할 수 있습니다.");
+      }
       return true;
     case WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP:
     case "구현 범위 수정":

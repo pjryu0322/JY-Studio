@@ -7,10 +7,15 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import {
   collectReferencePlanningArtifacts,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
+  implementationBlockedEntryChips,
   implementationEntryChips as workPlanDraftEntryChips,
 } from "@/lib/prototype/implementationWorkPlanDraft";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
+export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
+  "IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_V1";
+export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE =
+  "기획 산출물이 없어 구현단계를 시작할 수 없습니다.";
 export const IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_ROLE_CHECK_DETAILS_V1";
 
 export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기";
@@ -148,6 +153,101 @@ function roleCheckSummaryLines(summary: ImplementationRoleCheckSummary): string[
   ];
 }
 
+function buildImplementationBlockedMissingPlanningArtifactsMessage(input: {
+  readonly nowIso: string;
+}): RequirementsMessage {
+  const def = getWorkspaceAiMember("prototype_build");
+  const lines = [
+    IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
+    "",
+    "구현 작업안 초안은 기획 산출물과 구현 Seed를 기준으로 생성됩니다.",
+    "현재 참조 가능한 기획 산출물이 없으므로, 먼저 기획단계에서 산출물을 생성해 주세요.",
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+  return newRequirementsMessage({
+    id: `impl-orch-blocked-no-planning-${input.nowIso}`,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content: lines.join("\n"),
+    createdAt: input.nowIso,
+    meta: {
+      internalType: IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE,
+      implementationBootstrapKind: "blocked_missing_planning_artifacts",
+      serviceDesignStage: "implementation",
+      interviewSuggestions: [...implementationBlockedEntryChips()],
+      interviewAllowCustomInput: false,
+      prototypeOrderKey: 1000,
+    },
+  });
+}
+
+function buildImplementationBlockedBootstrapTimelineEntries(input: {
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  const now = input.nowIso ?? new Date().toISOString();
+  return [
+    {
+      stage: "implementation",
+      stageGroup: "구현",
+      workspaceScreenKey: "prototype_execution",
+      action: "implementation_blocked_missing_planning_artifacts",
+      source: "system",
+      responseText: [
+        "type=implementation_blocked_missing_planning_artifacts",
+        "mode=implementation",
+        "reason=no_planning_artifacts",
+      ].join(" "),
+      createdAt: now,
+      orchestrationTraceGroup: "implementation_orchestration",
+    },
+  ];
+}
+
+function emptyRoleCheckSummary(): ImplementationRoleCheckSummary {
+  return {
+    reviewer: { count: 0, highlights: [] },
+    security: { count: 0, highlights: [] },
+    scm: {
+      issueCount: 0,
+      highlights: [],
+      envStatus: { git: "—", github: "—", codeAgent: "—", connectionTest: "—" },
+    },
+  };
+}
+
+function buildImplementationBlockedBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  return {
+    messages: [buildImplementationBlockedMissingPlanningArtifactsMessage({ nowIso: now })],
+    timelineEntries: buildImplementationBlockedBootstrapTimelineEntries({ nowIso: now }),
+    roleCheckSummary: emptyRoleCheckSummary(),
+  };
+}
+
+function buildNormalImplementationBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  const roleCheckSummary = buildImplementationRoleCheckSummary(input);
+  return {
+    messages: [
+      buildLeadDeveloperBootstrapMessage({ summaryInput: input, roleCheckSummary, nowIso: now }),
+    ],
+    timelineEntries: buildImplementationBootstrapTimelineEntries({
+      summaryInput: input,
+      roleCheckSummary,
+      nowIso: now,
+    }),
+    roleCheckSummary,
+  };
+}
+
 function buildLeadDeveloperBootstrapMessage(input: {
   readonly summaryInput: ImplementationOrchestrationSummaryInput;
   readonly roleCheckSummary: ImplementationRoleCheckSummary;
@@ -156,10 +256,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
   const def = getWorkspaceAiMember("prototype_build");
   const referenceArtifacts = collectReferencePlanningArtifacts(input.summaryInput.projectArtifacts);
   const scmRef = developerScmReferenceLine(input.summaryInput);
-  const refLines =
-    referenceArtifacts.length > 0
-      ? referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`)
-      : ["1. 기획 산출물이 아직 없어 구현 준비 상태를 점검할 수 없습니다."];
+  const refLines = referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`);
   const lines = [
     IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
     "",
@@ -340,6 +437,7 @@ export function leadDeveloperMessageHasForbiddenEnvDetail(content: string): bool
 }
 
 export function isLegacyImplementationMemberBootstrapMessage(m: RequirementsMessage): boolean {
+  if (m.meta.internalType === IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE) return false;
   if (m.meta.internalType === IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE) return false;
 
   if (
@@ -376,6 +474,24 @@ export function hasValidImplementationLeadBootstrap(
   });
 }
 
+export function hasValidImplementationBlockedBootstrap(
+  messages: readonly RequirementsMessage[] | null | undefined,
+): boolean {
+  return (messages ?? []).some((m) => {
+    if (m.meta.internalType !== IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE) return false;
+    if (m.meta.implementationBootstrapKind !== "blocked_missing_planning_artifacts") return false;
+    if (m.speakerId !== "prototype_build") return false;
+    if (!m.content.includes(IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE)) return false;
+    return true;
+  });
+}
+
+export function hasAnyValidImplementationBootstrap(
+  messages: readonly RequirementsMessage[] | null | undefined,
+): boolean {
+  return hasValidImplementationLeadBootstrap(messages) || hasValidImplementationBlockedBootstrap(messages);
+}
+
 export function sanitizeImplementationConversationMessages(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): RequirementsMessage[] {
@@ -385,7 +501,7 @@ export function sanitizeImplementationConversationMessages(
 export function hasImplementationOrchestrationBootstrap(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): boolean {
-  return hasValidImplementationLeadBootstrap(messages);
+  return hasAnyValidImplementationBootstrap(messages);
 }
 
 export function hasImplementationRoleCheckDetailsShown(
@@ -396,19 +512,11 @@ export function hasImplementationRoleCheckDetailsShown(
 
 /** 구현 진입: AI개발자 주도 메시지 1개 + timeline (역할별 상세는 요청 시). */
 export function buildImplementationBootstrapBundle(input: ImplementationOrchestrationSummaryInput): ImplementationBootstrapBundle {
-  const now = input.nowIso ?? new Date().toISOString();
-  const roleCheckSummary = buildImplementationRoleCheckSummary(input);
-  return {
-    messages: [
-      buildLeadDeveloperBootstrapMessage({ summaryInput: input, roleCheckSummary, nowIso: now }),
-    ],
-    timelineEntries: buildImplementationBootstrapTimelineEntries({
-      summaryInput: input,
-      roleCheckSummary,
-      nowIso: now,
-    }),
-    roleCheckSummary,
-  };
+  const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
+  if (referenceArtifacts.length === 0) {
+    return buildImplementationBlockedBootstrapBundle(input);
+  }
+  return buildNormalImplementationBootstrapBundle(input);
 }
 
 /** @deprecated — `buildImplementationBootstrapBundle` 사용 */

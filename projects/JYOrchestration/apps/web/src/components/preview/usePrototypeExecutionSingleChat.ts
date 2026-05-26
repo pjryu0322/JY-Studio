@@ -22,7 +22,7 @@ import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExt
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
   buildImplementationBootstrapBundle,
-  hasValidImplementationLeadBootstrap,
+  hasAnyValidImplementationBootstrap,
   sanitizeImplementationConversationMessages,
   type ImplementationOrchestrationSummaryInput,
 } from "@/lib/prototype/implementationOrchestrationSummary";
@@ -102,7 +102,7 @@ export function usePrototypeExecutionSingleChat({
     setInput("");
     setConversationStatus("loaded");
     slotsBootstrapRef.current = (resolved.slots?.length ?? 0) > 0;
-    implementationBootstrapRef.current = hasValidImplementationLeadBootstrap(sanitized);
+    implementationBootstrapRef.current = hasAnyValidImplementationBootstrap(sanitized);
   }, [projectId, requirementsStateJson, conversationResetNonce]);
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export function usePrototypeExecutionSingleChat({
     const bootstrap = buildImplementationBootstrapBundle(implementationBootstrapInput);
     setConversationMessages((prev) => {
       const base = sanitizeImplementationConversationMessages(prev);
-      if (hasValidImplementationLeadBootstrap(base)) {
+      if (hasAnyValidImplementationBootstrap(base)) {
         implementationBootstrapRef.current = true;
         return base;
       }
@@ -351,7 +351,7 @@ export function usePrototypeExecutionSingleChat({
     (messages: readonly RequirementsMessage[]) => {
       const persisted = filterPersistedPrototypeExecutionMessages(messages);
       setConversationMessages(persisted);
-      implementationBootstrapRef.current = hasValidImplementationLeadBootstrap(persisted);
+      implementationBootstrapRef.current = hasAnyValidImplementationBootstrap(persisted);
     },
     [],
   );

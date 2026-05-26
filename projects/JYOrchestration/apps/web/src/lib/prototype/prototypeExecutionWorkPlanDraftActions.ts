@@ -3,7 +3,9 @@ import {
   buildImplementationWorkPlanDraftConfirmedTimelineEntry,
   buildImplementationWorkPlanDraftTimelineEntry,
   buildWorkPlanDraftMessage,
+  collectReferencePlanningArtifacts,
   hasImplementationWorkPlanDraftMessage,
+  IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE,
   type ImplementationWorkPlanDraftV1,
 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
@@ -74,6 +76,13 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
   const prior = resolved.messages ?? [];
   if (hasImplementationWorkPlanDraftMessage(prior)) {
     return { kind: "already_exists" };
+  }
+
+  if (!collectReferencePlanningArtifacts(input.projectArtifacts).length) {
+    return {
+      kind: "blocked",
+      message: IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE,
+    };
   }
 
   const stateRecord =

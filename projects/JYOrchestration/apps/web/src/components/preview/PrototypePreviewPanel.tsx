@@ -1614,6 +1614,16 @@ export function PrototypePreviewPanel({
       tryHandlePrototypeExecutionChip(label, {
         openEnvSettings: () => window.location.assign(envSettingsHref),
         openArtifactHub: () => setArtifactHubOpen(true),
+        returnToPlanningStage: () => {
+          const pid = projectId.trim();
+          if (!pid) return;
+          window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
+        },
+        openPlanningArtifactGeneration: () => {
+          const pid = projectId.trim();
+          if (!pid) return;
+          window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
+        },
         focusComposerForScopeEdit: () => {
           showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
           queueMicrotask(() => chatInputRef.current?.focus());
