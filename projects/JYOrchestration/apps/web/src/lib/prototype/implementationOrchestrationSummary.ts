@@ -1,7 +1,11 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeChatEnvBadge, PrototypeChatEnvSnapshot } from "@/lib/prototype/buildPrototypeChatMessages";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
-import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import {
+  dedupeRequirementsMessagesById,
+  newRequirementsMessage,
+  type RequirementsMessage,
+} from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import {
@@ -495,7 +499,9 @@ export function hasAnyValidImplementationBootstrap(
 export function sanitizeImplementationConversationMessages(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): RequirementsMessage[] {
-  return (messages ?? []).filter((m) => !isLegacyImplementationMemberBootstrapMessage(m));
+  return dedupeRequirementsMessagesById(
+    (messages ?? []).filter((m) => !isLegacyImplementationMemberBootstrapMessage(m)),
+  );
 }
 
 export function hasImplementationOrchestrationBootstrap(

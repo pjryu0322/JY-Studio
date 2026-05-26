@@ -1,5 +1,6 @@
 import { filterPersistedPrototypeExecutionMessages } from "@/lib/prototype/prototypeBuiltMessageProjection";
 import {
+  dedupeRequirementsMessagesById,
   isRequirementsMessage,
   newRequirementsMessage,
   type RequirementsMessage,
@@ -21,7 +22,7 @@ function normalizeMessages(v: unknown): RequirementsMessage[] {
   for (const it of v) {
     if (isRequirementsMessage(it)) out.push(it);
   }
-  return out.slice(-400);
+  return dedupeRequirementsMessagesById(out).slice(-400);
 }
 
 function normalizeSlots(v: unknown): PrototypeExecutionInterviewSlot[] | undefined {

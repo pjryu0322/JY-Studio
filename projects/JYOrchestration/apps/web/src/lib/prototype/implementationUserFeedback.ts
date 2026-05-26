@@ -102,6 +102,10 @@ function normalizeFileSize(raw: string): string | undefined {
   return `${n}MB`;
 }
 
+export function extractRulesFromTextForTurn(text: string): ImplementationExtractedRule[] {
+  return extractRulesFromText(text);
+}
+
 function extractRulesFromText(text: string): ImplementationExtractedRule[] {
   const lines = text
     .split(/\n+/)
@@ -240,6 +244,139 @@ export function buildImplementationUserFeedbackPatchIfRelevant(input: {
 }): ImplementationUserFeedbackPatchV1 | null {
   if (!isImplementationUserFeedbackRelevant(input.text)) return null;
   return buildImplementationUserFeedbackPatch(input);
+}
+
+/** @deprecated keyword 주 판단 — workspace turn LLM/rule fallback 사용 */
+export function buildImplementationUserFeedbackPatchIfRelevantLegacy(
+  input: Parameters<typeof buildImplementationUserFeedbackPatchIfRelevant>[0],
+): ImplementationUserFeedbackPatchV1 | null {
+  return buildImplementationUserFeedbackPatchIfRelevant(input);
+}
+
+export function buildImplementationFeedbackPatchFromTurnModel(input: {
+  readonly text: string;
+  readonly sourceMessageId: string;
+  readonly model: import("@/lib/workspace-turn/workspaceTurnTypes").WorkspaceTurnModelResult;
+  readonly nowIso?: string;
+}): ImplementationUserFeedbackPatchV1 | null {
+  const { model } = input;
+  if (model.status === "question" || model.status === "none" || model.status === "blocked") {
+    return null;
+  }
+  if (model.status === "candidate" && model.extractedRules.length === 0 && model.intent === "implementation_question") {
+    return null;
+  }
+
+  const base = buildImplementationUserFeedbackPatch({
+    text: input.text,
+    sourceMessageId: input.sourceMessageId,
+    nowIso: input.nowIso,
+  });
+
+  const rules =
+    model.extractedRules.length > 0
+      ? model.extractedRules.map((r) => ({
+          label: r.label,
+          value: r.value,
+          ...(r.normalizedValue ? { normalizedValue: r.normalizedValue } : {}),
+          confidence: r.confidence,
+        }))
+      : base.extractedRules;
+
+  const status =
+    model.status === "confirmed_candidate" || model.status === "confirmed" ? "confirmed" : "candidate";
+
+  return {
+    ...base,
+    extractedRules: rules,
+    status,
+    targetAreas: base.targetAreas,
+  };
+}
+
+export function buildImplementationTurnAssistantMessage(input: {
+  readonly model: import("@/lib/workspace-turn/workspaceTurnTypes").WorkspaceTurnModelResult;
+  readonly envOk: boolean;
+}): RequirementsMessage {
+  const { model, envOk } = input;
+  const suggestions = buildImplementationTurnInterviewSuggestions(model);
+
+  return newRequirementsMessage({
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: model.responderLabel || "AI 개발자",
+    messageType: model.status === "question" ? "ANSWER" : "NOTICE",
+    content: model.assistantMessage,
+    meta: {
+      serviceDesignStage: "implementation",
+      internalType: IMPLEMENTATION_USER_FEEDBACK_APPLIED_INTERNAL_TYPE,
+      interviewSuggestions: suggestions.length ? suggestions : undefined,
+      interviewAllowCustomInput: true,
+    },
+  });
+}
+
+/** 본문 질문과 CTA 칩 라벨 중복 방지 */
+export function buildImplementationTurnInterviewSuggestions(
+  model: import("@/lib/workspace-turn/workspaceTurnTypes").WorkspaceTurnModelResult,
+): string[] {
+  const body = model.assistantMessage.trim();
+  const candidates = [model.clarifyingQuestion, model.nextQuestion].filter(
+    (q): q is string => typeof q === "string" && q.trim().length > 0,
+  );
+  const out: string[] = [];
+  for (const label of candidates) {
+    const trimmed = label.trim();
+    if (body.includes(trimmed)) continue;
+    if (out.includes(trimmed)) continue;
+    out.push(trimmed);
+  }
+  return out.slice(0, 3);
+}
+
+export function buildImplementationTurnOrchestrationPatchFromModel(input: {
+  readonly requirementsStateJson: unknown;
+  readonly text: string;
+  readonly sourceMessageId: string;
+  readonly model: import("@/lib/workspace-turn/workspaceTurnTypes").WorkspaceTurnModelResult;
+  readonly nowIso?: string;
+  readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+}): Pick<
+  RequirementsStateJson,
+  | "implementationUserFeedbackPatchesV1"
+  | "implementationSeedV1"
+  | "implementationWorkPlanDraftV1"
+  | "promptTimeline"
+> {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const patch = buildImplementationFeedbackPatchFromTurnModel({
+    text: input.text,
+    sourceMessageId: input.sourceMessageId,
+    model: input.model,
+    nowIso,
+  });
+
+  if (!patch) {
+    const base = parseRequirementsStateJson(input.requirementsStateJson);
+    let timeline = base.promptTimeline;
+    for (const entry of input.timelineEntries ?? []) {
+      timeline = appendPromptTimeline(timeline, entry);
+    }
+    return { promptTimeline: timeline };
+  }
+
+  const basePatch = buildImplementationUserFeedbackOrchestrationPatch({
+    requirementsStateJson: input.requirementsStateJson,
+    patch,
+    nowIso,
+  });
+
+  let timeline = basePatch.promptTimeline;
+  for (const entry of input.timelineEntries ?? []) {
+    timeline = appendPromptTimeline(timeline, entry);
+  }
+  return { ...basePatch, promptTimeline: timeline };
 }
 
 export function parseImplementationUserFeedbackPatchV1(raw: unknown): ImplementationUserFeedbackPatchV1 | null {

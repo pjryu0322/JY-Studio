@@ -7,7 +7,10 @@ import {
   mergePrototypeExecutionChatTimeline,
   projectPrototypeBuiltMessagesToRequirements,
 } from "@/lib/prototype/prototypeBuiltMessageProjection";
-import { postPrototypeChatSlots, postPrototypeChatTurn } from "@/lib/prototype/prototypeExecutionSingleChatClient";
+import {
+  postImplementationTurn,
+  postPrototypeChatSlots,
+} from "@/lib/prototype/prototypeExecutionSingleChatClient";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import {
   buildPrototypeExecutionSingleChatPersistPatch,
@@ -27,11 +30,13 @@ import {
   type ImplementationOrchestrationSummaryInput,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
-  buildImplementationUserFeedbackAppliedMessage,
-  buildImplementationUserFeedbackPatchIfRelevant,
-  buildImplementationUserFeedbackOrchestrationPatch,
+  buildImplementationTurnAssistantMessage,
+  isExplicitImplementationExecutionRequest,
 } from "@/lib/prototype/implementationUserFeedback";
-import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import {
+  appendPromptTimeline,
+  type PrototypeExecutionOrchestrationPersistInput,
+} from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 
 export type PrototypeExecutionOperationalSendResult = "handled" | "continue";
 
@@ -129,7 +134,7 @@ export function usePrototypeExecutionSingleChat({
         return base;
       }
       implementationBootstrapRef.current = true;
-      const next = [...base, ...bootstrap.messages];
+      const next = sanitizeImplementationConversationMessages([...base, ...bootstrap.messages]);
       onPersistStateJson({
         messages: next,
         slots,
@@ -238,42 +243,13 @@ export function usePrototypeExecutionSingleChat({
       meta: { serviceDesignStage: "implementation" },
     });
 
-    const feedbackPatch = buildImplementationUserFeedbackPatchIfRelevant({
-      text,
-      sourceMessageId: userMsg.id,
-    });
-    if (feedbackPatch) {
-      const orchestrationPatch = buildImplementationUserFeedbackOrchestrationPatch({
-        requirementsStateJson,
-        patch: feedbackPatch,
-      });
-      const aiMsg = buildImplementationUserFeedbackAppliedMessage({
-        patch: feedbackPatch,
-        envOk,
-      });
-      setConversationMessages((prev) => {
-        const next = [...prev, userMsg, aiMsg];
-        const persisted = filterPersistedPrototypeExecutionMessages(next);
-        onPersistStateJson({
-          messages: persisted,
-          slots,
-          answers,
-          currentSlotKey,
-          orchestration: orchestrationPatch,
-        });
-        return persisted;
-      });
-      return;
-    }
-
-    const operational = await onOperationalSend(text);
-    if (operational === "handled") {
-      setConversationMessages((prev) => {
-        const next = [...prev, userMsg];
+    if (isExplicitImplementationExecutionRequest(text)) {
+      const operational = await onOperationalSend(text);
+      if (operational === "handled") {
+        const next = [...conversationMessages, userMsg];
         persistConversation(next, answers, currentSlotKey);
-        return next;
-      });
-      return;
+        return;
+      }
     }
 
     const pid = projectId.trim();
@@ -281,24 +257,19 @@ export function usePrototypeExecutionSingleChat({
 
     setAiInvokePending(true);
     try {
-      let nextAnswers = { ...answers };
-      let nextSlotKey = currentSlotKey;
-
-      const turn = await postPrototypeChatTurn({
+      const turn = await postImplementationTurn({
         projectId: pid,
         projectName,
         projectDescription,
-        templateName,
         userMessage: text,
+        userMessageId: userMsg.id,
         envOk,
-        slots,
-        answers: nextAnswers,
-        currentSlotKey: nextSlotKey,
+        requirementsStateJson,
         mentionedAI: extractMentionedAI(text),
       });
 
-      if (!turn.success || !turn.data?.assistantMessage) {
-        const err = turn.message?.trim() || "AI 응답을 받지 못했습니다.";
+      if (!turn.success || !turn.data?.modelResult) {
+        const err = turn.message?.trim() || "구현 단계 응답을 받지 못했습니다.";
         setConversationMessages((prev) => {
           const next = [
             ...prev,
@@ -310,49 +281,44 @@ export function usePrototypeExecutionSingleChat({
               speakerName: aiTitle,
               messageType: "FRIENDLY_ERROR",
               content: err,
-              meta: { serviceDesignStage: "feature-planning" },
+              meta: { serviceDesignStage: "implementation" },
             }),
           ];
-          persistConversation(next, nextAnswers, nextSlotKey);
-          return next;
+          const persisted = filterPersistedPrototypeExecutionMessages(next);
+          onPersistStateJson({
+            messages: persisted,
+            slots,
+            answers,
+            currentSlotKey,
+          });
+          return persisted;
         });
         return;
       }
 
-      const data = turn.data;
-      if (data.slotKeyToFill && data.slotValue) {
-        nextAnswers = { ...nextAnswers, [data.slotKeyToFill]: data.slotValue };
+      const { modelResult, statePatch, timelineEntries } = turn.data;
+      const aiMsg = buildImplementationTurnAssistantMessage({ model: modelResult, envOk });
+
+      let timeline = statePatch.orchestration.promptTimeline;
+      for (const entry of timelineEntries) {
+        timeline = appendPromptTimeline(timeline, entry);
       }
-      if (data.nextSlotKey) nextSlotKey = data.nextSlotKey;
-
-      const aiBody = [
-        data.assistantMessage,
-        data.nextQuestion ? `\n\n${data.nextQuestion}` : "",
-      ]
-        .join("")
-        .trim();
-
-      const aiMsg = newRequirementsMessage({
-        role: "ai",
-        speakerType: "AI",
-        speakerId: "prototype_build",
-        speakerName: String(data.responderLabel ?? "").trim() || aiTitle,
-        messageType: "STATEMENT",
-        content: aiBody,
-        meta: {
-          serviceDesignStage: "feature-planning",
-          interviewSuggestions: data.nextQuestion ? [data.nextQuestion] : undefined,
-          interviewAllowCustomInput: true,
-        },
-      });
 
       setConversationMessages((prev) => {
         const next = [...prev, userMsg, aiMsg];
-        persistConversation(next, nextAnswers, nextSlotKey);
-        return next;
+        const persisted = filterPersistedPrototypeExecutionMessages(next);
+        onPersistStateJson({
+          messages: persisted,
+          slots,
+          answers,
+          currentSlotKey,
+          orchestration: {
+            ...statePatch.orchestration,
+            ...(timeline ? { promptTimeline: timeline } : {}),
+          },
+        });
+        return persisted;
       });
-      setAnswers(nextAnswers);
-      setCurrentSlotKey(nextSlotKey);
     } finally {
       setAiInvokePending(false);
     }
@@ -366,7 +332,6 @@ export function usePrototypeExecutionSingleChat({
     projectId,
     projectName,
     projectDescription,
-    templateName,
     requirementsStateJson,
     conversationMessages,
     envOk,

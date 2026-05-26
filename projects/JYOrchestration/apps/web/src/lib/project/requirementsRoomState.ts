@@ -1,5 +1,6 @@
 import {
   isRequirementsMessage,
+  dedupeRequirementsMessagesById,
   newRequirementsMessage,
   type RequirementsMessage,
   type RequirementsMessageMeta,
@@ -141,7 +142,7 @@ export function patchRequirementsRoomConversationMessages(
     requirementsConversation: {
       ...room.requirementsConversation,
       projectId: pid,
-      messages: [...messages],
+      messages: dedupeRequirementsMessagesById(messages),
     },
   };
 }

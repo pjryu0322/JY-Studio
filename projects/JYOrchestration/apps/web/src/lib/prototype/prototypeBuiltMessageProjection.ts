@@ -4,7 +4,11 @@ import {
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
-import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import {
+  dedupeRequirementsMessagesById,
+  newRequirementsMessage,
+  type RequirementsMessage,
+} from "@/lib/requirements/requirementsMessage";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 
 function blockLines(blocks: readonly PrototypeChatBlock[] | undefined): string[] {
@@ -108,7 +112,9 @@ export function mergePrototypeExecutionChatTimeline(
     const t = Date.parse(m.createdAt);
     return Number.isFinite(t) ? t : 0;
   };
-  return [...derived, ...persisted].sort((a, b) => sortKey(a) - sortKey(b));
+  return dedupeRequirementsMessagesById(
+    [...derived, ...persisted].sort((a, b) => sortKey(a) - sortKey(b)),
+  );
 }
 
 export function filterPersistedPrototypeExecutionMessages(

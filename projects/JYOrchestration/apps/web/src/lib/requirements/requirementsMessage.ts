@@ -72,17 +72,43 @@ export type RequirementsMessage = {
 
 export const REQUIREMENTS_PROMPT_VERSION = "v1" as const;
 
+let requirementsMessageFallbackIdCounter = 0;
+
+function createRequirementsMessageId(): string {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (c && typeof c.randomUUID === "function") {
+    return c.randomUUID();
+  }
+  requirementsMessageFallbackIdCounter += 1;
+  return `m-${Date.now()}-${requirementsMessageFallbackIdCounter}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** React key 충돌·이중 append 방지: 동일 id는 선행 메시지를 유지합니다. */
+export function dedupeRequirementsMessagesById(
+  messages: readonly RequirementsMessage[],
+): RequirementsMessage[] {
+  const seen = new Set<string>();
+  const out: RequirementsMessage[] = [];
+  for (const m of messages) {
+    const id = String(m.id ?? "").trim();
+    if (!id) {
+      out.push(m);
+      continue;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(m);
+  }
+  return out;
+}
+
 export function newRequirementsMessage(input: Omit<RequirementsMessage, "id" | "createdAt" | "visibility" | "meta"> & {
   id?: string;
   createdAt?: string;
   visibility?: RequirementsVisibility;
   meta?: Partial<RequirementsMessageMeta>;
 }): RequirementsMessage {
-  const id =
-    input.id ??
-    (typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `m-${Date.now()}-${Math.random()}`);
+  const id = input.id ?? createRequirementsMessageId();
   const createdAt = input.createdAt ?? new Date().toISOString();
   const targets =
     Array.isArray(input.targets) && input.targets.length > 0 ? (input.targets.map((t) => ({ id: String(t.id), name: String(t.name) })) as RequirementsMessageTarget[]) : undefined;

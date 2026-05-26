@@ -1456,7 +1456,8 @@ export function PrototypePreviewPanel({
       showToast("환경 정보를 불러오는 중입니다.");
       return;
     }
-    const prior = executionSingleChat.chatMessages;
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+    const prior = resolved.messages ?? [];
     if (hasImplementationRoleCheckDetailsShown(prior)) {
       showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
       return;
@@ -1468,7 +1469,6 @@ export function PrototypePreviewPanel({
     });
     const nextMessages = [...prior, detailMessage];
     executionSingleChat.applyPersistedMessages(nextMessages);
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     const timeline = appendPromptTimeline(
       parsedRequirementsState.promptTimeline,
       buildImplementationRoleCheckDetailsTimelineEntry({
