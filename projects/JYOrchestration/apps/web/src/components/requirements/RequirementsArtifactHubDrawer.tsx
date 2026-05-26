@@ -7,8 +7,11 @@ import {
   ARTIFACT_HUB_VISIBLE_STAGE_FILTERS,
   type ArtifactHubStageFilter,
 } from "@/lib/prototype/artifactHubStage";
+import type { ArtifactBoardItem } from "@/lib/artifacts/buildArtifactBoardItems";
+import { isArtifactBoardStatusCreated } from "@/lib/artifacts/artifactBoardStatus";
 import {
-  groupArtifactHubEntriesForDisplay,
+  formatArtifactBoardTabCountLabel,
+  groupArtifactBoardItemsForDisplay,
   type ArtifactHubView,
 } from "@/lib/prototype/artifactHubView";
 import {
@@ -163,9 +166,11 @@ export function RequirementsArtifactHubDrawer({
   }, [open, items, pickerAssets, artifactHubView?.defaultStageFilter]);
 
   const displaySections = useMemo(() => {
-    if (artifactHubView) return groupArtifactHubEntriesForDisplay(artifactHubView, stageFilter).sections;
-    return [{ title: "저장된 산출물", entries: items }];
-  }, [artifactHubView, stageFilter, items]);
+    if (artifactHubView?.boardItems.length) {
+      return groupArtifactBoardItemsForDisplay(artifactHubView, stageFilter).sections;
+    }
+    return [{ title: "작성 대상 산출물", items: [] as ArtifactBoardItem[] }];
+  }, [artifactHubView, stageFilter]);
 
   useEffect(() => {
     if (!open || !showVersionPicker) return;
@@ -263,7 +268,7 @@ export function RequirementsArtifactHubDrawer({
               }}
             >
               <span>Artifact Hub</span>
-              {items.length > 0 ? (
+              {artifactHubView ? (
                 <span
                   style={{
                     fontSize: 11,
@@ -273,7 +278,20 @@ export function RequirementsArtifactHubDrawer({
                     background: "#0d9488",
                     color: "#fff",
                   }}
-                  aria-label={`완성 산출물 ${items.length}건`}
+                  aria-label={`생성완료 ${artifactHubView.tabCounts.all.created}건`}
+                >
+                  {formatArtifactBoardTabCountLabel(artifactHubView.tabCounts.all)}
+                </span>
+              ) : items.length > 0 ? (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "#0d9488",
+                    color: "#fff",
+                  }}
                 >
                   {items.length > 99 ? "99+" : items.length}
                 </span>
@@ -310,11 +328,11 @@ export function RequirementsArtifactHubDrawer({
               </span>
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-              {items.length > 0
-                ? artifactHubView
-                  ? `전체 ${artifactHubView.badgeCount}건 · 구현 ${artifactHubView.implementationPrimary.length} · 기획 ${artifactHubView.planningPrimary.length}`
-                  : `완성 산출물 ${items.length}건 · 체크한 항목만 Doc/PDF`
-                : "산출물 생성·조회"}
+              {artifactHubView
+                ? artifactHubView.statusSummary
+                : items.length > 0
+                  ? `완성 산출물 ${items.length}건 · 체크한 항목만 Doc/PDF`
+                  : "작성 대상 산출물·생성 상태"}
             </div>
             {artifactHubView?.showStageFilters ? (
               <div
@@ -412,10 +430,11 @@ export function RequirementsArtifactHubDrawer({
         </header>
         <ArtifactHubBody
           sections={displaySections}
+          hubMode={artifactHubView?.mode ?? "planning"}
           selectedIds={selectedIds}
           highlightedAssetId={versionAssetId}
           generateDisabled={generateDisabled || artifactHubView?.mode === "implementation"}
-          hideGenerate={artifactHubView?.mode === "implementation"}
+          hideGenerate={Boolean(artifactHubView?.boardItems.length) || artifactHubView?.mode === "implementation"}
           lifecycleSummary={lifecycleSummary}
           onToggleSelected={toggleSelected}
           onSelectEntry={onSelectEntry}
@@ -426,8 +445,25 @@ export function RequirementsArtifactHubDrawer({
   );
 }
 
+const statusPillStyle = (status: string): CSSProperties => {
+  const base: CSSProperties = {
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "2px 8px",
+    borderRadius: 999,
+    flexShrink: 0,
+  };
+  if (status === "생성완료") return { ...base, background: "#ecfdf5", color: "#065f46" };
+  if (status === "생성가능") return { ...base, background: "#eff6ff", color: "#1d4ed8" };
+  if (status === "생성대기" || status === "미생성") return { ...base, background: "#f1f5f9", color: "#475569" };
+  if (status === "보완필요") return { ...base, background: "#fffbeb", color: "#92400e" };
+  if (status === "후보") return { ...base, background: "#faf5ff", color: "#6b21a8" };
+  return { ...base, background: "#f8fafc", color: "#64748b" };
+};
+
 function ArtifactHubBody({
   sections,
+  hubMode,
   selectedIds,
   highlightedAssetId,
   generateDisabled,
@@ -439,8 +475,9 @@ function ArtifactHubBody({
 }: {
   readonly sections: readonly Readonly<{
     readonly title: string;
-    readonly entries: readonly ProjectArtifactHubEntry[];
+    readonly items: readonly ArtifactBoardItem[];
   }>[];
+  readonly hubMode: "planning" | "implementation";
   readonly selectedIds: ReadonlySet<string>;
   readonly highlightedAssetId?: string;
   readonly generateDisabled?: boolean;
@@ -450,11 +487,20 @@ function ArtifactHubBody({
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
 }) {
-  const allItems = useMemo(() => sections.flatMap((s) => s.entries), [sections]);
-  const missingGenerateTypes = useMemo(
-    () => listArtifactHubMissingGenerateTypes({ catalog: allItems }),
-    [allItems],
+  const allBoardItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
+  const allHubEntries = useMemo(
+    () => allBoardItems.filter((i) => i.hubEntry).map((i) => i.hubEntry!),
+    [allBoardItems],
   );
+  const missingGenerateTypes = useMemo(
+    () => listArtifactHubMissingGenerateTypes({ catalog: allHubEntries }),
+    [allHubEntries],
+  );
+
+  const emptyImplHint =
+    hubMode === "implementation" &&
+    allBoardItems.length > 0 &&
+    !allBoardItems.some((i) => i.stage === "implementation" && isArtifactBoardStatusCreated(i.status));
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -481,12 +527,18 @@ function ArtifactHubBody({
           </div>
         </section>
       ) : null}
+      {emptyImplHint ? (
+        <p style={sectionHintStyle}>
+          아직 생성된 구현 산출물은 없습니다. 기획 산출물과 Implementation Seed를 기준으로 구현 작업안을 생성하면
+          상태가 변경됩니다.
+        </p>
+      ) : null}
       {!hideGenerate ? (
       <section>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>새로 생성</div>
         <p style={sectionHintStyle}>
           현재 프로젝트·슬롯 상태를 바탕으로 <strong>아직 없는 문서 유형</strong>을 새로 만듭니다. 생성되면 아래
-          「저장된 산출물」에 추가됩니다.
+          「작성 대상 산출물」에 반영됩니다.
         </p>
         {missingGenerateTypes.length === 0 ? (
           <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
@@ -520,31 +572,27 @@ function ArtifactHubBody({
       {sections.map((section) => (
         <section key={section.title}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 4 }}>
-            {section.title} ({section.entries.length})
+            {section.title} ({section.items.length})
           </div>
-          {section.title.includes("참조") ? (
-            <p style={sectionHintStyle}>구현 시 참고하는 기획 단계 산출물입니다.</p>
-          ) : section.title.includes("구현") ? (
-            <p style={sectionHintStyle}>
-              task plan·Code Agent·WIP·검토 상태에서 <strong>동적으로 생성</strong>된 구현 산출물입니다.
-            </p>
-          ) : (
-            <p style={sectionHintStyle}>
-              프로젝트에 저장된 문서입니다. 항목을 누르면 뷰어에서 열고, 체크한 항목만 Doc/PDF로보냅니다.
-            </p>
-          )}
-          {section.entries.length === 0 ? (
+          <p style={sectionHintStyle}>
+            작성 대상 산출물과 생성 상태입니다. 생성완료 항목만 Doc/PDF보내기 대상으로 선택할 수 있습니다.
+          </p>
+          {section.items.length === 0 ? (
             <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>표시할 산출물이 없습니다.</p>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              {section.entries.map((item) => (
-                <ArtifactHubEntryRow
-                  key={item.id}
+              {section.items.map((item) => (
+                <ArtifactBoardCard
+                  key={item.catalogId}
                   item={item}
-                  selected={selectedIds.has(item.id)}
-                  highlighted={Boolean(highlightedAssetId && item.assetId === highlightedAssetId)}
+                  selected={item.hubEntry ? selectedIds.has(item.hubEntry.id) : false}
+                  highlighted={Boolean(
+                    highlightedAssetId && item.hubEntry?.assetId === highlightedAssetId,
+                  )}
+                  generateDisabled={generateDisabled}
                   onToggleSelected={onToggleSelected}
                   onSelectEntry={onSelectEntry}
+                  onGenerate={onGenerate}
                 />
               ))}
             </ul>
@@ -555,81 +603,129 @@ function ArtifactHubBody({
   );
 }
 
-function ArtifactHubEntryRow({
+function ArtifactBoardCard({
   item,
   selected,
   highlighted,
+  generateDisabled,
   onToggleSelected,
   onSelectEntry,
+  onGenerate,
 }: {
-  readonly item: ProjectArtifactHubEntry;
+  readonly item: ArtifactBoardItem;
   readonly selected: boolean;
   readonly highlighted: boolean;
+  readonly generateDisabled?: boolean;
   readonly onToggleSelected: (entryId: string, checked: boolean) => void;
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
+  readonly onGenerate: (type: ProjectArtifactType) => void;
 }) {
+  const hub = item.hubEntry;
+  const canExport = Boolean(hub && isArtifactBoardStatusCreated(item.status));
   const stageLabel =
-    item.hubSection === "implementation-primary"
-      ? "구현 산출물"
-      : item.hubSection === "planning-reference"
-        ? "참조 기획"
-        : item.kind === "deliverable"
-          ? "기획 산출물"
-          : "문서";
+    item.stage === "planning" ? "기획" : item.stage === "implementation" ? "구현" : "검토";
+  const levelLabel =
+    item.requirementLevel === "required" ? "필수" : item.requirementLevel === "recommended" ? "추천" : "선택";
+
+  const handleOpen = () => {
+    if (hub) onSelectEntry(hub);
+  };
+
   return (
-    <li style={itemRowStyle}>
-      <label
-        style={{ display: "flex", alignItems: "center", flexShrink: 0, cursor: "pointer" }}
-        title="다운로드 대상에 포함"
-      >
-        <input
-          type="checkbox"
-          checked={selected}
-          aria-label={`${item.title} 다운로드 대상`}
-          onChange={(e) => onToggleSelected(item.id, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-        />
-      </label>
-      <button
-        type="button"
-        style={{
-          ...itemBtnStyle,
-          whiteSpace: "normal",
-          overflow: "visible",
-          textOverflow: "clip",
-          ...(highlighted
-            ? {
-                borderColor: "#0d9488",
-                background: "#ecfdf5",
-                boxShadow: "0 0 0 1px #0d9488",
-              }
-            : {}),
-        }}
-        title={item.hubReason ? `${item.title}\n${item.hubReason}` : `${item.title} · ${item.sourceStage}`}
-        onClick={() => onSelectEntry(item)}
-      >
-        <span style={{ fontWeight: 800, display: "block" }}>{item.title}</span>
-        <span style={{ fontWeight: 500, color: "#64748b", display: "block", fontSize: 12 }}>
-          {stageLabel}
-          {item.hubReadinessLabel ? ` · ${item.hubReadinessLabel}` : ""}
-          {item.hubRequired === false ? " · 추천" : item.hubRequired ? " · 필수" : ""}
-        </span>
-        {item.hubReason ? (
-          <span
-            style={{
-              display: "block",
-              marginTop: 4,
-              fontSize: 11,
-              color: "#475569",
-              lineHeight: 1.4,
-              whiteSpace: "normal",
-            }}
-          >
-            {item.hubReason}
-          </span>
+    <li
+      style={{
+        ...itemRowStyle,
+        flexDirection: "column",
+        alignItems: "stretch",
+        border: "1px solid #e2e8f0",
+        borderRadius: 10,
+        padding: 10,
+        background: highlighted ? "#ecfdf5" : "#f8fafc",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        {canExport ? (
+          <label style={{ display: "flex", paddingTop: 2, flexShrink: 0, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={selected}
+              aria-label={`${item.title} 다운로드 대상`}
+              onChange={(e) => hub && onToggleSelected(hub.id, e.target.checked)}
+            />
+          </label>
+        ) : (
+          <span style={{ width: 18, flexShrink: 0 }} aria-hidden />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span style={{ fontWeight: 800, fontSize: 13, color: "#0f172a" }}>{item.title}</span>
+            <span style={statusPillStyle(item.statusLabel)}>{item.statusLabel}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "#64748b", marginBottom: 4 }}>
+            단계: {stageLabel} · 구분: {levelLabel}
+          </div>
+          <p style={{ margin: 0, fontSize: 12, color: "#475569", lineHeight: 1.45 }}>{item.description}</p>
+          {item.generationCondition ? (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#334155", lineHeight: 1.4 }}>
+              생성 조건: {item.generationCondition}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, paddingLeft: canExport ? 26 : 0 }}>
+        {item.actions.includes("open") && hub ? (
+          <ActionChip label="열기" onClick={handleOpen} />
         ) : null}
-      </button>
+        {item.actions.includes("generate") && item.stage === "planning" ? (
+          <ActionChip
+            label="생성하기"
+            disabled={generateDisabled}
+            onClick={() => {
+              const t = item.type as ProjectArtifactType;
+              if (generateDisabled || !t) return;
+              onGenerate(t);
+            }}
+          />
+        ) : null}
+        {item.actions.includes("regenerate") && hub ? (
+          <ActionChip label="재생성" disabled={generateDisabled} onClick={handleOpen} />
+        ) : null}
+        {item.actions.includes("revise") && hub ? (
+          <ActionChip label="보완하기" onClick={handleOpen} />
+        ) : null}
+      </div>
     </li>
+  );
+}
+
+function ActionChip({
+  label,
+  disabled,
+  onClick,
+}: {
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "4px 10px",
+        borderRadius: 6,
+        border: "1px solid #cbd5e1",
+        background: "#fff",
+        color: "#0f172a",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

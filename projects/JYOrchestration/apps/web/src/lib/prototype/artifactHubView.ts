@@ -1,19 +1,17 @@
 import {
-  countArtifactHubEntriesByStage,
+  buildArtifactBoardItems,
+  calculateArtifactBoardTabCounts,
+  formatArtifactBoardTabCountLabel,
+  summarizeArtifactBoardStatuses,
+  type ArtifactBoardItem,
+  type ArtifactBoardTabCountMap,
+} from "@/lib/artifacts/buildArtifactBoardItems";
+import {
   defaultArtifactHubStageFilter,
-  isPlanningReferenceArtifactType,
-  type ArtifactHubSection,
   type ArtifactHubStageFilter,
 } from "@/lib/prototype/artifactHubStage";
-import {
-  buildDerivedImplementationArtifacts,
-  derivedImplementationArtifactToHubEntry,
-} from "@/lib/prototype/implementationArtifacts";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
-import {
-  buildProjectArtifactHubCatalog,
-  type ProjectArtifactHubEntry,
-} from "@/lib/requirements/projectArtifactHub";
+import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -23,23 +21,72 @@ export type ArtifactHubView = Readonly<{
   readonly mode: ArtifactHubWorkspaceMode;
   readonly defaultStageFilter: ArtifactHubStageFilter;
   readonly showStageFilters: boolean;
+  /** @deprecated — boardItems 기준으로 대체 */
   readonly entries: readonly ProjectArtifactHubEntry[];
-  readonly stageCounts: Readonly<Record<ArtifactHubStageFilter, number>>;
-  readonly implementationPrimary: readonly ProjectArtifactHubEntry[];
-  readonly planningPrimary: readonly ProjectArtifactHubEntry[];
-  readonly planningReference: readonly ProjectArtifactHubEntry[];
+  readonly boardItems: readonly ArtifactBoardItem[];
+  readonly tabCounts: ArtifactBoardTabCountMap;
+  readonly statusSummary: string;
   readonly badgeCount: number;
+  /** @deprecated */
+  readonly implementationPrimary: readonly ProjectArtifactHubEntry[];
+  /** @deprecated */
+  readonly planningPrimary: readonly ProjectArtifactHubEntry[];
+  /** @deprecated */
+  readonly planningReference: readonly ProjectArtifactHubEntry[];
   readonly derivedTypes: readonly string[];
 }>;
 
-function tagPlanningEntry(
-  entry: ProjectArtifactHubEntry,
-  section: ArtifactHubSection,
-): ProjectArtifactHubEntry {
+function filterBoardItemsByStage(
+  items: readonly ArtifactBoardItem[],
+  filter: ArtifactHubStageFilter,
+): readonly ArtifactBoardItem[] {
+  if (filter === "all") return items;
+  if (filter === "review") return items.filter((i) => i.stage === "review");
+  return items.filter((i) => i.stage === filter);
+}
+
+export function groupArtifactBoardItemsForDisplay(
+  view: ArtifactHubView,
+  filter: ArtifactHubStageFilter,
+): Readonly<{
+  readonly sections: readonly Readonly<{
+    readonly title: string;
+    readonly items: readonly ArtifactBoardItem[];
+  }>[];
+}> {
+  const filtered = filterBoardItemsByStage(view.boardItems, filter);
+  const required = filtered.filter((i) => i.requirementLevel === "required");
+  const recommended = filtered.filter((i) => i.requirementLevel === "recommended");
+  const optional = filtered.filter((i) => i.requirementLevel === "optional");
+
+  const sections: { title: string; items: ArtifactBoardItem[] }[] = [];
+  if (required.length) sections.push({ title: "필수 산출물", items: [...required] });
+  if (recommended.length) sections.push({ title: "추천 산출물", items: [...recommended] });
+  if (optional.length) sections.push({ title: "선택 산출물", items: [...optional] });
+  if (!sections.length) {
+    sections.push({ title: "작성 대상 산출물", items: [] });
+  }
+  return { sections };
+}
+
+/** @deprecated — groupArtifactBoardItemsForDisplay 사용 */
+export function groupArtifactHubEntriesForDisplay(
+  view: ArtifactHubView,
+  filter: ArtifactHubStageFilter,
+): Readonly<{
+  readonly sections: readonly Readonly<{
+    readonly title: string;
+    readonly entries: readonly ProjectArtifactHubEntry[];
+  }>[];
+}> {
+  const boardSections = groupArtifactBoardItemsForDisplay(view, filter).sections;
   return {
-    ...entry,
-    artifactStage: "planning",
-    hubSection: section,
+    sections: boardSections.map((s) => ({
+      title: s.title,
+      entries: s.items
+        .filter((i) => i.hubEntry)
+        .map((i) => i.hubEntry!),
+    })),
   };
 }
 
@@ -50,107 +97,45 @@ export function buildArtifactHubView(input: {
   readonly deliverableAssets?: readonly IdeationDeliverableAsset[];
   readonly projectArtifacts?: readonly ProjectArtifact[];
 }): ArtifactHubView {
-  const deliverables = input.deliverableAssets ?? input.state.deliverableAssets ?? [];
-  const artifacts = input.projectArtifacts ?? input.state.projectArtifacts ?? [];
-  const planningCatalog = buildProjectArtifactHubCatalog({
-    state: input.state,
-    deliverableAssets: deliverables,
-    projectArtifacts: artifacts,
-  }).map((e) => tagPlanningEntry(e, "planning-primary"));
+  const projectId = input.projectId.trim();
+  const projectArtifacts = input.projectArtifacts ?? input.state.projectArtifacts ?? [];
+  const deliverableAssets = input.deliverableAssets ?? input.state.deliverableAssets ?? [];
 
-  if (input.mode === "planning") {
-    const stageCounts = countArtifactHubEntriesByStage(planningCatalog);
-    return {
-      mode: "planning",
-      defaultStageFilter: defaultArtifactHubStageFilter("planning"),
-      showStageFilters: true,
-      entries: planningCatalog,
-      stageCounts,
-      implementationPrimary: [],
-      planningPrimary: planningCatalog,
-      planningReference: [],
-      badgeCount: planningCatalog.length,
-      derivedTypes: [],
-    };
-  }
+  const stageFilterForCatalog: "all" | "planning" | "implementation" | "review" =
+    input.mode === "planning" ? "planning" : "all";
 
-  const derived = buildDerivedImplementationArtifacts({
-    projectId: input.projectId.trim(),
-    implementationTaskPlanV1: input.state.implementationTaskPlanV1,
-    implementationSlotsV1: input.state.implementationSlotsV1,
-    implementationDbStrategyV1: input.state.implementationDbStrategyV1,
-    implementationWorkPlanDraftV1: input.state.implementationWorkPlanDraftV1,
-    implementationSeedV1: input.state.implementationSeedV1,
-    projectArtifacts: input.projectArtifacts,
-    cursorWorkItemsV1: input.state.cursorWorkItemsV1,
-    codeAgentWipExecutionV1: input.state.codeAgentWipExecutionV1,
+  const boardItems = buildArtifactBoardItems({
+    projectId,
+    projectArtifacts,
+    requirementsStateJson: input.state,
+    deliverableAssets,
+    selectedStage: stageFilterForCatalog,
   });
-  const implementationPrimary = derived.map(derivedImplementationArtifactToHubEntry);
 
-  const planningReference = planningCatalog.filter((e) => {
-    if (e.kind === "deliverable") {
-      const t = e.title.toLowerCase();
-      return /기능|화면|api|프로토|흐름|feature|screen/i.test(t);
-    }
-    return isPlanningReferenceArtifactType(String(e.artifactType));
-  }).map((e) => tagPlanningEntry(e, "planning-reference"));
+  const tabCounts = calculateArtifactBoardTabCounts(boardItems);
+  const entries = boardItems
+    .filter((i) => i.hubEntry)
+    .map((i) => i.hubEntry!);
 
-  const entries = [...implementationPrimary, ...planningReference];
-  const stageCounts = countArtifactHubEntriesByStage([
-    ...implementationPrimary,
-    ...planningCatalog,
-  ]);
+  const implementationItems = boardItems.filter((i) => i.stage === "implementation");
+  const planningItems = boardItems.filter((i) => i.stage === "planning");
 
   return {
-    mode: "implementation",
-    defaultStageFilter: defaultArtifactHubStageFilter("implementation"),
+    mode: input.mode,
+    defaultStageFilter: defaultArtifactHubStageFilter(input.mode),
     showStageFilters: true,
     entries,
-    stageCounts,
-    implementationPrimary,
-    planningPrimary: planningCatalog,
-    planningReference,
-    badgeCount: entries.length,
-    derivedTypes: derived.map((d) => d.type),
+    boardItems,
+    tabCounts,
+    statusSummary: summarizeArtifactBoardStatuses(boardItems),
+    badgeCount: tabCounts.all.created,
+    implementationPrimary: implementationItems
+      .filter((i) => i.hubEntry)
+      .map((i) => i.hubEntry!),
+    planningPrimary: planningItems.filter((i) => i.hubEntry).map((i) => i.hubEntry!),
+    planningReference: [],
+    derivedTypes: implementationItems.map((i) => i.type),
   };
 }
 
-export function groupArtifactHubEntriesForDisplay(
-  view: ArtifactHubView,
-  filter: ArtifactHubStageFilter,
-): Readonly<{
-  readonly sections: readonly Readonly<{
-    readonly title: string;
-    readonly entries: readonly ProjectArtifactHubEntry[];
-  }>[];
-}> {
-  if (view.mode === "planning" || filter === "planning") {
-    const entries = filter === "all" && view.mode === "planning" ? view.entries : view.planningPrimary;
-    return { sections: [{ title: "기획 산출물", entries }] };
-  }
-
-  if (filter === "all") {
-    const sections: { title: string; entries: ProjectArtifactHubEntry[] }[] = [];
-    if (view.implementationPrimary.length) {
-      sections.push({ title: "구현 산출물", entries: [...view.implementationPrimary] });
-    }
-    if (view.planningReference.length) {
-      sections.push({ title: "참조 기획 산출물", entries: [...view.planningReference] });
-    }
-    if (view.planningPrimary.length) {
-      sections.push({ title: "기획 산출물", entries: [...view.planningPrimary] });
-    }
-    if (!sections.length) sections.push({ title: "구현 산출물", entries: [] });
-    return { sections };
-  }
-
-  const sections: { title: string; entries: ProjectArtifactHubEntry[] }[] = [];
-  if (view.implementationPrimary.length) {
-    sections.push({ title: "구현 산출물", entries: [...view.implementationPrimary] });
-  }
-  if (view.planningReference.length) {
-    sections.push({ title: "참조 기획 산출물", entries: [...view.planningReference] });
-  }
-  if (!sections.length) sections.push({ title: "구현 산출물", entries: [] });
-  return { sections };
-}
+export { formatArtifactBoardTabCountLabel };

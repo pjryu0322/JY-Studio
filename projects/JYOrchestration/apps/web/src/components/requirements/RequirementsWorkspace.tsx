@@ -268,6 +268,7 @@ import {
   countCompletedArtifactHubEntries,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
+import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
 import { collectDeliverableViewerAssetIds } from "@/lib/requirements/deliverableAssetPicker";
 import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
@@ -941,13 +942,16 @@ export function RequirementsWorkspace({
     });
   }, [persistedPromptState, serviceFlow, saveState, fetchNonce, project?.requirementsStateJson, conversationResetNonce]);
 
-  const artifactHubCatalog = useMemo(() => {
+  const planningArtifactHubView = useMemo(() => {
     const st: RequirementsStateJson = {
       ...persistedPromptState,
+      ...stateJsonRef.current,
       projectArtifacts: [...projectArtifactsFromState],
     };
-    return buildProjectArtifactHubCatalog({
+    return buildArtifactHubView({
+      mode: "planning",
       state: st,
+      projectId: resolvedProjectId.trim(),
       deliverableAssets: deliverableAssetsFromProject,
       projectArtifacts: [...projectArtifactsFromState],
     });
@@ -955,15 +959,21 @@ export function RequirementsWorkspace({
     persistedPromptState,
     deliverableAssetsFromProject,
     projectArtifactsFromState,
+    resolvedProjectId,
     saveState,
     fetchNonce,
     project?.requirementsStateJson,
     conversationResetNonce,
   ]);
 
+  const artifactHubCatalog = useMemo(
+    () => planningArtifactHubView.entries,
+    [planningArtifactHubView.entries],
+  );
+
   const artifactHubCompletedCount = useMemo(
-    () => countCompletedArtifactHubEntries(artifactHubCatalog),
-    [artifactHubCatalog],
+    () => planningArtifactHubView.tabCounts.all.created,
+    [planningArtifactHubView.tabCounts.all.created],
   );
 
   const artifactHubOrchestration = useMemo(() => {
@@ -3274,6 +3284,7 @@ export function RequirementsWorkspace({
 
       <RequirementsArtifactHubDrawer
         open={artifactHubOpen}
+        artifactHubView={planningArtifactHubView}
         items={artifactHubCatalog}
         projectName={headerProjectName}
         projectId={resolvedProjectId.trim() || undefined}
