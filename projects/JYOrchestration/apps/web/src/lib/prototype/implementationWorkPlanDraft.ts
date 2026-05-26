@@ -105,19 +105,13 @@ export function hasMeaningfulPlanningReferenceArtifacts(
 }
 
 export const IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP = "기획단계로 돌아가기";
-export const IMPLEMENTATION_BLOCKED_GENERATE_PLANNING_ARTIFACTS_CHIP = "기획 산출물 생성";
-export const IMPLEMENTATION_BLOCKED_VIEW_ARTIFACTS_CHIP = "산출물 다시 보기";
 
 export function implementationBlockedEntryChips(): readonly string[] {
-  return [
-    IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
-    IMPLEMENTATION_BLOCKED_GENERATE_PLANNING_ARTIFACTS_CHIP,
-    IMPLEMENTATION_BLOCKED_VIEW_ARTIFACTS_CHIP,
-  ];
+  return [IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP];
 }
 
 export const IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE =
-  "기획 산출물이 없어 구현 작업안 초안을 생성할 수 없습니다.\n\n먼저 기획단계에서 산출물을 생성해 주세요.";
+  "기획 산출물이 없어 구현 작업안 초안을 생성할 수 없습니다.\n\n먼저 기획단계에서 대화와 산출물을 준비해 주세요.";
 
 function scopeLineForReference(ref: ReferencePlanningArtifactRef): string {
   switch (ref.type) {

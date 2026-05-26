@@ -11,10 +11,12 @@ import {
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
+  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
   implementationBlockedEntryChips,
   implementationEntryChips,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 
 const baseInput = {
@@ -53,14 +55,61 @@ describe("implementation blocked when no planning artifacts", () => {
     expect(hasValidImplementationLeadBootstrap(bundle.messages)).toBe(false);
   });
 
-  it("shows only planning recovery CTAs when implementation is blocked by missing planning artifacts", () => {
+  it("shows only return-to-planning CTA when implementation is blocked by missing planning artifacts", () => {
     const bundle = buildImplementationBootstrapBundle(baseInput);
     const chips = bundle.messages[0]?.meta.interviewSuggestions ?? [];
+    expect(chips).toEqual(["기획단계로 돌아가기"]);
     expect(chips).toEqual([...implementationBlockedEntryChips()]);
+    expect(chips).not.toContain("기획 산출물 생성");
+    expect(chips).not.toContain("산출물 다시 보기");
     expect(chips).not.toContain("구현 작업안 초안 생성");
     expect(chips).not.toContain("역할별 점검 보기");
     expect(chips).not.toContain("구현 범위 직접 입력");
     expect(bundle.messages[0]?.meta.interviewAllowCustomInput).toBe(false);
+  });
+
+  it("guides users to prepare planning conversation and artifacts when implementation is blocked", () => {
+    const bundle = buildImplementationBootstrapBundle(baseInput);
+    const content = bundle.messages[0]?.content ?? "";
+    expect(content).toContain("기획단계에서 대화와 산출물을 준비해 주세요.");
+    expect(content).not.toContain("기획단계에서 산출물을 생성해 주세요.");
+  });
+
+  it("routes return-to-planning chip from implementation blocked state", () => {
+    let navigated = false;
+    expect(
+      tryHandlePrototypeExecutionChip(IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP, {
+        openEnvSettings: () => {},
+        openArtifactHub: () => {},
+        returnToPlanningStage: () => {
+          navigated = true;
+        },
+        focusComposerForScopeEdit: () => {},
+        showRoleCheckDetails: () => {},
+        generateImplementationWorkPlanDraft: () => {},
+        confirmImplementationTaskPlan: () => {},
+        requestCodeAgentWipWork: () => {},
+        viewWipChanges: () => {},
+        requestRefactor: () => {},
+        requestAdditionalEdit: () => {},
+        approveDeveloperResult: () => {},
+        discardWipWork: () => {},
+        requestScmOfficialCommit: () => {},
+        reviewDbIntegrationNeed: () => {},
+        generateDataModelDraft: () => {},
+        confirmMockImplementationMode: () => {},
+        prepareImplementationExecution: () => {},
+        confirmExecution: () => {},
+        refreshStatus: () => {},
+        showToast: () => {},
+        canConfirmImplementationTaskPlan: () => false,
+        canRequestCodeAgentWipWork: () => false,
+        canApproveDeveloperResult: () => false,
+        canRequestScmOfficialCommit: () => false,
+        canConfirmExecution: () => false,
+      }),
+    ).toBe(true);
+    expect(navigated).toBe(true);
   });
 
   it("shows normal implementation bootstrap when planning artifacts exist", () => {

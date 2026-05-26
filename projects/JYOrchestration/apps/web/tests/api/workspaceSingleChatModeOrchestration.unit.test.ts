@@ -97,7 +97,9 @@ describe("workspace SingleChat mode orchestration", () => {
     expect(bundle.messages[0]?.content).toContain("기획 산출물이 없어 구현단계를 시작할 수 없습니다.");
     expect(bundle.messages[0]?.content).not.toContain(IMPLEMENTATION_ENTRY_READINESS_HEADLINE);
     expect(bundle.messages.some((m) => m.speakerId === "memo")).toBe(false);
-    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("기획단계로 돌아가기")).toBe(true);
+    expect(bundle.messages[0]?.meta.interviewSuggestions).toEqual(["기획단계로 돌아가기"]);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("기획 산출물 생성")).toBe(false);
+    expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("산출물 다시 보기")).toBe(false);
     expect(bundle.messages[0]?.meta.interviewSuggestions?.includes("구현 작업안 초안 생성")).toBe(false);
   });
 });

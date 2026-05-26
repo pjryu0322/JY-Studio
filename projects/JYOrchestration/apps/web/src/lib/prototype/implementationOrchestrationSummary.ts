@@ -161,7 +161,7 @@ function buildImplementationBlockedMissingPlanningArtifactsMessage(input: {
     IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
     "",
     "구현 작업안 초안은 기획 산출물과 구현 Seed를 기준으로 생성됩니다.",
-    "현재 참조 가능한 기획 산출물이 없으므로, 먼저 기획단계에서 산출물을 생성해 주세요.",
+    "현재 참조 가능한 기획 산출물이 없으므로, 먼저 기획단계에서 대화와 산출물을 준비해 주세요.",
     "",
     "다음 작업을 선택해 주세요.",
   ];
