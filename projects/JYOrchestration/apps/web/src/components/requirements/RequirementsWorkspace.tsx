@@ -215,6 +215,8 @@ import {
   patchRequirementsStageForImplementationPrep,
   patchRequirementsStageForImplementationStart,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
+import { PLANNING_INFO_REFINE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
@@ -2501,16 +2503,26 @@ export function RequirementsWorkspace({
         projectId: pid,
         replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
       });
+      const prep = runQuickDesignConfirmImplementationPrep({
+        projectId: pid,
+        projectName: project?.name ?? "",
+        orchestration: result.orchestration,
+        definitions: slotDefsForProgress,
+        nowIso,
+        generatedArtifactCount: artifactBundle.artifacts.length,
+      });
       const readyMessage = buildQuickDesignImplementationReadyChatMessage({
         artifactIds: artifactBundle.artifactIds,
         artifactTitles: artifactBundle.artifacts.map((a) => a.title),
         planningSummary: artifactBundle.artifactOrchestrationV1.planningSummary,
         nowIso,
+        prep,
       });
 
       await persistStateJsonOnly({
         fastPlanDraftV1: result.fastPlanDraftV1,
-        singleChatOrchestrationV1: result.orchestration,
+        singleChatOrchestrationV1: prep.orchestration,
+        implementationSeedV1: prep.implementationSeedV1,
         projectArtifacts: [...merged.projectArtifacts],
         deliverableAssets: [...merged.deliverableAssets],
         artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
@@ -2522,6 +2534,9 @@ export function RequirementsWorkspace({
       lastFastPlanArtifactIdRef.current = artifactBundle.primaryArtifactId;
       await appendServiceFlowWorkshopMessages([readyMessage]);
       appendSingleChatPromptTimeline(result.timelineEntry);
+      for (const entry of prep.timelineEntries) {
+        appendSingleChatPromptTimeline(entry);
+      }
       showSuccessToast(artifactBundle.userFacingSummary);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
@@ -2849,7 +2864,11 @@ export function RequirementsWorkspace({
         return;
       }
       if (artifactFollowUp === "refine") {
-        insertComposerPrompt("추가 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.");
+        insertComposerPrompt(
+          trimmed === PLANNING_INFO_REFINE_LABEL
+            ? "기획 정보를 보완하겠습니다. 수정할 슬롯이나 항목을 알려 주세요."
+            : "추가 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.",
+        );
         return;
       }
       if (isFastPlanArtifactFollowUpLabel(trimmed)) return;

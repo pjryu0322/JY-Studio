@@ -2,9 +2,13 @@ import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDelive
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
 import type { FastPlanGenerationInput } from "@/lib/requirements/fastPlanGenerationTypes";
 import {
-  QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS,
-  IMPLEMENTATION_PREP_READY_HEADING,
+  IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING,
+  IMPLEMENTATION_PREP_READY_COMPLETE_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
+import {
+  formatQuickDesignImplementationPrepSummaryLines,
+  type QuickDesignConfirmImplementationPrepResult,
+} from "@/lib/requirements/quickDesignConfirmImplementationPrep";
 import {
   newRequirementsMessage,
   type RequirementsMessage,
@@ -136,22 +140,48 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
   readonly artifactTitles: readonly string[];
   readonly planningSummary?: string;
   readonly nowIso: string;
+  readonly prep: QuickDesignConfirmImplementationPrepResult;
 }): RequirementsMessage {
   const titles = input.artifactTitles.length
     ? input.artifactTitles.map((t) => `- ${t}`).join("\n")
     : "- 프로젝트 요약서";
 
-  const content = [
-    `**${IMPLEMENTATION_PREP_READY_HEADING}**`,
+  const heading = input.prep.prepComplete
+    ? IMPLEMENTATION_PREP_READY_COMPLETE_HEADING
+    : IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING;
+
+  const intro = input.prep.prepComplete
+    ? "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다."
+    : [
+        "AI팀이 현재 대화와 산출물을 기준으로 구현 준비정보를 자동 보완했습니다.",
+        "일부 항목은 후보 상태이므로, 구현 전 확인이 필요합니다.",
+      ].join("\n");
+
+  const prepSummaryLines = formatQuickDesignImplementationPrepSummaryLines({
+    prepComplete: input.prep.prepComplete,
+    readiness: input.prep.readiness,
+    autoCandidateGenerated: input.prep.autoCandidateGenerated,
+  });
+
+  const contentParts = [
+    `**${heading}**`,
     "",
-    input.planningSummary ??
-      "AI팀이 현재 프로젝트 기준으로 필요한 산출물을 구성했습니다. Artifact Hub에서 결과를 확인할 수 있습니다.",
+    intro,
     "",
     "생성된 산출물:",
     titles,
     "",
-    "아래 버튼에서 다음 동작을 선택해 주세요.",
-  ].join("\n");
+    input.prep.prepComplete ? "구현 준비정보:" : "보완이 필요한 항목:",
+    ...prepSummaryLines,
+  ];
+
+  if (!input.prep.prepComplete && input.planningSummary?.trim()) {
+    contentParts.push("", input.planningSummary.trim());
+  }
+
+  contentParts.push("", "다음 작업을 선택해 주세요.");
+
+  const content = contentParts.join("\n");
 
   return newRequirementsMessage({
     role: "ai",
@@ -166,7 +196,7 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       internalType: QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
       fastPlanArtifactId: input.artifactIds[0] ?? null,
       quickDesignArtifactIds: [...input.artifactIds],
-      interviewSuggestions: [...QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS],
+      interviewSuggestions: [...input.prep.chipLabels],
       interviewAllowCustomInput: true,
     },
   });

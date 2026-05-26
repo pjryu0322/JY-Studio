@@ -12,6 +12,7 @@ import {
   generateQuickDesignConfirmArtifacts,
   QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
 import { LEGACY_QUICK_DESIGN_AREA_TITLES } from "@/lib/requirements/projectArtifactPlan";
 import { PROJECT_ARTIFACT_LABELS } from "@/lib/requirements/projectArtifactTypes";
 import {
@@ -90,21 +91,34 @@ describe("quickDesignConfirmArtifacts", () => {
     expect(result.deliverables).toHaveLength(result.artifacts.length);
   });
 
-  it("builds implementation-ready message with 구현 시작 and 추가 보완 chips", () => {
+  it("builds implementation-ready message with simplified post-confirm chips", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p-msg",
+      projectName: "회의록",
+    });
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const prep = runQuickDesignConfirmImplementationPrep({
+      projectId: "p-msg",
+      orchestration,
+      definitions,
+      nowIso,
+    });
     const message = buildQuickDesignImplementationReadyChatMessage({
       artifactIds: ["a1", "a2"],
       artifactTitles: ["프로젝트 요약서", "프로토타입 기획안"],
       nowIso,
+      prep,
     });
 
-    expect(message.content).toContain("구현 준비 완료");
+    expect(message.content).toMatch(/구현 준비/);
     expect(message.content).not.toContain("기획안 생성");
     expect(message.content).not.toContain("생성 단계 준비");
     expect(message.content).not.toContain("서비스 정의 산출물");
     expect(message.meta?.internalType).toBe(QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE);
     expect(message.meta?.interviewSuggestions).toEqual(
-      expect.arrayContaining(["구현 시작", "추가 보완"]),
+      expect.arrayContaining(["구현단계로 이동", "기획정보 보완", "산출물 보기"]),
     );
-    expect(message.meta?.interviewSuggestions).not.toContain("Artifact 보기");
+    expect(message.meta?.interviewSuggestions).not.toContain("구현 시작");
+    expect(message.meta?.interviewSuggestions).not.toContain("추가 보완");
   });
 });

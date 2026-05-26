@@ -283,18 +283,32 @@ export function buildFastPlanArtifactCreatedChatMessage(input: {
 
 export function resolveFastPlanArtifactFollowUpAction(label: string): FastPlanArtifactFollowUpAction | null {
   const trimmed = String(label ?? "").trim();
-  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_VIEW || trimmed === "기획안 보기" || trimmed === "Artifact 보기") {
+  if (
+    trimmed === FAST_PLAN_ARTIFACT_ACTION_VIEW ||
+    trimmed === "기획안 보기" ||
+    trimmed === "Artifact 보기" ||
+    trimmed === "산출물 보기" ||
+    trimmed === "산출물 다시 보기"
+  ) {
     return "view_artifacts";
   }
   if (
     trimmed === FAST_PLAN_ARTIFACT_ACTION_GO_GENERATION ||
     trimmed === FAST_PLAN_ACTION_START_IMPLEMENTATION ||
+    trimmed === "구현단계로 이동" ||
+    trimmed === "구현 단계로 이동" ||
     trimmed === "생성 단계로 이동" ||
     trimmed === "생성 단계 준비"
   ) {
     return "start_implementation";
   }
-  if (trimmed === FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING || trimmed === "기획 보완 계속하기") {
+  if (
+    trimmed === FAST_PLAN_ARTIFACT_ACTION_CONTINUE_PLANNING ||
+    trimmed === "기획 보완 계속하기" ||
+    trimmed === "기획정보 보완" ||
+    trimmed === "추가 보완" ||
+    trimmed === "부족한 기획정보 보완"
+  ) {
     return "refine";
   }
   return null;

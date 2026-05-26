@@ -20,8 +20,10 @@ describe("implementationUxLabels", () => {
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("기획안 생성");
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("생성 단계 준비");
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).toEqual(
-      expect.arrayContaining(["구현 시작", "추가 보완"]),
+      expect.arrayContaining(["구현단계로 이동", "기획정보 보완", "산출물 보기"]),
     );
+    expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("구현 시작");
+    expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("구현 준비도 점검");
     expect(PLANNING_ARTIFACT_FOLLOW_UP_LABELS).not.toContain("Artifact 보기");
   });
 
