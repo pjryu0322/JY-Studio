@@ -17,6 +17,12 @@ import {
 } from "@/components/preview/PrototypeExecutionChatPanel";
 
 import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
+import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
+import { buildRecommendationEvidenceItems } from "@/lib/recommendation/recommendationEvidence";
+import {
+  dispatchRecommendationPanelOpen,
+  subscribeRecommendationPanel,
+} from "@/lib/recommendation/recommendationPanelEvents";
 import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
 import { DB_INTEGRATION_REVIEW_CHIP } from "@/lib/prototype/implementationDbStrategy";
 import {
@@ -242,6 +248,7 @@ export function PrototypePreviewPanel({
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
+  const [recommendationPanelOpen, setRecommendationPanelOpen] = useState(false);
   const [executionAiSummaryBusy, setExecutionAiSummaryBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<readonly string[]>([]);
@@ -2078,6 +2085,27 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const recommendationEvidenceItems = useMemo(
+    () =>
+      buildRecommendationEvidenceItems({
+        requirementsStateJson: parsedRequirementsState,
+        projectArtifacts: planningOrchestrationView.projectArtifacts,
+      }),
+    [parsedRequirementsState, planningOrchestrationView.projectArtifacts],
+  );
+
+  const closeRecommendationPanel = useCallback(() => {
+    setRecommendationPanelOpen(false);
+    const pid = projectId.trim();
+    if (pid) dispatchRecommendationPanelOpen(pid, false);
+  }, [projectId]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    return subscribeRecommendationPanel(pid, setRecommendationPanelOpen);
+  }, [projectId]);
+
   const artifactHubOpenedRef = useRef(false);
   useEffect(() => {
     if (!artifactHubOpen) {
@@ -2385,6 +2413,13 @@ export function PrototypePreviewPanel({
           </details>
         ) : null}
       </div>
+
+      <RecommendationEvidenceDrawer
+        open={recommendationPanelOpen}
+        items={recommendationEvidenceItems}
+        onClose={closeRecommendationPanel}
+        closeOnEscape={!deliverableViewerOpen}
+      />
 
       <RequirementsArtifactHubDrawer
         open={artifactHubOpen}

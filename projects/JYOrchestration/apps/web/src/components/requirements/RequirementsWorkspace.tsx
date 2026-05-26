@@ -269,6 +269,12 @@ import {
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
 import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
+import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
+import { buildRecommendationEvidenceItems } from "@/lib/recommendation/recommendationEvidence";
+import {
+  dispatchRecommendationPanelOpen,
+  subscribeRecommendationPanel,
+} from "@/lib/recommendation/recommendationPanelEvents";
 import { collectDeliverableViewerAssetIds } from "@/lib/requirements/deliverableAssetPicker";
 import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
@@ -356,6 +362,7 @@ export function RequirementsWorkspace({
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [canvasHubOpen, setCanvasHubOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
+  const [recommendationPanelOpen, setRecommendationPanelOpen] = useState(false);
   const [activeCanvasView, setActiveCanvasView] = useState<CanvasArtifactType | null>(null);
   const [actorEditOpen, setActorEditOpen] = useState(false);
   const [actorEditPhase, setActorEditPhase] = useState<ActorEditingPhase>("IDLE");
@@ -942,29 +949,58 @@ export function RequirementsWorkspace({
     });
   }, [persistedPromptState, serviceFlow, saveState, fetchNonce, project?.requirementsStateJson, conversationResetNonce]);
 
-  const planningArtifactHubView = useMemo(() => {
-    const st: RequirementsStateJson = {
+  const workspaceEvidenceState = useMemo((): RequirementsStateJson => {
+    return {
       ...persistedPromptState,
       ...stateJsonRef.current,
       projectArtifacts: [...projectArtifactsFromState],
     };
-    return buildArtifactHubView({
-      mode: "planning",
-      state: st,
-      projectId: resolvedProjectId.trim(),
-      deliverableAssets: deliverableAssetsFromProject,
-      projectArtifacts: [...projectArtifactsFromState],
-    });
   }, [
     persistedPromptState,
-    deliverableAssetsFromProject,
     projectArtifactsFromState,
-    resolvedProjectId,
     saveState,
     fetchNonce,
     project?.requirementsStateJson,
     conversationResetNonce,
   ]);
+
+  const planningArtifactHubView = useMemo(() => {
+    return buildArtifactHubView({
+      mode: "planning",
+      state: workspaceEvidenceState,
+      projectId: resolvedProjectId.trim(),
+      deliverableAssets: deliverableAssetsFromProject,
+      projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
+    });
+  }, [
+    workspaceEvidenceState,
+    deliverableAssetsFromProject,
+    resolvedProjectId,
+    saveState,
+    fetchNonce,
+    conversationResetNonce,
+  ]);
+
+  const recommendationEvidenceItems = useMemo(
+    () =>
+      buildRecommendationEvidenceItems({
+        requirementsStateJson: workspaceEvidenceState,
+        projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
+      }),
+    [workspaceEvidenceState],
+  );
+
+  const closeRecommendationPanel = useCallback(() => {
+    setRecommendationPanelOpen(false);
+    const pid = resolvedProjectId.trim();
+    if (pid) dispatchRecommendationPanelOpen(pid, false);
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    return subscribeRecommendationPanel(pid, setRecommendationPanelOpen);
+  }, [resolvedProjectId]);
 
   const artifactHubCatalog = useMemo(
     () => planningArtifactHubView.entries,
@@ -3280,6 +3316,12 @@ export function RequirementsWorkspace({
         items={canvasHubCatalog}
         onClose={() => setCanvasHubOpen(false)}
         onSelect={handleCanvasHubSelect}
+      />
+
+      <RecommendationEvidenceDrawer
+        open={recommendationPanelOpen}
+        items={recommendationEvidenceItems}
+        onClose={closeRecommendationPanel}
       />
 
       <RequirementsArtifactHubDrawer

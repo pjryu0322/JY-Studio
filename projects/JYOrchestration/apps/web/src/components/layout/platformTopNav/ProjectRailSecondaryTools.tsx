@@ -11,6 +11,7 @@ import {
   platformRailNavTextCell,
 } from "@/lib/layout/platformTopNavConstants";
 import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
+import { ProjectRailRecommendationButton } from "@/components/layout/platformTopNav/ProjectRailRecommendationButton";
 import { ProjectWorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 
@@ -106,6 +107,7 @@ export function ProjectRailSecondaryTools({
           <span style={knowledgePacksActive ? platformRailMessengerActiveText : platformRailNavPrimaryText}>지식팩</span>
         </Link>
       ) : null}
+      {Boolean(me) ? <ProjectRailRecommendationButton effectiveProjectId={effectiveProjectId} /> : null}
       {Boolean(me) && isPromptTimelineDebugClient() ? (
         <Link
           href={`/prompt-timeline?projectId=${encodeURIComponent(effectiveProjectId)}`}

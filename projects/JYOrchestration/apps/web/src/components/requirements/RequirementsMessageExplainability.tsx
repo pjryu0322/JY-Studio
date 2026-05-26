@@ -10,10 +10,7 @@ import {
   MESSAGE_EXPLAINABILITY_EMPTY_COPY,
   messageExplainabilityConfidenceUserLabel,
 } from "@/lib/overlay-ui/messageExplainabilityUiAdapter";
-
-function explainabilityDebugEnabled(): boolean {
-  return String(process.env.NEXT_PUBLIC_JY_EXPLAINABILITY_DEBUG ?? "").trim() === "1";
-}
+import { showInlineMessageExplainability } from "@/lib/recommendation/recommendationEvidence";
 
 export function RequirementsMessageExplainability({
   message,
@@ -24,7 +21,7 @@ export function RequirementsMessageExplainability({
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly onOpenPromptTimeline?: () => void;
 }) {
-  const debug = explainabilityDebugEnabled();
+  const debug = showInlineMessageExplainability();
 
   const resolution = useMemo(
     () =>
@@ -56,6 +53,8 @@ export function RequirementsMessageExplainability({
   );
 
   if (message.role !== "ai") return null;
+
+  if (!debug) return null;
 
   const showPanel = resolution.confidence !== "none" && vm.hasData;
 
