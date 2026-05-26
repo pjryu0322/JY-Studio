@@ -7,8 +7,11 @@ import {
   ARTIFACT_HUB_VISIBLE_STAGE_FILTERS,
   type ArtifactHubStageFilter,
 } from "@/lib/prototype/artifactHubStage";
-import type { ArtifactBoardItem } from "@/lib/artifacts/buildArtifactBoardItems";
-import { isArtifactBoardStatusCreated } from "@/lib/artifacts/artifactBoardStatus";
+import type { ArtifactBoardAction, ArtifactBoardItem } from "@/lib/artifacts/buildArtifactBoardItems";
+import {
+  isArtifactBoardStatusCompleted,
+  isArtifactBoardStatusSelectable,
+} from "@/lib/artifacts/artifactBoardStatus";
 import {
   formatArtifactBoardTabCountLabel,
   groupArtifactBoardItemsForDisplay,
@@ -115,6 +118,7 @@ export function RequirementsArtifactHubDrawer({
   onClose,
   onSelectEntry,
   onGenerate,
+  onArtifactBoardAction,
   onExportFeedback,
   closeOnEscape = true,
   artifactHubView,
@@ -131,6 +135,10 @@ export function RequirementsArtifactHubDrawer({
   readonly onClose: () => void;
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
+  readonly onArtifactBoardAction?: (
+    action: ArtifactBoardAction,
+    item: ArtifactBoardItem,
+  ) => void;
   readonly onExportFeedback?: (input: { readonly kind: "doc" | "pdf"; readonly count: number; readonly blocked?: string }) => void;
   /** 산출물 뷰어 등 상위 레이어가 열려 있을 때 Hub만 Esc로 닫히지 않게 */
   readonly closeOnEscape?: boolean;
@@ -278,7 +286,8 @@ export function RequirementsArtifactHubDrawer({
                     background: "#0d9488",
                     color: "#fff",
                   }}
-                  aria-label={`생성완료 ${artifactHubView.tabCounts.all.created}건`}
+                  aria-label={`생성완료 ${artifactHubView.tabCounts.all.created}건 / 작성대상 ${artifactHubView.tabCounts.all.total}건`}
+                  title={`생성완료 ${artifactHubView.tabCounts.all.created}건 / 작성대상 ${artifactHubView.tabCounts.all.total}건`}
                 >
                   {formatArtifactBoardTabCountLabel(artifactHubView.tabCounts.all)}
                 </span>
@@ -346,12 +355,15 @@ export function RequirementsArtifactHubDrawer({
                 aria-label="산출물 단계 필터"
               >
                 {ARTIFACT_HUB_VISIBLE_STAGE_FILTERS.map((key) => {
-                  const count =
+                  const tabCounts =
                     key === "all"
-                      ? artifactHubView.badgeCount
+                      ? artifactHubView.tabCounts.all
                       : key === "planning"
-                        ? artifactHubView.planningPrimary.length
-                        : artifactHubView.implementationPrimary.length;
+                        ? artifactHubView.tabCounts.planning
+                        : key === "implementation"
+                          ? artifactHubView.tabCounts.implementation
+                          : artifactHubView.tabCounts.review;
+                  const countLabel = formatArtifactBoardTabCountLabel(tabCounts);
                   const active = stageFilter === key;
                   return (
                     <button
@@ -359,6 +371,8 @@ export function RequirementsArtifactHubDrawer({
                       type="button"
                       role="tab"
                       aria-selected={active}
+                      aria-label={`${ARTIFACT_HUB_STAGE_FILTER_LABELS[key]} 생성완료 ${tabCounts.created}건 / 작성대상 ${tabCounts.total}건`}
+                      title={`생성완료 ${tabCounts.created}건 / 작성대상 ${tabCounts.total}건`}
                       onClick={() => setStageFilter(key)}
                       style={{
                         border: `1px solid ${active ? "#0d9488" : "#e2e8f0"}`,
@@ -371,7 +385,7 @@ export function RequirementsArtifactHubDrawer({
                         cursor: "pointer",
                       }}
                     >
-                      {ARTIFACT_HUB_STAGE_FILTER_LABELS[key]} {count > 0 ? count : ""}
+                      {ARTIFACT_HUB_STAGE_FILTER_LABELS[key]} {countLabel}
                     </button>
                   );
                 })}
@@ -472,6 +486,7 @@ function ArtifactHubBody({
   onToggleSelected,
   onSelectEntry,
   onGenerate,
+  onArtifactBoardAction,
 }: {
   readonly sections: readonly Readonly<{
     readonly title: string;
@@ -486,6 +501,10 @@ function ArtifactHubBody({
   readonly onToggleSelected: (entryId: string, checked: boolean) => void;
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
+  readonly onArtifactBoardAction?: (
+    action: ArtifactBoardAction,
+    item: ArtifactBoardItem,
+  ) => void;
 }) {
   const allBoardItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const allHubEntries = useMemo(
@@ -500,7 +519,7 @@ function ArtifactHubBody({
   const emptyImplHint =
     hubMode === "implementation" &&
     allBoardItems.length > 0 &&
-    !allBoardItems.some((i) => i.stage === "implementation" && isArtifactBoardStatusCreated(i.status));
+    !allBoardItems.some((i) => i.stage === "implementation" && isArtifactBoardStatusCompleted(i.status));
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -529,7 +548,7 @@ function ArtifactHubBody({
       ) : null}
       {emptyImplHint ? (
         <p style={sectionHintStyle}>
-          아직 생성된 구현 산출물은 없습니다. 기획 산출물과 Implementation Seed를 기준으로 구현 작업안을 생성하면
+          아직 생성완료된 구현 산출물은 없습니다. 기획 산출물과 구현 준비정보를 기준으로 구현 작업안을 생성하면
           상태가 변경됩니다.
         </p>
       ) : null}
@@ -593,6 +612,7 @@ function ArtifactHubBody({
                   onToggleSelected={onToggleSelected}
                   onSelectEntry={onSelectEntry}
                   onGenerate={onGenerate}
+                  onArtifactBoardAction={onArtifactBoardAction}
                 />
               ))}
             </ul>
@@ -611,6 +631,7 @@ function ArtifactBoardCard({
   onToggleSelected,
   onSelectEntry,
   onGenerate,
+  onArtifactBoardAction,
 }: {
   readonly item: ArtifactBoardItem;
   readonly selected: boolean;
@@ -619,9 +640,13 @@ function ArtifactBoardCard({
   readonly onToggleSelected: (entryId: string, checked: boolean) => void;
   readonly onSelectEntry: (entry: ProjectArtifactHubEntry) => void;
   readonly onGenerate: (type: ProjectArtifactType) => void;
+  readonly onArtifactBoardAction?: (
+    action: ArtifactBoardAction,
+    item: ArtifactBoardItem,
+  ) => void;
 }) {
   const hub = item.hubEntry;
-  const canExport = Boolean(hub && isArtifactBoardStatusCreated(item.status));
+  const canExport = Boolean(hub && isArtifactBoardStatusSelectable(item.status));
   const stageLabel =
     item.stage === "planning" ? "기획" : item.stage === "implementation" ? "구현" : "검토";
   const levelLabel =
@@ -676,7 +701,7 @@ function ArtifactBoardCard({
         {item.actions.includes("open") && hub ? (
           <ActionChip label="열기" onClick={handleOpen} />
         ) : null}
-        {item.actions.includes("generate") && item.stage === "planning" ? (
+        {item.actions.includes("generate_planning_artifact") ? (
           <ActionChip
             label="생성하기"
             disabled={generateDisabled}
@@ -685,6 +710,34 @@ function ArtifactBoardCard({
               if (generateDisabled || !t) return;
               onGenerate(t);
             }}
+          />
+        ) : null}
+        {item.actions.includes("go_to_implementation") ? (
+          <ActionChip
+            label="구현단계로 이동"
+            disabled={generateDisabled}
+            onClick={() => onArtifactBoardAction?.("go_to_implementation", item)}
+          />
+        ) : null}
+        {item.actions.includes("generate_implementation_work_plan") ? (
+          <ActionChip
+            label="구현 작업안 생성"
+            disabled={generateDisabled}
+            onClick={() => onArtifactBoardAction?.("generate_implementation_work_plan", item)}
+          />
+        ) : null}
+        {item.actions.includes("generate_code_agent_instruction") ? (
+          <ActionChip
+            label="작업 지시 생성"
+            disabled={generateDisabled}
+            onClick={() => onArtifactBoardAction?.("generate_code_agent_instruction", item)}
+          />
+        ) : null}
+        {item.actions.includes("review_db_integration") ? (
+          <ActionChip
+            label="DB 연동 필요성 검토"
+            disabled={generateDisabled}
+            onClick={() => onArtifactBoardAction?.("review_db_integration", item)}
           />
         ) : null}
         {item.actions.includes("regenerate") && hub ? (

@@ -28,7 +28,7 @@ export const ARTIFACT_HUB_STAGE_FILTER_LABELS: Record<ArtifactHubStageFilter, st
   all: "전체",
   planning: "기획",
   implementation: "구현",
-  review: "검수",
+  review: "검토",
   scm: "SCM",
 };
 
@@ -37,6 +37,7 @@ export const ARTIFACT_HUB_VISIBLE_STAGE_FILTERS: readonly ArtifactHubStageFilter
   "all",
   "planning",
   "implementation",
+  "review",
 ];
 
 export function defaultArtifactHubStageFilter(

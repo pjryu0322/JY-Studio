@@ -26,6 +26,23 @@ export function isArtifactContentMeaningful(content: string | undefined | null):
   return t.length >= 8;
 }
 
-export function isArtifactBoardStatusCreated(status: ArtifactBoardStatus): boolean {
+/** 탭 카운트·「생성완료」 요약에만 사용 */
+export function isArtifactBoardStatusCompleted(status: ArtifactBoardStatus): boolean {
+  return status === "created";
+}
+
+/** 열람·선택·Doc/PDF 대상 (보완필요·후보 포함) */
+export function isArtifactBoardStatusAvailable(status: ArtifactBoardStatus): boolean {
   return status === "created" || status === "needs_revision" || status === "candidate";
+}
+
+export function isArtifactBoardStatusSelectable(status: ArtifactBoardStatus): boolean {
+  return isArtifactBoardStatusAvailable(status);
+}
+
+/**
+ * @deprecated use isArtifactBoardStatusCompleted / Available / Selectable explicitly.
+ */
+export function isArtifactBoardStatusCreated(status: ArtifactBoardStatus): boolean {
+  return isArtifactBoardStatusCompleted(status);
 }

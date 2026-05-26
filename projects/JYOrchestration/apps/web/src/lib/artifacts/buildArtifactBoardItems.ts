@@ -1,12 +1,15 @@
 import {
   allArtifactBoardCatalogItems,
   artifactBoardCatalogForStageFilter,
+  PLANNING_RECOMMENDED_ARTIFACT_CATALOG,
+  PLANNING_REQUIRED_ARTIFACT_CATALOG,
   type ArtifactBoardCatalogItem,
   type ArtifactStage,
 } from "@/lib/artifacts/artifactBoardCatalog";
 import {
   ARTIFACT_BOARD_STATUS_LABELS,
-  isArtifactBoardStatusCreated,
+  isArtifactBoardStatusAvailable,
+  isArtifactBoardStatusCompleted,
   isArtifactContentMeaningful,
   type ArtifactBoardStatus,
 } from "@/lib/artifacts/artifactBoardStatus";
@@ -24,7 +27,12 @@ import type { RequirementsStateJson } from "@/lib/requirements/requirementsState
 
 export type ArtifactBoardAction =
   | "open"
-  | "generate"
+  | "generate_planning_artifact"
+  | "generate_implementation_seed"
+  | "generate_implementation_work_plan"
+  | "generate_code_agent_instruction"
+  | "go_to_implementation"
+  | "review_db_integration"
   | "regenerate"
   | "download_doc"
   | "download_pdf"
@@ -69,13 +77,34 @@ export type BuildArtifactBoardItemsInput = Readonly<{
   readonly selectedStage?: "all" | "planning" | "implementation" | "review";
 }>;
 
-function boardActionsForStatus(status: ArtifactBoardStatus): readonly ArtifactBoardAction[] {
+function boardActionsForGeneratable(
+  catalog: ArtifactBoardCatalogItem,
+): readonly ArtifactBoardAction[] {
+  if (catalog.stage === "planning") return ["generate_planning_artifact"];
+  switch (catalog.id) {
+    case "impl-seed":
+      return ["go_to_implementation"];
+    case "impl-work-plan":
+      return ["generate_implementation_work_plan"];
+    case "impl-code-agent":
+      return ["generate_code_agent_instruction"];
+    case "impl-db-decision":
+      return ["review_db_integration"];
+    default:
+      return ["go_to_implementation"];
+  }
+}
+
+function boardActionsForStatus(
+  status: ArtifactBoardStatus,
+  catalog: ArtifactBoardCatalogItem,
+): readonly ArtifactBoardAction[] {
   switch (status) {
     case "created":
       return ["open", "download_doc", "download_pdf", "regenerate"];
     case "missing":
     case "generatable":
-      return ["generate"];
+      return boardActionsForGeneratable(catalog);
     case "needs_revision":
       return ["open", "revise", "regenerate"];
     case "candidate":
@@ -86,6 +115,149 @@ function boardActionsForStatus(status: ArtifactBoardStatus): readonly ArtifactBo
     default:
       return [];
   }
+}
+
+function isOlderThan(
+  valueUpdatedAt: string | undefined,
+  referenceUpdatedAt: string | undefined,
+): boolean {
+  const a = String(valueUpdatedAt ?? "").trim();
+  const b = String(referenceUpdatedAt ?? "").trim();
+  if (!a || !b) return false;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return false;
+  return ta < tb;
+}
+
+function maxIsoTimestamp(...values: readonly (string | undefined)[]): string | undefined {
+  let best: string | undefined;
+  let bestMs = -Infinity;
+  for (const v of values) {
+    const s = String(v ?? "").trim();
+    if (!s) continue;
+    const ms = Date.parse(s);
+    if (!Number.isFinite(ms)) continue;
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = s;
+    }
+  }
+  return best;
+}
+
+function latestPlanningArtifactUpdatedAt(
+  projectArtifacts: readonly ProjectArtifact[],
+): string | undefined {
+  const types = new Set(
+    PLANNING_REQUIRED_ARTIFACT_CATALOG.map((c) => c.matchType).concat(
+      PLANNING_RECOMMENDED_ARTIFACT_CATALOG.map((c) => c.matchType),
+    ),
+  );
+  let latest: string | undefined;
+  for (const art of projectArtifacts) {
+    if (!types.has(art.type)) continue;
+    if (!isArtifactContentMeaningful(art.content)) continue;
+    latest = maxIsoTimestamp(latest, art.createdAt);
+  }
+  return latest;
+}
+
+function latestCodeAgentWorkItemsReferenceAt(
+  state: RequirementsStateJson,
+  planUpdatedAt: string | undefined,
+): string | undefined {
+  const wip = state.codeAgentWipExecutionV1;
+  const lastCommit = wip?.commits[wip.commits.length - 1]?.createdAt;
+  return maxIsoTimestamp(planUpdatedAt, lastCommit, wip?.requestedAt);
+}
+
+function resolveImplementationStaleReason(input: {
+  readonly catalog: ArtifactBoardCatalogItem;
+  readonly state: RequirementsStateJson;
+  readonly projectArtifacts: readonly ProjectArtifact[];
+  readonly derivedUpdatedAt?: string;
+}): string | undefined {
+  const { catalog, state, projectArtifacts, derivedUpdatedAt } = input;
+  const seed = state.implementationSeedV1;
+  const draft = state.implementationWorkPlanDraftV1;
+  const plan = state.implementationTaskPlanV1;
+  const latestPlanningAt = latestPlanningArtifactUpdatedAt(projectArtifacts);
+
+  switch (catalog.id) {
+    case "impl-seed":
+      if (
+        seed &&
+        latestPlanningAt &&
+        isOlderThan(seed.updatedAt, latestPlanningAt)
+      ) {
+        return "기획 산출물이 갱신되어 구현 준비정보가 최신이 아닙니다.";
+      }
+      return undefined;
+    case "impl-readiness":
+      if (
+        seed &&
+        latestPlanningAt &&
+        isOlderThan(seed.updatedAt, latestPlanningAt)
+      ) {
+        return "구현 준비정보가 기획 산출물보다 이전입니다.";
+      }
+      return undefined;
+    case "impl-work-plan": {
+      const draftAt = draft?.updatedAt ?? derivedUpdatedAt;
+      if (seed && isOlderThan(draftAt, seed.updatedAt)) {
+        return "구현 준비정보보다 이전에 작성된 구현 작업안입니다.";
+      }
+      if (latestPlanningAt && isOlderThan(draftAt, latestPlanningAt)) {
+        return "기획 산출물이 갱신되어 구현 작업안이 최신이 아닙니다.";
+      }
+      return undefined;
+    }
+    case "impl-code-agent": {
+      const workRef = latestCodeAgentWorkItemsReferenceAt(state, plan?.createdAt);
+      if (draft?.updatedAt && workRef && isOlderThan(workRef, draft.updatedAt)) {
+        return "구현 작업안이 갱신되어 작업 지시서가 최신이 아닙니다.";
+      }
+      return undefined;
+    }
+    case "impl-wip-report": {
+      const wip = state.codeAgentWipExecutionV1;
+      const wipAt = wip?.commits[wip.commits.length - 1]?.createdAt ?? wip?.requestedAt;
+      const workRef = latestCodeAgentWorkItemsReferenceAt(state, plan?.createdAt);
+      if (workRef && wipAt && isOlderThan(wipAt, workRef)) {
+        return "작업 지시 이후 WIP 결과가 갱신되지 않았습니다.";
+      }
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function applyImplementationStaleIfNeeded(
+  base: Pick<ArtifactBoardItem, "status" | "generationCondition" | "missingReason">,
+  catalog: ArtifactBoardCatalogItem,
+  context: {
+    readonly state: RequirementsStateJson;
+    readonly projectArtifacts: readonly ProjectArtifact[];
+    readonly derivedUpdatedAt?: string;
+  },
+): Pick<ArtifactBoardItem, "status" | "generationCondition" | "missingReason"> {
+  if (
+    base.status !== "created" &&
+    base.status !== "needs_revision" &&
+    base.status !== "candidate"
+  ) {
+    return base;
+  }
+  const staleReason = resolveImplementationStaleReason({
+    catalog,
+    state: context.state,
+    projectArtifacts: context.projectArtifacts,
+    derivedUpdatedAt: context.derivedUpdatedAt,
+  });
+  if (!staleReason) return base;
+  return { status: "stale", generationCondition: staleReason };
 }
 
 function findPlanningArtifact(
@@ -153,10 +325,11 @@ function resolveImplementationBoardStatus(input: {
   readonly catalog: ArtifactBoardCatalogItem;
   readonly derived: DerivedImplementationArtifact | null;
   readonly state: RequirementsStateJson;
+  readonly projectArtifacts: readonly ProjectArtifact[];
   readonly planningRefCount: number;
   readonly createdCatalogIds: ReadonlySet<string>;
 }): Pick<ArtifactBoardItem, "status" | "generationCondition" | "missingReason"> {
-  const { catalog, derived, state, planningRefCount, createdCatalogIds } = input;
+  const { catalog, derived, state, projectArtifacts, planningRefCount, createdCatalogIds } = input;
   const seed = state.implementationSeedV1;
   const draft = state.implementationWorkPlanDraftV1;
   const plan = state.implementationTaskPlanV1;
@@ -166,18 +339,30 @@ function resolveImplementationBoardStatus(input: {
   if (derived && isArtifactContentMeaningful(derived.body)) {
     if (catalog.matchType === "implementation-seed") {
       if (seed?.lifecycleStatus === "candidate" || seed?.lifecycleStatus === "partial") {
-        return { status: "candidate", generationCondition: "사용자 확정 전 후보 상태입니다." };
+        return applyImplementationStaleIfNeeded(
+          { status: "candidate", generationCondition: "사용자 확정 전 후보 상태입니다." },
+          catalog,
+          { state, projectArtifacts, derivedUpdatedAt: derived.updatedAt },
+        );
       }
     }
     if (catalog.matchType === "implementation-work-plan-draft" && draft?.status === "draft") {
       if (!draft.actorCapabilityMatrix?.length) {
-        return {
-          status: "needs_revision",
-          generationCondition: "액터 권한 매트릭스 등 일부 항목 보완이 필요합니다.",
-        };
+        return applyImplementationStaleIfNeeded(
+          {
+            status: "needs_revision",
+            generationCondition: "액터 권한 매트릭스 등 일부 항목 보완이 필요합니다.",
+          },
+          catalog,
+          { state, projectArtifacts, derivedUpdatedAt: derived.updatedAt },
+        );
       }
     }
-    return { status: "created" };
+    return applyImplementationStaleIfNeeded(
+      { status: "created" },
+      catalog,
+      { state, projectArtifacts, derivedUpdatedAt: derived.updatedAt },
+    );
   }
 
   switch (catalog.id) {
@@ -185,7 +370,7 @@ function resolveImplementationBoardStatus(input: {
       if (planningRefCount === 0) {
         return {
           status: "waiting",
-          generationCondition: "기획 산출물이 없어 Implementation Seed를 생성할 수 없습니다.",
+          generationCondition: "기획 산출물이 없어 구현 준비정보를 생성할 수 없습니다.",
         };
       }
       return {
@@ -194,7 +379,7 @@ function resolveImplementationBoardStatus(input: {
       };
     case "impl-readiness":
       if (!seed) {
-        return { status: "waiting", generationCondition: "Implementation Seed 생성이 필요합니다." };
+        return { status: "waiting", generationCondition: "구현 준비정보 생성이 필요합니다." };
       }
       return {
         status: seed.readiness.ready ? "generatable" : "candidate",
@@ -218,7 +403,7 @@ function resolveImplementationBoardStatus(input: {
       }
       return {
         status: "generatable",
-        generationCondition: `기획 산출물 ${planningRefCount}건과 Implementation Seed를 기준으로 생성합니다.`,
+        generationCondition: `기획 산출물 ${planningRefCount}건과 구현 준비정보를 기준으로 생성합니다.`,
       };
     }
     case "impl-code-agent":
@@ -226,7 +411,7 @@ function resolveImplementationBoardStatus(input: {
         if (workItems.length) return { status: "created" };
         return {
           status: "generatable",
-          generationCondition: "구현 작업안 확정 후 Code Agent 작업 지시서를 생성할 수 있습니다.",
+          generationCondition: "구현 작업안 확정 후 AI개발자 작업 지시서를 생성할 수 있습니다.",
         };
       }
       return {
@@ -239,7 +424,7 @@ function resolveImplementationBoardStatus(input: {
       }
       return {
         status: "waiting",
-        generationCondition: "Code Agent WIP 작업 실행 후 생성됩니다.",
+        generationCondition: "AI개발자 WIP 작업 실행 후 생성됩니다.",
       };
     default:
       break;
@@ -310,7 +495,7 @@ export function buildArtifactBoardItems(input: BuildArtifactBoardItemsInput): re
         artifact: art,
         createdCatalogIds,
       });
-      if (isArtifactBoardStatusCreated(resolved.status) && art) {
+      if (isArtifactBoardStatusAvailable(resolved.status) && art) {
         createdCatalogIds.add(catalogItem.id);
       }
       const hubEntry = art ? planningArtifactToHubEntry(art) : undefined;
@@ -331,7 +516,7 @@ export function buildArtifactBoardItems(input: BuildArtifactBoardItemsInput): re
           : {}),
         ...(resolved.generationCondition ? { generationCondition: resolved.generationCondition } : {}),
         ...(resolved.missingReason ? { missingReason: resolved.missingReason } : {}),
-        actions: boardActionsForStatus(resolved.status),
+        actions: boardActionsForStatus(resolved.status, catalogItem),
         ...(hubEntry ? { hubEntry } : {}),
       });
       return;
@@ -346,10 +531,11 @@ export function buildArtifactBoardItems(input: BuildArtifactBoardItemsInput): re
       catalog: catalogItem,
       derived: d,
       state,
+      projectArtifacts,
       planningRefCount,
       createdCatalogIds,
     });
-    if (isArtifactBoardStatusCreated(resolved.status) && d) {
+    if (isArtifactBoardStatusAvailable(resolved.status) && d) {
       createdCatalogIds.add(catalogItem.id);
     }
     const hubEntry = d ? derivedToHubEntry(d) : undefined;
@@ -364,7 +550,7 @@ export function buildArtifactBoardItems(input: BuildArtifactBoardItemsInput): re
       description: catalogItem.description,
       ...(d ? { createdArtifactId: d.id, updatedAt: d.updatedAt, derivedMarkdown: d.body } : {}),
       ...(resolved.generationCondition ? { generationCondition: resolved.generationCondition } : {}),
-      actions: boardActionsForStatus(resolved.status),
+      actions: boardActionsForStatus(resolved.status, catalogItem),
       ...(hubEntry ? { hubEntry } : {}),
     });
   };
@@ -386,7 +572,7 @@ export function calculateArtifactBoardTabCounts(
         ? items
         : items.filter((i) => (filter === "review" ? i.stage === "review" : i.stage === filter));
     const total = subset.length;
-    const created = subset.filter((i) => isArtifactBoardStatusCreated(i.status)).length;
+    const created = subset.filter((i) => isArtifactBoardStatusCompleted(i.status)).length;
     return { created, total };
   };
   return {
@@ -404,13 +590,24 @@ export function formatArtifactBoardTabCountLabel(counts: ArtifactBoardTabCounts)
 export function summarizeArtifactBoardStatuses(
   items: readonly ArtifactBoardItem[],
 ): string {
-  const generatable = items.filter((i) => i.status === "generatable").length;
-  const waiting = items.filter((i) => i.status === "waiting").length;
-  const created = items.filter((i) => isArtifactBoardStatusCreated(i.status)).length;
-  const parts = [`생성완료 ${created}`];
+  const count = (status: ArtifactBoardStatus) =>
+    items.filter((i) => i.status === status).length;
+  const parts: string[] = [];
+  const completed = count("created");
+  if (completed) parts.push(`생성완료 ${completed}`);
+  const needsRevision = count("needs_revision");
+  if (needsRevision) parts.push(`보완필요 ${needsRevision}`);
+  const candidate = count("candidate");
+  if (candidate) parts.push(`후보 ${candidate}`);
+  const generatable = count("generatable");
   if (generatable) parts.push(`생성가능 ${generatable}`);
+  const waiting = count("waiting");
   if (waiting) parts.push(`생성대기 ${waiting}`);
-  return parts.join(" · ");
+  const missing = count("missing");
+  if (missing) parts.push(`미생성 ${missing}`);
+  const stale = count("stale");
+  if (stale) parts.push(`최신아님 ${stale}`);
+  return parts.length ? parts.join(" · ") : "생성완료 0";
 }
 
 /** board item 목록 → Hub drawer용 entries (생성완료·보완·후보만) */
@@ -418,7 +615,7 @@ export function artifactBoardItemsToHubEntries(
   items: readonly ArtifactBoardItem[],
 ): readonly ProjectArtifactHubEntry[] {
   return items
-    .filter((i) => i.hubEntry && isArtifactBoardStatusCreated(i.status))
+    .filter((i) => i.hubEntry && isArtifactBoardStatusAvailable(i.status))
     .map((i) => i.hubEntry!);
 }
 

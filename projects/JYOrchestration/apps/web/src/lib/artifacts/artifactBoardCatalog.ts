@@ -85,7 +85,7 @@ export const IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG: readonly ArtifactBoardCat
     id: "impl-seed",
     type: "implementation-seed",
     matchType: "implementation-seed",
-    title: "Implementation Seed",
+    title: "구현 준비정보",
     stage: "implementation",
     requirementLevel: "required",
     description: "기획 산출물을 구현 관점으로 정리한 준비 정보입니다.",
@@ -95,7 +95,7 @@ export const IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG: readonly ArtifactBoardCat
     id: "impl-readiness",
     type: "implementation-readiness-report",
     matchType: "implementation-readiness-report",
-    title: "구현 준비도 점검서",
+    title: "구현 준비도",
     stage: "implementation",
     requirementLevel: "required",
     description: "Implementation Seed 기준 준비도·부족 항목을 점검합니다.",
@@ -116,7 +116,7 @@ export const IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG: readonly ArtifactBoardCat
     id: "impl-code-agent",
     type: "code-agent-work-instruction",
     matchType: "code-agent-work-instruction",
-    title: "Code Agent 작업 지시서",
+    title: "AI개발자 작업 지시서",
     stage: "implementation",
     requirementLevel: "required",
     description: "확정된 작업안을 Code Agent 실행 단위로 변환합니다.",
@@ -126,7 +126,7 @@ export const IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG: readonly ArtifactBoardCat
     id: "impl-wip-report",
     type: "wip-result-report",
     matchType: "wip-result-report",
-    title: "WIP 작업 결과 보고서",
+    title: "WIP 작업 결과",
     stage: "implementation",
     requirementLevel: "required",
     description: "Code Agent WIP 실행 결과·diff·테스트 요약입니다.",
@@ -135,6 +135,20 @@ export const IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG: readonly ArtifactBoardCat
 ] as const;
 
 export const IMPLEMENTATION_RECOMMENDED_ARTIFACT_CATALOG: readonly ArtifactBoardCatalogItem[] = [
+  {
+    id: "impl-db-decision",
+    type: "db-integration-decision",
+    matchType: "db-integration-decision",
+    title: "데이터 저장 방식 판단서",
+    stage: "implementation",
+    requirementLevel: "recommended",
+    description: "DB 연동 필요 여부·저장 전략 판단 결과입니다.",
+    dependsOn: ["impl-work-plan"],
+    generateAction: "review_db_integration",
+  },
+] as const;
+
+export const REVIEW_RECOMMENDED_ARTIFACT_CATALOG: readonly ArtifactBoardCatalogItem[] = [
   {
     id: "impl-review-criteria",
     type: "review-criteria-summary",
@@ -155,16 +169,6 @@ export const IMPLEMENTATION_RECOMMENDED_ARTIFACT_CATALOG: readonly ArtifactBoard
     description: "보안·개인정보·파일 처리 점검 기준입니다.",
     dependsOn: ["impl-work-plan"],
   },
-  {
-    id: "impl-db-decision",
-    type: "db-integration-decision",
-    matchType: "db-integration-decision",
-    title: "DB 연동 판단서",
-    stage: "implementation",
-    requirementLevel: "recommended",
-    description: "DB 연동 필요 여부·저장 전략 판단 결과입니다.",
-    dependsOn: ["impl-work-plan"],
-  },
 ] as const;
 
 export function allArtifactBoardCatalogItems(): readonly ArtifactBoardCatalogItem[] {
@@ -173,6 +177,7 @@ export function allArtifactBoardCatalogItems(): readonly ArtifactBoardCatalogIte
     ...PLANNING_RECOMMENDED_ARTIFACT_CATALOG,
     ...IMPLEMENTATION_REQUIRED_ARTIFACT_CATALOG,
     ...IMPLEMENTATION_RECOMMENDED_ARTIFACT_CATALOG,
+    ...REVIEW_RECOMMENDED_ARTIFACT_CATALOG,
   ];
 }
 

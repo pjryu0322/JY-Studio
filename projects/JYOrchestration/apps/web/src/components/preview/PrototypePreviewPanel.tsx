@@ -16,7 +16,9 @@ import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 
+import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
 import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
+import { DB_INTEGRATION_REVIEW_CHIP } from "@/lib/prototype/implementationDbStrategy";
 import {
   buildImplementationArtifactsTimelineEntry,
   derivedHubEntryToDeliverableAsset,
@@ -42,6 +44,7 @@ import {
   pickExecutionStateArtifacts,
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
+import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
@@ -1674,6 +1677,31 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const handleArtifactBoardAction = useCallback(
+    (action: ArtifactBoardAction) => {
+      setArtifactHubOpen(false);
+      switch (action) {
+        case "go_to_implementation":
+        case "generate_implementation_seed":
+          showToast("아래 구현 대화에서 구현 준비정보·작업안을 이어서 진행해 주세요.");
+          queueMicrotask(() => chatInputRef.current?.focus());
+          return;
+        case "generate_implementation_work_plan":
+          generateImplementationWorkPlanDraft();
+          return;
+        case "generate_code_agent_instruction":
+          handleImplementationChip(CODE_AGENT_WIP_WORK_REQUEST_CHIP);
+          return;
+        case "review_db_integration":
+          handleImplementationChip(DB_INTEGRATION_REVIEW_CHIP);
+          return;
+        default:
+          return;
+      }
+    },
+    [generateImplementationWorkPlanDraft, handleImplementationChip, showToast],
+  );
+
   useEffect(() => {
     const run = latestRun;
     if (!run?.id) return;
@@ -2377,6 +2405,7 @@ export function PrototypePreviewPanel({
         onGenerate={() => {
           showToast("문서 생성은 서비스 기획(/requirements) 화면에서 진행할 수 있습니다.");
         }}
+        onArtifactBoardAction={(action) => handleArtifactBoardAction(action)}
         onExportFeedback={({ kind, count, blocked }) => {
           if (blocked) {
             showToast(blocked);
