@@ -3,11 +3,7 @@
 import type { ReactNode, RefObject } from "react";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { PrototypeExecutionComposer } from "@/components/preview/PrototypeExecutionComposer";
-import {
-  PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
-  InlineTemplatePickerRow,
-  type PrototypeInlineTemplatePickerProps,
-} from "@/components/preview/prototypeChatTimeline";
+import { PROTOTYPE_INLINE_TEMPLATE_AI_VALUE } from "@/components/preview/prototypeChatTimeline";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { WorkspaceChatReplyComposerBar } from "@/components/workspace/workspaceMessageHeaderActions";
@@ -31,7 +27,6 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   onSetReplyTo: (messageId: string, preview: string) => void;
   onInterviewSuggestionPick: (label: string) => void;
   aiInvokePending: boolean;
-  templatePicker?: PrototypeInlineTemplatePickerProps | null;
   headerLeading?: ReactNode;
   headerIconToolbar?: ReactNode;
 }>;
@@ -55,7 +50,6 @@ export function PrototypeExecutionChatPanel({
   onSetReplyTo,
   onInterviewSuggestionPick,
   aiInvokePending,
-  templatePicker,
   headerIconToolbar,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
@@ -65,11 +59,6 @@ export function PrototypeExecutionChatPanel({
   const composer = (
     <>
       {replyTo ? <WorkspaceChatReplyComposerBar preview={replyTo.preview} onClear={onClearReplyTo} /> : null}
-      {templatePicker ? (
-        <div style={{ marginBottom: 10 }}>
-          <InlineTemplatePickerRow {...templatePicker} />
-        </div>
-      ) : null}
       <PrototypeExecutionComposer
         value={input}
         onChange={onInputChange}

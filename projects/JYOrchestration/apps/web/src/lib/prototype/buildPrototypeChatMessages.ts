@@ -341,6 +341,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   const canShowCreatePlanCard =
     !p.latestRun?.id || p.latestRun.status === "DRAFT" || p.latestRun.status === "PROMPT_READY";
   const showNeedCreatePlan =
+    p.canRequestGenerationEnvOk &&
     templateReadyForPlanning &&
     hasNoWorkUnitsYet(p.latestRun) &&
     !p.isPlannerRunning &&
@@ -365,13 +366,19 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
             p.protoBusy ||
             p.plannerCreatePending ||
             p.isPlannerRunning ||
-            !p.canRequestGenerationDesignOk,
+            !p.canRequestGenerationDesignOk ||
+            !p.canRequestGenerationEnvOk,
         },
         {
           id: "a-open-planner-prompt-preplan",
           label: "프롬프트 보기",
           intent: "OPEN_PLANNER_PROMPT_IN_CHAT",
-          disabled: !templateReadyForPlanning || p.protoBusy || p.plannerCreatePending || p.isPlannerRunning,
+          disabled:
+            !templateReadyForPlanning ||
+            !p.canRequestGenerationEnvOk ||
+            p.protoBusy ||
+            p.plannerCreatePending ||
+            p.isPlannerRunning,
         },
       ],
     });

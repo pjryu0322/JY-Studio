@@ -16,7 +16,6 @@ import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
-import { InlineTemplatePickerRow } from "@/components/preview/prototypeChatTimeline";
 
 import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
@@ -79,7 +78,6 @@ import {
   hasImplementationRoleCheckDetailsShown,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import {
@@ -87,6 +85,7 @@ import {
   shouldLockInlineChatTemplateSelection,
 } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
+import { PrototypeTemplateChangeModal } from "@/components/preview/PrototypeTemplateChangeModal";
 import type {
   PrototypeWorkspaceActor as PrototypePreviewActor,
   PrototypeWorkspaceFlowStep as PrototypePreviewFlowStep,
@@ -704,6 +703,10 @@ export function PrototypePreviewPanel({
   const startWorkPlanGenerationFromChat = useCallback(() => {
     if (planRequestInFlightRef.current) return;
     if (protoBusy) return;
+    if (!canRequestGeneration.envOk) {
+      appendExecutionNoticeRef.current("먼저 환경 검증과 연결 테스트를 완료해 주세요.");
+      return;
+    }
     if (!templatePlanningReady) return;
     if (!canRequestGeneration.designOk) return;
     planRequestInFlightRef.current = true;
@@ -725,48 +728,33 @@ export function PrototypePreviewPanel({
         setPlannerCreatePending(false);
       }
     })();
-  }, [protoBusy, templatePlanningReady, canRequestGeneration.designOk, runPlannerCreate]);
+  }, [protoBusy, templatePlanningReady, canRequestGeneration.designOk, canRequestGeneration.envOk, runPlannerCreate]);
 
-  const confirmTemplate = useCallback(async () => {
-    if (protoBusy) return;
-    if (shouldLockInlineChatTemplateSelection(latestRun)) return;
-    const resolvedId =
-      draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE
-        ? analysis.recommendedTemplate
-        : (draftPickerValue as PrototypeTemplateType);
-    const recommendedId = analysis.recommendedTemplate;
+  const applyToolbarTemplateSelection = useCallback(
+    (next: string) => {
+      if (protoBusy) return;
+      if (shouldLockInlineChatTemplateSelection(latestRun)) return;
+      const recommendedId = analysis.recommendedTemplate;
+      const resolvedId =
+        next === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE ? recommendedId : (next as PrototypeTemplateType);
 
-    /** 플래너 진행 중 템플릿 확정 시: 현재 실행을 재시작해 새 템플릿으로 작업계획을 다시 생성 */
-    const planning = (latestRun?.status === "PLANNER_ANALYZING" || plannerCreatePending) && (latestRun?.workUnits?.length ?? 0) === 0;
-    if (planning && latestRun?.id) {
-      setProtoBusy(true);
-      try {
-        const r = await postPrototypeRunResume(latestRun.id, { projectId, mode: "restart" });
-        if (r.success && r.data?.run) setLatestRun(r.data.run);
-      } finally {
-        setProtoBusy(false);
+      if (resolvedId === recommendedId) {
+        setTemplateOverride(null);
+        setDraftPickerValue(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
+        setTemplateConfirmed(false);
+        savePrototypeGenerationRecord(projectId, { selectedTemplate: null, templateCommittedToPlan: false });
+      } else {
+        setTemplateOverride(resolvedId);
+        setDraftPickerValue(resolvedId);
+        setTemplateConfirmed(true);
+        savePrototypeGenerationRecord(projectId, { selectedTemplate: resolvedId, templateCommittedToPlan: true });
+        setPrePlanGate("need_create_click");
       }
-    }
-
-    if (resolvedId === recommendedId) {
-      setTemplateOverride(null);
-      savePrototypeGenerationRecord(projectId, { selectedTemplate: null, templateCommittedToPlan: true });
-    } else {
-      setTemplateOverride(resolvedId);
-      savePrototypeGenerationRecord(projectId, { selectedTemplate: resolvedId, templateCommittedToPlan: true });
-    }
-    refreshRecord();
-    setTemplateConfirmed(true);
-    setPrePlanGate("need_create_click");
-  }, [
-    analysis.recommendedTemplate,
-    draftPickerValue,
-    latestRun,
-    plannerCreatePending,
-    projectId,
-    protoBusy,
-    refreshRecord,
-  ]);
+      refreshRecord();
+      setTemplateChangeOpen(false);
+    },
+    [analysis.recommendedTemplate, latestRun, projectId, protoBusy, refreshRecord],
+  );
 
   const applyChatTemplateIntent = useCallback(
     (next: PrototypeTemplateType | null) => {
@@ -1985,79 +1973,6 @@ export function PrototypePreviewPanel({
     isDraftGenerationComplete,
   ]);
 
-  const chatInlineTemplatePicker = useMemo((): PrototypeInlineTemplatePickerProps | null => {
-    if (!canRequestGeneration.envOk) return null;
-    if (shouldLockInlineChatTemplateSelection(latestRun)) return null;
-    const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
-    const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
-    const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
-    const noWorkUnitsYet = (latestRun?.workUnits?.length ?? 0) === 0;
-    const usingDefaultAiRecommendedTemplate =
-      noWorkUnitsYet && !templateConfirmed && draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE;
-    if (usingDefaultAiRecommendedTemplate) return null;
-    return {
-      value: draftPickerValue,
-      recommendedTemplateId: analysis.recommendedTemplate,
-      onChange: (id: string) => {
-        setDraftPickerValue(id);
-        setTemplateConfirmed((c) => {
-          if (c) savePrototypeGenerationRecord(projectId, { templateCommittedToPlan: false });
-          return false;
-        });
-      },
-      onPreview: () => setTemplatePreviewOpen(true),
-      onConfirm: () => void confirmTemplate(),
-      confirmDisabled,
-      disabled: frozen,
-    };
-  }, [
-    canRequestGeneration.envOk,
-    latestRun,
-    protoBusy,
-    templateOverride,
-    templateConfirmed,
-    draftPickerValue,
-    analysis.recommendedTemplate,
-    confirmTemplate,
-  ]);
-
-  const toolbarTemplatePicker = useMemo(() => {
-    if (!canRequestGeneration.envOk) return null;
-    if (shouldLockInlineChatTemplateSelection(latestRun)) return null;
-    const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
-    const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
-    const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
-    return {
-      value: draftPickerValue,
-      recommendedTemplateId: analysis.recommendedTemplate,
-      onChange: (id: string) => {
-        setDraftPickerValue(id);
-        setTemplateConfirmed((c) => {
-          if (c) savePrototypeGenerationRecord(projectId, { templateCommittedToPlan: false });
-          return false;
-        });
-      },
-      onPreview: () => setTemplatePreviewOpen(true),
-      onConfirm: async () => {
-        await confirmTemplate();
-        setTemplateChangeOpen(false);
-      },
-      confirmDisabled,
-      disabled: frozen,
-      layout: "full" as const,
-    } satisfies PrototypeInlineTemplatePickerProps;
-  }, [
-    analysis.recommendedTemplate,
-    canRequestGeneration.envOk,
-    confirmTemplate,
-    draftPickerValue,
-    latestRun,
-    projectId,
-    protoBusy,
-    templateConfirmed,
-    templateOverride,
-  ]);
-
   const prototypeModalParticipants = useMemo((): readonly ParticipantOption[] => {
     const aiStatus = isPlannerRunning
       ? "작업계획 생성 중"
@@ -2474,7 +2389,6 @@ export function PrototypePreviewPanel({
             if (picked.kind === "action") handleChatIntent(picked.action);
           }}
           aiInvokePending={executionSingleChat.aiInvokePending}
-          templatePicker={chatInlineTemplatePicker}
         />
         {isNextPublicDevWorkflowToolsEnabled() ? (
           <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, margin: "0 18px 12px" }}>
@@ -2579,31 +2493,20 @@ export function PrototypePreviewPanel({
         canEdit={true}
       />
 
-      <PrototypePreviewDraggableShell
+      <PrototypeTemplateChangeModal
         open={templateChangeOpen}
         onClose={() => setTemplateChangeOpen(false)}
-        title="템플릿 변경"
-        modalWidth="min(860px, calc(100vw - 20px))"
-        tone="showcase"
-      >
-        {toolbarTemplatePicker ? (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
-              AI 추천 템플릿을 기본값으로 사용합니다. 다른 템플릿이 필요하면 선택 후 <strong>[확정]</strong>을 눌러 적용하세요.
-            </div>
-            <InlineTemplatePickerRow {...toolbarTemplatePicker} />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" onClick={() => setTemplateChangeOpen(false)} style={btnMuted}>
-                닫기
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>
-            현재 상태에서는 템플릿을 변경할 수 없습니다.
-          </div>
-        )}
-      </PrototypePreviewDraggableShell>
+        canChange={canRequestGeneration.envOk && !shouldLockInlineChatTemplateSelection(latestRun)}
+        draftPickerValue={draftPickerValue}
+        recommendedTemplateId={analysis.recommendedTemplate}
+        recommendedTemplateNameKo={effectiveTemplateDef?.nameKo ?? analysis.recommendedTemplate}
+        disabled={protoBusy}
+        onSelect={applyToolbarTemplateSelection}
+        onPreview={() => {
+          setTemplateChangeOpen(false);
+          setTemplatePreviewOpen(true);
+        }}
+      />
 
       <PrototypePreviewDraggableShell
         open={templatePreviewOpen}
