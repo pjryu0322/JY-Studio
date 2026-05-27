@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationActionExecutedTimelineEntry,
   buildImplementationActionRouteTimelineEntries,
+  buildSyntheticImplementationActionClassification,
+  mergePromptTimelineWithBootstrapEntries,
 } from "@/lib/prototype/implementationIntentTimeline";
 
 const classification = {
@@ -35,7 +37,64 @@ describe("implementation intent timeline", () => {
       classification,
     });
     expect(entries).toHaveLength(2);
-    expect(entries[0]?.action).toBe("implementation_intent_routed");
-    expect(entries[1]?.action).toBe("implementation_action_executed");
+    expect(entries.map((e) => e.action)).toEqual([
+      "implementation_intent_routed",
+      "implementation_action_executed",
+    ]);
+  });
+
+  it("builds routed and executed timeline entries for bootstrap CTA", () => {
+    const ctaClassification = buildSyntheticImplementationActionClassification({
+      actionId: "CREATE_WORK_PLAN",
+      reason: "bootstrap_cta_clicked",
+      routerSource: "platform",
+    });
+    const entries = buildImplementationActionRouteTimelineEntries({
+      actionId: "CREATE_WORK_PLAN",
+      classification: ctaClassification,
+    });
+    expect(entries.map((e) => e.action)).toEqual([
+      "implementation_intent_routed",
+      "implementation_action_executed",
+    ]);
+    expect(entries[0]?.responseText).toContain("source=platform");
+    expect(entries[0]?.responseText).toContain("reason=bootstrap_cta_clicked");
+    expect(entries[1]?.responseText).toContain("actionId=CREATE_WORK_PLAN");
+    expect(entries[1]?.responseText).toContain("routerSource=platform");
+  });
+
+  it("merges orchestration timeline with bootstrap entries without dropping bootstrap", () => {
+    const base = [
+      {
+        stage: "implementation",
+        action: "generation_readiness_checked",
+        responseText: "base",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ] as const;
+    const orchestration = [
+      ...base,
+      {
+        stage: "implementation",
+        action: "implementation_work_plan_draft_created",
+        responseText: "draft",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      },
+    ] as const;
+    const bootstrap = buildImplementationActionRouteTimelineEntries({
+      actionId: "CREATE_WORK_PLAN",
+      classification,
+    });
+    const merged = mergePromptTimelineWithBootstrapEntries({
+      baseTimeline: base,
+      orchestrationTimeline: orchestration,
+      bootstrapTimeline: bootstrap,
+    });
+    expect(merged.map((e) => e.action)).toEqual([
+      "generation_readiness_checked",
+      "implementation_work_plan_draft_created",
+      "implementation_intent_routed",
+      "implementation_action_executed",
+    ]);
   });
 });

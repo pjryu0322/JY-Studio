@@ -57,10 +57,10 @@ export type ImplementationIntentClassification = Readonly<{
   requiresPreActionPatch: boolean;
   shouldExecuteAction: boolean;
   targetAction: ImplementationActionId | null;
-  routerSource: "alias" | "rule" | "llm";
+  routerSource: "alias" | "rule" | "llm" | "platform";
 }>;
 
-export type ImplementationIntentRouteSource = "alias" | "rule" | "llm" | "none";
+export type ImplementationIntentRouteSource = "alias" | "rule" | "llm" | "platform" | "none";
 
 export type ImplementationUserInputRoute =
   | Readonly<{

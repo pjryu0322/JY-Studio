@@ -80,6 +80,10 @@ import {
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
 import { resolveImplementationOperationalSend } from "@/lib/prototype/implementationOperationalSend";
+import {
+  appendCreateWorkPlanBootstrapCtaRouteTimeline,
+  mergePromptTimelineWithBootstrapEntries,
+} from "@/lib/prototype/implementationIntentTimeline";
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -1356,13 +1360,11 @@ export function PrototypePreviewPanel({
     conversationResetNonce: implementationConversationResetNonce,
     onPersistStateJson: (patch) => {
       const parsed = parseRequirementsStateJson(requirementsStateJson);
-      let timeline = parsed.promptTimeline;
-      for (const entry of patch.bootstrapTimeline ?? []) {
-        timeline = appendPromptTimeline(timeline, entry);
-      }
-      if (patch.orchestration?.promptTimeline) {
-        timeline = [...patch.orchestration.promptTimeline];
-      }
+      const timeline = mergePromptTimelineWithBootstrapEntries({
+        baseTimeline: parsed.promptTimeline,
+        orchestrationTimeline: patch.orchestration?.promptTimeline,
+        bootstrapTimeline: patch.bootstrapTimeline,
+      });
       void persistChatToDb(
         {
           messages: patch.messages,
@@ -1372,7 +1374,7 @@ export function PrototypePreviewPanel({
         },
         {
           ...(patch.orchestration ?? {}),
-          ...(timeline ? { promptTimeline: timeline } : {}),
+          ...(timeline.length ? { promptTimeline: timeline } : {}),
         },
       );
     },
@@ -1521,6 +1523,12 @@ export function PrototypePreviewPanel({
       showToast("이미 구현 작업안 초안이 생성되었습니다.");
       return;
     }
+    const orchestrationPatch = {
+      ...result.orchestrationPatch,
+      promptTimeline: appendCreateWorkPlanBootstrapCtaRouteTimeline({
+        promptTimeline: result.orchestrationPatch.promptTimeline ?? parsedRequirementsState.promptTimeline,
+      }),
+    };
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     executionSingleChat.applyPersistedMessages(result.messages);
     void persistChatToDb(
@@ -1530,7 +1538,7 @@ export function PrototypePreviewPanel({
         answers: resolved.answers ?? {},
         currentSlotKey: resolved.currentSlotKey ?? null,
       },
-      result.orchestrationPatch,
+      orchestrationPatch,
     );
   }, [
     projectId,
