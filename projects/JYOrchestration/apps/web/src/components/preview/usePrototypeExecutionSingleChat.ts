@@ -38,7 +38,14 @@ import {
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 
-export type PrototypeExecutionOperationalSendResult = "handled" | "continue";
+export type PrototypeExecutionOperationalSendResult =
+  | "handled"
+  | "continue"
+  | Readonly<{
+      kind: "status_query";
+      aiMessage: RequirementsMessage;
+      timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+    }>;
 
 export function usePrototypeExecutionSingleChat({
   projectId,
@@ -243,13 +250,26 @@ export function usePrototypeExecutionSingleChat({
       meta: { serviceDesignStage: "implementation" },
     });
 
-    if (isExplicitImplementationExecutionRequest(text)) {
-      const operational = await onOperationalSend(text);
-      if (operational === "handled") {
-        const next = [...conversationMessages, userMsg];
-        persistConversation(next, answers, currentSlotKey);
-        return;
-      }
+    const operational = await onOperationalSend(text);
+    if (operational === "handled") {
+      const next = [...conversationMessages, userMsg];
+      persistConversation(next, answers, currentSlotKey);
+      return;
+    }
+    if (operational && typeof operational === "object" && operational.kind === "status_query") {
+      setConversationMessages((prev) => {
+        const next = [...prev, userMsg, operational.aiMessage];
+        const persisted = filterPersistedPrototypeExecutionMessages(next);
+        onPersistStateJson({
+          messages: persisted,
+          slots,
+          answers,
+          currentSlotKey,
+          bootstrapTimeline: operational.timelineEntries,
+        });
+        return persisted;
+      });
+      return;
     }
 
     const pid = projectId.trim();

@@ -1,5 +1,6 @@
 import type { PrototypeChatAction, PrototypeChatBlock, PrototypeChatBuiltMessage } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
+  hasValidImplementationLeadBootstrap,
   leadDeveloperMessageHasForbiddenEnvDetail,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
@@ -106,6 +107,10 @@ export function mergePrototypeExecutionChatTimeline(
   conversation: readonly RequirementsMessage[],
 ): RequirementsMessage[] {
   const persisted = conversation.filter((m) => m.meta.internalType !== PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE);
+  const hasImplementationBootstrap = hasValidImplementationLeadBootstrap(persisted);
+  const filteredDerived = hasImplementationBootstrap
+    ? derived.filter((m) => m.id !== "proto-derived-ai-preplan")
+    : derived;
   const sortKey = (m: RequirementsMessage) => {
     const k = m.meta.prototypeOrderKey;
     if (typeof k === "number" && Number.isFinite(k)) return k;
@@ -113,7 +118,7 @@ export function mergePrototypeExecutionChatTimeline(
     return Number.isFinite(t) ? t : 0;
   };
   return dedupeRequirementsMessagesById(
-    [...derived, ...persisted].sort((a, b) => sortKey(a) - sortKey(b)),
+    [...filteredDerived, ...persisted].sort((a, b) => sortKey(a) - sortKey(b)),
   );
 }
 

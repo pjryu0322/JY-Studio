@@ -23,6 +23,7 @@ import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
@@ -30,8 +31,15 @@ export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE =
   "기획 산출물이 없어 구현단계를 시작할 수 없습니다.";
 export const IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_ROLE_CHECK_DETAILS_V1";
+export const IMPLEMENTATION_SCM_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_SCM_CHECK_DETAILS_V1";
+export const IMPLEMENTATION_ENVIRONMENT_CHECK_DETAILS_INTERNAL_TYPE =
+  "IMPLEMENTATION_ENVIRONMENT_CHECK_DETAILS_V1";
+export const IMPLEMENTATION_REVIEWER_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_REVIEWER_CHECK_DETAILS_V1";
+export const IMPLEMENTATION_SECURITY_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_SECURITY_CHECK_DETAILS_V1";
 
 export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기";
+export const IMPLEMENTATION_SCM_CHECK_VIEW_CHIP = "SCM 점검 결과 보기";
+export const IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP = "환경설정 점검 결과 보기";
 
 const REVIEWER_HIGHLIGHTS = [
   "업로드·입력 실패 처리",
@@ -342,6 +350,238 @@ function buildLeadDeveloperBootstrapMessage(input: {
   });
 }
 
+function envStatusBulletLines(summary: ImplementationRoleCheckSummary): string[] {
+  const s = summary.scm.envStatus;
+  return [
+    `- Git 저장소: ${s.git}`,
+    `- GitHub 인증: ${s.github}`,
+    `- 코드 에이전트 연결: ${s.codeAgent}`,
+    `- 연결 테스트: ${s.connectionTest}`,
+  ];
+}
+
+function prototypeBuildAiDeveloperMessage(input: {
+  readonly id: string;
+  readonly content: string;
+  readonly nowIso: string;
+  readonly internalType: string;
+  readonly interviewSuggestions?: readonly string[];
+  readonly prototypeOrderKey?: number;
+}): RequirementsMessage {
+  const def = getWorkspaceAiMember("prototype_build");
+  return newRequirementsMessage({
+    id: input.id,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content: input.content,
+    createdAt: input.nowIso,
+    meta: {
+      internalType: input.internalType,
+      serviceDesignStage: "implementation",
+      interviewAllowCustomInput: true,
+      ...(input.interviewSuggestions?.length
+        ? { interviewSuggestions: [...input.interviewSuggestions] }
+        : {}),
+      ...(input.prototypeOrderKey != null ? { prototypeOrderKey: input.prototypeOrderKey } : {}),
+    },
+  });
+}
+
+export function buildImplementationScmCheckDetailsMessage(input: {
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary?: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const now = input.nowIso ?? new Date().toISOString();
+  const summary = input.roleCheckSummary ?? buildImplementationRoleCheckSummary(input.summaryInput);
+  const issueLine =
+    summary.scm.issueCount > 0
+      ? `- SCM 환경 이슈 ${summary.scm.issueCount}건이 있습니다.`
+      : "- SCM 환경 이슈는 감지되지 않았습니다.";
+  const policyLine = input.summaryInput.envOk
+    ? "- 현재 플랫폼 기준으로 실행 환경이 완료 상태입니다."
+    : "- Code Agent WIP 작업 요청 전 환경설정을 완료해야 합니다.";
+  const lines = [
+    "SCM 점검 결과입니다.",
+    "",
+    "환경 상태:",
+    ...envStatusBulletLines(summary),
+    "",
+    "점검 결과:",
+    issueLine,
+    ...summary.scm.highlights.map((h) => `- ${h}`),
+    policyLine,
+    "",
+    "조치 안내:",
+    "- 환경설정 화면에서 Git 저장소, GitHub 인증, Cursor/코드 에이전트 연결, 연결 테스트 상태를 다시 확인해 주세요.",
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+
+  return prototypeBuildAiDeveloperMessage({
+    id: `impl-scm-check-details-${now}`,
+    nowIso: now,
+    internalType: IMPLEMENTATION_SCM_CHECK_DETAILS_INTERNAL_TYPE,
+    content: lines.join("\n"),
+    interviewSuggestions: [IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP, IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP],
+    prototypeOrderKey: 1110,
+  });
+}
+
+export function buildImplementationEnvironmentCheckDetailsMessage(input: {
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary?: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const now = input.nowIso ?? new Date().toISOString();
+  const summary = input.roleCheckSummary ?? buildImplementationRoleCheckSummary(input.summaryInput);
+  const judgment = input.summaryInput.envOk
+    ? ["- 플랫폼 기준으로 실행 환경이 완료 상태로 판정되어 있습니다."]
+    : [
+        "- 플랫폼 기준으로는 실행 환경이 아직 완료 상태가 아닙니다.",
+        "- 사용자가 정상으로 알고 있더라도, 현재 화면의 실행 가능 판정에는 연결 테스트 또는 코드 에이전트 상태가 반영되지 않았을 수 있습니다.",
+      ];
+  const causes = input.summaryInput.envOk
+    ? []
+    : [
+        "",
+        "가능한 원인:",
+        "- 저장된 Git/GitHub/Cursor 설정은 있으나 연결 테스트가 아직 완료되지 않았을 수 있습니다.",
+        "- 최근 설정 변경 후 실행 환경 상태가 새로고침되지 않았을 수 있습니다.",
+        "- 코드 에이전트 연결 또는 연결 테스트 항목이 아직 완료로 반영되지 않았을 수 있습니다.",
+      ];
+  const lines = [
+    "환경설정 점검 결과입니다.",
+    "",
+    "현재 상태:",
+    ...envStatusBulletLines(summary),
+    "",
+    "판단:",
+    ...judgment,
+    ...causes,
+    "",
+    "다음 확인:",
+    "- 환경설정 화면을 열어 저장된 값과 최신 검증 결과를 다시 확인해 주세요.",
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+
+  return prototypeBuildAiDeveloperMessage({
+    id: `impl-env-check-details-${now}`,
+    nowIso: now,
+    internalType: IMPLEMENTATION_ENVIRONMENT_CHECK_DETAILS_INTERNAL_TYPE,
+    content: lines.join("\n"),
+    interviewSuggestions: [
+      "환경설정 열기",
+      IMPLEMENTATION_SCM_CHECK_VIEW_CHIP,
+      IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
+    ],
+    prototypeOrderKey: 1120,
+  });
+}
+
+export function buildImplementationReviewerCheckDetailsMessage(input: {
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary?: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const now = input.nowIso ?? new Date().toISOString();
+  const summary = input.roleCheckSummary ?? buildImplementationRoleCheckSummary(input.summaryInput);
+  const lines = [
+    "AI검수자 점검 결과입니다.",
+    "",
+    `검수 기준 ${summary.reviewer.count}건:`,
+    ...summary.reviewer.highlights.map((h) => `- ${h}`),
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+  return prototypeBuildAiDeveloperMessage({
+    id: `impl-reviewer-check-details-${now}`,
+    nowIso: now,
+    internalType: IMPLEMENTATION_REVIEWER_CHECK_DETAILS_INTERNAL_TYPE,
+    content: lines.join("\n"),
+    interviewSuggestions: [IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP, IMPLEMENTATION_SCM_CHECK_VIEW_CHIP],
+    prototypeOrderKey: 1130,
+  });
+}
+
+export function buildImplementationSecurityCheckDetailsMessage(input: {
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary?: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const now = input.nowIso ?? new Date().toISOString();
+  const summary = input.roleCheckSummary ?? buildImplementationRoleCheckSummary(input.summaryInput);
+  const lines = [
+    "AI보안관 점검 결과입니다.",
+    "",
+    `보안 기준 ${summary.security.count}건:`,
+    ...summary.security.highlights.map((h) => `- ${h}`),
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+  return prototypeBuildAiDeveloperMessage({
+    id: `impl-security-check-details-${now}`,
+    nowIso: now,
+    internalType: IMPLEMENTATION_SECURITY_CHECK_DETAILS_INTERNAL_TYPE,
+    content: lines.join("\n"),
+    interviewSuggestions: [IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP, IMPLEMENTATION_SCM_CHECK_VIEW_CHIP],
+    prototypeOrderKey: 1140,
+  });
+}
+
+export function buildImplementationStatusQueryMessage(input: {
+  readonly intent: ImplementationStatusQueryIntent;
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary?: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsMessage | null {
+  switch (input.intent) {
+    case "scm_check_details":
+      return buildImplementationScmCheckDetailsMessage(input);
+    case "environment_check_details":
+      return buildImplementationEnvironmentCheckDetailsMessage(input);
+    case "role_check_details":
+      return buildImplementationRoleCheckDetailsMessage(input);
+    case "reviewer_check_details":
+      return buildImplementationReviewerCheckDetailsMessage(input);
+    case "security_check_details":
+      return buildImplementationSecurityCheckDetailsMessage(input);
+    default:
+      return null;
+  }
+}
+
+export function buildImplementationStatusQueryTimelineEntry(input: {
+  readonly query: ImplementationStatusQueryIntent;
+  readonly summaryInput: ImplementationOrchestrationSummaryInput;
+  readonly roleCheckSummary: ImplementationRoleCheckSummary;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const now = input.nowIso ?? new Date().toISOString();
+  const s = input.roleCheckSummary;
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: "implementation_status_query_handled",
+    source: "platform",
+    routingDecision: input.query,
+    responseText: [
+      "type=implementation_status_query_handled",
+      "mode=implementation",
+      `query=${input.query}`,
+      `envReady=${input.summaryInput.envOk}`,
+      `scmIssueCount=${s.scm.issueCount}`,
+    ].join(" "),
+    createdAt: now,
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
 export function buildImplementationRoleCheckDetailsMessage(input: {
   readonly summaryInput: ImplementationOrchestrationSummaryInput;
   readonly roleCheckSummary?: ImplementationRoleCheckSummary;
@@ -349,7 +589,6 @@ export function buildImplementationRoleCheckDetailsMessage(input: {
 }): RequirementsMessage {
   const now = input.nowIso ?? new Date().toISOString();
   const summary = input.roleCheckSummary ?? buildImplementationRoleCheckSummary(input.summaryInput);
-  const def = getWorkspaceAiMember("prototype_build");
 
   const sections = [
     "역할별 점검 결과입니다.",
@@ -366,21 +605,17 @@ export function buildImplementationRoleCheckDetailsMessage(input: {
     "WIP 정책: Code Agent는 WIP branch/commit까지만 담당하며, 공식 push/PR/merge는 SCM이 수행합니다.",
   ];
 
-  return newRequirementsMessage({
+  return prototypeBuildAiDeveloperMessage({
     id: `impl-role-check-details-${now}`,
-    role: "ai",
-    speakerType: "AI",
-    speakerId: "prototype_build",
-    speakerName: def?.title ?? "AI개발자",
-    messageType: "STATEMENT",
+    nowIso: now,
+    internalType: IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE,
     content: sections.join("\n"),
-    createdAt: now,
-    meta: {
-      internalType: IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE,
-      serviceDesignStage: "implementation",
-      interviewAllowCustomInput: true,
-      prototypeOrderKey: 1100,
-    },
+    interviewSuggestions: [
+      "환경설정 열기",
+      IMPLEMENTATION_SCM_CHECK_VIEW_CHIP,
+      IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP,
+    ],
+    prototypeOrderKey: 1100,
   });
 }
 

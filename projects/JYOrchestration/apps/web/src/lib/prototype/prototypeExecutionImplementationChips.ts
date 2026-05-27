@@ -8,7 +8,11 @@ import {
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
 
-import { IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP,
+  IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
+  IMPLEMENTATION_SCM_CHECK_VIEW_CHIP,
+} from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
   PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
@@ -32,6 +36,8 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly showImplementationSeedReadinessCheck?: () => void;
   readonly focusComposerForScopeEdit: () => void;
   readonly showRoleCheckDetails: () => void;
+  readonly showScmCheckDetails: () => void;
+  readonly showEnvironmentCheckDetails: () => void;
   readonly generateImplementationWorkPlanDraft: () => void;
   readonly confirmImplementationTaskPlan: () => void;
   readonly requestCodeAgentWipWork: () => void;
@@ -98,6 +104,12 @@ export function tryHandlePrototypeExecutionChip(
       return true;
     case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:
       handlers.showRoleCheckDetails();
+      return true;
+    case IMPLEMENTATION_SCM_CHECK_VIEW_CHIP:
+      handlers.showScmCheckDetails();
+      return true;
+    case IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP:
+      handlers.showEnvironmentCheckDetails();
       return true;
     case "구현 작업안 확정": {
       if (!handlers.canConfirmImplementationTaskPlan()) return true;

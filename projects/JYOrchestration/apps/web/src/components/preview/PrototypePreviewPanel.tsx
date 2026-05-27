@@ -72,11 +72,16 @@ import {
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import {
-  buildImplementationRoleCheckDetailsMessage,
-  buildImplementationRoleCheckDetailsTimelineEntry,
   buildImplementationRoleCheckSummary,
+  buildImplementationStatusQueryMessage,
+  buildImplementationStatusQueryTimelineEntry,
   hasImplementationRoleCheckDetailsShown,
 } from "@/lib/prototype/implementationOrchestrationSummary";
+import {
+  detectImplementationStatusQueryIntent,
+  type ImplementationStatusQueryIntent,
+} from "@/lib/prototype/implementationStatusQueryIntent";
+import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
@@ -1275,6 +1280,16 @@ export function PrototypePreviewPanel({
       );
     },
     onOperationalSend: async (text) => {
+      const statusIntent = detectImplementationStatusQueryIntent(text);
+      if (statusIntent !== "none") {
+        const statusResult = buildStatusQueryOperationalResult(statusIntent);
+        if (!statusResult) {
+          appendExecutionNoticeRef.current("환경 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+          return "handled";
+        }
+        return statusResult;
+      }
+
       const wantsWorkPlanGeneration =
         !isRunningState &&
         /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
@@ -1440,48 +1455,74 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
-  const showRoleCheckDetails = useCallback(() => {
-    if (!implementationBootstrapInput) {
-      showToast("환경 정보를 불러오는 중입니다.");
-      return;
-    }
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    const prior = resolved.messages ?? [];
-    if (hasImplementationRoleCheckDetailsShown(prior)) {
-      showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
-      return;
-    }
-    const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
-    const detailMessage = buildImplementationRoleCheckDetailsMessage({
-      summaryInput: implementationBootstrapInput,
-      roleCheckSummary,
-    });
-    const nextMessages = [...prior, detailMessage];
-    executionSingleChat.applyPersistedMessages(nextMessages);
-    const timeline = appendPromptTimeline(
-      parsedRequirementsState.promptTimeline,
-      buildImplementationRoleCheckDetailsTimelineEntry({
+  const buildStatusQueryOperationalResult = useCallback(
+    (intent: ImplementationStatusQueryIntent): PrototypeExecutionOperationalSendResult | null => {
+      if (intent === "none" || !implementationBootstrapInput) return null;
+      const prior = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson).messages ?? [];
+      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
+        showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
+        return "handled";
+      }
+      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
+      const aiMessage = buildImplementationStatusQueryMessage({
+        intent,
         summaryInput: implementationBootstrapInput,
         roleCheckSummary,
-      }),
-    );
-    void persistChatToDb(
-      {
-        messages: nextMessages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
-      { promptTimeline: timeline },
-    );
-  }, [
-    implementationBootstrapInput,
-    executionSingleChat,
-    requirementsStateJson,
-    parsedRequirementsState.promptTimeline,
-    persistChatToDb,
-    showToast,
-  ]);
+      });
+      if (!aiMessage) return "handled";
+      return {
+        kind: "status_query",
+        aiMessage,
+        timelineEntries: [
+          buildImplementationStatusQueryTimelineEntry({
+            query: intent,
+            summaryInput: implementationBootstrapInput,
+            roleCheckSummary,
+          }),
+        ],
+      };
+    },
+    [implementationBootstrapInput, requirementsStateJson, showToast],
+  );
+
+  const appendStatusQueryFromChip = useCallback(
+    (intent: ImplementationStatusQueryIntent) => {
+      const result = buildStatusQueryOperationalResult(intent);
+      if (!result) {
+        showToast("환경 정보를 불러오는 중입니다.");
+        return;
+      }
+      if (result === "handled" || result === "continue") return;
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      const nextMessages = [...(resolved.messages ?? []), result.aiMessage];
+      executionSingleChat.applyPersistedMessages(nextMessages);
+      let timeline = parsedRequirementsState.promptTimeline;
+      for (const entry of result.timelineEntries ?? []) {
+        timeline = appendPromptTimeline(timeline, entry);
+      }
+      void persistChatToDb(
+        {
+          messages: nextMessages,
+          slots: resolved.slots ?? [],
+          answers: resolved.answers ?? {},
+          currentSlotKey: resolved.currentSlotKey ?? null,
+        },
+        { promptTimeline: timeline },
+      );
+    },
+    [
+      buildStatusQueryOperationalResult,
+      executionSingleChat,
+      requirementsStateJson,
+      parsedRequirementsState.promptTimeline,
+      persistChatToDb,
+      showToast,
+    ],
+  );
+
+  const showRoleCheckDetails = useCallback(() => {
+    appendStatusQueryFromChip("role_check_details");
+  }, [appendStatusQueryFromChip]);
 
   const applyDbStrategyResult = useCallback(
     (
@@ -1633,6 +1674,8 @@ export function PrototypePreviewPanel({
           queueMicrotask(() => chatInputRef.current?.focus());
         },
         showRoleCheckDetails,
+        showScmCheckDetails: () => appendStatusQueryFromChip("scm_check_details"),
+        showEnvironmentCheckDetails: () => appendStatusQueryFromChip("environment_check_details"),
         generateImplementationWorkPlanDraft,
         confirmImplementationTaskPlan,
         reviewDbIntegrationNeed,
@@ -1679,6 +1722,7 @@ export function PrototypePreviewPanel({
       envSettingsHref,
       showImplementationSeedReadinessCheck,
       showRoleCheckDetails,
+      appendStatusQueryFromChip,
       confirmImplementationTaskPlan,
       generateImplementationWorkPlanDraft,
       reviewDbIntegrationNeed,
@@ -2194,6 +2238,9 @@ export function PrototypePreviewPanel({
       lastPersistedChatFingerprintRef.current = "";
       setTimelineCards([]);
       lastTimelineSnapRef.current = "";
+      setPrePlanGate("idle");
+      setPlannerCreatePending(false);
+      setPlannerProgressStep(1);
       setImplementationConversationResetNonce((n) => n + 1);
       onRequirementsStateJsonChange?.(resetState);
 

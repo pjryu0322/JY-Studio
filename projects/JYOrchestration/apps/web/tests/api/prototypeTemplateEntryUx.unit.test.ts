@@ -74,9 +74,19 @@ describe("prototype template entry UX", () => {
     expect(messages.some((m) => m.id === "ai-preplan")).toBe(false);
   });
 
-  it("shows work plan create card when env is ready and template planning is ready", () => {
+  it("hides work plan create card in bootstrap mode even when env is ready", () => {
     const messages = buildPrototypeChatMessages({
       ...baseWorkPlanCardParams,
+      canRequestGenerationEnvOk: true,
+      templateConfirmed: true,
+    });
+    expect(messages.some((m) => m.id === "ai-preplan")).toBe(false);
+  });
+
+  it("shows work plan create card on non-bootstrap prototype screen when env is ready", () => {
+    const messages = buildPrototypeChatMessages({
+      ...baseWorkPlanCardParams,
+      omitEnvReadinessCard: false,
       canRequestGenerationEnvOk: true,
       templateConfirmed: true,
     });

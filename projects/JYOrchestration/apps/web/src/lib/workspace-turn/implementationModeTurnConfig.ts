@@ -23,6 +23,7 @@ const IMPLEMENTATION_RESPONSE_CONTRACT = `
 - 모호한 선호는 status=candidate, requiresClarification=true로 후보 반영하고 확인 질문을 제시한다.
 - 확정형 문구("요청하신 구현 기준을 반영했습니다")는 status=confirmed_candidate이고 confidence=high일 때만 사용한다.
 - Code Agent 실행은 환경 Gate 이후에만 가능하다고 분리 안내한다.
+- 사용자가 SCM/환경설정/역할별 점검 결과를 요청하면, 세부정보를 되묻기보다 현재 envOk와 제공된 컨텍스트 기준으로 가능한 범위의 상태를 설명하고 환경설정/역할별 점검 보기로 안내한다.
 - JSON 1개만 출력한다(마크다운/코드펜스 금지).
 `.trim();
 

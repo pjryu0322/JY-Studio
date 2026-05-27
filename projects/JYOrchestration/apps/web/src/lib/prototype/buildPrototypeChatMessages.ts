@@ -341,6 +341,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   const canShowCreatePlanCard =
     !p.latestRun?.id || p.latestRun.status === "DRAFT" || p.latestRun.status === "PROMPT_READY";
   const showNeedCreatePlan =
+    !p.omitEnvReadinessCard &&
     p.canRequestGenerationEnvOk &&
     templateReadyForPlanning &&
     hasNoWorkUnitsYet(p.latestRun) &&
