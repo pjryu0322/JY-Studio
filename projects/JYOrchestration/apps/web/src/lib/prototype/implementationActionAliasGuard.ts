@@ -22,6 +22,8 @@ function normalizeAliasText(text: string): string {
 const EXACT_LABEL_TO_ACTION: Readonly<Record<string, ImplementationActionId>> = {
   [WORK_PLAN_DRAFT_GENERATE_CHIP]: "CREATE_WORK_PLAN",
   "구현 작업안 생성": "CREATE_WORK_PLAN",
+  "구현 작업안 초안 생성해줘": "CREATE_WORK_PLAN",
+  "구현 작업안 초안 생성": "CREATE_WORK_PLAN",
   "작업계획 생성": "CREATE_WORK_PLAN",
   "작업계획 수립": "CREATE_WORK_PLAN",
   "작업 계획 생성": "CREATE_WORK_PLAN",
@@ -50,15 +52,24 @@ export function detectImplementationActionAlias(input: {
   if (EXACT_LABEL_TO_ACTION[raw]) return EXACT_LABEL_TO_ACTION[raw];
 
   for (const label of input.visibleActionLabels ?? []) {
-    const t = label.trim();
-    if (!t || t.length > MAX_ALIAS_LENGTH) continue;
-    if (normalizeAliasText(t) === normalized) {
-      const mapped = EXACT_LABEL_TO_ACTION[t] ?? EXACT_LABEL_TO_ACTION[normalizeAliasText(t)];
+    const chip = label.trim();
+    if (!chip || chip.length > MAX_ALIAS_LENGTH) continue;
+    const chipNorm = normalizeAliasText(chip);
+    if (
+      chipNorm === normalized ||
+      normalized.startsWith(chipNorm) ||
+      normalized.startsWith(`${chipNorm}해`)
+    ) {
+      const mapped = EXACT_LABEL_TO_ACTION[chip] ?? EXACT_LABEL_TO_ACTION[chipNorm];
       if (mapped) return mapped;
     }
   }
 
-  if (/^(구현\s*)?작업\s*안\s*(초안\s*)?(생성|만들|수립)$/.test(normalized.replace(/\s/g, ""))) {
+  if (
+    /^(구현\s*)?작업\s*안\s*(초안\s*)?(생성|만들|수립)(해\s*줘|해주|요)?$/i.test(
+      normalized.replace(/\s/g, ""),
+    )
+  ) {
     return "CREATE_WORK_PLAN";
   }
 

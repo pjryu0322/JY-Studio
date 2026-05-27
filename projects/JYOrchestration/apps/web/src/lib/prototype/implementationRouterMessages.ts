@@ -1,7 +1,8 @@
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsStateJson";
-import { getWorkspaceAiMember } from "@/lib/requirements/workspaceAiMembers";
-import { displayedWorkspaceAiTitle } from "@/lib/requirements/userFacingOrchestrationText";
+
+const IMPLEMENTATION_AI_MEMBER_ID = "prototype_build" as const;
 
 export function buildImplementationRouterAssistantReply(input: {
   readonly content: string;
@@ -9,12 +10,11 @@ export function buildImplementationRouterAssistantReply(input: {
   readonly nowIso?: string;
 }): RequirementsMessage {
   const now = input.nowIso ?? new Date().toISOString();
-  const def = getWorkspaceAiMember("prototype_build");
   return newRequirementsMessage({
     role: "ai",
     speakerType: "AI",
-    speakerId: def.id,
-    speakerName: displayedWorkspaceAiTitle(def),
+    speakerId: IMPLEMENTATION_AI_MEMBER_ID,
+    speakerName: displayedWorkspaceAiTitle(IMPLEMENTATION_AI_MEMBER_ID),
     messageType: "NOTICE",
     content: input.content,
     createdAt: now,

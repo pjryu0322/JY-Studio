@@ -713,8 +713,16 @@ export function PrototypePreviewPanel({
       appendExecutionNoticeRef.current("먼저 환경 검증과 연결 테스트를 완료해 주세요.");
       return;
     }
-    if (!templatePlanningReady) return;
-    if (!canRequestGeneration.designOk) return;
+    if (!templatePlanningReady) {
+      appendExecutionNoticeRef.current(
+        "선택한 템플릿을 적용하려면 [확정]을 눌러 주세요. AI 추천 템플릿을 사용할 경우 별도 확정 없이 진행할 수 있습니다.",
+      );
+      return;
+    }
+    if (!canRequestGeneration.designOk) {
+      appendExecutionNoticeRef.current("기획 산출물·설계 readiness가 완료된 뒤 작업계획을 생성할 수 있습니다.");
+      return;
+    }
     planRequestInFlightRef.current = true;
     const extra = prePlannerNotesRef.current.trim();
     prePlannerNotesRef.current = "";
@@ -1368,7 +1376,7 @@ export function PrototypePreviewPanel({
         },
       );
     },
-    onOperationalSend: async (text) => {
+    onOperationalSend: async (text, userMsg) => {
       const run = latestRun;
       if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
         setProtoBusy(true);
@@ -1390,9 +1398,19 @@ export function PrototypePreviewPanel({
       return resolveImplementationOperationalSend(
         {
           text,
+          userMsg,
           isDraftGenerationComplete,
           isRunningState,
           envOk: canRequestGeneration.envOk,
+          designOk: canRequestGeneration.designOk,
+          requirementsStateJson,
+          projectId: projectId.trim(),
+          projectArtifacts: executionArtifacts.projectArtifacts,
+          orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+          slotDefinitions: planningSlotDefinitions,
+          implementationSeedV1: parsedRequirementsState.implementationSeedV1,
+          implementationWorkPlanDraftV1: parsedRequirementsState.implementationWorkPlanDraftV1,
+          promptTimeline: parsedRequirementsState.promptTimeline,
           routeParams: {
             text,
             visibleActionLabels: implementationVisibleActionLabels,
@@ -1411,6 +1429,11 @@ export function PrototypePreviewPanel({
         },
         implementationOperationalHandlers,
       );
+    },
+    onOperationalAfterPersist: (action) => {
+      if (action === "start_prototype_work_plan") {
+        startWorkPlanGenerationFromChat();
+      }
     },
   });
 

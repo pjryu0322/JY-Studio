@@ -51,6 +51,14 @@ export type PrototypeExecutionOperationalSendResult =
       kind: "assistant_reply";
       aiMessage: RequirementsMessage;
       timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+      /** assistant_reply persist 직후 패널에서 실행할 후속 action */
+      afterPersist?: "start_prototype_work_plan";
+    }>
+  | Readonly<{
+      kind: "apply_conversation";
+      messages: readonly RequirementsMessage[];
+      timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+      orchestration?: PrototypeExecutionOrchestrationPersistInput;
     }>;
 
 export function usePrototypeExecutionSingleChat({
@@ -66,6 +74,7 @@ export function usePrototypeExecutionSingleChat({
   protoBusy,
   inputBlocked,
   onOperationalSend,
+  onOperationalAfterPersist,
   onPersistStateJson,
   implementationBootstrapInput,
   envLoading = false,
@@ -82,7 +91,11 @@ export function usePrototypeExecutionSingleChat({
   readonly actorFlowSummary: string;
   readonly protoBusy: boolean;
   readonly inputBlocked: boolean;
-  readonly onOperationalSend: (text: string) => Promise<PrototypeExecutionOperationalSendResult>;
+  readonly onOperationalSend: (
+    text: string,
+    userMsg: RequirementsMessage,
+  ) => Promise<PrototypeExecutionOperationalSendResult>;
+  readonly onOperationalAfterPersist?: (action: "start_prototype_work_plan") => void;
   readonly onPersistStateJson: (patch: {
     messages: readonly RequirementsMessage[];
     slots: readonly PrototypeExecutionInterviewSlot[];
@@ -260,7 +273,7 @@ export function usePrototypeExecutionSingleChat({
       setConversationMessages((prev) => [...prev, userMsg]);
     });
 
-    const operational = await onOperationalSend(text);
+    const operational = await onOperationalSend(text, userMsg);
     if (operational === "handled") {
       setConversationMessages((prev) => {
         const persisted = filterPersistedPrototypeExecutionMessages(prev);
@@ -274,11 +287,25 @@ export function usePrototypeExecutionSingleChat({
       });
       return;
     }
+    if (operational && typeof operational === "object" && operational.kind === "apply_conversation") {
+      const persisted = filterPersistedPrototypeExecutionMessages(operational.messages);
+      setConversationMessages(persisted);
+      onPersistStateJson({
+        messages: persisted,
+        slots,
+        answers,
+        currentSlotKey,
+        bootstrapTimeline: operational.timelineEntries,
+        orchestration: operational.orchestration,
+      });
+      return;
+    }
     if (
       operational &&
       typeof operational === "object" &&
       (operational.kind === "status_query" || operational.kind === "assistant_reply")
     ) {
+      const afterPersist = operational.kind === "assistant_reply" ? operational.afterPersist : undefined;
       setConversationMessages((prev) => {
         const next = [...prev, operational.aiMessage];
         const persisted = filterPersistedPrototypeExecutionMessages(next);
@@ -291,6 +318,9 @@ export function usePrototypeExecutionSingleChat({
         });
         return persisted;
       });
+      if (afterPersist === "start_prototype_work_plan") {
+        onOperationalAfterPersist?.(afterPersist);
+      }
       return;
     }
 
@@ -380,6 +410,7 @@ export function usePrototypeExecutionSingleChat({
     currentSlotKey,
     aiTitle,
     onPersistStateJson,
+    onOperationalAfterPersist,
   ]);
 
   const handleInterviewSuggestionPick = useCallback((label: string) => {

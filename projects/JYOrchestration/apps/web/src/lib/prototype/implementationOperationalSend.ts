@@ -1,4 +1,14 @@
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
+import { buildCreateWorkPlanFromChatOperationalResult } from "@/lib/prototype/implementationCreateWorkPlanFromChat";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsStateJson";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type {
+  RequirementsSingleChatOrchestrationStateV1,
+  SingleChatOrchestrationSlotDefinition,
+} from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationActionGateBlockedTimelineEntry,
   buildImplementationIntentRoutedTimelineEntry,
@@ -35,10 +45,20 @@ export type ImplementationOperationalSendHandlers = Readonly<{
 
 export type ImplementationOperationalSendContext = Readonly<{
   text: string;
+  userMsg: RequirementsMessage;
   isDraftGenerationComplete: boolean;
   isRunningState: boolean;
   envOk: boolean;
+  designOk: boolean;
   routeParams: RouteImplementationUserInputParams;
+  requirementsStateJson: unknown;
+  projectId: string;
+  projectArtifacts: readonly ProjectArtifact[];
+  orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
+  slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  implementationSeedV1?: ImplementationSeedV1 | null;
+  implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
+  promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
 function buildRoutedTimeline(classification: ImplementationIntentClassification | null | undefined) {
@@ -60,12 +80,26 @@ function mergeStatusQueryWithRouteTimeline(
 
 function executeRoutedAction(
   actionId: ImplementationActionId,
+  input: ImplementationOperationalSendContext,
   handlers: ImplementationOperationalSendHandlers,
+  classification?: ImplementationIntentClassification,
 ): PrototypeExecutionOperationalSendResult {
   switch (actionId) {
     case "CREATE_WORK_PLAN":
-      handlers.startWorkPlanGeneration();
-      return "handled";
+      return buildCreateWorkPlanFromChatOperationalResult({
+        userMsg: input.userMsg,
+        requirementsStateJson: input.requirementsStateJson,
+        projectId: input.projectId,
+        projectArtifacts: input.projectArtifacts,
+        orchestration: input.orchestration,
+        slotDefinitions: input.slotDefinitions,
+        implementationSeedV1: input.implementationSeedV1,
+        implementationWorkPlanDraftV1: input.implementationWorkPlanDraftV1,
+        envOk: input.envOk,
+        designOk: input.designOk,
+        promptTimeline: input.promptTimeline,
+        classification,
+      });
     case "OPEN_PLANNER_PROMPT":
       handlers.openPlannerPrompt();
       return "handled";
@@ -101,7 +135,7 @@ function resolveRoutedInput(
       return mergeStatusQueryWithRouteTimeline(statusResult, route.classification);
     }
     case "execute_action":
-      return executeRoutedAction(route.actionId, handlers);
+      return executeRoutedAction(route.actionId, input, handlers, route.classification);
     case "apply_requirement_then_execute": {
       const nowIso = new Date().toISOString();
       const sourceId = `route-${nowIso}`;
