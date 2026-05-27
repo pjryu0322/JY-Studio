@@ -5,7 +5,10 @@
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { buildProjectArtifactHubCatalog } from "@/lib/requirements/projectArtifactHub";
+import {
+  buildProjectArtifactHubCatalog,
+  type ProjectArtifactHubEntry,
+} from "@/lib/requirements/projectArtifactHub";
 import { projectFeatureDetailMetrics } from "@/lib/requirements/featureDetailSlots";
 
 export type ArtifactHubOrchestrationState = Readonly<{
@@ -31,13 +34,16 @@ export function buildArtifactHubOrchestrationState(input: {
   readonly state: RequirementsStateJson;
   readonly deliverableAssets?: readonly IdeationDeliverableAsset[];
   readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly catalog?: readonly ProjectArtifactHubEntry[];
   readonly nowMs?: number;
 }): ArtifactHubOrchestrationState {
-  const catalog = buildProjectArtifactHubCatalog({
-    state: input.state,
-    deliverableAssets: input.deliverableAssets,
-    projectArtifacts: input.projectArtifacts,
-  });
+  const catalog =
+    input.catalog ??
+    buildProjectArtifactHubCatalog({
+      state: input.state,
+      deliverableAssets: input.deliverableAssets,
+      projectArtifacts: input.projectArtifacts,
+    });
   const metrics = projectFeatureDetailMetrics(input.state.featureDetailSlotsV1);
   const now = input.nowMs ?? Date.now();
   let hasStale = false;

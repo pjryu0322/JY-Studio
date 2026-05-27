@@ -96,15 +96,7 @@ import {
   syncServiceFlowToOrchestrationSlots,
   type ServiceFlowOrchestrationSyncResult,
 } from "@/lib/requirements/serviceFlowOrchestrationSync";
-import {
-  buildDynamicServicePlanningSlotDefinitions,
-  buildOrchestrationSlotSummarySections,
-  hashSlotDefinitions,
-  initialOrchestrationStateFromDefinitions,
-  singleChatOrchestrationConfirmedProgress,
-  singleChatOrchestrationStatusCounts,
-  singleChatOrchestrationWeightedProgress,
-} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { initialOrchestrationStateFromDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   appendIdeationBootstrapPromptTimeline,
   appendIdeationBootstrapPromptTimelineBatch,
@@ -150,7 +142,6 @@ import {
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
   IDEATION_DRAFT_REQUIRED_SLOTS,
-  resolveWorkspaceSingleChatOrchestration,
   shouldShowWorkspaceHubNotificationBadges,
   type MemberRow,
   type RequirementsWorkspaceStage,
@@ -268,17 +259,10 @@ import {
   countCompletedArtifactHubEntries,
   type ProjectArtifactHubEntry,
 } from "@/lib/requirements/projectArtifactHub";
-import { buildArtifactHubView } from "@/lib/prototype/artifactHubView";
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
-import { buildRecommendationEvidenceItems } from "@/lib/recommendation/recommendationEvidence";
-import {
-  dispatchRecommendationPanelOpen,
-  subscribeRecommendationPanel,
-} from "@/lib/recommendation/recommendationPanelEvents";
-import { collectDeliverableViewerAssetIds } from "@/lib/requirements/deliverableAssetPicker";
-import { buildArtifactHubOrchestrationState } from "@/lib/requirements/requirementsArtifactHubOrchestration";
+import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
+import { buildWorkspacePlanningOrchestrationView } from "@/lib/requirements/buildWorkspacePlanningOrchestrationView";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
-import { buildOrchestrationUiProjection } from "@/lib/requirements/requirementsOrchestrationUiProjection";
 import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
@@ -362,7 +346,6 @@ export function RequirementsWorkspace({
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [canvasHubOpen, setCanvasHubOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
-  const [recommendationPanelOpen, setRecommendationPanelOpen] = useState(false);
   const [activeCanvasView, setActiveCanvasView] = useState<CanvasArtifactType | null>(null);
   const [actorEditOpen, setActorEditOpen] = useState(false);
   const [actorEditPhase, setActorEditPhase] = useState<ActorEditingPhase>("IDLE");
@@ -798,58 +781,6 @@ export function RequirementsWorkspace({
     [persistedPromptState.problemInterview]
   );
 
-  const slotDefsForProgress = useMemo(
-    () =>
-      buildDynamicServicePlanningSlotDefinitions({
-        projectName: project?.name ?? "",
-        projectDescription: project?.description ?? "",
-        projectType: project?.projectType ?? null,
-        servicePlanningAgentCatalogKeys: servicePlanningScreenCatalogIds ?? null,
-      }),
-    [project?.name, project?.description, project?.projectType, servicePlanningScreenCatalogIds]
-  );
-
-  const orchestrationSlotDefsHash = useMemo(() => hashSlotDefinitions(slotDefsForProgress), [slotDefsForProgress]);
-
-  const orchestrationAlignedState = useMemo(() => {
-    return resolveWorkspaceSingleChatOrchestration({
-      localState: stateJsonRef.current,
-      persistedOrchestration: persistedPromptState.singleChatOrchestrationV1,
-      slotDefinitionsHash: orchestrationSlotDefsHash,
-    });
-  }, [
-    persistedPromptState.singleChatOrchestrationV1,
-    orchestrationSlotDefsHash,
-    conversationResetNonce,
-    fetchNonce,
-  ]);
-
-  const orchestrationUiState = useMemo(() => {
-    // Source-of-truth: singleChatOrchestrationV1.
-    // If persisted state is missing/misaligned, render an empty orchestration grid (0% progress) instead of legacy 8-slot UI.
-    return (
-      orchestrationAlignedState ??
-      initialOrchestrationStateFromDefinitions(slotDefsForProgress, new Date().toISOString())
-    );
-  }, [orchestrationAlignedState, slotDefsForProgress]);
-
-  const orchestrationConfirmedMetrics = useMemo(
-    () => singleChatOrchestrationConfirmedProgress(orchestrationUiState),
-    [orchestrationUiState]
-  );
-  const orchestrationWeightedMetrics = useMemo(
-    () => singleChatOrchestrationWeightedProgress(orchestrationUiState),
-    [orchestrationUiState]
-  );
-  const orchestrationStatusCounts = useMemo(
-    () => singleChatOrchestrationStatusCounts(orchestrationUiState),
-    [orchestrationUiState]
-  );
-
-  const orchestrationSlotSectionsForUi = useMemo(() => {
-    return buildOrchestrationSlotSummarySections(slotDefsForProgress, orchestrationUiState);
-  }, [orchestrationUiState, slotDefsForProgress]);
-
   const problemInterviewStrictFilled = useMemo(
     () => problemInterviewStrictFilledCount(problemInterviewState),
     [problemInterviewState]
@@ -867,38 +798,6 @@ export function RequirementsWorkspace({
       : parseRequirementsStateJson(project?.requirementsStateJson)) as RequirementsStateJson;
     return projectFeatureDetailMetrics(st.featureDetailSlotsV1);
   }, [project?.requirementsStateJson, fetchNonce, persistedPromptState]);
-
-  const proposalReadinessPercentVal = useMemo(() => {
-    return mergeFeatureDetailReadinessPercent({
-      orchestrationPercent: orchestrationWeightedMetrics.percent,
-      stage: authoritativeOrchestrationStage,
-      metrics: featureDetailMetrics,
-    });
-  }, [orchestrationWeightedMetrics.percent, authoritativeOrchestrationStage, featureDetailMetrics]);
-  const showWorkspaceHubBadges = useMemo(
-    () =>
-      shouldShowWorkspaceHubNotificationBadges({
-        readinessPercent: proposalReadinessPercentVal,
-        statusCounts: orchestrationStatusCounts,
-      }),
-    [proposalReadinessPercentVal, orchestrationStatusCounts],
-  );
-  const problemInterviewCovered = useMemo(() => {
-    return orchestrationConfirmedMetrics.confirmed;
-  }, [orchestrationConfirmedMetrics.confirmed]);
-  const progressSlotTotal = useMemo(() => {
-    return orchestrationConfirmedMetrics.total;
-  }, [orchestrationConfirmedMetrics.total]);
-  const nextNeededSlot = useMemo(() => {
-    // LLM-first orchestration: next slot is not a fixed 8-slot interview concept.
-    return null;
-  }, []);
-  const remainingQuestionsEstimate = useMemo(() => {
-    return Math.max(
-      0,
-      Math.ceil(orchestrationWeightedMetrics.total - orchestrationWeightedMetrics.weightedScore),
-    );
-  }, [orchestrationWeightedMetrics.total, orchestrationWeightedMetrics.weightedScore]);
 
   /**
    * 산출물 뷰어는 "채팅 카드가 가리키는 assetId"와 동일한 소스를 사용해야 합니다.
@@ -964,114 +863,96 @@ export function RequirementsWorkspace({
     conversationResetNonce,
   ]);
 
-  const planningArtifactHubView = useMemo(() => {
-    return buildArtifactHubView({
-      mode: "planning",
-      state: workspaceEvidenceState,
-      projectId: resolvedProjectId.trim(),
-      deliverableAssets: deliverableAssetsFromProject,
-      projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
-    });
-  }, [
-    workspaceEvidenceState,
-    deliverableAssetsFromProject,
-    resolvedProjectId,
-    saveState,
-    fetchNonce,
-    conversationResetNonce,
-  ]);
-
-  const recommendationEvidenceItems = useMemo(
-    () =>
-      buildRecommendationEvidenceItems({
-        requirementsStateJson: workspaceEvidenceState,
-        messages: conversationMessages,
-        projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
-        projectDescription: project?.description ?? "",
-      }),
-    [workspaceEvidenceState, conversationMessages, project?.description],
-  );
-
-  const closeRecommendationPanel = useCallback(() => {
-    setRecommendationPanelOpen(false);
-    const pid = resolvedProjectId.trim();
-    if (pid) dispatchRecommendationPanelOpen(pid, false);
-  }, [resolvedProjectId]);
-
-  useEffect(() => {
-    const pid = resolvedProjectId.trim();
-    if (!pid) return;
-    return subscribeRecommendationPanel(pid, setRecommendationPanelOpen);
-  }, [resolvedProjectId]);
-
-  const artifactHubCatalog = useMemo(
-    () => planningArtifactHubView.entries,
-    [planningArtifactHubView.entries],
-  );
-
-  const artifactHubCompletedCount = useMemo(
-    () => planningArtifactHubView.tabCounts.all.created,
-    [planningArtifactHubView.tabCounts.all.created],
-  );
-
-  const artifactHubOrchestration = useMemo(() => {
-    const st: RequirementsStateJson = {
+  const workspacePlanningView = useMemo(() => {
+    const mergedState: RequirementsStateJson = {
       ...persistedPromptState,
-      featureDetailSlotsV1:
-        stateJsonRef.current.featureDetailSlotsV1 ?? persistedPromptState.featureDetailSlotsV1,
+      ...stateJsonRef.current,
+      singleChatOrchestrationV1:
+        stateJsonRef.current.singleChatOrchestrationV1 ?? persistedPromptState.singleChatOrchestrationV1,
       projectArtifacts: [...projectArtifactsFromState],
     };
-    return buildArtifactHubOrchestrationState({
-      state: st,
+    return buildWorkspacePlanningOrchestrationView({
+      state: mergedState,
+      projectId: resolvedProjectId,
+      projectName: project?.name ?? "",
+      projectDescription: project?.description ?? "",
+      projectType: project?.projectType ?? null,
+      servicePlanningAgentCatalogKeys: servicePlanningScreenCatalogIds ?? null,
       deliverableAssets: deliverableAssetsFromProject,
-      projectArtifacts: [...projectArtifactsFromState],
+      projectArtifacts: projectArtifactsFromState,
+      orchestrationProjectionState: {
+        ...mergedState,
+        requirementsIntentOrchestrationV1:
+          stateJsonRef.current.requirementsIntentOrchestrationV1 ??
+          persistedPromptState.requirementsIntentOrchestrationV1,
+      },
     });
   }, [
     persistedPromptState,
     deliverableAssetsFromProject,
     projectArtifactsFromState,
+    resolvedProjectId,
+    project?.name,
+    project?.description,
+    project?.projectType,
+    servicePlanningScreenCatalogIds,
     saveState,
     fetchNonce,
-    project?.requirementsStateJson,
     conversationResetNonce,
   ]);
 
-  const orchestrationUi = useMemo(() => {
-    const st: RequirementsStateJson = {
-      ...stateJsonRef.current,
-      ...persistedPromptState,
-      requirementsIntentOrchestrationV1:
-        stateJsonRef.current.requirementsIntentOrchestrationV1 ??
-        persistedPromptState.requirementsIntentOrchestrationV1,
-    };
-    return buildOrchestrationUiProjection({
-      state: st,
-      catalogCount: artifactHubCatalog.length,
-    });
-  }, [
-    persistedPromptState,
-    artifactHubCatalog.length,
-    saveState,
-    fetchNonce,
-    project?.requirementsStateJson,
-  ]);
+  const slotDefsForProgress = workspacePlanningView.slotDefs;
+  const orchestrationSlotDefsHash = workspacePlanningView.slotDefsHash;
+  const orchestrationAlignedState = workspacePlanningView.orchestrationAlignedState;
+  const orchestrationUiState = workspacePlanningView.orchestrationUiState;
+  const orchestrationConfirmedMetrics = workspacePlanningView.orchestrationConfirmedMetrics;
+  const orchestrationWeightedMetrics = workspacePlanningView.orchestrationWeightedMetrics;
+  const orchestrationStatusCounts = workspacePlanningView.orchestrationStatusCounts;
+  const orchestrationSlotSectionsForUi = workspacePlanningView.orchestrationSlotSections;
+  const planningArtifactHubView = workspacePlanningView.planningArtifactHub.view;
+  const artifactHubOrchestration = workspacePlanningView.planningArtifactHub.orchestration;
+  const orchestrationUi = workspacePlanningView.orchestrationUi;
+  const deliverableViewerAssetIds = workspacePlanningView.deliverableViewerAssetIds;
 
-  const deliverableViewerAssetIds = useMemo(
+  const proposalReadinessPercentVal = useMemo(() => {
+    return mergeFeatureDetailReadinessPercent({
+      orchestrationPercent: orchestrationWeightedMetrics.percent,
+      stage: authoritativeOrchestrationStage,
+      metrics: featureDetailMetrics,
+    });
+  }, [orchestrationWeightedMetrics.percent, authoritativeOrchestrationStage, featureDetailMetrics]);
+
+  const showWorkspaceHubBadges = useMemo(
     () =>
-      collectDeliverableViewerAssetIds({
-        deliverableAssets: deliverableAssetsFromProject,
-        projectArtifacts: projectArtifactsFromState,
-        projectId: resolvedProjectId.trim(),
+      shouldShowWorkspaceHubNotificationBadges({
+        readinessPercent: proposalReadinessPercentVal,
+        statusCounts: orchestrationStatusCounts,
       }),
-    [
-      deliverableAssetsFromProject,
-      projectArtifactsFromState,
-      resolvedProjectId,
-      saveState,
-      fetchNonce,
-      conversationResetNonce,
-    ],
+    [proposalReadinessPercentVal, orchestrationStatusCounts],
   );
+
+  const problemInterviewCovered = orchestrationConfirmedMetrics.confirmed;
+  const progressSlotTotal = orchestrationConfirmedMetrics.total;
+  const nextNeededSlot = null;
+  const remainingQuestionsEstimate = Math.max(
+    0,
+    Math.ceil(orchestrationWeightedMetrics.total - orchestrationWeightedMetrics.weightedScore),
+  );
+
+  const {
+    open: recommendationPanelOpen,
+    items: recommendationEvidenceItems,
+    close: closeRecommendationPanel,
+  } = useProjectRecommendationEvidence({
+    projectId: resolvedProjectId,
+    requirementsStateJson: workspaceEvidenceState,
+    messages: conversationMessages,
+    projectArtifacts: workspaceEvidenceState.projectArtifacts ?? [],
+    projectDescription: project?.description ?? "",
+  });
+
+  const artifactHubCatalog = planningArtifactHubView.entries;
+  const artifactHubCompletedCount = planningArtifactHubView.tabCounts.all.created;
 
   const deliverableViewerAssets = useMemo(() => {
     const pid = resolvedProjectId.trim();

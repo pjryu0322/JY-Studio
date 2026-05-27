@@ -3,31 +3,13 @@
  */
 
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
-import {
-  buildProjectArtifactHubCatalog,
-  countCompletedArtifactHubEntries,
-  type ProjectArtifactHubEntry,
-} from "@/lib/requirements/projectArtifactHub";
-import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import { buildOrchestrationUiProjection } from "@/lib/requirements/requirementsOrchestrationUiProjection";
-import {
-  resolveWorkspaceSingleChatOrchestration,
-  shouldShowWorkspaceHubNotificationBadges,
-} from "@/lib/requirements/requirementsWorkspaceHelpers";
-import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import {
-  buildDynamicServicePlanningSlotDefinitions,
-  buildOrchestrationSlotSummarySections,
-  hashSlotDefinitions,
-  initialOrchestrationStateFromDefinitions,
-  singleChatOrchestrationConfirmedProgress,
-  singleChatOrchestrationStatusCounts,
-  singleChatOrchestrationWeightedProgress,
-} from "@/lib/requirements/singleChatOrchestrationSlots";
-import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
-import { collectDeliverableViewerAssetIds } from "@/lib/requirements/deliverableAssetPicker";
 import type { WorkspaceIdeationInterviewProgressUi } from "@/components/workspace/WorkspaceProgressPill";
+import { buildWorkspacePlanningOrchestrationView } from "@/lib/requirements/buildWorkspacePlanningOrchestrationView";
+import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
+import type { ProjectArtifactHubEntry } from "@/lib/requirements/projectArtifactHub";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
 export type PrototypeExecutionPlanningOrchestrationView = Readonly<{
   readonly persistedState: RequirementsStateJson;
@@ -36,7 +18,9 @@ export type PrototypeExecutionPlanningOrchestrationView = Readonly<{
   readonly artifactHubCatalog: readonly ProjectArtifactHubEntry[];
   readonly artifactHubCompletedCount: number;
   readonly showArtifactHubBadge: boolean;
-  readonly orchestrationUi: ReturnType<typeof buildOrchestrationUiProjection>;
+  readonly orchestrationUi: ReturnType<
+    typeof buildWorkspacePlanningOrchestrationView
+  >["orchestrationUi"];
   readonly orchestrationUiState: RequirementsSingleChatOrchestrationStateV1;
   readonly planningProgressUi: WorkspaceIdeationInterviewProgressUi;
   readonly deliverableViewerAssetIds: readonly string[];
@@ -50,78 +34,38 @@ export function buildPrototypeExecutionPlanningOrchestrationView(input: {
   readonly servicePlanningAgentCatalogKeys?: readonly WorkspaceAiMemberId[] | null;
 }): PrototypeExecutionPlanningOrchestrationView {
   const persistedState = parseRequirementsStateJson(input.requirementsStateJson);
-
-  const deliverableAssets = persistedState.deliverableAssets ?? [];
-  const projectArtifacts = persistedState.projectArtifacts ?? [];
-
-  const artifactHubCatalog = buildProjectArtifactHubCatalog({
+  const view = buildWorkspacePlanningOrchestrationView({
     state: persistedState,
-    deliverableAssets,
-    projectArtifacts,
-  });
-
-  const artifactHubCompletedCount = countCompletedArtifactHubEntries(artifactHubCatalog);
-
-  const slotDefs = buildDynamicServicePlanningSlotDefinitions({
+    projectId: input.projectId,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
-    projectType: null,
     servicePlanningAgentCatalogKeys: input.servicePlanningAgentCatalogKeys ?? null,
-  });
-  const slotHash = hashSlotDefinitions(slotDefs);
-
-  const orchestrationAligned =
-    resolveWorkspaceSingleChatOrchestration({
-      localState: persistedState,
-      persistedOrchestration: persistedState.singleChatOrchestrationV1,
-      slotDefinitionsHash: slotHash,
-    }) ?? null;
-
-  const orchestrationUiState =
-    orchestrationAligned ?? initialOrchestrationStateFromDefinitions(slotDefs, new Date().toISOString());
-
-  const weighted = singleChatOrchestrationWeightedProgress(orchestrationUiState);
-  const confirmed = singleChatOrchestrationConfirmedProgress(orchestrationUiState);
-  const statusCounts = singleChatOrchestrationStatusCounts(orchestrationUiState);
-  const slotSections = buildOrchestrationSlotSummarySections(slotDefs, orchestrationUiState);
-
-  const showArtifactHubBadge = shouldShowWorkspaceHubNotificationBadges({
-    readinessPercent: weighted.percent,
-    statusCounts,
-  });
-
-  const orchestrationUi = buildOrchestrationUiProjection({
-    state: persistedState,
-    catalogCount: artifactHubCatalog.length,
   });
 
   const planningProgressUi: WorkspaceIdeationInterviewProgressUi = {
-    active: showArtifactHubBadge,
-    readinessPercent: weighted.percent,
-    covered: confirmed.confirmed,
-    total: confirmed.total,
-    statusCounts,
-    remainingQuestionsEstimate: Math.max(0, confirmed.total - confirmed.confirmed),
+    active: view.showWorkspaceHubBadges,
+    readinessPercent: view.orchestrationWeightedMetrics.percent,
+    covered: view.orchestrationConfirmedMetrics.confirmed,
+    total: view.orchestrationConfirmedMetrics.total,
+    statusCounts: view.orchestrationStatusCounts,
+    remainingQuestionsEstimate: Math.max(
+      0,
+      view.orchestrationConfirmedMetrics.total - view.orchestrationConfirmedMetrics.confirmed,
+    ),
     onForceGeneratePlanNow: () => {},
-    orchestrationSlotSections: slotSections,
+    orchestrationSlotSections: view.orchestrationSlotSections,
   };
-
-  const deliverableViewerAssetIds = collectDeliverableViewerAssetIds({
-    deliverableAssets,
-    projectArtifacts,
-    projectId: input.projectId.trim(),
-  });
 
   return {
     persistedState,
-    deliverableAssets,
-    projectArtifacts,
-    artifactHubCatalog,
-    artifactHubCompletedCount,
-    showArtifactHubBadge,
-    orchestrationUi,
-    orchestrationUiState,
+    deliverableAssets: view.deliverableAssets,
+    projectArtifacts: view.projectArtifacts,
+    artifactHubCatalog: view.planningArtifactHub.catalog,
+    artifactHubCompletedCount: view.planningArtifactHub.completedCount,
+    showArtifactHubBadge: view.showWorkspaceHubBadges,
+    orchestrationUi: view.orchestrationUi,
+    orchestrationUiState: view.orchestrationUiState,
     planningProgressUi,
-    deliverableViewerAssetIds,
+    deliverableViewerAssetIds: view.deliverableViewerAssetIds,
   };
 }

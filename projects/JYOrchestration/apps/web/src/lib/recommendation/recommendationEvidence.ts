@@ -1,6 +1,21 @@
+import {
+  appendStatusReviewUserLines,
+  summarizeImplementationSeedForUser,
+  summarizeImplementationWorkPlanDraftForUser,
+} from "@/lib/requirements/implementationStateUserSummary";
+import {
+  isRecommendationTimelineAction,
+  promptTimelineNextActionHint,
+  promptTimelineUserSummary,
+  promptTimelineUserTitle,
+} from "@/lib/requirements/promptTimelineActionCatalog";
 import { PROJECT_ARTIFACT_LABELS, type ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  isInternalOrchestrationUserText,
+  sanitizeUserFacingOrchestrationText,
+} from "@/lib/ui/userFacingOrchestrationText";
 
 export type RecommendationEvidenceStatus = "confirmed" | "candidate" | "needs_review" | "deferred";
 
@@ -22,65 +37,6 @@ export type RecommendationEvidenceItem = Readonly<{
   readonly sourceTraceIds: readonly string[];
 }>;
 
-const INTERNAL_TEXT_PATTERNS: readonly RegExp[] = [
-  /맥락\s*예산/i,
-  /압축\s*정책/i,
-  /조립\s*계획/i,
-  /참조\s*맥락\s*후보/i,
-  /우선순위\s*정리/i,
-  /contextBudget/i,
-  /compressionPolicy/i,
-  /promptAssembly/i,
-  /rawPrompt/i,
-  /\btoken\b/i,
-  /provider\s*latency/i,
-  /지식팩\s*활성화\s*힌트/i,
-];
-
-const TIMELINE_ACTION_TITLE: Readonly<Record<string, string>> = {
-  quick_design_requested: "Quick Design 추천안",
-  quick_design_draft_created: "Quick Design 초안",
-  quick_design_slots_patched: "Quick Design 슬롯 보완",
-  quick_design_confirmed: "Quick Design 확정",
-  quick_design_confirmed_implementation_seed_auto_built: "구현 준비정보 생성",
-  quick_design_confirmed_implementation_readiness_evaluated: "구현 준비도 점검",
-  quick_design_confirmed_implementation_candidates_auto_generated: "구현 후보 산출물",
-  planning_implementation_seed_evaluated: "구현 준비정보 점검",
-  planning_implementation_seed_candidate_generated: "구현 준비정보 후보",
-  implementation_seed_used_for_work_plan_draft: "구현 작업안 연결",
-  fast_plan_draft_suggestion_picked: "프로토타입 기획안 선택",
-  planning_artifact_created: "기획 산출물 생성",
-  planning_artifact_generation_requested: "기획 산출물 생성 요청",
-  generation_readiness_checked: "생성 준비도 점검",
-};
-
-const TIMELINE_ACTION_SUMMARY: Readonly<Record<string, string>> = {
-  quick_design_requested: "Quick Design을 시작하기 위해 현재 대화의 핵심 요구를 정리했습니다.",
-  quick_design_draft_created: "빠른 프로토타입에 필요한 기획 초안을 생성했습니다.",
-  quick_design_slots_patched: "Quick Design 슬롯을 보완해 추천안을 다듬었습니다.",
-  quick_design_confirmed: "사용자가 Quick Design을 확정했습니다.",
-  quick_design_confirmed_implementation_seed_auto_built:
-    "기획 산출물을 기준으로 구현 준비정보를 자동 정리했습니다.",
-  quick_design_confirmed_implementation_readiness_evaluated:
-    "구현단계로 이동 가능한지 구현 준비도를 점검했습니다.",
-  quick_design_confirmed_implementation_candidates_auto_generated:
-    "구현 단계에서 검토할 후보 산출물을 정리했습니다.",
-  planning_implementation_seed_evaluated: "구현 준비정보의 충분성을 점검했습니다.",
-  planning_implementation_seed_candidate_generated: "구현 준비정보 후보를 생성했습니다.",
-  implementation_seed_used_for_work_plan_draft: "구현 준비정보를 바탕으로 구현 작업안 생성을 준비했습니다.",
-  fast_plan_draft_suggestion_picked: "프로토타입 기획안 제안을 선택해 반영했습니다.",
-  planning_artifact_created: "현재 대화와 슬롯을 기준으로 기획 산출물을 생성했습니다.",
-  planning_artifact_generation_requested: "기획 산출물 생성을 요청했습니다.",
-  generation_readiness_checked: "산출물 생성을 위해 필요한 기획 정보가 충분한지 점검했습니다.",
-};
-
-const TIMELINE_ACTION_NEXT: Readonly<Record<string, string>> = {
-  quick_design_confirmed_implementation_candidates_auto_generated:
-    "후보 항목을 확인하고 필요한 내용을 보완하세요.",
-  implementation_seed_used_for_work_plan_draft: "구현 작업안 초안을 확인하세요.",
-  planning_artifact_generation_requested: "생성된 기획 산출물을 검토하세요.",
-};
-
 export const RECOMMENDATION_EVIDENCE_STATUS_LABELS: Readonly<Record<RecommendationEvidenceStatus, string>> = {
   confirmed: "확정",
   candidate: "후보",
@@ -95,31 +51,16 @@ export const RECOMMENDATION_EVIDENCE_STAGE_LABELS: Readonly<Record<Recommendatio
   general: "일반",
 };
 
-const STATUS_REVIEW_COPY = {
-  candidate: "사용자 확인 후 확정이 필요합니다.",
-  needsReview: "보완 또는 재검토가 필요합니다.",
-} as const;
-
 export function recommendationEvidenceStatusLabel(status: RecommendationEvidenceStatus): string {
   return RECOMMENDATION_EVIDENCE_STATUS_LABELS[status];
 }
 
 export function isInternalRecommendationText(text: string): boolean {
-  const t = String(text ?? "").trim();
-  if (!t) return true;
-  return INTERNAL_TEXT_PATTERNS.some((re) => re.test(t));
+  return isInternalOrchestrationUserText(text);
 }
 
 export function sanitizeRecommendationUserText(text: string | undefined | null, maxLen = 320): string {
-  const raw = String(text ?? "").trim();
-  if (!raw || isInternalRecommendationText(raw)) return "";
-  const lines = raw
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !isInternalRecommendationText(l));
-  const joined = lines.join(" ").replace(/\s+/g, " ").trim();
-  if (!joined) return "";
-  return joined.length > maxLen ? `${joined.slice(0, maxLen)}…` : joined;
+  return sanitizeUserFacingOrchestrationText(text, maxLen);
 }
 
 function dedupeStrings(values: readonly string[]): string[] {
@@ -172,11 +113,6 @@ function resolveSourceInputsFallback(
   return desc ? [desc] : [];
 }
 
-function appendStatusReviewLines(status: RecommendationEvidenceStatus, target: string[]): void {
-  if (status === "candidate") target.push(STATUS_REVIEW_COPY.candidate);
-  if (status === "needs_review") target.push(STATUS_REVIEW_COPY.needsReview);
-}
-
 function timelineEntrySourceIds(entry: RequirementsPromptTimelineEntry): readonly string[] {
   const raw = entry as RequirementsPromptTimelineEntry & {
     readonly sourceMessageIds?: readonly string[];
@@ -215,7 +151,8 @@ export function findSourceUserInputsForTimeline(input: {
 
 export function buildUserFacingTimelineSummary(entry: RequirementsPromptTimelineEntry): string {
   const action = String(entry.action ?? "").trim();
-  if (TIMELINE_ACTION_SUMMARY[action]) return TIMELINE_ACTION_SUMMARY[action];
+  const mapped = promptTimelineUserSummary(action);
+  if (mapped) return mapped;
   const fallback =
     sanitizeRecommendationUserText(entry.fallbackText, 200) ||
     sanitizeRecommendationUserText(entry.responseText, 200);
@@ -226,8 +163,9 @@ export function buildUserFacingTimelineSummary(entry: RequirementsPromptTimeline
 export function buildUserFacingTimelineReasons(entry: RequirementsPromptTimelineEntry): readonly string[] {
   const action = String(entry.action ?? "").trim();
   const reasons: string[] = [];
-  if (TIMELINE_ACTION_SUMMARY[action]) {
-    reasons.push(TIMELINE_ACTION_SUMMARY[action]);
+  const mapped = promptTimelineUserSummary(action);
+  if (mapped) {
+    reasons.push(mapped);
   }
   const response = sanitizeRecommendationUserText(entry.responseText, 240);
   if (response && !reasons.includes(response)) reasons.push(response);
@@ -253,8 +191,9 @@ export function buildUserFacingNextActions(
 ): readonly string[] {
   const action = String(entry.action ?? "").trim();
   const next: string[] = [];
-  if (TIMELINE_ACTION_NEXT[action]) next.push(TIMELINE_ACTION_NEXT[action]);
-  appendStatusReviewLines(status, next);
+  const hint = promptTimelineNextActionHint(action);
+  if (hint) next.push(hint);
+  appendStatusReviewUserLines(status, next);
   return dedupeStrings(next);
 }
 
@@ -283,7 +222,8 @@ function timelineStatus(entry: RequirementsPromptTimelineEntry): RecommendationE
 
 function timelineTitle(entry: RequirementsPromptTimelineEntry): string {
   const action = String(entry.action ?? "").trim();
-  if (TIMELINE_ACTION_TITLE[action]) return TIMELINE_ACTION_TITLE[action];
+  const titled = promptTimelineUserTitle(action);
+  if (titled) return titled;
   if (action.includes("quick_design")) return "Quick Design 추천안";
   if (action.includes("implementation_seed")) return "구현 준비정보";
   if (action.includes("artifact")) return "기획 산출물 추천";
@@ -296,7 +236,7 @@ function buildUnresolvedForTimeline(
   status: RecommendationEvidenceStatus,
 ): string[] {
   const unresolved: string[] = [];
-  appendStatusReviewLines(status, unresolved);
+  appendStatusReviewUserLines(status, unresolved);
   if (entry.error) {
     unresolved.push(sanitizeRecommendationUserText(entry.error, 160) || "처리 중 오류가 기록되었습니다.");
   }
@@ -382,7 +322,7 @@ function itemFromArtifact(
     const line = sanitizeRecommendationUserText(orch.hubReadinessLabel, 120);
     if (line) unresolved.push(line);
   }
-  appendStatusReviewLines(status, unresolved);
+  appendStatusReviewUserLines(status, unresolved);
 
   return {
     id: `artifact-${art.id}`,
@@ -408,68 +348,43 @@ function itemsFromImplementationState(
   const out: RecommendationEvidenceItem[] = [];
   const seed = state.implementationSeedV1;
   if (seed) {
-    const status: RecommendationEvidenceStatus =
-      seed.lifecycleStatus === "confirmed"
-        ? "confirmed"
-        : seed.lifecycleStatus === "candidate"
-          ? "candidate"
-          : "needs_review";
-    const unresolved = dedupeStrings(seed.readiness.missing.map((k) => `준비 항목: ${k}`));
-    appendStatusReviewLines(status, unresolved);
+    const seedSummary = summarizeImplementationSeedForUser(seed);
     out.push({
       id: `impl-seed-${seed.updatedAt}`,
       title: "구현 준비정보",
       stage: "implementation",
-      status,
+      status: seedSummary.status,
       aiMemberLabel: "AI 구현 리드",
       createdAt: seed.updatedAt,
-      summary:
-        seed.readiness.ready
-          ? "기획 산출물을 바탕으로 구현 준비정보가 정리되었습니다."
-          : "구현 준비정보가 생성되었으나 일부 항목이 더 필요합니다.",
-      reasons: [
-        `준비도 ${Math.round(seed.readiness.score * 100)}%`,
-        "기획 산출물과 슬롯을 기준으로 구현 관점으로 정리했습니다.",
-      ],
+      summary: seedSummary.summary,
+      reasons: [...seedSummary.reasons],
       sourceInputs: findSourceInputsNearCreatedAt(context.messages, seed.createdAt, context.projectDescription),
       referencedArtifacts: ["기획 산출물"],
-      unresolvedItems: unresolved,
-      nextActions:
-        status === "candidate"
-          ? ["사용자 확정 후 구현 작업안 생성"]
-          : status === "needs_review"
-            ? ["부족 항목을 보완하세요."]
-            : [],
+      unresolvedItems: [...seedSummary.unresolvedItems],
+      nextActions: [...seedSummary.nextActions],
       sourceTraceIds: ["implementationSeedV1"],
     });
   }
 
   const draft = state.implementationWorkPlanDraftV1;
   if (draft?.implementationScope.length) {
-    const status: RecommendationEvidenceStatus = draft.status === "confirmed" ? "confirmed" : "candidate";
-    const planUnresolved = dedupeStrings(
-      draft.blockers.map((b) => sanitizeRecommendationUserText(b, 120)).filter(Boolean),
-    );
-    appendStatusReviewLines(status, planUnresolved);
+    const planSummary = summarizeImplementationWorkPlanDraftForUser(draft);
     out.push({
       id: `impl-plan-${draft.updatedAt}`,
       title: "구현 작업안",
       stage: "implementation",
-      status,
+      status: planSummary.status,
       aiMemberLabel: "AI 구현 리드",
       createdAt: draft.updatedAt,
-      summary: `구현 범위 ${draft.implementationScope.length}건을 작업안으로 정리했습니다.`,
-      reasons: draft.implementationApproach
-        .slice(0, 3)
-        .map((s) => sanitizeRecommendationUserText(s, 120))
-        .filter(Boolean),
+      summary: planSummary.summary,
+      reasons: [...planSummary.reasons],
       sourceInputs: dedupeStrings([
         ...draft.referenceArtifacts.map((r) => r.title),
         ...findSourceInputsNearCreatedAt(context.messages, draft.createdAt, context.projectDescription),
       ]).slice(0, 3),
       referencedArtifacts: draft.referenceArtifacts.map((r) => r.title),
-      unresolvedItems: planUnresolved,
-      nextActions: draft.status === "draft" ? ["구현 작업안 확정", "구현 작업안 초안을 확인하세요."] : [],
+      unresolvedItems: [...planSummary.unresolvedItems],
+      nextActions: [...planSummary.nextActions],
       sourceTraceIds: ["implementationWorkPlanDraftV1"],
     });
   }
@@ -497,12 +412,6 @@ function itemsFromImplementationState(
   }
 
   return out;
-}
-
-function isRecommendationTimelineAction(action: string): boolean {
-  return /quick_design|fast_plan|artifact|implementation_seed|generation_readiness|planning_artifact/i.test(
-    action,
-  );
 }
 
 export function buildRecommendationEvidenceItems(input: {

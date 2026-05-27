@@ -10,6 +10,7 @@ import type {
   RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
 import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
+import { isImplementationTimelineResetAction } from "@/lib/requirements/promptTimelineActionCatalog";
 
 /** 기획 단계 대화 초기화 확인 메시지(구현 파생 데이터 동시 삭제 안내). */
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
@@ -124,8 +125,7 @@ export function isImplementationPromptTimelineEntry(
   if (entry.workspaceScreenKey === "prototype_execution") return true;
   if (entry.stage === "implementation" || entry.stageGroup === "구현") return true;
   const action = String(entry.action ?? "").trim();
-  if (IMPLEMENTATION_TIMELINE_ACTION_EXACT.has(action)) return true;
-  if (IMPLEMENTATION_TIMELINE_ACTION_PREFIXES.some((p) => action.startsWith(p))) return true;
+  if (isImplementationTimelineResetAction(action)) return true;
   const responseText = String(entry.responseText ?? "");
   if (/\bmode=implementation\b/.test(responseText)) return true;
   if (/\btype=implementation[\w_]*\b/.test(responseText)) return true;

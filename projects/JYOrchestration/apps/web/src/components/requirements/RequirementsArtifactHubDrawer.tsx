@@ -40,27 +40,7 @@ import {
   pickDefaultDeliverableAssetId,
   resolveDeliverablePickerLabel,
 } from "@/lib/requirements/deliverableAssetPicker";
-
-const backdropStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 1150,
-  background: "rgba(15, 23, 42, 0.4)",
-};
-
-const panelStyle: CSSProperties = {
-  position: "fixed",
-  top: 0,
-  right: 0,
-  zIndex: 1160,
-  width: "min(420px, 100vw)",
-  height: "100%",
-  background: "#fff",
-  borderLeft: "1px solid #e2e8f0",
-  boxShadow: "-8px 0 32px rgba(15, 23, 42, 0.12)",
-  display: "flex",
-  flexDirection: "column",
-};
+import { ProjectRightDrawerShell } from "@/components/ui/ProjectRightDrawerShell";
 
 const itemRowStyle: CSSProperties = {
   display: "flex",
@@ -193,18 +173,6 @@ export function RequirementsArtifactHubDrawer({
     }
   }, [open, showVersionPicker, versionAssetId, items]);
 
-  useEffect(() => {
-    if (!open || !closeOnEscape) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, closeOnEscape, onClose]);
-
   const selectedEntries = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds],
@@ -245,14 +213,16 @@ export function RequirementsArtifactHubDrawer({
     [deliverableAssets, onExportFeedback, projectArtifacts, projectName, selectedEntries],
   );
 
-  if (!open) return null;
-
   const exportDisabled = selectedEntries.length === 0;
 
   return (
-    <>
-      <div style={backdropStyle} role="presentation" onClick={onClose} />
-      <aside style={panelStyle} aria-label="Artifact Hub">
+    <ProjectRightDrawerShell
+      open={open}
+      onClose={onClose}
+      closeOnEscape={closeOnEscape}
+      ariaLabel="Artifact Hub"
+      width="min(420px, 100vw)"
+    >
         <header
           style={{
             padding: "16px 18px",
@@ -454,8 +424,7 @@ export function RequirementsArtifactHubDrawer({
           onSelectEntry={onSelectEntry}
           onGenerate={onGenerate}
         />
-      </aside>
-    </>
+    </ProjectRightDrawerShell>
   );
 }
 

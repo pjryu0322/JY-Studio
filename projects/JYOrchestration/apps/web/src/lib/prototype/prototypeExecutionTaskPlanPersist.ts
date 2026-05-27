@@ -61,12 +61,7 @@ export function buildImplementationTaskPlanTimelineEntry(input: {
   };
 }
 
-export function appendPromptTimeline(
-  existing: readonly RequirementsPromptTimelineEntry[] | null | undefined,
-  entry: RequirementsPromptTimelineEntry,
-): RequirementsPromptTimelineEntry[] {
-  return [...(existing ?? []), entry].slice(-120);
-}
+export { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 
 export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly chat?: {

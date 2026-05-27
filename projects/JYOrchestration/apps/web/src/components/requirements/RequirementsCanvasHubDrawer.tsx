@@ -1,28 +1,8 @@
 "use client";
 
-import { useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
+import { ProjectRightDrawerShell } from "@/components/ui/ProjectRightDrawerShell";
 import type { ProjectCanvasArtifact } from "@/lib/requirements/projectCanvasHub";
-
-const backdropStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 1150,
-  background: "rgba(15, 23, 42, 0.4)",
-};
-
-const panelStyle: CSSProperties = {
-  position: "fixed",
-  top: 0,
-  right: 0,
-  zIndex: 1160,
-  width: "min(400px, 100vw)",
-  height: "100%",
-  background: "#fff",
-  borderLeft: "1px solid #e2e8f0",
-  boxShadow: "-8px 0 32px rgba(15, 23, 42, 0.12)",
-  display: "flex",
-  flexDirection: "column",
-};
 
 const statusLabel: Record<ProjectCanvasArtifact["status"], string> = {
   draft: "초안",
@@ -55,24 +35,13 @@ export function RequirementsCanvasHubDrawer({
   readonly onClose: () => void;
   readonly onSelect: (item: ProjectCanvasArtifact) => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <>
-      <div style={backdropStyle} role="presentation" onClick={onClose} />
-      <aside style={panelStyle} aria-label="Canvas Hub">
+    <ProjectRightDrawerShell
+      open={open}
+      onClose={onClose}
+      ariaLabel="Canvas Hub"
+      width="min(400px, 100vw)"
+    >
         <header
           style={{
             padding: "16px 18px",
@@ -111,8 +80,7 @@ export function RequirementsCanvasHubDrawer({
             </ul>
           )}
         </div>
-      </aside>
-    </>
+    </ProjectRightDrawerShell>
   );
 }
 

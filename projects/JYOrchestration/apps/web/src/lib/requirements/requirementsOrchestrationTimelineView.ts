@@ -4,16 +4,15 @@
 
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
+  isOrchestrationTraceTimelineAction,
+  ORCHESTRATION_TIMELINE_ACTIONS,
+} from "@/lib/requirements/promptTimelineActionCatalog";
+import {
   orchestrationTimelineGroupForAction,
   type OrchestrationTimelineGroup,
 } from "@/lib/requirements/requirementsOrchestrationTimeline";
 
-export const ORCHESTRATION_TIMELINE_ACTIONS = new Set([
-  "intentRouterGuard",
-  "orchestrationRecovery",
-  "orchestrationClarification",
-  "orchestrationRecommendation",
-]);
+export { ORCHESTRATION_TIMELINE_ACTIONS };
 
 export type OrchestrationTimelineParsedDetail = Readonly<{
   readonly routerMode?: string;
@@ -44,7 +43,7 @@ export function isOrchestrationTraceTimelineEntry(
 ): boolean {
   if (!entry) return false;
   if (entry.orchestrationTraceGroup) return true;
-  return ORCHESTRATION_TIMELINE_ACTIONS.has(String(entry.action ?? ""));
+  return isOrchestrationTraceTimelineAction(String(entry.action ?? ""));
 }
 
 function pickTimelineField(text: string, key: string): string | undefined {
