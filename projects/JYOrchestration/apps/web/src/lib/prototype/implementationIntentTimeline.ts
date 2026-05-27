@@ -29,6 +29,51 @@ export function buildImplementationIntentRoutedTimelineEntry(input: {
   };
 }
 
+export function buildImplementationActionExecutedTimelineEntry(input: {
+  readonly actionId: ImplementationActionId;
+  readonly classification: ImplementationIntentClassification;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const c = input.classification;
+  const now = input.nowIso ?? new Date().toISOString();
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: "implementation_action_executed",
+    source: c.routerSource === "llm" ? "openai" : "platform",
+    routingDecision: input.actionId,
+    responseText: [
+      "type=implementation_action_executed",
+      `actionId=${input.actionId}`,
+      `routerSource=${c.routerSource}`,
+      `confidence=${c.confidence}`,
+      `executionIntent=${c.executionIntent}`,
+      `actionInvocationStrength=${c.actionInvocationStrength}`,
+    ].join(" "),
+    createdAt: now,
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
+export function buildImplementationActionRouteTimelineEntries(input: {
+  readonly actionId: ImplementationActionId;
+  readonly classification: ImplementationIntentClassification;
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  return [
+    buildImplementationIntentRoutedTimelineEntry({
+      classification: input.classification,
+      nowIso: input.nowIso,
+    }),
+    buildImplementationActionExecutedTimelineEntry({
+      actionId: input.actionId,
+      classification: input.classification,
+      nowIso: input.nowIso,
+    }),
+  ];
+}
+
 export function buildImplementationActionGateBlockedTimelineEntry(input: {
   readonly actionId: ImplementationActionId;
   readonly reason: string;

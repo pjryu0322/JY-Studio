@@ -106,6 +106,32 @@ export function extractRulesFromTextForTurn(text: string): ImplementationExtract
   return extractRulesFromText(text);
 }
 
+export function normalizeAndDedupeImplementationExtractedRules(
+  rules: readonly ImplementationExtractedRule[],
+): ImplementationExtractedRule[] {
+  const seen = new Set<string>();
+  const out: ImplementationExtractedRule[] = [];
+  for (const row of rules) {
+    const label = String(row.label ?? "").trim();
+    const value = String(row.value ?? "").trim();
+    if (!label || !value) continue;
+    const confidence =
+      row.confidence === "high" || row.confidence === "medium" || row.confidence === "low"
+        ? row.confidence
+        : "medium";
+    const key = `${label}:${value}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      label,
+      value,
+      ...(row.normalizedValue?.trim() ? { normalizedValue: row.normalizedValue.trim() } : {}),
+      confidence,
+    });
+  }
+  return out;
+}
+
 function extractRulesFromText(text: string): ImplementationExtractedRule[] {
   const lines = text
     .split(/\n+/)
@@ -210,11 +236,15 @@ export function buildImplementationUserFeedbackPatch(input: {
   readonly text: string;
   readonly sourceMessageId: string;
   readonly nowIso?: string;
+  readonly extractedRulesOverride?: readonly ImplementationExtractedRule[];
 }): ImplementationUserFeedbackPatchV1 {
   const rawText = String(input.text ?? "").trim();
   const now = input.nowIso ?? new Date().toISOString();
   const kinds = classifyImplementationUserFeedback(rawText);
-  const extractedRules = extractRulesFromText(rawText);
+  const extractedRules =
+    input.extractedRulesOverride?.length
+      ? normalizeAndDedupeImplementationExtractedRules(input.extractedRulesOverride)
+      : extractRulesFromText(rawText);
   return {
     version: IMPLEMENTATION_USER_FEEDBACK_PATCH_VERSION,
     id: `impl-fb-${now.replace(/[:.]/g, "")}-${input.sourceMessageId.slice(-8)}`,

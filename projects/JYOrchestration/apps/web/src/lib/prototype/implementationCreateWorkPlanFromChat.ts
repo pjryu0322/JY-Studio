@@ -1,7 +1,5 @@
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import { buildImplementationIntentRoutedTimelineEntry } from "@/lib/prototype/implementationIntentTimeline";
-import type { ImplementationIntentClassification } from "@/lib/prototype/implementationIntentRouterTypes";
 import { buildImplementationRouterAssistantReply } from "@/lib/prototype/implementationRouterMessages";
 import {
   hasImplementationWorkPlanDraftMessage,
@@ -31,12 +29,7 @@ export type CreateWorkPlanFromChatInput = Readonly<{
   envOk: boolean;
   designOk: boolean;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[];
-  classification?: ImplementationIntentClassification | null;
 }>;
-
-function timelineForClassification(classification: ImplementationIntentClassification | null | undefined) {
-  return classification ? [buildImplementationIntentRoutedTimelineEntry({ classification })] : [];
-}
 
 /** 구현 작업안 초안 생성(칩과 동일) 또는 이후 프로토타입 작업계획 생성으로 분기. */
 export function buildCreateWorkPlanFromChatOperationalResult(
@@ -65,7 +58,6 @@ export function buildCreateWorkPlanFromChatOperationalResult(
       return {
         kind: "assistant_reply",
         aiMessage: buildImplementationRouterAssistantReply({ content: result.message }),
-        timelineEntries: timelineForClassification(input.classification),
       };
     }
 
@@ -75,7 +67,6 @@ export function buildCreateWorkPlanFromChatOperationalResult(
         aiMessage: buildImplementationRouterAssistantReply({
           content: "이미 구현 작업안 초안이 생성되어 있습니다. 아래 초안을 확인한 뒤 「구현 작업안 확정」으로 진행해 주세요.",
         }),
-        timelineEntries: timelineForClassification(input.classification),
       };
     }
 
@@ -87,7 +78,6 @@ export function buildCreateWorkPlanFromChatOperationalResult(
       kind: "apply_conversation",
       messages,
       orchestration,
-      timelineEntries: timelineForClassification(input.classification),
     };
   }
 
@@ -96,8 +86,6 @@ export function buildCreateWorkPlanFromChatOperationalResult(
     aiMessage: buildImplementationRouterAssistantReply({
       content: "요청을 확인했습니다. 프로토타입 작업계획(Work Unit) 생성을 시작합니다.",
     }),
-    timelineEntries: timelineForClassification(input.classification),
     afterPersist: "start_prototype_work_plan",
   };
 }
-

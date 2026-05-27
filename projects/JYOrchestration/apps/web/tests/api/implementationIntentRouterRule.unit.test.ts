@@ -22,4 +22,12 @@ describe("classifyImplementationIntentByRule", () => {
     expect(c?.requiresPreActionPatch).toBe(true);
     expect(c?.extractedRules.length).toBeGreaterThan(0);
   });
+
+  it("does not execute question-like work plan phrases", () => {
+    expect(classifyImplementationIntentByRule("구현 작업안 생성 기준을 설명해줘")).toBeNull();
+    expect(classifyImplementationIntentByRule("작업계획 생성 방법 알려줘")).toBeNull();
+    expect(classifyImplementationIntentByRule("구현 작업안 생성 가능해?")).toBeNull();
+    expect(classifyImplementationIntentByRule("구현 작업안 생성 방향을 먼저 추천해줘")).toBeNull();
+    expect(classifyImplementationIntentByRule("구현 작업안 생성해줘")?.shouldExecuteAction).toBe(true);
+  });
 });

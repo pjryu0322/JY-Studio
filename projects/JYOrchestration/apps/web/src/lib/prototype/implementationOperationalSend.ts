@@ -11,6 +11,7 @@ import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementati
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationActionGateBlockedTimelineEntry,
+  buildImplementationActionRouteTimelineEntries,
   buildImplementationIntentRoutedTimelineEntry,
 } from "@/lib/prototype/implementationIntentTimeline";
 import type {
@@ -65,6 +66,55 @@ function buildRoutedTimeline(classification: ImplementationIntentClassification 
   return classification ? [buildImplementationIntentRoutedTimelineEntry({ classification })] : [];
 }
 
+function routeAndExecutedTimeline(
+  classification: ImplementationIntentClassification | undefined,
+  actionId: ImplementationActionId,
+): readonly RequirementsPromptTimelineEntry[] {
+  if (!classification) return [];
+  return buildImplementationActionRouteTimelineEntries({ actionId, classification });
+}
+
+function timelineOnlyAfterAction(
+  classification: ImplementationIntentClassification | undefined,
+  actionId: ImplementationActionId,
+): PrototypeExecutionOperationalSendResult {
+  return classification
+    ? { kind: "timeline_only", timelineEntries: routeAndExecutedTimeline(classification, actionId) }
+    : "handled";
+}
+
+function runHandlerWithActionTimeline(
+  handlers: ImplementationOperationalSendHandlers,
+  classification: ImplementationIntentClassification | undefined,
+  actionId: ImplementationActionId,
+  run: () => void,
+): PrototypeExecutionOperationalSendResult {
+  run();
+  return timelineOnlyAfterAction(classification, actionId);
+}
+
+function withActionRouteTimeline(
+  result: PrototypeExecutionOperationalSendResult,
+  classification: ImplementationIntentClassification | undefined,
+  actionId: ImplementationActionId,
+): PrototypeExecutionOperationalSendResult {
+  if (!classification || typeof result !== "object") return result;
+
+  const executed = routeAndExecutedTimeline(classification, actionId);
+  const routedOnly = buildRoutedTimeline(classification);
+
+  if (result.kind === "apply_conversation") {
+    return { ...result, timelineEntries: executed };
+  }
+  if (result.kind === "assistant_reply" && result.afterPersist === "start_prototype_work_plan") {
+    return { ...result, timelineEntries: executed };
+  }
+  if (result.kind === "assistant_reply") {
+    return { ...result, timelineEntries: routedOnly };
+  }
+  return result;
+}
+
 function mergeStatusQueryWithRouteTimeline(
   statusResult: PrototypeExecutionOperationalSendResult,
   classification: ImplementationIntentClassification,
@@ -86,35 +136,36 @@ function executeRoutedAction(
 ): PrototypeExecutionOperationalSendResult {
   switch (actionId) {
     case "CREATE_WORK_PLAN":
-      return buildCreateWorkPlanFromChatOperationalResult({
-        userMsg: input.userMsg,
-        requirementsStateJson: input.requirementsStateJson,
-        projectId: input.projectId,
-        projectArtifacts: input.projectArtifacts,
-        orchestration: input.orchestration,
-        slotDefinitions: input.slotDefinitions,
-        implementationSeedV1: input.implementationSeedV1,
-        implementationWorkPlanDraftV1: input.implementationWorkPlanDraftV1,
-        envOk: input.envOk,
-        designOk: input.designOk,
-        promptTimeline: input.promptTimeline,
+      return withActionRouteTimeline(
+        buildCreateWorkPlanFromChatOperationalResult({
+          userMsg: input.userMsg,
+          requirementsStateJson: input.requirementsStateJson,
+          projectId: input.projectId,
+          projectArtifacts: input.projectArtifacts,
+          orchestration: input.orchestration,
+          slotDefinitions: input.slotDefinitions,
+          implementationSeedV1: input.implementationSeedV1,
+          implementationWorkPlanDraftV1: input.implementationWorkPlanDraftV1,
+          envOk: input.envOk,
+          designOk: input.designOk,
+          promptTimeline: input.promptTimeline,
+        }),
         classification,
-      });
+        actionId,
+      );
     case "OPEN_PLANNER_PROMPT":
-      handlers.openPlannerPrompt();
-      return "handled";
+      return runHandlerWithActionTimeline(handlers, classification, actionId, () => handlers.openPlannerPrompt());
     case "OPEN_ENV_SETTINGS":
-      handlers.openEnvSettings();
-      return "handled";
+      return runHandlerWithActionTimeline(handlers, classification, actionId, () => handlers.openEnvSettings());
     case "SHOW_ARTIFACTS":
-      handlers.openArtifactHub();
-      return "handled";
+      return runHandlerWithActionTimeline(handlers, classification, actionId, () => handlers.openArtifactHub());
     case "DIRECT_IMPLEMENTATION_SCOPE_INPUT":
-      handlers.showToast("아래 입력란에 구현 범위·요구사항을 적고 전송해 주세요.");
-      handlers.focusChatInput();
-      return "handled";
+      return runHandlerWithActionTimeline(handlers, classification, actionId, () => {
+        handlers.showToast("아래 입력란에 구현 범위·요구사항을 적고 전송해 주세요.");
+        handlers.focusChatInput();
+      });
     default:
-      return "handled";
+      return timelineOnlyAfterAction(classification, actionId);
   }
 }
 
@@ -143,13 +194,14 @@ function resolveRoutedInput(
         text: input.text,
         sourceMessageId: sourceId,
         nowIso,
+        extractedRulesOverride: route.extractedRules,
       });
       handlers.persistRequirementPatch(patch);
       handlers.startWorkPlanGeneration();
       return {
         kind: "assistant_reply",
         aiMessage: buildImplementationUserFeedbackAppliedMessage({ patch, envOk: input.envOk }),
-        timelineEntries: buildRoutedTimeline(route.classification),
+        timelineEntries: routeAndExecutedTimeline(route.classification, route.actionId),
       };
     }
     case "gate_blocked":

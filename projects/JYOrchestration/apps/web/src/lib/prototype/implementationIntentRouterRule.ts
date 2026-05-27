@@ -1,5 +1,9 @@
 import type { ImplementationIntentClassification } from "@/lib/prototype/implementationIntentRouterTypes";
 import { extractRulesFromTextForTurn } from "@/lib/prototype/implementationUserFeedback";
+import {
+  isExplicitWorkPlanExecuteUtterance,
+  isQuestionLikeWorkPlanUtterance,
+} from "@/lib/prototype/implementationWorkPlanUtteranceGuards";
 
 const DEFER_OR_REVIEW_BEFORE_PLAN =
   /생성\s*전|만들\s*기\s*전|하기\s*전에|나중에\s*(만들|생성)|먼저\s*검토|누락.*검토|검토해\s*줘|확인\s*후\s*(생성|만들)/i;
@@ -45,7 +49,12 @@ export function classifyImplementationIntentByRule(text: string): Implementation
   const rules = extractRulesFromTextForTurn(raw);
   const workPlan = wantsWorkPlanAction(raw);
 
-  if (workPlan && rules.length > 0 && !DEFER_OR_REVIEW_BEFORE_PLAN.test(raw)) {
+  if (
+    workPlan &&
+    rules.length > 0 &&
+    !DEFER_OR_REVIEW_BEFORE_PLAN.test(raw) &&
+    !isQuestionLikeWorkPlanUtterance(raw)
+  ) {
     const highRules = rules.filter((r) => r.confidence === "high");
     return baseClassification(
       {
@@ -66,6 +75,12 @@ export function classifyImplementationIntentByRule(text: string): Implementation
   }
 
   if (workPlan && raw.length <= 120) {
+    if (isQuestionLikeWorkPlanUtterance(raw)) {
+      return null;
+    }
+    if (!isExplicitWorkPlanExecuteUtterance(raw)) {
+      return null;
+    }
     return baseClassification(
       {
         intentType: "orchestration_action",

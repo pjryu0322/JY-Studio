@@ -5,6 +5,10 @@ import {
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ImplementationActionId } from "@/lib/prototype/implementationIntentRouterTypes";
 import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  isQuestionLikeWorkPlanUtterance,
+  matchesExplicitWorkPlanExecutePattern,
+} from "@/lib/prototype/implementationWorkPlanUtteranceGuards";
 
 const MAX_ALIAS_LENGTH = 48;
 
@@ -46,6 +50,7 @@ export function detectImplementationActionAlias(input: {
   const raw = String(input.text ?? "").trim();
   if (!raw || raw.length > MAX_ALIAS_LENGTH) return null;
   if (DEFER_OR_CONDITIONAL.test(raw)) return null;
+  if (isQuestionLikeWorkPlanUtterance(raw)) return null;
 
   const normalized = normalizeAliasText(raw);
   if (EXACT_LABEL_TO_ACTION[normalized]) return EXACT_LABEL_TO_ACTION[normalized];
@@ -55,21 +60,20 @@ export function detectImplementationActionAlias(input: {
     const chip = label.trim();
     if (!chip || chip.length > MAX_ALIAS_LENGTH) continue;
     const chipNorm = normalizeAliasText(chip);
-    if (
-      chipNorm === normalized ||
-      normalized.startsWith(chipNorm) ||
-      normalized.startsWith(`${chipNorm}해`)
-    ) {
+    if (chipNorm === normalized) {
       const mapped = EXACT_LABEL_TO_ACTION[chip] ?? EXACT_LABEL_TO_ACTION[chipNorm];
       if (mapped) return mapped;
     }
+    const mapped = EXACT_LABEL_TO_ACTION[chip] ?? EXACT_LABEL_TO_ACTION[chipNorm];
+    if (
+      mapped === "CREATE_WORK_PLAN" &&
+      (normalized.startsWith(`${chipNorm}해`) || matchesExplicitWorkPlanExecutePattern(raw))
+    ) {
+      return mapped;
+    }
   }
 
-  if (
-    /^(구현\s*)?작업\s*안\s*(초안\s*)?(생성|만들|수립)(해\s*줘|해주|요)?$/i.test(
-      normalized.replace(/\s/g, ""),
-    )
-  ) {
+  if (matchesExplicitWorkPlanExecutePattern(raw)) {
     return "CREATE_WORK_PLAN";
   }
 

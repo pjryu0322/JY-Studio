@@ -59,6 +59,10 @@ export type PrototypeExecutionOperationalSendResult =
       messages: readonly RequirementsMessage[];
       timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
       orchestration?: PrototypeExecutionOrchestrationPersistInput;
+    }>
+  | Readonly<{
+      kind: "timeline_only";
+      timelineEntries: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
     }>;
 
 export function usePrototypeExecutionSingleChat({
@@ -297,6 +301,20 @@ export function usePrototypeExecutionSingleChat({
         currentSlotKey,
         bootstrapTimeline: operational.timelineEntries,
         orchestration: operational.orchestration,
+      });
+      return;
+    }
+    if (operational && typeof operational === "object" && operational.kind === "timeline_only") {
+      setConversationMessages((prev) => {
+        const persisted = filterPersistedPrototypeExecutionMessages(prev);
+        onPersistStateJson({
+          messages: persisted,
+          slots,
+          answers,
+          currentSlotKey,
+          bootstrapTimeline: operational.timelineEntries,
+        });
+        return persisted;
       });
       return;
     }

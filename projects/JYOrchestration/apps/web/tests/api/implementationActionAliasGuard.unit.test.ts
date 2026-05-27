@@ -12,6 +12,12 @@ describe("detectImplementationActionAlias", () => {
     expect(detectImplementationActionAlias({ text: "작업안 생성 전에 검토해 줘" })).toBeNull();
   });
 
+  it("skips question-like alias phrases", () => {
+    expect(detectImplementationActionAlias({ text: "작업계획 생성 방법 알려줘" })).toBeNull();
+    expect(detectImplementationActionAlias({ text: "구현 작업안 생성 기준 설명해줘" })).toBeNull();
+    expect(detectImplementationActionAlias({ text: "구현 작업안 생성 가능해?" })).toBeNull();
+  });
+
   it("maps visible chip labels from bootstrap", () => {
     expect(
       detectImplementationActionAlias({
