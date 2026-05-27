@@ -10,6 +10,11 @@ import {
 
 import { IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
+  IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
+  PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
+  PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP,
+} from "@/lib/requirements/implementationSeed";
+import {
   DATA_MODEL_DRAFT_CHIP,
   DB_INTEGRATION_REVIEW_CHIP,
   MOCK_IMPLEMENTATION_CHIP,
@@ -24,6 +29,7 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
   readonly returnToPlanningStage?: () => void;
+  readonly showImplementationSeedReadinessCheck?: () => void;
   readonly focusComposerForScopeEdit: () => void;
   readonly showRoleCheckDetails: () => void;
   readonly generateImplementationWorkPlanDraft: () => void;
@@ -62,7 +68,21 @@ export function tryHandlePrototypeExecutionChip(
       handlers.openArtifactHub();
       return true;
     case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
+    case PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP:
+    case IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP:
+    case PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP:
+      if (t === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP && handlers.showImplementationSeedReadinessCheck) {
+        handlers.showImplementationSeedReadinessCheck();
+        return true;
+      }
       if (handlers.returnToPlanningStage) {
+        if (t === IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP) {
+          handlers.showToast("기획단계에서 Seed 후보를 확인·확정해 주세요.");
+        } else if (t === PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP) {
+          handlers.showToast("기획단계에서 AI팀이 구현 Seed 후보 생성을 실행해 주세요.");
+        } else if (t === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP) {
+          handlers.showToast("기획단계에서 구현 준비도를 점검해 주세요.");
+        }
         handlers.returnToPlanningStage();
       } else {
         handlers.showToast("기획단계 화면으로 이동해 주세요.");

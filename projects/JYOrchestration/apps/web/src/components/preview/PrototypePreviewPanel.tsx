@@ -55,6 +55,7 @@ import {
   buildMockImplementationModeResult,
 } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
+import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
@@ -1139,6 +1140,15 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState],
   );
 
+  const planningSlotDefinitions = useMemo(
+    () =>
+      buildDynamicServicePlanningSlotDefinitions({
+        projectName: projectName.trim() || "프로젝트",
+        projectDescription: projectDescription ?? "",
+      }),
+    [projectName, projectDescription],
+  );
+
   const implementationBootstrapInput = useMemo(
     () =>
       buildImplementationBootstrapInput({
@@ -1151,6 +1161,9 @@ export function PrototypePreviewPanel({
         projectArtifacts: executionArtifacts.projectArtifacts,
         artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
         designOk: canRequestGeneration.designOk,
+        orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+        slotDefinitions: planningSlotDefinitions,
+        implementationSeedV1: parsedRequirementsState.implementationSeedV1,
       }),
     [
       executionEnvLoading,
@@ -1161,6 +1174,9 @@ export function PrototypePreviewPanel({
       envSettingsHref,
       featureDraftTitles,
       executionArtifacts,
+      parsedRequirementsState.singleChatOrchestrationV1,
+      parsedRequirementsState.implementationSeedV1,
+      planningSlotDefinitions,
     ],
   );
 
@@ -1399,15 +1415,6 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
-  const planningSlotDefinitions = useMemo(
-    () =>
-      buildDynamicServicePlanningSlotDefinitions({
-        projectName: projectName.trim() || "프로젝트",
-        projectDescription: projectDescription ?? "",
-      }),
-    [projectName, projectDescription],
-  );
-
   const generateImplementationWorkPlanDraft = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -1602,11 +1609,43 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const showImplementationSeedReadinessCheck = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const result = buildPlanningImplementationSeedCheckResult({
+      projectId: pid,
+      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+      definitions: planningSlotDefinitions,
+      promptTimeline: parsedRequirementsState.promptTimeline,
+    });
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+    const nextMessages = [...(resolved.messages ?? []), result.message];
+    executionSingleChat.applyPersistedMessages(nextMessages);
+    void persistChatToDb(
+      {
+        messages: nextMessages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      },
+      result.orchestrationPatch,
+    );
+  }, [
+    projectId,
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.promptTimeline,
+    planningSlotDefinitions,
+    requirementsStateJson,
+    executionSingleChat,
+    persistChatToDb,
+  ]);
+
   const handleImplementationChip = useCallback(
     (label: string) =>
       tryHandlePrototypeExecutionChip(label, {
         openEnvSettings: () => window.location.assign(envSettingsHref),
         openArtifactHub: () => setArtifactHubOpen(true),
+        showImplementationSeedReadinessCheck,
         returnToPlanningStage: () => {
           const pid = projectId.trim();
           if (!pid) return;
@@ -1661,6 +1700,7 @@ export function PrototypePreviewPanel({
       }),
     [
       envSettingsHref,
+      showImplementationSeedReadinessCheck,
       showRoleCheckDetails,
       confirmImplementationTaskPlan,
       generateImplementationWorkPlanDraft,

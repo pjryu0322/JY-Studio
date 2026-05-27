@@ -304,7 +304,7 @@ export function formatImplementationCandidateRefineApplyResultMessage(input: {
     input.mode === "all" ? "전체 보완안 적용 결과입니다." : "선택 보완안 적용 결과입니다.";
 
   const appliedLines = input.appliedKeys.map(
-    (key) => `- ${implementationCandidateLabelForKey(key)}: partial 반영`,
+    (key) => `- ${implementationCandidateLabelForKey(key)}: 후보(partial) 반영 — 아직 확정 아님`,
   );
   const remainingLines = input.remainingKeys.map(
     (key) => `- ${implementationCandidateLabelForKey(key)}`,
@@ -315,14 +315,16 @@ export function formatImplementationCandidateRefineApplyResultMessage(input: {
     "",
     "적용 요약:",
     `- 적용 대상: ${input.summary.targetCount}개`,
-    `- partial 반영: ${input.summary.appliedCount}개`,
-    `- 추가 확인 유지: ${input.summary.needsConfirmationCount}개`,
+    `- 후보(partial) 반영: ${input.summary.appliedCount}개 (Implementation Seed 확정과 별개)`,
+    `- 추가 검토 권장: ${input.summary.needsConfirmationCount}개`,
     "",
     "적용 항목:",
     ...(appliedLines.length ? appliedLines : ["- (적용된 항목 없음)"]),
     "",
-    "남은 확인 항목:",
-    ...(remainingLines.length ? remainingLines : ["- (남은 확인 항목 없음)"]),
+    "아직 검토·확정이 필요한 항목:",
+    ...(remainingLines.length ? remainingLines : ["- (별도 검토 항목 없음)"]),
+    "",
+    "보완안 partial 반영은 구현 Seed 확정을 대체하지 않습니다. 구현 작업안 초안 생성 전 Seed 후보를 확정해 주세요.",
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");

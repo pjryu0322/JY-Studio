@@ -17,7 +17,9 @@ import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/pr
 import {
   buildImplementationSeedFromPlanning,
   buildImplementationSeedUsedForWorkPlanTimelineEntry,
+  buildImplementationWorkPlanDraftBlockedBySeedMessage,
   evaluateImplementationSeedReadiness,
+  summarizeImplementationSeedStatus,
   type ImplementationSeedV1,
 } from "@/lib/requirements/implementationSeed";
 import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
@@ -108,10 +110,14 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
   });
 
   if (!seed?.readiness.ready) {
+    const summary = summarizeImplementationSeedStatus({
+      orchestration,
+      definitions,
+      lifecycleStatus: input.implementationSeedV1?.lifecycleStatus,
+    });
     return {
       kind: "blocked",
-      message:
-        "구현 작업안 초안을 생성하려면 기획단계에서 Implementation Seed 준비도를 충족해 주세요. [구현 준비도 점검] 또는 [AI팀이 구현 Seed 후보 생성] 후 슬롯을 확정해 주세요.",
+      message: buildImplementationWorkPlanDraftBlockedBySeedMessage(summary),
     };
   }
 

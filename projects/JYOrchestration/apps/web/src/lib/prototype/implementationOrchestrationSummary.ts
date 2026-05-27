@@ -12,8 +12,17 @@ import {
   collectReferencePlanningArtifacts,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
   implementationBlockedEntryChips,
-  implementationEntryChips as workPlanDraftEntryChips,
+  implementationEntryChipsForState,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  formatImplementationSeedStatusSummaryLines,
+  summarizeImplementationSeedStatus,
+  type ImplementationSeedV1,
+} from "@/lib/requirements/implementationSeed";
+import type {
+  RequirementsSingleChatOrchestrationStateV1,
+  SingleChatOrchestrationSlotDefinition,
+} from "@/lib/requirements/singleChatOrchestrationTypes";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
@@ -68,8 +77,33 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly projectArtifacts: readonly ProjectArtifact[];
   readonly artifactOrchestrationV1: ArtifactOrchestrationStateV1 | null | undefined;
   readonly designOk: boolean;
+  readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
+  readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly nowIso?: string;
 }>;
+
+function resolveSeedReadyForEntry(input: ImplementationOrchestrationSummaryInput): boolean {
+  if (input.implementationSeedV1?.readiness?.ready) return true;
+  if (!input.slotDefinitions?.length) return false;
+  return summarizeImplementationSeedStatus({
+    orchestration: input.orchestration,
+    definitions: input.slotDefinitions,
+    lifecycleStatus: input.implementationSeedV1?.lifecycleStatus,
+  }).ready;
+}
+
+export function implementationEntryChipsForBootstrap(
+  input: ImplementationOrchestrationSummaryInput,
+): readonly string[] {
+  const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
+  return implementationEntryChipsForState({
+    seedReady: resolveSeedReadyForEntry(input),
+    envOk: input.envOk,
+    designOk: input.designOk,
+    hasReferenceArtifacts: referenceArtifacts.length > 0,
+  });
+}
 
 export type ImplementationBootstrapBundle = Readonly<{
   readonly messages: readonly RequirementsMessage[];
@@ -130,9 +164,9 @@ function developerScmReferenceLine(input: ImplementationOrchestrationSummaryInpu
   return "SCM 점검 결과, 환경설정이 필요합니다.";
 }
 
-/** @deprecated — `implementationWorkPlanDraft.implementationEntryChips` */
-export function implementationEntryChips(_input: ImplementationOrchestrationSummaryInput): readonly string[] {
-  return workPlanDraftEntryChips();
+/** @deprecated — `implementationEntryChipsForBootstrap` */
+export function implementationEntryChips(input: ImplementationOrchestrationSummaryInput): readonly string[] {
+  return implementationEntryChipsForBootstrap(input);
 }
 
 export function implementationTaskPlanConfirmedChips(): readonly string[] {
@@ -261,12 +295,26 @@ function buildLeadDeveloperBootstrapMessage(input: {
   const referenceArtifacts = collectReferencePlanningArtifacts(input.summaryInput.projectArtifacts);
   const scmRef = developerScmReferenceLine(input.summaryInput);
   const refLines = referenceArtifacts.map((r, i) => `${i + 1}. ${r.title}`);
+  const seedStatusLines =
+    input.summaryInput.slotDefinitions?.length
+      ? formatImplementationSeedStatusSummaryLines({
+          summary: summarizeImplementationSeedStatus({
+            orchestration: input.summaryInput.orchestration,
+            definitions: input.summaryInput.slotDefinitions,
+            lifecycleStatus: input.summaryInput.implementationSeedV1?.lifecycleStatus,
+          }),
+          referenceArtifactCount: referenceArtifacts.length,
+          envOk: input.summaryInput.envOk,
+        })
+      : [];
   const lines = [
     IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
     "",
     "참조 기획 산출물:",
     ...refLines,
     "",
+    ...seedStatusLines,
+    ...(seedStatusLines.length ? [""] : []),
     ...roleCheckSummaryLines(input.roleCheckSummary),
     ...(scmRef ? ["", scmRef] : []),
     "",
@@ -286,7 +334,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
       internalType: IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
       implementationBootstrapKind: "lead_developer_summary",
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...workPlanDraftEntryChips()],
+      interviewSuggestions: [...implementationEntryChipsForBootstrap(input.summaryInput)],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1000,
     },

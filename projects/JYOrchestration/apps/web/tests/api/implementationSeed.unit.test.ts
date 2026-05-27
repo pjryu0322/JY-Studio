@@ -3,6 +3,7 @@ import {
   buildImplementationSeedFromPlanning,
   buildImplementationSeedCandidateSlotPatches,
   evaluateImplementationSeedReadiness,
+  summarizeImplementationSeedStatus,
   IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
   IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
   PRODUCT_LEVEL_IMPLEMENTATION_SEED_SLOT_SUFFIXES,
@@ -56,6 +57,25 @@ describe("product-level implementation seed slots", () => {
     for (const suffix of PRODUCT_LEVEL_IMPLEMENTATION_SEED_SLOT_SUFFIXES) {
       expect(findOrchestrationSlotKeysBySuffix(defs, suffix).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("implementation seed status summary", () => {
+  it("summarizes required candidate vs confirmed counts", () => {
+    const definitions = definitionsForProject();
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const summary = summarizeImplementationSeedStatus({ orchestration, definitions });
+    expect(summary.requiredTotal).toBe(IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length);
+    expect(summary.ready).toBe(false);
+    expect(summary.requiredEmpty).toBeGreaterThan(0);
+  });
+
+  it("reports ready when required slots are confirmed", () => {
+    const definitions = definitionsForProject();
+    const orchestration = orchestrationWithConfirmedSeedSlots(definitions);
+    const summary = summarizeImplementationSeedStatus({ orchestration, definitions });
+    expect(summary.ready).toBe(true);
+    expect(summary.requiredConfirmed).toBe(IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length);
   });
 });
 

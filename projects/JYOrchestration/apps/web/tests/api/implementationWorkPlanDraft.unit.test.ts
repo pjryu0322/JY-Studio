@@ -21,6 +21,7 @@ import {
   collectReferencePlanningArtifacts,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
   implementationEntryChips,
+  implementationEntryChipsForState,
   implementationWorkPlanDraftChips,
   WORK_PLAN_DRAFT_GENERATE_CHIP,
 } from "@/lib/prototype/implementationWorkPlanDraft";
@@ -125,11 +126,27 @@ describe("implementation entry CTA", () => {
     expect(new Set(chips).size).toBe(chips.length);
   });
 
-  it("shows draft generation CTA before implementation work plan confirmation", () => {
-    const chips = implementationEntryChips();
+  it("shows draft generation CTA when seed and env are ready", () => {
+    const chips = implementationEntryChipsForState({
+      seedReady: true,
+      envOk: true,
+      designOk: true,
+      hasReferenceArtifacts: true,
+    });
     expect(chips).toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
     expect(chips).not.toContain("구현 작업안 확정");
     expect(chips).not.toContain("구현 범위 수정");
+  });
+
+  it("hides draft generation CTA when seed is not ready", () => {
+    const chips = implementationEntryChipsForState({
+      seedReady: false,
+      envOk: true,
+      designOk: true,
+      hasReferenceArtifacts: true,
+    });
+    expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
+    expect(chips).toContain("구현 준비도 점검");
   });
 
   it("shows confirm and revise CTAs after implementation draft is generated", () => {

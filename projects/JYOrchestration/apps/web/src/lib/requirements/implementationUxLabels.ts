@@ -20,6 +20,7 @@ export const PLANNING_INFO_REFINE_LABEL = "기획정보 보완" as const;
 export const PLANNING_IMPLEMENTATION_SEED_CHECK_LABEL = "구현 준비도 점검" as const;
 export const PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_LABEL = "부족한 기획정보 보완" as const;
 export const PLANNING_IMPLEMENTATION_SEED_GENERATE_LABEL = "AI팀이 구현 Seed 후보 생성" as const;
+export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL = "Seed 후보 확인/확정" as const;
 
 /** Quick Design 확정 후 — 준비 완료 시 칩 순서 */
 export const QUICK_DESIGN_POST_CONFIRM_CHIPS_READY: readonly string[] = [

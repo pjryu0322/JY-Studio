@@ -3,10 +3,14 @@ import {
   buildImplementationSeedFromPlanning,
   buildPlanningImplementationSeedCandidateTimelineEntry,
   buildPlanningImplementationSeedEvaluatedTimelineEntry,
+  formatImplementationSeedCandidateGeneratedMessage,
   formatImplementationSeedReadinessMessage,
   evaluateImplementationSeedReadiness,
+  IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
+  summarizeImplementationSeedStatus,
   type ImplementationSeedV1,
 } from "@/lib/requirements/implementationSeed";
+import { IMPLEMENTATION_STAGE_NAVIGATE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type {
@@ -196,15 +200,15 @@ export function buildPlanningImplementationSeedGenerateCandidateResult(input: {
     nowIso: now,
   });
 
-  const content = [
-    "현재 슬롯·산출물을 기반으로 Implementation Seed 후보를 생성했습니다.",
-    "",
-    `상태: ${seed.lifecycleStatus} (자동 confirmed 아님)`,
-    `준비도: ${Math.round(seed.readiness.score * 100)}%`,
-    `반영 슬롯: ${touchedGapKeys.length}개`,
-    "",
-    "슬롯에서 후보를 검토한 뒤 확정하면 구현 작업안 초안 생성에 사용할 수 있습니다.",
-  ].join("\n");
+  const summary = summarizeImplementationSeedStatus({
+    orchestration: nextOrch,
+    definitions: input.definitions,
+    lifecycleStatus: "candidate",
+  });
+  const content = formatImplementationSeedCandidateGeneratedMessage({
+    summary,
+    touchedSlotCount: touchedGapKeys.length,
+  });
 
   const timeline = appendPromptTimeline(
     input.promptTimeline,
@@ -226,7 +230,12 @@ export function buildPlanningImplementationSeedGenerateCandidateResult(input: {
       createdAt: now,
       meta: {
         internalType: PLANNING_IMPLEMENTATION_SEED_NOTICE_INTERNAL_TYPE,
-        interviewSuggestions: ["구현 준비도 점검", "부족한 기획정보 보완", "구현 단계로 이동"],
+        interviewSuggestions: [
+          "구현 준비도 점검",
+          IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
+          IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+          "환경설정 열기",
+        ],
         interviewAllowCustomInput: true,
       },
     }),

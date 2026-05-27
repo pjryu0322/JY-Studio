@@ -161,7 +161,8 @@ describe("implementationCandidateRefineResult", () => {
 
     expect(turn.assistantMessage).toContain("선택 보완안 적용 결과");
     expect(turn.assistantMessage).toContain("적용 항목:");
-    expect(turn.assistantMessage).toContain("남은 확인 항목:");
+    expect(turn.assistantMessage).toContain("아직 검토·확정이 필요한 항목:");
+    expect(turn.assistantMessage).toContain("Implementation Seed 확정");
     expect(turn.appliedKeys).toHaveLength(2);
     expect(implementationCandidateRefineApplyResultChips()).toContain("구현단계로 이동");
     expect(turn.interviewSuggestions).not.toContain("추천안 적용");

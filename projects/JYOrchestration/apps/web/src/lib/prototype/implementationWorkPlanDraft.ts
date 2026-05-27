@@ -1,5 +1,6 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
+  implementationSeedGateEntryChips,
   buildImplementationScopeFromSeed,
   type ActorCapabilityRow,
   type CommonDetailFeature,
@@ -313,10 +314,37 @@ export function canConfirmImplementationWorkPlanDraft(
 }
 
 export function implementationEntryChips(): readonly string[] {
+  return implementationEntryChipsForState({
+    seedReady: true,
+    envOk: true,
+    designOk: true,
+    hasReferenceArtifacts: true,
+  });
+}
+
+export function implementationEntryChipsForState(input: {
+  readonly seedReady: boolean;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly hasReferenceArtifacts: boolean;
+}): readonly string[] {
+  if (!input.hasReferenceArtifacts) {
+    return implementationBlockedEntryChips();
+  }
+  if (!input.seedReady) {
+    return implementationSeedGateEntryChips();
+  }
+  if (!input.envOk) {
+    return [
+      "환경설정 열기",
+      WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
+      "산출물 다시 보기",
+      "역할별 점검 보기",
+    ];
+  }
   return [
     WORK_PLAN_DRAFT_GENERATE_CHIP,
     "역할별 점검 보기",
-    "환경설정 열기",
     WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
     "산출물 다시 보기",
   ];

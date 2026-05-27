@@ -547,6 +547,182 @@ export function buildImplementationSeedCandidateSlotPatches(input: {
   return { slots: base, touchedGapKeys: touched };
 }
 
+export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP = "Seed 후보 확인/확정";
+
+export type ImplementationSeedStatusSummary = Readonly<{
+  readonly requiredTotal: number;
+  readonly requiredConfirmed: number;
+  readonly requiredCandidate: number;
+  readonly requiredEmpty: number;
+  readonly recommendedTotal: number;
+  readonly recommendedConfirmed: number;
+  readonly recommendedCandidate: number;
+  readonly recommendedEmpty: number;
+  readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
+  readonly readinessScore: number;
+  readonly ready: boolean;
+  readonly missingRequiredLabels: readonly string[];
+  readonly warningLabels: readonly string[];
+}>;
+
+function countGapFills(
+  snapshots: readonly ImplementationSeedSlotSnapshot[],
+  keys: readonly ImplementationSeedGapKey[],
+  fill: SlotFillLevel,
+): number {
+  const keySet = new Set(keys);
+  return snapshots.filter((s) => keySet.has(s.gapKey) && s.fill === fill).length;
+}
+
+function deriveLifecycleStatusFromSnapshots(
+  snapshots: readonly ImplementationSeedSlotSnapshot[],
+  explicit?: ImplementationSeedLifecycleStatus,
+): ImplementationSeedLifecycleStatus {
+  if (explicit === "confirmed" || explicit === "partial" || explicit === "candidate") {
+    return explicit;
+  }
+  const requiredSnaps = snapshots.filter((s) =>
+    (IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS as readonly string[]).includes(s.gapKey),
+  );
+  if (requiredSnaps.every((s) => s.fill === "confirmed")) return "confirmed";
+  if (requiredSnaps.some((s) => s.fill === "candidate")) return "candidate";
+  if (requiredSnaps.some((s) => s.fill === "confirmed")) return "partial";
+  return "candidate";
+}
+
+export function summarizeImplementationSeedStatus(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly lifecycleStatus?: ImplementationSeedLifecycleStatus;
+}): ImplementationSeedStatusSummary {
+  const snapshots = resolveImplementationSeedSlotSnapshots(input);
+  const readiness = evaluateImplementationSeedReadiness(input);
+  const lifecycleStatus = deriveLifecycleStatusFromSnapshots(snapshots, input.lifecycleStatus);
+
+  const missingRequiredLabels = readiness.missing.map((k) => IMPLEMENTATION_SEED_GAP_LABELS[k]);
+  const warningLabels = [
+    ...readiness.warnings,
+    ...snapshots
+      .filter(
+        (s) =>
+          (IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS as readonly string[]).includes(s.gapKey) &&
+          s.fill === "candidate",
+      )
+      .map((s) => `${IMPLEMENTATION_SEED_GAP_LABELS[s.gapKey]}: 후보 — 확정 필요`),
+  ];
+
+  return {
+    requiredTotal: IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length,
+    requiredConfirmed: countGapFills(snapshots, IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS, "confirmed"),
+    requiredCandidate: countGapFills(snapshots, IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS, "candidate"),
+    requiredEmpty: countGapFills(snapshots, IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS, "empty"),
+    recommendedTotal: IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS.length,
+    recommendedConfirmed: countGapFills(snapshots, IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS, "confirmed"),
+    recommendedCandidate: countGapFills(snapshots, IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS, "candidate"),
+    recommendedEmpty: countGapFills(snapshots, IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS, "empty"),
+    lifecycleStatus,
+    readinessScore: readiness.score,
+    ready: readiness.ready,
+    missingRequiredLabels,
+    warningLabels,
+  };
+}
+
+export function formatImplementationSeedLifecycleUserLabel(
+  status: ImplementationSeedLifecycleStatus,
+): string {
+  if (status === "confirmed") return "확정";
+  if (status === "partial") return "부분";
+  return "후보";
+}
+
+export function formatImplementationSeedStatusSummaryLines(input: {
+  readonly summary: ImplementationSeedStatusSummary;
+  readonly referenceArtifactCount: number;
+  readonly envOk: boolean;
+}): readonly string[] {
+  const { summary } = input;
+  const pct = Math.round(summary.readinessScore * 100);
+  const envLine = input.envOk ? "완료" : "미완료";
+  const nextTasks: string[] = [];
+  if (!summary.ready) {
+    nextTasks.push("Seed 후보 확인/확정");
+    if (summary.requiredEmpty > 0 || summary.requiredCandidate > 0) {
+      nextTasks.push("구현 준비도 점검");
+    }
+  }
+  if (!input.envOk) nextTasks.push("환경설정 완료");
+  if (summary.ready && input.envOk) nextTasks.push("구현 작업안 초안 생성");
+
+  return [
+    "기획 산출물 기준 구현 준비 상태",
+    "",
+    `참조 산출물: ${input.referenceArtifactCount}개`,
+    `Implementation Seed: ${formatImplementationSeedLifecycleUserLabel(summary.lifecycleStatus)}`,
+    `Seed 준비도: ${pct}%`,
+    `필수 Seed 항목: ${summary.requiredTotal}개 중 ${summary.requiredConfirmed}개 확정 / ${summary.requiredCandidate}개 후보 / ${summary.requiredEmpty}개 미입력`,
+    `환경설정: ${envLine}`,
+    "",
+    ...(nextTasks.length
+      ? ["다음 필요 작업:", ...nextTasks.map((t) => `- ${t}`)]
+      : ["다음 필요 작업:", "- (추가 작업 없음)"]),
+    ...(summary.missingRequiredLabels.length
+      ? ["", "미확정·누락 필수 항목:", ...summary.missingRequiredLabels.map((l) => `- ${l}`)]
+      : []),
+  ];
+}
+
+export function buildImplementationWorkPlanDraftBlockedBySeedMessage(
+  summary: ImplementationSeedStatusSummary,
+): string {
+  const lifecycleLabel = formatImplementationSeedLifecycleUserLabel(summary.lifecycleStatus);
+  const missingBlock = summary.missingRequiredLabels.length
+    ? ["미확정 필수 항목:", ...summary.missingRequiredLabels.map((l) => `- ${l}`), ""]
+    : [];
+
+  return [
+    "아직 구현 작업안 초안을 생성할 수 없습니다.",
+    "",
+    `Implementation Seed가 ${lifecycleLabel} 상태입니다.`,
+    "구현 작업안 초안 생성 전 필수 Seed 항목을 확인하고 확정해 주세요.",
+    "",
+    ...missingBlock,
+    "필요 작업:",
+    "1. 구현 준비도 점검",
+    "2. Seed 후보 확인/확정",
+    "3. 환경설정 확인",
+  ].join("\n");
+}
+
+export function formatImplementationSeedCandidateGeneratedMessage(input: {
+  readonly summary: ImplementationSeedStatusSummary;
+  readonly touchedSlotCount: number;
+}): string {
+  const lifecycleLabel = formatImplementationSeedLifecycleUserLabel(input.summary.lifecycleStatus);
+  const pct = Math.round(input.summary.readinessScore * 100);
+
+  return [
+    "AI가 구현 Seed 후보를 생성했습니다.",
+    "",
+    `상태: ${lifecycleLabel}(candidate)`,
+    `준비도: ${pct}%`,
+    `반영 항목: ${input.touchedSlotCount}개`,
+    "",
+    "이 항목은 아직 확정 상태가 아닙니다.",
+    "구현 작업안 초안 생성 전 Seed 후보를 검토하고 확정해 주세요.",
+  ].join("\n");
+}
+
+export function implementationSeedGateEntryChips(): readonly string[] {
+  return [
+    PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
+    IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
+    PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP,
+    "환경설정 열기",
+    "산출물 다시 보기",
+  ];
+}
+
 export function formatImplementationSeedReadinessMessage(
   readiness: ImplementationSeedReadiness,
 ): string {

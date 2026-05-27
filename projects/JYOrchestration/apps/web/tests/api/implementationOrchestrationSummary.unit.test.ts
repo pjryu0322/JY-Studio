@@ -18,6 +18,15 @@ import { implementationBlockedEntryChips } from "@/lib/prototype/implementationW
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
+  IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
+  IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
+} from "@/lib/requirements/implementationSeed";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  initialOrchestrationStateFromDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
+import {
   IMPLEMENTATION_MODE_PARTICIPANT_COUNT,
   IMPLEMENTATION_MODE_PRIMARY_MEMBERS,
 } from "@/lib/requirements/modeOrchestrationConfig";
@@ -48,6 +57,41 @@ const baseInput = {
 const blockedInput = {
   ...baseInput,
   projectArtifacts: [] as readonly ProjectArtifact[],
+};
+
+const nowIso = "2026-01-01T00:00:00.000Z";
+
+function planningDefinitions() {
+  return buildDynamicServicePlanningSlotDefinitions({
+    projectName: "회의록",
+    projectDescription: "테스트",
+  });
+}
+
+function orchestrationWithConfirmedSeedSlots(
+  definitions: ReturnType<typeof planningDefinitions>,
+) {
+  const base = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+  const slots = { ...base.slots };
+  for (const gapKey of IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const key = findOrchestrationSlotKeysBySuffix(definitions, suffix)[0];
+    if (!key || !slots[key]) continue;
+    slots[key] = {
+      ...slots[key],
+      status: "confirmed",
+      value: "확정된 시드 값입니다.",
+      updatedAt: nowIso,
+    };
+  }
+  return { ...base, slots };
+}
+
+const seedReadyInput = {
+  ...baseInput,
+  envOk: true,
+  slotDefinitions: planningDefinitions(),
+  orchestration: orchestrationWithConfirmedSeedSlots(planningDefinitions()),
 };
 
 describe("implementationOrchestrationSummary", () => {
@@ -101,10 +145,36 @@ describe("implementationOrchestrationSummary", () => {
     expect(hasImplementationRoleCheckDetailsShown([...bootstrap, detail])).toBe(true);
   });
 
-  it("includes draft generation and role check chips in bootstrap entry chips", () => {
-    expect(implementationEntryChips(baseInput)).toContain("역할별 점검 보기");
-    expect(implementationEntryChips(baseInput)).toContain("구현 작업안 초안 생성");
-    expect(implementationEntryChips(baseInput)).not.toContain("구현 작업안 확정");
+  it("shows seed gate chips when implementation seed is not ready", () => {
+    const definitions = planningDefinitions();
+    const input = {
+      ...baseInput,
+      slotDefinitions: definitions,
+      orchestration: initialOrchestrationStateFromDefinitions(definitions, nowIso),
+    };
+    const chips = implementationEntryChips(input);
+    expect(chips).not.toContain("구현 작업안 초안 생성");
+    expect(chips).toContain("구현 준비도 점검");
+    expect(chips).toContain("Seed 후보 확인/확정");
+    expect(chips).toContain("AI팀이 구현 Seed 후보 생성");
+  });
+
+  it("includes draft generation when seed is ready and env is ok", () => {
+    const chips = implementationEntryChips(seedReadyInput);
+    expect(chips).toContain("구현 작업안 초안 생성");
+    expect(chips).toContain("역할별 점검 보기");
+    expect(chips).not.toContain("구현 작업안 확정");
+  });
+
+  it("includes seed readiness summary in bootstrap message when slot definitions exist", () => {
+    const definitions = planningDefinitions();
+    const bundle = buildImplementationBootstrapBundle({
+      ...baseInput,
+      slotDefinitions: definitions,
+      orchestration: initialOrchestrationStateFromDefinitions(definitions, nowIso),
+    });
+    expect(bundle.messages[0]?.content).toContain("Implementation Seed:");
+    expect(bundle.messages[0]?.content).toContain("Seed 준비도:");
   });
 
   it("treats only lead developer implementation bootstrap as valid", () => {
