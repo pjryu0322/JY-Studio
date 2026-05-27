@@ -225,12 +225,17 @@ import {
   IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
   type ImplementationCandidateRefineRequestWire,
 } from "@/lib/requirements/implementationCandidateRefineRequest";
-import { IMPLEMENTATION_STAGE_NAVIGATE_LABEL } from "@/lib/requirements/implementationUxLabels";
+import {
+  IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+  IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
+  PLANNING_ENV_SETTINGS_LABEL,
+  PLANNING_INFO_REFINE_LABEL,
+} from "@/lib/requirements/implementationUxLabels";
+import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
 import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
-import { PLANNING_INFO_REFINE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
@@ -2675,7 +2680,14 @@ export function RequirementsWorkspace({
 
   const handleStartImplementation = useCallback(async () => {
     const pid = resolvedProjectId.trim();
-    if (!pid || busy || remoteLocked) return;
+    if (!pid) {
+      showErrorToast("프로젝트가 연결된 뒤 구현 단계로 이동할 수 있습니다.");
+      return;
+    }
+    if (busy || remoteLocked) {
+      showErrorToast("처리 중입니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
     const readiness = evaluateImplementationStartReadiness({
       orchestration: orchestrationAlignedState,
       definitions: slotDefsForProgress,
@@ -2949,13 +2961,27 @@ export function RequirementsWorkspace({
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
       if (
+        trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL ||
+        trimmed === IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL
+      ) {
+        void handleStartImplementation();
+        return;
+      }
+      if (trimmed === PLANNING_ENV_SETTINGS_LABEL) {
+        const pid = resolvedProjectId.trim();
+        if (!pid) {
+          showErrorToast("프로젝트를 먼저 저장해 주세요.");
+          return;
+        }
+        window.location.assign(
+          `${projectExecutionSettingsHref(pid, { from: "planning" })}#execution-setup-panel`,
+        );
+        return;
+      }
+      if (
         isImplementationCandidateRefineCtaLabel(trimmed) ||
         isImplementationCandidateRefineApplyResultCtaLabel(trimmed)
       ) {
-        if (trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL && latestImplementationCandidateRefineApplyMeta) {
-          void handleStartImplementation();
-          return;
-        }
         void handleImplementationCandidateRefineCta(resolveImplementationCandidateRefineCtaAction(trimmed));
         return;
       }

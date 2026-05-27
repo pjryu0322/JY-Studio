@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FAST_PLAN_ACTION_GENERATE_PLAN,
   FAST_PLAN_ACTION_GENERATION_PREP,
+  FAST_PLAN_ACTION_GO_IMPLEMENTATION_STAGE,
   FAST_PLAN_ACTION_START_IMPLEMENTATION,
   FAST_PLAN_ACTION_VIEW_ARTIFACTS,
   FAST_PLAN_DRAFT_ACTION_CONFIRM,
@@ -27,6 +28,12 @@ describe("fastPlanDraftSuggestionPick", () => {
     expect(resolveFastPlanArtifactFollowUpAction(FAST_PLAN_ACTION_VIEW_ARTIFACTS)).toBe("view_artifacts");
     expect(resolveFastPlanArtifactFollowUpAction("기획안 보기")).toBe("view_artifacts");
     expect(resolveFastPlanArtifactFollowUpAction(FAST_PLAN_ACTION_START_IMPLEMENTATION)).toBe("start_implementation");
+    expect(resolveFastPlanArtifactFollowUpAction(FAST_PLAN_ACTION_GO_IMPLEMENTATION_STAGE)).toBe(
+      "start_implementation",
+    );
+    expect(resolveFastPlanDraftSuggestionAction(FAST_PLAN_ACTION_GO_IMPLEMENTATION_STAGE)).toBe(
+      "start_implementation",
+    );
     expect(resolveFastPlanArtifactFollowUpAction(FAST_PLAN_ACTION_GENERATION_PREP)).toBe("start_implementation");
     expect(resolveFastPlanArtifactFollowUpAction("기획 보완 계속하기")).toBe("refine");
     expect(resolvePlanningArtifactFollowUpAction("생성 단계로 이동")).toBe("start_implementation");

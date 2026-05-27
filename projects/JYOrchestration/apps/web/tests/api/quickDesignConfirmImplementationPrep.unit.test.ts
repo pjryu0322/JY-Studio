@@ -3,12 +3,20 @@ import {
   buildQuickDesignImplementationReadyChatMessage,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import {
+  resolveQuickDesignSeedLifecycleStatus,
   runQuickDesignConfirmImplementationPrep,
 } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
 import {
+  buildImplementationSeedCandidateSlotPatches,
+  IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
+} from "@/lib/requirements/implementationSeed";
+import { findOrchestrationSlotKeysBySuffix } from "@/lib/requirements/singleChatSlotNextAction";
+import {
   ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS,
   IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+  IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
   PLANNING_ARTIFACT_VIEW_LABEL,
+  PLANNING_ENV_SETTINGS_LABEL,
   PLANNING_INFO_REFINE_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import { resolveFastPlanArtifactFollowUpAction } from "@/lib/requirements/fastPlanDraftGenerationHandoff";
@@ -18,6 +26,28 @@ import {
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 
 const nowIso = "2026-05-24T12:00:00.000Z";
+
+describe("resolveQuickDesignSeedLifecycleStatus", () => {
+  it("returns confirmed when auto-confirmed and readiness is ready", () => {
+    expect(
+      resolveQuickDesignSeedLifecycleStatus({
+        autoConfirmedRequired: true,
+        autoCandidateGenerated: true,
+        readinessReady: true,
+      }),
+    ).toBe("confirmed");
+  });
+
+  it("returns candidate when auto-generated but not confirmed", () => {
+    expect(
+      resolveQuickDesignSeedLifecycleStatus({
+        autoConfirmedRequired: false,
+        autoCandidateGenerated: true,
+        readinessReady: false,
+      }),
+    ).toBe("candidate");
+  });
+});
 
 describe("quickDesignConfirmImplementationPrep", () => {
   it("automatically builds implementation seed when Quick Design is confirmed", () => {
@@ -38,10 +68,17 @@ describe("quickDesignConfirmImplementationPrep", () => {
 
     expect(prep.implementationSeedV1.projectId).toBe("p1");
     expect(prep.implementationSeedV1.readiness).toBeDefined();
-    expect(["candidate", "partial", "confirmed"]).toContain(prep.lifecycleStatus);
+    expect(prep.autoCandidateGenerated).toBe(true);
+    expect(prep.autoConfirmedRequired).toBe(true);
+    expect(prep.lifecycleStatus).toBe("confirmed");
+    expect(prep.prepComplete).toBe(true);
+    expect(prep.readiness.ready).toBe(true);
     expect(prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_seed_auto_built")).toBe(
       true,
     );
+    expect(
+      prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_seed_auto_confirmed"),
+    ).toBe(true);
     expect(
       prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_readiness_evaluated"),
     ).toBe(true);
@@ -93,19 +130,31 @@ describe("quickDesignConfirmImplementationPrep", () => {
     const chips = message.meta?.interviewSuggestions ?? [];
 
     expect(chips).toEqual(expect.arrayContaining(ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS.filter((c) => chips.includes(c))));
-    expect(chips.length).toBeLessThanOrEqual(3);
+    expect(chips.length).toBeLessThanOrEqual(4);
     expect(chips).not.toContain("구현 준비도 점검");
     expect(chips).not.toContain("AI팀이 구현 Seed 후보 생성");
     expect(chips).not.toContain("추가 보완");
     expect(chips).not.toContain("부족한 기획정보 보완");
     expect(chips).not.toContain("구현 시작");
-    expect(chips).toEqual(
-      expect.arrayContaining([
-        IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
-        PLANNING_INFO_REFINE_LABEL,
-        PLANNING_ARTIFACT_VIEW_LABEL,
-      ]),
-    );
+    if (prep.prepComplete) {
+      expect(chips).toEqual(
+        expect.arrayContaining([
+          IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+          IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
+          PLANNING_ARTIFACT_VIEW_LABEL,
+          PLANNING_ENV_SETTINGS_LABEL,
+        ]),
+      );
+      expect(chips).not.toContain(PLANNING_INFO_REFINE_LABEL);
+    } else {
+      expect(chips).toEqual(
+        expect.arrayContaining([
+          IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+          PLANNING_INFO_REFINE_LABEL,
+          PLANNING_ARTIFACT_VIEW_LABEL,
+        ]),
+      );
+    }
   });
 
   it("summarizes generated planning artifacts and implementation preparation info", () => {
@@ -153,8 +202,45 @@ describe("quickDesignConfirmImplementationPrep", () => {
     expect(resolveFastPlanArtifactFollowUpAction(IMPLEMENTATION_STAGE_NAVIGATE_LABEL)).toBe(
       "start_implementation",
     );
+    expect(resolveFastPlanArtifactFollowUpAction(IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL)).toBe(
+      "start_implementation",
+    );
     expect(resolveFastPlanArtifactFollowUpAction("구현 시작")).toBe("start_implementation");
     expect(resolveFastPlanArtifactFollowUpAction(PLANNING_ARTIFACT_VIEW_LABEL)).toBe("view_artifacts");
     expect(resolveFastPlanArtifactFollowUpAction(PLANNING_INFO_REFINE_LABEL)).toBe("refine");
+  });
+
+  it("does not auto-confirm when a required slot value fails quality gates", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p-quality",
+      projectName: "품질",
+    });
+    const base = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const { slots, touchedGapKeys } = buildImplementationSeedCandidateSlotPatches({
+      orchestration: base,
+      definitions,
+      nowIso,
+    });
+    expect(touchedGapKeys.length).toBeGreaterThan(0);
+    const actorKey = findOrchestrationSlotKeysBySuffix(
+      definitions,
+      IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP.actor_function_matrix,
+    )[0]!;
+    const degradedSlots = {
+      ...slots,
+      [actorKey]: {
+        ...slots[actorKey]!,
+        status: "candidate" as const,
+        value: "입력 화면",
+      },
+    };
+    const prep = runQuickDesignConfirmImplementationPrep({
+      projectId: "p-quality",
+      orchestration: { ...base, slots: degradedSlots },
+      definitions,
+      nowIso,
+    });
+    expect(prep.autoConfirmedRequired).toBe(false);
+    expect(prep.prepComplete).toBe(false);
   });
 });

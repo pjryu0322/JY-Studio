@@ -21,12 +21,15 @@ export const PLANNING_IMPLEMENTATION_SEED_CHECK_LABEL = "구현 준비도 점검
 export const PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_LABEL = "부족한 기획정보 보완" as const;
 export const PLANNING_IMPLEMENTATION_SEED_GENERATE_LABEL = "AI팀이 구현 Seed 후보 생성" as const;
 export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL = "Seed 후보 확인/확정" as const;
+export const IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL = "구현 작업안 초안 생성" as const;
+export const PLANNING_ENV_SETTINGS_LABEL = "환경설정 열기" as const;
 
 /** Quick Design 확정 후 — 준비 완료 시 칩 순서 */
 export const QUICK_DESIGN_POST_CONFIRM_CHIPS_READY: readonly string[] = [
   IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
-  PLANNING_INFO_REFINE_LABEL,
+  IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
   PLANNING_ARTIFACT_VIEW_LABEL,
+  PLANNING_ENV_SETTINGS_LABEL,
 ] as const;
 
 /** Quick Design 확정 후 — 후보 보완이 포함된 경우 칩 순서 */

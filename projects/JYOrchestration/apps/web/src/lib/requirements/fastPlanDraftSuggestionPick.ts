@@ -13,7 +13,10 @@ import {
   FAST_PLAN_DRAFT_ACTION_REGENERATE,
   isFastPlanDraftActionLabel,
 } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
-import { QUICK_DESIGN_CONFIRM_ACTION_LABEL } from "@/lib/requirements/implementationUxLabels";
+import {
+  IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+  QUICK_DESIGN_CONFIRM_ACTION_LABEL,
+} from "@/lib/requirements/implementationUxLabels";
 
 export type FastPlanDraftSuggestionAction =
   | "confirm_draft_slots"
@@ -43,7 +46,12 @@ export function resolveFastPlanDraftSuggestionAction(label: string): FastPlanDra
   if (trimmed === FAST_PLAN_ACTION_VIEW_ARTIFACTS || trimmed === "기획안 보기" || trimmed === "Artifact 보기") {
     return "view_artifacts";
   }
-  if (trimmed === FAST_PLAN_ACTION_START_IMPLEMENTATION) return "start_implementation";
+  if (
+    trimmed === FAST_PLAN_ACTION_START_IMPLEMENTATION ||
+    trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL
+  ) {
+    return "start_implementation";
+  }
   if (trimmed === FAST_PLAN_ACTION_REFINE_PLAN || trimmed === "기획 보완 계속하기") return "refine";
   if (trimmed === FAST_PLAN_DRAFT_ACTION_REGENERATE) return "request_draft";
   if (trimmed === FAST_PLAN_DRAFT_ACTION_PARTIAL_EDIT) return "partial_edit";

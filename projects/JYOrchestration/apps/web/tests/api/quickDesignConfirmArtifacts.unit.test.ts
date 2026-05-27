@@ -115,9 +115,21 @@ describe("quickDesignConfirmArtifacts", () => {
     expect(message.content).not.toContain("생성 단계 준비");
     expect(message.content).not.toContain("서비스 정의 산출물");
     expect(message.meta?.internalType).toBe(QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE);
-    expect(message.meta?.interviewSuggestions).toEqual(
-      expect.arrayContaining(["구현단계로 이동", "기획정보 보완", "산출물 보기"]),
-    );
+    if (prep.prepComplete) {
+      expect(message.meta?.interviewSuggestions).toEqual(
+        expect.arrayContaining([
+          "구현단계로 이동",
+          "구현 작업안 초안 생성",
+          "산출물 보기",
+          "환경설정 열기",
+        ]),
+      );
+      expect(message.meta?.interviewSuggestions).not.toContain("기획정보 보완");
+    } else {
+      expect(message.meta?.interviewSuggestions).toEqual(
+        expect.arrayContaining(["구현단계로 이동", "기획정보 보완", "산출물 보기"]),
+      );
+    }
     expect(message.meta?.interviewSuggestions).not.toContain("구현 시작");
     expect(message.meta?.interviewSuggestions).not.toContain("추가 보완");
   });

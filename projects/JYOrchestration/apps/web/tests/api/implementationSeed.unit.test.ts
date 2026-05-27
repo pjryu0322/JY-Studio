@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationSeedFromPlanning,
   buildImplementationSeedCandidateSlotPatches,
+  evaluateImplementationSeedAutoConfirmEligibility,
   evaluateImplementationSeedReadiness,
+  hasMeaningfulImplementationSeedValue,
+  promoteImplementationSeedRequiredSlotsToConfirmed,
   summarizeImplementationSeedStatus,
   IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
   IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
@@ -76,6 +79,42 @@ describe("implementation seed status summary", () => {
     const summary = summarizeImplementationSeedStatus({ orchestration, definitions });
     expect(summary.ready).toBe(true);
     expect(summary.requiredConfirmed).toBe(IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length);
+  });
+});
+
+describe("implementation seed auto-confirm eligibility", () => {
+  it("accepts template-quality candidate values as meaningful", () => {
+    expect(
+      hasMeaningfulImplementationSeedValue(
+        "actor_function_matrix",
+        "사용자: 핵심 업무 수행, 결과 확인\n검수자: 검토·의견·승인",
+      ),
+    ).toBe(true);
+    expect(hasMeaningfulImplementationSeedValue("process_screen_map", "입력 화면")).toBe(false);
+  });
+
+  it("promotes required slots to confirmed when all required pass quality", () => {
+    const definitions = definitionsForProject();
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const { slots } = buildImplementationSeedCandidateSlotPatches({
+      orchestration,
+      definitions,
+      nowIso,
+    });
+    const patched = { ...orchestration, slots };
+    const eligibility = evaluateImplementationSeedAutoConfirmEligibility({
+      orchestration: patched,
+      definitions,
+    });
+    expect(eligibility.eligible).toBe(true);
+    const confirmed = promoteImplementationSeedRequiredSlotsToConfirmed({
+      orchestration: patched,
+      definitions,
+      nowIso,
+    });
+    const readiness = evaluateImplementationSeedReadiness({ orchestration: confirmed, definitions });
+    expect(readiness.ready).toBe(true);
+    expect(readiness.missing).toHaveLength(0);
   });
 });
 

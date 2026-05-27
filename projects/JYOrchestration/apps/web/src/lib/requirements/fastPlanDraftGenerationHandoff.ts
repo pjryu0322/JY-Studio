@@ -13,6 +13,7 @@ import {
 } from "@/lib/platform-orchestration/adapters/fastPlanDraftActions";
 
 export { FAST_PLAN_ACTION_GENERATE_PLAN as FAST_PLAN_DRAFT_ACTION_GENERATE };
+import { IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { LEGACY_QUICK_DESIGN_AREA_TITLES } from "@/lib/requirements/projectArtifactPlan";
 import { PROJECT_ARTIFACT_LABELS } from "@/lib/requirements/projectArtifactTypes";
 
@@ -297,6 +298,7 @@ export function resolveFastPlanArtifactFollowUpAction(label: string): FastPlanAr
     trimmed === FAST_PLAN_ACTION_START_IMPLEMENTATION ||
     trimmed === "구현단계로 이동" ||
     trimmed === "구현 단계로 이동" ||
+    trimmed === IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL ||
     trimmed === "생성 단계로 이동" ||
     trimmed === "생성 단계 준비"
   ) {

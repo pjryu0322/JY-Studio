@@ -154,10 +154,14 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     : IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING;
 
   const intro = input.prep.prepComplete
-    ? "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다."
+    ? input.prep.autoConfirmedRequired
+      ? "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했습니다. 구현 단계로 바로 진행할 수 있습니다."
+      : "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다."
     : [
         "AI팀이 현재 대화와 산출물을 기준으로 구현 준비정보를 자동 보완했습니다.",
-        "일부 항목은 후보 상태이므로, 구현 전 확인이 필요합니다.",
+        input.prep.autoCandidateGenerated && !input.prep.autoConfirmedRequired
+          ? "일부 항목은 품질 기준 미충족으로 후보 상태이므로, 구현 전 확인이 필요합니다."
+          : "일부 항목은 후보 상태이므로, 구현 전 확인이 필요합니다.",
       ].join("\n");
 
   const prepSummaryLines = formatQuickDesignImplementationPrepSummaryLines({

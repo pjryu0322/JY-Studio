@@ -152,7 +152,12 @@ export function evaluateImplementationStartReadiness(input: {
     artifactOrchestrationV1: input.artifactOrchestrationV1,
   });
 
-  if (slots.ready && artifacts.ready) {
+  const seedReadiness = evaluateImplementationSeedReadiness({
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+  });
+
+  if (slots.ready && artifacts.ready && seedReadiness.ready) {
     return {
       ready: true,
       missingRequiredSlotKeys: [],
@@ -165,6 +170,18 @@ export function evaluateImplementationStartReadiness(input: {
 
   const parts: string[] = [];
   if (!slots.ready && slots.reason) parts.push(slots.reason);
+  if (slots.ready && artifacts.ready && !seedReadiness.ready) {
+    const seedLabels = [
+      ...seedReadiness.missing.map((k) => IMPLEMENTATION_SEED_GAP_LABELS[k]),
+      ...seedReadiness.warnings,
+    ];
+    const preview = seedLabels.slice(0, 6).join(", ");
+    parts.push(
+      preview.length
+        ? `구현 단계로 이동하려면 Implementation Seed가 준비되어야 합니다. 부족: ${preview}`
+        : "구현 단계로 이동하려면 Implementation Seed가 준비되어야 합니다.",
+    );
+  }
   if (!artifacts.ready) {
     if (artifacts.missingRequiredArtifactLabels.length) {
       const preview = artifacts.missingRequiredArtifactLabels.slice(0, 6).join(", ");

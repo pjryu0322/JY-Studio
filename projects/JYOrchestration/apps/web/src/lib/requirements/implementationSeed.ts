@@ -547,6 +547,113 @@ export function buildImplementationSeedCandidateSlotPatches(input: {
   return { slots: base, touchedGapKeys: touched };
 }
 
+const GENERIC_SCREEN_ONLY_LINE = /^(입력 화면|결과 화면|시작 화면|관리 화면|진행 상태 화면|안내 화면)$/i;
+
+const MAPPING_IMPLEMENTATION_SEED_GAP_KEYS: ReadonlySet<ImplementationSeedGapKey> = new Set([
+  "actor_function_matrix",
+  "actor_permission_matrix",
+  "process_actor_map",
+  "process_screen_map",
+  "screen_actor_matrix",
+  "screen_action_matrix",
+  "screen_data_map",
+]);
+
+export function hasMeaningfulImplementationSeedValue(
+  gapKey: ImplementationSeedGapKey,
+  value: string,
+): boolean {
+  const trimmed = String(value ?? "").trim();
+  if (trimmed.length < 10) return false;
+
+  const lines = parseBulletLines(trimmed);
+  if (!lines.length) return false;
+
+  if (lines.length === 1 && GENERIC_SCREEN_ONLY_LINE.test(lines[0] ?? "")) return false;
+
+  if (MAPPING_IMPLEMENTATION_SEED_GAP_KEYS.has(gapKey)) {
+    if (lines.length >= 2) return true;
+    return /[:：→]|->|=>/.test(trimmed);
+  }
+
+  if (lines.length >= 2) return true;
+  return trimmed.length >= 16;
+}
+
+export type ImplementationSeedAutoConfirmEligibility = Readonly<{
+  readonly eligible: boolean;
+  readonly requiredReadyGapKeys: readonly ImplementationSeedGapKey[];
+  readonly failedGapKeys: readonly ImplementationSeedGapKey[];
+  readonly reason: string | null;
+}>;
+
+export function evaluateImplementationSeedAutoConfirmEligibility(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+}): ImplementationSeedAutoConfirmEligibility {
+  const snapshots = resolveImplementationSeedSlotSnapshots(input);
+  const requiredReady: ImplementationSeedGapKey[] = [];
+  const failed: ImplementationSeedGapKey[] = [];
+
+  for (const gapKey of IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS) {
+    const snap = snapshots.find((s) => s.gapKey === gapKey);
+    const value = String(snap?.value ?? "").trim();
+    if (!value || !hasMeaningfulImplementationSeedValue(gapKey, value)) {
+      failed.push(gapKey);
+    } else {
+      requiredReady.push(gapKey);
+    }
+  }
+
+  const eligible = requiredReady.length === IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length;
+  const reason = eligible
+    ? null
+    : `필수 ${failed.length}개 항목이 품질 기준을 충족하지 못했습니다: ${failed
+        .map((k) => IMPLEMENTATION_SEED_GAP_LABELS[k])
+        .join(", ")}`;
+
+  return {
+    eligible,
+    requiredReadyGapKeys: requiredReady,
+    failedGapKeys: failed,
+    reason,
+  };
+}
+
+export function promoteImplementationSeedRequiredSlotsToConfirmed(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly nowIso?: string;
+}): RequirementsSingleChatOrchestrationStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const eligibility = evaluateImplementationSeedAutoConfirmEligibility({
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+  });
+  if (!eligibility.eligible) {
+    return input.orchestration;
+  }
+
+  const slots = { ...input.orchestration.slots };
+  for (const gapKey of eligibility.requiredReadyGapKeys) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const slotKey = findOrchestrationSlotKeysBySuffix(input.definitions, suffix)[0];
+    if (!slotKey) continue;
+    const row = slots[slotKey];
+    if (!row) continue;
+    const value = String(row.value ?? "").trim();
+    slots[slotKey] = {
+      ...row,
+      status: "confirmed",
+      value,
+      updatedAt: now,
+      staleReason: "implementation_seed_auto_confirmed",
+    };
+  }
+
+  return { ...input.orchestration, slots, updatedAt: now };
+}
+
 export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP = "Seed 후보 확인/확정";
 
 export type ImplementationSeedStatusSummary = Readonly<{
@@ -681,16 +788,18 @@ export function buildImplementationWorkPlanDraftBlockedBySeedMessage(
     : [];
 
   return [
-    "아직 구현 작업안 초안을 생성할 수 없습니다.",
+    "구현 작업안 초안을 생성할 수 없습니다.",
     "",
-    `Implementation Seed가 ${lifecycleLabel} 상태입니다.`,
-    "구현 작업안 초안 생성 전 필수 Seed 항목을 확인하고 확정해 주세요.",
+    "원인:",
+    "- Implementation Seed 준비도 미충족",
     "",
     ...missingBlock,
     "필요 작업:",
-    "1. 구현 준비도 점검",
-    "2. Seed 후보 확인/확정",
-    "3. 환경설정 확인",
+    "1. 기획단계에서 [구현 준비도 점검]을 실행합니다.",
+    "2. [AI팀이 구현 Seed 후보 생성]을 실행합니다.",
+    "3. 생성된 Seed 후보를 확인 후 확정합니다.",
+    "",
+    "Quick Design을 다시 실행하면 구현 Seed 자동 생성·확정을 다시 시도합니다.",
   ].join("\n");
 }
 
