@@ -31,6 +31,18 @@ export type RequirementsMessageMeta = {
   quickDesignArtifactIds?: readonly string[];
   /** Quick Design 확정 후 구현 준비 후보 gap key(기획정보 보완 패널·메시지 요약) */
   implementationCandidateGapKeys?: readonly string[];
+  /** 기획정보 후보 보완 검토 결과(항목별 검토표·요약) */
+  implementationCandidateRefineResult?: Readonly<{
+    readonly mode: "all" | "selected";
+    readonly keys: readonly string[];
+    readonly summary: Readonly<{
+      readonly targetCount: number;
+      readonly reviewedCount: number;
+      readonly confirmableCount: number;
+      readonly needsConfirmationCount: number;
+    }>;
+    readonly needsConfirmationKeys?: readonly string[];
+  }>;
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */

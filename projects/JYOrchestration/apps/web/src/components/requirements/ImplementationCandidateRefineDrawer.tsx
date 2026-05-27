@@ -7,6 +7,8 @@ import {
   buildRefineSelectedImplementationCandidatesPrompt,
   REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT,
 } from "@/lib/requirements/implementationCandidateLabels";
+import type { ImplementationCandidateRefineRequestWire } from "@/lib/requirements/implementationCandidateRefineRequest";
+import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 
 const headerStyle: CSSProperties = {
   padding: "16px 18px",
@@ -68,6 +70,7 @@ export type ImplementationCandidateRefineDrawerProps = Readonly<{
   readonly items: readonly ImplementationCandidateItem[];
   readonly onClose: () => void;
   readonly onInsertComposerPrompt: (text: string) => void;
+  readonly onRefineRequest: (wire: ImplementationCandidateRefineRequestWire, composerPrompt: string) => void;
 }>;
 
 export function ImplementationCandidateRefineDrawer({
@@ -75,6 +78,7 @@ export function ImplementationCandidateRefineDrawer({
   items,
   onClose,
   onInsertComposerPrompt,
+  onRefineRequest,
 }: ImplementationCandidateRefineDrawerProps) {
   const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -107,8 +111,9 @@ export function ImplementationCandidateRefineDrawer({
     });
   };
 
-  const closeAndInsert = (text: string) => {
-    onInsertComposerPrompt(text);
+  const closeAndRequest = (wire: ImplementationCandidateRefineRequestWire, composerPrompt: string) => {
+    onRefineRequest(wire, composerPrompt);
+    onInsertComposerPrompt(composerPrompt);
     onClose();
   };
 
@@ -185,7 +190,19 @@ export function ImplementationCandidateRefineDrawer({
             disabled={!hasSelection}
             onClick={() => {
               const prompt = buildRefineSelectedImplementationCandidatesPrompt(selectedLabels);
-              if (prompt) closeAndInsert(prompt);
+              if (!prompt) return;
+              const keys = items
+                .filter((item) => selectedKeys.has(item.key))
+                .map((item) => item.key as ImplementationSeedGapKey);
+              closeAndRequest(
+                {
+                  mode: "selected",
+                  keys,
+                  labels: selectedLabels,
+                  requestedAt: new Date().toISOString(),
+                },
+                prompt,
+              );
             }}
           >
             선택 항목 보완 요청
@@ -194,7 +211,17 @@ export function ImplementationCandidateRefineDrawer({
             type="button"
             style={secondaryBtn}
             disabled={items.length === 0}
-            onClick={() => closeAndInsert(REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT)}
+            onClick={() =>
+              closeAndRequest(
+                {
+                  mode: "all",
+                  keys: items.map((item) => item.key as ImplementationSeedGapKey),
+                  labels: items.map((item) => item.label),
+                  requestedAt: new Date().toISOString(),
+                },
+                REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT,
+              )
+            }
           >
             전체 후보 항목 검토 요청
           </button>

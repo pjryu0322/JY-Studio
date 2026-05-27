@@ -1,3 +1,4 @@
+import { sanitizeUpdatedSlots } from "@/lib/requirements/uiInstructionLikePlanningValue";
 import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationSlots";
 
@@ -45,6 +46,6 @@ export function parseUpdatedSlotsRows(
       ownerAgent: canonical || undefined,
     });
   }
-  return out;
+  return sanitizeUpdatedSlots(out, definitions);
 }
 

@@ -6,7 +6,7 @@ import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayNa
 // NOTE: legacy interview markers are handled in the legacy fallback file; normal path is orchestration-first.
 import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { augmentDialogueExcerptForReplyParent } from "@/lib/requirements/requirementsAnswerContext";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsMessage, RequirementsMessageMeta } from "@/lib/requirements/requirementsMessage";
 import type { RequirementMemberRef } from "@/lib/requirements/requirementsTargets";
 import {
   mergeRequirementsStateJson,
@@ -69,6 +69,8 @@ type RunRequirementsIdeationAiAfterUserPersistContext = {
   readonly projectType?: string;
   /** 인터뷰 추천 칩 선택 후 전송 시 한 번 소비 */
   readonly consumeInterviewSelectedSuggestion?: () => string | null;
+  /** 기획정보 후보 보완 드로어에서 전송 시 한 번 소비 */
+  readonly consumeImplementationCandidateRefineRequest?: () => import("@/lib/requirements/implementationCandidateRefineRequest").ImplementationCandidateRefineRequestWire | null;
 };
 
 export async function runRequirementsIdeationAiAfterUserPersist(
@@ -100,6 +102,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     workspaceScreenKey: workspaceScreenKeyRaw,
     projectType,
     consumeInterviewSelectedSuggestion,
+    consumeImplementationCandidateRefineRequest,
   } = ctx;
 
   const workspaceScreenKey =
@@ -174,6 +177,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     try {
       const quickActionChip = String(consumeInterviewSelectedSuggestion?.() ?? "").trim();
       const proposalDecision = quickActionChip ? classifyProposalDecision(quickActionChip) : null;
+      const refineRequest = consumeImplementationCandidateRefineRequest?.() ?? null;
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
       const res = await credentialsIncludeFetch(endpoint, {
         method: "POST",
@@ -196,6 +200,16 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           ...(stateJsonRef.current.singleChatOrchestrationV1 !== undefined &&
           stateJsonRef.current.singleChatOrchestrationV1 !== null
             ? { singleChatOrchestrationV1: stateJsonRef.current.singleChatOrchestrationV1 }
+            : {}),
+          ...(refineRequest
+            ? {
+                implementationCandidateRefineRequest: {
+                  mode: refineRequest.mode,
+                  keys: [...refineRequest.keys],
+                  labels: [...refineRequest.labels],
+                  requestedAt: refineRequest.requestedAt,
+                },
+              }
             : {}),
           ...(serviceDesignHarness
             ? {
@@ -224,6 +238,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           };
           promptTrace?: unknown;
           singleChatOrchestrationV1?: unknown;
+          messageMeta?: {
+            internalType?: string;
+            implementationCandidateRefineResult?: unknown;
+            interviewSuggestions?: unknown;
+          };
         };
       };
       absorbPromptTrace(json.data?.promptTrace);
@@ -246,11 +265,12 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           (createdDraft
             ? `요구사항 문서 초안을 만들었습니다.\n\n- 개요 ${createdDraft.overview}\n- 사용자 ${createdDraft.users.join(", ")}\n- 기능 ${createdDraft.features.join(", ")}\n- 기준 ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 남은 확인사항 ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
             : "");
-        const quickChipsRaw = json.data?.interviewSuggestions;
+        const quickChipsRaw = json.data?.interviewSuggestions ?? json.data?.messageMeta?.interviewSuggestions;
         const quickChips =
           Array.isArray(quickChipsRaw) && quickChipsRaw.length
             ? quickChipsRaw.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 8)
             : [];
+        const responseMessageMeta = json.data?.messageMeta ?? null;
 
         const nextDraftDoc =
           createdDraft && pid
@@ -292,6 +312,20 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           const explainMeta =
             Object.keys(overlayExplain).length > 0 ? { messageOverlayExplainability: overlayExplain } : {};
           const chipMeta = quickChips.length ? { interviewSuggestions: quickChips } : {};
+          const refineMeta: Partial<RequirementsMessageMeta> =
+            responseMessageMeta && typeof responseMessageMeta === "object"
+              ? {
+                  ...(responseMessageMeta.internalType
+                    ? { internalType: String(responseMessageMeta.internalType) }
+                    : {}),
+                  ...(responseMessageMeta.implementationCandidateRefineResult
+                    ? {
+                        implementationCandidateRefineResult:
+                          responseMessageMeta.implementationCandidateRefineResult as RequirementsMessageMeta["implementationCandidateRefineResult"],
+                      }
+                    : {}),
+                }
+              : {};
           facilitatorFinalRoom = {
             ...withCalling,
             aiQuestionIndex: turn + 1,
@@ -306,8 +340,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                   speakerId: speaker.id || primaryId,
                   speakerName: speaker.name || aiName,
                   messageType: "ANSWER",
-                  ...(Object.keys(chipMeta).length || Object.keys(explainMeta).length
-                    ? { meta: { ...chipMeta, ...explainMeta } }
+                  ...(Object.keys(chipMeta).length ||
+                  Object.keys(explainMeta).length ||
+                  Object.keys(refineMeta).length
+                    ? { meta: { ...chipMeta, ...explainMeta, ...refineMeta } }
                     : {}),
                 }),
               ],

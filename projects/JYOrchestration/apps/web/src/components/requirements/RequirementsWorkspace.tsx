@@ -210,8 +210,20 @@ import {
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import {
   buildImplementationCandidateItems,
+  implementationCandidateLabelForKey,
+  REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT,
   resolveImplementationCandidateGapKeys,
 } from "@/lib/requirements/implementationCandidateLabels";
+import {
+  buildApplyImplementationCandidateRefineComposerPrompt,
+  isImplementationCandidateRefineCtaLabel,
+  resolveImplementationCandidateRefineCtaAction,
+} from "@/lib/requirements/implementationCandidateRefineCta";
+import {
+  IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
+  type ImplementationCandidateRefineRequestWire,
+} from "@/lib/requirements/implementationCandidateRefineRequest";
+import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
 import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
@@ -383,6 +395,11 @@ export function RequirementsWorkspace({
   const sendDraftRestoreRef = useRef<string | null>(null);
   /** 인터뷰 추천 칩 선택 후 전송 시 analyzer에 한 번 전달 */
   const interviewSuggestionPickRef = useRef<InterviewSuggestionPickWire | null>(null);
+  const implementationCandidateRefineRequestRef = useRef<ImplementationCandidateRefineRequestWire | null>(
+    null,
+  );
+  const [implementationRefineFilterNeedsConfirmationOnly, setImplementationRefineFilterNeedsConfirmationOnly] =
+    useState(false);
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
   const serviceFlowSendRef = useRef<
@@ -1908,6 +1925,11 @@ export function RequirementsWorkspace({
             projectType: project?.projectType ?? "",
             consumeInterviewSelectedSuggestion: () =>
               interviewSuggestionPickToLabel(selectedSuggestionSnapshot),
+            consumeImplementationCandidateRefineRequest: () => {
+              const wire = implementationCandidateRefineRequestRef.current;
+              implementationCandidateRefineRequestRef.current = null;
+              return wire;
+            },
           });
         } finally {
           setAiInvokePending(false);
@@ -2769,6 +2791,15 @@ export function RequirementsWorkspace({
     ],
   );
 
+  const latestImplementationCandidateRefineMeta = useMemo(() => {
+    for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
+      const m = conversationMessages[i];
+      if (m?.meta?.internalType !== IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE) continue;
+      return m.meta?.implementationCandidateRefineResult ?? null;
+    }
+    return null;
+  }, [conversationMessages]);
+
   const planningRefineCandidateItems = useMemo(() => {
     let touchedFromMessage: readonly ImplementationSeedGapKey[] | undefined;
     let sawQuickDesignReadyMessage = false;
@@ -2790,17 +2821,102 @@ export function RequirementsWorkspace({
       orchestration: orchestrationAlignedState ?? orchestrationUiState,
       definitions: slotDefsForProgress,
     });
-    return buildImplementationCandidateItems(keys);
+    let items = buildImplementationCandidateItems(keys);
+    if (implementationRefineFilterNeedsConfirmationOnly && latestImplementationCandidateRefineMeta) {
+      const pending = new Set(latestImplementationCandidateRefineMeta.needsConfirmationKeys ?? []);
+      if (pending.size) {
+        items = items.filter((item) => pending.has(item.key));
+      }
+    }
+    return items;
   }, [
     conversationMessages,
     orchestrationAlignedState,
     orchestrationUiState,
     slotDefsForProgress,
+    implementationRefineFilterNeedsConfirmationOnly,
+    latestImplementationCandidateRefineMeta,
   ]);
+
+  const handleImplementationCandidateRefineCta = useCallback(
+    async (action: ReturnType<typeof resolveImplementationCandidateRefineCtaAction>) => {
+      if (!action) return;
+      const meta = latestImplementationCandidateRefineMeta;
+      const orch = orchestrationAlignedState ?? orchestrationUiState;
+      if (action === "review_later") return;
+      if (action === "edit_by_item") {
+        setImplementationRefineFilterNeedsConfirmationOnly(false);
+        setImplementationRefineDrawerOpen(true);
+        return;
+      }
+      if (action === "view_needs_confirmation") {
+        setImplementationRefineFilterNeedsConfirmationOnly(true);
+        setImplementationRefineDrawerOpen(true);
+        return;
+      }
+      if (action === "review_again") {
+        const mode = meta?.mode ?? "all";
+        implementationCandidateRefineRequestRef.current = {
+          mode,
+          keys: (meta?.keys ?? []) as ImplementationSeedGapKey[],
+          labels: (meta?.keys ?? []).map((k) => implementationCandidateLabelForKey(String(k))),
+          requestedAt: new Date().toISOString(),
+        };
+        insertComposerPrompt(
+          mode === "all"
+            ? REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT
+            : `다음 기획정보 후보 항목을 보완해 주세요: ${(meta?.keys ?? [])
+                .map((k) => implementationCandidateLabelForKey(String(k)))
+                .join(", ")}`,
+        );
+        return;
+      }
+      if ((action === "apply_all" || action === "apply_selected") && orch) {
+        const keys = (meta?.keys ?? []) as ImplementationSeedGapKey[];
+        if (!keys.length) {
+          showErrorToast("적용할 보완 항목을 찾을 수 없습니다. 먼저 후보 항목 검토를 실행해 주세요.");
+          return;
+        }
+        const nowIso = new Date().toISOString();
+        const nextOrch = buildApplyImplementationCandidateRefinePatches({
+          keys,
+          orchestration: orch,
+          definitions: slotDefsForProgress,
+          nowIso,
+        });
+        await persistStateJsonOnly({ singleChatOrchestrationV1: nextOrch });
+        const labels = keys.map((k) => implementationCandidateLabelForKey(k));
+        insertComposerPrompt(
+          buildApplyImplementationCandidateRefineComposerPrompt({
+            mode: meta?.mode === "selected" ? "selected" : "all",
+            labels,
+          }),
+        );
+        showSuccessToast(
+          `${labels.length}개 항목을 보완안 적용 대상(partial)으로 반영했습니다. 전송 후 AI가 적용 결과를 정리합니다.`,
+        );
+        return;
+      }
+    },
+    [
+      latestImplementationCandidateRefineMeta,
+      orchestrationAlignedState,
+      orchestrationUiState,
+      slotDefsForProgress,
+      persistStateJsonOnly,
+      insertComposerPrompt,
+      showErrorToast,
+      showSuccessToast,
+    ],
+  );
 
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
+      if (isImplementationCandidateRefineCtaLabel(trimmed)) {
+        void handleImplementationCandidateRefineCta(resolveImplementationCandidateRefineCtaAction(trimmed));
+        return;
+      }
       if (
         trimmed === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP ||
         trimmed === PLANNING_IMPLEMENTATION_SEED_SUPPLEMENT_CHIP ||
@@ -2903,6 +3019,7 @@ export function RequirementsWorkspace({
       showErrorToast,
       showSuccessToast,
       handlePlanningImplementationSeedChip,
+      handleImplementationCandidateRefineCta,
     ],
   );
 
@@ -3248,8 +3365,14 @@ export function RequirementsWorkspace({
       <ImplementationCandidateRefineDrawer
         open={implementationRefineDrawerOpen}
         items={planningRefineCandidateItems}
-        onClose={() => setImplementationRefineDrawerOpen(false)}
+        onClose={() => {
+          setImplementationRefineDrawerOpen(false);
+          setImplementationRefineFilterNeedsConfirmationOnly(false);
+        }}
         onInsertComposerPrompt={insertComposerPrompt}
+        onRefineRequest={(wire) => {
+          implementationCandidateRefineRequestRef.current = wire;
+        }}
       />
 
       <RequirementsArtifactHubDrawer

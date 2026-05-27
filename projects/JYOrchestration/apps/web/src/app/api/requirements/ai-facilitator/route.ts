@@ -52,6 +52,15 @@ import type {
   SingleChatDynamicSlotProposalWireV1,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { classifyProposalDecision, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
+import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
+import {
+  IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
+  mergeImplementationCandidateRefineRequest,
+  type ImplementationCandidateRefineRequestWire,
+} from "@/lib/requirements/implementationCandidateRefineRequest";
+import { runImplementationCandidateRefineTurn } from "@/lib/requirements/implementationCandidateRefineResult";
+import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
+import { repairUiInstructionContaminatedOrchestrationSlots } from "@/lib/requirements/uiInstructionLikePlanningValue";
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
@@ -84,6 +93,13 @@ type Body = {
   quickActionLabel?: string;
   /** proposal 승인 신호 — 일반 user message 와 구분 */
   proposalDecision?: string;
+  /** 기획정보 후보 보완 검토 요청(드로어 선택 메타) */
+  implementationCandidateRefineRequest?: {
+    mode?: "all" | "selected";
+    keys?: string[];
+    labels?: string[];
+    requestedAt?: string;
+  };
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -339,13 +355,81 @@ export async function POST(request: NextRequest) {
               .filter((x): x is WorkspaceAiMemberId => Boolean(String(x ?? "").trim()))) as WorkspaceAiMemberId[],
       });
       const nowIso = new Date().toISOString();
-      const baseState = ensureOrchestrationBaseState({
+      let baseState = ensureOrchestrationBaseState({
         raw: body.singleChatOrchestrationV1,
+        definitions: defs,
+        nowIso,
+      });
+      baseState = repairUiInstructionContaminatedOrchestrationSlots({
+        state: baseState,
         definitions: defs,
         nowIso,
       });
       const orchestrationSlotExpansionPhase = computeSlotExpansionPhaseFromState(baseState, defs);
       const effectiveRoles = effectiveOrchestrationRoles(orchCtxForTurn.selectedAgents);
+
+      const fallbackCandidateKeys = resolveImplementationCandidateGapKeys({
+        orchestration: baseState,
+        definitions: defs,
+        autoCandidateGenerated: true,
+      });
+      const refineWireRaw = body.implementationCandidateRefineRequest;
+      const refineWire: ImplementationCandidateRefineRequestWire | null = refineWireRaw?.mode
+        ? {
+            mode: refineWireRaw.mode,
+            keys: (refineWireRaw.keys ?? []).map((k) => String(k).trim()).filter(Boolean) as ImplementationSeedGapKey[],
+            labels: (refineWireRaw.labels ?? []).map((l) => String(l).trim()).filter(Boolean),
+            requestedAt: String(refineWireRaw.requestedAt ?? nowIso),
+          }
+        : null;
+      const refineRequest = mergeImplementationCandidateRefineRequest({
+        wire: refineWire,
+        userMessage,
+        fallbackKeys: fallbackCandidateKeys,
+      });
+
+      if (refineRequest) {
+        const refineTurn = runImplementationCandidateRefineTurn({
+          mode: refineRequest.mode,
+          keys: refineRequest.keys.length ? refineRequest.keys : fallbackCandidateKeys,
+          orchestration: baseState,
+          definitions: defs,
+          nowIso,
+          autoCandidateGenerated: true,
+        });
+        const needsConfirmationKeys = refineTurn.items
+          .filter((i) => i.nextActionLabel === "추가 확인")
+          .map((i) => i.key);
+        const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
+          action: "implementation_candidate_refine_review",
+          source: "internal",
+          timelineStage: orchCtxForTurn.timelineStage,
+          stageGroup: orchCtxForTurn.stageGroup,
+          workspaceScreenKey: orchCtxForTurn.workspaceScreenKey,
+          selectedAgents: orchCtxForTurn.selectedAgents,
+          responseText: refineTurn.assistantMessage.slice(0, 800),
+          routingDecision: `implementation_candidate_refine_${refineRequest.mode}`,
+          createdAtIso: nowIso,
+        });
+        return NextResponse.json({
+          success: true,
+          data: {
+            reply: refineTurn.assistantMessage,
+            interviewSuggestions: [...refineTurn.interviewSuggestions],
+            singleChatOrchestrationV1: refineTurn.nextState,
+            promptTrace: facilitatorPromptTrace,
+            messageMeta: {
+              internalType: IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
+              implementationCandidateRefineResult: {
+                mode: refineRequest.mode,
+                keys: [...refineTurn.resolvedKeys],
+                summary: refineTurn.summary,
+                needsConfirmationKeys,
+              },
+            },
+          },
+        });
+      }
 
       const orchTry = await runSelectiveMultiAgentOrchestrationOpenAI({
         projectName,
