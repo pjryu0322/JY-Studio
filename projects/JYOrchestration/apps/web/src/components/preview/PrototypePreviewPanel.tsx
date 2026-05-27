@@ -1291,11 +1291,13 @@ export function PrototypePreviewPanel({
         );
 
       if (wantsWorkPlanGeneration) {
-        if (!templateConfirmed) {
+        if (!canRequestGeneration.envOk) {
+          appendExecutionNoticeRef.current("먼저 환경 검증과 연결 테스트를 완료해 주세요.");
+          return "handled";
+        }
+        if (!templatePlanningReady) {
           appendExecutionNoticeRef.current(
-            canRequestGeneration.envOk
-              ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
-              : "먼저 실행 환경 점검을 완료해 주세요.",
+            "선택한 템플릿을 적용하려면 [확정]을 눌러 주세요. AI 추천 템플릿을 사용할 경우 별도 확정 없이 진행할 수 있습니다.",
           );
           return "handled";
         }
@@ -1806,7 +1808,7 @@ export function PrototypePreviewPanel({
           startWorkPlanGenerationFromChat();
           return;
         case "OPEN_PLANNER_PROMPT_IN_CHAT": {
-          if (!templateConfirmed) return;
+          if (!templatePlanningReady) return;
           if (plannerCreatePending || isPlannerRunning || protoBusy) return;
           setPlannerPromptModalOpen(true);
           return;
@@ -1923,7 +1925,7 @@ export function PrototypePreviewPanel({
       applyChatTemplateIntent,
       startWorkPlanGenerationFromChat,
       canRequestGeneration.designOk,
-      templateConfirmed,
+      templatePlanningReady,
       protoBusy,
       plannerCreatePending,
       isPlannerRunning,
@@ -1969,7 +1971,7 @@ export function PrototypePreviewPanel({
     return "메시지를 입력하세요.";
   }, [
     prototypeAiTitle,
-    templateConfirmed,
+    templatePlanningReady,
     isWorkPlanPlanningUi,
     isMessageInputBlocked,
     isRunningState,

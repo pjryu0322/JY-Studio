@@ -353,7 +353,9 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       id: "ai-preplan",
       role: "ai",
       orderKey: nextKey(),
-      body: "프로토타입 제작을 위한 작업 목록을 만들겠습니다.",
+      body: p.templateConfirmed
+        ? "확정된 템플릿을 기준으로 구현 작업계획을 생성합니다."
+        : "AI 추천 템플릿을 기본값으로 사용해 구현 작업계획을 생성합니다.\n필요하면 템플릿을 변경한 뒤 진행할 수 있습니다.",
       actions: [
         {
           id: "a-create-plan",
@@ -369,7 +371,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
           id: "a-open-planner-prompt-preplan",
           label: "프롬프트 보기",
           intent: "OPEN_PLANNER_PROMPT_IN_CHAT",
-          disabled: p.protoBusy || p.plannerCreatePending || p.isPlannerRunning,
+          disabled: !templateReadyForPlanning || p.protoBusy || p.plannerCreatePending || p.isPlannerRunning,
         },
       ],
     });
