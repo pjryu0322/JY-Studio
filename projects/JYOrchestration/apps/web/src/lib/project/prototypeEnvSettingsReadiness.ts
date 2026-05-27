@@ -23,75 +23,20 @@ export function prototypeEnvReadinessToneColors(tone: PrototypeEnvReadinessTone)
   return { color: "#475569", bg: "#f8fafc" };
 }
 
-export function buildPrototypeEnvReadinessRows(input: {
-  readonly executionSetup: ExecutionSetupDto | null;
-  readonly connectionTestSatisfied: boolean;
-}): readonly PrototypeEnvReadinessRow[] {
-  const es = input.executionSetup;
-  const repoOk = es?.repoConnectionOk ?? null;
-  const githubCap = es?.githubCapabilityValidation ?? null;
-  const githubAuthOk = es?.githubAuthConnectionOk ?? null;
-  const githubEffectiveOk =
-    githubAuthOk === true && githubCap != null && githubCap.githubOperableOk === true;
-  const hasGithubToken = githubCredentialLooksStored(es);
-  const cursorStored = cursorCredentialLooksStored(es);
-  const cursorApiOk = es?.cursorApiConnectionOk ?? null;
+/** Code Agent 연결 상태 — 환경설정 Code Agent 카드 내부 전용. */
+export function buildPrototypeEnvCodeAgentStatusRow(
+  executionSetup: ExecutionSetupDto | null,
+): PrototypeEnvReadinessRow {
+  const cursorStored = cursorCredentialLooksStored(executionSetup);
+  const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
 
-  let repoValue = "미확인";
-  let repoTone: PrototypeEnvReadinessTone = "warn";
-  if (repoOk === true) {
-    repoValue = "정상";
-    repoTone = "ok";
-  } else if (repoOk === false) {
-    repoValue = "실패";
-    repoTone = "fail";
-  } else if (es && (String(es.gitRepoUrl ?? "").trim() || String(es.gitRepoName ?? "").trim())) {
-    repoValue = "검증 필요";
-    repoTone = "warn";
-  } else {
-    repoValue = "미설정";
-    repoTone = "neutral";
+  if (cursorApiOk === true) {
+    return { key: "codeAgent", label: "연결 상태", value: "정상", tone: "ok" };
   }
-
-  let tokenValue = "미설정";
-  let tokenTone: PrototypeEnvReadinessTone = "neutral";
-  if (githubEffectiveOk) {
-    tokenValue = "정상";
-    tokenTone = "ok";
-  } else if (githubCap != null && githubCap.githubOperableOk === false) {
-    const short =
-      githubCap.lastHttpStatus === 401 || /bad credentials/i.test(String(githubCap.lastErrorMessage ?? ""))
-        ? "거부됨 (Bad credentials)"
-        : "실패";
-    tokenValue = short;
-    tokenTone = "fail";
-  } else if (hasGithubToken) {
-    tokenValue = "검증 필요";
-    tokenTone = "warn";
+  if (cursorStored) {
+    return { key: "codeAgent", label: "연결 상태", value: "키 저장됨 · 검증 필요", tone: "warn" };
   }
-
-  let codeAgentValue = "미설정";
-  let codeAgentTone: PrototypeEnvReadinessTone = "neutral";
-  if (cursorApiOk === true || cursorStored) {
-    codeAgentValue = cursorApiOk === true ? "정상" : "설정됨";
-    codeAgentTone = cursorApiOk === true ? "ok" : "warn";
-  }
-
-  const connectionValue = input.connectionTestSatisfied ? "완료" : "미완료";
-  const connectionTone: PrototypeEnvReadinessTone = input.connectionTestSatisfied ? "ok" : "warn";
-
-  return [
-    { key: "repo", label: "GitHub 저장소", value: repoValue, tone: repoTone },
-    { key: "token", label: "GitHub Token", value: tokenValue, tone: tokenTone },
-    { key: "codeAgent", label: "Code Agent", value: codeAgentValue, tone: codeAgentTone },
-    { key: "llm", label: "LLM", value: "기본 설정 사용", tone: "neutral" },
-    {
-      key: "connectionTest",
-      label: "연결 테스트",
-      value: connectionValue,
-      tone: connectionTone,
-    },
-  ];
+  return { key: "codeAgent", label: "연결 상태", value: "미설정", tone: "neutral" };
 }
 
 export function isGithubTokenCredentialsError(

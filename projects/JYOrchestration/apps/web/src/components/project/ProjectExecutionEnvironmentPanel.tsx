@@ -20,12 +20,16 @@ import {
   type ExecutionSetupPanelHandle,
 } from "@/components/project-spec/ExecutionSetupPanel";
 import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIntegrationOverridesPanel";
+import { PrototypeEnvSettingsModalLayout } from "@/components/project/PrototypeEnvSettingsModalLayout";
 import {
-  PrototypeEnvSettingsGithubTokenErrorCard,
-  PrototypeEnvSettingsIntegrationsSection,
-  PrototypeEnvSettingsReadinessSummary,
+  PrototypeEnvSettingsGithubTokenErrorContent,
+  PrototypeEnvSettingsGithubTokenStepCard,
   PrototypeEnvSettingsStepCard,
 } from "@/components/project/prototypeEnvSettingsUx";
+import {
+  buildPrototypeEnvModalTableRows,
+  type PrototypeEnvModalRowKey,
+} from "@/lib/project/prototypeEnvSettingsModalRows";
 import {
   isGithubTokenCredentialsError,
   resolvePrototypeEnvTestDisabledTitle,
@@ -46,8 +50,10 @@ type Props = {
   /** 프로젝트 OWNER만 저장된 Cursor API 키 일시 표시 */
   canRevealCursorApiKey?: boolean;
   /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
-  settingsSurface?: "admin";
+  settingsSurface?: "admin" | "modal";
   settingsPurpose?: "prototype" | "env-test";
+  /** `settingsSurface="modal"`일 때 닫기 버튼 콜백 */
+  onModalClose?: () => void;
 };
 
 const PLACEHOLDERS = {
@@ -448,11 +454,14 @@ export function ProjectExecutionEnvironmentPanel({
   canRevealCursorApiKey = false,
   settingsSurface,
   settingsPurpose,
+  onModalClose,
 }: Props) {
+  const isModalCompact = settingsSurface === "modal";
   const isAdminSettings = settingsSurface === "admin";
   const effectivePurpose: "prototype" | "env-test" =
-    settingsPurpose ?? (isAdminSettings ? "prototype" : "env-test");
+    settingsPurpose ?? (isAdminSettings || isModalCompact ? "prototype" : "env-test");
   const isPrototypeMvpUi = effectivePurpose === "prototype";
+  const [selectedModalRow, setSelectedModalRow] = useState<PrototypeEnvModalRowKey | null>("repo");
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
   /** execution_setup 행이 없을 때 GET이 내려주는 동일 계정 peer 힌트 */
   const [peerHintsWhenNoSetup, setPeerHintsWhenNoSetup] = useState<
@@ -881,6 +890,17 @@ export function ProjectExecutionEnvironmentPanel({
     if (wf === EXECUTION_WORKFLOW.PR_OPENED && mode === "skip") return true;
     return false;
   }, [envTestLast]);
+
+  const modalTableRows = useMemo(
+    () =>
+      buildPrototypeEnvModalTableRows({
+        executionSetup,
+        connectionTestSatisfied,
+        busyEnvTest,
+        envTestLast,
+      }),
+    [executionSetup, connectionTestSatisfied, busyEnvTest, envTestLast],
+  );
 
   if (!projectId.trim()) return null;
 
@@ -1927,7 +1947,38 @@ export function ProjectExecutionEnvironmentPanel({
                     ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
                     : undefined;
 
-  const mvpGithubRepoFields = isPrototypeMvpUi ? (
+  const modalGithubRepoFields = isModalCompact ? (
+    <div style={{ display: "grid", gap: 10 }}>
+      <label style={{ display: "grid", gap: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>owner/repo</span>
+        <input
+          value={gitVals.gitRepoName}
+          disabled={!canEdit}
+          placeholder={PLACEHOLDERS.gitRepoName}
+          onChange={(e) => setGitField({ gitRepoName: e.target.value })}
+          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+        />
+      </label>
+      <label style={{ display: "grid", gap: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>기본 브랜치</span>
+        <input
+          value={gitVals.baseBranch}
+          disabled={!canEdit}
+          placeholder={PLACEHOLDERS.baseBranch}
+          onChange={(e) => setGitField({ baseBranch: e.target.value })}
+          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+        />
+      </label>
+      <div style={{ fontSize: 12, color: "#475569" }}>
+        <span style={{ fontWeight: 700, color: "#334155" }}>자동 생성 URL: </span>
+        <code style={{ fontSize: 12, wordBreak: "break-all" }}>
+          {inferGithubHttpsUrlFromOwnerRepo(gitVals.gitRepoName.trim()) ?? "—"}
+        </code>
+      </div>
+    </div>
+  ) : null;
+
+  const mvpGithubRepoFields = isPrototypeMvpUi && !isModalCompact ? (
     <div style={{ display: "grid", gap: 10 }}>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>저장소 URL</span>
@@ -2033,7 +2084,6 @@ export function ProjectExecutionEnvironmentPanel({
           </label>
         ) : (
           <div style={{ marginBottom: 10, fontSize: 12, color: "#334155", maxWidth: 720 }}>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>이 프로젝트에 저장된 토큰 (마스킹)</div>
             <code
               style={{
                 display: "block",
@@ -2144,15 +2194,6 @@ export function ProjectExecutionEnvironmentPanel({
             {busyGithubAuth === "reveal" ? "불러오는 중…" : "토큰 보기"}
           </button>
         </div>
-      <PrototypeEnvSettingsGithubTokenErrorCard
-        executionSetup={executionSetup}
-        canEdit={canEdit}
-        onReplaceToken={() => {
-          setGithubReplaceMode(true);
-          setGithubTokenDraft("");
-          setGithubTokenRevealPlaintext(null);
-        }}
-      />
       {executionSetup?.githubCapabilityValidation != null &&
       executionSetup.githubCapabilityValidation.githubOperableOk === false &&
       !isGithubTokenCredentialsError(executionSetup.githubCapabilityValidation) ? (
@@ -2221,6 +2262,140 @@ export function ProjectExecutionEnvironmentPanel({
       <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#334155" }}>연결 테스트를 진행하는 중입니다…</p>
     ) : null;
 
+  const renderModalDetail = () => {
+    if (!selectedModalRow) return null;
+    if (selectedModalRow === "repo") return modalGithubRepoFields;
+    if (selectedModalRow === "token") {
+      return (
+        <>
+          {isGithubTokenCredentialsError(executionSetup?.githubCapabilityValidation) ? (
+            <div style={{ marginBottom: 12 }}>
+              <PrototypeEnvSettingsGithubTokenErrorContent executionSetup={executionSetup} />
+            </div>
+          ) : null}
+          {mvpGithubTokenFields}
+        </>
+      );
+    }
+    if (selectedModalRow === "cursor") {
+      return (
+        <ExecutionSetupPanel
+          ref={executionSetupPanelRef}
+          projectId={projectId}
+          canEdit={canEdit}
+          executionSetup={executionSetup}
+          setExecutionSetup={setExecutionSetup}
+          setMessage={setExecutionMessage}
+          formatTestedAt={formatTestedAt}
+          flatLayout
+          unifiedExecutionEnvironment
+          executionEnvironmentFlow={false}
+          prototypeStagedLayout
+          prototypeMvpLayout
+          connectionTestSatisfied={connectionTestSatisfied}
+          peerCredentialHintsFallback={peerHintsWhenNoSetup}
+          canRevealCursorApiKey={canRevealCursorApiKey}
+        />
+      );
+    }
+    return (
+      <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
+        {prototypeMvpEnvTestProgress}
+        {connectionTestSatisfied ? (
+          <p style={{ margin: "8px 0 0 0", color: "#15803d", fontWeight: 700 }}>연결 테스트가 완료되었습니다.</p>
+        ) : envTestLast ? (
+          <p style={{ margin: "8px 0 0 0" }}>
+            {String(envTestLast.envTestStage1FailureLine ?? "마지막 실행 결과를 확인하세요.")}
+          </p>
+        ) : (
+          <p style={{ margin: "8px 0 0 0", color: "#64748b" }}>
+            저장 후 연결 테스트를 실행하면 Git 커밋·PR·머지 경로를 확인합니다.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const modalFooterBtn: CSSProperties = {
+    padding: "10px 18px",
+    borderRadius: 10,
+    fontWeight: 800,
+    fontSize: 13,
+    cursor: "pointer",
+  };
+
+  if (isModalCompact && isPrototypeMvpUi) {
+    return (
+      <div
+        data-testid="project-execution-environment-panel"
+        style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}
+      >
+        <PrototypeEnvSettingsModalLayout
+          rows={modalTableRows}
+          selectedRow={selectedModalRow}
+          onSelectRow={(key) => {
+            setSelectedModalRow(key);
+            if (key === "connectionTest" && envTestStartOk && !busyEnvTest && !busyMvpSave) {
+              void handleEnvironmentTest();
+            }
+          }}
+          detail={renderModalDetail()}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => onModalClose?.()}
+                disabled={busyMvpSave || busyEnvTest}
+                style={{
+                  ...modalFooterBtn,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#334155",
+                }}
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                disabled={!canEdit || busyMvpSave || busyEnvTest}
+                onClick={() => void handleMvpSaveAll()}
+                style={{
+                  ...modalFooterBtn,
+                  border: "1px solid #2563eb",
+                  background: "#2563eb",
+                  color: "#fff",
+                  cursor: !canEdit || busyMvpSave || busyEnvTest ? "not-allowed" : "pointer",
+                }}
+              >
+                {busyMvpSave ? "저장 중…" : "저장"}
+              </button>
+              <button
+                type="button"
+                disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
+                onClick={() => void handleEnvironmentTest()}
+                title={envTestDisabledTitle}
+                style={{
+                  ...modalFooterBtn,
+                  border: "1px solid #6d28d9",
+                  background: envTestStartOk ? "#6d28d9" : "#e2e8f0",
+                  color: envTestStartOk ? "#fff" : "#64748b",
+                  cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
+                }}
+              >
+                {busyEnvTest ? "실행 중…" : "연결 테스트"}
+              </button>
+            </>
+          }
+        />
+        {executionMessage ? (
+          <p style={{ marginTop: 10, marginBottom: 0, fontSize: 12, color: "#334155" }} role="status">
+            {executionMessage}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="project-execution-environment-panel"
@@ -2233,16 +2408,13 @@ export function ProjectExecutionEnvironmentPanel({
             style={{
               fontSize: 22,
               fontWeight: 800,
-              margin: "0 0 8px 0",
+              margin: 0,
               color: "#0f172a",
               lineHeight: 1.25,
             }}
           >
             프로젝트 자동 생성 환경설정
           </h1>
-          <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-            1. 저장소 연결 → 2. GitHub Token → 3. Code Agent → 4. 저장 → 5. 연결 테스트 순서로 진행하세요.
-          </p>
         </header>
       ) : (
         <header style={{ marginBottom: 16 }}>
@@ -2276,33 +2448,17 @@ export function ProjectExecutionEnvironmentPanel({
 
       {isAdminSettings && effectivePurpose === "prototype" ? (
         <>
-          <PrototypeEnvSettingsReadinessSummary
-            executionSetup={executionSetup}
-            connectionTestSatisfied={connectionTestSatisfied}
-          />
           {mvpGithubRepoFields ? (
-            <PrototypeEnvSettingsStepCard
-              step={1}
-              title="GitHub 저장소 연결"
-              description="저장소 URL, owner/repo, 기본 브랜치를 입력한 뒤 저장하세요."
-            >
+            <PrototypeEnvSettingsStepCard step={1} title="GitHub 저장소 연결">
               {mvpGithubRepoFields}
             </PrototypeEnvSettingsStepCard>
           ) : null}
           {mvpGithubTokenFields ? (
-            <PrototypeEnvSettingsStepCard
-              step={2}
-              title="GitHub Token 설정"
-              description="Personal Access Token을 이 프로젝트에 저장합니다."
-            >
+            <PrototypeEnvSettingsStepCard step={2} title="GitHub Token 설정">
               {mvpGithubTokenFields}
             </PrototypeEnvSettingsStepCard>
           ) : null}
-          <PrototypeEnvSettingsStepCard
-            step={3}
-            title="Code Agent 연결"
-            description="Cursor API 키와 실행 정책을 설정합니다."
-          >
+          <PrototypeEnvSettingsStepCard step={3}>
             <ExecutionSetupPanel
               ref={executionSetupPanelRef}
               projectId={projectId}
@@ -2321,29 +2477,13 @@ export function ProjectExecutionEnvironmentPanel({
               canRevealCursorApiKey={canRevealCursorApiKey}
             />
           </PrototypeEnvSettingsStepCard>
-          <PrototypeEnvSettingsStepCard
-            step={4}
-            title="저장 및 연결 테스트"
-            description="입력을 저장한 뒤, 연결 테스트로 Git 커밋·PR·머지 경로를 확인합니다."
+          <div
+            data-testid="prototype-env-save-and-test"
+            style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 16 }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-              {prototypeMvpToolbar}
-            </div>
-            {prototypeMvpEnvTestProgress}
-            {connectionTestSatisfied ? (
-              <p style={{ margin: "12px 0 0 0", fontSize: 12, color: "#15803d", lineHeight: 1.55 }}>
-                연결 테스트가 완료되었습니다. 기획·구현 화면으로 돌아가 다음 작업을 진행할 수 있습니다.
-              </p>
-            ) : envTestDisabledTitle ? (
-              <p style={{ margin: "12px 0 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-                {envTestDisabledTitle}
-              </p>
-            ) : null}
-          </PrototypeEnvSettingsStepCard>
-          <PrototypeEnvSettingsIntegrationsSection
-            executionSetup={executionSetup}
-            advancedPanel={<ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />}
-          />
+            {prototypeMvpToolbar}
+          </div>
+          {prototypeMvpEnvTestProgress}
         </>
       ) : (
         <>
@@ -2353,11 +2493,13 @@ export function ProjectExecutionEnvironmentPanel({
             </PrototypeEnvSettingsStepCard>
           ) : null}
           {mvpGithubTokenFields ? (
-            <PrototypeEnvSettingsStepCard step={2} title="GitHub Token 설정">
+            <PrototypeEnvSettingsGithubTokenStepCard executionSetup={executionSetup}>
               {mvpGithubTokenFields}
-            </PrototypeEnvSettingsStepCard>
+            </PrototypeEnvSettingsGithubTokenStepCard>
           ) : null}
-          <ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />
+          {!isPrototypeMvpUi ? (
+            <ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />
+          ) : null}
           <ExecutionSetupPanel
             ref={executionSetupPanelRef}
             projectId={projectId}

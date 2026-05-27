@@ -86,7 +86,14 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   return (
     <div
       data-testid="app-flow-guidance"
-      style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0, width: "100%" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 0",
+        minHeight: 0,
+        width: "100%",
+        overflow: "hidden",
+      }}
     >
       {showPlanningInlineWarning ? (
         <div
@@ -106,7 +113,16 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
           생성 준비 확인: {gates.executionReason}
         </div>
       ) : null}
-      <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", width: "100%", paddingBottom: 20 }}>
+      <div
+        style={{
+          flex: "1 1 0",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          width: "100%",
+          overflow: "hidden",
+        }}
+      >
         {children}
       </div>
     </div>

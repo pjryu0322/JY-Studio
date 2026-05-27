@@ -16,8 +16,9 @@ export function PlatformMainFrame({ children }: { readonly children: ReactNode }
         margin: "0 auto",
         width: "100%",
         boxSizing: "border-box",
-        flex: "1 1 auto",
+        flex: "1 1 0",
         minHeight: 0,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}

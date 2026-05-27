@@ -163,8 +163,14 @@ html:has(.jyo-execution-route-root) body {
 }
 
 .jyo-platform-main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   padding: 20px 24px 32px;
   max-width: 1600px;
+  box-sizing: border-box;
 }
 
 /** 플랫폼 화면 레이아웃(프로토타입 생성 설정과 무관). 가로 폭은 `WorkingSurfaceLayoutEffect`가 경로별로 설정 */
@@ -195,7 +201,7 @@ html:has(.jyo-execution-route-root) body {
 .jyo-project-admin-route-root {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   min-width: 0;
   width: 100%;
@@ -205,10 +211,8 @@ html:has(.jyo-execution-route-root) body {
 }
 
 .jyo-project-admin-settings-page {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -217,14 +221,13 @@ html:has(.jyo-execution-route-root) body {
   margin: 0;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 24px max(16px, env(safe-area-inset-right, 0px))
-    max(32px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 0
+    max(16px, env(safe-area-inset-left, 0px));
 }
 
 .jyo-project-admin-settings-scroll {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
-  max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -236,17 +239,16 @@ html:has(.jyo-execution-route-root) body {
   max-width: 960px;
   margin-inline: auto;
   box-sizing: border-box;
-  padding-bottom: 24px;
+  padding-bottom: max(32px, env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 640px) {
   .jyo-project-admin-settings-page {
-    padding: 8px max(10px, env(safe-area-inset-right, 0px))
-      max(16px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+    padding: 8px max(10px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px));
   }
 
   .jyo-project-admin-settings-content {
-    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   }
 }
 

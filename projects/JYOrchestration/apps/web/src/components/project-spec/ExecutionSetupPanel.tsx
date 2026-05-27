@@ -22,7 +22,6 @@ import {
 import {
   cursorCredentialLooksStored,
   peerCursorCredentialMasked,
-  peerCursorCredentialUrl,
   secretMaskedDisplay,
 } from "@/components/project-spec/credentialUiMask";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
@@ -39,7 +38,6 @@ import {
   deriveAutomationLevel,
   prototypeAutomationLevelToPatch,
   PrototypeSimpleExecutionPolicy,
-  type PrototypeAutomationLevel,
 } from "@/components/project-spec/PrototypeSimpleExecutionPolicy";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
@@ -188,15 +186,6 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
   const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
   const stagedPrototype = Boolean(unified && prototypeStagedLayout);
   const prototypeMvp = Boolean(stagedPrototype && prototypeMvpLayout);
-  const savedAutomationFromEs = useMemo(
-    () => deriveAutomationLevel(executionSetup ?? null),
-    [executionSetup]
-  );
-  const [mvpAutomationLevel, setMvpAutomationLevel] = useState<PrototypeAutomationLevel>(savedAutomationFromEs);
-  useEffect(() => {
-    if (!prototypeMvp) return;
-    setMvpAutomationLevel(savedAutomationFromEs);
-  }, [prototypeMvp, savedAutomationFromEs]);
   const connectionGateOk = !stagedPrototype || connectionTestSatisfied === true;
   const ready =
     executionSetup?.status === "validated" &&
@@ -230,27 +219,6 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
   const flowMode = Boolean(unified && executionEnvironmentFlow);
 
   const es = executionSetup ?? null;
-
-  const saveMvpPrototypePolicy = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!prototypeMvp || !pid || !es) {
-      setMessage("먼저 실행 환경 설정을 저장해 주세요.");
-      return;
-    }
-    setBusy("save-policy");
-    try {
-      const patch = prototypeAutomationLevelToPatch(mvpAutomationLevel);
-      const { res, json } = await patchExecutionSetup(pid, patch);
-      if (!res.ok || !json.success || !json.data) {
-        setMessage(json.message || "실행 정책 저장에 실패했습니다.");
-        return;
-      }
-      setExecutionSetup(json.data);
-      setMessage("실행 정책을 저장했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  }, [prototypeMvp, projectId, es, mvpAutomationLevel, setExecutionSetup, setMessage, setBusy]);
 
   const githubOperableOk =
     es?.githubCapabilityValidation &&
@@ -370,8 +338,6 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
     const fb = peerCredentialHintsFallback;
     const peerCursorMask =
       peerCursorCredentialMasked(es) ?? (String(fb?.cursorApiTokenMasked ?? "").trim() || null);
-    const peerCursorUrlHint =
-      peerCursorCredentialUrl(es) ?? (String(fb?.cursorApiUrl ?? "").trim() || null);
     const showKeyInput = !cursorLooksStored || cursorKeyReplaceMode;
     const cursorKeyBusy =
       busy === "save-cursor" || busy === "val-cursor-api" || busy === "del-cursor" || busy === "reveal-cursor";
@@ -399,55 +365,11 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             {opts.compactTitle ? "Cursor API" : "2. Cursor 연결"}
           </div>
         ) : null}
-        <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-          {mvp ? (
-            <>기본 URL은 {CURSOR_API_DEFAULT_URL} 입니다. URL·키는 아래 저장으로 서버에 반영됩니다.</>
-          ) : (
-            <>
-              검증(다시 검증)은 <strong>서버에 저장된 키</strong>로만 수행됩니다. 키를 다시 입력할 필요가 없습니다. 기본 URL:{" "}
-              {CURSOR_API_DEFAULT_URL}
-            </>
-          )}
-        </p>
-        {mvp && !cursorLooksStored && peerCursorMask ? (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #e9d5ff",
-              background: "#faf5ff",
-              fontSize: 12,
-              color: "#5b21b6",
-              lineHeight: 1.55,
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 6, color: "#6d28d9" }}>다른 프로젝트에만 저장된 Cursor 키 (참고)</div>
-            <div style={{ fontSize: 11, color: "#6b21a8", marginBottom: 8 }}>
-              자동으로 이 프로젝트에 복사되지는 않습니다. 키를 붙여넣은 뒤 하단「저장」으로 이 프로젝트에 저장하세요.
-            </div>
-            {peerCursorUrlHint ? (
-              <div style={{ fontSize: 11, marginBottom: 6, color: "#5b21b6" }}>
-                참고 URL:{" "}
-                <code style={{ fontSize: 10, color: "#0f172a" }}>{peerCursorUrlHint}</code>
-              </div>
-            ) : null}
-            <code
-              style={{
-                display: "block",
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "#fff",
-                border: "1px solid #ddd6fe",
-                fontSize: 12,
-                fontFamily: "ui-monospace, monospace",
-                wordBreak: "break-all",
-                color: "#0f172a",
-              }}
-            >
-              {peerCursorMask}
-            </code>
-          </div>
+        {!mvp ? (
+          <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+            검증(다시 검증)은 <strong>서버에 저장된 키</strong>로만 수행됩니다. 키를 다시 입력할 필요가 없습니다. 기본 URL:{" "}
+            {CURSOR_API_DEFAULT_URL}
+          </p>
         ) : null}
         <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
@@ -756,19 +678,12 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         if (!prototypeMvp) return {};
         const cur = executionSetup ?? null;
         if (!cur) return {};
-        if (deriveAutomationLevel(cur) === mvpAutomationLevel) return {};
-        return prototypeAutomationLevelToPatch(mvpAutomationLevel);
+        const level = deriveAutomationLevel(cur);
+        if (level === "pr" || level === "merge") return {};
+        return prototypeAutomationLevelToPatch("pr");
       },
     }),
-    [
-      prototypeMvp,
-      projectId,
-      executionSetup,
-      cursorApiKeyDraft,
-      setExecutionSetup,
-      setMessage,
-      mvpAutomationLevel,
-    ]
+    [prototypeMvp, projectId, executionSetup, cursorApiKeyDraft, setExecutionSetup, setMessage]
   );
 
   return (
@@ -861,51 +776,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
           ) : null}
           {stagedPrototype ? (
             prototypeMvp ? (
-              <>
-                {sectionCard(
-                  "Cursor API 연결",
-                  null,
-                  renderCursorConnectionBlock({ compactTitle: true, mvp: true })
-                )}
-                {sectionCard(
-                  "자동화 설정",
-                  null,
-                  <PrototypeSimpleExecutionPolicy
-                    projectId={projectId}
-                    canEdit={canEdit}
-                    es={es}
-                    setExecutionSetup={setExecutionSetup}
-                    setMessage={setMessage}
-                    setBusy={setBusy}
-                    busy={busy}
-                    automationLevel={mvpAutomationLevel}
-                    onAutomationLevelChange={setMvpAutomationLevel}
-                    hideSaveButton
-                  />,
-                  {
-                    titleRight: (
-                      <button
-                        type="button"
-                        disabled={!canEdit || !es || busy === "save-policy"}
-                        onClick={() => void saveMvpPrototypePolicy()}
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: 10,
-                          border: "1px solid #475569",
-                          background: "#334155",
-                          color: "#fff",
-                          fontWeight: 800,
-                          fontSize: 12,
-                          cursor:
-                            busy === "save-policy" ? "wait" : !canEdit || !es ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {busy === "save-policy" ? "저장 중…" : "실행 정책 저장"}
-                      </button>
-                    ),
-                  }
-                )}
-              </>
+              renderCursorConnectionBlock({ compactTitle: true, mvp: true })
             ) : (
               <>
                 {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}

@@ -231,7 +231,7 @@ import {
   PLANNING_ENV_SETTINGS_LABEL,
   PLANNING_INFO_REFINE_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
-import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
+import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectExecutionEnvironmentModal";
 import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
@@ -333,6 +333,7 @@ export function RequirementsWorkspace({
 
   const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
   const [project, setProject] = useState<Project | null>(null);
+  const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const membersRef = useRef(members);
@@ -2978,9 +2979,7 @@ export function RequirementsWorkspace({
           showErrorToast("프로젝트를 먼저 저장해 주세요.");
           return;
         }
-        window.location.assign(
-          `${projectExecutionSettingsHref(pid, { from: "planning" })}#execution-setup-panel`,
-        );
+        setExecutionEnvironmentModalOpen(true);
         return;
       }
       if (
@@ -3822,6 +3821,14 @@ export function RequirementsWorkspace({
         onClose={() => setDeliverableViewerOpen(false)}
         assets={deliverableViewerAssets}
         initialAssetId={deliverableViewerFocusId}
+      />
+
+      <ProjectExecutionEnvironmentModal
+        open={executionEnvironmentModalOpen}
+        onClose={() => setExecutionEnvironmentModalOpen(false)}
+        projectId={resolvedProjectId.trim()}
+        project={project}
+        canEdit={true}
       />
     </div>
   );

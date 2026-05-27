@@ -121,6 +121,8 @@ import { computePrototypeExecutionSlots } from "@/lib/prototype/prototypeExecuti
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
+import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectExecutionEnvironmentModal";
+import type { Project } from "@/components/project-spec/types";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import {
   mergeRequirementsStateJson,
@@ -245,6 +247,7 @@ export function PrototypePreviewPanel({
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
+  const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
   const [executionAiSummaryBusy, setExecutionAiSummaryBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
@@ -1113,6 +1116,18 @@ export function PrototypePreviewPanel({
     [projectId],
   );
 
+  const executionEnvironmentModalProject = useMemo((): Project | null => {
+    const pid = projectId.trim();
+    if (!pid) return null;
+    return {
+      id: pid,
+      name: projectName,
+      description: projectDescription || null,
+      projectType: "prototype",
+      status: "active",
+    };
+  }, [projectId, projectName, projectDescription]);
+
   const executionEnvSnapshot = useMemo(
     () =>
       toPrototypeChatEnvSnapshot({
@@ -1639,7 +1654,7 @@ export function PrototypePreviewPanel({
   const handleImplementationChip = useCallback(
     (label: string) =>
       tryHandlePrototypeExecutionChip(label, {
-        openEnvSettings: () => window.location.assign(envSettingsHref),
+        openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
         openArtifactHub: () => setArtifactHubOpen(true),
         showImplementationSeedReadinessCheck,
         returnToPlanningStage: () => {
@@ -1803,7 +1818,7 @@ export function PrototypePreviewPanel({
     (a: PrototypeChatAction) => {
       switch (a.intent) {
         case "OPEN_ENV_SETTINGS":
-          window.location.assign(envSettingsHref);
+          setExecutionEnvironmentModalOpen(true);
           return;
         case "OPEN_TEMPLATE_PREVIEW":
           setTemplatePreviewOpen(true);
@@ -2496,6 +2511,14 @@ export function PrototypePreviewPanel({
         showInvite={false}
         inviteDisabled
         onInviteClick={() => {}}
+      />
+
+      <ProjectExecutionEnvironmentModal
+        open={executionEnvironmentModalOpen}
+        onClose={() => setExecutionEnvironmentModalOpen(false)}
+        projectId={projectId}
+        project={executionEnvironmentModalProject}
+        canEdit={true}
       />
 
       <PrototypePreviewDraggableShell

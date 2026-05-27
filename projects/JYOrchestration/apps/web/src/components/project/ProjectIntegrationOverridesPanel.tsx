@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * 프로젝트 capability별 Integrations override (LLM / CODE_AGENT / SCM).
+ * 프로젝트 자동 생성 환경설정 화면에서는 노출하지 않는다.
+ * AI 멤버별 Provider 매핑·SCM 정책 화면에서 재사용할 컴포넌트이다.
+ */
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";

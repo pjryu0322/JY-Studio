@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { ExecutionSetupDto } from "@/components/project-spec/api";
 import {
-  buildPrototypeEnvReadinessRows,
+  buildPrototypeEnvCodeAgentStatusRow,
   isGithubTokenCredentialsError,
   prototypeEnvReadinessToneColors,
 } from "@/lib/project/prototypeEnvSettingsReadiness";
@@ -16,255 +16,259 @@ const stepCardStyle: CSSProperties = {
   background: "#fff",
 };
 
+const modalScrimStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 55,
+  background: "rgba(15, 23, 42, 0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+};
+
+const modalPanelStyle: CSSProperties = {
+  width: "min(520px, 100%)",
+  maxWidth: "100%",
+  background: "#fff",
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+  boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.28)",
+  overflow: "hidden",
+};
+
+function GithubTokenErrorAlertIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="9" stroke="#b91c1c" strokeWidth="1.5" />
+      <path d="M10 6v5" stroke="#b91c1c" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="10" cy="14" r="0.75" fill="#b91c1c" />
+    </svg>
+  );
+}
+
 export function PrototypeEnvSettingsStepCard(input: {
   readonly step: number;
-  readonly title: string;
+  readonly title?: string;
   readonly description?: string;
+  readonly titleAction?: ReactNode;
   readonly children: ReactNode;
 }) {
+  const title = String(input.title ?? "").trim();
+  const showHeader = Boolean(title || input.description || input.titleAction);
+
   return (
     <section style={stepCardStyle} data-testid={`prototype-env-step-${input.step}`}>
-      <header style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: "#6366f1", letterSpacing: "0.04em" }}>
-          {input.step}단계
-        </div>
-        <h2 style={{ fontSize: 17, fontWeight: 800, margin: "4px 0 0 0", color: "#0f172a" }}>{input.title}</h2>
-        {input.description ? (
-          <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>{input.description}</p>
-        ) : null}
-      </header>
+      {showHeader ? (
+        <header style={{ marginBottom: 12 }}>
+          {title || input.titleAction ? (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              {title ? (
+                <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "#0f172a" }}>{title}</h2>
+              ) : null}
+              {input.titleAction ?? null}
+            </div>
+          ) : null}
+          {input.description ? (
+            <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>{input.description}</p>
+          ) : null}
+        </header>
+      ) : null}
       {input.children}
     </section>
   );
 }
 
-export function PrototypeEnvSettingsReadinessSummary(input: {
+export function PrototypeEnvSettingsCodeAgentStatus(input: {
   readonly executionSetup: ExecutionSetupDto | null;
-  readonly connectionTestSatisfied: boolean;
 }) {
-  const rows = buildPrototypeEnvReadinessRows(input);
+  const row = buildPrototypeEnvCodeAgentStatusRow(input.executionSetup);
+  const colors = prototypeEnvReadinessToneColors(row.tone);
   return (
-    <section
-      data-testid="prototype-env-readiness-summary"
+    <div
+      data-testid="prototype-env-code-agent-status"
       style={{
-        marginBottom: 16,
-        padding: "14px 16px",
-        borderRadius: 12,
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        marginBottom: 14,
+        padding: "8px 12px",
+        borderRadius: 8,
+        background: colors.bg,
         border: "1px solid #e2e8f0",
-        background: "#f8fafc",
       }}
     >
-      <h2 style={{ margin: "0 0 10px 0", fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
-        자동 생성 준비 상태
-      </h2>
-      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-        {rows.map((row) => {
-          const colors = prototypeEnvReadinessToneColors(row.tone);
-          return (
-            <li
-              key={row.key}
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                padding: "6px 10px",
-                borderRadius: 8,
-                background: colors.bg,
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>{row.label}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: colors.color }}>{row.value}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>{row.label}</span>
+      <span style={{ fontSize: 13, fontWeight: 800, color: colors.color }}>{row.value}</span>
+    </div>
   );
 }
 
-export function PrototypeEnvSettingsGithubTokenErrorCard(input: {
+export function PrototypeEnvSettingsGithubTokenErrorContent(input: {
   readonly executionSetup: ExecutionSetupDto | null;
-  readonly canEdit: boolean;
-  readonly onReplaceToken: () => void;
 }) {
   const cap = input.executionSetup?.githubCapabilityValidation;
   if (!isGithubTokenCredentialsError(cap)) return null;
 
   const detail = String(cap?.lastErrorMessage ?? "").trim();
   const hint = String(cap?.tokenMismatchHintKr ?? "").trim();
+  const detailText = [detail, hint].filter(Boolean).join(" ");
 
   return (
-    <div
-      role="alert"
-      data-testid="prototype-env-github-token-error-card"
-      style={{
-        marginTop: 12,
-        padding: 14,
-        borderRadius: 10,
-        border: "1px solid #fecaca",
-        background: "#fef2f2",
-      }}
-    >
-      <div style={{ fontSize: 14, fontWeight: 900, color: "#991b1b", marginBottom: 6 }}>GitHub Token 오류</div>
+    <div data-testid="prototype-env-github-token-error-content">
       <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#7f1d1d", lineHeight: 1.55 }}>
         현재 저장된 토큰이 GitHub에서 거부되었습니다.
       </p>
       <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 700, color: "#991b1b" }}>가능한 원인</p>
-      <ul style={{ margin: "0 0 12px 0", paddingLeft: 18, fontSize: 12, color: "#7f1d1d", lineHeight: 1.55 }}>
+      <ul style={{ margin: "0 0 14px 0", paddingLeft: 18, fontSize: 12, color: "#7f1d1d", lineHeight: 1.55 }}>
         <li>토큰 만료</li>
         <li>토큰 복사 오류</li>
         <li>다른 GitHub 계정의 토큰</li>
         <li>조직 SSO 미승인</li>
       </ul>
-      <button
-        type="button"
-        disabled={!input.canEdit}
-        onClick={input.onReplaceToken}
-        style={{
-          padding: "8px 14px",
-          borderRadius: 10,
-          border: "1px solid #b91c1c",
-          background: "#fff",
-          color: "#b91c1c",
-          fontWeight: 800,
-          fontSize: 13,
-          cursor: input.canEdit ? "pointer" : "not-allowed",
-        }}
-      >
-        새 토큰 교체
-      </button>
-      {detail ? (
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", cursor: "pointer" }}>
-            상세 오류 보기
-          </summary>
-          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#7f1d1d", lineHeight: 1.45, wordBreak: "break-word" }}>
-            {detail}
-            {hint ? ` ${hint}` : ""}
-          </p>
-        </details>
+      {detailText ? (
+        <p
+          style={{
+            margin: 0,
+            padding: "10px 12px",
+            borderRadius: 8,
+            background: "#fff",
+            border: "1px solid #fecaca",
+            fontSize: 11,
+            color: "#7f1d1d",
+            lineHeight: 1.5,
+            wordBreak: "break-word",
+          }}
+        >
+          {detailText}
+        </p>
       ) : null}
     </div>
   );
 }
 
-export function PrototypeEnvSettingsIntegrationsSection(input: {
+export function PrototypeEnvSettingsGithubTokenErrorModal(input: {
+  readonly open: boolean;
+  readonly onClose: () => void;
   readonly executionSetup: ExecutionSetupDto | null;
-  readonly advancedPanel: ReactNode;
 }) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const cursorLabel = input.executionSetup && (input.executionSetup.cursorApiConnectionOk === true)
-    ? "Cursor 연결 사용"
-    : "설정 필요";
-  const scmLabel =
-    input.executionSetup?.repoConnectionOk === true
-      ? "GitHub 저장소 사용"
-      : input.executionSetup && (String(input.executionSetup.gitRepoUrl ?? "").trim())
-        ? "검증 필요"
-        : "미설정";
+  useEffect(() => {
+    if (!input.open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") input.onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [input.open, input.onClose]);
+
+  if (!input.open) return null;
+  if (!isGithubTokenCredentialsError(input.executionSetup?.githubCapabilityValidation)) return null;
 
   return (
-    <section
-      data-testid="prototype-env-integrations-summary"
-      style={{
-        marginBottom: 16,
-        padding: 16,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fafafa",
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="prototype-env-github-token-error-modal-title"
+      data-testid="prototype-env-github-token-error-modal"
+      style={modalScrimStyle}
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) input.onClose();
       }}
     >
-      <h2 style={{ margin: "0 0 8px 0", fontSize: 15, fontWeight: 900, color: "#0f172a" }}>AI/연동 설정</h2>
-      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-        일반적인 자동 생성 작업에서는 아래 기본 설정만으로 충분합니다. 프로젝트별 Provider를 바꿀 때만 고급 설정을
-        여세요.
-      </p>
-      <ul style={{ listStyle: "none", margin: "0 0 12px 0", padding: 0, display: "grid", gap: 6 }}>
-        {[
-          { label: "LLM", value: "기본 설정 사용" },
-          { label: "Code Agent", value: cursorLabel },
-          { label: "SCM", value: scmLabel },
-        ].map((row) => (
-          <li
-            key={row.label}
+      <div style={modalPanelStyle} onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid #e2e8f0",
+            background: "linear-gradient(180deg, #fff 0%, #fef2f2 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <h2
+            id="prototype-env-github-token-error-modal-title"
+            style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#991b1b" }}
+          >
+            GitHub Token 오류
+          </h2>
+          <button
+            type="button"
+            onClick={input.onClose}
+            aria-label="닫기"
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              fontSize: 13,
-              padding: "6px 10px",
+              width: 32,
+              height: 32,
               borderRadius: 8,
+              border: "1px solid #e2e8f0",
               background: "#fff",
-              border: "1px solid #f1f5f9",
+              fontSize: 20,
+              lineHeight: 1,
+              cursor: "pointer",
+              color: "#64748b",
             }}
           >
-            <span style={{ fontWeight: 700, color: "#475569" }}>{row.label}</span>
-            <span style={{ fontWeight: 800, color: "#0f172a" }}>{row.value}</span>
-          </li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        onClick={() => setAdvancedOpen((v) => !v)}
-        aria-expanded={advancedOpen}
-        style={{
-          padding: "8px 14px",
-          borderRadius: 10,
-          border: "1px solid #cbd5e1",
-          background: "#fff",
-          fontWeight: 800,
-          fontSize: 13,
-          cursor: "pointer",
-        }}
-      >
-        {advancedOpen ? "고급 연동 설정 숨기기" : "고급 연동 설정 보기"}
-      </button>
-      {advancedOpen ? <div style={{ marginTop: 14 }}>{input.advancedPanel}</div> : null}
-    </section>
+            ×
+          </button>
+        </div>
+        <div style={{ padding: 16, background: "#fef2f2" }}>
+          <PrototypeEnvSettingsGithubTokenErrorContent executionSetup={input.executionSetup} />
+        </div>
+      </div>
+    </div>
   );
 }
 
-export function PrototypeEnvSettingsPreviewCollapsible(input: { readonly children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+/** GitHub Token 단계 — Bad credentials 시 제목 옆 경고 아이콘으로 오류 모달을 연다. */
+export function PrototypeEnvSettingsGithubTokenStepCard(input: {
+  readonly executionSetup: ExecutionSetupDto | null;
+  readonly children: ReactNode;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const hasCredError = isGithubTokenCredentialsError(input.executionSetup?.githubCapabilityValidation);
+
   return (
-    <section
-      data-testid="prototype-env-preview-collapsible"
-      style={{
-        marginTop: 8,
-        marginBottom: 16,
-        padding: 14,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-      }}
-    >
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#0f172a" }}>Preview 설정</h2>
-          <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#64748b" }}>
-            미리보기·검토 화면 레이아웃 (자동 생성 환경과 별도)
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 10,
-            border: "1px solid #cbd5e1",
-            background: "#f8fafc",
-            fontWeight: 800,
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          {open ? "Preview 설정 숨기기" : "Preview 설정 보기"}
-        </button>
-      </div>
-      {open ? <div style={{ marginTop: 14 }}>{input.children}</div> : null}
-    </section>
+    <>
+      <PrototypeEnvSettingsStepCard
+        step={2}
+        title="GitHub Token 설정"
+        titleAction={
+          hasCredError ? (
+            <button
+              type="button"
+              aria-label="GitHub Token 오류 보기"
+              data-testid="prototype-env-github-token-error-trigger"
+              onClick={() => setModalOpen(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 32,
+                height: 32,
+                padding: 0,
+                borderRadius: 8,
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                cursor: "pointer",
+              }}
+            >
+              <GithubTokenErrorAlertIcon />
+            </button>
+          ) : null
+        }
+      >
+        {input.children}
+      </PrototypeEnvSettingsStepCard>
+      {hasCredError ? (
+        <PrototypeEnvSettingsGithubTokenErrorModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          executionSetup={input.executionSetup}
+        />
+      ) : null}
+    </>
   );
 }

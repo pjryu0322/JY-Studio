@@ -6,8 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
-import { ProjectPrototypePreviewSettingsPanel } from "@/components/project/ProjectPrototypePreviewSettingsPanel";
-import { PrototypeEnvSettingsPreviewCollapsible } from "@/components/project/prototypeEnvSettingsUx";
 import {
   PROJECT_ADMIN_EXECUTION_SETUP_PANEL_ID,
   scrollProjectAdminExecutionSetupPanelIntoView,
@@ -142,9 +140,6 @@ function ProjectAdminSettingsInner() {
                   settingsPurpose="prototype"
                 />
               </div>
-              <PrototypeEnvSettingsPreviewCollapsible>
-                <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
-              </PrototypeEnvSettingsPreviewCollapsible>
             </>
           ) : null}
         </div>
