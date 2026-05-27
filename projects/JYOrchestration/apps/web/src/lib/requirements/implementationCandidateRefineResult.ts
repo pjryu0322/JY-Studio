@@ -1,7 +1,9 @@
 import {
   buildImplementationCandidateItems,
+  implementationCandidateLabelForKey,
   resolveImplementationCandidateGapKeys,
 } from "@/lib/requirements/implementationCandidateLabels";
+import { implementationCandidateRefineApplyResultChips } from "@/lib/requirements/implementationCandidateRefineCta";
 import type { ImplementationCandidateRefineMode } from "@/lib/requirements/implementationCandidateRefineRequest";
 import {
   IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS,
@@ -69,12 +71,13 @@ const REFINED_VALUE_HINTS: Readonly<Partial<Record<ImplementationSeedGapKey, str
 };
 
 function summarizeSlotValue(raw: string): string {
-  const line = String(raw ?? "")
+  const lines = String(raw ?? "")
     .split("\n")
     .map((l) => l.trim())
-    .find(Boolean);
-  if (!line) return "";
-  return line.length > 72 ? `${line.slice(0, 69)}…` : line;
+    .filter(Boolean);
+  if (!lines.length) return "";
+  if (lines.length <= 4) return lines.join(", ");
+  return `${lines.slice(0, 4).join(", ")} 등`;
 }
 
 function beforeStatusForGap(
@@ -90,9 +93,9 @@ function buildRefinedValueForGap(
   gapKey: ImplementationSeedGapKey,
   slotValue: string,
 ): { readonly refinedValue: string; readonly resultStatus: ImplementationCandidateRefineResultStatus } {
-  const summarized = summarizeSlotValue(slotValue);
   const hint = REFINED_VALUE_HINTS[gapKey] ?? "";
-  const refinedValue = summarized || hint;
+  const summarized = summarizeSlotValue(slotValue);
+  const refinedValue = hint || summarized;
   if (!refinedValue) {
     return { refinedValue: "현재 대화·산출물만으로는 구체화가 부족합니다.", resultStatus: "not_enough_context" };
   }
@@ -283,4 +286,124 @@ export function filterRefineResultItemsNeedingConfirmation(
   items: readonly ImplementationCandidateRefineResultItem[],
 ): readonly ImplementationCandidateRefineResultItem[] {
   return items.filter((i) => i.nextActionLabel === "추가 확인");
+}
+
+export type ImplementationCandidateRefineApplySummary = Readonly<{
+  readonly targetCount: number;
+  readonly appliedCount: number;
+  readonly needsConfirmationCount: number;
+}>;
+
+export function formatImplementationCandidateRefineApplyResultMessage(input: {
+  readonly mode: ImplementationCandidateRefineMode;
+  readonly appliedKeys: readonly ImplementationSeedGapKey[];
+  readonly remainingKeys: readonly ImplementationSeedGapKey[];
+  readonly summary: ImplementationCandidateRefineApplySummary;
+}): string {
+  const title =
+    input.mode === "all" ? "전체 보완안 적용 결과입니다." : "선택 보완안 적용 결과입니다.";
+
+  const appliedLines = input.appliedKeys.map(
+    (key) => `- ${implementationCandidateLabelForKey(key)}: partial 반영`,
+  );
+  const remainingLines = input.remainingKeys.map(
+    (key) => `- ${implementationCandidateLabelForKey(key)}`,
+  );
+
+  return [
+    title,
+    "",
+    "적용 요약:",
+    `- 적용 대상: ${input.summary.targetCount}개`,
+    `- partial 반영: ${input.summary.appliedCount}개`,
+    `- 추가 확인 유지: ${input.summary.needsConfirmationCount}개`,
+    "",
+    "적용 항목:",
+    ...(appliedLines.length ? appliedLines : ["- (적용된 항목 없음)"]),
+    "",
+    "남은 확인 항목:",
+    ...(remainingLines.length ? remainingLines : ["- (남은 확인 항목 없음)"]),
+    "",
+    "다음 작업을 선택해 주세요.",
+  ].join("\n");
+}
+
+export function runImplementationCandidateRefineApplyTurn(input: {
+  readonly mode: ImplementationCandidateRefineMode;
+  readonly appliedKeys: readonly ImplementationSeedGapKey[];
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly autoCandidateGenerated?: boolean;
+}): Readonly<{
+  readonly assistantMessage: string;
+  readonly interviewSuggestions: readonly string[];
+  readonly appliedKeys: readonly ImplementationSeedGapKey[];
+  readonly remainingKeys: readonly ImplementationSeedGapKey[];
+  readonly needsConfirmationKeys: readonly ImplementationSeedGapKey[];
+  readonly summary: ImplementationCandidateRefineApplySummary;
+  readonly nextState: RequirementsSingleChatOrchestrationStateV1;
+}> {
+  const allKeys = resolveImplementationCandidateGapKeys({
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+    autoCandidateGenerated: input.autoCandidateGenerated ?? true,
+  });
+
+  const appliedKeysResolved =
+    input.appliedKeys.length > 0
+      ? [...input.appliedKeys]
+      : input.mode === "all"
+        ? [...allKeys]
+        : [];
+
+  const appliedSet = new Set(appliedKeysResolved);
+  const reviewItems = buildImplementationCandidateRefineResultItems({
+    keys: allKeys,
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+  });
+
+  const needsConfirmationKeys = reviewItems
+    .filter((i) => i.nextActionLabel === "추가 확인")
+    .map((i) => i.key);
+
+  const remainingKeys = allKeys.filter((k) => !appliedSet.has(k));
+
+  let appliedCount = 0;
+  for (const gapKey of appliedKeysResolved) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const slotKey = findOrchestrationSlotKeysBySuffix(input.definitions, suffix)[0];
+    const row = slotKey ? input.orchestration.slots[slotKey] : null;
+    const status = String(row?.status ?? "").trim().toLowerCase();
+    if (status === "partial" || row?.staleReason === "implementation_candidate_refine_applied") {
+      appliedCount += 1;
+    }
+  }
+
+  const needsConfirmationRemaining = remainingKeys.filter((k) =>
+    needsConfirmationKeys.includes(k),
+  ).length;
+
+  const summary: ImplementationCandidateRefineApplySummary = {
+    targetCount: appliedKeysResolved.length,
+    appliedCount,
+    needsConfirmationCount: needsConfirmationRemaining,
+  };
+
+  const assistantMessage = formatImplementationCandidateRefineApplyResultMessage({
+    mode: input.mode,
+    appliedKeys: appliedKeysResolved,
+    remainingKeys,
+    summary,
+  });
+
+  return {
+    assistantMessage,
+    interviewSuggestions: implementationCandidateRefineApplyResultChips(),
+    appliedKeys: appliedKeysResolved,
+    remainingKeys,
+    needsConfirmationKeys,
+    summary,
+    nextState: input.orchestration,
+  };
 }

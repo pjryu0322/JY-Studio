@@ -54,11 +54,16 @@ import type {
 import { classifyProposalDecision, type ProposalDecision } from "@/lib/requirements/singleChatQuickAction";
 import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
 import {
+  IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE,
   IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
   mergeImplementationCandidateRefineRequest,
+  refineRequestKind,
   type ImplementationCandidateRefineRequestWire,
 } from "@/lib/requirements/implementationCandidateRefineRequest";
-import { runImplementationCandidateRefineTurn } from "@/lib/requirements/implementationCandidateRefineResult";
+import {
+  runImplementationCandidateRefineApplyTurn,
+  runImplementationCandidateRefineTurn,
+} from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { repairUiInstructionContaminatedOrchestrationSlots } from "@/lib/requirements/uiInstructionLikePlanningValue";
 import {
@@ -93,9 +98,10 @@ type Body = {
   quickActionLabel?: string;
   /** proposal 승인 신호 — 일반 user message 와 구분 */
   proposalDecision?: string;
-  /** 기획정보 후보 보완 검토 요청(드로어 선택 메타) */
+  /** 기획정보 후보 보완 검토/적용 요청(드로어·CTA 메타) */
   implementationCandidateRefineRequest?: {
     mode?: "all" | "selected";
+    kind?: "review" | "apply";
     keys?: string[];
     labels?: string[];
     requestedAt?: string;
@@ -377,6 +383,7 @@ export async function POST(request: NextRequest) {
       const refineWire: ImplementationCandidateRefineRequestWire | null = refineWireRaw?.mode
         ? {
             mode: refineWireRaw.mode,
+            kind: refineWireRaw.kind === "apply" ? "apply" : "review",
             keys: (refineWireRaw.keys ?? []).map((k) => String(k).trim()).filter(Boolean) as ImplementationSeedGapKey[],
             labels: (refineWireRaw.labels ?? []).map((l) => String(l).trim()).filter(Boolean),
             requestedAt: String(refineWireRaw.requestedAt ?? nowIso),
@@ -389,6 +396,51 @@ export async function POST(request: NextRequest) {
       });
 
       if (refineRequest) {
+        const kind = refineRequestKind(refineRequest);
+
+        if (kind === "apply") {
+          const appliedKeys =
+            refineRequest.keys.length > 0 ? refineRequest.keys : fallbackCandidateKeys;
+          const applyTurn = runImplementationCandidateRefineApplyTurn({
+            mode: refineRequest.mode,
+            appliedKeys,
+            orchestration: baseState,
+            definitions: defs,
+            autoCandidateGenerated: true,
+          });
+          const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
+            action: "implementation_candidate_refine_apply",
+            source: "internal",
+            timelineStage: orchCtxForTurn.timelineStage,
+            stageGroup: orchCtxForTurn.stageGroup,
+            workspaceScreenKey: orchCtxForTurn.workspaceScreenKey,
+            selectedAgents: orchCtxForTurn.selectedAgents,
+            responseText: applyTurn.assistantMessage.slice(0, 800),
+            routingDecision: `implementation_candidate_refine_apply_${refineRequest.mode}`,
+            createdAtIso: nowIso,
+          });
+          return NextResponse.json({
+            success: true,
+            data: {
+              reply: applyTurn.assistantMessage,
+              interviewSuggestions: [...applyTurn.interviewSuggestions],
+              singleChatOrchestrationV1: applyTurn.nextState,
+              promptTrace: facilitatorPromptTrace,
+              messageMeta: {
+                internalType: IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE,
+                implementationCandidateRefineApplyResult: {
+                  mode: refineRequest.mode,
+                  keys: [...fallbackCandidateKeys],
+                  appliedKeys: [...applyTurn.appliedKeys],
+                  remainingKeys: [...applyTurn.remainingKeys],
+                  needsConfirmationKeys: [...applyTurn.needsConfirmationKeys],
+                  summary: applyTurn.summary,
+                },
+              },
+            },
+          });
+        }
+
         const refineTurn = runImplementationCandidateRefineTurn({
           mode: refineRequest.mode,
           keys: refineRequest.keys.length ? refineRequest.keys : fallbackCandidateKeys,

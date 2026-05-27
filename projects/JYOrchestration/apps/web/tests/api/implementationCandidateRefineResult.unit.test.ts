@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  isImplementationCandidateRefineApplyPrompt,
   isImplementationCandidateRefinePrompt,
+  parseImplementationCandidateRefineApplyFromUserMessage,
   parseImplementationCandidateRefineFromUserMessage,
 } from "@/lib/requirements/implementationCandidateRefineRequest";
+import { implementationCandidateRefineApplyResultChips } from "@/lib/requirements/implementationCandidateRefineCta";
 import {
   buildImplementationCandidateRefineResultItems,
   formatImplementationCandidateRefineResultMessage,
+  runImplementationCandidateRefineApplyTurn,
   runImplementationCandidateRefineTurn,
 } from "@/lib/requirements/implementationCandidateRefineResult";
 import { isUiInstructionLikePlanningValue } from "@/lib/requirements/uiInstructionLikePlanningValue";
@@ -34,7 +38,20 @@ describe("implementationCandidateRefineResult", () => {
       "다음 기획정보 후보 항목을 보완해 주세요: 액터별 권한, 상태 모델",
     );
     expect(parsed?.mode).toBe("selected");
+    expect(parsed?.kind).toBe("review");
     expect(parsed?.labels).toEqual(["액터별 권한", "상태 모델"]);
+    expect(parsed?.keys).toContain("actor_permission_matrix");
+  });
+
+  it("detects and parses apply prompts", () => {
+    const text =
+      "다음 기획정보 후보 항목 보완안을 적용해 주세요: 데이터 항목, 액터별 권한";
+    expect(isImplementationCandidateRefineApplyPrompt(text)).toBe(true);
+    expect(isImplementationCandidateRefinePrompt(text)).toBe(true);
+    const parsed = parseImplementationCandidateRefineApplyFromUserMessage(text);
+    expect(parsed?.kind).toBe("apply");
+    expect(parsed?.mode).toBe("selected");
+    expect(parsed?.keys).toContain("data_entities");
     expect(parsed?.keys).toContain("actor_permission_matrix");
   });
 
@@ -118,5 +135,35 @@ describe("implementationCandidateRefineResult", () => {
       },
     });
     expect(msg).toContain("전체 검토 결과");
+  });
+
+  it("formats apply result with dedicated chips", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p3",
+      projectName: "회의록",
+    });
+    let orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const patch = buildImplementationSeedCandidateSlotPatches({
+      orchestration,
+      definitions,
+      projectName: "회의록",
+      nowIso,
+    });
+    orchestration = { ...orchestration, slots: patch.slots, updatedAt: nowIso };
+
+    const turn = runImplementationCandidateRefineApplyTurn({
+      mode: "selected",
+      appliedKeys: ["data_entities", "actor_permission_matrix"],
+      orchestration,
+      definitions,
+      autoCandidateGenerated: true,
+    });
+
+    expect(turn.assistantMessage).toContain("선택 보완안 적용 결과");
+    expect(turn.assistantMessage).toContain("적용 항목:");
+    expect(turn.assistantMessage).toContain("남은 확인 항목:");
+    expect(turn.appliedKeys).toHaveLength(2);
+    expect(implementationCandidateRefineApplyResultChips()).toContain("구현단계로 이동");
+    expect(turn.interviewSuggestions).not.toContain("추천안 적용");
   });
 });

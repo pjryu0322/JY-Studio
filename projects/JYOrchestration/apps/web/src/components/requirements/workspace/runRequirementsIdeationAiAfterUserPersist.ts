@@ -205,6 +205,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             ? {
                 implementationCandidateRefineRequest: {
                   mode: refineRequest.mode,
+                  kind: refineRequest.kind ?? "review",
                   keys: [...refineRequest.keys],
                   labels: [...refineRequest.labels],
                   requestedAt: refineRequest.requestedAt,
@@ -241,6 +242,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           messageMeta?: {
             internalType?: string;
             implementationCandidateRefineResult?: unknown;
+            implementationCandidateRefineApplyResult?: unknown;
             interviewSuggestions?: unknown;
           };
         };
@@ -322,6 +324,12 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                     ? {
                         implementationCandidateRefineResult:
                           responseMessageMeta.implementationCandidateRefineResult as RequirementsMessageMeta["implementationCandidateRefineResult"],
+                      }
+                    : {}),
+                  ...(responseMessageMeta.implementationCandidateRefineApplyResult
+                    ? {
+                        implementationCandidateRefineApplyResult:
+                          responseMessageMeta.implementationCandidateRefineApplyResult as RequirementsMessageMeta["implementationCandidateRefineApplyResult"],
                       }
                     : {}),
                 }

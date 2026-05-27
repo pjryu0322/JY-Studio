@@ -8,10 +8,16 @@ import type { ImplementationSeedGapKey } from "@/lib/requirements/implementation
 export const IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE =
   "implementation_candidate_refine_result" as const;
 
+export const IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE =
+  "implementation_candidate_refine_apply_result" as const;
+
 export type ImplementationCandidateRefineMode = "all" | "selected";
+
+export type ImplementationCandidateRefineRequestKind = "review" | "apply";
 
 export type ImplementationCandidateRefineRequestWire = Readonly<{
   readonly mode: ImplementationCandidateRefineMode;
+  readonly kind?: ImplementationCandidateRefineRequestKind;
   readonly keys: readonly ImplementationSeedGapKey[];
   readonly labels: readonly string[];
   readonly requestedAt: string;
@@ -19,16 +25,74 @@ export type ImplementationCandidateRefineRequestWire = Readonly<{
 
 const REFINE_ALL_PREFIX = REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT;
 
-export function isImplementationCandidateRefinePrompt(text: string): boolean {
+const APPLY_ALL_PREFIX = "기획정보 후보 항목 전체 보완안을 적용해 주세요";
+const APPLY_SELECTED_PREFIXES = [
+  "다음 기획정보 후보 항목 보완안을 적용해 주세요:",
+  "다음 기획정보 후보 항목을 적용해 주세요:",
+] as const;
+
+const REVIEW_SELECTED_PREFIX = "다음 기획정보 후보 항목을 보완해 주세요:";
+
+export function refineRequestKind(
+  wire: ImplementationCandidateRefineRequestWire,
+): ImplementationCandidateRefineRequestKind {
+  return wire.kind === "apply" ? "apply" : "review";
+}
+
+export function isImplementationCandidateRefineApplyPrompt(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  if (t === APPLY_ALL_PREFIX || t.startsWith(APPLY_ALL_PREFIX)) return true;
+  return APPLY_SELECTED_PREFIXES.some((p) => t.startsWith(p));
+}
+
+export function isImplementationCandidateRefineReviewPrompt(text: string): boolean {
   const t = String(text ?? "").trim();
   if (!t) return false;
   if (t === REFINE_ALL_PREFIX || t.startsWith(REFINE_ALL_PREFIX)) return true;
-  if (t.startsWith("다음 기획정보 후보 항목을 보완해 주세요:")) return true;
-  if (t.startsWith("다음 기획정보 후보 항목을 적용해 주세요:")) return true;
+  if (t.startsWith(REVIEW_SELECTED_PREFIX)) return true;
   return false;
 }
 
-export function parseImplementationCandidateRefineFromUserMessage(
+export function isImplementationCandidateRefinePrompt(text: string): boolean {
+  return isImplementationCandidateRefineApplyPrompt(text) || isImplementationCandidateRefineReviewPrompt(text);
+}
+
+function parseLabelsFromTail(tail: string): { readonly labels: string[]; readonly keys: ImplementationSeedGapKey[] } {
+  const labels = tail
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const keys = labels
+    .map((label) => labelToGapKey(label))
+    .filter((k): k is ImplementationSeedGapKey => Boolean(k));
+  return {
+    labels: labels.length ? labels : keys.map(implementationCandidateLabelForKey),
+    keys,
+  };
+}
+
+export function parseImplementationCandidateRefineApplyFromUserMessage(
+  text: string,
+): ImplementationCandidateRefineRequestWire | null {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  const nowIso = new Date().toISOString();
+
+  if (t === APPLY_ALL_PREFIX || t.startsWith(APPLY_ALL_PREFIX)) {
+    return { mode: "all", kind: "apply", keys: [], labels: [], requestedAt: nowIso };
+  }
+
+  for (const prefix of APPLY_SELECTED_PREFIXES) {
+    if (!t.startsWith(prefix)) continue;
+    const { labels, keys } = parseLabelsFromTail(t.slice(prefix.length).trim());
+    return { mode: "selected", kind: "apply", keys, labels, requestedAt: nowIso };
+  }
+
+  return null;
+}
+
+export function parseImplementationCandidateRefineReviewFromUserMessage(
   text: string,
 ): ImplementationCandidateRefineRequestWire | null {
   const t = String(text ?? "").trim();
@@ -36,28 +100,24 @@ export function parseImplementationCandidateRefineFromUserMessage(
   const nowIso = new Date().toISOString();
 
   if (t === REFINE_ALL_PREFIX || t.startsWith(REFINE_ALL_PREFIX)) {
-    return { mode: "all", keys: [], labels: [], requestedAt: nowIso };
+    return { mode: "all", kind: "review", keys: [], labels: [], requestedAt: nowIso };
   }
 
-  const selectedPrefix = "다음 기획정보 후보 항목을 보완해 주세요:";
-  if (t.startsWith(selectedPrefix)) {
-    const tail = t.slice(selectedPrefix.length).trim();
-    const labels = tail
-      .split(/[,，]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const keys = labels
-      .map((label) => labelToGapKey(label))
-      .filter((k): k is ImplementationSeedGapKey => Boolean(k));
-    return {
-      mode: "selected",
-      keys,
-      labels: labels.length ? labels : keys.map(implementationCandidateLabelForKey),
-      requestedAt: nowIso,
-    };
+  if (t.startsWith(REVIEW_SELECTED_PREFIX)) {
+    const { labels, keys } = parseLabelsFromTail(t.slice(REVIEW_SELECTED_PREFIX.length).trim());
+    return { mode: "selected", kind: "review", keys, labels, requestedAt: nowIso };
   }
 
   return null;
+}
+
+export function parseImplementationCandidateRefineFromUserMessage(
+  text: string,
+): ImplementationCandidateRefineRequestWire | null {
+  return (
+    parseImplementationCandidateRefineApplyFromUserMessage(text) ??
+    parseImplementationCandidateRefineReviewFromUserMessage(text)
+  );
 }
 
 function labelToGapKey(label: string): ImplementationSeedGapKey | null {
@@ -95,6 +155,7 @@ export function mergeImplementationCandidateRefineRequest(input: {
         : keys.map(implementationCandidateLabelForKey);
     return {
       mode: input.wire.mode,
+      kind: input.wire.kind ?? "review",
       keys,
       labels,
       requestedAt: input.wire.requestedAt || new Date().toISOString(),
@@ -121,6 +182,13 @@ export function mergeImplementationCandidateRefineRequest(input: {
 export function buildRefineSelectedImplementationCandidatesPromptFromWire(
   wire: ImplementationCandidateRefineRequestWire,
 ): string {
+  if (wire.kind === "apply") {
+    if (wire.mode === "all") {
+      return `${APPLY_ALL_PREFIX}. 적용된 항목과 남은 확인 항목을 정리해 주세요.`;
+    }
+    const list = wire.labels.join(", ");
+    return `${APPLY_SELECTED_PREFIXES[0]} ${list}`;
+  }
   if (wire.mode === "all") return REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT;
   return buildRefineSelectedImplementationCandidatesPrompt(wire.labels);
 }

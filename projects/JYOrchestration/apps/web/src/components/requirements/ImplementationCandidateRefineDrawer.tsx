@@ -197,6 +197,7 @@ export function ImplementationCandidateRefineDrawer({
               closeAndRequest(
                 {
                   mode: "selected",
+                  kind: "review",
                   keys,
                   labels: selectedLabels,
                   requestedAt: new Date().toISOString(),
@@ -215,6 +216,7 @@ export function ImplementationCandidateRefineDrawer({
               closeAndRequest(
                 {
                   mode: "all",
+                  kind: "review",
                   keys: items.map((item) => item.key as ImplementationSeedGapKey),
                   labels: items.map((item) => item.label),
                   requestedAt: new Date().toISOString(),

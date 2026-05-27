@@ -43,6 +43,19 @@ export type RequirementsMessageMeta = {
     }>;
     readonly needsConfirmationKeys?: readonly string[];
   }>;
+  /** 기획정보 후보 보완안 적용 결과(적용·남은 확인 항목 요약) */
+  implementationCandidateRefineApplyResult?: Readonly<{
+    readonly mode: "all" | "selected";
+    readonly keys: readonly string[];
+    readonly appliedKeys: readonly string[];
+    readonly remainingKeys: readonly string[];
+    readonly needsConfirmationKeys: readonly string[];
+    readonly summary: Readonly<{
+      readonly targetCount: number;
+      readonly appliedCount: number;
+      readonly needsConfirmationCount: number;
+    }>;
+  }>;
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */

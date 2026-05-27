@@ -216,13 +216,16 @@ import {
 } from "@/lib/requirements/implementationCandidateLabels";
 import {
   buildApplyImplementationCandidateRefineComposerPrompt,
+  isImplementationCandidateRefineApplyResultCtaLabel,
   isImplementationCandidateRefineCtaLabel,
   resolveImplementationCandidateRefineCtaAction,
 } from "@/lib/requirements/implementationCandidateRefineCta";
 import {
+  IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE,
   IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
   type ImplementationCandidateRefineRequestWire,
 } from "@/lib/requirements/implementationCandidateRefineRequest";
+import { IMPLEMENTATION_STAGE_NAVIGATE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
@@ -2800,6 +2803,15 @@ export function RequirementsWorkspace({
     return null;
   }, [conversationMessages]);
 
+  const latestImplementationCandidateRefineApplyMeta = useMemo(() => {
+    for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
+      const m = conversationMessages[i];
+      if (m?.meta?.internalType !== IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE) continue;
+      return m.meta?.implementationCandidateRefineApplyResult ?? null;
+    }
+    return null;
+  }, [conversationMessages]);
+
   const planningRefineCandidateItems = useMemo(() => {
     let touchedFromMessage: readonly ImplementationSeedGapKey[] | undefined;
     let sawQuickDesignReadyMessage = false;
@@ -2822,8 +2834,12 @@ export function RequirementsWorkspace({
       definitions: slotDefsForProgress,
     });
     let items = buildImplementationCandidateItems(keys);
-    if (implementationRefineFilterNeedsConfirmationOnly && latestImplementationCandidateRefineMeta) {
-      const pending = new Set(latestImplementationCandidateRefineMeta.needsConfirmationKeys ?? []);
+    if (implementationRefineFilterNeedsConfirmationOnly) {
+      const pendingKeys =
+        latestImplementationCandidateRefineApplyMeta?.remainingKeys ??
+        latestImplementationCandidateRefineMeta?.needsConfirmationKeys ??
+        [];
+      const pending = new Set(pendingKeys);
       if (pending.size) {
         items = items.filter((item) => pending.has(item.key));
       }
@@ -2836,14 +2852,21 @@ export function RequirementsWorkspace({
     slotDefsForProgress,
     implementationRefineFilterNeedsConfirmationOnly,
     latestImplementationCandidateRefineMeta,
+    latestImplementationCandidateRefineApplyMeta,
   ]);
 
   const handleImplementationCandidateRefineCta = useCallback(
     async (action: ReturnType<typeof resolveImplementationCandidateRefineCtaAction>) => {
       if (!action) return;
-      const meta = latestImplementationCandidateRefineMeta;
+      const reviewMeta = latestImplementationCandidateRefineMeta;
+      const applyMeta = latestImplementationCandidateRefineApplyMeta;
       const orch = orchestrationAlignedState ?? orchestrationUiState;
-      if (action === "review_later") return;
+      if (action === "review_later") {
+        setImplementationRefineDrawerOpen(false);
+        setImplementationRefineFilterNeedsConfirmationOnly(false);
+        showSuccessToast("나중에 검토하도록 현재 상태를 유지했습니다.");
+        return;
+      }
       if (action === "edit_by_item") {
         setImplementationRefineFilterNeedsConfirmationOnly(false);
         setImplementationRefineDrawerOpen(true);
@@ -2855,24 +2878,27 @@ export function RequirementsWorkspace({
         return;
       }
       if (action === "review_again") {
-        const mode = meta?.mode ?? "all";
+        const mode = reviewMeta?.mode ?? applyMeta?.mode ?? "all";
+        const keys = ((reviewMeta?.keys?.length ? reviewMeta.keys : applyMeta?.keys) ??
+          []) as ImplementationSeedGapKey[];
         implementationCandidateRefineRequestRef.current = {
           mode,
-          keys: (meta?.keys ?? []) as ImplementationSeedGapKey[],
-          labels: (meta?.keys ?? []).map((k) => implementationCandidateLabelForKey(String(k))),
+          kind: "review",
+          keys,
+          labels: keys.map((k) => implementationCandidateLabelForKey(String(k))),
           requestedAt: new Date().toISOString(),
         };
         insertComposerPrompt(
           mode === "all"
             ? REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT
-            : `다음 기획정보 후보 항목을 보완해 주세요: ${(meta?.keys ?? [])
+            : `다음 기획정보 후보 항목을 보완해 주세요: ${keys
                 .map((k) => implementationCandidateLabelForKey(String(k)))
                 .join(", ")}`,
         );
         return;
       }
       if ((action === "apply_all" || action === "apply_selected") && orch) {
-        const keys = (meta?.keys ?? []) as ImplementationSeedGapKey[];
+        const keys = (reviewMeta?.keys ?? []) as ImplementationSeedGapKey[];
         if (!keys.length) {
           showErrorToast("적용할 보완 항목을 찾을 수 없습니다. 먼저 후보 항목 검토를 실행해 주세요.");
           return;
@@ -2886,9 +2912,17 @@ export function RequirementsWorkspace({
         });
         await persistStateJsonOnly({ singleChatOrchestrationV1: nextOrch });
         const labels = keys.map((k) => implementationCandidateLabelForKey(k));
+        const applyMode = reviewMeta?.mode === "selected" ? "selected" : "all";
+        implementationCandidateRefineRequestRef.current = {
+          mode: applyMode,
+          kind: "apply",
+          keys,
+          labels,
+          requestedAt: nowIso,
+        };
         insertComposerPrompt(
           buildApplyImplementationCandidateRefineComposerPrompt({
-            mode: meta?.mode === "selected" ? "selected" : "all",
+            mode: applyMode,
             labels,
           }),
         );
@@ -2900,6 +2934,7 @@ export function RequirementsWorkspace({
     },
     [
       latestImplementationCandidateRefineMeta,
+      latestImplementationCandidateRefineApplyMeta,
       orchestrationAlignedState,
       orchestrationUiState,
       slotDefsForProgress,
@@ -2913,7 +2948,14 @@ export function RequirementsWorkspace({
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
-      if (isImplementationCandidateRefineCtaLabel(trimmed)) {
+      if (
+        isImplementationCandidateRefineCtaLabel(trimmed) ||
+        isImplementationCandidateRefineApplyResultCtaLabel(trimmed)
+      ) {
+        if (trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL && latestImplementationCandidateRefineApplyMeta) {
+          void handleStartImplementation();
+          return;
+        }
         void handleImplementationCandidateRefineCta(resolveImplementationCandidateRefineCtaAction(trimmed));
         return;
       }
@@ -3020,6 +3062,7 @@ export function RequirementsWorkspace({
       showSuccessToast,
       handlePlanningImplementationSeedChip,
       handleImplementationCandidateRefineCta,
+      latestImplementationCandidateRefineApplyMeta,
     ],
   );
 
