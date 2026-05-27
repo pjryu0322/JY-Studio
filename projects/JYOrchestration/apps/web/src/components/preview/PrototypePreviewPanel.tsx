@@ -15,6 +15,8 @@ import {
   PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
+import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
+import { InlineTemplatePickerRow } from "@/components/preview/prototypeChatTimeline";
 
 import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
@@ -214,6 +216,7 @@ export function PrototypePreviewPanel({
   const [toast, setToast] = useState<string | null>(null);
   const toastClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
+  const [templateChangeOpen, setTemplateChangeOpen] = useState(false);
   const [plannerPromptModalOpen, setPlannerPromptModalOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
@@ -1989,6 +1992,9 @@ export function PrototypePreviewPanel({
     const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
     const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
     const noWorkUnitsYet = (latestRun?.workUnits?.length ?? 0) === 0;
+    const usingDefaultAiRecommendedTemplate =
+      noWorkUnitsYet && !templateConfirmed && draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE;
+    if (usingDefaultAiRecommendedTemplate) return null;
     return {
       value: draftPickerValue,
       recommendedTemplateId: analysis.recommendedTemplate,
@@ -2003,7 +2009,6 @@ export function PrototypePreviewPanel({
       onConfirm: () => void confirmTemplate(),
       confirmDisabled,
       disabled: frozen,
-      layout: noWorkUnitsYet ? "compact" : "full",
     };
   }, [
     canRequestGeneration.envOk,
@@ -2014,6 +2019,43 @@ export function PrototypePreviewPanel({
     draftPickerValue,
     analysis.recommendedTemplate,
     confirmTemplate,
+  ]);
+
+  const toolbarTemplatePicker = useMemo(() => {
+    if (!canRequestGeneration.envOk) return null;
+    if (shouldLockInlineChatTemplateSelection(latestRun)) return null;
+    const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
+    const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
+    const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
+    return {
+      value: draftPickerValue,
+      recommendedTemplateId: analysis.recommendedTemplate,
+      onChange: (id: string) => {
+        setDraftPickerValue(id);
+        setTemplateConfirmed((c) => {
+          if (c) savePrototypeGenerationRecord(projectId, { templateCommittedToPlan: false });
+          return false;
+        });
+      },
+      onPreview: () => setTemplatePreviewOpen(true),
+      onConfirm: async () => {
+        await confirmTemplate();
+        setTemplateChangeOpen(false);
+      },
+      confirmDisabled,
+      disabled: frozen,
+      layout: "full" as const,
+    } satisfies PrototypeInlineTemplatePickerProps;
+  }, [
+    analysis.recommendedTemplate,
+    canRequestGeneration.envOk,
+    confirmTemplate,
+    draftPickerValue,
+    latestRun,
+    projectId,
+    protoBusy,
+    templateConfirmed,
+    templateOverride,
   ]);
 
   const prototypeModalParticipants = useMemo((): readonly ParticipantOption[] => {
@@ -2295,35 +2337,69 @@ export function PrototypePreviewPanel({
 
   const executionConversationIconToolbar = useMemo(
     () => (
-      <WorkspaceConversationHubIconRow
-        busy={protoBusy || executionAiSummaryBusy || implementationResetBusy}
-        interviewUi={implementationInterviewUi}
-        slotsChromeLabels={{
-          progressLabel: IMPLEMENTATION_PROGRESS_LABEL,
-          detailAriaLabel: IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
-        }}
-        quickExecutionTitle="빠른 실행: 구현 작업안·WIP"
-        quickExecutionAriaLabel="빠른 실행: 구현 작업안 확정 또는 코드 에이전트 WIP 작업 요청"
-        memberControls={{
-          count: implementationParticipantCount,
-          onOpen: () => setProtoMembersModalOpen(true),
-        }}
-        artifactHubControls={{
-          count: implementationArtifactHubView.badgeCount,
-          hasStale: false,
-          title: IMPLEMENTATION_ARTIFACT_HUB_LABEL,
-          onOpen: () => setArtifactHubOpen(true),
-        }}
-        onDownloadConversationMarkdown={onDownloadImplementationConversationMarkdown}
-        onResetConversation={onResetImplementationConversation}
-        onSummarizeConversation={onSummarizeImplementationConversation}
-        resetConversationDisabled={
-          protoBusy ||
-          implementationResetBusy ||
-          executionSingleChat.conversationStatus !== "loaded" ||
-          !executionSingleChat.chatMessages.length
-        }
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <WorkspaceHubChromeIconButton
+          title="템플릿 변경"
+          ariaLabel="템플릿 변경"
+          disabled={!canRequestGeneration.envOk || shouldLockInlineChatTemplateSelection(latestRun) || protoBusy}
+          onClick={() => {
+            if (!canRequestGeneration.envOk) {
+              showToast("환경 검증과 연결 테스트가 완료된 뒤 템플릿을 변경할 수 있습니다.");
+              return;
+            }
+            if (shouldLockInlineChatTemplateSelection(latestRun)) {
+              showToast("작업계획이 생성된 뒤에는 템플릿을 변경할 수 없습니다.");
+              return;
+            }
+            setTemplateChangeOpen(true);
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+          </svg>
+        </WorkspaceHubChromeIconButton>
+
+        <WorkspaceConversationHubIconRow
+          busy={protoBusy || executionAiSummaryBusy || implementationResetBusy}
+          interviewUi={implementationInterviewUi}
+          slotsChromeLabels={{
+            progressLabel: IMPLEMENTATION_PROGRESS_LABEL,
+            detailAriaLabel: IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
+          }}
+          quickExecutionTitle="빠른 실행: 구현 작업안·WIP"
+          quickExecutionAriaLabel="빠른 실행: 구현 작업안 확정 또는 코드 에이전트 WIP 작업 요청"
+          memberControls={{
+            count: implementationParticipantCount,
+            onOpen: () => setProtoMembersModalOpen(true),
+          }}
+          artifactHubControls={{
+            count: implementationArtifactHubView.badgeCount,
+            hasStale: false,
+            title: IMPLEMENTATION_ARTIFACT_HUB_LABEL,
+            onOpen: () => setArtifactHubOpen(true),
+          }}
+          onDownloadConversationMarkdown={onDownloadImplementationConversationMarkdown}
+          onResetConversation={onResetImplementationConversation}
+          onSummarizeConversation={onSummarizeImplementationConversation}
+          resetConversationDisabled={
+            protoBusy ||
+            implementationResetBusy ||
+            executionSingleChat.conversationStatus !== "loaded" ||
+            !executionSingleChat.chatMessages.length
+          }
+        />
+      </div>
     ),
     [
       protoBusy,
@@ -2331,9 +2407,12 @@ export function PrototypePreviewPanel({
       implementationInterviewUi,
       implementationParticipantCount,
       implementationArtifactHubView.badgeCount,
+      canRequestGeneration.envOk,
+      latestRun,
       onDownloadImplementationConversationMarkdown,
       onResetImplementationConversation,
       onSummarizeImplementationConversation,
+      showToast,
       executionSingleChat.conversationStatus,
       executionSingleChat.chatMessages.length,
     ],
@@ -2499,6 +2578,32 @@ export function PrototypePreviewPanel({
         project={executionEnvironmentModalProject}
         canEdit={true}
       />
+
+      <PrototypePreviewDraggableShell
+        open={templateChangeOpen}
+        onClose={() => setTemplateChangeOpen(false)}
+        title="템플릿 변경"
+        modalWidth="min(860px, calc(100vw - 20px))"
+        tone="showcase"
+      >
+        {toolbarTemplatePicker ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
+              AI 추천 템플릿을 기본값으로 사용합니다. 다른 템플릿이 필요하면 선택 후 <strong>[확정]</strong>을 눌러 적용하세요.
+            </div>
+            <InlineTemplatePickerRow {...toolbarTemplatePicker} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => setTemplateChangeOpen(false)} style={btnMuted}>
+                닫기
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>
+            현재 상태에서는 템플릿을 변경할 수 없습니다.
+          </div>
+        )}
+      </PrototypePreviewDraggableShell>
 
       <PrototypePreviewDraggableShell
         open={templatePreviewOpen}
