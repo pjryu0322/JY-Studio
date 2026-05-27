@@ -76,11 +76,12 @@ import {
   buildImplementationStatusQueryMessage,
   buildImplementationStatusQueryTimelineEntry,
   hasImplementationRoleCheckDetailsShown,
+  implementationEntryChipsForBootstrap,
 } from "@/lib/prototype/implementationOrchestrationSummary";
-import {
-  detectImplementationStatusQueryIntent,
-  type ImplementationStatusQueryIntent,
-} from "@/lib/prototype/implementationStatusQueryIntent";
+import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
+import { resolveImplementationOperationalSend } from "@/lib/prototype/implementationOperationalSend";
+import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
+import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -1158,6 +1159,25 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const implementationSeedReady = useMemo(() => {
+    const summary = summarizeImplementationSeedStatus({
+      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+      definitions: planningSlotDefinitions,
+      lifecycleStatus: parsedRequirementsState.implementationSeedV1?.lifecycleStatus,
+    });
+    return summary.ready || Boolean(parsedRequirementsState.implementationSeedV1?.readiness?.ready);
+  }, [
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.implementationSeedV1,
+    planningSlotDefinitions,
+  ]);
+
+  const implementationVisibleActionLabels = useMemo(
+    () =>
+      implementationBootstrapInput ? implementationEntryChipsForBootstrap(implementationBootstrapInput) : [],
+    [implementationBootstrapInput],
+  );
+
   const derivedChatMessages = useMemo(
     () =>
       buildPrototypeChatMessages({
@@ -1242,6 +1262,75 @@ export function PrototypePreviewPanel({
     [flowSteps],
   );
 
+  const buildStatusQueryOperationalResult = useCallback(
+    (intent: ImplementationStatusQueryIntent): PrototypeExecutionOperationalSendResult | null => {
+      if (intent === "none" || !implementationBootstrapInput) return null;
+      const prior = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson).messages ?? [];
+      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
+        showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
+        return "handled";
+      }
+      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
+      const aiMessage = buildImplementationStatusQueryMessage({
+        intent,
+        summaryInput: implementationBootstrapInput,
+        roleCheckSummary,
+      });
+      if (!aiMessage) return "handled";
+      return {
+        kind: "status_query",
+        aiMessage,
+        timelineEntries: [
+          buildImplementationStatusQueryTimelineEntry({
+            query: intent,
+            summaryInput: implementationBootstrapInput,
+            roleCheckSummary,
+          }),
+        ],
+      };
+    },
+    [implementationBootstrapInput, requirementsStateJson, showToast],
+  );
+
+  const implementationOperationalHandlers = useMemo(
+    () => ({
+      appendNotice: (message: string) => appendExecutionNoticeRef.current(message),
+      showToast,
+      focusChatInput: () => {
+        queueMicrotask(() => chatInputRef.current?.focus());
+      },
+      startWorkPlanGeneration: () => startWorkPlanGenerationFromChat(),
+      openPlannerPrompt: () => setPlannerPromptModalOpen(true),
+      openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
+      openArtifactHub: () => setArtifactHubOpen(true),
+      buildStatusQueryResult: buildStatusQueryOperationalResult,
+      persistRequirementPatch: (patch: import("@/lib/prototype/implementationUserFeedback").ImplementationUserFeedbackPatchV1) => {
+        const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+        const orchPatch = buildImplementationUserFeedbackOrchestrationPatch({
+          requirementsStateJson,
+          patch,
+          nowIso: patch.createdAt,
+        });
+        void persistChatToDb(
+          {
+            messages: resolved.messages ?? [],
+            slots: resolved.slots ?? [],
+            answers: resolved.answers ?? {},
+            currentSlotKey: resolved.currentSlotKey ?? null,
+          },
+          orchPatch,
+        );
+      },
+    }),
+    [
+      showToast,
+      buildStatusQueryOperationalResult,
+      requirementsStateJson,
+      persistChatToDb,
+      startWorkPlanGenerationFromChat,
+    ],
+  );
+
   const executionSingleChat = usePrototypeExecutionSingleChat({
     projectId,
     projectName: projectName || "프로젝트",
@@ -1280,49 +1369,6 @@ export function PrototypePreviewPanel({
       );
     },
     onOperationalSend: async (text) => {
-      const statusIntent = detectImplementationStatusQueryIntent(text);
-      if (statusIntent !== "none") {
-        const statusResult = buildStatusQueryOperationalResult(statusIntent);
-        if (!statusResult) {
-          appendExecutionNoticeRef.current("환경 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
-          return "handled";
-        }
-        return statusResult;
-      }
-
-      const wantsWorkPlanGeneration =
-        !isRunningState &&
-        /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
-          text,
-        );
-
-      if (wantsWorkPlanGeneration) {
-        if (!canRequestGeneration.envOk) {
-          appendExecutionNoticeRef.current("먼저 환경 검증과 연결 테스트를 완료해 주세요.");
-          return "handled";
-        }
-        if (!templatePlanningReady) {
-          appendExecutionNoticeRef.current(
-            "선택한 템플릿을 적용하려면 [확정]을 눌러 주세요. AI 추천 템플릿을 사용할 경우 별도 확정 없이 진행할 수 있습니다.",
-          );
-          return "handled";
-        }
-        startWorkPlanGenerationFromChat();
-        return "handled";
-      }
-
-      if (isDraftGenerationComplete) {
-        appendExecutionNoticeRef.current(
-          "새 요청은 「처음부터 다시 생성」으로 진행해 주세요. 타임라인의 버튼을 사용하거나 실행 설정에서 다시 시작할 수 있습니다.",
-        );
-        return "handled";
-      }
-
-      if (isRunningState) {
-        appendExecutionNoticeRef.current("실행 중에는 작업계획을 수정할 수 없습니다. 중단 후 재계획할 수 있습니다.");
-        return "handled";
-      }
-
       const run = latestRun;
       if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
         setProtoBusy(true);
@@ -1341,7 +1387,30 @@ export function PrototypePreviewPanel({
         return "handled";
       }
 
-      return "continue";
+      return resolveImplementationOperationalSend(
+        {
+          text,
+          isDraftGenerationComplete,
+          isRunningState,
+          envOk: canRequestGeneration.envOk,
+          routeParams: {
+            text,
+            visibleActionLabels: implementationVisibleActionLabels,
+            envOk: canRequestGeneration.envOk,
+            templatePlanningReady,
+            implementationSeedReady,
+            hasWorkUnits: (latestRun?.workUnits?.length ?? 0) > 0,
+            isPlannerRunning,
+            plannerCreatePending,
+            protoBusy,
+            projectName: projectName || "프로젝트",
+            projectDescription,
+            latestRunStatus: latestRun?.status ?? null,
+            enableLlmClassifier: true,
+          },
+        },
+        implementationOperationalHandlers,
+      );
     },
   });
 
@@ -1454,36 +1523,6 @@ export function PrototypePreviewPanel({
     persistChatToDb,
     showToast,
   ]);
-
-  const buildStatusQueryOperationalResult = useCallback(
-    (intent: ImplementationStatusQueryIntent): PrototypeExecutionOperationalSendResult | null => {
-      if (intent === "none" || !implementationBootstrapInput) return null;
-      const prior = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson).messages ?? [];
-      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
-        showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
-        return "handled";
-      }
-      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
-      const aiMessage = buildImplementationStatusQueryMessage({
-        intent,
-        summaryInput: implementationBootstrapInput,
-        roleCheckSummary,
-      });
-      if (!aiMessage) return "handled";
-      return {
-        kind: "status_query",
-        aiMessage,
-        timelineEntries: [
-          buildImplementationStatusQueryTimelineEntry({
-            query: intent,
-            summaryInput: implementationBootstrapInput,
-            roleCheckSummary,
-          }),
-        ],
-      };
-    },
-    [implementationBootstrapInput, requirementsStateJson, showToast],
-  );
 
   const appendStatusQueryFromChip = useCallback(
     (intent: ImplementationStatusQueryIntent) => {

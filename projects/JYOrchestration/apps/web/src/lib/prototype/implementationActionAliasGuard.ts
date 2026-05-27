@@ -1,0 +1,66 @@
+import {
+  IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP,
+  IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
+  IMPLEMENTATION_SCM_CHECK_VIEW_CHIP,
+} from "@/lib/prototype/implementationOrchestrationSummary";
+import type { ImplementationActionId } from "@/lib/prototype/implementationIntentRouterTypes";
+import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
+
+const MAX_ALIAS_LENGTH = 48;
+
+/** 실행 보류·사전 검토 표현이 있으면 alias 매칭하지 않는다. */
+const DEFER_OR_CONDITIONAL =
+  /생성\s*전|만들\s*기\s*전|하기\s*전에|나중에\s*(만들|생성)|먼저\s*검토|누락.*검토|검토해|확인해\s*줘.*생성|아직\s*만들지/i;
+
+function normalizeAliasText(text: string): string {
+  return String(text ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+const EXACT_LABEL_TO_ACTION: Readonly<Record<string, ImplementationActionId>> = {
+  [WORK_PLAN_DRAFT_GENERATE_CHIP]: "CREATE_WORK_PLAN",
+  "구현 작업안 생성": "CREATE_WORK_PLAN",
+  "작업계획 생성": "CREATE_WORK_PLAN",
+  "작업계획 수립": "CREATE_WORK_PLAN",
+  "작업 계획 생성": "CREATE_WORK_PLAN",
+  "프롬프트 보기": "OPEN_PLANNER_PROMPT",
+  [IMPLEMENTATION_SCM_CHECK_VIEW_CHIP]: "SHOW_SCM_CHECK",
+  "scm 점검 결과": "SHOW_SCM_CHECK",
+  [IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP]: "SHOW_ENV_CHECK",
+  "환경설정 점검 결과": "SHOW_ENV_CHECK",
+  [IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP]: "SHOW_ROLE_CHECK",
+  "역할별 점검 보기": "SHOW_ROLE_CHECK",
+  "산출물 다시 보기": "SHOW_ARTIFACTS",
+  "환경설정 열기": "OPEN_ENV_SETTINGS",
+  "구현 범위 직접 입력": "DIRECT_IMPLEMENTATION_SCOPE_INPUT",
+};
+
+export function detectImplementationActionAlias(input: {
+  readonly text: string;
+  readonly visibleActionLabels?: readonly string[];
+}): ImplementationActionId | null {
+  const raw = String(input.text ?? "").trim();
+  if (!raw || raw.length > MAX_ALIAS_LENGTH) return null;
+  if (DEFER_OR_CONDITIONAL.test(raw)) return null;
+
+  const normalized = normalizeAliasText(raw);
+  if (EXACT_LABEL_TO_ACTION[normalized]) return EXACT_LABEL_TO_ACTION[normalized];
+  if (EXACT_LABEL_TO_ACTION[raw]) return EXACT_LABEL_TO_ACTION[raw];
+
+  for (const label of input.visibleActionLabels ?? []) {
+    const t = label.trim();
+    if (!t || t.length > MAX_ALIAS_LENGTH) continue;
+    if (normalizeAliasText(t) === normalized) {
+      const mapped = EXACT_LABEL_TO_ACTION[t] ?? EXACT_LABEL_TO_ACTION[normalizeAliasText(t)];
+      if (mapped) return mapped;
+    }
+  }
+
+  if (/^(구현\s*)?작업\s*안\s*(초안\s*)?(생성|만들|수립)$/.test(normalized.replace(/\s/g, ""))) {
+    return "CREATE_WORK_PLAN";
+  }
+
+  return null;
+}

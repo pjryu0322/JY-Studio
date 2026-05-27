@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { PrototypeChatBuiltMessage } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
   filterPersistedPrototypeExecutionMessages,
@@ -43,6 +44,11 @@ export type PrototypeExecutionOperationalSendResult =
   | "continue"
   | Readonly<{
       kind: "status_query";
+      aiMessage: RequirementsMessage;
+      timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      kind: "assistant_reply";
       aiMessage: RequirementsMessage;
       timelineEntries?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
     }>;
@@ -250,15 +256,31 @@ export function usePrototypeExecutionSingleChat({
       meta: { serviceDesignStage: "implementation" },
     });
 
+    flushSync(() => {
+      setConversationMessages((prev) => [...prev, userMsg]);
+    });
+
     const operational = await onOperationalSend(text);
     if (operational === "handled") {
-      const next = [...conversationMessages, userMsg];
-      persistConversation(next, answers, currentSlotKey);
+      setConversationMessages((prev) => {
+        const persisted = filterPersistedPrototypeExecutionMessages(prev);
+        onPersistStateJson({
+          messages: persisted,
+          slots,
+          answers,
+          currentSlotKey,
+        });
+        return persisted;
+      });
       return;
     }
-    if (operational && typeof operational === "object" && operational.kind === "status_query") {
+    if (
+      operational &&
+      typeof operational === "object" &&
+      (operational.kind === "status_query" || operational.kind === "assistant_reply")
+    ) {
       setConversationMessages((prev) => {
-        const next = [...prev, userMsg, operational.aiMessage];
+        const next = [...prev, operational.aiMessage];
         const persisted = filterPersistedPrototypeExecutionMessages(next);
         onPersistStateJson({
           messages: persisted,
@@ -293,7 +315,6 @@ export function usePrototypeExecutionSingleChat({
         setConversationMessages((prev) => {
           const next = [
             ...prev,
-            userMsg,
             newRequirementsMessage({
               role: "ai",
               speakerType: "AI",
@@ -325,7 +346,7 @@ export function usePrototypeExecutionSingleChat({
       }
 
       setConversationMessages((prev) => {
-        const next = [...prev, userMsg, aiMsg];
+        const next = [...prev, aiMsg];
         const persisted = filterPersistedPrototypeExecutionMessages(next);
         onPersistStateJson({
           messages: persisted,
@@ -353,13 +374,11 @@ export function usePrototypeExecutionSingleChat({
     projectName,
     projectDescription,
     requirementsStateJson,
-    conversationMessages,
     envOk,
     slots,
     answers,
     currentSlotKey,
     aiTitle,
-    persistConversation,
     onPersistStateJson,
   ]);
 
