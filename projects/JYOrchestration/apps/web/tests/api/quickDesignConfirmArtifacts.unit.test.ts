@@ -102,6 +102,54 @@ describe("quickDesignConfirmArtifacts", () => {
       orchestration,
       definitions,
       nowIso,
+      envOk: false,
+      generatedArtifactCount: 2,
+      projectArtifacts: [
+        {
+          id: "a1",
+          type: "summary",
+          title: "프로젝트 요약서",
+          content: "# 요약\n\n본문 충분한 길이의 기획 산출물입니다.",
+          createdAt: nowIso,
+          createdBy: "ai",
+          sourceStage: "ideation",
+          orchestration: {
+            required: true,
+            completeness: "full",
+            completenessScore: 0.9,
+            trace: [{ slotKey: "slot.summary", aiMember: "planner" }],
+            relatedSlotKeys: ["slot.summary"],
+            relatedAiMembers: ["planner"],
+            sourceRoles: ["planner"],
+          },
+        },
+        {
+          id: "a2",
+          type: "fast_prototype_plan",
+          title: "프로토타입 기획안",
+          content: "# 프로토타입\n\n화면 정의 본문입니다.",
+          createdAt: nowIso,
+          createdBy: "ai",
+          sourceStage: "feature-planning",
+          orchestration: {
+            required: true,
+            completeness: "full",
+            completenessScore: 0.9,
+            trace: [{ slotKey: "slot.proto", aiMember: "planner" }],
+            relatedSlotKeys: ["slot.proto"],
+            relatedAiMembers: ["planner"],
+            sourceRoles: ["planner"],
+          },
+        },
+      ],
+      artifactOrchestrationV1: {
+        plannedAt: nowIso,
+        serviceProfile: "standard",
+        requiredTypes: ["summary", "fast_prototype_plan"],
+        planned: [],
+        memberRoles: ["planner"],
+        planningSummary: "test",
+      },
     });
     const message = buildQuickDesignImplementationReadyChatMessage({
       artifactIds: ["a1", "a2"],
@@ -115,7 +163,7 @@ describe("quickDesignConfirmArtifacts", () => {
     expect(message.content).not.toContain("생성 단계 준비");
     expect(message.content).not.toContain("서비스 정의 산출물");
     expect(message.meta?.internalType).toBe(QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE);
-    if (prep.prepComplete) {
+    if (prep.postConfirmState.seedReady && prep.postConfirmState.envOk) {
       expect(message.meta?.interviewSuggestions).toEqual(
         expect.arrayContaining([
           "구현단계로 이동",
@@ -125,6 +173,9 @@ describe("quickDesignConfirmArtifacts", () => {
         ]),
       );
       expect(message.meta?.interviewSuggestions).not.toContain("기획정보 보완");
+    } else if (prep.postConfirmState.seedReady) {
+      expect(message.meta?.interviewSuggestions).not.toContain("구현 작업안 초안 생성");
+      expect(message.meta?.interviewSuggestions).toContain("환경설정 열기");
     } else {
       expect(message.meta?.interviewSuggestions).toEqual(
         expect.arrayContaining(["구현단계로 이동", "기획정보 보완", "산출물 보기"]),

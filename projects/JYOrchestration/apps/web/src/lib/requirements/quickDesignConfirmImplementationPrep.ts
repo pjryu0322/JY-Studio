@@ -14,7 +14,13 @@ import {
   type ImplementationSeedReadiness,
   type ImplementationSeedV1,
 } from "@/lib/requirements/implementationSeed";
-import { quickDesignPostConfirmChipLabels } from "@/lib/requirements/implementationUxLabels";
+import {
+  evaluateQuickDesignPostConfirmState,
+  type QuickDesignPostConfirmState,
+} from "@/lib/requirements/quickDesignPostConfirmState";
+import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
+import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
+import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
@@ -31,6 +37,7 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly touchedGapKeys: readonly ImplementationSeedGapKey[];
   readonly chipLabels: readonly string[];
   readonly prepComplete: boolean;
+  readonly postConfirmState: QuickDesignPostConfirmState;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -156,6 +163,9 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly nowIso: string;
   readonly generatedArtifactCount?: number;
+  readonly envOk?: boolean;
+  readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
 }): QuickDesignConfirmImplementationPrepResult {
   const now = input.nowIso;
   const initialReadiness = evaluateImplementationSeedReadiness({
@@ -215,7 +225,15 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   });
 
   const prepComplete = readiness.ready && lifecycleStatus === "confirmed";
-  const chipLabels = quickDesignPostConfirmChipLabels({ prepComplete });
+  const postConfirmState = evaluateQuickDesignPostConfirmState({
+    readiness,
+    prepComplete,
+    projectArtifacts: input.projectArtifacts,
+    artifactOrchestrationV1: input.artifactOrchestrationV1,
+    envOk: input.envOk,
+    generatedArtifactCount: input.generatedArtifactCount,
+  });
+  const chipLabels = quickDesignPostConfirmChipLabelsForState(postConfirmState);
 
   const artifactCount = input.generatedArtifactCount ?? 0;
   const timelineEntries: RequirementsPromptTimelineEntry[] = [
@@ -262,6 +280,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     touchedGapKeys,
     chipLabels,
     prepComplete,
+    postConfirmState,
     timelineEntries,
   };
 }

@@ -236,6 +236,7 @@ import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requiremen
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
 import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
+import { resolveProjectExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
@@ -2471,6 +2472,7 @@ export function RequirementsWorkspace({
         projectId: pid,
         replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
       });
+      const envOk = await resolveProjectExecutionEnvOk(pid);
       const prep = runQuickDesignConfirmImplementationPrep({
         projectId: pid,
         projectName: project?.name ?? "",
@@ -2478,6 +2480,9 @@ export function RequirementsWorkspace({
         definitions: slotDefsForProgress,
         nowIso,
         generatedArtifactCount: artifactBundle.artifacts.length,
+        envOk,
+        projectArtifacts: merged.projectArtifacts,
+        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
       });
       const readyMessage = buildQuickDesignImplementationReadyChatMessage({
         artifactIds: artifactBundle.artifactIds,

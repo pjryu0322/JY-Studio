@@ -92,6 +92,7 @@ import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+import { isPrototypeExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import {
   buildPrototypeKnowledgePackQueryBlob,
@@ -515,12 +516,7 @@ export function PrototypePreviewPanel({
 
   const canRequestGeneration = useMemo(() => {
     const designOk = ideaOk && actorsOk && flowOk && ownerAssignedRatio >= 60;
-    const envOk =
-      envStatus.runnable === "ok" ||
-      (envStatus.git === "ok" &&
-        envStatus.github === "ok" &&
-        envStatus.cursor === "ok" &&
-        envStatus.connectionTest === "ok");
+    const envOk = isPrototypeExecutionEnvOk(envStatus);
     return { designOk, envOk, ok: designOk && envOk };
   }, [
     ideaOk,

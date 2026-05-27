@@ -2,9 +2,11 @@ import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDelive
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
 import type { FastPlanGenerationInput } from "@/lib/requirements/fastPlanGenerationTypes";
 import {
-  IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING,
-  IMPLEMENTATION_PREP_READY_COMPLETE_HEADING,
+  QUICK_DESIGN_IMPLEMENTATION_READY_WITH_ENV_HEADING,
+  QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING,
+  QUICK_DESIGN_PLANNING_SEED_READY_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
+import type { QuickDesignPostConfirmState } from "@/lib/requirements/quickDesignPostConfirmState";
 import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
 import {
   formatQuickDesignImplementationPrepSummaryLines,
@@ -137,6 +139,54 @@ export function mergeQuickDesignArtifactsIntoState(input: {
 
 export const QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE = "quick_design_implementation_ready" as const;
 
+export function resolveQuickDesignImplementationReadyCopy(input: {
+  readonly state: QuickDesignPostConfirmState;
+  readonly autoConfirmedRequired: boolean;
+}): Readonly<{ readonly heading: string; readonly intro: string; readonly prepInfoSectionLabel: string }> {
+  if (!input.state.hasReferenceArtifacts || !input.state.designOk || !input.state.seedReady) {
+    return {
+      heading: QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING,
+      intro: [
+        "AI팀이 Quick Design 기준으로 기획 산출물과 구현 Seed 후보를 생성했습니다.",
+        "일부 항목은 아직 확정이 필요합니다.",
+        "",
+        "필요한 항목을 확인하거나 AI팀에게 보완을 요청해 주세요.",
+      ].join("\n"),
+      prepInfoSectionLabel: "보완이 필요한 항목:",
+    };
+  }
+
+  if (!input.state.envOk) {
+    return {
+      heading: QUICK_DESIGN_PLANNING_SEED_READY_HEADING,
+      intro: input.autoConfirmedRequired
+        ? [
+            "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했습니다.",
+            "다만 코드 에이전트 WIP 작업 전 실행 환경 설정이 필요합니다.",
+          ].join("\n")
+        : [
+            "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다.",
+            "코드 에이전트 WIP 작업 전 실행 환경 설정이 필요합니다.",
+          ].join("\n"),
+      prepInfoSectionLabel: "구현 준비정보:",
+    };
+  }
+
+  return {
+    heading: QUICK_DESIGN_IMPLEMENTATION_READY_WITH_ENV_HEADING,
+    intro: input.autoConfirmedRequired
+      ? [
+          "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했고,",
+          "실행 환경도 준비되어 구현 작업안 초안을 생성할 수 있습니다.",
+        ].join("\n")
+      : [
+          "AI팀이 기획 산출물과 구현 준비정보를 정리했고,",
+          "실행 환경도 준비되어 구현 작업안 초안을 생성할 수 있습니다.",
+        ].join("\n"),
+    prepInfoSectionLabel: "구현 준비정보:",
+  };
+}
+
 export function buildQuickDesignImplementationReadyChatMessage(input: {
   readonly artifactIds: readonly string[];
   readonly artifactTitles: readonly string[];
@@ -149,23 +199,13 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     ? input.artifactTitles.map((t) => `- ${t}`).join("\n")
     : "- 프로젝트 요약서";
 
-  const heading = input.prep.prepComplete
-    ? IMPLEMENTATION_PREP_READY_COMPLETE_HEADING
-    : IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING;
-
-  const intro = input.prep.prepComplete
-    ? input.prep.autoConfirmedRequired
-      ? "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했습니다. 구현 단계로 바로 진행할 수 있습니다."
-      : "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다."
-    : [
-        "AI팀이 현재 대화와 산출물을 기준으로 구현 준비정보를 자동 보완했습니다.",
-        input.prep.autoCandidateGenerated && !input.prep.autoConfirmedRequired
-          ? "일부 항목은 품질 기준 미충족으로 후보 상태이므로, 구현 전 확인이 필요합니다."
-          : "일부 항목은 후보 상태이므로, 구현 전 확인이 필요합니다.",
-      ].join("\n");
+  const copy = resolveQuickDesignImplementationReadyCopy({
+    state: input.prep.postConfirmState,
+    autoConfirmedRequired: input.prep.autoConfirmedRequired,
+  });
 
   const prepSummaryLines = formatQuickDesignImplementationPrepSummaryLines({
-    prepComplete: input.prep.prepComplete,
+    prepComplete: input.prep.postConfirmState.seedReady,
     readiness: input.prep.readiness,
     autoCandidateGenerated: input.prep.autoCandidateGenerated,
     touchedGapKeys: input.prep.touchedGapKeys,
@@ -181,18 +221,18 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
   });
 
   const contentParts = [
-    `**${heading}**`,
+    `**${copy.heading}**`,
     "",
-    intro,
+    copy.intro,
     "",
     "생성된 산출물:",
     titles,
     "",
-    input.prep.prepComplete ? "구현 준비정보:" : "보완이 필요한 항목:",
+    copy.prepInfoSectionLabel,
     ...prepSummaryLines,
   ];
 
-  if (!input.prep.prepComplete && input.planningSummary?.trim()) {
+  if (!input.prep.postConfirmState.seedReady && input.planningSummary?.trim()) {
     contentParts.push("", input.planningSummary.trim());
   }
 

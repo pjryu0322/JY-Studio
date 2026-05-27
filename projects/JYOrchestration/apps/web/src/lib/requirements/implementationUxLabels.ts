@@ -7,8 +7,15 @@ export const IMPLEMENTATION_ARTIFACT_HUB_LABEL = "구현 산출물" as const;
 export const IMPLEMENTATION_START_LABEL = "구현 시작" as const;
 export const IMPLEMENTATION_STAGE_NAVIGATE_LABEL = "구현단계로 이동" as const;
 export const IMPLEMENTATION_PREP_READY_HEADING = "구현 준비 완료" as const;
+/** @deprecated envOk=false에서는 사용하지 않음 — `QUICK_DESIGN_PLANNING_SEED_READY_HEADING` 사용 */
 export const IMPLEMENTATION_PREP_READY_COMPLETE_HEADING = "구현 준비가 완료되었습니다." as const;
 export const IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING = "구현 준비정보를 정리했습니다." as const;
+
+export const QUICK_DESIGN_IMPLEMENTATION_READY_WITH_ENV_HEADING =
+  "구현 작업 준비가 완료되었습니다." as const;
+export const QUICK_DESIGN_PLANNING_SEED_READY_HEADING = "기획/Seed 준비가 완료되었습니다." as const;
+export const QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING =
+  "구현 준비정보를 정리했습니다." as const;
 
 export const QUICK_DESIGN_CONFIRM_ACTION_LABEL = "Quick Design 확정" as const;
 
@@ -24,36 +31,63 @@ export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL = "Seed 후보 확인/
 export const IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL = "구현 작업안 초안 생성" as const;
 export const PLANNING_ENV_SETTINGS_LABEL = "환경설정 열기" as const;
 
-/** Quick Design 확정 후 — 준비 완료 시 칩 순서 */
-export const QUICK_DESIGN_POST_CONFIRM_CHIPS_READY: readonly string[] = [
-  IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
+/** Quick Design 확정 후 — seed·design·env·산출물 모두 준비 */
+export const QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY: readonly string[] = [
   IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
+  IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
   PLANNING_ARTIFACT_VIEW_LABEL,
   PLANNING_ENV_SETTINGS_LABEL,
 ] as const;
 
-/** Quick Design 확정 후 — 후보 보완이 포함된 경우 칩 순서 */
-export const QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW: readonly string[] = [
-  PLANNING_INFO_REFINE_LABEL,
+/** Quick Design 확정 후 — Seed 확정됐으나 실행 환경 미완료 */
+export const QUICK_DESIGN_POST_CONFIRM_CHIPS_SEED_READY_ENV_PENDING: readonly string[] = [
+  PLANNING_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
   PLANNING_ARTIFACT_VIEW_LABEL,
 ] as const;
 
+/** Quick Design 확정 후 — Seed·산출물 보완 필요 */
+export const QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW: readonly string[] = [
+  PLANNING_INFO_REFINE_LABEL,
+  IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL,
+  PLANNING_ARTIFACT_VIEW_LABEL,
+] as const;
+
+/** @deprecated `QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY` 사용 */
+export const QUICK_DESIGN_POST_CONFIRM_CHIPS_READY = QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY;
+
 export const ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS: readonly string[] = [
   ...new Set([
-    ...QUICK_DESIGN_POST_CONFIRM_CHIPS_READY,
+    ...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY,
+    ...QUICK_DESIGN_POST_CONFIRM_CHIPS_SEED_READY_ENV_PENDING,
     ...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW,
   ]),
 ] as const;
 
-/** @deprecated Quick Design 확정 메시지는 `quickDesignPostConfirmChipLabels` 사용 */
+/** @deprecated Quick Design 확정 메시지는 `quickDesignPostConfirmChipLabelsForState` 사용 */
 export const QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS = ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS;
 
+export function quickDesignPostConfirmChipLabelsForState(input: {
+  readonly seedReady: boolean;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly hasReferenceArtifacts: boolean;
+}): readonly string[] {
+  if (!input.hasReferenceArtifacts || !input.designOk || !input.seedReady) {
+    return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW];
+  }
+  if (!input.envOk) {
+    return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_SEED_READY_ENV_PENDING];
+  }
+  return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY];
+}
+
+/** @deprecated `quickDesignPostConfirmChipLabelsForState` 사용 */
 export function quickDesignPostConfirmChipLabels(input: {
   readonly prepComplete: boolean;
 }): readonly string[] {
   return input.prepComplete
-    ? [...QUICK_DESIGN_POST_CONFIRM_CHIPS_READY]
+    ? [...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY]
     : [...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW];
 }
 
