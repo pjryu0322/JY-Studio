@@ -267,8 +267,9 @@ function renderBlocks(blocks: readonly PrototypeChatBlock[] | undefined): ReactN
   );
 }
 
-/** 인라인 피커에서 “추천 템플릿 사용”(오버라이드 없음)을 나타내는 값 — 실제 `PrototypeTemplateType`과 겹치지 않게 함 */
-export const PROTOTYPE_INLINE_TEMPLATE_AI_VALUE = "__jyo_inline_ai_template__";
+import { PROTOTYPE_INLINE_TEMPLATE_AI_VALUE } from "@/lib/prototype/prototypeInlineTemplateConstants";
+
+export { PROTOTYPE_INLINE_TEMPLATE_AI_VALUE };
 
 export type PrototypeInlineTemplatePickerProps = Readonly<{
   /** `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` 또는 구체 템플릿 id */
@@ -280,10 +281,13 @@ export type PrototypeInlineTemplatePickerProps = Readonly<{
   /** true면 [확정] 비활성(이미 확정 상태에서 변경 없음) */
   confirmDisabled: boolean;
   disabled: boolean;
+  /** compact: AI 추천 요약 + 변경/미리보기만, 전체 콤보는 [템플릿 변경] 시 */
+  layout?: "full" | "compact";
 }>;
 
 export function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
   const [open, setOpen] = useState(false);
+  const [compactExpanded, setCompactExpanded] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const recName = PROTOTYPE_TEMPLATES.find((t) => t.id === p.recommendedTemplateId)?.nameKo ?? p.recommendedTemplateId;
   const currentLabel =
@@ -328,13 +332,69 @@ export function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
   };
 
   const confirmLocked = p.disabled || p.confirmDisabled;
+  const layout = p.layout ?? "full";
+  const showCompactSummary = layout === "compact" && !compactExpanded;
+
+  if (showCompactSummary) {
+    return (
+      <div
+        data-testid="prototype-inline-template-picker-compact"
+        style={{
+          marginBottom: 4,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          background: "#f8fafc",
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: "#334155",
+        }}
+      >
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontWeight: 800, color: "#0f172a" }}>AI 추천 템플릿: </span>
+          <span>{recName}</span>
+          <span style={{ display: "block", marginTop: 4, fontSize: 11, color: "#64748b" }}>
+            필요하면 템플릿을 변경할 수 있습니다.
+          </span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            type="button"
+            disabled={p.disabled}
+            onClick={() => setCompactExpanded(true)}
+            style={{
+              ...chipMuted,
+              padding: "6px 12px",
+              borderRadius: 8,
+              cursor: p.disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            템플릿 변경
+          </button>
+          <button
+            type="button"
+            disabled={p.disabled}
+            onClick={() => p.onPreview()}
+            style={{
+              ...chipMuted,
+              padding: "6px 12px",
+              borderRadius: 8,
+              cursor: p.disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            미리보기
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       style={{
-        marginTop: 12,
-        paddingTop: 12,
-        borderTop: "1px solid #f1f5f9",
+        marginTop: layout === "compact" ? 0 : 12,
+        paddingTop: layout === "compact" ? 0 : 12,
+        borderTop: layout === "compact" ? "none" : "1px solid #f1f5f9",
         width: "100%",
         minWidth: 0,
         position: "relative",

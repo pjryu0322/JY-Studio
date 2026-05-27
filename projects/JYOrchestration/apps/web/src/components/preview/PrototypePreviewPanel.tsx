@@ -80,19 +80,23 @@ import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/pr
 import type { PrototypeInlineTemplatePickerProps } from "@/components/preview/prototypeChatTimeline";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
-import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
+import {
+  isPrototypeTemplatePlanningReady,
+  shouldLockInlineChatTemplateSelection,
+} from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor as PrototypePreviewActor,
   PrototypeWorkspaceFlowStep as PrototypePreviewFlowStep,
   PrototypeWorkspaceIdeationAsset,
 } from "@/components/preview/prototypeWorkspaceTypes";
-import { fetchEnvironmentTestLast, postExecutionSetupValidate } from "@/components/project-spec/api";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
-import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
-import { isPrototypeExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
+import {
+  isPrototypeExecutionEnvOk,
+  loadPrototypeExecutionEnvStatus,
+} from "@/lib/prototype/prototypeExecutionEnvOk";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import {
   buildPrototypeKnowledgePackQueryBlob,
@@ -533,6 +537,16 @@ export function PrototypePreviewPanel({
     envStatus.connectionTest,
   ]);
 
+  const templatePlanningReady = useMemo(
+    () =>
+      isPrototypeTemplatePlanningReady({
+        templateConfirmed,
+        envOk: canRequestGeneration.envOk,
+        draftPickerValue,
+      }),
+    [templateConfirmed, canRequestGeneration.envOk, draftPickerValue],
+  );
+
   const executionSlots = useMemo(() => computePrototypeExecutionSlots(latestRun), [latestRun]);
 
   const sortedWorkUnitsForSidebar = useMemo(
@@ -687,7 +701,7 @@ export function PrototypePreviewPanel({
   const startWorkPlanGenerationFromChat = useCallback(() => {
     if (planRequestInFlightRef.current) return;
     if (protoBusy) return;
-    if (!templateConfirmed) return;
+    if (!templatePlanningReady) return;
     if (!canRequestGeneration.designOk) return;
     planRequestInFlightRef.current = true;
     const extra = prePlannerNotesRef.current.trim();
@@ -708,7 +722,7 @@ export function PrototypePreviewPanel({
         setPlannerCreatePending(false);
       }
     })();
-  }, [protoBusy, templateConfirmed, canRequestGeneration.designOk, runPlannerCreate]);
+  }, [protoBusy, templatePlanningReady, canRequestGeneration.designOk, runPlannerCreate]);
 
   const confirmTemplate = useCallback(async () => {
     if (protoBusy) return;
@@ -767,7 +781,7 @@ export function PrototypePreviewPanel({
   );
 
   useEffect(() => {
-    if (!templateConfirmed) {
+    if (!templatePlanningReady) {
       setPrePlanGate("idle");
       return;
     }
@@ -782,7 +796,7 @@ export function PrototypePreviewPanel({
       return;
     }
     setPrePlanGate("need_create_click");
-  }, [templateConfirmed, latestRun?.id, latestRun?.status, latestRun?.workUnits?.length]);
+  }, [templatePlanningReady, latestRun?.id, latestRun?.status, latestRun?.workUnits?.length]);
 
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
@@ -866,51 +880,8 @@ export function PrototypePreviewPanel({
 
   const loadEnv = useCallback(async () => {
     if (!projectId.trim()) return;
-    try {
-      const v = await postExecutionSetupValidate(projectId, { scope: "all" });
-      const vData = v.res.ok && v.json.success ? v.json.data : null;
-      const git: EnvBadge = vData?.git ?? "needs";
-      const cursor: EnvBadge = vData?.cursor ?? "needs";
-      const github: EnvBadge = vData?.githubOperableOk === true ? "ok" : "needs";
-      let connectionTest: EnvBadge = "needs";
-      try {
-        const conn = await fetchEnvironmentTestLast(projectId);
-        if (conn.res.ok && conn.json.success && conn.json.data?.last) {
-          const last = conn.json.data.last;
-          const wf = String(last.workflowStatus ?? "").trim().toLowerCase();
-          const terminal = last.isTerminal === true;
-          const failLine = String(last.envTestStage1FailureLine ?? "").trim();
-          const failed =
-            wf === EXECUTION_WORKFLOW.FAILED ||
-            wf === EXECUTION_WORKFLOW.VERIFY_FAILED ||
-            Boolean(failLine);
-          const mode = last.connectionTestMergeMode ?? "auto";
-          const ok =
-            terminal &&
-            !failed &&
-            (wf === EXECUTION_WORKFLOW.MERGED || (wf === EXECUTION_WORKFLOW.PR_OPENED && mode === "skip"));
-          connectionTest = ok ? "ok" : terminal && failed ? "error" : "needs";
-        }
-      } catch {
-        connectionTest = "error";
-      }
-      const runnable: EnvBadge = vData
-        ? vData.git === "ok" && vData.cursor === "ok" && vData.githubOperableOk === true && connectionTest === "ok"
-          ? "ok"
-          : "needs"
-        : "needs";
-      const msg = vData?.messages?.[0] ? vData.messages[0] : null;
-      setEnvStatus({ git, cursor, github, connectionTest, runnable, message: msg });
-    } catch {
-      setEnvStatus({
-        git: "error",
-        github: "error",
-        cursor: "error",
-        connectionTest: "error",
-        runnable: "error",
-        message: "환경 확인에 실패했습니다.",
-      });
-    }
+    const status = await loadPrototypeExecutionEnvStatus(projectId);
+    setEnvStatus(status);
   }, [projectId]);
 
   useEffect(() => {
@@ -1202,6 +1173,7 @@ export function PrototypePreviewPanel({
         templateChipTemplates: [],
         recommendedTemplateId: analysis.recommendedTemplate,
         templateConfirmed,
+        templatePlanningReady,
         prePlanGate,
         latestRun,
         awaitingExecutionConfirm,
@@ -1228,6 +1200,7 @@ export function PrototypePreviewPanel({
       envSettingsHref,
       analysis.recommendedTemplate,
       templateConfirmed,
+      templatePlanningReady,
       prePlanGate,
       latestRun,
       awaitingExecutionConfirm,
@@ -1987,7 +1960,7 @@ export function PrototypePreviewPanel({
       return "수정 요청을 입력한 뒤 전송하면 작업계획을 다시 만듭니다.";
     }
     if (
-      templateConfirmed &&
+      templatePlanningReady &&
       (!latestRun?.id || (latestRun.workUnits?.length ?? 0) === 0) &&
       !isWorkPlanPlanningUi
     ) {
@@ -2013,6 +1986,7 @@ export function PrototypePreviewPanel({
     const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
     const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
     const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
+    const noWorkUnitsYet = (latestRun?.workUnits?.length ?? 0) === 0;
     return {
       value: draftPickerValue,
       recommendedTemplateId: analysis.recommendedTemplate,
@@ -2027,6 +2001,7 @@ export function PrototypePreviewPanel({
       onConfirm: () => void confirmTemplate(),
       confirmDisabled,
       disabled: frozen,
+      layout: noWorkUnitsYet ? "compact" : "full",
     };
   }, [
     canRequestGeneration.envOk,
@@ -2036,7 +2011,6 @@ export function PrototypePreviewPanel({
     templateConfirmed,
     draftPickerValue,
     analysis.recommendedTemplate,
-    projectId,
     confirmTemplate,
   ]);
 
@@ -2515,7 +2489,10 @@ export function PrototypePreviewPanel({
 
       <ProjectExecutionEnvironmentModal
         open={executionEnvironmentModalOpen}
-        onClose={() => setExecutionEnvironmentModalOpen(false)}
+        onClose={() => {
+          setExecutionEnvironmentModalOpen(false);
+          void loadEnv();
+        }}
         projectId={projectId}
         project={executionEnvironmentModalProject}
         canEdit={true}

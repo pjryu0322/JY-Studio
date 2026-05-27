@@ -52,8 +52,6 @@ type Props = {
   /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
   settingsSurface?: "admin" | "modal";
   settingsPurpose?: "prototype" | "env-test";
-  /** `settingsSurface="modal"`일 때 닫기 버튼 콜백 */
-  onModalClose?: () => void;
 };
 
 const PLACEHOLDERS = {
@@ -454,7 +452,6 @@ export function ProjectExecutionEnvironmentPanel({
   canRevealCursorApiKey = false,
   settingsSurface,
   settingsPurpose,
-  onModalClose,
 }: Props) {
   const isModalCompact = settingsSurface === "modal";
   const isAdminSettings = settingsSurface === "admin";
@@ -878,6 +875,29 @@ export function ProjectExecutionEnvironmentPanel({
     }
   }, [projectId, executionSetup]);
 
+  const handleModalValidateAll = useCallback(async () => {
+    if (!projectId.trim()) return;
+    if (!executionSetup) {
+      setExecutionMessage("먼저 저장하세요.");
+      return;
+    }
+    setBusyModalValidate(true);
+    try {
+      const { res, json } = await postExecutionSetupValidate(projectId, { scope: "all" });
+      if (!res.ok || !json.success) {
+        setExecutionMessage(json.message || "검증에 실패했습니다.");
+        return;
+      }
+      if (json.data) {
+        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+      }
+      const detail = (json.data?.messages ?? []).join(" / ");
+      setExecutionMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? "검증을 완료했습니다."));
+    } finally {
+      setBusyModalValidate(false);
+    }
+  }, [projectId, executionSetup, setExecutionSetup]);
+
   const connectionTestSatisfied = useMemo(() => {
     const last = envTestLast;
     if (!last || !isStage1EnvironmentTestLast(last)) return false;
@@ -892,14 +912,8 @@ export function ProjectExecutionEnvironmentPanel({
   }, [envTestLast]);
 
   const modalTableRows = useMemo(
-    () =>
-      buildPrototypeEnvModalTableRows({
-        executionSetup,
-        connectionTestSatisfied,
-        busyEnvTest,
-        envTestLast,
-      }),
-    [executionSetup, connectionTestSatisfied, busyEnvTest, envTestLast],
+    () => buildPrototypeEnvModalTableRows({ executionSetup }),
+    [executionSetup],
   );
 
   if (!projectId.trim()) return null;
@@ -922,7 +936,7 @@ export function ProjectExecutionEnvironmentPanel({
     const repoConfigured = Boolean(String(es.gitRepoUrl ?? "").trim()) && Boolean(String(es.gitRepoName ?? "").trim());
     const ghTokStored = githubCredentialLooksStored(es);
     const curTokStored = cursorCredentialLooksStored(es);
-    return repoConfigured && baseBranchConfigured && autoPushOn && ghTokStored && curTokStored;
+    return repoConfigured && baseBranchConfigured && ghTokStored && curTokStored;
   })();
 
   const githubAuthSlot = (() => {
@@ -1928,24 +1942,19 @@ export function ProjectExecutionEnvironmentPanel({
     peerGithubCredentialMasked(executionSetup) ??
     (String(peerHintsWhenNoSetup?.githubAccessTokenMasked ?? "").trim() || null);
 
-  const envTestDisabledTitle =
-    isPrototypeMvpUi && !executionSetup
-      ? "먼저 저장을 눌러 실행 환경 설정을 생성하세요"
-      : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoUrl ?? "").trim()
-        ? "저장소 URL이 필요합니다"
-        : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoName ?? "").trim()
-          ? "owner/repo가 필요합니다"
-          : isPrototypeMvpUi && executionSetup && !githubCredentialLooksStored(executionSetup)
-            ? "GitHub 토큰을 먼저 저장하세요"
-            : isPrototypeMvpUi && executionSetup && !cursorCredentialLooksStored(executionSetup)
-              ? "Cursor API 키를 먼저 저장하세요"
-              : !executionReady
-                ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
-                : !baseBranchConfigured
-                  ? "기본 브랜치가 필요합니다"
-                  : !autoPushOn
-                    ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
-                    : undefined;
+  const envTestDisabledTitle = isPrototypeMvpUi
+    ? resolvePrototypeEnvTestDisabledTitle({
+        isPrototypeMvpUi: true,
+        executionSetup,
+        baseBranchConfigured,
+      })
+    : !executionReady
+      ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
+      : !baseBranchConfigured
+        ? "기본 브랜치가 필요합니다"
+        : !autoPushOn
+          ? "연결 테스트는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
+          : undefined;
 
   const modalGithubRepoFields = isModalCompact ? (
     <div style={{ display: "grid", gap: 10 }}>
@@ -2298,22 +2307,7 @@ export function ProjectExecutionEnvironmentPanel({
         />
       );
     }
-    return (
-      <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
-        {prototypeMvpEnvTestProgress}
-        {connectionTestSatisfied ? (
-          <p style={{ margin: "8px 0 0 0", color: "#15803d", fontWeight: 700 }}>연결 테스트가 완료되었습니다.</p>
-        ) : envTestLast ? (
-          <p style={{ margin: "8px 0 0 0" }}>
-            {String(envTestLast.envTestStage1FailureLine ?? "마지막 실행 결과를 확인하세요.")}
-          </p>
-        ) : (
-          <p style={{ margin: "8px 0 0 0", color: "#64748b" }}>
-            저장 후 연결 테스트를 실행하면 Git 커밋·PR·머지 경로를 확인합니다.
-          </p>
-        )}
-      </div>
-    );
+    return null;
   };
 
   const modalFooterBtn: CSSProperties = {
@@ -2333,28 +2327,10 @@ export function ProjectExecutionEnvironmentPanel({
         <PrototypeEnvSettingsModalLayout
           rows={modalTableRows}
           selectedRow={selectedModalRow}
-          onSelectRow={(key) => {
-            setSelectedModalRow(key);
-            if (key === "connectionTest" && envTestStartOk && !busyEnvTest && !busyMvpSave) {
-              void handleEnvironmentTest();
-            }
-          }}
+          onSelectRow={setSelectedModalRow}
           detail={renderModalDetail()}
           footer={
             <>
-              <button
-                type="button"
-                onClick={() => onModalClose?.()}
-                disabled={busyMvpSave || busyEnvTest}
-                style={{
-                  ...modalFooterBtn,
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
-                  color: "#334155",
-                }}
-              >
-                닫기
-              </button>
               <button
                 type="button"
                 disabled={!canEdit || busyMvpSave || busyEnvTest}

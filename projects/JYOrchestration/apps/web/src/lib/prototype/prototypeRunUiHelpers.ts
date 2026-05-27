@@ -1,3 +1,4 @@
+import { PROTOTYPE_INLINE_TEMPLATE_AI_VALUE } from "@/lib/prototype/prototypeInlineTemplateConstants";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeRun, PrototypeRunStatus, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 
@@ -316,4 +317,15 @@ export function shouldLockInlineChatTemplateSelection(run: PrototypeRun | null):
   }
   if (s === "WORK_UNITS_READY") return false;
   return true;
+}
+
+/** 환경 준비 후 AI 추천 템플릿을 별도 [확정] 없이 작업계획 생성에 쓸 수 있는지 */
+export function isPrototypeTemplatePlanningReady(input: {
+  readonly templateConfirmed: boolean;
+  readonly envOk: boolean;
+  readonly draftPickerValue: string;
+}): boolean {
+  if (input.templateConfirmed) return true;
+  if (!input.envOk) return false;
+  return input.draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE;
 }

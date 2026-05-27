@@ -33,9 +33,7 @@ describe("prototypeEnvSettingsReadiness", () => {
       resolvePrototypeEnvTestDisabledTitle({
         isPrototypeMvpUi: true,
         executionSetup: null,
-        executionReady: false,
         baseBranchConfigured: false,
-        autoPushOn: false,
       }),
     ).toBe("먼저 저장을 눌러 실행 환경 설정을 생성하세요");
   });

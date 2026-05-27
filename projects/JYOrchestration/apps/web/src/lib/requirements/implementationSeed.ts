@@ -743,14 +743,45 @@ export function formatImplementationSeedLifecycleUserLabel(
   return "후보";
 }
 
+export type ImplementationSeedEnvStatusLines = Readonly<{
+  readonly validateOk: boolean;
+  readonly connectionTestOk: boolean;
+}>;
+
+export function resolveImplementationSeedEnvStatusLines(input: {
+  readonly envOk: boolean;
+  readonly env?: Readonly<{
+    readonly git: string;
+    readonly github: string;
+    readonly cursor: string;
+    readonly connectionTest: string;
+  }>;
+}): ImplementationSeedEnvStatusLines {
+  if (input.env) {
+    const validateOk =
+      input.env.git === "ok" && input.env.github === "ok" && input.env.cursor === "ok";
+    const connectionTestOk = input.env.connectionTest === "ok";
+    return { validateOk, connectionTestOk };
+  }
+  return { validateOk: input.envOk, connectionTestOk: input.envOk };
+}
+
 export function formatImplementationSeedStatusSummaryLines(input: {
   readonly summary: ImplementationSeedStatusSummary;
   readonly referenceArtifactCount: number;
   readonly envOk: boolean;
+  readonly env?: Readonly<{
+    readonly git: string;
+    readonly github: string;
+    readonly cursor: string;
+    readonly connectionTest: string;
+  }>;
 }): readonly string[] {
   const { summary } = input;
   const pct = Math.round(summary.readinessScore * 100);
-  const envLine = input.envOk ? "완료" : "미완료";
+  const envLines = resolveImplementationSeedEnvStatusLines({ envOk: input.envOk, env: input.env });
+  const validateLine = envLines.validateOk ? "완료" : "미완료";
+  const connectionLine = envLines.connectionTestOk ? "완료" : "미완료";
   const nextTasks: string[] = [];
   if (!summary.ready) {
     nextTasks.push("Seed 후보 확인/확정");
@@ -758,7 +789,8 @@ export function formatImplementationSeedStatusSummaryLines(input: {
       nextTasks.push("구현 준비도 점검");
     }
   }
-  if (!input.envOk) nextTasks.push("환경설정 완료");
+  if (!envLines.validateOk) nextTasks.push("환경 검증 완료");
+  if (!envLines.connectionTestOk) nextTasks.push("연결 테스트 완료");
   if (summary.ready && input.envOk) nextTasks.push("구현 작업안 초안 생성");
 
   return [
@@ -768,7 +800,8 @@ export function formatImplementationSeedStatusSummaryLines(input: {
     `Implementation Seed: ${formatImplementationSeedLifecycleUserLabel(summary.lifecycleStatus)}`,
     `Seed 준비도: ${pct}%`,
     `필수 Seed 항목: ${summary.requiredTotal}개 중 ${summary.requiredConfirmed}개 확정 / ${summary.requiredCandidate}개 후보 / ${summary.requiredEmpty}개 미입력`,
-    `환경설정: ${envLine}`,
+    `환경 검증: ${validateLine}`,
+    `연결 테스트: ${connectionLine}`,
     "",
     ...(nextTasks.length
       ? ["다음 필요 작업:", ...nextTasks.map((t) => `- ${t}`)]

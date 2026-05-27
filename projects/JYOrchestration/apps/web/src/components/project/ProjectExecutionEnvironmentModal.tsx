@@ -62,10 +62,6 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
         <header
           style={{
             flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
             padding: "14px 18px",
             borderBottom: "1px solid #e2e8f0",
           }}
@@ -76,24 +72,6 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
           >
             자동 생성 환경설정
           </h2>
-          <button
-            type="button"
-            onClick={p.onClose}
-            aria-label="닫기"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 20,
-              lineHeight: 1,
-              cursor: "pointer",
-              color: "#64748b",
-            }}
-          >
-            ×
-          </button>
         </header>
         <div style={{ flex: "1 1 auto", minHeight: 0, padding: "16px 18px", display: "flex", flexDirection: "column" }}>
           <ProjectExecutionEnvironmentPanel
@@ -103,7 +81,6 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
             canRevealCursorApiKey={p.canRevealCursorApiKey}
             settingsSurface="modal"
             settingsPurpose="prototype"
-            onModalClose={p.onClose}
           />
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   type PrototypeEnvModalRowKey,
   type PrototypeEnvModalTableRow,
@@ -8,6 +9,31 @@ import {
 import { prototypeEnvReadinessToneColors } from "@/lib/project/prototypeEnvSettingsReadiness";
 
 const GITHUB_FINE_GRAINED_TOKEN_NEW_URL = "https://github.com/settings/personal-access-tokens/new" as const;
+const HELP_POPOVER_Z_INDEX = 70;
+
+type HelpPopoverPlacement = Readonly<{
+  readonly top: number;
+  readonly left: number;
+  readonly width: number;
+}>;
+
+function computeHelpPopoverPlacement(trigger: HTMLElement, popoverHeight: number): HelpPopoverPlacement {
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.min(420, window.innerWidth - 24);
+  let left = rect.right - width;
+  left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+
+  const gap = 8;
+  const spaceBelow = window.innerHeight - rect.bottom - gap - 12;
+  const spaceAbove = rect.top - gap - 12;
+  let top = rect.bottom + gap;
+  if (popoverHeight > spaceBelow && spaceAbove > spaceBelow) {
+    top = Math.max(12, rect.top - popoverHeight - gap);
+  }
+  top = Math.max(12, Math.min(top, window.innerHeight - popoverHeight - 12));
+
+  return { top, left, width };
+}
 
 function HelpTitle({ children }: { readonly children: ReactNode }) {
   return <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>{children}</div>;
@@ -108,37 +134,14 @@ function RowHelpPopover({ rowKey }: { readonly rowKey: PrototypeEnvModalRowKey }
     return (
       <>
         <HelpTitle>Cursor API Key 확인 방법</HelpTitle>
-        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
-          Cursor 계정에서 API Key를 발급한 뒤 입력합니다. 이 화면에서는 <strong>API URL을 입력하지 않습니다</strong>.
+        <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.65 }}>
+          Cursor 웹사이트 → 왼쪽 메뉴 Integrations → API Key 또는 Access Token 확인/생성 → Cursor API Key 입력 → 검증
         </div>
-        <HelpSubTitle>확인할 것</HelpSubTitle>
-        <HelpList>
-          <li>Cursor API Key가 복사 누락 없이 입력되었는지</li>
-          <li>해당 키가 현재 계정에서 유효한지</li>
-          <li>키 입력 후 검증(연결) 결과가 정상인지</li>
-        </HelpList>
       </>
     );
   }
 
-  return (
-    <>
-      <HelpTitle>연결 테스트 확인 방법</HelpTitle>
-      <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
-        연결 테스트는 저장소, GitHub Token, Cursor API Key가 저장된 뒤 실행합니다.
-      </div>
-      <HelpSubTitle>확인 항목</HelpSubTitle>
-      <HelpList>
-        <li>GitHub 저장소 접근 가능 여부</li>
-        <li>GitHub Token 권한 정상 여부</li>
-        <li>Cursor API 연결 가능 여부</li>
-        <li>테스트 브랜치/커밋/PR 생성 경로 정상 여부</li>
-      </HelpList>
-      <div style={{ marginTop: 10, fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
-        실패하면 표시되는 오류 메시지를 기준으로 GitHub Token 또는 Cursor API Key를 먼저 확인하세요.
-      </div>
-    </>
-  );
+  return null;
 }
 
 export function PrototypeEnvSettingsModalLayout(input: {
@@ -149,12 +152,51 @@ export function PrototypeEnvSettingsModalLayout(input: {
   readonly footer: ReactNode;
 }) {
   const [openHelpKey, setOpenHelpKey] = useState<PrototypeEnvModalRowKey | null>(null);
+  const [helpPlacement, setHelpPlacement] = useState<HelpPopoverPlacement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const triggerRefs = useRef<Partial<Record<PrototypeEnvModalRowKey, HTMLButtonElement | null>>>({});
+
+  const repositionHelpPopover = useCallback(() => {
+    if (!openHelpKey) {
+      setHelpPlacement(null);
+      return;
+    }
+    const trigger = triggerRefs.current[openHelpKey];
+    if (!trigger) return;
+    const measuredHeight = popoverRef.current?.offsetHeight ?? 320;
+    setHelpPlacement(computeHelpPopoverPlacement(trigger, measuredHeight));
+  }, [openHelpKey]);
+
+  useLayoutEffect(() => {
+    repositionHelpPopover();
+  }, [openHelpKey, repositionHelpPopover]);
+
+  useLayoutEffect(() => {
+    if (!openHelpKey) return;
+    const popover = popoverRef.current;
+    if (!popover) return;
+    const observer = new ResizeObserver(() => repositionHelpPopover());
+    observer.observe(popover);
+    return () => observer.disconnect();
+  }, [openHelpKey, repositionHelpPopover]);
+
+  useEffect(() => {
+    if (!openHelpKey) return;
+    const onScrollOrResize = () => repositionHelpPopover();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [openHelpKey, repositionHelpPopover]);
 
   useEffect(() => {
     if (!openHelpKey) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenHelpKey(null);
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpenHelpKey(null);
     };
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
@@ -163,13 +205,46 @@ export function PrototypeEnvSettingsModalLayout(input: {
       if (popoverRef.current && popoverRef.current.contains(t)) return;
       setOpenHelpKey(null);
     };
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("pointerdown", onPointerDown);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [openHelpKey]);
+
+  const helpPopoverStyle: CSSProperties | undefined = helpPlacement
+    ? {
+        position: "fixed",
+        top: helpPlacement.top,
+        left: helpPlacement.left,
+        width: helpPlacement.width,
+        zIndex: HELP_POPOVER_Z_INDEX,
+        padding: "14px 16px",
+        borderRadius: 12,
+        border: "1px solid #cbd5e1",
+        background: "#fff",
+        boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+        wordBreak: "keep-all",
+        maxHeight: "min(70vh, calc(100vh - 24px))",
+        overflowY: "auto",
+      }
+    : undefined;
+
+  const helpPopoverPortal =
+    openHelpKey && helpPlacement && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            role="tooltip"
+            ref={popoverRef}
+            data-testid={`prototype-env-help-popover-${openHelpKey}`}
+            style={helpPopoverStyle}
+          >
+            <RowHelpPopover rowKey={openHelpKey} />
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div
@@ -187,7 +262,7 @@ export function PrototypeEnvSettingsModalLayout(input: {
           >
             <thead>
               <tr style={{ borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
-                {["항목", "상태", "현재 값", "작업"].map((h) => (
+                {["항목", "상태", "현재 값", "도움말"].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -211,9 +286,20 @@ export function PrototypeEnvSettingsModalLayout(input: {
                   <tr
                     key={row.key}
                     data-testid={`prototype-env-modal-row-${row.key}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={selected}
+                    onClick={() => input.onSelectRow(row.key)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        input.onSelectRow(row.key);
+                      }
+                    }}
                     style={{
                       borderBottom: "1px solid #f1f5f9",
                       background: selected ? "#f8fafc" : undefined,
+                      cursor: "pointer",
                     }}
                   >
                     <td style={{ padding: "10px", fontWeight: 700, color: "#334155" }}>{row.label}</td>
@@ -233,66 +319,35 @@ export function PrototypeEnvSettingsModalLayout(input: {
                     >
                       {row.currentValue}
                     </td>
-                    <td style={{ padding: "10px", position: "relative" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
-                        <button
-                          type="button"
-                          onClick={() => input.onSelectRow(row.key)}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #cbd5e1",
-                            background: "#fff",
-                            fontWeight: 800,
-                            fontSize: 12,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {row.actionLabel}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`${row.label} 도움말`}
-                          aria-expanded={openHelpKey === row.key}
-                          onClick={() => setOpenHelpKey((prev) => (prev === row.key ? null : row.key))}
-                          data-prototype-env-help-trigger
-                          style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 999,
-                            border: "1px solid #cbd5e1",
-                            background: "#fff",
-                            color: "#475569",
-                            fontWeight: 900,
-                            fontSize: 12,
-                            lineHeight: 1,
-                            cursor: "pointer",
-                          }}
-                        >
-                          ?
-                        </button>
-                      </div>
-                      {openHelpKey === row.key ? (
-                        <div
-                          role="tooltip"
-                          ref={popoverRef}
-                          style={{
-                            position: "absolute",
-                            top: "calc(100% - 4px)",
-                            right: 0,
-                            width: "min(420px, calc(100vw - 48px))",
-                            zIndex: 3,
-                            padding: "14px 16px",
-                            borderRadius: 12,
-                            border: "1px solid #cbd5e1",
-                            background: "#fff",
-                            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
-                            wordBreak: "keep-all",
-                          }}
-                        >
-                          <RowHelpPopover rowKey={row.key} />
-                        </div>
-                      ) : null}
+                    <td style={{ padding: "10px" }}>
+                      <button
+                        type="button"
+                        ref={(el) => {
+                          triggerRefs.current[row.key] = el;
+                        }}
+                        aria-label={`${row.label} 도움말`}
+                        aria-expanded={openHelpKey === row.key}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenHelpKey((prev) => (prev === row.key ? null : row.key));
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        data-prototype-env-help-trigger
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 999,
+                          border: "1px solid #cbd5e1",
+                          background: openHelpKey === row.key ? "#f1f5f9" : "#fff",
+                          color: "#475569",
+                          fontWeight: 900,
+                          fontSize: 12,
+                          lineHeight: 1,
+                          cursor: "pointer",
+                        }}
+                      >
+                        ?
+                      </button>
                     </td>
                   </tr>
                 );
@@ -330,6 +385,7 @@ export function PrototypeEnvSettingsModalLayout(input: {
       >
         {input.footer}
       </div>
+      {helpPopoverPortal}
     </div>
   );
 }

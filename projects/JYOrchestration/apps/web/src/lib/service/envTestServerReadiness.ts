@@ -116,23 +116,25 @@ export async function assertEnvTestStartReadiness(input: {
     }
   }
 
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_push_policy_check_started",
-    projectId,
-    userId,
-    detail: {},
-  });
-
-  if (setup.autoPush !== true) {
+  if (!allowUnvalidated) {
     appendTaskProgressLog({
       kind: "execution",
-      phase: "env_test_push_policy_blocked",
+      phase: "env_test_push_policy_check_started",
       projectId,
       userId,
-      detail: { reasonCode: "AUTO_PUSH_OFF" },
+      detail: {},
     });
-    return block("AUTO_PUSH_OFF", "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다");
+
+    if (setup.autoPush !== true) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_push_policy_blocked",
+        projectId,
+        userId,
+        detail: { reasonCode: "AUTO_PUSH_OFF" },
+      });
+      return block("AUTO_PUSH_OFF", "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다");
+    }
   }
 
   appendTaskProgressLog({

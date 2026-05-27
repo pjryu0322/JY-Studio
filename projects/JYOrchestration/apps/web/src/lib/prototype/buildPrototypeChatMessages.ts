@@ -96,6 +96,8 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   templateChipTemplates: readonly { id: string; nameKo: string }[];
   recommendedTemplateId: string;
   templateConfirmed: boolean;
+  /** true면 AI 추천 템플릿을 기본값으로 작업계획 생성 가능(별도 [확정] 없음) */
+  templatePlanningReady?: boolean;
   prePlanGate: PrototypePrePlanGate;
   latestRun: PrototypeRun | null;
   awaitingExecutionConfirm: boolean;
@@ -294,8 +296,12 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  /** PROMPT_READY 등 실행 row만 있고 아직 WU가 없을 때도 콤보 노출 — `!latestRun?.id`만 보면 스텁 때문에 말풍선이 사라짐 */
+  const templateReadyForPlanning = p.templateConfirmed || p.templatePlanningReady === true;
+
+  /** 구현 bootstrap(omitEnvReadinessCard) 또는 환경 미완료 시 템플릿 선택 말풍선 숨김 */
   const showPreRunTemplateRow =
+    p.canRequestGenerationEnvOk &&
+    !p.omitEnvReadinessCard &&
     !shouldLockInlineChatTemplateSelection(p.latestRun) &&
     hasNoWorkUnitsYet(p.latestRun) &&
     !p.isCancelled &&
@@ -309,13 +315,13 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       orderKey: nextKey(),
       title: "템플릿 선택",
       body: p.templateConfirmed
-        ? (p.isPlannerRunning || p.plannerCreatePending
-            ? "지금 템플릿을 바꾸면 작업계획 생성이 처음부터 다시 시작됩니다. 변경 후 다시 [확정]을 눌러 주세요."
-            : "템플릿이 확정되었습니다. 다른 유형으로 바꾸면 자동으로 확정이 해제되니, 변경 후 다시 [확정]을 눌러 주세요.")
-        : "콤보에서 프로토타입 유형을 고른 뒤 [확정]을 눌러 주세요. [미리보기]로 화면 형태를 먼저 볼 수 있습니다.",
+        ? p.isPlannerRunning || p.plannerCreatePending
+          ? "지금 템플릿을 바꾸면 작업계획 생성이 처음부터 다시 시작됩니다. 변경 후 다시 [확정]을 눌러 주세요."
+          : "템플릿이 확정되었습니다. 다른 유형으로 바꾸면 자동으로 확정이 해제되니, 변경 후 다시 [확정]을 눌러 주세요."
+        : "AI 추천 템플릿을 기본값으로 사용합니다. 필요하면 템플릿을 변경하거나 미리볼 수 있습니다.",
       inlineTemplatePicker: true,
     });
-    if (!p.templateConfirmed) return out;
+    if (!templateReadyForPlanning) return out;
   }
 
   const planningUiActive = (p.isPlannerRunning || p.plannerCreatePending) && hasNoWorkUnitsYet(p.latestRun);
@@ -335,7 +341,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   const canShowCreatePlanCard =
     !p.latestRun?.id || p.latestRun.status === "DRAFT" || p.latestRun.status === "PROMPT_READY";
   const showNeedCreatePlan =
-    p.templateConfirmed &&
+    templateReadyForPlanning &&
     hasNoWorkUnitsYet(p.latestRun) &&
     !p.isPlannerRunning &&
     !p.plannerCreatePending &&
@@ -500,7 +506,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  if (run?.id && units.length === 0 && !p.isPlannerRunning && !p.plannerCreatePending && p.templateConfirmed) {
+  if (run?.id && units.length === 0 && !p.isPlannerRunning && !p.plannerCreatePending && templateReadyForPlanning) {
     out.push({
       id: "ai-preplan-run",
       role: "ai",

@@ -51,9 +51,7 @@ export function isGithubTokenCredentialsError(
 export function resolvePrototypeEnvTestDisabledTitle(input: {
   readonly isPrototypeMvpUi: boolean;
   readonly executionSetup: ExecutionSetupDto | null;
-  readonly executionReady: boolean;
   readonly baseBranchConfigured: boolean;
-  readonly autoPushOn: boolean;
 }): string | undefined {
   if (!input.isPrototypeMvpUi) return undefined;
   const es = input.executionSetup;
@@ -62,8 +60,6 @@ export function resolvePrototypeEnvTestDisabledTitle(input: {
   if (!String(es.gitRepoName ?? "").trim()) return "owner/repo가 필요합니다";
   if (!githubCredentialLooksStored(es)) return "GitHub 토큰을 먼저 저장하세요";
   if (!cursorCredentialLooksStored(es)) return "Cursor API 키를 먼저 저장하세요";
-  if (!input.executionReady) return "저장소·GitHub·Cursor 검증을 통과해야 합니다";
   if (!input.baseBranchConfigured) return "기본 브랜치가 필요합니다";
-  if (!input.autoPushOn) return "자동화를 「자동 PR 생성까지」 이상으로 설정하세요";
   return undefined;
 }

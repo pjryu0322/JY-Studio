@@ -1,5 +1,4 @@
 import type { ExecutionSetupDto } from "@/components/project-spec/api";
-import type { EnvironmentTestLastDto } from "@/components/project-spec/apis/executionLoopEnvironmentRunsApi";
 import {
   cursorCredentialLooksStored,
   githubCredentialLooksStored,
@@ -8,7 +7,7 @@ import {
 import { isGithubTokenCredentialsError } from "@/lib/project/prototypeEnvSettingsReadiness";
 import type { PrototypeEnvReadinessTone } from "@/lib/project/prototypeEnvSettingsReadiness";
 
-export type PrototypeEnvModalRowKey = "repo" | "token" | "cursor" | "connectionTest";
+export type PrototypeEnvModalRowKey = "repo" | "token" | "cursor";
 
 export type PrototypeEnvModalTableRow = Readonly<{
   readonly key: PrototypeEnvModalRowKey;
@@ -16,34 +15,10 @@ export type PrototypeEnvModalTableRow = Readonly<{
   readonly status: string;
   readonly statusTone: PrototypeEnvReadinessTone;
   readonly currentValue: string;
-  readonly actionLabel: string;
 }>;
-
-function summarizeConnectionTestValue(input: {
-  readonly connectionTestSatisfied: boolean;
-  readonly busyEnvTest: boolean;
-  readonly envTestLast: EnvironmentTestLastDto | null;
-}): { readonly status: string; readonly tone: PrototypeEnvReadinessTone; readonly value: string } {
-  if (input.busyEnvTest) {
-    return { status: "실행 중", tone: "warn", value: "진행 중…" };
-  }
-  if (input.connectionTestSatisfied) {
-    return { status: "완료", tone: "ok", value: "완료" };
-  }
-  const last = input.envTestLast;
-  const wf = String(last?.workflowStatus ?? "").trim().toLowerCase();
-  if (wf === "failed" || wf === "verify_failed" || String(last?.envTestStage1FailureLine ?? "").trim()) {
-    const line = String(last?.envTestStage1FailureLine ?? "실패").trim();
-    return { status: "실패", tone: "fail", value: line.slice(0, 80) || "실패" };
-  }
-  return { status: "미완료", tone: "warn", value: "—" };
-}
 
 export function buildPrototypeEnvModalTableRows(input: {
   readonly executionSetup: ExecutionSetupDto | null;
-  readonly connectionTestSatisfied: boolean;
-  readonly busyEnvTest: boolean;
-  readonly envTestLast: EnvironmentTestLastDto | null;
 }): readonly PrototypeEnvModalTableRow[] {
   const es = input.executionSetup;
   const repoName = String(es?.gitRepoName ?? "").trim();
@@ -102,8 +77,6 @@ export function buildPrototypeEnvModalTableRows(input: {
     cursorTone = "warn";
   }
 
-  const conn = summarizeConnectionTestValue(input);
-
   return [
     {
       key: "repo",
@@ -111,7 +84,6 @@ export function buildPrototypeEnvModalTableRows(input: {
       status: repoStatus,
       statusTone: repoTone,
       currentValue: repoName || "—",
-      actionLabel: repoName ? "수정" : "설정",
     },
     {
       key: "token",
@@ -119,7 +91,6 @@ export function buildPrototypeEnvModalTableRows(input: {
       status: tokenStatus,
       statusTone: tokenTone,
       currentValue: tokenMasked || "—",
-      actionLabel: hasGithubToken ? "교체" : "설정",
     },
     {
       key: "cursor",
@@ -127,15 +98,6 @@ export function buildPrototypeEnvModalTableRows(input: {
       status: cursorStatus,
       statusTone: cursorTone,
       currentValue: cursorMasked || "—",
-      actionLabel: cursorStored ? "교체" : "설정",
-    },
-    {
-      key: "connectionTest",
-      label: "연결 테스트",
-      status: conn.status,
-      statusTone: conn.tone,
-      currentValue: conn.value,
-      actionLabel: "실행",
     },
   ];
 }

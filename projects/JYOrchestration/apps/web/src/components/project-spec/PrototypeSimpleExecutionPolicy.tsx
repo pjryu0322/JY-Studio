@@ -158,12 +158,6 @@ export function PrototypeSimpleExecutionPolicy(props: {
         </span>
       </label>
 
-      {level === "review" ? (
-        <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#b45309", fontWeight: 600 }}>
-          연결 테스트(푸시·PR)를 실행하려면 「자동 PR 생성까지」 이상을 선택하세요.
-        </p>
-      ) : null}
-
       {hideSaveButton ? null : (
         <div style={{ marginTop: 16 }}>
           <button

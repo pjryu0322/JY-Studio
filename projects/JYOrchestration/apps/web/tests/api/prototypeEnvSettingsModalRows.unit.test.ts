@@ -3,14 +3,11 @@ import { buildPrototypeEnvModalTableRows } from "@/lib/project/prototypeEnvSetti
 import { inferGithubHttpsUrlFromOwnerRepo } from "@/lib/executionSetup/inferGithubRepoUrl";
 
 describe("prototypeEnvSettingsModalRows", () => {
-  it("builds four status rows without LLM or integrations", () => {
+  it("builds three status rows without LLM or integrations", () => {
     const rows = buildPrototypeEnvModalTableRows({
       executionSetup: null,
-      connectionTestSatisfied: false,
-      busyEnvTest: false,
-      envTestLast: null,
     });
-    expect(rows.map((r) => r.key)).toEqual(["repo", "token", "cursor", "connectionTest"]);
+    expect(rows.map((r) => r.key)).toEqual(["repo", "token", "cursor"]);
   });
 
   it("infers github url from owner/repo for save compatibility", () => {

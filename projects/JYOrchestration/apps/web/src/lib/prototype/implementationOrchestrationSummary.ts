@@ -305,6 +305,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
           }),
           referenceArtifactCount: referenceArtifacts.length,
           envOk: input.summaryInput.envOk,
+          env: input.summaryInput.env,
         })
       : [];
   const lines = [

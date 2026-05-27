@@ -371,21 +371,23 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             {CURSOR_API_DEFAULT_URL}
           </p>
         ) : null}
-        <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
-          <input
-            value={es?.cursorApiUrl?.trim() ? es.cursorApiUrl : CURSOR_API_DEFAULT_URL}
-            disabled={!canEdit || !es}
-            placeholder={CURSOR_API_DEFAULT_URL}
-            onChange={(e) =>
-              setExecutionSetup((p) => ({
-                ...(p ?? ({} as ExecutionSetupDto)),
-                cursorApiUrl: e.target.value.trim() || CURSOR_API_DEFAULT_URL,
-              }))
-            }
-            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-          />
-        </label>
+        {!mvp ? (
+          <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
+            <input
+              value={es?.cursorApiUrl?.trim() ? es.cursorApiUrl : CURSOR_API_DEFAULT_URL}
+              disabled={!canEdit || !es}
+              placeholder={CURSOR_API_DEFAULT_URL}
+              onChange={(e) =>
+                setExecutionSetup((p) => ({
+                  ...(p ?? ({} as ExecutionSetupDto)),
+                  cursorApiUrl: e.target.value.trim() || CURSOR_API_DEFAULT_URL,
+                }))
+              }
+              style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+            />
+          </label>
+        ) : null}
 
         {showKeyInput ? (
           <label style={{ display: "grid", gap: 4, marginBottom: 8 }}>
@@ -459,47 +461,49 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         ) : null}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <button
-            type="button"
-            disabled={!canEdit || !es || busy === "val-cursor-api" || !cursorLooksStored}
-            title={!cursorLooksStored ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
-            onClick={async () => {
-              if (!projectId || !es) return;
-              beginExecutionValidationRequest();
-              setBusy("val-cursor-api");
-              try {
-                const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_api" });
-                if (!res.ok || !json.success) {
-                  setMessage(json.message || "Cursor API 검증에 실패했습니다.");
-                  return;
-                }
-                if (json.data) {
-                  setLastValidateKind("cursor_api");
-                  setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
-                  const d = json.data as ValidateResponseData;
-                  if (d.cursorApiValidation) {
-                    setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+          {!mvp ? (
+            <button
+              type="button"
+              disabled={!canEdit || !es || busy === "val-cursor-api" || !cursorLooksStored}
+              title={!cursorLooksStored ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
+              onClick={async () => {
+                if (!projectId || !es) return;
+                beginExecutionValidationRequest();
+                setBusy("val-cursor-api");
+                try {
+                  const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_api" });
+                  if (!res.ok || !json.success) {
+                    setMessage(json.message || "Cursor API 검증에 실패했습니다.");
+                    return;
                   }
+                  if (json.data) {
+                    setLastValidateKind("cursor_api");
+                    setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                    const d = json.data as ValidateResponseData;
+                    if (d.cursorApiValidation) {
+                      setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+                    }
+                  }
+                  const detail = (json.data?.messages ?? []).join(" / ");
+                  setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+                } finally {
+                  setBusy(null);
                 }
-                const detail = (json.data?.messages ?? []).join(" / ");
-                setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
-              } finally {
-                setBusy(null);
-              }
-            }}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #0f766e",
-              background: "#0d9488",
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: !canEdit || !es || !cursorLooksStored || busy === "val-cursor-api" ? "not-allowed" : "pointer",
-            }}
-          >
-            {busy === "val-cursor-api" ? "검증 중…" : "검증"}
-          </button>
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #0f766e",
+                background: "#0d9488",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: !canEdit || !es || !cursorLooksStored || busy === "val-cursor-api" ? "not-allowed" : "pointer",
+              }}
+            >
+              {busy === "val-cursor-api" ? "검증 중…" : "검증"}
+            </button>
+          ) : null}
 
           {!mvp ? (
             <button
