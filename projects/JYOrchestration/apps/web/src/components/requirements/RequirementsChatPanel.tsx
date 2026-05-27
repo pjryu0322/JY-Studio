@@ -7,6 +7,10 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
+import { PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE } from "@/lib/requirements/preProjectPlanningSummary";
+import {
+  PRE_PROJECT_INITIAL_PROPOSAL_RECOMMENDED_ACTION_LABEL,
+} from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
@@ -360,6 +364,35 @@ export function RequirementsChatPanel({
     []
   );
 
+  const interviewChipBtnRecommended = useMemo(
+    () =>
+      ({
+        ...interviewChipBtn,
+        border: "1px solid #93c5fd",
+        background: "#eff6ff",
+        color: "#1e3a8a",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+      }) satisfies CSSProperties,
+    [interviewChipBtn]
+  );
+
+  const interviewChipRecommendedBadge = useMemo(
+    () =>
+      ({
+        fontSize: 10,
+        fontWeight: 800,
+        color: "#1d4ed8",
+        background: "#dbeafe",
+        borderRadius: 999,
+        padding: "2px 6px",
+        lineHeight: 1.2,
+        flexShrink: 0,
+      }) satisfies CSSProperties,
+    []
+  );
+
   const membersUi = memberControls ?? null;
 
   const topChrome =
@@ -675,19 +708,36 @@ export function RequirementsChatPanel({
                         }}
                         aria-label="답변 힌트(선택 사항)"
                       >
-                        {interviewSuggestions.map((label) => (
-                          <button
-                            key={`${m.id}-${label}`}
-                            type="button"
-                            onClick={() => {
-                              setPinnedActionsMessageId(m.id);
-                              onInterviewSuggestionPick?.(label);
-                            }}
-                            style={interviewChipBtn}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                        {interviewSuggestions.map((label, chipIndex) => {
+                          const isRecommendedInitialProposalChip =
+                            m.meta?.internalType === PRE_PROJECT_PLANNING_SUMMARY_INTERNAL_TYPE &&
+                            chipIndex === 0 &&
+                            label === PRE_PROJECT_INITIAL_PROPOSAL_RECOMMENDED_ACTION_LABEL;
+                          return (
+                            <button
+                              key={`${m.id}-${label}`}
+                              type="button"
+                              onClick={() => {
+                                setPinnedActionsMessageId(m.id);
+                                onInterviewSuggestionPick?.(label);
+                              }}
+                              style={
+                                isRecommendedInitialProposalChip
+                                  ? interviewChipBtnRecommended
+                                  : interviewChipBtn
+                              }
+                            >
+                              {isRecommendedInitialProposalChip ? (
+                                <>
+                                  <span style={interviewChipRecommendedBadge}>추천</span>
+                                  {label}
+                                </>
+                              ) : (
+                                label
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : null}
                     {/* H7.6: SingleChat AI explainability — workspace supplies promptTimeline + drawer opener */}

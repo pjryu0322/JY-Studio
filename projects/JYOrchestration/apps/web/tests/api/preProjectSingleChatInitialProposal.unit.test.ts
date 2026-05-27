@@ -37,10 +37,14 @@ describe("preProjectSingleChatInitialProposal", () => {
 
     expect(msg.bodyText).toContain("1차 서비스 정의");
     expect(msg.bodyText).toContain("확정에 가까운 내용");
-    expect(msg.bodyText).toContain("후보로 볼 내용");
+    expect(msg.bodyText).toContain("현재까지 추정된 기획 후보");
+    expect(msg.bodyText).not.toContain("후보로 볼 내용");
     expect(msg.bodyText).toContain("아직 정해야 할 것");
     expect(msg.bodyText).toContain("AI기획자 제안");
     expect(msg.bodyText).toContain("아래 버튼에서 다음 동작을 선택해 주세요.");
+    expect(msg.bodyText).toContain(
+      '먼저 "액터부터 정의하기"를 선택하면 이후 서비스 흐름과 화면 구성을 더 정확하게 정리할 수 있습니다.',
+    );
     expect(msg.bodyText).not.toContain("1. 액터부터 정의하기");
     expect(msg.interviewSuggestions).toEqual([
       "액터부터 정의하기",

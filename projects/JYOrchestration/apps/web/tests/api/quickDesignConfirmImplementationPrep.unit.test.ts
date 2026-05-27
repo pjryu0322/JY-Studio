@@ -125,6 +125,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
       artifactTitles: ["프로젝트 요약서", "프로토타입 기획안"],
       nowIso,
       prep,
+      definitions,
     });
 
     expect(message.content).toMatch(/구현 준비(가 완료되었습니다|정보를 정리했습니다)/);
@@ -136,6 +137,14 @@ describe("quickDesignConfirmImplementationPrep", () => {
       expect(message.content).toContain("데이터/Mock 처리 기준");
     } else {
       expect(message.content).toContain("보완이 필요한 항목:");
+      expect(message.content).not.toContain("일부 항목은 후보 상태로 보완되었습니다");
+      if (prep.touchedGapKeys.length > 0) {
+        expect(message.content).toMatch(/: 후보/);
+        expect(message.content).not.toContain("actor_permission_matrix");
+      }
+      if (prep.autoCandidateGenerated && prep.touchedGapKeys.length > 0) {
+        expect(message.meta?.implementationCandidateGapKeys?.length).toBeGreaterThan(0);
+      }
     }
     expect(message.content).not.toContain("구현 준비도 점검");
   });

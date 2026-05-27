@@ -29,6 +29,8 @@ export type RequirementsMessageMeta = {
   fastPlanArtifactId?: string;
   /** Quick Design 확정 후 4영역 산출물 ID 목록 */
   quickDesignArtifactIds?: readonly string[];
+  /** Quick Design 확정 후 구현 준비 후보 gap key(기획정보 보완 패널·메시지 요약) */
+  implementationCandidateGapKeys?: readonly string[];
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */

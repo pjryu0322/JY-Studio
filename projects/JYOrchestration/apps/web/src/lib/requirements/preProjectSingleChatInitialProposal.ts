@@ -73,6 +73,10 @@ export const DEFAULT_PRE_PROJECT_INITIAL_PROPOSAL_ACTIONS: readonly PreProjectIn
     },
   ] as const;
 
+/** 기획 초기화 후 안내 메시지에서 권장 시작점으로 강조하는 첫 번째 quick action 라벨 */
+export const PRE_PROJECT_INITIAL_PROPOSAL_RECOMMENDED_ACTION_LABEL =
+  DEFAULT_PRE_PROJECT_INITIAL_PROPOSAL_ACTIONS[0].label;
+
 const INITIAL_PROPOSAL_ACTION_BY_LABEL = new Map(
   DEFAULT_PRE_PROJECT_INITIAL_PROPOSAL_ACTIONS.map((a) => [a.label, a]),
 );
@@ -313,7 +317,7 @@ export function buildPreProjectSingleChatInitialProposalMessage(input: {
     "확정에 가까운 내용",
     ...(nearConfirmed.length ? nearConfirmed.map((l) => `- ${l}`) : ["- (아직 없음)"]),
     "",
-    "후보로 볼 내용",
+    "현재까지 추정된 기획 후보",
     ...(candidates.length ? candidates.map((l) => `- ${l}`) : ["- (아직 없음)"]),
     "",
     "아직 정해야 할 것",
@@ -323,6 +327,7 @@ export function buildPreProjectSingleChatInitialProposalMessage(input: {
     plannerAdvice,
     "",
     "아래 버튼에서 다음 동작을 선택해 주세요.",
+    `먼저 "${PRE_PROJECT_INITIAL_PROPOSAL_RECOMMENDED_ACTION_LABEL}"를 선택하면 이후 서비스 흐름과 화면 구성을 더 정확하게 정리할 수 있습니다.`,
   ];
 
   return {

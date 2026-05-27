@@ -206,7 +206,14 @@ import {
   mergeQuickDesignArtifactsIntoState,
   patchRequirementsStageForImplementationPrep,
   patchRequirementsStageForImplementationStart,
+  QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import {
+  buildImplementationCandidateItems,
+  resolveImplementationCandidateGapKeys,
+} from "@/lib/requirements/implementationCandidateLabels";
+import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
+import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
 import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
 import { PLANNING_INFO_REFINE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
@@ -353,6 +360,7 @@ export function RequirementsWorkspace({
   const [assignmentDrawerOpen, setAssignmentDrawerOpen] = useState(false);
   const [assignmentStepId, setAssignmentStepId] = useState<string | null>(null);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [implementationRefineDrawerOpen, setImplementationRefineDrawerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [, setLastSavedAt] = useState<string | null>(null);
@@ -2447,6 +2455,7 @@ export function RequirementsWorkspace({
         planningSummary: artifactBundle.artifactOrchestrationV1.planningSummary,
         nowIso,
         prep,
+        definitions: slotDefsForProgress,
       });
 
       await persistStateJsonOnly({
@@ -2760,6 +2769,35 @@ export function RequirementsWorkspace({
     ],
   );
 
+  const planningRefineCandidateItems = useMemo(() => {
+    let touchedFromMessage: readonly ImplementationSeedGapKey[] | undefined;
+    let sawQuickDesignReadyMessage = false;
+    for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
+      const m = conversationMessages[i];
+      if (m?.meta?.internalType !== QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE) continue;
+      sawQuickDesignReadyMessage = true;
+      const keys = m.meta?.implementationCandidateGapKeys;
+      if (Array.isArray(keys) && keys.length) {
+        touchedFromMessage = keys
+          .map((k) => String(k ?? "").trim())
+          .filter(Boolean) as ImplementationSeedGapKey[];
+        break;
+      }
+    }
+    const keys = resolveImplementationCandidateGapKeys({
+      touchedGapKeys: touchedFromMessage,
+      autoCandidateGenerated: Boolean(touchedFromMessage?.length) || sawQuickDesignReadyMessage,
+      orchestration: orchestrationAlignedState ?? orchestrationUiState,
+      definitions: slotDefsForProgress,
+    });
+    return buildImplementationCandidateItems(keys);
+  }, [
+    conversationMessages,
+    orchestrationAlignedState,
+    orchestrationUiState,
+    slotDefsForProgress,
+  ]);
+
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
@@ -2796,11 +2834,11 @@ export function RequirementsWorkspace({
         return;
       }
       if (artifactFollowUp === "refine") {
-        insertComposerPrompt(
-          trimmed === PLANNING_INFO_REFINE_LABEL
-            ? "기획 정보를 보완하겠습니다. 수정할 슬롯이나 항목을 알려 주세요."
-            : "추가 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.",
-        );
+        if (trimmed === PLANNING_INFO_REFINE_LABEL) {
+          setImplementationRefineDrawerOpen(true);
+          return;
+        }
+        insertComposerPrompt("추가 보완을 이어가겠습니다. 우선 수정할 항목을 알려 주세요.");
         return;
       }
       if (isFastPlanArtifactFollowUpLabel(trimmed)) return;
@@ -3205,6 +3243,13 @@ export function RequirementsWorkspace({
         open={recommendationPanelOpen}
         items={recommendationEvidenceItems}
         onClose={closeRecommendationPanel}
+      />
+
+      <ImplementationCandidateRefineDrawer
+        open={implementationRefineDrawerOpen}
+        items={planningRefineCandidateItems}
+        onClose={() => setImplementationRefineDrawerOpen(false)}
+        onInsertComposerPrompt={insertComposerPrompt}
       />
 
       <RequirementsArtifactHubDrawer

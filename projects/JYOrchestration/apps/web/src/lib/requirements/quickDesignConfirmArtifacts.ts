@@ -5,10 +5,12 @@ import {
   IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING,
   IMPLEMENTATION_PREP_READY_COMPLETE_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
+import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
 import {
   formatQuickDesignImplementationPrepSummaryLines,
   type QuickDesignConfirmImplementationPrepResult,
 } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
+import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   newRequirementsMessage,
   type RequirementsMessage,
@@ -141,6 +143,7 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
   readonly planningSummary?: string;
   readonly nowIso: string;
   readonly prep: QuickDesignConfirmImplementationPrepResult;
+  readonly definitions?: readonly SingleChatOrchestrationSlotDefinition[];
 }): RequirementsMessage {
   const titles = input.artifactTitles.length
     ? input.artifactTitles.map((t) => `- ${t}`).join("\n")
@@ -161,6 +164,16 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     prepComplete: input.prep.prepComplete,
     readiness: input.prep.readiness,
     autoCandidateGenerated: input.prep.autoCandidateGenerated,
+    touchedGapKeys: input.prep.touchedGapKeys,
+    orchestration: input.prep.orchestration,
+    definitions: input.definitions,
+  });
+
+  const implementationCandidateGapKeys = resolveImplementationCandidateGapKeys({
+    touchedGapKeys: input.prep.touchedGapKeys,
+    autoCandidateGenerated: input.prep.autoCandidateGenerated,
+    orchestration: input.prep.orchestration,
+    definitions: input.definitions,
   });
 
   const contentParts = [
@@ -198,6 +211,9 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       quickDesignArtifactIds: [...input.artifactIds],
       interviewSuggestions: [...input.prep.chipLabels],
       interviewAllowCustomInput: true,
+      ...(implementationCandidateGapKeys.length
+        ? { implementationCandidateGapKeys: [...implementationCandidateGapKeys] }
+        : {}),
     },
   });
 }

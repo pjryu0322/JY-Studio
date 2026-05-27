@@ -1,4 +1,8 @@
 import {
+  formatImplementationCandidateSummaryLines,
+  resolveImplementationCandidateGapKeys,
+} from "@/lib/requirements/implementationCandidateLabels";
+import {
   buildImplementationSeedCandidateSlotPatches,
   buildImplementationSeedFromPlanning,
   evaluateImplementationSeedReadiness,
@@ -216,16 +220,33 @@ export function formatQuickDesignImplementationPrepSummaryLines(input: {
   readonly prepComplete: boolean;
   readonly readiness: ImplementationSeedReadiness;
   readonly autoCandidateGenerated: boolean;
+  readonly touchedGapKeys?: readonly ImplementationSeedGapKey[];
+  readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
+  readonly definitions?: readonly SingleChatOrchestrationSlotDefinition[];
 }): readonly string[] {
   if (input.prepComplete) {
     return [...QUICK_DESIGN_IMPLEMENTATION_PREP_INFO_LINES];
   }
+
+  const candidateKeys = resolveImplementationCandidateGapKeys({
+    touchedGapKeys: input.touchedGapKeys,
+    autoCandidateGenerated: input.autoCandidateGenerated,
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+  });
+  const candidateLines = formatImplementationCandidateSummaryLines(candidateKeys);
+  if (candidateLines.length) {
+    return candidateLines;
+  }
+
   const missingLabels = input.readiness.missing.map((k) => IMPLEMENTATION_SEED_GAP_LABELS[k]);
   if (missingLabels.length) {
     return missingLabels.map((l) => `- ${l}`);
   }
+
   if (input.autoCandidateGenerated) {
-    return ["- 일부 항목은 후보 상태로 보완되었습니다 (자동 확정 없음)"];
+    return ["- 보완이 필요한 후보 항목을 확인할 수 없습니다. 기획정보 보완에서 다시 확인해 주세요."];
   }
+
   return [...QUICK_DESIGN_IMPLEMENTATION_PREP_INFO_LINES];
 }
