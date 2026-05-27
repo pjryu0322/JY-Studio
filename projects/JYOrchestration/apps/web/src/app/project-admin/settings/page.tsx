@@ -7,6 +7,7 @@ import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
 import { ProjectPrototypePreviewSettingsPanel } from "@/components/project/ProjectPrototypePreviewSettingsPanel";
+import { PrototypeEnvSettingsPreviewCollapsible } from "@/components/project/prototypeEnvSettingsUx";
 import {
   PROJECT_ADMIN_EXECUTION_SETUP_PANEL_ID,
   scrollProjectAdminExecutionSetupPanelIntoView,
@@ -101,7 +102,7 @@ function ProjectAdminSettingsInner() {
     if (typeof window === "undefined") return;
     if (window.location.hash !== "#execution-setup-panel") return;
     const t = window.setTimeout(() => {
-      scrollExecutionSetupPanelIntoView(scrollRef.current);
+      scrollProjectAdminExecutionSetupPanelIntoView(scrollRef.current);
     }, 0);
     return () => window.clearTimeout(t);
   }, [projectId, project]);
@@ -131,7 +132,6 @@ function ProjectAdminSettingsInner() {
 
           {projectId && project && !errorMessage ? (
             <>
-              <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
               <div id={PROJECT_ADMIN_EXECUTION_SETUP_PANEL_ID} style={{ minWidth: 0, maxWidth: "100%" }}>
                 <ProjectExecutionEnvironmentPanel
                   projectId={projectId}
@@ -142,6 +142,9 @@ function ProjectAdminSettingsInner() {
                   settingsPurpose="prototype"
                 />
               </div>
+              <PrototypeEnvSettingsPreviewCollapsible>
+                <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
+              </PrototypeEnvSettingsPreviewCollapsible>
             </>
           ) : null}
         </div>

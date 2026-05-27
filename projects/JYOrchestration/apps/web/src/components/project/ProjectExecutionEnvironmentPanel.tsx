@@ -21,6 +21,16 @@ import {
 } from "@/components/project-spec/ExecutionSetupPanel";
 import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIntegrationOverridesPanel";
 import {
+  PrototypeEnvSettingsGithubTokenErrorCard,
+  PrototypeEnvSettingsIntegrationsSection,
+  PrototypeEnvSettingsReadinessSummary,
+  PrototypeEnvSettingsStepCard,
+} from "@/components/project/prototypeEnvSettingsUx";
+import {
+  isGithubTokenCredentialsError,
+  resolvePrototypeEnvTestDisabledTitle,
+} from "@/lib/project/prototypeEnvSettingsReadiness";
+import {
   githubCredentialLooksStored,
   cursorCredentialLooksStored,
   peerGithubCredentialMasked,
@@ -1898,18 +1908,27 @@ export function ProjectExecutionEnvironmentPanel({
     peerGithubCredentialMasked(executionSetup) ??
     (String(peerHintsWhenNoSetup?.githubAccessTokenMasked ?? "").trim() || null);
 
-  const mvpGithubRepoSection = isPrototypeMvpUi ? (
-    <section
-      style={{
-        marginBottom: 16,
-        padding: 16,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-      }}
-    >
-      <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 12px 0", color: "#0f172a" }}>GitHub + 저장소 연결</h2>
-      <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+  const envTestDisabledTitle =
+    isPrototypeMvpUi && !executionSetup
+      ? "먼저 저장을 눌러 실행 환경 설정을 생성하세요"
+      : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoUrl ?? "").trim()
+        ? "저장소 URL이 필요합니다"
+        : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoName ?? "").trim()
+          ? "owner/repo가 필요합니다"
+          : isPrototypeMvpUi && executionSetup && !githubCredentialLooksStored(executionSetup)
+            ? "GitHub 토큰을 먼저 저장하세요"
+            : isPrototypeMvpUi && executionSetup && !cursorCredentialLooksStored(executionSetup)
+              ? "Cursor API 키를 먼저 저장하세요"
+              : !executionReady
+                ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
+                : !baseBranchConfigured
+                  ? "기본 브랜치가 필요합니다"
+                  : !autoPushOn
+                    ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
+                    : undefined;
+
+  const mvpGithubRepoFields = isPrototypeMvpUi ? (
+    <div style={{ display: "grid", gap: 10 }}>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>저장소 URL</span>
           <input
@@ -1940,9 +1959,11 @@ export function ProjectExecutionEnvironmentPanel({
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
-      </div>
-      <div style={{ marginTop: 4, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
-        <div style={{ fontWeight: 800, fontSize: 12, color: "#0f172a", marginBottom: 8 }}>GitHub Token</div>
+    </div>
+  ) : null;
+
+  const mvpGithubTokenFields = isPrototypeMvpUi ? (
+    <div>
         {githubPeerMask && !githubTokenOnThisProject ? (
           <div
             style={{
@@ -2123,55 +2144,32 @@ export function ProjectExecutionEnvironmentPanel({
             {busyGithubAuth === "reveal" ? "불러오는 중…" : "토큰 보기"}
           </button>
         </div>
-        {executionSetup?.githubCapabilityValidation != null &&
-        executionSetup.githubCapabilityValidation.githubOperableOk === false ? (
-          <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.45 }}>
+      <PrototypeEnvSettingsGithubTokenErrorCard
+        executionSetup={executionSetup}
+        canEdit={canEdit}
+        onReplaceToken={() => {
+          setGithubReplaceMode(true);
+          setGithubTokenDraft("");
+          setGithubTokenRevealPlaintext(null);
+        }}
+      />
+      {executionSetup?.githubCapabilityValidation != null &&
+      executionSetup.githubCapabilityValidation.githubOperableOk === false &&
+      !isGithubTokenCredentialsError(executionSetup.githubCapabilityValidation) ? (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ fontSize: 11, fontWeight: 700, color: "#b45309", cursor: "pointer" }}>
+            GitHub 권한 검증 상세
+          </summary>
+          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309", lineHeight: 1.45 }}>
             {executionSetup.githubCapabilityValidation.lastErrorMessage ?? "GitHub 권한을 확인할 수 없습니다."}
           </p>
-        ) : null}
-      </div>
-    </section>
+        </details>
+      ) : null}
+    </div>
   ) : null;
 
   const prototypeMvpToolbar = isPrototypeMvpUi ? (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
-      <button
-        type="button"
-        disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
-        onClick={() => void handleEnvironmentTest()}
-        style={{
-          padding: "12px 22px",
-          borderRadius: 10,
-          border: "1px solid #6d28d9",
-          background: "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)",
-          color: "#fff",
-          fontWeight: 800,
-          fontSize: 14,
-          cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
-          boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
-        }}
-        title={
-          isPrototypeMvpUi && !executionSetup
-            ? "먼저 저장을 눌러 실행 환경 설정을 생성하세요"
-            : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoUrl ?? "").trim()
-              ? "저장소 URL이 필요합니다"
-              : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoName ?? "").trim()
-                ? "owner/repo가 필요합니다"
-                : isPrototypeMvpUi && executionSetup && !githubCredentialLooksStored(executionSetup)
-                  ? "GitHub 토큰을 먼저 저장하세요"
-                  : isPrototypeMvpUi && executionSetup && !cursorCredentialLooksStored(executionSetup)
-                    ? "Cursor API 키를 먼저 저장하세요"
-                    : !executionReady
-                      ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
-                      : !baseBranchConfigured
-                        ? "기본 브랜치가 필요합니다"
-                        : !autoPushOn
-                          ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
-                          : undefined
-        }
-      >
-        {busyEnvTest ? "실행 중…" : "연결 테스트"}
-      </button>
       <button
         type="button"
         disabled={!canEdit || busyMvpSave || busyEnvTest}
@@ -2188,6 +2186,27 @@ export function ProjectExecutionEnvironmentPanel({
         }}
       >
         {busyMvpSave ? "저장 중…" : "저장"}
+      </button>
+      <button
+        type="button"
+        disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
+        onClick={() => void handleEnvironmentTest()}
+        style={{
+          padding: "12px 22px",
+          borderRadius: 10,
+          border: "1px solid #6d28d9",
+          background: envTestStartOk
+            ? "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)"
+            : "#e2e8f0",
+          color: envTestStartOk ? "#fff" : "#64748b",
+          fontWeight: 800,
+          fontSize: 14,
+          cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
+          boxShadow: envTestStartOk ? "0 4px 14px rgba(124, 58, 237, 0.35)" : "none",
+        }}
+        title={envTestDisabledTitle}
+      >
+        {busyEnvTest ? "실행 중…" : "연결 테스트"}
       </button>
       <span style={{ fontSize: 12, fontWeight: 700, color: connectionTestSatisfied ? "#15803d" : "#64748b" }}>
         {connectionTestSatisfied ? "연결 테스트 완료" : "연결 테스트 미완료"}
@@ -2210,30 +2229,20 @@ export function ProjectExecutionEnvironmentPanel({
     >
       {isAdminSettings && effectivePurpose === "prototype" ? (
         <header style={{ marginBottom: 16 }}>
-          <div
+          <h1
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
+              fontSize: 22,
+              fontWeight: 800,
+              margin: "0 0 8px 0",
+              color: "#0f172a",
+              lineHeight: 1.25,
             }}
           >
-            <h1
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                margin: 0,
-                color: "#0f172a",
-                flex: "1 1 240px",
-                lineHeight: 1.25,
-              }}
-            >
-              프로젝트 자동 생성 환경설정
-            </h1>
-            {prototypeMvpToolbar}
-          </div>
-          {prototypeMvpEnvTestProgress}
+            프로젝트 자동 생성 환경설정
+          </h1>
+          <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+            1. 저장소 연결 → 2. GitHub Token → 3. Code Agent → 4. 저장 → 5. 연결 테스트 순서로 진행하세요.
+          </p>
         </header>
       ) : (
         <header style={{ marginBottom: 16 }}>
@@ -2265,30 +2274,112 @@ export function ProjectExecutionEnvironmentPanel({
         </header>
       )}
 
-      {mvpGithubRepoSection}
-
-      <ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />
-
-      <ExecutionSetupPanel
-        ref={executionSetupPanelRef}
-        projectId={projectId}
-        canEdit={canEdit}
-        executionSetup={executionSetup}
-        setExecutionSetup={setExecutionSetup}
-        setMessage={setExecutionMessage}
-        formatTestedAt={formatTestedAt}
-        flatLayout
-        unifiedExecutionEnvironment
-        executionEnvironmentFlow={effectivePurpose !== "prototype"}
-        prototypeStagedLayout={effectivePurpose === "prototype"}
-        prototypeMvpLayout={isPrototypeMvpUi}
-        connectionTestSatisfied={connectionTestSatisfied}
-        peerCredentialHintsFallback={peerHintsWhenNoSetup}
-        connectionSlotBeforeCursor={isPrototypeMvpUi ? undefined : gitRepositorySlot}
-        connectionSlotGithubAuth={isPrototypeMvpUi ? undefined : githubAuthSlot}
-        connectionSlotAfterCursor={isPrototypeMvpUi ? undefined : stage1ValidationSlot}
-        canRevealCursorApiKey={canRevealCursorApiKey}
-      />
+      {isAdminSettings && effectivePurpose === "prototype" ? (
+        <>
+          <PrototypeEnvSettingsReadinessSummary
+            executionSetup={executionSetup}
+            connectionTestSatisfied={connectionTestSatisfied}
+          />
+          {mvpGithubRepoFields ? (
+            <PrototypeEnvSettingsStepCard
+              step={1}
+              title="GitHub 저장소 연결"
+              description="저장소 URL, owner/repo, 기본 브랜치를 입력한 뒤 저장하세요."
+            >
+              {mvpGithubRepoFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          {mvpGithubTokenFields ? (
+            <PrototypeEnvSettingsStepCard
+              step={2}
+              title="GitHub Token 설정"
+              description="Personal Access Token을 이 프로젝트에 저장합니다."
+            >
+              {mvpGithubTokenFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          <PrototypeEnvSettingsStepCard
+            step={3}
+            title="Code Agent 연결"
+            description="Cursor API 키와 실행 정책을 설정합니다."
+          >
+            <ExecutionSetupPanel
+              ref={executionSetupPanelRef}
+              projectId={projectId}
+              canEdit={canEdit}
+              executionSetup={executionSetup}
+              setExecutionSetup={setExecutionSetup}
+              setMessage={setExecutionMessage}
+              formatTestedAt={formatTestedAt}
+              flatLayout
+              unifiedExecutionEnvironment
+              executionEnvironmentFlow={false}
+              prototypeStagedLayout
+              prototypeMvpLayout={isPrototypeMvpUi}
+              connectionTestSatisfied={connectionTestSatisfied}
+              peerCredentialHintsFallback={peerHintsWhenNoSetup}
+              canRevealCursorApiKey={canRevealCursorApiKey}
+            />
+          </PrototypeEnvSettingsStepCard>
+          <PrototypeEnvSettingsStepCard
+            step={4}
+            title="저장 및 연결 테스트"
+            description="입력을 저장한 뒤, 연결 테스트로 Git 커밋·PR·머지 경로를 확인합니다."
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              {prototypeMvpToolbar}
+            </div>
+            {prototypeMvpEnvTestProgress}
+            {connectionTestSatisfied ? (
+              <p style={{ margin: "12px 0 0 0", fontSize: 12, color: "#15803d", lineHeight: 1.55 }}>
+                연결 테스트가 완료되었습니다. 기획·구현 화면으로 돌아가 다음 작업을 진행할 수 있습니다.
+              </p>
+            ) : envTestDisabledTitle ? (
+              <p style={{ margin: "12px 0 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+                {envTestDisabledTitle}
+              </p>
+            ) : null}
+          </PrototypeEnvSettingsStepCard>
+          <PrototypeEnvSettingsIntegrationsSection
+            executionSetup={executionSetup}
+            advancedPanel={<ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />}
+          />
+        </>
+      ) : (
+        <>
+          {mvpGithubRepoFields ? (
+            <PrototypeEnvSettingsStepCard step={1} title="GitHub 저장소 연결">
+              {mvpGithubRepoFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          {mvpGithubTokenFields ? (
+            <PrototypeEnvSettingsStepCard step={2} title="GitHub Token 설정">
+              {mvpGithubTokenFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          <ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />
+          <ExecutionSetupPanel
+            ref={executionSetupPanelRef}
+            projectId={projectId}
+            canEdit={canEdit}
+            executionSetup={executionSetup}
+            setExecutionSetup={setExecutionSetup}
+            setMessage={setExecutionMessage}
+            formatTestedAt={formatTestedAt}
+            flatLayout
+            unifiedExecutionEnvironment
+            executionEnvironmentFlow={effectivePurpose !== "prototype"}
+            prototypeStagedLayout={effectivePurpose === "prototype"}
+            prototypeMvpLayout={isPrototypeMvpUi}
+            connectionTestSatisfied={connectionTestSatisfied}
+            peerCredentialHintsFallback={peerHintsWhenNoSetup}
+            connectionSlotBeforeCursor={isPrototypeMvpUi ? undefined : gitRepositorySlot}
+            connectionSlotGithubAuth={isPrototypeMvpUi ? undefined : githubAuthSlot}
+            connectionSlotAfterCursor={isPrototypeMvpUi ? undefined : stage1ValidationSlot}
+            canRevealCursorApiKey={canRevealCursorApiKey}
+          />
+        </>
+      )}
 
       {executionMessage ? (
         <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#334155" }} role="status">

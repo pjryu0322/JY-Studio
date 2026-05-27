@@ -35,11 +35,11 @@ const CAP_LABEL: Record<string, string> = {
 };
 
 function sourceLabel(source: CapabilityRow["source"], status: string): string {
-  if (status === "INVALID_OVERRIDE") return "프로젝트 선택(무효)";
-  if (status === "MISSING") return "미해결";
+  if (status === "INVALID_OVERRIDE") return "오류(무효한 override)";
+  if (status === "MISSING") return "프로젝트 override 없음";
   if (source === "PROJECT_OVERRIDE") return "프로젝트 override";
-  if (source === "USER_DEFAULT") return "사용자 기본";
-  return "—";
+  if (source === "USER_DEFAULT") return "기본 설정 사용";
+  return "기본 설정 사용";
 }
 
 export function ProjectIntegrationOverridesPanel({
@@ -150,11 +150,12 @@ export function ProjectIntegrationOverridesPanel({
     >
       <h2 style={{ margin: "0 0 8px 0", fontSize: 15, fontWeight: 900, color: "#0f172a" }}>Integrations (프로젝트)</h2>
       <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-        프로젝트 소유자가{" "}
+        프로젝트별로 기본 AI/Code Agent/SCM을 바꾸고 싶을 때만 설정합니다. 비워두면 사용자 기본 설정 또는 실행
+        환경 설정을 사용합니다. 일반적인 자동 생성 작업에서는 별도 설정이 필요하지 않습니다. 연동 등록은{" "}
         <Link href="/integrations" style={{ color: "#2563eb", fontWeight: 800 }}>
           Settings → Integrations
         </Link>
-        에 등록한 연동만 선택할 수 있습니다. 비우면 프로젝트 override가 없고, 사용자 기본(<code style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 4 }}>isDefault</code>) 또는 실행 설정·레거시 키 순으로 해석됩니다. 무효한 override는 자동으로 사용자 기본으로 대체되지 않습니다.
+        에서 할 수 있습니다.
       </p>
       {loading ? (
         <p style={{ fontSize: 13, color: "#64748b" }}>불러오는 중…</p>
@@ -173,7 +174,7 @@ export function ProjectIntegrationOverridesPanel({
               <tbody>
                 {Object.keys(CAP_LABEL).map((cap) => {
                   const r = rowByCap.get(cap);
-                  const warn = r?.status === "INVALID_OVERRIDE" || r?.status === "MISSING";
+                  const warn = r?.status === "INVALID_OVERRIDE";
                   return (
                     <tr key={cap} style={{ borderBottom: "1px solid #f1f5f9" }}>
                       <td style={{ padding: "8px 10px", fontWeight: 800 }}>{CAP_LABEL[cap]}</td>
@@ -189,9 +190,10 @@ export function ProjectIntegrationOverridesPanel({
               </tbody>
             </table>
           </div>
-          {capabilityRows.some((r) => r.status === "INVALID_OVERRIDE" || r.status === "MISSING") ? (
+          {capabilityRows.some((r) => r.status === "INVALID_OVERRIDE") ? (
             <p style={{ fontSize: 12, fontWeight: 700, color: "#b45309", margin: "0 0 12px 0" }}>
-              일부 capability가 미설정이거나 프로젝트에 지정된 연동이 무효합니다. Integrations에서 연결을 확인하거나, 아래에서 override를 비우거나 올바른 연동을 선택하세요.
+              일부 프로젝트 override가 무효합니다. Integrations에서 연결을 확인하거나, 아래에서 override를 비우거나
+              올바른 연동을 선택하세요.
             </p>
           ) : null}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
