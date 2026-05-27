@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
 import { ProjectPrototypePreviewSettingsPanel } from "@/components/project/ProjectPrototypePreviewSettingsPanel";
+import {
+  PROJECT_ADMIN_EXECUTION_SETUP_PANEL_ID,
+  scrollProjectAdminExecutionSetupPanelIntoView,
+} from "@/lib/project/projectAdminSettingsScroll";
 import { canEditSpec } from "@/lib/rbac/projectPermissions";
 import type { ProjectRole } from "@/lib/rbac/projectPermissions";
+
 function ProjectAdminSettingsInner() {
   const searchParams = useSearchParams();
   const projectId = String(searchParams.get("projectId") ?? "").trim();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,7 +93,7 @@ function ProjectAdminSettingsInner() {
     () => ({
       canEditSpec: canEditSpec(projectRole),
     }),
-    [projectRole]
+    [projectRole],
   );
 
   useEffect(() => {
@@ -95,53 +101,51 @@ function ProjectAdminSettingsInner() {
     if (typeof window === "undefined") return;
     if (window.location.hash !== "#execution-setup-panel") return;
     const t = window.setTimeout(() => {
-      const el = document.getElementById("execution-setup-panel");
-      if (!el) return;
-      el.scrollIntoView({ block: "start", behavior: "smooth" });
-      if (el instanceof HTMLElement) {
-        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
-        el.focus({ preventScroll: true });
-      }
+      scrollExecutionSetupPanelIntoView(scrollRef.current);
     }, 0);
     return () => window.clearTimeout(t);
-  }, [projectId]);
+  }, [projectId, project]);
 
   return (
-    <main data-testid="project-admin-settings-page" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
-      {!projectId ? (
-        <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
-          <p style={{ margin: "0 0 10px 0" }}>
-            프로젝트가 선택되지 않았습니다.{" "}
-            <Link href="/" style={{ color: "#1d4ed8", fontWeight: 700 }}>
-              프로젝트 목록
-            </Link>
-            에서 프로젝트를 연 뒤, 실행 준비 요약의 <strong>설정으로 이동</strong>을 이용하세요.
-          </p>
+    <main data-testid="project-admin-settings-page" className="jyo-project-admin-settings-page">
+      <div ref={scrollRef} className="jyo-project-admin-settings-scroll" data-testid="project-admin-settings-scroll">
+        <div className="jyo-project-admin-settings-content">
+          {!projectId ? (
+            <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
+              <p style={{ margin: "0 0 10px 0" }}>
+                프로젝트가 선택되지 않았습니다.{" "}
+                <Link href="/" style={{ color: "#1d4ed8", fontWeight: 700 }}>
+                  프로젝트 목록
+                </Link>
+                에서 프로젝트를 연 뒤, 실행 준비 요약의 <strong>설정으로 이동</strong>을 이용하세요.
+              </p>
+            </div>
+          ) : null}
+
+          {projectId && loading ? <p style={{ color: "#64748b" }}>불러오는 중…</p> : null}
+          {projectId && errorMessage ? (
+            <p style={{ color: "#b91c1c", fontWeight: 600 }} role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          {projectId && project && !errorMessage ? (
+            <>
+              <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
+              <div id={PROJECT_ADMIN_EXECUTION_SETUP_PANEL_ID} style={{ minWidth: 0, maxWidth: "100%" }}>
+                <ProjectExecutionEnvironmentPanel
+                  projectId={projectId}
+                  project={project}
+                  canEdit={rbac.canEditSpec}
+                  canRevealCursorApiKey={projectRole === "OWNER"}
+                  settingsSurface="admin"
+                  settingsPurpose="prototype"
+                />
+              </div>
+            </>
+          ) : null}
         </div>
-      ) : null}
-
-      {projectId && loading ? <p style={{ color: "#64748b" }}>불러오는 중…</p> : null}
-      {projectId && errorMessage ? (
-        <p style={{ color: "#b91c1c", fontWeight: 600 }} role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
-
-      {projectId && project && !errorMessage ? (
-        <>
-          <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
-          <div id="execution-setup-panel">
-            <ProjectExecutionEnvironmentPanel
-              projectId={projectId}
-              project={project}
-              canEdit={rbac.canEditSpec}
-              canRevealCursorApiKey={projectRole === "OWNER"}
-              settingsSurface="admin"
-              settingsPurpose="prototype"
-            />
-          </div>
-        </>
-      ) : null}
+      </div>
     </main>
   );
 }
@@ -150,7 +154,13 @@ export default function ProjectAdminSettingsPage() {
   return (
     <Suspense
       fallback={
-        <div style={{ padding: 24, maxWidth: 960, margin: "0 auto", color: "#64748b" }}>불러오는 중…</div>
+        <main className="jyo-project-admin-settings-page" data-testid="project-admin-settings-page">
+          <div className="jyo-project-admin-settings-scroll">
+            <div className="jyo-project-admin-settings-content" style={{ color: "#64748b" }}>
+              불러오는 중…
+            </div>
+          </div>
+        </main>
       }
     >
       <ProjectAdminSettingsInner />
