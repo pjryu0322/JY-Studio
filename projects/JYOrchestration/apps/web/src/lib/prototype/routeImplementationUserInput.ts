@@ -155,7 +155,16 @@ export async function routeImplementationUserInput(
     const llm = await classifyImplementationIntentWithLlm({
       userMessage: text,
       visibleActionLabels: params.visibleActionLabels,
-      ...gateInput,
+      projectName: params.projectName,
+      projectDescription: params.projectDescription,
+      envOk: params.envOk,
+      templatePlanningReady: params.templatePlanningReady,
+      implementationSeedReady: params.implementationSeedReady,
+      hasWorkUnits: params.hasWorkUnits,
+      plannerRunning: params.isPlannerRunning,
+      plannerCreatePending: params.plannerCreatePending,
+      implementationBootstrapSummary: params.implementationBootstrapSummary,
+      latestRunStatus: params.latestRunStatus,
     });
     if (llm.ok) {
       return routeFromClassification(llm.classification, gateInput);

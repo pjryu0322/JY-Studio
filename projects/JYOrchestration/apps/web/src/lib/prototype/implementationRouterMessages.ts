@@ -1,6 +1,6 @@
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 
 const IMPLEMENTATION_AI_MEMBER_ID = "prototype_build" as const;
 

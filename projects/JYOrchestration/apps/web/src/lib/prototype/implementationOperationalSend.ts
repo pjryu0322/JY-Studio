@@ -1,6 +1,7 @@
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildCreateWorkPlanFromChatOperationalResult } from "@/lib/prototype/implementationCreateWorkPlanFromChat";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
@@ -8,7 +9,6 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationActionGateBlockedTimelineEntry,
   buildImplementationActionRouteTimelineEntries,

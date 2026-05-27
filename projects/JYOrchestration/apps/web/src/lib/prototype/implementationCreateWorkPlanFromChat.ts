@@ -8,7 +8,7 @@ import {
 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type {
   RequirementsSingleChatOrchestrationStateV1,

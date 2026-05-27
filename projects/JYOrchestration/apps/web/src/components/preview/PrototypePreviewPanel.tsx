@@ -1555,6 +1555,7 @@ export function PrototypePreviewPanel({
         return;
       }
       if (result === "handled" || result === "continue") return;
+      if (result.kind !== "status_query") return;
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
       const nextMessages = [...(resolved.messages ?? []), result.aiMessage];
       executionSingleChat.applyPersistedMessages(nextMessages);

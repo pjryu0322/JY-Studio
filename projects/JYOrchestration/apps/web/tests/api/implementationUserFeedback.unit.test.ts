@@ -86,4 +86,68 @@ describe("implementationUserFeedback", () => {
     const next = applyUserFeedbackPatchToImplementationSeed(seed, patch);
     expect(next?.commonDetailFeatures.some((f) => f.name.includes("허용"))).toBe(true);
   });
+
+  it("uses extractedRulesOverride when provided", () => {
+    const patch = buildImplementationUserFeedbackPatch({
+      text: "원문에는 직접 추출할 정책이 없습니다.",
+      sourceMessageId: "m-override",
+      nowIso,
+      extractedRulesOverride: [
+        {
+          label: "허용 파일 형식",
+          value: "mp3, wav",
+          normalizedValue: "mp3,wav",
+          confidence: "high",
+        },
+        {
+          label: "",
+          value: "제거되어야 함",
+          confidence: "high",
+        },
+        {
+          label: "임시파일 처리",
+          value: "",
+          confidence: "medium",
+        },
+        {
+          label: "허용 파일 형식",
+          value: "mp3, wav",
+          normalizedValue: "mp3,wav",
+          confidence: "high",
+        },
+      ],
+    });
+
+    expect(patch.extractedRules).toEqual([
+      expect.objectContaining({
+        label: "허용 파일 형식",
+        value: "mp3, wav",
+        normalizedValue: "mp3,wav",
+        confidence: "high",
+      }),
+    ]);
+  });
+
+  it("normalizes invalid extracted rule confidence to medium", () => {
+    const patch = buildImplementationUserFeedbackPatch({
+      text: "원문에는 직접 추출할 정책이 없습니다.",
+      sourceMessageId: "m-confidence",
+      nowIso,
+      extractedRulesOverride: [
+        {
+          label: "보관 정책",
+          value: "30일 보관",
+          confidence: "very-high",
+        } as import("@/lib/prototype/implementationUserFeedback").ImplementationExtractedRule,
+      ],
+    });
+
+    expect(patch.extractedRules).toEqual([
+      expect.objectContaining({
+        label: "보관 정책",
+        value: "30일 보관",
+        confidence: "medium",
+      }),
+    ]);
+  });
 });
