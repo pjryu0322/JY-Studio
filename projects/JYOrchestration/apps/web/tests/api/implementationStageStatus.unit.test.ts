@@ -65,12 +65,12 @@ describe("deriveImplementationStageStatus", () => {
     expect(deriveImplementationStageStatus(state)).toBe("not_ready");
   });
 
-  it("returns implementation_ready when seed is ready and design/env ok", () => {
+  it("returns implementation_ready when seed is ready and env ok even if designOk is false", () => {
     const state = resolveEffectiveImplementationState({
       parsedRequirementsState: { implementationSeedV1: makeSeed(true) },
       pendingPatch: {},
       envOk: true,
-      designOk: true,
+      designOk: false,
     });
     expect(deriveImplementationStageStatus(state)).toBe("implementation_ready");
   });

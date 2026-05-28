@@ -1532,6 +1532,7 @@ export function PrototypePreviewPanel({
           },
         },
         implementationOperationalHandlers,
+      );
     },
     onOperationalAfterPersist: (action) => {
       if (action === "start_prototype_work_plan") {

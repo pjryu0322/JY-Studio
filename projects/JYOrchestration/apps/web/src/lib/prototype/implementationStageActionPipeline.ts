@@ -43,6 +43,54 @@ export function isImplementationSeedReadyForWorkPlanGeneration(
 export const IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE =
   "구현 준비정보가 아직 확정되지 않았습니다. [구현 준비정보 확인] 또는 Quick Design 확정 후 작업안을 생성해 주세요.";
 
+export type ImplementationWorkPlanGenerationReadiness =
+  | Readonly<{ readonly ok: true }>
+  | Readonly<{
+      readonly ok: false;
+      readonly reason: "env_not_ready" | "seed_missing" | "seed_candidate" | "seed_not_ready";
+      readonly message: string;
+    }>;
+
+export function evaluateImplementationWorkPlanGenerationReadiness(
+  state: Pick<EffectiveImplementationState, "envOk" | "implementationSeedV1">,
+): ImplementationWorkPlanGenerationReadiness {
+  if (!state.envOk) {
+    return {
+      ok: false,
+      reason: "env_not_ready",
+      message: "환경 준비가 완료된 뒤 작업안을 생성할 수 있습니다.",
+    };
+  }
+
+  const seed = state.implementationSeedV1;
+  if (!seed) {
+    return {
+      ok: false,
+      reason: "seed_missing",
+      message:
+        "구현 준비정보가 아직 없습니다. 기획 산출물을 기준으로 구현 준비정보를 먼저 생성해 주세요.",
+    };
+  }
+
+  if (seed.lifecycleStatus === "candidate") {
+    return {
+      ok: false,
+      reason: "seed_candidate",
+      message: "구현 준비정보가 아직 확정되지 않았습니다. Quick Design 확정 후 작업안을 생성해 주세요.",
+    };
+  }
+
+  if (!seed.readiness?.ready) {
+    return {
+      ok: false,
+      reason: "seed_not_ready",
+      message: "구현 준비정보의 필수 항목을 확정한 뒤 작업안을 생성해 주세요.",
+    };
+  }
+
+  return { ok: true };
+}
+
 export type ImplementationStageActionExecutionResult =
   | Readonly<{
       readonly kind: "handled";
@@ -193,14 +241,13 @@ export function evaluateImplementationStageActionGate(
 ): ImplementationStageActionGateResult {
   switch (actionId) {
     case "GENERATE_IMPLEMENTATION_WORK_PLAN": {
-      if (!state.designOk) {
-        return { ok: false, message: "기획 산출물 준비 후 작업안을 생성할 수 있습니다." };
-      }
-      if (!state.envOk) {
-        return { ok: false, message: "환경 준비가 완료된 뒤 작업안을 생성할 수 있습니다." };
-      }
-      if (!isImplementationSeedReadyForWorkPlanGeneration(state.implementationSeedV1)) {
-        return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
+      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
+      if (!readiness.ok) {
+        // Backward compatible copy for existing seed-gate UX, while removing designOk hard-block.
+        if (readiness.reason === "seed_candidate") {
+          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
+        }
+        return { ok: false, message: readiness.message };
       }
       return { ok: true };
     }

@@ -105,12 +105,12 @@ describe("isImplementationSeedReadyForWorkPlanGeneration", () => {
 
 describe("evaluateImplementationStageActionGate", () => {
   describe("GENERATE_IMPLEMENTATION_WORK_PLAN", () => {
-    it("blocks when designOk is false", () => {
+    it("allows when designOk is false but seed/env are ready", () => {
       const state = baseState({
         parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
         designOk: false,
       });
-      expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state).ok).toBe(false);
+      expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state).ok).toBe(true);
     });
 
     it("blocks when envOk is false", () => {
@@ -288,6 +288,47 @@ describe("stageActionExecutionResultFromGate", () => {
     });
     const gate = evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state);
     expect(stageActionExecutionResultFromGate(gate)).toBeNull();
+  });
+});
+
+describe("work plan generation gate readiness alignment", () => {
+  it("allows work plan generation when seed is confirmed and ready even if designOk is false", () => {
+    const state = baseState({
+      envOk: true,
+      designOk: false,
+      parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
+    });
+    expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state)).toEqual({ ok: true });
+  });
+
+  it("blocks work plan generation when env is not ready", () => {
+    const state = baseState({
+      envOk: false,
+      designOk: false,
+      parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
+    });
+    expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state)).toMatchObject({
+      ok: false,
+      message: "환경 준비가 완료된 뒤 작업안을 생성할 수 있습니다.",
+    });
+  });
+
+  it("blocks work plan generation when seed is candidate", () => {
+    const state = baseState({
+      envOk: true,
+      designOk: false,
+      parsedRequirementsState: { implementationSeedV1: makeSeed("candidate", true) },
+    });
+    expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state).ok).toBe(false);
+  });
+
+  it("blocks work plan generation when implementation seed is missing", () => {
+    const state = baseState({
+      envOk: true,
+      designOk: false,
+      parsedRequirementsState: { implementationSeedV1: null },
+    });
+    expect(evaluateImplementationStageActionGate("GENERATE_IMPLEMENTATION_WORK_PLAN", state).ok).toBe(false);
   });
 });
 

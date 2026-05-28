@@ -16,7 +16,8 @@ export type ImplementationStageStatus =
 export function deriveImplementationStageStatus(
   state: EffectiveImplementationState,
 ): ImplementationStageStatus {
-  if (!state.designOk || !state.envOk || !state.implementationSeedV1?.readiness?.ready) {
+  const seed = state.implementationSeedV1;
+  if (!state.envOk || !seed || seed.lifecycleStatus === "candidate" || !seed.readiness?.ready) {
     return "not_ready";
   }
   if (state.implementationTaskPlanV1) {
