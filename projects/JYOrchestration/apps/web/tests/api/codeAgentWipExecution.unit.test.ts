@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   appendWipPolicyToCodeAgentPrompt,
   buildInitialCodeAgentWipExecution,
@@ -10,7 +10,7 @@ import {
 import { parseCodeAgentWipExecutionFromState, parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
-import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
+import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
 import {
   buildDeveloperApproveWipResult,
   buildRequestCodeAgentWipWorkResult,
@@ -97,58 +97,12 @@ describe("codeAgentWipExecution", () => {
     expect(parseCodeAgentWipExecutionV1(wip)?.projectId).toBe("p1");
   });
 
-  it("routes 코드 에이전트 WIP 작업 요청 chip", () => {
-    const request = vi.fn();
-    tryHandlePrototypeExecutionChip(CODE_AGENT_WIP_WORK_REQUEST_CHIP, {
-      openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
-      focusComposerForScopeEdit: vi.fn(),
-      confirmImplementationTaskPlan: vi.fn(),
-      requestCodeAgentWipWork: request,
-      viewWipChanges: vi.fn(),
-      requestRefactor: vi.fn(),
-      requestAdditionalEdit: vi.fn(),
-      approveDeveloperResult: vi.fn(),
-      discardWipWork: vi.fn(),
-      requestScmOfficialCommit: vi.fn(),
-      prepareImplementationExecution: vi.fn(),
-      confirmExecution: vi.fn(),
-      refreshStatus: vi.fn(),
-      showToast: vi.fn(),
-      canConfirmImplementationTaskPlan: () => true,
-      canRequestCodeAgentWipWork: () => true,
-      canApproveDeveloperResult: () => true,
-      canRequestScmOfficialCommit: () => true,
-      canConfirmExecution: () => true,
-    });
-    expect(request).toHaveBeenCalled();
+  it("maps 코드 에이전트 WIP 작업 요청 chip to stage action", () => {
+    expect(mapImplementationChipToAction(CODE_AGENT_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
   });
 
-  it("routes legacy Cursor WIP chip to the same handler", () => {
-    const request = vi.fn();
-    tryHandlePrototypeExecutionChip(LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP, {
-      openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
-      focusComposerForScopeEdit: vi.fn(),
-      confirmImplementationTaskPlan: vi.fn(),
-      requestCodeAgentWipWork: request,
-      viewWipChanges: vi.fn(),
-      requestRefactor: vi.fn(),
-      requestAdditionalEdit: vi.fn(),
-      approveDeveloperResult: vi.fn(),
-      discardWipWork: vi.fn(),
-      requestScmOfficialCommit: vi.fn(),
-      prepareImplementationExecution: vi.fn(),
-      confirmExecution: vi.fn(),
-      refreshStatus: vi.fn(),
-      showToast: vi.fn(),
-      canConfirmImplementationTaskPlan: () => true,
-      canRequestCodeAgentWipWork: () => true,
-      canApproveDeveloperResult: () => true,
-      canRequestScmOfficialCommit: () => true,
-      canConfirmExecution: () => true,
-    });
-    expect(request).toHaveBeenCalled();
+  it("maps legacy Cursor WIP chip to the same stage action", () => {
+    expect(mapImplementationChipToAction(LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
   });
 
   it("approves developer result and requests SCM official commit", () => {

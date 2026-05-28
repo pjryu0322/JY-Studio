@@ -49,13 +49,20 @@ import {
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
-import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
+import {
+  buildWipChipHandlerSlice,
+  executeCodeAgentWipWorkRequest,
+} from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
   buildDataModelDraftResult,
   buildDbIntegrationReviewResult,
   buildMockImplementationModeResult,
 } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
-import { ensureImplementationTaskPlan, ensureMockImplementationReady } from "@/lib/prototype/implementationAutoProgress";
+import {
+  ensureImplementationArtifactsFromTaskList,
+  ensureImplementationTaskPlan,
+  ensureMockImplementationReady,
+} from "@/lib/prototype/implementationAutoProgress";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
@@ -114,14 +121,12 @@ import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementa
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildImplementationTaskPlanFromTaskList } from "@/lib/prototype/implementationTaskPlan";
-import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
+import { markDeveloperTasksFailedForWip } from "@/lib/prototype/implementationTaskExecutionState";
 import {
-  buildImplementationDbSlotsTimelineEntry,
-  buildImplementationSlotsFromContext,
-  buildImplementationSlotsTimelineEntry,
-} from "@/lib/prototype/implementationSlots";
-import { buildImplementationTaskPlanTimelineEntry } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+  buildTaskListDerivedWipOrchestration,
+  canUseTaskListForWipOrchestration,
+  mergeTaskListWipRuntimeState,
+} from "@/lib/prototype/implementationTaskListWipPrep";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -1872,6 +1877,27 @@ export function PrototypePreviewPanel({
   const confirmMockImplementationMode = useCallback((): ImplementationStageActionRunResult => {
     let slots = parsedRequirementsState.implementationSlotsV1;
     if (!slots) {
+      const taskListEnsured = ensureImplementationArtifactsFromTaskList({
+        requirementsStateJson,
+        effectiveState: effectiveImplementationState,
+        projectId: projectId.trim(),
+        projectArtifacts: executionArtifacts.projectArtifacts,
+        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+        envOk,
+        designOk: true,
+        envCursorBadge: envOk ? "ok" : "needs",
+        promptTimeline: parsedRequirementsState.promptTimeline,
+      });
+      if (taskListEnsured.ok && taskListEnsured.patch) {
+        const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+        applyImplementationOrchestrationResult({
+          messages: taskListEnsured.messages ?? (current.messages ?? []),
+          orchestrationPatch: taskListEnsured.patch,
+        });
+        slots = taskListEnsured.patch.implementationSlotsV1 as typeof slots;
+      }
+    }
+    if (!slots) {
       const ensured = ensureMockImplementationReady({
         requirementsStateJson,
         effectiveState: effectiveImplementationState,
@@ -2098,81 +2124,128 @@ export function PrototypePreviewPanel({
           );
           return { outcome: "executed" };
         case "REQUEST_CODE_AGENT_WIP": {
-          const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
-          if (!cursorGate.allowed) {
-            // TaskList-ready path: auto-build taskPlan + cursorWorkItems + slots without forcing work plan draft.
-            const pid = projectId.trim();
-            const taskList = parsedRequirementsState.implementationTaskListV1;
-            const seed = parsedRequirementsState.implementationSeedV1;
-            const canUseTaskList =
-              Boolean(taskList?.tasks?.length) &&
-              Boolean(seed?.readiness?.ready) &&
-              seed?.lifecycleStatus !== "candidate";
-
-            if (
-              pid &&
-              canUseTaskList &&
-              effectiveImplementationState.envOk &&
-              (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
-            ) {
-              const plan = buildImplementationTaskPlanFromTaskList({
-                projectId: pid,
-                taskList: taskList!,
-                envOk: effectiveImplementationState.envOk,
-                designOk: effectiveImplementationState.designOk,
-              });
-              const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList: taskList! });
-              const slots = buildImplementationSlotsFromContext({
-                projectId: pid,
-                projectArtifacts: executionArtifacts.projectArtifacts,
-                artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
-                implementationTaskPlanV1: plan,
-                cursorWorkItemsV1: workItems,
-                envOk: effectiveImplementationState.envOk,
-                designOk: effectiveImplementationState.designOk,
-                envCursorBadge: effectiveImplementationState.envOk ? "ok" : "needs",
-              });
-              const dbStrategy = defaultImplementationDbStrategy();
-              const planTimeline = buildImplementationTaskPlanTimelineEntry({
-                plan,
-                workItems,
-                envOk: effectiveImplementationState.envOk,
-                designOk: effectiveImplementationState.designOk,
-              });
-              const slotsTimeline = buildImplementationSlotsTimelineEntry({ slots });
-              const dbSlotsTimeline = buildImplementationDbSlotsTimelineEntry({ slots });
-              let timeline = parsedRequirementsState.promptTimeline;
-              timeline = appendPromptTimeline(timeline, planTimeline);
-              timeline = appendPromptTimeline(timeline, slotsTimeline);
-              timeline = appendPromptTimeline(timeline, dbSlotsTimeline);
-
-              void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-                implementationTaskPlanV1: plan,
-                cursorWorkItemsV1: workItems,
-                implementationSlotsV1: slots,
-                implementationDbStrategyV1: dbStrategy,
-                promptTimeline: timeline,
-              });
-            }
-
-            const reGate = evaluateImplementationCursorGate(
-              buildImplementationCursorGateContext(
-                {
-                  ...parsedRequirementsState,
-                  implementationTaskPlanV1:
-                    parsedRequirementsState.implementationTaskPlanV1 ??
-                    effectiveImplementationState.implementationTaskPlanV1,
-                },
-                { envOk: effectiveImplementationState.envOk, designOk: effectiveImplementationState.designOk },
-              ),
-            );
-            if (!reGate.allowed) {
-              const message = formatImplementationCursorBlockedNotice(implementationCursorGate);
-              executionSingleChat.appendAiNotice(message);
-              return { outcome: "blocked", message };
-            }
+          if (!effectiveImplementationState.envOk) {
+            const message = "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
           }
-          wipChipHandlers.requestCodeAgentWipWork();
+
+          const pid = projectId.trim();
+          const taskList = parsedRequirementsState.implementationTaskListV1;
+          const seed = parsedRequirementsState.implementationSeedV1;
+          const canUseTaskList = canUseTaskListForWipOrchestration({ taskList, seed });
+
+          let runtimeState = { ...parsedRequirementsState };
+          let runtimeTaskPlan =
+            runtimeState.implementationTaskPlanV1 ?? effectiveImplementationState.implementationTaskPlanV1;
+          let runtimeWorkItems = runtimeState.cursorWorkItemsV1 ?? null;
+          let runtimeSlots = runtimeState.implementationSlotsV1 ?? null;
+          let runtimeDbStrategy = runtimeState.implementationDbStrategyV1 ?? null;
+          let runtimeExecutionState = runtimeState.implementationTaskExecutionStateV1 ?? null;
+
+          const cursorGate = evaluateImplementationCursorGate(
+            buildImplementationCursorGateContext(runtimeState, {
+              envOk: effectiveImplementationState.envOk,
+              designOk: effectiveImplementationState.designOk,
+            }),
+          );
+
+          if (!cursorGate.allowed && pid && canUseTaskList) {
+            const derived = buildTaskListDerivedWipOrchestration({
+              projectId: pid,
+              taskList: taskList!,
+              projectArtifacts: executionArtifacts.projectArtifacts,
+              artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
+              envOk: effectiveImplementationState.envOk,
+              designOk: effectiveImplementationState.designOk,
+              envCursorBadge: effectiveImplementationState.envOk ? "ok" : "needs",
+              priorTimeline: parsedRequirementsState.promptTimeline,
+              priorExecutionState: runtimeExecutionState,
+            });
+            runtimeTaskPlan = derived.plan;
+            runtimeWorkItems = [...derived.workItems];
+            runtimeSlots = derived.slots;
+            runtimeDbStrategy = derived.dbStrategy;
+            runtimeExecutionState = derived.executionState;
+            runtimeState = mergeTaskListWipRuntimeState(runtimeState, derived);
+
+            void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+              implementationTaskPlanV1: derived.plan,
+              cursorWorkItemsV1: derived.workItems,
+              implementationSlotsV1: derived.slots,
+              implementationDbStrategyV1: derived.dbStrategy,
+              implementationTaskExecutionStateV1: derived.executionState,
+              promptTimeline: derived.promptTimeline,
+            });
+          }
+
+          const reGate = evaluateImplementationCursorGate(
+            buildImplementationCursorGateContext(runtimeState, {
+              envOk: effectiveImplementationState.envOk,
+              designOk: effectiveImplementationState.designOk,
+            }),
+          );
+          if (!reGate.allowed) {
+            const message = formatImplementationCursorBlockedNotice(
+              buildImplementationCursorGateContext(runtimeState, {
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+              }),
+            );
+            if (runtimeWorkItems?.length && runtimeExecutionState && taskList) {
+              const failedState = markDeveloperTasksFailedForWip({
+                state: runtimeExecutionState,
+                cursorWorkItems: runtimeWorkItems,
+                errorMessage: message,
+              });
+              void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+                implementationTaskExecutionStateV1: failedState,
+              });
+            }
+            executionSingleChat.appendAiNotice(message);
+            showToast("Code Agent WIP 요청을 시작하지 못했습니다. 개발자 작업 상태를 실패로 기록했습니다.");
+            return { outcome: "blocked", message };
+          }
+
+          if (!runtimeTaskPlan || !runtimeWorkItems?.length) {
+            const message = "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+
+          const wipResult = executeCodeAgentWipWorkRequest(
+            {
+              projectId: pid,
+              requirementsStateJson,
+              parsedState: runtimeState,
+              applyMessages: executionSingleChat.applyPersistedMessages,
+              appendNotice: (text) => executionSingleChat.appendAiNotice(text),
+              persistOrchestration: (chat, orch) => void persistChatToDb(chat, orch),
+              focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
+              showToast,
+            },
+            {
+              plan: runtimeTaskPlan,
+              workItems: runtimeWorkItems,
+              taskList: taskList ?? undefined,
+              executionState: runtimeExecutionState,
+            },
+          );
+
+          if (wipResult.kind === "blocked") {
+            return { outcome: "blocked", message: wipResult.message };
+          }
+          if (wipResult.kind === "already_active") {
+            showToast("이미 Code Agent WIP 작업이 진행 중입니다.");
+            return { outcome: "executed" };
+          }
+
+          const devCount = wipResult.developerTaskCount;
+          showToast(
+            devCount > 0
+              ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
+              : "Code Agent WIP 작업 요청을 시작했습니다.",
+          );
           return { outcome: "executed" };
         }
         default:
@@ -2239,6 +2312,7 @@ export function PrototypePreviewPanel({
         tryHandleImplementationTaskListChip({
           label,
           taskList,
+          executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
           envOk: canRequestGeneration.envOk,
           appendAiMessage: appendImplementationTaskListAiMessage,
           openEnvSettings: () => setExecutionEnvironmentModalOpen(true),

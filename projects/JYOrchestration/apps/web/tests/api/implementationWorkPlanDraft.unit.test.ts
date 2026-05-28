@@ -21,7 +21,6 @@ import {
   collectReferencePlanningArtifacts,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
   buildImplementationWorkPlanDraftFromSeed,
-  implementationEntryChips,
   implementationEntryChipsForState,
   implementationWorkPlanDraftChips,
   WORK_PLAN_DRAFT_GENERATE_CHIP,
@@ -123,7 +122,13 @@ describe("implementation entry copy", () => {
 
 describe("implementation entry CTA", () => {
   it("uses unique labels on implementation entry chips (no duplicate CTAs)", () => {
-    const chips = implementationEntryChips();
+    const chips = implementationEntryChipsForState({
+      seedReady: true,
+      envOk: true,
+      designOk: true,
+      hasReferenceArtifacts: true,
+      taskListReady: true,
+    });
     expect(new Set(chips).size).toBe(chips.length);
   });
 

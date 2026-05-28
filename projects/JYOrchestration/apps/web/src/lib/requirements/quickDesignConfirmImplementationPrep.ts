@@ -15,9 +15,9 @@ import {
   type ImplementationSeedV1,
 } from "@/lib/requirements/implementationSeed";
 import {
-  evaluateQuickDesignPostConfirmState,
-  type QuickDesignPostConfirmState,
-} from "@/lib/requirements/quickDesignPostConfirmState";
+  evaluateQuickDesignPostConfirmReadiness,
+  type ImplementationSurfaceReadiness,
+} from "@/lib/requirements/implementationReadinessGates";
 import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
 import {
   buildImplementationTaskListFromSeed,
@@ -44,7 +44,7 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly touchedGapKeys: readonly ImplementationSeedGapKey[];
   readonly chipLabels: readonly string[];
   readonly prepComplete: boolean;
-  readonly postConfirmState: QuickDesignPostConfirmState;
+  readonly postConfirmState: ImplementationSurfaceReadiness;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -289,7 +289,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
         nowIso: now,
       })
     : null;
-  const postConfirmState = evaluateQuickDesignPostConfirmState({
+  const postConfirmState = evaluateQuickDesignPostConfirmReadiness({
     readiness,
     prepComplete,
     projectArtifacts: input.projectArtifacts,

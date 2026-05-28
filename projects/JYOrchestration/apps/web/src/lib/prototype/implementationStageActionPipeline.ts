@@ -52,6 +52,21 @@ export type ImplementationWorkPlanGenerationReadiness =
       readonly message: string;
     }>;
 
+export function isTaskListReadyForImplementationStageActions(
+  state: Pick<
+    EffectiveImplementationState,
+    "implementationSeedV1" | "implementationTaskListV1" | "envOk"
+  >,
+): boolean {
+  return (
+    state.envOk === true &&
+    isPlanningReadyForImplementationExecution({
+      implementationSeedV1: state.implementationSeedV1,
+      implementationTaskListV1: state.implementationTaskListV1,
+    })
+  );
+}
+
 export function evaluateImplementationWorkPlanGenerationReadiness(
   state: Pick<EffectiveImplementationState, "envOk" | "implementationSeedV1">,
 ): ImplementationWorkPlanGenerationReadiness {
@@ -254,27 +269,12 @@ export function evaluateImplementationStageActionGate(
     }
     case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
       return canConfirmImplementationWorkPlanFromEffectiveState(state);
-    case "REVIEW_DB_INTEGRATION": {
-      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
-      if (!readiness.ok) {
-        if (readiness.reason === "seed_candidate") {
-          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
-        }
-        return { ok: false, message: readiness.message };
-      }
-      return { ok: true };
-    }
-    case "GENERATE_DATA_MODEL_DRAFT": {
-      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
-      if (!readiness.ok) {
-        if (readiness.reason === "seed_candidate") {
-          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
-        }
-        return { ok: false, message: readiness.message };
-      }
-      return { ok: true };
-    }
+    case "REVIEW_DB_INTEGRATION":
+    case "GENERATE_DATA_MODEL_DRAFT":
     case "CONFIRM_MOCK_IMPLEMENTATION": {
+      if (isTaskListReadyForImplementationStageActions(state)) {
+        return { ok: true };
+      }
       const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
       if (!readiness.ok) {
         if (readiness.reason === "seed_candidate") {

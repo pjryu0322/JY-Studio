@@ -8,7 +8,7 @@ import {
   hasValidImplementationBlockedBootstrap,
   hasValidImplementationLeadBootstrap,
   IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
-  implementationEntryChips,
+  implementationEntryChipsForBootstrap,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
@@ -125,7 +125,7 @@ describe("implementation blocked when no planning artifacts", () => {
     expect(hasValidImplementationBlockedBootstrap(bundle.messages)).toBe(false);
     expect(bundle.messages[0]?.meta.interviewSuggestions).toEqual(
       expect.arrayContaining([
-        ...implementationEntryChips({
+        ...implementationEntryChipsForBootstrap({
           ...baseInput,
           projectArtifacts: planningArtifacts,
           env: { git: "ok", github: "ok", cursor: "ok", connectionTest: "ok" },

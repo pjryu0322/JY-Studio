@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImplementationBootstrapBundle,
-  buildImplementationOrchestrationSummary,
   buildImplementationRoleCheckDetailsMessage,
   buildImplementationRoleCheckSummary,
   hasImplementationOrchestrationBootstrap,
@@ -10,7 +9,7 @@ import {
   hasValidImplementationLeadBootstrap,
   IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
   IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
-  implementationEntryChips,
+  implementationEntryChipsForBootstrap,
   isLegacyImplementationMemberBootstrapMessage,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
@@ -121,7 +120,7 @@ describe("implementationOrchestrationSummary", () => {
   });
 
   it("does not put raw env readiness lines in AI developer bootstrap message", () => {
-    const [lead] = buildImplementationOrchestrationSummary(baseInput);
+    const [lead] = buildImplementationBootstrapBundle(baseInput).messages;
     expect(lead?.content).not.toMatch(/Git 저장소:\s*완료/);
     expect(lead?.content).not.toMatch(/AI 개발 도구 연결:/);
     expect(lead?.content).toContain("SCM 점검 결과");
@@ -139,7 +138,7 @@ describe("implementationOrchestrationSummary", () => {
   });
 
   it("shows role check details only when built for role check flow", () => {
-    const bootstrap = buildImplementationOrchestrationSummary(baseInput);
+    const bootstrap = buildImplementationBootstrapBundle(baseInput).messages;
     expect(hasImplementationRoleCheckDetailsShown(bootstrap)).toBe(false);
     const detail = buildImplementationRoleCheckDetailsMessage({ summaryInput: baseInput });
     expect(hasImplementationRoleCheckDetailsShown([...bootstrap, detail])).toBe(true);
@@ -152,7 +151,7 @@ describe("implementationOrchestrationSummary", () => {
       slotDefinitions: definitions,
       orchestration: initialOrchestrationStateFromDefinitions(definitions, nowIso),
     };
-    const chips = implementationEntryChips(input);
+    const chips = implementationEntryChipsForBootstrap(input);
     expect(chips).not.toContain("구현 작업안 초안 생성");
     expect(chips).toContain("구현 준비도 점검");
     expect(chips).toContain("Seed 후보 확인/확정");
@@ -160,7 +159,7 @@ describe("implementationOrchestrationSummary", () => {
   });
 
   it("shows task list recovery chips when seed is ready without task list", () => {
-    const chips = implementationEntryChips(seedReadyInput);
+    const chips = implementationEntryChipsForBootstrap(seedReadyInput);
     expect(chips).toContain("기획단계로 이동");
     expect(chips).toContain("구현 작업목록 생성");
     expect(chips).not.toContain("구현 작업안 초안 생성");
@@ -221,7 +220,7 @@ describe("implementationOrchestrationSummary", () => {
   });
 
   it("shows reviewer security scm details only after role check chip", () => {
-    const bootstrap = buildImplementationOrchestrationSummary(baseInput);
+    const bootstrap = buildImplementationBootstrapBundle(baseInput).messages;
     expect(hasImplementationRoleCheckDetailsShown(bootstrap)).toBe(false);
     const detail = buildImplementationRoleCheckDetailsMessage({ summaryInput: baseInput });
     expect(detail.content).toContain("AI검수자:");
@@ -243,7 +242,7 @@ describe("implementationOrchestrationSummary", () => {
 
   it("does not expose Cursor or Code Agent as SingleChat member", () => {
     expect(IMPLEMENTATION_MODE_PRIMARY_MEMBERS.some((id) => String(id).toLowerCase().includes("cursor"))).toBe(false);
-    const [lead] = buildImplementationOrchestrationSummary(baseInput);
+    const [lead] = buildImplementationBootstrapBundle(baseInput).messages;
     expect(lead?.content).not.toContain("Cursor 멤버");
     expect(lead?.content).not.toContain("Cursor가 제안");
   });

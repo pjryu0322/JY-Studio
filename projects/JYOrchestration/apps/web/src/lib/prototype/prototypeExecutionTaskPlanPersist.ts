@@ -6,6 +6,7 @@ import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationD
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
 import { buildPrototypeExecutionSingleChatPersistPatch } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -80,6 +81,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
+  readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -119,6 +121,9 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationStageActionRunLogV1 !== undefined
       ? { implementationStageActionRunLogV1: input.implementationStageActionRunLogV1 }
+      : {}),
+    ...(input.implementationTaskExecutionStateV1 !== undefined
+      ? { implementationTaskExecutionStateV1: input.implementationTaskExecutionStateV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),

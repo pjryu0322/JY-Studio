@@ -199,15 +199,11 @@ import {
   normalizeFastPlanDraftChipLabel,
   resolveFastPlanDraftSuggestionAction,
 } from "@/lib/requirements/fastPlanDraftSuggestionPick";
-import { confirmFastPlanDraftSlots } from "@/lib/requirements/fastPlanDraftConfirmation";
 import {
-  buildQuickDesignImplementationReadyChatMessage,
-  generateQuickDesignConfirmArtifacts,
-  mergeQuickDesignArtifactsIntoState,
-  patchRequirementsStageForImplementationPrep,
   patchRequirementsStageForImplementationStart,
   QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import { runQuickDesignConfirmFlow } from "@/lib/requirements/quickDesignConfirmFlow";
 import {
   buildImplementationCandidateItems,
   implementationCandidateLabelForKey,
@@ -235,8 +231,6 @@ import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectEx
 import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
-import { runQuickDesignConfirmImplementationPrep } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
-import { resolveProjectExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
 import { buildQuickDesignAreaShortfallWarnings } from "@/lib/requirements/quickDesignSlotArea";
 import {
@@ -2437,88 +2431,42 @@ export function RequirementsWorkspace({
     const nowIso = new Date().toISOString();
     setDeliverableGenerateBusy(true);
     try {
-      const result = confirmFastPlanDraftSlots({
-        fastPlanDraftV1: draft,
-        orchestration: orchestrationForConfirm,
-        definitions: slotDefsForProgress,
-        nowIso,
-        projectId: pid,
-        onlyPatchedSlotKeys: true,
-      });
-      if (result.blocked) {
-        showErrorToast(result.blockReason ?? "확정할 Quick Design 초안 정보를 찾을 수 없습니다.");
-        return;
-      }
-
       const st = stateJsonRef.current;
-      const latestInterviewState = latestProblemInterviewStateForGate();
-      const artifactBundle = generateQuickDesignConfirmArtifacts({
+      const flowResult = await runQuickDesignConfirmFlow({
         projectId: pid,
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
         conversationMessages: ideationConversationOnly.length ? ideationConversationOnly : conversationMessages,
         serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
-        orchestration: result.orchestration,
-        slotDefinitions: slotDefsForProgress,
-        featurePlanning: st.featurePlanningSlotsV1 ?? null,
-        problemInterview: latestInterviewState,
+        problemInterview: latestProblemInterviewStateForGate(),
         sourceStage: resolveAuthoritativeOrchestrationStage(st),
         nowIso,
-        fastPlanDraftV1: result.fastPlanDraftV1,
+        fastPlanDraftV1: draft,
+        orchestrationForConfirm,
+        slotDefinitions: slotDefsForProgress,
+        planningState: {
+          featurePlanningSlotsV1: st.featurePlanningSlotsV1 ?? null,
+          serviceFlowV1: st.serviceFlowV1 ?? null,
+          projectArtifacts: st.projectArtifacts,
+          deliverableAssets: st.deliverableAssets,
+          requirementsOrchestrationStageV1: st.requirementsOrchestrationStageV1,
+          implementationTaskListV1: st.implementationTaskListV1,
+        },
       });
-      const merged = mergeQuickDesignArtifactsIntoState({
-        priorArtifacts: st.projectArtifacts,
-        priorDeliverables: st.deliverableAssets,
-        newArtifacts: artifactBundle.artifacts,
-        projectId: pid,
-        replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
-      });
-      const envOk = await resolveProjectExecutionEnvOk(pid);
-      const prep = runQuickDesignConfirmImplementationPrep({
-        projectId: pid,
-        projectName: project?.name ?? "",
-        orchestration: result.orchestration,
-        definitions: slotDefsForProgress,
-        nowIso,
-        generatedArtifactCount: artifactBundle.artifacts.length,
-        envOk,
-        projectArtifacts: merged.projectArtifacts,
-        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
-      });
+      if (flowResult.kind === "blocked") {
+        showErrorToast(flowResult.message);
+        return;
+      }
 
-      const readyMessage = buildQuickDesignImplementationReadyChatMessage({
-        artifactIds: artifactBundle.artifactIds,
-        artifactTitles: artifactBundle.artifacts.map((a) => a.title),
-        planningSummary: artifactBundle.artifactOrchestrationV1.planningSummary,
-        nowIso,
-        prep,
-        definitions: slotDefsForProgress,
-      });
-
-      await persistStateJsonOnly({
-        fastPlanDraftV1: result.fastPlanDraftV1,
-        singleChatOrchestrationV1: prep.orchestration,
-        implementationSeedV1: prep.implementationSeedV1,
-        ...(stateJsonRef.current.implementationTaskListV1 != null
-          ? {}
-          : { implementationTaskListV1: prep.implementationTaskListV1 }),
-        projectArtifacts: [...merged.projectArtifacts],
-        deliverableAssets: [...merged.deliverableAssets],
-        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
-        requirementsOrchestrationStageV1: patchRequirementsStageForImplementationPrep({
-          existing: st.requirementsOrchestrationStageV1,
-          nowIso,
-        }),
-      });
-      lastFastPlanArtifactIdRef.current = artifactBundle.primaryArtifactId;
-      await appendServiceFlowWorkshopMessages([readyMessage]);
+      await persistStateJsonOnly(flowResult.statePatch);
+      lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId;
+      await appendServiceFlowWorkshopMessages([flowResult.readyMessage]);
       void persistStateJsonOnly({
         promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
-          result.timelineEntry,
-          ...prep.timelineEntries,
+          ...flowResult.timelineEntries,
         ]),
       });
-      showSuccessToast(artifactBundle.userFacingSummary);
+      showSuccessToast(flowResult.userFacingSummary);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
       showErrorToast(msg);

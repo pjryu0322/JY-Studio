@@ -16,6 +16,11 @@ import {
   implementationTaskListMissingEntryChips,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
+  IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
+import {
   PROJECT_ARTIFACT_LABELS,
   type ProjectArtifact,
   type ProjectArtifactType,
@@ -378,15 +383,6 @@ export function canConfirmImplementationWorkPlanDraft(
   return hasImplementationWorkPlanDraftReady(draft);
 }
 
-export function implementationEntryChips(): readonly string[] {
-  return implementationEntryChipsForState({
-    seedReady: true,
-    envOk: true,
-    designOk: true,
-    hasReferenceArtifacts: true,
-  });
-}
-
 export function implementationEntryChipsForState(input: {
   readonly seedReady: boolean;
   readonly envOk: boolean;
@@ -408,18 +404,18 @@ export function implementationEntryChipsForState(input: {
   }
   if (!input.envOk) {
     return [
-      "환경설정 열기",
+      IMPLEMENTATION_ENV_SETTINGS_LABEL,
       WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
-      "산출물 다시 보기",
-      "역할별 점검 보기",
+      IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+      IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
     ];
   }
   return [
     "구현 작업안 확정",
     "Mock 기반 구현 진행",
     "DB 연동 필요성 검토",
-    "산출물 다시 보기",
-    "환경설정 열기",
+    IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+    IMPLEMENTATION_ENV_SETTINGS_LABEL,
   ];
 }
 
@@ -430,8 +426,8 @@ export function implementationWorkPlanDraftChips(): readonly string[] {
     "DB 연동 필요성 검토",
     "데이터 모델 초안 생성",
     "Mock 기반 구현 진행",
-    "산출물 다시 보기",
-    "환경설정 열기",
+    IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+    IMPLEMENTATION_ENV_SETTINGS_LABEL,
   ];
 }
 

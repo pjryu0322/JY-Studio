@@ -31,6 +31,8 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
@@ -554,6 +556,8 @@ export type RequirementsStateJson = {
   implementationSeedV1?: ImplementationSeedV1 | null;
   /** 구현 단계 실행 단위 작업목록(Task List) — Seed 기반으로 생성 */
   implementationTaskListV1?: ImplementationTaskListV1 | null;
+  /** TaskList 작업별 WIP/실행 상태(원본 taskList는 mutate하지 않음) */
+  implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
@@ -975,6 +979,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationTaskListV1 = parseImplementationTaskListV1(
     "implementationTaskListV1" in o ? o.implementationTaskListV1 : undefined,
   );
+  const implementationTaskExecutionStateV1 = parseImplementationTaskExecutionStateV1(
+    "implementationTaskExecutionStateV1" in o ? o.implementationTaskExecutionStateV1 : undefined,
+  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1123,6 +1130,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
     ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
     ...(implementationTaskListV1 !== undefined ? { implementationTaskListV1 } : {}),
+    ...(implementationTaskExecutionStateV1 !== undefined
+      ? { implementationTaskExecutionStateV1 }
+      : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(implementationUserFeedbackPatchesV1 !== undefined
       ? { implementationUserFeedbackPatchesV1 }

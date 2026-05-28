@@ -288,6 +288,28 @@ export function hasImplementationTaskListReady(
   return Boolean(taskList && Array.isArray(taskList.tasks) && taskList.tasks.length > 0);
 }
 
+export function formatImplementationTaskListRoleSummaryLines(
+  taskList: ImplementationTaskListV1,
+): readonly string[] {
+  const roles = taskList.roleSummary;
+  return [
+    `- 전체 작업: ${taskList.tasks.length}개`,
+    `- AI 개발자: ${roles.developer}개`,
+    `- AI 디자이너: ${roles.designer}개`,
+    `- AI 검수자: ${roles.reviewer}개`,
+    `- AI 보안관: ${roles.security}개`,
+    `- SCM: ${roles.scm}개`,
+  ];
+}
+
+/** Chat message section: heading + role summary lines (empty when no tasks). */
+export function formatImplementationTaskListSummarySection(
+  taskList: ImplementationTaskListV1 | null | undefined,
+): readonly string[] {
+  if (!taskList?.tasks?.length || !taskList.roleSummary) return [];
+  return ["", "구현 작업목록:", ...formatImplementationTaskListRoleSummaryLines(taskList)];
+}
+
 export type PlanningImplementationExecutionReadiness =
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; missing: readonly string[]; message: string }>;

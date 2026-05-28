@@ -6,7 +6,8 @@ import {
   QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING,
   QUICK_DESIGN_PLANNING_SEED_READY_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
-import type { QuickDesignPostConfirmState } from "@/lib/requirements/quickDesignPostConfirmState";
+import type { ImplementationSurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
+import { formatImplementationTaskListSummarySection } from "@/lib/requirements/implementationTaskList";
 import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
 import {
   formatQuickDesignImplementationPrepSummaryLines,
@@ -140,7 +141,7 @@ export function mergeQuickDesignArtifactsIntoState(input: {
 export const QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE = "quick_design_implementation_ready" as const;
 
 export function resolveQuickDesignImplementationReadyCopy(input: {
-  readonly state: QuickDesignPostConfirmState;
+  readonly state: ImplementationSurfaceReadiness;
   readonly autoConfirmedRequired: boolean;
 }): Readonly<{ readonly heading: string; readonly intro: string; readonly prepInfoSectionLabel: string }> {
   if (!input.state.hasReferenceArtifacts || !input.state.designOk || !input.state.seedReady) {
@@ -240,20 +241,7 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     ...prepSummaryLines,
   ];
 
-  const taskList = input.prep.implementationTaskListV1;
-  if (taskList?.tasks?.length && taskList.roleSummary) {
-    const roles = taskList.roleSummary;
-    contentParts.push(
-      "",
-      "구현 작업목록:",
-      `- 전체 작업: ${taskList.tasks.length}개`,
-      `- AI 개발자: ${roles.developer}개`,
-      `- AI 디자이너: ${roles.designer}개`,
-      `- AI 검수자: ${roles.reviewer}개`,
-      `- AI 보안관: ${roles.security}개`,
-      `- SCM: ${roles.scm}개`,
-    );
-  }
+  contentParts.push(...formatImplementationTaskListSummarySection(input.prep.implementationTaskListV1));
 
   if (!input.prep.postConfirmState.seedReady && input.planningSummary?.trim()) {
     contentParts.push("", input.planningSummary.trim());

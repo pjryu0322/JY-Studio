@@ -1,13 +1,29 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
+import { formatImplementationTaskExecutionSummaryLines } from "@/lib/prototype/implementationTaskExecutionState";
 import {
+  formatImplementationTaskListRoleSummaryLines,
   hasImplementationTaskListReady,
   isPlanningReadyForImplementationExecution,
   type ImplementationTaskListV1,
   type ImplementationTaskOwnerRole,
   type ImplementationTaskV1,
 } from "@/lib/requirements/implementationTaskList";
+import {
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  DESIGNER_REVIEW_CHIP,
+  GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+  IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+  implementationTaskListEntryChipLabels,
+  implementationTaskListMissingEntryChipLabels,
+  REVIEWER_CHECK_CHIP,
+  SCM_CRITERIA_CHIP,
+  SECURITY_CHECK_CHIP,
+  TASK_LIST_VIEW_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 
@@ -15,17 +31,18 @@ export const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK
 
 export const IMPLEMENTATION_TASK_LIST_READY_HEADLINE = "구현 작업목록이 준비되었습니다." as const;
 
-export const AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP = "AI 개발자에게 구현 요청" as const;
-export const TASK_LIST_VIEW_CHIP = "작업목록 보기" as const;
-export const DESIGNER_REVIEW_CHIP = "디자이너 검토" as const;
-export const REVIEWER_CHECK_CHIP = "검수자 점검" as const;
-export const SECURITY_CHECK_CHIP = "보안 점검" as const;
-export const SCM_CRITERIA_CHIP = "SCM 반영 기준 보기" as const;
-export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생성" as const;
-export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
+export {
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  DESIGNER_REVIEW_CHIP,
+  GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+  IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+  REVIEWER_CHECK_CHIP,
+  SCM_CRITERIA_CHIP,
+  SECURITY_CHECK_CHIP,
+  TASK_LIST_VIEW_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 
-// NOTE: Keep these labels local to avoid a circular dependency between
-// `implementationWorkPlanDraft.ts` (entry chips) and `implementationTaskListEntryMessage.ts` (task-list chips).
+// Legacy chip labels kept local for chip handler compatibility only.
 const LEGACY_IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP = "기획단계로 돌아가기" as const;
 const LEGACY_WORK_PLAN_DRAFT_GENERATE_CHIP = "구현 작업안 초안 생성" as const;
 
@@ -37,39 +54,14 @@ const ROLE_LABEL_KO: Readonly<Record<ImplementationTaskOwnerRole, string>> = {
   scm: "SCM",
 };
 
-const TASK_LIST_ENTRY_SECONDARY_CHIPS: readonly string[] = [
-  TASK_LIST_VIEW_CHIP,
-  DESIGNER_REVIEW_CHIP,
-  REVIEWER_CHECK_CHIP,
-  SECURITY_CHECK_CHIP,
-  SCM_CRITERIA_CHIP,
-  "산출물 다시 보기",
-  "환경설정 열기",
-];
+export { formatImplementationTaskListRoleSummaryLines } from "@/lib/requirements/implementationTaskList";
 
 export function implementationTaskListEntryChips(input: { readonly envOk: boolean }): readonly string[] {
-  if (!input.envOk) {
-    return ["환경설정 열기", TASK_LIST_VIEW_CHIP, "산출물 다시 보기"];
-  }
-  return [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP, ...TASK_LIST_ENTRY_SECONDARY_CHIPS];
+  return implementationTaskListEntryChipLabels(input);
 }
 
 export function implementationTaskListMissingEntryChips(): readonly string[] {
-  return [IMPLEMENTATION_RETURN_TO_PLANNING_CHIP, GENERATE_IMPLEMENTATION_TASK_LIST_CHIP, "산출물 다시 보기"];
-}
-
-export function formatImplementationTaskListRoleSummaryLines(
-  taskList: ImplementationTaskListV1,
-): readonly string[] {
-  const roles = taskList.roleSummary;
-  return [
-    `- 전체 작업: ${taskList.tasks.length}개`,
-    `- AI 개발자: ${roles.developer}개`,
-    `- AI 디자이너: ${roles.designer}개`,
-    `- AI 검수자: ${roles.reviewer}개`,
-    `- AI 보안관: ${roles.security}개`,
-    `- SCM: ${roles.scm}개`,
-  ];
+  return implementationTaskListMissingEntryChipLabels();
 }
 
 function formatTaskQueueLine(task: ImplementationTaskV1): string {
@@ -192,13 +184,16 @@ export function buildImplementationTaskListMissingEntryMessage(input: {
 
 export function buildImplementationTaskListViewMessage(input: {
   readonly taskList: ImplementationTaskListV1;
+  readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
+  const executionLines = formatImplementationTaskExecutionSummaryLines(input.executionState);
   const content = [
     "구현 작업목록입니다. (TASK ID / 역할 / 제목 / 우선순위 / 상태)",
     "",
     ...formatImplementationTaskQueueLines(input.taskList.tasks, 20),
+    ...(executionLines.length ? ["", ...executionLines] : []),
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");
@@ -338,8 +333,8 @@ export function buildDeveloperImplementationRequestPrepMessage(input: {
       ];
 
   const chips = input.envOk
-    ? [CODE_AGENT_WIP_WORK_REQUEST_CHIP, TASK_LIST_VIEW_CHIP, "환경설정 열기"]
-    : ["환경설정 열기", TASK_LIST_VIEW_CHIP];
+    ? [CODE_AGENT_WIP_WORK_REQUEST_CHIP, TASK_LIST_VIEW_CHIP, IMPLEMENTATION_ENV_SETTINGS_LABEL]
+    : [IMPLEMENTATION_ENV_SETTINGS_LABEL, TASK_LIST_VIEW_CHIP];
 
   const content = [
     "AI 개발자 구현 요청 준비",
@@ -404,6 +399,7 @@ export const IMPLEMENTATION_TASK_LIST_CHIP_LABELS = [
 export function tryHandleImplementationTaskListChip(input: {
   readonly label: string;
   readonly taskList: ImplementationTaskListV1 | null;
+  readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
   readonly envOk: boolean;
   readonly nowIso?: string;
   readonly appendAiMessage: (message: RequirementsMessage) => void;
@@ -441,7 +437,13 @@ export function tryHandleImplementationTaskListChip(input: {
         input.showToast("표시할 구현 작업목록이 없습니다.");
         return true;
       }
-      input.appendAiMessage(buildImplementationTaskListViewMessage({ taskList: list, nowIso: now }));
+      input.appendAiMessage(
+        buildImplementationTaskListViewMessage({
+          taskList: list,
+          executionState: input.executionState,
+          nowIso: now,
+        }),
+      );
       return true;
     case DESIGNER_REVIEW_CHIP:
       if (!list) return false;
@@ -470,11 +472,11 @@ export function tryHandleImplementationTaskListChip(input: {
     case IMPLEMENTATION_RETURN_TO_PLANNING_CHIP:
       input.returnToPlanningStage();
       return true;
-    case "환경설정 열기":
+    case IMPLEMENTATION_ENV_SETTINGS_LABEL:
     case "환경설정 보기":
       input.openEnvSettings();
       return true;
-    case "산출물 다시 보기":
+    case IMPLEMENTATION_ARTIFACT_REVIEW_LABEL:
       input.openArtifactHub();
       return true;
     default:

@@ -1,3 +1,5 @@
+import type { ImplementationSurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
+
 /** 사용자-facing 구현 단계 용어 (내부 generation 이름과 분리) */
 
 export const IMPLEMENTATION_PHASE_LABEL = "구현 단계" as const;
@@ -7,8 +9,6 @@ export const IMPLEMENTATION_ARTIFACT_HUB_LABEL = "구현 산출물" as const;
 export const IMPLEMENTATION_START_LABEL = "구현 시작" as const;
 export const IMPLEMENTATION_STAGE_NAVIGATE_LABEL = "구현단계로 이동" as const;
 export const IMPLEMENTATION_PREP_READY_HEADING = "구현 준비 완료" as const;
-/** @deprecated envOk=false에서는 사용하지 않음 — `QUICK_DESIGN_PLANNING_SEED_READY_HEADING` 사용 */
-export const IMPLEMENTATION_PREP_READY_COMPLETE_HEADING = "구현 준비가 완료되었습니다." as const;
 export const IMPLEMENTATION_PREP_INFO_ORGANIZED_HEADING = "구현 준비정보를 정리했습니다." as const;
 
 export const QUICK_DESIGN_IMPLEMENTATION_READY_WITH_ENV_HEADING =
@@ -30,6 +30,59 @@ export const PLANNING_IMPLEMENTATION_SEED_GENERATE_LABEL = "AI팀이 구현 Seed
 export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL = "Seed 후보 확인/확정" as const;
 export const IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL = "구현 작업안 초안 생성" as const;
 export const PLANNING_ENV_SETTINGS_LABEL = "환경설정 열기" as const;
+/** 구현 단계·기획 단계 공통 실행 환경 칩 */
+export const IMPLEMENTATION_ENV_SETTINGS_LABEL = PLANNING_ENV_SETTINGS_LABEL;
+
+export const IMPLEMENTATION_ARTIFACT_REVIEW_LABEL = "산출물 다시 보기" as const;
+
+export const AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP = "AI 개발자에게 구현 요청" as const;
+export const TASK_LIST_VIEW_CHIP = "작업목록 보기" as const;
+export const DESIGNER_REVIEW_CHIP = "디자이너 검토" as const;
+export const REVIEWER_CHECK_CHIP = "검수자 점검" as const;
+export const SECURITY_CHECK_CHIP = "보안 점검" as const;
+export const SCM_CRITERIA_CHIP = "SCM 반영 기준 보기" as const;
+export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생성" as const;
+export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
+export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기" as const;
+
+const TASK_LIST_ENTRY_SECONDARY_CHIPS: readonly string[] = [
+  TASK_LIST_VIEW_CHIP,
+  DESIGNER_REVIEW_CHIP,
+  REVIEWER_CHECK_CHIP,
+  SECURITY_CHECK_CHIP,
+  SCM_CRITERIA_CHIP,
+  IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+] as const;
+
+/** env 미완료 시 환경설정 칩을 앞에 둔 복사본 */
+export function orderChipLabelsWithEnvFirst(
+  chips: readonly string[],
+  envOk: boolean,
+  envLabel: string = IMPLEMENTATION_ENV_SETTINGS_LABEL,
+): readonly string[] {
+  if (envOk) return [...chips];
+  const withoutEnv = chips.filter((c) => c !== envLabel);
+  return [envLabel, ...withoutEnv];
+}
+
+export function implementationTaskListEntryChipLabels(input: { readonly envOk: boolean }): readonly string[] {
+  if (!input.envOk) {
+    return orderChipLabelsWithEnvFirst(
+      [TASK_LIST_VIEW_CHIP, IMPLEMENTATION_ARTIFACT_REVIEW_LABEL],
+      false,
+    );
+  }
+  return [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP, ...TASK_LIST_ENTRY_SECONDARY_CHIPS];
+}
+
+export function implementationTaskListMissingEntryChipLabels(): readonly string[] {
+  return [
+    IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+    GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+    IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+  ];
+}
 
 /** Quick Design 확정 후 — seed·design·env·산출물 모두 준비 */
 export const QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY: readonly string[] = [
@@ -52,9 +105,6 @@ export const QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW: readonly string[] = [
   PLANNING_ARTIFACT_VIEW_LABEL,
 ] as const;
 
-/** @deprecated `QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY` 사용 */
-export const QUICK_DESIGN_POST_CONFIRM_CHIPS_READY = QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY;
-
 export const ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS: readonly string[] = [
   ...new Set([
     ...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY,
@@ -66,12 +116,9 @@ export const ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS: readonly string[] = [
 /** @deprecated Quick Design 확정 메시지는 `quickDesignPostConfirmChipLabelsForState` 사용 */
 export const QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS = ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS;
 
-export function quickDesignPostConfirmChipLabelsForState(input: {
-  readonly seedReady: boolean;
-  readonly envOk: boolean;
-  readonly designOk: boolean;
-  readonly hasReferenceArtifacts: boolean;
-}): readonly string[] {
+export function quickDesignPostConfirmChipLabelsForState(
+  input: ImplementationSurfaceReadiness,
+): readonly string[] {
   if (!input.hasReferenceArtifacts || !input.designOk || !input.seedReady) {
     return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW];
   }
@@ -79,15 +126,6 @@ export function quickDesignPostConfirmChipLabelsForState(input: {
     return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_SEED_READY_ENV_PENDING];
   }
   return [...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY];
-}
-
-/** @deprecated `quickDesignPostConfirmChipLabelsForState` 사용 */
-export function quickDesignPostConfirmChipLabels(input: {
-  readonly prepComplete: boolean;
-}): readonly string[] {
-  return input.prepComplete
-    ? [...QUICK_DESIGN_POST_CONFIRM_CHIPS_FULLY_READY]
-    : [...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW];
 }
 
 export const ORCHESTRATION_PHASE_READY_FOR_IMPLEMENTATION = "READY_FOR_IMPLEMENTATION" as const;

@@ -6,8 +6,15 @@ import {
 import { buildMockImplementationModeResult } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  buildTaskListDerivedWipOrchestration,
+  canUseTaskListForWipOrchestration,
+} from "@/lib/prototype/implementationTaskListWipPrep";
+import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 
 export type ImplementationAutoProgressResult = Readonly<{
   ok: boolean;
@@ -67,6 +74,61 @@ export function ensureImplementationWorkPlanDraft(input: {
   };
 }
 
+export function ensureImplementationArtifactsFromTaskList(input: {
+  readonly requirementsStateJson: unknown;
+  readonly effectiveState: EffectiveImplementationState;
+  readonly projectId: string;
+  readonly projectArtifacts: readonly ProjectArtifact[];
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly envCursorBadge?: "ok" | "needs" | "error" | "loading";
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+}): ImplementationAutoProgressResult {
+  if (input.effectiveState.implementationSlotsV1) {
+    return { ok: true, created: [] };
+  }
+
+  const parsed = parseRequirementsStateJson(input.requirementsStateJson);
+  const taskList = input.effectiveState.implementationTaskListV1 ?? parsed.implementationTaskListV1;
+  const seed = input.effectiveState.implementationSeedV1 ?? parsed.implementationSeedV1;
+
+  if (
+    !canUseTaskListForWipOrchestration({ taskList, seed }) ||
+    !isPlanningReadyForImplementationExecution({
+      implementationSeedV1: seed,
+      implementationTaskListV1: taskList,
+    })
+  ) {
+    return { ok: false, message: "구현 작업목록이 준비되지 않았습니다.", created: [] };
+  }
+
+  const derived = buildTaskListDerivedWipOrchestration({
+    projectId: input.projectId,
+    taskList: taskList!,
+    projectArtifacts: input.projectArtifacts,
+    artifactOrchestrationV1: input.artifactOrchestrationV1,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    envCursorBadge: input.envCursorBadge ?? (input.envOk ? "ok" : "needs"),
+    priorTimeline: input.promptTimeline ?? parsed.promptTimeline,
+    priorExecutionState: parsed.implementationTaskExecutionStateV1,
+  });
+
+  return {
+    ok: true,
+    created: ["implementationTaskPlanV1", "implementationTaskExecutionStateV1"],
+    patch: {
+      implementationTaskPlanV1: derived.plan,
+      cursorWorkItemsV1: derived.workItems,
+      implementationSlotsV1: derived.slots,
+      implementationDbStrategyV1: derived.dbStrategy,
+      implementationTaskExecutionStateV1: derived.executionState,
+    },
+    promptTimeline: derived.promptTimeline,
+  };
+}
+
 export function ensureImplementationTaskPlan(input: {
   readonly requirementsStateJson: unknown;
   readonly effectiveState: EffectiveImplementationState;
@@ -83,6 +145,31 @@ export function ensureImplementationTaskPlan(input: {
 }): ImplementationAutoProgressResult {
   if (input.effectiveState.implementationTaskPlanV1) {
     return { ok: true, created: [] };
+  }
+
+  const parsed = parseRequirementsStateJson(input.requirementsStateJson);
+  const taskList =
+    input.effectiveState.implementationTaskListV1 ?? parsed.implementationTaskListV1;
+  const seed = input.effectiveState.implementationSeedV1 ?? parsed.implementationSeedV1;
+  if (
+    canUseTaskListForWipOrchestration({ taskList, seed }) &&
+    isPlanningReadyForImplementationExecution({
+      implementationSeedV1: seed,
+      implementationTaskListV1: taskList,
+    }) &&
+    !input.effectiveState.implementationSlotsV1
+  ) {
+    return ensureImplementationArtifactsFromTaskList({
+      requirementsStateJson: input.requirementsStateJson,
+      effectiveState: input.effectiveState,
+      projectId: input.confirmTaskPlanInput.projectId,
+      projectArtifacts: input.confirmTaskPlanInput.projectArtifacts,
+      artifactOrchestrationV1: input.confirmTaskPlanInput.artifactOrchestrationV1,
+      envOk: input.confirmTaskPlanInput.envOk,
+      designOk: input.confirmTaskPlanInput.designOk,
+      promptTimeline:
+        input.confirmTaskPlanInput.promptTimeline ?? input.ensureDraftInput.promptTimeline,
+    });
   }
 
   const draftRes = ensureImplementationWorkPlanDraft({

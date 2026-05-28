@@ -25,6 +25,10 @@ import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototyp
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+} from "@/lib/requirements/implementationUxLabels";
 
 export type ImplementationStageActionId =
   | "GENERATE_IMPLEMENTATION_WORK_PLAN"
@@ -189,9 +193,9 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "GENERATE_DATA_MODEL_DRAFT";
     case MOCK_IMPLEMENTATION_CHIP:
       return "CONFIRM_MOCK_IMPLEMENTATION";
-    case "산출물 다시 보기":
+    case IMPLEMENTATION_ARTIFACT_REVIEW_LABEL:
       return "SHOW_ARTIFACTS";
-    case "환경설정 열기":
+    case IMPLEMENTATION_ENV_SETTINGS_LABEL:
     case "환경설정 보기":
       return "OPEN_ENV_SETTINGS";
     case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:

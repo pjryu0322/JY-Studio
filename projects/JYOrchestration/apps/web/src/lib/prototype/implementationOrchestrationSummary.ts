@@ -16,6 +16,7 @@ import {
   implementationBlockedEntryChips,
   implementationEntryChipsForState,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import { evaluateImplementationEntrySurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
 import {
   formatImplementationSeedStatusSummaryLines,
   summarizeImplementationSeedStatus,
@@ -101,30 +102,24 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly nowIso?: string;
 }>;
 
-function resolveSeedReadyForEntry(input: ImplementationOrchestrationSummaryInput): boolean {
-  if (input.implementationSeedV1?.readiness?.ready) return true;
-  if (!input.slotDefinitions?.length) return false;
-  return summarizeImplementationSeedStatus({
-    orchestration: input.orchestration,
-    definitions: input.slotDefinitions,
-    lifecycleStatus: input.implementationSeedV1?.lifecycleStatus,
-  }).ready;
-}
-
 export function implementationEntryChipsForBootstrap(
   input: ImplementationOrchestrationSummaryInput,
 ): readonly string[] {
-  const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
-  const taskListReady = isTaskListExecutionReady({
+  const readiness = evaluateImplementationEntrySurfaceReadiness({
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskListV1: input.implementationTaskListV1,
-  });
-  return implementationEntryChipsForState({
-    seedReady: resolveSeedReadyForEntry(input),
+    orchestration: input.orchestration,
+    slotDefinitions: input.slotDefinitions,
+    projectArtifacts: input.projectArtifacts,
     envOk: input.envOk,
     designOk: input.designOk,
-    hasReferenceArtifacts: referenceArtifacts.length > 0,
-    taskListReady,
+  });
+  return implementationEntryChipsForState({
+    seedReady: readiness.seedReady,
+    envOk: readiness.envOk,
+    designOk: readiness.designOk,
+    hasReferenceArtifacts: readiness.hasReferenceArtifacts,
+    taskListReady: readiness.taskListReady,
   });
 }
 
@@ -185,11 +180,6 @@ function developerScmReferenceLine(input: ImplementationOrchestrationSummaryInpu
     return "SCM 점검 결과, Git 연결 준비가 필요해 WIP 작업 요청 전 환경설정이 필요합니다.";
   }
   return "SCM 점검 결과, 환경설정이 필요합니다.";
-}
-
-/** @deprecated — `implementationEntryChipsForBootstrap` */
-export function implementationEntryChips(input: ImplementationOrchestrationSummaryInput): readonly string[] {
-  return implementationEntryChipsForBootstrap(input);
 }
 
 export function implementationTaskPlanConfirmedChips(): readonly string[] {
@@ -885,24 +875,22 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   if (referenceArtifacts.length === 0) {
     return buildImplementationBlockedBootstrapBundle(input);
   }
-  if (
-    isTaskListExecutionReady({
-      implementationSeedV1: input.implementationSeedV1,
-      implementationTaskListV1: input.implementationTaskListV1,
-    }) &&
-    input.implementationTaskListV1
-  ) {
+
+  const entryReadiness = evaluateImplementationEntrySurfaceReadiness({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+    orchestration: input.orchestration,
+    slotDefinitions: input.slotDefinitions,
+    projectArtifacts: input.projectArtifacts,
+    envOk: input.envOk,
+    designOk: input.designOk,
+  });
+
+  if (entryReadiness.taskListReady && input.implementationTaskListV1) {
     return buildTaskListReadyImplementationBootstrapBundle(input);
   }
-  if (resolveSeedReadyForEntry(input)) {
+  if (entryReadiness.seedReady) {
     return buildTaskListMissingImplementationBootstrapBundle(input);
   }
   return buildNormalImplementationBootstrapBundle(input);
-}
-
-/** @deprecated — `buildImplementationBootstrapBundle` 사용 */
-export function buildImplementationOrchestrationSummary(
-  input: ImplementationOrchestrationSummaryInput,
-): readonly RequirementsMessage[] {
-  return buildImplementationBootstrapBundle(input).messages;
 }
