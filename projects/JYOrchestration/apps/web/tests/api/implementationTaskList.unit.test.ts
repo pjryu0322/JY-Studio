@@ -113,6 +113,34 @@ describe("planning readiness helpers", () => {
     if (res.ok) return;
     expect(res.missing).toContain("implementation_task_list_missing");
   });
+
+  it("detects missing security/scm tasks", () => {
+    const seed = makeSeed();
+    const list = buildImplementationTaskListFromSeed({ projectId: "p1", seed, nowIso: NOW });
+    const withoutSecurity = { ...list, tasks: list.tasks.filter((t) => t.ownerRole !== "security"), roleSummary: summarizeImplementationTaskRoles(list.tasks.filter((t) => t.ownerRole !== "security")) };
+    const sec = evaluatePlanningImplementationExecutionReadiness({ implementationSeedV1: seed, implementationTaskListV1: withoutSecurity });
+    expect(sec.ok).toBe(false);
+    if (!sec.ok) expect(sec.missing).toContain("security_tasks_missing");
+
+    const withoutScm = { ...list, tasks: list.tasks.filter((t) => t.ownerRole !== "scm"), roleSummary: summarizeImplementationTaskRoles(list.tasks.filter((t) => t.ownerRole !== "scm")) };
+    const scm = evaluatePlanningImplementationExecutionReadiness({ implementationSeedV1: seed, implementationTaskListV1: withoutScm });
+    expect(scm.ok).toBe(false);
+    if (!scm.ok) expect(scm.missing).toContain("scm_tasks_missing");
+  });
+
+  it("rejects candidate or not-ready seed even with task list", () => {
+    const seed = makeSeed();
+    const list = buildImplementationTaskListFromSeed({ projectId: "p1", seed, nowIso: NOW });
+    const candidateSeed = { ...seed, lifecycleStatus: "candidate" as const };
+    const cand = evaluatePlanningImplementationExecutionReadiness({ implementationSeedV1: candidateSeed, implementationTaskListV1: list });
+    expect(cand.ok).toBe(false);
+    if (!cand.ok) expect(cand.missing).toContain("implementation_seed_candidate");
+
+    const notReadySeed = { ...seed, readiness: { ...seed.readiness, ready: false } };
+    const nr = evaluatePlanningImplementationExecutionReadiness({ implementationSeedV1: notReadySeed, implementationTaskListV1: list });
+    expect(nr.ok).toBe(false);
+    if (!nr.ok) expect(nr.missing).toContain("implementation_seed_not_ready");
+  });
 });
 
 describe("parseImplementationTaskListV1", () => {

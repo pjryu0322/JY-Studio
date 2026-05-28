@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 
@@ -37,6 +37,9 @@ describe("requirementsStateJson parses implementationTaskListV1", () => {
     });
     expect(state.implementationTaskListV1?.version).toBe("implementation_task_list_v1");
     expect(state.implementationTaskListV1?.tasks.length).toBeGreaterThan(0);
+
+    const merged = mergeRequirementsStateJson(state, { lastUserDraftText: "x" });
+    expect(merged.implementationTaskListV1?.version).toBe("implementation_task_list_v1");
   });
 });
 

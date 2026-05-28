@@ -148,7 +148,7 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
       heading: QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING,
       intro: [
         "AI팀이 Quick Design 기준으로 기획 산출물과 구현 Seed 후보를 생성했습니다.",
-        "일부 항목은 아직 확정이 필요합니다.",
+        "구현 작업목록 생성을 위해 일부 항목은 아직 확정이 필요합니다.",
         "",
         "필요한 항목을 확인하거나 AI팀에게 보완을 요청해 주세요.",
       ].join("\n"),
@@ -161,11 +161,13 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
       heading: QUICK_DESIGN_PLANNING_SEED_READY_HEADING,
       intro: input.autoConfirmedRequired
         ? [
-            "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했습니다.",
+            "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했고,",
+            "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
             "다만 코드 에이전트 WIP 작업 전 실행 환경 설정이 필요합니다.",
           ].join("\n")
         : [
-            "AI팀이 기획 산출물과 구현 준비정보를 정리했습니다.",
+            "AI팀이 기획 산출물과 구현 준비정보를 정리했고,",
+            "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
             "코드 에이전트 WIP 작업 전 실행 환경 설정이 필요합니다.",
           ].join("\n"),
       prepInfoSectionLabel: "구현 준비정보:",
@@ -177,15 +179,17 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
     intro: input.autoConfirmedRequired
       ? [
           "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했고,",
+          "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
           "실행 환경도 준비되었습니다.",
           "",
-          "구현단계로 이동해 구현 작업안 초안을 생성할 수 있습니다.",
+          "구현단계로 이동해 준비된 작업목록을 기준으로 구현을 시작할 수 있습니다.",
         ].join("\n")
       : [
           "AI팀이 기획 산출물과 구현 준비정보를 정리했고,",
+          "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
           "실행 환경도 준비되었습니다.",
           "",
-          "구현단계로 이동해 구현 작업안 초안을 생성할 수 있습니다.",
+          "구현단계로 이동해 준비된 작업목록을 기준으로 구현을 시작할 수 있습니다.",
         ].join("\n"),
     prepInfoSectionLabel: "구현 준비정보:",
   };
@@ -235,6 +239,21 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     copy.prepInfoSectionLabel,
     ...prepSummaryLines,
   ];
+
+  const taskList = input.prep.implementationTaskListV1;
+  if (taskList?.tasks?.length && taskList.roleSummary) {
+    const roles = taskList.roleSummary;
+    contentParts.push(
+      "",
+      "구현 작업목록:",
+      `- 전체 작업: ${taskList.tasks.length}개`,
+      `- AI 개발자: ${roles.developer}개`,
+      `- AI 디자이너: ${roles.designer}개`,
+      `- AI 검수자: ${roles.reviewer}개`,
+      `- AI 보안관: ${roles.security}개`,
+      `- SCM: ${roles.scm}개`,
+    );
+  }
 
   if (!input.prep.postConfirmState.seedReady && input.planningSummary?.trim()) {
     contentParts.push("", input.planningSummary.trim());

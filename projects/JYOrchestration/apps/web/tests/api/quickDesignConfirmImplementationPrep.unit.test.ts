@@ -164,6 +164,15 @@ describe("quickDesignConfirmImplementationPrep", () => {
         (e) => e.action === "quick_design_confirmed_planning_ready_for_implementation_execution",
       ),
     ).toBe(true);
+
+    const message = buildQuickDesignImplementationReadyChatMessage({
+      artifactIds: ["a1"],
+      artifactTitles: ["프로젝트 요약서"],
+      nowIso,
+      prep,
+    });
+    expect(message.content).toContain("구현 작업목록");
+    expect(message.content).not.toContain("구현 작업안 초안");
   });
 
   it("auto-generates implementation seed candidates when readiness is incomplete", () => {
