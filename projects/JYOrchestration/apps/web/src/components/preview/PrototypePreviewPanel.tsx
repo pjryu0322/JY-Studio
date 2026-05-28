@@ -1540,9 +1540,9 @@ export function PrototypePreviewPanel({
     },
     onOperationalStageActionRun: (run) => {
       persistImplementationStageActionRun(run);
-      const gateBlocked = run.gateResult != null && !run.gateResult.ok;
-      if (gateBlocked && run.message) showToast(run.message);
-      else if (run.status === "failed" && run.message) showToast(run.message);
+      if ((run.status === "failed" || run.status === "blocked" || run.status === "no_op") && run.message) {
+        showToast(run.message);
+      }
     },
   });
 
@@ -1566,6 +1566,7 @@ export function PrototypePreviewPanel({
       }),
     [executionSingleChat.chatMessages, effectiveImplementationState],
   );
+  // CTA priority is display-only. Persisted order is used for export/summary/evidence.
 
   /** Shared persist path for implementation stage actions (expand to full applyImplementationStageActionResult later). */
   const applyImplementationOrchestrationResult = useCallback(
@@ -2486,7 +2487,7 @@ export function PrototypePreviewPanel({
   } = useProjectRecommendationEvidence({
     projectId,
     requirementsStateJson: parsedRequirementsState,
-    messages: prioritizedChatMessages,
+    messages: executionSingleChat.chatMessages,
     projectArtifacts: planningOrchestrationView.projectArtifacts,
     projectDescription,
   });
@@ -2584,11 +2585,11 @@ export function PrototypePreviewPanel({
     const md = buildConversationMarkdown({
       heading: "# 구현 단계 대화 내역",
       scopeLines: [`- projectId: ${pid || "(미연결)"}`, `- exportedAt: ${new Date().toISOString()}`],
-      messages: prioritizedChatMessages,
+      messages: executionSingleChat.chatMessages,
       meLabel: "나",
     });
     downloadConversationMarkdownFile({ markdown: md, filenameStem: (projectName || "구현").trim() || "구현" });
-  }, [prioritizedChatMessages, projectId, projectName]);
+  }, [executionSingleChat.chatMessages, projectId, projectName]);
 
   const onResetImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
@@ -2642,13 +2643,13 @@ export function PrototypePreviewPanel({
   const onSummarizeImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid || protoBusy || executionAiSummaryBusy) return;
-    if (!prioritizedChatMessages.length) {
+    if (!executionSingleChat.chatMessages.length) {
       showToast("요약할 대화가 없습니다.");
       return;
     }
     setExecutionAiSummaryBusy(true);
     try {
-      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(prioritizedChatMessages, "나", {
+      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(executionSingleChat.chatMessages, "나", {
         maxMessages: 80,
       });
       const wire = await postWorkNoteSummarize({ projectId: pid, scope: "project", contentHtml });
@@ -2668,7 +2669,7 @@ export function PrototypePreviewPanel({
     } finally {
       setExecutionAiSummaryBusy(false);
     }
-  }, [projectId, protoBusy, executionAiSummaryBusy, prioritizedChatMessages.length, prioritizedChatMessages, executionSingleChat, showToast]);
+  }, [projectId, protoBusy, executionAiSummaryBusy, executionSingleChat, showToast]);
 
   const executionConversationIconToolbar = useMemo(
     () => (

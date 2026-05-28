@@ -37,6 +37,22 @@ export type ImplementationStageActionRunLogV1 = Readonly<{
   updatedAt: string;
 }>;
 
+export function buildImplementationStageActionRunDebugSummary(
+  log: ImplementationStageActionRunLogV1 | null | undefined,
+): string {
+  const runs = log?.runs ?? [];
+  if (!runs.length) return "최근 실행 이력이 없습니다.";
+  const latest = runs[0];
+  const blocked = runs.find((r) => r.status === "blocked" || r.status === "failed" || r.status === "no_op") ?? null;
+  const lines = [
+    `최근 실행: ${latest.actionId} · ${latest.status}`,
+    blocked
+      ? `최근 차단: ${blocked.actionId} · ${blocked.status}${blocked.message ? ` · ${blocked.message}` : ""}`
+      : "최근 차단: 없음",
+  ];
+  return lines.join("\n");
+}
+
 export function createImplementationStageActionRunId(input?: {
   readonly nowIso?: string;
   readonly actionId?: ImplementationStageActionId;
