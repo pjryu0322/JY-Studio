@@ -842,7 +842,11 @@ export function hasValidImplementationBlockedBootstrap(
 export function hasAnyValidImplementationBootstrap(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): boolean {
-  return hasValidImplementationLeadBootstrap(messages) || hasValidImplementationBlockedBootstrap(messages);
+  return (
+    hasValidImplementationLeadBootstrap(messages) ||
+    hasValidImplementationBlockedBootstrap(messages) ||
+    hasValidImplementationTaskListBootstrap(messages)
+  );
 }
 
 export function sanitizeImplementationConversationMessages(

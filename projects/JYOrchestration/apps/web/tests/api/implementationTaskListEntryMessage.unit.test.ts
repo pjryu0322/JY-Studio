@@ -9,6 +9,7 @@ import {
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { buildImplementationBootstrapBundle } from "@/lib/prototype/implementationOrchestrationSummary";
+import { hasAnyValidImplementationBootstrap } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   implementationEntryChipsForState,
   WORK_PLAN_DRAFT_GENERATE_CHIP,
@@ -135,6 +136,11 @@ describe("implementationTaskListEntryMessage", () => {
     });
     expect(bundle.messages[0]?.content).toContain("구현 작업목록이 준비되었습니다");
     expect(bundle.messages[0]?.meta?.implementationBootstrapKind).toBe("task_list_ready");
+  });
+
+  it("treats task list bootstrap as a valid implementation bootstrap", () => {
+    const message = buildImplementationTaskListEntryMessage({ taskList, envOk: true, nowIso: NOW });
+    expect(hasAnyValidImplementationBootstrap([message])).toBe(true);
   });
 
   it("hides work plan draft chip on implementation entry when task list ready", () => {
