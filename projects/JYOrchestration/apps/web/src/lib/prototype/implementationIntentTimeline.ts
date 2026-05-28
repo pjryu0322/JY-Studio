@@ -15,6 +15,7 @@ export function buildImplementationStageActionTimelineEntry(input: {
   readonly actionId: ImplementationStageActionId;
   readonly source: ImplementationStageActionTimelineSource;
   readonly message?: string;
+  readonly runId?: string;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
   const now = input.nowIso ?? new Date().toISOString();
@@ -36,6 +37,7 @@ export function buildImplementationStageActionTimelineEntry(input: {
       `action=${input.action}`,
       `actionId=${input.actionId}`,
       `source=${input.source}`,
+      ...(input.runId ? [`runId=${input.runId}`] : []),
       ...(input.message ? [`reason=${input.message}`] : []),
     ].join(" "),
     createdAt: now,

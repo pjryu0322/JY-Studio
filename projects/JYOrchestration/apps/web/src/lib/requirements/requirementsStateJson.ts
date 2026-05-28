@@ -35,6 +35,10 @@ import {
   parseImplementationUserFeedbackPatchesV1,
   type ImplementationUserFeedbackPatchV1,
 } from "@/lib/prototype/implementationUserFeedback";
+import {
+  coerceImplementationStageActionRunLogV1,
+  type ImplementationStageActionRunLogV1,
+} from "@/lib/prototype/implementationStageActionRun";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parseImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import { parsePrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -550,6 +554,8 @@ export type RequirementsStateJson = {
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
   implementationUserFeedbackPatchesV1?: readonly ImplementationUserFeedbackPatchV1[] | null;
+  /** 구현단계 stage action 실행 run 로그(최근 N개, 영구 저장 JSON) */
+  implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   /** Code Agent WIP 검토 루프 상태(JSON) */
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   /**
@@ -810,6 +816,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         .filter((x): x is RequirementsPromptTimelineEntry => Boolean(x))
         .slice(-50)
     : undefined;
+  const implementationStageActionRunLogV1 = coerceImplementationStageActionRunLogV1(
+    o.implementationStageActionRunLogV1,
+  );
   const lastPromptViewRaw = o.lastPromptView;
   const lastPromptView =
     lastPromptViewRaw === null
@@ -1081,6 +1090,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
     ...(promptTimeline && promptTimeline.length ? { promptTimeline } : {}),
+    ...(implementationStageActionRunLogV1 ? { implementationStageActionRunLogV1 } : {}),
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
     deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
     projectArtifacts: !("projectArtifacts" in o)

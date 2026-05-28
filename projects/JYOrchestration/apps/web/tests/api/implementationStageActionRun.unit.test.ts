@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendImplementationStageActionRunToLog,
+  buildImplementationStageActionRunLogPatch,
+  canRouteImplementationIntentThroughStageOrchestrator,
   completeImplementationStageActionRun,
   createImplementationStageActionRun,
   mapImplementationRouterActionToStageAction,
@@ -91,5 +94,68 @@ describe("mapImplementationRouterActionToStageAction", () => {
     expect(mapImplementationRouterActionToStageAction("SHOW_SCM_CHECK")).toBe("SHOW_SCM_CHECK");
     expect(mapImplementationRouterActionToStageAction("NO_ACTION")).toBeNull();
     expect(mapImplementationRouterActionToStageAction(null)).toBeNull();
+  });
+});
+
+describe("appendImplementationStageActionRunToLog", () => {
+  it("adds latest run to front and dedupes by runId", () => {
+    const r1 = createImplementationStageActionRun({
+      projectId: "p1",
+      actionId: "SHOW_ARTIFACTS",
+      source: "cta",
+      nowIso: NOW,
+    });
+    const r2 = createImplementationStageActionRun({
+      projectId: "p1",
+      actionId: "OPEN_ENV_SETTINGS",
+      source: "cta",
+      nowIso: NOW,
+    });
+    const log1 = appendImplementationStageActionRunToLog({ currentLog: null, run: r1, nowIso: NOW });
+    const log2 = appendImplementationStageActionRunToLog({ currentLog: log1, run: r2, nowIso: NOW });
+    expect(log2.runs[0]).toBe(r2);
+    expect(log2.runs[1]).toBe(r1);
+    const log3 = appendImplementationStageActionRunToLog({ currentLog: log2, run: r1, nowIso: NOW });
+    expect(log3.runs[0]).toBe(r1);
+    expect(log3.runs.filter((r) => r.runId === r1.runId)).toHaveLength(1);
+  });
+
+  it("enforces maxRuns", () => {
+    const runs = Array.from({ length: 3 }).map((_, i) =>
+      createImplementationStageActionRun({
+        projectId: "p1",
+        actionId: "SHOW_ARTIFACTS",
+        source: "cta",
+        nowIso: `${NOW}-${i}`,
+      }),
+    );
+    let log: any = null;
+    for (const r of runs) {
+      log = appendImplementationStageActionRunToLog({ currentLog: log, run: r, maxRuns: 2, nowIso: NOW });
+    }
+    expect(log.runs).toHaveLength(2);
+  });
+});
+
+describe("buildImplementationStageActionRunLogPatch", () => {
+  it("returns expected patch field", () => {
+    const run = createImplementationStageActionRun({
+      projectId: "p1",
+      actionId: "SHOW_ARTIFACTS",
+      source: "cta",
+      nowIso: NOW,
+    });
+    const patch = buildImplementationStageActionRunLogPatch({ currentLog: null, run, nowIso: NOW });
+    expect(patch.implementationStageActionRunLogV1.version).toBe("implementation_stage_action_run_log_v1");
+    expect(patch.implementationStageActionRunLogV1.runs[0]?.runId).toBe(run.runId);
+  });
+});
+
+describe("canRouteImplementationIntentThroughStageOrchestrator", () => {
+  it("returns true only for stage-action-compatible router actions", () => {
+    expect(canRouteImplementationIntentThroughStageOrchestrator("CREATE_WORK_PLAN")).toBe(true);
+    expect(canRouteImplementationIntentThroughStageOrchestrator("SHOW_SCM_CHECK")).toBe(true);
+    expect(canRouteImplementationIntentThroughStageOrchestrator("ADD_IMPLEMENTATION_REQUIREMENT")).toBe(false);
+    expect(canRouteImplementationIntentThroughStageOrchestrator("DIRECT_IMPLEMENTATION_SCOPE_INPUT")).toBe(false);
   });
 });

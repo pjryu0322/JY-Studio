@@ -108,22 +108,26 @@ export function buildImplementationStageActionShowStatusResult(
 export function buildImplementationStageActionExecutedTimelineEntry(
   actionId: ImplementationStageActionId,
   source: ImplementationStageActionTimelineSource = "cta",
+  runId?: string,
 ): RequirementsPromptTimelineEntry {
   return buildImplementationStageActionTimelineEntry({
     action: "executed",
     actionId,
     source,
+    runId,
   });
 }
 
 export function buildImplementationStageActionRoutedTimelineEntry(
   actionId: ImplementationStageActionId,
   source: ImplementationStageActionTimelineSource = "cta",
+  runId?: string,
 ): RequirementsPromptTimelineEntry {
   return buildImplementationStageActionTimelineEntry({
     action: "routed",
     actionId,
     source,
+    runId,
   });
 }
 
@@ -132,10 +136,11 @@ export function buildStageActionRunCompletionTimelineEntries(
   actionId: ImplementationStageActionId,
   runResult: ImplementationStageActionRunResult,
   source: ImplementationStageActionTimelineSource = "cta",
+  runId?: string,
 ): readonly RequirementsPromptTimelineEntry[] {
-  const routed = buildImplementationStageActionRoutedTimelineEntry(actionId, source);
+  const routed = buildImplementationStageActionRoutedTimelineEntry(actionId, source, runId);
   if (stageActionRunResultToTimelinePhase(runResult) === "executed") {
-    return [routed, buildImplementationStageActionExecutedTimelineEntry(actionId, source)];
+    return [routed, buildImplementationStageActionExecutedTimelineEntry(actionId, source, runId)];
   }
   const message =
     runResult.outcome === "blocked"
@@ -148,6 +153,7 @@ export function buildStageActionRunCompletionTimelineEntries(
       actionId,
       source,
       message,
+      runId,
     }),
   ];
 }

@@ -88,6 +88,8 @@ describe("orchestrateImplementationStageAction", () => {
       "implementation_stage_action_routed",
       "implementation_stage_action_blocked",
     ]);
+    expect(run.timelineEntries[0]?.responseText).toContain(`runId=${run.runId}`);
+    expect(run.timelineEntries[1]?.responseText).toContain(`runId=${run.runId}`);
   });
 
   it("returns succeeded when executor returns executed", async () => {
@@ -104,6 +106,8 @@ describe("orchestrateImplementationStageAction", () => {
       "implementation_stage_action_routed",
       "implementation_stage_action_executed",
     ]);
+    expect(run.timelineEntries[0]?.responseText).toContain(`runId=${run.runId}`);
+    expect(run.timelineEntries[1]?.responseText).toContain(`runId=${run.runId}`);
   });
 
   it("returns no_op when executor returns no_op", async () => {

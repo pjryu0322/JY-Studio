@@ -311,22 +311,26 @@ describe("buildStageActionRunCompletionTimelineEntries", () => {
   it("returns routed + executed for successful run", () => {
     const entries = buildStageActionRunCompletionTimelineEntries("SHOW_ARTIFACTS", {
       outcome: "executed",
-    });
+    }, "cta", "run-1");
     expect(entries.map((e) => e.action)).toEqual([
       "implementation_stage_action_routed",
       "implementation_stage_action_executed",
     ]);
+    expect(entries[0]?.responseText).toContain("runId=run-1");
+    expect(entries[1]?.responseText).toContain("runId=run-1");
   });
 
   it("returns routed + blocked for no_op run", () => {
     const entries = buildStageActionRunCompletionTimelineEntries("GENERATE_IMPLEMENTATION_WORK_PLAN", {
       outcome: "no_op",
       message: "already_exists",
-    });
+    }, "cta", "run-2");
     expect(entries.map((e) => e.action)).toEqual([
       "implementation_stage_action_routed",
       "implementation_stage_action_blocked",
     ]);
     expect(entries[1]?.responseText).toContain("already_exists");
+    expect(entries[0]?.responseText).toContain("runId=run-2");
+    expect(entries[1]?.responseText).toContain("runId=run-2");
   });
 });

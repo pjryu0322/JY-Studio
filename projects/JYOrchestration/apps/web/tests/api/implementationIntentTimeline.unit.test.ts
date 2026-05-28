@@ -69,10 +69,12 @@ describe("implementation intent timeline", () => {
       action: "routed",
       actionId: "CONFIRM_IMPLEMENTATION_WORK_PLAN",
       source: "cta",
+      runId: "run-1",
     });
     expect(entry.action).toBe("implementation_stage_action_routed");
     expect(entry.responseText).toContain("actionId=CONFIRM_IMPLEMENTATION_WORK_PLAN");
     expect(entry.responseText).toContain("source=cta");
+    expect(entry.responseText).toContain("runId=run-1");
   });
 
   it("builds stage action executed entry", () => {
@@ -80,8 +82,10 @@ describe("implementation intent timeline", () => {
       action: "executed",
       actionId: "CONFIRM_IMPLEMENTATION_WORK_PLAN",
       source: "cta",
+      runId: "run-1",
     });
     expect(entry.action).toBe("implementation_stage_action_executed");
+    expect(entry.responseText).toContain("runId=run-1");
   });
 
   it("builds stage action blocked entry with message", () => {
@@ -90,9 +94,11 @@ describe("implementation intent timeline", () => {
       actionId: "GENERATE_IMPLEMENTATION_WORK_PLAN",
       source: "cta",
       message: "seed not confirmed",
+      runId: "run-2",
     });
     expect(entry.action).toBe("implementation_stage_action_blocked");
     expect(entry.responseText).toContain("seed not confirmed");
+    expect(entry.responseText).toContain("runId=run-2");
   });
 
   it("merges orchestration timeline with bootstrap entries without dropping bootstrap", () => {

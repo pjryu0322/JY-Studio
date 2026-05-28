@@ -37,6 +37,7 @@ export async function orchestrateImplementationStageAction(input: {
       input.actionId,
       { outcome: "blocked", message: gate.message },
       timelineSource,
+      run.runId,
     );
     return completeImplementationStageActionRun({
       run,
@@ -53,6 +54,7 @@ export async function orchestrateImplementationStageAction(input: {
       input.actionId,
       runResult,
       timelineSource,
+      run.runId,
     );
     return completeImplementationStageActionRun({
       run,
@@ -69,6 +71,7 @@ export async function orchestrateImplementationStageAction(input: {
       input.actionId,
       failedResult,
       timelineSource,
+      run.runId,
     );
     return completeImplementationStageActionRun({
       run,

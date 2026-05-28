@@ -31,6 +31,12 @@ export type ImplementationStageActionRun = Readonly<{
   timelineEntries: readonly RequirementsPromptTimelineEntry[];
 }>;
 
+export type ImplementationStageActionRunLogV1 = Readonly<{
+  version: "implementation_stage_action_run_log_v1";
+  runs: readonly ImplementationStageActionRun[];
+  updatedAt: string;
+}>;
+
 export function createImplementationStageActionRunId(input?: {
   readonly nowIso?: string;
   readonly actionId?: ImplementationStageActionId;
@@ -114,6 +120,62 @@ export function completeImplementationStageActionRun(input: {
     message,
     completedAt,
     timelineEntries: input.timelineEntries ?? input.run.timelineEntries,
+  };
+}
+
+export function appendImplementationStageActionRunToLog(input: {
+  readonly currentLog?: ImplementationStageActionRunLogV1 | null;
+  readonly run: ImplementationStageActionRun;
+  readonly maxRuns?: number;
+  readonly nowIso?: string;
+}): ImplementationStageActionRunLogV1 {
+  const maxRuns = input.maxRuns ?? 50;
+  const now = input.nowIso ?? new Date().toISOString();
+  const currentRuns = input.currentLog?.runs ?? [];
+  const runs = [input.run, ...currentRuns.filter((r) => r.runId !== input.run.runId)].slice(0, maxRuns);
+  return {
+    version: "implementation_stage_action_run_log_v1",
+    runs,
+    updatedAt: now,
+  };
+}
+
+export function buildImplementationStageActionRunLogPatch(input: {
+  readonly currentLog?: ImplementationStageActionRunLogV1 | null;
+  readonly run: ImplementationStageActionRun;
+  readonly nowIso?: string;
+}): { readonly implementationStageActionRunLogV1: ImplementationStageActionRunLogV1 } {
+  return {
+    implementationStageActionRunLogV1: appendImplementationStageActionRunToLog({
+      currentLog: input.currentLog,
+      run: input.run,
+      nowIso: input.nowIso,
+    }),
+  };
+}
+
+export function canRouteImplementationIntentThroughStageOrchestrator(
+  actionId: ImplementationActionId | null | undefined,
+): boolean {
+  return mapImplementationRouterActionToStageAction(actionId) != null;
+}
+
+export function coerceImplementationStageActionRunLogV1(
+  raw: unknown,
+): ImplementationStageActionRunLogV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.version !== "implementation_stage_action_run_log_v1") return null;
+  const runsRaw = Array.isArray(o.runs) ? (o.runs as unknown[]) : null;
+  if (!runsRaw) return null;
+  const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : null;
+  if (!updatedAt) return null;
+  // Minimal runtime validation; keep structure for persistence.
+  const runs = runsRaw.filter((r) => Boolean(r)) as ImplementationStageActionRun[];
+  return {
+    version: "implementation_stage_action_run_log_v1",
+    runs,
+    updatedAt,
   };
 }
 

@@ -77,6 +77,7 @@ import {
   type ImplementationStageActionRunResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
+import { buildImplementationStageActionRunLogPatch } from "@/lib/prototype/implementationStageActionRun";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -1786,8 +1787,11 @@ export function PrototypePreviewPanel({
   );
 
   const persistStageActionTimelineEntries = useCallback(
-    (entries: readonly RequirementsPromptTimelineEntry[]) => {
-      if (!entries.length) return;
+    (
+      entries: readonly RequirementsPromptTimelineEntry[],
+      runLogPatch?: { readonly implementationStageActionRunLogV1: unknown },
+    ) => {
+      if (!entries.length && !runLogPatch) return;
       let timeline = parsedRequirementsState.promptTimeline;
       for (const entry of entries) {
         timeline = appendPromptTimeline(timeline, entry);
@@ -1800,7 +1804,7 @@ export function PrototypePreviewPanel({
           answers: resolved.answers ?? {},
           currentSlotKey: resolved.currentSlotKey ?? null,
         },
-        { promptTimeline: timeline },
+        { promptTimeline: timeline, ...(runLogPatch ?? {}) },
       );
     },
     [parsedRequirementsState.promptTimeline, requirementsStateJson, persistChatToDb],
@@ -1944,9 +1948,11 @@ export function PrototypePreviewPanel({
         effectiveState: effectiveImplementationState,
         execute: () => runImplementationStageAction(actionId),
       }).then((run) => {
-        if (run.timelineEntries.length) {
-          persistStageActionTimelineEntries(run.timelineEntries);
-        }
+        const runLogPatch = buildImplementationStageActionRunLogPatch({
+          currentLog: parsedRequirementsState.implementationStageActionRunLogV1,
+          run,
+        });
+        persistStageActionTimelineEntries(run.timelineEntries, runLogPatch);
         const gateBlocked = run.gateResult != null && !run.gateResult.ok;
         if (gateBlocked && run.message) {
           showToast(run.message);
@@ -1962,6 +1968,7 @@ export function PrototypePreviewPanel({
       effectiveImplementationState,
       runImplementationStageAction,
       persistStageActionTimelineEntries,
+      parsedRequirementsState.implementationStageActionRunLogV1,
       showToast,
     ],
   );
