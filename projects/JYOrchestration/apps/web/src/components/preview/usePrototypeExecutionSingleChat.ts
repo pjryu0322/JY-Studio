@@ -63,6 +63,10 @@ export type PrototypeExecutionOperationalSendResult =
   | Readonly<{
       kind: "timeline_only";
       timelineEntries: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      kind: "stage_action_run";
+      run: import("@/lib/prototype/implementationStageActionRun").ImplementationStageActionRun;
     }>;
 
 export function usePrototypeExecutionSingleChat({

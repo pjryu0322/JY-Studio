@@ -77,7 +77,11 @@ import {
   type ImplementationStageActionRunResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
-import { buildImplementationStageActionRunLogPatch } from "@/lib/prototype/implementationStageActionRun";
+import {
+  buildImplementationStageActionRunLogPatch,
+  type ImplementationStageActionRun,
+} from "@/lib/prototype/implementationStageActionRun";
+import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -1267,11 +1271,17 @@ export function PrototypePreviewPanel({
     planningSlotDefinitions,
   ]);
 
-  const implementationVisibleActionLabels = useMemo(
-    () =>
-      implementationBootstrapInput ? implementationEntryChipsForBootstrap(implementationBootstrapInput) : [],
-    [implementationBootstrapInput],
-  );
+  const implementationVisibleActionLabels = useMemo(() => {
+    const labels = implementationBootstrapInput
+      ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
+      : [];
+    return prioritizeImplementationChipsForState(labels, effectiveImplementationState);
+  }, [implementationBootstrapInput, effectiveImplementationState]);
+
+  const runImplementationStageActionRef = useRef<
+    (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult
+  >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
+  const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
 
   const derivedChatMessages = useMemo(
     () =>
@@ -1481,7 +1491,8 @@ export function PrototypePreviewPanel({
         return "handled";
       }
 
-      return resolveImplementationOperationalSend(
+      const pid = projectId.trim();
+      const result = await resolveImplementationOperationalSend(
         {
           text,
           userMsg,
@@ -1490,13 +1501,20 @@ export function PrototypePreviewPanel({
           envOk: canRequestGeneration.envOk,
           designOk: canRequestGeneration.designOk,
           requirementsStateJson,
-          projectId: projectId.trim(),
+          projectId: pid,
           projectArtifacts: executionArtifacts.projectArtifacts,
           orchestration: parsedRequirementsState.singleChatOrchestrationV1,
           slotDefinitions: planningSlotDefinitions,
           implementationSeedV1: parsedRequirementsState.implementationSeedV1,
           implementationWorkPlanDraftV1: effectiveImplementationState.implementationWorkPlanDraftV1,
           promptTimeline: parsedRequirementsState.promptTimeline,
+          stageActionOrchestrator: pid
+            ? {
+                projectId: pid,
+                effectiveState: effectiveImplementationState,
+                execute: (actionId) => runImplementationStageActionRef.current(actionId),
+              }
+            : undefined,
           routeParams: {
             text,
             visibleActionLabels: implementationVisibleActionLabels,
@@ -1515,6 +1533,19 @@ export function PrototypePreviewPanel({
         },
         implementationOperationalHandlers,
       );
+
+      if (typeof result === "object" && result.kind === "stage_action_run") {
+        persistImplementationStageActionRunRef.current(result.run);
+        const gateBlocked = result.run.gateResult != null && !result.run.gateResult.ok;
+        if (gateBlocked && result.run.message) {
+          showToast(result.run.message);
+        } else if (result.run.status === "failed" && result.run.message) {
+          showToast(result.run.message);
+        }
+        return "handled";
+      }
+
+      return result;
     },
     onOperationalAfterPersist: (action) => {
       if (action === "start_prototype_work_plan") {
@@ -1810,6 +1841,20 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState.promptTimeline, requirementsStateJson, persistChatToDb],
   );
 
+  const persistImplementationStageActionRun = useCallback(
+    (run: ImplementationStageActionRun) => {
+      const runLogPatch = buildImplementationStageActionRunLogPatch({
+        currentLog: parsedRequirementsState.implementationStageActionRunLogV1,
+        run,
+      });
+      persistStageActionTimelineEntries(run.timelineEntries, runLogPatch);
+    },
+    [
+      parsedRequirementsState.implementationStageActionRunLogV1,
+      persistStageActionTimelineEntries,
+    ],
+  );
+
   const applyImplementationStageActionExecutionResult = useCallback(
     (result: ImplementationStageActionExecutionResult) => {
       if (result.timelineEntries?.length) {
@@ -1948,11 +1993,7 @@ export function PrototypePreviewPanel({
         effectiveState: effectiveImplementationState,
         execute: () => runImplementationStageAction(actionId),
       }).then((run) => {
-        const runLogPatch = buildImplementationStageActionRunLogPatch({
-          currentLog: parsedRequirementsState.implementationStageActionRunLogV1,
-          run,
-        });
-        persistStageActionTimelineEntries(run.timelineEntries, runLogPatch);
+        persistImplementationStageActionRun(run);
         const gateBlocked = run.gateResult != null && !run.gateResult.ok;
         if (gateBlocked && run.message) {
           showToast(run.message);
@@ -1967,11 +2008,15 @@ export function PrototypePreviewPanel({
       projectId,
       effectiveImplementationState,
       runImplementationStageAction,
-      persistStageActionTimelineEntries,
-      parsedRequirementsState.implementationStageActionRunLogV1,
+      persistImplementationStageActionRun,
       showToast,
     ],
   );
+
+  useEffect(() => {
+    runImplementationStageActionRef.current = runImplementationStageAction;
+    persistImplementationStageActionRunRef.current = persistImplementationStageActionRun;
+  }, [runImplementationStageAction, persistImplementationStageActionRun]);
 
   const handleImplementationChip = useCallback(
     (label: string) => {

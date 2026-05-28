@@ -1,4 +1,11 @@
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
+import type { EffectiveImplementationState, ImplementationStageActionId } from "@/lib/prototype/effectiveImplementationState";
+import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
+import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
+import {
+  canRouteImplementationIntentThroughStageOrchestrator,
+  mapImplementationRouterActionToStageAction,
+} from "@/lib/prototype/implementationStageActionRun";
 import { buildCreateWorkPlanFromChatOperationalResult } from "@/lib/prototype/implementationCreateWorkPlanFromChat";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -44,6 +51,14 @@ export type ImplementationOperationalSendHandlers = Readonly<{
   persistRequirementPatch: (patch: ImplementationUserFeedbackPatchV1) => void;
 }>;
 
+export type ImplementationStageActionOrchestratorInput = Readonly<{
+  readonly projectId: string;
+  readonly effectiveState: EffectiveImplementationState;
+  readonly execute: (
+    actionId: ImplementationStageActionId,
+  ) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>;
+}>;
+
 export type ImplementationOperationalSendContext = Readonly<{
   text: string;
   userMsg: RequirementsMessage;
@@ -60,6 +75,8 @@ export type ImplementationOperationalSendContext = Readonly<{
   implementationSeedV1?: ImplementationSeedV1 | null;
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+  /** When set, stage-action-compatible router results use orchestrateImplementationStageAction. */
+  stageActionOrchestrator?: ImplementationStageActionOrchestratorInput;
 }>;
 
 function buildRoutedTimeline(classification: ImplementationIntentClassification | null | undefined) {
@@ -169,13 +186,38 @@ function executeRoutedAction(
   }
 }
 
-function resolveRoutedInput(
+async function tryOrchestrateRoutedStageAction(
+  route: Awaited<ReturnType<typeof routeImplementationUserInput>>,
+  input: ImplementationOperationalSendContext,
+): Promise<PrototypeExecutionOperationalSendResult | null> {
+  if (!input.stageActionOrchestrator) return null;
+  const routerActionId =
+    route.kind === "execute_action" || route.kind === "show_status" ? route.actionId : null;
+  if (!routerActionId || !canRouteImplementationIntentThroughStageOrchestrator(routerActionId)) {
+    return null;
+  }
+  const stageActionId = mapImplementationRouterActionToStageAction(routerActionId);
+  if (!stageActionId) return null;
+
+  const run = await orchestrateImplementationStageAction({
+    projectId: input.stageActionOrchestrator.projectId,
+    actionId: stageActionId,
+    source: "natural_language",
+    effectiveState: input.stageActionOrchestrator.effectiveState,
+    execute: () => input.stageActionOrchestrator!.execute(stageActionId),
+  });
+  return { kind: "stage_action_run", run };
+}
+
+async function resolveRoutedInput(
   route: Awaited<ReturnType<typeof routeImplementationUserInput>>,
   input: ImplementationOperationalSendContext,
   handlers: ImplementationOperationalSendHandlers,
-): PrototypeExecutionOperationalSendResult | null {
+): Promise<PrototypeExecutionOperationalSendResult | null> {
   switch (route.kind) {
     case "show_status": {
+      const orchestrated = await tryOrchestrateRoutedStageAction(route, input);
+      if (orchestrated) return orchestrated;
       const statusIntent = implementationStatusQueryFromAction(route.actionId);
       if (statusIntent === "none") return "handled";
       const statusResult = handlers.buildStatusQueryResult(statusIntent);
@@ -185,8 +227,11 @@ function resolveRoutedInput(
       }
       return mergeStatusQueryWithRouteTimeline(statusResult, route.classification);
     }
-    case "execute_action":
+    case "execute_action": {
+      const orchestrated = await tryOrchestrateRoutedStageAction(route, input);
+      if (orchestrated) return orchestrated;
       return executeRoutedAction(route.actionId, input, handlers, route.classification);
+    }
     case "apply_requirement_then_execute": {
       const nowIso = new Date().toISOString();
       const sourceId = `route-${nowIso}`;
@@ -266,7 +311,7 @@ export async function resolveImplementationOperationalSend(
     text: input.text,
   });
 
-  const routed = resolveRoutedInput(route, input, handlers);
+  const routed = await resolveRoutedInput(route, input, handlers);
   if (routed) return routed;
 
   const legacyStatus = resolveLegacyStatusQuery(input.text, handlers);

@@ -1,3 +1,4 @@
+import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import {
   buildImplementationWorkPlanDraft,
   buildImplementationWorkPlanDraftConfirmedTimelineEntry,
@@ -5,9 +6,11 @@ import {
   buildWorkPlanDraftMessage,
   collectReferencePlanningArtifacts,
   hasImplementationWorkPlanDraftMessage,
+  implementationWorkPlanDraftChips,
   IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE,
   type ImplementationWorkPlanDraftV1,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
 import {
   mergeUserFeedbackPatchesIntoWorkPlanDraft,
   parseImplementationUserFeedbackPatchesV1,
@@ -135,7 +138,23 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
     feedbackPatches.length > 0
       ? mergeUserFeedbackPatchesIntoWorkPlanDraft(draftBase, feedbackPatches)
       : draftBase;
-  const draftMsg = buildWorkPlanDraftMessage(draft, { nowIso: input.nowIso });
+  const effectiveState = resolveEffectiveImplementationState({
+    parsedRequirementsState: {
+      implementationSeedV1: seed,
+      implementationWorkPlanDraftV1: draft,
+      implementationTaskPlanV1: stateRecord.implementationTaskPlanV1 ?? null,
+    },
+    pendingPatch: {},
+    envOk: input.envOk,
+    designOk: input.designOk,
+  });
+  const draftMsg = buildWorkPlanDraftMessage(draft, {
+    nowIso: input.nowIso,
+    interviewSuggestions: prioritizeImplementationChipsForState(
+      implementationWorkPlanDraftChips(),
+      effectiveState,
+    ),
+  });
   const timeline = appendPromptTimeline(
     appendPromptTimeline(
       input.promptTimeline,

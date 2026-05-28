@@ -129,3 +129,79 @@ describe("resolveImplementationOperationalSend timeline", () => {
     expect(result.timelineEntries?.[1]?.responseText).toContain("actionId=CREATE_WORK_PLAN");
   });
 });
+
+describe("resolveImplementationOperationalSend stage orchestrator", () => {
+  it("returns stage_action_run for CREATE_WORK_PLAN when orchestrator is provided", async () => {
+    const { orchestration, definitions, seed } = seedReadyState();
+    const userMsg = newRequirementsMessage({
+      role: "user",
+      speakerType: "USER",
+      speakerId: "me",
+      speakerName: "나",
+      messageType: "STATEMENT",
+      content: "구현 작업안 생성해줘",
+    });
+    const execute = vi.fn(() => ({ outcome: "executed" as const }));
+
+    const result = await resolveImplementationOperationalSend(
+      {
+        text: "구현 작업안 생성해줘",
+        userMsg,
+        isDraftGenerationComplete: false,
+        isRunningState: false,
+        envOk: true,
+        designOk: true,
+        requirementsStateJson: {
+          singleChatOrchestrationV1: orchestration,
+          implementationSeedV1: seed,
+          prototypeExecutionSingleChatV1: { messages: [] },
+        },
+        projectId: "p1",
+        projectArtifacts: planningArtifacts,
+        orchestration,
+        slotDefinitions: definitions,
+        implementationSeedV1: seed,
+        promptTimeline: [],
+        stageActionOrchestrator: {
+          projectId: "p1",
+          effectiveState: {
+            implementationSeedV1: seed,
+            implementationWorkPlanDraftV1: null,
+            implementationTaskPlanV1: null,
+            implementationDbStrategyV1: null,
+            envOk: true,
+            designOk: true,
+            latestRun: null,
+            hasWorkUnits: false,
+            plannerRunning: false,
+            plannerCreatePending: false,
+            protoBusy: false,
+          },
+          execute,
+        },
+        routeParams: {
+          text: "구현 작업안 생성해줘",
+          visibleActionLabels: [],
+          envOk: true,
+          templatePlanningReady: true,
+          implementationSeedReady: true,
+          hasWorkUnits: false,
+          isPlannerRunning: false,
+          plannerCreatePending: false,
+          protoBusy: false,
+          projectName: "demo",
+          projectDescription: "demo",
+          enableLlmClassifier: false,
+        },
+      },
+      handlers,
+    );
+
+    expect(result).toMatchObject({ kind: "stage_action_run" });
+    if (typeof result !== "object" || result.kind !== "stage_action_run") return;
+    expect(result.run.source).toBe("natural_language");
+    expect(result.run.actionId).toBe("GENERATE_IMPLEMENTATION_WORK_PLAN");
+    expect(execute).toHaveBeenCalled();
+    expect(result.run.timelineEntries[0]?.responseText).toContain(`runId=${result.run.runId}`);
+  });
+});

@@ -10,6 +10,11 @@ import type {
 } from "@/lib/prototype/implementationIntentRouterTypes";
 import { isImplementationActionId } from "@/lib/prototype/implementationIntentRouterTypes";
 
+/**
+ * Phase 8+: stage-action-compatible routes can be executed via
+ * `orchestrateImplementationStageAction(source="natural_language")` when the panel
+ * supplies `stageActionOrchestrator` to `resolveImplementationOperationalSend()`.
+ */
 export type RouteImplementationUserInputParams = Readonly<{
   text: string;
   visibleActionLabels: readonly string[];

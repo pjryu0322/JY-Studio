@@ -427,7 +427,7 @@ export function buildImplementationWorkPlanDraftConfirmedTimelineEntry(input: {
 
 export function buildWorkPlanDraftMessage(
   draft: ImplementationWorkPlanDraftV1,
-  input?: { readonly nowIso?: string },
+  input?: { readonly nowIso?: string; readonly interviewSuggestions?: readonly string[] },
 ): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const now = input?.nowIso ?? new Date().toISOString();
@@ -479,7 +479,7 @@ export function buildWorkPlanDraftMessage(
     meta: {
       internalType: IMPLEMENTATION_WORK_PLAN_DRAFT_MESSAGE_INTERNAL_TYPE,
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationWorkPlanDraftChips()],
+      interviewSuggestions: [...(input?.interviewSuggestions ?? implementationWorkPlanDraftChips())],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1050,
     },

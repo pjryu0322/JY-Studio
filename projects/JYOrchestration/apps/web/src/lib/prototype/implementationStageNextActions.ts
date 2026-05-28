@@ -1,5 +1,12 @@
-import type { ImplementationStageActionId } from "@/lib/prototype/effectiveImplementationState";
-import type { ImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
+import {
+  mapImplementationChipToAction,
+  type EffectiveImplementationState,
+  type ImplementationStageActionId,
+} from "@/lib/prototype/effectiveImplementationState";
+import {
+  deriveImplementationStageStatus,
+  type ImplementationStageStatus,
+} from "@/lib/prototype/implementationStageStatus";
 
 export type ImplementationStageNextAction = Readonly<{
   actionId: ImplementationStageActionId;
@@ -63,5 +70,44 @@ export function deriveImplementationStageNextActions(
     default:
       return [];
   }
+}
+
+function chipSortIndex(
+  label: string,
+  nextActions: readonly ImplementationStageNextAction[],
+): number {
+  const actionId = mapImplementationChipToAction(label);
+  const byActionId = actionId
+    ? nextActions.findIndex((a) => a.actionId === actionId)
+    : -1;
+  if (byActionId >= 0) return byActionId;
+  const byLabel = nextActions.findIndex((a) => a.label === label);
+  return byLabel >= 0 ? byLabel : 999;
+}
+
+/** Reorders existing chip labels; does not add or remove labels. */
+export function prioritizeImplementationChipsByNextActions(input: {
+  readonly labels: readonly string[];
+  readonly nextActions: readonly ImplementationStageNextAction[];
+}): readonly string[] {
+  const indexed = input.labels.map((label, originalIndex) => ({
+    label,
+    originalIndex,
+    sortIndex: chipSortIndex(label, input.nextActions),
+  }));
+  indexed.sort((a, b) => {
+    if (a.sortIndex !== b.sortIndex) return a.sortIndex - b.sortIndex;
+    return a.originalIndex - b.originalIndex;
+  });
+  return indexed.map((row) => row.label);
+}
+
+export function prioritizeImplementationChipsForState(
+  labels: readonly string[],
+  state: EffectiveImplementationState,
+): readonly string[] {
+  const status = deriveImplementationStageStatus(state);
+  const nextActions = deriveImplementationStageNextActions(status);
+  return prioritizeImplementationChipsByNextActions({ labels, nextActions });
 }
 

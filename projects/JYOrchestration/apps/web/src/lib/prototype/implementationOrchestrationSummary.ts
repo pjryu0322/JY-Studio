@@ -1,3 +1,5 @@
+import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
+import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeChatEnvBadge, PrototypeChatEnvSnapshot } from "@/lib/prototype/buildPrototypeChatMessages";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
@@ -343,7 +345,17 @@ function buildLeadDeveloperBootstrapMessage(input: {
       internalType: IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
       implementationBootstrapKind: "lead_developer_summary",
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationEntryChipsForBootstrap(input.summaryInput)],
+      interviewSuggestions: prioritizeImplementationChipsForState(
+        implementationEntryChipsForBootstrap(input.summaryInput),
+        resolveEffectiveImplementationState({
+          parsedRequirementsState: {
+            implementationSeedV1: input.summaryInput.implementationSeedV1,
+          },
+          pendingPatch: {},
+          envOk: input.summaryInput.envOk,
+          designOk: input.summaryInput.designOk,
+        }),
+      ),
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1000,
     },
