@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
+import { MOCK_IMPLEMENTATION_CHIP } from "@/lib/prototype/implementationDbStrategy";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 
 const baseHandlers = () => ({
@@ -76,6 +78,12 @@ describe("tryHandlePrototypeExecutionChip", () => {
       }),
     ).toBe(true);
     expect(review).toHaveBeenCalledOnce();
+  });
+
+  it("maps stage-action CTA labels for pipeline routing", () => {
+    expect(mapImplementationChipToAction("구현 작업안 확정")).toBe("CONFIRM_IMPLEMENTATION_WORK_PLAN");
+    expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
+    expect(mapImplementationChipToAction("구현 실행")).toBeNull();
   });
 
   it("handles Mock 기반 구현 진행 chip", () => {

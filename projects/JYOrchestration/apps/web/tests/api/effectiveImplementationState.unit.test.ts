@@ -4,7 +4,14 @@ import {
   mapImplementationChipToAction,
   mergePendingImplementationPatch,
   resolveEffectiveImplementationState,
+  shouldClearPendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
+import { evaluateImplementationStageActionGate } from "@/lib/prototype/implementationStageActionPipeline";
+import {
+  DATA_MODEL_DRAFT_CHIP,
+  DB_INTEGRATION_REVIEW_CHIP,
+  MOCK_IMPLEMENTATION_CHIP,
+} from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 
@@ -63,6 +70,26 @@ describe("resolveEffectiveImplementationState", () => {
   });
 });
 
+describe("shouldClearPendingImplementationPatch", () => {
+  it("clears pending patch when persisted draft timestamp changes", () => {
+    expect(
+      shouldClearPendingImplementationPatch({
+        prevPersistedDraftUpdatedAt: null,
+        nextPersistedDraftUpdatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not clear on initial mount before any persisted snapshot", () => {
+    expect(
+      shouldClearPendingImplementationPatch({
+        nextPersistedDraftUpdatedAt: null,
+        nextPersistedTaskPlanCreatedAt: null,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("canConfirmImplementationWorkPlanFromEffectiveState", () => {
   it("allows confirm when parsed draft is missing but pending draft is ready", () => {
     const pending = makeDraft("pending");
@@ -92,6 +119,21 @@ describe("canConfirmImplementationWorkPlanFromEffectiveState", () => {
 
     expect(canConfirmImplementationWorkPlanFromEffectiveState(state).ok).toBe(false);
   });
+
+  it("blocks confirm when designOk is false even with pending draft", () => {
+    const pending = makeDraft("pending");
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationWorkPlanDraftV1: null,
+        implementationTaskPlanV1: null,
+      },
+      pendingPatch: { implementationWorkPlanDraftV1: pending },
+      envOk: true,
+      designOk: false,
+    });
+
+    expect(canConfirmImplementationWorkPlanFromEffectiveState(state).ok).toBe(false);
+  });
 });
 
 describe("mergePendingImplementationPatch", () => {
@@ -106,11 +148,29 @@ describe("mergePendingImplementationPatch", () => {
 });
 
 describe("mapImplementationChipToAction", () => {
-  it("maps work plan chips to stage action ids", () => {
+  it("maps primary implementation stage CTA labels", () => {
     expect(mapImplementationChipToAction(WORK_PLAN_DRAFT_GENERATE_CHIP)).toBe(
       "GENERATE_IMPLEMENTATION_WORK_PLAN",
     );
     expect(mapImplementationChipToAction("구현 작업안 확정")).toBe("CONFIRM_IMPLEMENTATION_WORK_PLAN");
+    expect(mapImplementationChipToAction(DB_INTEGRATION_REVIEW_CHIP)).toBe("REVIEW_DB_INTEGRATION");
+    expect(mapImplementationChipToAction(DATA_MODEL_DRAFT_CHIP)).toBe("GENERATE_DATA_MODEL_DRAFT");
+    expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
+    expect(mapImplementationChipToAction("환경설정 열기")).toBe("OPEN_ENV_SETTINGS");
     expect(mapImplementationChipToAction("unknown")).toBeNull();
+  });
+});
+
+describe("evaluateImplementationStageActionGate via effective state", () => {
+  it("blocks CONFIRM_IMPLEMENTATION_WORK_PLAN when designOk is false", () => {
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: { implementationWorkPlanDraftV1: makeDraft("d") },
+      pendingPatch: {},
+      envOk: true,
+      designOk: false,
+    });
+    expect(
+      evaluateImplementationStageActionGate("CONFIRM_IMPLEMENTATION_WORK_PLAN", state).ok,
+    ).toBe(false);
   });
 });

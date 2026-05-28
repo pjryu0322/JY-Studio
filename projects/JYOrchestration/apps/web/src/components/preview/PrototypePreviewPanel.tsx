@@ -60,11 +60,16 @@ import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/p
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   canConfirmImplementationWorkPlanFromEffectiveState,
+  mapImplementationChipToAction,
   mergePendingImplementationPatch,
   mergePendingImplementationPatchFromOrchestration,
   resolveEffectiveImplementationState,
+  shouldClearPendingImplementationPatch,
+  type ImplementationStageActionId,
   type PendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
+import { evaluateImplementationStageActionGate } from "@/lib/prototype/implementationStageActionPipeline";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
@@ -1134,6 +1139,66 @@ export function PrototypePreviewPanel({
     [requirementsStateJson],
   );
 
+  const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
+  const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    setPendingImplementationPatch({});
+  }, [projectId]);
+
+  useEffect(() => {
+    const nextDraftAt = parsedRequirementsState.implementationWorkPlanDraftV1?.updatedAt ?? null;
+    const nextTaskAt = parsedRequirementsState.implementationTaskPlanV1?.createdAt ?? null;
+    if (
+      shouldClearPendingImplementationPatch({
+        prevPersistedDraftUpdatedAt: persistedDraftUpdatedAtRef.current,
+        nextPersistedDraftUpdatedAt: nextDraftAt,
+        prevPersistedTaskPlanCreatedAt: persistedTaskPlanCreatedAtRef.current,
+        nextPersistedTaskPlanCreatedAt: nextTaskAt,
+      })
+    ) {
+      setPendingImplementationPatch({});
+    }
+    persistedDraftUpdatedAtRef.current = nextDraftAt;
+    persistedTaskPlanCreatedAtRef.current = nextTaskAt;
+  }, [
+    parsedRequirementsState.implementationWorkPlanDraftV1?.updatedAt,
+    parsedRequirementsState.implementationTaskPlanV1?.createdAt,
+  ]);
+
+  const effectiveImplementationState = useMemo(
+    () =>
+      resolveEffectiveImplementationState({
+        parsedRequirementsState,
+        pendingPatch: pendingImplementationPatch,
+        envOk: canRequestGeneration.envOk,
+        designOk: canRequestGeneration.designOk,
+        latestRun,
+        plannerRunning: isPlannerRunning,
+        plannerCreatePending,
+        protoBusy,
+      }),
+    [
+      parsedRequirementsState,
+      pendingImplementationPatch,
+      canRequestGeneration.envOk,
+      canRequestGeneration.designOk,
+      latestRun,
+      isPlannerRunning,
+      plannerCreatePending,
+      protoBusy,
+    ],
+  );
+
+  const applyPendingFromOrchestrationPatch = useCallback(
+    (patch: PrototypeExecutionOrchestrationPersistInput | undefined) => {
+      const incoming = mergePendingImplementationPatchFromOrchestration(patch);
+      if (!incoming) return;
+      setPendingImplementationPatch((prev) => mergePendingImplementationPatch(prev, incoming));
+    },
+    [],
+  );
+
   const executionArtifacts = useMemo(
     () => pickExecutionStateArtifacts(parsedRequirementsState),
     [parsedRequirementsState],
@@ -1450,6 +1515,28 @@ export function PrototypePreviewPanel({
 
   appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
 
+  /** Shared persist path for implementation stage actions (expand to full applyImplementationStageActionResult later). */
+  const applyImplementationOrchestrationResult = useCallback(
+    (input: {
+      readonly messages: readonly RequirementsMessage[];
+      readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
+    }) => {
+      applyPendingFromOrchestrationPatch(input.orchestrationPatch);
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      executionSingleChat.applyPersistedMessages(input.messages);
+      void persistChatToDb(
+        {
+          messages: input.messages,
+          slots: resolved.slots ?? [],
+          answers: resolved.answers ?? {},
+          currentSlotKey: resolved.currentSlotKey ?? null,
+        },
+        input.orchestrationPatch,
+      );
+    },
+    [requirementsStateJson, executionSingleChat, persistChatToDb, applyPendingFromOrchestrationPatch],
+  );
+
   const implementationCursorGate = useMemo(
     () =>
       buildImplementationCursorGateContext(
@@ -1487,18 +1574,10 @@ export function PrototypePreviewPanel({
       showToast("이미 구현 작업안이 확정되었습니다.");
       return;
     }
-    applyPendingFromOrchestrationPatch(result.orchestrationPatch);
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    executionSingleChat.applyPersistedMessages(result.chatPatch.messages);
-    void persistChatToDb(
-      {
-        messages: result.chatPatch.messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
-      result.orchestrationPatch,
-    );
+    applyImplementationOrchestrationResult({
+      messages: result.chatPatch.messages,
+      orchestrationPatch: result.orchestrationPatch,
+    });
   }, [
     projectId,
     requirementsStateJson,
@@ -1506,9 +1585,7 @@ export function PrototypePreviewPanel({
     featureDraftTitles,
     effectiveImplementationState,
     parsedRequirementsState.promptTimeline,
-    executionSingleChat,
-    persistChatToDb,
-    applyPendingFromOrchestrationPatch,
+    applyImplementationOrchestrationResult,
     showToast,
   ]);
 
@@ -1540,18 +1617,10 @@ export function PrototypePreviewPanel({
         promptTimeline: result.orchestrationPatch.promptTimeline ?? parsedRequirementsState.promptTimeline,
       }),
     };
-    applyPendingFromOrchestrationPatch(orchestrationPatch);
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    executionSingleChat.applyPersistedMessages(result.messages);
-    void persistChatToDb(
-      {
-        messages: result.messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+    applyImplementationOrchestrationResult({
+      messages: result.messages,
       orchestrationPatch,
-    );
+    });
   }, [
     projectId,
     requirementsStateJson,
@@ -1562,8 +1631,7 @@ export function PrototypePreviewPanel({
     parsedRequirementsState.singleChatOrchestrationV1,
     parsedRequirementsState.implementationSeedV1,
     planningSlotDefinitions,
-    executionSingleChat,
-    persistChatToDb,
+    applyImplementationOrchestrationResult,
     showToast,
   ]);
 
@@ -1618,20 +1686,12 @@ export function PrototypePreviewPanel({
         showToast(result.message);
         return;
       }
-      applyPendingFromOrchestrationPatch(result.orchestrationPatch);
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      executionSingleChat.applyPersistedMessages(result.messages);
-      void persistChatToDb(
-        {
-          messages: result.messages,
-          slots: resolved.slots ?? [],
-          answers: resolved.answers ?? {},
-          currentSlotKey: resolved.currentSlotKey ?? null,
-        },
-        result.orchestrationPatch,
-      );
+      applyImplementationOrchestrationResult({
+        messages: result.messages,
+        orchestrationPatch: result.orchestrationPatch,
+      });
     },
-    [requirementsStateJson, executionSingleChat, persistChatToDb, applyPendingFromOrchestrationPatch, showToast],
+    [applyImplementationOrchestrationResult, showToast],
   );
 
   const reviewDbIntegrationNeed = useCallback(() => {
@@ -1742,9 +1802,84 @@ export function PrototypePreviewPanel({
     persistChatToDb,
   ]);
 
+  const executeImplementationStageAction = useCallback(
+    (actionId: ImplementationStageActionId): boolean => {
+      const gate = evaluateImplementationStageActionGate(actionId, effectiveImplementationState);
+      if (!gate.ok) {
+        showToast(gate.message);
+        return true;
+      }
+
+      switch (actionId) {
+        case "GENERATE_IMPLEMENTATION_WORK_PLAN":
+          generateImplementationWorkPlanDraft();
+          return true;
+        case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
+          confirmImplementationTaskPlan();
+          return true;
+        case "EDIT_IMPLEMENTATION_SCOPE":
+          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
+          queueMicrotask(() => chatInputRef.current?.focus());
+          return true;
+        case "REVIEW_DB_INTEGRATION":
+          reviewDbIntegrationNeed();
+          return true;
+        case "GENERATE_DATA_MODEL_DRAFT":
+          generateDataModelDraft();
+          return true;
+        case "CONFIRM_MOCK_IMPLEMENTATION":
+          confirmMockImplementationMode();
+          return true;
+        case "SHOW_ARTIFACTS":
+          setArtifactHubOpen(true);
+          return true;
+        case "OPEN_ENV_SETTINGS":
+          setExecutionEnvironmentModalOpen(true);
+          return true;
+        case "SHOW_ROLE_CHECK":
+          showRoleCheckDetails();
+          return true;
+        case "SHOW_SCM_CHECK":
+          appendStatusQueryFromChip("scm_check_details");
+          return true;
+        case "SHOW_ENV_CHECK":
+          appendStatusQueryFromChip("environment_check_details");
+          return true;
+        case "REQUEST_CODE_AGENT_WIP": {
+          const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
+          if (!cursorGate.allowed) {
+            executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+            return true;
+          }
+          wipChipHandlers.requestCodeAgentWipWork();
+          return true;
+        }
+        default:
+          return false;
+      }
+    },
+    [
+      effectiveImplementationState,
+      showToast,
+      generateImplementationWorkPlanDraft,
+      confirmImplementationTaskPlan,
+      reviewDbIntegrationNeed,
+      generateDataModelDraft,
+      confirmMockImplementationMode,
+      showRoleCheckDetails,
+      appendStatusQueryFromChip,
+      implementationCursorGate,
+      executionSingleChat,
+      wipChipHandlers,
+    ],
+  );
+
   const handleImplementationChip = useCallback(
-    (label: string) =>
-      tryHandlePrototypeExecutionChip(label, {
+    (label: string) => {
+      const actionId = mapImplementationChipToAction(label);
+      if (actionId && executeImplementationStageAction(actionId)) return true;
+
+      return tryHandlePrototypeExecutionChip(label, {
         openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
         openArtifactHub: () => setArtifactHubOpen(true),
         showImplementationSeedReadinessCheck,
@@ -1792,14 +1927,16 @@ export function PrototypePreviewPanel({
           return true;
         },
         canConfirmExecution: () => {
-          if (!canRequestGeneration.envOk || !canRequestGeneration.designOk) {
+          if (!effectiveImplementationState.envOk || !effectiveImplementationState.designOk) {
             showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
             return false;
           }
           return true;
         },
-      }),
+      });
+    },
     [
+      executeImplementationStageAction,
       envSettingsHref,
       showImplementationSeedReadinessCheck,
       showRoleCheckDetails,
