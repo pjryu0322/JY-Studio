@@ -2,10 +2,6 @@ import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
-  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
-  WORK_PLAN_DRAFT_GENERATE_CHIP,
-} from "@/lib/prototype/implementationWorkPlanDraft";
-import {
   hasImplementationTaskListReady,
   isPlanningReadyForImplementationExecution,
   type ImplementationTaskListV1,
@@ -27,6 +23,11 @@ export const SECURITY_CHECK_CHIP = "보안 점검" as const;
 export const SCM_CRITERIA_CHIP = "SCM 반영 기준 보기" as const;
 export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생성" as const;
 export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
+
+// NOTE: Keep these labels local to avoid a circular dependency between
+// `implementationWorkPlanDraft.ts` (entry chips) and `implementationTaskListEntryMessage.ts` (task-list chips).
+const LEGACY_IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP = "기획단계로 돌아가기" as const;
+const LEGACY_WORK_PLAN_DRAFT_GENERATE_CHIP = "구현 작업안 초안 생성" as const;
 
 const ROLE_LABEL_KO: Readonly<Record<ImplementationTaskOwnerRole, string>> = {
   developer: "AI 개발자",
@@ -396,8 +397,8 @@ export const IMPLEMENTATION_TASK_LIST_CHIP_LABELS = [
   SCM_CRITERIA_CHIP,
   GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
-  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
-  WORK_PLAN_DRAFT_GENERATE_CHIP,
+  LEGACY_IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
+  LEGACY_WORK_PLAN_DRAFT_GENERATE_CHIP,
 ] as const;
 
 export function tryHandleImplementationTaskListChip(input: {
