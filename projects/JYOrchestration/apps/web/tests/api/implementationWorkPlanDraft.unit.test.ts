@@ -20,6 +20,7 @@ import {
 import {
   collectReferencePlanningArtifacts,
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
+  buildImplementationWorkPlanDraftFromSeed,
   implementationEntryChips,
   implementationEntryChipsForState,
   implementationWorkPlanDraftChips,
@@ -200,5 +201,65 @@ describe("implementation work plan draft flow", () => {
       designOk: true,
     });
     expect(confirm.kind).toBe("created");
+  });
+});
+
+describe("implementation work plan draft approach copy", () => {
+  it("does not say environment check is needed when env is ready", () => {
+    const { seed } = seedReadyState();
+    const draft = buildImplementationWorkPlanDraftFromSeed({
+      projectId: "p1",
+      seed,
+      projectArtifacts: planningArtifacts,
+      envOk: true,
+      designOk: false,
+      nowIso,
+    });
+    const approach = draft.implementationApproach.join("\n");
+    expect(approach).not.toContain("환경설정 확인이 필요합니다");
+    expect(approach).toContain("연동이 정상 확인");
+  });
+
+  it("asks for environment setup only when env is not ready", () => {
+    const { seed } = seedReadyState();
+    const draft = buildImplementationWorkPlanDraftFromSeed({
+      projectId: "p1",
+      seed,
+      projectArtifacts: planningArtifacts,
+      envOk: false,
+      designOk: true,
+      nowIso,
+    });
+    expect(draft.implementationApproach.join("\n")).toContain("설정 확인이 필요합니다");
+  });
+
+  it("does not add design readiness blocker for seed-based ready draft", () => {
+    const { seed } = seedReadyState();
+    const draft = buildImplementationWorkPlanDraftFromSeed({
+      projectId: "p1",
+      seed,
+      projectArtifacts: planningArtifacts,
+      envOk: true,
+      designOk: false,
+      nowIso,
+    });
+    expect(draft.blockers.join("\n")).not.toContain("기획 산출물·설계 readiness 미완료");
+  });
+
+  it("uses DB candidate wording when data model seed exists", () => {
+    const { seed } = seedReadyState();
+    const seedWithDataModel = {
+      ...seed,
+      dataModelSeed: { entities: [{ name: "Entity", fields: [] }], relationships: [] },
+    };
+    const draft = buildImplementationWorkPlanDraftFromSeed({
+      projectId: "p1",
+      seed: seedWithDataModel,
+      projectArtifacts: planningArtifacts,
+      envOk: true,
+      designOk: true,
+      nowIso,
+    });
+    expect(draft.implementationApproach.join("\n")).toContain("DB 연동이 필요한 항목");
   });
 });

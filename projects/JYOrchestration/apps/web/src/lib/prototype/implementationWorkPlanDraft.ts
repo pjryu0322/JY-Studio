@@ -147,11 +147,58 @@ export function buildImplementationScopeFromReferences(
   ];
 }
 
-const DEFAULT_IMPLEMENTATION_APPROACH = [
-  "초기 구현은 DB 없이 Mock Data / Local State 기반으로 진행합니다.",
-  "Code Agent WIP 작업 전 환경설정 확인이 필요합니다.",
-  "WIP 작업 결과는 AI개발자가 검토한 뒤 SCM 공식 반영 단계로 넘깁니다.",
-] as const;
+export type ImplementationDbStrategy = "mock_first" | "db_candidate" | "unknown";
+
+export function inferImplementationDbStrategy(
+  seed?: ImplementationSeedV1 | null,
+): ImplementationDbStrategy {
+  const entities = seed?.dataModelSeed?.entities;
+  if (Array.isArray(entities) && entities.length > 0) return "db_candidate";
+  return seed ? "mock_first" : "unknown";
+}
+
+export function buildImplementationApproach(input: {
+  readonly envOk: boolean;
+  readonly seed?: ImplementationSeedV1 | null;
+  readonly dbStrategy?: ImplementationDbStrategy;
+  readonly codeAgentProvider?: "cursor" | "unknown";
+  readonly scmPolicy?: "manual_review_then_scm" | "unknown";
+}): readonly string[] {
+  const lines: string[] = [];
+
+  const dbStrategy = input.dbStrategy ?? inferImplementationDbStrategy(input.seed);
+  if (dbStrategy === "db_candidate") {
+    lines.push(
+      "DB 연동이 필요한 항목은 별도 작업으로 분리하고, 우선 프로토타입 검증 가능한 범위를 구현합니다.",
+    );
+  } else {
+    lines.push(
+      "DB 연동 필요성 검토 전까지는 Mock Data / Local State 기반으로 구현 범위를 구성합니다.",
+    );
+  }
+
+  const provider = input.codeAgentProvider ?? "cursor";
+  if (input.envOk) {
+    lines.push(
+      provider === "cursor"
+        ? "GitHub·Cursor 연동이 정상 확인되어 Code Agent WIP 작업을 진행할 수 있습니다."
+        : "Code Agent 연동이 정상 확인되어 WIP 작업을 진행할 수 있습니다.",
+    );
+  } else {
+    lines.push(
+      "Code Agent WIP 작업 전 GitHub 저장소, GitHub Token, Cursor API 설정 확인이 필요합니다.",
+    );
+  }
+
+  const scmPolicy = input.scmPolicy ?? "manual_review_then_scm";
+  if (scmPolicy === "manual_review_then_scm") {
+    lines.push("WIP 작업 결과는 AI개발자 검토 후 SCM 공식 반영 단계로 넘깁니다.");
+  } else {
+    lines.push("WIP 작업 결과는 검토 결과에 따라 SCM 반영 후보로 관리합니다.");
+  }
+
+  return lines;
+}
 
 export function buildImplementationWorkPlanDraftFromSeed(input: {
   readonly projectId: string;
@@ -165,7 +212,9 @@ export function buildImplementationWorkPlanDraftFromSeed(input: {
   const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
   const blockers: string[] = [];
   if (!input.seed.readiness.ready) blockers.push("Implementation Seed 준비도 미충족");
-  if (!input.designOk) blockers.push("기획 산출물·설계 readiness 미완료");
+  if (!input.designOk && !input.seed.readiness.ready) {
+    blockers.push("기획 산출물·설계 readiness 미완료");
+  }
   if (!input.envOk) blockers.push("실행 환경(Git/GitHub/Code Agent) 미완료");
 
   return {
@@ -177,7 +226,13 @@ export function buildImplementationWorkPlanDraftFromSeed(input: {
     referenceArtifacts,
     referenceArtifactIds: referenceArtifacts.map((r) => r.id),
     implementationScope: buildImplementationScopeFromSeed(input.seed),
-    implementationApproach: [...DEFAULT_IMPLEMENTATION_APPROACH],
+    implementationApproach: buildImplementationApproach({
+      seed: input.seed,
+      envOk: input.envOk,
+      dbStrategy: inferImplementationDbStrategy(input.seed),
+      codeAgentProvider: "cursor",
+      scmPolicy: "manual_review_then_scm",
+    }),
     assumptions: [...input.seed.assumptions],
     blockers,
     status: "draft",
@@ -223,7 +278,13 @@ export function buildImplementationWorkPlanDraft(input: {
     source: "planning_artifacts",
     referenceArtifacts,
     implementationScope: buildImplementationScopeFromReferences(referenceArtifacts),
-    implementationApproach: [...DEFAULT_IMPLEMENTATION_APPROACH],
+    implementationApproach: buildImplementationApproach({
+      envOk: input.envOk,
+      seed: input.seed ?? null,
+      dbStrategy: inferImplementationDbStrategy(input.seed ?? null),
+      codeAgentProvider: "cursor",
+      scmPolicy: "manual_review_then_scm",
+    }),
     assumptions: ["초기 단계는 프로토타입 검토·동선 검증 우선"],
     blockers,
     status: "draft",
