@@ -177,11 +177,15 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
     intro: input.autoConfirmedRequired
       ? [
           "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했고,",
-          "실행 환경도 준비되어 구현 작업안 초안을 생성할 수 있습니다.",
+          "실행 환경도 준비되었습니다.",
+          "",
+          "구현단계로 이동해 구현 작업안 초안을 생성할 수 있습니다.",
         ].join("\n")
       : [
           "AI팀이 기획 산출물과 구현 준비정보를 정리했고,",
-          "실행 환경도 준비되어 구현 작업안 초안을 생성할 수 있습니다.",
+          "실행 환경도 준비되었습니다.",
+          "",
+          "구현단계로 이동해 구현 작업안 초안을 생성할 수 있습니다.",
         ].join("\n"),
     prepInfoSectionLabel: "구현 준비정보:",
   };

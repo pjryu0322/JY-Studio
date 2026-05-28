@@ -167,11 +167,11 @@ describe("quickDesignConfirmArtifacts", () => {
       expect(message.meta?.interviewSuggestions).toEqual(
         expect.arrayContaining([
           "구현단계로 이동",
-          "구현 작업안 초안 생성",
           "산출물 보기",
           "환경설정 열기",
         ]),
       );
+      expect(message.meta?.interviewSuggestions).not.toContain("구현 작업안 초안 생성");
       expect(message.meta?.interviewSuggestions).not.toContain("기획정보 보완");
     } else if (prep.postConfirmState.seedReady) {
       expect(message.meta?.interviewSuggestions).not.toContain("구현 작업안 초안 생성");

@@ -43,7 +43,7 @@ describe("quickDesignPostConfirmChipLabelsForState", () => {
     expect(chips).toContain("Seed 후보 확인/확정");
   });
 
-  it("shows work plan draft CTA only when seed, design, env, and artifacts are ready", () => {
+  it("shows implementation navigation (not work plan generation) when seed, design, env, and artifacts are ready", () => {
     const chips = quickDesignPostConfirmChipLabelsForState({
       seedReady: true,
       designOk: true,
@@ -51,8 +51,11 @@ describe("quickDesignPostConfirmChipLabelsForState", () => {
       hasReferenceArtifacts: true,
     });
 
-    expect(chips).toContain("구현 작업안 초안 생성");
-    expect(chips[0]).toBe("구현 작업안 초안 생성");
+    expect(chips).toContain("구현단계로 이동");
+    expect(chips).toContain("산출물 보기");
+    expect(chips).toContain("환경설정 열기");
+    expect(chips).not.toContain("구현 작업안 초안 생성");
+    expect(chips[0]).toBe("구현단계로 이동");
   });
 });
 
@@ -73,7 +76,7 @@ describe("resolveQuickDesignImplementationReadyCopy", () => {
       autoConfirmedRequired: true,
     });
     expect(copy.heading).toBe("구현 작업 준비가 완료되었습니다.");
-    expect(copy.intro).toContain("구현 작업안 초안을 생성할 수 있습니다");
+    expect(copy.intro).toContain("구현단계로 이동해 구현 작업안 초안을 생성할 수 있습니다");
   });
 });
 
