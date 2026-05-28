@@ -162,20 +162,29 @@ describe("evaluateImplementationStageActionGate", () => {
   describe("REVIEW_DB_INTEGRATION", () => {
     it("allows when task plan exists", () => {
       const state = baseState({
-        parsedRequirementsState: { implementationTaskPlanV1: makeTaskPlan("2026-01-02T00:00:00.000Z") },
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskPlanV1: makeTaskPlan("2026-01-02T00:00:00.000Z"),
+        },
       });
       expect(evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state).ok).toBe(true);
     });
 
     it("allows when work plan draft exists", () => {
       const state = baseState({
-        parsedRequirementsState: { implementationWorkPlanDraftV1: makeDraft("draft") },
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationWorkPlanDraftV1: makeDraft("draft"),
+        },
       });
       expect(evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state).ok).toBe(true);
     });
 
-    it("blocks when draft and task plan are missing", () => {
-      expect(evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", baseState()).ok).toBe(false);
+    it("allows when seed/env are ready even if draft and task plan are missing (auto-progress)", () => {
+      const state = baseState({
+        parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
+      });
+      expect(evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state).ok).toBe(true);
     });
   });
 
@@ -183,6 +192,7 @@ describe("evaluateImplementationStageActionGate", () => {
     it("allows when dbDecisionRequested is true", () => {
       const state = baseState({
         parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
           implementationDbStrategyV1: { ...defaultImplementationDbStrategy("2026-01-01T00:00:00.000Z"), dbDecisionRequested: true },
         },
       });
@@ -197,13 +207,19 @@ describe("evaluateImplementationStageActionGate", () => {
   describe("CONFIRM_MOCK_IMPLEMENTATION", () => {
     it("allows when task plan exists", () => {
       const state = baseState({
-        parsedRequirementsState: { implementationTaskPlanV1: makeTaskPlan("2026-01-02T00:00:00.000Z") },
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskPlanV1: makeTaskPlan("2026-01-02T00:00:00.000Z"),
+        },
       });
       expect(evaluateImplementationStageActionGate("CONFIRM_MOCK_IMPLEMENTATION", state).ok).toBe(true);
     });
 
-    it("blocks when draft and task plan are missing", () => {
-      expect(evaluateImplementationStageActionGate("CONFIRM_MOCK_IMPLEMENTATION", baseState()).ok).toBe(false);
+    it("allows when seed/env are ready even if draft and task plan are missing (auto-progress)", () => {
+      const state = baseState({
+        parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
+      });
+      expect(evaluateImplementationStageActionGate("CONFIRM_MOCK_IMPLEMENTATION", state).ok).toBe(true);
     });
   });
 
@@ -284,7 +300,10 @@ describe("stageActionExecutionResultFromGate", () => {
 
   it("returns null when gate passes", () => {
     const state = baseState({
-      parsedRequirementsState: { implementationWorkPlanDraftV1: makeDraft("d") },
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed("confirmed", true),
+        implementationWorkPlanDraftV1: makeDraft("d"),
+      },
     });
     const gate = evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state);
     expect(stageActionExecutionResultFromGate(gate)).toBeNull();

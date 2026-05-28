@@ -254,32 +254,34 @@ export function evaluateImplementationStageActionGate(
     case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
       return canConfirmImplementationWorkPlanFromEffectiveState(state);
     case "REVIEW_DB_INTEGRATION": {
-      if (
-        state.implementationTaskPlanV1 ||
-        hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)
-      ) {
-        return { ok: true };
+      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
+      if (!readiness.ok) {
+        if (readiness.reason === "seed_candidate") {
+          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
+        }
+        return { ok: false, message: readiness.message };
       }
-      return { ok: false, message: "먼저 [구현 작업안 초안 생성]을 진행해 주세요." };
+      return { ok: true };
     }
     case "GENERATE_DATA_MODEL_DRAFT": {
-      const dbStrategy = state.implementationDbStrategyV1;
-      if (state.implementationTaskPlanV1 || dbStrategy?.dbDecisionRequested) {
-        return { ok: true };
+      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
+      if (!readiness.ok) {
+        if (readiness.reason === "seed_candidate") {
+          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
+        }
+        return { ok: false, message: readiness.message };
       }
-      return {
-        ok: false,
-        message: "DB 연동 필요성 검토 또는 구현 작업안 확정 후 진행해 주세요.",
-      };
+      return { ok: true };
     }
     case "CONFIRM_MOCK_IMPLEMENTATION": {
-      if (
-        state.implementationTaskPlanV1 ||
-        hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)
-      ) {
-        return { ok: true };
+      const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
+      if (!readiness.ok) {
+        if (readiness.reason === "seed_candidate") {
+          return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
+        }
+        return { ok: false, message: readiness.message };
       }
-      return { ok: false, message: "먼저 [구현 작업안 초안 생성]을 진행해 주세요." };
+      return { ok: true };
     }
     case "OPEN_ENV_SETTINGS":
     case "SHOW_ARTIFACTS":

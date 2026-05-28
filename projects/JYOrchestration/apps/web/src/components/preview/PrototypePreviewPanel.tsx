@@ -55,6 +55,7 @@ import {
   buildDbIntegrationReviewResult,
   buildMockImplementationModeResult,
 } from "@/lib/prototype/prototypeExecutionDbStrategyActions";
+import { ensureImplementationTaskPlan, ensureMockImplementationReady } from "@/lib/prototype/implementationAutoProgress";
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
@@ -1754,10 +1755,50 @@ export function PrototypePreviewPanel({
   );
 
   const reviewDbIntegrationNeed = useCallback((): ImplementationStageActionRunResult => {
+    let slots = parsedRequirementsState.implementationSlotsV1;
+    if (!slots) {
+      const ensured = ensureImplementationTaskPlan({
+        requirementsStateJson,
+        effectiveState: effectiveImplementationState,
+        ensureDraftInput: {
+          requirementsStateJson,
+          projectId: projectId.trim(),
+          projectArtifacts: executionArtifacts.projectArtifacts,
+          orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+          slotDefinitions: planningSlotDefinitions,
+          envOk,
+          promptTimeline: parsedRequirementsState.promptTimeline,
+        },
+        confirmTaskPlanInput: {
+          projectId: projectId.trim(),
+          requirementsStateJson,
+          projectArtifacts: executionArtifacts.projectArtifacts,
+          artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+          featureDraftTitles: parsedRequirementsState.featureDraftTitles,
+          envOk,
+          designOk: true,
+          promptTimeline: parsedRequirementsState.promptTimeline,
+        },
+      });
+
+      if (!ensured.ok || !ensured.patch) {
+        const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
+        showToast(message);
+        return { outcome: "blocked", message };
+      }
+
+      const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      applyImplementationOrchestrationResult({
+        messages: ensured.messages ?? (current.messages ?? []),
+        orchestrationPatch: ensured.patch,
+      });
+      slots = ensured.patch.implementationSlotsV1 as typeof slots;
+    }
+
     return applyDbStrategyResult(
       buildDbIntegrationReviewResult({
         requirementsStateJson,
-        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        implementationSlotsV1: slots,
         implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
         implementationTaskPlanV1: effectiveImplementationState.implementationTaskPlanV1,
         projectArtifacts: executionArtifacts.projectArtifacts,
@@ -1767,11 +1808,20 @@ export function PrototypePreviewPanel({
   }, [
     applyDbStrategyResult,
     requirementsStateJson,
+    projectId,
     parsedRequirementsState.implementationSlotsV1,
     parsedRequirementsState.implementationDbStrategyV1,
     effectiveImplementationState.implementationTaskPlanV1,
+    effectiveImplementationState,
     parsedRequirementsState.promptTimeline,
     executionArtifacts.projectArtifacts,
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.artifactOrchestrationV1,
+    parsedRequirementsState.featureDraftTitles,
+    planningSlotDefinitions,
+    envOk,
+    applyImplementationOrchestrationResult,
+    showToast,
   ]);
 
   const generateDataModelDraft = useCallback((): ImplementationStageActionRunResult => {
@@ -1792,10 +1842,55 @@ export function PrototypePreviewPanel({
   ]);
 
   const confirmMockImplementationMode = useCallback((): ImplementationStageActionRunResult => {
+    let slots = parsedRequirementsState.implementationSlotsV1;
+    if (!slots) {
+      const ensured = ensureMockImplementationReady({
+        requirementsStateJson,
+        effectiveState: effectiveImplementationState,
+        ensureTaskPlanInput: {
+          requirementsStateJson,
+          effectiveState: effectiveImplementationState,
+          ensureDraftInput: {
+            requirementsStateJson,
+            projectId: projectId.trim(),
+            projectArtifacts: executionArtifacts.projectArtifacts,
+            orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+            slotDefinitions: planningSlotDefinitions,
+            envOk,
+            promptTimeline: parsedRequirementsState.promptTimeline,
+          },
+          confirmTaskPlanInput: {
+            projectId: projectId.trim(),
+            requirementsStateJson,
+            projectArtifacts: executionArtifacts.projectArtifacts,
+            artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+            featureDraftTitles: parsedRequirementsState.featureDraftTitles,
+            envOk,
+            designOk: true,
+            promptTimeline: parsedRequirementsState.promptTimeline,
+          },
+        },
+        promptTimeline: parsedRequirementsState.promptTimeline,
+      });
+
+      if (!ensured.ok || !ensured.patch) {
+        const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
+        showToast(message);
+        return { outcome: "blocked", message };
+      }
+
+      const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      applyImplementationOrchestrationResult({
+        messages: ensured.messages ?? (current.messages ?? []),
+        orchestrationPatch: ensured.patch,
+      });
+      slots = ensured.patch.implementationSlotsV1 as typeof slots;
+    }
+
     return applyDbStrategyResult(
       buildMockImplementationModeResult({
         requirementsStateJson,
-        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+        implementationSlotsV1: slots,
         implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
         promptTimeline: parsedRequirementsState.promptTimeline,
       }),
@@ -1803,9 +1898,19 @@ export function PrototypePreviewPanel({
   }, [
     applyDbStrategyResult,
     requirementsStateJson,
+    projectId,
     parsedRequirementsState.implementationSlotsV1,
     parsedRequirementsState.implementationDbStrategyV1,
     parsedRequirementsState.promptTimeline,
+    effectiveImplementationState,
+    executionArtifacts.projectArtifacts,
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.artifactOrchestrationV1,
+    parsedRequirementsState.featureDraftTitles,
+    planningSlotDefinitions,
+    envOk,
+    applyImplementationOrchestrationResult,
+    showToast,
   ]);
 
   const wipChipHandlers = useMemo(

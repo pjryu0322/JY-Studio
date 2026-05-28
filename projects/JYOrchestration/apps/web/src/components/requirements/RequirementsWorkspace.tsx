@@ -2485,6 +2485,24 @@ export function RequirementsWorkspace({
         projectArtifacts: merged.projectArtifacts,
         artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
       });
+
+      const autoDraftResult = buildGenerateImplementationWorkPlanDraftResult({
+        requirementsStateJson: {
+          ...stateJsonRef.current,
+          singleChatOrchestrationV1: prep.orchestration,
+          implementationSeedV1: prep.implementationSeedV1,
+        },
+        projectId: pid,
+        projectArtifacts: merged.projectArtifacts,
+        orchestration: prep.orchestration,
+        slotDefinitions: slotDefsForProgress,
+        implementationSeedV1: prep.implementationSeedV1,
+        envOk,
+        // Seed confirmed/ready in this flow is sufficient; avoid re-blocking on designOk.
+        designOk: true,
+        nowIso,
+      });
+
       const readyMessage = buildQuickDesignImplementationReadyChatMessage({
         artifactIds: artifactBundle.artifactIds,
         artifactTitles: artifactBundle.artifacts.map((a) => a.title),
@@ -2498,6 +2516,12 @@ export function RequirementsWorkspace({
         fastPlanDraftV1: result.fastPlanDraftV1,
         singleChatOrchestrationV1: prep.orchestration,
         implementationSeedV1: prep.implementationSeedV1,
+        ...(stateJsonRef.current.implementationTaskListV1 != null
+          ? {}
+          : { implementationTaskListV1: prep.implementationTaskListV1 }),
+        ...(autoDraftResult.kind === "created"
+          ? { implementationWorkPlanDraftV1: autoDraftResult.draft }
+          : {}),
         projectArtifacts: [...merged.projectArtifacts],
         deliverableAssets: [...merged.deliverableAssets],
         artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
@@ -2507,7 +2531,11 @@ export function RequirementsWorkspace({
         }),
       });
       lastFastPlanArtifactIdRef.current = artifactBundle.primaryArtifactId;
-      await appendServiceFlowWorkshopMessages([readyMessage]);
+      await appendServiceFlowWorkshopMessages(
+        autoDraftResult.kind === "created"
+          ? [...autoDraftResult.messages, readyMessage]
+          : [readyMessage],
+      );
       void persistStateJsonOnly({
         promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
           result.timelineEntry,

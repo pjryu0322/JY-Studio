@@ -404,10 +404,11 @@ export function implementationEntryChipsForState(input: {
     ];
   }
   return [
-    WORK_PLAN_DRAFT_GENERATE_CHIP,
-    "역할별 점검 보기",
-    WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
+    "구현 작업안 확정",
+    "Mock 기반 구현 진행",
+    "DB 연동 필요성 검토",
     "산출물 다시 보기",
+    "환경설정 열기",
   ];
 }
 

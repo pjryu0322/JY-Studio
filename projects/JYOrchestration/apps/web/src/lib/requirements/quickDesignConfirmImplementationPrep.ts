@@ -19,6 +19,12 @@ import {
   type QuickDesignPostConfirmState,
 } from "@/lib/requirements/quickDesignPostConfirmState";
 import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
+import {
+  buildImplementationTaskListFromSeed,
+  isPlanningReadyForImplementationExecution,
+  summarizeImplementationTaskRoles,
+  type ImplementationTaskListV1,
+} from "@/lib/requirements/implementationTaskList";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -30,6 +36,7 @@ import type {
 export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
   readonly implementationSeedV1: ImplementationSeedV1;
+  readonly implementationTaskListV1: ImplementationTaskListV1 | null;
   readonly readiness: ImplementationSeedReadiness;
   readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
   readonly autoCandidateGenerated: boolean;
@@ -40,6 +47,56 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly postConfirmState: QuickDesignPostConfirmState;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
 }>;
+
+function buildImplementationTaskListAutoCreatedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  const roles = input.taskList.roleSummary;
+  return {
+    stage: "requirements",
+    stageGroup: "기획",
+    workspaceScreenKey: "requirements",
+    action: "quick_design_confirmed_implementation_task_list_auto_created",
+    source: "system",
+    responseText: [
+      "type=implementation_task_list_auto_created",
+      "mode=planning",
+      "source=quick_design_confirm",
+      `taskCount=${input.taskList.tasks.length}`,
+      `developerTasks=${roles.developer}`,
+      `designerTasks=${roles.designer}`,
+      `reviewerTasks=${roles.reviewer}`,
+      `securityTasks=${roles.security}`,
+      `scmTasks=${roles.scm}`,
+    ].join(" "),
+    createdAt: input.nowIso,
+    orchestrationTraceGroup: "planning_orchestration",
+  };
+}
+
+function buildPlanningReadyForImplementationExecutionTimelineEntry(input: {
+  readonly projectId: string;
+  readonly ok: boolean;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  return {
+    stage: "requirements",
+    stageGroup: "기획",
+    workspaceScreenKey: "requirements",
+    action: "quick_design_confirmed_planning_ready_for_implementation_execution",
+    source: "system",
+    responseText: [
+      "type=planning_ready_for_implementation_execution",
+      "mode=planning",
+      "source=quick_design_confirm",
+      `ok=${input.ok}`,
+    ].join(" "),
+    createdAt: input.nowIso,
+    orchestrationTraceGroup: "planning_orchestration",
+  };
+}
 
 function buildQuickDesignSeedAutoBuiltTimelineEntry(input: {
   readonly projectId: string;
@@ -225,6 +282,13 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   });
 
   const prepComplete = readiness.ready && lifecycleStatus === "confirmed";
+  const implementationTaskListV1 = prepComplete
+    ? buildImplementationTaskListFromSeed({
+        projectId: input.projectId,
+        seed: implementationSeedV1,
+        nowIso: now,
+      })
+    : null;
   const postConfirmState = evaluateQuickDesignPostConfirmState({
     readiness,
     prepComplete,
@@ -269,10 +333,33 @@ export function runQuickDesignConfirmImplementationPrep(input: {
       }),
     );
   }
+  if (implementationTaskListV1?.tasks?.length) {
+    timelineEntries.push(
+      buildImplementationTaskListAutoCreatedTimelineEntry({
+        projectId: input.projectId,
+        taskList: {
+          ...implementationTaskListV1,
+          roleSummary: summarizeImplementationTaskRoles(implementationTaskListV1.tasks),
+        },
+        nowIso: now,
+      }),
+    );
+    timelineEntries.push(
+      buildPlanningReadyForImplementationExecutionTimelineEntry({
+        projectId: input.projectId,
+        ok: isPlanningReadyForImplementationExecution({
+          implementationSeedV1,
+          implementationTaskListV1,
+        }),
+        nowIso: now,
+      }),
+    );
+  }
 
   return {
     orchestration,
     implementationSeedV1,
+    implementationTaskListV1,
     readiness,
     lifecycleStatus,
     autoCandidateGenerated,

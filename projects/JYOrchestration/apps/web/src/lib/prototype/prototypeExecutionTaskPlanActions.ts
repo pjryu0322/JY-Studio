@@ -124,7 +124,7 @@ export function buildConfirmImplementationTaskPlanResult(
   if (!canConfirmImplementationWorkPlanDraft(input.implementationWorkPlanDraftV1)) {
     return {
       kind: "blocked",
-      message: "먼저 [구현 작업안 초안 생성]으로 구현 범위 초안을 만든 뒤 [구현 작업안 확정]을 진행해 주세요.",
+      message: "구현 작업안 초안이 없습니다. 구현 준비정보를 확인하거나 작업안 초안을 먼저 생성해 주세요.",
     };
   }
   const confirmedDraft = markImplementationWorkPlanDraftConfirmed(input.implementationWorkPlanDraftV1!);
@@ -199,7 +199,7 @@ export function buildPrepareImplementationExecutionToast(
   plan: ImplementationTaskPlanV1 | null | undefined,
 ): string | null {
   if (!plan?.items?.length) {
-    return "먼저 [구현 작업안 초안 생성] 후 [구현 작업안 확정]으로 task plan을 생성해 주세요.";
+    return "구현 작업안 확정이 필요합니다. 구현 범위 초안을 만든 뒤 작업안을 확정해 주세요.";
   }
   const ready = plan.items.filter((i) => i.status === "ready").length;
   return `구현 실행 준비: task ${plan.items.length}개 중 ready ${ready}개. 환경·설계가 완료되면 [구현 실행] 또는 [코드 에이전트 WIP 작업 요청]을 진행할 수 있습니다.`;

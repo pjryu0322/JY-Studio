@@ -155,7 +155,7 @@ export function canConfirmImplementationWorkPlanFromEffectiveState(
   if (!hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)) {
     return {
       ok: false,
-      message: "먼저 [구현 작업안 초안 생성]을 진행해 주세요.",
+      message: "구현 작업안 초안이 없어 자동으로 생성할 수 없습니다. 구현 준비정보를 확인하거나 [구현 작업안 초안 생성]으로 복구해 주세요.",
     };
   }
   if (!state.designOk) {

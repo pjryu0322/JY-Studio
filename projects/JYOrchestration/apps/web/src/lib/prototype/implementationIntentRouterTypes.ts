@@ -6,6 +6,10 @@ import type {
 
 export type ImplementationActionId =
   | "CREATE_WORK_PLAN"
+  | "CONFIRM_WORK_PLAN"
+  | "CONFIRM_MOCK_IMPLEMENTATION"
+  | "REVIEW_DB_INTEGRATION"
+  | "REQUEST_CODE_AGENT_WIP"
   | "OPEN_PLANNER_PROMPT"
   | "SHOW_SCM_CHECK"
   | "SHOW_ENV_CHECK"
@@ -20,6 +24,10 @@ export type ImplementationActionId =
 
 export const IMPLEMENTATION_ROUTER_ACTION_IDS: readonly ImplementationActionId[] = [
   "CREATE_WORK_PLAN",
+  "CONFIRM_WORK_PLAN",
+  "CONFIRM_MOCK_IMPLEMENTATION",
+  "REVIEW_DB_INTEGRATION",
+  "REQUEST_CODE_AGENT_WIP",
   "OPEN_PLANNER_PROMPT",
   "SHOW_SCM_CHECK",
   "SHOW_ENV_CHECK",

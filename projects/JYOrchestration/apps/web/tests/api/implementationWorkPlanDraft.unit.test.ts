@@ -127,16 +127,17 @@ describe("implementation entry CTA", () => {
     expect(new Set(chips).size).toBe(chips.length);
   });
 
-  it("shows draft generation CTA when seed and env are ready", () => {
+  it("shows confirm/mock/DB CTAs when seed and env are ready", () => {
     const chips = implementationEntryChipsForState({
       seedReady: true,
       envOk: true,
       designOk: true,
       hasReferenceArtifacts: true,
     });
-    expect(chips).toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
-    expect(chips).not.toContain("구현 작업안 확정");
-    expect(chips).not.toContain("구현 범위 수정");
+    expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
+    expect(chips).toContain("구현 작업안 확정");
+    expect(chips).toContain("Mock 기반 구현 진행");
+    expect(chips).toContain("DB 연동 필요성 검토");
   });
 
   it("hides draft generation CTA when seed is not ready", () => {

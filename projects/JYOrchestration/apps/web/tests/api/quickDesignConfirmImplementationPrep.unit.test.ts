@@ -141,6 +141,12 @@ describe("quickDesignConfirmImplementationPrep", () => {
     expect(prep.lifecycleStatus).toBe("confirmed");
     expect(prep.prepComplete).toBe(true);
     expect(prep.readiness.ready).toBe(true);
+    expect(prep.implementationTaskListV1).toBeTruthy();
+    expect(prep.implementationTaskListV1?.tasks?.length ?? 0).toBeGreaterThan(0);
+    expect(prep.implementationTaskListV1?.roleSummary.developer ?? 0).toBeGreaterThan(0);
+    expect(prep.implementationTaskListV1?.roleSummary.reviewer ?? 0).toBeGreaterThan(0);
+    expect(prep.implementationTaskListV1?.roleSummary.security ?? 0).toBeGreaterThan(0);
+    expect(prep.implementationTaskListV1?.roleSummary.scm ?? 0).toBeGreaterThan(0);
     expect(prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_seed_auto_built")).toBe(
       true,
     );
@@ -149,6 +155,14 @@ describe("quickDesignConfirmImplementationPrep", () => {
     ).toBe(true);
     expect(
       prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_readiness_evaluated"),
+    ).toBe(true);
+    expect(
+      prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_task_list_auto_created"),
+    ).toBe(true);
+    expect(
+      prep.timelineEntries.some(
+        (e) => e.action === "quick_design_confirmed_planning_ready_for_implementation_execution",
+      ),
     ).toBe(true);
   });
 

@@ -202,6 +202,14 @@ export function mapImplementationRouterActionToStageAction(
   switch (actionId) {
     case "CREATE_WORK_PLAN":
       return "GENERATE_IMPLEMENTATION_WORK_PLAN";
+    case "CONFIRM_WORK_PLAN":
+      return "CONFIRM_IMPLEMENTATION_WORK_PLAN";
+    case "CONFIRM_MOCK_IMPLEMENTATION":
+      return "CONFIRM_MOCK_IMPLEMENTATION";
+    case "REVIEW_DB_INTEGRATION":
+      return "REVIEW_DB_INTEGRATION";
+    case "REQUEST_CODE_AGENT_WIP":
+      return "REQUEST_CODE_AGENT_WIP";
     case "SHOW_SCM_CHECK":
       return "SHOW_SCM_CHECK";
     case "SHOW_ENV_CHECK":

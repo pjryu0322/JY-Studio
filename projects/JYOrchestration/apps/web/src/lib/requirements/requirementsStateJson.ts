@@ -29,6 +29,8 @@ import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationD
 import { parseImplementationDbStrategyV1 } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
@@ -550,6 +552,8 @@ export type RequirementsStateJson = {
   implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
   /** 제품화 수준 구현 Seed — 기획 슬롯·산출물 정규화 */
   implementationSeedV1?: ImplementationSeedV1 | null;
+  /** 구현 단계 실행 단위 작업목록(Task List) — Seed 기반으로 생성 */
+  implementationTaskListV1?: ImplementationTaskListV1 | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
@@ -968,6 +972,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationSeedV1 = parseImplementationSeedV1(
     "implementationSeedV1" in o ? o.implementationSeedV1 : undefined,
   );
+  const implementationTaskListV1 = parseImplementationTaskListV1(
+    "implementationTaskListV1" in o ? o.implementationTaskListV1 : undefined,
+  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1115,6 +1122,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationSlotsV1 !== undefined ? { implementationSlotsV1 } : {}),
     ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
     ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
+    ...(implementationTaskListV1 !== undefined ? { implementationTaskListV1 } : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(implementationUserFeedbackPatchesV1 !== undefined
       ? { implementationUserFeedbackPatchesV1 }
