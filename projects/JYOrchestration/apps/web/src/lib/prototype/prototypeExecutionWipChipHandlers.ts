@@ -13,10 +13,11 @@ import {
 } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
-  markDeveloperTasksFailedForWip,
   markDeveloperTasksInProgressForWip,
+  syncDeveloperTaskExecutionFromCodeAgentWip,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
+import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { PrototypeExecutionChipHandlers } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
@@ -32,6 +33,7 @@ export type WipChipHandlerDeps = Readonly<{
   readonly parsedState: Pick<
     RequirementsStateJson,
     | "implementationTaskPlanV1"
+    | "implementationTaskListV1"
     | "cursorWorkItemsV1"
     | "codeAgentWipExecutionV1"
     | "implementationTaskExecutionStateV1"
@@ -74,6 +76,23 @@ function persistWipResult(
 
 function appendBlockedNotice(deps: WipChipHandlerDeps, title: string, missing: readonly string[]): void {
   deps.appendNotice([title, "", ...missing.map((m) => `- ${m}`)].join("\n"));
+}
+
+function resolveExecutionStateAfterWipChange(
+  deps: WipChipHandlerDeps,
+  wip: NonNullable<WipChipHandlerDeps["parsedState"]["codeAgentWipExecutionV1"]>,
+): ImplementationTaskExecutionStateV1 | null | undefined {
+  const workItems = deps.parsedState.cursorWorkItemsV1;
+  if (!workItems?.length) return deps.parsedState.implementationTaskExecutionStateV1;
+  return (
+    syncDeveloperTaskExecutionFromCodeAgentWip({
+      state: deps.parsedState.implementationTaskExecutionStateV1,
+      taskList: deps.parsedState.implementationTaskListV1,
+      cursorWorkItems: workItems,
+      codeAgentWipExecutionV1: wip,
+      projectId: deps.projectId,
+    }) ?? undefined
+  );
 }
 
 export function executeCodeAgentWipWorkRequest(
@@ -149,7 +168,12 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       const plan = deps.parsedState.implementationTaskPlanV1;
       const workItems = deps.parsedState.cursorWorkItemsV1;
       if (!plan || !workItems?.length) {
-        deps.showToast("먼저 [구현 작업안 확정]을 완료해 주세요.");
+        const taskListReady = hasImplementationTaskListReady(deps.parsedState.implementationTaskListV1);
+        deps.showToast(
+          taskListReady
+            ? "구현 작업목록 기준 Code Agent WIP 후보를 먼저 준비해 주세요."
+            : "구현 작업목록 또는 작업 계획을 먼저 준비해 주세요.",
+        );
         return;
       }
       const result = executeCodeAgentWipWorkRequest(deps, {
@@ -217,12 +241,24 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         appendBlockedNotice(deps, "구현 결과 승인 조건이 충족되지 않았습니다.", result.missing);
         return;
       }
-      persistWipResult(deps, result);
+      const approvedWip = result.orchestrationPatch.codeAgentWipExecutionV1;
+      const executionState = resolveExecutionStateAfterWipChange(deps, approvedWip);
+      persistWipResult(deps, {
+        ...result,
+        executionState: executionState ?? undefined,
+      });
     },
     discardWipWork: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) return;
-      deps.persistOrchestration(undefined, { codeAgentWipExecutionV1: { ...wip, status: "failed" } });
+      const failedWip = { ...wip, status: "failed" as const };
+      const executionState = resolveExecutionStateAfterWipChange(deps, failedWip);
+      deps.persistOrchestration(undefined, {
+        codeAgentWipExecutionV1: failedWip,
+        ...(executionState !== undefined
+          ? { implementationTaskExecutionStateV1: executionState }
+          : {}),
+      });
       deps.showToast("WIP 작업을 폐기했습니다.");
     },
     requestScmOfficialCommit: () => {

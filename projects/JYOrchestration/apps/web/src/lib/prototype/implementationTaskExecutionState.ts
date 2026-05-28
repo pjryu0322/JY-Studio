@@ -1,3 +1,4 @@
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type {
   ImplementationTaskListV1,
@@ -16,6 +17,35 @@ export type ImplementationTaskExecutionStatus =
   | "skipped";
 
 export type ImplementationTaskExecutionRole = ImplementationTaskOwnerRole;
+
+const IMPLEMENTATION_TASK_EXECUTION_ROLES = new Set<ImplementationTaskExecutionRole>([
+  "developer",
+  "designer",
+  "reviewer",
+  "security",
+  "scm",
+]);
+
+const IMPLEMENTATION_TASK_EXECUTION_STATUSES = new Set<ImplementationTaskExecutionStatus>([
+  "ready",
+  "queued",
+  "in_progress",
+  "done",
+  "failed",
+  "skipped",
+]);
+
+export function isImplementationTaskExecutionRole(
+  value: string,
+): value is ImplementationTaskExecutionRole {
+  return IMPLEMENTATION_TASK_EXECUTION_ROLES.has(value as ImplementationTaskExecutionRole);
+}
+
+export function isImplementationTaskExecutionStatus(
+  value: string,
+): value is ImplementationTaskExecutionStatus {
+  return IMPLEMENTATION_TASK_EXECUTION_STATUSES.has(value as ImplementationTaskExecutionStatus);
+}
 
 export type ImplementationTaskExecutionItemV1 = Readonly<{
   readonly taskId: string;
@@ -110,9 +140,12 @@ export function parseImplementationTaskExecutionStateV1(
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
     const taskId = String(r.taskId ?? "").trim();
-    const ownerRole = String(r.ownerRole ?? "").trim() as ImplementationTaskExecutionRole;
-    const status = String(r.status ?? "").trim() as ImplementationTaskExecutionStatus;
-    if (!taskId || !ownerRole || !status) continue;
+    const ownerRoleRaw = String(r.ownerRole ?? "").trim();
+    const statusRaw = String(r.status ?? "").trim();
+    if (!taskId || !isImplementationTaskExecutionRole(ownerRoleRaw)) continue;
+    if (!isImplementationTaskExecutionStatus(statusRaw)) continue;
+    const ownerRole = ownerRoleRaw;
+    const status = statusRaw;
     items.push({
       taskId,
       ownerRole,
@@ -238,6 +271,31 @@ export function markDeveloperTasksInProgressForWip(input: {
   };
 }
 
+export function markDeveloperTasksDoneForWip(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly cursorWorkItems: readonly CursorWorkItem[];
+  readonly nowIso?: string;
+  readonly resultSummary?: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const summary = input.resultSummary?.trim() || "Code Agent WIP 작업 완료";
+  const taskIds = new Set(input.cursorWorkItems.map((w) => w.taskId).filter(Boolean));
+  const patchByTaskId = new Map<string, Partial<ImplementationTaskExecutionItemV1>>();
+  for (const taskId of taskIds) {
+    patchByTaskId.set(taskId, {
+      status: "done",
+      resultSummary: summary,
+    });
+  }
+  const items = patchExecutionItems(input.state.items, patchByTaskId, now);
+  return {
+    ...input.state,
+    updatedAt: now,
+    items,
+    summary: summarizeImplementationTaskExecutionItems(items),
+  };
+}
+
 export function markDeveloperTasksFailedForWip(input: {
   readonly state: ImplementationTaskExecutionStateV1;
   readonly cursorWorkItems: readonly CursorWorkItem[];
@@ -260,6 +318,80 @@ export function markDeveloperTasksFailedForWip(input: {
     items,
     summary: summarizeImplementationTaskExecutionItems(items),
   };
+}
+
+const WIP_ACTIVE_STATUSES = new Set<CodeAgentWipExecutionV1["status"]>([
+  "requested",
+  "drafting",
+  "refactoring",
+  "wip_committed",
+  "developer_reviewing",
+  "refactor_requested",
+  "wip_updated",
+]);
+
+const WIP_DONE_STATUSES = new Set<CodeAgentWipExecutionV1["status"]>([
+  "developer_approved",
+  "scm_commit_pending",
+]);
+
+export function syncDeveloperTaskExecutionFromCodeAgentWip(input: {
+  readonly state: ImplementationTaskExecutionStateV1 | null | undefined;
+  readonly taskList: ImplementationTaskListV1 | null | undefined;
+  readonly cursorWorkItems: readonly CursorWorkItem[];
+  readonly codeAgentWipExecutionV1: CodeAgentWipExecutionV1 | null | undefined;
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): ImplementationTaskExecutionStateV1 | null {
+  if (!input.state && !input.taskList?.tasks?.length) return null;
+  if (!input.codeAgentWipExecutionV1) return input.state ?? null;
+  if (!input.cursorWorkItems.length) return input.state ?? null;
+
+  const now = input.nowIso ?? new Date().toISOString();
+  const projectId = input.projectId.trim();
+  const taskList = input.taskList;
+  const wipStatus = input.codeAgentWipExecutionV1.status;
+
+  let base =
+    input.state ??
+    (taskList
+      ? buildInitialImplementationTaskExecutionStateFromTaskList({
+          projectId,
+          taskList,
+          nowIso: now,
+        })
+      : null);
+  if (!base) return null;
+
+  if (wipStatus === "failed") {
+    return markDeveloperTasksFailedForWip({
+      state: base,
+      cursorWorkItems: input.cursorWorkItems,
+      nowIso: now,
+      errorMessage: "Code Agent WIP 작업 실패",
+    });
+  }
+
+  if (WIP_ACTIVE_STATUSES.has(wipStatus)) {
+    if (!taskList) return base;
+    return markDeveloperTasksInProgressForWip({
+      state: base,
+      taskList,
+      cursorWorkItems: input.cursorWorkItems,
+      projectId,
+      nowIso: now,
+    });
+  }
+
+  if (WIP_DONE_STATUSES.has(wipStatus)) {
+    return markDeveloperTasksDoneForWip({
+      state: base,
+      cursorWorkItems: input.cursorWorkItems,
+      nowIso: now,
+    });
+  }
+
+  return base;
 }
 
 export function formatImplementationTaskExecutionSummaryLines(

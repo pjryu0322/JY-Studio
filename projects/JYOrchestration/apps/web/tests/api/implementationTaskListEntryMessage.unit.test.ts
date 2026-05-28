@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { vi } from "vitest";
 import {
+  markDeveloperTasksInProgressForWip,
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   buildDeveloperImplementationRequestPrepMessage,
   buildImplementationTaskListEntryMessage,
@@ -187,6 +192,45 @@ describe("implementationTaskListEntryMessage", () => {
     const view = buildImplementationTaskListViewMessage({ taskList, nowIso: NOW });
     expect(view.content).toContain("TASK ID");
     expect(view.content).toContain(taskList.tasks[0]?.taskId ?? "");
+  });
+
+  it("buildImplementationTaskListViewMessage with executionState shows execution summary", () => {
+    const devTask = taskList.tasks.find((t) => t.ownerRole === "developer");
+    const workItems: readonly CursorWorkItem[] = devTask
+      ? [
+          {
+            id: "wi-dev",
+            taskId: devTask.taskId,
+            title: devTask.title,
+            prompt: "p",
+            requiredFilesHint: [],
+            expectedOutput: [],
+            testCommands: [],
+            forbiddenPaths: [],
+            blocked: false,
+            blockers: [],
+            qualityGate: { score: 1, promptReady: true, missing: [] },
+          },
+        ]
+      : [];
+    const executionState = markDeveloperTasksInProgressForWip({
+      state: buildInitialImplementationTaskExecutionStateFromTaskList({
+        projectId: "p1",
+        taskList,
+        nowIso: NOW,
+      }),
+      taskList,
+      cursorWorkItems: workItems,
+      projectId: "p1",
+      nowIso: NOW,
+    });
+    const view = buildImplementationTaskListViewMessage({
+      taskList,
+      executionState,
+      nowIso: NOW,
+    });
+    expect(view.content).toContain("작업 실행 상태");
+    expect(view.content).toContain("진행 중");
   });
 
   it("shows security role queue on 보안 점검", () => {
