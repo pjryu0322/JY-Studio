@@ -69,15 +69,14 @@ import {
   type PendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
-  buildImplementationStageActionExecutionDecision,
   buildImplementationStageActionFocusComposerResult,
   buildImplementationStageActionOpenArtifactsResult,
   buildImplementationStageActionOpenEnvSettingsResult,
   buildImplementationStageActionShowStatusResult,
-  buildStageActionRunCompletionTimelineEntries,
   type ImplementationStageActionExecutionResult,
   type ImplementationStageActionRunResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
+import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -1862,93 +1861,63 @@ export function PrototypePreviewPanel({
     applyImplementationOrchestrationResult,
   ]);
 
-  const executeImplementationStageAction = useCallback(
-    (actionId: ImplementationStageActionId): boolean => {
-      const preExecutionResult = buildImplementationStageActionExecutionDecision(
-        actionId,
-        effectiveImplementationState,
-      );
-      if (preExecutionResult) {
-        applyImplementationStageActionExecutionResult(preExecutionResult);
-        return true;
-      }
-
-      const persistRunTimeline = (runResult: ImplementationStageActionRunResult) => {
-        persistStageActionTimelineEntries(
-          buildStageActionRunCompletionTimelineEntries(actionId, runResult),
-        );
-      };
-
+  const runImplementationStageAction = useCallback(
+    (actionId: ImplementationStageActionId): ImplementationStageActionRunResult => {
       switch (actionId) {
         case "GENERATE_IMPLEMENTATION_WORK_PLAN":
-          persistRunTimeline(generateImplementationWorkPlanDraft());
-          return true;
+          return generateImplementationWorkPlanDraft();
         case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
-          persistRunTimeline(confirmImplementationTaskPlan());
-          return true;
+          return confirmImplementationTaskPlan();
         case "EDIT_IMPLEMENTATION_SCOPE":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionFocusComposerResult(
               "아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.",
             ),
           );
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "REVIEW_DB_INTEGRATION":
-          persistRunTimeline(reviewDbIntegrationNeed());
-          return true;
+          return reviewDbIntegrationNeed();
         case "GENERATE_DATA_MODEL_DRAFT":
-          persistRunTimeline(generateDataModelDraft());
-          return true;
+          return generateDataModelDraft();
         case "CONFIRM_MOCK_IMPLEMENTATION":
-          persistRunTimeline(confirmMockImplementationMode());
-          return true;
+          return confirmMockImplementationMode();
         case "SHOW_ARTIFACTS":
           applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenArtifactsResult());
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "OPEN_ENV_SETTINGS":
           applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenEnvSettingsResult());
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "SHOW_ROLE_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("role"),
           );
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "SHOW_SCM_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("scm"),
           );
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "SHOW_ENV_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("env"),
           );
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         case "REQUEST_CODE_AGENT_WIP": {
           const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!cursorGate.allowed) {
             const message = formatImplementationCursorBlockedNotice(implementationCursorGate);
             executionSingleChat.appendAiNotice(message);
-            persistRunTimeline({ outcome: "blocked", message });
-            return true;
+            return { outcome: "blocked", message };
           }
           wipChipHandlers.requestCodeAgentWipWork();
-          persistRunTimeline({ outcome: "executed" });
-          return true;
+          return { outcome: "executed" };
         }
         default:
-          return false;
+          return { outcome: "blocked", message: "지원하지 않는 구현단계 action입니다." };
       }
     },
     [
-      effectiveImplementationState,
       applyImplementationStageActionExecutionResult,
-      persistStageActionTimelineEntries,
       generateImplementationWorkPlanDraft,
       confirmImplementationTaskPlan,
       reviewDbIntegrationNeed,
@@ -1957,6 +1926,43 @@ export function PrototypePreviewPanel({
       implementationCursorGate,
       executionSingleChat,
       wipChipHandlers,
+    ],
+  );
+
+  const executeImplementationStageAction = useCallback(
+    (actionId: ImplementationStageActionId): boolean => {
+      const pid = projectId.trim();
+      if (!pid) {
+        showToast("프로젝트를 선택해 주세요.");
+        return true;
+      }
+
+      void orchestrateImplementationStageAction({
+        projectId: pid,
+        actionId,
+        source: "cta",
+        effectiveState: effectiveImplementationState,
+        execute: () => runImplementationStageAction(actionId),
+      }).then((run) => {
+        if (run.timelineEntries.length) {
+          persistStageActionTimelineEntries(run.timelineEntries);
+        }
+        const gateBlocked = run.gateResult != null && !run.gateResult.ok;
+        if (gateBlocked && run.message) {
+          showToast(run.message);
+        } else if (run.status === "failed" && run.message) {
+          showToast(run.message);
+        }
+      });
+
+      return true;
+    },
+    [
+      projectId,
+      effectiveImplementationState,
+      runImplementationStageAction,
+      persistStageActionTimelineEntries,
+      showToast,
     ],
   );
 
