@@ -70,13 +70,13 @@ import {
 } from "@/lib/prototype/effectiveImplementationState";
 import {
   buildImplementationStageActionExecutionDecision,
-  buildImplementationStageActionExecutedTimelineEntry,
   buildImplementationStageActionFocusComposerResult,
   buildImplementationStageActionOpenArtifactsResult,
   buildImplementationStageActionOpenEnvSettingsResult,
-  buildImplementationStageActionRoutedTimelineEntry,
   buildImplementationStageActionShowStatusResult,
+  buildStageActionRunCompletionTimelineEntries,
   type ImplementationStageActionExecutionResult,
+  type ImplementationStageActionRunResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
@@ -1562,9 +1562,9 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState, effectiveImplementationState],
   );
 
-  const confirmImplementationTaskPlan = useCallback(() => {
+  const confirmImplementationTaskPlan = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
-    if (!pid) return;
+    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
     const result = buildConfirmImplementationTaskPlanResult({
       projectId: pid,
       requirementsStateJson,
@@ -1578,16 +1578,18 @@ export function PrototypePreviewPanel({
     });
     if (result.kind === "blocked") {
       showToast(result.message);
-      return;
+      return { outcome: "blocked", message: result.message };
     }
     if (result.kind === "already_confirmed") {
-      showToast("이미 구현 작업안이 확정되었습니다.");
-      return;
+      const message = "이미 구현 작업안이 확정되었습니다.";
+      showToast(message);
+      return { outcome: "no_op", message };
     }
     applyImplementationOrchestrationResult({
       messages: result.chatPatch.messages,
       orchestrationPatch: result.orchestrationPatch,
     });
+    return { outcome: "executed" };
   }, [
     projectId,
     requirementsStateJson,
@@ -1599,9 +1601,9 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
-  const generateImplementationWorkPlanDraft = useCallback(() => {
+  const generateImplementationWorkPlanDraft = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
-    if (!pid) return;
+    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
     const result = buildGenerateImplementationWorkPlanDraftResult({
       requirementsStateJson,
       projectId: pid,
@@ -1615,11 +1617,12 @@ export function PrototypePreviewPanel({
     });
     if (result.kind === "blocked") {
       showToast(result.message);
-      return;
+      return { outcome: "blocked", message: result.message };
     }
     if (result.kind === "already_exists") {
-      showToast("이미 구현 작업안 초안이 생성되었습니다.");
-      return;
+      const message = "이미 구현 작업안 초안이 생성되었습니다.";
+      showToast(message);
+      return { outcome: "no_op", message };
     }
     const orchestrationPatch = {
       ...result.orchestrationPatch,
@@ -1631,6 +1634,7 @@ export function PrototypePreviewPanel({
       messages: result.messages,
       orchestrationPatch,
     });
+    return { outcome: "executed" };
   }, [
     projectId,
     requirementsStateJson,
@@ -1691,21 +1695,22 @@ export function PrototypePreviewPanel({
         | ReturnType<typeof buildDbIntegrationReviewResult>
         | ReturnType<typeof buildDataModelDraftResult>
         | ReturnType<typeof buildMockImplementationModeResult>,
-    ) => {
+    ): ImplementationStageActionRunResult => {
       if (result.kind === "blocked") {
         showToast(result.message);
-        return;
+        return { outcome: "blocked", message: result.message };
       }
       applyImplementationOrchestrationResult({
         messages: result.messages,
         orchestrationPatch: result.orchestrationPatch,
       });
+      return { outcome: "executed" };
     },
     [applyImplementationOrchestrationResult, showToast],
   );
 
-  const reviewDbIntegrationNeed = useCallback(() => {
-    applyDbStrategyResult(
+  const reviewDbIntegrationNeed = useCallback((): ImplementationStageActionRunResult => {
+    return applyDbStrategyResult(
       buildDbIntegrationReviewResult({
         requirementsStateJson,
         implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
@@ -1725,8 +1730,8 @@ export function PrototypePreviewPanel({
     executionArtifacts.projectArtifacts,
   ]);
 
-  const generateDataModelDraft = useCallback(() => {
-    applyDbStrategyResult(
+  const generateDataModelDraft = useCallback((): ImplementationStageActionRunResult => {
+    return applyDbStrategyResult(
       buildDataModelDraftResult({
         requirementsStateJson,
         implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
@@ -1742,8 +1747,8 @@ export function PrototypePreviewPanel({
     parsedRequirementsState.promptTimeline,
   ]);
 
-  const confirmMockImplementationMode = useCallback(() => {
-    applyDbStrategyResult(
+  const confirmMockImplementationMode = useCallback((): ImplementationStageActionRunResult => {
+    return applyDbStrategyResult(
       buildMockImplementationModeResult({
         requirementsStateJson,
         implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
@@ -1868,22 +1873,18 @@ export function PrototypePreviewPanel({
         return true;
       }
 
-      persistStageActionTimelineEntries([buildImplementationStageActionRoutedTimelineEntry(actionId)]);
-
-      const finishExecuted = () => {
-        persistStageActionTimelineEntries([
-          buildImplementationStageActionExecutedTimelineEntry(actionId),
-        ]);
+      const persistRunTimeline = (runResult: ImplementationStageActionRunResult) => {
+        persistStageActionTimelineEntries(
+          buildStageActionRunCompletionTimelineEntries(actionId, runResult),
+        );
       };
 
       switch (actionId) {
         case "GENERATE_IMPLEMENTATION_WORK_PLAN":
-          generateImplementationWorkPlanDraft();
-          finishExecuted();
+          persistRunTimeline(generateImplementationWorkPlanDraft());
           return true;
         case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
-          confirmImplementationTaskPlan();
-          finishExecuted();
+          persistRunTimeline(confirmImplementationTaskPlan());
           return true;
         case "EDIT_IMPLEMENTATION_SCOPE":
           applyImplementationStageActionExecutionResult(
@@ -1891,55 +1892,53 @@ export function PrototypePreviewPanel({
               "아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.",
             ),
           );
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "REVIEW_DB_INTEGRATION":
-          reviewDbIntegrationNeed();
-          finishExecuted();
+          persistRunTimeline(reviewDbIntegrationNeed());
           return true;
         case "GENERATE_DATA_MODEL_DRAFT":
-          generateDataModelDraft();
-          finishExecuted();
+          persistRunTimeline(generateDataModelDraft());
           return true;
         case "CONFIRM_MOCK_IMPLEMENTATION":
-          confirmMockImplementationMode();
-          finishExecuted();
+          persistRunTimeline(confirmMockImplementationMode());
           return true;
         case "SHOW_ARTIFACTS":
           applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenArtifactsResult());
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "OPEN_ENV_SETTINGS":
           applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenEnvSettingsResult());
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "SHOW_ROLE_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("role"),
           );
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "SHOW_SCM_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("scm"),
           );
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "SHOW_ENV_CHECK":
           applyImplementationStageActionExecutionResult(
             buildImplementationStageActionShowStatusResult("env"),
           );
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         case "REQUEST_CODE_AGENT_WIP": {
           const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!cursorGate.allowed) {
-            executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
-            finishExecuted();
+            const message = formatImplementationCursorBlockedNotice(implementationCursorGate);
+            executionSingleChat.appendAiNotice(message);
+            persistRunTimeline({ outcome: "blocked", message });
             return true;
           }
           wipChipHandlers.requestCodeAgentWipWork();
-          finishExecuted();
+          persistRunTimeline({ outcome: "executed" });
           return true;
         }
         default:

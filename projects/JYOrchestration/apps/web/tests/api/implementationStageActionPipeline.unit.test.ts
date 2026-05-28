@@ -4,10 +4,12 @@ import {
   buildImplementationStageActionOpenArtifactsResult,
   buildImplementationStageActionOpenEnvSettingsResult,
   buildImplementationStageActionShowStatusResult,
+  buildStageActionRunCompletionTimelineEntries,
   evaluateImplementationStageActionGate,
   IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE,
   isImplementationSeedReadyForWorkPlanGeneration,
   stageActionExecutionResultFromGate,
+  stageActionRunResultToTimelinePhase,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
@@ -256,7 +258,8 @@ describe("buildImplementationStageActionExecutionDecision", () => {
       state,
     );
     expect(result?.kind).toBe("blocked");
-    expect(result?.timelineEntries?.length).toBeGreaterThan(0);
+    expect(result?.timelineEntries?.[0]?.action).toBe("implementation_stage_action_routed");
+    expect(result?.timelineEntries?.[1]?.action).toBe("implementation_stage_action_blocked");
   });
 
   it("returns null when gate passes", () => {
@@ -293,5 +296,37 @@ describe("result factory kinds", () => {
     expect(buildImplementationStageActionOpenEnvSettingsResult().kind).toBe("open_env_settings");
     expect(buildImplementationStageActionOpenArtifactsResult().kind).toBe("open_artifacts");
     expect(buildImplementationStageActionShowStatusResult("env").intent).toBe("env");
+  });
+});
+
+describe("stageActionRunResultToTimelinePhase", () => {
+  it("maps run outcomes to executed or blocked timeline phase", () => {
+    expect(stageActionRunResultToTimelinePhase({ outcome: "executed" })).toBe("executed");
+    expect(stageActionRunResultToTimelinePhase({ outcome: "blocked", message: "x" })).toBe("blocked");
+    expect(stageActionRunResultToTimelinePhase({ outcome: "no_op", message: "x" })).toBe("blocked");
+  });
+});
+
+describe("buildStageActionRunCompletionTimelineEntries", () => {
+  it("returns routed + executed for successful run", () => {
+    const entries = buildStageActionRunCompletionTimelineEntries("SHOW_ARTIFACTS", {
+      outcome: "executed",
+    });
+    expect(entries.map((e) => e.action)).toEqual([
+      "implementation_stage_action_routed",
+      "implementation_stage_action_executed",
+    ]);
+  });
+
+  it("returns routed + blocked for no_op run", () => {
+    const entries = buildStageActionRunCompletionTimelineEntries("GENERATE_IMPLEMENTATION_WORK_PLAN", {
+      outcome: "no_op",
+      message: "already_exists",
+    });
+    expect(entries.map((e) => e.action)).toEqual([
+      "implementation_stage_action_routed",
+      "implementation_stage_action_blocked",
+    ]);
+    expect(entries[1]?.responseText).toContain("already_exists");
   });
 });

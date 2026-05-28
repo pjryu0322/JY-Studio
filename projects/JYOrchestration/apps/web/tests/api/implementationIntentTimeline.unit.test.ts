@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationActionExecutedTimelineEntry,
   buildImplementationActionRouteTimelineEntries,
+  buildImplementationStageActionTimelineEntry,
   buildSyntheticImplementationActionClassification,
   mergePromptTimelineWithBootstrapEntries,
 } from "@/lib/prototype/implementationIntentTimeline";
@@ -61,6 +62,37 @@ describe("implementation intent timeline", () => {
     expect(entries[0]?.responseText).toContain("reason=bootstrap_cta_clicked");
     expect(entries[1]?.responseText).toContain("actionId=CREATE_WORK_PLAN");
     expect(entries[1]?.responseText).toContain("routerSource=platform");
+  });
+
+  it("builds stage action routed entry", () => {
+    const entry = buildImplementationStageActionTimelineEntry({
+      action: "routed",
+      actionId: "CONFIRM_IMPLEMENTATION_WORK_PLAN",
+      source: "cta",
+    });
+    expect(entry.action).toBe("implementation_stage_action_routed");
+    expect(entry.responseText).toContain("actionId=CONFIRM_IMPLEMENTATION_WORK_PLAN");
+    expect(entry.responseText).toContain("source=cta");
+  });
+
+  it("builds stage action executed entry", () => {
+    const entry = buildImplementationStageActionTimelineEntry({
+      action: "executed",
+      actionId: "CONFIRM_IMPLEMENTATION_WORK_PLAN",
+      source: "cta",
+    });
+    expect(entry.action).toBe("implementation_stage_action_executed");
+  });
+
+  it("builds stage action blocked entry with message", () => {
+    const entry = buildImplementationStageActionTimelineEntry({
+      action: "blocked",
+      actionId: "GENERATE_IMPLEMENTATION_WORK_PLAN",
+      source: "cta",
+      message: "seed not confirmed",
+    });
+    expect(entry.action).toBe("implementation_stage_action_blocked");
+    expect(entry.responseText).toContain("seed not confirmed");
   });
 
   it("merges orchestration timeline with bootstrap entries without dropping bootstrap", () => {

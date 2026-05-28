@@ -14,6 +14,20 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
 
+/** Outcome of running a stage action after the stage gate passes. */
+export type ImplementationStageActionRunResult =
+  | Readonly<{ readonly outcome: "executed" }>
+  | Readonly<{ readonly outcome: "blocked"; readonly message: string }>
+  | Readonly<{ readonly outcome: "no_op"; readonly message?: string }>;
+
+export type ImplementationStageActionRunTimelinePhase = "executed" | "blocked";
+
+export function stageActionRunResultToTimelinePhase(
+  runResult: ImplementationStageActionRunResult,
+): ImplementationStageActionRunTimelinePhase {
+  return runResult.outcome === "executed" ? "executed" : "blocked";
+}
+
 /**
  * Policy A — work plan draft generation requires a non-candidate seed with readiness.ready.
  * Aligns with `buildGenerateImplementationWorkPlanDraftResult()` (Quick Design confirm sets lifecycle confirmed).
@@ -113,6 +127,31 @@ export function buildImplementationStageActionRoutedTimelineEntry(
   });
 }
 
+/** Routed + executed/blocked pair for a completed stage action run (batched persist). */
+export function buildStageActionRunCompletionTimelineEntries(
+  actionId: ImplementationStageActionId,
+  runResult: ImplementationStageActionRunResult,
+  source: ImplementationStageActionTimelineSource = "cta",
+): readonly RequirementsPromptTimelineEntry[] {
+  const routed = buildImplementationStageActionRoutedTimelineEntry(actionId, source);
+  if (stageActionRunResultToTimelinePhase(runResult) === "executed") {
+    return [routed, buildImplementationStageActionExecutedTimelineEntry(actionId, source)];
+  }
+  const message =
+    runResult.outcome === "blocked"
+      ? runResult.message
+      : (runResult.message ?? runResult.outcome);
+  return [
+    routed,
+    buildImplementationStageActionTimelineEntry({
+      action: "blocked",
+      actionId,
+      source,
+      message,
+    }),
+  ];
+}
+
 export function stageActionExecutionResultFromGate(
   gate: ImplementationStageActionGateResult,
   input?: {
@@ -123,14 +162,11 @@ export function stageActionExecutionResultFromGate(
   if (gate.ok) return null;
   const timelineEntries =
     input?.actionId != null
-      ? [
-          buildImplementationStageActionTimelineEntry({
-            action: "blocked",
-            actionId: input.actionId,
-            source: input.source ?? "cta",
-            message: gate.message,
-          }),
-        ]
+      ? buildStageActionRunCompletionTimelineEntries(
+          input.actionId,
+          { outcome: "blocked", message: gate.message },
+          input.source ?? "cta",
+        )
       : undefined;
   return buildImplementationStageActionBlockedResult(gate.message, timelineEntries);
 }

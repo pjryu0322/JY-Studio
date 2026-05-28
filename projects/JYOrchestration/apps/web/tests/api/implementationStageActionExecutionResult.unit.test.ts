@@ -68,7 +68,8 @@ describe("buildImplementationStageActionExecutionDecision", () => {
     expect(result?.kind).toBe("blocked");
     if (result?.kind === "blocked") {
       expect(result.message).toBe(IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE);
-      expect(result.timelineEntries?.[0]?.action).toBe("implementation_stage_action_blocked");
+      expect(result.timelineEntries?.[0]?.action).toBe("implementation_stage_action_routed");
+      expect(result.timelineEntries?.[1]?.action).toBe("implementation_stage_action_blocked");
     }
   });
 
