@@ -2,8 +2,68 @@ import type {
   ImplementationActionId,
   ImplementationIntentClassification,
 } from "@/lib/prototype/implementationIntentRouterTypes";
+import type { ImplementationStageActionId } from "@/lib/prototype/effectiveImplementationState";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+
+export type ImplementationStageActionTimelineSource = "cta" | "natural_language" | "system";
+
+export type ImplementationStageActionTimelinePhase = "routed" | "executed" | "blocked";
+
+export function buildImplementationStageActionTimelineEntry(input: {
+  readonly action: ImplementationStageActionTimelinePhase;
+  readonly actionId: ImplementationStageActionId;
+  readonly source: ImplementationStageActionTimelineSource;
+  readonly message?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const now = input.nowIso ?? new Date().toISOString();
+  const actionKey =
+    input.action === "routed"
+      ? "implementation_stage_action_routed"
+      : input.action === "executed"
+        ? "implementation_stage_action_executed"
+        : "implementation_stage_action_blocked";
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: actionKey,
+    source: "platform",
+    routingDecision: input.actionId,
+    responseText: [
+      "type=implementation_stage_action",
+      `action=${input.action}`,
+      `actionId=${input.actionId}`,
+      `source=${input.source}`,
+      ...(input.message ? [`reason=${input.message}`] : []),
+    ].join(" "),
+    createdAt: now,
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
+export function buildImplementationStageActionRouteTimelineEntries(input: {
+  readonly actionId: ImplementationStageActionId;
+  readonly source?: ImplementationStageActionTimelineSource;
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  const source = input.source ?? "cta";
+  return [
+    buildImplementationStageActionTimelineEntry({
+      action: "routed",
+      actionId: input.actionId,
+      source,
+      nowIso: input.nowIso,
+    }),
+    buildImplementationStageActionTimelineEntry({
+      action: "executed",
+      actionId: input.actionId,
+      source,
+      nowIso: input.nowIso,
+    }),
+  ];
+}
 
 export function buildSyntheticImplementationActionClassification(input: {
   readonly actionId: ImplementationActionId;

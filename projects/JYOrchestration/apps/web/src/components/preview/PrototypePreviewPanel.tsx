@@ -69,9 +69,13 @@ import {
   type PendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
+  buildImplementationStageActionExecutionDecision,
+  buildImplementationStageActionExecutedTimelineEntry,
   buildImplementationStageActionFocusComposerResult,
-  evaluateImplementationStageActionGate,
-  stageActionExecutionResultFromGate,
+  buildImplementationStageActionOpenArtifactsResult,
+  buildImplementationStageActionOpenEnvSettingsResult,
+  buildImplementationStageActionRoutedTimelineEntry,
+  buildImplementationStageActionShowStatusResult,
   type ImplementationStageActionExecutionResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -159,6 +163,7 @@ import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
   type PrototypeWorkspaceTimelineCardV1,
+  type RequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
@@ -1776,8 +1781,32 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const persistStageActionTimelineEntries = useCallback(
+    (entries: readonly RequirementsPromptTimelineEntry[]) => {
+      if (!entries.length) return;
+      let timeline = parsedRequirementsState.promptTimeline;
+      for (const entry of entries) {
+        timeline = appendPromptTimeline(timeline, entry);
+      }
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      void persistChatToDb(
+        {
+          messages: resolved.messages ?? [],
+          slots: resolved.slots ?? [],
+          answers: resolved.answers ?? {},
+          currentSlotKey: resolved.currentSlotKey ?? null,
+        },
+        { promptTimeline: timeline },
+      );
+    },
+    [parsedRequirementsState.promptTimeline, requirementsStateJson, persistChatToDb],
+  );
+
   const applyImplementationStageActionExecutionResult = useCallback(
     (result: ImplementationStageActionExecutionResult) => {
+      if (result.timelineEntries?.length) {
+        persistStageActionTimelineEntries(result.timelineEntries);
+      }
       switch (result.kind) {
         case "blocked":
           showToast(result.message);
@@ -1801,7 +1830,7 @@ export function PrototypePreviewPanel({
           break;
       }
     },
-    [showToast, showRoleCheckDetails, appendStatusQueryFromChip],
+    [showToast, showRoleCheckDetails, appendStatusQueryFromChip, persistStageActionTimelineEntries],
   );
 
   const showImplementationSeedReadinessCheck = useCallback(() => {
@@ -1830,19 +1859,31 @@ export function PrototypePreviewPanel({
 
   const executeImplementationStageAction = useCallback(
     (actionId: ImplementationStageActionId): boolean => {
-      const gate = evaluateImplementationStageActionGate(actionId, effectiveImplementationState);
-      const blocked = stageActionExecutionResultFromGate(gate);
-      if (blocked) {
-        applyImplementationStageActionExecutionResult(blocked);
+      const preExecutionResult = buildImplementationStageActionExecutionDecision(
+        actionId,
+        effectiveImplementationState,
+      );
+      if (preExecutionResult) {
+        applyImplementationStageActionExecutionResult(preExecutionResult);
         return true;
       }
+
+      persistStageActionTimelineEntries([buildImplementationStageActionRoutedTimelineEntry(actionId)]);
+
+      const finishExecuted = () => {
+        persistStageActionTimelineEntries([
+          buildImplementationStageActionExecutedTimelineEntry(actionId),
+        ]);
+      };
 
       switch (actionId) {
         case "GENERATE_IMPLEMENTATION_WORK_PLAN":
           generateImplementationWorkPlanDraft();
+          finishExecuted();
           return true;
         case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
           confirmImplementationTaskPlan();
+          finishExecuted();
           return true;
         case "EDIT_IMPLEMENTATION_SCOPE":
           applyImplementationStageActionExecutionResult(
@@ -1850,38 +1891,55 @@ export function PrototypePreviewPanel({
               "아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.",
             ),
           );
+          finishExecuted();
           return true;
         case "REVIEW_DB_INTEGRATION":
           reviewDbIntegrationNeed();
+          finishExecuted();
           return true;
         case "GENERATE_DATA_MODEL_DRAFT":
           generateDataModelDraft();
+          finishExecuted();
           return true;
         case "CONFIRM_MOCK_IMPLEMENTATION":
           confirmMockImplementationMode();
+          finishExecuted();
           return true;
         case "SHOW_ARTIFACTS":
-          setArtifactHubOpen(true);
+          applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenArtifactsResult());
+          finishExecuted();
           return true;
         case "OPEN_ENV_SETTINGS":
-          setExecutionEnvironmentModalOpen(true);
+          applyImplementationStageActionExecutionResult(buildImplementationStageActionOpenEnvSettingsResult());
+          finishExecuted();
           return true;
         case "SHOW_ROLE_CHECK":
-          showRoleCheckDetails();
+          applyImplementationStageActionExecutionResult(
+            buildImplementationStageActionShowStatusResult("role"),
+          );
+          finishExecuted();
           return true;
         case "SHOW_SCM_CHECK":
-          appendStatusQueryFromChip("scm_check_details");
+          applyImplementationStageActionExecutionResult(
+            buildImplementationStageActionShowStatusResult("scm"),
+          );
+          finishExecuted();
           return true;
         case "SHOW_ENV_CHECK":
-          appendStatusQueryFromChip("environment_check_details");
+          applyImplementationStageActionExecutionResult(
+            buildImplementationStageActionShowStatusResult("env"),
+          );
+          finishExecuted();
           return true;
         case "REQUEST_CODE_AGENT_WIP": {
           const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!cursorGate.allowed) {
             executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+            finishExecuted();
             return true;
           }
           wipChipHandlers.requestCodeAgentWipWork();
+          finishExecuted();
           return true;
         }
         default:
@@ -1891,13 +1949,12 @@ export function PrototypePreviewPanel({
     [
       effectiveImplementationState,
       applyImplementationStageActionExecutionResult,
+      persistStageActionTimelineEntries,
       generateImplementationWorkPlanDraft,
       confirmImplementationTaskPlan,
       reviewDbIntegrationNeed,
       generateDataModelDraft,
       confirmMockImplementationMode,
-      showRoleCheckDetails,
-      appendStatusQueryFromChip,
       implementationCursorGate,
       executionSingleChat,
       wipChipHandlers,

@@ -1,10 +1,15 @@
 import {
+  buildImplementationStageActionTimelineEntry,
+  type ImplementationStageActionTimelineSource,
+} from "@/lib/prototype/implementationIntentTimeline";
+import {
   canConfirmImplementationWorkPlanFromEffectiveState,
   type EffectiveImplementationState,
   type ImplementationStageActionGateResult,
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
@@ -25,33 +30,119 @@ export const IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE =
   "구현 준비정보가 아직 확정되지 않았습니다. [구현 준비정보 확인] 또는 Quick Design 확정 후 작업안을 생성해 주세요.";
 
 export type ImplementationStageActionExecutionResult =
-  | Readonly<{ readonly kind: "handled" }>
-  | Readonly<{ readonly kind: "blocked"; readonly message: string }>
-  | Readonly<{ readonly kind: "focus_composer"; readonly message: string }>
-  | Readonly<{ readonly kind: "open_env_settings" }>
-  | Readonly<{ readonly kind: "open_artifacts" }>
+  | Readonly<{
+      readonly kind: "handled";
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      readonly kind: "blocked";
+      readonly message: string;
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      readonly kind: "focus_composer";
+      readonly message: string;
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      readonly kind: "open_env_settings";
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
+      readonly kind: "open_artifacts";
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
   | Readonly<{
       readonly kind: "show_status";
       readonly intent: "role" | "scm" | "env";
+      readonly timelineEntries?: readonly RequirementsPromptTimelineEntry[];
     }>;
 
 export function buildImplementationStageActionBlockedResult(
   message: string,
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
 ): ImplementationStageActionExecutionResult {
-  return { kind: "blocked", message };
+  return { kind: "blocked", message, timelineEntries };
 }
 
 export function buildImplementationStageActionFocusComposerResult(
   message: string,
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
 ): ImplementationStageActionExecutionResult {
-  return { kind: "focus_composer", message };
+  return { kind: "focus_composer", message, timelineEntries };
+}
+
+export function buildImplementationStageActionOpenEnvSettingsResult(
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
+): ImplementationStageActionExecutionResult {
+  return { kind: "open_env_settings", timelineEntries };
+}
+
+export function buildImplementationStageActionOpenArtifactsResult(
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
+): ImplementationStageActionExecutionResult {
+  return { kind: "open_artifacts", timelineEntries };
+}
+
+export function buildImplementationStageActionShowStatusResult(
+  intent: "role" | "scm" | "env",
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
+): ImplementationStageActionExecutionResult {
+  return { kind: "show_status", intent, timelineEntries };
+}
+
+export function buildImplementationStageActionExecutedTimelineEntry(
+  actionId: ImplementationStageActionId,
+  source: ImplementationStageActionTimelineSource = "cta",
+): RequirementsPromptTimelineEntry {
+  return buildImplementationStageActionTimelineEntry({
+    action: "executed",
+    actionId,
+    source,
+  });
+}
+
+export function buildImplementationStageActionRoutedTimelineEntry(
+  actionId: ImplementationStageActionId,
+  source: ImplementationStageActionTimelineSource = "cta",
+): RequirementsPromptTimelineEntry {
+  return buildImplementationStageActionTimelineEntry({
+    action: "routed",
+    actionId,
+    source,
+  });
 }
 
 export function stageActionExecutionResultFromGate(
   gate: ImplementationStageActionGateResult,
+  input?: {
+    readonly actionId: ImplementationStageActionId;
+    readonly source?: ImplementationStageActionTimelineSource;
+  },
 ): ImplementationStageActionExecutionResult | null {
   if (gate.ok) return null;
-  return buildImplementationStageActionBlockedResult(gate.message);
+  const timelineEntries =
+    input?.actionId != null
+      ? [
+          buildImplementationStageActionTimelineEntry({
+            action: "blocked",
+            actionId: input.actionId,
+            source: input.source ?? "cta",
+            message: gate.message,
+          }),
+        ]
+      : undefined;
+  return buildImplementationStageActionBlockedResult(gate.message, timelineEntries);
+}
+
+/** Gate failure → blocked result; gate pass → null (panel runs the action). */
+export function buildImplementationStageActionExecutionDecision(
+  actionId: ImplementationStageActionId,
+  state: EffectiveImplementationState,
+  source: ImplementationStageActionTimelineSource = "cta",
+): ImplementationStageActionExecutionResult | null {
+  const gate = evaluateImplementationStageActionGate(actionId, state);
+  return stageActionExecutionResultFromGate(gate, { actionId, source });
 }
 
 export function evaluateImplementationStageActionGate(

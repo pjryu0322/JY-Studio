@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildImplementationStageActionBlockedResult,
+  buildImplementationStageActionExecutionDecision,
+  buildImplementationStageActionOpenArtifactsResult,
+  buildImplementationStageActionOpenEnvSettingsResult,
+  buildImplementationStageActionShowStatusResult,
   evaluateImplementationStageActionGate,
   IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE,
   isImplementationSeedReadyForWorkPlanGeneration,
@@ -243,14 +246,37 @@ describe("evaluateImplementationStageActionGate", () => {
   });
 });
 
-describe("stageActionExecutionResultFromGate", () => {
+describe("buildImplementationStageActionExecutionDecision", () => {
   it("returns blocked result when gate fails", () => {
-    const gate = evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", baseState());
-    expect(stageActionExecutionResultFromGate(gate)).toEqual(
-      buildImplementationStageActionBlockedResult(
-        gate.ok ? "" : gate.message,
-      ),
+    const state = baseState({
+      parsedRequirementsState: { implementationSeedV1: makeSeed("candidate", true) },
+    });
+    const result = buildImplementationStageActionExecutionDecision(
+      "GENERATE_IMPLEMENTATION_WORK_PLAN",
+      state,
     );
+    expect(result?.kind).toBe("blocked");
+    expect(result?.timelineEntries?.length).toBeGreaterThan(0);
+  });
+
+  it("returns null when gate passes", () => {
+    const state = baseState({
+      parsedRequirementsState: { implementationSeedV1: makeSeed("confirmed", true) },
+    });
+    expect(
+      buildImplementationStageActionExecutionDecision("GENERATE_IMPLEMENTATION_WORK_PLAN", state),
+    ).toBeNull();
+  });
+});
+
+describe("stageActionExecutionResultFromGate", () => {
+  it("returns blocked result with timeline when actionId provided", () => {
+    const gate = evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", baseState());
+    const result = stageActionExecutionResultFromGate(gate, {
+      actionId: "REVIEW_DB_INTEGRATION",
+    });
+    expect(result?.kind).toBe("blocked");
+    expect(result?.timelineEntries?.[0]?.responseText).toContain("REVIEW_DB_INTEGRATION");
   });
 
   it("returns null when gate passes", () => {
@@ -259,5 +285,13 @@ describe("stageActionExecutionResultFromGate", () => {
     });
     const gate = evaluateImplementationStageActionGate("REVIEW_DB_INTEGRATION", state);
     expect(stageActionExecutionResultFromGate(gate)).toBeNull();
+  });
+});
+
+describe("result factory kinds", () => {
+  it("returns expected kinds for modal/status actions", () => {
+    expect(buildImplementationStageActionOpenEnvSettingsResult().kind).toBe("open_env_settings");
+    expect(buildImplementationStageActionOpenArtifactsResult().kind).toBe("open_artifacts");
+    expect(buildImplementationStageActionShowStatusResult("env").intent).toBe("env");
   });
 });

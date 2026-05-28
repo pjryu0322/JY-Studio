@@ -4,7 +4,7 @@
  * Primary implementation stage CTAs are mapped by `mapImplementationChipToAction()` and executed via
  * `executeImplementationStageAction()` in PrototypePreviewPanel (gate + persist + timeline).
  *
- * Fallback remains for planning-stage navigation chips, prototype run controls, and legacy WIP labels.
+ * Fallback remains for planning navigation, WIP review, SCM officialization, and legacy prototype run controls.
  */
 
 import {
@@ -57,6 +57,7 @@ export function tryHandlePrototypeExecutionChip(
 ): boolean {
   const t = label.trim();
   switch (t) {
+    // Planning navigation / seed recovery
     case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
     case PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP:
     case IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP:
@@ -78,6 +79,8 @@ export function tryHandlePrototypeExecutionChip(
         handlers.showToast("기획단계 화면으로 이동해 주세요.");
       }
       return true;
+
+    // WIP result review
     case "변경사항 보기":
       handlers.viewWipChanges();
       return true;
@@ -95,11 +98,15 @@ export function tryHandlePrototypeExecutionChip(
     case "작업 폐기":
       handlers.discardWipWork();
       return true;
+
+    // SCM officialization
     case "SCM에게 공식 반영 요청": {
       if (!handlers.canRequestScmOfficialCommit()) return true;
       handlers.requestScmOfficialCommit();
       return true;
     }
+
+    // Legacy prototype execution controls
     case "구현 실행 준비":
       handlers.prepareImplementationExecution();
       return true;
@@ -136,4 +143,13 @@ export const STAGE_ACTION_ONLY_CHIP_LABELS = [
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
   LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
+] as const;
+
+/** Labels handled only by fallback (not stage action mapping). */
+export const FALLBACK_LEGACY_CHIP_LABELS = [
+  "상태 새로고침",
+  "변경사항 보기",
+  "구현 실행",
+  "구현 실행 준비",
+  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
 ] as const;

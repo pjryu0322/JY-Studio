@@ -7,6 +7,7 @@ import {
 } from "@/lib/prototype/implementationDbStrategy";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import {
+  FALLBACK_LEGACY_CHIP_LABELS,
   STAGE_ACTION_ONLY_CHIP_LABELS,
   tryHandlePrototypeExecutionChip,
 } from "@/lib/prototype/prototypeExecutionImplementationChips";
@@ -113,6 +114,13 @@ describe("stage action chip mapping", () => {
     for (const label of STAGE_ACTION_ONLY_CHIP_LABELS) {
       expect(mapImplementationChipToAction(label)).not.toBeNull();
       expect(tryHandlePrototypeExecutionChip(label, baseHandlers())).toBe(false);
+    }
+  });
+
+  it("handles legacy labels only in fallback", () => {
+    for (const label of FALLBACK_LEGACY_CHIP_LABELS) {
+      expect(mapImplementationChipToAction(label)).toBeNull();
+      expect(tryHandlePrototypeExecutionChip(label, baseHandlers())).toBe(true);
     }
   });
 });
