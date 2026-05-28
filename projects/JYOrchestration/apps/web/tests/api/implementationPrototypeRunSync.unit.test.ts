@@ -189,6 +189,39 @@ describe("syncImplementationTaskExecutionFromPrototypeRun", () => {
     });
     expect(syncImplementationTaskExecutionFromPrototypeRun({ state: null, snapshot })).toBeNull();
   });
+
+  it("does not bump updatedAt when sync applies no item changes", () => {
+    let state = executionStateWithScmQueued();
+    state = markRoleTasksInProgress({ state, ownerRole: "scm", nowIso: NOW });
+    const snapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: { id: "run-1", status: "PREVIEW_READY", previewUrl: "https://preview.example/app" },
+    });
+    const syncedOnce = syncImplementationTaskExecutionFromPrototypeRun({ state, snapshot, nowIso: NOW })!;
+    expect(syncedOnce.updatedAt).toBe(NOW);
+
+    const resynced = syncImplementationTaskExecutionFromPrototypeRun({
+      state: syncedOnce,
+      snapshot,
+      nowIso: "2026-05-29T01:00:00.000Z",
+    });
+    expect(resynced).toBe(syncedOnce);
+    expect(resynced?.updatedAt).toBe(NOW);
+  });
+
+  it("does not bump updatedAt when scm is already in_progress for prOpened", () => {
+    let state = executionStateWithScmQueued();
+    state = markRoleTasksInProgress({ state, ownerRole: "scm", nowIso: NOW });
+    const snapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: { id: "run-1", status: "PR_OPENED", prNumber: 7 },
+    });
+    const resynced = syncImplementationTaskExecutionFromPrototypeRun({
+      state,
+      snapshot,
+      nowIso: "2026-05-29T01:00:00.000Z",
+    });
+    expect(resynced).toBe(state);
+    expect(resynced?.updatedAt).toBe(NOW);
+  });
 });
 
 describe("isImplementationPrototypeComplete", () => {
@@ -254,5 +287,26 @@ describe("buildPrototypeRunExecutionSyncPatch", () => {
       nowIso: NOW,
     });
     expect(patch.changed).toBe(false);
+  });
+
+  it("reports unchanged and preserves updatedAt when re-syncing an already synced preview-ready state", () => {
+    let state = executionStateWithScmQueued();
+    state = markRoleTasksInProgress({ state, ownerRole: "scm", nowIso: NOW });
+    const latestRun = { id: "run-1", status: "PREVIEW_READY", previewUrl: "https://preview.example/app" };
+    const first = buildPrototypeRunExecutionSyncPatch({
+      currentState: state,
+      latestRun,
+      nowIso: NOW,
+    });
+    expect(first.changed).toBe(true);
+
+    const resync = buildPrototypeRunExecutionSyncPatch({
+      currentState: first.nextState,
+      latestRun,
+      nowIso: "2026-05-29T01:00:00.000Z",
+    });
+    expect(resync.changed).toBe(false);
+    expect(resync.nextState).toBe(first.nextState);
+    expect(resync.nextState?.updatedAt).toBe(NOW);
   });
 });

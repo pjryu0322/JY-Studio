@@ -229,6 +229,17 @@ function patchExecutionItems(
   });
 }
 
+function executionItemsChanged(
+  before: readonly ImplementationTaskExecutionItemV1[],
+  after: readonly ImplementationTaskExecutionItemV1[],
+): boolean {
+  if (before.length !== after.length) return true;
+  for (let i = 0; i < before.length; i += 1) {
+    if (before[i] !== after[i]) return true;
+  }
+  return false;
+}
+
 export function applyExecutionStateItemPatches(
   state: ImplementationTaskExecutionStateV1,
   patchForItem: (
@@ -241,7 +252,9 @@ export function applyExecutionStateItemPatches(
     const patch = patchForItem(item);
     if (patch) patchByTaskId.set(item.taskId, patch);
   }
+  if (patchByTaskId.size === 0) return state;
   const items = patchExecutionItems(state.items, patchByTaskId, nowIso);
+  if (!executionItemsChanged(state.items, items)) return state;
   return {
     ...state,
     updatedAt: nowIso,

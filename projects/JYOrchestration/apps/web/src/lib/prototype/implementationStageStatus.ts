@@ -29,12 +29,6 @@ export function deriveImplementationStageStatus(
   if (!state.envOk || !seed || seed.lifecycleStatus === "candidate" || !seed.readiness?.ready) {
     return "not_ready";
   }
-  if (state.implementationTaskPlanV1) {
-    return "work_plan_confirmed";
-  }
-  if (hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)) {
-    return "work_plan_drafted";
-  }
 
   const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
     latestRun: state.latestRun,
@@ -42,6 +36,13 @@ export function deriveImplementationStageStatus(
   });
   if (isImplementationPrototypeComplete({ executionState, prototypeSnapshot })) {
     return "prototype_ready";
+  }
+
+  if (state.implementationTaskPlanV1) {
+    return "work_plan_confirmed";
+  }
+  if (hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)) {
+    return "work_plan_drafted";
   }
 
   if (

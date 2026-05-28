@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
+  applyExecutionStateItemPatches,
   formatImplementationTaskExecutionSummaryLines,
   markDeveloperTasksDoneForWip,
   markDeveloperTasksFailedForWip,
@@ -432,5 +433,16 @@ describe("implementationTaskExecutionState", () => {
     const lines = formatImplementationTaskExecutionSummaryLines(state);
     expect(lines[0]).toContain("작업 실행 상태");
     expect(lines.some((l) => l.includes("진행 중"))).toBe(true);
+  });
+
+  it("applyExecutionStateItemPatches returns same state when no patches apply", () => {
+    const state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: sampleTaskList(),
+      nowIso,
+    });
+    const next = applyExecutionStateItemPatches(state, () => null, "2026-05-29T01:00:00.000Z");
+    expect(next).toBe(state);
+    expect(next.updatedAt).toBe(nowIso);
   });
 });

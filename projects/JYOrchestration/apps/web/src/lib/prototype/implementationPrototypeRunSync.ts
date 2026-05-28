@@ -146,7 +146,6 @@ export function isImplementationTaskExecutionStateEqual(
 ): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  if (a.updatedAt !== b.updatedAt) return false;
   if (a.items.length !== b.items.length) return false;
   for (let i = 0; i < a.items.length; i += 1) {
     const left = a.items[i];
@@ -271,6 +270,9 @@ export function buildPrototypeRunExecutionSyncPatch(input: {
     snapshot,
     nowIso: input.nowIso,
   });
-  const changed = Boolean(nextState && !isImplementationTaskExecutionStateEqual(input.currentState, nextState));
+  const changed =
+    nextState != null &&
+    nextState !== input.currentState &&
+    !isImplementationTaskExecutionStateEqual(input.currentState, nextState);
   return { snapshot, nextState, changed };
 }

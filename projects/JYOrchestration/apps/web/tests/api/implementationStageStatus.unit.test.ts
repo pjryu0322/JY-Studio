@@ -227,4 +227,48 @@ describe("deriveImplementationStageStatus", () => {
     });
     expect(deriveImplementationStageStatus(state, executionState)).toBe("prototype_ready");
   });
+
+  it("returns prototype_ready over work_plan_confirmed when preview is complete", () => {
+    const taskList = makeTaskListReady();
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = {
+      ...executionState,
+      items: executionState.items.map((item) =>
+        item.ownerRole === "developer" || item.ownerRole === "scm"
+          ? { ...item, status: "done" as const, completedAt: NOW }
+          : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        executionState.items.map((item) =>
+          item.ownerRole === "developer" || item.ownerRole === "scm"
+            ? { ...item, status: "done" as const, completedAt: NOW }
+            : item,
+        ),
+      ),
+    };
+    const latestRun = {
+      id: "run-1",
+      status: "PREVIEW_READY",
+      previewUrl: "https://preview.example/app",
+      workUnits: [],
+    };
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: taskList,
+        implementationWorkPlanDraftV1: makeDraft(),
+        implementationTaskPlanV1: makeTaskPlan(),
+      },
+      pendingPatch: {},
+      envOk: true,
+      designOk: true,
+      latestRun: latestRun as never,
+    });
+    expect(deriveImplementationStageStatus(state, executionState)).toBe("prototype_ready");
+    expect(deriveImplementationStageStatus(state, executionState)).not.toBe("work_plan_confirmed");
+  });
 });
