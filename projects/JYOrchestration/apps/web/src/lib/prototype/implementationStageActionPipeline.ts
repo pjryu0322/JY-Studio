@@ -11,6 +11,7 @@ import {
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
 
@@ -291,11 +292,19 @@ export function evaluateImplementationStageActionGate(
     case "EDIT_IMPLEMENTATION_SCOPE":
       return { ok: true };
     case "REQUEST_CODE_AGENT_WIP": {
-      if (!state.implementationTaskPlanV1) {
-        return { ok: false, message: "먼저 [구현 작업안 확정]으로 작업 계획을 확정해 주세요." };
-      }
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다." };
+      }
+      if (
+        isPlanningReadyForImplementationExecution({
+          implementationSeedV1: state.implementationSeedV1,
+          implementationTaskListV1: state.implementationTaskListV1,
+        })
+      ) {
+        return { ok: true };
+      }
+      if (!state.implementationTaskPlanV1) {
+        return { ok: false, message: "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다." };
       }
       return { ok: true };
     }

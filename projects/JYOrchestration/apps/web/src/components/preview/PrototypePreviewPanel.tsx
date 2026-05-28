@@ -113,6 +113,15 @@ import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototy
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
+import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildImplementationTaskPlanFromTaskList } from "@/lib/prototype/implementationTaskPlan";
+import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
+import {
+  buildImplementationDbSlotsTimelineEntry,
+  buildImplementationSlotsFromContext,
+  buildImplementationSlotsTimelineEntry,
+} from "@/lib/prototype/implementationSlots";
+import { buildImplementationTaskPlanTimelineEntry } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -2091,9 +2100,77 @@ export function PrototypePreviewPanel({
         case "REQUEST_CODE_AGENT_WIP": {
           const cursorGate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!cursorGate.allowed) {
-            const message = formatImplementationCursorBlockedNotice(implementationCursorGate);
-            executionSingleChat.appendAiNotice(message);
-            return { outcome: "blocked", message };
+            // TaskList-ready path: auto-build taskPlan + cursorWorkItems + slots without forcing work plan draft.
+            const pid = projectId.trim();
+            const taskList = parsedRequirementsState.implementationTaskListV1;
+            const seed = parsedRequirementsState.implementationSeedV1;
+            const canUseTaskList =
+              Boolean(taskList?.tasks?.length) &&
+              Boolean(seed?.readiness?.ready) &&
+              seed?.lifecycleStatus !== "candidate";
+
+            if (
+              pid &&
+              canUseTaskList &&
+              effectiveImplementationState.envOk &&
+              (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
+            ) {
+              const plan = buildImplementationTaskPlanFromTaskList({
+                projectId: pid,
+                taskList: taskList!,
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+              });
+              const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList: taskList! });
+              const slots = buildImplementationSlotsFromContext({
+                projectId: pid,
+                projectArtifacts: executionArtifacts.projectArtifacts,
+                artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
+                implementationTaskPlanV1: plan,
+                cursorWorkItemsV1: workItems,
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+                envCursorBadge: effectiveImplementationState.envOk ? "ok" : "needs",
+              });
+              const dbStrategy = defaultImplementationDbStrategy();
+              const planTimeline = buildImplementationTaskPlanTimelineEntry({
+                plan,
+                workItems,
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+              });
+              const slotsTimeline = buildImplementationSlotsTimelineEntry({ slots });
+              const dbSlotsTimeline = buildImplementationDbSlotsTimelineEntry({ slots });
+              let timeline = parsedRequirementsState.promptTimeline;
+              timeline = appendPromptTimeline(timeline, planTimeline);
+              timeline = appendPromptTimeline(timeline, slotsTimeline);
+              timeline = appendPromptTimeline(timeline, dbSlotsTimeline);
+
+              void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+                implementationTaskPlanV1: plan,
+                cursorWorkItemsV1: workItems,
+                implementationSlotsV1: slots,
+                implementationDbStrategyV1: dbStrategy,
+                promptTimeline: timeline,
+              });
+            }
+
+            const reGate = evaluateImplementationCursorGate(
+              buildImplementationCursorGateContext(
+                {
+                  ...parsedRequirementsState,
+                  implementationTaskPlanV1:
+                    parsedRequirementsState.implementationTaskPlanV1 ??
+                    effectiveImplementationState.implementationTaskPlanV1,
+                },
+                { envOk: effectiveImplementationState.envOk, designOk: effectiveImplementationState.designOk },
+              ),
+            );
+            if (!reGate.allowed) {
+              const message = formatImplementationCursorBlockedNotice(implementationCursorGate);
+              executionSingleChat.appendAiNotice(message);
+              return { outcome: "blocked", message };
+            }
           }
           wipChipHandlers.requestCodeAgentWipWork();
           return { outcome: "executed" };
@@ -2188,6 +2265,23 @@ export function PrototypePreviewPanel({
           showToast,
         })
       ) {
+        // If the user clicked the developer request CTA and work items are not ready,
+        // generate cursorWorkItemsV1 candidates from TaskList (do not overwrite).
+        if (
+          label.trim() === "AI 개발자에게 구현 요청" &&
+          taskList?.tasks?.length &&
+          (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
+        ) {
+          const pid = projectId.trim();
+          if (pid) {
+            const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList });
+            if (workItems.length) {
+              void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+                cursorWorkItemsV1: workItems,
+              });
+            }
+          }
+        }
         return true;
       }
 

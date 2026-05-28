@@ -16,6 +16,7 @@ import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationD
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 function makeDraft(updatedAt: string): ImplementationWorkPlanDraftV1 {
   return {
@@ -66,10 +67,68 @@ function makeSeed(
   };
 }
 
+function makeTaskListReady(): ImplementationTaskListV1 {
+  return {
+    version: "implementation_task_list_v1",
+    projectId: "p1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    source: "implementation_seed",
+    tasks: [
+      {
+        taskId: "DEV-001",
+        title: "개발 작업",
+        description: "dev",
+        taskType: "feature",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "REV-001",
+        title: "검수 작업",
+        description: "rev",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "SEC-001",
+        title: "보안 작업",
+        description: "sec",
+        taskType: "security",
+        ownerRole: "security",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "SCM-001",
+        title: "SCM 작업",
+        description: "scm",
+        taskType: "scm",
+        ownerRole: "scm",
+        priority: "low",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+    ],
+    roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 1, scm: 1 },
+  };
+}
+
 function baseState(
   overrides: {
     readonly parsedRequirementsState?: {
       readonly implementationSeedV1?: ImplementationSeedV1 | null;
+      readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
       readonly implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
       readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
       readonly implementationDbStrategyV1?: ReturnType<typeof defaultImplementationDbStrategy> | null;
@@ -82,6 +141,7 @@ function baseState(
   return resolveEffectiveImplementationState({
     parsedRequirementsState: {
       implementationSeedV1: null,
+      implementationTaskListV1: null,
       implementationWorkPlanDraftV1: null,
       implementationTaskPlanV1: null,
       implementationDbStrategyV1: null,
@@ -224,12 +284,22 @@ describe("evaluateImplementationStageActionGate", () => {
   });
 
   describe("REQUEST_CODE_AGENT_WIP", () => {
-    it("blocks without task plan", () => {
+    it("blocks without task plan and without task list", () => {
       const gate = evaluateImplementationStageActionGate("REQUEST_CODE_AGENT_WIP", baseState());
       expect(gate.ok).toBe(false);
       if (!gate.ok) {
-        expect(gate.message).toContain("구현 작업안 확정");
+        expect(gate.message).toContain("구현 작업목록");
       }
+    });
+
+    it("allows when task list is ready even if task plan is missing", () => {
+      const state = baseState({
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      expect(evaluateImplementationStageActionGate("REQUEST_CODE_AGENT_WIP", state).ok).toBe(true);
     });
 
     it("blocks when envOk is false", () => {

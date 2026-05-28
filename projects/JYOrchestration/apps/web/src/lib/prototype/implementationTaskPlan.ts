@@ -3,6 +3,7 @@ import {
   buildImplementationTaskExecutionHints,
   type ImplementationTaskExecutionHints,
 } from "@/lib/prototype/implementationExecutionHints";
+import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 export { buildCursorPromptDraft } from "@/lib/prototype/implementationCursorPromptDraft";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
@@ -61,6 +62,114 @@ export type BuildImplementationTaskPlanInput = Readonly<{
   designOk: boolean;
   nowIso?: string;
 }>;
+
+function taskListPriorityToPlanPriority(p: ImplementationTaskV1["priority"]): ImplementationTaskPriority {
+  if (p === "high") return "P0";
+  if (p === "medium") return "P1";
+  return "P2";
+}
+
+function taskListTaskToArtifactTypes(task: ImplementationTaskV1): readonly string[] {
+  switch (task.taskType) {
+    case "screen":
+      return ["screen-spec"];
+    case "api":
+      return ["api-spec"];
+    case "mock":
+    case "data":
+      return ["feature-spec"];
+    default:
+      return ["feature-spec"];
+  }
+}
+
+export function buildImplementationTaskPlanFromTaskList(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly nowIso?: string;
+}): ImplementationTaskPlanV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const globalBlockers = scmBlockers(input.envOk, input.designOk);
+
+  const tasks = (input.taskList.tasks ?? [])
+    .filter((t) => t.ownerRole === "developer" && t.status === "ready")
+    .slice()
+    .sort((a, b) => {
+      const pa = taskListPriorityToPlanPriority(a.priority);
+      const pb = taskListPriorityToPlanPriority(b.priority);
+      const rank = (p: ImplementationTaskPriority) => (p === "P0" ? 0 : p === "P1" ? 1 : 2);
+      return rank(pa) - rank(pb);
+    });
+
+  const items: ImplementationTaskPlanItem[] = tasks.map((task) => {
+    const artifactTypes = taskListTaskToArtifactTypes(task);
+    const artifactLabels = artifactTypes;
+    const executionHints = buildImplementationTaskExecutionHints({
+      taskTitle: task.title,
+      sourceArtifactTypes: artifactTypes,
+      projectArtifacts: [],
+    });
+    const acceptanceCriteria = task.acceptanceCriteria?.length
+      ? [...task.acceptanceCriteria]
+      : [
+          "정상·예외 입력에 대한 사용자 피드백이 있다.",
+          "기획 산출물 범위를 벗어나지 않는다.",
+          "회귀 없이 기존 플로우와 연결된다.",
+        ];
+    const reviewChecks = ["업로드·입력 실패 처리", "빈 결과·부분 실패 시 복구 경로", "요약·산출물 수정 가능 여부"];
+    const securityChecks = ["허용 파일 형식·크기 제한", "개인정보·민감 데이터 처리·보관 정책", "외부 연동 자격·토큰 노출 방지"];
+    const itemBlockers = [...globalBlockers];
+    const status: ImplementationTaskStatus = itemBlockers.length
+      ? "blocked"
+      : input.envOk && input.designOk
+        ? "ready"
+        : "draft";
+
+    const title = `[${task.taskId}] ${task.title}`;
+    const description = String(task.description ?? "").trim() || task.title;
+
+    return {
+      id: task.taskId,
+      title,
+      description,
+      priority: taskListPriorityToPlanPriority(task.priority),
+      sourceArtifactTypes: artifactTypes,
+      sourceRoles: ["prototype_build"],
+      acceptanceCriteria,
+      securityChecks,
+      reviewChecks,
+      executionHints,
+      cursorPromptDraft: buildCursorPromptDraft({
+        title,
+        description,
+        artifactLabels,
+        acceptanceCriteria,
+        securityChecks,
+        reviewChecks,
+        executionHints,
+      }),
+      status,
+      blockers: itemBlockers,
+    };
+  });
+
+  const planDraft: ImplementationTaskPlanV1 = {
+    version: "implementation_task_plan_v1",
+    projectId: input.projectId.trim(),
+    createdAt: now,
+    source: "implementation_orchestration",
+    items,
+    readiness: { ready: false, missing: [] },
+  };
+  const readiness = evaluateImplementationTaskPlanReadiness({
+    plan: planDraft,
+    envOk: input.envOk,
+    designOk: input.designOk,
+  });
+  return { ...planDraft, readiness };
+}
 
 const IMPLEMENTATION_ARTIFACT_TYPES: readonly ProjectArtifactType[] = [
   "feature-spec",

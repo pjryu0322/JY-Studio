@@ -6,6 +6,12 @@ import {
 import { appendWipPolicyToCodeAgentPrompt } from "@/lib/prototype/codeAgentWipExecution";
 import type { ImplementationTaskPlanItem, ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { evaluateImplementationTaskPlanReadiness } from "@/lib/prototype/implementationTaskPlan";
+import { buildCursorPromptDraft } from "@/lib/prototype/implementationTaskPlan";
+import {
+  buildImplementationTaskExecutionHints,
+  COMMON_FORBIDDEN_PATHS,
+} from "@/lib/prototype/implementationExecutionHints";
+import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 export type { CursorWorkItemQualityGate } from "@/lib/prototype/implementationCursorPromptQuality";
 
@@ -43,6 +49,91 @@ export function buildCursorWorkItemsFromImplementationTaskPlan(
   plan: ImplementationTaskPlanV1,
 ): readonly CursorWorkItem[] {
   return plan.items.map((item) => toCursorWorkItem(item));
+}
+
+function taskListPriorityToSortKey(p: ImplementationTaskV1["priority"]): number {
+  if (p === "high") return 0;
+  if (p === "medium") return 1;
+  return 2;
+}
+
+function taskListTaskToArtifactTypes(task: ImplementationTaskV1): readonly string[] {
+  switch (task.taskType) {
+    case "screen":
+      return ["screen-spec"];
+    case "api":
+      return ["api-spec"];
+    case "mock":
+    case "data":
+      return ["feature-spec"];
+    default:
+      return ["feature-spec"];
+  }
+}
+
+export function buildCursorWorkItemsFromImplementationTaskList(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly nowIso?: string;
+}): readonly CursorWorkItem[] {
+  const tasks = (input.taskList.tasks ?? [])
+    .filter((t) => t.ownerRole === "developer" && t.status === "ready")
+    .slice()
+    .sort((a, b) => taskListPriorityToSortKey(a.priority) - taskListPriorityToSortKey(b.priority));
+
+  const now = input.nowIso ?? new Date().toISOString();
+
+  return tasks.map((task, index) => {
+    const sourceArtifactTypes = taskListTaskToArtifactTypes(task);
+    const executionHints = buildImplementationTaskExecutionHints({
+      taskTitle: task.title,
+      sourceArtifactTypes,
+      projectArtifacts: [],
+    });
+    const title = `[${task.taskId}] ${task.title}`;
+    const prompt = appendWipPolicyToCodeAgentPrompt(
+      buildCursorPromptDraft({
+        title,
+        description: [
+          "기획단계에서 생성된 Implementation Task List 기준 작업입니다.",
+          "",
+          `작업 ID: ${task.taskId}`,
+          "역할: AI 개발자",
+          `우선순위: ${task.priority}`,
+          "",
+          `설명: ${String(task.description ?? "").trim() || task.title}`,
+          "",
+          "완료 기준:",
+          ...(task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((a) => `- ${a}`) : ["- (기준 없음)"]),
+        ].join("\n"),
+        artifactLabels: sourceArtifactTypes,
+        acceptanceCriteria: task.acceptanceCriteria?.length ? [...task.acceptanceCriteria] : [],
+        securityChecks: [],
+        reviewChecks: [],
+        executionHints,
+      }),
+    );
+
+    const draft: CursorWorkItem = {
+      id: `cursor-wi-tasklist-${index + 1}-${task.taskId}`,
+      taskId: task.taskId,
+      title,
+      prompt,
+      requiredFilesHint: [`taskList:${input.taskList.version}`, `task:${task.taskId}`],
+      expectedOutput: [
+        "변경된 소스 파일 목록",
+        "실행한 테스트 명령과 결과 요약",
+        "핵심 동작 검증 요약",
+        "미해결 이슈(있을 경우)",
+      ],
+      testCommands: executionHints.testCommands,
+      forbiddenPaths: executionHints.forbiddenPaths.length ? executionHints.forbiddenPaths : COMMON_FORBIDDEN_PATHS,
+      blocked: false,
+      blockers: [],
+      qualityGate: { promptReady: false, missing: [], score: 0 },
+    };
+    return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
+  });
 }
 
 function toCursorWorkItem(item: ImplementationTaskPlanItem): CursorWorkItem {
