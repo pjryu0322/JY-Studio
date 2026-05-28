@@ -6,6 +6,8 @@ import {
   markDeveloperTasksDoneForWip,
   markDeveloperTasksFailedForWip,
   markDeveloperTasksInProgressForWip,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksInProgress,
   parseImplementationTaskExecutionStateV1,
   summarizeImplementationTaskExecutionItems,
   syncDeveloperTaskExecutionFromCodeAgentWip,
@@ -283,6 +285,123 @@ describe("implementationTaskExecutionState", () => {
       nowIso,
     });
     expect(synced?.items.find((i) => i.taskId === "dev-1")?.status).toBe("done");
+  });
+
+  it("markPostDeveloperReviewTasksQueued moves reviewer/security/scm ready to queued", () => {
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: {
+        ...sampleTaskList(),
+        tasks: [
+          ...sampleTaskList().tasks,
+          {
+            taskId: "sec-1",
+            title: "보안",
+            description: "d",
+            taskType: "validation",
+            ownerRole: "security",
+            priority: "medium",
+            dependencies: [],
+            acceptanceCriteria: [],
+            status: "ready",
+          },
+          {
+            taskId: "scm-1",
+            title: "SCM",
+            description: "d",
+            taskType: "integration",
+            ownerRole: "scm",
+            priority: "medium",
+            dependencies: [],
+            acceptanceCriteria: [],
+            status: "ready",
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 1, scm: 1 },
+      },
+      nowIso,
+    });
+    const withDevDone = {
+      ...initial,
+      items: initial.items.map((i) =>
+        i.taskId === "dev-1" ? { ...i, status: "done" as const, completedAt: nowIso } : i,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        initial.items.map((i) =>
+          i.taskId === "dev-1" ? { ...i, status: "done" as const, completedAt: nowIso } : i,
+        ),
+      ),
+    };
+    const queued = markPostDeveloperReviewTasksQueued({ state: withDevDone, nowIso });
+    expect(queued.items.find((i) => i.taskId === "dev-1")?.status).toBe("done");
+    expect(queued.items.find((i) => i.taskId === "rev-1")?.status).toBe("queued");
+    expect(queued.items.find((i) => i.taskId === "sec-1")?.status).toBe("queued");
+    expect(queued.items.find((i) => i.taskId === "scm-1")?.status).toBe("queued");
+    expect(queued.summary.queued).toBe(3);
+  });
+
+  it("markPostDeveloperReviewTasksQueued does not overwrite failed/skipped/in_progress", () => {
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: sampleTaskList(),
+      nowIso,
+    });
+    const withSkippedReviewer = {
+      ...initial,
+      items: initial.items.map((i) =>
+        i.ownerRole === "reviewer" ? { ...i, status: "skipped" as const } : i,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        initial.items.map((i) =>
+          i.ownerRole === "reviewer" ? { ...i, status: "skipped" as const } : i,
+        ),
+      ),
+    };
+    const queued = markPostDeveloperReviewTasksQueued({ state: withSkippedReviewer, nowIso });
+    expect(queued.items.find((i) => i.ownerRole === "reviewer")?.status).toBe("skipped");
+  });
+
+  it("markRoleTasksInProgress moves scm ready/queued to in_progress", () => {
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: {
+        ...sampleTaskList(),
+        tasks: [
+          ...sampleTaskList().tasks,
+          {
+            taskId: "scm-1",
+            title: "SCM",
+            description: "d",
+            taskType: "integration",
+            ownerRole: "scm",
+            priority: "medium",
+            dependencies: [],
+            acceptanceCriteria: [],
+            status: "ready",
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 1 },
+      },
+      nowIso,
+    });
+    const withScmQueued = {
+      ...initial,
+      items: initial.items.map((i) =>
+        i.taskId === "scm-1" ? { ...i, status: "queued" as const } : i,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        initial.items.map((i) =>
+          i.taskId === "scm-1" ? { ...i, status: "queued" as const } : i,
+        ),
+      ),
+    };
+    const inProgress = markRoleTasksInProgress({
+      state: withScmQueued,
+      ownerRole: "scm",
+      nowIso,
+    });
+    expect(inProgress.items.find((i) => i.taskId === "scm-1")?.status).toBe("in_progress");
+    expect(inProgress.summary.inProgress).toBe(1);
   });
 
   it("syncDeveloperTaskExecutionFromCodeAgentWip maps failed WIP to failed", () => {

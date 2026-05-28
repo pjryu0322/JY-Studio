@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markDeveloperTasksDoneForWip,
+  markPostDeveloperReviewTasksQueued,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import {
   deriveImplementationStageNextActions,
   prioritizeImplementationChipsByNextActions,
+  prioritizeImplementationChipsForState,
 } from "@/lib/prototype/implementationStageNextActions";
-import { AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP } from "@/lib/prototype/implementationTaskListEntryMessage";
+import {
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  REVIEWER_CHECK_CHIP,
+  SCM_CRITERIA_CHIP,
+  SECURITY_CHECK_CHIP,
+} from "@/lib/prototype/implementationTaskListEntryMessage";
+import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
+import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 
 describe("deriveImplementationStageNextActions", () => {
   it("not_ready -> SHOW_ENV_CHECK primary", () => {
@@ -41,6 +56,90 @@ describe("deriveImplementationStageNextActions", () => {
       "CONFIRM_MOCK_IMPLEMENTATION",
       "REVIEW_DB_INTEGRATION",
     ]);
+  });
+});
+
+describe("deriveImplementationStageNextActions with execution state", () => {
+  const NOW = "2026-05-28T00:00:00.000Z";
+
+  function makeSeed(): ImplementationSeedV1 {
+    return {
+      version: "implementation_seed_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "planning_slots_and_artifacts",
+      lifecycleStatus: "confirmed",
+      readiness: { ready: true, score: 1, missing: [], warnings: [] },
+      processImplementationItems: [],
+      screenImplementationItems: [],
+      actorCapabilityMatrix: [],
+      commonDetailFeatures: [],
+      dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+      assumptions: [],
+      gaps: [],
+    };
+  }
+
+  it("prioritizes reviewer/security/scm chips after developer done and post-review queued", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    const workItems: readonly CursorWorkItem[] = taskList.tasks
+      .filter((t) => t.ownerRole === "developer")
+      .map((t) => ({
+        id: "wi-dev",
+        taskId: t.taskId,
+        title: t.title,
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: [],
+        forbiddenPaths: [],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      }));
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = markDeveloperTasksDoneForWip({ state: executionState, cursorWorkItems: workItems, nowIso: NOW });
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+
+    const actions = deriveImplementationStageNextActions("task_list_ready", executionState);
+    expect(actions[0]?.label).toBe(REVIEWER_CHECK_CHIP);
+
+    const effectiveState = {
+      implementationSeedV1: makeSeed(),
+      implementationTaskListV1: taskList,
+      implementationWorkPlanDraftV1: null,
+      implementationTaskPlanV1: null,
+      implementationDbStrategyV1: null,
+      envOk: true,
+      designOk: true,
+      latestRun: null,
+      hasWorkUnits: false,
+      plannerRunning: false,
+      plannerCreatePending: false,
+      protoBusy: false,
+    } satisfies EffectiveImplementationState;
+
+    const sorted = prioritizeImplementationChipsForState(
+      [
+        SCM_CRITERIA_CHIP,
+        SECURITY_CHECK_CHIP,
+        AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+        REVIEWER_CHECK_CHIP,
+      ],
+      effectiveState,
+      executionState,
+    );
+    expect(sorted[0]).toBe(REVIEWER_CHECK_CHIP);
+    expect(sorted[1]).toBe(SECURITY_CHECK_CHIP);
   });
 });
 

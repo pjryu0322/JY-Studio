@@ -14,6 +14,8 @@ import {
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   markDeveloperTasksInProgressForWip,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksInProgress,
   syncDeveloperTaskExecutionFromCodeAgentWip,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -93,6 +95,19 @@ function resolveExecutionStateAfterWipChange(
       projectId: deps.projectId,
     }) ?? undefined
   );
+}
+
+function resolveExecutionStateAfterWipWithPatch(
+  deps: WipChipHandlerDeps,
+  wip: NonNullable<WipChipHandlerDeps["parsedState"]["codeAgentWipExecutionV1"]>,
+  patch?: (state: ImplementationTaskExecutionStateV1) => ImplementationTaskExecutionStateV1,
+): ImplementationTaskExecutionStateV1 | undefined {
+  const base =
+    resolveExecutionStateAfterWipChange(deps, wip) ??
+    deps.parsedState.implementationTaskExecutionStateV1 ??
+    undefined;
+  if (!base || !patch) return base;
+  return patch(base);
 }
 
 export function executeCodeAgentWipWorkRequest(
@@ -242,10 +257,11 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         return;
       }
       const approvedWip = result.orchestrationPatch.codeAgentWipExecutionV1;
-      const executionState = resolveExecutionStateAfterWipChange(deps, approvedWip);
       persistWipResult(deps, {
         ...result,
-        executionState: executionState ?? undefined,
+        executionState: resolveExecutionStateAfterWipWithPatch(deps, approvedWip, (state) =>
+          markPostDeveloperReviewTasksQueued({ state }),
+        ),
       });
     },
     discardWipWork: () => {
@@ -276,7 +292,17 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         deps.showToast(result.reason);
         return;
       }
-      persistWipResult(deps, result);
+      const scmWip = result.orchestrationPatch.codeAgentWipExecutionV1;
+      persistWipResult(deps, {
+        ...result,
+        executionState: resolveExecutionStateAfterWipWithPatch(deps, scmWip, (state) =>
+          markRoleTasksInProgress({
+            state,
+            ownerRole: "scm",
+            resultSummary: "SCM 공식 반영 요청됨",
+          }),
+        ),
+      });
     },
     canApproveDeveloperResult: () => {
       const gate = evaluateDeveloperApprovalGate(deps.parsedState.codeAgentWipExecutionV1);

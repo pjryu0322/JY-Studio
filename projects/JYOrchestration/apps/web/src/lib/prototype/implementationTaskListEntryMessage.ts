@@ -1,7 +1,10 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
-import { formatImplementationTaskExecutionSummaryLines } from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  formatImplementationTaskExecutionSummaryLines,
+  type ImplementationTaskExecutionStateV1,
+} from "@/lib/prototype/implementationTaskExecutionState";
 import {
   formatImplementationTaskListRoleSummaryLines,
   hasImplementationTaskListReady,
@@ -69,6 +72,16 @@ function formatTaskQueueLine(task: ImplementationTaskV1): string {
   return `${task.taskId} | ${role} | ${task.title} | ${task.priority} | ${task.status}`;
 }
 
+function formatTaskQueueLineWithExecutionState(
+  task: ImplementationTaskV1,
+  executionState?: ImplementationTaskExecutionStateV1 | null,
+): string {
+  const role = ROLE_LABEL_KO[task.ownerRole] ?? task.ownerRole;
+  const executionItem = executionState?.items.find((i) => i.taskId === task.taskId);
+  const status = executionItem?.status ?? task.status;
+  return `${task.taskId} | ${role} | ${task.title} | ${task.priority} | ${status}`;
+}
+
 export function formatImplementationTaskQueueLines(
   tasks: readonly ImplementationTaskV1[],
   limit = 12,
@@ -79,6 +92,33 @@ export function formatImplementationTaskQueueLines(
     lines.push(`… 외 ${tasks.length - limit}건`);
   }
   return lines;
+}
+
+export function formatImplementationTaskQueueLinesWithExecutionState(input: {
+  readonly tasks: readonly ImplementationTaskV1[];
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly limit?: number;
+}): readonly string[] {
+  const limit = input.limit ?? 12;
+  if (!input.tasks.length) return ["(표시할 작업이 없습니다)"];
+  const lines = input.tasks
+    .slice(0, limit)
+    .map((task) => formatTaskQueueLineWithExecutionState(task, input.executionState));
+  if (input.tasks.length > limit) {
+    lines.push(`… 외 ${input.tasks.length - limit}건`);
+  }
+  return lines;
+}
+
+function formatTaskQueueLinesForDisplay(
+  tasks: readonly ImplementationTaskV1[],
+  executionState?: ImplementationTaskExecutionStateV1 | null,
+  limit = 12,
+): readonly string[] {
+  if (executionState) {
+    return formatImplementationTaskQueueLinesWithExecutionState({ tasks, executionState, limit });
+  }
+  return formatImplementationTaskQueueLines(tasks, limit);
 }
 
 function tasksForRole(
@@ -184,15 +224,16 @@ export function buildImplementationTaskListMissingEntryMessage(input: {
 
 export function buildImplementationTaskListViewMessage(input: {
   readonly taskList: ImplementationTaskListV1;
-  readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const executionLines = formatImplementationTaskExecutionSummaryLines(input.executionState);
+  const queueLines = formatTaskQueueLinesForDisplay(input.taskList.tasks, input.executionState, 20);
   const content = [
     "구현 작업목록입니다. (TASK ID / 역할 / 제목 / 우선순위 / 상태)",
     "",
-    ...formatImplementationTaskQueueLines(input.taskList.tasks, 20),
+    ...queueLines,
     ...(executionLines.length ? ["", ...executionLines] : []),
     "",
     "다음 작업을 선택해 주세요.",
@@ -222,6 +263,7 @@ function buildRoleTaskQueueMessage(input: {
   readonly role: ImplementationTaskOwnerRole;
   readonly heading: string;
   readonly emptyFallback: () => readonly string[];
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly nowIso: string;
   readonly messageIdPrefix: string;
 }): RequirementsMessage {
@@ -229,7 +271,7 @@ function buildRoleTaskQueueMessage(input: {
   const roleTasks = tasksForRole(input.taskList, input.role);
   const bodyLines =
     roleTasks.length > 0
-      ? formatImplementationTaskQueueLines(roleTasks, 12)
+      ? formatTaskQueueLinesForDisplay(roleTasks, input.executionState, 12)
       : [...input.emptyFallback()];
 
   const content = [input.heading, "", ...bodyLines, "", "다음 작업을 선택해 주세요."].join("\n");
@@ -269,6 +311,7 @@ export function buildDesignerReviewTaskMessage(input: {
 
 export function buildReviewerCheckTaskMessage(input: {
   readonly taskList: ImplementationTaskListV1;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   return buildRoleTaskQueueMessage({
@@ -276,6 +319,7 @@ export function buildReviewerCheckTaskMessage(input: {
     role: "reviewer",
     heading: "검수자 점검 대상 작업입니다.",
     emptyFallback: () => ["검수자 작업이 없습니다. 구현 작업목록을 다시 확인해 주세요."],
+    executionState: input.executionState,
     nowIso: input.nowIso,
     messageIdPrefix: "impl-reviewer-check",
   });
@@ -283,6 +327,7 @@ export function buildReviewerCheckTaskMessage(input: {
 
 export function buildSecurityCheckTaskMessage(input: {
   readonly taskList: ImplementationTaskListV1;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   return buildRoleTaskQueueMessage({
@@ -290,6 +335,7 @@ export function buildSecurityCheckTaskMessage(input: {
     role: "security",
     heading: "보안 점검 대상 작업입니다.",
     emptyFallback: () => ["보안 점검 작업이 없습니다. 구현 작업목록을 다시 확인해 주세요."],
+    executionState: input.executionState,
     nowIso: input.nowIso,
     messageIdPrefix: "impl-security-check",
   });
@@ -451,11 +497,23 @@ export function tryHandleImplementationTaskListChip(input: {
       return true;
     case REVIEWER_CHECK_CHIP:
       if (!list) return false;
-      input.appendAiMessage(buildReviewerCheckTaskMessage({ taskList: list, nowIso: now }));
+      input.appendAiMessage(
+        buildReviewerCheckTaskMessage({
+          taskList: list,
+          executionState: input.executionState,
+          nowIso: now,
+        }),
+      );
       return true;
     case SECURITY_CHECK_CHIP:
       if (!list) return false;
-      input.appendAiMessage(buildSecurityCheckTaskMessage({ taskList: list, nowIso: now }));
+      input.appendAiMessage(
+        buildSecurityCheckTaskMessage({
+          taskList: list,
+          executionState: input.executionState,
+          nowIso: now,
+        }),
+      );
       return true;
     case SCM_CRITERIA_CHIP:
       if (!list) return false;

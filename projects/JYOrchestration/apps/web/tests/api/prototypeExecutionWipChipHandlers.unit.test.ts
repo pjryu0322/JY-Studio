@@ -29,8 +29,41 @@ function sampleTaskList(): ImplementationTaskListV1 {
         acceptanceCriteria: [],
         status: "ready",
       },
+      {
+        taskId: "rev-1",
+        title: "기능 검수",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "sec-1",
+        title: "보안 점검",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "security",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "scm-1",
+        title: "SCM 반영",
+        description: "d",
+        taskType: "integration",
+        ownerRole: "scm",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
     ],
-    roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 1, scm: 1 },
   };
 }
 
@@ -204,7 +237,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(showToast).toHaveBeenCalledWith("WIP 작업을 폐기했습니다.");
   });
 
-  it("approveDeveloperResult persists developer_approved WIP and done execution state", () => {
+  it("approveDeveloperResult persists developer done and reviewer/security/scm queued", () => {
     const showToast = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
@@ -241,7 +274,96 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(persistOrchestration).toHaveBeenCalled();
     const orch = persistOrchestration.mock.calls[0]?.[1];
     expect(orch?.codeAgentWipExecutionV1?.status).toBe("developer_approved");
-    const dev = orch?.implementationTaskExecutionStateV1?.items.find((i) => i.taskId === "dev-1");
-    expect(dev?.status).toBe("done");
+    const exec = orch?.implementationTaskExecutionStateV1;
+    expect(exec?.items.find((i) => i.taskId === "dev-1")?.status).toBe("done");
+    expect(exec?.items.find((i) => i.taskId === "rev-1")?.status).toBe("queued");
+    expect(exec?.items.find((i) => i.taskId === "sec-1")?.status).toBe("queued");
+    expect(exec?.items.find((i) => i.taskId === "scm-1")?.status).toBe("queued");
+  });
+
+  it("discardWipWork does not queue reviewer/security/scm tasks", () => {
+    const showToast = vi.fn();
+    const persistOrchestration = vi.fn();
+    const taskList = sampleTaskList();
+    const wip = wipForReview();
+    const executionState = markDeveloperTasksInProgressForWip({
+      state: buildInitialImplementationTaskExecutionStateFromTaskList({
+        projectId: "p-wip",
+        taskList,
+        nowIso,
+      }),
+      taskList,
+      cursorWorkItems: workItems,
+      projectId: "p-wip",
+      nowIso,
+    });
+    const { discardWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: wip,
+        implementationTaskExecutionStateV1: executionState,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast,
+    });
+    discardWipWork();
+    const exec = persistOrchestration.mock.calls[0]?.[1]?.implementationTaskExecutionStateV1;
+    expect(exec?.items.find((i) => i.taskId === "rev-1")?.status).toBe("ready");
+    expect(exec?.items.find((i) => i.taskId === "sec-1")?.status).toBe("ready");
+    expect(exec?.items.find((i) => i.taskId === "scm-1")?.status).toBe("ready");
+  });
+
+  it("requestScmOfficialCommit persists scm task in_progress", () => {
+    const showToast = vi.fn();
+    const persistOrchestration = vi.fn();
+    const taskList = sampleTaskList();
+    const wip = {
+      ...wipForReview(),
+      status: "developer_approved" as const,
+      developerReview: {
+        status: "approved" as const,
+        reviewedAt: nowIso,
+        reviewedBy: "ai_developer" as const,
+        summary: "ok",
+        findings: [],
+        requestedActions: [],
+      },
+    };
+    const executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-wip",
+      taskList,
+      nowIso,
+    });
+    const { requestScmOfficialCommit } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: wip,
+        implementationTaskExecutionStateV1: executionState,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast,
+    });
+    requestScmOfficialCommit();
+    const orch = persistOrchestration.mock.calls[0]?.[1];
+    expect(orch?.codeAgentWipExecutionV1?.status).toBe("scm_commit_pending");
+    expect(orch?.implementationTaskExecutionStateV1?.items.find((i) => i.taskId === "scm-1")?.status).toBe(
+      "in_progress",
+    );
   });
 });

@@ -83,6 +83,14 @@ export type ImplementationTaskExecutionStateV1 = Readonly<{
 
 const TERMINAL_STATUSES = new Set<ImplementationTaskExecutionStatus>(["done", "failed", "skipped"]);
 
+const POST_DEVELOPER_REVIEW_ROLES = new Set<ImplementationTaskExecutionRole>([
+  "reviewer",
+  "security",
+  "scm",
+]);
+
+const DEFAULT_POST_DEVELOPER_QUEUE_REASON = "AI 개발자 WIP 승인 후 후속 점검 대기";
+
 function mapTaskListStatusToExecution(
   status: import("@/lib/requirements/implementationTaskList").ImplementationTaskStatus,
 ): ImplementationTaskExecutionStatus {
@@ -163,11 +171,7 @@ export function parseImplementationTaskExecutionStateV1(
     });
   }
 
-  const summaryRaw = o.summary;
-  const summary =
-    summaryRaw && typeof summaryRaw === "object"
-      ? summarizeImplementationTaskExecutionItems(items)
-      : summarizeImplementationTaskExecutionItems(items);
+  const summary = summarizeImplementationTaskExecutionItems(items);
 
   return {
     version: IMPLEMENTATION_TASK_EXECUTION_STATE_VERSION,
@@ -223,6 +227,40 @@ function patchExecutionItems(
         : {}),
     };
   });
+}
+
+function applyExecutionStateItemPatches(
+  state: ImplementationTaskExecutionStateV1,
+  patchForItem: (
+    item: ImplementationTaskExecutionItemV1,
+  ) => Partial<ImplementationTaskExecutionItemV1> | null,
+  nowIso: string,
+): ImplementationTaskExecutionStateV1 {
+  const patchByTaskId = new Map<string, Partial<ImplementationTaskExecutionItemV1>>();
+  for (const item of state.items) {
+    const patch = patchForItem(item);
+    if (patch) patchByTaskId.set(item.taskId, patch);
+  }
+  const items = patchExecutionItems(state.items, patchByTaskId, nowIso);
+  return {
+    ...state,
+    updatedAt: nowIso,
+    items,
+    summary: summarizeImplementationTaskExecutionItems(items),
+  };
+}
+
+export function hasDeveloperWipApprovedWithReviewQueued(
+  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+): boolean {
+  if (!executionState?.items.length) return false;
+  const developerDone = executionState.items.some(
+    (item) => item.ownerRole === "developer" && item.status === "done",
+  );
+  const postReviewQueued = executionState.items.some(
+    (item) => POST_DEVELOPER_REVIEW_ROLES.has(item.ownerRole) && item.status === "queued",
+  );
+  return developerDone && postReviewQueued;
 }
 
 export function markDeveloperTasksInProgressForWip(input: {
@@ -294,6 +332,42 @@ export function markDeveloperTasksDoneForWip(input: {
     items,
     summary: summarizeImplementationTaskExecutionItems(items),
   };
+}
+
+export function markPostDeveloperReviewTasksQueued(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly nowIso?: string;
+  readonly reason?: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const resultSummary = input.reason?.trim() || DEFAULT_POST_DEVELOPER_QUEUE_REASON;
+  return applyExecutionStateItemPatches(
+    input.state,
+    (item) => {
+      if (!POST_DEVELOPER_REVIEW_ROLES.has(item.ownerRole) || item.status !== "ready") return null;
+      return { status: "queued", resultSummary };
+    },
+    now,
+  );
+}
+
+export function markRoleTasksInProgress(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly ownerRole: ImplementationTaskExecutionRole;
+  readonly nowIso?: string;
+  readonly resultSummary?: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const resultSummary = input.resultSummary?.trim() || `${input.ownerRole} 작업 진행 중`;
+  return applyExecutionStateItemPatches(
+    input.state,
+    (item) => {
+      if (item.ownerRole !== input.ownerRole) return null;
+      if (item.status !== "ready" && item.status !== "queued") return null;
+      return { status: "in_progress", resultSummary };
+    },
+    now,
+  );
 }
 
 export function markDeveloperTasksFailedForWip(input: {

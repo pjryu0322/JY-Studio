@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildInitialImplementationTaskExecutionStateFromTaskList } from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markDeveloperTasksInProgressForWip,
+} from "@/lib/prototype/implementationTaskExecutionState";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
@@ -43,6 +46,9 @@ describe("requirementsStateJson implementationTaskExecutionStateV1", () => {
     });
     expect(state.implementationTaskExecutionStateV1?.version).toBe(
       "implementation_task_execution_state_v1",
+    );
+    expect(state.implementationTaskExecutionStateV1?.summary.total).toBe(
+      executionState.summary.total,
     );
     expect(state.implementationTaskExecutionStateV1?.items.length).toBeGreaterThan(0);
   });
@@ -94,6 +100,54 @@ describe("requirementsStateJson implementationTaskExecutionStateV1", () => {
     expect(merged.implementationTaskExecutionStateV1?.projectId).toBe("p1");
     expect(merged.implementationTaskExecutionStateV1?.summary.total).toBe(
       executionState.summary.total,
+    );
+  });
+
+  it("mergeRequirementsStateJson can update implementationTaskExecutionStateV1", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    const devTask = taskList.tasks.find((t) => t.ownerRole === "developer");
+    const workItems = devTask
+      ? [
+          {
+            id: "wi-1",
+            taskId: devTask.taskId,
+            title: devTask.title,
+            prompt: "p",
+            requiredFilesHint: [],
+            expectedOutput: [],
+            testCommands: [],
+            forbiddenPaths: [],
+            blocked: false,
+            blockers: [],
+            qualityGate: { score: 1, promptReady: true, missing: [] },
+          },
+        ]
+      : [];
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    const updated = markDeveloperTasksInProgressForWip({
+      state: initial,
+      taskList,
+      cursorWorkItems: workItems,
+      projectId: "p1",
+      nowIso: NOW,
+    });
+    const parsed = parseRequirementsStateJson({
+      implementationTaskExecutionStateV1: initial,
+    });
+    const merged = mergeRequirementsStateJson(parsed, {
+      implementationTaskExecutionStateV1: updated,
+    });
+    expect(merged.implementationTaskExecutionStateV1?.summary.inProgress).toBeGreaterThan(0);
+    expect(merged.implementationTaskExecutionStateV1?.summary.inProgress).toBe(
+      updated.summary.inProgress,
     );
   });
 });

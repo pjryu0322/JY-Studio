@@ -1294,8 +1294,16 @@ export function PrototypePreviewPanel({
     const labels = implementationBootstrapInput
       ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
       : [];
-    return prioritizeImplementationChipsForState(labels, effectiveImplementationState);
-  }, [implementationBootstrapInput, effectiveImplementationState]);
+    return prioritizeImplementationChipsForState(
+      labels,
+      effectiveImplementationState,
+      parsedRequirementsState.implementationTaskExecutionStateV1,
+    );
+  }, [
+    implementationBootstrapInput,
+    effectiveImplementationState,
+    parsedRequirementsState.implementationTaskExecutionStateV1,
+  ]);
 
   const runImplementationStageActionRef = useRef<
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult

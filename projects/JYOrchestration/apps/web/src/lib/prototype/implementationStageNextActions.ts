@@ -4,7 +4,14 @@ import {
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
+  hasDeveloperWipApprovedWithReviewQueued,
+  type ImplementationTaskExecutionStateV1,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  REVIEWER_CHECK_CHIP,
+  SCM_CRITERIA_CHIP,
+  SECURITY_CHECK_CHIP,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   deriveImplementationStageStatus,
@@ -18,9 +25,74 @@ export type ImplementationStageNextAction = Readonly<{
   reason: string;
 }>;
 
+function deriveNextActionsFromExecutionState(
+  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+): readonly ImplementationStageNextAction[] | null {
+  if (!executionState?.items.length) return null;
+
+  const summary = executionState.summary;
+
+  if (hasDeveloperWipApprovedWithReviewQueued(executionState)) {
+    return [
+      {
+        actionId: "SHOW_ROLE_CHECK",
+        label: REVIEWER_CHECK_CHIP,
+        priority: "primary",
+        reason: "개발자 WIP 승인 후 검수자 점검 대기",
+      },
+      {
+        actionId: "SHOW_ROLE_CHECK",
+        label: SECURITY_CHECK_CHIP,
+        priority: "secondary",
+        reason: "개발자 WIP 승인 후 보안 점검 대기",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "secondary",
+        reason: "SCM 반영 기준 확인",
+      },
+    ];
+  }
+
+  if (summary.inProgress > 0) {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "변경사항 보기",
+        priority: "primary",
+        reason: "Code Agent WIP 진행 중 변경사항 확인",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "구현 결과 승인",
+        priority: "secondary",
+        reason: "Code Agent WIP 결과 승인",
+      },
+    ];
+  }
+
+  if (summary.failed > 0) {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+        priority: "primary",
+        reason: "실패한 구현 작업 재시도",
+      },
+    ];
+  }
+
+  return null;
+}
+
 export function deriveImplementationStageNextActions(
   status: ImplementationStageStatus,
+  executionState?: ImplementationTaskExecutionStateV1 | null,
 ): readonly ImplementationStageNextAction[] {
+  const fromExecution = deriveNextActionsFromExecutionState(executionState);
+  if (fromExecution?.length) return fromExecution;
+
   switch (status) {
     case "not_ready":
       return [
@@ -123,9 +195,10 @@ export function prioritizeImplementationChipsByNextActions(input: {
 export function prioritizeImplementationChipsForState(
   labels: readonly string[],
   state: EffectiveImplementationState,
+  executionState?: ImplementationTaskExecutionStateV1 | null,
 ): readonly string[] {
   const status = deriveImplementationStageStatus(state);
-  const nextActions = deriveImplementationStageNextActions(status);
+  const nextActions = deriveImplementationStageNextActions(status, executionState);
   return prioritizeImplementationChipsByNextActions({ labels, nextActions });
 }
 

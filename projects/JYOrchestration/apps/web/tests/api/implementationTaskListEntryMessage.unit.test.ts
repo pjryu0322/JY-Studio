@@ -231,6 +231,9 @@ describe("implementationTaskListEntryMessage", () => {
     });
     expect(view.content).toContain("작업 실행 상태");
     expect(view.content).toContain("진행 중");
+    expect(devTask).toBeDefined();
+    expect(view.content).toContain(`${devTask!.taskId} |`);
+    expect(view.content).toMatch(new RegExp(`${devTask!.taskId} \\| [^|]+ \\| [^|]+ \\| [^|]+ \\| in_progress`));
   });
 
   it("shows security role queue on 보안 점검", () => {
