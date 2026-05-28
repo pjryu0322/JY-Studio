@@ -3,12 +3,20 @@ import {
   deriveImplementationStageNextActions,
   prioritizeImplementationChipsByNextActions,
 } from "@/lib/prototype/implementationStageNextActions";
+import { AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP } from "@/lib/prototype/implementationTaskListEntryMessage";
 
 describe("deriveImplementationStageNextActions", () => {
   it("not_ready -> SHOW_ENV_CHECK primary", () => {
     const actions = deriveImplementationStageNextActions("not_ready");
     expect(actions[0]?.actionId).toBe("SHOW_ENV_CHECK");
     expect(actions[0]?.priority).toBe("primary");
+  });
+
+  it("task_list_ready -> AI developer implementation request primary", () => {
+    const actions = deriveImplementationStageNextActions("task_list_ready");
+    expect(actions[0]?.label).toBe(AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP);
+    expect(actions[0]?.priority).toBe("primary");
+    expect(actions[0]?.label).not.toBe("구현 작업안 초안 생성");
   });
 
   it("implementation_ready -> GENERATE_IMPLEMENTATION_WORK_PLAN primary", () => {

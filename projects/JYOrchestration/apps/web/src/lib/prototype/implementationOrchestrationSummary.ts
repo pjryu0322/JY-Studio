@@ -802,6 +802,16 @@ export function isLegacyImplementationMemberBootstrapMessage(m: RequirementsMess
 
   if (m.meta.internalType !== IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE) return false;
 
+  // TaskList bootstrap is a first-class implementation entry message; never treat as legacy.
+  if (
+    m.speakerId === "prototype_build" &&
+    (m.meta.implementationBootstrapKind === "task_list_ready" ||
+      m.meta.implementationBootstrapKind === "task_list_missing") &&
+    m.content.includes("구현 작업목록")
+  ) {
+    return false;
+  }
+
   if (m.speakerId !== "prototype_build") return true;
   if (m.meta.implementationBootstrapKind !== "lead_developer_summary") return true;
   if (!m.content.includes(IMPLEMENTATION_ENTRY_READINESS_HEADLINE)) return true;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 
@@ -54,6 +55,63 @@ function makeTaskPlan(): ImplementationTaskPlanV1 {
   };
 }
 
+function makeTaskListReady(): ImplementationTaskListV1 {
+  return {
+    version: "implementation_task_list_v1",
+    projectId: "p1",
+    createdAt: NOW,
+    updatedAt: NOW,
+    source: "implementation_seed",
+    tasks: [
+      {
+        taskId: "DEV-001",
+        title: "개발 작업",
+        description: "dev",
+        taskType: "feature",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "REV-001",
+        title: "검수 작업",
+        description: "rev",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "SEC-001",
+        title: "보안 작업",
+        description: "sec",
+        taskType: "security",
+        ownerRole: "security",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "SCM-001",
+        title: "SCM 작업",
+        description: "scm",
+        taskType: "scm",
+        ownerRole: "scm",
+        priority: "low",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+    ],
+    roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 1, scm: 1 },
+  };
+}
+
 describe("deriveImplementationStageStatus", () => {
   it("returns not_ready when design, env, or seed readiness is missing", () => {
     const state = resolveEffectiveImplementationState({
@@ -75,10 +133,24 @@ describe("deriveImplementationStageStatus", () => {
     expect(deriveImplementationStageStatus(state)).toBe("implementation_ready");
   });
 
+  it("returns task_list_ready when seed and task list are ready (no draft/task plan)", () => {
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: makeTaskListReady(),
+      },
+      pendingPatch: {},
+      envOk: true,
+      designOk: true,
+    });
+    expect(deriveImplementationStageStatus(state)).toBe("task_list_ready");
+  });
+
   it("returns work_plan_drafted when draft exists", () => {
     const state = resolveEffectiveImplementationState({
       parsedRequirementsState: {
         implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: makeTaskListReady(),
         implementationWorkPlanDraftV1: makeDraft(),
       },
       pendingPatch: {},
@@ -92,6 +164,7 @@ describe("deriveImplementationStageStatus", () => {
     const state = resolveEffectiveImplementationState({
       parsedRequirementsState: {
         implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: makeTaskListReady(),
         implementationWorkPlanDraftV1: makeDraft(),
         implementationTaskPlanV1: makeTaskPlan(),
       },
