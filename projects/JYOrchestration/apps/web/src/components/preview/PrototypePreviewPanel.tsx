@@ -68,7 +68,12 @@ import {
   type ImplementationStageActionId,
   type PendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
-import { evaluateImplementationStageActionGate } from "@/lib/prototype/implementationStageActionPipeline";
+import {
+  buildImplementationStageActionFocusComposerResult,
+  evaluateImplementationStageActionGate,
+  stageActionExecutionResultFromGate,
+  type ImplementationStageActionExecutionResult,
+} from "@/lib/prototype/implementationStageActionPipeline";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -1771,6 +1776,34 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const applyImplementationStageActionExecutionResult = useCallback(
+    (result: ImplementationStageActionExecutionResult) => {
+      switch (result.kind) {
+        case "blocked":
+          showToast(result.message);
+          break;
+        case "focus_composer":
+          showToast(result.message);
+          queueMicrotask(() => chatInputRef.current?.focus());
+          break;
+        case "open_env_settings":
+          setExecutionEnvironmentModalOpen(true);
+          break;
+        case "open_artifacts":
+          setArtifactHubOpen(true);
+          break;
+        case "show_status":
+          if (result.intent === "role") showRoleCheckDetails();
+          else if (result.intent === "scm") appendStatusQueryFromChip("scm_check_details");
+          else appendStatusQueryFromChip("environment_check_details");
+          break;
+        case "handled":
+          break;
+      }
+    },
+    [showToast, showRoleCheckDetails, appendStatusQueryFromChip],
+  );
+
   const showImplementationSeedReadinessCheck = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -1782,31 +1815,25 @@ export function PrototypePreviewPanel({
     });
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     const nextMessages = [...(resolved.messages ?? []), result.message];
-    executionSingleChat.applyPersistedMessages(nextMessages);
-    void persistChatToDb(
-      {
-        messages: nextMessages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
-      result.orchestrationPatch,
-    );
+    applyImplementationOrchestrationResult({
+      messages: nextMessages,
+      orchestrationPatch: result.orchestrationPatch,
+    });
   }, [
     projectId,
     parsedRequirementsState.singleChatOrchestrationV1,
     parsedRequirementsState.promptTimeline,
     planningSlotDefinitions,
     requirementsStateJson,
-    executionSingleChat,
-    persistChatToDb,
+    applyImplementationOrchestrationResult,
   ]);
 
   const executeImplementationStageAction = useCallback(
     (actionId: ImplementationStageActionId): boolean => {
       const gate = evaluateImplementationStageActionGate(actionId, effectiveImplementationState);
-      if (!gate.ok) {
-        showToast(gate.message);
+      const blocked = stageActionExecutionResultFromGate(gate);
+      if (blocked) {
+        applyImplementationStageActionExecutionResult(blocked);
         return true;
       }
 
@@ -1818,8 +1845,11 @@ export function PrototypePreviewPanel({
           confirmImplementationTaskPlan();
           return true;
         case "EDIT_IMPLEMENTATION_SCOPE":
-          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
-          queueMicrotask(() => chatInputRef.current?.focus());
+          applyImplementationStageActionExecutionResult(
+            buildImplementationStageActionFocusComposerResult(
+              "아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.",
+            ),
+          );
           return true;
         case "REVIEW_DB_INTEGRATION":
           reviewDbIntegrationNeed();
@@ -1860,7 +1890,7 @@ export function PrototypePreviewPanel({
     },
     [
       effectiveImplementationState,
-      showToast,
+      applyImplementationStageActionExecutionResult,
       generateImplementationWorkPlanDraft,
       confirmImplementationTaskPlan,
       reviewDbIntegrationNeed,

@@ -88,6 +88,26 @@ describe("shouldClearPendingImplementationPatch", () => {
       }),
     ).toBe(false);
   });
+
+  it("does not clear when persisted draft timestamp is unchanged", () => {
+    expect(
+      shouldClearPendingImplementationPatch({
+        prevPersistedDraftUpdatedAt: "2026-01-01T00:00:00.000Z",
+        nextPersistedDraftUpdatedAt: "2026-01-01T00:00:00.000Z",
+        prevPersistedTaskPlanCreatedAt: null,
+        nextPersistedTaskPlanCreatedAt: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("clears when persisted task plan createdAt changes", () => {
+    expect(
+      shouldClearPendingImplementationPatch({
+        prevPersistedTaskPlanCreatedAt: "2026-01-01T00:00:00.000Z",
+        nextPersistedTaskPlanCreatedAt: "2026-01-02T00:00:00.000Z",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("canConfirmImplementationWorkPlanFromEffectiveState", () => {

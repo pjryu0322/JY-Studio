@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
-import { MOCK_IMPLEMENTATION_CHIP } from "@/lib/prototype/implementationDbStrategy";
-import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
+import {
+  DATA_MODEL_DRAFT_CHIP,
+  DB_INTEGRATION_REVIEW_CHIP,
+  MOCK_IMPLEMENTATION_CHIP,
+} from "@/lib/prototype/implementationDbStrategy";
+import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
+import {
+  STAGE_ACTION_ONLY_CHIP_LABELS,
+  tryHandlePrototypeExecutionChip,
+} from "@/lib/prototype/prototypeExecutionImplementationChips";
+import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 
 const baseHandlers = () => ({
   openEnvSettings: vi.fn(),
@@ -32,41 +41,36 @@ const baseHandlers = () => ({
 });
 
 describe("tryHandlePrototypeExecutionChip", () => {
-  it("routes implementation entry chips to handlers", () => {
-    const openEnv = vi.fn();
-    const openHub = vi.fn();
-    const handlers = { ...baseHandlers(), openEnvSettings: openEnv, openArtifactHub: openHub };
-    expect(tryHandlePrototypeExecutionChip("환경설정 열기", handlers)).toBe(true);
-    expect(openEnv).toHaveBeenCalledOnce();
-    expect(tryHandlePrototypeExecutionChip("산출물 다시 보기", handlers)).toBe(true);
-    expect(openHub).toHaveBeenCalledOnce();
-    expect(tryHandlePrototypeExecutionChip("unknown", handlers)).toBe(false);
+  it("returns false for unknown labels", () => {
+    expect(tryHandlePrototypeExecutionChip("unknown", baseHandlers())).toBe(false);
+  });
+
+  it("handles prototype run control chips in fallback", () => {
+    const refresh = vi.fn();
+    expect(
+      tryHandlePrototypeExecutionChip("상태 새로고침", {
+        ...baseHandlers(),
+        refreshStatus: refresh,
+      }),
+    ).toBe(true);
+    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it("blocks work plan confirm when canConfirmImplementationTaskPlan is false", () => {
     const confirm = vi.fn();
     const toast = vi.fn();
-    tryHandlePrototypeExecutionChip("구현 작업안 확정", {
-      ...baseHandlers(),
-      confirmImplementationTaskPlan: confirm,
-      showToast: toast,
-      canConfirmImplementationTaskPlan: () => {
-        toast("blocked");
-        return false;
-      },
-    });
+    expect(
+      tryHandlePrototypeExecutionChip("구현 작업안 확정", {
+        ...baseHandlers(),
+        confirmImplementationTaskPlan: confirm,
+        showToast: toast,
+        canConfirmImplementationTaskPlan: () => {
+          toast("blocked");
+          return false;
+        },
+      }),
+    ).toBe(false);
     expect(confirm).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledWith("blocked");
-  });
-
-  it("confirms work plan when canConfirmImplementationTaskPlan is true", () => {
-    const confirm = vi.fn();
-    tryHandlePrototypeExecutionChip("구현 작업안 확정", {
-      ...baseHandlers(),
-      confirmImplementationTaskPlan: confirm,
-      canConfirmImplementationTaskPlan: () => true,
-    });
-    expect(confirm).toHaveBeenCalledOnce();
   });
 
   it("handles DB 연동 필요성 검토 chip", () => {
@@ -76,14 +80,8 @@ describe("tryHandlePrototypeExecutionChip", () => {
         ...baseHandlers(),
         reviewDbIntegrationNeed: review,
       }),
-    ).toBe(true);
-    expect(review).toHaveBeenCalledOnce();
-  });
-
-  it("maps stage-action CTA labels for pipeline routing", () => {
-    expect(mapImplementationChipToAction("구현 작업안 확정")).toBe("CONFIRM_IMPLEMENTATION_WORK_PLAN");
-    expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
-    expect(mapImplementationChipToAction("구현 실행")).toBeNull();
+    ).toBe(false);
+    expect(review).not.toHaveBeenCalled();
   });
 
   it("handles Mock 기반 구현 진행 chip", () => {
@@ -93,7 +91,28 @@ describe("tryHandlePrototypeExecutionChip", () => {
         ...baseHandlers(),
         confirmMockImplementationMode: mock,
       }),
-    ).toBe(true);
-    expect(mock).toHaveBeenCalledOnce();
+    ).toBe(false);
+    expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+describe("stage action chip mapping", () => {
+  it("maps primary CTA labels to stage action ids", () => {
+    expect(mapImplementationChipToAction(WORK_PLAN_DRAFT_GENERATE_CHIP)).toBe(
+      "GENERATE_IMPLEMENTATION_WORK_PLAN",
+    );
+    expect(mapImplementationChipToAction("구현 작업안 확정")).toBe("CONFIRM_IMPLEMENTATION_WORK_PLAN");
+    expect(mapImplementationChipToAction(DB_INTEGRATION_REVIEW_CHIP)).toBe("REVIEW_DB_INTEGRATION");
+    expect(mapImplementationChipToAction(DATA_MODEL_DRAFT_CHIP)).toBe("GENERATE_DATA_MODEL_DRAFT");
+    expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
+    expect(mapImplementationChipToAction(CODE_AGENT_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(mapImplementationChipToAction("구현 실행")).toBeNull();
+  });
+
+  it("keeps stage-only labels out of fallback handler", () => {
+    for (const label of STAGE_ACTION_ONLY_CHIP_LABELS) {
+      expect(mapImplementationChipToAction(label)).not.toBeNull();
+      expect(tryHandlePrototypeExecutionChip(label, baseHandlers())).toBe(false);
+    }
   });
 });

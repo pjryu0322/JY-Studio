@@ -1,6 +1,10 @@
 /**
- * 구현 단계 SingleChat 인터뷰 칩 → 동작 라우팅.
- * Stage action pipeline: `mapImplementationChipToAction()` + panel `executeImplementationStageAction()` (phase 2).
+ * 구현 단계 SingleChat 인터뷰 칩 fallback 라우팅.
+ *
+ * Primary implementation stage CTAs are mapped by `mapImplementationChipToAction()` and executed via
+ * `executeImplementationStageAction()` in PrototypePreviewPanel (gate + persist + timeline).
+ *
+ * Fallback remains for planning-stage navigation chips, prototype run controls, and legacy WIP labels.
  */
 
 import {
@@ -8,27 +12,12 @@ import {
   LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
-
-import {
-  IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP,
-  IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
-  IMPLEMENTATION_SCM_CHECK_VIEW_CHIP,
-} from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP,
   PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
   PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP,
 } from "@/lib/requirements/implementationSeed";
-import {
-  DATA_MODEL_DRAFT_CHIP,
-  DB_INTEGRATION_REVIEW_CHIP,
-  MOCK_IMPLEMENTATION_CHIP,
-} from "@/lib/prototype/implementationDbStrategy";
-import {
-  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
-  WORK_PLAN_DRAFT_GENERATE_CHIP,
-  WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP,
-} from "@/lib/prototype/implementationWorkPlanDraft";
+import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
@@ -68,12 +57,6 @@ export function tryHandlePrototypeExecutionChip(
 ): boolean {
   const t = label.trim();
   switch (t) {
-    case "환경설정 열기":
-      handlers.openEnvSettings();
-      return true;
-    case "산출물 다시 보기":
-      handlers.openArtifactHub();
-      return true;
     case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
     case PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP:
     case IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP:
@@ -95,35 +78,6 @@ export function tryHandlePrototypeExecutionChip(
         handlers.showToast("기획단계 화면으로 이동해 주세요.");
       }
       return true;
-    case WORK_PLAN_SCOPE_DIRECT_INPUT_CHIP:
-    case "구현 범위 수정":
-    case "작업 범위 수정":
-      handlers.focusComposerForScopeEdit();
-      return true;
-    case WORK_PLAN_DRAFT_GENERATE_CHIP:
-      handlers.generateImplementationWorkPlanDraft();
-      return true;
-    case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:
-      handlers.showRoleCheckDetails();
-      return true;
-    case IMPLEMENTATION_SCM_CHECK_VIEW_CHIP:
-      handlers.showScmCheckDetails();
-      return true;
-    case IMPLEMENTATION_ENVIRONMENT_CHECK_VIEW_CHIP:
-      handlers.showEnvironmentCheckDetails();
-      return true;
-    case "구현 작업안 확정": {
-      if (!handlers.canConfirmImplementationTaskPlan()) return true;
-      handlers.confirmImplementationTaskPlan();
-      return true;
-    }
-    case CODE_AGENT_WIP_WORK_REQUEST_CHIP:
-    case LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP:
-    case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP: {
-      if (!handlers.canRequestCodeAgentWipWork()) return true;
-      handlers.requestCodeAgentWipWork();
-      return true;
-    }
     case "변경사항 보기":
       handlers.viewWipChanges();
       return true;
@@ -146,15 +100,6 @@ export function tryHandlePrototypeExecutionChip(
       handlers.requestScmOfficialCommit();
       return true;
     }
-    case DB_INTEGRATION_REVIEW_CHIP:
-      handlers.reviewDbIntegrationNeed();
-      return true;
-    case DATA_MODEL_DRAFT_CHIP:
-      handlers.generateDataModelDraft();
-      return true;
-    case MOCK_IMPLEMENTATION_CHIP:
-      handlers.confirmMockImplementationMode();
-      return true;
     case "구현 실행 준비":
       handlers.prepareImplementationExecution();
       return true;
@@ -170,3 +115,25 @@ export function tryHandlePrototypeExecutionChip(
       return false;
   }
 }
+
+/** Labels routed only via stage action pipeline — fallback must not handle these. */
+export const STAGE_ACTION_ONLY_CHIP_LABELS = [
+  "구현 작업안 초안 생성",
+  "구현 작업안 확정",
+  "구현 범위 수정",
+  "작업 범위 수정",
+  "DB 연동 필요성 검토",
+  "데이터 모델 초안 생성",
+  "Mock 기반 구현 진행",
+  "산출물 다시 보기",
+  "환경설정 열기",
+  "환경설정 보기",
+  "역할별 점검 보기",
+  "SCM 점검 결과",
+  "SCM 점검 결과 보기",
+  "환경 점검 결과",
+  "환경설정 점검 결과",
+  CODE_AGENT_WIP_WORK_REQUEST_CHIP,
+  LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
+  LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
+] as const;

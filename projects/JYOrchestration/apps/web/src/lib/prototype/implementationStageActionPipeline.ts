@@ -5,8 +5,54 @@ import {
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
+
+/**
+ * Policy A — work plan draft generation requires a non-candidate seed with readiness.ready.
+ * Aligns with `buildGenerateImplementationWorkPlanDraftResult()` (Quick Design confirm sets lifecycle confirmed).
+ */
+export function isImplementationSeedReadyForWorkPlanGeneration(
+  seed: ImplementationSeedV1 | null | undefined,
+): boolean {
+  return (
+    Boolean(seed?.readiness?.ready) && seed?.lifecycleStatus !== "candidate"
+  );
+}
+
+export const IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE =
+  "구현 준비정보가 아직 확정되지 않았습니다. [구현 준비정보 확인] 또는 Quick Design 확정 후 작업안을 생성해 주세요.";
+
+export type ImplementationStageActionExecutionResult =
+  | Readonly<{ readonly kind: "handled" }>
+  | Readonly<{ readonly kind: "blocked"; readonly message: string }>
+  | Readonly<{ readonly kind: "focus_composer"; readonly message: string }>
+  | Readonly<{ readonly kind: "open_env_settings" }>
+  | Readonly<{ readonly kind: "open_artifacts" }>
+  | Readonly<{
+      readonly kind: "show_status";
+      readonly intent: "role" | "scm" | "env";
+    }>;
+
+export function buildImplementationStageActionBlockedResult(
+  message: string,
+): ImplementationStageActionExecutionResult {
+  return { kind: "blocked", message };
+}
+
+export function buildImplementationStageActionFocusComposerResult(
+  message: string,
+): ImplementationStageActionExecutionResult {
+  return { kind: "focus_composer", message };
+}
+
+export function stageActionExecutionResultFromGate(
+  gate: ImplementationStageActionGateResult,
+): ImplementationStageActionExecutionResult | null {
+  if (gate.ok) return null;
+  return buildImplementationStageActionBlockedResult(gate.message);
+}
 
 export function evaluateImplementationStageActionGate(
   actionId: ImplementationStageActionId,
@@ -20,11 +66,8 @@ export function evaluateImplementationStageActionGate(
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 작업안을 생성할 수 있습니다." };
       }
-      const seedReady =
-        Boolean(state.implementationSeedV1?.readiness?.ready) &&
-        state.implementationSeedV1?.lifecycleStatus !== "candidate";
-      if (!seedReady) {
-        return { ok: false, message: "구현 준비정보(Seed) 확인 후 작업안을 생성해 주세요." };
+      if (!isImplementationSeedReadyForWorkPlanGeneration(state.implementationSeedV1)) {
+        return { ok: false, message: IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE };
       }
       return { ok: true };
     }
