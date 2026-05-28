@@ -4,6 +4,9 @@ import {
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+} from "@/lib/prototype/implementationTaskListEntryMessage";
+import {
   deriveImplementationStageStatus,
   type ImplementationStageStatus,
 } from "@/lib/prototype/implementationStageStatus";
@@ -26,6 +29,21 @@ export function deriveImplementationStageNextActions(
           label: "환경 점검 결과",
           priority: "primary",
           reason: "구현 준비 전 환경/기획 준비 상태 확인 필요",
+        },
+      ];
+    case "task_list_ready":
+      return [
+        {
+          actionId: "REQUEST_CODE_AGENT_WIP",
+          label: AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+          priority: "primary",
+          reason: "구현 작업목록 기준 개발자 구현 요청",
+        },
+        {
+          actionId: "OPEN_ENV_SETTINGS",
+          label: "환경설정 열기",
+          priority: "secondary",
+          reason: "실행 환경 설정",
         },
       ];
     case "implementation_ready":

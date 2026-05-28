@@ -1,8 +1,10 @@
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
+import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
 
 export type ImplementationStageStatus =
   | "not_ready"
+  | "task_list_ready"
   | "implementation_ready"
   | "work_plan_drafted"
   | "work_plan_confirmed"
@@ -25,6 +27,14 @@ export function deriveImplementationStageStatus(
   }
   if (hasImplementationWorkPlanDraftReady(state.implementationWorkPlanDraftV1)) {
     return "work_plan_drafted";
+  }
+  if (
+    isPlanningReadyForImplementationExecution({
+      implementationSeedV1: state.implementationSeedV1,
+      implementationTaskListV1: state.implementationTaskListV1,
+    })
+  ) {
+    return "task_list_ready";
   }
   return "implementation_ready";
 }

@@ -21,6 +21,13 @@ import {
   summarizeImplementationSeedStatus,
   type ImplementationSeedV1,
 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  buildImplementationTaskListEntryMessage,
+  buildImplementationTaskListMissingEntryMessage,
+  hasValidImplementationTaskListBootstrap,
+  isTaskListExecutionReady,
+} from "@/lib/prototype/implementationTaskListEntryMessage";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
@@ -90,6 +97,7 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
   readonly nowIso?: string;
 }>;
 
@@ -107,11 +115,16 @@ export function implementationEntryChipsForBootstrap(
   input: ImplementationOrchestrationSummaryInput,
 ): readonly string[] {
   const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
+  const taskListReady = isTaskListExecutionReady({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+  });
   return implementationEntryChipsForState({
     seedReady: resolveSeedReadyForEntry(input),
     envOk: input.envOk,
     designOk: input.designOk,
     hasReferenceArtifacts: referenceArtifacts.length > 0,
+    taskListReady,
   });
 }
 
@@ -278,6 +291,45 @@ function buildImplementationBlockedBootstrapBundle(
   };
 }
 
+function buildTaskListReadyImplementationBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskList = input.implementationTaskListV1!;
+  const roleCheckSummary = buildImplementationRoleCheckSummary(input);
+  return {
+    messages: [
+      buildImplementationTaskListEntryMessage({
+        taskList,
+        envOk: input.envOk,
+        nowIso: now,
+      }),
+    ],
+    timelineEntries: buildImplementationBootstrapTimelineEntries({
+      summaryInput: input,
+      roleCheckSummary,
+      nowIso: now,
+    }),
+    roleCheckSummary,
+  };
+}
+
+function buildTaskListMissingImplementationBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  const roleCheckSummary = buildImplementationRoleCheckSummary(input);
+  return {
+    messages: [buildImplementationTaskListMissingEntryMessage({ nowIso: now })],
+    timelineEntries: buildImplementationBootstrapTimelineEntries({
+      summaryInput: input,
+      roleCheckSummary,
+      nowIso: now,
+    }),
+    roleCheckSummary,
+  };
+}
+
 function buildNormalImplementationBootstrapBundle(
   input: ImplementationOrchestrationSummaryInput,
 ): ImplementationBootstrapBundle {
@@ -350,6 +402,7 @@ function buildLeadDeveloperBootstrapMessage(input: {
         resolveEffectiveImplementationState({
           parsedRequirementsState: {
             implementationSeedV1: input.summaryInput.implementationSeedV1,
+            implementationTaskListV1: input.summaryInput.implementationTaskListV1,
           },
           pendingPatch: {},
           envOk: input.summaryInput.envOk,
@@ -817,6 +870,18 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
   if (referenceArtifacts.length === 0) {
     return buildImplementationBlockedBootstrapBundle(input);
+  }
+  if (
+    isTaskListExecutionReady({
+      implementationSeedV1: input.implementationSeedV1,
+      implementationTaskListV1: input.implementationTaskListV1,
+    }) &&
+    input.implementationTaskListV1
+  ) {
+    return buildTaskListReadyImplementationBootstrapBundle(input);
+  }
+  if (resolveSeedReadyForEntry(input)) {
+    return buildTaskListMissingImplementationBootstrapBundle(input);
   }
   return buildNormalImplementationBootstrapBundle(input);
 }

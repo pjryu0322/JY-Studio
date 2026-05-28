@@ -2,6 +2,7 @@ import type { PrototypeChatEnvBadge, PrototypeChatEnvSnapshot } from "@/lib/prot
 import type { ImplementationOrchestrationSummaryInput } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type {
@@ -37,6 +38,7 @@ export function buildImplementationBootstrapInput(input: {
   readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
 }): ImplementationOrchestrationSummaryInput | null {
   if (input.envLoading) return null;
   return {
@@ -51,6 +53,7 @@ export function buildImplementationBootstrapInput(input: {
     orchestration: input.orchestration,
     slotDefinitions: input.slotDefinitions,
     implementationSeedV1: input.implementationSeedV1,
+    implementationTaskListV1: input.implementationTaskListV1,
   };
 }
 

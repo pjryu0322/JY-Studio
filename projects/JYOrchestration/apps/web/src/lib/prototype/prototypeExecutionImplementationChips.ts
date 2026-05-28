@@ -17,6 +17,10 @@ import {
   PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP,
   PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP,
 } from "@/lib/requirements/implementationSeed";
+import {
+  IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+  IMPLEMENTATION_TASK_LIST_CHIP_LABELS,
+} from "@/lib/prototype/implementationTaskListEntryMessage";
 import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 
 export type PrototypeExecutionChipHandlers = Readonly<{
@@ -59,6 +63,7 @@ export function tryHandlePrototypeExecutionChip(
   switch (t) {
     // Planning navigation / seed recovery
     case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
+    case IMPLEMENTATION_RETURN_TO_PLANNING_CHIP:
     case PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP:
     case IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP:
     case PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP:
@@ -122,6 +127,9 @@ export function tryHandlePrototypeExecutionChip(
       return false;
   }
 }
+
+/** TaskList entry chips — handled by tryHandleImplementationTaskListChip before stage/fallback. */
+export const TASK_LIST_HANDLED_CHIP_LABELS = [...IMPLEMENTATION_TASK_LIST_CHIP_LABELS] as const;
 
 /** Labels routed only via stage action pipeline — fallback must not handle these. */
 export const STAGE_ACTION_ONLY_CHIP_LABELS = [

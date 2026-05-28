@@ -4,6 +4,7 @@ import {
   leadDeveloperMessageHasForbiddenEnvDetail,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
+import { hasValidImplementationTaskListBootstrap } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import {
   dedupeRequirementsMessagesById,
@@ -107,7 +108,8 @@ export function mergePrototypeExecutionChatTimeline(
   conversation: readonly RequirementsMessage[],
 ): RequirementsMessage[] {
   const persisted = conversation.filter((m) => m.meta.internalType !== PROTOTYPE_EXECUTION_DERIVED_INTERNAL_TYPE);
-  const hasImplementationBootstrap = hasValidImplementationLeadBootstrap(persisted);
+  const hasImplementationBootstrap =
+    hasValidImplementationLeadBootstrap(persisted) || hasValidImplementationTaskListBootstrap(persisted);
   const filteredDerived = hasImplementationBootstrap
     ? derived.filter((m) => m.id !== "proto-derived-ai-preplan")
     : derived;

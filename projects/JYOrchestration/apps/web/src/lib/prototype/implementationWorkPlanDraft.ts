@@ -12,6 +12,10 @@ import {
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
+  implementationTaskListEntryChips,
+  implementationTaskListMissingEntryChips,
+} from "@/lib/prototype/implementationTaskListEntryMessage";
+import {
   PROJECT_ARTIFACT_LABELS,
   type ProjectArtifact,
   type ProjectArtifactType,
@@ -388,12 +392,19 @@ export function implementationEntryChipsForState(input: {
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly hasReferenceArtifacts: boolean;
+  readonly taskListReady?: boolean;
 }): readonly string[] {
   if (!input.hasReferenceArtifacts) {
     return implementationBlockedEntryChips();
   }
   if (!input.seedReady) {
     return implementationSeedGateEntryChips();
+  }
+  if (input.taskListReady) {
+    return implementationTaskListEntryChips({ envOk: input.envOk });
+  }
+  if (input.seedReady && input.hasReferenceArtifacts) {
+    return implementationTaskListMissingEntryChips();
   }
   if (!input.envOk) {
     return [

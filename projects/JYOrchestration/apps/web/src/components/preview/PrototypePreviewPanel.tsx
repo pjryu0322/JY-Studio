@@ -111,6 +111,8 @@ import {
 } from "@/lib/prototype/implementationIntentTimeline";
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
+import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
+import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -1243,6 +1245,7 @@ export function PrototypePreviewPanel({
         orchestration: parsedRequirementsState.singleChatOrchestrationV1,
         slotDefinitions: planningSlotDefinitions,
         implementationSeedV1: parsedRequirementsState.implementationSeedV1,
+        implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
       }),
     [
       executionEnvLoading,
@@ -1255,6 +1258,7 @@ export function PrototypePreviewPanel({
       executionArtifacts,
       parsedRequirementsState.singleChatOrchestrationV1,
       parsedRequirementsState.implementationSeedV1,
+      parsedRequirementsState.implementationTaskListV1,
       planningSlotDefinitions,
     ],
   );
@@ -1734,6 +1738,21 @@ export function PrototypePreviewPanel({
     appendStatusQueryFromChip("role_check_details");
   }, [appendStatusQueryFromChip]);
 
+  const appendImplementationTaskListAiMessage = useCallback(
+    (message: RequirementsMessage) => {
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      const nextMessages = [...(resolved.messages ?? []), message];
+      executionSingleChat.applyPersistedMessages(nextMessages);
+      void persistChatToDb({
+        messages: nextMessages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      });
+    },
+    [requirementsStateJson, executionSingleChat, persistChatToDb],
+  );
+
   const applyDbStrategyResult = useCallback(
     (
       result:
@@ -2138,6 +2157,40 @@ export function PrototypePreviewPanel({
 
   const handleImplementationChip = useCallback(
     (label: string) => {
+      const taskList = parsedRequirementsState.implementationTaskListV1 ?? null;
+      if (
+        tryHandleImplementationTaskListChip({
+          label,
+          taskList,
+          envOk: canRequestGeneration.envOk,
+          appendAiMessage: appendImplementationTaskListAiMessage,
+          openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
+          openArtifactHub: () => setArtifactHubOpen(true),
+          returnToPlanningStage: () => {
+            const pid = projectId.trim();
+            if (!pid) return;
+            window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
+          },
+          generateTaskListFromSeed: () => {
+            const seed = parsedRequirementsState.implementationSeedV1;
+            const pid = projectId.trim();
+            if (!seed?.readiness?.ready || !pid) {
+              showToast("구현 Seed가 준비된 뒤 작업목록을 생성할 수 있습니다.");
+              return;
+            }
+            const built = buildImplementationTaskListFromSeed({ projectId: pid, seed });
+            void persistChatToDb(
+              resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
+              { implementationTaskListV1: built },
+            );
+            showToast("구현 작업목록을 생성했습니다.");
+          },
+          showToast,
+        })
+      ) {
+        return true;
+      }
+
       const actionId = mapImplementationChipToAction(label);
       if (actionId && executeImplementationStageAction(actionId)) return true;
 
@@ -2199,6 +2252,13 @@ export function PrototypePreviewPanel({
     },
     [
       executeImplementationStageAction,
+      parsedRequirementsState.implementationTaskListV1,
+      parsedRequirementsState.implementationSeedV1,
+      projectId,
+      requirementsStateJson,
+      persistChatToDb,
+      canRequestGeneration.envOk,
+      appendImplementationTaskListAiMessage,
       envSettingsHref,
       showImplementationSeedReadinessCheck,
       showRoleCheckDetails,

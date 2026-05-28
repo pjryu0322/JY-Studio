@@ -159,11 +159,11 @@ describe("implementationOrchestrationSummary", () => {
     expect(chips).toContain("AI팀이 구현 Seed 후보 생성");
   });
 
-  it("includes draft generation when seed is ready and env is ok", () => {
+  it("shows task list recovery chips when seed is ready without task list", () => {
     const chips = implementationEntryChips(seedReadyInput);
-    expect(chips).toContain("구현 작업안 초안 생성");
-    expect(chips).toContain("역할별 점검 보기");
-    expect(chips).not.toContain("구현 작업안 확정");
+    expect(chips).toContain("기획단계로 이동");
+    expect(chips).toContain("구현 작업목록 생성");
+    expect(chips).not.toContain("구현 작업안 초안 생성");
   });
 
   it("includes seed readiness summary in bootstrap message when slot definitions exist", () => {

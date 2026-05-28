@@ -24,6 +24,7 @@ import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTas
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 export type ImplementationStageActionId =
   | "GENERATE_IMPLEMENTATION_WORK_PLAN"
@@ -46,6 +47,7 @@ export type PendingImplementationPatch = Readonly<{
 
 export type EffectiveImplementationState = Readonly<{
   implementationSeedV1: ImplementationSeedV1 | null;
+  implementationTaskListV1: ImplementationTaskListV1 | null;
   implementationWorkPlanDraftV1: ImplementationWorkPlanDraftV1 | null;
   implementationTaskPlanV1: ImplementationTaskPlanV1 | null;
   implementationDbStrategyV1: ImplementationDbStrategyV1 | null;
@@ -82,6 +84,7 @@ export function shouldClearPendingImplementationPatch(input: {
 export function resolveEffectiveImplementationState(input: {
   readonly parsedRequirementsState: {
     readonly implementationSeedV1?: ImplementationSeedV1 | null;
+    readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
     readonly implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
     readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
     readonly implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
@@ -97,6 +100,7 @@ export function resolveEffectiveImplementationState(input: {
   const latestRun = input.latestRun ?? null;
   return {
     implementationSeedV1: input.parsedRequirementsState.implementationSeedV1 ?? null,
+    implementationTaskListV1: input.parsedRequirementsState.implementationTaskListV1 ?? null,
     implementationWorkPlanDraftV1:
       input.pendingPatch?.implementationWorkPlanDraftV1 ??
       input.parsedRequirementsState.implementationWorkPlanDraftV1 ??
