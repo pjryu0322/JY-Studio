@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   buildDeveloperImplementationRequestPrepMessage,
@@ -8,6 +9,7 @@ import {
   hasValidImplementationTaskListBootstrap,
   buildSecurityCheckTaskMessage,
   implementationTaskListEntryChips,
+  tryHandleImplementationTaskListChip,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { buildImplementationBootstrapBundle } from "@/lib/prototype/implementationOrchestrationSummary";
@@ -131,6 +133,54 @@ describe("implementationTaskListEntryMessage", () => {
     });
     expect(prep.content).not.toContain("구현 작업안 초안 생성");
     expect(prep.meta?.interviewSuggestions).toContain("코드 에이전트 WIP 작업 요청");
+  });
+
+  it("shows env-first chips for developer request prep when envOk=false", () => {
+    const prep = buildDeveloperImplementationRequestPrepMessage({
+      taskList,
+      envOk: false,
+      nowIso: NOW,
+    });
+    expect(prep.meta?.interviewSuggestions?.[0]).toBe("환경설정 열기");
+    expect(prep.meta?.interviewSuggestions).not.toContain("코드 에이전트 WIP 작업 요청");
+  });
+
+  it("routes AI developer request chip: envOk=true appends message", () => {
+    const appendAiMessage = vi.fn();
+    const openEnvSettings = vi.fn();
+    const handled = tryHandleImplementationTaskListChip({
+      label: "AI 개발자에게 구현 요청",
+      taskList,
+      envOk: true,
+      nowIso: NOW,
+      appendAiMessage,
+      openEnvSettings,
+      openArtifactHub: vi.fn(),
+      returnToPlanningStage: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(handled).toBe(true);
+    expect(appendAiMessage).toHaveBeenCalledTimes(1);
+    expect(openEnvSettings).toHaveBeenCalledTimes(0);
+  });
+
+  it("routes AI developer request chip: envOk=false opens env settings", () => {
+    const appendAiMessage = vi.fn();
+    const openEnvSettings = vi.fn();
+    const handled = tryHandleImplementationTaskListChip({
+      label: "AI 개발자에게 구현 요청",
+      taskList,
+      envOk: false,
+      nowIso: NOW,
+      appendAiMessage,
+      openEnvSettings,
+      openArtifactHub: vi.fn(),
+      returnToPlanningStage: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(handled).toBe(true);
+    expect(appendAiMessage).toHaveBeenCalledTimes(0);
+    expect(openEnvSettings).toHaveBeenCalledTimes(1);
   });
 
   it("lists tasks on 작업목록 보기", () => {

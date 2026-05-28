@@ -74,18 +74,22 @@ describe("buildCursorWorkItemsFromImplementationTaskList", () => {
     expect(workItems[1]?.taskId).toBe("DEV-002");
   });
 
-  it("includes taskId reference and acceptance criteria in prompt", () => {
+  it("includes required prompt fields and WIP policy", () => {
     const [first] = buildCursorWorkItemsFromImplementationTaskList({
       projectId: "p1",
       taskList: makeTaskList(),
       nowIso: NOW,
     });
     expect(first?.title).toContain("[DEV-001]");
+    expect(first?.prompt).toContain("Implementation Task List 기준 작업");
     expect(first?.prompt).toContain("작업 ID: DEV-001");
     expect(first?.prompt).toContain("완료 기준:");
     expect(first?.prompt).toContain("- ok-1");
+    expect(first?.prompt).toContain("## WIP 작업 정책");
     expect(first?.testCommands?.length ?? 0).toBeGreaterThan(0);
     expect(first?.forbiddenPaths?.length ?? 0).toBeGreaterThan(0);
+    expect(first?.expectedOutput?.length ?? 0).toBeGreaterThan(0);
+    expect(typeof first?.qualityGate?.score).toBe("number");
   });
 });
 

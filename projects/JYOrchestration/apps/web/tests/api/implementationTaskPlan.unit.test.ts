@@ -12,10 +12,12 @@ import {
 import {
   buildCursorPromptDraft,
   buildImplementationTaskPlan,
+  buildImplementationTaskPlanFromTaskList,
   evaluateImplementationTaskPlanReadiness,
 } from "@/lib/prototype/implementationTaskPlan";
 import { buildImplementationTaskPlanSummaryMessage } from "@/lib/prototype/implementationTaskPlanSummary";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
+import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
@@ -40,6 +42,7 @@ import {
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 describe("buildImplementationTaskExecutionHints", () => {
   it("builds execution hints for implementation task", () => {
@@ -105,6 +108,128 @@ describe("buildImplementationTaskPlan", () => {
     expect(plan.items[0]?.executionHints.testCommands.length).toBeGreaterThan(0);
     expect(plan.items[0]?.cursorPromptDraft).toContain("## 1. 작업 목적");
     expect(plan.readiness.ready).toBe(true);
+  });
+});
+
+function makeTaskListForPlan(): ImplementationTaskListV1 {
+  return {
+    version: "implementation_task_list_v1",
+    projectId: "p1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    source: "implementation_seed",
+    tasks: [
+      {
+        taskId: "DEV-001",
+        title: "높은 우선순위 개발 작업",
+        description: "dev high",
+        taskType: "screen",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "DEV-002",
+        title: "중간 우선순위 개발 작업",
+        description: "dev medium",
+        taskType: "api",
+        ownerRole: "developer",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "DEV-003",
+        title: "낮은 우선순위 개발 작업",
+        description: "dev low",
+        taskType: "feature",
+        ownerRole: "developer",
+        priority: "low",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "REV-001",
+        title: "검수 작업",
+        description: "review",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "ready",
+      },
+      {
+        taskId: "DEV-004",
+        title: "차단된 개발 작업(제외)",
+        description: "dev blocked",
+        taskType: "feature",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: ["ok"],
+        status: "blocked",
+      },
+    ],
+    roleSummary: { developer: 4, designer: 0, reviewer: 1, security: 0, scm: 0 },
+  };
+}
+
+describe("buildImplementationTaskPlanFromTaskList", () => {
+  it("creates items for developer ready tasks only and maps priority", () => {
+    const plan = buildImplementationTaskPlanFromTaskList({
+      projectId: "p1",
+      taskList: makeTaskListForPlan(),
+      envOk: true,
+      designOk: true,
+      nowIso: "2026-05-28T00:00:00.000Z",
+    });
+    const ids = plan.items.map((i) => i.id);
+    expect(ids).toEqual(["DEV-001", "DEV-002", "DEV-003"]);
+    expect(plan.items[0]?.priority).toBe("P0");
+    expect(plan.items[1]?.priority).toBe("P1");
+    expect(plan.items[2]?.priority).toBe("P2");
+  });
+
+  it("has readiness ready when envOk/designOk are true", () => {
+    const plan = buildImplementationTaskPlanFromTaskList({
+      projectId: "p1",
+      taskList: makeTaskListForPlan(),
+      envOk: true,
+      designOk: true,
+    });
+    expect(plan.readiness.ready).toBe(true);
+    expect(plan.items.every((i) => i.status === "ready")).toBe(true);
+  });
+
+  it("blocks readiness when envOk is false and includes env-related missing", () => {
+    const plan = buildImplementationTaskPlanFromTaskList({
+      projectId: "p1",
+      taskList: makeTaskListForPlan(),
+      envOk: false,
+      designOk: true,
+    });
+    expect(plan.readiness.ready).toBe(false);
+    expect(plan.readiness.missing.join(" ")).toContain("AI 개발 도구");
+  });
+
+  it("includes checks and execution hints", () => {
+    const plan = buildImplementationTaskPlanFromTaskList({
+      projectId: "p1",
+      taskList: makeTaskListForPlan(),
+      envOk: true,
+      designOk: true,
+    });
+    const item = plan.items[0]!;
+    expect(item.acceptanceCriteria.length).toBeGreaterThan(0);
+    expect(item.reviewChecks.length).toBeGreaterThan(0);
+    expect(item.securityChecks.length).toBeGreaterThan(0);
+    expect(item.cursorPromptDraft).toContain("## 1. 작업 목적");
+    expect(item.executionHints.testCommands.length).toBeGreaterThan(0);
   });
 });
 
@@ -220,10 +345,21 @@ describe("buildConfirmImplementationTaskPlanResult", () => {
   it("returns created patch with task plan and cursor work items", () => {
     const now = "2026-05-19T02:00:00.000Z";
     const { orchestration, definitions, seed } = seedReadyForTaskPlan(now);
+    const artifacts: ProjectArtifact[] = [
+      {
+        id: "a1",
+        type: "fast_prototype_plan",
+        title: "프로토타입 기획안",
+        content: "# plan",
+        createdAt: now,
+        createdBy: "ai",
+        sourceStage: "IDEATION",
+      },
+    ];
     const draftGen = buildGenerateImplementationWorkPlanDraftResult({
       requirementsStateJson: { singleChatOrchestrationV1: orchestration, implementationSeedV1: seed },
       projectId: "p1",
-      projectArtifacts: [],
+      projectArtifacts: artifacts,
       orchestration,
       slotDefinitions: definitions,
       implementationSeedV1: seed,
@@ -259,24 +395,41 @@ describe("buildConfirmImplementationTaskPlanResult", () => {
 });
 
 describe("implementation work plan chip routing", () => {
-  it("handles implementation work plan confirm by generating task plan", () => {
-    const confirm = vi.fn();
-    tryHandlePrototypeExecutionChip("구현 작업안 확정", {
-      openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
-      focusComposerForScopeEdit: vi.fn(),
-      generateImplementationWorkPlanDraft: vi.fn(),
-      confirmImplementationTaskPlan: confirm,
-      requestCursorExecution: vi.fn(),
-      prepareImplementationExecution: vi.fn(),
-      confirmExecution: vi.fn(),
-      refreshStatus: vi.fn(),
-      showToast: vi.fn(),
-      canConfirmImplementationTaskPlan: () => true,
-      canRequestCursorExecution: () => true,
-      canConfirmExecution: () => true,
-    });
-    expect(confirm).toHaveBeenCalledOnce();
+  it("routes work plan confirm label through stage action mapping (not fallback)", () => {
+    expect(mapImplementationChipToAction("구현 작업안 확정")).toBe("CONFIRM_IMPLEMENTATION_WORK_PLAN");
+    // Stage-action-only labels must not be handled by fallback chip handler.
+    expect(
+      tryHandlePrototypeExecutionChip("구현 작업안 확정", {
+        openEnvSettings: vi.fn(),
+        openArtifactHub: vi.fn(),
+        focusComposerForScopeEdit: vi.fn(),
+        showRoleCheckDetails: vi.fn(),
+        showScmCheckDetails: vi.fn(),
+        showEnvironmentCheckDetails: vi.fn(),
+        generateImplementationWorkPlanDraft: vi.fn(),
+        confirmImplementationTaskPlan: vi.fn(),
+        requestCodeAgentWipWork: vi.fn(),
+        viewWipChanges: vi.fn(),
+        requestRefactor: vi.fn(),
+        requestAdditionalEdit: vi.fn(),
+        approveDeveloperResult: vi.fn(),
+        discardWipWork: vi.fn(),
+        requestScmOfficialCommit: vi.fn(),
+        reviewDbIntegrationNeed: vi.fn(),
+        generateDataModelDraft: vi.fn(),
+        confirmMockImplementationMode: vi.fn(),
+        prepareImplementationExecution: vi.fn(),
+        confirmExecution: vi.fn(),
+        refreshStatus: vi.fn(),
+        returnToPlanningStage: vi.fn(),
+        showToast: vi.fn(),
+        canConfirmImplementationTaskPlan: () => true,
+        canRequestCodeAgentWipWork: () => true,
+        canApproveDeveloperResult: () => true,
+        canRequestScmOfficialCommit: () => true,
+        canConfirmExecution: () => true,
+      }),
+    ).toBe(false);
   });
 });
 
