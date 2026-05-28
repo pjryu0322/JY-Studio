@@ -1492,7 +1492,7 @@ export function PrototypePreviewPanel({
       }
 
       const pid = projectId.trim();
-      const result = await resolveImplementationOperationalSend(
+      return resolveImplementationOperationalSend(
         {
           text,
           userMsg,
@@ -1532,29 +1532,40 @@ export function PrototypePreviewPanel({
           },
         },
         implementationOperationalHandlers,
-      );
-
-      if (typeof result === "object" && result.kind === "stage_action_run") {
-        persistImplementationStageActionRunRef.current(result.run);
-        const gateBlocked = result.run.gateResult != null && !result.run.gateResult.ok;
-        if (gateBlocked && result.run.message) {
-          showToast(result.run.message);
-        } else if (result.run.status === "failed" && result.run.message) {
-          showToast(result.run.message);
-        }
-        return "handled";
-      }
-
-      return result;
     },
     onOperationalAfterPersist: (action) => {
       if (action === "start_prototype_work_plan") {
         startWorkPlanGenerationFromChat();
       }
     },
+    onOperationalStageActionRun: (run) => {
+      persistImplementationStageActionRun(run);
+      const gateBlocked = run.gateResult != null && !run.gateResult.ok;
+      if (gateBlocked && run.message) showToast(run.message);
+      else if (run.status === "failed" && run.message) showToast(run.message);
+    },
   });
 
   appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
+
+  const prioritizedChatMessages = useMemo(
+    () =>
+      executionSingleChat.chatMessages.map((m) => {
+        const suggestions = (m.meta as any)?.interviewSuggestions;
+        if (!Array.isArray(suggestions) || suggestions.length < 2) return m;
+        return {
+          ...m,
+          meta: {
+            ...m.meta,
+            interviewSuggestions: prioritizeImplementationChipsForState(
+              suggestions as readonly string[],
+              effectiveImplementationState,
+            ),
+          },
+        };
+      }),
+    [executionSingleChat.chatMessages, effectiveImplementationState],
+  );
 
   /** Shared persist path for implementation stage actions (expand to full applyImplementationStageActionResult later). */
   const applyImplementationOrchestrationResult = useCallback(
@@ -2475,7 +2486,7 @@ export function PrototypePreviewPanel({
   } = useProjectRecommendationEvidence({
     projectId,
     requirementsStateJson: parsedRequirementsState,
-    messages: executionSingleChat.chatMessages,
+    messages: prioritizedChatMessages,
     projectArtifacts: planningOrchestrationView.projectArtifacts,
     projectDescription,
   });
@@ -2573,11 +2584,11 @@ export function PrototypePreviewPanel({
     const md = buildConversationMarkdown({
       heading: "# 구현 단계 대화 내역",
       scopeLines: [`- projectId: ${pid || "(미연결)"}`, `- exportedAt: ${new Date().toISOString()}`],
-      messages: executionSingleChat.chatMessages,
+      messages: prioritizedChatMessages,
       meLabel: "나",
     });
     downloadConversationMarkdownFile({ markdown: md, filenameStem: (projectName || "구현").trim() || "구현" });
-  }, [executionSingleChat.chatMessages, projectId, projectName]);
+  }, [prioritizedChatMessages, projectId, projectName]);
 
   const onResetImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
@@ -2631,13 +2642,13 @@ export function PrototypePreviewPanel({
   const onSummarizeImplementationConversation = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid || protoBusy || executionAiSummaryBusy) return;
-    if (!executionSingleChat.chatMessages.length) {
+    if (!prioritizedChatMessages.length) {
       showToast("요약할 대화가 없습니다.");
       return;
     }
     setExecutionAiSummaryBusy(true);
     try {
-      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(executionSingleChat.chatMessages, "나", {
+      const contentHtml = buildConversationContentHtmlForWorkNoteSummary(prioritizedChatMessages, "나", {
         maxMessages: 80,
       });
       const wire = await postWorkNoteSummarize({ projectId: pid, scope: "project", contentHtml });
@@ -2657,7 +2668,7 @@ export function PrototypePreviewPanel({
     } finally {
       setExecutionAiSummaryBusy(false);
     }
-  }, [projectId, protoBusy, executionAiSummaryBusy, executionSingleChat, showToast]);
+  }, [projectId, protoBusy, executionAiSummaryBusy, prioritizedChatMessages.length, prioritizedChatMessages, executionSingleChat, showToast]);
 
   const executionConversationIconToolbar = useMemo(
     () => (
@@ -2775,7 +2786,7 @@ export function PrototypePreviewPanel({
       <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
         <PrototypeExecutionChatPanel
           conversationStatus={executionSingleChat.conversationStatus}
-          chatMessages={executionSingleChat.chatMessages}
+          chatMessages={prioritizedChatMessages}
           memberControls={{
             count: implementationParticipantCount,
             onOpen: () => setProtoMembersModalOpen(true),

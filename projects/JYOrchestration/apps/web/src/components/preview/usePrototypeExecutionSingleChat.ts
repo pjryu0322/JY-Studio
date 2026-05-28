@@ -82,6 +82,7 @@ export function usePrototypeExecutionSingleChat({
   protoBusy,
   inputBlocked,
   onOperationalSend,
+  onOperationalStageActionRun,
   onOperationalAfterPersist,
   onPersistStateJson,
   implementationBootstrapInput,
@@ -103,6 +104,9 @@ export function usePrototypeExecutionSingleChat({
     text: string,
     userMsg: RequirementsMessage,
   ) => Promise<PrototypeExecutionOperationalSendResult>;
+  readonly onOperationalStageActionRun?: (
+    run: import("@/lib/prototype/implementationStageActionRun").ImplementationStageActionRun,
+  ) => void;
   readonly onOperationalAfterPersist?: (action: "start_prototype_work_plan") => void;
   readonly onPersistStateJson: (patch: {
     messages: readonly RequirementsMessage[];
@@ -295,6 +299,20 @@ export function usePrototypeExecutionSingleChat({
       });
       return;
     }
+  if (operational && typeof operational === "object" && operational.kind === "stage_action_run") {
+    onOperationalStageActionRun?.(operational.run);
+    setConversationMessages((prev) => {
+      const persisted = filterPersistedPrototypeExecutionMessages(prev);
+      onPersistStateJson({
+        messages: persisted,
+        slots,
+        answers,
+        currentSlotKey,
+      });
+      return persisted;
+    });
+    return;
+  }
     if (operational && typeof operational === "object" && operational.kind === "apply_conversation") {
       const persisted = filterPersistedPrototypeExecutionMessages(operational.messages);
       setConversationMessages(persisted);
@@ -422,6 +440,7 @@ export function usePrototypeExecutionSingleChat({
     aiInvokePending,
     replyTo,
     onOperationalSend,
+    onOperationalStageActionRun,
     projectId,
     projectName,
     projectDescription,

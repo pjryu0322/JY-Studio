@@ -7,6 +7,7 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
+import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
 import { buildPrototypeExecutionSingleChatPersistPatch } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -78,6 +79,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationUserFeedbackPatchesV1?: readonly ImplementationUserFeedbackPatchV1[] | null;
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -114,6 +116,9 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
     ...(input.implementationSeedV1 !== undefined ? { implementationSeedV1: input.implementationSeedV1 } : {}),
     ...(input.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
+      : {}),
+    ...(input.implementationStageActionRunLogV1 !== undefined
+      ? { implementationStageActionRunLogV1: input.implementationStageActionRunLogV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),
