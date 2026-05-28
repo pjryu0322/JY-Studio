@@ -3,15 +3,24 @@ import { vi } from "vitest";
 import {
   markDeveloperTasksInProgressForWip,
   buildInitialImplementationTaskExecutionStateFromTaskList,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksInProgress,
+  summarizeImplementationTaskExecutionItems,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  deriveImplementationPrototypeRunSyncSnapshot,
+  syncImplementationTaskExecutionFromPrototypeRun,
+} from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   buildDeveloperImplementationRequestPrepMessage,
   buildImplementationTaskListEntryMessage,
   buildImplementationTaskListMissingEntryMessage,
   buildImplementationTaskListViewMessage,
+  buildImplementationPrototypeCompleteMessage,
   hasValidImplementationTaskListBootstrap,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   buildSecurityCheckTaskMessage,
   implementationTaskListEntryChips,
   tryHandleImplementationTaskListChip,
@@ -303,5 +312,62 @@ describe("implementationTaskListEntryMessage", () => {
     expect(chips).toContain("작업목록 보기");
     expect(chips).not.toContain(AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP);
     expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
+  });
+
+  it("buildImplementationPrototypeCompleteMessage includes preview URL and chip", () => {
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = {
+      ...executionState,
+      items: executionState.items.map((item) =>
+        item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        executionState.items.map((item) =>
+          item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+        ),
+      ),
+    };
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    executionState = markRoleTasksInProgress({ state: executionState, ownerRole: "scm", nowIso: NOW });
+    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: {
+        id: "run-1",
+        status: "PREVIEW_READY",
+        previewUrl: "https://preview.example/app",
+      },
+    });
+    executionState = syncImplementationTaskExecutionFromPrototypeRun({
+      state: executionState,
+      snapshot: prototypeSnapshot,
+      nowIso: NOW,
+    })!;
+    const message = buildImplementationPrototypeCompleteMessage({
+      prototypeSnapshot,
+      executionState,
+      nowIso: NOW,
+    });
+    expect(message?.content).toContain("프로토타입 생성이 완료되었습니다");
+    expect(message?.content).toContain("https://preview.example/app");
+    expect(message?.meta?.interviewSuggestions).toContain(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
+  });
+
+  it("tryHandleImplementationTaskListChip opens prototype preview chip", () => {
+    const openPrototypePreview = vi.fn();
+    const handled = tryHandleImplementationTaskListChip({
+      label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+      taskList,
+      prototypeSnapshot: deriveImplementationPrototypeRunSyncSnapshot({
+        latestRun: { id: "run-1", status: "PREVIEW_READY", previewUrl: "https://preview.example/app" },
+      }),
+      openPrototypePreview,
+      appendAiMessage: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(handled).toBe(true);
+    expect(openPrototypePreview).toHaveBeenCalledOnce();
   });
 });

@@ -8,7 +8,13 @@ import {
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
+  deriveImplementationPrototypeRunSyncSnapshot,
+  isImplementationPrototypeComplete,
+  type ImplementationPrototypeRunSyncSnapshot,
+} from "@/lib/prototype/implementationPrototypeRunSync";
+import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
@@ -25,9 +31,52 @@ export type ImplementationStageNextAction = Readonly<{
   reason: string;
 }>;
 
-function deriveNextActionsFromExecutionState(
+function deriveNextActionsFromPrototypeComplete(
+  prototypeSnapshot: ImplementationPrototypeRunSyncSnapshot | null | undefined,
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
 ): readonly ImplementationStageNextAction[] | null {
+  if (!isImplementationPrototypeComplete({ executionState, prototypeSnapshot })) return null;
+  return [
+    {
+      actionId: "SHOW_ARTIFACTS",
+      label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+      priority: "primary",
+      reason: "프로토타입 preview ready — 결과 확인",
+    },
+    {
+      actionId: "REQUEST_CODE_AGENT_WIP",
+      label: "변경사항 보기",
+      priority: "secondary",
+      reason: "구현 변경사항 확인",
+    },
+    {
+      actionId: "SHOW_ROLE_CHECK",
+      label: REVIEWER_CHECK_CHIP,
+      priority: "secondary",
+      reason: "후속 점검 대기 또는 완료 확인",
+    },
+    {
+      actionId: "SHOW_ROLE_CHECK",
+      label: SECURITY_CHECK_CHIP,
+      priority: "tertiary",
+      reason: "후속 점검 대기 또는 완료 확인",
+    },
+    {
+      actionId: "SHOW_SCM_CHECK",
+      label: SCM_CRITERIA_CHIP,
+      priority: "tertiary",
+      reason: "SCM 반영 기준 확인",
+    },
+  ];
+}
+
+function deriveNextActionsFromExecutionState(
+  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+  prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
+): readonly ImplementationStageNextAction[] | null {
+  const fromComplete = deriveNextActionsFromPrototypeComplete(prototypeSnapshot, executionState);
+  if (fromComplete?.length) return fromComplete;
+
   if (!executionState?.items.length) return null;
 
   const summary = executionState.summary;
@@ -89,8 +138,9 @@ function deriveNextActionsFromExecutionState(
 export function deriveImplementationStageNextActions(
   status: ImplementationStageStatus,
   executionState?: ImplementationTaskExecutionStateV1 | null,
+  prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
 ): readonly ImplementationStageNextAction[] {
-  const fromExecution = deriveNextActionsFromExecutionState(executionState);
+  const fromExecution = deriveNextActionsFromExecutionState(executionState, prototypeSnapshot);
   if (fromExecution?.length) return fromExecution;
 
   switch (status) {
@@ -157,6 +207,8 @@ export function deriveImplementationStageNextActions(
           reason: "실제 저장소 필요 여부 점검",
         },
       ];
+    case "prototype_ready":
+      return deriveNextActionsFromPrototypeComplete(prototypeSnapshot, executionState) ?? [];
     default:
       return [];
   }
@@ -197,8 +249,12 @@ export function prioritizeImplementationChipsForState(
   state: EffectiveImplementationState,
   executionState?: ImplementationTaskExecutionStateV1 | null,
 ): readonly string[] {
-  const status = deriveImplementationStageStatus(state);
-  const nextActions = deriveImplementationStageNextActions(status, executionState);
+  const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
+    latestRun: state.latestRun,
+    workUnits: state.latestRun?.workUnits,
+  });
+  const status = deriveImplementationStageStatus(state, executionState);
+  const nextActions = deriveImplementationStageNextActions(status, executionState, prototypeSnapshot);
   return prioritizeImplementationChipsByNextActions({ labels, nextActions });
 }
 

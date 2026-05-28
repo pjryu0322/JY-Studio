@@ -229,7 +229,7 @@ function patchExecutionItems(
   });
 }
 
-function applyExecutionStateItemPatches(
+export function applyExecutionStateItemPatches(
   state: ImplementationTaskExecutionStateV1,
   patchForItem: (
     item: ImplementationTaskExecutionItemV1,

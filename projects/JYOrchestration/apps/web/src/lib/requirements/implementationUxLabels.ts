@@ -43,6 +43,7 @@ export const SECURITY_CHECK_CHIP = "보안 점검" as const;
 export const SCM_CRITERIA_CHIP = "SCM 반영 기준 보기" as const;
 export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생성" as const;
 export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
+export const IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP = "프로토타입 미리보기" as const;
 export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기" as const;
 
 const TASK_LIST_ENTRY_SECONDARY_CHIPS: readonly string[] = [
@@ -112,9 +113,6 @@ export const ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS: readonly string[] = [
     ...QUICK_DESIGN_POST_CONFIRM_CHIPS_NEEDS_REVIEW,
   ]),
 ] as const;
-
-/** @deprecated Quick Design 확정 메시지는 `quickDesignPostConfirmChipLabelsForState` 사용 */
-export const QUICK_DESIGN_IMPLEMENTATION_READY_CHIP_LABELS = ALL_QUICK_DESIGN_POST_CONFIRM_CHIP_LABELS;
 
 export function quickDesignPostConfirmChipLabelsForState(
   input: ImplementationSurfaceReadiness,

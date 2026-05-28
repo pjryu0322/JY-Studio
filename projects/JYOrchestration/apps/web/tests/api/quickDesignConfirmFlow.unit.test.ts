@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   buildQuickDesignConfirmStatePatch,
   runQuickDesignConfirmFlowSync,
@@ -162,5 +164,13 @@ describe("quickDesignConfirmFlow", () => {
     });
     expect(patch).not.toHaveProperty("implementationTaskListV1");
     expect(patch.implementationSeedV1).toBeTruthy();
+  });
+
+  it("does not auto-generate implementationWorkPlanDraftV1 in RequirementsWorkspace", () => {
+    const abs = path.join(process.cwd(), "src", "components", "requirements", "RequirementsWorkspace.tsx");
+    const source = fs.readFileSync(abs, "utf8");
+    expect(source).not.toContain("buildGenerateImplementationWorkPlanDraftResult");
+    expect(source).not.toContain("autoDraftResult");
+    expect(source).not.toContain("implementationWorkPlanDraftV1: autoDraftResult");
   });
 });

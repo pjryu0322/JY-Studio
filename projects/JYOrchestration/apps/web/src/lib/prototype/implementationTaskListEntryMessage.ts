@@ -1,5 +1,9 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
+import {
+  isImplementationPrototypeComplete,
+  type ImplementationPrototypeRunSyncSnapshot,
+} from "@/lib/prototype/implementationPrototypeRunSync";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   formatImplementationTaskExecutionSummaryLines,
@@ -19,6 +23,7 @@ import {
   GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
   implementationTaskListEntryChipLabels,
   implementationTaskListMissingEntryChipLabels,
@@ -39,6 +44,7 @@ export {
   DESIGNER_REVIEW_CHIP,
   GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
@@ -222,22 +228,100 @@ export function buildImplementationTaskListMissingEntryMessage(input: {
   });
 }
 
+export function buildImplementationPrototypeCompleteMessage(input: {
+  readonly prototypeSnapshot: ImplementationPrototypeRunSyncSnapshot;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly nowIso: string;
+}): RequirementsMessage | null {
+  if (
+    !isImplementationPrototypeComplete({
+      executionState: input.executionState,
+      prototypeSnapshot: input.prototypeSnapshot,
+    })
+  ) {
+    return null;
+  }
+  const def = getWorkspaceAiMember("prototype_build");
+  const urlLine = input.prototypeSnapshot.previewUrl
+    ? [`Preview URL: ${input.prototypeSnapshot.previewUrl}`]
+    : [];
+  const pendingReview = input.executionState?.items.some(
+    (item) =>
+      (item.ownerRole === "reviewer" || item.ownerRole === "security") && item.status === "queued",
+  );
+  const content = [
+    "프로토타입 생성이 완료되었습니다.",
+    "Preview URL에서 결과를 확인할 수 있습니다.",
+    ...urlLine,
+    ...(pendingReview ? ["", "일부 후속 점검 작업은 아직 대기 중일 수 있습니다."] : []),
+    "",
+    "다음 작업을 선택해 주세요.",
+  ].join("\n");
+
+  return newRequirementsMessage({
+    id: `impl-prototype-complete-${input.nowIso}`,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content,
+    createdAt: input.nowIso,
+    meta: {
+      internalType: IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE,
+      serviceDesignStage: "implementation",
+      interviewSuggestions: [
+        IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+        "변경사항 보기",
+        REVIEWER_CHECK_CHIP,
+        SECURITY_CHECK_CHIP,
+        SCM_CRITERIA_CHIP,
+      ],
+      interviewAllowCustomInput: true,
+      prototypeOrderKey: 1250,
+    },
+  });
+}
+
 export function buildImplementationTaskListViewMessage(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const executionLines = formatImplementationTaskExecutionSummaryLines(input.executionState);
   const queueLines = formatTaskQueueLinesForDisplay(input.taskList.tasks, input.executionState, 20);
+  const prototypeComplete =
+    input.prototypeSnapshot &&
+    isImplementationPrototypeComplete({
+      executionState: input.executionState,
+      prototypeSnapshot: input.prototypeSnapshot,
+    });
   const content = [
+    ...(prototypeComplete
+      ? ["프로토타입 생성이 완료되었습니다.", "Preview URL에서 결과를 확인할 수 있습니다.", ""]
+      : []),
     "구현 작업목록입니다. (TASK ID / 역할 / 제목 / 우선순위 / 상태)",
     "",
     ...queueLines,
     ...(executionLines.length ? ["", ...executionLines] : []),
+    ...(input.prototypeSnapshot?.previewUrl
+      ? ["", `Preview URL: ${input.prototypeSnapshot.previewUrl}`]
+      : []),
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");
+
+  const suggestions = prototypeComplete
+    ? [
+        IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+        "변경사항 보기",
+        REVIEWER_CHECK_CHIP,
+        SECURITY_CHECK_CHIP,
+        SCM_CRITERIA_CHIP,
+      ]
+    : [...implementationTaskListEntryChips({ envOk: true })];
 
   return newRequirementsMessage({
     id: `impl-task-list-view-${input.nowIso}`,
@@ -251,7 +335,7 @@ export function buildImplementationTaskListViewMessage(input: {
     meta: {
       internalType: IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE,
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationTaskListEntryChips({ envOk: true })],
+      interviewSuggestions: suggestions,
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1200,
     },
@@ -446,11 +530,13 @@ export function tryHandleImplementationTaskListChip(input: {
   readonly label: string;
   readonly taskList: ImplementationTaskListV1 | null;
   readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
+  readonly prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null;
   readonly envOk: boolean;
   readonly nowIso?: string;
   readonly appendAiMessage: (message: RequirementsMessage) => void;
   readonly openEnvSettings: () => void;
   readonly openArtifactHub: () => void;
+  readonly openPrototypePreview?: () => void;
   readonly returnToPlanningStage: () => void;
   readonly generateTaskListFromSeed?: () => void;
   readonly showToast: (message: string) => void;
@@ -487,9 +573,21 @@ export function tryHandleImplementationTaskListChip(input: {
         buildImplementationTaskListViewMessage({
           taskList: list,
           executionState: input.executionState,
+          prototypeSnapshot: input.prototypeSnapshot,
           nowIso: now,
         }),
       );
+      return true;
+    case IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP:
+      if (input.openPrototypePreview) {
+        input.openPrototypePreview();
+        return true;
+      }
+      if (input.prototypeSnapshot?.previewUrl) {
+        input.showToast(`Preview URL: ${input.prototypeSnapshot.previewUrl}`);
+        return true;
+      }
+      input.showToast("Preview URL이 아직 없습니다.");
       return true;
     case DESIGNER_REVIEW_CHIP:
       if (!list) return false;

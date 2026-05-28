@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksInProgress,
+  summarizeImplementationTaskExecutionItems,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  syncImplementationTaskExecutionFromPrototypeRun,
+  deriveImplementationPrototypeRunSyncSnapshot,
+} from "@/lib/prototype/implementationPrototypeRunSync";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
@@ -173,5 +183,48 @@ describe("deriveImplementationStageStatus", () => {
       designOk: true,
     });
     expect(deriveImplementationStageStatus(state)).toBe("work_plan_confirmed");
+  });
+
+  it("returns prototype_ready when preview is ready and scm tasks are done", () => {
+    const taskList = makeTaskListReady();
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = {
+      ...executionState,
+      items: executionState.items.map((item) =>
+        item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        executionState.items.map((item) =>
+          item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+        ),
+      ),
+    };
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    executionState = markRoleTasksInProgress({ state: executionState, ownerRole: "scm", nowIso: NOW });
+    const latestRun = {
+      id: "run-1",
+      status: "PREVIEW_READY",
+      previewUrl: "https://preview.example/app",
+      workUnits: [],
+    };
+    const snapshot = deriveImplementationPrototypeRunSyncSnapshot({ latestRun });
+    executionState =
+      syncImplementationTaskExecutionFromPrototypeRun({ state: executionState, snapshot, nowIso: NOW })!;
+
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: taskList,
+      },
+      pendingPatch: {},
+      envOk: true,
+      designOk: true,
+      latestRun: latestRun as never,
+    });
+    expect(deriveImplementationStageStatus(state, executionState)).toBe("prototype_ready");
   });
 });

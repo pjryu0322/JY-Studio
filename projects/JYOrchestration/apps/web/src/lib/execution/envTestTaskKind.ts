@@ -1,6 +1,6 @@
 /**
  * DB `taskKind` 및 ENV_TEST 실행 스코프 게이트용 문자열 단일 근원.
- * (nextTaskReadiness ↔ envTestExecutionHelpers 등 순환 import 방지)
+ * ENV_TEST task kind — executionLoop 모듈 간 순환 import 방지용 분리.
  */
 export const ENV_TEST_TASK_KIND = "ENV_TEST" as const;
 

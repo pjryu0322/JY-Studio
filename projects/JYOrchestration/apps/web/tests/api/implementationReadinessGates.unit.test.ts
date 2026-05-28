@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateImplementationEntrySurfaceReadiness,
   evaluateQuickDesignPostConfirmReadiness,
-  evaluateQuickDesignPostConfirmState,
   resolveImplementationEntrySeedReady,
 } from "@/lib/requirements/implementationReadinessGates";
 import { resolveQuickDesignImplementationReadyCopy } from "@/lib/requirements/quickDesignConfirmArtifacts";
@@ -36,16 +35,6 @@ describe("implementationReadinessGates", () => {
     });
     expect(readiness.seedReady).toBe(false);
     expect(readiness.envOk).toBe(true);
-  });
-
-  it("evaluateQuickDesignPostConfirmState alias matches readiness evaluator", () => {
-    const viaAlias = evaluateQuickDesignPostConfirmState({
-      readiness: { ready: true, score: 1, missing: [], warnings: [] },
-      prepComplete: true,
-      envOk: false,
-    });
-    expect(viaAlias.seedReady).toBe(true);
-    expect(viaAlias.envOk).toBe(false);
   });
 
   it("evaluateImplementationEntrySurfaceReadiness exposes taskListReady", () => {

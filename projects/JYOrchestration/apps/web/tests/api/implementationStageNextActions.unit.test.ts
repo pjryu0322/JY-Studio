@@ -11,10 +11,16 @@ import {
 } from "@/lib/prototype/implementationStageNextActions";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
+import {
+  deriveImplementationPrototypeRunSyncSnapshot,
+  syncImplementationTaskExecutionFromPrototypeRun,
+} from "@/lib/prototype/implementationPrototypeRunSync";
+import { markRoleTasksInProgress } from "@/lib/prototype/implementationTaskExecutionState";
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
@@ -140,6 +146,60 @@ describe("deriveImplementationStageNextActions with execution state", () => {
     );
     expect(sorted[0]).toBe(REVIEWER_CHECK_CHIP);
     expect(sorted[1]).toBe(SECURITY_CHECK_CHIP);
+  });
+
+  it("prototype_ready prioritizes preview/view result and not AI developer request", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    const workItems: readonly CursorWorkItem[] = taskList.tasks
+      .filter((t) => t.ownerRole === "developer")
+      .map((t) => ({
+        id: "wi-dev",
+        taskId: t.taskId,
+        title: t.title,
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: [],
+        forbiddenPaths: [],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      }));
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = markDeveloperTasksDoneForWip({
+      state: executionState,
+      cursorWorkItems: workItems,
+      nowIso: NOW,
+    });
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    executionState = markRoleTasksInProgress({ state: executionState, ownerRole: "scm", nowIso: NOW });
+    const latestRun = {
+      id: "run-1",
+      status: "PREVIEW_READY",
+      previewUrl: "https://preview.example/app",
+      workUnits: [],
+    };
+    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({ latestRun });
+    executionState = syncImplementationTaskExecutionFromPrototypeRun({
+      state: executionState,
+      snapshot: prototypeSnapshot,
+      nowIso: NOW,
+    })!;
+
+    const actions = deriveImplementationStageNextActions("prototype_ready", executionState, prototypeSnapshot);
+    expect(actions[0]?.label).toBe(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
+    expect(actions[0]?.priority).toBe("primary");
+    expect(actions.some((a) => a.priority === "primary" && a.label === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP)).toBe(
+      false,
+    );
   });
 });
 

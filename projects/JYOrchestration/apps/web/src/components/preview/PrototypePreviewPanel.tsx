@@ -121,7 +121,7 @@ import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementa
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
-import { markDeveloperTasksFailedForWip } from "@/lib/prototype/implementationTaskExecutionState";
+import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   buildTaskListDerivedWipOrchestration,
   canUseTaskListForWipOrchestration,
@@ -445,6 +445,8 @@ export function PrototypePreviewPanel({
               orchestrationPatch.cursorWorkItemsV1?.length,
               orchestrationPatch.codeAgentWipExecutionV1?.status,
               orchestrationPatch.promptTimeline?.length,
+              orchestrationPatch.implementationTaskExecutionStateV1?.updatedAt,
+              orchestrationPatch.implementationTaskExecutionStateV1?.summary,
             ]
           : null,
       });
@@ -465,6 +467,21 @@ export function PrototypePreviewPanel({
       void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
     },
     [projectId, timelineCards, requirementsStateJson],
+  );
+
+  const persistExecutionStateFromPrototypeRun = useCallback(
+    (run: import("@/lib/prototype/prototypeRunTypes").PrototypeRun | null | undefined) => {
+      if (!run) return;
+      const parsed = parseRequirementsStateJson(requirementsStateJson);
+      const sync = buildPrototypeRunExecutionSyncPatch({
+        currentState: parsed.implementationTaskExecutionStateV1,
+        latestRun: run,
+        workUnits: run.workUnits,
+      });
+      if (!sync.changed || !sync.nextState) return;
+      void persistChatToDb(undefined, { implementationTaskExecutionStateV1: sync.nextState });
+    },
+    [requirementsStateJson, persistChatToDb],
   );
 
   useEffect(() => {
@@ -673,6 +690,7 @@ export function PrototypePreviewPanel({
       });
       if (res.success && res.data?.run) {
         setLatestRun(res.data.run);
+        persistExecutionStateFromPrototypeRun(res.data.run);
         setAutomationAvailable(res.data.automationAvailable);
         setAutomationBlockReason(res.data.automationBlockReason);
         showToast(res.data.message ?? "Cursor 자동 생성을 요청했습니다.");
@@ -722,6 +740,7 @@ export function PrototypePreviewPanel({
           /** 응답 직후 진행 말풍선이 잠깐 보일 때 단계를 모두 완료로 스냅 */
           setPlannerProgressStep(5);
           setLatestRun(res.data.run);
+          persistExecutionStateFromPrototypeRun(res.data.run);
           setAutomationAvailable(res.data.automationAvailable);
           setAutomationBlockReason(res.data.automationBlockReason);
           const wuN = res.data.run.workUnits?.length ?? 0;
@@ -732,7 +751,10 @@ export function PrototypePreviewPanel({
            */
           if (serverMsg === "현재 실행이 진행 중입니다.") {
             const rr = await postPrototypeRunRefresh(res.data.run.id, { projectId });
-            if (rr.success && rr.data?.run) setLatestRun(rr.data.run);
+            if (rr.success && rr.data?.run) {
+              setLatestRun(rr.data.run);
+              persistExecutionStateFromPrototypeRun(rr.data.run);
+            }
             return;
           }
           /** 서버가 메시지 없이 같은 run만 돌려준 경우(플래너 진행 중 중복 요청 등)는 타임라인 카드만 유지 */
@@ -747,7 +769,7 @@ export function PrototypePreviewPanel({
         void refreshLatestRun();
       }
     },
-    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun],
+    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun, persistExecutionStateFromPrototypeRun],
   );
 
   /**
@@ -862,6 +884,7 @@ export function PrototypePreviewPanel({
       const res = await postPrototypeRunRefresh(latestRun.id, { projectId });
       if (res.success && res.data?.run) {
         setLatestRun(res.data.run);
+        persistExecutionStateFromPrototypeRun(res.data.run);
         showToast(res.data.userMessage?.trim() || "상태를 갱신했습니다.");
       } else {
         showToast(res.message ?? "갱신에 실패했습니다.");
@@ -912,7 +935,10 @@ export function PrototypePreviewPanel({
       autoRefreshInFlightRef.current = true;
       void postPrototypeRunRefresh(rid, { projectId })
         .then((res) => {
-          if (res.success && res.data?.run) setLatestRun(res.data.run);
+          if (res.success && res.data?.run) {
+            setLatestRun(res.data.run);
+            persistExecutionStateFromPrototypeRun(res.data.run);
+          }
         })
         .finally(() => {
           autoRefreshInFlightRef.current = false;
@@ -929,6 +955,7 @@ export function PrototypePreviewPanel({
     latestRun?.runSchemaVersion,
     projectId,
     protoBusy,
+    persistExecutionStateFromPrototypeRun,
   ]);
 
   const loadEnv = useCallback(async () => {
@@ -1078,17 +1105,23 @@ export function PrototypePreviewPanel({
       setProtoBusy(true);
       try {
         const r = await postPrototypeConfirmExecution(rid, { projectId });
-        if (r.success && r.data?.run) setLatestRun(r.data.run);
+        if (r.success && r.data?.run) {
+          setLatestRun(r.data.run);
+          persistExecutionStateFromPrototypeRun(r.data.run);
+        }
         if (r.message) showToast(r.message);
         await postPrototypeRunRefresh(rid, { projectId }).then((x) => {
-          if (x.success && x.data?.run) setLatestRun(x.data.run);
+          if (x.success && x.data?.run) {
+            setLatestRun(x.data.run);
+            persistExecutionStateFromPrototypeRun(x.data.run);
+          }
         });
       } finally {
         setProtoBusy(false);
         void refreshLatestRun();
       }
     })();
-  }, [latestRun?.id, projectId, refreshLatestRun]);
+  }, [latestRun?.id, projectId, refreshLatestRun, persistExecutionStateFromPrototypeRun]);
 
   const regeneratePlan = useCallback(() => {
     const rid = latestRun?.id;
@@ -1168,6 +1201,15 @@ export function PrototypePreviewPanel({
   const parsedRequirementsState = useMemo(
     () => parseRequirementsStateJson(requirementsStateJson),
     [requirementsStateJson],
+  );
+
+  const prototypeRunSyncSnapshot = useMemo(
+    () =>
+      deriveImplementationPrototypeRunSyncSnapshot({
+        latestRun,
+        workUnits: latestRun?.workUnits,
+      }),
+    [latestRun],
   );
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
@@ -2321,10 +2363,16 @@ export function PrototypePreviewPanel({
           label,
           taskList,
           executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+          prototypeSnapshot: prototypeRunSyncSnapshot,
           envOk: canRequestGeneration.envOk,
           appendAiMessage: appendImplementationTaskListAiMessage,
           openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
           openArtifactHub: () => setArtifactHubOpen(true),
+          openPrototypePreview: () => {
+            const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            else showToast("Preview URL이 아직 없습니다.");
+          },
           returnToPlanningStage: () => {
             const pid = projectId.trim();
             if (!pid) return;
@@ -2429,7 +2477,10 @@ export function PrototypePreviewPanel({
     [
       executeImplementationStageAction,
       parsedRequirementsState.implementationTaskListV1,
+      parsedRequirementsState.implementationTaskExecutionStateV1,
       parsedRequirementsState.implementationSeedV1,
+      prototypeRunSyncSnapshot,
+      previewUrl,
       projectId,
       requirementsStateJson,
       persistChatToDb,

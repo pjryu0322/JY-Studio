@@ -95,9 +95,3 @@ export function evaluateImplementationEntrySurfaceReadiness(input: {
     taskListReady,
   };
 }
-
-/** @deprecated Use `ImplementationSurfaceReadiness`. */
-export type QuickDesignPostConfirmState = ImplementationSurfaceReadiness;
-
-/** @deprecated Use `evaluateQuickDesignPostConfirmReadiness`. */
-export const evaluateQuickDesignPostConfirmState = evaluateQuickDesignPostConfirmReadiness;
