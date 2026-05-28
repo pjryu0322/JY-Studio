@@ -58,7 +58,13 @@ import {
 import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
 import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
-import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
+import {
+  canConfirmImplementationWorkPlanFromEffectiveState,
+  mergePendingImplementationPatch,
+  mergePendingImplementationPatchFromOrchestration,
+  resolveEffectiveImplementationState,
+  type PendingImplementationPatch,
+} from "@/lib/prototype/effectiveImplementationState";
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
@@ -245,6 +251,8 @@ export function PrototypePreviewPanel({
   const [implementationConversationResetNonce, setImplementationConversationResetNonce] = useState(0);
   /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
   const [plannerCreatePending, setPlannerCreatePending] = useState(false);
+  const [pendingImplementationPatch, setPendingImplementationPatch] =
+    useState<PendingImplementationPatch>({});
   const [plannerProgressStep, setPlannerProgressStep] = useState(1);
   const planProgressStartedAtRef = useRef(0);
   /** 작업계획 생성 중복 클릭 방지 — state와 달리 동기적으로 잠금 */
@@ -1359,6 +1367,7 @@ export function PrototypePreviewPanel({
     envLoading: executionEnvLoading,
     conversationResetNonce: implementationConversationResetNonce,
     onPersistStateJson: (patch) => {
+      applyPendingFromOrchestrationPatch(patch.orchestration);
       const parsed = parseRequirementsStateJson(requirementsStateJson);
       const timeline = mergePromptTimelineWithBootstrapEntries({
         baseTimeline: parsed.promptTimeline,
@@ -1411,7 +1420,7 @@ export function PrototypePreviewPanel({
           orchestration: parsedRequirementsState.singleChatOrchestrationV1,
           slotDefinitions: planningSlotDefinitions,
           implementationSeedV1: parsedRequirementsState.implementationSeedV1,
-          implementationWorkPlanDraftV1: parsedRequirementsState.implementationWorkPlanDraftV1,
+          implementationWorkPlanDraftV1: effectiveImplementationState.implementationWorkPlanDraftV1,
           promptTimeline: parsedRequirementsState.promptTimeline,
           routeParams: {
             text,
@@ -1443,15 +1452,17 @@ export function PrototypePreviewPanel({
 
   const implementationCursorGate = useMemo(
     () =>
-      buildImplementationCursorGateContext(parsedRequirementsState, {
-        envOk: canRequestGeneration.envOk,
-        designOk: canRequestGeneration.designOk,
-      }),
-    [
-      parsedRequirementsState,
-      canRequestGeneration.envOk,
-      canRequestGeneration.designOk,
-    ],
+      buildImplementationCursorGateContext(
+        {
+          ...parsedRequirementsState,
+          implementationTaskPlanV1: effectiveImplementationState.implementationTaskPlanV1,
+        },
+        {
+          envOk: effectiveImplementationState.envOk,
+          designOk: effectiveImplementationState.designOk,
+        },
+      ),
+    [parsedRequirementsState, effectiveImplementationState],
   );
 
   const confirmImplementationTaskPlan = useCallback(() => {
@@ -1463,9 +1474,9 @@ export function PrototypePreviewPanel({
       projectArtifacts: executionArtifacts.projectArtifacts,
       artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
       featureDraftTitles: featureDraftTitles ?? [],
-      implementationWorkPlanDraftV1: parsedRequirementsState.implementationWorkPlanDraftV1,
-      envOk: canRequestGeneration.envOk,
-      designOk: canRequestGeneration.designOk,
+      implementationWorkPlanDraftV1: effectiveImplementationState.implementationWorkPlanDraftV1,
+      envOk: effectiveImplementationState.envOk,
+      designOk: effectiveImplementationState.designOk,
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
     if (result.kind === "blocked") {
@@ -1476,6 +1487,7 @@ export function PrototypePreviewPanel({
       showToast("이미 구현 작업안이 확정되었습니다.");
       return;
     }
+    applyPendingFromOrchestrationPatch(result.orchestrationPatch);
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     executionSingleChat.applyPersistedMessages(result.chatPatch.messages);
     void persistChatToDb(
@@ -1492,12 +1504,11 @@ export function PrototypePreviewPanel({
     requirementsStateJson,
     executionArtifacts,
     featureDraftTitles,
-    parsedRequirementsState.implementationWorkPlanDraftV1,
-    canRequestGeneration.envOk,
-    canRequestGeneration.designOk,
+    effectiveImplementationState,
     parsedRequirementsState.promptTimeline,
     executionSingleChat,
     persistChatToDb,
+    applyPendingFromOrchestrationPatch,
     showToast,
   ]);
 
@@ -1529,6 +1540,7 @@ export function PrototypePreviewPanel({
         promptTimeline: result.orchestrationPatch.promptTimeline ?? parsedRequirementsState.promptTimeline,
       }),
     };
+    applyPendingFromOrchestrationPatch(orchestrationPatch);
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
     executionSingleChat.applyPersistedMessages(result.messages);
     void persistChatToDb(
@@ -1606,6 +1618,7 @@ export function PrototypePreviewPanel({
         showToast(result.message);
         return;
       }
+      applyPendingFromOrchestrationPatch(result.orchestrationPatch);
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
       executionSingleChat.applyPersistedMessages(result.messages);
       void persistChatToDb(
@@ -1618,7 +1631,7 @@ export function PrototypePreviewPanel({
         result.orchestrationPatch,
       );
     },
-    [requirementsStateJson, executionSingleChat, persistChatToDb, showToast],
+    [requirementsStateJson, executionSingleChat, persistChatToDb, applyPendingFromOrchestrationPatch, showToast],
   );
 
   const reviewDbIntegrationNeed = useCallback(() => {
@@ -1627,7 +1640,7 @@ export function PrototypePreviewPanel({
         requirementsStateJson,
         implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
         implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
-        implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+        implementationTaskPlanV1: effectiveImplementationState.implementationTaskPlanV1,
         projectArtifacts: executionArtifacts.projectArtifacts,
         promptTimeline: parsedRequirementsState.promptTimeline,
       }),
@@ -1637,7 +1650,7 @@ export function PrototypePreviewPanel({
     requirementsStateJson,
     parsedRequirementsState.implementationSlotsV1,
     parsedRequirementsState.implementationDbStrategyV1,
-    parsedRequirementsState.implementationTaskPlanV1,
+    effectiveImplementationState.implementationTaskPlanV1,
     parsedRequirementsState.promptTimeline,
     executionArtifacts.projectArtifacts,
   ]);
@@ -1755,7 +1768,7 @@ export function PrototypePreviewPanel({
         ...wipChipHandlers,
         prepareImplementationExecution: () => {
           const toast = buildPrepareImplementationExecutionToast(
-            parsedRequirementsState.implementationTaskPlanV1,
+            effectiveImplementationState.implementationTaskPlanV1,
           );
           if (toast) showToast(toast);
         },
@@ -1763,12 +1776,9 @@ export function PrototypePreviewPanel({
         refreshStatus: () => void onRefreshPrototypeStatus(),
         showToast,
         canConfirmImplementationTaskPlan: () => {
-          if (!hasImplementationWorkPlanDraftReady(parsedRequirementsState.implementationWorkPlanDraftV1)) {
-            showToast("먼저 [구현 작업안 초안 생성]을 진행해 주세요.");
-            return false;
-          }
-          if (!canRequestGeneration.designOk) {
-            showToast("기획 산출물 준비 후 작업안을 확정할 수 있습니다.");
+          const gate = canConfirmImplementationWorkPlanFromEffectiveState(effectiveImplementationState);
+          if (!gate.ok) {
+            showToast(gate.message);
             return false;
           }
           return true;
@@ -1799,11 +1809,9 @@ export function PrototypePreviewPanel({
       reviewDbIntegrationNeed,
       generateDataModelDraft,
       confirmMockImplementationMode,
-      parsedRequirementsState.implementationWorkPlanDraftV1,
+      effectiveImplementationState,
       wipChipHandlers,
-      parsedRequirementsState.implementationTaskPlanV1,
       implementationCursorGate,
-      canRequestGeneration.designOk,
       confirmExecution,
       onRefreshPrototypeStatus,
       executionSingleChat,
@@ -2247,7 +2255,7 @@ export function PrototypePreviewPanel({
   );
 
   const onImplementationQuickExecution = useCallback(() => {
-    if (!parsedRequirementsState.implementationTaskPlanV1) {
+    if (!effectiveImplementationState.implementationTaskPlanV1) {
       confirmImplementationTaskPlan();
       return;
     }
@@ -2256,11 +2264,13 @@ export function PrototypePreviewPanel({
       wipChipHandlers.requestCodeAgentWipWork();
       return;
     }
-    const toast = buildPrepareImplementationExecutionToast(parsedRequirementsState.implementationTaskPlanV1);
+    const toast = buildPrepareImplementationExecutionToast(
+      effectiveImplementationState.implementationTaskPlanV1,
+    );
     if (toast) showToast(toast);
     else executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
   }, [
-    parsedRequirementsState.implementationTaskPlanV1,
+    effectiveImplementationState.implementationTaskPlanV1,
     implementationCursorGate,
     confirmImplementationTaskPlan,
     wipChipHandlers,

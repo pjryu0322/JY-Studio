@@ -57,6 +57,16 @@ describe("tryHandlePrototypeExecutionChip", () => {
     expect(toast).toHaveBeenCalledWith("blocked");
   });
 
+  it("confirms work plan when canConfirmImplementationTaskPlan is true", () => {
+    const confirm = vi.fn();
+    tryHandlePrototypeExecutionChip("구현 작업안 확정", {
+      ...baseHandlers(),
+      confirmImplementationTaskPlan: confirm,
+      canConfirmImplementationTaskPlan: () => true,
+    });
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+
   it("handles DB 연동 필요성 검토 chip", () => {
     const review = vi.fn();
     expect(

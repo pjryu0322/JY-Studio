@@ -1,5 +1,6 @@
 /**
  * 구현 단계 SingleChat 인터뷰 칩 → 동작 라우팅.
+ * Phase-1 stage action ids: `mapImplementationChipToAction()` in effectiveImplementationState.ts
  */
 
 import {
