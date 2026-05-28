@@ -96,6 +96,8 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   templateChipTemplates: readonly { id: string; nameKo: string }[];
   recommendedTemplateId: string;
   templateConfirmed: boolean;
+  /** Explicit request to open inline template picker in chat. */
+  templatePickerRequested?: boolean;
   /** true면 AI 추천 템플릿을 기본값으로 작업계획 생성 가능(별도 [확정] 없음) */
   templatePlanningReady?: boolean;
   prePlanGate: PrototypePrePlanGate;
@@ -168,6 +170,16 @@ function parseIsoMs(iso: string | null | undefined): number | null {
   if (!s) return null;
   const t = Date.parse(s);
   return Number.isFinite(t) ? t : null;
+}
+
+function shouldShowPreRunTemplatePickerRow(p: BuildPrototypeChatMessagesParams): boolean {
+  if (p.templatePickerRequested !== true) return false;
+  if (!p.canRequestGenerationEnvOk) return false;
+  if (p.omitEnvReadinessCard) return false;
+  if (shouldLockInlineChatTemplateSelection(p.latestRun)) return false;
+  if (!hasNoWorkUnitsYet(p.latestRun)) return false;
+  if (p.isCancelled || p.isFailed || p.isDeployFailed) return false;
+  return true;
 }
 
 /** DB에 저장하지 않고 화면용 타임라인 메시지를 조합합니다. */
@@ -298,15 +310,8 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
 
   const templateReadyForPlanning = p.templateConfirmed || p.templatePlanningReady === true;
 
-  /** 구현 bootstrap(omitEnvReadinessCard) 또는 환경 미완료 시 템플릿 선택 말풍선 숨김 */
-  const showPreRunTemplateRow =
-    p.canRequestGenerationEnvOk &&
-    !p.omitEnvReadinessCard &&
-    !shouldLockInlineChatTemplateSelection(p.latestRun) &&
-    hasNoWorkUnitsYet(p.latestRun) &&
-    !p.isCancelled &&
-    !p.isFailed &&
-    !p.isDeployFailed;
+  /** Default hidden; shown only on explicit user request. */
+  const showPreRunTemplateRow = shouldShowPreRunTemplatePickerRow(p);
 
   if (showPreRunTemplateRow) {
     out.push({

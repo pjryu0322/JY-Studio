@@ -7,7 +7,52 @@ import {
   projectPrototypeBuiltMessagesToRequirements,
 } from "@/lib/prototype/prototypeBuiltMessageProjection";
 
+function baseBuildParams() {
+  return {
+    omitEnvReadinessCard: false,
+    env: { git: "ok", github: "ok", cursor: "ok", connectionTest: "ok" },
+    canRequestGenerationEnvOk: true,
+    canRequestGenerationDesignOk: true,
+    envSettingsHref: "/settings",
+    templateChipTemplates: [],
+    recommendedTemplateId: "default",
+    templateConfirmed: false,
+    templatePlanningReady: true,
+    prePlanGate: "idle" as const,
+    latestRun: null,
+    awaitingExecutionConfirm: false,
+    isPlannerRunning: false,
+    isRunningState: false,
+    isCancelled: false,
+    isFailed: false,
+    isDeployFailed: false,
+    isCompleted: false,
+    isDeployPhase: false,
+    automationAvailable: false,
+    previewUrl: null,
+    pagesSettingsHref: null,
+    pagesDeployWorkflowRunUrl: null,
+    protoBusy: false,
+    plannerCreatePending: false,
+    plannerProgressStep: 1,
+    projectId: "p1",
+  };
+}
+
 describe("projectPrototypeBuiltMessagesToRequirements", () => {
+  it("does not show inline template picker by default on implementation entry", () => {
+    const built = buildPrototypeChatMessages(baseBuildParams());
+    expect(built.some((m) => m.inlineTemplatePicker === true)).toBe(false);
+  });
+
+  it("shows inline template picker when explicitly requested", () => {
+    const built = buildPrototypeChatMessages({
+      ...baseBuildParams(),
+      templatePickerRequested: true,
+    });
+    expect(built.some((m) => m.inlineTemplatePicker === true)).toBe(true);
+  });
+
   it("omits env readiness card messages when orchestration bootstrap owns readiness", () => {
     const built = buildPrototypeChatMessages({
       omitEnvReadinessCard: true,
