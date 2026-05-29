@@ -121,7 +121,7 @@ import {
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
-import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
+import { buildImplementationExecutionBoard, pickFirstExecutableDeveloperTaskId } from "@/lib/prototype/implementationExecutionBoard";
 import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
@@ -2328,9 +2328,25 @@ export function PrototypePreviewPanel({
           }
 
           const devCount = wipResult.developerTaskCount;
+          const firstTaskId =
+            taskList && runtimeExecutionState
+              ? pickFirstExecutableDeveloperTaskId(
+                  buildImplementationExecutionBoard({
+                    projectId: pid,
+                    taskList,
+                    executionState: runtimeExecutionState,
+                    integratedExecutionState:
+                      parsedRequirementsState.implementationIntegratedExecutionStateV1,
+                    boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+                    qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+                  }),
+                )
+              : null;
           showToast(
             devCount > 0
-              ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
+              ? firstTaskId
+                ? `TaskList 기준 ${devCount}건 중 ${firstTaskId}부터 Code Agent WIP 요청을 시작했습니다.`
+                : `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
               : "Code Agent WIP 작업 요청을 시작했습니다.",
           );
           return { outcome: "executed" };
@@ -2396,8 +2412,7 @@ export function PrototypePreviewPanel({
   const handleImplementationChip = useCallback(
     (label: string) => {
       const taskList = parsedRequirementsState.implementationTaskListV1 ?? null;
-      if (
-        tryHandleImplementationTaskListChip({
+      const chipHandled = tryHandleImplementationTaskListChip({
           label,
           projectId,
           taskList,
@@ -2435,13 +2450,11 @@ export function PrototypePreviewPanel({
             showToast("구현 작업목록을 생성했습니다.");
           },
           showToast,
-        })
-      ) {
-        // If the user clicked the developer request CTA and work items are not ready,
-        // generate cursorWorkItemsV1 candidates from TaskList (do not overwrite).
+        });
+
+      if (chipHandled) {
         if (
-          (label.trim() === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP ||
-            label.trim() === IMPLEMENTATION_GENERATION_REQUEST_CHIP) &&
+          label.trim() === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP &&
           taskList?.tasks?.length &&
           (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
         ) {
@@ -2456,6 +2469,22 @@ export function PrototypePreviewPanel({
           }
         }
         return true;
+      }
+
+      if (
+        label.trim() === IMPLEMENTATION_GENERATION_REQUEST_CHIP &&
+        taskList?.tasks?.length &&
+        (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
+      ) {
+        const pid = projectId.trim();
+        if (pid) {
+          const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList });
+          if (workItems.length) {
+            void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+              cursorWorkItemsV1: workItems,
+            });
+          }
+        }
       }
 
       const actionId = mapImplementationChipToAction(label);

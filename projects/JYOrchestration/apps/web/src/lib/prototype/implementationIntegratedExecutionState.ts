@@ -170,6 +170,18 @@ function setItemStatus(
   return items.map((item) => (item.step === step ? { ...item, status } : item));
 }
 
+function isTerminalIntegratedStatus(status: ImplementationIntegratedStepStatus): boolean {
+  return status === "done" || status === "failed" || status === "skipped";
+}
+
+function promoteIntegratedStepToReadyIfNotStarted(
+  items: readonly ImplementationIntegratedExecutionItemV1[],
+  step: ImplementationIntegratedStep,
+): readonly ImplementationIntegratedExecutionItemV1[] {
+  if (statusOf(items, step) !== "not_started") return items;
+  return setItemStatus(items, step, "ready");
+}
+
 /** Advances integrated step readiness from persisted state only (not global role execution). */
 export function deriveIntegratedExecutionStateReadiness(input: {
   readonly projectId: string;
@@ -186,36 +198,26 @@ export function deriveIntegratedExecutionStateReadiness(input: {
     return {
       ...base,
       updatedAt: now,
-      items: base.items.map((item) => ({
-        ...item,
-        status: "not_started" as const,
-      })),
+      items: base.items.map((item) =>
+        isTerminalIntegratedStatus(item.status) ? item : { ...item, status: "not_started" as const },
+      ),
     };
   }
 
   let items = [...base.items];
 
-  const refactor = statusOf(items, "refactor_common");
-  if (refactor === "not_started") {
-    items = setItemStatus(items, "refactor_common", "ready");
-  }
+  items = promoteIntegratedStepToReadyIfNotStarted(items, "refactor_common");
 
   if (statusOf(items, "refactor_common") === "done") {
-    if (statusOf(items, "integrated_review") === "not_started") {
-      items = setItemStatus(items, "integrated_review", "ready");
-    }
+    items = promoteIntegratedStepToReadyIfNotStarted(items, "integrated_review");
   }
 
   if (statusOf(items, "integrated_review") === "done") {
-    if (statusOf(items, "integrated_security") === "not_started") {
-      items = setItemStatus(items, "integrated_security", "ready");
-    }
+    items = promoteIntegratedStepToReadyIfNotStarted(items, "integrated_security");
   }
 
   if (statusOf(items, "integrated_security") === "done") {
-    if (statusOf(items, "final_scm") === "not_started") {
-      items = setItemStatus(items, "final_scm", "ready");
-    }
+    items = promoteIntegratedStepToReadyIfNotStarted(items, "final_scm");
   }
 
   return { ...base, updatedAt: now, items };

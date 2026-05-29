@@ -53,4 +53,22 @@ describe("implementationIntegratedExecutionState", () => {
     });
     expect(state.items.find((i) => i.step === "integrated_review")?.status).toBe("ready");
   });
+
+  it("does not overwrite terminal integrated statuses when promoting readiness", () => {
+    let state = buildInitialImplementationIntegratedExecutionState({ projectId: "p1", nowIso: NOW });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.step === "refactor_common" ? { ...item, status: "failed" as const } : item,
+      ),
+    };
+    state = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    expect(state.items.find((i) => i.step === "refactor_common")?.status).toBe("failed");
+    expect(state.items.find((i) => i.step === "integrated_review")?.status).toBe("not_started");
+  });
 });

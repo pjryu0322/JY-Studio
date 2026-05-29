@@ -3,6 +3,7 @@ import {
   buildImplementationExecutionBoard,
   canContinueTaskDespiteUserConfirmation,
   isImplementationBoardComplete,
+  pickFirstExecutableDeveloperTaskId,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
@@ -11,11 +12,12 @@ import {
   markPostDeveloperReviewTasksQueued,
   markRoleTasksDone,
 } from "@/lib/prototype/implementationTaskExecutionState";
+import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import {
   buildInitialImplementationIntegratedExecutionState,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
-import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
-import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 const NOW = "2026-05-28T12:00:00.000Z";
@@ -401,6 +403,49 @@ describe("implementationExecutionBoard", () => {
     expect(board.taskRows[1]?.reviewerStatus).not.toBe("failed");
   });
 
+  it("applies security quality gate failedTaskIds only to matching task row", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "security",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-2"],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(board.taskRows[1]?.securityStatus).toBe("failed");
+    expect(board.taskRows[1]?.failureReason).toBe("failed_by_security");
+    expect(board.taskRows[0]?.securityStatus).not.toBe("failed");
+  });
+
+  it("pickFirstExecutableDeveloperTaskId respects dependencies and blocking confirmation", () => {
+    const boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [{ taskId: "dev-2", status: "blocking" }],
+      reworkRequests: [],
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      boardState: boardState ?? null,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-1");
+  });
+
   it("reflects boardState user confirmation and rework count on rows", () => {
     const boardState = parseImplementationExecutionBoardStateV1({
       version: "implementation_execution_board_state_v1",
@@ -449,7 +494,7 @@ describe("implementationExecutionBoard", () => {
     );
     expect(message.content).toContain("통합 정리 단계:");
     expect(message.content).toContain("리팩토링/공통화");
-    expect(message.content).toContain("현재 실행 중:");
+    expect(message.content).toContain("재작업");
     expect(message.meta?.interviewSuggestions).toContain("생성요청");
   });
 });

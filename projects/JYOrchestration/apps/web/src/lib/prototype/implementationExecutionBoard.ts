@@ -162,16 +162,36 @@ export function canContinueTaskDespiteUserConfirmation(
   return status !== "blocking";
 }
 
-export function deriveQualityGateStatusForTask(
-  taskId: string,
-  qualityGateResults: readonly ImplementationQualityGateResultV1[] | null | undefined,
-  role: ImplementationQualityGateRole,
-): ImplementationQualityGateRowStatus {
-  const latest = getLatestImplementationQualityGateResultForRole(qualityGateResults, role);
+export function deriveQualityGateStatusForTask(input: {
+  readonly taskId: string;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly role: ImplementationQualityGateRole;
+}): ImplementationQualityGateRowStatus {
+  const latest = getLatestImplementationQualityGateResultForRole(input.qualityGateResults, input.role);
   if (!latest) return "none";
   if (latest.status === "passed") return "passed";
-  if (latest.failedTaskIds.includes(taskId)) return "failed";
+  if (latest.failedTaskIds.includes(input.taskId)) return "failed";
   return "none";
+}
+
+/** First developer task row that can run (dependencies met, not blocking confirmation). */
+export function pickFirstExecutableDeveloperTaskId(
+  board: ImplementationExecutionBoardV1,
+): string | null {
+  const completedDeveloperIds = new Set(
+    board.taskRows
+      .filter((row) => row.developerStatus === "done" || row.developerStatus === "skipped")
+      .map((row) => row.taskId),
+  );
+
+  for (const row of board.taskRows) {
+    if (row.userConfirmation === "blocking") continue;
+    if (row.developerStatus === "done" || row.developerStatus === "skipped") continue;
+    const dependenciesMet = row.dependencies.every((dep) => completedDeveloperIds.has(dep));
+    if (!dependenciesMet) continue;
+    return row.taskId;
+  }
+  return null;
 }
 
 function collectQualityGateFailedTaskIds(
@@ -312,16 +332,16 @@ function buildTaskRow(input: {
   const devItem = input.executionState?.items.find((item) => item.taskId === input.task.taskId);
   const developerStatus = mapExecutionStatus(devItem?.status ?? input.task.status);
 
-  const reviewerGate = deriveQualityGateStatusForTask(
-    input.task.taskId,
-    input.qualityGateResults,
-    "reviewer",
-  );
-  const securityGate = deriveQualityGateStatusForTask(
-    input.task.taskId,
-    input.qualityGateResults,
-    "security",
-  );
+  const reviewerGate = deriveQualityGateStatusForTask({
+    taskId: input.task.taskId,
+    qualityGateResults: input.qualityGateResults,
+    role: "reviewer",
+  });
+  const securityGate = deriveQualityGateStatusForTask({
+    taskId: input.task.taskId,
+    qualityGateResults: input.qualityGateResults,
+    role: "security",
+  });
 
   const reviewerStatus = applyQualityGateToRoleStatus(
     input.task.taskId,
