@@ -9,6 +9,12 @@ import {
   type RequirementsMessage,
 } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  appendPromptTimelineEntriesOnce,
+  buildPromptTimelineEntryFingerprint,
+  hasPromptTimelineFingerprint,
+  withDeterministicPlatformTimelineMeta,
+} from "@/lib/requirements/promptTimelineState";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import {
   collectReferencePlanningArtifacts,
@@ -835,12 +841,14 @@ export function buildImplementationBootstrapTimelineEntries(input: {
   ].join(" ");
 
   return [
-    {
+    withDeterministicPlatformTimelineMeta({
       stage: "implementation",
       stageGroup: "구현",
       workspaceScreenKey: "prototype_execution",
       action: "implementation_entry_reference_artifacts_checked",
-      source: "system",
+      source: "platform",
+      provider: "platform",
+      model: "deterministic",
       responseText: [
         "type=implementation_entry_reference_artifacts_checked",
         "mode=implementation",
@@ -848,30 +856,34 @@ export function buildImplementationBootstrapTimelineEntries(input: {
       ].join(" "),
       createdAt: now,
       orchestrationTraceGroup: "implementation_orchestration",
-    },
-    {
+    }),
+    withDeterministicPlatformTimelineMeta({
       stage: "implementation",
       stageGroup: "구현",
       workspaceScreenKey: "prototype_execution",
       action: "implementation_bootstrap_lead_developer_summary",
-      source: "system",
+      source: "platform",
+      provider: "platform",
+      model: "deterministic",
       responseText: payload,
       createdAt: now,
       orchestrationTraceGroup: "implementation_orchestration",
-    },
-    {
+    }),
+    withDeterministicPlatformTimelineMeta({
       stage: "implementation",
       stageGroup: "구현",
       workspaceScreenKey: "prototype_execution",
       action: "implementation_role_check_summary_ready",
-      source: "system",
+      source: "platform",
+      provider: "platform",
+      model: "deterministic",
       responseText: payload.replace(
         "implementation_bootstrap_lead_developer_summary",
         "implementation_role_check_summary_ready",
       ),
       createdAt: now,
       orchestrationTraceGroup: "implementation_orchestration",
-    },
+    }),
   ];
 }
 
@@ -1058,6 +1070,43 @@ export function hasImplementationRoleCheckDetailsShown(
   return (messages ?? []).some((m) => m.meta.internalType === IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE);
 }
 
+function collectNewBootstrapTimelineEntries(input: {
+  readonly existingTimeline: readonly RequirementsPromptTimelineEntry[] | null | undefined;
+  readonly candidateEntries: readonly RequirementsPromptTimelineEntry[];
+}): readonly RequirementsPromptTimelineEntry[] {
+  const beforeCount = (input.existingTimeline ?? []).length;
+  const merged = appendPromptTimelineEntriesOnce(input.existingTimeline, input.candidateEntries);
+  if (merged.length <= beforeCount) return [];
+  return merged.slice(beforeCount);
+}
+
+function finalizeBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+  bundle: ImplementationBootstrapBundle,
+  extraTimelineEntries: readonly RequirementsPromptTimelineEntry[] = [],
+): ImplementationBootstrapBundle {
+  return {
+    ...bundle,
+    timelineEntries: collectNewBootstrapTimelineEntries({
+      existingTimeline: input.promptTimeline,
+      candidateEntries: [...extraTimelineEntries, ...bundle.timelineEntries],
+    }),
+  };
+}
+
+export function hasImplementationBootstrapSummaryShown(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+  fingerprint: string,
+): boolean {
+  return hasPromptTimelineFingerprint(timeline, fingerprint);
+}
+
+export function buildImplementationBootstrapTimelineFingerprint(
+  entry: RequirementsPromptTimelineEntry,
+): string {
+  return buildPromptTimelineEntryFingerprint(entry);
+}
+
 /** 구현 진입: AI개발자 주도 메시지 1개 + timeline (역할별 상세는 요청 시). */
 export function buildImplementationBootstrapBundle(input: ImplementationOrchestrationSummaryInput): ImplementationBootstrapBundle {
   const now = input.nowIso ?? new Date().toISOString();
@@ -1074,19 +1123,17 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   });
 
   if (entryState.status === "board_ready" && hasImplementationTaskListReady(input.implementationTaskListV1)) {
-    const bundle = buildTaskListReadyImplementationBootstrapBundle(input);
-    const now = input.nowIso ?? new Date().toISOString();
-    return {
-      ...bundle,
-      timelineEntries: [
+    return finalizeBootstrapBundle(
+      input,
+      buildTaskListReadyImplementationBootstrapBundle(input),
+      [
         buildImplementationEntryTimelineEntry({
           projectId: input.projectId,
           entryState,
           nowIso: now,
         }),
-        ...bundle.timelineEntries,
       ],
-    };
+    );
   }
 
   const planningReadiness = evaluatePlanningArtifactReadiness({
@@ -1102,11 +1149,11 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   });
 
   if (planningReadiness.status === "quick_design_draft_unconfirmed") {
-    return buildImplementationBlockedQuickDesignUnconfirmedBootstrapBundle(input);
+    return finalizeBootstrapBundle(input, buildImplementationBlockedQuickDesignUnconfirmedBootstrapBundle(input));
   }
 
   if (planningReadiness.status === "missing_planning_artifacts") {
-    return buildImplementationBlockedBootstrapBundle(input);
+    return finalizeBootstrapBundle(input, buildImplementationBlockedBootstrapBundle(input));
   }
 
   const entryReadiness = evaluateImplementationEntrySurfaceReadiness({
@@ -1120,10 +1167,10 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   });
 
   if (entryReadiness.taskListReady && input.implementationTaskListV1) {
-    return buildTaskListReadyImplementationBootstrapBundle(input);
+    return finalizeBootstrapBundle(input, buildTaskListReadyImplementationBootstrapBundle(input));
   }
   if (entryReadiness.seedReady || entryState.status === "seed_only" || entryState.status === "task_plan_only") {
-    return buildTaskListMissingImplementationBootstrapBundle(input);
+    return finalizeBootstrapBundle(input, buildTaskListMissingImplementationBootstrapBundle(input));
   }
-  return buildNormalImplementationBootstrapBundle(input);
+  return finalizeBootstrapBundle(input, buildNormalImplementationBootstrapBundle(input));
 }

@@ -131,6 +131,17 @@ export function buildImplementationExecutionBoardMessage(input: {
   });
 }
 
+export function isSameImplementationBoardMessage(
+  left: RequirementsMessage,
+  right: RequirementsMessage,
+): boolean {
+  return (
+    left.content === right.content &&
+    JSON.stringify(left.meta.interviewSuggestions ?? []) ===
+      JSON.stringify(right.meta.interviewSuggestions ?? [])
+  );
+}
+
 export function replaceLatestImplementationBoardMessageWithSetup(input: {
   readonly messages: readonly RequirementsMessage[];
   readonly board: ImplementationExecutionBoardV1;

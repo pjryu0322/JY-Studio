@@ -13,6 +13,7 @@ import {
   type ImplementationTaskListV1,
 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { withDeterministicPlatformTimelineMeta } from "@/lib/requirements/promptTimelineState";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
@@ -168,12 +169,14 @@ export function buildImplementationEntryTimelineEntry(input: {
     missing_planning_artifacts: "implementation_entry_missing_planning_artifacts",
   };
 
-  return {
+  return withDeterministicPlatformTimelineMeta({
     stage: "implementation",
     stageGroup: "구현",
     workspaceScreenKey: "prototype_execution",
     action: actionByStatus[input.entryState.status],
-    source: "system",
+    source: "platform",
+    provider: "platform",
+    model: "deterministic",
     responseText: [
       `type=${actionByStatus[input.entryState.status]}`,
       `projectId=${input.projectId}`,
@@ -188,7 +191,7 @@ export function buildImplementationEntryTimelineEntry(input: {
     ].join(" "),
     createdAt: input.nowIso,
     orchestrationTraceGroup: "implementation_orchestration",
-  };
+  });
 }
 
 export function buildImplementationEntryCursorWorkItemsRecovery(input: {

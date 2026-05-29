@@ -191,12 +191,15 @@ export function usePrototypeExecutionSingleChat({
       implementationBootstrapRef.current = true;
       const next = sanitizeImplementationConversationMessages([...base, ...bootstrap.messages], messageSanitizeCtx);
       deferPersistStateJson(() => {
+        if (!bootstrap.timelineEntries.length && hasAnyValidImplementationBootstrap(base)) {
+          return;
+        }
         onPersistStateJson({
           messages: next,
           slots,
           answers,
           currentSlotKey,
-          bootstrapTimeline: bootstrap.timelineEntries,
+          ...(bootstrap.timelineEntries.length ? { bootstrapTimeline: bootstrap.timelineEntries } : {}),
         });
       });
       return next;

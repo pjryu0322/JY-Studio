@@ -61,6 +61,7 @@ import {
 } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import {
+  buildExecutionSetupAvailabilityFingerprint,
   buildExecutionSetupAvailabilityTimelineEntry,
   evaluateCursorExecutionAvailability,
 } from "@/lib/prototype/cursorExecutionAvailability";
@@ -124,6 +125,9 @@ import {
   evaluateImplementationCursorGate,
   formatImplementationCursorBlockedNotice,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
+import {
+  appendPromptTimelineEntryOnce,
+} from "@/lib/requirements/promptTimelineState";
 import {
   appendPromptTimeline,
   buildPrototypeExecutionOrchestrationPersistPatch,
@@ -189,6 +193,7 @@ import {
 } from "@/lib/prototype/reviewStageMessage";
 import {
   buildImplementationExecutionBoardMessage,
+  isSameImplementationBoardMessage,
   replaceLatestImplementationBoardMessageWithSetup,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
@@ -387,6 +392,10 @@ export function PrototypePreviewPanel({
     useState<PendingImplementationPatch>({});
   const [executionSetupRow, setExecutionSetupRow] =
     useState<ExecutionSetupSourceGenerationRow | null>(null);
+  const executionSetupBoardSyncedKeyRef = useRef<string | null>(null);
+  const refreshImplementationBoardRef = useRef<
+    ((setup: ExecutionSetupSourceGenerationRow | null, source?: string) => void) | null
+  >(null);
   const [plannerProgressStep, setPlannerProgressStep] = useState(1);
   const planProgressStartedAtRef = useRef(0);
   /** 작업계획 생성 중복 클릭 방지 — state와 달리 동기적으로 잠금 */
@@ -533,8 +542,23 @@ export function PrototypePreviewPanel({
     return row;
   }, [projectId]);
 
+  const buildExecutionSetupBoardSyncKey = useCallback((setup: ExecutionSetupSourceGenerationRow) => {
+    return [
+      setup.gitRepoUrl ?? "",
+      setup.gitRepoName ?? "",
+      setup.gitRepoProvider ?? "",
+      setup.baseBranch ?? "",
+      setup.workspacePath ?? "",
+      setup.cursorApiUrl ?? "",
+      setup.hasCursorToken === true ? "1" : "0",
+      setup.hasGithubAccessToken === true ? "1" : "0",
+      setup.autoPush === true ? "1" : "0",
+    ].join("|");
+  }, []);
+
   useEffect(() => {
     void reloadExecutionSetupRow();
+    executionSetupBoardSyncedKeyRef.current = null;
   }, [reloadExecutionSetupRow]);
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
@@ -2053,13 +2077,41 @@ export function PrototypePreviewPanel({
       const pid = projectId.trim();
       const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
       if (!pid || !taskList || !setup) return;
+
+      const syncKey = buildExecutionSetupBoardSyncKey(setup);
+      if (source === "execution_setup_loaded" && executionSetupBoardSyncedKeyRef.current === syncKey) {
+        return;
+      }
+
       const board = buildImplementationExecutionBoardFromRequirementsState({
         projectId: pid,
         orchestration: orchestrationAwareRequirementsState,
       });
       if (!board) return;
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      const nowIso = new Date().toISOString();
+      const existingBoardMessage = [...(resolved.messages ?? [])]
+        .reverse()
+        .find((message) => message.meta.internalType === "IMPLEMENTATION_TASK_LIST_READY_V1");
+      const nowIso = existingBoardMessage?.createdAt ?? new Date().toISOString();
+      const previewMessage = buildImplementationExecutionBoardMessage({
+        board,
+        nowIso,
+        previewReady: prototypeRunSyncSnapshot.previewReady,
+        hasExecutionState: true,
+        boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+        taskList,
+        envOk: canRequestGeneration.envOk,
+        codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+        executionSetup: setup,
+      });
+      if (
+        existingBoardMessage &&
+        isSameImplementationBoardMessage(existingBoardMessage, previewMessage)
+      ) {
+        executionSetupBoardSyncedKeyRef.current = syncKey;
+        return;
+      }
+
       const nextMessages = replaceLatestImplementationBoardMessageWithSetup({
         messages: resolved.messages ?? [],
         board,
@@ -2072,7 +2124,30 @@ export function PrototypePreviewPanel({
         codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
         executionSetup: setup,
       });
+
+      if (source === "execution_setup_loaded") {
+        executionSingleChat.applyPersistedMessages(nextMessages);
+        executionSetupBoardSyncedKeyRef.current = syncKey;
+        return;
+      }
+
       executionSingleChat.applyPersistedMessages(nextMessages);
+      const timelineAction =
+        source === "execution_setup_saved"
+          ? ("execution_setup_saved_and_board_refreshed" as const)
+          : ("execution_setup_availability_computed" as const);
+      const timelineEntry = buildExecutionSetupAvailabilityTimelineEntry({
+        action: timelineAction,
+        projectId: pid,
+        setup,
+        source,
+      });
+      const timelineFingerprint = buildExecutionSetupAvailabilityFingerprint({
+        projectId: pid,
+        action: timelineAction,
+        source,
+        setup,
+      });
       void persistChatToDb(
         {
           messages: nextMessages,
@@ -2081,20 +2156,14 @@ export function PrototypePreviewPanel({
           currentSlotKey: resolved.currentSlotKey ?? null,
         },
         {
-          promptTimeline: [
-            ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
-            buildExecutionSetupAvailabilityTimelineEntry({
-              action:
-                source === "execution_setup_saved"
-                  ? "execution_setup_saved_and_board_refreshed"
-                  : "execution_setup_availability_computed",
-              projectId: pid,
-              setup,
-              source,
-            }),
-          ],
+          promptTimeline: appendPromptTimelineEntryOnce(
+            orchestrationAwareRequirementsState.promptTimeline ?? [],
+            timelineEntry,
+            { fingerprint: timelineFingerprint },
+          ),
         },
       );
+      executionSetupBoardSyncedKeyRef.current = syncKey;
     },
     [
       projectId,
@@ -2104,15 +2173,19 @@ export function PrototypePreviewPanel({
       persistChatToDb,
       prototypeRunSyncSnapshot.previewReady,
       canRequestGeneration.envOk,
+      buildExecutionSetupBoardSyncKey,
     ],
   );
 
+  refreshImplementationBoardRef.current = refreshImplementationBoardWithExecutionSetup;
+
   useEffect(() => {
     if (!executionSetupRow) return;
-    refreshImplementationBoardWithExecutionSetup(executionSetupRow, "execution_setup_loaded");
-  }, [executionSetupRow, refreshImplementationBoardWithExecutionSetup]);
+    refreshImplementationBoardRef.current?.(executionSetupRow, "execution_setup_loaded");
+  }, [executionSetupRow]);
 
   const handleExecutionSetupChanged = useCallback(async () => {
+    executionSetupBoardSyncedKeyRef.current = null;
     await loadEnv();
     const row = await reloadExecutionSetupRow();
     if (row) {

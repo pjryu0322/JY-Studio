@@ -8,6 +8,10 @@ import {
 } from "@/lib/prototype/projectTargetRepository";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  DETERMINISTIC_PLATFORM_TIMELINE_META,
+  withDeterministicPlatformTimelineMeta,
+} from "@/lib/requirements/promptTimelineState";
 
 export type CursorExecutionMode = "cursor_api" | "none";
 
@@ -211,6 +215,28 @@ export type ExecutionSetupAvailabilityTimelineAction =
   | "execution_setup_availability_mismatch_detected"
   | "cursor_api_key_present_url_missing";
 
+export function buildExecutionSetupAvailabilityFingerprint(input: {
+  readonly projectId: string;
+  readonly action: ExecutionSetupAvailabilityTimelineAction;
+  readonly source?: string;
+  readonly setup?: ExecutionSetupSourceGenerationRow | null;
+}): string {
+  const availability = evaluateCursorExecutionAvailability({ setup: input.setup });
+  return [
+    input.projectId,
+    input.action,
+    input.source ?? "",
+    availability.status,
+    Boolean(input.setup),
+    availability.hasGitRepo,
+    availability.hasGithubToken,
+    availability.hasCursorApiUrl,
+    availability.hasCursorToken,
+    availability.hasWorkspace,
+    availability.usesDefaultCursorApiUrl,
+  ].join("|");
+}
+
 export function buildExecutionSetupAvailabilityTimelineEntry(input: {
   readonly action: ExecutionSetupAvailabilityTimelineAction;
   readonly projectId: string;
@@ -220,12 +246,14 @@ export function buildExecutionSetupAvailabilityTimelineEntry(input: {
 }): RequirementsPromptTimelineEntry {
   const availability = evaluateCursorExecutionAvailability({ setup: input.setup });
   const effectiveApi = resolveEffectiveCursorApiUrlFromSetup(input.setup);
-  return {
+  return withDeterministicPlatformTimelineMeta({
     stage: "implementation",
     stageGroup: "구현",
     workspaceScreenKey: "prototype_execution",
     action: input.action,
-    source: input.source ?? "system",
+    source: DETERMINISTIC_PLATFORM_TIMELINE_META.source,
+    provider: DETERMINISTIC_PLATFORM_TIMELINE_META.provider,
+    model: DETERMINISTIC_PLATFORM_TIMELINE_META.model,
     responseText: [
       `type=${input.action}`,
       `projectId=${input.projectId}`,
@@ -244,7 +272,7 @@ export function buildExecutionSetupAvailabilityTimelineEntry(input: {
     ].join(" "),
     createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "implementation_orchestration",
-  };
+  });
 }
 
 export const CURSOR_API_NOT_CONFIGURED_MESSAGE =
