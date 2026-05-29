@@ -677,7 +677,7 @@ describe("implementationExecutionBoardMessage helpers", () => {
       nowIso: NOW,
       includeTaskSummary: true,
     });
-    expect(message.content).toContain("Execution Board");
+    expect(message.content).toContain("위 보드에서 다음 작업");
     expect(message.content).not.toContain("TASK ID | 작업 | 개발자");
   });
 });

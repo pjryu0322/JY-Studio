@@ -53,8 +53,8 @@ export function buildCompactImplementationExecutionBoardNoticeMessage(input: {
   const content = [
     headline,
     "",
-    "상단 Execution Board에서 작업별 상태와 다음 액션을 확인할 수 있습니다.",
-    "채팅은 이벤트 로그와 추가 지시 입력용으로 사용합니다.",
+    "구현 작업 보드가 준비되었습니다.",
+    "위 보드에서 다음 작업과 실행 상태를 확인하세요.",
   ].join("\n");
 
   return newRequirementsMessage({

@@ -54,7 +54,44 @@ export type WorkspaceConversationHubIconRowProps = Readonly<{
   readonly onSummarizeConversation?: () => void | Promise<void>;
   readonly resetConversationDisabled?: boolean;
   readonly downloadDisabled?: boolean;
+  /** 모바일: primary 5개 + 더보기 메뉴 */
+  readonly iconLayout?: "full" | "mobileCompact";
+  readonly overflowMenuItems?: readonly Readonly<{
+    readonly id: string;
+    readonly label: string;
+    readonly onClick: () => void;
+    readonly disabled?: boolean;
+  }>[];
 }>;
+
+function DownloadIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 function SparklesIcon() {
   return (
@@ -164,6 +201,8 @@ export function WorkspaceConversationHubIconRow({
   resetConversationDisabled = false,
   downloadDisabled = false,
   slotsChromeLabels = null,
+  iconLayout = "full",
+  overflowMenuItems = [],
 }: WorkspaceConversationHubIconRowProps) {
   const slotsUi = interviewUi ?? null;
   const progressLabel = slotsChromeLabels?.progressLabel ?? SERVICE_DEFINITION_PROGRESS_LABEL;
@@ -448,7 +487,276 @@ export function WorkspaceConversationHubIconRow({
         </div>
       </>
     );
-  }, [slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid]);
+  }, [slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid, progressLabel]);
+
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowBtnRef = useRef<HTMLButtonElement | null>(null);
+  const overflowPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOverflowOpen(false);
+    };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (overflowBtnRef.current?.contains(t)) return;
+      if (overflowPanelRef.current?.contains(t)) return;
+      setOverflowOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [overflowOpen]);
+
+  const quickButton =
+    slotsUi ? (
+      <WorkspaceHubChromeIconButton
+        title={quickTitle}
+        ariaLabel={quickAria}
+        disabled={busy || remoteLocked}
+        onClick={() => void slotsUi.onForceGeneratePlanNow()}
+      >
+        <QuickDesignIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const slotsButton =
+    slotsUi ? (
+      <WorkspaceHubChromeIconButton
+        title={`${detailAriaLabel} · ${progressLabel} ${slotsUi.readinessPercent}%`}
+        ariaLabel={`${detailAriaLabel}, ${progressLabel} ${slotsUi.readinessPercent}퍼센트`}
+        disabled={false}
+        badge={slotsUi.readinessPercent}
+        buttonRef={(n) => {
+          slotsBtnRef.current = n;
+        }}
+        onClick={() => setSlotsOpen((v) => !v)}
+      >
+        <SlotsIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const canvasHubButton =
+    canvasHubControls ? (
+      <WorkspaceHubChromeIconButton
+        title="Canvas Hub — 프로젝트 상태 Viewer"
+        ariaLabel="Canvas Hub 열기"
+        disabled={false}
+        badge={canvasHubControls.count > 0 ? canvasHubControls.count : undefined}
+        onClick={() => canvasHubControls.onOpen()}
+      >
+        <CanvasHubIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const artifactHubButton =
+    artifactHubControls ? (
+      <WorkspaceHubChromeIconButton
+        title={
+          artifactHubControls.title
+            ? artifactHubControls.count > 0
+              ? `${artifactHubControls.title} — ${artifactHubControls.count}건`
+              : artifactHubControls.title
+            : artifactHubControls.count > 0
+              ? `Artifact Hub — 완성 산출물 ${artifactHubControls.count}건`
+              : "Artifact Hub — 산출물 생성·조회"
+        }
+        ariaLabel={
+          artifactHubControls.title
+            ? artifactHubControls.count > 0
+              ? `${artifactHubControls.title} 열기, ${artifactHubControls.count}건`
+              : `${artifactHubControls.title} 열기`
+            : artifactHubControls.count > 0
+              ? `Artifact Hub 열기, 완성 산출물 ${artifactHubControls.count}건`
+              : "Artifact Hub 열기"
+        }
+        disabled={false}
+        badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
+        badgeTone={artifactHubControls.hasStale ? "stale" : "default"}
+        onClick={() => artifactHubControls.onOpen()}
+      >
+        <ArtifactHubIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const memberButton =
+    memberControls ? (
+      <WorkspaceHubChromeIconButton
+        title="참여 멤버/AI 보기"
+        ariaLabel="참여 멤버/AI 보기"
+        disabled={false}
+        badge={memberControls.count}
+        onClick={() => memberControls.onOpen()}
+      >
+        <WorkspaceHubUsersIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const downloadButton =
+    onDownloadConversationMarkdown ? (
+      <WorkspaceHubChromeIconButton
+        title="대화 내역 마크다운 다운로드"
+        ariaLabel="대화 내역 마크다운 다운로드"
+        disabled={downloadDisabled}
+        onClick={() => void onDownloadConversationMarkdown()}
+      >
+        <DownloadIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const resetButton =
+    onResetConversation ? (
+      <WorkspaceHubChromeIconButton
+        title="대화 초기화"
+        ariaLabel="대화 초기화"
+        disabled={resetConversationDisabled}
+        onClick={() => onResetConversation()}
+      >
+        <RefreshIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const summarizeButton =
+    onSummarizeConversation ? (
+      <WorkspaceHubChromeIconButton
+        title="대화 내역 AI 요약"
+        ariaLabel="대화 내역 AI 요약"
+        disabled={busy || remoteLocked}
+        onClick={() => onSummarizeConversation()}
+      >
+        <SparklesIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
+  const chromeToolbar =
+    onResetConversation ? (
+      <ConversationChromeToolbar
+        onDownloadConversationMarkdown={() =>
+          onDownloadConversationMarkdown ? void onDownloadConversationMarkdown() : undefined
+        }
+        onResetConversation={() => onResetConversation()}
+        downloadDisabled={downloadDisabled || !onDownloadConversationMarkdown}
+        resetDisabled={resetConversationDisabled}
+      />
+    ) : onDownloadConversationMarkdown ? (
+      <ConversationChromeToolbar
+        onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
+        onResetConversation={() => undefined}
+        downloadDisabled={downloadDisabled}
+        resetDisabled
+      />
+    ) : null;
+
+  const builtOverflowItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      label: string;
+      onClick: () => void;
+      disabled?: boolean;
+    }> = [];
+    if (downloadButton) {
+      items.push({
+        id: "download",
+        label: "대화 다운로드",
+        onClick: () => void onDownloadConversationMarkdown?.(),
+        disabled: downloadDisabled,
+      });
+    }
+    if (summarizeButton) {
+      items.push({
+        id: "summarize",
+        label: "AI 요약",
+        onClick: () => onSummarizeConversation?.(),
+        disabled: busy || remoteLocked,
+      });
+    }
+    if (artifactHubControls) {
+      items.push({
+        id: "artifact-hub",
+        label: artifactHubControls.title ?? "산출물 Hub",
+        onClick: () => artifactHubControls.onOpen(),
+      });
+    }
+    if (canvasHubControls) {
+      items.push({
+        id: "canvas-hub",
+        label: "Canvas Hub",
+        onClick: () => canvasHubControls.onOpen(),
+      });
+    }
+    for (const item of overflowMenuItems) {
+      items.push(item);
+    }
+    return items;
+  }, [
+    downloadButton,
+    summarizeButton,
+    artifactHubControls,
+    canvasHubControls,
+    overflowMenuItems,
+    onDownloadConversationMarkdown,
+    downloadDisabled,
+    onSummarizeConversation,
+    busy,
+    remoteLocked,
+  ]);
+
+  const overflowMenu =
+    overflowOpen && builtOverflowItems.length ? (
+      <div
+        ref={overflowPanelRef}
+        role="menu"
+        aria-label="추가 도구"
+        style={{
+          position: "fixed",
+          top: (overflowBtnRef.current?.getBoundingClientRect().bottom ?? 0) + 6,
+          right: Math.max(12, window.innerWidth - (overflowBtnRef.current?.getBoundingClientRect().right ?? 0)),
+          zIndex: 1200,
+          minWidth: 168,
+          borderRadius: 12,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          boxShadow: "0 16px 40px -20px rgba(15, 23, 42, 0.35)",
+          padding: 6,
+        }}
+      >
+        {builtOverflowItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="menuitem"
+            disabled={item.disabled}
+            onClick={() => {
+              if (item.disabled) return;
+              setOverflowOpen(false);
+              item.onClick();
+            }}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              padding: "10px 12px",
+              border: "none",
+              borderRadius: 8,
+              background: "transparent",
+              fontSize: 13,
+              fontWeight: 800,
+              color: item.disabled ? "#94a3b8" : "#0f172a",
+              cursor: item.disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    ) : null;
 
   const hasAny =
     slotsUi ||
@@ -457,117 +765,61 @@ export function WorkspaceConversationHubIconRow({
     artifactHubControls ||
     onDownloadConversationMarkdown ||
     onResetConversation ||
-    onSummarizeConversation;
+    onSummarizeConversation ||
+    overflowMenuItems.length > 0;
 
   if (!hasAny) return null;
+
+  const isMobileCompact = iconLayout === "mobileCompact";
 
   return (
     <div
       data-testid="workspace-conversation-hub-icon-row"
-      style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 8, flexShrink: 0 }}
+      data-icon-layout={iconLayout}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        flexWrap: isMobileCompact ? "nowrap" : "wrap",
+        gap: 8,
+        flexShrink: 0,
+        minWidth: 0,
+      }}
     >
       {slotPanel}
-      {slotsUi ? (
-        <WorkspaceHubChromeIconButton
-          title={quickTitle}
-          ariaLabel={quickAria}
-          disabled={busy || remoteLocked}
-          onClick={() => void slotsUi.onForceGeneratePlanNow()}
-        >
-          <QuickDesignIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
-      {slotsUi ? (
-        <WorkspaceHubChromeIconButton
-          title={`${detailAriaLabel} · ${progressLabel} ${slotsUi.readinessPercent}%`}
-          ariaLabel={`${detailAriaLabel}, ${progressLabel} ${slotsUi.readinessPercent}퍼센트`}
-          disabled={false}
-          badge={slotsUi.readinessPercent}
-          buttonRef={(n) => {
-            slotsBtnRef.current = n;
-          }}
-          onClick={() => setSlotsOpen((v) => !v)}
-        >
-          <SlotsIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
-      {canvasHubControls ? (
-        <WorkspaceHubChromeIconButton
-          title="Canvas Hub — 프로젝트 상태 Viewer"
-          ariaLabel="Canvas Hub 열기"
-          disabled={false}
-          badge={canvasHubControls.count > 0 ? canvasHubControls.count : undefined}
-          onClick={() => canvasHubControls.onOpen()}
-        >
-          <CanvasHubIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
-      {artifactHubControls ? (
-        <WorkspaceHubChromeIconButton
-          title={
-            artifactHubControls.title
-              ? artifactHubControls.count > 0
-                ? `${artifactHubControls.title} — ${artifactHubControls.count}건`
-                : artifactHubControls.title
-              : artifactHubControls.count > 0
-                ? `Artifact Hub — 완성 산출물 ${artifactHubControls.count}건`
-                : "Artifact Hub — 산출물 생성·조회"
-          }
-          ariaLabel={
-            artifactHubControls.title
-              ? artifactHubControls.count > 0
-                ? `${artifactHubControls.title} 열기, ${artifactHubControls.count}건`
-                : `${artifactHubControls.title} 열기`
-              : artifactHubControls.count > 0
-                ? `Artifact Hub 열기, 완성 산출물 ${artifactHubControls.count}건`
-                : "Artifact Hub 열기"
-          }
-          disabled={false}
-          badge={artifactHubControls.count > 0 ? artifactHubControls.count : undefined}
-          badgeTone={artifactHubControls.hasStale ? "stale" : "default"}
-          onClick={() => artifactHubControls.onOpen()}
-        >
-          <ArtifactHubIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
-      {memberControls ? (
-        <WorkspaceHubChromeIconButton
-          title="참여 멤버/AI 보기"
-          ariaLabel="참여 멤버/AI 보기"
-          disabled={false}
-          badge={memberControls.count}
-          onClick={() => memberControls.onOpen()}
-        >
-          <WorkspaceHubUsersIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
-      {onResetConversation ? (
-        <ConversationChromeToolbar
-          onDownloadConversationMarkdown={() =>
-            onDownloadConversationMarkdown ? void onDownloadConversationMarkdown() : undefined
-          }
-          onResetConversation={() => onResetConversation()}
-          downloadDisabled={downloadDisabled || !onDownloadConversationMarkdown}
-          resetDisabled={resetConversationDisabled}
-        />
-      ) : onDownloadConversationMarkdown ? (
-        <ConversationChromeToolbar
-          onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
-          onResetConversation={() => undefined}
-          downloadDisabled={downloadDisabled}
-          resetDisabled
-        />
-      ) : null}
-      {onSummarizeConversation ? (
-        <WorkspaceHubChromeIconButton
-          title="대화 내역 AI 요약"
-          ariaLabel="대화 내역 AI 요약"
-          disabled={busy || remoteLocked}
-          onClick={() => onSummarizeConversation()}
-        >
-          <SparklesIcon />
-        </WorkspaceHubChromeIconButton>
-      ) : null}
+      {isMobileCompact ? (
+        <>
+          {quickButton}
+          {slotsButton}
+          {memberButton}
+          {resetButton}
+          {builtOverflowItems.length ? (
+            <>
+              <WorkspaceHubChromeIconButton
+                title="더보기"
+                ariaLabel="더보기 메뉴"
+                disabled={false}
+                buttonRef={(n) => {
+                  overflowBtnRef.current = n;
+                }}
+                onClick={() => setOverflowOpen((v) => !v)}
+              >
+                <MoreIcon />
+              </WorkspaceHubChromeIconButton>
+              {overflowMenu}
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {quickButton}
+          {slotsButton}
+          {canvasHubButton}
+          {artifactHubButton}
+          {memberButton}
+          {chromeToolbar}
+          {summarizeButton}
+        </>
+      )}
     </div>
   );
 }

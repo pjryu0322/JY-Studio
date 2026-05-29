@@ -16,7 +16,9 @@ import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
+import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
+import { useImplementationToolbarMobileBreakpoint } from "@/components/ui/breakpoints";
 
 import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
@@ -118,7 +120,8 @@ import {
   buildImplementationStageActionRunLogPatch,
   type ImplementationStageActionRun,
 } from "@/lib/prototype/implementationStageActionRun";
-import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
+import { prioritizeImplementationChipsForState, deriveImplementationStageNextActions } from "@/lib/prototype/implementationStageNextActions";
+import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
   buildConfirmImplementationTaskPlanResult,
@@ -198,7 +201,7 @@ import {
   buildImplementationBoardRefreshSyncKey,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
-import { collapseImplementationBoardChatMessagesForPanelView } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { collapseImplementationBoardChatMessagesForPanelView, dedupeImplementationStageNextActions, extractBoardVisibleActionLabels, filterBoardDuplicateChatInterviewSuggestions } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import {
   appendReworkRequest,
   markReworkRequestsAcceptedForTask,
@@ -1567,6 +1570,38 @@ export function PrototypePreviewPanel({
   const implementationBoard = implementationStageBoardGateContext?.board ?? null;
   const boardPanelVisible = implementationBoard != null;
 
+  const isImplementationToolbarMobileCompact = useImplementationToolbarMobileBreakpoint();
+
+  const implementationBoardVisibleActionLabels = useMemo(() => {
+    if (!boardPanelVisible || !implementationBoard || !implementationStageBoardInput) return [];
+    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: effectiveImplementationState.latestRun,
+      workUnits: effectiveImplementationState.latestRun?.workUnits,
+    });
+    const status = deriveImplementationStageStatus(
+      effectiveImplementationState,
+      implementationStageBoardInput.executionState,
+    );
+    const actions = dedupeImplementationStageNextActions(
+      deriveImplementationStageNextActions(
+        status,
+        implementationStageBoardInput.executionState,
+        prototypeSnapshot,
+        implementationStageBoardInput,
+        {
+          implementationSeedV1: effectiveImplementationState.implementationSeedV1,
+          implementationTaskListV1: implementationStageBoardInput.taskList,
+        },
+      ),
+    );
+    return extractBoardVisibleActionLabels(actions);
+  }, [
+    boardPanelVisible,
+    implementationBoard,
+    implementationStageBoardInput,
+    effectiveImplementationState,
+  ]);
+
   const implementationVisibleActionLabels = useMemo(() => {
     const labels = implementationBootstrapInput
       ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
@@ -1876,13 +1911,18 @@ export function PrototypePreviewPanel({
         },
       };
     });
-    return collapseImplementationBoardChatMessagesForPanelView(prioritized, boardPanelVisible);
+    return filterBoardDuplicateChatInterviewSuggestions(
+      collapseImplementationBoardChatMessagesForPanelView(prioritized, boardPanelVisible),
+      boardPanelVisible,
+      implementationBoardVisibleActionLabels,
+    );
   }, [
     executionSingleChat.chatMessages,
     effectiveImplementationState,
     orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
     implementationStageBoardInput,
     boardPanelVisible,
+    implementationBoardVisibleActionLabels,
   ]);
   // CTA priority is display-only. Persisted order is used for export/summary/evidence.
 
@@ -4608,40 +4648,47 @@ export function PrototypePreviewPanel({
     }
   }, [projectId, protoBusy, executionAiSummaryBusy, executionSingleChat, showToast]);
 
+  const onOpenImplementationTemplateChange = useCallback(() => {
+    if (!canRequestGeneration.envOk) {
+      showToast("환경 검증과 연결 테스트가 완료된 뒤 템플릿을 변경할 수 있습니다.");
+      return;
+    }
+    if (shouldLockInlineChatTemplateSelection(latestRun)) {
+      showToast("작업계획이 생성된 뒤에는 템플릿을 변경할 수 없습니다.");
+      return;
+    }
+    setTemplateChangeOpen(true);
+  }, [canRequestGeneration.envOk, latestRun, showToast]);
+
+  const implementationTemplateChangeDisabled =
+    !canRequestGeneration.envOk || shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
+
   const executionConversationIconToolbar = useMemo(
     () => (
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <WorkspaceHubChromeIconButton
-          title="템플릿 변경"
-          ariaLabel="템플릿 변경"
-          disabled={!canRequestGeneration.envOk || shouldLockInlineChatTemplateSelection(latestRun) || protoBusy}
-          onClick={() => {
-            if (!canRequestGeneration.envOk) {
-              showToast("환경 검증과 연결 테스트가 완료된 뒤 템플릿을 변경할 수 있습니다.");
-              return;
-            }
-            if (shouldLockInlineChatTemplateSelection(latestRun)) {
-              showToast("작업계획이 생성된 뒤에는 템플릿을 변경할 수 없습니다.");
-              return;
-            }
-            setTemplateChangeOpen(true);
-          }}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
+      <>
+        {!isImplementationToolbarMobileCompact ? (
+          <WorkspaceHubChromeIconButton
+            title="템플릿 변경"
+            ariaLabel="템플릿 변경"
+            disabled={implementationTemplateChangeDisabled}
+            onClick={onOpenImplementationTemplateChange}
           >
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-          </svg>
-        </WorkspaceHubChromeIconButton>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
 
         <WorkspaceConversationHubIconRow
           busy={protoBusy || executionAiSummaryBusy || implementationResetBusy}
@@ -4671,23 +4718,37 @@ export function PrototypePreviewPanel({
             executionSingleChat.conversationStatus !== "loaded" ||
             !executionSingleChat.chatMessages.length
           }
+          iconLayout={isImplementationToolbarMobileCompact ? "mobileCompact" : "full"}
+          overflowMenuItems={
+            isImplementationToolbarMobileCompact
+              ? [
+                  {
+                    id: "template-change",
+                    label: "템플릿 변경",
+                    onClick: onOpenImplementationTemplateChange,
+                    disabled: implementationTemplateChangeDisabled,
+                  },
+                ]
+              : []
+          }
         />
-      </div>
+      </>
     ),
     [
+      isImplementationToolbarMobileCompact,
       protoBusy,
       executionAiSummaryBusy,
       implementationInterviewUi,
       implementationParticipantCount,
       implementationArtifactHubView.badgeCount,
-      canRequestGeneration.envOk,
-      latestRun,
+      implementationTemplateChangeDisabled,
+      onOpenImplementationTemplateChange,
       onDownloadImplementationConversationMarkdown,
       onResetImplementationConversation,
       onSummarizeImplementationConversation,
-      showToast,
       executionSingleChat.conversationStatus,
       executionSingleChat.chatMessages.length,
+      implementationResetBusy,
     ],
   );
 
@@ -4722,6 +4783,7 @@ export function PrototypePreviewPanel({
       ) : null}
 
       <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+        <ImplementationStageGlobalToolbar>{executionConversationIconToolbar}</ImplementationStageGlobalToolbar>
         {implementationBoard && implementationStageBoardInput ? (
           <ImplementationExecutionBoardPanel
             board={implementationBoard}
@@ -4740,11 +4802,7 @@ export function PrototypePreviewPanel({
         <PrototypeExecutionChatPanel
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={prioritizedChatMessages}
-          memberControls={{
-            count: implementationParticipantCount,
-            onOpen: () => setProtoMembersModalOpen(true),
-          }}
-          headerIconToolbar={executionConversationIconToolbar}
+          memberControls={null}
           input={executionSingleChat.input}
           onInputChange={executionSingleChat.setInput}
           onSend={() => void executionSingleChat.sendMessage()}

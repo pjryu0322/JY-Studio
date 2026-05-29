@@ -53,19 +53,15 @@ export function ImplementationExecutionBoardDetail({
   codeAgentWipExecutionV1,
   nextActions,
   onAction,
+  onClose,
 }: {
   readonly row: ImplementationExecutionBoardTaskRowV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly nextActions: readonly ImplementationStageNextAction[];
   readonly onAction: (label: string) => void;
+  readonly onClose?: () => void;
 }) {
-  if (!row) {
-    return (
-      <div style={cardStyle} data-testid="implementation-execution-board-detail-empty">
-        <div style={{ fontSize: 12, color: "#64748b" }}>작업을 선택하면 상세 상태와 다음 액션을 확인할 수 있습니다.</div>
-      </div>
-    );
-  }
+  if (!row) return null;
 
   const overlay = buildImplementationExecutionBoardRowWipOverlay({ row, codeAgentWipExecutionV1 });
   const wip = codeAgentWipExecutionV1;
@@ -74,8 +70,30 @@ export function ImplementationExecutionBoardDetail({
 
   return (
     <div style={cardStyle} data-testid="implementation-execution-board-detail">
-      <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 10 }}>
-        {row.taskId} · {row.title}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>
+          {row.taskId} · {row.title}
+        </div>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              minHeight: 40,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              fontSize: 11,
+              fontWeight: 800,
+              color: "#64748b",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            닫기
+          </button>
+        ) : null}
       </div>
       <div
         style={{

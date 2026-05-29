@@ -8,12 +8,20 @@ import {
   buildImplementationExecutionBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
+  buildCompactBoardSummaryLine,
   buildImplementationExecutionBoardSummaryView,
+  buildMobileBoardEnvPills,
+  buildTaskRowCardView,
   collapseImplementationBoardChatMessagesForPanelView,
   dedupeImplementationStageNextActions,
+  formatMobileCursorEnvPillValue,
   hasImplementationExecutionBoardOrchestrationData,
   isLongImplementationBoardChatMessage,
+  partitionMobileBoardActions,
   resolveImplementationExecutionBoardSelectedTaskId,
+  resolveNextTaskCardView,
+  extractBoardVisibleActionLabels,
+  filterBoardDuplicateChatInterviewSuggestions,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { deriveImplementationStageNextActions } from "@/lib/prototype/implementationStageNextActions";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
@@ -160,8 +168,63 @@ describe("implementationExecutionBoardPanelView", () => {
         boardInput,
       ),
     );
-    expect(actions.some((action) => action.actionId === "REQUEST_CODE_AGENT_WIP")).toBe(true);
-    expect(actions[0]?.actionId).toBeTruthy();
+    const partitioned = partitionMobileBoardActions(actions);
+    expect(partitioned.primary?.actionId).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(partitioned.secondary.length).toBeLessThanOrEqual(2);
+  });
+
+  it("formats mobile env pill for missing workspace", () => {
+    expect(formatMobileCursorEnvPillValue("missing_workspace")).toBe("Workspace 필요");
+    const pills = buildMobileBoardEnvPills({
+      executionSetup: {
+        gitRepoUrl: "https://github.com/org/repo",
+        hasGithubAccessToken: true,
+        hasCursorToken: true,
+      },
+    });
+    expect(pills.find((pill) => pill.label === "Cursor")?.value).toBe("Workspace 필요");
+  });
+
+  it("builds compact task row card view", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    const card = buildTaskRowCardView(board.taskRows[0]!);
+    expect(card.taskId).toBeTruthy();
+    expect(card.developerStatusLabel).toContain("개발");
+    expect(card.reviewerStatusLabel).toContain("검수");
+  });
+
+  it("resolves next task card in selection order", () => {
+    const taskList = sampleTaskList();
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: taskList },
+    })!;
+    const fromWip = resolveNextTaskCardView({
+      board: { ...board, currentTaskId: undefined },
+      codeAgentWipExecutionV1: {
+        version: "code_agent_wip_execution_v1",
+        projectId: "p1",
+        branchName: "wip/test",
+        requestedAt: NOW,
+        provider: "cursor",
+        status: "drafting",
+        commits: [],
+        refactorRequests: [],
+        selectedTaskId: "DEV-SCREEN-002",
+      },
+    });
+    expect(fromWip?.taskId).toBe("DEV-SCREEN-002");
+  });
+
+  it("builds compact summary line", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    expect(buildCompactBoardSummaryLine(board)).toContain("전체 2");
   });
 
   it("collapses long stale board chat messages when panel is active", () => {
@@ -187,5 +250,50 @@ describe("implementationExecutionBoardPanelView", () => {
     expect(collapsed.some((m) => m.id === longBoard.id)).toBe(false);
     expect(collapsed.some((m) => m.id === compact.id)).toBe(true);
     expect(collapsed.some((m) => m.id === "u1")).toBe(true);
+  });
+
+  it("extracts board-visible action labels from primary and secondary actions", () => {
+    const taskList = sampleTaskList();
+    const effective = resolveEffectiveImplementationState({
+      parsedRequirementsState: { implementationTaskListV1: taskList },
+      latestRun: null,
+    });
+    const boardInput = {
+      projectId: "p1",
+      taskList,
+      executionState: null,
+      integratedExecutionState: null,
+      boardState: null,
+      qualityGateResults: null,
+      previewReady: false,
+      codeAgentWipExecutionV1: null,
+    };
+    const actions = dedupeImplementationStageNextActions(
+      deriveImplementationStageNextActions(
+        deriveImplementationStageStatus(effective, null),
+        null,
+        null,
+        boardInput,
+      ),
+    );
+    const labels = extractBoardVisibleActionLabels(actions);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.length).toBeLessThanOrEqual(3);
+    expect(labels[0]).toBe(partitionMobileBoardActions(actions).primary?.label);
+  });
+
+  it("filters chat interview suggestions duplicated on the board", () => {
+    const primaryLabel = "[생성요청]";
+    const message = newRequirementsMessage({
+      id: "ai1",
+      role: "ai",
+      content: "다음 단계",
+      createdAt: NOW,
+      meta: { interviewSuggestions: [primaryLabel, "환경설정 열기"] },
+    });
+    const filtered = filterBoardDuplicateChatInterviewSuggestions([message], true, [primaryLabel]);
+    expect((filtered[0]?.meta as { interviewSuggestions?: string[] }).interviewSuggestions).toEqual([
+      "환경설정 열기",
+    ]);
   });
 });

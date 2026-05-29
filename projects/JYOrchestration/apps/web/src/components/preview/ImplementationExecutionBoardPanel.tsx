@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState } from "react";
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
@@ -8,9 +8,16 @@ import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implem
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
+  buildCompactBoardSecondarySummaryLine,
+  buildCompactBoardSummaryLine,
   buildImplementationExecutionBoardSummaryView,
+  buildMobileBoardEnvPills,
+  countIntegratedStepsCompleted,
   dedupeImplementationStageNextActions,
-  resolveImplementationExecutionBoardSelectedTaskId,
+  formatImplementationBoardStepStatusKo,
+  partitionMobileBoardActions,
+  resolveNextTaskCardView,
+  shouldEmphasizeIntegratedStep,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import {
   deriveImplementationStageNextActions,
@@ -20,60 +27,24 @@ import { deriveImplementationStageStatus } from "@/lib/prototype/implementationS
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import {
+  ImplementationExecutionBoardCardList,
   ImplementationExecutionBoardIntegratedTable,
   ImplementationExecutionBoardTable,
 } from "@/components/preview/ImplementationExecutionBoardTable";
 import { ImplementationExecutionBoardDetail } from "@/components/preview/ImplementationExecutionBoardDetail";
+import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
-const shellStyle: CSSProperties = {
-  flexShrink: 0,
-  margin: "0 12px 10px",
-  border: "1px solid #dbeafe",
-  borderRadius: 14,
-  background: "#fff",
-  overflow: "hidden",
-  boxShadow: "0 10px 30px -24px rgba(37, 99, 235, 0.35)",
-};
-
-const headerStyle: CSSProperties = {
-  padding: "10px 14px",
-  borderBottom: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const summaryGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
-  gap: 8,
-  padding: "10px 14px",
-  borderBottom: "1px solid #f1f5f9",
-};
-
-const pillStyle = (tone: "ok" | "warn" | "muted"): CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 4,
-  borderRadius: 999,
-  padding: "3px 8px",
-  fontSize: 10,
-  fontWeight: 800,
-  border: "1px solid",
-  borderColor: tone === "ok" ? "#bbf7d0" : tone === "warn" ? "#fde68a" : "#e2e8f0",
-  background: tone === "ok" ? "#ecfdf5" : tone === "warn" ? "#fffbeb" : "#f8fafc",
-  color: tone === "ok" ? "#065f46" : tone === "warn" ? "#92400e" : "#64748b",
-});
+function pillClass(tone: "ok" | "warn" | "muted"): string {
+  if (tone === "ok") return `${styles.pill} ${styles.pillOk}`;
+  if (tone === "warn") return `${styles.pill} ${styles.pillWarn}`;
+  return `${styles.pill} ${styles.pillMuted}`;
+}
 
 export function ImplementationExecutionBoardPanel({
   board,
   taskList,
   executionSetup,
   codeAgentWipExecutionV1,
-  qualityGateResults,
   boardState,
   previewReady,
   effectiveImplementationState,
@@ -103,6 +74,11 @@ export function ImplementationExecutionBoardPanel({
     [board, executionSetup, previewReady, boardState],
   );
 
+  const mobileEnvPills = useMemo(
+    () => buildMobileBoardEnvPills({ executionSetup }),
+    [executionSetup],
+  );
+
   const nextActions = useMemo(() => {
     const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
       latestRun: effectiveImplementationState.latestRun,
@@ -126,49 +102,61 @@ export function ImplementationExecutionBoardPanel({
     );
   }, [effectiveImplementationState, boardInput, taskList]);
 
-  const initialSelectedTaskId = useMemo(
-    () =>
-      resolveImplementationExecutionBoardSelectedTaskId({
-        board,
-        codeAgentWipExecutionV1,
-      }),
+  const actionPartition = useMemo(
+    () => partitionMobileBoardActions(nextActions),
+    [nextActions],
+  );
+
+  const nextTask = useMemo(
+    () => resolveNextTaskCardView({ board, codeAgentWipExecutionV1 }),
     [board, codeAgentWipExecutionV1],
   );
 
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialSelectedTaskId);
-  useEffect(() => {
-    setSelectedTaskId(initialSelectedTaskId);
-  }, [initialSelectedTaskId]);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const selectedRow = useMemo(
-    () => board.taskRows.find((row) => row.taskId === selectedTaskId) ?? null,
-    [board.taskRows, selectedTaskId],
+  const detailRow = useMemo(
+    () => board.taskRows.find((row) => row.taskId === detailTaskId) ?? null,
+    [board.taskRows, detailTaskId],
   );
 
-  const primaryActions = nextActions.filter((action) => action.priority === "primary").slice(0, 3);
+  const integratedCompleted = countIntegratedStepsCompleted(board.integratedRows);
+  const integratedTotal = board.integratedRows.length;
 
   return (
-    <section style={shellStyle} data-testid="implementation-execution-board-panel" aria-label="구현 Execution Board">
-      <div style={headerStyle}>
-        <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>구현 Execution Board</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {summaryView.envPills.map((pill) => (
-            <span key={pill.label} style={pillStyle(pill.tone)}>
+    <section
+      className={styles.root}
+      data-testid="implementation-execution-board-panel"
+      aria-label="구현 Execution Board"
+    >
+      <div className={styles.header}>
+        <div className={styles.headerTitle}>구현 단계</div>
+        <div className={styles.pillRow}>
+          {mobileEnvPills.map((pill) => (
+            <span key={pill.label} className={pillClass(pill.tone)}>
               {pill.label}: {pill.value}
             </span>
           ))}
         </div>
       </div>
 
-      <div style={summaryGridStyle}>
+      <div className={styles.summaryCard}>
+        <div className={styles.summaryPrimary}>{buildCompactBoardSummaryLine(board)}</div>
+        <div className={styles.summarySecondary}>
+          {buildCompactBoardSecondarySummaryLine({
+            board,
+            previewReady: summaryView.previewReady,
+            reviewReady: summaryView.testReadiness.ready,
+          })}
+        </div>
+      </div>
+
+      <div className={styles.desktopSummaryGrid}>
         {[
           ["전체", board.summary.totalTasks],
           ["완료", board.summary.completedTasks],
           ["진행 중", board.summary.inProgressTasks],
           ["실패", board.summary.failedTasks],
-          ["사용자 확인", board.summary.userConfirmationRequired],
-          ["차단 확인", board.summary.blockingUserConfirmation],
-          ["통합 완료", board.summary.integratedCompleted],
           ["Preview", summaryView.previewReady ? "준비됨" : "미준비"],
           ["검토단계", summaryView.testReadiness.ready ? "이동 가능" : "불가"],
         ].map(([label, value]) => (
@@ -179,67 +167,145 @@ export function ImplementationExecutionBoardPanel({
         ))}
       </div>
 
-      {primaryActions.length ? (
-        <div style={{ padding: "0 14px 10px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {primaryActions.map((action) => (
-            <button
-              key={`${action.actionId}-${action.label}`}
-              type="button"
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #2563eb",
-                background: "#2563eb",
-                color: "#fff",
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-              onClick={() => onAction(action.label)}
-            >
-              {action.label}
-            </button>
-          ))}
+      {nextTask ? (
+        <div className={styles.nextTaskCard} data-testid="implementation-next-task-card">
+          <div className={styles.nextTaskLabel}>다음 작업</div>
+          <div className={styles.nextTaskId}>{nextTask.taskId}</div>
+          <div className={styles.nextTaskTitle}>{nextTask.title}</div>
+          <div className={styles.nextTaskMeta}>
+            {nextTask.developerStatusLabel} · {nextTask.priority}
+            <br />
+            선정 사유: {nextTask.selectionReason}
+            {nextTask.dependencies.length ? (
+              <>
+                <br />
+                선행 의존성: {nextTask.dependencies.join(", ")}
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
-      <div style={{ padding: "0 14px 12px" }}>
-        <ImplementationExecutionBoardTable
-          board={board}
-          selectedTaskId={selectedTaskId}
-          codeAgentWipExecutionV1={codeAgentWipExecutionV1}
-          onSelectTask={setSelectedTaskId}
-        />
-        <ImplementationExecutionBoardIntegratedTable rows={board.integratedRows} />
-        <div style={{ marginTop: 12 }}>
+      <div className={styles.ctaRow}>
+        {actionPartition.primary ? (
+          <button
+            type="button"
+            className={styles.ctaPrimary}
+            data-testid="implementation-board-primary-cta"
+            onClick={() => onAction(actionPartition.primary!.label)}
+          >
+            {actionPartition.primary.label}
+          </button>
+        ) : null}
+        {actionPartition.secondary.map((action) => (
+          <button
+            key={`${action.actionId}-${action.label}`}
+            type="button"
+            className={styles.ctaSecondary}
+            onClick={() => onAction(action.label)}
+          >
+            {action.label}
+          </button>
+        ))}
+        {actionPartition.more.length ? (
+          <div className={styles.moreWrap}>
+            <button
+              type="button"
+              className={styles.ctaSecondary}
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              더보기
+            </button>
+            {moreOpen ? (
+              <div className={styles.moreMenu} role="menu">
+                {actionPartition.more.map((action) => (
+                  <button
+                    key={`${action.actionId}-${action.label}`}
+                    type="button"
+                    className={styles.moreItem}
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      onAction(action.label);
+                    }}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <details className={styles.disclosure} data-testid="implementation-task-list-disclosure">
+        <summary className={styles.disclosureSummary} aria-expanded={false}>
+          작업목록 보기 {board.taskRows.length}개
+        </summary>
+        <div className={styles.disclosureBody}>
+          <div className={styles.mobileCardList}>
+            <ImplementationExecutionBoardCardList
+              board={board}
+              selectedTaskId={detailTaskId}
+              onSelectTask={(taskId) => setDetailTaskId(taskId)}
+            />
+          </div>
+          <div className={styles.desktopTable}>
+            <ImplementationExecutionBoardTable
+              board={board}
+              selectedTaskId={detailTaskId}
+              codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+              onSelectTask={(taskId) => setDetailTaskId(taskId)}
+            />
+          </div>
+        </div>
+      </details>
+
+      <details className={styles.disclosure} data-testid="implementation-integrated-disclosure">
+        <summary className={styles.disclosureSummary} aria-expanded={false}>
+          통합 단계 {integratedCompleted}/{integratedTotal}
+        </summary>
+        <div className={styles.disclosureBody}>
+          <div className={styles.mobileCardList}>
+            {board.integratedRows.map((row) => (
+              <div
+                key={row.step}
+                className={
+                  shouldEmphasizeIntegratedStep(row.status)
+                    ? `${styles.integratedRow} ${styles.integratedRowEmphasis}`
+                    : styles.integratedRow
+                }
+              >
+                <span>{row.title}</span>
+                <span>{formatImplementationBoardStepStatusKo(row.status)}</span>
+              </div>
+            ))}
+          </div>
+          <div className={styles.desktopTable}>
+            <ImplementationExecutionBoardIntegratedTable rows={board.integratedRows} />
+          </div>
+        </div>
+      </details>
+
+      {detailRow ? (
+        <div className={styles.detailSection} data-testid="implementation-selected-task-detail">
           <ImplementationExecutionBoardDetail
-            row={selectedRow}
+            row={detailRow}
             codeAgentWipExecutionV1={codeAgentWipExecutionV1}
             nextActions={nextActions}
             onAction={onAction}
+            onClose={() => setDetailTaskId(null)}
           />
         </div>
-        <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 800, color: "#475569" }}>
-            환경설정 상세 보기
-          </summary>
-          <pre
-            style={{
-              marginTop: 8,
-              fontSize: 10,
-              lineHeight: 1.4,
-              whiteSpace: "pre-wrap",
-              color: "#334155",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              padding: 8,
-            }}
-          >
-            {summaryView.envDiagnosticLines.join("\n") || "환경설정 정보 없음"}
-          </pre>
-        </details>
-      </div>
+      ) : null}
+
+      <details className={styles.envDetails}>
+        <summary className={styles.disclosureSummary}>환경설정 상세 보기</summary>
+        <pre className={styles.envPre}>
+          {summaryView.envDiagnosticLines.join("\n") || "환경설정 정보 없음"}
+        </pre>
+      </details>
     </section>
   );
 }

@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import {
   buildImplementationExecutionBoardRowWipOverlay,
+  buildTaskRowCardView,
   formatImplementationBoardRoleKo,
   formatImplementationBoardStepStatusKo,
   formatImplementationBoardUserConfirmationKo,
@@ -52,6 +53,53 @@ function WipHint({ overlay }: { readonly overlay: ImplementationExecutionBoardRo
       {overlay.branchName ? <div>{overlay.branchName}</div> : null}
       {overlay.commitMessage ? <div>{overlay.commitMessage}</div> : null}
     </div>
+  );
+}
+
+export function ImplementationExecutionBoardCardList({
+  board,
+  selectedTaskId,
+  onSelectTask,
+}: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly selectedTaskId: string | null;
+  readonly onSelectTask: (taskId: string) => void;
+}) {
+  return (
+    <>
+      {board.taskRows.map((row) => {
+        const card = buildTaskRowCardView(row);
+        const selected = row.taskId === selectedTaskId;
+        return (
+          <button
+            key={row.taskId}
+            type="button"
+            data-testid={`implementation-board-card-${row.taskId}`}
+            onClick={() => onSelectTask(row.taskId)}
+            style={{
+              border: selected ? "1px solid #93c5fd" : "1px solid #e2e8f0",
+              borderRadius: 12,
+              padding: "10px 12px",
+              background: selected ? "#eff6ff" : "#fff",
+              cursor: "pointer",
+              textAlign: "left",
+              width: "100%",
+              minHeight: 44,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 900, color: "#2563eb" }}>{card.taskId}</div>
+            <div style={{ marginTop: 2, fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{card.title}</div>
+            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: "#64748b", lineHeight: 1.4 }}>
+              {card.priority} · {card.developerStatusLabel}
+              <br />
+              {card.reviewerStatusLabel} · {card.securityStatusLabel} · {card.scmStatusLabel}
+              <br />
+              재작업 {card.reworkCount} · 사용자 확인 {card.userConfirmationLabel}
+            </div>
+          </button>
+        );
+      })}
+    </>
   );
 }
 

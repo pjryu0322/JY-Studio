@@ -15,7 +15,7 @@ import type { PrototypeExecutionActivityStatus } from "@/lib/prototype/prototype
 export type PrototypeExecutionChatPanelProps = Readonly<{
   conversationStatus: "idle" | "loading" | "loaded";
   chatMessages: readonly RequirementsMessage[];
-  memberControls: { count: number; onOpen: () => void };
+  memberControls?: { count: number; onOpen: () => void } | null;
   statusPill?: ReactNode | null;
   input: string;
   onInputChange: (value: string) => void;
@@ -39,7 +39,7 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
 export function PrototypeExecutionChatPanel({
   conversationStatus,
   chatMessages,
-  memberControls,
+  memberControls = null,
   statusPill = null,
   input,
   onInputChange,
