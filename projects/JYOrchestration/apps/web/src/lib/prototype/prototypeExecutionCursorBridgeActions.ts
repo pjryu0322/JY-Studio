@@ -50,7 +50,7 @@ function buildBridgeFailedMessage(input: {
     ? "Cursor API 직접 실행을 지원하지 않습니다."
     : input.errorMessage.includes("Cursor API")
       ? "Cursor API 호출에 실패했습니다."
-      : "Cursor Bridge 실행에 실패했습니다.";
+      : "Cursor API 실행에 실패했습니다.";
   return newRequirementsMessage({
     id: `code-agent-bridge-failed-${input.nowIso}`,
     role: "ai",
@@ -97,6 +97,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
       return {
         ...input.wip,
         bridgeExecutionStatus: "failed",
+        executionStatus: "cursor_api_failed",
         bridgeErrorMessage: [
           BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING,
           ...formatBridgeSourceGenerationRejectionMessage(eligible.reasons).split("\n").slice(1),
@@ -112,6 +113,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
       bridgeExecutionStatus: "failed",
       bridgeErrorMessage: input.bridgeResult.errorMessage,
       bridgeCompletedAt: undefined,
+      executionStatus: "cursor_api_failed",
     };
   }
 
@@ -178,6 +180,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
     executionMode: "cursor_api",
     bridgeAdapter: "cursor_api",
     bridgeExecutionStatus: "bridge_completed",
+    executionStatus: "bridge_completed",
     status: "developer_reviewing",
     branchName: commit.branchName,
     bridgeCompletedAt: now,
@@ -233,7 +236,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
   if (input.bridgeResult.status === "blocked") {
     return {
       kind: "blocked",
-      message: input.bridgeResult.errorMessage ?? "Cursor Bridge 실행이 차단되었습니다.",
+      message: input.bridgeResult.errorMessage ?? "Cursor API 실행이 차단되었습니다.",
     };
   }
 
@@ -251,7 +254,8 @@ export function buildCursorBridgeOrchestrationResult(input: {
       ...runningWip,
       bridgeExecutionStatus: "failed",
       bridgeErrorMessage: errorMessage,
-      ...(input.bridgeRequest?.bridgeAdapter ? { bridgeAdapter: input.bridgeRequest.bridgeAdapter } : {}),
+      executionStatus: unsupported ? "cursor_api_unsupported" : "cursor_api_failed",
+      bridgeAdapter: "cursor_api",
     };
     const messages = [
       ...prior,
@@ -280,7 +284,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
     );
     return {
       kind: "failed",
-      message: input.bridgeResult.errorMessage ?? "Cursor Bridge 실행에 실패했습니다.",
+      message: input.bridgeResult.errorMessage ?? "Cursor API 실행에 실패했습니다.",
       chatPatch: {
         messages,
         slots: resolved.slots ?? [],
@@ -340,7 +344,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
     );
     return {
       kind: "failed",
-      message: updatedWip.bridgeErrorMessage ?? "Cursor Bridge 실행 결과를 인정하지 않았습니다.",
+      message: updatedWip.bridgeErrorMessage ?? "Cursor API 실행 결과를 인정하지 않았습니다.",
       chatPatch: {
         messages,
         slots: resolved.slots ?? [],

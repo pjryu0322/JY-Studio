@@ -185,10 +185,10 @@ export function validateBridgeResultForRealSourceGeneration(
   context: BridgeResultValidationContext,
 ): Readonly<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
   if (result.status === "blocked") {
-    return { ok: false, reason: result.errorMessage ?? "Cursor Bridge 실행이 차단되었습니다." };
+    return { ok: false, reason: result.errorMessage ?? "Cursor API 실행이 차단되었습니다." };
   }
   if (!result.ok || result.status !== "completed") {
-    return { ok: false, reason: result.errorMessage ?? "Cursor Bridge 실행에 실패했습니다." };
+    return { ok: false, reason: result.errorMessage ?? "Cursor API 실행에 실패했습니다." };
   }
   const targetRepo = result.targetRepository?.trim() ?? "";
   if (!targetRepo || targetRepo !== context.targetRepository.repoFullName) {

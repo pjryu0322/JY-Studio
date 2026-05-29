@@ -8,7 +8,7 @@ import {
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { formatCodeAgentExecutionModeDiagnosticLines } from "@/lib/prototype/codeAgentWipExecution";
-import { formatCursorBridgeAvailabilityDiagnosticLines } from "@/lib/prototype/cursorBridgeRuntime";
+import { formatCursorExecutionAvailabilityDiagnosticLines } from "@/lib/prototype/cursorExecutionAvailability";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -95,7 +95,7 @@ export function buildImplementationExecutionBoardMessage(input: {
     ...testSummaryLines,
     "",
     ...formatCodeAgentExecutionModeDiagnosticLines(input.codeAgentWipExecutionV1),
-    ...formatCursorBridgeAvailabilityDiagnosticLines({ setup: input.executionSetup }),
+    ...formatCursorExecutionAvailabilityDiagnosticLines({ setup: input.executionSetup }),
     "",
     ...(reviewReadinessNotice ? [reviewReadinessNotice, ""] : []),
     ...(testReadiness.ready ? [] : [`진단: ${testReadiness.message}`, ""]),

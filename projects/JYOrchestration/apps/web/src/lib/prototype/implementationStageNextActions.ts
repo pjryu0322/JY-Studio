@@ -546,7 +546,7 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
         label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
         priority: "primary",
-        reason: "WIP 초안 생성 후 실제 Cursor Bridge 실행",
+        reason: "WIP 초안 생성 후 실제 Cursor API 실행",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
@@ -558,7 +558,7 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "OPEN_ENV_SETTINGS",
         label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
         priority: "secondary",
-        reason: "Cursor Bridge/API 환경설정",
+        reason: "Cursor API 환경설정",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
@@ -574,13 +574,13 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
         label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
         priority: "primary",
-        reason: "WIP 초안 승인 후 Cursor Bridge 실행",
+        reason: "WIP 초안 승인 후 Cursor API 실행",
       },
       {
         actionId: "OPEN_ENV_SETTINGS",
         label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
         priority: "secondary",
-        reason: "Cursor Bridge/API 환경설정",
+        reason: "Cursor API 환경설정",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
@@ -596,19 +596,19 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "구현 결과 승인",
         priority: "primary",
-        reason: "Cursor Bridge 완료 후 구현 결과 승인",
+        reason: "Cursor API 완료 후 구현 결과 승인",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "변경사항 보기",
         priority: "secondary",
-        reason: "Cursor Bridge 변경사항 확인",
+        reason: "Cursor API 변경사항 확인",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "추가 수정 요청",
         priority: "secondary",
-        reason: "Cursor Bridge 결과 추가 수정",
+        reason: "Cursor API 결과 추가 수정",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
@@ -624,7 +624,7 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
         label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
         priority: "primary",
-        reason: "Cursor Bridge 실패 후 재시도",
+        reason: "Cursor API 실패 후 재시도",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",

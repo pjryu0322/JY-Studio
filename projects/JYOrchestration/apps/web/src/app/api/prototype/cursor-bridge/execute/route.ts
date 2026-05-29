@@ -13,6 +13,11 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Historical route name contains cursor-bridge.
+ * Runtime is Cursor API direct only (executionMode: cursor_api).
+ */
+
 type Body = {
   readonly projectId?: string;
   readonly selectedTaskId?: string;
@@ -178,9 +183,6 @@ export async function POST(request: NextRequest) {
       workspaceRootSource: context.workspaceRootSource,
       executionMode: "cursor_api",
       bridgeAdapter: "cursor_api",
-      ...(context.workspaceRootFallbackWarning
-        ? { workspaceRootFallbackWarning: context.workspaceRootFallbackWarning }
-        : {}),
       availability,
     });
   } catch (e) {

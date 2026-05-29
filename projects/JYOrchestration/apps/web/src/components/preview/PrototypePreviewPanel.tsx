@@ -62,7 +62,6 @@ import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompl
 import {
   buildTargetRepoE2eTimelineEntry,
   buildCursorApiDirectTimelineEntry,
-  CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE,
   formatTargetRepoE2eDiagnosticLines,
   isCursorBridgeConfiguredForSourceGeneration,
 } from "@/lib/prototype/targetRepoE2eDiagnostics";
@@ -2923,10 +2922,7 @@ export function PrototypePreviewPanel({
 
             if (!isCursorBridgeConfiguredForSourceGeneration({ setup: setupRow })) {
               const diagnostic = formatTargetRepoE2eDiagnosticLines({ setup: setupRow, wip }).join("\n");
-              const blockedMessage =
-                setupRow?.cursorApiUrl || setupRow?.hasCursorToken
-                  ? CURSOR_API_NOT_CONFIGURED_MESSAGE
-                  : CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE;
+              const blockedMessage = CURSOR_API_NOT_CONFIGURED_MESSAGE;
               executionSingleChat.appendAiNotice(`${blockedMessage}\n\n${diagnostic}`);
               showToast("Cursor 실행 설정이 준비되지 않았습니다.");
               setExecutionEnvironmentModalOpen(true);

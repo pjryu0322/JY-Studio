@@ -1,4 +1,7 @@
-import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import {
+  isRealCursorSourceGenerationCompleted,
+  type CodeAgentWipExecutionV1,
+} from "@/lib/prototype/codeAgentWipExecution";
 import { isCursorExecutionReady } from "@/lib/prototype/cursorExecutionAvailability";
 import {
   type ExecutionSetupSourceGenerationContext,
@@ -35,13 +38,16 @@ export type CursorApiDirectTimelineAction =
   | "cursor_api_direct_execution_unsupported";
 
 export const CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE =
-  "Cursor Bridge/API가 설정되지 않았습니다.\n\n현재는 WIP 초안까지만 생성되었습니다.\n실제 소스 생성을 진행하려면 환경설정에서 Cursor Bridge/API를 활성화해 주세요." as const;
+  "Cursor API가 설정되지 않았습니다.\n\n현재는 WIP 초안까지만 생성되었습니다.\n실제 소스 생성을 진행하려면 환경설정에서 Cursor API URL과 키를 저장해 주세요." as const;
+
+/** @deprecated Use CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE (same text) or CURSOR_API_NOT_CONFIGURED_MESSAGE */
+export const CURSOR_API_NOT_CONFIGURED_E2E_MESSAGE = CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE;
 
 export const BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING =
-  "Cursor Bridge 호출은 성공했지만 실제 소스 생성으로 인정되지 않았습니다." as const;
+  "Cursor API 호출은 성공했지만 실제 소스 생성으로 인정되지 않았습니다." as const;
 
 export const BRIDGE_SOURCE_GENERATION_SUCCESS_HEADING =
-  "Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다." as const;
+  "Cursor API가 대상 프로젝트 저장소에 실제 소스를 생성했습니다." as const;
 
 export const QUALITY_GATE_DIFF_ENGINE_PENDING_LINES = [
   "검수/보안 점검 기준은 준비되었습니다.",
@@ -58,18 +64,16 @@ export function maskWorkspacePathForTimeline(workspacePath: string | undefined):
 
 export function resolveCursorBridgeConnectionPhase(input: {
   readonly wip?: CodeAgentWipExecutionV1 | null;
-  readonly env?: Record<string, string | undefined>;
   readonly setup?: ExecutionSetupSourceGenerationRow | null;
 }): CursorBridgeConnectionPhase {
-  const available = isCursorExecutionReady({ setup: input.setup, env: input.env });
+  const available = isCursorExecutionReady({ setup: input.setup });
   const wip = input.wip;
   if (!available) return "not_configured";
   if (wip?.bridgeExecutionStatus === "failed") return "failed";
-  if (wip?.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
-    const last = wip.commits[wip.commits.length - 1];
-    if (last?.sha && !last.sha.startsWith("wip-stub") && last.changedFiles.length > 0) {
-      return "source_generation_succeeded";
-    }
+  if (wip && isRealCursorSourceGenerationCompleted(wip)) {
+    return "source_generation_succeeded";
+  }
+  if (wip?.bridgeExecutionStatus === "bridge_completed") {
     return "failed";
   }
   if (wip?.bridgeExecutionStatus === "bridge_running" || wip?.bridgeExecutionStatus === "bridge_requested") {
@@ -81,17 +85,17 @@ export function resolveCursorBridgeConnectionPhase(input: {
 export function formatCursorBridgeConnectionPhaseLine(phase: CursorBridgeConnectionPhase): string {
   switch (phase) {
     case "not_configured":
-      return "Bridge 연결 상태: 미설정";
+      return "Cursor API 연결 상태: 미설정";
     case "configured":
-      return "Bridge 연결 상태: 설정됨 (실행 전)";
+      return "Cursor API 연결 상태: 설정됨 (실행 전)";
     case "call_succeeded":
-      return "Bridge 연결 상태: 호출 진행 중";
+      return "Cursor API 연결 상태: 호출 진행 중";
     case "source_generation_succeeded":
-      return "Bridge 연결 상태: 실제 source generation 성공";
+      return "Cursor API 연결 상태: 실제 source generation 성공";
     case "failed":
-      return "Bridge 연결 상태: 실패";
+      return "Cursor API 연결 상태: 실패";
     default:
-      return "Bridge 연결 상태: (알 수 없음)";
+      return "Cursor API 연결 상태: (알 수 없음)";
   }
 }
 
@@ -102,7 +106,7 @@ export function formatWorkspaceOriginStatusLine(status: WorkspaceOriginCheckStat
     case "mismatched":
       return "workspace origin: 불일치";
     case "not_applicable":
-      return "workspace origin: 해당 없음 (env fallback)";
+      return "workspace origin: 해당 없음";
     default:
       return "workspace origin: 확인 전";
   }
@@ -115,9 +119,9 @@ export function formatUnconnectedCapabilityLines(input?: {
 }): readonly string[] {
   const lines: string[] = ["", "후속 연결 예정 (미완성 영역):"];
   if (input?.bridgePhase === "not_configured" || input?.bridgePhase === "configured") {
-    lines.push("- Cursor API/Bridge 품질: 미검증 (실제 소스 생성 품질 보장 없음)");
+    lines.push("- Cursor API 품질: 미검증 (실제 소스 생성 품질 보장 없음)");
   } else if (input?.bridgePhase !== "source_generation_succeeded") {
-    lines.push("- Cursor API/Bridge 품질: 호출/생성 결과 미확정");
+    lines.push("- Cursor API 품질: 호출/생성 결과 미확정");
   }
   if (input?.autoPr && input.prNumber === undefined) {
     lines.push("- PR 자동 생성: 미연결 (commit 완료와 PR 생성은 별개)");
@@ -137,7 +141,7 @@ export function formatTargetRepoE2eDiagnosticLines(input: {
     ? formatExecutionSetupSourceGenerationDiagnosticLines(input.context)
     : formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(input.setup, input.env);
 
-  const phase = resolveCursorBridgeConnectionPhase({ wip: input.wip, env: input.env });
+  const phase = resolveCursorBridgeConnectionPhase({ wip: input.wip, setup: input.setup });
   const originStatus = input.workspaceOriginStatus ?? "unchecked";
   const pushPr =
     input.wip?.bridgeExecutionStatus === "bridge_completed"
@@ -215,9 +219,8 @@ export function evaluateTargetRepoE2eReadinessFromSetup(input: {
 
 export function isCursorBridgeConfiguredForSourceGeneration(input?: {
   readonly setup?: ExecutionSetupSourceGenerationRow | null;
-  readonly env?: Record<string, string | undefined>;
 }): boolean {
-  return isCursorExecutionReady({ setup: input?.setup, env: input?.env });
+  return isCursorExecutionReady({ setup: input?.setup });
 }
 
 export function buildCursorApiDirectTimelineEntry(input: {

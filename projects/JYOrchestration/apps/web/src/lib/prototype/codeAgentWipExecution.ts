@@ -56,15 +56,6 @@ export type CodeAgentWipExecutionMode = "stub" | "cursor_bridge" | "cursor_api" 
 
 export type CodeAgentBridgeAdapter = "cursor_api";
 
-export function isRealCursorSourceGenerationCompleted(wip: CodeAgentWipExecutionV1): boolean {
-  return (
-    wip.bridgeExecutionStatus === "bridge_completed" &&
-    (wip.executionMode === "cursor_api" ||
-      wip.executionMode === "cursor_bridge" ||
-      wip.bridgeAdapter === "cursor_api")
-  );
-}
-
 export type CodeAgentWipBridgeExecutionStatus =
   | "draft_created"
   | "draft_approved"
@@ -74,13 +65,16 @@ export type CodeAgentWipBridgeExecutionStatus =
   | "failed"
   | "cancelled";
 
+export type CodeAgentCursorApiExecutionStatus =
+  | "bridge_completed"
+  | "cursor_api_failed"
+  | "cursor_api_unsupported";
+
 export const REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP = "Cursor 실행 요청" as const;
 
 export {
-  formatCursorBridgeAvailabilityDiagnosticLines,
-  getCursorBridgeAvailability,
-  isCursorBridgeExecutionAvailable,
-} from "@/lib/prototype/cursorBridgeRuntime";
+  formatCursorExecutionAvailabilityDiagnosticLines as formatCursorBridgeAvailabilityDiagnosticLines,
+} from "@/lib/prototype/cursorExecutionAvailability";
 
 export type CodeAgentWipCommit = Readonly<{
   sha?: string;
@@ -140,6 +134,8 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   bridgeAdapter?: CodeAgentBridgeAdapter;
   /** Bridge lifecycle (distinct from workflow `status`). */
   bridgeExecutionStatus?: CodeAgentWipBridgeExecutionStatus;
+  /** Fine-grained Cursor API outcome for new executions. */
+  executionStatus?: CodeAgentCursorApiExecutionStatus | CodeAgentWipBridgeExecutionStatus;
   bridgeCompletedAt?: string;
   bridgeErrorMessage?: string;
   pushed?: boolean;
@@ -158,6 +154,24 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   bridgeAutoPush?: boolean;
   bridgeAutoPr?: boolean;
 }>;
+
+function latestWipCommit(wip: CodeAgentWipExecutionV1): CodeAgentWipCommit | undefined {
+  return wip.commits[wip.commits.length - 1];
+}
+
+export function isRealCursorSourceGenerationCompleted(wip: CodeAgentWipExecutionV1): boolean {
+  if (wip.bridgeExecutionStatus !== "bridge_completed") return false;
+  const modeOk =
+    wip.executionMode === "cursor_api" ||
+    wip.executionMode === "cursor_bridge" ||
+    wip.bridgeAdapter === "cursor_api";
+  if (!modeOk) return false;
+  const last = latestWipCommit(wip);
+  const sha = String(last?.sha ?? wip.commitSha ?? "").trim();
+  if (!sha || sha.startsWith("wip-stub")) return false;
+  const changedFiles = last?.changedFiles ?? [];
+  return changedFiles.length > 0;
+}
 
 export type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 
@@ -244,7 +258,7 @@ export function buildStubCodeAgentWipCommit(input: {
     ],
     testResults: ["stub validation: passed", "실제 pnpm test/build: 미실행"],
     unresolvedIssues: [
-      "아직 실제 Cursor Bridge 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
+      "아직 실제 Cursor API 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
     ],
     createdAt: now,
   };

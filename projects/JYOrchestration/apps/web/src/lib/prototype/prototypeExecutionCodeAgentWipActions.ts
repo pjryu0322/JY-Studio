@@ -188,7 +188,7 @@ export function buildDeveloperApproveWipResult(input: {
       summary: stubApproved ? "WIP 초안 승인" : "구현 결과 승인",
       findings: [],
       requestedActions: stubApproved
-        ? ["실제 Cursor Bridge 실행 또는 다음 생성요청"]
+        ? ["실제 Cursor API 실행 또는 다음 생성요청"]
         : ["SCM에게 공식 반영 요청"],
     },
   };

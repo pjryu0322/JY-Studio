@@ -10,7 +10,7 @@ import {
   type CursorBridgeExecuteResult,
 } from "@/lib/prototype/cursorBridgeExecution";
 
-describe("cursorBridgeRuntime", () => {
+describe("cursorBridgeRuntime (legacy env bridge)", () => {
   it("disabled when CURSOR_BRIDGE_ENABLED not true", () => {
     const availability = getCursorBridgeAvailability({ env: { CURSOR_BRIDGE_ENABLED: "false" } });
     expect(availability.available).toBe(false);

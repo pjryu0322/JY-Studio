@@ -158,7 +158,7 @@ export const CURSOR_BRIDGE_MISSING_WORKSPACE_MESSAGE = [
 ].join("\n");
 
 export const CURSOR_BRIDGE_MISSING_CONNECTION_MESSAGE = [
-  "실제 Cursor 소스 생성 실행을 위해 Cursor Bridge/API 연결이 필요합니다.",
+  "실제 Cursor 소스 생성 실행을 위해 Cursor API 설정이 필요합니다.",
   "현재는 WIP 초안까지만 생성되었습니다.",
 ].join("\n");
 

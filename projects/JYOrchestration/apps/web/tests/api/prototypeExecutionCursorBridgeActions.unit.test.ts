@@ -72,6 +72,8 @@ describe("applyCursorBridgeResultToWipExecution", () => {
     expect(updated.bridgeExecutionStatus).toBe("bridge_completed");
     expect(updated.executionMode).toBe("cursor_api");
     expect(updated.bridgeAdapter).toBe("cursor_api");
+    expect(updated.bridgeAdapter).toBe("cursor_api");
+    expect(updated.executionStatus).toBe("bridge_completed");
     expect(updated.commitSha).toBe("abc123def4567890");
     expect(updated.pushStatus).toBe("skipped");
     expect(updated.commits[updated.commits.length - 1]?.changedFiles).toEqual(["src/App.tsx"]);
@@ -95,7 +97,7 @@ describe("applyCursorBridgeResultToWipExecution", () => {
     });
     expect(updated.bridgeExecutionStatus).toBe("failed");
     expect(updated.bridgeErrorMessage).toContain("인정되지 않았습니다");
-    expect(updated.bridgeErrorMessage).toContain("Cursor Bridge 호출은 성공했지만");
+    expect(updated.bridgeErrorMessage).toContain("Cursor API 호출은 성공했지만");
   });
 
   it("empty changedFiles becomes failed", () => {

@@ -10,8 +10,9 @@ import {
 } from "@/lib/prototype/cursorExecutionAvailability";
 
 /**
- * Implementation-stage source generation entry point.
- * Only Cursor API direct execution is supported; http_bridge/local_runner fallbacks are not used.
+ * Historical wrapper name.
+ * Implementation-stage execution is Cursor API direct only via executeCursorApiDirectFromBridgeRequest.
+ * Do not add http/local/env bridge fallbacks here.
  */
 export async function executeCursorBridgeWorkItem(
   request: CursorBridgeExecuteRequest,

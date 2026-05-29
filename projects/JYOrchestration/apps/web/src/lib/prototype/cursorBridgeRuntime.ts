@@ -1,3 +1,10 @@
+/**
+ * @deprecated Legacy env-based Cursor Bridge runtime.
+ * Implementation-stage real source generation must use ExecutionSetup-based
+ * cursor_api mode via cursorExecutionAvailability.ts.
+ * Do not use getCursorBridgeAvailability() or isCursorBridgeExecutionAvailable()
+ * for [Cursor 실행 요청] or implementation board diagnostics.
+ */
 import { formatCursorExecutionAvailabilityDiagnosticLines } from "@/lib/prototype/cursorExecutionAvailability";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 
@@ -77,6 +84,7 @@ export function isPathUnderJyOrchestration(relativePath: string): boolean {
   return isPlatformInternalSourcePath(relativePath);
 }
 
+/** @deprecated Legacy env bridge. Use evaluateCursorExecutionAvailability({ setup }) instead. */
 export function getCursorBridgeAvailability(input?: {
   readonly env?: Record<string, string | undefined>;
 }): CursorBridgeAvailability {
@@ -153,6 +161,7 @@ export function getCursorBridgeAvailability(input?: {
   };
 }
 
+/** @deprecated Legacy env bridge. Use isCursorExecutionReady({ setup }) instead. */
 export function isCursorBridgeExecutionAvailable(input?: {
   readonly env?: Record<string, string | undefined>;
 }): boolean {

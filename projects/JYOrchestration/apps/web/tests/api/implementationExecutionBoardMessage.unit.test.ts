@@ -554,4 +554,30 @@ describe("implementationExecutionBoardMessage helpers", () => {
     const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
     expect(message.meta?.interviewSuggestions).toContain(REQUEST_TASK_REWORK_CHIP);
   });
+
+  it("board diagnostic shows cursor_api when ExecutionSetup is complete", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      executionSetup: {
+        gitRepoUrl: "https://github.com/o/r",
+        gitRepoName: "o/r",
+        workspacePath: "C:/workspace/r",
+        cursorApiUrl: "http://localhost:9999",
+        hasCursorToken: true,
+      },
+    });
+    const text = message.content;
+    expect(text).toContain("Cursor 실행 설정:");
+    expect(text).toContain("Mode: cursor_api");
+    expect(text).not.toContain("Cursor Bridge 설정:");
+    expect(text).not.toContain("Status: disabled");
+    expect(text).not.toContain("http_bridge");
+    expect(text).not.toContain("local_runner");
+  });
 });

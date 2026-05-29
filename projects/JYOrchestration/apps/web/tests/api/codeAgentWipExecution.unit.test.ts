@@ -13,6 +13,7 @@ import {
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
   codeAgentIsNotSingleChatMember,
   deriveCodeAgentWipReviewChips,
+  isRealCursorSourceGenerationCompleted,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
 import { parseCodeAgentWipExecutionFromState, parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
@@ -419,17 +420,11 @@ describe("codeAgentWipExecution", () => {
   });
 
   it("bridge_completed message may contain WIP 작업이 완료되었습니다", () => {
-    const wip = buildInitialCodeAgentWipExecution({
-      projectId: "p1",
-      plan,
-      workItems,
-      executionMode: "cursor_bridge",
-      bridgeExecutionStatus: "bridge_completed",
-    });
     const taskId = plan.items[0]?.id ?? "unknown";
     const commit = {
       provider: "cursor" as const,
-      branchName: wip.branchName,
+      sha: "abc123def4567890",
+      branchName: "wip/cursor/dev-1",
       commitMessage: `wip(cursor): [${taskId}] test`,
       taskId,
       workItemId: workItems[0]?.id ?? "wi-1",
@@ -439,6 +434,17 @@ describe("codeAgentWipExecution", () => {
       unresolvedIssues: [],
       createdAt: "2026-05-28T00:00:00.000Z",
     };
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({
+        projectId: "p1",
+        plan,
+        workItems,
+        executionMode: "cursor_api",
+        bridgeExecutionStatus: "bridge_completed",
+      }),
+      commits: [commit],
+      commitSha: commit.sha,
+    };
     const msg = buildCodeAgentWipExecutionMessage({
       wip,
       commit,
@@ -446,5 +452,83 @@ describe("codeAgentWipExecution", () => {
       selectedWorkItems: workItems.filter((w) => w.taskId === taskId),
     });
     expect(msg.content).toContain("Cursor API가 대상 프로젝트 저장소에 실제 소스를 생성했습니다");
+  });
+});
+
+describe("isRealCursorSourceGenerationCompleted", () => {
+  const plan = buildImplementationTaskPlan({
+    projectId: "p1",
+    projectArtifacts: [],
+    featureDraftTitles: ["upload"],
+    envOk: true,
+    designOk: true,
+  });
+  const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+
+  function completedWip(overrides: Partial<import("@/lib/prototype/codeAgentWipExecution").CodeAgentWipExecutionV1> = {}) {
+    const wip = buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems });
+    return {
+      ...wip,
+      executionMode: "cursor_api" as const,
+      bridgeAdapter: "cursor_api" as const,
+      bridgeExecutionStatus: "bridge_completed" as const,
+      commits: [
+        {
+          provider: "cursor" as const,
+          sha: "abc123def4567890",
+          branchName: wip.branchName,
+          commitMessage: "wip",
+          taskId: "dev-1",
+          workItemId: "wi-1",
+          changedFiles: ["src/App.tsx"],
+          diffSummary: [],
+          testResults: [],
+          unresolvedIssues: [],
+          createdAt: "2026-05-29T12:00:00.000Z",
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("returns true for cursor_api with real commit and changedFiles", () => {
+    expect(isRealCursorSourceGenerationCompleted(completedWip())).toBe(true);
+  });
+
+  it("returns false without commitSha", () => {
+    expect(
+      isRealCursorSourceGenerationCompleted(
+        completedWip({ commits: [], commitSha: undefined }),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false for wip-stub sha", () => {
+    const wip = completedWip();
+    expect(
+      isRealCursorSourceGenerationCompleted({
+        ...wip,
+        commits: [{ ...wip.commits[0]!, sha: "wip-stub-1" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false without changedFiles", () => {
+    const wip = completedWip();
+    expect(
+      isRealCursorSourceGenerationCompleted({
+        ...wip,
+        commits: [{ ...wip.commits[0]!, changedFiles: [] }],
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when only bridgeAdapter is set without real commit", () => {
+    expect(
+      isRealCursorSourceGenerationCompleted({
+        ...completedWip({ commits: [], commitSha: undefined }),
+        bridgeAdapter: "cursor_api",
+      }),
+    ).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import type {
 import { validateBridgeResultForRealSourceGeneration } from "@/lib/prototype/cursorBridgeExecution";
 
 export const BRIDGE_SOURCE_GENERATION_REJECTED_HEADING =
-  "Cursor Bridge 실행 결과를 실제 소스 생성으로 인정하지 않았습니다." as const;
+  "Cursor API 실행 결과를 실제 소스 생성으로 인정하지 않았습니다." as const;
 
 export type CodeAgentPushStatus = "success" | "skipped" | "failed";
 

@@ -8,7 +8,7 @@
 - workspacePath가 해당 Git 저장소 clone 경로와 일치
 - `git -C {workspacePath} remote get-url origin` 결과가 ExecutionSetup Git 저장소와 일치
 - GitHub token 설정
-- Cursor API 또는 Bridge 설정
+- Cursor API URL / Token 설정
 - autoCommit=true
 - autoPush=true/false 의도 확인
 - autoPr=true/false 의도 확인
@@ -75,7 +75,7 @@
 
 | 영역 | 플랫폼 표시 |
 |------|-------------|
-| Cursor API/Bridge 소스 생성 품질 | Bridge 연결 상태 / 실제 source generation 성공 여부만 표시. 품질 보장 표현 없음 |
+| Cursor API 소스 생성 품질 | Cursor API 연결 상태 / 실제 source generation 성공 여부만 표시. 품질 보장 표현 없음 |
 | PR 자동 생성 | `PR: 미수행 — PR 자동 생성은 아직 미연결` (autoPr=true, prNumber 없음) |
 | 검수/보안 diff 분석 | `engineConnectionStatus: pending_engine_connection` — metadata만 전달, 자동 통과 없음 |
 
@@ -147,3 +147,17 @@
 - `CURSOR_BRIDGE_ENABLED` / `CURSOR_BRIDGE_ENDPOINT` 가 있어도 mode가 `http_bridge`로 선택되지 않음
 - ExecutionSetup에 Cursor API가 있으면 `Status: disabled` 가 아님
 - 보드 진단에 `Mode: cursor_api` 또는 `Mode: none` 만 표시
+
+## 12. Legacy env bridge (미사용)
+
+구현단계 실제 실행 경로에서는 아래 env 기반 Bridge 설정을 **사용하지 않는다**.
+
+```text
+http_bridge
+local_runner
+CURSOR_BRIDGE_ENABLED
+CURSOR_BRIDGE_ENDPOINT
+CURSOR_BRIDGE_USE_LOCAL
+```
+
+`cursorBridgeRuntime.ts`의 `getCursorBridgeAvailability()`는 legacy 호환용이며, 보드/실행은 `cursorExecutionAvailability.ts`만 사용한다.

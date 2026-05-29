@@ -149,8 +149,7 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     bridgeAdapterRaw === "cursor_api"
       ? (bridgeAdapterRaw as import("@/lib/prototype/codeAgentWipExecution").CodeAgentBridgeAdapter)
       : undefined;
-  const bridgeRaw = String(o.bridgeExecutionStatus ?? o.executionStatus ?? "").trim() as CodeAgentWipBridgeExecutionStatus;
-  const bridgeExecutionStatus: CodeAgentWipBridgeExecutionStatus | undefined = [
+  const bridgeLifecycleStatuses = new Set([
     "draft_created",
     "draft_approved",
     "bridge_requested",
@@ -158,9 +157,22 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     "bridge_completed",
     "failed",
     "cancelled",
-  ].includes(bridgeRaw)
-    ? bridgeRaw
-    : undefined;
+  ]);
+  const cursorApiOutcomeStatuses = new Set(["bridge_completed", "cursor_api_failed", "cursor_api_unsupported"]);
+  const bridgeStatusRaw = String(o.bridgeExecutionStatus ?? "").trim();
+  const executionStatusRaw = String(o.executionStatus ?? "").trim();
+  const bridgeExecutionStatus: CodeAgentWipBridgeExecutionStatus | undefined = bridgeLifecycleStatuses.has(
+    bridgeStatusRaw,
+  )
+    ? (bridgeStatusRaw as CodeAgentWipBridgeExecutionStatus)
+    : bridgeLifecycleStatuses.has(executionStatusRaw)
+      ? (executionStatusRaw as CodeAgentWipBridgeExecutionStatus)
+      : undefined;
+  const executionStatus =
+    cursorApiOutcomeStatuses.has(executionStatusRaw) ||
+    (executionStatusRaw === "bridge_completed" && bridgeExecutionStatus === "bridge_completed")
+      ? (executionStatusRaw as import("@/lib/prototype/codeAgentWipExecution").CodeAgentCursorApiExecutionStatus)
+      : undefined;
   const bridgeCompletedAt =
     typeof o.bridgeCompletedAt === "string" && o.bridgeCompletedAt.trim()
       ? o.bridgeCompletedAt.trim()
@@ -231,6 +243,7 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(executionMode ? { executionMode } : {}),
     ...(bridgeAdapter ? { bridgeAdapter } : {}),
     ...(bridgeExecutionStatus ? { bridgeExecutionStatus } : {}),
+    ...(executionStatus ? { executionStatus } : {}),
     ...(bridgeCompletedAt ? { bridgeCompletedAt } : {}),
     ...(bridgeErrorMessage ? { bridgeErrorMessage } : {}),
     ...(pushed !== undefined ? { pushed } : {}),
