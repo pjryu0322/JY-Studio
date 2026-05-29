@@ -8,12 +8,27 @@ import {
 import { commitWorktreeChanges } from "@/lib/prototype/cursorBridgeGit";
 import {
   getCursorBridgeAvailability,
+  resolveCursorBridgeCloneRoot,
   type CursorBridgeAvailability,
 } from "@/lib/prototype/cursorBridgeRuntime";
+import { ensureTargetRepositoryWorktree } from "@/lib/prototype/cursorBridgeTargetRepoGit";
 import type { CursorExecutionPayload } from "@/lib/integration/cursorExecutionTypes";
 import { runCursorCliExecution } from "@/lib/integration/cursorExecutor";
 
 const BRIDGE_FETCH_TIMEOUT_MS = 600_000;
+
+function normalizeHttpBridgeResult(
+  request: CursorBridgeExecuteRequest,
+  parsed: CursorBridgeExecuteResult,
+): CursorBridgeExecuteResult {
+  return {
+    ...parsed,
+    provider: "cursor",
+    selectedTaskId: request.selectedTaskId,
+    targetRepository: parsed.targetRepository ?? request.targetRepository.repoFullName,
+    branchName: parsed.branchName ?? request.workBranch,
+  };
+}
 
 async function fetchHttpBridge(
   endpoint: string,
@@ -28,32 +43,47 @@ async function fetchHttpBridge(
   if (token?.trim()) {
     headers.Authorization = `Bearer ${token.trim()}`;
   }
+  const body = {
+    projectId: request.projectId,
+    selectedTaskId: request.selectedTaskId,
+    targetRepository: request.targetRepository,
+    baseBranch: request.baseBranch,
+    workBranch: request.workBranch,
+    prompt: request.prompt,
+    workItems: request.workItems,
+    commitMessage: request.commitMessage,
+    selectedWorkItemIds: request.selectedWorkItemIds,
+    forbiddenTargetPaths: request.forbiddenTargetPaths,
+    allowedTargetPaths: request.allowedTargetPaths,
+  };
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), BRIDGE_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify(request),
+      body: JSON.stringify(body),
       signal: ac.signal,
     });
     const text = await res.text();
     if (!res.ok) {
       return failedCursorBridgeResult({
         selectedTaskId: request.selectedTaskId,
+        targetRepository: request.targetRepository.repoFullName,
         errorMessage: `Cursor Bridge HTTP ${res.status}: ${text.slice(0, 500)}`,
         rawLog: text,
-        branchName: request.branchName,
+        branchName: request.workBranch,
       });
     }
     const parsed = JSON.parse(text) as CursorBridgeExecuteResult;
-    return { ...parsed, provider: "cursor", selectedTaskId: request.selectedTaskId };
+    return normalizeHttpBridgeResult(request, parsed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: `Cursor Bridge HTTP 호출 실패: ${msg}`,
-      branchName: request.branchName,
+      branchName: request.workBranch,
     });
   } finally {
     clearTimeout(timer);
@@ -65,13 +95,41 @@ async function executeLocalCursorBridge(
   availability: CursorBridgeAvailability,
   env: Record<string, string | undefined>,
 ): Promise<CursorBridgeExecuteResult> {
-  const logs: string[] = ["[CURSOR_BRIDGE] mode=local_cli"];
-  const workdir = availability.workspaceRoot ?? request.workspaceRoot;
+  const logs: string[] = ["[CURSOR_BRIDGE] mode=local_cli target_repo"];
+  const cloneRoot = resolveCursorBridgeCloneRoot(env) ?? availability.workspaceRoot ?? request.workspaceRoot;
+  if (!cloneRoot) {
+    return blockedCursorBridgeResult({
+      selectedTaskId: request.selectedTaskId,
+      errorMessage: "대상 저장소 clone root가 설정되지 않았습니다.",
+    });
+  }
+
   const workItem = request.workItems[0];
   if (!workItem) {
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: "실행할 workItem이 없습니다.",
+    });
+  }
+
+  let workdir: string;
+  try {
+    const prepared = await ensureTargetRepositoryWorktree({
+      cloneRoot,
+      targetRepository: request.targetRepository,
+      baseBranch: request.baseBranch,
+      workBranch: request.workBranch,
+    });
+    workdir = prepared.workdir;
+    for (const line of prepared.log) logs.push(line);
+  } catch (e) {
+    return failedCursorBridgeResult({
+      selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
+      errorMessage: `대상 저장소 worktree 준비 실패: ${e instanceof Error ? e.message : String(e)}`,
+      rawLog: logs.join("\n"),
+      branchName: request.workBranch,
     });
   }
 
@@ -79,10 +137,10 @@ async function executeLocalCursorBridge(
     taskId: request.selectedTaskId,
     taskPromptId: workItem.id,
     projectId: request.projectId,
-    branchName: request.branchName,
+    branchName: request.workBranch,
     prompt: request.prompt,
     context: {
-      files: workItem.requiredFilesHint,
+      files: [...workItem.requiredFilesHint],
       commitMessage: request.commitMessage,
     },
   };
@@ -101,9 +159,10 @@ async function executeLocalCursorBridge(
   if (!cliResult.success) {
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: cliResult.error ?? "Cursor CLI 실행 실패",
       rawLog: logs.join("\n"),
-      branchName: request.branchName,
+      branchName: request.workBranch,
     });
   }
 
@@ -111,15 +170,16 @@ async function executeLocalCursorBridge(
   if (!changedFiles.length) {
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: "변경 파일이 없어 실제 소스 생성으로 인정하지 않았습니다.",
       rawLog: logs.join("\n"),
-      branchName: request.branchName,
+      branchName: request.workBranch,
     });
   }
 
   const gitResult = await commitWorktreeChanges({
     workdir,
-    branchName: request.branchName,
+    branchName: request.workBranch,
     commitMessage: request.commitMessage,
     requestedPush: true,
     pushEnabledEnv: String(env.GIT_APPLY_PUSH_ENABLED ?? "").trim().toLowerCase() === "true",
@@ -129,9 +189,10 @@ async function executeLocalCursorBridge(
   if (!gitResult.commitSha) {
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: "git commit SHA를 생성하지 못했습니다.",
       rawLog: logs.join("\n"),
-      branchName: request.branchName,
+      branchName: request.workBranch,
     });
   }
 
@@ -141,12 +202,16 @@ async function executeLocalCursorBridge(
     provider: "cursor",
     status: "completed",
     selectedTaskId: request.selectedTaskId,
-    branchName: request.branchName,
+    targetRepository: request.targetRepository.repoFullName,
+    branchName: request.workBranch,
     commitSha: gitResult.commitSha,
     pushed: gitResult.pushed,
     changedFiles: files,
-    diffSummary: [`Cursor CLI 변경 ${files.length}건`, `commit ${gitResult.commitSha.slice(0, 12)}`],
-    testResults: ["실제 pnpm test/build: Bridge 후 로컬에서 실행 필요"],
+    diffSummary: [
+      `대상 저장소 ${request.targetRepository.repoFullName} 변경 ${files.length}건`,
+      `commit ${gitResult.commitSha.slice(0, 12)}`,
+    ],
+    testResults: ["실제 pnpm test/build: Bridge 후 대상 저장소에서 실행 필요"],
     rawLog: logs.join("\n"),
   };
 
@@ -154,9 +219,10 @@ async function executeLocalCursorBridge(
   if (!validation.ok) {
     return failedCursorBridgeResult({
       selectedTaskId: request.selectedTaskId,
+      targetRepository: request.targetRepository.repoFullName,
       errorMessage: validation.reason,
       rawLog: logs.join("\n"),
-      branchName: request.branchName,
+      branchName: request.workBranch,
       changedFiles: files,
     });
   }
@@ -188,6 +254,7 @@ export async function executeCursorBridgeWorkItem(
       if (!validation.ok) {
         return failedCursorBridgeResult({
           selectedTaskId: request.selectedTaskId,
+          targetRepository: request.targetRepository.repoFullName,
           errorMessage: validation.reason,
           rawLog: httpResult.rawLog,
           branchName: httpResult.branchName,

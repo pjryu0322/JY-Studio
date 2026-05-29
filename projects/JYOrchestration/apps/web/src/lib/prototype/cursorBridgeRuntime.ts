@@ -19,13 +19,14 @@ export type CursorBridgeAvailability = Readonly<{
   readonly workspaceRoot?: string;
 }>;
 
-const JYO_ORCHESTRATION_PREFIX = "projects/JYOrchestration/";
-
-export const DEFAULT_CURSOR_BRIDGE_ALLOWED_PATHS = [
-  "projects/JYOrchestration/**",
+const PLATFORM_SOURCE_PREFIXES = [
+  "projects/JYOrchestration/",
+  "apps/web/src/generated/implementation-wip/",
 ] as const;
 
 export const DEFAULT_CURSOR_BRIDGE_FORBIDDEN_PATHS = [
+  "projects/JYOrchestration/**",
+  "apps/web/src/generated/implementation-wip/**",
   "package.json",
   "pnpm-lock.yaml",
   "yarn.lock",
@@ -47,14 +48,30 @@ function isTruthyEnv(value: string | undefined): boolean {
   return v === "true" || v === "1" || v === "yes";
 }
 
-export function resolveCursorBridgeWorkspaceRoot(
-  env: Record<string, string | undefined>,
-): string | undefined {
+export function resolveCursorBridgeCloneRoot(env: Record<string, string | undefined>): string | undefined {
   const root =
+    String(env.CURSOR_TARGET_REPO_CLONE_ROOT ?? "").trim() ||
     String(env.CURSOR_WORKSPACE_ROOT ?? "").trim() ||
     String(env.CURSOR_WORKDIR ?? "").trim() ||
     String(env.GIT_APPLY_WORKDIR ?? "").trim();
   return root || undefined;
+}
+
+/** @deprecated Use resolveCursorBridgeCloneRoot */
+export function resolveCursorBridgeWorkspaceRoot(env: Record<string, string | undefined>): string | undefined {
+  return resolveCursorBridgeCloneRoot(env);
+}
+
+export function isPlatformInternalSourcePath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  return PLATFORM_SOURCE_PREFIXES.some(
+    (prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix),
+  );
+}
+
+/** @deprecated Use isPlatformInternalSourcePath */
+export function isPathUnderJyOrchestration(relativePath: string): boolean {
+  return isPlatformInternalSourcePath(relativePath);
 }
 
 export function getCursorBridgeAvailability(input?: {
@@ -74,9 +91,10 @@ export function getCursorBridgeAvailability(input?: {
   }
 
   const endpoint = String(env.CURSOR_BRIDGE_ENDPOINT ?? "").trim().replace(/\/+$/, "");
-  const workspaceRoot = resolveCursorBridgeWorkspaceRoot(env);
+  const cloneRoot = resolveCursorBridgeCloneRoot(env);
   const cliPath = String(env.CURSOR_CLI_PATH ?? "").trim();
-  const useLocal = isTruthyEnv(env.CURSOR_BRIDGE_USE_LOCAL) || !endpoint;
+  const runnerCommand = String(env.CODE_AGENT_RUNNER_COMMAND ?? "").trim();
+  const useLocal = isTruthyEnv(env.CURSOR_BRIDGE_USE_LOCAL);
 
   if (endpoint) {
     return {
@@ -86,39 +104,39 @@ export function getCursorBridgeAvailability(input?: {
       provider,
       mode: "http",
       endpoint,
-      ...(workspaceRoot ? { workspaceRoot } : {}),
+      ...(cloneRoot ? { workspaceRoot: cloneRoot } : {}),
     };
   }
 
   if (useLocal) {
-    if (!workspaceRoot) {
+    if (!cliPath && !runnerCommand) {
       return {
         available: false,
         status: "missing_config",
         reason:
-          "로컬 Cursor Bridge 실행에 workspace root가 필요합니다. CURSOR_WORKSPACE_ROOT 또는 GIT_APPLY_WORKDIR을 설정하세요.",
+          "로컬 Cursor Bridge 실행에 CURSOR_CLI_PATH 또는 CODE_AGENT_RUNNER_COMMAND가 필요합니다.",
         provider,
         mode: "none",
+        ...(cloneRoot ? { workspaceRoot: cloneRoot } : {}),
       };
     }
-    if (!cliPath) {
+    if (!cloneRoot) {
       return {
         available: false,
         status: "missing_config",
         reason:
-          "로컬 Cursor Bridge 실행에 CURSOR_CLI_PATH가 필요합니다. Cursor CLI 경로를 환경 변수로 설정하세요.",
+          "대상 저장소 clone root가 필요합니다. CURSOR_TARGET_REPO_CLONE_ROOT 또는 GIT_APPLY_WORKDIR을 설정하세요.",
         provider,
         mode: "none",
-        workspaceRoot,
       };
     }
     return {
       available: true,
       status: "available",
-      reason: "로컬 Cursor CLI + Git worktree Bridge가 사용 가능합니다.",
+      reason: "로컬 Cursor CLI + 대상 Git 저장소 worktree Bridge가 사용 가능합니다.",
       provider,
       mode: "local_cli",
-      workspaceRoot,
+      workspaceRoot: cloneRoot,
     };
   }
 
@@ -126,7 +144,7 @@ export function getCursorBridgeAvailability(input?: {
     available: false,
     status: "missing_config",
     reason:
-      "CURSOR_BRIDGE_ENDPOINT 또는 (CURSOR_WORKSPACE_ROOT + CURSOR_CLI_PATH) 로컬 Bridge 설정이 필요합니다.",
+      "CURSOR_BRIDGE_ENDPOINT 또는 (CURSOR_BRIDGE_USE_LOCAL=true + CURSOR_CLI_PATH/CODE_AGENT_RUNNER_COMMAND + clone root) 설정이 필요합니다.",
     provider,
     mode: "none",
   };
@@ -136,11 +154,6 @@ export function isCursorBridgeExecutionAvailable(input?: {
   readonly env?: Record<string, string | undefined>;
 }): boolean {
   return getCursorBridgeAvailability(input).available;
-}
-
-export function isPathUnderJyOrchestration(relativePath: string): boolean {
-  const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-  return normalized === JYO_ORCHESTRATION_PREFIX.slice(0, -1) || normalized.startsWith(JYO_ORCHESTRATION_PREFIX);
 }
 
 export function formatCursorBridgeAvailabilityDiagnosticLines(input?: {
@@ -154,7 +167,7 @@ export function formatCursorBridgeAvailabilityDiagnosticLines(input?: {
     `- Mode: ${availability.mode}`,
     `- Status: ${availability.status}`,
     `- Endpoint: ${availability.endpoint ?? "(없음)"}`,
-    `- Workspace: ${availability.workspaceRoot ?? "(없음)"}`,
+    `- Clone root: ${availability.workspaceRoot ?? "(없음)"}`,
     `- Git push: ${pushEnabled ? "enabled" : "disabled (GIT_APPLY_PUSH_ENABLED)"}`,
     ...(availability.available ? [] : [`- 안내: ${availability.reason}`]),
   ];

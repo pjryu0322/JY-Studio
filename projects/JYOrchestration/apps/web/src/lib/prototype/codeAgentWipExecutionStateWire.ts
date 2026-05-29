@@ -161,6 +161,14 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
   const pushed = o.pushed === true ? true : o.pushed === false ? false : undefined;
   const prNumber =
     typeof o.prNumber === "number" && Number.isFinite(o.prNumber) ? o.prNumber : undefined;
+  const targetRepository =
+    typeof o.targetRepository === "string" && o.targetRepository.trim()
+      ? o.targetRepository.trim()
+      : undefined;
+  const targetRepoFullName =
+    typeof o.targetRepoFullName === "string" && o.targetRepoFullName.trim()
+      ? o.targetRepoFullName.trim()
+      : targetRepository;
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -181,6 +189,8 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(bridgeErrorMessage ? { bridgeErrorMessage } : {}),
     ...(pushed !== undefined ? { pushed } : {}),
     ...(prNumber !== undefined ? { prNumber } : {}),
+    ...(targetRepository ? { targetRepository } : {}),
+    ...(targetRepoFullName ? { targetRepoFullName } : {}),
   };
 }
 

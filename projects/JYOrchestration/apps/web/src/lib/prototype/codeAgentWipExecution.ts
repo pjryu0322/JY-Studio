@@ -132,6 +132,9 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   bridgeErrorMessage?: string;
   pushed?: boolean;
   prNumber?: number;
+  /** Target project Git repository (owner/repo). */
+  targetRepository?: string;
+  targetRepoFullName?: string;
 }>;
 
 export { codeAgentIsNotSingleChatMember };
@@ -444,23 +447,30 @@ export function buildCodeAgentWipBridgeCompletedMessage(input: {
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
     content: [
-      "Cursor Bridge 실행이 완료되었습니다.",
+      "Cursor가 대상 프로젝트 소스를 생성했습니다.",
       "",
-      `실행 도구: ${label}`,
-      "상태: Cursor Bridge 완료",
-      "",
-      "선택 작업:",
-      `- ${taskId}`,
+      "대상 저장소:",
+      `- ${input.wip.targetRepoFullName ?? input.wip.targetRepository ?? "(미기록)"}`,
       "",
       "브랜치:",
       `- ${input.commit.branchName}`,
       "",
-      "WIP Commit:",
-      `- ${input.commit.commitMessage}`,
-      input.commit.sha ? `- sha: ${input.commit.sha}` : "",
+      "Commit:",
+      input.commit.sha ? `- ${input.commit.sha}` : "",
       "",
       "변경 파일:",
       ...input.commit.changedFiles.map((f) => `- ${f}`),
+      "",
+      "Push:",
+      input.wip.pushed ? "- 성공" : "- 미수행 또는 skip",
+      "",
+      `실행 도구: ${label}`,
+      "",
+      "선택 작업:",
+      `- ${taskId}`,
+      "",
+      "WIP Commit 메시지:",
+      `- ${input.commit.commitMessage}`,
       "",
       "diff 요약:",
       ...input.commit.diffSummary.map((d) => `- ${d}`),

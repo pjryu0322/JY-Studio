@@ -338,6 +338,6 @@ describe("codeAgentWipExecution", () => {
       selectedTaskId: taskId,
       selectedWorkItems: workItems.filter((w) => w.taskId === taskId),
     });
-    expect(msg.content).toContain("Cursor Bridge 실행이 완료되었습니다");
+    expect(msg.content).toContain("Cursor가 대상 프로젝트 소스를 생성했습니다");
   });
 });

@@ -7,8 +7,16 @@ import {
   type CursorBridgeExecuteRequest,
 } from "@/lib/prototype/cursorBridgeExecution";
 import { executeCursorBridgeWorkItem } from "@/lib/prototype/cursorBridgeClient";
-import { getCursorBridgeAvailability, resolveCursorBridgeWorkspaceRoot } from "@/lib/prototype/cursorBridgeRuntime";
+import {
+  getCursorBridgeAvailability,
+  resolveCursorBridgeCloneRoot,
+} from "@/lib/prototype/cursorBridgeRuntime";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  evaluateCursorBridgeSourceGenerationGate,
+  resolveProjectTargetRepository,
+} from "@/lib/prototype/projectTargetRepository";
+import { prisma } from "@/lib/prisma";
 
 type Body = {
   readonly projectId?: string;
@@ -16,6 +24,7 @@ type Body = {
   readonly selectedWorkItemIds?: readonly string[];
   readonly workItems?: readonly CursorWorkItem[];
   readonly branchName?: string;
+  readonly workBranch?: string;
   readonly baseBranch?: string;
   readonly commitMessage?: string;
 };
@@ -39,26 +48,28 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    const setup = await prisma.executionSetup.findUnique({
+      where: { projectId },
+      select: {
+        gitRepoName: true,
+        gitRepoUrl: true,
+        baseBranch: true,
+      },
+    });
+    const targetRepository = resolveProjectTargetRepository({ projectSettings: setup });
     const availability = getCursorBridgeAvailability();
-    if (!availability.available) {
+    const gate = evaluateCursorBridgeSourceGenerationGate({
+      targetRepository,
+      bridgeAvailable: availability.available,
+      bridgeReason: availability.reason,
+    });
+    if (!gate.ok) {
       return NextResponse.json(
         {
           success: false,
           status: "blocked",
-          message: availability.reason,
+          message: gate.message,
           availability,
-        },
-        { status: 200 },
-      );
-    }
-
-    const workspaceRoot = resolveCursorBridgeWorkspaceRoot(process.env) ?? availability.workspaceRoot;
-    if (!workspaceRoot) {
-      return NextResponse.json(
-        {
-          success: false,
-          status: "blocked",
-          message: "Cursor Bridge workspace root가 설정되지 않았습니다.",
         },
         { status: 200 },
       );
@@ -69,16 +80,23 @@ export async function POST(request: NextRequest) {
     const selectedWorkItemIds = Array.isArray(body.selectedWorkItemIds)
       ? body.selectedWorkItemIds.map((id) => String(id))
       : [];
+    const workBranch =
+      String(body.workBranch ?? body.branchName ?? "").trim() ||
+      `wip/cursor/${selectedTaskId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const baseBranch =
+      String(body.baseBranch ?? "").trim() || targetRepository!.defaultBranch || "main";
+    const cloneRoot = resolveCursorBridgeCloneRoot(process.env);
 
     const built = buildCursorBridgeExecuteRequestFromWorkItems({
       projectId,
       selectedTaskId,
       selectedWorkItemIds,
       workItems,
-      branchName: String(body.branchName ?? "").trim(),
-      baseBranch: String(body.baseBranch ?? "main").trim() || "main",
-      workspaceRoot,
+      targetRepository: targetRepository!,
+      workBranch,
+      baseBranch,
       commitMessage: String(body.commitMessage ?? "").trim(),
+      ...(availability.mode === "local_cli" && cloneRoot ? { workspaceRoot: cloneRoot } : {}),
     });
 
     if ("message" in built && !("prompt" in built)) {

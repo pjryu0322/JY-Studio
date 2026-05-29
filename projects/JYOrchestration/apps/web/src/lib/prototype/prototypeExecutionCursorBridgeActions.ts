@@ -94,6 +94,11 @@ export function applyCursorBridgeResultToWipExecution(input: {
     createdAt: now,
   };
 
+  const targetRepoFullName =
+    input.bridgeResult.targetRepository?.trim() ||
+    input.wip.targetRepoFullName ||
+    input.wip.targetRepository;
+
   let updated: CodeAgentWipExecutionV1 = {
     ...input.wip,
     executionMode: "cursor_bridge",
@@ -102,6 +107,9 @@ export function applyCursorBridgeResultToWipExecution(input: {
     branchName: commit.branchName,
     bridgeCompletedAt: now,
     pushed: input.bridgeResult.pushed === true,
+    ...(targetRepoFullName
+      ? { targetRepository: targetRepoFullName, targetRepoFullName }
+      : {}),
     ...(input.bridgeResult.prNumber !== undefined ? { prNumber: input.bridgeResult.prNumber } : {}),
     bridgeErrorMessage: undefined,
     commits: [...input.wip.commits.filter((c) => !c.sha?.startsWith("wip-stub")), commit],
