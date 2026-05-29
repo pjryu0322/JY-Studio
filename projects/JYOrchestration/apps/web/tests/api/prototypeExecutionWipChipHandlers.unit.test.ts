@@ -7,6 +7,12 @@ import {
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  appendReworkRequest,
+  getActiveReworkRequestsForTask,
+  markReworkRequestsAcceptedForTask,
+  parseImplementationExecutionBoardStateV1,
+} from "@/lib/prototype/implementationExecutionBoardState";
 
 const nowIso = "2026-05-28T12:00:00.000Z";
 
@@ -279,6 +285,70 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(exec?.items.find((i) => i.taskId === "rev-1")?.status).toBe("queued");
     expect(exec?.items.find((i) => i.taskId === "sec-1")?.status).toBe("queued");
     expect(exec?.items.find((i) => i.taskId === "scm-1")?.status).toBe("queued");
+  });
+
+  it("approveDeveloperResult with selectedTaskId marks accepted rework done", () => {
+    const appendNotice = vi.fn();
+    const persistOrchestration = vi.fn();
+    const taskList = sampleTaskList();
+    let boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-wip",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      userConfirmations: [],
+      reworkRequests: [],
+    });
+    boardState = appendReworkRequest({
+      state: boardState,
+      projectId: "p-wip",
+      taskId: "dev-1",
+      targetRole: "developer",
+      reason: "보완",
+      nowIso,
+    });
+    boardState = markReworkRequestsAcceptedForTask({
+      state: boardState,
+      projectId: "p-wip",
+      taskId: "dev-1",
+      nowIso,
+    });
+    const wip: CodeAgentWipExecutionV1 = { ...wipForReview(), selectedTaskId: "dev-1" };
+    const executionState = markDeveloperTasksInProgressForWip({
+      state: buildInitialImplementationTaskExecutionStateFromTaskList({
+        projectId: "p-wip",
+        taskList,
+        nowIso,
+      }),
+      taskList,
+      cursorWorkItems: workItems,
+      projectId: "p-wip",
+      nowIso,
+    });
+    const { approveDeveloperResult } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: wip,
+        implementationTaskExecutionStateV1: executionState,
+        implementationExecutionBoardStateV1: boardState,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice,
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast: vi.fn(),
+    });
+    approveDeveloperResult();
+    const boardPatch = persistOrchestration.mock.calls.find(
+      (call) => call[1]?.implementationExecutionBoardStateV1,
+    )?.[1]?.implementationExecutionBoardStateV1;
+    expect(getActiveReworkRequestsForTask(boardPatch, "dev-1")).toHaveLength(0);
+    expect(appendNotice).toHaveBeenCalledWith("dev-1 작업의 재작업 요청을 완료 처리했습니다.");
   });
 
   it("discardWipWork does not queue reviewer/security/scm tasks", () => {

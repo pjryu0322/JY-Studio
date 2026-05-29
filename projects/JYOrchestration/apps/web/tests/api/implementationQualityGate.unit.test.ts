@@ -237,6 +237,64 @@ describe("buildMockImplementationQualityGateResult with targetTaskIds", () => {
     });
     expect("blocked" in outcome).toBe(true);
   });
+
+  it("task-scoped reviewer check does not mark reviewer role tasks failed", () => {
+    const execution = executionWithDeveloperDone();
+    const beforeReviewer = execution.items.find((i) => i.ownerRole === "reviewer")?.status;
+    const outcome = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList: taskListWithRoles(),
+      executionState: execution,
+      projectId: "p1",
+      targetTaskIds: ["dev-1"],
+      nowIso: NOW,
+    });
+    if ("blocked" in outcome) throw new Error("expected outcome");
+    expect(outcome.executionState.items.find((i) => i.ownerRole === "reviewer")?.status).toBe(
+      beforeReviewer,
+    );
+    expect(outcome.qualityGateResults).toHaveLength(1);
+  });
+
+  it("task-scoped security check failedTaskIds contains only target task", () => {
+    let state = executionWithDeveloperDone();
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.taskId === "dev-1" ? { ...item, status: "failed" as const } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        state.items.map((item) =>
+          item.taskId === "dev-1" ? { ...item, status: "failed" as const } : item,
+        ),
+      ),
+    };
+    const outcome = executeImplementationQualityGateCheck({
+      role: "security",
+      taskList: taskListWithRoles(),
+      executionState: state,
+      projectId: "p1",
+      targetTaskIds: ["dev-1"],
+      nowIso: NOW,
+    });
+    if ("blocked" in outcome) throw new Error("expected outcome");
+    expect(outcome.qualityGateResult.failedTaskIds).toEqual(["dev-1"]);
+    expect(outcome.executionState.items.find((i) => i.ownerRole === "security")?.status).toBe(
+      "queued",
+    );
+  });
+
+  it("global reviewer check still updates reviewer role status", () => {
+    const outcome = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList: taskListWithRoles(),
+      executionState: executionWithDeveloperDone(),
+      projectId: "p1",
+      nowIso: NOW,
+    });
+    if ("blocked" in outcome) throw new Error("expected outcome");
+    expect(outcome.executionState.items.find((i) => i.ownerRole === "reviewer")?.status).toBe("done");
+  });
 });
 
 describe("appendImplementationQualityGateResult", () => {

@@ -14,6 +14,7 @@ import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+  MOVE_TO_REVIEW_STAGE_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
   RUN_FINAL_SCM_CHIP,
@@ -29,6 +30,10 @@ import {
   markIntegratedStepDone,
   markIntegratedStepInProgress,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import {
+  appendReworkRequest,
+  parseImplementationExecutionBoardStateV1,
+} from "@/lib/prototype/implementationExecutionBoardState";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
   deriveImplementationPrototypeRunSyncSnapshot,
@@ -436,6 +441,76 @@ describe("deriveImplementationStageNextActions integrated board", () => {
     });
     expect(actions[0]?.actionId).toBe("RUN_FINAL_SCM");
     expect(actions[0]?.label).toBe(RUN_FINAL_SCM_CHIP);
+  });
+
+  function fullyIntegratedCompleteInput() {
+    const input = completedBoardInput();
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of [
+      "refactor_common",
+      "integrated_review",
+      "integrated_security",
+      "final_scm",
+    ] as const) {
+      integrated = markIntegratedStepInProgress({
+        state: integrated,
+        projectId: "p1",
+        step,
+        nowIso: NOW,
+      });
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p1",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    return { ...input, previewReady: true, integratedExecutionState: integrated };
+  }
+
+  it("active rework + previewReady true prioritizes remediation over review stage", () => {
+    const input = fullyIntegratedCompleteInput();
+    const devTaskId =
+      input.taskList.tasks.find((t) => t.ownerRole === "developer")?.taskId ?? "dev-1";
+    let boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [],
+      reworkRequests: [],
+    });
+    boardState = appendReworkRequest({
+      state: boardState,
+      projectId: "p1",
+      taskId: devTaskId,
+      targetRole: "developer",
+      reason: "active",
+      nowIso: NOW,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      boardState,
+    });
+    expect(actions[0]?.label).toBe(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
+    expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
+  });
+
+  it("board complete + previewReady true + no remediation returns review stage primary", () => {
+    const actions = deriveImplementationStageNextActions(
+      "task_list_ready",
+      fullyIntegratedCompleteInput().executionState,
+      null,
+      fullyIntegratedCompleteInput(),
+    );
+    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
+    expect(actions[0]?.label).toBe(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 });
 

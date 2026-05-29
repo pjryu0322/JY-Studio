@@ -124,8 +124,10 @@ import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implemen
 import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
+  buildReworkRequestRegistrationNotice,
   formatTaskScopedWipExecutionBlockedNotice,
   formatTaskScopedWipExecutionSuccessNotice,
+  isImplementationReadyForReviewStage,
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
   pickTaskIdForReworkRequest,
@@ -2583,9 +2585,12 @@ export function PrototypePreviewPanel({
               }),
             );
           }
-          const notice = `${taskId} 작업에 재작업 요청을 등록했습니다.`;
+          const notice = buildReworkRequestRegistrationNotice({
+            board: nextBoard ?? board,
+            taskId,
+          });
           executionSingleChat.appendAiNotice(notice);
-          showToast(notice);
+          showToast(notice.split("\n")[0] ?? notice);
           return { outcome: "executed" };
         }
         case "MOVE_TO_REVIEW_STAGE": {
@@ -2595,8 +2600,15 @@ export function PrototypePreviewPanel({
             orchestration: parsedRequirementsState,
           });
           const previewReady = prototypeRunSyncSnapshot.previewReady;
+          if (!board || !isImplementationReadyForReviewStage({ board, previewReady })) {
+            const message = !previewReady
+              ? "프로토타입 preview가 준비되지 않아 검토단계로 이동할 수 없습니다."
+              : "구현 실행 보드가 완료되지 않아 검토단계로 이동할 수 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
           const reviewMarker = buildImplementationReviewStageReadyMarker({
-            previewReady,
+            previewReady: true,
             nowIso: new Date().toISOString(),
           });
           void persistChatToDb(undefined, {

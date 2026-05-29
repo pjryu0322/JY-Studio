@@ -362,15 +362,16 @@ export function deriveImplementationStageNextActions(
       qualityGateResults: boardInput.qualityGateResults,
     });
     reviewGate = { board, previewReady: boardInput.previewReady === true };
+
+    if (boardNeedsRemediation(board)) {
+      return deriveNextActionsFromBoardRemediation(board);
+    }
+
     const fromIntegrated = deriveNextActionsFromIntegratedBoard(
       board,
       boardInput.previewReady === true,
     );
     if (fromIntegrated?.length) return fromIntegrated;
-
-    if (boardNeedsRemediation(board)) {
-      return deriveNextActionsFromBoardRemediation(board);
-    }
   }
 
   const fromExecution = deriveNextActionsFromExecutionState(

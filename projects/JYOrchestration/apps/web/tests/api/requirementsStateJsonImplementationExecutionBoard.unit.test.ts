@@ -3,7 +3,11 @@ import { buildInitialImplementationIntegratedExecutionState } from "@/lib/protot
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import { buildPrototypeExecutionOrchestrationPersistPatch } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
+import { parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 
 const NOW = "2026-05-28T12:00:00.000Z";
 
@@ -117,5 +121,72 @@ describe("requirementsStateJson implementation execution board state", () => {
     });
     expect(state.implementationReviewStageReadyV1?.ready).toBe(true);
     expect(state.implementationReviewStageReadyV1?.previewReady).toBe(true);
+  });
+
+  it("mergeRequirementsStateJson preserves implementationReviewStageReadyV1", () => {
+    const marker = buildImplementationReviewStageReadyMarker({
+      previewReady: true,
+      nowIso: NOW,
+    });
+    const merged = mergeRequirementsStateJson(parseRequirementsStateJson({}), {
+      implementationReviewStageReadyV1: marker,
+    });
+    expect(merged.implementationReviewStageReadyV1?.source).toBe("execution_board_complete");
+  });
+
+  it("buildPrototypeExecutionOrchestrationPersistPatch includes implementationReviewStageReadyV1", () => {
+    const marker = buildImplementationReviewStageReadyMarker({
+      previewReady: true,
+      nowIso: NOW,
+    });
+    const patch = buildPrototypeExecutionOrchestrationPersistPatch(
+      {},
+      { implementationReviewStageReadyV1: marker },
+    );
+    expect(patch.implementationReviewStageReadyV1?.ready).toBe(true);
+  });
+
+  it("invalid implementationReviewStageReadyV1 is dropped on parse", () => {
+    const state = parseRequirementsStateJson({
+      implementationReviewStageReadyV1: { version: "wrong", ready: true },
+    });
+    expect(state.implementationReviewStageReadyV1).toBeNull();
+  });
+
+  it("mergeRequirementsStateJson preserves codeAgentWipExecutionV1 selectedTaskId", () => {
+    const plan: ImplementationTaskPlanV1 = {
+      version: "implementation_task_plan_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      source: "implementation_orchestration",
+      items: [],
+      readiness: { ready: true, score: 1, missing: [] },
+    };
+    const workItems: readonly CursorWorkItem[] = [
+      {
+        id: "wi-1",
+        taskId: "dev-1",
+        title: "t",
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: [],
+        forbiddenPaths: [],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      },
+    ];
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems }),
+      selectedTaskId: "dev-1",
+      selectedWorkItemIds: ["wi-1"],
+    };
+    const merged = mergeRequirementsStateJson(parseRequirementsStateJson({}), {
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(merged.codeAgentWipExecutionV1?.selectedTaskId).toBe("dev-1");
+    expect(merged.codeAgentWipExecutionV1?.selectedWorkItemIds).toEqual(["wi-1"]);
+    expect(parseCodeAgentWipExecutionV1(merged.codeAgentWipExecutionV1)?.selectedTaskId).toBe("dev-1");
   });
 });

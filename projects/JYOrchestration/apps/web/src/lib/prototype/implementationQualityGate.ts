@@ -441,16 +441,19 @@ export function executeImplementationQualityGateCheck(input: {
       nowIso: now,
     });
 
-  const inProgressSummary =
-    input.role === "reviewer" ? "AI 검수자 점검 진행 중" : "AI 보안관 점검 진행 중";
-  state = markRoleTasksInProgress({
-    state,
-    ownerRole: input.role,
-    nowIso: now,
-    resultSummary: inProgressSummary,
-  });
-
   const targetTaskIds = (input.targetTaskIds ?? []).map((id) => id.trim()).filter(Boolean);
+  const isTaskScoped = targetTaskIds.length > 0;
+
+  if (!isTaskScoped) {
+    const inProgressSummary =
+      input.role === "reviewer" ? "AI 검수자 점검 진행 중" : "AI 보안관 점검 진행 중";
+    state = markRoleTasksInProgress({
+      state,
+      ownerRole: input.role,
+      nowIso: now,
+      resultSummary: inProgressSummary,
+    });
+  }
   if (input.targetTaskIds !== undefined && !targetTaskIds.length) {
     return {
       blocked:
@@ -468,21 +471,23 @@ export function executeImplementationQualityGateCheck(input: {
     nowIso: now,
   });
 
-  if (gateResult.status === "passed") {
-    state = markRoleTasksDone({
-      state,
-      ownerRole: input.role,
-      nowIso: now,
-      resultSummary: gateResult.summary,
-    });
-  } else {
-    state = markRoleTasksFailed({
-      state,
-      ownerRole: input.role,
-      nowIso: now,
-      errorMessage: gateResult.summary,
-      resultSummary: gateResult.summary,
-    });
+  if (!isTaskScoped) {
+    if (gateResult.status === "passed") {
+      state = markRoleTasksDone({
+        state,
+        ownerRole: input.role,
+        nowIso: now,
+        resultSummary: gateResult.summary,
+      });
+    } else {
+      state = markRoleTasksFailed({
+        state,
+        ownerRole: input.role,
+        nowIso: now,
+        errorMessage: gateResult.summary,
+        resultSummary: gateResult.summary,
+      });
+    }
   }
 
   const qualityGateResults = appendImplementationQualityGateResult({

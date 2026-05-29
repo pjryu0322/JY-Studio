@@ -235,6 +235,35 @@ export function pickFirstExecutableDeveloperTaskId(
   return executable[0]?.taskId ?? null;
 }
 
+/** Human-readable reason why a task was selected for rework registration. */
+export function explainReworkRequestTarget(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly taskId: string;
+}): string {
+  const taskId = input.taskId.trim();
+  const row = input.board.taskRows.find((r) => r.taskId === taskId);
+  if (!row) return "다음 실행 가능 작업";
+  if (row.reviewerResultStatus === "failed") return "AI 검수자 점검 실패 작업";
+  if (row.securityResultStatus === "failed") return "AI 보안관 점검 실패 작업";
+  if (row.developerStatus === "failed") return "개발자 작업 실패";
+  if (row.reworkCount > 0) return "기존 재작업 요청 존재";
+  return "다음 실행 가능 작업";
+}
+
+export function buildReworkRequestRegistrationNotice(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly taskId: string;
+  readonly remediationChipLabel?: string;
+}): string {
+  const reason = explainReworkRequestTarget({ board: input.board, taskId: input.taskId });
+  const remediationLabel = input.remediationChipLabel?.trim() || "AI 개발자에게 보완 요청";
+  return [
+    `${input.taskId} 작업에 재작업 요청을 등록했습니다.`,
+    `선정 사유: ${reason}`,
+    `다음 작업: [${remediationLabel}]으로 Cursor 보완 작업을 진행하세요.`,
+  ].join("\n");
+}
+
 /** Target task for REQUEST_TASK_REWORK (no per-task UI yet). */
 export function pickTaskIdForReworkRequest(board: ImplementationExecutionBoardV1): string | null {
   const qualityFailed = board.taskRows.filter(

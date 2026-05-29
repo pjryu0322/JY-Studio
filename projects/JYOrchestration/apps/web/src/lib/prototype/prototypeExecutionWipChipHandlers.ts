@@ -286,15 +286,17 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         ...result,
         executionState,
       });
-      if (approvedWip.selectedTaskId?.trim()) {
+      const reworkTaskId = approvedWip.selectedTaskId?.trim();
+      if (reworkTaskId) {
         const boardStatePatch = markReworkRequestsDoneForTask({
           state: deps.parsedState.implementationExecutionBoardStateV1,
           projectId: deps.projectId,
-          taskId: approvedWip.selectedTaskId,
+          taskId: reworkTaskId,
         });
         deps.persistOrchestration(undefined, {
           implementationExecutionBoardStateV1: boardStatePatch,
         });
+        deps.appendNotice(`${reworkTaskId} 작업의 재작업 요청을 완료 처리했습니다.`);
       }
       const taskList = deps.parsedState.implementationTaskListV1;
       if (taskList && executionState) {

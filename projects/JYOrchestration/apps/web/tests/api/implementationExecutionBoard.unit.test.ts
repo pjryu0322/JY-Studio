@@ -6,12 +6,18 @@ import {
   filterCursorWorkItemsForExecutableTask,
   formatBoardExecutionTargetLines,
   isImplementationBoardComplete,
+  buildReworkRequestRegistrationNotice,
+  explainReworkRequestTarget,
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
   pickTaskIdForReworkRequest,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
-import { REQUEST_TASK_REWORK_CHIP } from "@/lib/requirements/implementationUxLabels";
+import {
+  IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_ALL_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -21,6 +27,7 @@ import {
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   appendReworkRequest,
+  markReworkRequestsDoneForTask,
   parseImplementationExecutionBoardStateV1,
 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -804,5 +811,130 @@ describe("implementationExecutionBoard", () => {
 
   it("mapImplementationChipToAction maps 작업 재작업 요청 to REQUEST_TASK_REWORK", () => {
     expect(mapImplementationChipToAction(REQUEST_TASK_REWORK_CHIP)).toBe("REQUEST_TASK_REWORK");
+  });
+
+  it("legacy and 전체 처리 confirmation chips map to RESOLVE_USER_CONFIRMATION", () => {
+    expect(mapImplementationChipToAction(IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP)).toBe(
+      "RESOLVE_USER_CONFIRMATION",
+    );
+    expect(mapImplementationChipToAction(IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_ALL_CHIP)).toBe(
+      "RESOLVE_USER_CONFIRMATION",
+    );
+  });
+
+  it("explainReworkRequestTarget returns security failure reason", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "security",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-1"],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(explainReworkRequestTarget({ board, taskId: "dev-1" })).toBe("AI 보안관 점검 실패 작업");
+    expect(buildReworkRequestRegistrationNotice({ board, taskId: "dev-1" })).toContain(
+      "AI 보안관 점검 실패 작업",
+    );
+  });
+
+  it("explainReworkRequestTarget returns developer failure reason", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.taskId === "dev-2" ? { ...item, status: "failed" as const } : item,
+      ),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    expect(explainReworkRequestTarget({ board, taskId: "dev-2" })).toBe("개발자 작업 실패");
+  });
+
+  it("explainReworkRequestTarget returns reviewer failure reason", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-2"],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(explainReworkRequestTarget({ board, taskId: "dev-2" })).toBe("AI 검수자 점검 실패 작업");
+    const notice = buildReworkRequestRegistrationNotice({ board, taskId: "dev-2" });
+    expect(notice).toContain("AI 검수자 점검 실패 작업");
+    expect(notice).toContain("AI 개발자에게 보완 요청");
+  });
+
+  it("after rework done pickFirstExecutableDeveloperTaskId prefers active rework on another task", () => {
+    let boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [],
+      reworkRequests: [],
+    });
+    boardState = appendReworkRequest({
+      state: boardState,
+      projectId: "p-board",
+      taskId: "dev-1",
+      targetRole: "developer",
+      reason: "closed",
+      nowIso: NOW,
+    });
+    boardState = markReworkRequestsDoneForTask({
+      state: boardState,
+      projectId: "p-board",
+      taskId: "dev-1",
+      nowIso: NOW,
+    });
+    boardState = appendReworkRequest({
+      state: boardState,
+      projectId: "p-board",
+      taskId: "dev-2",
+      targetRole: "developer",
+      reason: "active",
+      nowIso: NOW,
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: executionStateWithDeveloperDone(),
+      boardState,
+      nowIso: NOW,
+    });
+    expect(board.taskRows.find((r) => r.taskId === "dev-1")?.reworkCount).toBe(0);
+    expect(board.taskRows.find((r) => r.taskId === "dev-2")?.reworkCount).toBe(1);
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
   });
 });

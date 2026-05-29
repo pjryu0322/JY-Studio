@@ -90,6 +90,38 @@ describe("codeAgentWipExecution", () => {
     expect(parsed?.provider).toBe("cursor");
   });
 
+  it("parseCodeAgentWipExecutionV1 preserves selectedTaskId and selectedWorkItemIds", () => {
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems }),
+      selectedTaskId: "dev-1",
+      selectedWorkItemIds: ["wi-1"],
+    };
+    const parsed = parseCodeAgentWipExecutionV1(wip);
+    expect(parsed?.selectedTaskId).toBe("dev-1");
+    expect(parsed?.selectedWorkItemIds).toEqual(["wi-1"]);
+  });
+
+  it("buildDeveloperApproveWipResult preserves selectedTaskId on approved wip", () => {
+    const requested = buildRequestCodeAgentWipWorkResult({
+      projectId: "p1",
+      requirementsStateJson: {},
+      plan,
+      workItems,
+      existingWip: undefined,
+      selectedTaskId: "dev-1",
+    });
+    if (requested.kind !== "created") throw new Error("expected created");
+    const approved = buildDeveloperApproveWipResult({
+      requirementsStateJson: {},
+      wip: {
+        ...requested.orchestrationPatch.codeAgentWipExecutionV1,
+        selectedTaskId: "dev-1",
+      },
+    });
+    if (approved.kind !== "approved") throw new Error("expected approved");
+    expect(approved.orchestrationPatch.codeAgentWipExecutionV1.selectedTaskId).toBe("dev-1");
+  });
+
   it("persists codeAgentWipExecutionV1 in requirements state json", () => {
     const wip = buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems });
     const parsed = parseRequirementsStateJson({ codeAgentWipExecutionV1: wip });
