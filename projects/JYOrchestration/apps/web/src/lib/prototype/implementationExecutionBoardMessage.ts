@@ -1,5 +1,7 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
+  buildImplementationReviewStageReadinessNotice,
+  deriveIntegratedStageInterviewChips,
   formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,
   formatImplementationExecutionBoardTaskLine,
@@ -42,6 +44,7 @@ function formatCurrentRunningLine(board: ImplementationExecutionBoardV1): string
 export function buildImplementationExecutionBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly nowIso: string;
+  readonly previewReady?: boolean;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const currentLine = formatCurrentRunningLine(input.board);
@@ -49,34 +52,12 @@ export function buildImplementationExecutionBoardMessage(input: {
   const integratedLines = input.board.integratedRows.map(formatImplementationExecutionBoardIntegratedLine);
 
   const hasFailed = input.board.summary.failedTasks > 0;
-  const allTasksComplete =
-    input.board.taskRows.length > 0 &&
-    input.board.taskRows.every((row) => row.currentRole === "completed");
-  const integratedStepStatus = (step: ImplementationExecutionBoardV1["integratedRows"][number]["step"]) =>
-    input.board.integratedRows.find((row) => row.step === step)?.status;
-  const integratedChips: string[] = [];
-  if (allTasksComplete) {
-    if (integratedStepStatus("refactor_common") === "ready") integratedChips.push(RUN_REFACTOR_COMMON_CHIP);
-    if (
-      integratedStepStatus("refactor_common") === "done" &&
-      integratedStepStatus("integrated_review") === "ready"
-    ) {
-      integratedChips.push(RUN_INTEGRATED_REVIEW_CHIP);
-    }
-    if (
-      integratedStepStatus("integrated_review") === "done" &&
-      integratedStepStatus("integrated_security") === "ready"
-    ) {
-      integratedChips.push(RUN_INTEGRATED_SECURITY_CHIP);
-    }
-    if (
-      integratedStepStatus("integrated_security") === "done" &&
-      integratedStepStatus("final_scm") === "ready"
-    ) {
-      integratedChips.push(RUN_FINAL_SCM_CHIP);
-    }
-  }
+  const integratedChips = deriveIntegratedStageInterviewChips(input.board);
   const executionTargetLines = formatBoardExecutionTargetLines(input.board);
+  const reviewReadinessNotice = buildImplementationReviewStageReadinessNotice({
+    board: input.board,
+    previewReady: input.previewReady === true,
+  });
   const chips = [
     IMPLEMENTATION_GENERATION_REQUEST_CHIP,
     ...integratedChips,
@@ -101,6 +82,7 @@ export function buildImplementationExecutionBoardMessage(input: {
     "통합 정리 단계:",
     ...(integratedLines.length ? integratedLines : ["(통합 단계 없음)"]),
     "",
+    ...(reviewReadinessNotice ? [reviewReadinessNotice, ""] : []),
     "다음 작업을 선택해 주세요.",
   ].join("\n");
 

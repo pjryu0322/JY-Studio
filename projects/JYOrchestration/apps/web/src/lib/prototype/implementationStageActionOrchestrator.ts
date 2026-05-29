@@ -21,6 +21,7 @@ export async function orchestrateImplementationStageAction(input: {
   readonly actionId: ImplementationStageActionId;
   readonly source: ImplementationStageActionRunSource;
   readonly effectiveState: EffectiveImplementationState;
+  readonly boardGateContext?: ImplementationStageBoardGateContext | null;
   readonly execute: () => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>;
   readonly nowIso?: string;
 }): Promise<ImplementationStageActionRun> {

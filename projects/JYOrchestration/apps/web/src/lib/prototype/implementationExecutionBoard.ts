@@ -24,6 +24,12 @@ import type {
   ImplementationTaskPriority,
   ImplementationTaskV1,
 } from "@/lib/requirements/implementationTaskList";
+import {
+  RUN_FINAL_SCM_CHIP,
+  RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_INTEGRATED_SECURITY_CHIP,
+  RUN_REFACTOR_COMMON_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 
 export const IMPLEMENTATION_EXECUTION_BOARD_VERSION =
   "implementation_execution_board_v1" as const;
@@ -670,6 +676,90 @@ export function isImplementationReadyForReviewStage(input: {
   return isImplementationBoardComplete(input);
 }
 
+const INTEGRATED_STEP_ACTION_LABEL: Readonly<Record<ImplementationIntegratedStep, string>> = {
+  refactor_common: "리팩토링/공통화",
+  integrated_review: "통합 검수",
+  integrated_security: "통합 보안 점검",
+  final_scm: "최종 SCM 반영",
+};
+
+const INTEGRATED_STEP_DONE_MESSAGE: Readonly<Record<ImplementationIntegratedStep, string>> = {
+  refactor_common: "리팩토링/공통화 정리 단계가 완료되었습니다.",
+  integrated_review: "통합 검수가 완료되었습니다.",
+  integrated_security: "통합 보안 점검이 완료되었습니다.",
+  final_scm: "최종 SCM 반영 단계가 완료되었습니다.",
+};
+
+const INTEGRATED_STEP_NEXT_CHIP: Readonly<
+  Record<ImplementationIntegratedStep, string | null>
+> = {
+  refactor_common: RUN_INTEGRATED_REVIEW_CHIP,
+  integrated_review: RUN_INTEGRATED_SECURITY_CHIP,
+  integrated_security: RUN_FINAL_SCM_CHIP,
+  final_scm: null,
+};
+
+export function deriveIntegratedStageInterviewChips(
+  board: ImplementationExecutionBoardV1,
+): readonly string[] {
+  const allTasksComplete =
+    board.taskRows.length > 0 &&
+    board.taskRows.every((row) => row.currentRole === "completed");
+  if (!allTasksComplete) return [];
+
+  const stepStatus = (step: ImplementationIntegratedStep) =>
+    board.integratedRows.find((row) => row.step === step)?.status;
+
+  const chips: string[] = [];
+  if (stepStatus("refactor_common") === "ready") chips.push(RUN_REFACTOR_COMMON_CHIP);
+  if (stepStatus("refactor_common") === "done" && stepStatus("integrated_review") === "ready") {
+    chips.push(RUN_INTEGRATED_REVIEW_CHIP);
+  }
+  if (stepStatus("integrated_review") === "done" && stepStatus("integrated_security") === "ready") {
+    chips.push(RUN_INTEGRATED_SECURITY_CHIP);
+  }
+  if (stepStatus("integrated_security") === "done" && stepStatus("final_scm") === "ready") {
+    chips.push(RUN_FINAL_SCM_CHIP);
+  }
+  return chips;
+}
+
+export function buildIntegratedStageStepActionNotice(input: {
+  readonly step: ImplementationIntegratedStep;
+  readonly integratedState: ImplementationIntegratedExecutionStateV1;
+}): string {
+  const label = INTEGRATED_STEP_ACTION_LABEL[input.step];
+  const lines = [`${label} 실행을 시작했습니다.`, INTEGRATED_STEP_DONE_MESSAGE[input.step]];
+  const nextChip = INTEGRATED_STEP_NEXT_CHIP[input.step];
+  if (nextChip) {
+    const nextStep = input.integratedState.items.find(
+      (item) => item.status === "ready" || item.status === "queued",
+    );
+    if (nextStep) {
+      lines.push(`다음 단계: ${nextChip}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export function formatTaskScopedWipExecutionSuccessNotice(input: {
+  readonly totalCandidateCount: number;
+  readonly selectedTaskId: string;
+  readonly selectedWorkItemsCount: number;
+}): string {
+  return `TaskList 기준 WIP 후보 ${input.totalCandidateCount}건 중 ${input.selectedTaskId} 작업 ${input.selectedWorkItemsCount}건을 Code Agent WIP 요청으로 전환했습니다.`;
+}
+
+export function formatTaskScopedWipExecutionBlockedNotice(input: {
+  readonly selectedTaskId: string | null;
+  readonly blockedReason: string;
+}): string {
+  if (input.selectedTaskId && input.blockedReason.includes("WorkItem")) {
+    return `${input.selectedTaskId}에 해당하는 Cursor WorkItem이 없어 WIP 요청을 시작하지 못했습니다.`;
+  }
+  return input.blockedReason;
+}
+
 export function buildImplementationReviewStageReadinessNotice(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly previewReady: boolean;
@@ -677,8 +767,15 @@ export function buildImplementationReviewStageReadinessNotice(input: {
   if (isImplementationReadyForReviewStage(input)) {
     return "통합 정리, 통합 검수, 통합 보안, 최종 SCM까지 완료되어 검토단계로 이동할 수 있습니다.";
   }
-  if (input.previewReady && !input.board.integratedRows.every((row) => row.status === "done")) {
-    return "프로토타입 Preview는 준비되었지만, 통합 정리 단계가 아직 완료되지 않았습니다.";
+  const allIntegratedDone = input.board.integratedRows.every((row) => row.status === "done");
+  if (allIntegratedDone && !input.previewReady) {
+    return [
+      "통합 정리 단계는 완료되었지만, 프로토타입 Preview가 아직 준비되지 않았습니다.",
+      "Preview 상태를 새로고침하거나 배포 상태를 확인해 주세요.",
+    ].join("\n");
+  }
+  if (input.previewReady && !allIntegratedDone) {
+    return "프로토타입 Preview는 준비되었지만, 구현단계 통합 정리/검수/보안/최종 SCM이 아직 완료되지 않았습니다.";
   }
   return null;
 }

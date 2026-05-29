@@ -387,6 +387,26 @@ describe("deriveImplementationStageNextActions integrated board", () => {
     expect(actions[0]?.label).toBe(RUN_INTEGRATED_SECURITY_CHIP);
   });
 
+  it("previewReady true + board incomplete does not return prototype preview primary", () => {
+    const input = completedBoardInput();
+    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: {
+        id: "run-1",
+        status: "PREVIEW_READY",
+        previewUrl: "https://preview.example/app",
+        workUnits: [],
+      },
+    });
+    const actions = deriveImplementationStageNextActions(
+      "prototype_ready",
+      input.executionState,
+      prototypeSnapshot,
+      input,
+    );
+    expect(actions[0]?.label).toBe(RUN_REFACTOR_COMMON_CHIP);
+    expect(actions.some((a) => a.label === IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP)).toBe(false);
+  });
+
   it("integrated_security done -> RUN_FINAL_SCM", () => {
     const input = completedBoardInput();
     let integrated = deriveIntegratedExecutionStateReadiness({

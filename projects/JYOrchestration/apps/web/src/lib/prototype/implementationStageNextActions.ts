@@ -15,6 +15,7 @@ import {
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   buildImplementationExecutionBoard,
+  isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -119,14 +120,32 @@ function deriveNextActionsFromIntegratedBoard(
       },
     ];
   }
+  if (stepStatus("final_scm") === "done" && !previewReady) {
+    return [
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "primary",
+        reason: "통합 단계 완료 — Preview 준비 대기, SCM/배포 상태 확인",
+      },
+      {
+        actionId: "SHOW_ENV_CHECK",
+        label: "환경 점검 결과",
+        priority: "secondary",
+        reason: "Preview 준비 상태 확인",
+      },
+    ];
+  }
   return null;
 }
 
 function deriveNextActionsFromPrototypeComplete(
   prototypeSnapshot: ImplementationPrototypeRunSyncSnapshot | null | undefined,
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+  reviewGate?: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null,
 ): readonly ImplementationStageNextAction[] | null {
   if (!isImplementationPrototypeComplete({ executionState, prototypeSnapshot })) return null;
+  if (reviewGate && !isImplementationReadyForReviewStage(reviewGate)) return null;
   return [
     {
       actionId: "SHOW_ARTIFACTS",
@@ -164,8 +183,13 @@ function deriveNextActionsFromPrototypeComplete(
 function deriveNextActionsFromExecutionState(
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
+  reviewGate?: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null,
 ): readonly ImplementationStageNextAction[] | null {
-  const fromComplete = deriveNextActionsFromPrototypeComplete(prototypeSnapshot, executionState);
+  const fromComplete = deriveNextActionsFromPrototypeComplete(
+    prototypeSnapshot,
+    executionState,
+    reviewGate,
+  );
   if (fromComplete?.length) return fromComplete;
 
   if (!executionState?.items.length) return null;
@@ -267,6 +291,8 @@ export function deriveImplementationStageNextActions(
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
   boardInput?: ImplementationStageNextActionsBoardInput | null,
 ): readonly ImplementationStageNextAction[] {
+  let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =
+    null;
   if (boardInput) {
     const board = buildImplementationExecutionBoard({
       projectId: boardInput.projectId,
@@ -276,6 +302,7 @@ export function deriveImplementationStageNextActions(
       boardState: boardInput.boardState,
       qualityGateResults: boardInput.qualityGateResults,
     });
+    reviewGate = { board, previewReady: boardInput.previewReady === true };
     const fromIntegrated = deriveNextActionsFromIntegratedBoard(
       board,
       boardInput.previewReady === true,
@@ -283,7 +310,11 @@ export function deriveImplementationStageNextActions(
     if (fromIntegrated?.length) return fromIntegrated;
   }
 
-  const fromExecution = deriveNextActionsFromExecutionState(executionState, prototypeSnapshot);
+  const fromExecution = deriveNextActionsFromExecutionState(
+    executionState,
+    prototypeSnapshot,
+    reviewGate,
+  );
   if (fromExecution?.length) return fromExecution;
 
   switch (status) {

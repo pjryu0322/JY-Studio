@@ -1,0 +1,323 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildImplementationExecutionBoard,
+  buildIntegratedStageStepActionNotice,
+  buildImplementationReviewStageReadinessNotice,
+  deriveIntegratedStageInterviewChips,
+  formatTaskScopedWipExecutionBlockedNotice,
+  formatTaskScopedWipExecutionSuccessNotice,
+  isImplementationReadyForReviewStage,
+} from "@/lib/prototype/implementationExecutionBoard";
+import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markDeveloperTasksDoneForWip,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksDone,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  deriveIntegratedExecutionStateReadiness,
+  markIntegratedStepDone,
+  markIntegratedStepInProgress,
+} from "@/lib/prototype/implementationIntegratedExecutionState";
+import {
+  deriveImplementationStageNextActions,
+} from "@/lib/prototype/implementationStageNextActions";
+import {
+  RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_REFACTOR_COMMON_CHIP,
+  SCM_CRITERIA_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+
+const NOW = "2026-05-28T12:00:00.000Z";
+
+const workItems: readonly CursorWorkItem[] = [
+  {
+    id: "wi-1",
+    taskId: "dev-1",
+    title: "업로드 화면 구현",
+    prompt: "p",
+    requiredFilesHint: [],
+    expectedOutput: [],
+    testCommands: [],
+    forbiddenPaths: [],
+    blocked: false,
+    blockers: [],
+    qualityGate: { score: 1, promptReady: true, missing: [] },
+  },
+];
+
+function sampleTaskList(): ImplementationTaskListV1 {
+  return {
+    version: "implementation_task_list_v1",
+    projectId: "p-board",
+    createdAt: NOW,
+    updatedAt: NOW,
+    source: "implementation_seed",
+    tasks: [
+      {
+        taskId: "dev-1",
+        title: "업로드 화면 구현",
+        description: "d",
+        taskType: "screen",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "rev-1",
+        title: "검수",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "sec-1",
+        title: "보안",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "security",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "scm-1",
+        title: "SCM",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "scm",
+        priority: "medium",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+    ],
+    roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 1, scm: 1 },
+  };
+}
+
+function completedExecutionState() {
+  let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+    projectId: "p-board",
+    taskList: sampleTaskList(),
+    nowIso: NOW,
+  });
+  state = markDeveloperTasksDoneForWip({ state, cursorWorkItems: workItems, nowIso: NOW });
+  state = markPostDeveloperReviewTasksQueued({ state, nowIso: NOW });
+  state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
+  state = markRoleTasksDone({ state, ownerRole: "security", nowIso: NOW });
+  state = markRoleTasksDone({ state, ownerRole: "scm", nowIso: NOW });
+  return state;
+}
+
+function completedBoard(integratedExecutionState?: ReturnType<typeof deriveIntegratedExecutionStateReadiness>) {
+  return buildImplementationExecutionBoard({
+    projectId: "p-board",
+    taskList: sampleTaskList(),
+    executionState: completedExecutionState(),
+    integratedExecutionState,
+    nowIso: NOW,
+  });
+}
+
+describe("implementationExecutionBoardMessage helpers", () => {
+  it("formatTaskScopedWipExecutionSuccessNotice includes selectedTaskId and workItems count", () => {
+    const notice = formatTaskScopedWipExecutionSuccessNotice({
+      totalCandidateCount: 14,
+      selectedTaskId: "DEV-001",
+      selectedWorkItemsCount: 1,
+    });
+    expect(notice).toContain("DEV-001");
+    expect(notice).toContain("14");
+    expect(notice).toContain("1건");
+  });
+
+  it("formatTaskScopedWipExecutionBlockedNotice includes missing workItem reason", () => {
+    const notice = formatTaskScopedWipExecutionBlockedNotice({
+      selectedTaskId: "DEV-001",
+      blockedReason: "DEV-001에 해당하는 Cursor WorkItem이 없습니다.",
+    });
+    expect(notice).toContain("DEV-001");
+    expect(notice).toContain("WorkItem");
+  });
+
+  it("buildIntegratedStageStepActionNotice contains start, done, and next step", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const notice = buildIntegratedStageStepActionNotice({
+      step: "refactor_common",
+      integratedState: integrated,
+    });
+    expect(notice).toContain("실행을 시작");
+    expect(notice).toContain("완료");
+    expect(notice).toContain("통합 검수 실행");
+  });
+
+  it("board message after refactor_common done contains integrated_review ready chip", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const board = completedBoard(integrated);
+    const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
+    expect(message.meta?.interviewSuggestions).toContain(RUN_INTEGRATED_REVIEW_CHIP);
+    expect(message.content).toContain("통합 검수 | ready");
+  });
+
+  it("all integrated done + previewReady false shows preview pending notice", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security", "final_scm"] as const) {
+      integrated = markIntegratedStepInProgress({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        nowIso: NOW,
+      });
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const board = completedBoard(integrated);
+    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: false });
+    expect(notice).toContain("Preview");
+    expect(isImplementationReadyForReviewStage({ board, previewReady: false })).toBe(false);
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      previewReady: false,
+    });
+    expect(message.content).toContain("Preview");
+  });
+
+  it("previewReady true + board complete shows review stage ready", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security", "final_scm"] as const) {
+      integrated = markIntegratedStepInProgress({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        nowIso: NOW,
+      });
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const board = completedBoard(integrated);
+    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(true);
+    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: true });
+    expect(notice).toContain("검토단계");
+  });
+
+  it("previewReady true + board incomplete shows integrated pending message", () => {
+    const board = completedBoard();
+    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(false);
+    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: true });
+    expect(notice).toContain("통합");
+  });
+
+  it("board chips and next actions agree for integrated steps", () => {
+    const board = completedBoard();
+    const chips = deriveIntegratedStageInterviewChips(board);
+    const actions = deriveImplementationStageNextActions("task_list_ready", completedExecutionState(), null, {
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: completedExecutionState(),
+      previewReady: false,
+    });
+    expect(chips[0]).toBe(RUN_REFACTOR_COMMON_CHIP);
+    expect(actions[0]?.label).toBe(RUN_REFACTOR_COMMON_CHIP);
+  });
+
+  it("final_scm done + previewReady false next action prefers SCM check", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security", "final_scm"] as const) {
+      integrated = markIntegratedStepInProgress({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        nowIso: NOW,
+      });
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const board = completedBoard(integrated);
+    const actions = deriveImplementationStageNextActions("task_list_ready", completedExecutionState(), null, {
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: completedExecutionState(),
+      integratedExecutionState: integrated,
+      previewReady: false,
+    });
+    expect(actions[0]?.label).toBe(SCM_CRITERIA_CHIP);
+  });
+});

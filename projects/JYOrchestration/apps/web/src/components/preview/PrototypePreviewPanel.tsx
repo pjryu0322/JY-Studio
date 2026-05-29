@@ -123,9 +123,14 @@ import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementa
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import {
   buildImplementationExecutionBoard,
+  buildImplementationReviewStageReadinessNotice,
+  buildIntegratedStageStepActionNotice,
   filterCursorWorkItemsForExecutableTask,
+  formatTaskScopedWipExecutionBlockedNotice,
+  formatTaskScopedWipExecutionSuccessNotice,
   pickFirstExecutableDeveloperTaskId,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
   markIntegratedStepDone,
   markIntegratedStepInProgress,
@@ -2191,10 +2196,7 @@ export function PrototypePreviewPanel({
   );
 
   const runIntegratedStageStep = useCallback(
-    (
-      step: ImplementationIntegratedStep,
-      doneMessage: string,
-    ): ImplementationStageActionRunResult => {
+    (step: ImplementationIntegratedStep): ImplementationStageActionRunResult => {
       const pid = projectId.trim();
       if (!pid) {
         const message = "프로젝트를 선택해 주세요.";
@@ -2202,19 +2204,28 @@ export function PrototypePreviewPanel({
         return { outcome: "blocked", message };
       }
       const taskList = parsedRequirementsState.implementationTaskListV1;
-      const allTasksComplete =
-        taskList != null &&
-        buildImplementationExecutionBoard({
-          projectId: pid,
-          taskList,
-          executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-          integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
-          boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
-          qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
-        }).taskRows.every((row) => row.currentRole === "completed");
+      if (!taskList) {
+        const message = "구현 작업목록이 없어 통합 단계를 실행할 수 없습니다.";
+        showToast(message);
+        return { outcome: "blocked", message };
+      }
+
+      const boardBefore = buildImplementationExecutionBoard({
+        projectId: pid,
+        taskList,
+        executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+        integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+        boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+        qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+      });
+      const allTasksComplete = boardBefore.taskRows.every((row) => row.currentRole === "completed");
 
       const prior = parsedRequirementsState.implementationIntegratedExecutionStateV1;
       const inProgress = markIntegratedStepInProgress({ state: prior, projectId: pid, step });
+      void persistChatToDb(undefined, {
+        implementationIntegratedExecutionStateV1: inProgress,
+      });
+
       const done = markIntegratedStepDone({
         state: inProgress,
         projectId: pid,
@@ -2224,10 +2235,46 @@ export function PrototypePreviewPanel({
       void persistChatToDb(undefined, {
         implementationIntegratedExecutionStateV1: done,
       });
-      executionSingleChat.appendAiNotice(doneMessage);
+
+      const actionNotice = buildIntegratedStageStepActionNotice({ step, integratedState: done });
+      executionSingleChat.appendAiNotice(actionNotice);
+
+      const nowIso = new Date().toISOString();
+      const nextBoard = buildImplementationExecutionBoard({
+        projectId: pid,
+        taskList,
+        executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+        integratedExecutionState: done,
+        boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+        qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+      });
+      appendImplementationTaskListAiMessage(
+        buildImplementationExecutionBoardMessage({
+          board: nextBoard,
+          nowIso,
+          previewReady: prototypeRunSyncSnapshot.previewReady,
+        }),
+      );
+
+      const reviewNotice = buildImplementationReviewStageReadinessNotice({
+        board: nextBoard,
+        previewReady: prototypeRunSyncSnapshot.previewReady,
+      });
+      if (reviewNotice) {
+        executionSingleChat.appendAiNotice(reviewNotice);
+      }
+
       return { outcome: "executed" };
     },
-    [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
+    [
+      parsedRequirementsState,
+      projectId,
+      persistChatToDb,
+      executionSingleChat,
+      showToast,
+      appendImplementationTaskListAiMessage,
+      prototypeRunSyncSnapshot.previewReady,
+    ],
   );
 
   const runImplementationStageAction = useCallback(
@@ -2366,6 +2413,8 @@ export function PrototypePreviewPanel({
           }
 
           let workItemsForWip = runtimeWorkItems;
+          let scopedTaskId: string | null = null;
+          let scopedWorkItemsCount = runtimeWorkItems.length;
           if (taskList && runtimeExecutionState) {
             const board = buildImplementationExecutionBoard({
               projectId: pid,
@@ -2379,13 +2428,19 @@ export function PrototypePreviewPanel({
               board,
               workItems: runtimeWorkItems,
             });
+            scopedTaskId = scoped.selectedTaskId;
             if (!scoped.selectedWorkItems.length) {
-              const message =
-                scoped.blockedReason ?? "실행 가능한 개발자 작업이 없어 Code Agent WIP 요청을 시작하지 못했습니다.";
+              const message = formatTaskScopedWipExecutionBlockedNotice({
+                selectedTaskId: scoped.selectedTaskId,
+                blockedReason:
+                  scoped.blockedReason ??
+                  "실행 가능한 개발자 작업이 없어 Code Agent WIP 요청을 시작하지 못했습니다.",
+              });
               executionSingleChat.appendAiNotice(message);
               return { outcome: "blocked", message };
             }
             workItemsForWip = [...scoped.selectedWorkItems];
+            scopedWorkItemsCount = workItemsForWip.length;
           }
 
           const wipResult = executeCodeAgentWipWorkRequest(
@@ -2416,8 +2471,9 @@ export function PrototypePreviewPanel({
           }
 
           const devCount = wipResult.developerTaskCount;
-          const firstTaskId =
-            taskList && runtimeExecutionState
+          const selectedTaskId =
+            scopedTaskId ??
+            (taskList && runtimeExecutionState
               ? pickFirstExecutableDeveloperTaskId(
                   buildImplementationExecutionBoard({
                     projectId: pid,
@@ -2429,16 +2485,29 @@ export function PrototypePreviewPanel({
                     qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
                   }),
                 )
-              : null;
-          showToast(
-            devCount > 0
-              ? firstTaskId
-                ? `TaskList 기준 ${devCount}건 중 ${firstTaskId}부터 Code Agent WIP 요청을 시작했습니다.`
-                : `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
-              : "Code Agent WIP 작업 요청을 시작했습니다.",
-          );
+              : null);
+          const successNotice =
+            selectedTaskId && runtimeWorkItems.length
+              ? formatTaskScopedWipExecutionSuccessNotice({
+                  totalCandidateCount: runtimeWorkItems.length,
+                  selectedTaskId,
+                  selectedWorkItemsCount: scopedWorkItemsCount,
+                })
+              : devCount > 0
+                ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
+                : "Code Agent WIP 작업 요청을 시작했습니다.";
+          executionSingleChat.appendAiNotice(successNotice);
+          showToast(successNotice);
           return { outcome: "executed" };
         }
+        case "RUN_REFACTOR_COMMON":
+          return runIntegratedStageStep("refactor_common");
+        case "RUN_INTEGRATED_REVIEW":
+          return runIntegratedStageStep("integrated_review");
+        case "RUN_INTEGRATED_SECURITY":
+          return runIntegratedStageStep("integrated_security");
+        case "RUN_FINAL_SCM":
+          return runIntegratedStageStep("final_scm");
         default:
           return { outcome: "blocked", message: "지원하지 않는 구현단계 action입니다." };
       }
@@ -2454,6 +2523,16 @@ export function PrototypePreviewPanel({
       executionSingleChat,
       wipChipHandlers,
       runImplementationQualityGate,
+      runIntegratedStageStep,
+      appendImplementationTaskListAiMessage,
+      parsedRequirementsState,
+      projectId,
+      requirementsStateJson,
+      effectiveImplementationState,
+      persistChatToDb,
+      showToast,
+      executionArtifacts,
+      prototypeRunSyncSnapshot,
     ],
   );
 
