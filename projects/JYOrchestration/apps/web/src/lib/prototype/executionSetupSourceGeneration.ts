@@ -3,6 +3,7 @@ import {
   getCursorBridgeAvailability,
   resolveCursorBridgeCloneRoot,
 } from "@/lib/prototype/cursorBridgeRuntime";
+import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import {
   resolveProjectTargetRepositoryFromExecutionSetup,
   type ProjectTargetRepository,
@@ -48,10 +49,13 @@ export function isCursorSourceGenerationConfigured(input: {
   readonly cursorApiToken?: string | null;
   readonly env?: Record<string, string | undefined>;
 }): boolean {
-  if (getCursorBridgeAvailability({ env: input.env }).available) return true;
-  const url = String(input.cursorApiUrl ?? "").trim();
-  const token = String(input.cursorApiToken ?? "").trim();
-  return Boolean(url && token);
+  return evaluateCursorExecutionAvailability({
+    setup: {
+      cursorApiUrl: input.cursorApiUrl,
+      cursorApiToken: input.cursorApiToken,
+    },
+    env: input.env,
+  }).ready;
 }
 
 export function resolveSourceGenerationWorkspaceRoot(input: {
@@ -113,12 +117,20 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
     missing.push("workspacePath 없음");
   }
 
-  const bridgeAvailable = getCursorBridgeAvailability({ env: input.env }).available;
+  const cursorAvailability = evaluateCursorExecutionAvailability({
+    setup: input.setup,
+    env: input.env,
+  });
+  const bridgeAvailable = cursorAvailability.ready;
   const hasCursorToken =
     input.setup.hasCursorToken === true || Boolean(String(input.setup.cursorApiToken ?? "").trim());
   const hasCursorApiUrl = Boolean(String(input.setup.cursorApiUrl ?? "").trim());
-  if (!bridgeAvailable && !(hasCursorToken && hasCursorApiUrl)) {
-    missing.push("Cursor API/Bridge 설정 없음");
+  if (!bridgeAvailable) {
+    if (cursorAvailability.mode === "cursor_api") {
+      missing.push(cursorAvailability.reason);
+    } else {
+      missing.push("Cursor API/Bridge 설정 없음");
+    }
   }
 
   if (missing.length) {

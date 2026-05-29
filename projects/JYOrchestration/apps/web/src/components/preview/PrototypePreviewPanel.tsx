@@ -57,13 +57,17 @@ import { isCursorBridgeExecutionAvailable as isCursorBridgeRuntimeAvailable } fr
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
+import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompletionPolicy";
 import {
   buildTargetRepoE2eTimelineEntry,
+  buildCursorApiDirectTimelineEntry,
   CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE,
   formatTargetRepoE2eDiagnosticLines,
   isCursorBridgeConfiguredForSourceGeneration,
 } from "@/lib/prototype/targetRepoE2eDiagnostics";
+import { CURSOR_API_NOT_CONFIGURED_MESSAGE } from "@/lib/prototype/cursorExecutionAvailability";
 import { toCodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
@@ -363,6 +367,8 @@ export function PrototypePreviewPanel({
   const [plannerCreatePending, setPlannerCreatePending] = useState(false);
   const [pendingImplementationPatch, setPendingImplementationPatch] =
     useState<PendingImplementationPatch>({});
+  const [executionSetupRow, setExecutionSetupRow] =
+    useState<ExecutionSetupSourceGenerationRow | null>(null);
   const [plannerProgressStep, setPlannerProgressStep] = useState(1);
   const planProgressStartedAtRef = useRef(0);
   /** 작업계획 생성 중복 클릭 방지 — state와 달리 동기적으로 잠금 */
@@ -494,6 +500,35 @@ export function PrototypePreviewPanel({
     setTimelineCards(Array.isArray(tc) && tc.length ? [...tc] : []);
     lastTimelineSnapRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
+  }, [projectId]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) {
+      setExecutionSetupRow(null);
+      return;
+    }
+    void fetchExecutionSetup(pid).then((res) => {
+      const data = res.res.ok && res.json.success ? res.json.data : null;
+      if (!data) {
+        setExecutionSetupRow(null);
+        return;
+      }
+      setExecutionSetupRow({
+        gitRepoUrl: data.gitRepoUrl,
+        gitRepoName: data.gitRepoName,
+        gitRepoProvider: data.gitRepoProvider,
+        baseBranch: data.baseBranch,
+        workspacePath: data.workspacePath,
+        allowedPathGlobs: data.allowedPathGlobs,
+        autoCommit: data.autoCommit,
+        autoPush: data.autoPush,
+        autoPr: data.autoPr,
+        cursorApiUrl: data.cursorApiUrl,
+        hasCursorToken: data.hasCursorToken,
+        hasGithubAccessToken: data.hasGithubAccessToken,
+      });
+    });
   }, [projectId]);
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
@@ -2396,6 +2431,7 @@ export function PrototypePreviewPanel({
           board: nextBoard,
           nowIso,
           previewReady: prototypeRunSyncSnapshot.previewReady,
+          executionSetup: executionSetupRow,
         }),
       );
 
@@ -2769,6 +2805,7 @@ export function PrototypePreviewPanel({
               previewReady: prototypeRunSyncSnapshot.previewReady,
               hasExecutionState: true,
               codeAgentWipExecutionV1: wip,
+              executionSetup: executionSetupRow,
             });
           if (boardMessage) {
             timeline = appendPromptTimeline(
@@ -2887,11 +2924,33 @@ export function PrototypePreviewPanel({
 
             if (!isCursorBridgeConfiguredForSourceGeneration({ setup: setupRow })) {
               const diagnostic = formatTargetRepoE2eDiagnosticLines({ setup: setupRow, wip }).join("\n");
-              executionSingleChat.appendAiNotice(`${CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE}\n\n${diagnostic}`);
-              showToast("Cursor Bridge가 설정되지 않았습니다.");
+              const blockedMessage =
+                setupRow?.cursorApiUrl || setupRow?.hasCursorToken
+                  ? CURSOR_API_NOT_CONFIGURED_MESSAGE
+                  : CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE;
+              executionSingleChat.appendAiNotice(`${blockedMessage}\n\n${diagnostic}`);
+              showToast("Cursor 실행 설정이 준비되지 않았습니다.");
               setExecutionEnvironmentModalOpen(true);
               return;
             }
+
+            const cursorAvailability = evaluateCursorExecutionAvailability({ setup: setupRow });
+            const availabilityTimeline = buildCursorApiDirectTimelineEntry({
+              action: "cursor_api_availability_checked",
+              projectId: pid,
+              selectedTaskId,
+              repoFullName: setupRow?.gitRepoName ?? undefined,
+              workspacePath: setupRow?.workspacePath ?? undefined,
+              branchName: wip.branchName,
+              status: cursorAvailability.status,
+              nowIso: new Date().toISOString(),
+            });
+            void persistChatToDb(undefined, {
+              promptTimeline: [
+                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
+                availabilityTimeline,
+              ],
+            });
 
             if (!readiness.ok) {
               const diagnostic = formatTargetRepoE2eDiagnosticLines({
@@ -2936,7 +2995,28 @@ export function PrototypePreviewPanel({
               ],
             });
 
-            showToast("Cursor Bridge 실행을 시작합니다...");
+            showToast(
+              cursorAvailability.mode === "cursor_api"
+                ? "Cursor API 직접 실행을 시작합니다..."
+                : "Cursor Bridge 실행을 시작합니다...",
+            );
+            const requestedTimeline = buildCursorApiDirectTimelineEntry({
+              action: "cursor_api_direct_execution_requested",
+              projectId: pid,
+              selectedTaskId,
+              repoFullName: targetRepository.repoFullName,
+              workspacePath: readiness.context.workspaceRoot,
+              branchName: wip.branchName,
+              status: cursorAvailability.mode,
+              nowIso: new Date().toISOString(),
+            });
+            void persistChatToDb(undefined, {
+              promptTimeline: [
+                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
+                availabilityTimeline,
+                requestedTimeline,
+              ],
+            });
             const requestedWip: typeof wip = {
               ...wip,
               bridgeExecutionStatus: "bridge_requested",
@@ -3073,6 +3153,7 @@ export function PrototypePreviewPanel({
                       nowIso: new Date().toISOString(),
                       previewReady: prototypeRunSyncSnapshot.previewReady,
                       codeAgentWipExecutionV1: approvedWip,
+                      executionSetup: executionSetupRow,
                     }),
                   );
                 }
@@ -3158,6 +3239,7 @@ export function PrototypePreviewPanel({
                 board: nextBoard,
                 nowIso,
                 previewReady: prototypeRunSyncSnapshot.previewReady,
+                executionSetup: executionSetupRow,
               }),
             );
           }
@@ -3330,6 +3412,7 @@ export function PrototypePreviewPanel({
                 board: nextBoard,
                 nowIso: new Date().toISOString(),
                 previewReady: prototypeRunSyncSnapshot.previewReady,
+                executionSetup: executionSetupRow,
               }),
             );
           }

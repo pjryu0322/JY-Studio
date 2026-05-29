@@ -20,8 +20,10 @@ import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/pr
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { CodeAgentWipOrchestrationPatch } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
+import { CURSOR_API_UNSUPPORTED_MESSAGE } from "@/lib/prototype/cursorApiDirectClient";
 import {
   BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING,
+  buildCursorApiDirectTimelineEntry,
   buildTargetRepoE2eTimelineEntry,
 } from "@/lib/prototype/targetRepoE2eDiagnostics";
 
@@ -41,8 +43,14 @@ function buildBridgeFailedMessage(input: {
   readonly wip: CodeAgentWipExecutionV1;
   readonly errorMessage: string;
   readonly nowIso: string;
+  readonly unsupported?: boolean;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
+  const heading = input.unsupported
+    ? "Cursor API 직접 실행을 지원하지 않습니다."
+    : input.errorMessage.includes("Cursor API")
+      ? "Cursor API 호출에 실패했습니다."
+      : "Cursor Bridge 실행에 실패했습니다.";
   return newRequirementsMessage({
     id: `code-agent-bridge-failed-${input.nowIso}`,
     role: "ai",
@@ -51,7 +59,7 @@ function buildBridgeFailedMessage(input: {
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
     content: [
-      "Cursor Bridge 실행에 실패했습니다.",
+      heading,
       "",
       "사유:",
       `- ${input.errorMessage}`,
@@ -168,6 +176,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
   return {
     ...input.wip,
     executionMode: "cursor_bridge",
+    bridgeAdapter: input.bridgeRequest?.bridgeAdapter ?? input.wip.bridgeAdapter,
     bridgeExecutionStatus: "bridge_completed",
     status: "developer_reviewing",
     branchName: commit.branchName,
@@ -234,26 +243,41 @@ export function buildCursorBridgeOrchestrationResult(input: {
   };
 
   if (!input.bridgeResult.ok || input.bridgeResult.status === "failed") {
+    const errorMessage = input.bridgeResult.errorMessage ?? "알 수 없는 오류";
+    const unsupported =
+      errorMessage.includes(CURSOR_API_UNSUPPORTED_MESSAGE.slice(0, 20)) ||
+      errorMessage.includes("endpoint가 지원되지 않습니다");
     const failedWip: CodeAgentWipExecutionV1 = {
       ...runningWip,
       bridgeExecutionStatus: "failed",
-      bridgeErrorMessage: input.bridgeResult.errorMessage,
+      bridgeErrorMessage: errorMessage,
+      ...(input.bridgeRequest?.bridgeAdapter ? { bridgeAdapter: input.bridgeRequest.bridgeAdapter } : {}),
     };
     const messages = [
       ...prior,
       buildBridgeFailedMessage({
         wip: failedWip,
-        errorMessage: input.bridgeResult.errorMessage ?? "알 수 없는 오류",
+        errorMessage,
         nowIso: now,
+        unsupported,
       }),
     ];
-    const timeline = appendPromptTimeline(input.promptTimeline, buildCodeAgentWipTimelineEntry({
-      action: "cursor_bridge_failed",
-      wip: failedWip,
-      taskIds: [taskId],
-      actor: "code_agent",
-      nowIso: now,
-    }));
+    const timeline = appendPromptTimeline(
+      input.promptTimeline,
+      buildCursorApiDirectTimelineEntry({
+        action: unsupported
+          ? "cursor_api_direct_execution_unsupported"
+          : "cursor_api_direct_execution_failed",
+        projectId: input.wip.projectId,
+        selectedTaskId: taskId,
+        repoFullName: failedWip.targetRepoFullName ?? failedWip.targetRepository,
+        workspacePath: failedWip.workspacePath,
+        branchName: failedWip.branchName,
+        status: unsupported ? "unsupported" : "failed",
+        reason: errorMessage,
+        nowIso: now,
+      }),
+    );
     return {
       kind: "failed",
       message: input.bridgeResult.errorMessage ?? "Cursor Bridge 실행에 실패했습니다.",

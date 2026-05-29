@@ -7,7 +7,7 @@ import {
   type CursorBridgeExecuteRequest,
 } from "@/lib/prototype/cursorBridgeExecution";
 import { executeCursorBridgeWorkItem } from "@/lib/prototype/cursorBridgeClient";
-import { getCursorBridgeAvailability } from "@/lib/prototype/cursorBridgeRuntime";
+import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
@@ -67,6 +67,11 @@ export async function POST(request: NextRequest) {
       env: process.env as Record<string, string | undefined>,
     });
 
+    const availability = evaluateCursorExecutionAvailability({
+      setup,
+      env: process.env as Record<string, string | undefined>,
+    });
+
     if (!readiness.ok) {
       return NextResponse.json(
         {
@@ -74,7 +79,33 @@ export async function POST(request: NextRequest) {
           status: "blocked",
           message: readiness.message,
           missing: readiness.missing,
-          availability: getCursorBridgeAvailability(),
+          availability,
+        },
+        { status: 200 },
+      );
+    }
+
+    const cursorApiToken = String(setup?.cursorApiToken ?? "").trim();
+    if (availability.mode === "cursor_api" && !cursorApiToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "blocked",
+          message:
+            "Cursor API Token을 읽을 수 없습니다. 환경설정에서 Cursor API 키를 다시 저장해 주세요.",
+          availability,
+        },
+        { status: 200 },
+      );
+    }
+
+    if (!availability.ready) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "blocked",
+          message: availability.reason,
+          availability,
         },
         { status: 200 },
       );
@@ -133,16 +164,37 @@ export async function POST(request: NextRequest) {
     }
 
     const bridgeRequest = built as CursorBridgeExecuteRequest;
-    const result = await executeCursorBridgeWorkItem(bridgeRequest);
+    const bridgeRequestWithAdapter: CursorBridgeExecuteRequest = {
+      ...bridgeRequest,
+      ...(readiness.context.cursorApiUrl
+        ? { cursorApiUrl: readiness.context.cursorApiUrl }
+        : {}),
+      ...(availability.mode === "cursor_api" && cursorApiToken
+        ? { cursorApiToken, bridgeAdapter: "cursor_api" as const }
+        : availability.mode === "http_bridge"
+          ? { bridgeAdapter: "http_bridge" as const }
+          : availability.mode === "local_runner"
+            ? { bridgeAdapter: "local_runner" as const }
+            : {}),
+    };
+
+    const result = await executeCursorBridgeWorkItem(bridgeRequestWithAdapter, {
+      env: process.env as Record<string, string | undefined>,
+      executionMode: availability.mode,
+      cursorApiToken: cursorApiToken || undefined,
+      bridgeAdapter: bridgeRequestWithAdapter.bridgeAdapter,
+    });
 
     return NextResponse.json({
       success: result.ok && result.status === "completed",
       result,
       workspaceRootSource: context.workspaceRootSource,
+      executionMode: availability.mode,
+      bridgeAdapter: bridgeRequestWithAdapter.bridgeAdapter ?? availability.mode,
       ...(context.workspaceRootFallbackWarning
         ? { workspaceRootFallbackWarning: context.workspaceRootFallbackWarning }
         : {}),
-      availability: getCursorBridgeAvailability(),
+      availability,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

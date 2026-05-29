@@ -13,6 +13,12 @@ import {
   prepareExecutionSetupWorkspace,
 } from "@/lib/prototype/cursorBridgeTargetRepoGit";
 import { getCursorBridgeAvailability } from "@/lib/prototype/cursorBridgeRuntime";
+import {
+  executeCursorApiDirectFromBridgeRequest,
+  type CursorBridgeAdapter,
+} from "@/lib/prototype/cursorApiDirectExecution";
+import type { CursorExecutionMode } from "@/lib/prototype/cursorExecutionAvailability";
+import { CURSOR_API_TOKEN_MISSING_MESSAGE } from "@/lib/prototype/cursorExecutionAvailability";
 import type { CursorExecutionPayload } from "@/lib/integration/cursorExecutionTypes";
 import { runCursorCliExecution } from "@/lib/integration/cursorExecutor";
 
@@ -264,11 +270,34 @@ export async function executeCursorBridgeWorkItem(
   request: CursorBridgeExecuteRequest,
   input?: {
     readonly env?: Record<string, string | undefined>;
+    readonly executionMode?: CursorExecutionMode;
+    readonly cursorApiToken?: string;
+    readonly bridgeAdapter?: CursorBridgeAdapter;
   },
 ): Promise<CursorBridgeExecuteResult> {
   const env = input?.env ?? (process.env as Record<string, string | undefined>);
-  const availability = getCursorBridgeAvailability({ env });
+  const adapter = input?.bridgeAdapter ?? request.bridgeAdapter;
+  const executionMode = input?.executionMode;
   const validationContext = bridgeResultValidationContextFromRequest(request);
+
+  if (
+    (executionMode === "cursor_api" || adapter === "cursor_api") &&
+    request.cursorApiUrl?.trim()
+  ) {
+    const token = String(input?.cursorApiToken ?? request.cursorApiToken ?? "").trim();
+    if (!token) {
+      return blockedCursorBridgeResult({
+        selectedTaskId: request.selectedTaskId,
+        errorMessage: CURSOR_API_TOKEN_MISSING_MESSAGE,
+      });
+    }
+    return executeCursorApiDirectFromBridgeRequest({
+      request: { ...request, bridgeAdapter: "cursor_api" },
+      cursorApiToken: token,
+    });
+  }
+
+  const availability = getCursorBridgeAvailability({ env });
 
   if (!availability.available) {
     return blockedCursorBridgeResult({

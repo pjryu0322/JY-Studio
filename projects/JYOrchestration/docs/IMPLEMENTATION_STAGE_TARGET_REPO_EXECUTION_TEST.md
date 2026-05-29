@@ -100,3 +100,31 @@
 
 - bridge_completed 후 검수자/보안관 점검 실행
 - 기대: commitSha/changedFiles 표시 + diff 엔진 미연결 안내, 자동 passed 없음
+
+## 8. Cursor API 직접 호출 모드 확인
+
+- ExecutionSetup.cursorApiUrl 저장
+- Cursor API Token 저장 (화면에는 masked, 서버 route는 plaintext 사용)
+- Git 저장소 / workspacePath / GitHub Token 저장
+- 보드 진단에서 `Mode: cursor_api` 확인
+- `Status: ready` 또는 `configured_but_unverified` 확인
+- `CURSOR_BRIDGE_ENABLED=false` 여도 **disabled로 표시되면 실패**
+
+## 9. Cursor API 직접 실행 검증
+
+1. [생성요청]
+2. WIP 초안 생성 확인
+3. [Cursor 실행 요청]
+4. prompt timeline에 `cursor_api_availability_checked`, `cursor_api_direct_execution_requested` 확인
+5. Cursor API 호출 로그 확인 (token/API key는 로그에 없어야 함)
+6. target repo changedFiles 확인
+7. commitSha 확인 (wip-stub 아님)
+8. push 상태 확인
+
+## 10. Cursor API 실패 기준
+
+- Cursor API 설정이 있는데 `Mode: disabled`
+- cursorApiTokenMasked를 실제 token처럼 전달
+- Cursor API unsupported인데 bridge_completed 표시
+- commitSha/changedFiles 없이 bridge_completed
+- Cursor API endpoint 404/501인데 성공으로 표시

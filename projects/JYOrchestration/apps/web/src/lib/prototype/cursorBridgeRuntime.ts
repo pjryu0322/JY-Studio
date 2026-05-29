@@ -1,3 +1,6 @@
+import { formatCursorExecutionAvailabilityDiagnosticLines } from "@/lib/prototype/cursorExecutionAvailability";
+import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+
 export type CodeAgentBridgeProvider = "cursor";
 
 export type CodeAgentBridgeAvailabilityStatus =
@@ -158,7 +161,14 @@ export function isCursorBridgeExecutionAvailable(input?: {
 
 export function formatCursorBridgeAvailabilityDiagnosticLines(input?: {
   readonly env?: Record<string, string | undefined>;
+  readonly setup?: ExecutionSetupSourceGenerationRow | null;
 }): readonly string[] {
+  if (input?.setup !== undefined) {
+    return formatCursorExecutionAvailabilityDiagnosticLines({
+      setup: input.setup,
+      env: input.env,
+    });
+  }
   const availability = getCursorBridgeAvailability(input);
   const pushEnabled = isTruthyEnv(envRecord(input?.env).GIT_APPLY_PUSH_ENABLED);
   return [

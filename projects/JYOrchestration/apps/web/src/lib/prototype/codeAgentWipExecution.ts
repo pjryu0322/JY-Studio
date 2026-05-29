@@ -56,7 +56,9 @@ export type CodeAgentWipExecutionStatus =
   | "scm_commit_pending"
   | "failed";
 
-export type CodeAgentWipExecutionMode = "stub" | "cursor_bridge" | "external";
+export type CodeAgentWipExecutionMode = "stub" | "cursor_bridge" | "cursor_api" | "external";
+
+export type CodeAgentBridgeAdapter = "cursor_api" | "http_bridge" | "local_runner";
 
 export type CodeAgentWipBridgeExecutionStatus =
   | "draft_created"
@@ -129,6 +131,8 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   selectedWorkItemIds?: readonly string[];
   /** Stub vs real Cursor bridge execution. */
   executionMode?: CodeAgentWipExecutionMode;
+  /** Transport used for Cursor source generation. */
+  bridgeAdapter?: CodeAgentBridgeAdapter;
   /** Bridge lifecycle (distinct from workflow `status`). */
   bridgeExecutionStatus?: CodeAgentWipBridgeExecutionStatus;
   bridgeCompletedAt?: string;

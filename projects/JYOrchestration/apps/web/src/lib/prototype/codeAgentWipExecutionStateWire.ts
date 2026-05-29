@@ -136,11 +136,21 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     typeof o.selectedTaskId === "string" && o.selectedTaskId.trim() ? o.selectedTaskId.trim() : undefined;
   const selectedWorkItemIds = parseStringArray(o.selectedWorkItemIds);
   const executionModeRaw = String(o.executionMode ?? "").trim() as CodeAgentWipExecutionMode;
-  const executionMode: CodeAgentWipExecutionMode | undefined = ["stub", "cursor_bridge", "external"].includes(
-    executionModeRaw,
-  )
+  const executionMode: CodeAgentWipExecutionMode | undefined = [
+    "stub",
+    "cursor_bridge",
+    "cursor_api",
+    "external",
+  ].includes(executionModeRaw)
     ? executionModeRaw
     : undefined;
+  const bridgeAdapterRaw = String(o.bridgeAdapter ?? "").trim();
+  const bridgeAdapter =
+    bridgeAdapterRaw === "cursor_api" ||
+    bridgeAdapterRaw === "http_bridge" ||
+    bridgeAdapterRaw === "local_runner"
+      ? (bridgeAdapterRaw as import("@/lib/prototype/codeAgentWipExecution").CodeAgentBridgeAdapter)
+      : undefined;
   const bridgeRaw = String(o.bridgeExecutionStatus ?? o.executionStatus ?? "").trim() as CodeAgentWipBridgeExecutionStatus;
   const bridgeExecutionStatus: CodeAgentWipBridgeExecutionStatus | undefined = [
     "draft_created",
@@ -221,6 +231,7 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(selectedTaskId ? { selectedTaskId } : {}),
     ...(selectedWorkItemIds.length ? { selectedWorkItemIds } : {}),
     ...(executionMode ? { executionMode } : {}),
+    ...(bridgeAdapter ? { bridgeAdapter } : {}),
     ...(bridgeExecutionStatus ? { bridgeExecutionStatus } : {}),
     ...(bridgeCompletedAt ? { bridgeCompletedAt } : {}),
     ...(bridgeErrorMessage ? { bridgeErrorMessage } : {}),

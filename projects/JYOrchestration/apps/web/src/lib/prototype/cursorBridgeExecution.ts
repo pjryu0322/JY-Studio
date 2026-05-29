@@ -22,6 +22,8 @@ export type CursorSourceGenerationRequest = Readonly<{
   readonly autoPush: boolean;
   readonly autoPr: boolean;
   readonly cursorApiUrl?: string;
+  readonly cursorApiToken?: string;
+  readonly bridgeAdapter?: import("@/lib/prototype/cursorApiDirectExecution").CursorBridgeAdapter;
   /** @deprecated alias — use branchName */
   readonly workBranch?: string;
 }>;

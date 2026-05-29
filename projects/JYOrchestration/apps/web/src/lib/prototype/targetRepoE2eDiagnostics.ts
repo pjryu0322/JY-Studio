@@ -1,5 +1,5 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
-import { getCursorBridgeAvailability, isCursorBridgeExecutionAvailable } from "@/lib/prototype/cursorBridgeRuntime";
+import { isCursorExecutionReady } from "@/lib/prototype/cursorExecutionAvailability";
 import {
   type ExecutionSetupSourceGenerationContext,
   type ExecutionSetupSourceGenerationRow,
@@ -27,6 +27,13 @@ export type TargetRepoE2eTimelineAction =
   | "cursor_bridge_source_generation_rejected"
   | "review_security_diff_engine_pending";
 
+export type CursorApiDirectTimelineAction =
+  | "cursor_api_availability_checked"
+  | "cursor_api_direct_execution_requested"
+  | "cursor_api_direct_execution_completed"
+  | "cursor_api_direct_execution_failed"
+  | "cursor_api_direct_execution_unsupported";
+
 export const CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE =
   "Cursor Bridge/API가 설정되지 않았습니다.\n\n현재는 WIP 초안까지만 생성되었습니다.\n실제 소스 생성을 진행하려면 환경설정에서 Cursor Bridge/API를 활성화해 주세요." as const;
 
@@ -52,8 +59,9 @@ export function maskWorkspacePathForTimeline(workspacePath: string | undefined):
 export function resolveCursorBridgeConnectionPhase(input: {
   readonly wip?: CodeAgentWipExecutionV1 | null;
   readonly env?: Record<string, string | undefined>;
+  readonly setup?: ExecutionSetupSourceGenerationRow | null;
 }): CursorBridgeConnectionPhase {
-  const available = isCursorBridgeExecutionAvailable({ env: input.env });
+  const available = isCursorExecutionReady({ setup: input.setup, env: input.env });
   const wip = input.wip;
   if (!available) return "not_configured";
   if (wip?.bridgeExecutionStatus === "failed") return "failed";
@@ -209,14 +217,47 @@ export function isCursorBridgeConfiguredForSourceGeneration(input?: {
   readonly setup?: ExecutionSetupSourceGenerationRow | null;
   readonly env?: Record<string, string | undefined>;
 }): boolean {
-  const readiness = evaluateExecutionSetupSourceGenerationReadiness({
-    setup: input?.setup,
-    env: input?.env,
-  });
-  if (readiness.ok) return true;
-  const bridgeAvailable = getCursorBridgeAvailability({ env: input?.env }).available;
-  const hasCursorToken =
-    input?.setup?.hasCursorToken === true || Boolean(String(input?.setup?.cursorApiToken ?? "").trim());
-  const hasCursorApiUrl = Boolean(String(input?.setup?.cursorApiUrl ?? "").trim());
-  return bridgeAvailable || (hasCursorToken && hasCursorApiUrl);
+  return isCursorExecutionReady({ setup: input?.setup, env: input?.env });
+}
+
+export function buildCursorApiDirectTimelineEntry(input: {
+  readonly action: CursorApiDirectTimelineAction;
+  readonly projectId: string;
+  readonly selectedTaskId: string;
+  readonly repoFullName?: string;
+  readonly workspacePath?: string;
+  readonly branchName?: string;
+  readonly status: string;
+  readonly changedFilesCount?: number;
+  readonly hasCommitSha?: boolean;
+  readonly pushStatus?: string;
+  readonly reason?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const parts = [
+    `type=${input.action}`,
+    "mode=cursor_api",
+    `projectId=${input.projectId}`,
+    `selectedTaskId=${input.selectedTaskId}`,
+    `repoFullName=${input.repoFullName ?? "none"}`,
+    `workspacePath=${maskWorkspacePathForTimeline(input.workspacePath)}`,
+    `branchName=${input.branchName ?? "none"}`,
+    `status=${input.status}`,
+    ...(input.changedFilesCount !== undefined
+      ? [`changedFilesCount=${input.changedFilesCount}`]
+      : []),
+    ...(input.hasCommitSha !== undefined ? [`hasCommitSha=${input.hasCommitSha ? "yes" : "no"}`] : []),
+    ...(input.pushStatus ? [`pushStatus=${input.pushStatus}`] : []),
+    ...(input.reason ? [`reason=${input.reason.slice(0, 120)}`] : []),
+  ];
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: input.action,
+    source: "system",
+    responseText: parts.join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "target_repo_e2e",
+  };
 }
