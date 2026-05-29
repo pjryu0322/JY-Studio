@@ -139,8 +139,138 @@ export function countActiveReworkRequestsForTask(
   boardState: ImplementationExecutionBoardStateV1 | null | undefined,
   taskId: string,
 ): number {
-  if (!boardState) return 0;
+  return getActiveReworkRequestsForTask(boardState, taskId).length;
+}
+
+export function buildInitialImplementationExecutionBoardState(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+  readonly existing?: ImplementationExecutionBoardStateV1 | null;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const projectId = input.projectId.trim();
+  if (input.existing) {
+    return { ...input.existing, updatedAt: now };
+  }
+  return {
+    version: IMPLEMENTATION_EXECUTION_BOARD_STATE_VERSION,
+    projectId,
+    createdAt: now,
+    updatedAt: now,
+    userConfirmations: [],
+    reworkRequests: [],
+  };
+}
+
+export function isUserConfirmationResolved(
+  confirmation: ImplementationTaskUserConfirmationV1 | null | undefined,
+): boolean {
+  return Boolean(confirmation?.resolvedAt);
+}
+
+export function resolveUserConfirmationForTask(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly nowIso?: string;
+  readonly resolvedByUser?: boolean;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskId = input.taskId.trim();
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  if (!base.userConfirmations.some((c) => c.taskId === taskId)) return base;
+  return {
+    ...base,
+    updatedAt: now,
+    userConfirmations: base.userConfirmations.map((c) =>
+      c.taskId === taskId
+        ? { ...c, resolvedAt: now, resolvedByUser: input.resolvedByUser ?? true }
+        : c,
+    ),
+  };
+}
+
+export function resolveAllPendingUserConfirmations(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly nowIso?: string;
+  readonly resolvedByUser?: boolean;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  let next = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  for (const confirmation of next.userConfirmations) {
+    if (!confirmation.resolvedAt && confirmation.status !== "none") {
+      next = resolveUserConfirmationForTask({
+        state: next,
+        projectId: input.projectId,
+        taskId: confirmation.taskId,
+        nowIso: now,
+        resolvedByUser: input.resolvedByUser,
+      });
+    }
+  }
+  return next;
+}
+
+export function appendReworkRequest(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly targetRole: ImplementationTaskReworkRequestV1["targetRole"];
+  readonly reason: string;
+  readonly nowIso?: string;
+  readonly requestId?: string;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskId = input.taskId.trim();
+  const reason = input.reason.trim();
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  const requestId =
+    input.requestId?.trim() ||
+    `rework-${taskId}-${now.replace(/[:.]/g, "-")}`;
+  const request: ImplementationTaskReworkRequestV1 = {
+    requestId,
+    taskId,
+    targetRole: input.targetRole,
+    reason,
+    status: "requested",
+    createdAt: now,
+    updatedAt: now,
+  };
+  return {
+    ...base,
+    updatedAt: now,
+    reworkRequests: [...base.reworkRequests, request],
+  };
+}
+
+export function getActiveReworkRequestsForTask(
+  boardState: ImplementationExecutionBoardStateV1 | null | undefined,
+  taskId: string,
+): readonly ImplementationTaskReworkRequestV1[] {
+  if (!boardState) return [];
   return boardState.reworkRequests.filter(
     (r) => r.taskId === taskId && r.status !== "cancelled" && r.status !== "done",
-  ).length;
+  );
+}
+
+export function getActiveReworkContextForTask(
+  boardState: ImplementationExecutionBoardStateV1 | null | undefined,
+  taskId: string,
+): readonly string[] {
+  return getActiveReworkRequestsForTask(boardState, taskId).map(
+    (r) => `[${r.targetRole}] ${r.reason}`,
+  );
 }

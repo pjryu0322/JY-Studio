@@ -406,6 +406,9 @@ export function evaluateImplementationStageActionGate(
     case "SHOW_SCM_CHECK":
     case "SHOW_ENV_CHECK":
     case "EDIT_IMPLEMENTATION_SCOPE":
+    case "RESOLVE_USER_CONFIRMATION":
+    case "SHOW_USER_CONFIRMATION_ITEMS":
+    case "MOVE_TO_REVIEW_STAGE":
       return { ok: true };
     case "RUN_REVIEWER_CHECK":
     case "RUN_SECURITY_CHECK": {

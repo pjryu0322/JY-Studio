@@ -181,24 +181,55 @@ export function deriveQualityGateStatusForTask(input: {
   return "none";
 }
 
-/** First developer task row that can run (dependencies met, not blocking confirmation). */
-export function pickFirstExecutableDeveloperTaskId(
-  board: ImplementationExecutionBoardV1,
-): string | null {
-  const completedDeveloperIds = new Set(
+function completedDeveloperTaskIds(board: ImplementationExecutionBoardV1): Set<string> {
+  return new Set(
     board.taskRows
       .filter((row) => row.developerStatus === "done" || row.developerStatus === "skipped")
       .map((row) => row.taskId),
   );
+}
 
-  for (const row of board.taskRows) {
-    if (row.userConfirmation === "blocking") continue;
-    if (row.developerStatus === "done" || row.developerStatus === "skipped") continue;
-    const dependenciesMet = row.dependencies.every((dep) => completedDeveloperIds.has(dep));
-    if (!dependenciesMet) continue;
-    return row.taskId;
-  }
-  return null;
+function isDeveloperRowExecutableForWip(
+  row: ImplementationExecutionBoardTaskRowV1,
+  completedDeveloperIds: Set<string>,
+): boolean {
+  if (row.userConfirmation === "blocking") return false;
+  const dependenciesMet = row.dependencies.every((dep) => completedDeveloperIds.has(dep));
+  if (!dependenciesMet) return false;
+
+  const needsRemediation =
+    row.reviewerResultStatus === "failed" ||
+    row.securityResultStatus === "failed" ||
+    row.reworkCount > 0;
+  if (needsRemediation) return true;
+
+  if (row.developerStatus === "done" || row.developerStatus === "skipped") return false;
+  return true;
+}
+
+function collectExecutableDeveloperRows(
+  board: ImplementationExecutionBoardV1,
+): readonly ImplementationExecutionBoardTaskRowV1[] {
+  const completedDeveloperIds = completedDeveloperTaskIds(board);
+  return board.taskRows.filter((row) => isDeveloperRowExecutableForWip(row, completedDeveloperIds));
+}
+
+/** First developer task for WIP: quality-failed → rework → next ready (dependencies met). */
+export function pickFirstExecutableDeveloperTaskId(
+  board: ImplementationExecutionBoardV1,
+): string | null {
+  const executable = collectExecutableDeveloperRows(board);
+  if (!executable.length) return null;
+
+  const qualityFailed = executable.filter(
+    (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+  );
+  if (qualityFailed.length) return qualityFailed[0]?.taskId ?? null;
+
+  const rework = executable.filter((row) => row.reworkCount > 0);
+  if (rework.length) return rework[0]?.taskId ?? null;
+
+  return executable[0]?.taskId ?? null;
 }
 
 export function filterCursorWorkItemsForExecutableTask(input: {
@@ -473,8 +504,9 @@ function buildTaskRow(input: {
   const scmStatus = input.scmGlobal;
 
   const confirmation = getUserConfirmationForTask(input.boardState, input.task.taskId);
-  const userConfirmation: ImplementationUserConfirmationStatus = confirmation?.status ?? "none";
-  const userConfirmationReason = confirmation?.reason;
+  const userConfirmation: ImplementationUserConfirmationStatus =
+    confirmation?.resolvedAt ? "none" : (confirmation?.status ?? "none");
+  const userConfirmationReason = confirmation?.resolvedAt ? undefined : confirmation?.reason;
 
   const currentRole = deriveCurrentRole({
     developerStatus,

@@ -56,7 +56,10 @@ export type ImplementationStageActionId =
   | "RUN_REFACTOR_COMMON"
   | "RUN_INTEGRATED_REVIEW"
   | "RUN_INTEGRATED_SECURITY"
-  | "RUN_FINAL_SCM";
+  | "RUN_FINAL_SCM"
+  | "RESOLVE_USER_CONFIRMATION"
+  | "SHOW_USER_CONFIRMATION_ITEMS"
+  | "MOVE_TO_REVIEW_STAGE";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -243,6 +246,12 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "RUN_INTEGRATED_SECURITY";
     case RUN_FINAL_SCM_CHIP:
       return "RUN_FINAL_SCM";
+    case IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP:
+      return "RESOLVE_USER_CONFIRMATION";
+    case IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP:
+      return "SHOW_USER_CONFIRMATION_ITEMS";
+    case MOVE_TO_REVIEW_STAGE_CHIP:
+      return "MOVE_TO_REVIEW_STAGE";
     default:
       return null;
   }

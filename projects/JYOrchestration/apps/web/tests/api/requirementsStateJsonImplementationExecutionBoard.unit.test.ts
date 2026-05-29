@@ -72,4 +72,37 @@ describe("requirementsStateJson implementation execution board state", () => {
       "implementation_execution_board_state_v1",
     );
   });
+
+  it("parseRequirementsStateJson preserves resolved user confirmation", () => {
+    const resolvedBoard = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [
+        {
+          taskId: "dev-1",
+          status: "blocking",
+          reason: "확인",
+          resolvedAt: NOW,
+          resolvedByUser: true,
+        },
+      ],
+      reworkRequests: [],
+    });
+    const state = parseRequirementsStateJson({
+      implementationExecutionBoardStateV1: resolvedBoard,
+    });
+    const confirmation = state.implementationExecutionBoardStateV1?.userConfirmations[0];
+    expect(confirmation?.resolvedAt).toBe(NOW);
+    expect(confirmation?.resolvedByUser).toBe(true);
+  });
+
+  it("mergeRequirementsStateJson updates implementationExecutionBoardStateV1", () => {
+    const base = parseRequirementsStateJson({});
+    const merged = mergeRequirementsStateJson(base, {
+      implementationExecutionBoardStateV1: boardState ?? null,
+    });
+    expect(merged.implementationExecutionBoardStateV1?.reworkRequests[0]?.requestId).toBe("rw-1");
+  });
 });

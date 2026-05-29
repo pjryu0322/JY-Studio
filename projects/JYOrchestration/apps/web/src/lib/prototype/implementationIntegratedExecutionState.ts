@@ -284,6 +284,29 @@ export function markIntegratedStepInProgress(input: {
   );
 }
 
+/** In-memory in_progress → done; persist only the returned state (avoids async persist races). */
+export function finalizeIntegratedStageStep(input: {
+  readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly step: ImplementationIntegratedStep;
+  readonly taskRowsCompleted?: boolean;
+  readonly nowIso?: string;
+}): ImplementationIntegratedExecutionStateV1 {
+  const inProgress = markIntegratedStepInProgress({
+    state: input.state,
+    projectId: input.projectId,
+    step: input.step,
+    nowIso: input.nowIso,
+  });
+  return markIntegratedStepDone({
+    state: inProgress,
+    projectId: input.projectId,
+    step: input.step,
+    taskRowsCompleted: input.taskRowsCompleted,
+    nowIso: input.nowIso,
+  });
+}
+
 export function markIntegratedStepDone(input: {
   readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
   readonly projectId: string;

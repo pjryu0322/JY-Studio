@@ -9,7 +9,11 @@ import {
   formatTaskScopedWipExecutionSuccessNotice,
   isImplementationReadyForReviewStage,
 } from "@/lib/prototype/implementationExecutionBoard";
-import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
+  buildImplementationExecutionBoardMessage,
+  buildImplementationUserConfirmationBoardMessage,
+} from "@/lib/prototype/implementationExecutionBoardMessage";
+import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
   markDeveloperTasksDoneForWip,
@@ -30,6 +34,8 @@ import {
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
+  MOVE_TO_REVIEW_STAGE_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -413,5 +419,107 @@ describe("implementationExecutionBoardMessage helpers", () => {
       previewReady: false,
     });
     expect(actions[0]?.label).toBe(SCM_CRITERIA_CHIP);
+  });
+
+  it("confirmation message includes 후속진행 가능 for required_non_blocking", () => {
+    const boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [
+        { taskId: "dev-1", status: "required_non_blocking", reason: "확인" },
+      ],
+      reworkRequests: [],
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      boardState: boardState ?? null,
+      nowIso: NOW,
+    });
+    const message = buildImplementationUserConfirmationBoardMessage({ board, nowIso: NOW });
+    expect(message?.content).toContain("후속진행 가능");
+    expect(message?.content).toContain("required_non_blocking");
+    expect(message?.meta?.interviewSuggestions).toContain(IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP);
+  });
+
+  it("confirmation message includes 해당 작업 보류 for blocking", () => {
+    const boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [{ taskId: "dev-1", status: "blocking", reason: "차단" }],
+      reworkRequests: [],
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      boardState: boardState ?? null,
+      nowIso: NOW,
+    });
+    const message = buildImplementationUserConfirmationBoardMessage({ board, nowIso: NOW });
+    expect(message?.content).toContain("해당 작업 보류");
+    expect(message?.content).toContain("blocking");
+  });
+
+  it("board complete + previewReady true includes 검토단계로 이동 chip", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security", "final_scm"] as const) {
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const board = completedBoard(integrated);
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      previewReady: true,
+    });
+    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(true);
+    expect(message.meta?.interviewSuggestions).toContain(MOVE_TO_REVIEW_STAGE_CHIP);
+    const actions = deriveImplementationStageNextActions("task_list_ready", completedExecutionState(), null, {
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: completedExecutionState(),
+      integratedExecutionState: integrated,
+      previewReady: true,
+    });
+    expect(actions[0]?.label).toBe(MOVE_TO_REVIEW_STAGE_CHIP);
+  });
+
+  it("board complete + previewReady false does not include 검토단계로 이동 chip", () => {
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security", "final_scm"] as const) {
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p-board",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const board = completedBoard(integrated);
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      previewReady: false,
+    });
+    expect(message.meta?.interviewSuggestions).not.toContain(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 });

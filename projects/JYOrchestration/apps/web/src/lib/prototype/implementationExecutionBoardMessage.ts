@@ -5,6 +5,7 @@ import {
   formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,
   formatImplementationExecutionBoardTaskLine,
+  isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
@@ -12,7 +13,9 @@ import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
+  MOVE_TO_REVIEW_STAGE_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -58,9 +61,14 @@ export function buildImplementationExecutionBoardMessage(input: {
     board: input.board,
     previewReady: input.previewReady === true,
   });
+  const reviewReady = isImplementationReadyForReviewStage({
+    board: input.board,
+    previewReady: input.previewReady === true,
+  });
   const chips = [
     IMPLEMENTATION_GENERATION_REQUEST_CHIP,
     ...integratedChips,
+    ...(reviewReady ? [MOVE_TO_REVIEW_STAGE_CHIP] : []),
     TASK_LIST_VIEW_CHIP,
     ...(input.board.summary.userConfirmationRequired > 0
       ? [IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP]
@@ -116,10 +124,12 @@ export function buildImplementationUserConfirmationBoardMessage(input: {
   if (!rows.length) return null;
 
   const def = getWorkspaceAiMember("prototype_build");
-  const lines = rows.map(
-    (row) =>
-      `${row.taskId} | ${row.title} | ${row.userConfirmation}${row.userConfirmationReason ? ` | ${row.userConfirmationReason}` : ""}`,
-  );
+  const lines = rows.map((row) => {
+    const followUp =
+      row.userConfirmation === "required_non_blocking" ? "후속진행 가능" : "해당 작업 보류";
+    const reason = row.userConfirmationReason?.trim() || "-";
+    return `${row.taskId} | ${row.title} | ${row.userConfirmation} | ${followUp} | ${reason} | 미처리`;
+  });
 
   return newRequirementsMessage({
     id: `impl-user-confirmation-${input.nowIso}`,
@@ -128,12 +138,21 @@ export function buildImplementationUserConfirmationBoardMessage(input: {
     speakerId: "prototype_build",
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
-    content: ["사용자 확인이 필요한 작업입니다.", "", ...lines].join("\n"),
+    content: [
+      "사용자 확인이 필요한 작업입니다.",
+      "",
+      "TASK ID | 작업 | 확인상태 | 후속진행 | 사유 | 처리상태",
+      ...lines,
+    ].join("\n"),
     createdAt: input.nowIso,
     meta: {
       internalType: IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE,
       serviceDesignStage: "implementation",
-      interviewSuggestions: [TASK_LIST_VIEW_CHIP, IMPLEMENTATION_GENERATION_REQUEST_CHIP],
+      interviewSuggestions: [
+        TASK_LIST_VIEW_CHIP,
+        IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+        IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
+      ],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1185,
     },

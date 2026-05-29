@@ -3,6 +3,7 @@ import {
   buildInitialImplementationIntegratedExecutionState,
   deriveIntegratedExecutionStateReadiness,
   getIntegratedStepStatus,
+  finalizeIntegratedStageStep,
   markIntegratedStepDone,
   markIntegratedStepFailed,
   markIntegratedStepInProgress,
@@ -118,5 +119,24 @@ describe("implementationIntegratedExecutionState", () => {
       nowIso: NOW,
     });
     expect(getIntegratedStepStatus(afterFail, "refactor_common")).toBe("done");
+  });
+
+  it("finalizeIntegratedStageStep persists only final done state (no stale in_progress)", () => {
+    let state = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const done = finalizeIntegratedStageStep({
+      state,
+      projectId: "p1",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    expect(getIntegratedStepStatus(done, "refactor_common")).toBe("done");
+    expect(getIntegratedStepStatus(done, "integrated_review")).toBe("ready");
+    expect(done.items.find((i) => i.step === "refactor_common")?.status).not.toBe("in_progress");
   });
 });

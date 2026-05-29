@@ -15,7 +15,10 @@ import {
   markPostDeveloperReviewTasksQueued,
   markRoleTasksDone,
 } from "@/lib/prototype/implementationTaskExecutionState";
-import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  appendReworkRequest,
+  parseImplementationExecutionBoardStateV1,
+} from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import {
   buildInitialImplementationIntegratedExecutionState,
@@ -632,5 +635,108 @@ describe("implementationExecutionBoard", () => {
     expect(message.content).toContain("리팩토링/공통화");
     expect(message.content).toContain("재작업");
     expect(message.meta?.interviewSuggestions).toContain("생성요청");
+  });
+
+  it("pickFirstExecutableDeveloperTaskId prefers quality-failed task over normal ready task", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.ownerRole === "developer" ? { ...task, dependencies: [] as string[] } : task,
+      ),
+    };
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "검수 실패",
+        checks: [],
+        failedTaskIds: ["dev-2"],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+  });
+
+  it("pickFirstExecutableDeveloperTaskId prefers rework task before normal ready task", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: [
+        ...sampleTaskList().tasks.filter((t) => t.ownerRole === "developer"),
+        {
+          taskId: "dev-3",
+          title: "추가",
+          description: "d",
+          taskType: "screen" as const,
+          ownerRole: "developer" as const,
+          priority: "low" as const,
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready" as const,
+        },
+      ],
+    };
+    const boardState = appendReworkRequest({
+      state: null,
+      projectId: "p-board",
+      taskId: "dev-3",
+      targetRole: "developer",
+      reason: "재작업",
+      nowIso: NOW,
+      requestId: "rw-dev3",
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      boardState,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-3");
+  });
+
+  it("pickFirstExecutableDeveloperTaskId skips blocking task even when quality failed", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.ownerRole === "developer" ? { ...task, dependencies: [] as string[] } : task,
+      ),
+    };
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "검수 실패",
+        checks: [],
+        failedTaskIds: ["dev-1"],
+      },
+    ];
+    const boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [{ taskId: "dev-1", status: "blocking", reason: "차단" }],
+      reworkRequests: [],
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      boardState: boardState ?? null,
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
   });
 });

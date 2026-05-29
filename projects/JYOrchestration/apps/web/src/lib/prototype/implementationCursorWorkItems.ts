@@ -11,6 +11,12 @@ import {
   buildImplementationTaskExecutionHints,
   COMMON_FORBIDDEN_PATHS,
 } from "@/lib/prototype/implementationExecutionHints";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import { getActiveReworkRequestsForTask } from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  getLatestImplementationQualityGateResultForRole,
+  type ImplementationQualityGateResultV1,
+} from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 export type { CursorWorkItemQualityGate } from "@/lib/prototype/implementationCursorPromptQuality";
@@ -192,6 +198,63 @@ export function evaluateCursorExecutionRequestGate(input: CursorExecutionRequest
 
   const uniq = [...new Set(missing)];
   return { allowed: uniq.length === 0, missing: uniq };
+}
+
+function formatQualityGateFailureLines(input: {
+  readonly taskId: string;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly role: "reviewer" | "security";
+  readonly roleLabel: string;
+}): readonly string[] {
+  const latest = getLatestImplementationQualityGateResultForRole(
+    input.qualityGateResults,
+    input.role,
+  );
+  if (!latest || latest.status !== "failed" || !latest.failedTaskIds.includes(input.taskId)) {
+    return [];
+  }
+  const lines: string[] = [`- ${input.roleLabel}: ${latest.summary}`];
+  for (const check of latest.checks) {
+    if (check.status !== "failed") continue;
+    if (check.targetTaskIds?.length && !check.targetTaskIds.includes(input.taskId)) continue;
+    lines.push(`  - ${check.title}${check.detail ? `: ${check.detail}` : ""}`);
+  }
+  return lines;
+}
+
+export function enrichCursorWorkItemsWithBoardReworkContext(input: {
+  readonly workItems: readonly CursorWorkItem[];
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+}): readonly CursorWorkItem[] {
+  return input.workItems.map((item) => {
+    const reworkLines = getActiveReworkRequestsForTask(input.boardState, item.taskId).map(
+      (r) => `  - [${r.targetRole}] ${r.reason}`,
+    );
+    const reviewerLines = formatQualityGateFailureLines({
+      taskId: item.taskId,
+      qualityGateResults: input.qualityGateResults,
+      role: "reviewer",
+      roleLabel: "AI 검수자",
+    });
+    const securityLines = formatQualityGateFailureLines({
+      taskId: item.taskId,
+      qualityGateResults: input.qualityGateResults,
+      role: "security",
+      roleLabel: "AI 보안관",
+    });
+    const qualityLines = [...reviewerLines, ...securityLines];
+    if (!reworkLines.length && !qualityLines.length) return item;
+
+    const section = [
+      "## 재작업/보완 지시",
+      "",
+      ...(reworkLines.length ? ["- 사용자 재작업 요청:", ...reworkLines, ""] : []),
+      ...(qualityLines.length ? ["- 검수/보안 실패 근거:", ...qualityLines] : []),
+    ].join("\n");
+
+    return { ...item, prompt: `${item.prompt}\n\n${section}` };
+  });
 }
 
 export function formatCursorExecutionBlockedMessage(missing: readonly string[]): string {

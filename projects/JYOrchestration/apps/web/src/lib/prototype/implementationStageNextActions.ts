@@ -31,6 +31,7 @@ import {
   RUN_INTEGRATED_REVIEW_CHIP,
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
+  MOVE_TO_REVIEW_STAGE_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
@@ -111,6 +112,22 @@ function deriveNextActionsFromIntegratedBoard(
     ];
   }
   if (stepStatus("final_scm") === "done" && previewReady) {
+    if (isImplementationReadyForReviewStage({ board, previewReady: true })) {
+      return [
+        {
+          actionId: "MOVE_TO_REVIEW_STAGE",
+          label: MOVE_TO_REVIEW_STAGE_CHIP,
+          priority: "primary",
+          reason: "구현 보드 완료 및 preview ready — 검토단계 이동",
+        },
+        {
+          actionId: "SHOW_ARTIFACTS",
+          label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+          priority: "secondary",
+          reason: "프로토타입 미리보기 확인",
+        },
+      ];
+    }
     return [
       {
         actionId: "SHOW_ARTIFACTS",
