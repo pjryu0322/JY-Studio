@@ -16,6 +16,7 @@ import {
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { implementationBlockedEntryChips, implementationQuickDesignUnconfirmedEntryChips } from "@/lib/prototype/implementationWorkPlanDraft";
+import { hasValidImplementationTaskListBootstrap } from "@/lib/prototype/implementationTaskListEntryMessage";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
@@ -156,6 +157,49 @@ describe("implementationOrchestrationSummary", () => {
     ]);
   });
 
+  it("shows task list board bootstrap when taskList exists despite quick design draft", () => {
+    const taskList = {
+      version: "implementation_task_list_v1" as const,
+      projectId: "p1",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      source: "implementation_seed" as const,
+      seedCreatedAt: nowIso,
+      tasks: [
+        {
+          taskId: "DEV-001",
+          title: "첫 작업",
+          ownerRole: "developer" as const,
+          priority: "P0" as const,
+          status: "ready" as const,
+          taskType: "feature" as const,
+          description: "desc",
+          acceptanceCriteria: ["ok"],
+          sourceRefs: [],
+          dependencies: [],
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const bundle = buildImplementationBootstrapBundle({
+      ...blockedInput,
+      implementationTaskListV1: taskList,
+      fastPlanDraftV1: {
+        status: "proposed",
+        generatedAt: nowIso,
+        flowId: "fast_plan_draft",
+        memberRuns: [],
+        memberDrafts: [{ runId: "r1", role: "planner", content: "draft", confidence: "medium" }],
+        assumptions: [],
+        source: "current_conversation_and_slots",
+      },
+    });
+    expect(bundle.messages[0]?.content).toContain("구현 작업목록이 준비되었습니다");
+    expect(bundle.messages[0]?.content).not.toContain(IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE);
+    expect(hasValidImplementationTaskListBootstrap(bundle.messages)).toBe(true);
+    expect(bundle.timelineEntries.some((e) => e.action === "implementation_entry_tasklist_detected")).toBe(true);
+  });
+
   it("does not put raw env readiness lines in AI developer bootstrap message", () => {
     const [lead] = buildImplementationBootstrapBundle(baseInput).messages;
     expect(lead?.content).not.toMatch(/Git 저장소:\s*완료/);
@@ -196,7 +240,25 @@ describe("implementationOrchestrationSummary", () => {
   });
 
   it("shows task list recovery chips when seed is ready without task list", () => {
-    const chips = implementationEntryChipsForBootstrap(seedReadyInput);
+    const chips = implementationEntryChipsForBootstrap({
+      ...seedReadyInput,
+      implementationSeedV1: {
+        version: "implementation_seed_v1",
+        projectId: "p1",
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        source: "planning_slots_and_artifacts",
+        lifecycleStatus: "confirmed",
+        readiness: { ready: true, score: 1, missing: [], warnings: [] },
+        processImplementationItems: [],
+        screenImplementationItems: [],
+        actorCapabilityMatrix: [],
+        commonDetailFeatures: [],
+        dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+        assumptions: [],
+        gaps: [],
+      },
+    });
     expect(chips).toContain("기획단계로 이동");
     expect(chips).toContain("구현 작업목록 생성");
     expect(chips).not.toContain("구현 작업안 초안 생성");

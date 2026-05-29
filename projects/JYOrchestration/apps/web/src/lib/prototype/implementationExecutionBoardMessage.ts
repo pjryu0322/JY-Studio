@@ -75,6 +75,15 @@ export function buildImplementationExecutionBoardMessage(input: {
       ? "구현 작업목록이 준비되었습니다."
       : "구현 작업 보드입니다.";
 
+  const introSection =
+    input.includeTaskSummary === true
+      ? [
+          "",
+          "Quick Design 확정 산출물을 기준으로 구현 작업목록이 생성되었습니다.",
+          "작업목록을 기준으로 AI 개발자, 디자이너, 검수자, 보안관, SCM 역할별 작업을 진행할 수 있습니다.",
+        ]
+      : [];
+
   const summarySection =
     input.includeTaskSummary === true && input.taskList
       ? ["", "작업 요약:", ...formatImplementationTaskListRoleSummaryLines(input.taskList), ""]
@@ -82,6 +91,7 @@ export function buildImplementationExecutionBoardMessage(input: {
 
   const content = [
     headline,
+    ...introSection,
     ...summarySection,
     ...(executionTargetLines.length ? executionTargetLines : []),
     ...(executionTargetLines.length ? [""] : []),

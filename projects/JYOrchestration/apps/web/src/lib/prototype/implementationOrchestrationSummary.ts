@@ -18,6 +18,11 @@ import {
   implementationQuickDesignUnconfirmedEntryChips,
 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { evaluatePlanningArtifactReadiness } from "@/lib/prototype/planningArtifactReadiness";
+import {
+  buildImplementationEntryTimelineEntry,
+  deriveImplementationEntryState,
+} from "@/lib/prototype/implementationEntryState";
+import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
 import { evaluateImplementationEntrySurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
 import {
   formatImplementationSeedStatusSummaryLines,
@@ -42,6 +47,7 @@ import type {
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
 import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
@@ -112,6 +118,7 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly fastPlanDraftV1?: FastPlanDraftStateV1 | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
   readonly nowIso?: string;
@@ -120,6 +127,39 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
 export function implementationEntryChipsForBootstrap(
   input: ImplementationOrchestrationSummaryInput,
 ): readonly string[] {
+  const entryState = deriveImplementationEntryState({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskPlanV1: input.implementationTaskPlanV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+    cursorWorkItemsV1: input.cursorWorkItemsV1,
+    projectArtifacts: input.projectArtifacts,
+    fastPlanDraftV1: input.fastPlanDraftV1,
+    promptTimeline: input.promptTimeline,
+    orchestration: input.orchestration,
+    slotDefinitions: input.slotDefinitions,
+  });
+
+  if (entryState.status === "board_ready") {
+    const readiness = evaluateImplementationEntrySurfaceReadiness({
+      implementationSeedV1: input.implementationSeedV1,
+      implementationTaskListV1: input.implementationTaskListV1,
+      orchestration: input.orchestration,
+      slotDefinitions: input.slotDefinitions,
+      projectArtifacts: input.projectArtifacts,
+      envOk: input.envOk,
+      designOk: input.designOk,
+    });
+    return implementationEntryChipsForState({
+      seedReady: readiness.seedReady || entryState.hasImplementationTaskList,
+      envOk: readiness.envOk,
+      designOk: readiness.designOk,
+      hasReferenceArtifacts: readiness.hasReferenceArtifacts,
+      taskListReady: entryState.hasImplementationTaskList || readiness.taskListReady,
+      implementationSeedV1: input.implementationSeedV1,
+      implementationTaskListV1: input.implementationTaskListV1,
+    });
+  }
+
   const readiness = evaluateImplementationEntrySurfaceReadiness({
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskListV1: input.implementationTaskListV1,
@@ -985,9 +1025,40 @@ export function hasImplementationRoleCheckDetailsShown(
 
 /** 구현 진입: AI개발자 주도 메시지 1개 + timeline (역할별 상세는 요청 시). */
 export function buildImplementationBootstrapBundle(input: ImplementationOrchestrationSummaryInput): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  const entryState = deriveImplementationEntryState({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskPlanV1: input.implementationTaskPlanV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+    cursorWorkItemsV1: input.cursorWorkItemsV1,
+    projectArtifacts: input.projectArtifacts,
+    fastPlanDraftV1: input.fastPlanDraftV1,
+    promptTimeline: input.promptTimeline,
+    orchestration: input.orchestration,
+    slotDefinitions: input.slotDefinitions,
+  });
+
+  if (entryState.status === "board_ready" && hasImplementationTaskListReady(input.implementationTaskListV1)) {
+    const bundle = buildTaskListReadyImplementationBootstrapBundle(input);
+    const now = input.nowIso ?? new Date().toISOString();
+    return {
+      ...bundle,
+      timelineEntries: [
+        buildImplementationEntryTimelineEntry({
+          projectId: input.projectId,
+          entryState,
+          nowIso: now,
+        }),
+        ...bundle.timelineEntries,
+      ],
+    };
+  }
+
   const planningReadiness = evaluatePlanningArtifactReadiness({
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskPlanV1: input.implementationTaskPlanV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+    cursorWorkItemsV1: input.cursorWorkItemsV1,
     projectArtifacts: input.projectArtifacts,
     fastPlanDraftV1: input.fastPlanDraftV1,
     promptTimeline: input.promptTimeline,
@@ -1016,7 +1087,7 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   if (entryReadiness.taskListReady && input.implementationTaskListV1) {
     return buildTaskListReadyImplementationBootstrapBundle(input);
   }
-  if (entryReadiness.seedReady) {
+  if (entryReadiness.seedReady || entryState.status === "seed_only" || entryState.status === "task_plan_only") {
     return buildTaskListMissingImplementationBootstrapBundle(input);
   }
   return buildNormalImplementationBootstrapBundle(input);

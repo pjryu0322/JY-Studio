@@ -9,6 +9,7 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { collectReferencePlanningArtifacts } from "@/lib/prototype/implementationWorkPlanDraft";
+import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
 
 export type PlanningArtifactReadiness =
   | Readonly<{
@@ -77,7 +78,24 @@ export function detectQuickDesignDraftPresence(input: {
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly implementationTaskListV1?: import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null;
+  readonly cursorWorkItemsV1?: readonly import("@/lib/prototype/implementationCursorWorkItems").CursorWorkItem[] | null;
 }): boolean {
+  if (
+    hasImplementationTaskListReady(input.implementationTaskListV1) ||
+    (input.cursorWorkItemsV1?.length ?? 0) > 0
+  ) {
+    return false;
+  }
+  if (input.fastPlanDraftV1?.status === "confirmed") return false;
+  if (hasQuickDesignConfirmedInTimeline(input.promptTimeline)) return false;
+  if (
+    (input.promptTimeline ?? []).some((entry) =>
+      /^quick_design_confirmed/.test(String(entry.action ?? "")),
+    )
+  ) {
+    return false;
+  }
   if (hasQuickDesignDraftInState(input.fastPlanDraftV1)) return true;
   if (
     (hasQuickDesignDraftCreatedInTimeline(input.promptTimeline) ||
@@ -95,12 +113,21 @@ export function detectQuickDesignDraftPresence(input: {
 export function evaluatePlanningArtifactReadiness(input: {
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+  readonly cursorWorkItemsV1?: readonly import("@/lib/prototype/implementationCursorWorkItems").CursorWorkItem[] | null;
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
   readonly fastPlanDraftV1?: FastPlanDraftStateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
 }): PlanningArtifactReadiness {
+  if (
+    hasImplementationTaskListReady(input.implementationTaskListV1) ||
+    (input.cursorWorkItemsV1?.length ?? 0) > 0
+  ) {
+    return { status: "confirmed_artifacts_ready", canStartImplementation: true };
+  }
+
   const hasReferenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts ?? []).length > 0;
   const hasPersistedSeed = Boolean(input.implementationSeedV1);
   const hasTaskPlan = Boolean(input.implementationTaskPlanV1);
@@ -120,6 +147,8 @@ export function evaluatePlanningArtifactReadiness(input: {
       promptTimeline: input.promptTimeline,
       orchestration: input.orchestration,
       slotDefinitions: input.slotDefinitions,
+      implementationTaskListV1: input.implementationTaskListV1,
+      cursorWorkItemsV1: input.cursorWorkItemsV1,
     })
   ) {
     return {

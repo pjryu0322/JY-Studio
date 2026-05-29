@@ -106,6 +106,38 @@ describe("planningArtifactReadiness", () => {
     expect(readiness.status).toBe("confirmed_artifacts_ready");
   });
 
+  it("returns confirmed when implementationTaskListV1 exists even with quick design draft", () => {
+    const readiness = evaluatePlanningArtifactReadiness({
+      projectArtifacts: [],
+      fastPlanDraftV1: quickDesignDraft,
+      promptTimeline: quickDesignTimeline,
+      implementationTaskListV1: {
+        version: "implementation_task_list_v1",
+        projectId: "p1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        source: "implementation_seed",
+        seedCreatedAt: "2026-01-01T00:00:00.000Z",
+        tasks: [
+          {
+            taskId: "DEV-001",
+            title: "작업",
+            ownerRole: "developer",
+            priority: "P0",
+            status: "ready",
+            taskType: "feature",
+            description: "d",
+            acceptanceCriteria: [],
+            sourceRefs: [],
+            dependencies: [],
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+      },
+    });
+    expect(readiness.status).toBe("confirmed_artifacts_ready");
+  });
+
   it("detects quick design draft after planning reset via timeline", () => {
     const readiness = evaluatePlanningArtifactReadiness({
       projectArtifacts: [],

@@ -21,7 +21,6 @@ import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP,
   QUICK_DESIGN_CONFIRM_ACTION_LABEL,
-  START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import {
   PROJECT_ARTIFACT_LABELS,
@@ -120,7 +119,7 @@ export function hasMeaningfulPlanningReferenceArtifacts(
 export const IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP = "기획단계로 돌아가기";
 
 export function implementationBlockedEntryChips(): readonly string[] {
-  return [IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP, START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL];
+  return [IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP];
 }
 
 export function implementationQuickDesignUnconfirmedEntryChips(): readonly string[] {

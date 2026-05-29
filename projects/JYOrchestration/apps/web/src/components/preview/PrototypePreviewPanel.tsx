@@ -144,6 +144,12 @@ import {
   runConfirmQuickDesignForImplementationFromState,
 } from "@/lib/prototype/implementationQuickDesignDraftBridge";
 import {
+  buildImplementationEntryCursorWorkItemsRecovery,
+  buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry,
+  deriveImplementationEntryState,
+} from "@/lib/prototype/implementationEntryState";
+import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
+import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
   buildReworkRequestRegistrationNotice,
@@ -1452,6 +1458,7 @@ export function PrototypePreviewPanel({
         implementationSeedV1: parsedRequirementsState.implementationSeedV1,
         implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
         implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+        cursorWorkItemsV1: parsedRequirementsState.cursorWorkItemsV1,
         fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
         promptTimeline: parsedRequirementsState.promptTimeline,
       }),
@@ -1468,11 +1475,47 @@ export function PrototypePreviewPanel({
       parsedRequirementsState.implementationSeedV1,
       parsedRequirementsState.implementationTaskListV1,
       parsedRequirementsState.implementationTaskPlanV1,
+      parsedRequirementsState.cursorWorkItemsV1,
       parsedRequirementsState.fastPlanDraftV1,
       parsedRequirementsState.promptTimeline,
       planningSlotDefinitions,
     ],
   );
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    const taskList = parsedRequirementsState.implementationTaskListV1;
+    if (!pid || !hasImplementationTaskListReady(taskList)) return;
+    if ((parsedRequirementsState.cursorWorkItemsV1?.length ?? 0) > 0) return;
+
+    const recovery = buildImplementationEntryCursorWorkItemsRecovery({
+      projectId: pid,
+      taskList: taskList!,
+      existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+    });
+    if (!recovery.regenerated) return;
+
+    const nowIso = new Date().toISOString();
+    void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+      cursorWorkItemsV1: [...recovery.cursorWorkItems],
+      promptTimeline: [
+        ...(parsedRequirementsState.promptTimeline ?? []),
+        buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry({
+          projectId: pid,
+          taskCount: taskList!.tasks.length,
+          developerTaskCount: taskList!.roleSummary?.developer ?? 0,
+          nowIso,
+        }),
+      ],
+    });
+  }, [
+    projectId,
+    parsedRequirementsState.implementationTaskListV1,
+    parsedRequirementsState.cursorWorkItemsV1,
+    parsedRequirementsState.promptTimeline,
+    requirementsStateJson,
+    persistChatToDb,
+  ]);
 
   const implementationSeedReady = useMemo(() => {
     const summary = summarizeImplementationSeedStatus({
@@ -4245,6 +4288,68 @@ export function PrototypePreviewPanel({
   );
 
   const onImplementationQuickExecution = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+
+    const entryState = deriveImplementationEntryState({
+      implementationSeedV1: parsedRequirementsState.implementationSeedV1,
+      implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+      implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
+      cursorWorkItemsV1: parsedRequirementsState.cursorWorkItemsV1,
+      projectArtifacts: executionArtifacts.projectArtifacts,
+      fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
+      promptTimeline: parsedRequirementsState.promptTimeline,
+      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+      slotDefinitions: planningSlotDefinitions,
+    });
+
+    if (entryState.status === "board_ready") {
+      if (entryState.needsCursorWorkItemsRegeneration && parsedRequirementsState.implementationTaskListV1) {
+        const recovery = buildImplementationEntryCursorWorkItemsRecovery({
+          projectId: pid,
+          taskList: parsedRequirementsState.implementationTaskListV1,
+          existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+        });
+        if (recovery.regenerated) {
+          const nowIso = new Date().toISOString();
+          void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+            cursorWorkItemsV1: [...recovery.cursorWorkItems],
+            promptTimeline: [
+              ...(parsedRequirementsState.promptTimeline ?? []),
+              buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry({
+                projectId: pid,
+                taskCount: entryState.taskCount,
+                developerTaskCount: entryState.developerTaskCount,
+                nowIso,
+              }),
+            ],
+          });
+          showToast("구현 작업목록을 기준으로 AI 개발자 실행 항목을 복구했습니다.");
+        }
+      }
+      const gate = evaluateImplementationCursorGate(implementationCursorGate);
+      if (gate.allowed) {
+        wipChipHandlers.requestCodeAgentWipWork();
+        return;
+      }
+      executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+      return;
+    }
+
+    if (
+      entryState.status === "seed_only" ||
+      entryState.status === "task_plan_only" ||
+      entryState.primaryAction === "GENERATE_IMPLEMENTATION_TASK_LIST"
+    ) {
+      void generateImplementationTaskList();
+      return;
+    }
+
+    if (entryState.status === "quick_design_draft_unconfirmed") {
+      void confirmQuickDesignForImplementation();
+      return;
+    }
+
     if (!effectiveImplementationState.implementationTaskPlanV1) {
       confirmImplementationTaskPlan();
       return;
@@ -4260,12 +4365,20 @@ export function PrototypePreviewPanel({
     if (toast) showToast(toast);
     else executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
   }, [
-    effectiveImplementationState.implementationTaskPlanV1,
+    projectId,
+    parsedRequirementsState,
+    executionArtifacts.projectArtifacts,
+    planningSlotDefinitions,
+    requirementsStateJson,
+    persistChatToDb,
+    showToast,
     implementationCursorGate,
-    confirmImplementationTaskPlan,
     wipChipHandlers,
     executionSingleChat,
-    showToast,
+    generateImplementationTaskList,
+    confirmQuickDesignForImplementation,
+    effectiveImplementationState.implementationTaskPlanV1,
+    confirmImplementationTaskPlan,
   ]);
 
   const implementationInterviewUi = useMemo(
