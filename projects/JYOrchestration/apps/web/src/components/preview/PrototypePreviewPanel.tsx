@@ -131,6 +131,8 @@ import {
   pickFirstExecutableDeveloperTaskId,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
+import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
+import { markDeveloperTasksFailedForWip } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   markIntegratedStepDone,
   markIntegratedStepInProgress,
@@ -1882,7 +1884,7 @@ export function PrototypePreviewPanel({
           projectArtifacts: executionArtifacts.projectArtifacts,
           orchestration: parsedRequirementsState.singleChatOrchestrationV1,
           slotDefinitions: planningSlotDefinitions,
-          envOk,
+          envOk: canRequestGeneration.envOk,
           promptTimeline: parsedRequirementsState.promptTimeline,
         },
         confirmTaskPlanInput: {
@@ -1891,7 +1893,7 @@ export function PrototypePreviewPanel({
           projectArtifacts: executionArtifacts.projectArtifacts,
           artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
           featureDraftTitles: parsedRequirementsState.featureDraftTitles,
-          envOk,
+          envOk: canRequestGeneration.envOk,
           designOk: true,
           promptTimeline: parsedRequirementsState.promptTimeline,
         },
@@ -1935,7 +1937,7 @@ export function PrototypePreviewPanel({
     parsedRequirementsState.artifactOrchestrationV1,
     parsedRequirementsState.featureDraftTitles,
     planningSlotDefinitions,
-    envOk,
+    canRequestGeneration.envOk,
     applyImplementationOrchestrationResult,
     showToast,
   ]);
@@ -1966,9 +1968,9 @@ export function PrototypePreviewPanel({
         projectId: projectId.trim(),
         projectArtifacts: executionArtifacts.projectArtifacts,
         artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-        envOk,
+        envOk: canRequestGeneration.envOk,
         designOk: true,
-        envCursorBadge: envOk ? "ok" : "needs",
+        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
         promptTimeline: parsedRequirementsState.promptTimeline,
       });
       if (taskListEnsured.ok && taskListEnsured.patch) {
@@ -1993,7 +1995,7 @@ export function PrototypePreviewPanel({
             projectArtifacts: executionArtifacts.projectArtifacts,
             orchestration: parsedRequirementsState.singleChatOrchestrationV1,
             slotDefinitions: planningSlotDefinitions,
-            envOk,
+            envOk: canRequestGeneration.envOk,
             promptTimeline: parsedRequirementsState.promptTimeline,
           },
           confirmTaskPlanInput: {
@@ -2002,7 +2004,7 @@ export function PrototypePreviewPanel({
             projectArtifacts: executionArtifacts.projectArtifacts,
             artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
             featureDraftTitles: parsedRequirementsState.featureDraftTitles,
-            envOk,
+            envOk: canRequestGeneration.envOk,
             designOk: true,
             promptTimeline: parsedRequirementsState.promptTimeline,
           },
@@ -2045,7 +2047,7 @@ export function PrototypePreviewPanel({
     parsedRequirementsState.artifactOrchestrationV1,
     parsedRequirementsState.featureDraftTitles,
     planningSlotDefinitions,
-    envOk,
+    canRequestGeneration.envOk,
     applyImplementationOrchestrationResult,
     showToast,
   ]);
