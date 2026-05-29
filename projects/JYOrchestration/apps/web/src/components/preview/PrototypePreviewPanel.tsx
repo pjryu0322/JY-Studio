@@ -143,6 +143,7 @@ import {
 } from "@/lib/prototype/reviewStageUserTest";
 import {
   canCompleteReviewStage,
+  buildReviewFeedbackConvertNotice,
   convertReviewFeedbackToImplementationRework,
   getActiveReviewFeedbackItems,
 } from "@/lib/prototype/reviewStageUserFeedback";
@@ -2795,7 +2796,11 @@ export function PrototypePreviewPanel({
               }),
             );
           }
-          const notice = `구현단계에 보완 요청을 등록했습니다. (${feedback.feedbackId} → ${converted.reworkRequestId})`;
+          const notice = buildReviewFeedbackConvertNotice({
+            feedbackId: converted.feedbackId,
+            targetTaskId: converted.targetTaskId,
+            reworkRequestId: converted.reworkRequestId,
+          });
           executionSingleChat.appendAiNotice(notice);
           showToast(notice);
           return { outcome: "executed" };

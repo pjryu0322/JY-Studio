@@ -156,6 +156,49 @@ export function getActiveReviewFeedbackItems(
   return list.items.filter((item) => ACTIVE_FEEDBACK_STATUSES.has(item.status));
 }
 
+const FEEDBACK_TITLE_MAX_LEN = 40;
+
+export function buildReviewFeedbackDraftFromUserText(input: {
+  readonly text: string;
+}):
+  | {
+      readonly title: string;
+      readonly detail: string;
+      readonly category: ReviewStageFeedbackCategory;
+      readonly severity: ReviewStageFeedbackSeverity;
+    }
+  | { readonly ok: false; readonly message: string } {
+  const trimmed = input.text.trim();
+  if (!trimmed) {
+    return { ok: false, message: "피드백 내용을 입력해 주세요." };
+  }
+  const firstLine = trimmed.split(/\r?\n/)[0]?.trim() || trimmed;
+  const title =
+    firstLine.length > FEEDBACK_TITLE_MAX_LEN
+      ? `${firstLine.slice(0, FEEDBACK_TITLE_MAX_LEN)}…`
+      : firstLine;
+  return {
+    title,
+    detail: trimmed,
+    category: "other",
+    severity: "medium",
+  };
+}
+
+export function buildReviewFeedbackConvertNotice(input: {
+  readonly feedbackId: string;
+  readonly targetTaskId: string;
+  readonly reworkRequestId: string;
+}): string {
+  return [
+    "검토단계 사용자 피드백을 구현단계 보완 요청으로 전환했습니다.",
+    `- 피드백 ID: ${input.feedbackId.trim()}`,
+    `- 대상 taskId: ${input.targetTaskId.trim()}`,
+    `- reworkRequestId: ${input.reworkRequestId.trim()}`,
+    "다음 작업: 구현단계에서 AI 개발자에게 보완 요청",
+  ].join("\n");
+}
+
 export function summarizeReviewStageUserFeedback(
   list: ReviewStageUserFeedbackListV1 | null | undefined,
 ): Readonly<{
@@ -260,6 +303,8 @@ export function convertReviewFeedbackToImplementationRework(input: {
   readonly feedbackList: ReviewStageUserFeedbackListV1;
   readonly boardState: ImplementationExecutionBoardStateV1;
   readonly reworkRequestId: string;
+  readonly targetTaskId: string;
+  readonly feedbackId: string;
 } {
   const now = input.nowIso ?? new Date().toISOString();
   const item = input.feedbackList.items.find((row) => row.feedbackId === input.feedbackId.trim());
@@ -284,5 +329,11 @@ export function convertReviewFeedbackToImplementationRework(input: {
     reworkRequestId,
     nowIso: now,
   });
-  return { feedbackList, boardState, reworkRequestId };
+  return {
+    feedbackList,
+    boardState,
+    reworkRequestId,
+    targetTaskId: taskId,
+    feedbackId: item.feedbackId,
+  };
 }

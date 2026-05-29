@@ -9,6 +9,11 @@ import {
   isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  buildImplementationUserTestSummaryLines,
+  deriveImplementationUserTestReadiness,
+} from "@/lib/prototype/implementationUserTestReadiness";
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
@@ -50,6 +55,8 @@ export function buildImplementationExecutionBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly nowIso: string;
   readonly previewReady?: boolean;
+  readonly hasExecutionState?: boolean;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const currentLine = formatCurrentRunningLine(input.board);
@@ -59,14 +66,24 @@ export function buildImplementationExecutionBoardMessage(input: {
   const hasFailed = input.board.summary.failedTasks > 0;
   const integratedChips = deriveIntegratedStageInterviewChips(input.board);
   const executionTargetLines = formatBoardExecutionTargetLines(input.board);
+  const previewReady = input.previewReady === true;
+  const testReadiness = deriveImplementationUserTestReadiness({
+    board: input.board,
+    previewReady,
+    hasTaskList: true,
+    hasExecutionState: input.hasExecutionState !== false,
+    boardState: input.boardState,
+  });
+  const testSummaryLines = buildImplementationUserTestSummaryLines({
+    board: input.board,
+    previewReady,
+    readiness: testReadiness,
+  });
   const reviewReadinessNotice = buildImplementationReviewStageReadinessNotice({
     board: input.board,
-    previewReady: input.previewReady === true,
+    previewReady,
   });
-  const reviewReady = isImplementationReadyForReviewStage({
-    board: input.board,
-    previewReady: input.previewReady === true,
-  });
+  const reviewReady = testReadiness.reviewStageMoveAllowed;
   const showReworkChip = boardShowsRequestTaskReworkChip(input.board);
   const chips = [
     IMPLEMENTATION_GENERATION_REQUEST_CHIP,
@@ -96,7 +113,10 @@ export function buildImplementationExecutionBoardMessage(input: {
     "통합 정리 단계:",
     ...(integratedLines.length ? integratedLines : ["(통합 단계 없음)"]),
     "",
+    ...testSummaryLines,
+    "",
     ...(reviewReadinessNotice ? [reviewReadinessNotice, ""] : []),
+    ...(testReadiness.ready ? [] : [`진단: ${testReadiness.message}`, ""]),
     "다음 작업을 선택해 주세요.",
   ].join("\n");
 

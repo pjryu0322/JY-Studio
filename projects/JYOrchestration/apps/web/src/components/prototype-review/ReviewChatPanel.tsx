@@ -137,6 +137,7 @@ export function ReviewChatPanel(p: {
   readonly onFollowUpDrafts: () => void;
   /** 비우면 전담 AI·전문가·사용자 기본 멘션 */
   readonly composerAtAtItems?: readonly ComposerAtAtPickerItem[];
+  readonly composerPlaceholder?: string;
 }) {
   const [text, setText] = useState("");
   const [modalItem, setModalItem] = useState<PrototypeImprovementItem | null>(null);
@@ -392,7 +393,7 @@ export function ReviewChatPanel(p: {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onTextareaKeyDown}
             disabled={p.disabled || p.busy}
-            placeholder="프로토타입을 보며 개선 요청을 입력하세요."
+            placeholder={p.composerPlaceholder ?? "프로토타입을 보며 개선 요청을 입력하세요."}
             rows={compact ? 2 : 2}
             style={{
               width: "100%",

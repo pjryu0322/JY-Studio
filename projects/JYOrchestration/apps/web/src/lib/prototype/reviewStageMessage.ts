@@ -69,6 +69,19 @@ export function deriveReviewStageInterviewChips(input: {
   if (!input.entryReady) return [];
   const summary = summarizeReviewStageUserFeedback(input.feedbackList);
   const chips: string[] = [];
+
+  if (input.session?.status === "completed") {
+    if (summary.active > 0) {
+      chips.push(REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP);
+    }
+    chips.push(REVIEW_STAGE_OPEN_PREVIEW_CHIP);
+    if (summary.total > 0) {
+      chips.push(REVIEW_STAGE_VIEW_FEEDBACK_CHIP);
+    }
+    chips.push(REVIEW_STAGE_ADD_FEEDBACK_CHIP);
+    return chips;
+  }
+
   if (summary.active > 0) {
     chips.push(REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP);
     chips.push(REVIEW_STAGE_VIEW_FEEDBACK_CHIP);

@@ -32,6 +32,7 @@ import { canCompleteReviewStage } from "@/lib/prototype/reviewStageUserFeedback"
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
@@ -85,6 +86,39 @@ export function deriveReviewStageNextActions(input: {
   const active = getActiveReviewFeedbackItems(input.feedbackList);
   const summary = summarizeReviewStageUserFeedback(input.feedbackList);
   const canComplete = canCompleteReviewStage({ feedbackList: input.feedbackList }).ok;
+
+  if (input.session?.status === "completed") {
+    const actions: ImplementationStageNextAction[] = [];
+    if (active.length > 0) {
+      actions.push({
+        actionId: "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION",
+        label: REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
+        priority: "primary",
+        reason: "검토 완료 후 남은 사용자 피드백을 구현단계 보완 요청으로 전환",
+      });
+    }
+    actions.push({
+      actionId: "REVIEW_STAGE_OPEN_PREVIEW",
+      label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
+      priority: actions.length ? "secondary" : "primary",
+      reason: "프로토타입 Preview 재확인",
+    });
+    if (summary.total > 0) {
+      actions.push({
+        actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
+        label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
+        priority: "secondary",
+        reason: "등록된 사용자 피드백 목록 확인",
+      });
+    }
+    actions.push({
+      actionId: "REVIEW_STAGE_ADD_FEEDBACK",
+      label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
+      priority: "tertiary",
+      reason: "검토 완료 후 추가 사용자 피드백 등록",
+    });
+    return actions;
+  }
 
   if (active.length > 0) {
     const actions: ImplementationStageNextAction[] = [
@@ -469,7 +503,47 @@ export function deriveImplementationStageNextActions(
       return deriveNextActionsFromBoardRemediation(board);
     }
 
+    const allTasksComplete =
+      board.taskRows.length > 0 && board.taskRows.every((row) => row.currentRole === "completed");
+
+    const fromIntegrated = deriveNextActionsFromIntegratedBoard(
+      board,
+      boardInput.previewReady === true,
+    );
+    if (fromIntegrated?.length) return fromIntegrated;
+
+    if (!allTasksComplete) {
+      const fromExecutionWhileBoard = deriveNextActionsFromExecutionState(
+        executionState,
+        prototypeSnapshot,
+        reviewGate,
+      );
+      if (fromExecutionWhileBoard?.length) return fromExecutionWhileBoard;
+      return [
+        {
+          actionId: "REQUEST_CODE_AGENT_WIP",
+          label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+          priority: "primary",
+          reason: "구현 작업 보드 기준 task-scoped 생성요청 WIP",
+        },
+        {
+          actionId: "SHOW_ARTIFACTS",
+          label: TASK_LIST_VIEW_CHIP,
+          priority: "secondary",
+          reason: "작업목록 및 실행 대상 확인",
+        },
+        {
+          actionId: "SHOW_ROLE_CHECK",
+          label: REVIEWER_CHECK_CHIP,
+          priority: "tertiary",
+          reason: "검수/보안 점검 대상 확인",
+        },
+      ];
+    }
+
     if (
+      reviewGate &&
+      isImplementationReadyForReviewStage(reviewGate) &&
       isReviewStageEntryReady({
         implementationReviewStageReadyV1: boardInput.implementationReviewStageReadyV1,
         previewReady: boardInput.previewReady === true,
@@ -481,12 +555,6 @@ export function deriveImplementationStageNextActions(
       });
       if (reviewActions.length) return reviewActions;
     }
-
-    const fromIntegrated = deriveNextActionsFromIntegratedBoard(
-      board,
-      boardInput.previewReady === true,
-    );
-    if (fromIntegrated?.length) return fromIntegrated;
   }
 
   const fromExecution = deriveNextActionsFromExecutionState(
@@ -495,6 +563,23 @@ export function deriveImplementationStageNextActions(
     reviewGate,
   );
   if (fromExecution?.length) return fromExecution;
+
+  if (boardInput?.taskList) {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+        priority: "primary",
+        reason: "구현 작업목록 기준 생성요청",
+      },
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: TASK_LIST_VIEW_CHIP,
+        priority: "secondary",
+        reason: "구현 작업 보드 확인",
+      },
+    ];
+  }
 
   switch (status) {
     case "not_ready":

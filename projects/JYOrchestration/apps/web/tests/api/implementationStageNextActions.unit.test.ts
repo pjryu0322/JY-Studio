@@ -507,15 +507,16 @@ describe("deriveImplementationStageNextActions integrated board", () => {
     expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 
-  it("review ready marker returns 사용자 테스트 시작 before MOVE_TO_REVIEW", () => {
+  it("board complete + previewReady returns MOVE_TO_REVIEW_STAGE before review-stage chips", () => {
     const input = fullyIntegratedCompleteInput();
     const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
     const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
       ...input,
+      previewReady: true,
       implementationReviewStageReadyV1: marker,
     });
-    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_START_USER_TEST");
-    expect(actions[0]?.label).toBe(REVIEW_STAGE_START_USER_TEST_CHIP);
+    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
+    expect(actions.some((a) => a.actionId === "REVIEW_STAGE_START_USER_TEST")).toBe(false);
   });
 
   it("active feedback + previewReady true prioritizes 구현단계 보완 요청", () => {
@@ -549,15 +550,16 @@ describe("deriveImplementationStageNextActions integrated board", () => {
     expect(actions.some((a) => a.actionId === "REVIEW_STAGE_COMPLETE_TEST")).toBe(false);
   });
 
-  it("board complete + previewReady true + review marker returns review stage not MOVE_TO_REVIEW", () => {
+  it("board complete + previewReady true prioritizes MOVE_TO_REVIEW_STAGE over implementation generation", () => {
     const input = fullyIntegratedCompleteInput();
     const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
     const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
       ...input,
+      previewReady: true,
       implementationReviewStageReadyV1: marker,
     });
-    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_START_USER_TEST");
-    expect(actions.some((a) => a.actionId === "MOVE_TO_REVIEW_STAGE")).toBe(false);
+    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
+    expect(actions.some((a) => a.actionId === "GENERATE_IMPLEMENTATION_WORK_PLAN")).toBe(false);
   });
 });
 

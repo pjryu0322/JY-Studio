@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   appendReviewStageUserFeedback,
+  buildReviewFeedbackDraftFromUserText,
+  buildReviewFeedbackConvertNotice,
   canCompleteReviewStage,
   convertReviewFeedbackToImplementationRework,
   getActiveReviewFeedbackItems,
@@ -48,6 +50,15 @@ function sampleTaskList(): ImplementationTaskListV1 {
 }
 
 describe("reviewStageUserFeedback", () => {
+  it("buildReviewFeedbackDraftFromUserText trims and caps title", () => {
+    const long = "가".repeat(50);
+    const draft = buildReviewFeedbackDraftFromUserText({ text: `  ${long}  ` });
+    expect("ok" in draft).toBe(false);
+    if ("ok" in draft) return;
+    expect(draft.title.endsWith("…")).toBe(true);
+    expect(draft.detail).toBe(long);
+  });
+
   it("appendReviewStageUserFeedback appends registered feedback with defaults", () => {
     const list = appendReviewStageUserFeedback({
       list: null,
@@ -82,6 +93,15 @@ describe("reviewStageUserFeedback", () => {
     expect(getActiveReviewFeedbackItems(converted.feedbackList)).toHaveLength(0);
     expect(converted.feedbackList.items[0]?.status).toBe("converted_to_rework");
     expect(converted.feedbackList.items[0]?.convertedReworkRequestId).toBeTruthy();
+    expect(converted.targetTaskId).toBe("dev-1");
+    expect(converted.feedbackId).toBe("fb-1");
+    expect(
+      buildReviewFeedbackConvertNotice({
+        feedbackId: converted.feedbackId,
+        targetTaskId: converted.targetTaskId,
+        reworkRequestId: converted.reworkRequestId,
+      }),
+    ).toContain("rework-review-fb-1");
   });
 
   it("feedback with targetTaskId converts to same task rework", () => {

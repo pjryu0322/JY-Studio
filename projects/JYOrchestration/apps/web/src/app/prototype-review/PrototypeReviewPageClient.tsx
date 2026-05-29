@@ -35,8 +35,20 @@ import {
 import { getPrototypeDeployStatusSnapshot } from "@/lib/prototype/prototypeDeploySnapshot";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { fetchProjectById } from "@/components/project-spec/api";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { Button } from "@/components/ui/Button";
+import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildReviewStageEntryNoticeLines } from "@/lib/prototype/reviewStageEntry";
+import { patchProjectRequirementsStateJsonClient } from "@/lib/prototype/patchReviewStageStateClient";
+import {
+  deriveReviewStageInterviewChips,
+  mapReviewStageChipToAction,
+  type ReviewStageActionId,
+} from "@/lib/prototype/reviewStageMessage";
+import {
+  registerReviewStageUserFeedbackFromText,
+  runReviewStagePageAction,
+  type ReviewStageRequirementsPatch,
+} from "@/lib/prototype/reviewStagePageActions";
 import { isReviewStageEntryReady } from "@/lib/prototype/reviewStageUserTest";
 
 type Busy = "send" | "summarize" | "improvements" | "drafts" | null;
@@ -84,9 +96,18 @@ export function PrototypeReviewPageClient() {
   const [deployProceedBusy, setDeployProceedBusy] = useState(false);
   const [securityRecheckBusy, setSecurityRecheckBusy] = useState(false);
   const [securityFixBusy, setSecurityFixBusy] = useState(false);
+  const [requirementsStateJson, setRequirementsStateJson] = useState<unknown>(null);
   const [reviewStageNoticeLines, setReviewStageNoticeLines] = useState<readonly string[]>([]);
   const [reviewStageEntryReady, setReviewStageEntryReady] = useState(false);
+  const [reviewFeedbackCaptureMode, setReviewFeedbackCaptureMode] = useState(false);
+  const [reviewStageActionNotice, setReviewStageActionNotice] = useState<string | null>(null);
+  const [reviewStageActionBusy, setReviewStageActionBusy] = useState(false);
   const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
+
+  const parsedRequirementsState = useMemo(
+    () => parseRequirementsStateJson(requirementsStateJson),
+    [requirementsStateJson],
+  );
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
   const previewStackRef = useRef<HTMLDivElement | null>(null);
@@ -249,6 +270,112 @@ export function PrototypeReviewPageClient() {
   }, [projectId, selectedRunId, deployPollActive]);
 
   const urlKey = previewUrlKey(run);
+
+  const applyReviewStageBanner = useCallback(
+    (state: RequirementsStateJson, previewUrl: string) => {
+      const previewReady = Boolean(previewUrl?.trim());
+      const entryReady = isReviewStageEntryReady({
+        implementationReviewStageReadyV1: state.implementationReviewStageReadyV1,
+        previewReady,
+      });
+      const lines = buildReviewStageEntryNoticeLines({
+        implementationReviewStageReadyV1: state.implementationReviewStageReadyV1,
+        previewReady,
+        session: state.reviewStageUserTestSessionV1,
+        feedbackList: state.reviewStageUserFeedbackListV1,
+        previewUrl: previewUrl || undefined,
+      });
+      setReviewStageEntryReady(entryReady);
+      setReviewStageNoticeLines(lines);
+    },
+    [],
+  );
+
+  const loadProjectRequirementsState = useCallback(async () => {
+    if (!projectId) return;
+    const { project } = await fetchProjectById(projectId);
+    const state = parseRequirementsStateJson(project?.requirementsStateJson);
+    setRequirementsStateJson(project?.requirementsStateJson ?? null);
+    applyReviewStageBanner(state, urlKey);
+  }, [projectId, urlKey, applyReviewStageBanner]);
+
+  useEffect(() => {
+    void loadProjectRequirementsState();
+  }, [loadProjectRequirementsState]);
+
+  const persistReviewStagePatch = useCallback(
+    async (patch: ReviewStageRequirementsPatch) => {
+      const res = await patchProjectRequirementsStateJsonClient(projectId, requirementsStateJson, patch);
+      if (res.success && res.merged) {
+        setRequirementsStateJson(res.merged);
+        applyReviewStageBanner(res.merged, urlKey);
+        return res;
+      }
+      setError(res.message ?? "검토단계 상태 저장에 실패했습니다.");
+      return res;
+    },
+    [projectId, requirementsStateJson, urlKey, applyReviewStageBanner],
+  );
+
+  const reviewStageChips = useMemo(
+    () =>
+      deriveReviewStageInterviewChips({
+        entryReady: reviewStageEntryReady,
+        feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+        session: parsedRequirementsState.reviewStageUserTestSessionV1,
+      }),
+    [
+      reviewStageEntryReady,
+      parsedRequirementsState.reviewStageUserFeedbackListV1,
+      parsedRequirementsState.reviewStageUserTestSessionV1,
+    ],
+  );
+
+  const runReviewStageAction = useCallback(
+    async (actionId: ReviewStageActionId) => {
+      if (!projectId || reviewStageActionBusy) return;
+      setReviewStageActionBusy(true);
+      setError(null);
+      try {
+        const result = runReviewStagePageAction({
+          actionId,
+          projectId,
+          orchestration: parsedRequirementsState,
+          previewUrl: urlKey || undefined,
+        });
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        if (result.feedbackCaptureMode) {
+          setReviewFeedbackCaptureMode(true);
+          setReviewStageActionNotice(result.notice ?? null);
+          return;
+        }
+        if (result.viewFeedbackLines?.length) {
+          setReviewStageActionNotice(result.viewFeedbackLines.join("\n"));
+        } else if (result.notice) {
+          setReviewStageActionNotice(result.notice);
+          showSuccessToast(result.notice.split("\n")[0] ?? result.notice);
+        }
+        if (Object.keys(result.patch).length > 0) {
+          const persistRes = await persistReviewStagePatch(result.patch);
+          if (!persistRes.success) return;
+        }
+      } finally {
+        setReviewStageActionBusy(false);
+      }
+    },
+    [
+      projectId,
+      reviewStageActionBusy,
+      parsedRequirementsState,
+      urlKey,
+      persistReviewStagePatch,
+      showSuccessToast,
+    ],
+  );
+
   useEffect(() => {
     if (!urlKey || !(urlKey.startsWith("http://") || urlKey.startsWith("https://"))) {
       setFrameLoading(false);
@@ -379,6 +506,33 @@ export function PrototypeReviewPageClient() {
     onSend: (userMessage: string) =>
       void wrapBusy("send", async () => {
         if (!selectedRunId) return;
+        if (reviewFeedbackCaptureMode) {
+          const registered = registerReviewStageUserFeedbackFromText({
+            projectId,
+            text: userMessage,
+            feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+            session: parsedRequirementsState.reviewStageUserTestSessionV1,
+            previewUrl: urlKey || undefined,
+          });
+          if (!registered.ok) {
+            setError(registered.message);
+            return;
+          }
+          const persistRes = await persistReviewStagePatch(registered.patch);
+          if (!persistRes.success) return;
+          setReviewFeedbackCaptureMode(false);
+          setReviewStageActionNotice(null);
+          showSuccessToast(`사용자 피드백이 저장되었습니다. (${registered.feedbackId})`);
+          const chatRes = await postPrototypeReviewChatTurn(
+            projectId,
+            selectedRunId,
+            `[사용자 피드백] ${userMessage}`,
+          );
+          if (chatRes.success && chatRes.data?.messages) {
+            setMessages(chatRes.data.messages);
+          }
+          return;
+        }
         const res = await postPrototypeReviewChatTurn(projectId, selectedRunId, userMessage);
         if (!res.success) {
           setError(res.message ?? "전송에 실패했습니다.");
@@ -432,8 +586,11 @@ export function PrototypeReviewPageClient() {
     improvementsLoading,
     improvementsError,
     threadLoading,
-    busy: busy !== null,
+    busy: busy !== null || reviewStageActionBusy,
     busyAction: busy,
+    composerPlaceholder: reviewFeedbackCaptureMode
+      ? "다음 메시지는 사용자 피드백으로 저장됩니다. (AI개선안과 별도)"
+      : undefined,
     ...chatHandlers,
   };
 
@@ -469,13 +626,43 @@ export function PrototypeReviewPageClient() {
             {reviewStageNoticeLines.slice(0, 12).map((line) => (
               <span key={line}>{line}</span>
             ))}
-            {reviewStageEntryReady ? (
-              <span style={{ fontSize: 12, color: "#4b5563" }}>
-                구현단계 보완·피드백 등록 CTA는 「프로토타입 생성」 실행 화면 채팅에서 사용할 수 있습니다.
-              </span>
-            ) : null}
+            <span style={{ fontSize: 12, color: "#4b5563" }}>
+              AI개선안은 AI가 제안한 개선 후보이며, 사용자 피드백은 직접 테스트하며 등록한 수정 요청입니다.
+            </span>
           </div>
         </InlineAlert>
+      ) : null}
+      {reviewStageActionNotice ? (
+        <InlineAlert variant="info" style={{ flexShrink: 0 }}>
+          <span style={{ whiteSpace: "pre-wrap" }}>{reviewStageActionNotice}</span>
+        </InlineAlert>
+      ) : null}
+      {reviewStageEntryReady && reviewStageChips.length ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          {reviewStageChips.map((chip) => {
+            const actionId = mapReviewStageChipToAction(chip);
+            if (!actionId) return null;
+            return (
+              <Button
+                key={chip}
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={reviewStageActionBusy || busy !== null}
+                onClick={() => void runReviewStageAction(actionId)}
+              >
+                {chip}
+              </Button>
+            );
+          })}
+        </div>
       ) : null}
 
       <ReviewHeader
