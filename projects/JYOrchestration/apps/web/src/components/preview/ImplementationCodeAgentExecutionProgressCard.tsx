@@ -47,8 +47,10 @@ export function ImplementationCodeAgentExecutionProgressCard({
           ) : null}
           {progress.commitShaDisplay ? (
             <div className={styles.progressMetaLine}>
-              <span className={styles.progressMetaKey}>커밋</span>
-              <span>{progress.commitShaDisplay}</span>
+              <span className={styles.progressMetaKey}>{progress.isStubResult ? "WIP SHA" : "커밋"}</span>
+              <span data-testid={progress.isStubResult ? "code-agent-wip-stub-sha" : undefined}>
+                {progress.commitShaDisplay}
+              </span>
             </div>
           ) : null}
           {progress.isStubResult ? (
@@ -69,8 +71,14 @@ export function ImplementationCodeAgentExecutionProgressCard({
             </div>
           ) : null}
           {progress.failureReason ? (
-            <div className={styles.progressFailure}>{progress.failureReason}</div>
+            <div className={styles.progressFailure} data-testid="code-agent-wip-failure-reason">
+              {progress.failureReason}
+            </div>
           ) : null}
+        </div>
+      ) : progress.failureReason ? (
+        <div className={styles.progressFailure} data-testid="code-agent-wip-failure-reason">
+          {progress.failureReason}
         </div>
       ) : null}
 

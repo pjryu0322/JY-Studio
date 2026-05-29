@@ -62,8 +62,17 @@ export function buildRequestCodeAgentWipWorkResult(input: {
       readonly chatPatch: CodeAgentWipChatPatch;
       readonly orchestrationPatch: CodeAgentWipOrchestrationPatch;
     }> {
-  if (input.existingWip && ACTIVE_WIP_STATUSES.has(input.existingWip.status)) {
-    return { kind: "already_active" };
+  if (input.existingWip) {
+    const bridge = input.existingWip.bridgeExecutionStatus;
+    if (
+      ACTIVE_WIP_STATUSES.has(input.existingWip.status) ||
+      bridge === "draft_created" ||
+      bridge === "draft_approved" ||
+      bridge === "bridge_requested" ||
+      bridge === "bridge_running"
+    ) {
+      return { kind: "already_active" };
+    }
   }
   const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
   const prior = resolved.messages ?? [];

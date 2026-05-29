@@ -171,7 +171,36 @@ describe("codeAgentExecutionProgressView", () => {
     const view = buildCodeAgentExecutionProgressView({ codeAgentWipExecutionV1: wip });
     expect(view.status).toBe("draft_created");
     expect(view.isStubResult).toBe(true);
-    expect(view.commitShaDisplay).toBeUndefined();
+    expect(view.commitShaDisplay).toBe("wip-stub-001");
+  });
+
+  it("shows draft failure from timeline when wip is missing", () => {
+    const view = buildCodeAgentExecutionProgressView({
+      latestTimeline: [
+        {
+          stage: "implementation",
+          action: "code_agent_wip_draft_failed",
+          source: "platform",
+          responseText:
+            "type=code_agent_wip_draft_failed reason=missing_executable_developer_task detail=실행 가능한 개발자 작업이 없습니다.",
+          createdAt: NOW,
+        },
+      ],
+    });
+    expect(view.status).toBe("idle");
+    expect(view.failureReason).toContain("실행 가능한 AI 개발자 작업");
+    expect(view.summaryLine).toContain("실패");
+  });
+
+  it("uses executionStatus draft_created when bridge status is absent", () => {
+    const wip = {
+      ...draftWip(),
+      bridgeExecutionStatus: undefined,
+      executionStatus: "draft_created" as const,
+    };
+    const view = buildCodeAgentExecutionProgressView({ codeAgentWipExecutionV1: wip });
+    expect(view.status).toBe("draft_created");
+    expect(view.summaryLine).toContain("실제 Cursor API: 아직 실행하지 않음");
   });
 
   it("formats selected task row progress line", () => {

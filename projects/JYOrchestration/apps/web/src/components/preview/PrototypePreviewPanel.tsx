@@ -54,8 +54,11 @@ import {
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import {
+  buildCodeAgentWipDraftCreatedTimelineEntry,
+  buildCodeAgentWipDraftFailedTimelineEntry,
   buildImplementationWipDraftLifecycleTimelineEntry,
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
+  mapBlockedMessageToWipDraftFailureReason,
 } from "@/lib/prototype/codeAgentWipExecution";
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
@@ -580,6 +583,7 @@ export function PrototypePreviewPanel({
               orchestrationPatch.promptTimeline?.length,
               orchestrationPatch.implementationTaskExecutionStateV1?.updatedAt,
               orchestrationPatch.implementationTaskExecutionStateV1?.summary,
+              orchestrationPatch.implementationStageActionRunLogV1 ? "runlog" : null,
             ]
           : null,
       });
@@ -588,14 +592,16 @@ export function PrototypePreviewPanel({
 
       const merged =
         chatPatch || orchestrationPatch
-          ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJson, {
+          ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJsonRef.current, {
               ...(chatPatch ? { chat: chatPatch } : {}),
               ...(orchestrationPatch ?? {}),
             })
-          : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJson), {
+          : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJsonRef.current), {
               prototypeWorkspaceTimelineCardsV1: tc,
               lastSavedAt: new Date().toISOString(),
             });
+
+      requirementsStateJsonRef.current = merged;
 
       queueMicrotask(() => {
         onRequirementsStateJsonChange?.(merged);
@@ -1339,6 +1345,12 @@ export function PrototypePreviewPanel({
     [requirementsStateJson],
   );
 
+  /** Latest merged requirements JSON — updated synchronously on persist to avoid WIP/timeline race overwrites. */
+  const requirementsStateJsonRef = useRef(requirementsStateJson);
+  useEffect(() => {
+    requirementsStateJsonRef.current = requirementsStateJson;
+  }, [requirementsStateJson]);
+
   const orchestrationAwareRequirementsState = useMemo(
     () =>
       resolveOrchestrationAwareRequirementsState({
@@ -1939,10 +1951,11 @@ export function PrototypePreviewPanel({
         answers: resolved.answers ?? {},
         currentSlotKey: resolved.currentSlotKey ?? null,
       };
-      const mergedRequirementsState = buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJson, {
+      const mergedRequirementsState = buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJsonRef.current, {
         chat: chatPatch,
         ...input.orchestrationPatch,
       });
+      requirementsStateJsonRef.current = mergedRequirementsState;
       applyPendingFromOrchestrationPatch(input.orchestrationPatch);
       onRequirementsStateJsonChange?.(mergedRequirementsState);
       executionSingleChat.applyPersistedMessages(input.messages);
@@ -2406,11 +2419,11 @@ export function PrototypePreviewPanel({
       runLogPatch?: { readonly implementationStageActionRunLogV1: unknown },
     ) => {
       if (!entries.length && !runLogPatch) return;
-      let timeline = parsedRequirementsState.promptTimeline;
+      let timeline = parseRequirementsStateJson(requirementsStateJsonRef.current).promptTimeline;
       for (const entry of entries) {
         timeline = appendPromptTimeline(timeline, entry);
       }
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJsonRef.current);
       void persistChatToDb(
         {
           messages: resolved.messages ?? [],
@@ -2421,21 +2434,53 @@ export function PrototypePreviewPanel({
         { promptTimeline: timeline, ...(runLogPatch ?? {}) },
       );
     },
-    [parsedRequirementsState.promptTimeline, requirementsStateJson, persistChatToDb],
+    [persistChatToDb],
   );
 
   const persistImplementationStageActionRun = useCallback(
     (run: ImplementationStageActionRun) => {
+      const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
       const runLogPatch = buildImplementationStageActionRunLogPatch({
-        currentLog: parsedRequirementsState.implementationStageActionRunLogV1,
+        currentLog: refState.implementationStageActionRunLogV1,
         run,
       });
-      persistStageActionTimelineEntries(run.timelineEntries, runLogPatch);
+      let extraEntries = [...run.timelineEntries];
+      if (run.actionId === "REQUEST_CODE_AGENT_WIP") {
+        const pid = projectId.trim();
+        if (run.runResult?.outcome === "executed") {
+          const wip = refState.codeAgentWipExecutionV1;
+          const hasDraftWip =
+            wip &&
+            (wip.bridgeExecutionStatus === "draft_created" ||
+              wip.executionStatus === "draft_created" ||
+              wip.commits.some((commit) => String(commit.sha ?? "").startsWith("wip-stub")));
+          if (hasDraftWip && wip) {
+            extraEntries = [
+              ...extraEntries,
+              buildCodeAgentWipDraftCreatedTimelineEntry({
+                projectId: pid,
+                wip,
+                runId: run.runId,
+                source: "REQUEST_CODE_AGENT_WIP",
+              }),
+            ];
+          }
+        } else if (run.runResult?.outcome === "blocked") {
+          extraEntries = [
+            ...extraEntries,
+            buildCodeAgentWipDraftFailedTimelineEntry({
+              projectId: pid,
+              runId: run.runId,
+              reason: mapBlockedMessageToWipDraftFailureReason(run.runResult.message),
+              detail: run.runResult.message,
+              source: "REQUEST_CODE_AGENT_WIP",
+            }),
+          ];
+        }
+      }
+      persistStageActionTimelineEntries(extraEntries, runLogPatch);
     },
-    [
-      parsedRequirementsState.implementationStageActionRunLogV1,
-      persistStageActionTimelineEntries,
-    ],
+    [persistStageActionTimelineEntries, projectId],
   );
 
   const applyImplementationStageActionExecutionResult = useCallback(
@@ -3010,7 +3055,9 @@ export function PrototypePreviewPanel({
             return { outcome: "blocked", message: wipResult.message };
           }
           if (wipResult.kind === "already_active") {
-            showToast("이미 Code Agent WIP 작업이 진행 중입니다.");
+            showToast(
+              "WIP 초안이 이미 있습니다. [Cursor 실행 요청]으로 실제 소스 생성을 진행하세요.",
+            );
             return { outcome: "executed" };
           }
 

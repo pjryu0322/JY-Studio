@@ -201,7 +201,7 @@ export function executeCodeAgentWipWorkRequest(
   const result = buildRequestCodeAgentWipWorkResult({
     projectId: pid,
     requirementsStateJson: deps.requirementsStateJson,
-    plan: runtime.plan,
+    plan,
     workItems: runtime.workItems,
     existingWip: deps.parsedState.codeAgentWipExecutionV1,
     promptTimeline: runtime.promptTimeline ?? deps.parsedState.promptTimeline,

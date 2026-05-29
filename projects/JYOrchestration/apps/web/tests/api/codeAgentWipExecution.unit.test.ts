@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   appendWipPolicyToCodeAgentPrompt,
+  buildCodeAgentWipDraftCreatedTimelineEntry,
+  buildCodeAgentWipDraftFailedTimelineEntry,
   buildCodeAgentWipExecutionMessage,
   buildImplementationWipDraftLifecycleTimelineEntry,
   buildInitialCodeAgentWipExecution,
@@ -15,6 +17,7 @@ import {
   deriveCodeAgentWipReviewChips,
   isRealCursorSourceGenerationCompleted,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
+  mapBlockedMessageToWipDraftFailureReason,
 } from "@/lib/prototype/codeAgentWipExecution";
 import { parseCodeAgentWipExecutionFromState, parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
@@ -68,6 +71,64 @@ describe("codeAgentWipExecution", () => {
     expect(result.orchestrationPatch.promptTimeline.some((e) => e.action === "code_agent_wip_requested")).toBe(
       true,
     );
+    expect(result.orchestrationPatch.codeAgentWipExecutionV1.executionStatus).toBe("draft_created");
+    expect(result.orchestrationPatch.codeAgentWipExecutionV1.selectedTaskId).toBeTruthy();
+    expect(result.orchestrationPatch.codeAgentWipExecutionV1.selectedWorkItemIds?.length).toBeGreaterThan(0);
+    expect(result.orchestrationPatch.codeAgentWipExecutionV1.branchName).toBeTruthy();
+    expect(String(result.orchestrationPatch.codeAgentWipExecutionV1.commits[0]?.sha ?? "")).toMatch(/^wip-stub-/);
+  });
+
+  it("duplicate REQUEST_CODE_AGENT_WIP does not create a second draft", () => {
+    const first = buildRequestCodeAgentWipWorkResult({
+      projectId: "p1",
+      requirementsStateJson: {},
+      plan,
+      workItems,
+      existingWip: undefined,
+    });
+    expect(first.kind).toBe("created");
+    if (first.kind !== "created") return;
+    const second = buildRequestCodeAgentWipWorkResult({
+      projectId: "p1",
+      requirementsStateJson: {},
+      plan,
+      workItems,
+      existingWip: first.orchestrationPatch.codeAgentWipExecutionV1,
+    });
+    expect(second.kind).toBe("already_active");
+  });
+
+  it("buildCodeAgentWipDraftCreatedTimelineEntry records draft_created metadata", () => {
+    const created = buildRequestCodeAgentWipWorkResult({
+      projectId: "p1",
+      requirementsStateJson: {},
+      plan,
+      workItems,
+      existingWip: undefined,
+    });
+    if (created.kind !== "created") throw new Error("expected created");
+    const entry = buildCodeAgentWipDraftCreatedTimelineEntry({
+      projectId: "p1",
+      wip: created.orchestrationPatch.codeAgentWipExecutionV1,
+      runId: "impl-run-001",
+    });
+    expect(entry.action).toBe("code_agent_wip_draft_created");
+    expect(entry.responseText).toContain("executionStatus=draft_created");
+    expect(entry.responseText).toContain("cursorApiExecuted=false");
+    expect(entry.responseText).toContain("runId=impl-run-001");
+  });
+
+  it("buildCodeAgentWipDraftFailedTimelineEntry maps blocked messages to reason", () => {
+    const reason = mapBlockedMessageToWipDraftFailureReason("실행 가능한 개발자 작업이 없습니다.");
+    expect(reason).toBe("missing_executable_developer_task");
+    const entry = buildCodeAgentWipDraftFailedTimelineEntry({
+      projectId: "p1",
+      reason,
+      runId: "impl-run-002",
+      detail: "실행 가능한 개발자 작업이 없습니다.",
+    });
+    expect(entry.action).toBe("code_agent_wip_draft_failed");
+    expect(entry.responseText).toContain("reason=missing_executable_developer_task");
   });
 
   it("stores provider on code agent WIP execution state", () => {

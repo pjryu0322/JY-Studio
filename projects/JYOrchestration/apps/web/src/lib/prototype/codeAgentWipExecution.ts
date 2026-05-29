@@ -842,6 +842,108 @@ export function buildImplementationWipDraftLifecycleTimelineEntry(input: {
   };
 }
 
+export function buildCodeAgentWipDraftCreatedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly wip: CodeAgentWipExecutionV1;
+  readonly runId?: string;
+  readonly source?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const stubSha = input.wip.commits[input.wip.commits.length - 1]?.sha;
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: "code_agent_wip_draft_created",
+    source: "platform",
+    routingDecision: input.source ?? "REQUEST_CODE_AGENT_WIP",
+    responseText: [
+      "type=code_agent_wip_draft_created",
+      "mode=implementation",
+      `source=${input.source ?? "REQUEST_CODE_AGENT_WIP"}`,
+      ...(input.runId ? [`runId=${input.runId}`] : []),
+      `projectId=${input.projectId}`,
+      `selectedTaskId=${input.wip.selectedTaskId ?? "none"}`,
+      `selectedWorkItemCount=${input.wip.selectedWorkItemIds?.length ?? input.wip.workItems.length}`,
+      `executionStatus=${input.wip.executionStatus ?? "draft_created"}`,
+      `bridgeExecutionStatus=${input.wip.bridgeExecutionStatus ?? "draft_created"}`,
+      `executionMode=${input.wip.executionMode ?? "stub"}`,
+      `cursorApiExecuted=false`,
+      ...(input.wip.branchName ? [`branchName=${input.wip.branchName}`] : []),
+      ...(stubSha ? [`wipStubSha=${stubSha}`] : []),
+    ].join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
+export type CodeAgentWipDraftFailureReason =
+  | "missing_task_list"
+  | "missing_cursor_work_items"
+  | "missing_executable_developer_task"
+  | "missing_implementation_task_plan"
+  | "cursor_gate_blocked"
+  | "state_persist_failed"
+  | "unknown";
+
+export function buildCodeAgentWipDraftFailedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly reason: CodeAgentWipDraftFailureReason | string;
+  readonly runId?: string;
+  readonly source?: string;
+  readonly detail?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: "code_agent_wip_draft_failed",
+    source: "platform",
+    routingDecision: input.source ?? "REQUEST_CODE_AGENT_WIP",
+    responseText: [
+      "type=code_agent_wip_draft_failed",
+      "mode=implementation",
+      `source=${input.source ?? "REQUEST_CODE_AGENT_WIP"}`,
+      ...(input.runId ? [`runId=${input.runId}`] : []),
+      `projectId=${input.projectId}`,
+      `reason=${input.reason}`,
+      ...(input.detail?.trim() ? [`detail=${input.detail.trim()}`] : []),
+    ].join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
+const WIP_DRAFT_FAILURE_REASON_LABELS: Record<string, string> = {
+  missing_task_list: "구현 작업목록이 없습니다.",
+  missing_cursor_work_items: "Cursor 작업 항목이 없습니다.",
+  missing_executable_developer_task: "실행 가능한 AI 개발자 작업을 찾지 못했습니다.",
+  missing_implementation_task_plan: "구현 작업 계획을 찾지 못했습니다.",
+  cursor_gate_blocked: "Cursor 실행 환경 또는 구현 준비 조건이 충족되지 않았습니다.",
+  state_persist_failed: "WIP 초안 상태 저장에 실패했습니다.",
+  local_merge_failed: "WIP 초안 상태 병합에 실패했습니다.",
+  unknown: "알 수 없는 오류가 발생했습니다.",
+};
+
+export function mapBlockedMessageToWipDraftFailureReason(message: string | undefined): CodeAgentWipDraftFailureReason {
+  const text = String(message ?? "").trim();
+  if (!text) return "unknown";
+  if (/작업목록|task list|tasklist/i.test(text)) return "missing_task_list";
+  if (/cursor work|작업 항목|workItems|work items/i.test(text)) return "missing_cursor_work_items";
+  if (/실행 가능|executable|developer task|개발자 작업/i.test(text)) return "missing_executable_developer_task";
+  if (/작업 계획|task plan|implementationTaskPlan/i.test(text)) return "missing_implementation_task_plan";
+  if (/환경|gate|cursor|설정|준비/i.test(text)) return "cursor_gate_blocked";
+  if (/persist|저장/i.test(text)) return "state_persist_failed";
+  if (/merge|병합/i.test(text)) return "local_merge_failed";
+  return "unknown";
+}
+
+export function formatWipDraftFailureReasonLabel(reason: string | undefined): string {
+  const key = String(reason ?? "").trim();
+  return WIP_DRAFT_FAILURE_REASON_LABELS[key] ?? (key || WIP_DRAFT_FAILURE_REASON_LABELS.unknown);
+}
+
 export function buildCodeAgentWipTimelineEntry(input: {
   readonly action: string;
   readonly wip: CodeAgentWipExecutionV1;

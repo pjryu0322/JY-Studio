@@ -1,5 +1,6 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
+  formatWipDraftFailureReasonLabel,
   isRealCursorSourceGenerationCompleted,
   isStubCodeAgentWipExecution,
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
@@ -64,6 +65,9 @@ const RELEVANT_TIMELINE_ACTIONS = new Set([
   "implementation_stage_action_blocked",
   "code_agent_wip_requested",
   "code_agent_wip_draft_created",
+  "code_agent_wip_draft_failed",
+  "implementation_wip_draft_created",
+  "implementation_wip_draft_persisted",
   "cursor_api_direct_execution_requested",
   "cursor_api_direct_execution_completed",
   "cursor_api_direct_execution_failed",
@@ -77,12 +81,47 @@ const TIMELINE_ACTION_LABELS: Record<string, string> = {
   implementation_stage_action_blocked: "구현 액션 차단",
   code_agent_wip_requested: "Code Agent WIP 요청",
   code_agent_wip_draft_created: "WIP 초안 생성",
+  code_agent_wip_draft_failed: "WIP 초안 생성 실패",
+  implementation_wip_draft_created: "WIP 초안 생성",
+  implementation_wip_draft_persisted: "WIP 초안 저장",
   cursor_api_direct_execution_requested: "Cursor API 요청",
   cursor_api_direct_execution_completed: "Cursor API 완료",
   cursor_api_direct_execution_failed: "Cursor API 실패",
   cursor_api_direct_execution_unsupported: "Cursor API 미지원",
   cursor_api_availability_checked: "Cursor API 환경 점검",
 };
+
+function extractTimelineField(text: string, field: string): string | undefined {
+  const match = text.match(new RegExp(`${field}=([^\\s]+(?:\\s(?!\\w+=)[^\\s]+)*)`));
+  return match?.[1]?.trim() || undefined;
+}
+
+function extractWipDraftFailureFromTimeline(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+): { readonly reason?: string; readonly detail?: string } | null {
+  if (!timeline?.length) return null;
+  const failed = [...timeline]
+    .filter((entry) => entry.action === "code_agent_wip_draft_failed")
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  if (!failed) return null;
+  const text = failed.responseText ?? "";
+  return {
+    reason: extractTimelineField(text, "reason"),
+    detail: extractTimelineField(text, "detail"),
+  };
+}
+
+function formatWipDraftFailureMessage(failure: {
+  readonly reason?: string;
+  readonly detail?: string;
+}): string {
+  const reasonLine = formatWipDraftFailureReasonLabel(failure.reason);
+  const detail = failure.detail?.trim();
+  if (detail && detail !== reasonLine) {
+    return `Code Agent WIP 초안 생성에 실패했습니다.\n\n사유:\n- ${reasonLine}\n\n${detail}`;
+  }
+  return `Code Agent WIP 초안 생성에 실패했습니다.\n\n사유:\n- ${reasonLine}`;
+}
 
 function formatTimelineTimeLabel(createdAt: string): string {
   const date = new Date(createdAt);
@@ -128,10 +167,10 @@ function resolveSelectedTaskTitle(
   return board.taskRows.find((row) => row.taskId === taskId)?.title;
 }
 
-function formatCommitShaDisplay(sha: string | undefined): string | undefined {
+function formatCommitShaDisplay(sha: string | undefined, isStub: boolean): string | undefined {
   const raw = sha?.trim();
   if (!raw) return undefined;
-  if (raw.startsWith("wip-stub")) return `${raw.slice(0, 12)}… (stub)`;
+  if (isStub || raw.startsWith("wip-stub")) return raw;
   if (raw.length <= 12) return raw;
   return `${raw.slice(0, 7)}…`;
 }
@@ -165,14 +204,21 @@ function resolveProgressStatus(wip: CodeAgentWipExecutionV1 | null | undefined):
     return "developer_reviewing";
   }
   const bridge = wip.bridgeExecutionStatus;
-  if (bridge === "failed" || wip.executionStatus === "cursor_api_failed") return "cursor_failed";
+  const executionStatus = wip.executionStatus;
+  if (bridge === "failed" || executionStatus === "cursor_api_failed") return "cursor_failed";
   if (bridge === "bridge_running") return "cursor_running";
   if (bridge === "bridge_requested") return "cursor_requested";
   if (bridge === "bridge_completed") {
     return isRealCursorSourceGenerationCompleted(wip) ? "cursor_completed" : "draft_created";
   }
   if (bridge === "draft_approved") return "cursor_request_ready";
-  if (bridge === "draft_created" || isStubCodeAgentWipExecution(wip)) return "draft_created";
+  if (
+    bridge === "draft_created" ||
+    executionStatus === "draft_created" ||
+    isStubCodeAgentWipExecution(wip)
+  ) {
+    return "draft_created";
+  }
   return "idle";
 }
 
@@ -225,7 +271,7 @@ function summaryLineFor(
     return "아직 Code Agent WIP 초안이 없습니다. [생성요청]으로 첫 작업 초안을 만들 수 있습니다.";
   }
   if (status === "draft_created" || status === "cursor_request_ready") {
-    return "생성요청은 WIP 초안 생성 단계입니다. 실제 소스 생성을 진행하려면 Cursor 실행 요청을 선택하세요.";
+    return "WIP 초안 생성됨. 실제 Cursor API: 아직 실행하지 않음. 다음 단계: Cursor 실행 요청";
   }
   if (status === "cursor_requested" || status === "cursor_running") {
     return "Cursor API 실행 결과를 기다리는 중입니다.";
@@ -325,22 +371,33 @@ export function buildCodeAgentExecutionProgressView(input: {
   const { testStatus, testStatusLabel } = resolveTestStatus(wip);
   const recentEvents = extractRecentCodeAgentTimelineEvents(input.latestTimeline);
   const runId = recentEvents.find((event) => event.runId)?.runId;
+  const draftFailure = !wip ? extractWipDraftFailureFromTimeline(input.latestTimeline) : null;
+  const failureReason =
+    status === "cursor_failed"
+      ? wip?.bridgeErrorMessage?.trim()
+      : draftFailure
+        ? formatWipDraftFailureMessage(draftFailure)
+        : undefined;
+  const summaryLine =
+    draftFailure && status === "idle"
+      ? formatWipDraftFailureMessage(draftFailure)
+      : summaryLineFor(status, wip);
 
   return {
     status,
     statusLabel: statusLabelFor(status),
-    summaryLine: summaryLineFor(status, wip),
+    summaryLine,
     selectedTaskId,
     selectedTaskTitle: resolveSelectedTaskTitle(input.board ?? null, selectedTaskId),
     cursorApiLabel: cursorApiLabelFor(status, wip),
     branchName: wip?.branchName || latestCommit?.branchName,
     commitSha: rawSha,
-    commitShaDisplay: isStubResult ? undefined : formatCommitShaDisplay(rawSha),
+    commitShaDisplay: formatCommitShaDisplay(rawSha, isStubResult),
     changedFileCount: latestCommit?.changedFiles.length ?? 0,
     testStatus,
     testStatusLabel,
     runId,
-    failureReason: status === "cursor_failed" ? wip?.bridgeErrorMessage?.trim() : undefined,
+    failureReason,
     nextActionLabel: nextActionLabelFor(status),
     showGenerationClarification: status === "draft_created" || status === "cursor_request_ready",
     isStubResult,
