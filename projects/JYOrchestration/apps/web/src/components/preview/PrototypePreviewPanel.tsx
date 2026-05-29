@@ -28,7 +28,9 @@ import {
 } from "@/lib/prototype/implementationArtifacts";
 import { buildImplementationSlotsInterviewUi } from "@/lib/prototype/prototypeExecutionImplementationChrome";
 import {
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   IMPLEMENTATION_ARTIFACT_HUB_LABEL,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROGRESS_LABEL,
   IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
@@ -122,6 +124,7 @@ import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implemen
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
+import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
   buildTaskListDerivedWipOrchestration,
   canUseTaskListForWipOrchestration,
@@ -2132,6 +2135,36 @@ export function PrototypePreviewPanel({
     applyImplementationOrchestrationResult,
   ]);
 
+  const runImplementationQualityGate = useCallback(
+    (role: "reviewer" | "security"): ImplementationStageActionRunResult => {
+      const taskList = parsedRequirementsState.implementationTaskListV1;
+      const pid = projectId.trim();
+      if (!taskList || !pid) {
+        const message = "구현 작업목록이 없어 점검을 실행할 수 없습니다.";
+        showToast(message);
+        return { outcome: "blocked", message };
+      }
+      const outcome = executeImplementationQualityGateCheck({
+        role,
+        taskList,
+        executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+        qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+        projectId: pid,
+      });
+      if ("blocked" in outcome) {
+        showToast(outcome.blocked);
+        return { outcome: "blocked", message: outcome.blocked };
+      }
+      void persistChatToDb(undefined, {
+        implementationTaskExecutionStateV1: outcome.executionState,
+        implementationQualityGateResultsV1: outcome.qualityGateResults,
+      });
+      executionSingleChat.appendAiNotice(outcome.aiMessageContent);
+      return { outcome: "executed" };
+    },
+    [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
+  );
+
   const runImplementationStageAction = useCallback(
     (actionId: ImplementationStageActionId): ImplementationStageActionRunResult => {
       switch (actionId) {
@@ -2173,6 +2206,10 @@ export function PrototypePreviewPanel({
             buildImplementationStageActionShowStatusResult("env"),
           );
           return { outcome: "executed" };
+        case "RUN_REVIEWER_CHECK":
+          return runImplementationQualityGate("reviewer");
+        case "RUN_SECURITY_CHECK":
+          return runImplementationQualityGate("security");
         case "REQUEST_CODE_AGENT_WIP": {
           if (!effectiveImplementationState.envOk) {
             const message = "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다.";
@@ -2312,6 +2349,7 @@ export function PrototypePreviewPanel({
       implementationCursorGate,
       executionSingleChat,
       wipChipHandlers,
+      runImplementationQualityGate,
     ],
   );
 
@@ -2361,8 +2399,10 @@ export function PrototypePreviewPanel({
       if (
         tryHandleImplementationTaskListChip({
           label,
+          projectId,
           taskList,
           executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+          qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
           prototypeSnapshot: prototypeRunSyncSnapshot,
           envOk: canRequestGeneration.envOk,
           appendAiMessage: appendImplementationTaskListAiMessage,
@@ -2398,7 +2438,8 @@ export function PrototypePreviewPanel({
         // If the user clicked the developer request CTA and work items are not ready,
         // generate cursorWorkItemsV1 candidates from TaskList (do not overwrite).
         if (
-          label.trim() === "AI 개발자에게 구현 요청" &&
+          (label.trim() === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP ||
+            label.trim() === IMPLEMENTATION_GENERATION_REQUEST_CHIP) &&
           taskList?.tasks?.length &&
           (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
         ) {
@@ -2478,6 +2519,7 @@ export function PrototypePreviewPanel({
       executeImplementationStageAction,
       parsedRequirementsState.implementationTaskListV1,
       parsedRequirementsState.implementationTaskExecutionStateV1,
+      parsedRequirementsState.implementationQualityGateResultsV1,
       parsedRequirementsState.implementationSeedV1,
       prototypeRunSyncSnapshot,
       previewUrl,

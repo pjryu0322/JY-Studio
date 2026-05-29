@@ -36,17 +36,24 @@ export const IMPLEMENTATION_ENV_SETTINGS_LABEL = PLANNING_ENV_SETTINGS_LABEL;
 export const IMPLEMENTATION_ARTIFACT_REVIEW_LABEL = "산출물 다시 보기" as const;
 
 export const AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP = "AI 개발자에게 구현 요청" as const;
+export const AI_DEVELOPER_REMEDIATION_REQUEST_CHIP = "AI 개발자에게 보완 요청" as const;
 export const TASK_LIST_VIEW_CHIP = "작업목록 보기" as const;
 export const DESIGNER_REVIEW_CHIP = "디자이너 검토" as const;
 export const REVIEWER_CHECK_CHIP = "검수자 점검" as const;
+export const REVIEWER_CHECK_RUN_CHIP = "검수자 점검 실행" as const;
 export const SECURITY_CHECK_CHIP = "보안 점검" as const;
+export const SECURITY_CHECK_RUN_CHIP = "보안 점검 실행" as const;
 export const SCM_CRITERIA_CHIP = "SCM 반영 기준 보기" as const;
 export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생성" as const;
 export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
 export const IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP = "프로토타입 미리보기" as const;
 export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기" as const;
+export const IMPLEMENTATION_GENERATION_REQUEST_CHIP = "생성요청" as const;
+export const IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP = "사용자 확인 필요 항목 보기" as const;
+export const IMPLEMENTATION_EXECUTION_BOARD_CHIP = "구현 작업 보드" as const;
 
 const TASK_LIST_ENTRY_SECONDARY_CHIPS: readonly string[] = [
+  IMPLEMENTATION_EXECUTION_BOARD_CHIP,
   TASK_LIST_VIEW_CHIP,
   DESIGNER_REVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
@@ -74,7 +81,11 @@ export function implementationTaskListEntryChipLabels(input: { readonly envOk: b
       false,
     );
   }
-  return [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP, ...TASK_LIST_ENTRY_SECONDARY_CHIPS];
+  return [
+    IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+    AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+    ...TASK_LIST_ENTRY_SECONDARY_CHIPS,
+  ];
 }
 
 export function implementationTaskListMissingEntryChipLabels(): readonly string[] {

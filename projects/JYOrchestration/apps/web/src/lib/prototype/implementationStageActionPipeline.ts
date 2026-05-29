@@ -291,6 +291,13 @@ export function evaluateImplementationStageActionGate(
     case "SHOW_ENV_CHECK":
     case "EDIT_IMPLEMENTATION_SCOPE":
       return { ok: true };
+    case "RUN_REVIEWER_CHECK":
+    case "RUN_SECURITY_CHECK": {
+      if (!isTaskListReadyForImplementationStageActions(state)) {
+        return { ok: false, message: "구현 작업목록이 준비된 뒤 점검을 실행할 수 있습니다." };
+      }
+      return { ok: true };
+    }
     case "REQUEST_CODE_AGENT_WIP": {
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다." };

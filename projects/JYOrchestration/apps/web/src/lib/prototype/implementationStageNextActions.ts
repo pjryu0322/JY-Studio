@@ -5,6 +5,7 @@ import {
 } from "@/lib/prototype/effectiveImplementationState";
 import {
   hasDeveloperWipApprovedWithReviewQueued,
+  hasReviewerOrSecurityQualityGateFailed,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
@@ -14,11 +15,15 @@ import {
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
+  REVIEWER_CHECK_RUN_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
-} from "@/lib/prototype/implementationTaskListEntryMessage";
+  SECURITY_CHECK_RUN_CHIP,
+  TASK_LIST_VIEW_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 import {
   deriveImplementationStageStatus,
   type ImplementationStageStatus,
@@ -84,22 +89,57 @@ function deriveNextActionsFromExecutionState(
   if (hasDeveloperWipApprovedWithReviewQueued(executionState)) {
     return [
       {
-        actionId: "SHOW_ROLE_CHECK",
-        label: REVIEWER_CHECK_CHIP,
+        actionId: "RUN_REVIEWER_CHECK",
+        label: REVIEWER_CHECK_RUN_CHIP,
         priority: "primary",
-        reason: "개발자 WIP 승인 후 검수자 점검 대기",
+        reason: "개발자 WIP 승인 후 검수자 점검 실행",
+      },
+      {
+        actionId: "RUN_SECURITY_CHECK",
+        label: SECURITY_CHECK_RUN_CHIP,
+        priority: "secondary",
+        reason: "개발자 WIP 승인 후 보안 점검 실행",
       },
       {
         actionId: "SHOW_ROLE_CHECK",
-        label: SECURITY_CHECK_CHIP,
+        label: REVIEWER_CHECK_CHIP,
         priority: "secondary",
-        reason: "개발자 WIP 승인 후 보안 점검 대기",
+        reason: "검수자 점검 대상 확인",
       },
       {
         actionId: "SHOW_SCM_CHECK",
         label: SCM_CRITERIA_CHIP,
-        priority: "secondary",
+        priority: "tertiary",
         reason: "SCM 반영 기준 확인",
+      },
+    ];
+  }
+
+  if (hasReviewerOrSecurityQualityGateFailed(executionState)) {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+        priority: "primary",
+        reason: "검수/보안 점검 실패 후 개발자 보완 요청",
+      },
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: TASK_LIST_VIEW_CHIP,
+        priority: "secondary",
+        reason: "작업목록 및 점검 결과 확인",
+      },
+      {
+        actionId: "RUN_REVIEWER_CHECK",
+        label: REVIEWER_CHECK_RUN_CHIP,
+        priority: "secondary",
+        reason: "검수자 점검 재실행",
+      },
+      {
+        actionId: "RUN_SECURITY_CHECK",
+        label: SECURITY_CHECK_RUN_CHIP,
+        priority: "tertiary",
+        reason: "보안 점검 재실행",
       },
     ];
   }

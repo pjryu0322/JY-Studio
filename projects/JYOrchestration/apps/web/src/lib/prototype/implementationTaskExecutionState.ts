@@ -383,6 +383,70 @@ export function markRoleTasksInProgress(input: {
   );
 }
 
+export function markRoleTasksDone(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly ownerRole: ImplementationTaskExecutionRole;
+  readonly nowIso?: string;
+  readonly resultSummary?: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const resultSummary = input.resultSummary?.trim() || `${input.ownerRole} 작업 완료`;
+  return applyExecutionStateItemPatches(
+    input.state,
+    (item) => {
+      if (item.ownerRole !== input.ownerRole) return null;
+      if (item.status !== "ready" && item.status !== "queued" && item.status !== "in_progress") {
+        return null;
+      }
+      return { status: "done", resultSummary };
+    },
+    now,
+  );
+}
+
+export function markRoleTasksFailed(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly ownerRole: ImplementationTaskExecutionRole;
+  readonly nowIso?: string;
+  readonly errorMessage: string;
+  readonly resultSummary?: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const errorMessage = input.errorMessage.trim() || `${input.ownerRole} 작업 실패`;
+  const resultSummary = input.resultSummary?.trim() || errorMessage;
+  return applyExecutionStateItemPatches(
+    input.state,
+    (item) => {
+      if (item.ownerRole !== input.ownerRole) return null;
+      if (item.status !== "ready" && item.status !== "queued" && item.status !== "in_progress") {
+        return null;
+      }
+      return { status: "failed", errorMessage, resultSummary };
+    },
+    now,
+  );
+}
+
+export function hasReviewerOrSecurityQualityGateFailed(
+  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+): boolean {
+  return (
+    executionState?.items.some(
+      (item) =>
+        (item.ownerRole === "reviewer" || item.ownerRole === "security") && item.status === "failed",
+    ) ?? false
+  );
+}
+
+export function areRoleTasksDone(
+  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+  ownerRole: ImplementationTaskExecutionRole,
+): boolean {
+  const roleItems = executionState?.items.filter((item) => item.ownerRole === ownerRole) ?? [];
+  if (!roleItems.length) return true;
+  return roleItems.every((item) => item.status === "done" || item.status === "skipped");
+}
+
 export function markDeveloperTasksFailedForWip(input: {
   readonly state: ImplementationTaskExecutionStateV1;
   readonly cursorWorkItems: readonly CursorWorkItem[];

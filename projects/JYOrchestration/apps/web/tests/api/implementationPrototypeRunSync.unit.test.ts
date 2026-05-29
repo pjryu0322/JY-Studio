@@ -260,6 +260,33 @@ describe("isImplementationPrototypeComplete", () => {
     });
     expect(isImplementationPrototypeComplete({ executionState: state, prototypeSnapshot: snapshot })).toBe(false);
   });
+
+  it("returns false when reviewer task is still queued on preview ready", () => {
+    const state = executionStateWithScmQueued();
+    const snapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: { id: "run-1", status: "PREVIEW_READY", previewUrl: "https://preview.example/app" },
+    });
+    expect(isImplementationPrototypeComplete({ executionState: state, prototypeSnapshot: snapshot })).toBe(false);
+  });
+
+  it("returns false when reviewer task failed on preview ready", () => {
+    let state = executionStateWithScmQueued();
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.ownerRole === "reviewer" ? { ...item, status: "failed" as const } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        state.items.map((item) =>
+          item.ownerRole === "reviewer" ? { ...item, status: "failed" as const } : item,
+        ),
+      ),
+    };
+    const snapshot = deriveImplementationPrototypeRunSyncSnapshot({
+      latestRun: { id: "run-1", status: "PREVIEW_READY", previewUrl: "https://preview.example/app" },
+    });
+    expect(isImplementationPrototypeComplete({ executionState: state, prototypeSnapshot: snapshot })).toBe(false);
+  });
 });
 
 describe("buildPrototypeRunExecutionSyncPatch", () => {

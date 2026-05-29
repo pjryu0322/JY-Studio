@@ -31,6 +31,8 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
@@ -558,6 +560,8 @@ export type RequirementsStateJson = {
   implementationTaskListV1?: ImplementationTaskListV1 | null;
   /** TaskList 작업별 WIP/실행 상태(원본 taskList는 mutate하지 않음) */
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
+  /** reviewer/security 품질 게이트 점검 결과(append, UI는 role별 최신 사용) */
+  implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
@@ -982,6 +986,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationTaskExecutionStateV1 = parseImplementationTaskExecutionStateV1(
     "implementationTaskExecutionStateV1" in o ? o.implementationTaskExecutionStateV1 : undefined,
   );
+  const implementationQualityGateResultsV1 = parseImplementationQualityGateResultsV1(
+    "implementationQualityGateResultsV1" in o ? o.implementationQualityGateResultsV1 : undefined,
+  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1132,6 +1139,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationTaskListV1 !== undefined ? { implementationTaskListV1 } : {}),
     ...(implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1 }
+      : {}),
+    ...(implementationQualityGateResultsV1 !== undefined
+      ? { implementationQualityGateResultsV1 }
       : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(implementationUserFeedbackPatchesV1 !== undefined

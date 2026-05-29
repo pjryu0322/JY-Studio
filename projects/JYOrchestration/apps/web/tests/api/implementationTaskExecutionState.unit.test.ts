@@ -8,6 +8,8 @@ import {
   markDeveloperTasksFailedForWip,
   markDeveloperTasksInProgressForWip,
   markPostDeveloperReviewTasksQueued,
+  markRoleTasksDone,
+  markRoleTasksFailed,
   markRoleTasksInProgress,
   parseImplementationTaskExecutionStateV1,
   summarizeImplementationTaskExecutionItems,
@@ -444,5 +446,81 @@ describe("implementationTaskExecutionState", () => {
     const next = applyExecutionStateItemPatches(state, () => null, "2026-05-29T01:00:00.000Z");
     expect(next).toBe(state);
     expect(next.updatedAt).toBe(nowIso);
+  });
+
+  it("markRoleTasksDone marks reviewer in_progress to done", () => {
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: {
+        ...sampleTaskList(),
+        tasks: [
+          ...sampleTaskList().tasks,
+          {
+            taskId: "rev-1",
+            title: "검수",
+            description: "d",
+            taskType: "validation",
+            ownerRole: "reviewer",
+            priority: "medium",
+            dependencies: [],
+            acceptanceCriteria: [],
+            status: "ready",
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 0, scm: 0 },
+      },
+      nowIso,
+    });
+    const inProgress = markRoleTasksInProgress({ state: initial, ownerRole: "reviewer", nowIso });
+    const done = markRoleTasksDone({
+      state: inProgress,
+      ownerRole: "reviewer",
+      nowIso,
+      resultSummary: "검수 통과",
+    });
+    expect(done.items.find((i) => i.taskId === "rev-1")?.status).toBe("done");
+  });
+
+  it("markRoleTasksFailed does not overwrite terminal done", () => {
+    const initial = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-exec",
+      taskList: {
+        ...sampleTaskList(),
+        tasks: [
+          ...sampleTaskList().tasks,
+          {
+            taskId: "sec-1",
+            title: "보안",
+            description: "d",
+            taskType: "security",
+            ownerRole: "security",
+            priority: "medium",
+            dependencies: [],
+            acceptanceCriteria: [],
+            status: "ready",
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 1, scm: 0 },
+      },
+      nowIso,
+    });
+    const withDone = {
+      ...initial,
+      items: initial.items.map((i) =>
+        i.taskId === "sec-1" ? { ...i, status: "done" as const, completedAt: nowIso } : i,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        initial.items.map((i) =>
+          i.taskId === "sec-1" ? { ...i, status: "done" as const, completedAt: nowIso } : i,
+        ),
+      ),
+    };
+    const failed = markRoleTasksFailed({
+      state: withDone,
+      ownerRole: "security",
+      nowIso,
+      errorMessage: "fail",
+    });
+    expect(failed.items.find((i) => i.taskId === "sec-1")?.status).toBe("done");
   });
 });

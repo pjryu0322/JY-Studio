@@ -332,6 +332,23 @@ describe("evaluateImplementationStageActionGate", () => {
       expect(evaluateImplementationStageActionGate(actionId, baseState()).ok).toBe(true);
     });
   });
+
+  describe("quality gate run actions", () => {
+    it("allows RUN_REVIEWER_CHECK when task list is ready", () => {
+      const state = baseState({
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      expect(evaluateImplementationStageActionGate("RUN_REVIEWER_CHECK", state).ok).toBe(true);
+      expect(evaluateImplementationStageActionGate("RUN_SECURITY_CHECK", state).ok).toBe(true);
+    });
+
+    it("blocks RUN_REVIEWER_CHECK when task list is missing", () => {
+      expect(evaluateImplementationStageActionGate("RUN_REVIEWER_CHECK", baseState()).ok).toBe(false);
+    });
+  });
 });
 
 describe("buildImplementationStageActionExecutionDecision", () => {

@@ -248,6 +248,29 @@ export function isImplementationPrototypeComplete(input: {
     return false;
   }
 
+  const reviewerFailed = state.items.some(
+    (item) => item.ownerRole === "reviewer" && item.status === "failed",
+  );
+  const securityFailed = state.items.some(
+    (item) => item.ownerRole === "security" && item.status === "failed",
+  );
+  if (reviewerFailed || securityFailed) return false;
+
+  const reviewerTasks = state.items.filter((item) => item.ownerRole === "reviewer");
+  const securityTasks = state.items.filter((item) => item.ownerRole === "security");
+  if (
+    reviewerTasks.length > 0 &&
+    !reviewerTasks.every((item) => item.status === "done" || item.status === "skipped")
+  ) {
+    return false;
+  }
+  if (
+    securityTasks.length > 0 &&
+    !securityTasks.every((item) => item.status === "done" || item.status === "skipped")
+  ) {
+    return false;
+  }
+
   return true;
 }
 

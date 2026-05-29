@@ -11,11 +11,15 @@ import {
 } from "@/lib/prototype/implementationStageNextActions";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
+  REVIEWER_CHECK_RUN_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
-} from "@/lib/prototype/implementationTaskListEntryMessage";
+  SECURITY_CHECK_RUN_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
+import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
   deriveImplementationPrototypeRunSyncSnapshot,
   syncImplementationTaskExecutionFromPrototypeRun,
@@ -117,7 +121,7 @@ describe("deriveImplementationStageNextActions with execution state", () => {
     executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
 
     const actions = deriveImplementationStageNextActions("task_list_ready", executionState);
-    expect(actions[0]?.label).toBe(REVIEWER_CHECK_CHIP);
+    expect(actions[0]?.label).toBe(REVIEWER_CHECK_RUN_CHIP);
 
     const effectiveState = {
       implementationSeedV1: makeSeed(),
@@ -137,15 +141,45 @@ describe("deriveImplementationStageNextActions with execution state", () => {
     const sorted = prioritizeImplementationChipsForState(
       [
         SCM_CRITERIA_CHIP,
-        SECURITY_CHECK_CHIP,
+        SECURITY_CHECK_RUN_CHIP,
         AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
-        REVIEWER_CHECK_CHIP,
+        REVIEWER_CHECK_RUN_CHIP,
       ],
       effectiveState,
       executionState,
     );
-    expect(sorted[0]).toBe(REVIEWER_CHECK_CHIP);
-    expect(sorted[1]).toBe(SECURITY_CHECK_CHIP);
+    expect(sorted[0]).toBe(REVIEWER_CHECK_RUN_CHIP);
+    expect(sorted[1]).toBe(SECURITY_CHECK_RUN_CHIP);
+  });
+
+  it("prioritizes remediation request when reviewer gate failed", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    const gate = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList,
+      executionState: {
+        ...executionState,
+        items: executionState.items.map((item) =>
+          item.ownerRole === "developer" ? { ...item, status: "failed" as const } : item,
+        ),
+      },
+      projectId: "p1",
+      nowIso: NOW,
+    });
+    if ("blocked" in gate) throw new Error("expected gate outcome");
+    const actions = deriveImplementationStageNextActions("task_list_ready", gate.executionState);
+    expect(actions[0]?.label).toBe(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
+    expect(actions[0]?.priority).toBe("primary");
   });
 
   it("prototype_ready prioritizes preview/view result and not AI developer request", () => {

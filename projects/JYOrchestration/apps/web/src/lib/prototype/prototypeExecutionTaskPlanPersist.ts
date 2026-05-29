@@ -6,6 +6,7 @@ import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationD
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
@@ -82,6 +83,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
+  readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -124,6 +126,14 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1: input.implementationTaskExecutionStateV1 }
+      : {}),
+    ...(input.implementationQualityGateResultsV1 !== undefined
+      ? {
+          implementationQualityGateResultsV1:
+            input.implementationQualityGateResultsV1 === null
+              ? null
+              : [...input.implementationQualityGateResultsV1],
+        }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),

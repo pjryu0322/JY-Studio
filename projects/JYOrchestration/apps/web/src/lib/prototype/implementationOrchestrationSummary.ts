@@ -24,6 +24,10 @@ import {
 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
+  buildImplementationExecutionBoard,
+} from "@/lib/prototype/implementationExecutionBoard";
+import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
   buildImplementationTaskListEntryMessage,
   buildImplementationTaskListMissingEntryMessage,
   hasValidImplementationTaskListBootstrap,
@@ -292,6 +296,14 @@ function buildTaskListReadyImplementationBootstrapBundle(
       buildImplementationTaskListEntryMessage({
         taskList,
         envOk: input.envOk,
+        nowIso: now,
+      }),
+      buildImplementationExecutionBoardMessage({
+        board: buildImplementationExecutionBoard({
+          projectId: input.projectId,
+          taskList,
+          nowIso: now,
+        }),
         nowIso: now,
       }),
     ],

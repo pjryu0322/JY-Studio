@@ -12,6 +12,7 @@ import {
   deriveImplementationPrototypeRunSyncSnapshot,
   syncImplementationTaskExecutionFromPrototypeRun,
 } from "@/lib/prototype/implementationPrototypeRunSync";
+import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   buildDeveloperImplementationRequestPrepMessage,
@@ -19,6 +20,7 @@ import {
   buildImplementationTaskListMissingEntryMessage,
   buildImplementationTaskListViewMessage,
   buildImplementationPrototypeCompleteMessage,
+  buildReviewerCheckTaskMessage,
   hasValidImplementationTaskListBootstrap,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   buildSecurityCheckTaskMessage,
@@ -26,6 +28,7 @@ import {
   tryHandleImplementationTaskListChip,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/prototype/implementationTaskListEntryMessage";
+import { IMPLEMENTATION_EXECUTION_BOARD_CHIP, IMPLEMENTATION_GENERATION_REQUEST_CHIP } from "@/lib/requirements/implementationUxLabels";
 import { buildImplementationBootstrapBundle } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   hasAnyValidImplementationBootstrap,
@@ -197,8 +200,45 @@ describe("implementationTaskListEntryMessage", () => {
     expect(openEnvSettings).toHaveBeenCalledTimes(1);
   });
 
+  it("routes generation request chip like AI developer request", () => {
+    const appendAiMessage = vi.fn();
+    const handled = tryHandleImplementationTaskListChip({
+      label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+      taskList,
+      envOk: true,
+      nowIso: NOW,
+      appendAiMessage,
+      openEnvSettings: vi.fn(),
+      openArtifactHub: vi.fn(),
+      returnToPlanningStage: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(handled).toBe(true);
+    expect(appendAiMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows execution board on 구현 작업 보드 chip", () => {
+    const appendAiMessage = vi.fn();
+    const handled = tryHandleImplementationTaskListChip({
+      label: IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+      projectId: "p1",
+      taskList,
+      envOk: true,
+      nowIso: NOW,
+      appendAiMessage,
+      openEnvSettings: vi.fn(),
+      openArtifactHub: vi.fn(),
+      returnToPlanningStage: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(handled).toBe(true);
+    expect(appendAiMessage).toHaveBeenCalledTimes(1);
+    expect(appendAiMessage.mock.calls[0]?.[0]?.content).toContain("구현 작업 보드입니다");
+  });
+
   it("lists tasks on 작업목록 보기", () => {
     const view = buildImplementationTaskListViewMessage({ taskList, nowIso: NOW });
+    expect(view.content).toContain("보드 요약:");
     expect(view.content).toContain("TASK ID");
     expect(view.content).toContain(taskList.tasks[0]?.taskId ?? "");
   });
@@ -270,6 +310,7 @@ describe("implementationTaskListEntryMessage", () => {
     });
     expect(bundle.messages[0]?.content).toContain("구현 작업목록이 준비되었습니다");
     expect(bundle.messages[0]?.meta?.implementationBootstrapKind).toBe("task_list_ready");
+    expect(bundle.messages[1]?.content).toContain("구현 작업 보드입니다");
   });
 
   it("treats task list bootstrap as a valid implementation bootstrap", () => {
@@ -296,6 +337,7 @@ describe("implementationTaskListEntryMessage", () => {
       taskListReady: true,
     });
     expect(chips).toContain(AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP);
+    expect(chips).toContain(IMPLEMENTATION_GENERATION_REQUEST_CHIP);
     expect(chips).toContain(TASK_LIST_VIEW_CHIP);
     expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
   });
@@ -350,9 +392,45 @@ describe("implementationTaskListEntryMessage", () => {
       executionState,
       nowIso: NOW,
     });
-    expect(message?.content).toContain("프로토타입 생성이 완료되었습니다");
+    expect(message?.content).toContain("내부 검수와 보안 점검 기준을 통과");
     expect(message?.content).toContain("https://preview.example/app");
     expect(message?.meta?.interviewSuggestions).toContain(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
+  });
+
+  it("buildReviewerCheckTaskMessage includes latest quality gate result", () => {
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = {
+      ...executionState,
+      items: executionState.items.map((item) =>
+        item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        executionState.items.map((item) =>
+          item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+        ),
+      ),
+    };
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    const gate = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList,
+      executionState,
+      projectId: "p1",
+      nowIso: NOW,
+    });
+    if ("blocked" in gate) throw new Error("expected gate");
+    const message = buildReviewerCheckTaskMessage({
+      taskList,
+      executionState: gate.executionState,
+      qualityGateResults: gate.qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(message.content).toContain("점검 결과:");
+    expect(message.content).toContain("통과");
   });
 
   it("tryHandleImplementationTaskListChip opens prototype preview chip", () => {

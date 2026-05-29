@@ -238,13 +238,19 @@ describe("deriveImplementationStageStatus", () => {
     executionState = {
       ...executionState,
       items: executionState.items.map((item) =>
-        item.ownerRole === "developer" || item.ownerRole === "scm"
+        item.ownerRole === "developer" ||
+        item.ownerRole === "scm" ||
+        item.ownerRole === "reviewer" ||
+        item.ownerRole === "security"
           ? { ...item, status: "done" as const, completedAt: NOW }
           : item,
       ),
       summary: summarizeImplementationTaskExecutionItems(
         executionState.items.map((item) =>
-          item.ownerRole === "developer" || item.ownerRole === "scm"
+          item.ownerRole === "developer" ||
+          item.ownerRole === "scm" ||
+          item.ownerRole === "reviewer" ||
+          item.ownerRole === "security"
             ? { ...item, status: "done" as const, completedAt: NOW }
             : item,
         ),
@@ -270,5 +276,54 @@ describe("deriveImplementationStageStatus", () => {
     });
     expect(deriveImplementationStageStatus(state, executionState)).toBe("prototype_ready");
     expect(deriveImplementationStageStatus(state, executionState)).not.toBe("work_plan_confirmed");
+  });
+
+  it("does not return prototype_ready when reviewer gate failed", () => {
+    const taskList = makeTaskListReady();
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = {
+      ...executionState,
+      items: executionState.items.map((item) => {
+        if (item.ownerRole === "developer" || item.ownerRole === "scm") {
+          return { ...item, status: "done" as const, completedAt: NOW };
+        }
+        if (item.ownerRole === "reviewer") {
+          return { ...item, status: "failed" as const, errorMessage: "검수 실패" };
+        }
+        return { ...item, status: "done" as const, completedAt: NOW };
+      }),
+      summary: summarizeImplementationTaskExecutionItems(
+        executionState.items.map((item) => {
+          if (item.ownerRole === "developer" || item.ownerRole === "scm") {
+            return { ...item, status: "done" as const, completedAt: NOW };
+          }
+          if (item.ownerRole === "reviewer") {
+            return { ...item, status: "failed" as const, errorMessage: "검수 실패" };
+          }
+          return { ...item, status: "done" as const, completedAt: NOW };
+        }),
+      ),
+    };
+    const latestRun = {
+      id: "run-1",
+      status: "PREVIEW_READY",
+      previewUrl: "https://preview.example/app",
+      workUnits: [],
+    };
+    const state = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed(true),
+        implementationTaskListV1: taskList,
+      },
+      pendingPatch: {},
+      envOk: true,
+      designOk: true,
+      latestRun: latestRun as never,
+    });
+    expect(deriveImplementationStageStatus(state, executionState)).not.toBe("prototype_ready");
   });
 });

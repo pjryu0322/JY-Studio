@@ -6,6 +6,19 @@ import {
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
+  buildImplementationExecutionBoard,
+} from "@/lib/prototype/implementationExecutionBoard";
+import {
+  buildImplementationExecutionBoardMessage,
+  buildImplementationUserConfirmationBoardMessage,
+} from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
+  formatImplementationQualityGateResultLines,
+  getLatestImplementationQualityGateResultForRole,
+  type ImplementationQualityGateResultV1,
+} from "@/lib/prototype/implementationQualityGate";
+import {
+  areRoleTasksDone,
   formatImplementationTaskExecutionSummaryLines,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -23,13 +36,18 @@ import {
   GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
   implementationTaskListEntryChipLabels,
   implementationTaskListMissingEntryChipLabels,
   REVIEWER_CHECK_CHIP,
+  REVIEWER_CHECK_RUN_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
+  SECURITY_CHECK_RUN_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -46,8 +64,10 @@ export {
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
+  REVIEWER_CHECK_RUN_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
+  SECURITY_CHECK_RUN_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 
@@ -245,15 +265,23 @@ export function buildImplementationPrototypeCompleteMessage(input: {
   const urlLine = input.prototypeSnapshot.previewUrl
     ? [`Preview URL: ${input.prototypeSnapshot.previewUrl}`]
     : [];
+  const reviewerDone = areRoleTasksDone(input.executionState, "reviewer");
+  const securityDone = areRoleTasksDone(input.executionState, "security");
+  const internalChecksPassed = reviewerDone && securityDone;
   const pendingReview = input.executionState?.items.some(
     (item) =>
-      (item.ownerRole === "reviewer" || item.ownerRole === "security") && item.status === "queued",
+      (item.ownerRole === "reviewer" || item.ownerRole === "security") &&
+      (item.status === "queued" || item.status === "ready" || item.status === "in_progress"),
   );
+  const headline = internalChecksPassed
+    ? "내부 검수와 보안 점검 기준을 통과했고, 프로토타입 생성이 완료되었습니다."
+    : pendingReview
+      ? "프로토타입은 생성되었지만, 일부 내부 점검이 아직 대기 중입니다."
+      : "프로토타입 생성이 완료되었습니다.";
   const content = [
-    "프로토타입 생성이 완료되었습니다.",
+    headline,
     "Preview URL에서 결과를 확인할 수 있습니다.",
     ...urlLine,
-    ...(pendingReview ? ["", "일부 후속 점검 작업은 아직 대기 중일 수 있습니다."] : []),
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");
@@ -290,6 +318,18 @@ export function buildImplementationTaskListViewMessage(input: {
   readonly nowIso: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
+  const board = buildImplementationExecutionBoard({
+    projectId: input.taskList.projectId,
+    taskList: input.taskList,
+    executionState: input.executionState,
+    nowIso: input.nowIso,
+  });
+  const boardSummaryLines = [
+    `보드 요약: ${board.summary.completedTasks}/${board.summary.totalTasks} 완료`,
+    ...(board.currentTaskId && board.currentStep
+      ? [`현재 실행: ${board.currentTaskId} / ${board.currentStep}`]
+      : []),
+  ];
   const executionLines = formatImplementationTaskExecutionSummaryLines(input.executionState);
   const queueLines = formatTaskQueueLinesForDisplay(input.taskList.tasks, input.executionState, 20);
   const prototypeComplete =
@@ -302,6 +342,8 @@ export function buildImplementationTaskListViewMessage(input: {
     ...(prototypeComplete
       ? ["프로토타입 생성이 완료되었습니다.", "Preview URL에서 결과를 확인할 수 있습니다.", ""]
       : []),
+    ...boardSummaryLines,
+    "",
     "구현 작업목록입니다. (TASK ID / 역할 / 제목 / 우선순위 / 상태)",
     "",
     ...queueLines,
@@ -321,7 +363,15 @@ export function buildImplementationTaskListViewMessage(input: {
         SECURITY_CHECK_CHIP,
         SCM_CRITERIA_CHIP,
       ]
-    : [...implementationTaskListEntryChips({ envOk: true })];
+    : [
+        IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+        IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+        ...implementationTaskListEntryChips({ envOk: true }).filter(
+          (chip) =>
+            chip !== IMPLEMENTATION_GENERATION_REQUEST_CHIP &&
+            chip !== IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+        ),
+      ];
 
   return newRequirementsMessage({
     id: `impl-task-list-view-${input.nowIso}`,
@@ -348,6 +398,7 @@ function buildRoleTaskQueueMessage(input: {
   readonly heading: string;
   readonly emptyFallback: () => readonly string[];
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly qualityGateResult?: ImplementationQualityGateResultV1 | null;
   readonly nowIso: string;
   readonly messageIdPrefix: string;
 }): RequirementsMessage {
@@ -357,8 +408,21 @@ function buildRoleTaskQueueMessage(input: {
     roleTasks.length > 0
       ? formatTaskQueueLinesForDisplay(roleTasks, input.executionState, 12)
       : [...input.emptyFallback()];
+  const roleStatus = input.executionState?.items.find((i) => i.ownerRole === input.role)?.status;
+  const statusLine = roleStatus ? [`현재 상태: ${roleStatus}`, ""] : [];
+  const gateLines = formatImplementationQualityGateResultLines(input.qualityGateResult);
 
-  const content = [input.heading, "", ...bodyLines, "", "다음 작업을 선택해 주세요."].join("\n");
+  const content = [
+    input.heading,
+    "",
+    ...statusLine,
+    ...bodyLines,
+    "",
+    "점검 결과:",
+    ...gateLines,
+    "",
+    "다음 작업을 선택해 주세요.",
+  ].join("\n");
 
   return newRequirementsMessage({
     id: `${input.messageIdPrefix}-${input.nowIso}`,
@@ -396,6 +460,7 @@ export function buildDesignerReviewTaskMessage(input: {
 export function buildReviewerCheckTaskMessage(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   return buildRoleTaskQueueMessage({
@@ -404,6 +469,10 @@ export function buildReviewerCheckTaskMessage(input: {
     heading: "검수자 점검 대상 작업입니다.",
     emptyFallback: () => ["검수자 작업이 없습니다. 구현 작업목록을 다시 확인해 주세요."],
     executionState: input.executionState,
+    qualityGateResult: getLatestImplementationQualityGateResultForRole(
+      input.qualityGateResults,
+      "reviewer",
+    ),
     nowIso: input.nowIso,
     messageIdPrefix: "impl-reviewer-check",
   });
@@ -412,6 +481,7 @@ export function buildReviewerCheckTaskMessage(input: {
 export function buildSecurityCheckTaskMessage(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly nowIso: string;
 }): RequirementsMessage {
   return buildRoleTaskQueueMessage({
@@ -420,6 +490,10 @@ export function buildSecurityCheckTaskMessage(input: {
     heading: "보안 점검 대상 작업입니다.",
     emptyFallback: () => ["보안 점검 작업이 없습니다. 구현 작업목록을 다시 확인해 주세요."],
     executionState: input.executionState,
+    qualityGateResult: getLatestImplementationQualityGateResultForRole(
+      input.qualityGateResults,
+      "security",
+    ),
     nowIso: input.nowIso,
     messageIdPrefix: "impl-security-check",
   });
@@ -514,11 +588,16 @@ export function hasTaskListReadyState(
 }
 
 export const IMPLEMENTATION_TASK_LIST_CHIP_LABELS = [
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   TASK_LIST_VIEW_CHIP,
   DESIGNER_REVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
+  REVIEWER_CHECK_RUN_CHIP,
   SECURITY_CHECK_CHIP,
+  SECURITY_CHECK_RUN_CHIP,
   SCM_CRITERIA_CHIP,
   GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
@@ -528,8 +607,10 @@ export const IMPLEMENTATION_TASK_LIST_CHIP_LABELS = [
 
 export function tryHandleImplementationTaskListChip(input: {
   readonly label: string;
+  readonly projectId?: string;
   readonly taskList: ImplementationTaskListV1 | null;
   readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null;
   readonly envOk: boolean;
   readonly nowIso?: string;
@@ -545,24 +626,73 @@ export function tryHandleImplementationTaskListChip(input: {
   const now = input.nowIso ?? new Date().toISOString();
   const list = input.taskList;
 
-  switch (t) {
-    case AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP:
-      if (!list) {
-        input.showToast("구현 작업목록이 없습니다. 기획단계에서 Quick Design을 확정해 주세요.");
-        return true;
-      }
-      if (!input.envOk) {
-        input.showToast("Code Agent WIP 작업 전에 환경설정을 완료해 주세요.");
-        input.openEnvSettings();
-        return true;
-      }
-      input.appendAiMessage(
-        buildDeveloperImplementationRequestPrepMessage({
+  const appendBoardMessage = () => {
+    if (!list) return;
+    const projectId = input.projectId?.trim() || list.projectId;
+    input.appendAiMessage(
+      buildImplementationExecutionBoardMessage({
+        board: buildImplementationExecutionBoard({
+          projectId,
           taskList: list,
-          envOk: input.envOk,
+          executionState: input.executionState,
           nowIso: now,
         }),
-      );
+        nowIso: now,
+      }),
+    );
+  };
+
+  const appendDeveloperRequestPrep = () => {
+    if (!list) {
+      input.showToast("구현 작업목록이 없습니다. 기획단계에서 Quick Design을 확정해 주세요.");
+      return;
+    }
+    if (!input.envOk) {
+      input.showToast("Code Agent WIP 작업 전에 환경설정을 완료해 주세요.");
+      input.openEnvSettings();
+      return;
+    }
+    input.appendAiMessage(
+      buildDeveloperImplementationRequestPrepMessage({
+        taskList: list,
+        envOk: input.envOk,
+        nowIso: now,
+      }),
+    );
+  };
+
+  switch (t) {
+    case IMPLEMENTATION_GENERATION_REQUEST_CHIP:
+    case AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP:
+      appendDeveloperRequestPrep();
+      return true;
+    case IMPLEMENTATION_EXECUTION_BOARD_CHIP:
+      if (!list) {
+        input.showToast("표시할 구현 작업목록이 없습니다.");
+        return true;
+      }
+      appendBoardMessage();
+      return true;
+    case IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP:
+      if (!list) {
+        input.showToast("표시할 구현 작업목록이 없습니다.");
+        return true;
+      }
+      {
+        const projectId = input.projectId?.trim() || list.projectId;
+        const board = buildImplementationExecutionBoard({
+          projectId,
+          taskList: list,
+          executionState: input.executionState,
+          nowIso: now,
+        });
+        const message = buildImplementationUserConfirmationBoardMessage({ board, nowIso: now });
+        if (!message) {
+          input.showToast("사용자 확인이 필요한 작업이 없습니다.");
+          return true;
+        }
+        input.appendAiMessage(message);
+      }
       return true;
     case TASK_LIST_VIEW_CHIP:
       if (!list) {
@@ -599,6 +729,7 @@ export function tryHandleImplementationTaskListChip(input: {
         buildReviewerCheckTaskMessage({
           taskList: list,
           executionState: input.executionState,
+          qualityGateResults: input.qualityGateResults,
           nowIso: now,
         }),
       );
@@ -609,6 +740,7 @@ export function tryHandleImplementationTaskListChip(input: {
         buildSecurityCheckTaskMessage({
           taskList: list,
           executionState: input.executionState,
+          qualityGateResults: input.qualityGateResults,
           nowIso: now,
         }),
       );

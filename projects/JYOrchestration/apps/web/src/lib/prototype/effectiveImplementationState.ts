@@ -28,6 +28,10 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import {
   IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  REVIEWER_CHECK_RUN_CHIP,
+  SECURITY_CHECK_RUN_CHIP,
+  AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 
 export type ImplementationStageActionId =
@@ -42,7 +46,9 @@ export type ImplementationStageActionId =
   | "SHOW_ROLE_CHECK"
   | "SHOW_SCM_CHECK"
   | "SHOW_ENV_CHECK"
-  | "REQUEST_CODE_AGENT_WIP";
+  | "REQUEST_CODE_AGENT_WIP"
+  | "RUN_REVIEWER_CHECK"
+  | "RUN_SECURITY_CHECK";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -201,6 +207,15 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
     case IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP:
     case "역할별 점검 보기":
       return "SHOW_ROLE_CHECK";
+    case "검수자 점검 실행":
+    case REVIEWER_CHECK_RUN_CHIP:
+      return "RUN_REVIEWER_CHECK";
+    case "보안 점검 실행":
+    case SECURITY_CHECK_RUN_CHIP:
+      return "RUN_SECURITY_CHECK";
+    case AI_DEVELOPER_REMEDIATION_REQUEST_CHIP:
+    case IMPLEMENTATION_GENERATION_REQUEST_CHIP:
+      return "REQUEST_CODE_AGENT_WIP";
     case IMPLEMENTATION_SCM_CHECK_VIEW_CHIP:
     case "SCM 점검 결과":
       return "SHOW_SCM_CHECK";
