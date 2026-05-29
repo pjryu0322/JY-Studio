@@ -39,7 +39,11 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import {
   buildImplementationExecutionBoardFromOrchestration,
 } from "@/lib/prototype/implementationExecutionBoard";
-import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
+  buildCompactImplementationExecutionBoardNoticeMessage,
+  buildImplementationExecutionBoardMessage,
+} from "@/lib/prototype/implementationExecutionBoardMessage";
+import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import {
   buildImplementationTaskListEntryMessage,
   buildImplementationTaskListMissingEntryMessage,
@@ -127,6 +131,7 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly fastPlanDraftV1?: FastPlanDraftStateV1 | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+  readonly executionSetup?: ExecutionSetupSourceGenerationRow | null;
   readonly nowIso?: string;
 }>;
 
@@ -427,9 +432,8 @@ function buildTaskListReadyImplementationBootstrapBundle(
   });
   return {
     messages: [
-      buildImplementationExecutionBoardMessage({
+      buildCompactImplementationExecutionBoardNoticeMessage({
         board,
-        taskList,
         includeTaskSummary: true,
         envOk: input.envOk,
         nowIso: now,

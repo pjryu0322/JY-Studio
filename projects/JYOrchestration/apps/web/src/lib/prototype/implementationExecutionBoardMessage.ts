@@ -10,6 +10,7 @@ import {
 import { formatCodeAgentExecutionModeDiagnosticLines } from "@/lib/prototype/codeAgentWipExecution";
 import { formatCursorExecutionAvailabilityDiagnosticLines } from "@/lib/prototype/cursorExecutionAvailability";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
@@ -26,6 +27,54 @@ import {
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+
+/** Board panel이 활성화된 화면용 — 긴 텍스트 테이블 대신 짧은 안내만 남긴다. */
+export function buildCompactImplementationExecutionBoardNoticeMessage(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly nowIso: string;
+  readonly includeTaskSummary?: boolean;
+  readonly envOk?: boolean;
+  readonly codeAgentWipExecutionV1?: import("@/lib/prototype/codeAgentWipExecution").CodeAgentWipExecutionV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+}): RequirementsMessage {
+  const def = getWorkspaceAiMember("prototype_build");
+  const chips = deriveImplementationBoardInterviewChips({
+    board: input.board,
+    envOk: input.envOk,
+    previewReady: false,
+    hasExecutionState: true,
+    boardState: input.boardState,
+    codeAgentWipExecutionV1: input.codeAgentWipExecutionV1,
+  });
+  const headline =
+    input.includeTaskSummary === true
+      ? "구현 작업목록이 준비되었습니다."
+      : "구현 작업 보드를 준비했습니다.";
+  const content = [
+    headline,
+    "",
+    "상단 Execution Board에서 작업별 상태와 다음 액션을 확인할 수 있습니다.",
+    "채팅은 이벤트 로그와 추가 지시 입력용으로 사용합니다.",
+  ].join("\n");
+
+  return newRequirementsMessage({
+    id: `impl-execution-board-notice-${input.nowIso}`,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content,
+    createdAt: input.nowIso,
+    meta: {
+      internalType: IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE,
+      serviceDesignStage: "implementation",
+      interviewSuggestions: chips,
+      interviewAllowCustomInput: true,
+      prototypeOrderKey: 1180,
+    },
+  });
+}
 
 export function buildImplementationExecutionBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1;
@@ -140,6 +189,47 @@ export function isSameImplementationBoardMessage(
     JSON.stringify(left.meta.interviewSuggestions ?? []) ===
       JSON.stringify(right.meta.interviewSuggestions ?? [])
   );
+}
+
+export function isStaleImplementationBoardMissingSetup(content: string): boolean {
+  return (
+    content.includes("Status: missing_cursor_api") &&
+    content.includes("Git 저장소: 미설정") &&
+    content.includes("Cursor API Key: 미설정")
+  );
+}
+
+export function buildExecutionSetupBoardSyncKey(
+  setup: ExecutionSetupSourceGenerationRow | null | undefined,
+): string {
+  if (!setup) return "missing";
+  return [
+    setup.gitRepoUrl ?? "",
+    setup.gitRepoName ?? "",
+    setup.gitRepoProvider ?? "",
+    setup.baseBranch ?? "",
+    setup.workspacePath ?? "",
+    setup.cursorApiUrl ?? "",
+    setup.hasCursorToken === true ? "1" : "0",
+    setup.hasGithubAccessToken === true ? "1" : "0",
+    setup.autoPush === true ? "1" : "0",
+  ].join("|");
+}
+
+export function buildImplementationBoardRefreshSyncKey(input: {
+  readonly setup: ExecutionSetupSourceGenerationRow | null | undefined;
+  readonly previewContent: string;
+  readonly taskCount: number;
+  readonly codeAgentWipStatus?: string | null;
+}): string {
+  const availability = evaluateCursorExecutionAvailability({ setup: input.setup });
+  return [
+    buildExecutionSetupBoardSyncKey(input.setup),
+    input.previewContent,
+    String(input.taskCount),
+    input.codeAgentWipStatus ?? "",
+    availability.status,
+  ].join("::");
 }
 
 export function replaceLatestImplementationBoardMessageWithSetup(input: {

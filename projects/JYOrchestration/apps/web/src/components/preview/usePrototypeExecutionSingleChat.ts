@@ -227,20 +227,6 @@ export function usePrototypeExecutionSingleChat({
     [derivedMessages, conversationMessages],
   );
 
-  const persistConversation = useCallback(
-    (nextMessages: readonly RequirementsMessage[], nextAnswers: Readonly<Record<string, string>>, nextSlotKey: string | null) => {
-      const persisted = filterPersistedPrototypeExecutionMessages(nextMessages);
-      setConversationMessages(persisted);
-      onPersistStateJson({
-        messages: persisted,
-        slots,
-        answers: nextAnswers,
-        currentSlotKey: nextSlotKey,
-      });
-    },
-    [onPersistStateJson, slots],
-  );
-
   useEffect(() => {
     const pid = projectId.trim();
     if (!pid || conversationStatus !== "loaded") return;
@@ -277,7 +263,14 @@ export function usePrototypeExecutionSingleChat({
       });
       setConversationMessages((prev) => {
         const next = [...prev, msg];
-        persistConversation(next, answers, currentSlotKey);
+        queueMicrotask(() => {
+          onPersistStateJson({
+            messages: filterPersistedPrototypeExecutionMessages(next),
+            slots,
+            answers,
+            currentSlotKey,
+          });
+        });
         return next;
       });
     },

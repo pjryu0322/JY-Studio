@@ -15,6 +15,7 @@ import {
   PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
+import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 
 import type { ArtifactBoardAction } from "@/lib/artifacts/buildArtifactBoardItems";
@@ -27,6 +28,7 @@ import {
   derivedHubEntryToDeliverableAsset,
 } from "@/lib/prototype/implementationArtifacts";
 import { buildImplementationSlotsInterviewUi } from "@/lib/prototype/prototypeExecutionImplementationChrome";
+import { resolvePrototypeExecutionActivityStatus } from "@/lib/prototype/prototypeExecutionActivityStatus";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   IMPLEMENTATION_ARTIFACT_HUB_LABEL,
@@ -193,10 +195,10 @@ import {
 } from "@/lib/prototype/reviewStageMessage";
 import {
   buildImplementationExecutionBoardMessage,
-  isSameImplementationBoardMessage,
-  replaceLatestImplementationBoardMessageWithSetup,
+  buildImplementationBoardRefreshSyncKey,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
+import { collapseImplementationBoardChatMessagesForPanelView } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import {
   appendReworkRequest,
   markReworkRequestsAcceptedForTask,
@@ -542,20 +544,6 @@ export function PrototypePreviewPanel({
     return row;
   }, [projectId]);
 
-  const buildExecutionSetupBoardSyncKey = useCallback((setup: ExecutionSetupSourceGenerationRow) => {
-    return [
-      setup.gitRepoUrl ?? "",
-      setup.gitRepoName ?? "",
-      setup.gitRepoProvider ?? "",
-      setup.baseBranch ?? "",
-      setup.workspacePath ?? "",
-      setup.cursorApiUrl ?? "",
-      setup.hasCursorToken === true ? "1" : "0",
-      setup.hasGithubAccessToken === true ? "1" : "0",
-      setup.autoPush === true ? "1" : "0",
-    ].join("|");
-  }, []);
-
   useEffect(() => {
     void reloadExecutionSetupRow();
     executionSetupBoardSyncedKeyRef.current = null;
@@ -606,13 +594,9 @@ export function PrototypePreviewPanel({
               lastSavedAt: new Date().toISOString(),
             });
 
-      if (orchestrationPatch) {
+      queueMicrotask(() => {
         onRequirementsStateJsonChange?.(merged);
-      } else {
-        queueMicrotask(() => {
-          onRequirementsStateJsonChange?.(merged);
-        });
-      }
+      });
       void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
     },
     [projectId, timelineCards, requirementsStateJson, onRequirementsStateJsonChange],
@@ -1483,6 +1467,7 @@ export function PrototypePreviewPanel({
         cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
         fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
         promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
+        executionSetup: executionSetupRow,
       }),
     [
       executionEnvLoading,
@@ -1501,6 +1486,7 @@ export function PrototypePreviewPanel({
       parsedRequirementsState.fastPlanDraftV1,
       orchestrationAwareRequirementsState.promptTimeline,
       planningSlotDefinitions,
+      executionSetupRow,
     ],
   );
 
@@ -1552,44 +1538,50 @@ export function PrototypePreviewPanel({
     planningSlotDefinitions,
   ]);
 
+  const implementationStageBoardInput = useMemo(() => {
+    const pid = projectId.trim();
+    const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
+    if (!pid || !taskList) return null;
+    return {
+      projectId: pid,
+      taskList,
+      executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+      integratedExecutionState:
+        orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
+      boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+      qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
+      previewReady: prototypeRunSyncSnapshot.previewReady,
+      implementationReviewStageReadyV1:
+        orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
+      reviewStageUserTestSessionV1: orchestrationAwareRequirementsState.reviewStageUserTestSessionV1,
+      reviewStageUserFeedbackListV1:
+        orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
+      codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+    };
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState,
+    prototypeRunSyncSnapshot.previewReady,
+  ]);
+
+  const implementationBoard = implementationStageBoardGateContext?.board ?? null;
+  const boardPanelVisible = implementationBoard != null;
+
   const implementationVisibleActionLabels = useMemo(() => {
     const labels = implementationBootstrapInput
       ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
       : [];
-    const pid = projectId.trim();
-    const taskList = parsedRequirementsState.implementationTaskListV1;
-    const boardInput =
-      pid && taskList
-        ? {
-            projectId: pid,
-            taskList,
-            executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-            integratedExecutionState:
-              orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
-            boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
-            qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
-            previewReady: prototypeRunSyncSnapshot.previewReady,
-            implementationReviewStageReadyV1:
-              orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
-            reviewStageUserTestSessionV1:
-              orchestrationAwareRequirementsState.reviewStageUserTestSessionV1,
-            reviewStageUserFeedbackListV1:
-              orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
-            codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-          }
-        : null;
     return prioritizeImplementationChipsForState(
       labels,
       effectiveImplementationState,
       orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-      boardInput,
+      implementationStageBoardInput,
     );
   }, [
     implementationBootstrapInput,
     effectiveImplementationState,
-    orchestrationAwareRequirementsState,
-    projectId,
-    prototypeRunSyncSnapshot.previewReady,
+    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+    implementationStageBoardInput,
   ]);
 
   const runImplementationStageActionRef = useRef<
@@ -1773,6 +1765,13 @@ export function PrototypePreviewPanel({
         orchestrationTimeline: patch.orchestration?.promptTimeline,
         bootstrapTimeline: patch.bootstrapTimeline,
       });
+      const orchestrationPatch = {
+        ...(patch.orchestration ?? {}),
+        ...(timeline.length ? { promptTimeline: timeline } : {}),
+      };
+      const hasOrchestrationPatch = Object.values(orchestrationPatch).some(
+        (value) => value !== undefined && value !== null,
+      );
       void persistChatToDb(
         {
           messages: patch.messages,
@@ -1780,10 +1779,7 @@ export function PrototypePreviewPanel({
           answers: patch.answers,
           currentSlotKey: patch.currentSlotKey,
         },
-        {
-          ...(patch.orchestration ?? {}),
-          ...(timeline.length ? { promptTimeline: timeline } : {}),
-        },
+        hasOrchestrationPatch ? orchestrationPatch : undefined,
       );
     },
     onOperationalSend: async (text, userMsg) => {
@@ -1863,24 +1859,31 @@ export function PrototypePreviewPanel({
 
   appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
 
-  const prioritizedChatMessages = useMemo(
-    () =>
-      executionSingleChat.chatMessages.map((m) => {
-        const suggestions = (m.meta as any)?.interviewSuggestions;
-        if (!Array.isArray(suggestions) || suggestions.length < 2) return m;
-        return {
-          ...m,
-          meta: {
-            ...m.meta,
-            interviewSuggestions: prioritizeImplementationChipsForState(
-              suggestions as readonly string[],
-              effectiveImplementationState,
-            ),
-          },
-        };
-      }),
-    [executionSingleChat.chatMessages, effectiveImplementationState],
-  );
+  const prioritizedChatMessages = useMemo(() => {
+    const prioritized = executionSingleChat.chatMessages.map((m) => {
+      const suggestions = (m.meta as any)?.interviewSuggestions;
+      if (!Array.isArray(suggestions) || suggestions.length < 2) return m;
+      return {
+        ...m,
+        meta: {
+          ...m.meta,
+          interviewSuggestions: prioritizeImplementationChipsForState(
+            suggestions as readonly string[],
+            effectiveImplementationState,
+            orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+            implementationStageBoardInput,
+          ),
+        },
+      };
+    });
+    return collapseImplementationBoardChatMessagesForPanelView(prioritized, boardPanelVisible);
+  }, [
+    executionSingleChat.chatMessages,
+    effectiveImplementationState,
+    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+    implementationStageBoardInput,
+    boardPanelVisible,
+  ]);
   // CTA priority is display-only. Persisted order is used for export/summary/evidence.
 
   /** Shared persist path for implementation stage actions (expand to full applyImplementationStageActionResult later). */
@@ -2078,103 +2081,21 @@ export function PrototypePreviewPanel({
       const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
       if (!pid || !taskList || !setup) return;
 
-      const syncKey = buildExecutionSetupBoardSyncKey(setup);
-      if (source === "execution_setup_loaded" && executionSetupBoardSyncedKeyRef.current === syncKey) {
-        return;
-      }
-
       const board = buildImplementationExecutionBoardFromRequirementsState({
         projectId: pid,
         orchestration: orchestrationAwareRequirementsState,
       });
       if (!board) return;
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      const existingBoardMessage = [...(resolved.messages ?? [])]
-        .reverse()
-        .find((message) => message.meta.internalType === "IMPLEMENTATION_TASK_LIST_READY_V1");
-      const nowIso = existingBoardMessage?.createdAt ?? new Date().toISOString();
-      const previewMessage = buildImplementationExecutionBoardMessage({
-        board,
-        nowIso,
-        previewReady: prototypeRunSyncSnapshot.previewReady,
-        hasExecutionState: true,
-        boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
-        taskList,
-        envOk: canRequestGeneration.envOk,
-        codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-        executionSetup: setup,
-      });
-      if (
-        existingBoardMessage &&
-        isSameImplementationBoardMessage(existingBoardMessage, previewMessage)
-      ) {
-        executionSetupBoardSyncedKeyRef.current = syncKey;
-        return;
-      }
 
-      const nextMessages = replaceLatestImplementationBoardMessageWithSetup({
-        messages: resolved.messages ?? [],
-        board,
-        nowIso,
-        previewReady: prototypeRunSyncSnapshot.previewReady,
-        hasExecutionState: true,
-        boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
-        taskList,
-        envOk: canRequestGeneration.envOk,
-        codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-        executionSetup: setup,
-      });
-
-      if (source === "execution_setup_loaded") {
-        executionSingleChat.applyPersistedMessages(nextMessages);
-        executionSetupBoardSyncedKeyRef.current = syncKey;
-        return;
-      }
-
-      executionSingleChat.applyPersistedMessages(nextMessages);
-      const timelineAction =
-        source === "execution_setup_saved"
-          ? ("execution_setup_saved_and_board_refreshed" as const)
-          : ("execution_setup_availability_computed" as const);
-      const timelineEntry = buildExecutionSetupAvailabilityTimelineEntry({
-        action: timelineAction,
-        projectId: pid,
+      // State-based board panel is the source of truth — env/setup refresh must not rewrite chat messages.
+      executionSetupBoardSyncedKeyRef.current = buildImplementationBoardRefreshSyncKey({
         setup,
-        source,
+        previewContent: "",
+        taskCount: taskList.tasks.length,
+        codeAgentWipStatus: orchestrationAwareRequirementsState.codeAgentWipExecutionV1?.status ?? null,
       });
-      const timelineFingerprint = buildExecutionSetupAvailabilityFingerprint({
-        projectId: pid,
-        action: timelineAction,
-        source,
-        setup,
-      });
-      void persistChatToDb(
-        {
-          messages: nextMessages,
-          slots: resolved.slots ?? [],
-          answers: resolved.answers ?? {},
-          currentSlotKey: resolved.currentSlotKey ?? null,
-        },
-        {
-          promptTimeline: appendPromptTimelineEntryOnce(
-            orchestrationAwareRequirementsState.promptTimeline ?? [],
-            timelineEntry,
-            { fingerprint: timelineFingerprint },
-          ),
-        },
-      );
-      executionSetupBoardSyncedKeyRef.current = syncKey;
     },
-    [
-      projectId,
-      orchestrationAwareRequirementsState,
-      requirementsStateJson,
-      executionSingleChat,
-      persistChatToDb,
-      prototypeRunSyncSnapshot.previewReady,
-      canRequestGeneration.envOk,
-      buildExecutionSetupBoardSyncKey,
-    ],
+    [projectId, orchestrationAwareRequirementsState],
   );
 
   refreshImplementationBoardRef.current = refreshImplementationBoardWithExecutionSetup;
@@ -2182,16 +2103,18 @@ export function PrototypePreviewPanel({
   useEffect(() => {
     if (!executionSetupRow) return;
     refreshImplementationBoardRef.current?.(executionSetupRow, "execution_setup_loaded");
-  }, [executionSetupRow]);
+  }, [executionSetupRow, orchestrationAwareRequirementsState.implementationTaskListV1]);
 
   const handleExecutionSetupChanged = useCallback(async () => {
     executionSetupBoardSyncedKeyRef.current = null;
     await loadEnv();
     const row = await reloadExecutionSetupRow();
-    if (row) {
-      refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
+    if (!row) {
+      showToast("환경설정을 다시 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
     }
-  }, [loadEnv, reloadExecutionSetupRow, refreshImplementationBoardWithExecutionSetup]);
+    refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
+  }, [loadEnv, reloadExecutionSetupRow, refreshImplementationBoardWithExecutionSetup, showToast]);
 
   const applyDbStrategyResult = useCallback(
     (
@@ -4264,6 +4187,38 @@ export function PrototypePreviewPanel({
 
   const isWorkPlanPlanningUi = isPlannerRunning || plannerCreatePending;
 
+  const executionActivityStatus = useMemo(
+    () =>
+      resolvePrototypeExecutionActivityStatus({
+        implementationResetBusy,
+        executionAiSummaryBusy,
+        plannerCreatePending,
+        isPlannerRunning,
+        plannerProgressStep,
+        isRunningState,
+        latestRunStatus: latestRun?.status ?? null,
+        protoBusy,
+        executionEnvLoading,
+        conversationLoading: executionSingleChat.conversationStatus !== "loaded",
+        aiInvokePending: executionSingleChat.aiInvokePending,
+        codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      }),
+    [
+      implementationResetBusy,
+      executionAiSummaryBusy,
+      plannerCreatePending,
+      isPlannerRunning,
+      plannerProgressStep,
+      isRunningState,
+      latestRun?.status,
+      protoBusy,
+      executionEnvLoading,
+      executionSingleChat.conversationStatus,
+      executionSingleChat.aiInvokePending,
+      orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+    ],
+  );
+
   const chatPlaceholder = useMemo(() => {
     if (isWorkPlanPlanningUi) {
       return `${prototypeAiTitle}가 작업계획을 생성 중입니다.`;
@@ -4767,6 +4722,21 @@ export function PrototypePreviewPanel({
       ) : null}
 
       <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+        {implementationBoard && implementationStageBoardInput ? (
+          <ImplementationExecutionBoardPanel
+            board={implementationBoard}
+            taskList={implementationStageBoardInput.taskList}
+            executionSetup={executionSetupRow}
+            codeAgentWipExecutionV1={orchestrationAwareRequirementsState.codeAgentWipExecutionV1}
+            qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
+            boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
+            previewReady={prototypeRunSyncSnapshot.previewReady}
+            effectiveImplementationState={effectiveImplementationState}
+            boardInput={implementationStageBoardInput}
+            onAction={handleImplementationChip}
+          />
+        ) : null}
+        <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <PrototypeExecutionChatPanel
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={prioritizedChatMessages}
@@ -4792,6 +4762,7 @@ export function PrototypePreviewPanel({
             if (picked.kind === "action") handleChatIntent(picked.action);
           }}
           aiInvokePending={executionSingleChat.aiInvokePending}
+          activityStatus={executionActivityStatus}
         />
         {isNextPublicDevWorkflowToolsEnabled() ? (
           <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, margin: "0 18px 12px" }}>
@@ -4821,6 +4792,7 @@ export function PrototypePreviewPanel({
             </pre>
           </details>
         ) : null}
+        </div>
       </div>
 
       <RecommendationEvidenceDrawer

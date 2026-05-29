@@ -43,6 +43,7 @@ export function buildImplementationBootstrapInput(input: {
   readonly cursorWorkItemsV1?: readonly import("@/lib/prototype/implementationCursorWorkItems").CursorWorkItem[] | null;
   readonly fastPlanDraftV1?: import("@/lib/requirements/fastPlanDraftTypes").FastPlanDraftStateV1 | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
+  readonly executionSetup?: import("@/lib/prototype/executionSetupSourceGeneration").ExecutionSetupSourceGenerationRow | null;
 }): ImplementationOrchestrationSummaryInput | null {
   if (input.envLoading) return null;
   return {
@@ -62,6 +63,7 @@ export function buildImplementationBootstrapInput(input: {
     cursorWorkItemsV1: input.cursorWorkItemsV1,
     fastPlanDraftV1: input.fastPlanDraftV1,
     promptTimeline: input.promptTimeline,
+    executionSetup: input.executionSetup,
   };
 }
 

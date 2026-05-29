@@ -200,6 +200,81 @@ describe("implementationOrchestrationSummary", () => {
     expect(bundle.timelineEntries.some((e) => e.action === "implementation_entry_tasklist_detected")).toBe(true);
   });
 
+  it("bootstrap board with executionSetup shows configured GitHub and Cursor fields", () => {
+    const taskList = {
+      version: "implementation_task_list_v1" as const,
+      projectId: "p1",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      source: "implementation_seed" as const,
+      tasks: [
+        {
+          taskId: "DEV-001",
+          title: "첫 작업",
+          ownerRole: "developer" as const,
+          priority: "P0" as const,
+          status: "ready" as const,
+          taskType: "feature" as const,
+          description: "desc",
+          acceptanceCriteria: ["ok"],
+          sourceRefs: [],
+          dependencies: [],
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const bundle = buildImplementationBootstrapBundle({
+      ...baseInput,
+      implementationTaskListV1: taskList,
+      cursorWorkItemsV1: [{ id: "wi-1", taskId: "DEV-001" } as never],
+      executionSetup: {
+        gitRepoName: "pjryu0322/aiproject",
+        gitRepoProvider: "github",
+        baseBranch: "main",
+        hasCursorToken: true,
+        hasGithubAccessToken: true,
+      },
+    });
+    const text = bundle.messages[0]?.content ?? "";
+    expect(text).toContain("Git 저장소: 설정됨");
+    expect(text).toContain("GitHub Token: 설정됨");
+    expect(text).toContain("Cursor API Key: 설정됨");
+    expect(text).not.toContain("Status: missing_cursor_api");
+  });
+
+  it("bootstrap board without executionSetup shows missing setup diagnostics", () => {
+    const taskList = {
+      version: "implementation_task_list_v1" as const,
+      projectId: "p1",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      source: "implementation_seed" as const,
+      tasks: [
+        {
+          taskId: "DEV-001",
+          title: "첫 작업",
+          ownerRole: "developer" as const,
+          priority: "P0" as const,
+          status: "ready" as const,
+          taskType: "feature" as const,
+          description: "desc",
+          acceptanceCriteria: ["ok"],
+          sourceRefs: [],
+          dependencies: [],
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const bundle = buildImplementationBootstrapBundle({
+      ...baseInput,
+      implementationTaskListV1: taskList,
+      cursorWorkItemsV1: [{ id: "wi-1", taskId: "DEV-001" } as never],
+    });
+    const text = bundle.messages[0]?.content ?? "";
+    expect(text).toContain("Status: missing_cursor_api");
+    expect(text).toContain("Git 저장소: 미설정");
+  });
+
   it("does not put raw env readiness lines in AI developer bootstrap message", () => {
     const [lead] = buildImplementationBootstrapBundle(baseInput).messages;
     expect(lead?.content).not.toMatch(/Git 저장소:\s*완료/);

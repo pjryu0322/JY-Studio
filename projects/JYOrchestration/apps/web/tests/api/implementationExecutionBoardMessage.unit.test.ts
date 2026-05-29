@@ -10,8 +10,12 @@ import {
   isImplementationReadyForReviewStage,
 } from "@/lib/prototype/implementationExecutionBoard";
 import {
+  buildCompactImplementationExecutionBoardNoticeMessage,
   buildImplementationExecutionBoardMessage,
+  buildImplementationBoardRefreshSyncKey,
   buildImplementationUserConfirmationBoardMessage,
+  isStaleImplementationBoardMissingSetup,
+  isSameImplementationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
@@ -577,10 +581,64 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(text).toContain("Mode: cursor_api");
     expect(text).toContain("Cursor API Key: 설정됨");
     expect(text).not.toContain("Cursor Bridge 설정:");
-    expect(text).not.toContain("CURSOR_BRIDGE_ENABLED");
-    expect(text).not.toContain("GIT_APPLY_PUSH_ENABLED");
-    expect(text).not.toContain("http_bridge");
-    expect(text).not.toContain("local_runner");
+  });
+
+  it("board without executionSetup shows missing setup diagnostics", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
+    const text = message.content;
+    expect(text).toContain("Status: missing_cursor_api");
+    expect(text).toContain("Git 저장소: 미설정");
+    expect(text).toContain("Cursor API Key: 미설정");
+  });
+
+  it("detects stale persisted board missing setup", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const stale = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
+    const fresh = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      executionSetup: {
+        gitRepoName: "o/r",
+        gitRepoProvider: "github",
+        hasCursorToken: true,
+        hasGithubAccessToken: true,
+        workspacePath: "C:/workspace/r",
+      },
+    });
+    expect(isStaleImplementationBoardMissingSetup(stale.content)).toBe(true);
+    expect(isStaleImplementationBoardMissingSetup(fresh.content)).toBe(false);
+    expect(isSameImplementationBoardMessage(stale, fresh)).toBe(false);
+  });
+
+  it("refresh sync key changes when board content changes for same setup", () => {
+    const setup = {
+      gitRepoName: "o/r",
+      gitRepoProvider: "github",
+      hasCursorToken: true,
+      hasGithubAccessToken: true,
+    };
+    const staleKey = buildImplementationBoardRefreshSyncKey({
+      setup,
+      previewContent: "Status: missing_cursor_api\nGit 저장소: 미설정",
+      taskCount: 20,
+      codeAgentWipStatus: null,
+    });
+    const freshKey = buildImplementationBoardRefreshSyncKey({
+      setup,
+      previewContent: "Status: missing_workspace\nGit 저장소: 설정됨",
+      taskCount: 20,
+      codeAgentWipStatus: null,
+    });
+    expect(staleKey).not.toBe(freshKey);
   });
 
   it("board diagnostic preserves partial setup when only workspace is missing", () => {
@@ -606,5 +664,20 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(text).toContain("GitHub Token: 설정됨");
     expect(text).toContain("Cursor API Key: 설정됨");
     expect(text).toContain("Workspace: 미설정");
+  });
+
+  it("buildCompactImplementationExecutionBoardNoticeMessage avoids long task table text", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const message = buildCompactImplementationExecutionBoardNoticeMessage({
+      board,
+      nowIso: NOW,
+      includeTaskSummary: true,
+    });
+    expect(message.content).toContain("Execution Board");
+    expect(message.content).not.toContain("TASK ID | 작업 | 개발자");
   });
 });

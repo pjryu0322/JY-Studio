@@ -9,6 +9,9 @@ import { requirementsIdeationChatPanelShellStyle } from "@/components/requiremen
 import { WorkspaceChatReplyComposerBar } from "@/components/workspace/workspaceMessageHeaderActions";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
+import { PrototypeExecutionActivityStatusBar } from "@/components/preview/PrototypeExecutionActivityStatusBar";
+import type { PrototypeExecutionActivityStatus } from "@/lib/prototype/prototypeExecutionActivityStatus";
+
 export type PrototypeExecutionChatPanelProps = Readonly<{
   conversationStatus: "idle" | "loading" | "loaded";
   chatMessages: readonly RequirementsMessage[];
@@ -27,6 +30,7 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   onSetReplyTo: (messageId: string, preview: string) => void;
   onInterviewSuggestionPick: (label: string) => void;
   aiInvokePending: boolean;
+  activityStatus?: PrototypeExecutionActivityStatus | null;
   headerLeading?: ReactNode;
   headerIconToolbar?: ReactNode;
 }>;
@@ -50,6 +54,7 @@ export function PrototypeExecutionChatPanel({
   onSetReplyTo,
   onInterviewSuggestionPick,
   aiInvokePending,
+  activityStatus = null,
   headerIconToolbar,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
@@ -78,7 +83,9 @@ export function PrototypeExecutionChatPanel({
       style={requirementsIdeationChatPanelShellStyle}
       data-testid="prototype-generation-chat-panel"
     >
-      <RequirementsChatPanel
+      {activityStatus?.active ? <PrototypeExecutionActivityStatusBar status={activityStatus} /> : null}
+      <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId="prototype_build"
         typingIndicator={showTyping}
@@ -97,6 +104,7 @@ export function PrototypeExecutionChatPanel({
           </div>
         }
       />
+      </div>
     </div>
   );
 }
