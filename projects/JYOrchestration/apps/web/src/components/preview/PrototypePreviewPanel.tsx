@@ -52,12 +52,8 @@ import {
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
-import { getCursorBridgeAvailability } from "@/lib/prototype/cursorBridgeRuntime";
-import {
-  CURSOR_BRIDGE_MISSING_TARGET_REPO_MESSAGE,
-  evaluateCursorBridgeSourceGenerationGate,
-  resolveProjectTargetRepository,
-} from "@/lib/prototype/projectTargetRepository";
+import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
+import { toCodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
   buildWipChipHandlerSlice,
@@ -2714,32 +2710,45 @@ export function PrototypePreviewPanel({
             const setupRes = await fetchExecutionSetup(pid);
             const executionSetup =
               setupRes.res.ok && setupRes.json.success ? (setupRes.json.data ?? null) : null;
-            const targetRepository = resolveProjectTargetRepository({ projectSettings: executionSetup });
-            const availability = getCursorBridgeAvailability();
-            const preGate = evaluateCursorBridgeSourceGenerationGate({
-              targetRepository,
-              bridgeAvailable: availability.available,
-              bridgeReason: availability.reason,
+            const readiness = evaluateExecutionSetupSourceGenerationReadiness({
+              setup: executionSetup
+                ? {
+                    gitRepoUrl: executionSetup.gitRepoUrl,
+                    gitRepoName: executionSetup.gitRepoName,
+                    gitRepoProvider: executionSetup.gitRepoProvider,
+                    baseBranch: executionSetup.baseBranch,
+                    workspacePath: executionSetup.workspacePath,
+                    allowedPathGlobs: executionSetup.allowedPathGlobs,
+                    autoCommit: executionSetup.autoCommit,
+                    autoPush: executionSetup.autoPush,
+                    autoPr: executionSetup.autoPr,
+                    cursorApiUrl: executionSetup.cursorApiUrl,
+                    hasCursorToken: executionSetup.hasCursorToken,
+                    hasGithubAccessToken: executionSetup.hasGithubAccessToken,
+                  }
+                : null,
             });
-            if (!preGate.ok) {
-              executionSingleChat.appendAiNotice(preGate.message);
-              showToast(
-                preGate.message.includes(CURSOR_BRIDGE_MISSING_TARGET_REPO_MESSAGE.split("\n")[0] ?? "")
-                  ? "대상 Git 저장소 설정이 필요합니다."
-                  : "Cursor Bridge 연결이 필요합니다.",
-              );
-              if (preGate.message.includes("Git 저장소가 설정되지 않")) {
+            if (!readiness.ok) {
+              executionSingleChat.appendAiNotice(readiness.message);
+              showToast("Cursor 실행 요청이 차단되었습니다.");
+              if (readiness.missing.some((m) => m.includes("Git") || m.includes("실행환경"))) {
                 setExecutionEnvironmentModalOpen(true);
               }
               return;
             }
 
+            const targetRepository = readiness.context.targetRepository;
+            const targetSnapshot = toCodeAgentTargetRepositorySnapshot(targetRepository);
+
             showToast("Cursor Bridge 실행을 시작합니다...");
             const requestedWip: typeof wip = {
               ...wip,
               bridgeExecutionStatus: "bridge_requested",
-              targetRepository: targetRepository!.repoFullName,
-              targetRepoFullName: targetRepository!.repoFullName,
+              targetRepository: targetRepository.repoFullName,
+              targetRepoFullName: targetRepository.repoFullName,
+              targetRepositorySnapshot: targetSnapshot,
+              workspacePath: readiness.context.workspaceRoot,
+              baseBranch: readiness.context.baseBranch,
             };
             void persistChatToDb(undefined, { codeAgentWipExecutionV1: requestedWip });
 
@@ -2752,8 +2761,7 @@ export function PrototypePreviewPanel({
                   selectedTaskId,
                   selectedWorkItemIds,
                   workItems,
-                  workBranch: wip.branchName,
-                  baseBranch: executionSetup?.baseBranch?.trim() || targetRepository!.defaultBranch,
+                  branchName: wip.branchName,
                   commitMessage,
                 }),
               });

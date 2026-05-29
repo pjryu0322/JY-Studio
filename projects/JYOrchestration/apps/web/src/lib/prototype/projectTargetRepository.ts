@@ -5,13 +5,24 @@ export type ProjectTargetRepository = Readonly<{
   repo: string;
   repoFullName: string;
   defaultBranch: string;
+  gitRepoUrl: string;
+  gitRepoProvider: string;
   cloneUrl?: string;
   webUrl?: string;
+}>;
+
+export type CodeAgentTargetRepositorySnapshot = Readonly<{
+  owner: string;
+  repo: string;
+  repoFullName: string;
+  gitRepoUrl: string;
+  defaultBranch: string;
 }>;
 
 type RepoSource = Readonly<{
   readonly gitRepoName?: string | null;
   readonly gitRepoUrl?: string | null;
+  readonly gitRepoProvider?: string | null;
   readonly baseBranch?: string | null;
 }>;
 
@@ -42,25 +53,51 @@ function readRepoSource(value: unknown): RepoSource | null {
       : typeof o.repoUrl === "string"
         ? o.repoUrl
         : null;
+  const gitRepoProvider = typeof o.gitRepoProvider === "string" ? o.gitRepoProvider : null;
   const baseBranch = typeof o.baseBranch === "string" ? o.baseBranch : null;
   if (!gitRepoName?.trim() && !gitRepoUrl?.trim()) return null;
-  return { gitRepoName, gitRepoUrl, baseBranch };
+  return { gitRepoName, gitRepoUrl, gitRepoProvider, baseBranch };
+}
+
+export function resolveProjectTargetRepositoryFromExecutionSetup(input: {
+  readonly gitRepoUrl?: string | null;
+  readonly gitRepoName?: string | null;
+  readonly gitRepoProvider?: string | null;
+  readonly baseBranch?: string | null;
+}): ProjectTargetRepository | null {
+  return resolveProjectTargetRepository({ envSettings: input });
 }
 
 function buildTargetRepository(
   owner: string,
   repo: string,
   defaultBranch: string,
-  cloneUrl?: string,
+  gitRepoUrl: string,
+  gitRepoProvider: string,
 ): ProjectTargetRepository {
   const repoFullName = `${owner}/${repo}`;
+  const url = gitRepoUrl.trim() || `https://github.com/${repoFullName}.git`;
   return {
     owner,
     repo,
     repoFullName,
     defaultBranch: defaultBranch.trim() || "main",
-    ...(cloneUrl ? { cloneUrl } : { cloneUrl: `https://github.com/${repoFullName}.git` }),
+    gitRepoUrl: url,
+    gitRepoProvider: gitRepoProvider.trim() || "github",
+    cloneUrl: url,
     webUrl: `https://github.com/${repoFullName}`,
+  };
+}
+
+export function toCodeAgentTargetRepositorySnapshot(
+  repo: ProjectTargetRepository,
+): CodeAgentTargetRepositorySnapshot {
+  return {
+    owner: repo.owner,
+    repo: repo.repo,
+    repoFullName: repo.repoFullName,
+    gitRepoUrl: repo.gitRepoUrl,
+    defaultBranch: repo.defaultBranch,
   };
 }
 
@@ -82,7 +119,13 @@ export function resolveProjectTargetRepository(input: {
     const fromUrl = row.gitRepoUrl ? parseGithubComOwnerRepoFromUrl(row.gitRepoUrl) : null;
     const parsed = fromName ?? fromUrl;
     if (!parsed) continue;
-    return buildTargetRepository(parsed.owner, parsed.repo, row.baseBranch ?? "main", row.gitRepoUrl?.trim() || undefined);
+    return buildTargetRepository(
+      parsed.owner,
+      parsed.repo,
+      row.baseBranch ?? "main",
+      row.gitRepoUrl?.trim() || `https://github.com/${parsed.owner}/${parsed.repo}.git`,
+      row.gitRepoProvider ?? "github",
+    );
   }
   return null;
 }
@@ -97,10 +140,21 @@ function readRequirementsRepoSettings(requirementsStateJson: unknown): RepoSourc
   return readRepoSource(root.prototypeExecutionSetup);
 }
 
+export const CURSOR_BRIDGE_MISSING_SETUP_MESSAGE = [
+  "실행환경 설정이 없습니다.",
+  "환경설정에서 Git 저장소와 Cursor 설정을 먼저 저장해 주세요.",
+].join("\n");
+
 export const CURSOR_BRIDGE_MISSING_TARGET_REPO_MESSAGE = [
   "대상 프로젝트 Git 저장소가 설정되지 않았습니다.",
   "",
   "실제 소스 생성을 진행하려면 환경설정에서 owner/repo 또는 repoUrl을 먼저 설정해야 합니다.",
+].join("\n");
+
+export const CURSOR_BRIDGE_MISSING_WORKSPACE_MESSAGE = [
+  "대상 저장소 작업 경로(workspacePath)가 설정되지 않았습니다.",
+  "",
+  "환경설정에서 workspacePath를 지정해 주세요.",
 ].join("\n");
 
 export const CURSOR_BRIDGE_MISSING_CONNECTION_MESSAGE = [
@@ -108,18 +162,27 @@ export const CURSOR_BRIDGE_MISSING_CONNECTION_MESSAGE = [
   "현재는 WIP 초안까지만 생성되었습니다.",
 ].join("\n");
 
-export const CURSOR_BRIDGE_LOCAL_RUNNER_BLOCKED_MESSAGE = [
-  "Local Runner를 사용하려면 실제 Cursor CLI 또는 Code Agent Runner 명령이 필요합니다.",
-  "현재 설정만으로는 실제 소스 생성이 불가능합니다.",
-].join("\n");
-
 export function evaluateCursorBridgeSourceGenerationGate(input: {
   readonly targetRepository: ProjectTargetRepository | null;
   readonly bridgeAvailable: boolean;
   readonly bridgeReason?: string;
+  readonly workspaceRoot?: string | null;
+  readonly hasCursorApi?: boolean;
 }): Readonly<{ readonly ok: true } | Readonly<{ readonly ok: false; readonly message: string }>> {
   if (!input.targetRepository) {
     return { ok: false, message: CURSOR_BRIDGE_MISSING_TARGET_REPO_MESSAGE };
+  }
+  if (!String(input.workspaceRoot ?? "").trim()) {
+    return { ok: false, message: CURSOR_BRIDGE_MISSING_WORKSPACE_MESSAGE };
+  }
+  if (!input.bridgeAvailable && !input.hasCursorApi) {
+    return {
+      ok: false,
+      message: [CURSOR_BRIDGE_MISSING_CONNECTION_MESSAGE, "", input.bridgeReason?.trim()].filter(Boolean).join("\n"),
+    };
+  }
+  if (!input.bridgeAvailable && input.hasCursorApi) {
+    return { ok: true };
   }
   if (!input.bridgeAvailable) {
     return {

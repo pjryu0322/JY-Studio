@@ -75,6 +75,12 @@ export function applyCursorBridgeResultToWipExecution(input: {
     };
   }
 
+  const targetRepoFullName =
+    input.bridgeResult.targetRepository?.trim() ||
+    input.wip.targetRepoFullName ||
+    input.wip.targetRepository ||
+    input.wip.targetRepositorySnapshot?.repoFullName;
+
   const commit: CodeAgentWipCommit = {
     provider: input.wip.provider,
     sha: input.bridgeResult.commitSha!,
@@ -92,12 +98,8 @@ export function applyCursorBridgeResultToWipExecution(input: {
           "공식 PR/merge는 AI개발자 승인 후 SCM 단계에서 수행합니다.",
         ],
     createdAt: now,
+    ...(targetRepoFullName ? { targetRepository: targetRepoFullName } : {}),
   };
-
-  const targetRepoFullName =
-    input.bridgeResult.targetRepository?.trim() ||
-    input.wip.targetRepoFullName ||
-    input.wip.targetRepository;
 
   let updated: CodeAgentWipExecutionV1 = {
     ...input.wip,
@@ -107,9 +109,16 @@ export function applyCursorBridgeResultToWipExecution(input: {
     branchName: commit.branchName,
     bridgeCompletedAt: now,
     pushed: input.bridgeResult.pushed === true,
+    ...(input.bridgeResult.workspacePath?.trim()
+      ? { workspacePath: input.bridgeResult.workspacePath.trim() }
+      : input.wip.workspacePath
+        ? { workspacePath: input.wip.workspacePath }
+        : {}),
+    ...(input.wip.baseBranch ? { baseBranch: input.wip.baseBranch } : {}),
     ...(targetRepoFullName
       ? { targetRepository: targetRepoFullName, targetRepoFullName }
       : {}),
+    ...(input.wip.targetRepositorySnapshot ? { targetRepositorySnapshot: input.wip.targetRepositorySnapshot } : {}),
     ...(input.bridgeResult.prNumber !== undefined ? { prNumber: input.bridgeResult.prNumber } : {}),
     bridgeErrorMessage: undefined,
     commits: [...input.wip.commits.filter((c) => !c.sha?.startsWith("wip-stub")), commit],

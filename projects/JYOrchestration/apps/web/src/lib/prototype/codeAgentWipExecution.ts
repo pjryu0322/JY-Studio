@@ -12,6 +12,7 @@ import {
   getCursorBridgeAvailability,
   isCursorBridgeExecutionAvailable as isCursorBridgeRuntimeAvailable,
 } from "@/lib/prototype/cursorBridgeRuntime";
+import type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -85,6 +86,7 @@ export type CodeAgentWipCommit = Readonly<{
   testResults: readonly string[];
   unresolvedIssues: readonly string[];
   createdAt: string;
+  targetRepository?: string;
 }>;
 
 export type CodeAgentDeveloperReviewStatus = "pending" | "approved" | "refactor_requested" | "rejected";
@@ -135,7 +137,12 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   /** Target project Git repository (owner/repo). */
   targetRepository?: string;
   targetRepoFullName?: string;
+  targetRepositorySnapshot?: CodeAgentTargetRepositorySnapshot;
+  workspacePath?: string;
+  baseBranch?: string;
 }>;
+
+export type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 
 export { codeAgentIsNotSingleChatMember };
 
@@ -336,9 +343,13 @@ export function formatCodeAgentExecutionModeDiagnosticLines(
   }
   if (wip.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
     const last = wip.commits[wip.commits.length - 1];
+    const repo = wip.targetRepositorySnapshot?.repoFullName ?? wip.targetRepoFullName ?? wip.targetRepository;
     return [
       "Code Agent 실행 모드:",
       "- 현재: Cursor Bridge 완료",
+      ...(repo ? [`- Git 저장소: ${repo}`] : []),
+      ...(wip.workspacePath ? [`- 작업 경로: ${wip.workspacePath}`] : []),
+      ...(wip.baseBranch ? [`- 기준 브랜치: ${wip.baseBranch}`] : []),
       `- 실제 commit: ${last?.sha ?? "(없음)"}`,
       ...(wip.pushed ? ["- push: 완료"] : ["- push: 미수행"]),
     ];
@@ -350,6 +361,16 @@ export function formatCodeAgentExecutionModeDiagnosticLines(
       "- 현재: Stub WIP 초안 생성됨",
       `- 실제 Cursor Bridge 실행: ${isCursorBridgeRuntimeAvailable() ? "가능 (미실행)" : "미연결"}`,
       ...(availability.available ? [] : [`- 설정: ${availability.reason}`]),
+      ...(wip.targetRepositorySnapshot || wip.workspacePath
+        ? [
+            "실제 소스 생성 대상:",
+            ...(wip.targetRepositorySnapshot
+              ? [`- Git 저장소: ${wip.targetRepositorySnapshot.repoFullName}`]
+              : []),
+            ...(wip.baseBranch ? [`- 기준 브랜치: ${wip.baseBranch}`] : []),
+            ...(wip.workspacePath ? [`- 작업 경로: ${wip.workspacePath}`] : []),
+          ]
+        : []),
     ];
   }
   return [
@@ -450,9 +471,11 @@ export function buildCodeAgentWipBridgeCompletedMessage(input: {
       "Cursor가 대상 프로젝트 소스를 생성했습니다.",
       "",
       "대상 저장소:",
-      `- ${input.wip.targetRepoFullName ?? input.wip.targetRepository ?? "(미기록)"}`,
+      `- ${input.wip.targetRepositorySnapshot?.repoFullName ?? input.wip.targetRepoFullName ?? input.wip.targetRepository ?? "(미기록)"}`,
       "",
-      "브랜치:",
+      ...(input.wip.workspacePath ? ["작업 경로:", `- ${input.wip.workspacePath}`, ""] : []),
+      ...(input.wip.baseBranch ? ["기준 브랜치:", `- ${input.wip.baseBranch}`, ""] : []),
+      "작업 브랜치:",
       `- ${input.commit.branchName}`,
       "",
       "Commit:",

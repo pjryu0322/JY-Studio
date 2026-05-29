@@ -46,6 +46,9 @@ function parseWipCommit(raw: unknown, defaultProvider: CodeAgentWipCommit["provi
     testResults: parseStringArray(o.testResults),
     unresolvedIssues: parseStringArray(o.unresolvedIssues),
     createdAt,
+    ...(typeof o.targetRepository === "string" && o.targetRepository.trim()
+      ? { targetRepository: o.targetRepository.trim() }
+      : {}),
   };
 }
 
@@ -169,6 +172,24 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     typeof o.targetRepoFullName === "string" && o.targetRepoFullName.trim()
       ? o.targetRepoFullName.trim()
       : targetRepository;
+  const workspacePath =
+    typeof o.workspacePath === "string" && o.workspacePath.trim() ? o.workspacePath.trim() : undefined;
+  const baseBranch =
+    typeof o.baseBranch === "string" && o.baseBranch.trim() ? o.baseBranch.trim() : undefined;
+  const snapshotRaw = o.targetRepositorySnapshot;
+  const targetRepositorySnapshot =
+    snapshotRaw && typeof snapshotRaw === "object"
+      ? (() => {
+          const s = snapshotRaw as Record<string, unknown>;
+          const owner = String(s.owner ?? "").trim();
+          const repo = String(s.repo ?? "").trim();
+          const repoFullName = String(s.repoFullName ?? "").trim() || (owner && repo ? `${owner}/${repo}` : "");
+          const gitRepoUrl = String(s.gitRepoUrl ?? "").trim();
+          const defaultBranch = String(s.defaultBranch ?? "main").trim() || "main";
+          if (!owner || !repo || !repoFullName || !gitRepoUrl) return undefined;
+          return { owner, repo, repoFullName, gitRepoUrl, defaultBranch };
+        })()
+      : undefined;
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -191,6 +212,9 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(prNumber !== undefined ? { prNumber } : {}),
     ...(targetRepository ? { targetRepository } : {}),
     ...(targetRepoFullName ? { targetRepoFullName } : {}),
+    ...(workspacePath ? { workspacePath } : {}),
+    ...(baseBranch ? { baseBranch } : {}),
+    ...(targetRepositorySnapshot ? { targetRepositorySnapshot } : {}),
   };
 }
 

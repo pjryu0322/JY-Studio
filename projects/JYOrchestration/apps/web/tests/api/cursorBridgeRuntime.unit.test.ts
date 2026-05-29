@@ -82,20 +82,37 @@ describe("validateBridgeResultForRealSourceGeneration (legacy import)", () => {
     commitSha: "abc123def456",
     changedFiles: ["src/a.ts"],
   };
+  const context = {
+    targetRepository: {
+      owner: "owner",
+      repo: "repo",
+      repoFullName: "owner/repo",
+      defaultBranch: "main",
+      gitRepoUrl: "https://github.com/owner/repo",
+      gitRepoProvider: "github",
+    },
+    allowedPathGlobs: [] as string[],
+  };
 
   it("bridge ok without changedFiles returns failed validation", () => {
-    const validation = validateBridgeResultForRealSourceGeneration({
-      ...base,
-      changedFiles: [],
-    });
+    const validation = validateBridgeResultForRealSourceGeneration(
+      {
+        ...base,
+        changedFiles: [],
+      },
+      context,
+    );
     expect(validation.ok).toBe(false);
   });
 
   it("bridge ok without commitSha returns failed validation", () => {
-    const validation = validateBridgeResultForRealSourceGeneration({
-      ...base,
-      commitSha: undefined,
-    });
+    const validation = validateBridgeResultForRealSourceGeneration(
+      {
+        ...base,
+        commitSha: undefined,
+      },
+      context,
+    );
     expect(validation.ok).toBe(false);
   });
 });

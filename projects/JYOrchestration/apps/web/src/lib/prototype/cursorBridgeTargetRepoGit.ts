@@ -71,3 +71,25 @@ export async function ensureTargetRepositoryWorktree(input: {
 
   return { workdir, log };
 }
+
+export async function prepareExecutionSetupWorkspace(input: {
+  readonly workdir: string;
+  readonly baseBranch: string;
+  readonly workBranch: string;
+}): Promise<Readonly<{ readonly log: readonly string[] }>> {
+  const log: string[] = [];
+  const baseBranch = input.baseBranch.trim() || "main";
+  await git(input.workdir, ["rev-parse", "--is-inside-work-tree"]);
+  log.push(`[GIT] workspace ${input.workdir}`);
+  await git(input.workdir, ["checkout", baseBranch]);
+  log.push(`[GIT] checkout ${baseBranch}`);
+  try {
+    await git(input.workdir, ["pull", "--ff-only", "origin", baseBranch]);
+    log.push(`[GIT] pull ${baseBranch}`);
+  } catch (e) {
+    log.push(`[GIT] pull skipped: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  await git(input.workdir, ["checkout", "-B", input.workBranch]);
+  log.push(`[GIT] checkout -B ${input.workBranch}`);
+  return { log };
+}

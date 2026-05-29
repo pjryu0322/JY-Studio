@@ -1,21 +1,29 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
-import { isPlatformInternalSourcePath } from "@/lib/prototype/cursorBridgeRuntime";
+import {
+  defaultForbiddenTargetPathGlobs,
+  validateTargetRepositoryChangedFiles,
+} from "@/lib/prototype/targetRepositoryPathGuard";
 
 export type CursorSourceGenerationRequest = Readonly<{
   readonly projectId: string;
   readonly selectedTaskId: string;
   readonly selectedWorkItemIds: readonly string[];
-  readonly targetRepository: ProjectTargetRepository;
-  readonly baseBranch: string;
-  readonly workBranch: string;
-  readonly prompt: string;
   readonly workItems: readonly CursorWorkItem[];
+  readonly targetRepository: ProjectTargetRepository;
+  readonly branchName: string;
+  readonly baseBranch: string;
+  readonly workspaceRoot: string;
   readonly commitMessage: string;
-  readonly allowedTargetPaths?: readonly string[];
-  readonly forbiddenTargetPaths?: readonly string[];
-  /** Local clone/checkout only. */
-  readonly workspaceRoot?: string;
+  readonly prompt: string;
+  readonly allowedPathGlobs: readonly string[];
+  readonly forbiddenPathGlobs: readonly string[];
+  readonly autoCommit: boolean;
+  readonly autoPush: boolean;
+  readonly autoPr: boolean;
+  readonly cursorApiUrl?: string;
+  /** @deprecated alias — use branchName */
+  readonly workBranch?: string;
 }>;
 
 export type CursorBridgeExecuteRequest = CursorSourceGenerationRequest;
@@ -37,6 +45,13 @@ export type CursorBridgeExecuteResult = Readonly<{
   readonly testResults?: readonly string[];
   readonly errorMessage?: string;
   readonly rawLog?: string;
+  readonly workspacePath?: string;
+}>;
+
+export type BridgeResultValidationContext = Readonly<{
+  readonly targetRepository: ProjectTargetRepository;
+  readonly allowedPathGlobs: readonly string[];
+  readonly forbiddenPathGlobs?: readonly string[];
 }>;
 
 export function buildCursorSourceGenerationPrompt(input: {
@@ -44,6 +59,7 @@ export function buildCursorSourceGenerationPrompt(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly targetRepository: ProjectTargetRepository;
   readonly commitMessage: string;
+  readonly allowedPathGlobs: readonly string[];
 }): string {
   const sections = input.workItems.map((w) => {
     const lines = [
@@ -61,18 +77,22 @@ export function buildCursorSourceGenerationPrompt(input: {
     return lines.join("\n");
   });
 
+  const allowedLines = input.allowedPathGlobs.length
+    ? input.allowedPathGlobs.map((g) => `- ${g}`)
+    : ["- (제한 없음, 금지 경로만 적용)"];
+
   return [
     "# Cursor 소스 생성 요청",
     "",
     `프로젝트 저장소: ${input.targetRepository.repoFullName}`,
+    `gitRepoUrl: ${input.targetRepository.gitRepoUrl}`,
     `selectedTaskId: ${input.selectedTaskId}`,
     `기본 브랜치: ${input.targetRepository.defaultBranch}`,
     "",
     ...sections,
     "",
-    "## 금지 경로",
-    "- projects/JYOrchestration/** (플랫폼 내부)",
-    "- apps/web/src/generated/implementation-wip/**",
+    "## 허용 경로 (allowedPathGlobs)",
+    ...allowedLines,
     "",
     "## Commit 메시지",
     input.commitMessage.trim(),
@@ -85,10 +105,16 @@ export function buildCursorBridgeExecuteRequestFromWorkItems(input: {
   readonly selectedWorkItemIds: readonly string[];
   readonly workItems: readonly CursorWorkItem[];
   readonly targetRepository: ProjectTargetRepository;
-  readonly workBranch: string;
+  readonly branchName: string;
   readonly baseBranch: string;
+  readonly workspaceRoot: string;
   readonly commitMessage: string;
-  readonly workspaceRoot?: string;
+  readonly allowedPathGlobs: readonly string[];
+  readonly forbiddenPathGlobs?: readonly string[];
+  readonly autoCommit: boolean;
+  readonly autoPush: boolean;
+  readonly autoPr: boolean;
+  readonly cursorApiUrl?: string;
 }):
   | CursorBridgeExecuteRequest
   | Readonly<{ readonly ok: false; readonly message: string }> {
@@ -101,37 +127,57 @@ export function buildCursorBridgeExecuteRequestFromWorkItems(input: {
   if (!workItems.length) {
     return { ok: false, message: "선택된 workItem을 찾을 수 없습니다." };
   }
-  const workBranch = input.workBranch.trim();
-  if (!workBranch) {
-    return { ok: false, message: "workBranch가 필요합니다." };
+  const branchName = input.branchName.trim();
+  if (!branchName) {
+    return { ok: false, message: "branchName이 필요합니다." };
+  }
+  const workspaceRoot = input.workspaceRoot.trim();
+  if (!workspaceRoot) {
+    return { ok: false, message: "workspaceRoot가 필요합니다." };
   }
   const commitMessage = input.commitMessage.trim();
   if (!commitMessage) {
     return { ok: false, message: "commitMessage가 필요합니다." };
   }
+
+  const allowedPathGlobs = input.allowedPathGlobs.map((g) => g.trim()).filter(Boolean);
+  const forbiddenPathGlobs = [
+    ...defaultForbiddenTargetPathGlobs(),
+    ...(input.forbiddenPathGlobs ?? []).map((g) => g.trim()).filter(Boolean),
+  ];
+
   const prompt = buildCursorSourceGenerationPrompt({
     selectedTaskId: input.selectedTaskId.trim(),
     workItems,
     targetRepository: input.targetRepository,
     commitMessage,
+    allowedPathGlobs,
   });
+
   return {
     projectId: input.projectId.trim(),
     selectedTaskId: input.selectedTaskId.trim(),
     selectedWorkItemIds: workItems.map((w) => w.id),
     targetRepository: input.targetRepository,
     baseBranch: input.baseBranch.trim() || input.targetRepository.defaultBranch || "main",
-    workBranch,
+    branchName,
+    workBranch: branchName,
     workItems,
+    workspaceRoot,
     commitMessage,
     prompt,
-    forbiddenTargetPaths: ["projects/JYOrchestration/**", "apps/web/src/generated/implementation-wip/**"],
-    ...(input.workspaceRoot?.trim() ? { workspaceRoot: input.workspaceRoot.trim() } : {}),
+    allowedPathGlobs,
+    forbiddenPathGlobs,
+    autoCommit: input.autoCommit,
+    autoPush: input.autoPush,
+    autoPr: input.autoPr,
+    ...(input.cursorApiUrl?.trim() ? { cursorApiUrl: input.cursorApiUrl.trim() } : {}),
   };
 }
 
 export function validateBridgeResultForRealSourceGeneration(
   result: CursorBridgeExecuteResult,
+  context: BridgeResultValidationContext,
 ): Readonly<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
   if (result.status === "blocked") {
     return { ok: false, reason: result.errorMessage ?? "Cursor Bridge 실행이 차단되었습니다." };
@@ -140,8 +186,8 @@ export function validateBridgeResultForRealSourceGeneration(
     return { ok: false, reason: result.errorMessage ?? "Cursor Bridge 실행에 실패했습니다." };
   }
   const targetRepo = result.targetRepository?.trim() ?? "";
-  if (!targetRepo) {
-    return { ok: false, reason: "대상 Git 저장소(targetRepository)가 응답에 없습니다." };
+  if (!targetRepo || targetRepo !== context.targetRepository.repoFullName) {
+    return { ok: false, reason: "대상 Git 저장소(targetRepository)가 응답과 일치하지 않습니다." };
   }
   const sha = result.commitSha?.trim() ?? "";
   if (!sha || sha.startsWith("wip-stub")) {
@@ -151,20 +197,21 @@ export function validateBridgeResultForRealSourceGeneration(
     };
   }
   const files = (result.changedFiles ?? []).filter(Boolean);
-  if (!files.length) {
-    return {
-      ok: false,
-      reason: "변경 파일이 없어 실제 소스 생성으로 인정하지 않았습니다.",
-    };
-  }
-  const platformPaths = files.filter((f) => isPlatformInternalSourcePath(f));
-  if (platformPaths.length) {
-    return {
-      ok: false,
-      reason: `플랫폼 내부 경로 변경은 실제 소스 생성으로 인정하지 않습니다: ${platformPaths.slice(0, 3).join(", ")}`,
-    };
-  }
-  return { ok: true };
+  return validateTargetRepositoryChangedFiles({
+    changedFiles: files,
+    allowedPathGlobs: context.allowedPathGlobs,
+    forbiddenPathGlobs: context.forbiddenPathGlobs,
+  });
+}
+
+export function bridgeResultValidationContextFromRequest(
+  request: CursorBridgeExecuteRequest,
+): BridgeResultValidationContext {
+  return {
+    targetRepository: request.targetRepository,
+    allowedPathGlobs: request.allowedPathGlobs,
+    forbiddenPathGlobs: request.forbiddenPathGlobs,
+  };
 }
 
 export function blockedCursorBridgeResult(input: {
