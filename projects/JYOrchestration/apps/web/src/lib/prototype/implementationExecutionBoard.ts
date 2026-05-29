@@ -9,6 +9,7 @@ import {
   type ImplementationIntegratedStep,
   type ImplementationIntegratedStepStatus,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type {
   ImplementationQualityGateResultV1,
   ImplementationQualityGateRole,
@@ -192,6 +193,116 @@ export function pickFirstExecutableDeveloperTaskId(
     return row.taskId;
   }
   return null;
+}
+
+export function filterCursorWorkItemsForExecutableTask(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly workItems: readonly CursorWorkItem[];
+}): {
+  readonly selectedTaskId: string | null;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+  readonly blockedReason?: string;
+} {
+  const selectedTaskId = pickFirstExecutableDeveloperTaskId(input.board);
+  if (!selectedTaskId) {
+    return {
+      selectedTaskId: null,
+      selectedWorkItems: [],
+      blockedReason: "실행 가능한 개발자 작업이 없습니다.",
+    };
+  }
+  const selectedWorkItems = input.workItems.filter((item) => item.taskId === selectedTaskId);
+  if (!selectedWorkItems.length) {
+    return {
+      selectedTaskId,
+      selectedWorkItems: [],
+      blockedReason: `${selectedTaskId}에 해당하는 Cursor WorkItem이 없습니다.`,
+    };
+  }
+  return { selectedTaskId, selectedWorkItems };
+}
+
+const ROLE_LABEL_KO: Readonly<Record<string, string>> = {
+  developer: "AI 개발자",
+  reviewer: "AI 검수자",
+  security: "AI 보안관",
+  scm: "SCM",
+  refactor_common: "리팩토링/공통화",
+  integrated_review: "통합 검수",
+  integrated_security: "통합 보안 점검",
+  final_scm: "최종 SCM 반영",
+};
+
+export function buildNextDeveloperTaskContinuationNotice(
+  board: ImplementationExecutionBoardV1,
+): string | null {
+  const nextTaskId = pickFirstExecutableDeveloperTaskId(board);
+  if (!nextTaskId) return null;
+  const row = board.taskRows.find((task) => task.taskId === nextTaskId);
+  if (!row) return null;
+  return [
+    "AI 개발자 작업이 완료되었습니다.",
+    `다음 실행 가능 작업: ${nextTaskId} ${row.title}`,
+    "[생성요청]으로 다음 작업을 이어갈 수 있습니다.",
+  ].join("\n");
+}
+
+export function formatBoardExecutionTargetLines(
+  board: ImplementationExecutionBoardV1,
+): readonly string[] {
+  const integratedInProgress = board.integratedRows.find((row) => row.status === "in_progress");
+  if (integratedInProgress && board.currentStep) {
+    const roleLabel =
+      integratedInProgress.step === "refactor_common"
+        ? "리팩토링/공통화"
+        : integratedInProgress.step === "integrated_review"
+          ? "통합 검수"
+          : integratedInProgress.step === "integrated_security"
+            ? "통합 보안 점검"
+            : integratedInProgress.step === "final_scm"
+              ? "최종 SCM 반영"
+              : board.currentStep;
+    return [`현재 실행 중:`, `${roleLabel} / ${integratedInProgress.status}`];
+  }
+
+  const taskInProgress = board.taskRows.find(
+    (row) =>
+      row.developerStatus === "in_progress" ||
+      row.reviewerStatus === "in_progress" ||
+      row.securityStatus === "in_progress" ||
+      row.scmStatus === "in_progress",
+  );
+  if (taskInProgress) {
+    const role =
+      taskInProgress.developerStatus === "in_progress"
+        ? "AI 개발자"
+        : taskInProgress.reviewerStatus === "in_progress"
+          ? "AI 검수자"
+          : taskInProgress.securityStatus === "in_progress"
+            ? "AI 보안관"
+            : "SCM";
+    return [`현재 실행 중:`, `${taskInProgress.taskId} / ${role} / ${taskInProgress.statusLabel}`];
+  }
+
+  const readyIntegrated = board.integratedRows.find((row) => row.status === "ready");
+  if (readyIntegrated) {
+    return [`다음 실행 대상:`, `${readyIntegrated.title} / ${ROLE_LABEL_KO[readyIntegrated.step] ?? readyIntegrated.ownerRole}`];
+  }
+
+  const nextTaskId = pickFirstExecutableDeveloperTaskId(board);
+  if (nextTaskId) {
+    return [`다음 실행 대상:`, `${nextTaskId} / AI 개발자`];
+  }
+
+  if (board.currentTaskId && board.currentStep && typeof board.currentStep === "string") {
+    const roleLabel = ROLE_LABEL_KO[board.currentStep] ?? board.currentStep;
+    const row = board.taskRows.find((r) => r.taskId === board.currentTaskId);
+    if (row) {
+      return [`다음 실행 대상:`, `${board.currentTaskId} / ${roleLabel}`];
+    }
+  }
+
+  return [];
 }
 
 function collectQualityGateFailedTaskIds(
@@ -550,6 +661,26 @@ export function isImplementationBoardComplete(input: {
   if (input.board.taskRows.some((row) => row.currentRole !== "completed")) return false;
   if (!input.board.integratedRows.every((row) => row.status === "done")) return false;
   return true;
+}
+
+export function isImplementationReadyForReviewStage(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly previewReady: boolean;
+}): boolean {
+  return isImplementationBoardComplete(input);
+}
+
+export function buildImplementationReviewStageReadinessNotice(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly previewReady: boolean;
+}): string | null {
+  if (isImplementationReadyForReviewStage(input)) {
+    return "통합 정리, 통합 검수, 통합 보안, 최종 SCM까지 완료되어 검토단계로 이동할 수 있습니다.";
+  }
+  if (input.previewReady && !input.board.integratedRows.every((row) => row.status === "done")) {
+    return "프로토타입 Preview는 준비되었지만, 통합 정리 단계가 아직 완료되지 않았습니다.";
+  }
+  return null;
 }
 
 export function formatImplementationExecutionBoardTaskLine(

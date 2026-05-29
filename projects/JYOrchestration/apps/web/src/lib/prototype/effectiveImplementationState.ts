@@ -32,6 +32,10 @@ import {
   SECURITY_CHECK_RUN_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  RUN_FINAL_SCM_CHIP,
+  RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_INTEGRATED_SECURITY_CHIP,
+  RUN_REFACTOR_COMMON_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 
 export type ImplementationStageActionId =
@@ -48,7 +52,11 @@ export type ImplementationStageActionId =
   | "SHOW_ENV_CHECK"
   | "REQUEST_CODE_AGENT_WIP"
   | "RUN_REVIEWER_CHECK"
-  | "RUN_SECURITY_CHECK";
+  | "RUN_SECURITY_CHECK"
+  | "RUN_REFACTOR_COMMON"
+  | "RUN_INTEGRATED_REVIEW"
+  | "RUN_INTEGRATED_SECURITY"
+  | "RUN_FINAL_SCM";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -227,6 +235,14 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
     case LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP:
     case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP:
       return "REQUEST_CODE_AGENT_WIP";
+    case RUN_REFACTOR_COMMON_CHIP:
+      return "RUN_REFACTOR_COMMON";
+    case RUN_INTEGRATED_REVIEW_CHIP:
+      return "RUN_INTEGRATED_REVIEW";
+    case RUN_INTEGRATED_SECURITY_CHIP:
+      return "RUN_INTEGRATED_SECURITY";
+    case RUN_FINAL_SCM_CHIP:
+      return "RUN_FINAL_SCM";
     default:
       return null;
   }

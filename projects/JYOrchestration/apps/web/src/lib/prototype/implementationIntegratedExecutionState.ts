@@ -229,3 +229,118 @@ export function areAllIntegratedStepsDone(
   if (!state?.items.length) return false;
   return state.items.every((item) => item.status === "done" || item.status === "skipped");
 }
+
+function resolveIntegratedState(input: {
+  readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly nowIso: string;
+}): ImplementationIntegratedExecutionStateV1 {
+  return (
+    input.state ??
+    buildInitialImplementationIntegratedExecutionState({
+      projectId: input.projectId,
+      nowIso: input.nowIso,
+    })
+  );
+}
+
+function canMutateIntegratedStepStatus(status: ImplementationIntegratedStepStatus): boolean {
+  return status === "ready" || status === "queued" || status === "in_progress";
+}
+
+function patchIntegratedStep(
+  state: ImplementationIntegratedExecutionStateV1,
+  step: ImplementationIntegratedStep,
+  patch: Partial<ImplementationIntegratedExecutionItemV1>,
+  nowIso: string,
+): ImplementationIntegratedExecutionStateV1 {
+  return {
+    ...state,
+    updatedAt: nowIso,
+    items: state.items.map((item) => (item.step === step ? { ...item, ...patch } : item)),
+  };
+}
+
+export function markIntegratedStepInProgress(input: {
+  readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly step: ImplementationIntegratedStep;
+  readonly nowIso?: string;
+  readonly resultSummary?: string;
+}): ImplementationIntegratedExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const base = resolveIntegratedState({ state: input.state, projectId: input.projectId, nowIso: now });
+  const current = statusOf(base.items, input.step);
+  if (!canMutateIntegratedStepStatus(current)) return base;
+  return patchIntegratedStep(
+    base,
+    input.step,
+    {
+      status: "in_progress",
+      startedAt: now,
+      ...(input.resultSummary?.trim() ? { resultSummary: input.resultSummary.trim() } : {}),
+    },
+    now,
+  );
+}
+
+export function markIntegratedStepDone(input: {
+  readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly step: ImplementationIntegratedStep;
+  readonly nowIso?: string;
+  readonly resultSummary?: string;
+  readonly taskRowsCompleted?: boolean;
+}): ImplementationIntegratedExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  let base = resolveIntegratedState({ state: input.state, projectId: input.projectId, nowIso: now });
+  const current = statusOf(base.items, input.step);
+  if (!canMutateIntegratedStepStatus(current)) return base;
+  base = patchIntegratedStep(
+    base,
+    input.step,
+    {
+      status: "done",
+      completedAt: now,
+      ...(input.resultSummary?.trim() ? { resultSummary: input.resultSummary.trim() } : {}),
+    },
+    now,
+  );
+  return deriveIntegratedExecutionStateReadiness({
+    projectId: input.projectId,
+    state: base,
+    taskRowsCompleted: input.taskRowsCompleted ?? true,
+    nowIso: now,
+  });
+}
+
+export function markIntegratedStepFailed(input: {
+  readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly step: ImplementationIntegratedStep;
+  readonly nowIso?: string;
+  readonly errorMessage: string;
+  readonly resultSummary?: string;
+}): ImplementationIntegratedExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const base = resolveIntegratedState({ state: input.state, projectId: input.projectId, nowIso: now });
+  const current = statusOf(base.items, input.step);
+  if (!canMutateIntegratedStepStatus(current)) return base;
+  return patchIntegratedStep(
+    base,
+    input.step,
+    {
+      status: "failed",
+      errorMessage: input.errorMessage.trim(),
+      ...(input.resultSummary?.trim() ? { resultSummary: input.resultSummary.trim() } : {}),
+    },
+    now,
+  );
+}
+
+export function getIntegratedStepStatus(
+  state: ImplementationIntegratedExecutionStateV1 | null | undefined,
+  step: ImplementationIntegratedStep,
+): ImplementationIntegratedStepStatus {
+  return state?.items.find((item) => item.step === step)?.status ?? "not_started";
+}

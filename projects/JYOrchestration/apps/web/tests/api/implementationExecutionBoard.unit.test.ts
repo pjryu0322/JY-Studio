@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImplementationExecutionBoard,
+  buildNextDeveloperTaskContinuationNotice,
   canContinueTaskDespiteUserConfirmation,
+  filterCursorWorkItemsForExecutableTask,
+  formatBoardExecutionTargetLines,
   isImplementationBoardComplete,
   pickFirstExecutableDeveloperTaskId,
 } from "@/lib/prototype/implementationExecutionBoard";
@@ -479,6 +482,139 @@ describe("implementationExecutionBoard", () => {
     expect(board.summary.userConfirmationRequired).toBe(2);
     expect(board.summary.blockingUserConfirmation).toBe(1);
     expect(board.taskRows[1]?.userConfirmation).toBe("blocking");
+  });
+
+  it("filterCursorWorkItemsForExecutableTask selects dev-1 when no dependency", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const scoped = filterCursorWorkItemsForExecutableTask({ board, workItems });
+    expect(scoped.selectedTaskId).toBe("dev-1");
+    expect(scoped.selectedWorkItems.map((w) => w.taskId)).toEqual(["dev-1"]);
+  });
+
+  it("filterCursorWorkItemsForExecutableTask skips unmet dependencies", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-1");
+    const scoped = filterCursorWorkItemsForExecutableTask({ board, workItems });
+    expect(scoped.selectedTaskId).not.toBe("dev-2");
+  });
+
+  it("filterCursorWorkItemsForExecutableTask skips blocking user confirmation", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.taskId === "dev-2" ? { ...task, dependencies: [] } : task,
+      ),
+    };
+    const boardState = parseImplementationExecutionBoardStateV1({
+      version: "implementation_execution_board_state_v1",
+      projectId: "p-board",
+      createdAt: NOW,
+      updatedAt: NOW,
+      userConfirmations: [{ taskId: "dev-1", status: "blocking", reason: "차단" }],
+      reworkRequests: [],
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      boardState: boardState ?? null,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+    const scoped = filterCursorWorkItemsForExecutableTask({ board, workItems });
+    expect(scoped.selectedTaskId).toBe("dev-2");
+    expect(scoped.selectedWorkItems.map((w) => w.taskId)).toEqual(["dev-2"]);
+  });
+
+  it("filterCursorWorkItemsForExecutableTask returns blockedReason when no workItem for selected task", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const scoped = filterCursorWorkItemsForExecutableTask({
+      board,
+      workItems: workItems.filter((w) => w.taskId !== "dev-1"),
+    });
+    expect(scoped.selectedTaskId).toBe("dev-1");
+    expect(scoped.selectedWorkItems).toHaveLength(0);
+    expect(scoped.blockedReason).toContain("dev-1");
+  });
+
+  it("buildNextDeveloperTaskContinuationNotice suggests next task after dev-1 done", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = markDeveloperTasksDoneForWip({
+      state,
+      cursorWorkItems: workItems.filter((w) => w.taskId === "dev-1"),
+      nowIso: NOW,
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+    const notice = buildNextDeveloperTaskContinuationNotice(board);
+    expect(notice).toContain("다음 실행 가능 작업: dev-2");
+    expect(notice).toContain("[생성요청]");
+  });
+
+  it("formatBoardExecutionTargetLines shows 다음 실행 대상 for ready developer task", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const lines = formatBoardExecutionTargetLines(board);
+    expect(lines[0]).toBe("다음 실행 대상:");
+    expect(lines[1]).toContain("dev-1");
+    expect(lines[1]).toContain("AI 개발자");
+  });
+
+  it("formatBoardExecutionTargetLines shows 현재 실행 중 when developer in progress", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.taskId === "dev-1" ? { ...item, status: "in_progress" as const } : item,
+      ),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    const lines = formatBoardExecutionTargetLines(board);
+    expect(lines[0]).toBe("현재 실행 중:");
+    expect(lines[1]).toContain("dev-1");
+  });
+
+  it("buildImplementationExecutionBoardMessage includes 다음 실행 대상", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
+    expect(message.content).toContain("다음 실행 대상:");
+    expect(message.content).toContain("dev-1");
   });
 
   it("buildImplementationExecutionBoardMessage includes rework column", () => {

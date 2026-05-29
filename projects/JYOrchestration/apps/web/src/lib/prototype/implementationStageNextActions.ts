@@ -14,16 +14,28 @@ import {
   type ImplementationPrototypeRunSyncSnapshot,
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
+  buildImplementationExecutionBoard,
+  type ImplementationExecutionBoardV1,
+} from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
+  RUN_FINAL_SCM_CHIP,
+  RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_INTEGRATED_SECURITY_CHIP,
+  RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   deriveImplementationStageStatus,
   type ImplementationStageStatus,
@@ -35,6 +47,80 @@ export type ImplementationStageNextAction = Readonly<{
   priority: "primary" | "secondary" | "tertiary";
   reason: string;
 }>;
+
+export type ImplementationStageNextActionsBoardInput = Readonly<{
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly previewReady?: boolean;
+}>;
+
+function deriveNextActionsFromIntegratedBoard(
+  board: ImplementationExecutionBoardV1,
+  previewReady: boolean,
+): readonly ImplementationStageNextAction[] | null {
+  const allTasksComplete =
+    board.taskRows.length > 0 && board.taskRows.every((row) => row.currentRole === "completed");
+  if (!allTasksComplete) return null;
+
+  const stepStatus = (step: ImplementationExecutionBoardV1["integratedRows"][number]["step"]) =>
+    board.integratedRows.find((row) => row.step === step)?.status;
+
+  if (stepStatus("refactor_common") === "ready") {
+    return [
+      {
+        actionId: "RUN_REFACTOR_COMMON",
+        label: RUN_REFACTOR_COMMON_CHIP,
+        priority: "primary",
+        reason: "모든 개발자 작업 완료 후 리팩토링/공통화 실행",
+      },
+    ];
+  }
+  if (stepStatus("refactor_common") === "done" && stepStatus("integrated_review") === "ready") {
+    return [
+      {
+        actionId: "RUN_INTEGRATED_REVIEW",
+        label: RUN_INTEGRATED_REVIEW_CHIP,
+        priority: "primary",
+        reason: "리팩토링/공통화 완료 후 통합 검수 실행",
+      },
+    ];
+  }
+  if (stepStatus("integrated_review") === "done" && stepStatus("integrated_security") === "ready") {
+    return [
+      {
+        actionId: "RUN_INTEGRATED_SECURITY",
+        label: RUN_INTEGRATED_SECURITY_CHIP,
+        priority: "primary",
+        reason: "통합 검수 완료 후 통합 보안 점검 실행",
+      },
+    ];
+  }
+  if (stepStatus("integrated_security") === "done" && stepStatus("final_scm") === "ready") {
+    return [
+      {
+        actionId: "RUN_FINAL_SCM",
+        label: RUN_FINAL_SCM_CHIP,
+        priority: "primary",
+        reason: "통합 보안 점검 완료 후 최종 SCM 반영 실행",
+      },
+    ];
+  }
+  if (stepStatus("final_scm") === "done" && previewReady) {
+    return [
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+        priority: "primary",
+        reason: "통합 단계 완료 및 preview ready — 결과 확인",
+      },
+    ];
+  }
+  return null;
+}
 
 function deriveNextActionsFromPrototypeComplete(
   prototypeSnapshot: ImplementationPrototypeRunSyncSnapshot | null | undefined,
@@ -179,7 +265,24 @@ export function deriveImplementationStageNextActions(
   status: ImplementationStageStatus,
   executionState?: ImplementationTaskExecutionStateV1 | null,
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
+  boardInput?: ImplementationStageNextActionsBoardInput | null,
 ): readonly ImplementationStageNextAction[] {
+  if (boardInput) {
+    const board = buildImplementationExecutionBoard({
+      projectId: boardInput.projectId,
+      taskList: boardInput.taskList,
+      executionState: boardInput.executionState,
+      integratedExecutionState: boardInput.integratedExecutionState,
+      boardState: boardInput.boardState,
+      qualityGateResults: boardInput.qualityGateResults,
+    });
+    const fromIntegrated = deriveNextActionsFromIntegratedBoard(
+      board,
+      boardInput.previewReady === true,
+    );
+    if (fromIntegrated?.length) return fromIntegrated;
+  }
+
   const fromExecution = deriveNextActionsFromExecutionState(executionState, prototypeSnapshot);
   if (fromExecution?.length) return fromExecution;
 
@@ -288,13 +391,19 @@ export function prioritizeImplementationChipsForState(
   labels: readonly string[],
   state: EffectiveImplementationState,
   executionState?: ImplementationTaskExecutionStateV1 | null,
+  boardInput?: ImplementationStageNextActionsBoardInput | null,
 ): readonly string[] {
   const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
     latestRun: state.latestRun,
     workUnits: state.latestRun?.workUnits,
   });
   const status = deriveImplementationStageStatus(state, executionState);
-  const nextActions = deriveImplementationStageNextActions(status, executionState, prototypeSnapshot);
+  const nextActions = deriveImplementationStageNextActions(
+    status,
+    executionState,
+    prototypeSnapshot,
+    boardInput,
+  );
   return prioritizeImplementationChipsByNextActions({ labels, nextActions });
 }
 

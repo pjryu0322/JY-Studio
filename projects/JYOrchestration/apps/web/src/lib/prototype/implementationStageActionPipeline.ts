@@ -8,12 +8,114 @@ import {
   type ImplementationStageActionGateResult,
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
+import {
+  buildImplementationExecutionBoard,
+  type ImplementationExecutionBoardV1,
+} from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
+
+export type ImplementationStageBoardGateContext = Readonly<{
+  readonly board: ImplementationExecutionBoardV1;
+  readonly previewReady: boolean;
+}>;
+
+export function buildImplementationStageBoardGateContext(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1 | null | undefined;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly previewReady?: boolean;
+}): ImplementationStageBoardGateContext | null {
+  if (!input.taskList) return null;
+  return {
+    board: buildImplementationExecutionBoard({
+      projectId: input.projectId,
+      taskList: input.taskList,
+      executionState: input.executionState,
+      integratedExecutionState: input.integratedExecutionState,
+      boardState: input.boardState,
+      qualityGateResults: input.qualityGateResults,
+    }),
+    previewReady: input.previewReady === true,
+  };
+}
+
+function integratedStepBoardStatus(
+  board: ImplementationExecutionBoardV1,
+  step: "refactor_common" | "integrated_review" | "integrated_security" | "final_scm",
+): string | undefined {
+  return board.integratedRows.find((row) => row.step === step)?.status;
+}
+
+function evaluateIntegratedStageActionGate(
+  actionId: ImplementationStageActionId,
+  boardContext: ImplementationStageBoardGateContext | null | undefined,
+): ImplementationStageActionGateResult {
+  if (!boardContext) {
+    return { ok: false, message: "구현 작업 보드가 준비된 뒤 통합 단계를 실행할 수 있습니다." };
+  }
+  const { board } = boardContext;
+  if (board.summary.blockingUserConfirmation > 0) {
+    return { ok: false, message: "사용자 확인이 필요한 작업이 해소된 뒤 통합 단계를 실행할 수 있습니다." };
+  }
+
+  switch (actionId) {
+    case "RUN_REFACTOR_COMMON": {
+      if (!board.taskRows.every((row) => row.currentRole === "completed")) {
+        return { ok: false, message: "모든 개발자 작업이 완료된 뒤 리팩토링/공통화를 실행할 수 있습니다." };
+      }
+      const status = integratedStepBoardStatus(board, "refactor_common");
+      if (status !== "ready" && status !== "queued" && status !== "in_progress") {
+        return { ok: false, message: "리팩토링/공통화 단계가 아직 실행 가능한 상태가 아닙니다." };
+      }
+      return { ok: true };
+    }
+    case "RUN_INTEGRATED_REVIEW": {
+      if (integratedStepBoardStatus(board, "refactor_common") !== "done") {
+        return { ok: false, message: "리팩토링/공통화가 완료된 뒤 통합 검수를 실행할 수 있습니다." };
+      }
+      const status = integratedStepBoardStatus(board, "integrated_review");
+      if (status !== "ready" && status !== "queued" && status !== "in_progress") {
+        return { ok: false, message: "통합 검수 단계가 아직 실행 가능한 상태가 아닙니다." };
+      }
+      return { ok: true };
+    }
+    case "RUN_INTEGRATED_SECURITY": {
+      if (integratedStepBoardStatus(board, "integrated_review") !== "done") {
+        return { ok: false, message: "통합 검수가 완료된 뒤 통합 보안 점검을 실행할 수 있습니다." };
+      }
+      const status = integratedStepBoardStatus(board, "integrated_security");
+      if (status !== "ready" && status !== "queued" && status !== "in_progress") {
+        return { ok: false, message: "통합 보안 점검 단계가 아직 실행 가능한 상태가 아닙니다." };
+      }
+      return { ok: true };
+    }
+    case "RUN_FINAL_SCM": {
+      if (integratedStepBoardStatus(board, "integrated_security") !== "done") {
+        return { ok: false, message: "통합 보안 점검이 완료된 뒤 최종 SCM 반영을 실행할 수 있습니다." };
+      }
+      const status = integratedStepBoardStatus(board, "final_scm");
+      if (status !== "ready" && status !== "queued" && status !== "in_progress") {
+        return { ok: false, message: "최종 SCM 반영 단계가 아직 실행 가능한 상태가 아닙니다." };
+      }
+      return { ok: true };
+    }
+    default:
+      return { ok: false, message: "지원하지 않는 통합 단계 action입니다." };
+  }
+}
 
 /** Outcome of running a stage action after the stage gate passes. */
 export type ImplementationStageActionRunResult =
@@ -246,15 +348,29 @@ export function buildImplementationStageActionExecutionDecision(
   actionId: ImplementationStageActionId,
   state: EffectiveImplementationState,
   source: ImplementationStageActionTimelineSource = "cta",
+  boardContext?: ImplementationStageBoardGateContext | null,
 ): ImplementationStageActionExecutionResult | null {
-  const gate = evaluateImplementationStageActionGate(actionId, state);
+  const gate = evaluateImplementationStageActionGate(actionId, state, boardContext);
   return stageActionExecutionResultFromGate(gate, { actionId, source });
 }
 
 export function evaluateImplementationStageActionGate(
   actionId: ImplementationStageActionId,
   state: EffectiveImplementationState,
+  boardContext?: ImplementationStageBoardGateContext | null,
 ): ImplementationStageActionGateResult {
+  if (
+    actionId === "RUN_REFACTOR_COMMON" ||
+    actionId === "RUN_INTEGRATED_REVIEW" ||
+    actionId === "RUN_INTEGRATED_SECURITY" ||
+    actionId === "RUN_FINAL_SCM"
+  ) {
+    if (!isTaskListReadyForImplementationStageActions(state)) {
+      return { ok: false, message: "구현 작업목록이 준비된 뒤 통합 단계를 실행할 수 있습니다." };
+    }
+    return evaluateIntegratedStageActionGate(actionId, boardContext);
+  }
+
   switch (actionId) {
     case "GENERATE_IMPLEMENTATION_WORK_PLAN": {
       const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);

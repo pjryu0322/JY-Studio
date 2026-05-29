@@ -5,6 +5,7 @@ import type {
 import {
   buildStageActionRunCompletionTimelineEntries,
   evaluateImplementationStageActionGate,
+  type ImplementationStageBoardGateContext,
   type ImplementationStageActionRunResult,
 } from "@/lib/prototype/implementationStageActionPipeline";
 import type { ImplementationStageActionTimelineSource } from "@/lib/prototype/implementationIntentTimeline";
@@ -31,7 +32,11 @@ export async function orchestrateImplementationStageAction(input: {
     nowIso: input.nowIso,
   });
 
-  const gate = evaluateImplementationStageActionGate(input.actionId, input.effectiveState);
+  const gate = evaluateImplementationStageActionGate(
+    input.actionId,
+    input.effectiveState,
+    input.boardGateContext,
+  );
   if (!gate.ok) {
     const timelineEntries = buildStageActionRunCompletionTimelineEntries(
       input.actionId,

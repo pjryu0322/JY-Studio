@@ -4,6 +4,7 @@ import {
   buildImplementationStageActionOpenArtifactsResult,
   buildImplementationStageActionOpenEnvSettingsResult,
   buildImplementationStageActionShowStatusResult,
+  buildImplementationStageBoardGateContext,
   buildStageActionRunCompletionTimelineEntries,
   evaluateImplementationStageActionGate,
   IMPLEMENTATION_WORK_PLAN_SEED_GATE_BLOCKED_MESSAGE,
@@ -11,6 +12,13 @@ import {
   stageActionExecutionResultFromGate,
   stageActionRunResultToTimelinePhase,
 } from "@/lib/prototype/implementationStageActionPipeline";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markDeveloperTasksDoneForWip,
+  markPostDeveloperReviewTasksQueued,
+  markRoleTasksDone,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -330,6 +338,75 @@ describe("evaluateImplementationStageActionGate", () => {
 
     it.each(alwaysAllowed)("allows %s", (actionId) => {
       expect(evaluateImplementationStageActionGate(actionId, baseState()).ok).toBe(true);
+    });
+  });
+
+  describe("integrated stage actions", () => {
+    const NOW = "2026-05-28T12:00:00.000Z";
+    const workItems: readonly CursorWorkItem[] = [
+      {
+        id: "wi-1",
+        taskId: "DEV-001",
+        title: "t",
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: [],
+        forbiddenPaths: [],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      },
+    ];
+
+    function boardContextWithAllTasksComplete() {
+      const taskList = makeTaskListReady();
+      let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+        projectId: "p1",
+        taskList,
+        nowIso: NOW,
+      });
+      executionState = markDeveloperTasksDoneForWip({
+        state: executionState,
+        cursorWorkItems: workItems,
+        nowIso: NOW,
+      });
+      executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+      executionState = markRoleTasksDone({ state: executionState, ownerRole: "reviewer", nowIso: NOW });
+      executionState = markRoleTasksDone({ state: executionState, ownerRole: "security", nowIso: NOW });
+      executionState = markRoleTasksDone({ state: executionState, ownerRole: "scm", nowIso: NOW });
+      return buildImplementationStageBoardGateContext({
+        projectId: "p1",
+        taskList,
+        executionState,
+        previewReady: true,
+      });
+    }
+
+    it("allows RUN_REFACTOR_COMMON when all task rows completed", () => {
+      const state = baseState({
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      const boardContext = boardContextWithAllTasksComplete();
+      expect(
+        evaluateImplementationStageActionGate("RUN_REFACTOR_COMMON", state, boardContext).ok,
+      ).toBe(true);
+    });
+
+    it("blocks RUN_INTEGRATED_REVIEW until refactor_common done", () => {
+      const state = baseState({
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      const boardContext = boardContextWithAllTasksComplete();
+      expect(
+        evaluateImplementationStageActionGate("RUN_INTEGRATED_REVIEW", state, boardContext).ok,
+      ).toBe(false);
     });
   });
 

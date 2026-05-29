@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildInitialImplementationIntegratedExecutionState,
   deriveIntegratedExecutionStateReadiness,
+  getIntegratedStepStatus,
+  markIntegratedStepDone,
+  markIntegratedStepFailed,
+  markIntegratedStepInProgress,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 
 const NOW = "2026-05-28T12:00:00.000Z";
@@ -70,5 +74,49 @@ describe("implementationIntegratedExecutionState", () => {
     });
     expect(state.items.find((i) => i.step === "refactor_common")?.status).toBe("failed");
     expect(state.items.find((i) => i.step === "integrated_review")?.status).toBe("not_started");
+  });
+
+  it("markIntegratedStepInProgress then done promotes next step to ready", () => {
+    let state = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    state = markIntegratedStepInProgress({ state, projectId: "p1", step: "refactor_common", nowIso: NOW });
+    expect(getIntegratedStepStatus(state, "refactor_common")).toBe("in_progress");
+    state = markIntegratedStepDone({
+      state,
+      projectId: "p1",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    expect(getIntegratedStepStatus(state, "refactor_common")).toBe("done");
+    expect(getIntegratedStepStatus(state, "integrated_review")).toBe("ready");
+  });
+
+  it("markIntegratedStepFailed does not overwrite terminal done status", () => {
+    let state = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    state = markIntegratedStepDone({
+      state,
+      projectId: "p1",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const afterFail = markIntegratedStepFailed({
+      state,
+      projectId: "p1",
+      step: "refactor_common",
+      errorMessage: "err",
+      nowIso: NOW,
+    });
+    expect(getIntegratedStepStatus(afterFail, "refactor_common")).toBe("done");
   });
 });

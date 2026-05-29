@@ -3,6 +3,7 @@ import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
   markDeveloperTasksDoneForWip,
   markPostDeveloperReviewTasksQueued,
+  markRoleTasksDone,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   deriveImplementationStageNextActions,
@@ -15,10 +16,19 @@ import {
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
+  RUN_FINAL_SCM_CHIP,
+  RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_INTEGRATED_SECURITY_CHIP,
+  RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
+import {
+  deriveIntegratedExecutionStateReadiness,
+  markIntegratedStepDone,
+  markIntegratedStepInProgress,
+} from "@/lib/prototype/implementationIntegratedExecutionState";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
   deriveImplementationPrototypeRunSyncSnapshot,
@@ -234,6 +244,178 @@ describe("deriveImplementationStageNextActions with execution state", () => {
     expect(actions.some((a) => a.priority === "primary" && a.label === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP)).toBe(
       false,
     );
+  });
+});
+
+describe("deriveImplementationStageNextActions integrated board", () => {
+  const NOW = "2026-05-28T12:00:00.000Z";
+
+  function makeSeedForBoard(): ImplementationSeedV1 {
+    return {
+      version: "implementation_seed_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "planning_slots_and_artifacts",
+      lifecycleStatus: "confirmed",
+      readiness: { ready: true, score: 1, missing: [], warnings: [] },
+      processImplementationItems: [],
+      screenImplementationItems: [],
+      actorCapabilityMatrix: [],
+      commonDetailFeatures: [],
+      dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+      assumptions: [],
+      gaps: [],
+    };
+  }
+
+  function completedBoardInput() {
+    const seed = makeSeedForBoard();
+    const taskList = buildImplementationTaskListFromSeed({ projectId: "p1", seed });
+    const workItems: readonly CursorWorkItem[] = taskList.tasks
+      .filter((t) => t.ownerRole === "developer")
+      .map((t) => ({
+        id: `wi-${t.taskId}`,
+        taskId: t.taskId,
+        title: t.title,
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: [],
+        forbiddenPaths: [],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      }));
+    let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList,
+      nowIso: NOW,
+    });
+    executionState = markDeveloperTasksDoneForWip({ state: executionState, cursorWorkItems: workItems, nowIso: NOW });
+    executionState = markPostDeveloperReviewTasksQueued({ state: executionState, nowIso: NOW });
+    executionState = markRoleTasksDone({ state: executionState, ownerRole: "reviewer", nowIso: NOW });
+    executionState = markRoleTasksDone({ state: executionState, ownerRole: "security", nowIso: NOW });
+    executionState = markRoleTasksDone({ state: executionState, ownerRole: "scm", nowIso: NOW });
+    return {
+      projectId: "p1",
+      taskList,
+      executionState,
+      previewReady: false,
+    };
+  }
+
+  it("task rows complete + refactor_common ready -> RUN_REFACTOR_COMMON", () => {
+    const actions = deriveImplementationStageNextActions(
+      "task_list_ready",
+      completedBoardInput().executionState,
+      null,
+      completedBoardInput(),
+    );
+    expect(actions[0]?.actionId).toBe("RUN_REFACTOR_COMMON");
+    expect(actions[0]?.label).toBe(RUN_REFACTOR_COMMON_CHIP);
+  });
+
+  it("refactor_common done -> RUN_INTEGRATED_REVIEW", () => {
+    const input = completedBoardInput();
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p1",
+      step: "refactor_common",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p1",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      integratedExecutionState: integrated,
+    });
+    expect(actions[0]?.actionId).toBe("RUN_INTEGRATED_REVIEW");
+    expect(actions[0]?.label).toBe(RUN_INTEGRATED_REVIEW_CHIP);
+  });
+
+  it("integrated_review done -> RUN_INTEGRATED_SECURITY", () => {
+    const input = completedBoardInput();
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p1",
+      step: "refactor_common",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p1",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p1",
+      step: "integrated_review",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p1",
+      step: "integrated_review",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      integratedExecutionState: integrated,
+    });
+    expect(actions[0]?.actionId).toBe("RUN_INTEGRATED_SECURITY");
+    expect(actions[0]?.label).toBe(RUN_INTEGRATED_SECURITY_CHIP);
+  });
+
+  it("integrated_security done -> RUN_FINAL_SCM", () => {
+    const input = completedBoardInput();
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    for (const step of ["refactor_common", "integrated_review", "integrated_security"] as const) {
+      integrated = markIntegratedStepInProgress({
+        state: integrated,
+        projectId: "p1",
+        step,
+        nowIso: NOW,
+      });
+      integrated = markIntegratedStepDone({
+        state: integrated,
+        projectId: "p1",
+        step,
+        taskRowsCompleted: true,
+        nowIso: NOW,
+      });
+    }
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      integratedExecutionState: integrated,
+    });
+    expect(actions[0]?.actionId).toBe("RUN_FINAL_SCM");
+    expect(actions[0]?.label).toBe(RUN_FINAL_SCM_CHIP);
   });
 });
 

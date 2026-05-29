@@ -26,6 +26,10 @@ import {
   appendPromptTimeline,
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import {
+  buildImplementationExecutionBoard,
+  buildNextDeveloperTaskContinuationNotice,
+} from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -39,6 +43,9 @@ export type WipChipHandlerDeps = Readonly<{
     | "cursorWorkItemsV1"
     | "codeAgentWipExecutionV1"
     | "implementationTaskExecutionStateV1"
+    | "implementationIntegratedExecutionStateV1"
+    | "implementationExecutionBoardStateV1"
+    | "implementationQualityGateResultsV1"
     | "promptTimeline"
   >;
   readonly applyMessages: (messages: CodeAgentWipChatPatch["messages"]) => void;
@@ -257,12 +264,26 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         return;
       }
       const approvedWip = result.orchestrationPatch.codeAgentWipExecutionV1;
+      const executionState = resolveExecutionStateAfterWipWithPatch(deps, approvedWip, (state) =>
+        markPostDeveloperReviewTasksQueued({ state }),
+      );
       persistWipResult(deps, {
         ...result,
-        executionState: resolveExecutionStateAfterWipWithPatch(deps, approvedWip, (state) =>
-          markPostDeveloperReviewTasksQueued({ state }),
-        ),
+        executionState,
       });
+      const taskList = deps.parsedState.implementationTaskListV1;
+      if (taskList && executionState) {
+        const board = buildImplementationExecutionBoard({
+          projectId: deps.projectId,
+          taskList,
+          executionState,
+          integratedExecutionState: deps.parsedState.implementationIntegratedExecutionStateV1,
+          boardState: deps.parsedState.implementationExecutionBoardStateV1,
+          qualityGateResults: deps.parsedState.implementationQualityGateResultsV1,
+        });
+        const notice = buildNextDeveloperTaskContinuationNotice(board);
+        if (notice) deps.appendNotice(notice);
+      }
     },
     discardWipWork: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;

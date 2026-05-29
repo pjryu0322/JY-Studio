@@ -121,7 +121,17 @@ import {
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
-import { buildImplementationExecutionBoard, pickFirstExecutableDeveloperTaskId } from "@/lib/prototype/implementationExecutionBoard";
+import {
+  buildImplementationExecutionBoard,
+  filterCursorWorkItemsForExecutableTask,
+  pickFirstExecutableDeveloperTaskId,
+} from "@/lib/prototype/implementationExecutionBoard";
+import {
+  markIntegratedStepDone,
+  markIntegratedStepInProgress,
+  type ImplementationIntegratedStep,
+} from "@/lib/prototype/implementationIntegratedExecutionState";
+import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
@@ -1215,6 +1225,21 @@ export function PrototypePreviewPanel({
     [latestRun],
   );
 
+  const implementationStageBoardGateContext = useMemo(() => {
+    const pid = projectId.trim();
+    const taskList = parsedRequirementsState.implementationTaskListV1;
+    if (!pid || !taskList) return null;
+    return buildImplementationStageBoardGateContext({
+      projectId: pid,
+      taskList,
+      executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+      integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+      boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+      qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+      previewReady: prototypeRunSyncSnapshot.previewReady,
+    });
+  }, [projectId, parsedRequirementsState, prototypeRunSyncSnapshot.previewReady]);
+
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
 
@@ -2165,6 +2190,46 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
   );
 
+  const runIntegratedStageStep = useCallback(
+    (
+      step: ImplementationIntegratedStep,
+      doneMessage: string,
+    ): ImplementationStageActionRunResult => {
+      const pid = projectId.trim();
+      if (!pid) {
+        const message = "프로젝트를 선택해 주세요.";
+        showToast(message);
+        return { outcome: "blocked", message };
+      }
+      const taskList = parsedRequirementsState.implementationTaskListV1;
+      const allTasksComplete =
+        taskList != null &&
+        buildImplementationExecutionBoard({
+          projectId: pid,
+          taskList,
+          executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+          integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+          boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+          qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+        }).taskRows.every((row) => row.currentRole === "completed");
+
+      const prior = parsedRequirementsState.implementationIntegratedExecutionStateV1;
+      const inProgress = markIntegratedStepInProgress({ state: prior, projectId: pid, step });
+      const done = markIntegratedStepDone({
+        state: inProgress,
+        projectId: pid,
+        step,
+        taskRowsCompleted: allTasksComplete,
+      });
+      void persistChatToDb(undefined, {
+        implementationIntegratedExecutionStateV1: done,
+      });
+      executionSingleChat.appendAiNotice(doneMessage);
+      return { outcome: "executed" };
+    },
+    [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
+  );
+
   const runImplementationStageAction = useCallback(
     (actionId: ImplementationStageActionId): ImplementationStageActionRunResult => {
       switch (actionId) {
@@ -2300,6 +2365,29 @@ export function PrototypePreviewPanel({
             return { outcome: "blocked", message };
           }
 
+          let workItemsForWip = runtimeWorkItems;
+          if (taskList && runtimeExecutionState) {
+            const board = buildImplementationExecutionBoard({
+              projectId: pid,
+              taskList,
+              executionState: runtimeExecutionState,
+              integratedExecutionState: runtimeState.implementationIntegratedExecutionStateV1,
+              boardState: runtimeState.implementationExecutionBoardStateV1,
+              qualityGateResults: runtimeState.implementationQualityGateResultsV1,
+            });
+            const scoped = filterCursorWorkItemsForExecutableTask({
+              board,
+              workItems: runtimeWorkItems,
+            });
+            if (!scoped.selectedWorkItems.length) {
+              const message =
+                scoped.blockedReason ?? "실행 가능한 개발자 작업이 없어 Code Agent WIP 요청을 시작하지 못했습니다.";
+              executionSingleChat.appendAiNotice(message);
+              return { outcome: "blocked", message };
+            }
+            workItemsForWip = [...scoped.selectedWorkItems];
+          }
+
           const wipResult = executeCodeAgentWipWorkRequest(
             {
               projectId: pid,
@@ -2313,7 +2401,7 @@ export function PrototypePreviewPanel({
             },
             {
               plan: runtimeTaskPlan,
-              workItems: runtimeWorkItems,
+              workItems: workItemsForWip,
               taskList: taskList ?? undefined,
               executionState: runtimeExecutionState,
             },
@@ -2382,6 +2470,7 @@ export function PrototypePreviewPanel({
         actionId,
         source: "cta",
         effectiveState: effectiveImplementationState,
+        boardGateContext: implementationStageBoardGateContext,
         execute: () => runImplementationStageAction(actionId),
       }).then((run) => {
         persistImplementationStageActionRun(run);
@@ -2398,6 +2487,7 @@ export function PrototypePreviewPanel({
     [
       projectId,
       effectiveImplementationState,
+      implementationStageBoardGateContext,
       runImplementationStageAction,
       persistImplementationStageActionRun,
       showToast,

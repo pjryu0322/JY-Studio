@@ -51,6 +51,10 @@ export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기" as 
 export const IMPLEMENTATION_GENERATION_REQUEST_CHIP = "생성요청" as const;
 export const IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP = "사용자 확인 필요 항목 보기" as const;
 export const IMPLEMENTATION_EXECUTION_BOARD_CHIP = "구현 작업 보드" as const;
+export const RUN_REFACTOR_COMMON_CHIP = "리팩토링/공통화 실행" as const;
+export const RUN_INTEGRATED_REVIEW_CHIP = "통합 검수 실행" as const;
+export const RUN_INTEGRATED_SECURITY_CHIP = "통합 보안 점검 실행" as const;
+export const RUN_FINAL_SCM_CHIP = "최종 SCM 반영 실행" as const;
 
 const TASK_LIST_ENTRY_SECONDARY_CHIPS: readonly string[] = [
   IMPLEMENTATION_EXECUTION_BOARD_CHIP,

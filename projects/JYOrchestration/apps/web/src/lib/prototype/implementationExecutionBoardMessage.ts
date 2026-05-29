@@ -1,5 +1,6 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
+  formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,
   formatImplementationExecutionBoardTaskLine,
   type ImplementationExecutionBoardV1,
@@ -48,8 +49,37 @@ export function buildImplementationExecutionBoardMessage(input: {
   const integratedLines = input.board.integratedRows.map(formatImplementationExecutionBoardIntegratedLine);
 
   const hasFailed = input.board.summary.failedTasks > 0;
+  const allTasksComplete =
+    input.board.taskRows.length > 0 &&
+    input.board.taskRows.every((row) => row.currentRole === "completed");
+  const integratedStepStatus = (step: ImplementationExecutionBoardV1["integratedRows"][number]["step"]) =>
+    input.board.integratedRows.find((row) => row.step === step)?.status;
+  const integratedChips: string[] = [];
+  if (allTasksComplete) {
+    if (integratedStepStatus("refactor_common") === "ready") integratedChips.push(RUN_REFACTOR_COMMON_CHIP);
+    if (
+      integratedStepStatus("refactor_common") === "done" &&
+      integratedStepStatus("integrated_review") === "ready"
+    ) {
+      integratedChips.push(RUN_INTEGRATED_REVIEW_CHIP);
+    }
+    if (
+      integratedStepStatus("integrated_review") === "done" &&
+      integratedStepStatus("integrated_security") === "ready"
+    ) {
+      integratedChips.push(RUN_INTEGRATED_SECURITY_CHIP);
+    }
+    if (
+      integratedStepStatus("integrated_security") === "done" &&
+      integratedStepStatus("final_scm") === "ready"
+    ) {
+      integratedChips.push(RUN_FINAL_SCM_CHIP);
+    }
+  }
+  const executionTargetLines = formatBoardExecutionTargetLines(input.board);
   const chips = [
     IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+    ...integratedChips,
     TASK_LIST_VIEW_CHIP,
     ...(input.board.summary.userConfirmationRequired > 0
       ? [IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP]
@@ -60,7 +90,10 @@ export function buildImplementationExecutionBoardMessage(input: {
   const content = [
     "구현 작업 보드입니다.",
     "",
-    ...(currentLine ? [`현재 실행 중:`, currentLine, ""] : []),
+    ...(executionTargetLines.length ? [...executionTargetLines, ""] : []),
+    ...(currentLine && !executionTargetLines.some((line) => line.startsWith("현재 실행 중"))
+      ? [`현재 실행 중:`, currentLine, ""]
+      : []),
     "작업 목록:",
     "TASK ID | 작업 | 개발자 | 검수자 | 보안관 | SCM | 사용자 확인 | 재작업 | 상태",
     ...(taskLines.length ? taskLines : ["(개발자 작업이 없습니다)"]),
