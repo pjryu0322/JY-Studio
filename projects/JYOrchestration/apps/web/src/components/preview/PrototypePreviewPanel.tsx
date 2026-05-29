@@ -53,6 +53,8 @@ import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipEx
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
+import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompletionPolicy";
+import { formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup } from "@/lib/prototype/executionSetupSourceGeneration";
 import { toCodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
@@ -2278,6 +2280,9 @@ export function PrototypePreviewPanel({
         qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
         projectId: pid,
         targetTaskIds,
+        bridgeTarget: buildQualityGateBridgeTargetFromWip(
+          parsedRequirementsState.codeAgentWipExecutionV1,
+        ),
       });
       if ("blocked" in outcome) {
         showToast(outcome.blocked);
@@ -2729,7 +2734,25 @@ export function PrototypePreviewPanel({
                 : null,
             });
             if (!readiness.ok) {
-              executionSingleChat.appendAiNotice(readiness.message);
+              const diagnostic = formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
+                executionSetup
+                  ? {
+                      gitRepoUrl: executionSetup.gitRepoUrl,
+                      gitRepoName: executionSetup.gitRepoName,
+                      gitRepoProvider: executionSetup.gitRepoProvider,
+                      baseBranch: executionSetup.baseBranch,
+                      workspacePath: executionSetup.workspacePath,
+                      allowedPathGlobs: executionSetup.allowedPathGlobs,
+                      autoCommit: executionSetup.autoCommit,
+                      autoPush: executionSetup.autoPush,
+                      autoPr: executionSetup.autoPr,
+                      cursorApiUrl: executionSetup.cursorApiUrl,
+                      hasCursorToken: executionSetup.hasCursorToken,
+                      hasGithubAccessToken: executionSetup.hasGithubAccessToken,
+                    }
+                  : null,
+              ).join("\n");
+              executionSingleChat.appendAiNotice(`${readiness.message}\n\n${diagnostic}`);
               showToast("Cursor 실행 요청이 차단되었습니다.");
               if (readiness.missing.some((m) => m.includes("Git") || m.includes("실행환경"))) {
                 setExecutionEnvironmentModalOpen(true);
@@ -2749,6 +2772,9 @@ export function PrototypePreviewPanel({
               targetRepositorySnapshot: targetSnapshot,
               workspacePath: readiness.context.workspaceRoot,
               baseBranch: readiness.context.baseBranch,
+              bridgeAllowedPathGlobs: readiness.context.allowedPathGlobs,
+              bridgeAutoPush: readiness.context.autoPush,
+              bridgeAutoPr: readiness.context.autoPr,
             };
             void persistChatToDb(undefined, { codeAgentWipExecutionV1: requestedWip });
 

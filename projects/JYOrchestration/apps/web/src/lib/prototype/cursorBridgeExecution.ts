@@ -46,6 +46,9 @@ export type CursorBridgeExecuteResult = Readonly<{
   readonly errorMessage?: string;
   readonly rawLog?: string;
   readonly workspacePath?: string;
+  readonly pushStatus?: "success" | "skipped" | "failed";
+  readonly pushErrorMessage?: string;
+  readonly prStatus?: string;
 }>;
 
 export type BridgeResultValidationContext = Readonly<{

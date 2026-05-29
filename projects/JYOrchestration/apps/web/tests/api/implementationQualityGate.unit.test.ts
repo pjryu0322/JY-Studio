@@ -297,6 +297,31 @@ describe("buildMockImplementationQualityGateResult with targetTaskIds", () => {
   });
 });
 
+describe("executeImplementationQualityGateCheck with bridgeTarget", () => {
+  it("stores targetRepository commitSha and changedFiles on result", () => {
+    const outcome = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList: taskListWithRoles(),
+      executionState: executionWithDeveloperDone(),
+      projectId: "p1",
+      targetTaskIds: ["dev-1"],
+      bridgeTarget: {
+        selectedTaskId: "dev-1",
+        targetRepository: "pjryu0322/aiproject",
+        branchName: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890",
+        changedFiles: ["src/App.tsx"],
+      },
+      nowIso: NOW,
+    });
+    if ("blocked" in outcome) throw new Error("expected outcome");
+    expect(outcome.qualityGateResult.target?.commitSha).toBe("abc123def4567890");
+    expect(outcome.qualityGateResult.target?.changedFiles).toEqual(["src/App.tsx"]);
+    expect(outcome.aiMessageContent).toContain("점검 기준");
+    expect(outcome.aiMessageContent).toContain("abc123def4567890");
+  });
+});
+
 describe("appendImplementationQualityGateResult", () => {
   it("appends to existing results", () => {
     const base = buildMockImplementationQualityGateResult({

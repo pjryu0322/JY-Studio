@@ -117,6 +117,22 @@ describe("evaluateExecutionSetupSourceGenerationReadiness", () => {
     });
     expect(readiness.ok).toBe(false);
   });
+
+  it("no execution setup → blocked with 실행환경 message", () => {
+    const readiness = evaluateExecutionSetupSourceGenerationReadiness({ setup: null });
+    expect(readiness.ok).toBe(false);
+    if (readiness.ok) return;
+    expect(readiness.message).toContain("실행환경 설정이 없습니다");
+  });
+
+  it("no git repo → blocked", () => {
+    const readiness = evaluateExecutionSetupSourceGenerationReadiness({
+      setup: { ...baseSetup, gitRepoName: "", gitRepoUrl: "" },
+    });
+    expect(readiness.ok).toBe(false);
+    if (readiness.ok) return;
+    expect(readiness.missing.some((m) => m.includes("Git"))).toBe(true);
+  });
 });
 
 describe("evaluateCursorBridgeSourceGenerationGate", () => {

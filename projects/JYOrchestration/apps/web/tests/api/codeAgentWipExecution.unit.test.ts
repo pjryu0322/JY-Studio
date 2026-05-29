@@ -97,6 +97,52 @@ describe("codeAgentWipExecution", () => {
     expect(parsed?.provider).toBe("cursor");
   });
 
+  it("parseCodeAgentWipExecutionV1 preserves bridge push fields and target snapshot", () => {
+    const raw = {
+      version: "code_agent_wip_execution_v1",
+      projectId: "p1",
+      provider: "cursor",
+      status: "developer_reviewing",
+      branchName: "wip/cursor/x",
+      requestedAt: "2026-05-29T00:00:00.000Z",
+      requestedBy: "ai_developer",
+      workItems: ["wi-1"],
+      commits: [],
+      developerReview: {
+        status: "pending",
+        reviewedAt: "2026-05-29T00:00:00.000Z",
+        reviewedBy: "ai_developer",
+        summary: "x",
+        findings: [],
+        requestedActions: [],
+      },
+      refactorRequests: [],
+      bridgeExecutionStatus: "bridge_completed",
+      commitSha: "abc123",
+      pushStatus: "skipped",
+      pushErrorMessage: "",
+      prStatus: "PR: 미수행 — 환경설정 autoPr=false",
+      workspacePath: "C:/ws",
+      baseBranch: "main",
+      targetRepositorySnapshot: {
+        owner: "pjryu0322",
+        repo: "aiproject",
+        repoFullName: "pjryu0322/aiproject",
+        gitRepoUrl: "https://github.com/pjryu0322/aiproject",
+        defaultBranch: "main",
+      },
+      bridgeAllowedPathGlobs: ["src/**"],
+      bridgeAutoPush: false,
+      bridgeAutoPr: false,
+    };
+    const parsed = parseCodeAgentWipExecutionV1(raw);
+    expect(parsed?.commitSha).toBe("abc123");
+    expect(parsed?.pushStatus).toBe("skipped");
+    expect(parsed?.targetRepositorySnapshot?.repoFullName).toBe("pjryu0322/aiproject");
+    expect(parsed?.bridgeAllowedPathGlobs).toEqual(["src/**"]);
+    expect(parsed?.bridgeAutoPush).toBe(false);
+  });
+
   it("parseCodeAgentWipExecutionV1 preserves selectedTaskId and selectedWorkItemIds", () => {
     const taskId = plan.items[0]?.id ?? "";
     const wip = {

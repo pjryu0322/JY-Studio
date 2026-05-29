@@ -1,3 +1,4 @@
+import { resolveBridgePushAndPrStatus } from "@/lib/prototype/bridgeCompletionPolicy";
 import {
   blockedCursorBridgeResult,
   bridgeResultValidationContextFromRequest,
@@ -214,6 +215,13 @@ async function executeLocalCursorBridge(
   }
 
   const files = gitResult.changedFiles.length ? gitResult.changedFiles : changedFiles;
+  const pushPr = resolveBridgePushAndPrStatus({
+    autoPush: request.autoPush,
+    autoPr: request.autoPr,
+    pushed: gitResult.pushed,
+    pushErrorMessage: gitResult.pushError,
+    prNumber: undefined,
+  });
   const result: CursorBridgeExecuteResult = {
     ok: true,
     provider: "cursor",
@@ -224,6 +232,9 @@ async function executeLocalCursorBridge(
     workspacePath: request.workspaceRoot,
     commitSha: gitResult.commitSha,
     pushed: gitResult.pushed,
+    pushStatus: pushPr.pushStatus,
+    ...(pushPr.pushErrorMessage ? { pushErrorMessage: pushPr.pushErrorMessage } : {}),
+    prStatus: pushPr.prStatusLine,
     changedFiles: files,
     diffSummary: [
       `대상 저장소 ${request.targetRepository.repoFullName} 변경 ${files.length}건`,

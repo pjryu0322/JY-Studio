@@ -190,6 +190,22 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
           return { owner, repo, repoFullName, gitRepoUrl, defaultBranch };
         })()
       : undefined;
+  const commitSha =
+    typeof o.commitSha === "string" && o.commitSha.trim() ? o.commitSha.trim() : undefined;
+  const pushStatusRaw = String(o.pushStatus ?? "").trim();
+  const pushStatus =
+    pushStatusRaw === "success" || pushStatusRaw === "skipped" || pushStatusRaw === "failed"
+      ? pushStatusRaw
+      : undefined;
+  const pushErrorMessage =
+    typeof o.pushErrorMessage === "string" && o.pushErrorMessage.trim()
+      ? o.pushErrorMessage.trim()
+      : undefined;
+  const prStatus =
+    typeof o.prStatus === "string" && o.prStatus.trim() ? o.prStatus.trim() : undefined;
+  const bridgeAllowedPathGlobs = parseStringArray(o.bridgeAllowedPathGlobs);
+  const bridgeAutoPush = o.bridgeAutoPush === true ? true : o.bridgeAutoPush === false ? false : undefined;
+  const bridgeAutoPr = o.bridgeAutoPr === true ? true : o.bridgeAutoPr === false ? false : undefined;
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -215,6 +231,13 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(workspacePath ? { workspacePath } : {}),
     ...(baseBranch ? { baseBranch } : {}),
     ...(targetRepositorySnapshot ? { targetRepositorySnapshot } : {}),
+    ...(commitSha ? { commitSha } : {}),
+    ...(pushStatus ? { pushStatus } : {}),
+    ...(pushErrorMessage ? { pushErrorMessage } : {}),
+    ...(prStatus ? { prStatus } : {}),
+    ...(bridgeAllowedPathGlobs.length ? { bridgeAllowedPathGlobs } : {}),
+    ...(bridgeAutoPush !== undefined ? { bridgeAutoPush } : {}),
+    ...(bridgeAutoPr !== undefined ? { bridgeAutoPr } : {}),
   };
 }
 

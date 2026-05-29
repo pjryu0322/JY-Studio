@@ -168,6 +168,57 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
   };
 }
 
+/** Best-effort diagnostic from setup row (works when readiness is blocked). */
+export function formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
+  setup: ExecutionSetupSourceGenerationRow | null | undefined,
+  env?: Record<string, string | undefined>,
+): readonly string[] {
+  const readiness = evaluateExecutionSetupSourceGenerationReadiness({ setup, env });
+  if (readiness.ok) {
+    return formatExecutionSetupSourceGenerationDiagnosticLines(readiness.context);
+  }
+
+  const targetRepository = setup
+    ? resolveProjectTargetRepositoryFromExecutionSetup({
+        gitRepoUrl: setup.gitRepoUrl,
+        gitRepoName: setup.gitRepoName,
+        gitRepoProvider: setup.gitRepoProvider,
+        baseBranch: setup.baseBranch,
+      })
+    : null;
+  const workspace = setup
+    ? resolveSourceGenerationWorkspaceRoot({ workspacePath: setup.workspacePath, env })
+    : null;
+  const bridgeAvailable = getCursorBridgeAvailability({ env }).available;
+  const hasCursorToken =
+    setup?.hasCursorToken === true || Boolean(String(setup?.cursorApiToken ?? "").trim());
+  const hasCursorApiUrl = Boolean(String(setup?.cursorApiUrl ?? "").trim());
+  const allowedPathGlobs = setup ? parseStringArrayJson(setup.allowedPathGlobs) : [];
+
+  return [
+    "실제 소스 생성 대상:",
+    `- Git 저장소: ${targetRepository?.repoFullName ?? "(미설정)"}`,
+    `- 기준 브랜치: ${targetRepository?.defaultBranch ?? (setup?.baseBranch?.trim() || "(미설정)")}`,
+    `- 작업 경로: ${workspace?.workspaceRoot ?? (setup?.workspacePath?.trim() || "(미설정)")}`,
+    ...(workspace?.source === "env_fallback"
+      ? ["- 참고: workspacePath가 없어 서버 환경 변수 workdir을 fallback으로 사용합니다."]
+      : []),
+    `- Cursor API: ${hasCursorToken && hasCursorApiUrl ? "설정됨" : "미설정"}`,
+    `- Cursor Bridge: ${bridgeAvailable ? "연결됨" : "미연결"}`,
+    `- GitHub 토큰: ${
+      setup?.hasGithubAccessToken === true || Boolean(String(setup?.githubAccessToken ?? "").trim())
+        ? "설정됨"
+        : "미설정"
+    }`,
+    `- autoCommit: ${setup?.autoCommit !== false ? "on" : "off"}`,
+    `- autoPush: ${setup?.autoPush === true ? "on" : "off"}`,
+    `- autoPr: ${setup?.autoPr === true ? "on" : "off"}`,
+    ...(allowedPathGlobs.length
+      ? [`- allowedPathGlobs: ${allowedPathGlobs.join(", ")}`]
+      : ["- allowedPathGlobs: (전체 허용, 금지 경로만 적용)"]),
+  ];
+}
+
 export function formatExecutionSetupSourceGenerationDiagnosticLines(
   context: ExecutionSetupSourceGenerationContext | null,
 ): readonly string[] {

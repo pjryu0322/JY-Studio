@@ -133,13 +133,20 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   bridgeCompletedAt?: string;
   bridgeErrorMessage?: string;
   pushed?: boolean;
+  pushStatus?: "success" | "skipped" | "failed";
+  pushErrorMessage?: string;
+  prStatus?: string;
   prNumber?: number;
+  commitSha?: string;
   /** Target project Git repository (owner/repo). */
   targetRepository?: string;
   targetRepoFullName?: string;
   targetRepositorySnapshot?: CodeAgentTargetRepositorySnapshot;
   workspacePath?: string;
   baseBranch?: string;
+  bridgeAllowedPathGlobs?: readonly string[];
+  bridgeAutoPush?: boolean;
+  bridgeAutoPr?: boolean;
 }>;
 
 export type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
@@ -484,9 +491,18 @@ export function buildCodeAgentWipBridgeCompletedMessage(input: {
       "변경 파일:",
       ...input.commit.changedFiles.map((f) => `- ${f}`),
       "",
-      "Push:",
-      input.wip.pushed ? "- 성공" : "- 미수행 또는 skip",
-      "",
+      input.wip.pushStatus || input.wip.prStatus
+        ? [
+            "Push:",
+            `- ${input.wip.pushStatus === "success" ? "성공" : input.wip.pushStatus === "failed" ? `실패${input.wip.pushErrorMessage ? ` — ${input.wip.pushErrorMessage}` : ""}` : "미수행"}`,
+            ...(input.wip.prStatus ? ["PR:", `- ${input.wip.prStatus.replace(/^PR:\s*/, "")}`] : []),
+            "",
+          ].flat()
+        : [
+            "Push:",
+            input.wip.pushed ? "- 성공" : "- 미수행 또는 skip",
+            "",
+          ],
       `실행 도구: ${label}`,
       "",
       "선택 작업:",

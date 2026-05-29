@@ -23,6 +23,16 @@ export type ImplementationQualityGateCheckItem = Readonly<{
   targetTaskIds?: readonly string[];
 }>;
 
+export type ImplementationQualityGateBridgeTargetV1 = Readonly<{
+  readonly selectedTaskId?: string;
+  readonly targetRepository?: string;
+  readonly branchName?: string;
+  readonly commitSha?: string;
+  readonly changedFiles?: readonly string[];
+  readonly workspacePath?: string;
+  readonly baseBranch?: string;
+}>;
+
 export type ImplementationQualityGateResultV1 = Readonly<{
   version: typeof IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION;
   role: ImplementationQualityGateRole;
@@ -33,6 +43,7 @@ export type ImplementationQualityGateResultV1 = Readonly<{
   summary: string;
   checks: readonly ImplementationQualityGateCheckItem[];
   failedTaskIds: readonly string[];
+  target?: ImplementationQualityGateBridgeTargetV1;
 }>;
 
 function readString(value: unknown): string {
@@ -89,6 +100,25 @@ export function parseImplementationQualityGateResultV1(
   const failedTaskIds = Array.isArray(o.failedTaskIds)
     ? o.failedTaskIds.map((x) => readString(x)).filter(Boolean)
     : [];
+  const targetRaw = o.target;
+  let target: ImplementationQualityGateBridgeTargetV1 | undefined;
+  if (targetRaw && typeof targetRaw === "object") {
+    const t = targetRaw as Record<string, unknown>;
+    const commitSha = readString(t.commitSha);
+    if (commitSha) {
+      target = {
+        ...(readString(t.selectedTaskId) ? { selectedTaskId: readString(t.selectedTaskId) } : {}),
+        ...(readString(t.targetRepository) ? { targetRepository: readString(t.targetRepository) } : {}),
+        ...(readString(t.branchName) ? { branchName: readString(t.branchName) } : {}),
+        commitSha,
+        ...(Array.isArray(t.changedFiles)
+          ? { changedFiles: t.changedFiles.map((f) => readString(f)).filter(Boolean) }
+          : {}),
+        ...(readString(t.workspacePath) ? { workspacePath: readString(t.workspacePath) } : {}),
+        ...(readString(t.baseBranch) ? { baseBranch: readString(t.baseBranch) } : {}),
+      };
+    }
+  }
   return {
     version: IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION,
     role,
@@ -99,6 +129,7 @@ export function parseImplementationQualityGateResultV1(
     summary,
     checks,
     failedTaskIds,
+    ...(target ? { target } : {}),
   };
 }
 
@@ -393,6 +424,21 @@ export type ImplementationQualityGateCheckOutcome = Readonly<{
   passed: boolean;
 }>;
 
+function formatQualityGateTargetSection(
+  target: ImplementationQualityGateBridgeTargetV1 | undefined,
+): readonly string[] {
+  if (!target?.commitSha) return [];
+  const fileCount = target.changedFiles?.length ?? 0;
+  return [
+    "",
+    "점검 기준:",
+    ...(target.targetRepository ? [`- 저장소: ${target.targetRepository}`] : []),
+    ...(target.branchName ? [`- 브랜치: ${target.branchName}`] : []),
+    `- Commit: ${target.commitSha}`,
+    `- 변경 파일: ${fileCount}건`,
+  ];
+}
+
 export function buildImplementationQualityGateRunMessageContent(input: {
   readonly role: ImplementationQualityGateRole;
   readonly result: ImplementationQualityGateResultV1;
@@ -400,17 +446,20 @@ export function buildImplementationQualityGateRunMessageContent(input: {
   const roleLabel = input.role === "reviewer" ? "AI 검수자" : "AI 보안관";
   const statusLabel = input.result.status === "passed" ? "통과" : "실패";
   const lines = formatImplementationQualityGateResultLines(input.result);
+  const targetSection = formatQualityGateTargetSection(input.result.target);
   if (input.result.status === "passed") {
     return [
       `${roleLabel} 점검이 완료되었습니다.`,
       `결과: ${statusLabel}`,
       ...lines.slice(1).map((l) => (l.startsWith("-") ? l : `- ${l}`)),
+      ...targetSection,
     ].join("\n");
   }
   return [
     `${roleLabel} 점검에서 보완이 필요합니다.`,
     `결과: ${statusLabel}`,
     ...lines.slice(1).map((l) => (l.startsWith("-") || l.startsWith("✓") || l.startsWith("✗") || l.startsWith("!") ? l : `- ${l}`)),
+    ...targetSection,
     "",
     "다음 작업으로 AI 개발자에게 보완 요청을 진행해 주세요.",
   ].join("\n");
@@ -423,6 +472,7 @@ export function executeImplementationQualityGateCheck(input: {
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly projectId: string;
   readonly targetTaskIds?: readonly string[];
+  readonly bridgeTarget?: ImplementationQualityGateBridgeTargetV1;
   readonly nowIso?: string;
 }): ImplementationQualityGateCheckOutcome | Readonly<{ blocked: string }> {
   const now = input.nowIso ?? new Date().toISOString();
@@ -463,13 +513,17 @@ export function executeImplementationQualityGateCheck(input: {
     };
   }
 
-  const gateResult = buildMockImplementationQualityGateResult({
+  const gateResultBase = buildMockImplementationQualityGateResult({
     role: input.role,
     taskList: input.taskList,
     executionState: state,
     ...(targetTaskIds.length ? { targetTaskIds } : {}),
     nowIso: now,
   });
+  const gateResult: ImplementationQualityGateResultV1 = {
+    ...gateResultBase,
+    ...(input.bridgeTarget?.commitSha ? { target: input.bridgeTarget } : {}),
+  };
 
   if (!isTaskScoped) {
     if (gateResult.status === "passed") {

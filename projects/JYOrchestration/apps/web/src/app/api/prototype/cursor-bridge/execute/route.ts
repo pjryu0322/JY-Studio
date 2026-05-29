@@ -10,6 +10,7 @@ import { executeCursorBridgeWorkItem } from "@/lib/prototype/cursorBridgeClient"
 import { getCursorBridgeAvailability } from "@/lib/prototype/cursorBridgeRuntime";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
 import { prisma } from "@/lib/prisma";
 
 type Body = {
@@ -80,6 +81,25 @@ export async function POST(request: NextRequest) {
     }
 
     const { context } = readiness;
+
+    if (context.workspaceRootSource === "execution_setup") {
+      const workspaceMatch = await validateWorkspaceMatchesTargetRepository({
+        workspacePath: context.workspaceRoot,
+        targetRepoFullName: context.targetRepository.repoFullName,
+      });
+      if (!workspaceMatch.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            status: "blocked",
+            message: workspaceMatch.reason,
+            actualRemote: workspaceMatch.actualRemote,
+          },
+          { status: 200 },
+        );
+      }
+    }
+
     const selectedTaskId = String(body.selectedTaskId ?? "").trim();
     const workItems = Array.isArray(body.workItems) ? body.workItems : [];
     const selectedWorkItemIds = Array.isArray(body.selectedWorkItemIds)

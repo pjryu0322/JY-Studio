@@ -1,0 +1,136 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyCursorBridgeResultToWipExecution,
+  buildCursorBridgeOrchestrationResult,
+} from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
+import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
+import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
+import {
+  resolveProjectTargetRepositoryFromExecutionSetup,
+  toCodeAgentTargetRepositorySnapshot,
+} from "@/lib/prototype/projectTargetRepository";
+
+const NOW = "2026-05-29T12:00:00.000Z";
+
+const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+  gitRepoName: "pjryu0322/aiproject",
+  baseBranch: "main",
+})!;
+
+const plan = buildImplementationTaskPlan({
+  projectId: "p1",
+  projectArtifacts: [],
+  featureDraftTitles: ["upload"],
+  envOk: true,
+  designOk: true,
+});
+const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+
+function baseWip() {
+  const wip = buildInitialCodeAgentWipExecution({
+    projectId: "p1",
+    plan,
+    workItems,
+    provider: "cursor",
+  });
+  const taskId = workItems[0]!.taskId;
+  return {
+    ...wip,
+    selectedTaskId: taskId,
+    executionMode: "cursor_bridge" as const,
+    bridgeExecutionStatus: "bridge_running" as const,
+    targetRepositorySnapshot: toCodeAgentTargetRepositorySnapshot(targetRepository),
+    targetRepoFullName: targetRepository.repoFullName,
+    workspacePath: "C:/workspace/aiproject",
+    baseBranch: "main",
+    bridgeAllowedPathGlobs: ["src/**"],
+    bridgeAutoPush: false,
+    bridgeAutoPr: false,
+  };
+}
+
+describe("applyCursorBridgeResultToWipExecution", () => {
+  it("valid result becomes bridge_completed with commitSha and push skipped", () => {
+    const updated = applyCursorBridgeResultToWipExecution({
+      wip: baseWip(),
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        targetRepository: targetRepository.repoFullName,
+        branchName: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890",
+        changedFiles: ["src/App.tsx"],
+        pushed: false,
+        workspacePath: "C:/workspace/aiproject",
+      },
+      commitTitle: "wip: test",
+      nowIso: NOW,
+    });
+    expect(updated.bridgeExecutionStatus).toBe("bridge_completed");
+    expect(updated.commitSha).toBe("abc123def4567890");
+    expect(updated.pushStatus).toBe("skipped");
+    expect(updated.commits[updated.commits.length - 1]?.changedFiles).toEqual(["src/App.tsx"]);
+  });
+
+  it("wip-stub sha becomes failed", () => {
+    const updated = applyCursorBridgeResultToWipExecution({
+      wip: baseWip(),
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        commitSha: "wip-stub-1",
+        changedFiles: ["src/App.tsx"],
+        branchName: "wip/cursor/dev-1",
+      },
+      commitTitle: "wip",
+      nowIso: NOW,
+    });
+    expect(updated.bridgeExecutionStatus).toBe("failed");
+    expect(updated.bridgeErrorMessage).toContain("실제 소스 생성으로 인정하지 않았습니다");
+  });
+
+  it("empty changedFiles becomes failed", () => {
+    const updated = applyCursorBridgeResultToWipExecution({
+      wip: baseWip(),
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        commitSha: "abc123def4567890",
+        changedFiles: [],
+        branchName: "wip/cursor/dev-1",
+      },
+      commitTitle: "wip",
+      nowIso: NOW,
+    });
+    expect(updated.bridgeExecutionStatus).toBe("failed");
+  });
+});
+
+describe("buildCursorBridgeOrchestrationResult", () => {
+  it("rejection returns failed kind with orchestration patch", () => {
+    const wip = baseWip();
+    const result = buildCursorBridgeOrchestrationResult({
+      requirementsStateJson: {},
+      wip,
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        commitSha: "wip-stub",
+        changedFiles: ["src/App.tsx"],
+        branchName: "wip/cursor/dev-1",
+      },
+      nowIso: NOW,
+    });
+    expect(result.kind).toBe("failed");
+    expect(result.orchestrationPatch?.codeAgentWipExecutionV1.bridgeExecutionStatus).toBe("failed");
+  });
+});

@@ -7,6 +7,7 @@ export type CommitWorktreeChangesResult = Readonly<{
   readonly commitSha: string | null;
   readonly changedFiles: readonly string[];
   readonly pushed: boolean;
+  readonly pushError?: string;
   readonly log: readonly string[];
 }>;
 
@@ -67,13 +68,15 @@ export async function commitWorktreeChanges(input: {
     const files = changedBefore.length ? changedBefore : changedFiles;
 
     let pushed = false;
+    let pushError: string | undefined;
     if (pushAllowed) {
       try {
         await git(input.workdir, ["push", "-u", "origin", input.branchName]);
         pushed = true;
         log.push("[GIT] push OK");
       } catch (e) {
-        log.push(`[GIT] push failed: ${e instanceof Error ? e.message : String(e)}`);
+        pushError = e instanceof Error ? e.message : String(e);
+        log.push(`[GIT] push failed: ${pushError}`);
       }
     } else {
       log.push("[GIT] push skipped");
@@ -83,6 +86,7 @@ export async function commitWorktreeChanges(input: {
       commitSha: sha || null,
       changedFiles: files,
       pushed,
+      ...(pushError ? { pushError } : {}),
       log,
     };
   } catch (e) {
