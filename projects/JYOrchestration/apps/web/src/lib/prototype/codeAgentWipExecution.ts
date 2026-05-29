@@ -17,6 +17,7 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementationUxLabels";
 
 export const CODE_AGENT_WIP_EXECUTION_VERSION = "code_agent_wip_execution_v1" as const;
 
@@ -325,17 +326,45 @@ export function isStubCodeAgentWipExecution(wip: CodeAgentWipExecutionV1): boole
 }
 
 export function deriveCodeAgentWipReviewChips(wip: CodeAgentWipExecutionV1): readonly string[] {
+  if (wip.bridgeExecutionStatus === "failed") {
+    return [REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP, "추가 수정 요청", "작업 폐기"];
+  }
+  if (wip.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+    return [...CODE_AGENT_WIP_REVIEW_CHIPS];
+  }
   if (isStubCodeAgentWipExecution(wip)) {
+    const chips: string[] = [REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP];
+    if (wip.bridgeExecutionStatus === "draft_created") {
+      chips.push(CODE_AGENT_WIP_DRAFT_APPROVE_CHIP);
+    }
+    chips.push(IMPLEMENTATION_ENV_SETTINGS_LABEL, "작업 폐기");
+    return chips;
+  }
+  return [...CODE_AGENT_WIP_REVIEW_CHIPS];
+}
+
+/** Board message CTAs when codeAgentWipExecutionV1 is present. */
+export function deriveCodeAgentWipBoardInterviewChips(
+  wip: CodeAgentWipExecutionV1,
+): readonly string[] | null {
+  if (wip.bridgeExecutionStatus === "failed") {
+    return [REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP, "추가 수정 요청", "작업 폐기"];
+  }
+  if (wip.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+    return ["구현 결과 승인", "변경사항 보기", "추가 수정 요청", "작업 폐기"];
+  }
+  if (wip.bridgeExecutionStatus === "draft_approved") {
+    return [REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP, IMPLEMENTATION_ENV_SETTINGS_LABEL, "작업 폐기"];
+  }
+  if (wip.bridgeExecutionStatus === "draft_created" || isStubCodeAgentWipExecution(wip)) {
     return [
-      CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
       REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
-      "변경사항 보기",
-      "리팩토링 요청",
-      "추가 수정 요청",
+      CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+      IMPLEMENTATION_ENV_SETTINGS_LABEL,
       "작업 폐기",
     ];
   }
-  return [...CODE_AGENT_WIP_REVIEW_CHIPS];
+  return null;
 }
 
 export function formatCodeAgentExecutionModeDiagnosticLines(
@@ -362,11 +391,22 @@ export function formatCodeAgentExecutionModeDiagnosticLines(
     ];
   }
   const availability = getCursorBridgeAvailability();
+  const bridgeReady = isCursorBridgeRuntimeAvailable();
+  if (wip.bridgeExecutionStatus === "draft_approved" && isStubCodeAgentWipExecution(wip)) {
+    return [
+      "Code Agent 실행 모드:",
+      "- 현재: WIP 초안 승인됨",
+      ...(wip.selectedTaskId ? [`- 선택 작업: ${wip.selectedTaskId}`] : []),
+      `- 실제 Cursor Bridge: ${bridgeReady ? "연결됨 (미실행)" : "미연결"}`,
+      ...(availability.available ? [] : [`- 설정: ${availability.reason}`]),
+    ];
+  }
   if (isStubCodeAgentWipExecution(wip)) {
     return [
       "Code Agent 실행 모드:",
-      "- 현재: Stub WIP 초안 생성됨",
-      `- 실제 Cursor Bridge 실행: ${isCursorBridgeRuntimeAvailable() ? "가능 (미실행)" : "미연결"}`,
+      "- 현재: WIP 초안 생성됨",
+      ...(wip.selectedTaskId ? [`- 선택 작업: ${wip.selectedTaskId}`] : []),
+      `- 실제 Cursor Bridge: ${bridgeReady ? "연결됨 (미실행)" : "미연결"}`,
       ...(availability.available ? [] : [`- 설정: ${availability.reason}`]),
       ...(wip.targetRepositorySnapshot || wip.workspacePath
         ? [
@@ -378,6 +418,13 @@ export function formatCodeAgentExecutionModeDiagnosticLines(
             ...(wip.workspacePath ? [`- 작업 경로: ${wip.workspacePath}`] : []),
           ]
         : []),
+    ];
+  }
+  if (wip.bridgeExecutionStatus === "failed") {
+    return [
+      "Code Agent 실행 모드:",
+      "- 현재: Cursor Bridge 실패",
+      ...(wip.bridgeErrorMessage ? [`- 사유: ${wip.bridgeErrorMessage}`] : []),
     ];
   }
   return [
@@ -397,6 +444,7 @@ export function buildCodeAgentWipDraftCreatedMessage(input: {
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const label = codeAgentProviderLabel(input.commit.provider);
+  const bridgeReady = isCursorBridgeRuntimeAvailable();
   const taskTitle =
     input.selectedWorkItems[0]?.title ||
     input.commit.commitMessage.replace(/^wip\([^)]+\):\s*/i, "");
@@ -421,13 +469,16 @@ export function buildCodeAgentWipDraftCreatedMessage(input: {
     content: [
       "Code Agent WIP 초안이 생성되었습니다.",
       "",
-      `실행 도구: ${label}`,
-      "상태: Stub 초안 생성 — 실제 Cursor Bridge 실행 전",
-      "",
       "선택 작업:",
       `- ${input.selectedTaskId} / ${taskTitle}`,
       "",
-      "브랜치 후보:",
+      "상태:",
+      "- WIP 초안 생성",
+      `- 실제 Cursor Bridge: ${bridgeReady ? "연결됨 (미실행)" : "미연결"}`,
+      "",
+      `실행 도구: ${label}`,
+      "",
+      "작업 브랜치:",
       `- ${input.commit.branchName}`,
       "",
       "WIP Commit 초안:",
@@ -441,8 +492,8 @@ export function buildCodeAgentWipDraftCreatedMessage(input: {
       ...input.commit.testResults.map((t) => `- ${t}`),
       "",
       "안내:",
-      "- 아직 실제 Cursor Bridge 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
       "- 현재 결과는 실제 Cursor 실행 결과가 아니라 WIP 초안입니다.",
+      "- 실제 소스 생성을 진행하려면 Cursor Bridge/API 설정 후 [Cursor 실행 요청]을 실행해야 합니다.",
       ...scopedSummary,
       "",
       "다음 액션을 선택해 주세요.",
@@ -475,7 +526,7 @@ export function buildCodeAgentWipBridgeCompletedMessage(input: {
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
     content: [
-      "Cursor가 대상 프로젝트 소스를 생성했습니다.",
+      "Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다.",
       "",
       "대상 저장소:",
       `- ${input.wip.targetRepositorySnapshot?.repoFullName ?? input.wip.targetRepoFullName ?? input.wip.targetRepository ?? "(미기록)"}`,
@@ -720,6 +771,39 @@ export function evaluateDeveloperApprovalGate(wip: CodeAgentWipExecutionV1 | nul
 }
 
 export type CodeAgentWipTimelineActor = "ai_developer" | "code_agent" | "scm";
+
+export type ImplementationWipDraftLifecycleTimelineAction =
+  | "implementation_wip_draft_created"
+  | "implementation_wip_draft_persisted"
+  | "implementation_wip_draft_board_refreshed";
+
+export function buildImplementationWipDraftLifecycleTimelineEntry(input: {
+  readonly action: ImplementationWipDraftLifecycleTimelineAction;
+  readonly projectId: string;
+  readonly selectedTaskId: string;
+  readonly selectedWorkItemCount: number;
+  readonly bridgeEnabled: boolean;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: input.action,
+    source: "system",
+    responseText: [
+      `type=${input.action}`,
+      `projectId=${input.projectId}`,
+      `selectedTaskId=${input.selectedTaskId || "none"}`,
+      `selectedWorkItemCount=${input.selectedWorkItemCount}`,
+      `executionMode=stub`,
+      `executionStatus=draft_created`,
+      `bridgeEnabled=${input.bridgeEnabled ? "yes" : "no"}`,
+    ].join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
 
 export function buildCodeAgentWipTimelineEntry(input: {
   readonly action: string;

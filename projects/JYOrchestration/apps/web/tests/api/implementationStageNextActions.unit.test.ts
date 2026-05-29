@@ -52,6 +52,13 @@ import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImpl
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  buildInitialCodeAgentWipExecution,
+  CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+  REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+} from "@/lib/prototype/codeAgentWipExecution";
+import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
+import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 
 describe("deriveImplementationStageNextActions", () => {
   it("not_ready -> SHOW_ENV_CHECK primary", () => {
@@ -66,6 +73,50 @@ describe("deriveImplementationStageNextActions", () => {
     expect(actions[0]?.priority).toBe("primary");
     expect(actions[1]?.label).toBe(IMPLEMENTATION_ENV_SETTINGS_LABEL);
     expect(actions.map((a) => a.label)).not.toContain(TASK_LIST_VIEW_CHIP);
+  });
+
+  it("draft_created wip -> Cursor 실행 요청 and WIP 초안 승인 next actions", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["upload"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_created",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      taskList: buildImplementationTaskListFromSeed({
+        projectId: "p1",
+        seed: {
+          version: "implementation_seed_v1",
+          projectId: "p1",
+          createdAt: "2026-05-29T12:00:00.000Z",
+          updatedAt: "2026-05-29T12:00:00.000Z",
+          source: "planning_slots_and_artifacts",
+          lifecycleStatus: "confirmed",
+          readiness: { ready: true, score: 1, missing: [], warnings: [] },
+          processImplementationItems: [],
+          screenImplementationItems: [],
+          actorCapabilityMatrix: [],
+          commonDetailFeatures: [],
+          dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+          assumptions: [],
+          gaps: [],
+        },
+      }),
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
+    expect(actions.some((a) => a.label === CODE_AGENT_WIP_DRAFT_APPROVE_CHIP)).toBe(true);
   });
 
   it("implementation_ready -> GENERATE_IMPLEMENTATION_WORK_PLAN primary", () => {

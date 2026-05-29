@@ -49,12 +49,21 @@ import {
   pickExecutionStateArtifacts,
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
-import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
+import {
+  buildImplementationWipDraftLifecycleTimelineEntry,
+  CODE_AGENT_WIP_WORK_REQUEST_CHIP,
+} from "@/lib/prototype/codeAgentWipExecution";
+import { isCursorBridgeExecutionAvailable as isCursorBridgeRuntimeAvailable } from "@/lib/prototype/cursorBridgeRuntime";
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
 import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompletionPolicy";
-import { formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup } from "@/lib/prototype/executionSetupSourceGeneration";
+import {
+  buildTargetRepoE2eTimelineEntry,
+  CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE,
+  formatTargetRepoE2eDiagnosticLines,
+  isCursorBridgeConfiguredForSourceGeneration,
+} from "@/lib/prototype/targetRepoE2eDiagnostics";
 import { toCodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
@@ -532,7 +541,13 @@ export function PrototypePreviewPanel({
               lastSavedAt: new Date().toISOString(),
             });
 
-      onRequirementsStateJsonChange?.(merged);
+      if (orchestrationPatch) {
+        onRequirementsStateJsonChange?.(merged);
+      } else {
+        queueMicrotask(() => {
+          onRequirementsStateJsonChange?.(merged);
+        });
+      }
       void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
     },
     [projectId, timelineCards, requirementsStateJson, onRequirementsStateJsonChange],
@@ -1440,26 +1455,31 @@ export function PrototypePreviewPanel({
         ? {
             projectId: pid,
             taskList,
-            executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-            integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
-            boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
-            qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+            executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+            integratedExecutionState:
+              orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
+            boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+            qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
             previewReady: prototypeRunSyncSnapshot.previewReady,
-            implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
-            reviewStageUserTestSessionV1: parsedRequirementsState.reviewStageUserTestSessionV1,
-            reviewStageUserFeedbackListV1: parsedRequirementsState.reviewStageUserFeedbackListV1,
+            implementationReviewStageReadyV1:
+              orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
+            reviewStageUserTestSessionV1:
+              orchestrationAwareRequirementsState.reviewStageUserTestSessionV1,
+            reviewStageUserFeedbackListV1:
+              orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
+            codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
           }
         : null;
     return prioritizeImplementationChipsForState(
       labels,
       effectiveImplementationState,
-      parsedRequirementsState.implementationTaskExecutionStateV1,
+      orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
       boardInput,
     );
   }, [
     implementationBootstrapInput,
     effectiveImplementationState,
-    parsedRequirementsState,
+    orchestrationAwareRequirementsState,
     projectId,
     prototypeRunSyncSnapshot.previewReady,
   ]);
@@ -2144,6 +2164,13 @@ export function PrototypePreviewPanel({
         applyMessages: executionSingleChat.applyPersistedMessages,
         appendNotice: (text) => executionSingleChat.appendAiNotice(text),
         persistOrchestration: (chat, orch) => {
+          if (chat && orch) {
+            applyImplementationOrchestrationResult({
+              messages: chat.messages,
+              orchestrationPatch: orch,
+            });
+            return;
+          }
           applyPendingFromOrchestrationPatch(orch);
           void persistChatToDb(chat, orch);
         },
@@ -2157,6 +2184,7 @@ export function PrototypePreviewPanel({
       executionSingleChat,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
+      applyImplementationOrchestrationResult,
       showToast,
     ],
   );
@@ -2288,9 +2316,33 @@ export function PrototypePreviewPanel({
         showToast(outcome.blocked);
         return { outcome: "blocked", message: outcome.blocked };
       }
+      const bridgeTarget = buildQualityGateBridgeTargetFromWip(
+        parsedRequirementsState.codeAgentWipExecutionV1,
+      );
+      const qgTimeline =
+        outcome.qualityGateResult.engineConnectionStatus === "pending_engine_connection"
+          ? buildTargetRepoE2eTimelineEntry({
+              action: "review_security_diff_engine_pending",
+              projectId: pid,
+              selectedTaskId: bridgeTarget?.selectedTaskId,
+              repoFullName: bridgeTarget?.targetRepository,
+              branchName: bridgeTarget?.branchName,
+              commitSha: bridgeTarget?.commitSha,
+              changedFilesCount: bridgeTarget?.changedFiles?.length,
+              status: "pending_engine_connection",
+            })
+          : null;
       void persistChatToDb(undefined, {
         implementationTaskExecutionStateV1: outcome.executionState,
         implementationQualityGateResultsV1: outcome.qualityGateResults,
+        ...(qgTimeline
+          ? {
+              promptTimeline: [
+                ...(parsedRequirementsState.promptTimeline ?? []),
+                qgTimeline,
+              ],
+            }
+          : {}),
       });
       executionSingleChat.appendAiNotice(outcome.aiMessageContent);
       return { outcome: "executed" };
@@ -2624,7 +2676,12 @@ export function PrototypePreviewPanel({
               parsedState: runtimeState,
               applyMessages: executionSingleChat.applyPersistedMessages,
               appendNotice: (text) => executionSingleChat.appendAiNotice(text),
-              persistOrchestration: (chat, orch) => void persistChatToDb(chat, orch),
+              persistOrchestration: (chat, orch) => {
+                applyPendingFromOrchestrationPatch(orch);
+                if (chat) {
+                  executionSingleChat.applyPersistedMessages(chat.messages);
+                }
+              },
               focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
               showToast,
             },
@@ -2649,17 +2706,96 @@ export function PrototypePreviewPanel({
           }
 
           const selectedTaskId = wipResult.selectedTaskId ?? scopedTaskId;
-
-          if (selectedTaskId) {
-            const acceptedBoardState = markReworkRequestsAcceptedForTask({
-              state: runtimeState.implementationExecutionBoardStateV1,
-              projectId: pid,
-              taskId: selectedTaskId,
-            });
-            void persistChatToDb(undefined, {
+          const acceptedBoardState = selectedTaskId
+            ? markReworkRequestsAcceptedForTask({
+                state: runtimeState.implementationExecutionBoardStateV1,
+                projectId: pid,
+                taskId: selectedTaskId,
+              })
+            : runtimeState.implementationExecutionBoardStateV1;
+          if (selectedTaskId && acceptedBoardState) {
+            applyPendingFromOrchestrationPatch({
               implementationExecutionBoardStateV1: acceptedBoardState,
             });
           }
+          const mergedOrchestrationAfterWip = {
+            ...runtimeState,
+            codeAgentWipExecutionV1: wipResult.orchestrationPatch.codeAgentWipExecutionV1,
+            promptTimeline: wipResult.orchestrationPatch.promptTimeline,
+            ...(wipResult.executionState
+              ? { implementationTaskExecutionStateV1: wipResult.executionState }
+              : {}),
+            ...(acceptedBoardState ? { implementationExecutionBoardStateV1: acceptedBoardState } : {}),
+          };
+
+          const wip = wipResult.orchestrationPatch.codeAgentWipExecutionV1;
+          const bridgeEnabled = isCursorBridgeRuntimeAvailable();
+          const timelineTaskId = wip.selectedTaskId ?? selectedTaskId ?? "";
+          const timelineBase = {
+            projectId: pid,
+            selectedTaskId: timelineTaskId,
+            selectedWorkItemCount: wip.selectedWorkItemIds?.length ?? workItemsForWip.length,
+            bridgeEnabled,
+          };
+          let timeline = [
+            ...(wipResult.orchestrationPatch.promptTimeline ??
+              parsedRequirementsState.promptTimeline ??
+              []),
+          ];
+          timeline = appendPromptTimeline(
+            timeline,
+            buildImplementationWipDraftLifecycleTimelineEntry({
+              action: "implementation_wip_draft_created",
+              ...timelineBase,
+            }),
+          );
+          timeline = appendPromptTimeline(
+            timeline,
+            buildImplementationWipDraftLifecycleTimelineEntry({
+              action: "implementation_wip_draft_persisted",
+              ...timelineBase,
+            }),
+          );
+
+          const boardAfterWip = buildImplementationExecutionBoardFromRequirementsState({
+            projectId: pid,
+            orchestration: mergedOrchestrationAfterWip,
+          });
+          const boardMessage =
+            boardAfterWip &&
+            buildImplementationExecutionBoardMessage({
+              board: boardAfterWip,
+              nowIso: new Date().toISOString(),
+              previewReady: prototypeRunSyncSnapshot.previewReady,
+              hasExecutionState: true,
+              codeAgentWipExecutionV1: wip,
+            });
+          if (boardMessage) {
+            timeline = appendPromptTimeline(
+              timeline,
+              buildImplementationWipDraftLifecycleTimelineEntry({
+                action: "implementation_wip_draft_board_refreshed",
+                ...timelineBase,
+              }),
+            );
+          }
+
+          const baseMessages = wipResult.chatMessages;
+          const nextMessages = boardMessage ? [...baseMessages, boardMessage] : baseMessages;
+          applyImplementationOrchestrationResult({
+            messages: nextMessages,
+            orchestrationPatch: {
+              codeAgentWipExecutionV1: wip,
+              promptTimeline: timeline,
+              ...(wipResult.executionState
+                ? { implementationTaskExecutionStateV1: wipResult.executionState }
+                : {}),
+              ...(acceptedBoardState
+                ? { implementationExecutionBoardStateV1: acceptedBoardState }
+                : {}),
+            },
+          });
+
           const integratedWipSummary = Boolean(scopedTaskId && wipCandidateCount !== undefined);
           if (!integratedWipSummary) {
             const devCount = wipResult.developerTaskCount;
@@ -2667,7 +2803,6 @@ export function PrototypePreviewPanel({
               devCount > 0
                 ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
                 : "Code Agent WIP 작업 요청을 시작했습니다.";
-            executionSingleChat.appendAiNotice(successNotice);
             showToast(successNotice);
           } else {
             showToast("Code Agent WIP 초안이 생성되었습니다.");
@@ -2733,25 +2868,37 @@ export function PrototypePreviewPanel({
                   }
                 : null,
             });
+            const setupRow = executionSetup
+              ? {
+                  gitRepoUrl: executionSetup.gitRepoUrl,
+                  gitRepoName: executionSetup.gitRepoName,
+                  gitRepoProvider: executionSetup.gitRepoProvider,
+                  baseBranch: executionSetup.baseBranch,
+                  workspacePath: executionSetup.workspacePath,
+                  allowedPathGlobs: executionSetup.allowedPathGlobs,
+                  autoCommit: executionSetup.autoCommit,
+                  autoPush: executionSetup.autoPush,
+                  autoPr: executionSetup.autoPr,
+                  cursorApiUrl: executionSetup.cursorApiUrl,
+                  hasCursorToken: executionSetup.hasCursorToken,
+                  hasGithubAccessToken: executionSetup.hasGithubAccessToken,
+                }
+              : null;
+
+            if (!isCursorBridgeConfiguredForSourceGeneration({ setup: setupRow })) {
+              const diagnostic = formatTargetRepoE2eDiagnosticLines({ setup: setupRow, wip }).join("\n");
+              executionSingleChat.appendAiNotice(`${CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE}\n\n${diagnostic}`);
+              showToast("Cursor Bridge가 설정되지 않았습니다.");
+              setExecutionEnvironmentModalOpen(true);
+              return;
+            }
+
             if (!readiness.ok) {
-              const diagnostic = formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
-                executionSetup
-                  ? {
-                      gitRepoUrl: executionSetup.gitRepoUrl,
-                      gitRepoName: executionSetup.gitRepoName,
-                      gitRepoProvider: executionSetup.gitRepoProvider,
-                      baseBranch: executionSetup.baseBranch,
-                      workspacePath: executionSetup.workspacePath,
-                      allowedPathGlobs: executionSetup.allowedPathGlobs,
-                      autoCommit: executionSetup.autoCommit,
-                      autoPush: executionSetup.autoPush,
-                      autoPr: executionSetup.autoPr,
-                      cursorApiUrl: executionSetup.cursorApiUrl,
-                      hasCursorToken: executionSetup.hasCursorToken,
-                      hasGithubAccessToken: executionSetup.hasGithubAccessToken,
-                    }
-                  : null,
-              ).join("\n");
+              const diagnostic = formatTargetRepoE2eDiagnosticLines({
+                setup: setupRow,
+                workspaceOriginStatus: "unchecked",
+                wip,
+              }).join("\n");
               executionSingleChat.appendAiNotice(`${readiness.message}\n\n${diagnostic}`);
               showToast("Cursor 실행 요청이 차단되었습니다.");
               if (readiness.missing.some((m) => m.includes("Git") || m.includes("실행환경"))) {
@@ -2762,6 +2909,32 @@ export function PrototypePreviewPanel({
 
             const targetRepository = readiness.context.targetRepository;
             const targetSnapshot = toCodeAgentTargetRepositorySnapshot(targetRepository);
+
+            const e2eDiagnostic = formatTargetRepoE2eDiagnosticLines({
+              context: readiness.context,
+              workspaceOriginStatus:
+                readiness.context.workspaceRootSource === "env_fallback" ? "not_applicable" : "unchecked",
+              wip,
+            }).join("\n");
+            executionSingleChat.appendAiNotice(
+              ["Target Repo 수동 E2E 진단:", "", e2eDiagnostic].join("\n"),
+            );
+            const readinessTimeline = buildTargetRepoE2eTimelineEntry({
+              action: "target_repo_e2e_readiness_checked",
+              projectId: pid,
+              selectedTaskId,
+              repoFullName: targetRepository.repoFullName,
+              baseBranch: readiness.context.baseBranch,
+              workspacePath: readiness.context.workspaceRoot,
+              status: "ready",
+              nowIso: new Date().toISOString(),
+            });
+            void persistChatToDb(undefined, {
+              promptTimeline: [
+                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
+                readinessTimeline,
+              ],
+            });
 
             showToast("Cursor Bridge 실행을 시작합니다...");
             const requestedWip: typeof wip = {
@@ -2798,6 +2971,22 @@ export function PrototypePreviewPanel({
               };
               if (!json.result) {
                 const message = json.message ?? "Cursor Bridge API 응답이 올바르지 않습니다.";
+                if (String(message).includes("일치하지 않습니다")) {
+                  void persistChatToDb(undefined, {
+                    promptTimeline: [
+                      ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
+                      buildTargetRepoE2eTimelineEntry({
+                        action: "target_repo_workspace_origin_mismatch",
+                        projectId: pid,
+                        selectedTaskId,
+                        repoFullName: targetRepository.repoFullName,
+                        workspacePath: readiness.context.workspaceRoot,
+                        status: "blocked",
+                        reason: message,
+                      }),
+                    ],
+                  });
+                }
                 executionSingleChat.appendAiNotice(message);
                 showToast(message);
                 return;
@@ -2809,10 +2998,33 @@ export function PrototypePreviewPanel({
                 promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
               });
               if (orchestration.kind === "blocked" || orchestration.kind === "failed") {
+                const mismatchTimeline = String(json.message ?? orchestration.message ?? "").includes(
+                  "일치하지 않습니다",
+                )
+                    ? buildTargetRepoE2eTimelineEntry({
+                        action: "target_repo_workspace_origin_mismatch",
+                        projectId: pid,
+                        selectedTaskId,
+                        repoFullName: targetRepository.repoFullName,
+                        workspacePath: readiness.context.workspaceRoot,
+                        status: "blocked",
+                        reason: json.message,
+                      })
+                    : null;
                 if (orchestration.orchestrationPatch) {
                   applyImplementationOrchestrationResult({
                     messages: orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
-                    orchestrationPatch: orchestration.orchestrationPatch,
+                    orchestrationPatch: {
+                      ...orchestration.orchestrationPatch,
+                      ...(mismatchTimeline
+                        ? {
+                            promptTimeline: [
+                              ...(orchestration.orchestrationPatch.promptTimeline ?? []),
+                              mismatchTimeline,
+                            ],
+                          }
+                        : {}),
+                    },
                   });
                 } else {
                   executionSingleChat.appendAiNotice(orchestration.message);

@@ -69,6 +69,12 @@ export type ExecuteCodeAgentWipWorkRequestResult =
       readonly developerTaskCount: number;
       readonly selectedTaskId?: string;
       readonly selectedWorkItemIds?: readonly string[];
+      readonly chatMessages: CodeAgentWipChatPatch["messages"];
+      readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput & {
+        readonly codeAgentWipExecutionV1: NonNullable<PrototypeExecutionOrchestrationPersistInput["codeAgentWipExecutionV1"]>;
+        readonly promptTimeline: NonNullable<PrototypeExecutionOrchestrationPersistInput["promptTimeline"]>;
+      };
+      readonly executionState?: ImplementationTaskExecutionStateV1;
     }>
   | Readonly<{ readonly kind: "already_active" }>
   | Readonly<{ readonly kind: "blocked"; readonly message: string }>;
@@ -84,7 +90,6 @@ function persistWipResult(
     readonly executionState?: ImplementationTaskExecutionStateV1;
   },
 ): void {
-  deps.applyMessages(result.chatPatch.messages);
   deps.persistOrchestration(result.chatPatch, {
     ...result.orchestrationPatch,
     ...(result.executionState !== undefined
@@ -200,12 +205,21 @@ export function executeCodeAgentWipWorkRequest(
     executionState: executionState ?? undefined,
   });
 
+  const orchestrationPatch = {
+    codeAgentWipExecutionV1: result.orchestrationPatch.codeAgentWipExecutionV1,
+    promptTimeline: result.orchestrationPatch.promptTimeline,
+    ...(executionState !== undefined ? { implementationTaskExecutionStateV1: executionState } : {}),
+  };
+
   return {
     kind: "created",
     developerTaskCount,
+    chatMessages: result.chatPatch.messages,
+    orchestrationPatch,
+    ...(executionState != null ? { executionState } : {}),
     ...(wip.selectedTaskId ? { selectedTaskId: wip.selectedTaskId } : {}),
-    ...(wip.selectedWorkItemIds?.length ? { selectedWorkItemIds: wip.selectedWorkItemIds } : {}),
-  };
+    ...(wip.selectedWorkItemIds?.length ? { selectedWorkItemIds: [...wip.selectedWorkItemIds] } : {}),
+  } satisfies Extract<ExecuteCodeAgentWipWorkRequestResult, { kind: "created" }>;
 }
 
 export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<

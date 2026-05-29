@@ -14,6 +14,10 @@ export type ImplementationQualityGateRole = "reviewer" | "security";
 
 export type ImplementationQualityGateStatus = "passed" | "failed";
 
+export type ImplementationQualityGateEngineConnectionStatus =
+  | "connected"
+  | "pending_engine_connection";
+
 export type ImplementationQualityGateCheckItem = Readonly<{
   id: string;
   title: string;
@@ -44,6 +48,7 @@ export type ImplementationQualityGateResultV1 = Readonly<{
   checks: readonly ImplementationQualityGateCheckItem[];
   failedTaskIds: readonly string[];
   target?: ImplementationQualityGateBridgeTargetV1;
+  engineConnectionStatus?: ImplementationQualityGateEngineConnectionStatus;
 }>;
 
 function readString(value: unknown): string {
@@ -119,6 +124,9 @@ export function parseImplementationQualityGateResultV1(
       };
     }
   }
+  const engineRaw = readString(o.engineConnectionStatus);
+  const engineConnectionStatus =
+    engineRaw === "connected" || engineRaw === "pending_engine_connection" ? engineRaw : undefined;
   return {
     version: IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION,
     role,
@@ -130,6 +138,7 @@ export function parseImplementationQualityGateResultV1(
     checks,
     failedTaskIds,
     ...(target ? { target } : {}),
+    ...(engineConnectionStatus ? { engineConnectionStatus } : {}),
   };
 }
 
@@ -426,6 +435,7 @@ export type ImplementationQualityGateCheckOutcome = Readonly<{
 
 function formatQualityGateTargetSection(
   target: ImplementationQualityGateBridgeTargetV1 | undefined,
+  engineConnectionStatus?: ImplementationQualityGateEngineConnectionStatus,
 ): readonly string[] {
   if (!target?.commitSha) return [];
   const fileCount = target.changedFiles?.length ?? 0;
@@ -436,6 +446,13 @@ function formatQualityGateTargetSection(
     ...(target.branchName ? [`- 브랜치: ${target.branchName}`] : []),
     `- Commit: ${target.commitSha}`,
     `- 변경 파일: ${fileCount}건`,
+    ...(engineConnectionStatus === "pending_engine_connection"
+      ? [
+          "",
+          "단, 실제 diff 분석 엔진은 아직 연결되지 않았습니다.",
+          "현재 점검은 상태/메타데이터 기준 준비 단계입니다.",
+        ]
+      : []),
   ];
 }
 
@@ -446,7 +463,18 @@ export function buildImplementationQualityGateRunMessageContent(input: {
   const roleLabel = input.role === "reviewer" ? "AI 검수자" : "AI 보안관";
   const statusLabel = input.result.status === "passed" ? "통과" : "실패";
   const lines = formatImplementationQualityGateResultLines(input.result);
-  const targetSection = formatQualityGateTargetSection(input.result.target);
+  const targetSection = formatQualityGateTargetSection(
+    input.result.target,
+    input.result.engineConnectionStatus,
+  );
+  if (input.result.engineConnectionStatus === "pending_engine_connection") {
+    return [
+      `${roleLabel} 점검 기준(메타데이터)이 준비되었습니다.`,
+      "결과: diff 분석 엔진 미연결 — 자동 통과 처리하지 않음",
+      ...lines.slice(1).map((l) => (l.startsWith("-") ? l : `- ${l}`)),
+      ...targetSection,
+    ].join("\n");
+  }
   if (input.result.status === "passed") {
     return [
       `${roleLabel} 점검이 완료되었습니다.`,
@@ -520,20 +548,41 @@ export function executeImplementationQualityGateCheck(input: {
     ...(targetTaskIds.length ? { targetTaskIds } : {}),
     nowIso: now,
   });
-  const gateResult: ImplementationQualityGateResultV1 = {
+  const hasBridgeCommitTarget = Boolean(input.bridgeTarget?.commitSha);
+  let gateResult: ImplementationQualityGateResultV1 = {
     ...gateResultBase,
-    ...(input.bridgeTarget?.commitSha ? { target: input.bridgeTarget } : {}),
+    ...(hasBridgeCommitTarget ? { target: input.bridgeTarget } : {}),
   };
 
+  if (hasBridgeCommitTarget) {
+    gateResult = {
+      ...gateResult,
+      status: "failed",
+      engineConnectionStatus: "pending_engine_connection",
+      summary: "검수/보안 점검 기준(메타데이터) 준비 — diff 분석 엔진 미연결",
+      checks: [
+        ...gateResult.checks,
+        {
+          id: "diff-engine-connection",
+          title: "diff 분석 엔진 연결",
+          status: "warning",
+          detail: "실제 diff 분석 엔진은 아직 연결되지 않았습니다. commit metadata만 전달됩니다.",
+          ...(targetTaskIds.length ? { targetTaskIds } : {}),
+        },
+      ],
+      failedTaskIds: gateResult.failedTaskIds,
+    };
+  }
+
   if (!isTaskScoped) {
-    if (gateResult.status === "passed") {
+    if (gateResult.status === "passed" && !hasBridgeCommitTarget) {
       state = markRoleTasksDone({
         state,
         ownerRole: input.role,
         nowIso: now,
         resultSummary: gateResult.summary,
       });
-    } else {
+    } else if (!hasBridgeCommitTarget) {
       state = markRoleTasksFailed({
         state,
         ownerRole: input.role,

@@ -6,6 +6,9 @@ import {
   filterImplementationChipsForMessageContext,
 } from "@/lib/prototype/implementationChipPolicy";
 import { buildImplementationExecutionBoard } from "@/lib/prototype/implementationExecutionBoard";
+import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
+import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
+import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_EXECUTION_BOARD_CHIP,
@@ -84,6 +87,39 @@ describe("implementationChipPolicy", () => {
     });
     const chips = deriveImplementationBoardInterviewChips({ board, envOk: true });
     expect(chips).toEqual([IMPLEMENTATION_GENERATION_REQUEST_CHIP, IMPLEMENTATION_ENV_SETTINGS_LABEL]);
+  });
+
+  it("draft_created wip board chips prefer Cursor 실행 요청 and WIP 초안 승인", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["upload"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_created",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const board = buildImplementationExecutionBoard({
+      projectId: "p1",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const chips = deriveImplementationBoardInterviewChips({
+      board,
+      envOk: true,
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(chips[0]).toBe("Cursor 실행 요청");
+    expect(chips).toContain("WIP 초안 승인");
+    expect(chips).toContain(IMPLEMENTATION_ENV_SETTINGS_LABEL);
+    expect(chips).not.toContain(IMPLEMENTATION_GENERATION_REQUEST_CHIP);
   });
 
   it("task list detail chips include 구현 작업 보드 not 작업목록 보기", () => {

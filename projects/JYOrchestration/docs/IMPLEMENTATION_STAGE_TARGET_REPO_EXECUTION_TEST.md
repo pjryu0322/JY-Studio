@@ -1,58 +1,102 @@
-# 구현단계 Target Repo 실제 소스 생성 테스트
+# 구현단계 Target Repo 실제 소스 생성 수동 E2E 체크리스트
 
-## 사전 조건
+## 1. 사전 조건
 
 - ExecutionSetup.gitRepoName 또는 gitRepoUrl 설정
-- baseBranch 설정
-- workspacePath가 해당 Git 저장소 clone 경로와 일치 (origin이 gitRepoName과 동일한 owner/repo)
+- ExecutionSetup.baseBranch 설정
+- ExecutionSetup.workspacePath 설정
+- workspacePath가 해당 Git 저장소 clone 경로와 일치
+- `git -C {workspacePath} remote get-url origin` 결과가 ExecutionSetup Git 저장소와 일치
 - GitHub token 설정
-- Cursor API/Bridge 설정
+- Cursor API 또는 Bridge 설정
 - autoCommit=true
-- autoPush=true 또는 false 의도 확인
+- autoPush=true/false 의도 확인
+- autoPr=true/false 의도 확인
+- allowedPathGlobs 확인
 
-## 테스트 절차
+## 2. 실행 절차
 
 1. Quick Design 확정
 2. 구현단계 진입
-3. 생성요청
-4. WIP 초안 확인
-5. Cursor 실행 요청 — 차단 시 메시지에 **실제 소스 생성 대상** 진단 확인
-6. target repo branch 확인
-7. target repo changedFiles 확인 (플랫폼 경로 prefix 불필요, 예: `src/App.tsx`)
-8. commitSha 확인 (wip-stub 아님)
-9. push 상태 확인 (성공 / 미수행 / 실패)
-10. 구현 결과 승인
-11. 검수자/보안관 점검 기준에 저장소·브랜치·Commit·변경 파일 건수 표시 확인
+3. 구현 작업 보드에서 대상 repo 진단 확인
+4. [생성요청]
+5. WIP 초안 생성 확인
+6. [Cursor 실행 요청] — 요청 전 **Target Repo 수동 E2E 진단** 메시지 확인
+7. workspace origin mismatch 여부 확인
+8. changedFiles 확인
+9. commitSha 확인
+10. push 상태 확인
+11. PR 상태 확인
+12. [구현 결과 승인]
+13. 검수자/보안관 점검 기준 metadata 확인
 
-## 실패 시 기록
+## 3. 성공 기준
 
-- projectId
-- gitRepoName/gitRepoUrl
-- workspacePath
-- branchName
-- selectedTaskId
-- bridge status (`bridge_requested` / `bridge_running` / `bridge_completed` / `failed`)
-- error message
+- target repo가 표시된다.
+- workspacePath가 target repo와 일치한다.
+- branchName이 생성된다.
+- changedFiles가 1건 이상이다.
+- commitSha가 실제 Git commit이다.
+- wip-stub이 아니다.
+- push 상태가 성공/미수행/실패로 명확히 표시된다.
+- PR 상태가 생성됨/미수행/미연결로 명확히 표시된다.
+- 검수/보안 점검 기준에 commitSha/changedFiles가 포함된다.
 
-## 수동 시나리오
+## 4. 실패 기준
+
+- Cursor 실행 요청 blocked
+- workspace origin mismatch
+- changedFiles 없음
+- commitSha 없음
+- wip-stub 표시
+- target repo 미표시
+- push 상태 미표시
+- PR 상태가 성공처럼 오표시 (autoPr=true인데 prNumber 없을 때)
+- 검수/보안 diff 엔진 미연결인데 통과로 표시
+
+## 5. 실패 기록 양식
+
+- projectId:
+- gitRepoName:
+- gitRepoUrl:
+- baseBranch:
+- workspacePath:
+- workspace origin:
+- selectedTaskId:
+- branchName:
+- commitSha:
+- changedFiles:
+- push status:
+- PR status:
+- bridge status:
+- error message:
+
+## 6. 미연결 영역 (이번 단계에서 완성하지 않음)
+
+| 영역 | 플랫폼 표시 |
+|------|-------------|
+| Cursor API/Bridge 소스 생성 품질 | Bridge 연결 상태 / 실제 source generation 성공 여부만 표시. 품질 보장 표현 없음 |
+| PR 자동 생성 | `PR: 미수행 — PR 자동 생성은 아직 미연결` (autoPr=true, prNumber 없음) |
+| 검수/보안 diff 분석 | `engineConnectionStatus: pending_engine_connection` — metadata만 전달, 자동 통과 없음 |
+
+## 7. 수동 시나리오
 
 ### 정상 설정
 
-- gitRepoName = `pjryu0322/aiproject`
-- workspacePath = 해당 repo clone 경로
-- 기대: Cursor 실행 → commitSha → push(설정에 따름) → bridge_completed
+- gitRepoName = `pjryu0322/aiproject`, workspacePath = 해당 clone 경로, autoPush=true, autoPr=false
+- 기대: origin 일치 → commitSha → push → PR 미수행(autoPr=false) → bridge_completed
 
-### workspacePath mismatch
+### workspace mismatch
 
-- gitRepoName과 다른 저장소의 clone을 workspacePath로 지정
-- 기대: 실행 차단, origin mismatch 메시지
+- gitRepoName과 다른 저장소 clone을 workspacePath로 지정
+- 기대: Cursor 실행 blocked, origin 불일치 메시지
 
-### allowedPathGlobs
+### PR 미연결
 
-- `allowedPathGlobs = ["src/**"]` 인데 README만 변경
-- 기대: bridge_failed, 허용 경로 밖 변경 사유
+- autoPr=true, prNumber 없음
+- 기대: `PR: 미수행 — PR 자동 생성은 아직 미연결`, bridge_completed는 commit 기준 유지
 
-### push off
+### 검수/보안 diff 엔진 미연결
 
-- autoPush = false
-- 기대: commit 성공, Push 미수행 표시, bridge_completed 가능
+- bridge_completed 후 검수자/보안관 점검 실행
+- 기대: commitSha/changedFiles 표시 + diff 엔진 미연결 안내, 자동 passed 없음

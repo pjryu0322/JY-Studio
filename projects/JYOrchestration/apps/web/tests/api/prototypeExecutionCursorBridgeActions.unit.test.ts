@@ -83,6 +83,7 @@ describe("applyCursorBridgeResultToWipExecution", () => {
         provider: "cursor",
         status: "completed",
         selectedTaskId: workItems[0]!.taskId,
+        targetRepository: targetRepository.repoFullName,
         commitSha: "wip-stub-1",
         changedFiles: ["src/App.tsx"],
         branchName: "wip/cursor/dev-1",
@@ -91,7 +92,8 @@ describe("applyCursorBridgeResultToWipExecution", () => {
       nowIso: NOW,
     });
     expect(updated.bridgeExecutionStatus).toBe("failed");
-    expect(updated.bridgeErrorMessage).toContain("실제 소스 생성으로 인정하지 않았습니다");
+    expect(updated.bridgeErrorMessage).toContain("인정되지 않았습니다");
+    expect(updated.bridgeErrorMessage).toContain("Cursor Bridge 호출은 성공했지만");
   });
 
   it("empty changedFiles becomes failed", () => {

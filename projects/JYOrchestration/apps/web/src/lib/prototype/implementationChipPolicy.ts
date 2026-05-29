@@ -4,6 +4,8 @@ import {
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import { deriveCodeAgentWipBoardInterviewChips } from "@/lib/prototype/codeAgentWipExecution";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import { deriveImplementationUserTestReadiness } from "@/lib/prototype/implementationUserTestReadiness";
 import {
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
@@ -68,7 +70,18 @@ export function deriveImplementationBoardInterviewChips(input: {
   readonly previewReady?: boolean;
   readonly hasExecutionState?: boolean;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
 }): readonly string[] {
+  const wipChips = input.codeAgentWipExecutionV1
+    ? deriveCodeAgentWipBoardInterviewChips(input.codeAgentWipExecutionV1)
+    : null;
+  if (wipChips?.length) {
+    return orderEnvFirst(
+      filterImplementationChipsForMessageContext({ chips: [...wipChips], context: "execution_board" }),
+      input.envOk !== false,
+    );
+  }
+
   const board = input.board;
   const developerDoneCount = board.taskRows.filter(
     (row) => row.developerStatus === "done" || row.developerStatus === "skipped",

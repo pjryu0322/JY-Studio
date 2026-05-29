@@ -20,6 +20,11 @@ import {
 
 export { buildPrototypeExecutionSingleChatPersistPatch };
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+
+/** Avoid updating parent state synchronously inside a setState updater (React warning). */
+function deferPersistStateJson(fn: () => void): void {
+  queueMicrotask(fn);
+}
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExtract";
@@ -173,12 +178,14 @@ export function usePrototypeExecutionSingleChat({
       }
       implementationBootstrapRef.current = true;
       const next = sanitizeImplementationConversationMessages([...base, ...bootstrap.messages]);
-      onPersistStateJson({
-        messages: next,
-        slots,
-        answers,
-        currentSlotKey,
-        bootstrapTimeline: bootstrap.timelineEntries,
+      deferPersistStateJson(() => {
+        onPersistStateJson({
+          messages: next,
+          slots,
+          answers,
+          currentSlotKey,
+          bootstrapTimeline: bootstrap.timelineEntries,
+        });
       });
       return next;
     });
@@ -259,7 +266,7 @@ export function usePrototypeExecutionSingleChat({
         return next;
       });
     },
-    [aiTitle, answers, currentSlotKey, persistConversation],
+    [aiTitle, answers, currentSlotKey, onPersistStateJson, slots],
   );
 
   const sendMessage = useCallback(async () => {

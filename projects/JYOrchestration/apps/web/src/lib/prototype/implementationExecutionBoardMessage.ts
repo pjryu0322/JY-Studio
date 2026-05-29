@@ -65,6 +65,7 @@ export function buildImplementationExecutionBoardMessage(input: {
     previewReady,
     hasExecutionState: input.hasExecutionState,
     boardState: input.boardState,
+    codeAgentWipExecutionV1: input.codeAgentWipExecutionV1,
   });
 
   const headline =

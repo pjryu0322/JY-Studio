@@ -20,6 +20,10 @@ import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/pr
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { CodeAgentWipOrchestrationPatch } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
+import {
+  BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING,
+  buildTargetRepoE2eTimelineEntry,
+} from "@/lib/prototype/targetRepoE2eDiagnostics";
 
 export type CursorBridgeOrchestrationResult = Readonly<{
   readonly kind: "blocked" | "failed" | "completed";
@@ -85,7 +89,10 @@ export function applyCursorBridgeResultToWipExecution(input: {
       return {
         ...input.wip,
         bridgeExecutionStatus: "failed",
-        bridgeErrorMessage: formatBridgeSourceGenerationRejectionMessage(eligible.reasons),
+        bridgeErrorMessage: [
+          BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING,
+          ...formatBridgeSourceGenerationRejectionMessage(eligible.reasons).split("\n").slice(1),
+        ].join("\n"),
         bridgeCompletedAt: undefined,
       };
     }
@@ -280,13 +287,33 @@ export function buildCursorBridgeOrchestrationResult(input: {
         nowIso: now,
       }),
     ];
-    const timeline = appendPromptTimeline(input.promptTimeline, buildCodeAgentWipTimelineEntry({
-      action: "cursor_bridge_failed",
-      wip: updatedWip,
-      taskIds: [taskId],
-      actor: "code_agent",
+    const e2eRejected = buildTargetRepoE2eTimelineEntry({
+      action: "cursor_bridge_source_generation_rejected",
+      projectId: input.wip.projectId,
+      selectedTaskId: taskId,
+      repoFullName: updatedWip.targetRepoFullName ?? updatedWip.targetRepository,
+      branchName: updatedWip.branchName,
+      commitSha: input.bridgeResult.commitSha,
+      changedFilesCount: input.bridgeResult.changedFiles?.length,
+      pushStatus: updatedWip.pushStatus,
+      prStatus: updatedWip.prStatus,
+      status: "rejected",
+      reason: updatedWip.bridgeErrorMessage,
       nowIso: now,
-    }));
+    });
+    const timeline = appendPromptTimeline(
+      appendPromptTimeline(
+        input.promptTimeline,
+        buildCodeAgentWipTimelineEntry({
+          action: "cursor_bridge_failed",
+          wip: updatedWip,
+          taskIds: [taskId],
+          actor: "code_agent",
+          nowIso: now,
+        }),
+      ),
+      e2eRejected,
+    );
     return {
       kind: "failed",
       message: updatedWip.bridgeErrorMessage ?? "Cursor Bridge 실행 결과를 인정하지 않았습니다.",
@@ -314,18 +341,39 @@ export function buildCursorBridgeOrchestrationResult(input: {
     }),
   ];
 
-  const timeline = appendPromptTimeline(input.promptTimeline, buildCodeAgentWipTimelineEntry({
-    action: "cursor_bridge_completed",
-    wip: updatedWip,
-    taskIds: [taskId],
+  const e2eCompleted = buildTargetRepoE2eTimelineEntry({
+    action: "cursor_bridge_source_generation_completed",
+    projectId: input.wip.projectId,
+    selectedTaskId: taskId,
+    repoFullName: updatedWip.targetRepoFullName ?? updatedWip.targetRepository,
+    baseBranch: updatedWip.baseBranch,
+    workspacePath: updatedWip.workspacePath,
+    branchName: lastCommit.branchName,
     commitSha: lastCommit.sha,
-    actor: "code_agent",
+    changedFilesCount: lastCommit.changedFiles.length,
+    pushStatus: updatedWip.pushStatus,
+    prStatus: updatedWip.prStatus,
+    status: "completed",
     nowIso: now,
-  }));
+  });
+  const timeline = appendPromptTimeline(
+    appendPromptTimeline(
+      input.promptTimeline,
+      buildCodeAgentWipTimelineEntry({
+        action: "cursor_bridge_completed",
+        wip: updatedWip,
+        taskIds: [taskId],
+        commitSha: lastCommit.sha,
+        actor: "code_agent",
+        nowIso: now,
+      }),
+    ),
+    e2eCompleted,
+  );
 
   return {
     kind: "completed",
-    message: "Cursor Bridge 실행이 완료되었습니다.",
+    message: "Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다.",
     chatPatch: {
       messages,
       slots: resolved.slots ?? [],

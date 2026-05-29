@@ -317,8 +317,11 @@ describe("executeImplementationQualityGateCheck with bridgeTarget", () => {
     if ("blocked" in outcome) throw new Error("expected outcome");
     expect(outcome.qualityGateResult.target?.commitSha).toBe("abc123def4567890");
     expect(outcome.qualityGateResult.target?.changedFiles).toEqual(["src/App.tsx"]);
+    expect(outcome.qualityGateResult.engineConnectionStatus).toBe("pending_engine_connection");
+    expect(outcome.passed).toBe(false);
     expect(outcome.aiMessageContent).toContain("점검 기준");
-    expect(outcome.aiMessageContent).toContain("abc123def4567890");
+    expect(outcome.aiMessageContent).toContain("diff 분석 엔진");
+    expect(outcome.aiMessageContent).not.toContain("점검이 완료되었습니다");
   });
 });
 

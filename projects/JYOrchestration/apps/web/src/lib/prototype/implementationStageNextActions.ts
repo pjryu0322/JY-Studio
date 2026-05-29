@@ -63,6 +63,11 @@ import {
   deriveImplementationStageStatus,
   type ImplementationStageStatus,
 } from "@/lib/prototype/implementationStageStatus";
+import {
+  CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+  REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+  type CodeAgentWipExecutionV1,
+} from "@/lib/prototype/codeAgentWipExecution";
 
 export type ImplementationStageNextAction = Readonly<{
   actionId: ImplementationStageActionId;
@@ -82,6 +87,7 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
   readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
   readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
 }>;
 
 export function deriveReviewStageNextActions(input: {
@@ -529,6 +535,114 @@ function deriveNextActionsWhenTaskListMissing(
   return null;
 }
 
+function deriveNextActionsFromCodeAgentWip(
+  wip: CodeAgentWipExecutionV1 | null | undefined,
+): readonly ImplementationStageNextAction[] | null {
+  if (!wip) return null;
+  const bridgeStatus = wip.bridgeExecutionStatus;
+  if (bridgeStatus === "draft_created") {
+    return [
+      {
+        actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
+        label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+        priority: "primary",
+        reason: "WIP 초안 생성 후 실제 Cursor Bridge 실행",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+        priority: "secondary",
+        reason: "stub WIP 초안 승인",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "Cursor Bridge/API 환경설정",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "작업 폐기",
+        priority: "tertiary",
+        reason: "WIP 초안 폐기",
+      },
+    ];
+  }
+  if (bridgeStatus === "draft_approved") {
+    return [
+      {
+        actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
+        label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+        priority: "primary",
+        reason: "WIP 초안 승인 후 Cursor Bridge 실행",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "Cursor Bridge/API 환경설정",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "작업 폐기",
+        priority: "tertiary",
+        reason: "WIP 작업 폐기",
+      },
+    ];
+  }
+  if (bridgeStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "구현 결과 승인",
+        priority: "primary",
+        reason: "Cursor Bridge 완료 후 구현 결과 승인",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "변경사항 보기",
+        priority: "secondary",
+        reason: "Cursor Bridge 변경사항 확인",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "추가 수정 요청",
+        priority: "secondary",
+        reason: "Cursor Bridge 결과 추가 수정",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "작업 폐기",
+        priority: "tertiary",
+        reason: "WIP 작업 폐기",
+      },
+    ];
+  }
+  if (bridgeStatus === "failed") {
+    return [
+      {
+        actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
+        label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+        priority: "primary",
+        reason: "Cursor Bridge 실패 후 재시도",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "추가 수정 요청",
+        priority: "secondary",
+        reason: "Bridge 실패 후 WIP 수정",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "작업 폐기",
+        priority: "tertiary",
+        reason: "WIP 작업 폐기",
+      },
+    ];
+  }
+  return null;
+}
+
 export function deriveImplementationStageNextActions(
   status: ImplementationStageStatus,
   executionState?: ImplementationTaskExecutionStateV1 | null,
@@ -542,6 +656,11 @@ export function deriveImplementationStageNextActions(
       : null;
   if (missingTaskListActions?.length) {
     return missingTaskListActions;
+  }
+
+  const fromWip = deriveNextActionsFromCodeAgentWip(boardInput?.codeAgentWipExecutionV1);
+  if (fromWip?.length) {
+    return fromWip;
   }
 
   let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =

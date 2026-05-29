@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendWipPolicyToCodeAgentPrompt,
   buildCodeAgentWipExecutionMessage,
+  buildImplementationWipDraftLifecycleTimelineEntry,
   buildInitialCodeAgentWipExecution,
   CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
@@ -271,7 +272,7 @@ describe("codeAgentWipExecution", () => {
     if (result.kind !== "created") throw new Error("expected created");
     const review = result.chatPatch.messages.at(-1);
     expect(review?.content).toContain("WIP 초안");
-    expect(review?.content).toContain("실제 Cursor Bridge 실행 전");
+    expect(review?.content).toContain("실제 Cursor Bridge: 미연결");
     expect(review?.content).not.toContain("WIP 작업을 완료했습니다");
     expect(review?.content).toContain("stub validation: passed");
     expect(review?.content).toContain("이번 요청 대상:");
@@ -301,6 +302,66 @@ describe("codeAgentWipExecution", () => {
     expect(chips).toContain(CODE_AGENT_WIP_DRAFT_APPROVE_CHIP);
     expect(chips).toContain(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
     expect(chips).not.toContain("구현 결과 승인");
+  });
+
+  it("draft_created chips include 환경설정 열기 when bridge disabled", () => {
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_created",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const chips = deriveCodeAgentWipReviewChips(wip);
+    expect(chips).toContain("환경설정 열기");
+    expect(chips.indexOf(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP)).toBeLessThan(
+      chips.indexOf(CODE_AGENT_WIP_DRAFT_APPROVE_CHIP),
+    );
+  });
+
+  it("buildImplementationWipDraftLifecycleTimelineEntry records draft lifecycle metadata", () => {
+    const entry = buildImplementationWipDraftLifecycleTimelineEntry({
+      action: "implementation_wip_draft_created",
+      projectId: "p1",
+      selectedTaskId: "DEV-001",
+      selectedWorkItemCount: 2,
+      bridgeEnabled: false,
+    });
+    expect(entry.action).toBe("implementation_wip_draft_created");
+    expect(entry.responseText).toContain("selectedTaskId=DEV-001");
+    expect(entry.responseText).toContain("selectedWorkItemCount=2");
+    expect(entry.responseText).toContain("bridgeEnabled=no");
+    expect(entry.responseText).toContain("executionStatus=draft_created");
+  });
+
+  it("draft_approved diagnostic shows WIP 초안 승인됨", () => {
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_approved",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const lines = formatCodeAgentExecutionModeDiagnosticLines(wip);
+    expect(lines.join("\n")).toContain("WIP 초안 승인됨");
+    expect(lines.join("\n")).not.toContain("WIP 초안 생성됨");
+  });
+
+  it("board diagnostic does not show WIP 초안 없음 after draft_created", () => {
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_created",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const lines = formatCodeAgentExecutionModeDiagnosticLines(wip);
+    const text = lines.join("\n");
+    expect(text).not.toContain("WIP 초안 없음");
+    expect(text).toContain(plan.items[0]?.id ?? "");
   });
 
   it("approveDeveloperResult accepts executionStatus=draft_created", () => {
@@ -353,7 +414,7 @@ describe("codeAgentWipExecution", () => {
       bridgeExecutionStatus: "draft_created",
     });
     const lines = formatCodeAgentExecutionModeDiagnosticLines(wip);
-    expect(lines.join("\n")).toContain("Stub WIP 초안");
+    expect(lines.join("\n")).toContain("WIP 초안 생성됨");
     expect(lines.join("\n")).toContain("미연결");
   });
 
@@ -384,6 +445,6 @@ describe("codeAgentWipExecution", () => {
       selectedTaskId: taskId,
       selectedWorkItems: workItems.filter((w) => w.taskId === taskId),
     });
-    expect(msg.content).toContain("Cursor가 대상 프로젝트 소스를 생성했습니다");
+    expect(msg.content).toContain("Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다");
   });
 });
