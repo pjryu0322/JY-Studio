@@ -103,10 +103,18 @@ export function implementationTaskListEntryChipLabels(input: { readonly envOk: b
   ];
 }
 
-export function implementationTaskListMissingEntryChipLabels(): readonly string[] {
+export function implementationTaskListMissingEntryChipLabels(input?: {
+  readonly canGenerateFromSeed?: boolean;
+}): readonly string[] {
+  if (input?.canGenerateFromSeed) {
+    return [
+      GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+      IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
+      IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+    ];
+  }
   return [
     IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
-    GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
     IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
   ];
 }

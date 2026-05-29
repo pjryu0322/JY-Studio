@@ -135,11 +135,49 @@ describe("implementationTaskListEntryMessage", () => {
     expect(message.meta?.interviewSuggestions).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
   });
 
-  it("builds task list missing entry message with recovery chips", () => {
+  it("builds task list missing entry message with planning-first chips when seed absent", () => {
     const message = buildImplementationTaskListMissingEntryMessage({ nowIso: NOW });
     expect(message.content).toContain("구현 작업목록이 아직 없습니다");
-    expect(message.meta?.interviewSuggestions).toContain("기획단계로 이동");
-    expect(message.meta?.interviewSuggestions).toContain("구현 작업목록 생성");
+    expect(message.content).toContain("Quick Design");
+    expect(message.meta?.interviewSuggestions?.[0]).toBe("기획단계로 이동");
+    expect(message.meta?.interviewSuggestions).not.toContain("구현 작업목록 생성");
+  });
+
+  it("confirmed seed missing message does not ask Quick Design again", () => {
+    const seed = {
+      version: "implementation_seed_v1" as const,
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      lifecycleStatus: "confirmed" as const,
+      readiness: { ready: true, score: 1, missing: [], warnings: [] },
+      processImplementationItems: [
+        { id: "p1", processName: "주문", actors: ["user"], screens: ["s1"], summary: "s" },
+      ],
+      screenImplementationItems: [
+        {
+          id: "s1",
+          screenName: "목록",
+          routeOrEntry: "/list",
+          primaryActions: ["조회"],
+          dataEntities: [],
+          linkedProcesses: [],
+        },
+      ],
+      actorCapabilityMatrix: [],
+      commonDetailFeatures: [],
+      dataModelSeed: { entities: ["Order"], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+      assumptions: [],
+      gaps: [],
+    };
+    const message = buildImplementationTaskListMissingEntryMessage({
+      nowIso: NOW,
+      implementationSeedV1: seed,
+      implementationTaskListV1: null,
+    });
+    expect(message.content).not.toContain("Quick Design을 다시 확정");
+    expect(message.content).toContain("Implementation Seed");
+    expect(message.meta?.interviewSuggestions?.[0]).toBe("구현 작업목록 생성");
   });
 
   it("shows developer request prep without work plan draft requirement", () => {
@@ -241,6 +279,8 @@ describe("implementationTaskListEntryMessage", () => {
     expect(view.content).toContain("보드 요약:");
     expect(view.content).toContain("TASK ID");
     expect(view.content).toContain(taskList.tasks[0]?.taskId ?? "");
+    expect(view.meta?.interviewSuggestions).not.toContain(TASK_LIST_VIEW_CHIP);
+    expect(view.meta?.interviewSuggestions).toContain("구현 작업 보드");
   });
 
   it("buildImplementationTaskListViewMessage with executionState shows execution summary", () => {
@@ -294,7 +334,7 @@ describe("implementationTaskListEntryMessage", () => {
     }
   });
 
-  it("uses task list bootstrap when task list execution ready", () => {
+  it("uses unified task list bootstrap when task list execution ready", () => {
     const bundle = buildImplementationBootstrapBundle({
       projectId: "p1",
       env: { git: "ok", github: "ok", cursor: "ok", connectionTest: "ok" },
@@ -308,9 +348,11 @@ describe("implementationTaskListEntryMessage", () => {
       implementationTaskListV1: taskList,
       nowIso: NOW,
     });
+    expect(bundle.messages).toHaveLength(1);
     expect(bundle.messages[0]?.content).toContain("구현 작업목록이 준비되었습니다");
-    expect(bundle.messages[0]?.meta?.implementationBootstrapKind).toBe("task_list_ready");
-    expect(bundle.messages[1]?.content).toContain("구현 작업 보드입니다");
+    expect(bundle.messages[0]?.content).toContain("작업 요약:");
+    expect(bundle.messages[0]?.content).toContain("다음 실행 대상:");
+    expect(hasValidImplementationTaskListBootstrap(bundle.messages)).toBe(true);
   });
 
   it("treats task list bootstrap as a valid implementation bootstrap", () => {

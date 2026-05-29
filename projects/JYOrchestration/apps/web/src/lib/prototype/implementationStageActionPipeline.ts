@@ -1,3 +1,4 @@
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildImplementationStageActionTimelineEntry,
   type ImplementationStageActionTimelineSource,
@@ -23,6 +24,7 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import { hasImplementationWorkPlanDraftReady } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { deriveImplementationTaskListReadiness } from "@/lib/prototype/implementationTaskListReadiness";
 import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
@@ -31,6 +33,7 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly board: ImplementationExecutionBoardV1;
   readonly previewReady: boolean;
   readonly reviewStageEntryReady: boolean;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -42,10 +45,14 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly previewReady?: boolean;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
   return {
+    ...(input.codeAgentWipExecutionV1 !== undefined
+      ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
+      : {}),
     board: buildImplementationExecutionBoardFromOrchestration({
       projectId: input.projectId,
       taskList: input.taskList,
@@ -397,6 +404,19 @@ export function evaluateImplementationStageActionGate(
   }
 
   switch (actionId) {
+    case "GENERATE_IMPLEMENTATION_TASK_LIST": {
+      const readiness = deriveImplementationTaskListReadiness({
+        implementationSeedV1: state.implementationSeedV1,
+        implementationTaskListV1: state.implementationTaskListV1,
+      });
+      if (readiness.status === "task_list_exists") {
+        return { ok: true };
+      }
+      if (!readiness.canGenerateTaskList) {
+        return { ok: false, message: readiness.message };
+      }
+      return { ok: true };
+    }
     case "GENERATE_IMPLEMENTATION_WORK_PLAN": {
       const readiness = evaluateImplementationWorkPlanGenerationReadiness(state);
       if (!readiness.ok) {
@@ -474,16 +494,23 @@ export function evaluateImplementationStageActionGate(
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다." };
       }
-      if (
-        isPlanningReadyForImplementationExecution({
-          implementationSeedV1: state.implementationSeedV1,
-          implementationTaskListV1: state.implementationTaskListV1,
-        })
-      ) {
+      if (isTaskListReadyForImplementationStageActions(state)) {
         return { ok: true };
       }
-      if (!state.implementationTaskPlanV1) {
-        return { ok: false, message: "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다." };
+      if (state.implementationTaskPlanV1) {
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        message: "구현 작업목록이 아직 없습니다. 먼저 구현 작업목록을 생성해 주세요.",
+      };
+    }
+    case "REQUEST_CURSOR_BRIDGE_EXECUTION": {
+      if (!boardContext?.codeAgentWipExecutionV1) {
+        return {
+          ok: false,
+          message: "WIP 초안이 없습니다. 먼저 [생성요청]으로 WIP 초안을 생성해 주세요.",
+        };
       }
       return { ok: true };
     }

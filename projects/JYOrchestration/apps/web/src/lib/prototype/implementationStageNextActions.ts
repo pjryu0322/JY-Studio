@@ -32,8 +32,11 @@ import { canCompleteReviewStage } from "@/lib/prototype/reviewStageUserFeedback"
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+  GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+  IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
   RUN_FINAL_SCM_CHIP,
@@ -53,6 +56,8 @@ import {
   SECURITY_CHECK_RUN_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
+import { deriveImplementationTaskListReadiness } from "@/lib/prototype/implementationTaskListReadiness";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   deriveImplementationStageStatus,
@@ -480,12 +485,65 @@ function deriveNextActionsFromExecutionState(
   return null;
 }
 
+export type ImplementationStageTaskListContext = Readonly<{
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+}>;
+
+function deriveNextActionsWhenTaskListMissing(
+  taskListContext: ImplementationStageTaskListContext,
+): readonly ImplementationStageNextAction[] | null {
+  const readiness = deriveImplementationTaskListReadiness({
+    implementationSeedV1: taskListContext.implementationSeedV1,
+    implementationTaskListV1: taskListContext.implementationTaskListV1,
+  });
+  if (readiness.status === "task_list_exists") {
+    return null;
+  }
+  if (readiness.canGenerateTaskList) {
+    return [
+      {
+        actionId: "GENERATE_IMPLEMENTATION_TASK_LIST",
+        label: GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
+        priority: "primary",
+        reason: "확정된 Implementation Seed 기준 구현 작업목록 생성",
+      },
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+        priority: "secondary",
+        reason: "산출물 확인",
+      },
+    ];
+  }
+  if (readiness.status === "missing_seed" || readiness.status === "seed_not_confirmed") {
+    return [
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
+        priority: "primary",
+        reason: readiness.message,
+      },
+    ];
+  }
+  return null;
+}
+
 export function deriveImplementationStageNextActions(
   status: ImplementationStageStatus,
   executionState?: ImplementationTaskExecutionStateV1 | null,
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
   boardInput?: ImplementationStageNextActionsBoardInput | null,
+  taskListContext?: ImplementationStageTaskListContext | null,
 ): readonly ImplementationStageNextAction[] {
+  const missingTaskListActions =
+    !boardInput?.taskList?.tasks?.length && taskListContext
+      ? deriveNextActionsWhenTaskListMissing(taskListContext)
+      : null;
+  if (missingTaskListActions?.length) {
+    return missingTaskListActions;
+  }
+
   let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =
     null;
   if (boardInput) {
@@ -527,16 +585,10 @@ export function deriveImplementationStageNextActions(
           reason: "구현 작업 보드 기준 task-scoped 생성요청 WIP",
         },
         {
-          actionId: "SHOW_ARTIFACTS",
-          label: TASK_LIST_VIEW_CHIP,
+          actionId: "OPEN_ENV_SETTINGS",
+          label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
           priority: "secondary",
-          reason: "작업목록 및 실행 대상 확인",
-        },
-        {
-          actionId: "SHOW_ROLE_CHECK",
-          label: REVIEWER_CHECK_CHIP,
-          priority: "tertiary",
-          reason: "검수/보안 점검 대상 확인",
+          reason: "실행 환경 설정",
         },
       ];
     }
@@ -573,10 +625,10 @@ export function deriveImplementationStageNextActions(
         reason: "구현 작업목록 기준 생성요청",
       },
       {
-        actionId: "SHOW_ARTIFACTS",
-        label: TASK_LIST_VIEW_CHIP,
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
         priority: "secondary",
-        reason: "구현 작업 보드 확인",
+        reason: "실행 환경 설정",
       },
     ];
   }
@@ -595,13 +647,13 @@ export function deriveImplementationStageNextActions(
       return [
         {
           actionId: "REQUEST_CODE_AGENT_WIP",
-          label: AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+          label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
           priority: "primary",
-          reason: "구현 작업목록 기준 개발자 구현 요청",
+          reason: "구현 작업목록 기준 생성요청",
         },
         {
           actionId: "OPEN_ENV_SETTINGS",
-          label: "환경설정 열기",
+          label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
           priority: "secondary",
           reason: "실행 환경 설정",
         },
@@ -687,6 +739,7 @@ export function prioritizeImplementationChipsForState(
   state: EffectiveImplementationState,
   executionState?: ImplementationTaskExecutionStateV1 | null,
   boardInput?: ImplementationStageNextActionsBoardInput | null,
+  taskListContext?: ImplementationStageTaskListContext | null,
 ): readonly string[] {
   const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
     latestRun: state.latestRun,
@@ -698,6 +751,10 @@ export function prioritizeImplementationChipsForState(
     executionState,
     prototypeSnapshot,
     boardInput,
+    taskListContext ?? {
+      implementationSeedV1: state.implementationSeedV1,
+      implementationTaskListV1: state.implementationTaskListV1,
+    },
   );
   return prioritizeImplementationChipsByNextActions({ labels, nextActions });
 }

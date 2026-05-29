@@ -16,7 +16,10 @@ import { appendReviewStageUserFeedback } from "@/lib/prototype/reviewStageUserFe
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+  TASK_LIST_VIEW_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
   REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
   REVIEW_STAGE_START_USER_TEST_CHIP,
@@ -57,11 +60,12 @@ describe("deriveImplementationStageNextActions", () => {
     expect(actions[0]?.priority).toBe("primary");
   });
 
-  it("task_list_ready -> AI developer implementation request primary", () => {
+  it("task_list_ready -> 생성요청 primary and env settings secondary", () => {
     const actions = deriveImplementationStageNextActions("task_list_ready");
-    expect(actions[0]?.label).toBe(AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP);
+    expect(actions[0]?.label).toBe(IMPLEMENTATION_GENERATION_REQUEST_CHIP);
     expect(actions[0]?.priority).toBe("primary");
-    expect(actions[0]?.label).not.toBe("구현 작업안 초안 생성");
+    expect(actions[1]?.label).toBe(IMPLEMENTATION_ENV_SETTINGS_LABEL);
+    expect(actions.map((a) => a.label)).not.toContain(TASK_LIST_VIEW_CHIP);
   });
 
   it("implementation_ready -> GENERATE_IMPLEMENTATION_WORK_PLAN primary", () => {

@@ -48,13 +48,27 @@ export function buildProviderWipBranchName(
   return `wip/${provider}/${slug || "task"}`;
 }
 
+function stripLeadingTaskIdFromTitle(taskTitle: string, taskId?: string): string {
+  const title = taskTitle.trim() || "implementation task";
+  const id = taskId?.trim();
+  if (!id) return title;
+  const bracketed = `[${id}]`;
+  if (title.startsWith(bracketed)) {
+    return title.slice(bracketed.length).trim() || title;
+  }
+  return title;
+}
+
 export function buildProviderWipCommitMessage(
   provider: CodeAgentProvider,
   taskTitle: string,
   refactor = false,
+  taskId?: string,
 ): string {
-  const title = taskTitle.trim() || "implementation task";
-  return refactor ? `wip(${provider}): refactor ${title}` : `wip(${provider}): ${title}`;
+  const title = stripLeadingTaskIdFromTitle(taskTitle, taskId);
+  const taskPrefix = taskId?.trim() ? `[${taskId.trim()}] ` : "";
+  const body = `${taskPrefix}${title}`;
+  return refactor ? `wip(${provider}): refactor ${body}` : `wip(${provider}): ${body}`;
 }
 
 export function codeAgentIsNotSingleChatMember(): boolean {

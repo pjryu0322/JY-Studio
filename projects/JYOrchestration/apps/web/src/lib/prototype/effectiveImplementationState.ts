@@ -20,8 +20,15 @@ import {
   LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import {
+  mergeRequirementsStateJson,
+  type RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -32,6 +39,7 @@ import {
   SECURITY_CHECK_RUN_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  GENERATE_IMPLEMENTATION_TASK_LIST_CHIP,
   RUN_FINAL_SCM_CHIP,
   RUN_INTEGRATED_REVIEW_CHIP,
   RUN_INTEGRATED_SECURITY_CHIP,
@@ -51,6 +59,7 @@ import {
 import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
 
 export type ImplementationStageActionId =
+  | "GENERATE_IMPLEMENTATION_TASK_LIST"
   | "GENERATE_IMPLEMENTATION_WORK_PLAN"
   | "CONFIRM_IMPLEMENTATION_WORK_PLAN"
   | "EDIT_IMPLEMENTATION_SCOPE"
@@ -63,6 +72,7 @@ export type ImplementationStageActionId =
   | "SHOW_SCM_CHECK"
   | "SHOW_ENV_CHECK"
   | "REQUEST_CODE_AGENT_WIP"
+  | "REQUEST_CURSOR_BRIDGE_EXECUTION"
   | "RUN_REVIEWER_CHECK"
   | "RUN_SECURITY_CHECK"
   | "RUN_REFACTOR_COMMON"
@@ -83,7 +93,35 @@ export type ImplementationStageActionId =
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
+  implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
 }>;
+
+export function resolveOrchestrationAwareRequirementsState(input: {
+  readonly base: RequirementsStateJson;
+  readonly pendingPatch?: PendingImplementationPatch | null;
+}): RequirementsStateJson {
+  const pending = input.pendingPatch;
+  if (!pending) return input.base;
+  return mergeRequirementsStateJson(input.base, {
+    ...(pending.implementationWorkPlanDraftV1 !== undefined
+      ? { implementationWorkPlanDraftV1: pending.implementationWorkPlanDraftV1 }
+      : {}),
+    ...(pending.implementationTaskPlanV1 !== undefined
+      ? { implementationTaskPlanV1: pending.implementationTaskPlanV1 }
+      : {}),
+    ...(pending.codeAgentWipExecutionV1 !== undefined
+      ? { codeAgentWipExecutionV1: pending.codeAgentWipExecutionV1 }
+      : {}),
+    ...(pending.implementationTaskExecutionStateV1 !== undefined
+      ? { implementationTaskExecutionStateV1: pending.implementationTaskExecutionStateV1 }
+      : {}),
+    ...(pending.implementationExecutionBoardStateV1 !== undefined
+      ? { implementationExecutionBoardStateV1: pending.implementationExecutionBoardStateV1 }
+      : {}),
+  });
+}
 
 export type EffectiveImplementationState = Readonly<{
   implementationSeedV1: ImplementationSeedV1 | null;
@@ -164,15 +202,21 @@ export function mergePendingImplementationPatchFromOrchestration(
   patch: PrototypeExecutionOrchestrationPersistInput | undefined,
 ): PendingImplementationPatch | null {
   if (!patch) return null;
-  const next: {
-    implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
-    implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
-  } = {};
+  const next: PendingImplementationPatch = {};
   if (patch.implementationWorkPlanDraftV1 !== undefined) {
     next.implementationWorkPlanDraftV1 = patch.implementationWorkPlanDraftV1;
   }
   if (patch.implementationTaskPlanV1 !== undefined) {
     next.implementationTaskPlanV1 = patch.implementationTaskPlanV1;
+  }
+  if (patch.codeAgentWipExecutionV1 !== undefined) {
+    next.codeAgentWipExecutionV1 = patch.codeAgentWipExecutionV1;
+  }
+  if (patch.implementationTaskExecutionStateV1 !== undefined) {
+    next.implementationTaskExecutionStateV1 = patch.implementationTaskExecutionStateV1;
+  }
+  if (patch.implementationExecutionBoardStateV1 !== undefined) {
+    next.implementationExecutionBoardStateV1 = patch.implementationExecutionBoardStateV1;
   }
   return Object.keys(next).length > 0 ? next : null;
 }
@@ -189,6 +233,15 @@ export function mergePendingImplementationPatch(
       : {}),
     ...(incoming.implementationTaskPlanV1 !== undefined
       ? { implementationTaskPlanV1: incoming.implementationTaskPlanV1 }
+      : {}),
+    ...(incoming.codeAgentWipExecutionV1 !== undefined
+      ? { codeAgentWipExecutionV1: incoming.codeAgentWipExecutionV1 }
+      : {}),
+    ...(incoming.implementationTaskExecutionStateV1 !== undefined
+      ? { implementationTaskExecutionStateV1: incoming.implementationTaskExecutionStateV1 }
+      : {}),
+    ...(incoming.implementationExecutionBoardStateV1 !== undefined
+      ? { implementationExecutionBoardStateV1: incoming.implementationExecutionBoardStateV1 }
       : {}),
   };
 }
@@ -216,6 +269,9 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
   const reviewAction = mapReviewStageChipToAction(label);
   if (reviewAction) return reviewAction;
   switch (label.trim()) {
+    case GENERATE_IMPLEMENTATION_TASK_LIST_CHIP:
+    case "구현 작업목록 생성":
+      return "GENERATE_IMPLEMENTATION_TASK_LIST";
     case WORK_PLAN_DRAFT_GENERATE_CHIP:
     case "구현 작업안 초안 생성":
       return "GENERATE_IMPLEMENTATION_WORK_PLAN";
@@ -259,6 +315,8 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
     case LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP:
     case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP:
       return "REQUEST_CODE_AGENT_WIP";
+    case "Cursor 실행 요청":
+      return "REQUEST_CURSOR_BRIDGE_EXECUTION";
     case RUN_REFACTOR_COMMON_CHIP:
       return "RUN_REFACTOR_COMMON";
     case RUN_INTEGRATED_REVIEW_CHIP:

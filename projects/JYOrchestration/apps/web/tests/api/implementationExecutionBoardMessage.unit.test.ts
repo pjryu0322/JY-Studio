@@ -13,6 +13,12 @@ import {
   buildImplementationExecutionBoardMessage,
   buildImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
+import {
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  TASK_LIST_VIEW_CHIP,
+} from "@/lib/requirements/implementationUxLabels";
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,

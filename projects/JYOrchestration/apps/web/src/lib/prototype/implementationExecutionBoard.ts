@@ -34,6 +34,8 @@ import {
   RUN_REFACTOR_COMMON_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 
+export { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
+
 export const IMPLEMENTATION_EXECUTION_BOARD_VERSION =
   "implementation_execution_board_v1" as const;
 
@@ -217,6 +219,11 @@ function collectExecutableDeveloperRows(
   return board.taskRows.filter((row) => isDeveloperRowExecutableForWip(row, completedDeveloperIds));
 }
 
+/** Count of developer tasks on the execution board (TaskList WIP candidate pool). */
+export function countTaskListWipCandidateTasks(board: ImplementationExecutionBoardV1): number {
+  return board.taskRows.length;
+}
+
 /** First developer task for WIP: quality-failed → rework → next ready (dependencies met). */
 export function pickFirstExecutableDeveloperTaskId(
   board: ImplementationExecutionBoardV1,
@@ -233,6 +240,23 @@ export function pickFirstExecutableDeveloperTaskId(
   if (rework.length) return rework[0]?.taskId ?? null;
 
   return executable[0]?.taskId ?? null;
+}
+
+/** Why `pickFirstExecutableDeveloperTaskId` would select this developer task. */
+export function explainExecutableTaskSelection(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly taskId: string;
+}): string {
+  const taskId = input.taskId.trim();
+  const row = input.board.taskRows.find((r) => r.taskId === taskId);
+  if (!row) return "다음 실행 가능 작업";
+  if (row.reviewerResultStatus === "failed") return "검수 실패 보완 우선";
+  if (row.securityResultStatus === "failed") return "보안 실패 보완 우선";
+  if (row.reworkCount > 0) return "재작업 요청 우선";
+  if (row.developerStatus === "failed") return "기존 실행 실패 보완";
+  if (row.userConfirmation === "blocking") return "사용자 확인 차단 없음";
+  if (row.priority === "high") return "우선순위 high";
+  return "선행 의존성 없음";
 }
 
 /** Human-readable reason why a task was selected for rework registration. */
@@ -491,15 +515,14 @@ export function formatBoardExecutionTargetLines(
 
   const nextTaskId = pickFirstExecutableDeveloperTaskId(board);
   if (nextTaskId) {
-    return [`다음 실행 대상:`, `${nextTaskId} / AI 개발자`];
-  }
-
-  if (board.currentTaskId && board.currentStep && typeof board.currentStep === "string") {
-    const roleLabel = ROLE_LABEL_KO[board.currentStep] ?? board.currentStep;
-    const row = board.taskRows.find((r) => r.taskId === board.currentTaskId);
-    if (row) {
-      return [`다음 실행 대상:`, `${board.currentTaskId} / ${roleLabel}`];
-    }
+    const row = board.taskRows.find((r) => r.taskId === nextTaskId);
+    const statusLabel = row?.statusLabel ?? "개발 대기";
+    const reason = explainExecutableTaskSelection({ board, taskId: nextTaskId });
+    return [
+      `다음 실행 대상:`,
+      `${nextTaskId} / AI 개발자 / ${statusLabel}`,
+      `선정 사유: ${reason}`,
+    ];
   }
 
   return [];

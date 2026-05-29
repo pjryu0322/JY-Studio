@@ -3,7 +3,9 @@ import {
   normalizeLegacyCursorWipExecutionV1,
   type CodeAgentDeveloperReview,
   type CodeAgentRefactorRequest,
+  type CodeAgentWipBridgeExecutionStatus,
   type CodeAgentWipCommit,
+  type CodeAgentWipExecutionMode,
   type CodeAgentWipExecutionStatus,
   type CodeAgentWipExecutionV1,
   type LegacyCursorWipExecutionV1,
@@ -130,6 +132,35 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
   const selectedTaskId =
     typeof o.selectedTaskId === "string" && o.selectedTaskId.trim() ? o.selectedTaskId.trim() : undefined;
   const selectedWorkItemIds = parseStringArray(o.selectedWorkItemIds);
+  const executionModeRaw = String(o.executionMode ?? "").trim() as CodeAgentWipExecutionMode;
+  const executionMode: CodeAgentWipExecutionMode | undefined = ["stub", "cursor_bridge", "external"].includes(
+    executionModeRaw,
+  )
+    ? executionModeRaw
+    : undefined;
+  const bridgeRaw = String(o.bridgeExecutionStatus ?? o.executionStatus ?? "").trim() as CodeAgentWipBridgeExecutionStatus;
+  const bridgeExecutionStatus: CodeAgentWipBridgeExecutionStatus | undefined = [
+    "draft_created",
+    "draft_approved",
+    "bridge_requested",
+    "bridge_running",
+    "bridge_completed",
+    "failed",
+    "cancelled",
+  ].includes(bridgeRaw)
+    ? bridgeRaw
+    : undefined;
+  const bridgeCompletedAt =
+    typeof o.bridgeCompletedAt === "string" && o.bridgeCompletedAt.trim()
+      ? o.bridgeCompletedAt.trim()
+      : undefined;
+  const bridgeErrorMessage =
+    typeof o.bridgeErrorMessage === "string" && o.bridgeErrorMessage.trim()
+      ? o.bridgeErrorMessage.trim()
+      : undefined;
+  const pushed = o.pushed === true ? true : o.pushed === false ? false : undefined;
+  const prNumber =
+    typeof o.prNumber === "number" && Number.isFinite(o.prNumber) ? o.prNumber : undefined;
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -144,6 +175,12 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     refactorRequests,
     ...(selectedTaskId ? { selectedTaskId } : {}),
     ...(selectedWorkItemIds.length ? { selectedWorkItemIds } : {}),
+    ...(executionMode ? { executionMode } : {}),
+    ...(bridgeExecutionStatus ? { bridgeExecutionStatus } : {}),
+    ...(bridgeCompletedAt ? { bridgeCompletedAt } : {}),
+    ...(bridgeErrorMessage ? { bridgeErrorMessage } : {}),
+    ...(pushed !== undefined ? { pushed } : {}),
+    ...(prNumber !== undefined ? { prNumber } : {}),
   };
 }
 

@@ -325,12 +325,16 @@ export function markDeveloperTasksInProgressForWip(input: {
 export function markDeveloperTasksDoneForWip(input: {
   readonly state: ImplementationTaskExecutionStateV1;
   readonly cursorWorkItems: readonly CursorWorkItem[];
+  readonly selectedTaskId?: string;
   readonly nowIso?: string;
   readonly resultSummary?: string;
 }): ImplementationTaskExecutionStateV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const summary = input.resultSummary?.trim() || "Code Agent WIP 작업 완료";
-  const taskIds = new Set(input.cursorWorkItems.map((w) => w.taskId).filter(Boolean));
+  const scopedTaskId = input.selectedTaskId?.trim();
+  const taskIds = scopedTaskId
+    ? new Set([scopedTaskId])
+    : new Set(input.cursorWorkItems.map((w) => w.taskId).filter(Boolean));
   const patchByTaskId = new Map<string, Partial<ImplementationTaskExecutionItemV1>>();
   for (const taskId of taskIds) {
     patchByTaskId.set(taskId, {
@@ -535,10 +539,16 @@ export function syncDeveloperTaskExecutionFromCodeAgentWip(input: {
   }
 
   if (WIP_DONE_STATUSES.has(wipStatus)) {
+    const stubSummary =
+      input.codeAgentWipExecutionV1.bridgeExecutionStatus === "draft_approved"
+        ? "WIP 초안 승인 (stub)"
+        : undefined;
     return markDeveloperTasksDoneForWip({
       state: base,
       cursorWorkItems: input.cursorWorkItems,
+      selectedTaskId: input.codeAgentWipExecutionV1.selectedTaskId,
       nowIso: now,
+      ...(stubSummary ? { resultSummary: stubSummary } : {}),
     });
   }
 

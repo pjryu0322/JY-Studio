@@ -8,15 +8,25 @@ import {
   isImplementationBoardComplete,
   buildReworkRequestRegistrationNotice,
   explainReworkRequestTarget,
+  explainExecutableTaskSelection,
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
   pickTaskIdForReworkRequest,
+  deriveImplementationBoardInterviewChips,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
 import {
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_ALL_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   REQUEST_TASK_REWORK_CHIP,
+  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_EXECUTION_BOARD_CHIP,
+  REVIEWER_CHECK_CHIP,
+  SECURITY_CHECK_CHIP,
+  DESIGNER_REVIEW_CHIP,
+  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
+  TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
@@ -629,6 +639,57 @@ describe("implementationExecutionBoard", () => {
     const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
     expect(message.content).toContain("다음 실행 대상:");
     expect(message.content).toContain("dev-1");
+    expect(message.content).not.toContain("현재 실행 중:");
+    expect(message.content).toContain("선정 사유:");
+  });
+
+  it("explainExecutableTaskSelection returns dependency reason for ready task", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const taskId = pickFirstExecutableDeveloperTaskId(board);
+    expect(taskId).toBe("dev-1");
+    expect(explainExecutableTaskSelection({ board, taskId: taskId! })).toBe("우선순위 high");
+  });
+
+  it("initial board chips are minimized before developer work starts", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const chips = deriveImplementationBoardInterviewChips({ board, envOk: true });
+    expect(chips).toEqual([IMPLEMENTATION_GENERATION_REQUEST_CHIP, IMPLEMENTATION_ENV_SETTINGS_LABEL]);
+    expect(chips).not.toContain(TASK_LIST_VIEW_CHIP);
+    expect(chips).not.toContain(IMPLEMENTATION_EXECUTION_BOARD_CHIP);
+    expect(chips).not.toContain(REVIEWER_CHECK_CHIP);
+    expect(chips).not.toContain(SECURITY_CHECK_CHIP);
+    expect(chips).not.toContain(DESIGNER_REVIEW_CHIP);
+    expect(chips).not.toContain(AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP);
+  });
+
+  it("unified board message includes task summary when includeTaskSummary", () => {
+    const taskList = sampleTaskList();
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      taskList,
+      includeTaskSummary: true,
+      nowIso: NOW,
+    });
+    expect(message.content).toContain("구현 작업목록이 준비되었습니다");
+    expect(message.content).toContain("전체 작업:");
+    expect(message.content).toContain("AI 개발자:");
+    expect(message.meta?.interviewSuggestions).toEqual([
+      IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+      IMPLEMENTATION_ENV_SETTINGS_LABEL,
+    ]);
   });
 
   it("buildImplementationExecutionBoardMessage includes rework column", () => {

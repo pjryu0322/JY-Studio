@@ -26,6 +26,11 @@ import {
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
+  deriveRoleCheckResultInterviewChips,
+  deriveTaskListDetailInterviewChips,
+} from "@/lib/prototype/implementationChipPolicy";
+import { deriveImplementationTaskListReadiness } from "@/lib/prototype/implementationTaskListReadiness";
+import {
   formatImplementationTaskListRoleSummaryLines,
   hasImplementationTaskListReady,
   isPlanningReadyForImplementationExecution,
@@ -92,7 +97,19 @@ export function implementationTaskListEntryChips(input: { readonly envOk: boolea
   return implementationTaskListEntryChipLabels(input);
 }
 
-export function implementationTaskListMissingEntryChips(): readonly string[] {
+export function implementationTaskListMissingEntryChips(input?: {
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+}): readonly string[] {
+  if (input) {
+    const readiness = deriveImplementationTaskListReadiness({
+      implementationSeedV1: input.implementationSeedV1,
+      implementationTaskListV1: input.implementationTaskListV1,
+    });
+    return implementationTaskListMissingEntryChipLabels({
+      canGenerateFromSeed: readiness.canGenerateTaskList,
+    });
+  }
   return implementationTaskListMissingEntryChipLabels();
 }
 
@@ -221,12 +238,24 @@ export function buildImplementationTaskListEntryMessage(input: {
 
 export function buildImplementationTaskListMissingEntryMessage(input: {
   readonly nowIso: string;
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
+  const readiness = deriveImplementationTaskListReadiness({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskListV1: input.implementationTaskListV1,
+  });
+  const bodyLine =
+    readiness.status === "ready_to_generate_from_seed"
+      ? readiness.message
+      : readiness.status === "missing_seed" || readiness.status === "seed_not_confirmed"
+        ? readiness.message
+        : "기획단계에서 Quick Design을 다시 확정하거나 구현 작업목록을 생성해야 합니다.";
   const content = [
     "구현 작업목록이 아직 없습니다.",
     "",
-    "기획단계에서 Quick Design을 다시 확정하거나 구현 작업목록을 생성해야 합니다.",
+    bodyLine,
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");
@@ -244,7 +273,12 @@ export function buildImplementationTaskListMissingEntryMessage(input: {
       internalType: IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
       implementationBootstrapKind: "task_list_missing",
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationTaskListMissingEntryChips()],
+      interviewSuggestions: [
+        ...implementationTaskListMissingEntryChips({
+          implementationSeedV1: input.implementationSeedV1,
+          implementationTaskListV1: input.implementationTaskListV1,
+        }),
+      ],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1000,
     },
@@ -372,15 +406,7 @@ export function buildImplementationTaskListViewMessage(input: {
         SECURITY_CHECK_CHIP,
         SCM_CRITERIA_CHIP,
       ]
-    : [
-        IMPLEMENTATION_GENERATION_REQUEST_CHIP,
-        IMPLEMENTATION_EXECUTION_BOARD_CHIP,
-        ...implementationTaskListEntryChips({ envOk: true }).filter(
-          (chip) =>
-            chip !== IMPLEMENTATION_GENERATION_REQUEST_CHIP &&
-            chip !== IMPLEMENTATION_EXECUTION_BOARD_CHIP,
-        ),
-      ];
+    : [...deriveTaskListDetailInterviewChips({ envOk: true })];
 
   return newRequirementsMessage({
     id: `impl-task-list-view-${input.nowIso}`,
@@ -445,7 +471,7 @@ function buildRoleTaskQueueMessage(input: {
     meta: {
       internalType: IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE,
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...implementationTaskListEntryChips({ envOk: true })],
+      interviewSuggestions: [...deriveRoleCheckResultInterviewChips({ envOk: true })],
       interviewAllowCustomInput: true,
       prototypeOrderKey: 1210,
     },
@@ -535,9 +561,9 @@ export function buildDeveloperImplementationRequestPrepMessage(input: {
 
   const envBlock = input.envOk
     ? [
-        "작업목록의 개발자 작업을 기준으로 Code Agent WIP 작업을 요청할 수 있습니다.",
+        "구현 작업목록과 실행 보드 기준으로 Code Agent WIP 요청을 준비합니다.",
         "",
-        "다음 단계에서 [코드 에이전트 WIP 작업 요청]을 선택하면 WIP branch 기준으로 구현을 진행합니다.",
+        "다음 단계에서 [생성요청]을 선택하면 선택된 개발자 작업을 WIP branch 기준으로 진행합니다.",
       ]
     : [
         "구현 작업목록은 준비되었지만, Code Agent WIP 작업 전에 실행 환경 설정을 완료해 주세요.",
@@ -660,8 +686,13 @@ export function tryHandleImplementationTaskListChip(input: {
     input.appendAiMessage(
       buildImplementationExecutionBoardMessage({
         board,
+        taskList: list,
+        includeTaskSummary: false,
+        envOk: input.envOk,
         nowIso: now,
         previewReady: input.prototypeSnapshot?.previewReady === true,
+        hasExecutionState: Boolean(input.executionState),
+        boardState: input.boardState,
       }),
     );
   };
@@ -771,10 +802,9 @@ export function tryHandleImplementationTaskListChip(input: {
     case GENERATE_IMPLEMENTATION_TASK_LIST_CHIP:
       if (input.generateTaskListFromSeed) {
         input.generateTaskListFromSeed();
-      } else {
-        input.showToast("기획단계에서 Quick Design 확정 시 작업목록이 자동 생성됩니다.");
-        input.returnToPlanningStage();
+        return true;
       }
+      input.showToast("구현 작업목록을 생성할 수 없습니다. Implementation Seed를 확인해 주세요.");
       return true;
     case IMPLEMENTATION_RETURN_TO_PLANNING_CHIP:
       input.returnToPlanningStage();
@@ -795,9 +825,14 @@ export function hasValidImplementationTaskListBootstrap(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): boolean {
   return (messages ?? []).some((m) => {
-    if (m.meta.internalType !== IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE) return false;
-    if (m.meta.implementationBootstrapKind !== "task_list_ready") return false;
     if (m.speakerId !== "prototype_build") return false;
-    return m.content.includes(IMPLEMENTATION_TASK_LIST_READY_HEADLINE);
+    if (!m.content.includes(IMPLEMENTATION_TASK_LIST_READY_HEADLINE)) return false;
+    if (
+      m.meta.internalType === IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE &&
+      m.meta.implementationBootstrapKind === "task_list_ready"
+    ) {
+      return true;
+    }
+    return m.meta.internalType === "IMPLEMENTATION_TASK_LIST_READY_V1";
   });
 }

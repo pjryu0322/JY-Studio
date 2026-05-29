@@ -389,6 +389,8 @@ export function implementationEntryChipsForState(input: {
   readonly designOk: boolean;
   readonly hasReferenceArtifacts: boolean;
   readonly taskListReady?: boolean;
+  readonly implementationSeedV1?: import("@/lib/requirements/implementationSeed").ImplementationSeedV1 | null;
+  readonly implementationTaskListV1?: import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null;
 }): readonly string[] {
   if (!input.hasReferenceArtifacts) {
     return implementationBlockedEntryChips();
@@ -400,7 +402,10 @@ export function implementationEntryChipsForState(input: {
     return implementationTaskListEntryChips({ envOk: input.envOk });
   }
   if (input.seedReady && input.hasReferenceArtifacts) {
-    return implementationTaskListMissingEntryChips();
+    return implementationTaskListMissingEntryChips({
+      implementationSeedV1: input.implementationSeedV1,
+      implementationTaskListV1: input.implementationTaskListV1,
+    });
   }
   if (!input.envOk) {
     return [

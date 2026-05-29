@@ -124,6 +124,8 @@ export function implementationEntryChipsForBootstrap(
     designOk: readiness.designOk,
     hasReferenceArtifacts: readiness.hasReferenceArtifacts,
     taskListReady: readiness.taskListReady,
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskListV1: input.implementationTaskListV1,
   });
 }
 
@@ -291,19 +293,18 @@ function buildTaskListReadyImplementationBootstrapBundle(
   const now = input.nowIso ?? new Date().toISOString();
   const taskList = input.implementationTaskListV1!;
   const roleCheckSummary = buildImplementationRoleCheckSummary(input);
+  const board = buildImplementationExecutionBoardFromOrchestration({
+    projectId: input.projectId,
+    taskList,
+    nowIso: now,
+  });
   return {
     messages: [
-      buildImplementationTaskListEntryMessage({
-        taskList,
-        envOk: input.envOk,
-        nowIso: now,
-      }),
       buildImplementationExecutionBoardMessage({
-        board: buildImplementationExecutionBoardFromOrchestration({
-          projectId: input.projectId,
-          taskList,
-          nowIso: now,
-        }),
+        board,
+        taskList,
+        includeTaskSummary: true,
+        envOk: input.envOk,
         nowIso: now,
       }),
     ],
@@ -322,7 +323,13 @@ function buildTaskListMissingImplementationBootstrapBundle(
   const now = input.nowIso ?? new Date().toISOString();
   const roleCheckSummary = buildImplementationRoleCheckSummary(input);
   return {
-    messages: [buildImplementationTaskListMissingEntryMessage({ nowIso: now })],
+    messages: [
+      buildImplementationTaskListMissingEntryMessage({
+        nowIso: now,
+        implementationSeedV1: input.implementationSeedV1,
+        implementationTaskListV1: input.implementationTaskListV1,
+      }),
+    ],
     timelineEntries: buildImplementationBootstrapTimelineEntries({
       summaryInput: input,
       roleCheckSummary,

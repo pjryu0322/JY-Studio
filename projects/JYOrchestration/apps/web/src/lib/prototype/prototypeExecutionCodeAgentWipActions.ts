@@ -1,16 +1,18 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   applyStubWipCommitToExecution,
+  buildCodeAgentWipExecutionMessage,
   buildCodeAgentWipRequestedMessage,
-  buildCodeAgentWipReviewMessage,
   buildCodeAgentWipTimelineEntry,
   buildDeveloperApprovedMessage,
   buildInitialCodeAgentWipExecution,
   buildScmOfficialCommitPendingMessage,
   buildStubCodeAgentWipCommit,
   evaluateDeveloperApprovalGate,
+  isStubCodeAgentWipExecution,
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
+import { validateTaskScopedWorkItems } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
@@ -50,9 +52,11 @@ export function buildRequestCodeAgentWipWorkResult(input: {
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly selectedTaskId?: string | null;
   readonly selectedWorkItemIds?: readonly string[];
+  readonly totalCandidateCount?: number;
   readonly nowIso?: string;
 }):
   | Readonly<{ readonly kind: "already_active" }>
+  | Readonly<{ readonly kind: "blocked"; readonly message: string }>
   | Readonly<{
       readonly kind: "created";
       readonly chatPatch: CodeAgentWipChatPatch;
@@ -65,7 +69,17 @@ export function buildRequestCodeAgentWipWorkResult(input: {
   const prior = resolved.messages ?? [];
   const now = input.nowIso ?? new Date().toISOString();
 
-  const selectedTaskId = input.selectedTaskId?.trim() || input.workItems[0]?.taskId?.trim() || undefined;
+  const selectedTaskId = input.selectedTaskId?.trim() || input.workItems[0]?.taskId?.trim() || "";
+  if (!selectedTaskId) {
+    return { kind: "blocked", message: "WIP 실행 대상 taskId를 결정하지 못했습니다." };
+  }
+  const scopedValidation = validateTaskScopedWorkItems({
+    selectedTaskId,
+    selectedWorkItems: input.workItems,
+  });
+  if (!scopedValidation.ok) {
+    return { kind: "blocked", message: scopedValidation.message };
+  }
   const selectedWorkItemIds =
     input.selectedWorkItemIds?.length
       ? input.selectedWorkItemIds
@@ -75,30 +89,42 @@ export function buildRequestCodeAgentWipWorkResult(input: {
     projectId: input.projectId,
     plan: input.plan,
     workItems: input.workItems,
+    selectedTaskId,
+    executionMode: "stub",
+    bridgeExecutionStatus: "draft_created",
     nowIso: now,
   });
   wip = {
     ...wip,
     status: "drafting",
-    ...(selectedTaskId ? { selectedTaskId } : {}),
-    ...(selectedWorkItemIds.length ? { selectedWorkItemIds } : {}),
+    selectedTaskId,
+    selectedWorkItemIds,
+    executionMode: "stub",
+    bridgeExecutionStatus: "draft_created",
   };
 
   const stubCommit = buildStubCodeAgentWipCommit({ wip, plan: input.plan, workItems: input.workItems, nowIso: now });
   wip = applyStubWipCommitToExecution(wip, stubCommit);
 
-  const taskIds = input.plan.items.map((t) => t.id);
+  const taskIds = [selectedTaskId];
   const messages = [
     ...prior,
     buildCodeAgentWipRequestedMessage({ wip: { ...wip, status: "requested" }, plan: input.plan, nowIso: now }),
-    buildCodeAgentWipReviewMessage({ wip, commit: stubCommit, nowIso: now }),
+    buildCodeAgentWipExecutionMessage({
+      wip,
+      commit: stubCommit,
+      selectedTaskId,
+      selectedWorkItems: input.workItems,
+      totalCandidateCount: input.totalCandidateCount,
+      nowIso: now,
+    }),
   ];
 
   let timeline = appendPromptTimeline(input.promptTimeline, buildCodeAgentWipTimelineEntry({
     action: "code_agent_wip_requested",
     wip: { ...wip, status: "requested" },
     taskIds,
-    workItemIds: input.workItems.map((w) => w.id),
+    workItemIds: selectedWorkItemIds,
     actor: "ai_developer",
     nowIso: now,
   }));
@@ -150,16 +176,20 @@ export function buildDeveloperApproveWipResult(input: {
 
   const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
   const now = input.nowIso ?? new Date().toISOString();
+  const stubApproved = isStubCodeAgentWipExecution(input.wip);
   const updated: CodeAgentWipExecutionV1 = {
     ...input.wip,
     status: "developer_approved",
+    ...(stubApproved ? { bridgeExecutionStatus: "draft_approved" as const } : {}),
     developerReview: {
       status: "approved",
       reviewedAt: now,
       reviewedBy: "ai_developer",
-      summary: "구현 결과 승인",
+      summary: stubApproved ? "WIP 초안 승인" : "구현 결과 승인",
       findings: [],
-      requestedActions: ["SCM에게 공식 반영 요청"],
+      requestedActions: stubApproved
+        ? ["실제 Cursor Bridge 실행 또는 다음 생성요청"]
+        : ["SCM에게 공식 반영 요청"],
     },
   };
 

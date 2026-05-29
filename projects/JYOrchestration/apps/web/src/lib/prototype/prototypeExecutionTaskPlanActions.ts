@@ -4,6 +4,15 @@ import {
   formatCursorExecutionBlockedMessage,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  evaluateTaskListBoardWipGate,
+  shouldUseTaskListBoardWipGate,
+} from "@/lib/prototype/implementationTaskListBoardWipGate";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   defaultImplementationDbStrategy,
   type ImplementationDbStrategyV1,
@@ -42,9 +51,15 @@ import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/l
 
 
 export type ImplementationCursorGateContext = Readonly<{
+  readonly projectId?: string;
   readonly plan: ImplementationTaskPlanV1 | null | undefined;
   readonly workItems: readonly CursorWorkItem[] | null | undefined;
   readonly implementationSlotsV1: ImplementationSlotsV1 | null | undefined;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly envOk: boolean;
   readonly designOk: boolean;
 }>;
@@ -52,20 +67,55 @@ export type ImplementationCursorGateContext = Readonly<{
 export function buildImplementationCursorGateContext(
   state: Pick<
     RequirementsStateJson,
-    "implementationTaskPlanV1" | "cursorWorkItemsV1" | "implementationSlotsV1"
+    | "implementationTaskPlanV1"
+    | "cursorWorkItemsV1"
+    | "implementationSlotsV1"
+    | "implementationTaskListV1"
+    | "implementationTaskExecutionStateV1"
+    | "implementationIntegratedExecutionStateV1"
+    | "implementationExecutionBoardStateV1"
+    | "implementationQualityGateResultsV1"
   >,
   readiness: { readonly envOk: boolean; readonly designOk: boolean },
+  options?: { readonly projectId?: string },
 ): ImplementationCursorGateContext {
   return {
+    projectId: options?.projectId,
     plan: state.implementationTaskPlanV1,
     workItems: state.cursorWorkItemsV1,
     implementationSlotsV1: state.implementationSlotsV1,
+    taskList: state.implementationTaskListV1,
+    executionState: state.implementationTaskExecutionStateV1,
+    integratedExecutionState: state.implementationIntegratedExecutionStateV1,
+    boardState: state.implementationExecutionBoardStateV1,
+    qualityGateResults: state.implementationQualityGateResultsV1,
     envOk: readiness.envOk,
     designOk: readiness.designOk,
   };
 }
 
 export function evaluateImplementationCursorGate(ctx: ImplementationCursorGateContext) {
+  if (
+    shouldUseTaskListBoardWipGate({
+      taskList: ctx.taskList,
+      executionState: ctx.executionState,
+    }) &&
+    ctx.taskList &&
+    ctx.executionState
+  ) {
+    const pid = ctx.projectId?.trim() || ctx.taskList.projectId;
+    return evaluateTaskListBoardWipGate({
+      projectId: pid,
+      taskList: ctx.taskList,
+      executionState: ctx.executionState,
+      workItems: ctx.workItems,
+      integratedExecutionState: ctx.integratedExecutionState,
+      boardState: ctx.boardState,
+      qualityGateResults: ctx.qualityGateResults,
+      envOk: ctx.envOk,
+    });
+  }
+
   const base = evaluateCursorExecutionRequestGate(ctx);
   const slotMissing = formatImplementationSlotsBlockedMessage(ctx.implementationSlotsV1);
   if (!slotMissing.length) return base;

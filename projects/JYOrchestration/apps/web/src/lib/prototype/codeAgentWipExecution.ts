@@ -8,6 +8,10 @@ import {
   inferCodeAgentProviderFromBranch,
   type CodeAgentProvider,
 } from "@/lib/prototype/codeAgentProvider";
+import {
+  getCursorBridgeAvailability,
+  isCursorBridgeExecutionAvailable as isCursorBridgeRuntimeAvailable,
+} from "@/lib/prototype/cursorBridgeRuntime";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -49,6 +53,25 @@ export type CodeAgentWipExecutionStatus =
   | "developer_approved"
   | "scm_commit_pending"
   | "failed";
+
+export type CodeAgentWipExecutionMode = "stub" | "cursor_bridge" | "external";
+
+export type CodeAgentWipBridgeExecutionStatus =
+  | "draft_created"
+  | "draft_approved"
+  | "bridge_requested"
+  | "bridge_running"
+  | "bridge_completed"
+  | "failed"
+  | "cancelled";
+
+export const REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP = "Cursor 실행 요청" as const;
+
+export {
+  formatCursorBridgeAvailabilityDiagnosticLines,
+  getCursorBridgeAvailability,
+  isCursorBridgeExecutionAvailable,
+} from "@/lib/prototype/cursorBridgeRuntime";
 
 export type CodeAgentWipCommit = Readonly<{
   sha?: string;
@@ -101,6 +124,14 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   /** Task-scoped WIP selection from execution board. */
   selectedTaskId?: string;
   selectedWorkItemIds?: readonly string[];
+  /** Stub vs real Cursor bridge execution. */
+  executionMode?: CodeAgentWipExecutionMode;
+  /** Bridge lifecycle (distinct from workflow `status`). */
+  bridgeExecutionStatus?: CodeAgentWipBridgeExecutionStatus;
+  bridgeCompletedAt?: string;
+  bridgeErrorMessage?: string;
+  pushed?: boolean;
+  prNumber?: number;
 }>;
 
 export { codeAgentIsNotSingleChatMember };
@@ -118,12 +149,19 @@ export function buildInitialCodeAgentWipExecution(input: {
   readonly plan: ImplementationTaskPlanV1;
   readonly workItems: readonly CursorWorkItem[];
   readonly provider?: CodeAgentProvider;
+  readonly selectedTaskId?: string;
+  readonly executionMode?: CodeAgentWipExecutionMode;
+  readonly bridgeExecutionStatus?: CodeAgentWipBridgeExecutionStatus;
   readonly nowIso?: string;
 }): CodeAgentWipExecutionV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const provider = input.provider ?? DEFAULT_CODE_AGENT_PROVIDER;
-  const primaryTask = input.plan.items[0];
-  const branchName = buildProviderWipBranchName(provider, input.projectId, primaryTask?.id ?? "bundle");
+  const primaryTaskId =
+    input.selectedTaskId?.trim() ||
+    input.workItems[0]?.taskId?.trim() ||
+    input.plan.items[0]?.id ||
+    "bundle";
+  const branchName = buildProviderWipBranchName(provider, input.projectId, primaryTaskId);
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId: input.projectId.trim(),
@@ -135,6 +173,9 @@ export function buildInitialCodeAgentWipExecution(input: {
     workItems: input.workItems.map((w) => w.id),
     commits: [],
     refactorRequests: [],
+    executionMode: input.executionMode ?? "stub",
+    bridgeExecutionStatus: input.bridgeExecutionStatus ?? "draft_created",
+    ...(input.selectedTaskId?.trim() ? { selectedTaskId: input.selectedTaskId.trim() } : {}),
   };
 }
 
@@ -145,8 +186,13 @@ export function buildStubCodeAgentWipCommit(input: {
   readonly nowIso?: string;
 }): CodeAgentWipCommit {
   const now = input.nowIso ?? new Date().toISOString();
-  const item = input.plan.items[0];
-  const workItem = input.workItems[0];
+  const taskId =
+    input.wip.selectedTaskId?.trim() ||
+    input.workItems[0]?.taskId?.trim() ||
+    input.plan.items[0]?.id ||
+    "unknown";
+  const item = input.plan.items.find((t) => t.id === taskId) ?? input.plan.items[0];
+  const workItem = input.workItems.find((w) => w.taskId === taskId) ?? input.workItems[0];
   const hints = item?.executionHints;
   const changedFiles = [
     ...(hints?.candidateFiles.slice(0, 3) ?? []),
@@ -156,19 +202,23 @@ export function buildStubCodeAgentWipCommit(input: {
     provider: input.wip.provider,
     sha: `wip-stub-${now.replace(/[:.]/g, "")}`,
     branchName: input.wip.branchName,
-    commitMessage: buildProviderWipCommitMessage(input.wip.provider, item?.title ?? "implementation", false),
-    taskId: item?.id ?? "unknown",
+    commitMessage: buildProviderWipCommitMessage(
+      input.wip.provider,
+      item?.title ?? workItem?.title ?? "implementation",
+      false,
+      taskId,
+    ),
+    taskId,
     workItemId: workItem?.id ?? "unknown",
     changedFiles: changedFiles.length ? changedFiles : ["projects/JYOrchestration/apps/web/src/lib/prototype/ (stub)"],
     diffSummary: [
       "WIP 초안: 기획 범위 내 구현 스켈레톤 반영 (stub, 실제 diff는 다음 bridge 단계)",
       "테스트·타입 정합성 점검 대기",
     ],
-    testResults: [
-      "pnpm test -- implementation (stub: passed)",
-      "pnpm build (stub: pending local run)",
+    testResults: ["stub validation: passed", "실제 pnpm test/build: 미실행"],
+    unresolvedIssues: [
+      "아직 실제 Cursor Bridge 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
     ],
-    unresolvedIssues: ["실제 Code Agent bridge 연결 전 — 공식 push/PR/merge 미수행"],
     createdAt: now,
   };
 }
@@ -240,13 +290,152 @@ export const CODE_AGENT_WIP_REVIEW_CHIPS = [
   "작업 폐기",
 ] as const;
 
-export function buildCodeAgentWipReviewMessage(input: {
+export const CODE_AGENT_WIP_DRAFT_APPROVE_CHIP = "WIP 초안 승인" as const;
+
+export function isStubCodeAgentWipExecution(wip: CodeAgentWipExecutionV1): boolean {
+  if (wip.executionMode === "cursor_bridge" && wip.bridgeExecutionStatus === "bridge_completed") {
+    return false;
+  }
+  if (wip.bridgeExecutionStatus === "bridge_completed") {
+    return false;
+  }
+  return (
+    wip.executionMode === "stub" ||
+    wip.bridgeExecutionStatus === "draft_created" ||
+    wip.bridgeExecutionStatus === "draft_approved" ||
+    (!wip.executionMode && !wip.bridgeExecutionStatus)
+  );
+}
+
+export function deriveCodeAgentWipReviewChips(wip: CodeAgentWipExecutionV1): readonly string[] {
+  if (isStubCodeAgentWipExecution(wip)) {
+    return [
+      CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+      REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+      "변경사항 보기",
+      "리팩토링 요청",
+      "추가 수정 요청",
+      "작업 폐기",
+    ];
+  }
+  return [...CODE_AGENT_WIP_REVIEW_CHIPS];
+}
+
+export function formatCodeAgentExecutionModeDiagnosticLines(
+  wip: CodeAgentWipExecutionV1 | null | undefined,
+): readonly string[] {
+  if (!wip) {
+    return [
+      "Code Agent 실행 모드:",
+      "- 현재: (WIP 초안 없음)",
+      "- 실제 Cursor Bridge: 미연결",
+    ];
+  }
+  if (wip.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+    const last = wip.commits[wip.commits.length - 1];
+    return [
+      "Code Agent 실행 모드:",
+      "- 현재: Cursor Bridge 완료",
+      `- 실제 commit: ${last?.sha ?? "(없음)"}`,
+      ...(wip.pushed ? ["- push: 완료"] : ["- push: 미수행"]),
+    ];
+  }
+  const availability = getCursorBridgeAvailability();
+  if (isStubCodeAgentWipExecution(wip)) {
+    return [
+      "Code Agent 실행 모드:",
+      "- 현재: Stub WIP 초안 생성됨",
+      `- 실제 Cursor Bridge 실행: ${isCursorBridgeRuntimeAvailable() ? "가능 (미실행)" : "미연결"}`,
+      ...(availability.available ? [] : [`- 설정: ${availability.reason}`]),
+    ];
+  }
+  return [
+    "Code Agent 실행 모드:",
+    `- 현재: ${wip.executionMode ?? "stub"}`,
+    `- bridge 상태: ${wip.bridgeExecutionStatus ?? "unknown"}`,
+  ];
+}
+
+export function buildCodeAgentWipDraftCreatedMessage(input: {
+  readonly wip: CodeAgentWipExecutionV1;
+  readonly commit: CodeAgentWipCommit;
+  readonly selectedTaskId: string;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+  readonly totalCandidateCount?: number;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const def = getWorkspaceAiMember("prototype_build");
+  const label = codeAgentProviderLabel(input.commit.provider);
+  const taskTitle =
+    input.selectedWorkItems[0]?.title ||
+    input.commit.commitMessage.replace(/^wip\([^)]+\):\s*/i, "");
+  const scopedSummary =
+    input.totalCandidateCount !== undefined
+      ? [
+          "",
+          "TaskList 기준 WIP 후보:",
+          `- 전체 후보: ${input.totalCandidateCount}건`,
+          `- 이번 요청 대상: ${input.selectedTaskId}`,
+          `- 요청 workItems: ${input.selectedWorkItems.length}건`,
+        ]
+      : [];
+
+  return newRequirementsMessage({
+    id: `code-agent-wip-draft-${input.commit.createdAt}`,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content: [
+      "Code Agent WIP 초안이 생성되었습니다.",
+      "",
+      `실행 도구: ${label}`,
+      "상태: Stub 초안 생성 — 실제 Cursor Bridge 실행 전",
+      "",
+      "선택 작업:",
+      `- ${input.selectedTaskId} / ${taskTitle}`,
+      "",
+      "브랜치 후보:",
+      `- ${input.commit.branchName}`,
+      "",
+      "WIP Commit 초안:",
+      `- ${input.commit.commitMessage}`,
+      input.commit.sha ? `- sha: ${input.commit.sha}` : "",
+      "",
+      "diff 요약:",
+      ...input.commit.diffSummary.map((d) => `- ${d}`),
+      "",
+      "테스트 결과:",
+      ...input.commit.testResults.map((t) => `- ${t}`),
+      "",
+      "안내:",
+      "- 아직 실제 Cursor Bridge 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
+      "- 현재 결과는 실제 Cursor 실행 결과가 아니라 WIP 초안입니다.",
+      ...scopedSummary,
+      "",
+      "다음 액션을 선택해 주세요.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    meta: {
+      internalType: "CODE_AGENT_WIP_REVIEW_V1",
+      serviceDesignStage: "implementation",
+      interviewSuggestions: [...deriveCodeAgentWipReviewChips(input.wip)],
+      interviewAllowCustomInput: true,
+    },
+  });
+}
+
+export function buildCodeAgentWipBridgeCompletedMessage(input: {
   readonly wip: CodeAgentWipExecutionV1;
   readonly commit: CodeAgentWipCommit;
   readonly nowIso?: string;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const label = codeAgentProviderLabel(input.commit.provider);
+  const taskId = input.wip.selectedTaskId ?? input.commit.taskId;
   return newRequirementsMessage({
     id: `code-agent-wip-review-${input.commit.createdAt}`,
     role: "ai",
@@ -255,9 +444,13 @@ export function buildCodeAgentWipReviewMessage(input: {
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
     content: [
-      "코드 에이전트가 WIP 작업을 완료했습니다.",
+      "Cursor Bridge 실행이 완료되었습니다.",
       "",
       `실행 도구: ${label}`,
+      "상태: Cursor Bridge 완료",
+      "",
+      "선택 작업:",
+      `- ${taskId}`,
       "",
       "브랜치:",
       `- ${input.commit.branchName}`,
@@ -286,9 +479,47 @@ export function buildCodeAgentWipReviewMessage(input: {
     meta: {
       internalType: "CODE_AGENT_WIP_REVIEW_V1",
       serviceDesignStage: "implementation",
-      interviewSuggestions: [...CODE_AGENT_WIP_REVIEW_CHIPS],
+      interviewSuggestions: [...deriveCodeAgentWipReviewChips(input.wip)],
       interviewAllowCustomInput: true,
     },
+  });
+}
+
+export function buildCodeAgentWipExecutionMessage(input: {
+  readonly wip: CodeAgentWipExecutionV1;
+  readonly commit: CodeAgentWipCommit;
+  readonly selectedTaskId: string;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+  readonly totalCandidateCount?: number;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  if (
+    input.wip.bridgeExecutionStatus === "bridge_completed" &&
+    input.wip.executionMode === "cursor_bridge"
+  ) {
+    return buildCodeAgentWipBridgeCompletedMessage({
+      wip: input.wip,
+      commit: input.commit,
+      nowIso: input.nowIso,
+    });
+  }
+  return buildCodeAgentWipDraftCreatedMessage(input);
+}
+
+/** @deprecated Use buildCodeAgentWipExecutionMessage */
+export function buildCodeAgentWipReviewMessage(input: {
+  readonly wip: CodeAgentWipExecutionV1;
+  readonly commit: CodeAgentWipCommit;
+  readonly nowIso?: string;
+}): RequirementsMessage {
+  const selectedTaskId =
+    input.wip.selectedTaskId?.trim() || input.commit.taskId.trim() || "unknown";
+  return buildCodeAgentWipExecutionMessage({
+    wip: input.wip,
+    commit: input.commit,
+    selectedTaskId,
+    selectedWorkItems: [],
+    nowIso: input.nowIso,
   });
 }
 
@@ -298,6 +529,30 @@ export function buildDeveloperApprovedMessage(input: {
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   const last = input.wip.commits[input.wip.commits.length - 1];
+  const stubApproved =
+    isStubCodeAgentWipExecution(input.wip) ||
+    input.wip.bridgeExecutionStatus === "draft_approved";
+  const selectedTaskId = input.wip.selectedTaskId?.trim();
+  const content = stubApproved
+    ? [
+        "WIP 초안을 승인했습니다.",
+        "",
+        ...(selectedTaskId ? ["선택 작업:", `- ${selectedTaskId}`, ""] : []),
+        `승인 WIP commit 초안: ${last?.commitMessage ?? "(없음)"}`,
+        "",
+        "안내:",
+        "- 이번 승인은 실제 Cursor 실행 결과가 아니라 stub 초안 승인입니다.",
+        "- 다음 개발 작업을 이어서 [생성요청]할 수 있습니다.",
+        "- 실제 소스 생성이 필요하면 [Cursor 실행 요청]을 사용하세요. (Bridge 미연결 시 안내됨)",
+      ]
+    : [
+        "구현 결과를 승인했습니다.",
+        "",
+        `승인 WIP commit: ${last?.commitMessage ?? "(없음)"}`,
+        "이 WIP 결과는 공식 반영 전 검토용입니다.",
+        "",
+        "다음 단계: SCM에게 공식 반영을 요청해 주세요. (push/PR/merge는 SCM만 수행)",
+      ];
   return newRequirementsMessage({
     id: `code-agent-wip-dev-approved-${input.nowIso ?? new Date().toISOString()}`,
     role: "ai",
@@ -305,14 +560,7 @@ export function buildDeveloperApprovedMessage(input: {
     speakerId: "prototype_build",
     speakerName: def?.title ?? "AI개발자",
     messageType: "STATEMENT",
-    content: [
-      "구현 결과를 승인했습니다.",
-      "",
-      `승인 WIP commit: ${last?.commitMessage ?? "(없음)"}`,
-      "이 WIP 결과는 공식 반영 전 검토용입니다.",
-      "",
-      "다음 단계: SCM에게 공식 반영을 요청해 주세요. (push/PR/merge는 SCM만 수행)",
-    ].join("\n"),
+    content: content.join("\n"),
     createdAt: input.nowIso ?? new Date().toISOString(),
     meta: {
       internalType: "CODE_AGENT_WIP_DEV_APPROVED_V1",
@@ -357,13 +605,48 @@ export function buildScmOfficialCommitPendingMessage(input: {
   });
 }
 
+export function describeDeveloperApprovalPrecheck(
+  wip: CodeAgentWipExecutionV1 | null | undefined,
+): Readonly<{ readonly title: string; readonly lines: readonly string[] }> {
+  if (!wip) {
+    return {
+      title: "WIP 초안 또는 Cursor 실행 결과가 저장되어 있지 않습니다.",
+      lines: ["먼저 [생성요청]을 실행해 WIP 초안을 생성해 주세요."],
+    };
+  }
+  if (
+    isStubCodeAgentWipExecution(wip) &&
+    (wip.bridgeExecutionStatus === "draft_created" || wip.bridgeExecutionStatus === undefined)
+  ) {
+    return {
+      title: "WIP 초안을 승인할 수 있습니다.",
+      lines: ["단, 현재 결과는 실제 Cursor 실행 결과가 아니라 stub 초안입니다."],
+    };
+  }
+  if (wip.bridgeExecutionStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+    return {
+      title: "구현 결과를 승인할 수 있습니다.",
+      lines: [],
+    };
+  }
+  return {
+    title: "승인 전 확인이 필요합니다.",
+    lines: [`현재 bridge 상태: ${wip.bridgeExecutionStatus ?? "unknown"}`],
+  };
+}
+
 export function evaluateDeveloperApprovalGate(wip: CodeAgentWipExecutionV1 | null | undefined): Readonly<{
   allowed: boolean;
   missing: readonly string[];
 }> {
   const missing: string[] = [];
   if (!wip) {
-    missing.push("Code Agent WIP 실행 상태 없음");
+    missing.push("WIP 초안 또는 Cursor 실행 결과가 저장되어 있지 않습니다.");
+    missing.push("먼저 [생성요청]을 실행해 WIP 초안을 생성해 주세요.");
+    return { allowed: false, missing };
+  }
+  if (wip.bridgeExecutionStatus === "draft_approved") {
+    missing.push("이미 WIP 초안을 승인했습니다.");
     return { allowed: false, missing };
   }
   const okStatus = new Set<CodeAgentWipExecutionStatus>([
@@ -375,8 +658,13 @@ export function evaluateDeveloperApprovalGate(wip: CodeAgentWipExecutionV1 | nul
   if (!okStatus.has(wip.status)) missing.push(`현재 상태(${wip.status})에서는 승인 불가`);
   if (!wip.commits.length) missing.push("WIP commit 없음");
   const last = wip.commits[wip.commits.length - 1];
-  if (!last?.changedFiles.length) missing.push("변경 파일 목록 없음");
-  if (!last?.testResults.length && !last?.unresolvedIssues.some((u) => u.includes("미실행"))) {
+  if (!last?.changedFiles.length && !isStubCodeAgentWipExecution(wip)) {
+    missing.push("변경 파일 목록 없음");
+  }
+  if (
+    !last?.testResults.length &&
+    !last?.unresolvedIssues.some((u) => u.includes("미실행") || u.includes("Bridge"))
+  ) {
     missing.push("테스트 결과 또는 미실행 사유 없음");
   }
   return { allowed: missing.length === 0, missing };

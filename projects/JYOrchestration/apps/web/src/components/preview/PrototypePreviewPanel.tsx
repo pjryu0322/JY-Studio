@@ -50,6 +50,7 @@ import {
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
+import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import {
   buildWipChipHandlerSlice,
@@ -73,6 +74,7 @@ import {
   mapImplementationChipToAction,
   mergePendingImplementationPatch,
   mergePendingImplementationPatchFromOrchestration,
+  resolveOrchestrationAwareRequirementsState,
   resolveEffectiveImplementationState,
   shouldClearPendingImplementationPatch,
   type ImplementationStageActionId,
@@ -120,13 +122,13 @@ import {
 } from "@/lib/prototype/implementationIntentTimeline";
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
-import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
+import { buildGenerateImplementationTaskListFromSeedResult } from "@/lib/prototype/implementationTaskListGeneration";
 import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
   buildReworkRequestRegistrationNotice,
+  countTaskListWipCandidateTasks,
   formatTaskScopedWipExecutionBlockedNotice,
-  formatTaskScopedWipExecutionSuccessNotice,
   isImplementationReadyForReviewStage,
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
@@ -162,13 +164,22 @@ import {
   resolveAllPendingUserConfirmations,
 } from "@/lib/prototype/implementationExecutionBoardState";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
-import { markDeveloperTasksFailedForWip } from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markDeveloperTasksFailedForWip,
+  syncDeveloperTaskExecutionFromCodeAgentWip,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import { buildImplementationTaskPlanFromTaskList } from "@/lib/prototype/implementationTaskPlan";
+import { shouldUseTaskListBoardWipGate } from "@/lib/prototype/implementationTaskListBoardWipGate";
 import {
   finalizeIntegratedStageStep,
   type ImplementationIntegratedStep,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
-import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  buildCursorWorkItemsFromImplementationTaskList,
+  validateTaskScopedWorkItems,
+} from "@/lib/prototype/implementationCursorWorkItems";
 import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
@@ -493,6 +504,9 @@ export function PrototypePreviewPanel({
               orchestrationPatch.implementationTaskPlanV1?.createdAt,
               orchestrationPatch.cursorWorkItemsV1?.length,
               orchestrationPatch.codeAgentWipExecutionV1?.status,
+              orchestrationPatch.codeAgentWipExecutionV1?.requestedAt,
+              orchestrationPatch.codeAgentWipExecutionV1?.selectedTaskId,
+              orchestrationPatch.codeAgentWipExecutionV1?.bridgeExecutionStatus,
               orchestrationPatch.promptTimeline?.length,
               orchestrationPatch.implementationTaskExecutionStateV1?.updatedAt,
               orchestrationPatch.implementationTaskExecutionStateV1?.summary,
@@ -513,9 +527,10 @@ export function PrototypePreviewPanel({
               lastSavedAt: new Date().toISOString(),
             });
 
+      onRequirementsStateJsonChange?.(merged);
       void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
     },
-    [projectId, timelineCards, requirementsStateJson],
+    [projectId, timelineCards, requirementsStateJson, onRequirementsStateJsonChange],
   );
 
   const persistExecutionStateFromPrototypeRun = useCallback(
@@ -1252,6 +1267,15 @@ export function PrototypePreviewPanel({
     [requirementsStateJson],
   );
 
+  const orchestrationAwareRequirementsState = useMemo(
+    () =>
+      resolveOrchestrationAwareRequirementsState({
+        base: parsedRequirementsState,
+        pendingPatch: pendingImplementationPatch,
+      }),
+    [parsedRequirementsState, pendingImplementationPatch],
+  );
+
   const prototypeRunSyncSnapshot = useMemo(
     () =>
       deriveImplementationPrototypeRunSyncSnapshot({
@@ -1263,19 +1287,22 @@ export function PrototypePreviewPanel({
 
   const implementationStageBoardGateContext = useMemo(() => {
     const pid = projectId.trim();
-    const taskList = parsedRequirementsState.implementationTaskListV1;
+    const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
     if (!pid || !taskList) return null;
     return buildImplementationStageBoardGateContext({
       projectId: pid,
       taskList,
-      executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-      integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
-      boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
-      qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+      executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+      integratedExecutionState:
+        orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
+      boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+      qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
       previewReady: prototypeRunSyncSnapshot.previewReady,
-      implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
+      implementationReviewStageReadyV1:
+        orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
+      codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
     });
-  }, [projectId, parsedRequirementsState, prototypeRunSyncSnapshot.previewReady]);
+  }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady]);
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
@@ -1756,8 +1783,9 @@ export function PrototypePreviewPanel({
           envOk: effectiveImplementationState.envOk,
           designOk: effectiveImplementationState.designOk,
         },
+        { projectId: projectId.trim() || undefined },
       ),
-    [parsedRequirementsState, effectiveImplementationState],
+    [parsedRequirementsState, effectiveImplementationState, projectId],
   );
 
   const confirmImplementationTaskPlan = useCallback((): ImplementationStageActionRunResult => {
@@ -2107,19 +2135,23 @@ export function PrototypePreviewPanel({
       buildWipChipHandlerSlice({
         projectId,
         requirementsStateJson,
-        parsedState: parsedRequirementsState,
+        parsedState: orchestrationAwareRequirementsState,
         applyMessages: executionSingleChat.applyPersistedMessages,
         appendNotice: (text) => executionSingleChat.appendAiNotice(text),
-        persistOrchestration: (chat, orch) => void persistChatToDb(chat, orch),
+        persistOrchestration: (chat, orch) => {
+          applyPendingFromOrchestrationPatch(orch);
+          void persistChatToDb(chat, orch);
+        },
         focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
         showToast,
       }),
     [
       projectId,
       requirementsStateJson,
-      parsedRequirementsState,
+      orchestrationAwareRequirementsState,
       executionSingleChat,
       persistChatToDb,
+      applyPendingFromOrchestrationPatch,
       showToast,
     ],
   );
@@ -2320,9 +2352,58 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const generateImplementationTaskList = useCallback((): ImplementationStageActionRunResult => {
+    const pid = projectId.trim();
+    const seed = parsedRequirementsState.implementationSeedV1;
+    const result = buildGenerateImplementationTaskListFromSeedResult({
+      projectId: pid,
+      seed,
+      existingTaskList: parsedRequirementsState.implementationTaskListV1,
+      existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+      existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+      priorTimeline: parsedRequirementsState.promptTimeline,
+      projectArtifacts: executionArtifacts.projectArtifacts,
+      artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+      envOk: canRequestGeneration.envOk,
+      designOk: effectiveImplementationState.designOk,
+      envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
+      previewReady: prototypeRunSyncSnapshot.previewReady,
+    });
+    if (!result.ok) {
+      showToast(result.message);
+      return { outcome: "blocked", message: result.message };
+    }
+    void persistChatToDb(
+      resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
+      result.patch,
+    );
+    for (const message of result.messages) {
+      appendImplementationTaskListAiMessage(message);
+    }
+    showToast(
+      result.alreadyExisted
+        ? "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다."
+        : "구현 작업목록을 생성했습니다.",
+    );
+    return { outcome: "executed" };
+  }, [
+    projectId,
+    parsedRequirementsState,
+    executionArtifacts,
+    canRequestGeneration,
+    effectiveImplementationState.designOk,
+    prototypeRunSyncSnapshot.previewReady,
+    persistChatToDb,
+    requirementsStateJson,
+    appendImplementationTaskListAiMessage,
+    showToast,
+  ]);
+
   const runImplementationStageAction = useCallback(
     (actionId: ImplementationStageActionId): ImplementationStageActionRunResult => {
       switch (actionId) {
+        case "GENERATE_IMPLEMENTATION_TASK_LIST":
+          return generateImplementationTaskList();
         case "GENERATE_IMPLEMENTATION_WORK_PLAN":
           return generateImplementationWorkPlanDraft();
         case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
@@ -2385,14 +2466,40 @@ export function PrototypePreviewPanel({
           let runtimeDbStrategy = runtimeState.implementationDbStrategyV1 ?? null;
           let runtimeExecutionState = runtimeState.implementationTaskExecutionStateV1 ?? null;
 
+          if (taskList && shouldUseTaskListBoardWipGate({ taskList, executionState: runtimeExecutionState })) {
+            if (!runtimeExecutionState) {
+              runtimeExecutionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+                projectId: pid,
+                taskList,
+              });
+              runtimeState = { ...runtimeState, implementationTaskExecutionStateV1: runtimeExecutionState };
+            }
+            if (!runtimeWorkItems?.length) {
+              runtimeWorkItems = buildCursorWorkItemsFromImplementationTaskList({
+                projectId: pid,
+                taskList,
+              });
+              runtimeState = { ...runtimeState, cursorWorkItemsV1: runtimeWorkItems };
+            }
+            if (!runtimeTaskPlan) {
+              runtimeTaskPlan = buildImplementationTaskPlanFromTaskList({
+                projectId: pid,
+                taskList,
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+              });
+              runtimeState = { ...runtimeState, implementationTaskPlanV1: runtimeTaskPlan };
+            }
+          }
+
           const cursorGate = evaluateImplementationCursorGate(
             buildImplementationCursorGateContext(runtimeState, {
               envOk: effectiveImplementationState.envOk,
               designOk: effectiveImplementationState.designOk,
-            }),
+            }, { projectId: pid }),
           );
 
-          if (!cursorGate.allowed && pid && canUseTaskList) {
+          if (!cursorGate.allowed && pid && canUseTaskList && !shouldUseTaskListBoardWipGate({ taskList, executionState: runtimeExecutionState })) {
             const derived = buildTaskListDerivedWipOrchestration({
               projectId: pid,
               taskList: taskList!,
@@ -2422,17 +2529,25 @@ export function PrototypePreviewPanel({
           }
 
           const reGate = evaluateImplementationCursorGate(
-            buildImplementationCursorGateContext(runtimeState, {
-              envOk: effectiveImplementationState.envOk,
-              designOk: effectiveImplementationState.designOk,
-            }),
+            buildImplementationCursorGateContext(
+              runtimeState,
+              {
+                envOk: effectiveImplementationState.envOk,
+                designOk: effectiveImplementationState.designOk,
+              },
+              { projectId: pid },
+            ),
           );
           if (!reGate.allowed) {
             const message = formatImplementationCursorBlockedNotice(
-              buildImplementationCursorGateContext(runtimeState, {
-                envOk: effectiveImplementationState.envOk,
-                designOk: effectiveImplementationState.designOk,
-              }),
+              buildImplementationCursorGateContext(
+                runtimeState,
+                {
+                  envOk: effectiveImplementationState.envOk,
+                  designOk: effectiveImplementationState.designOk,
+                },
+                { projectId: pid },
+              ),
             );
             if (runtimeWorkItems?.length && runtimeExecutionState && taskList) {
               const failedState = markDeveloperTasksFailedForWip({
@@ -2457,12 +2572,13 @@ export function PrototypePreviewPanel({
 
           let workItemsForWip = runtimeWorkItems;
           let scopedTaskId: string | null = null;
-          let scopedWorkItemsCount = runtimeWorkItems.length;
+          let wipCandidateCount: number | undefined;
           if (taskList && runtimeExecutionState) {
             const board = buildImplementationExecutionBoardFromRequirementsState({
               projectId: pid,
               orchestration: runtimeState,
             })!;
+            wipCandidateCount = countTaskListWipCandidateTasks(board);
             const scoped = selectCursorWorkItemsForWipExecution({
               board,
               workItems: runtimeWorkItems,
@@ -2480,8 +2596,17 @@ export function PrototypePreviewPanel({
               executionSingleChat.appendAiNotice(message);
               return { outcome: "blocked", message };
             }
+            if (scopedTaskId) {
+              const scopeValidation = validateTaskScopedWorkItems({
+                selectedTaskId: scopedTaskId,
+                selectedWorkItems: scoped.selectedWorkItems,
+              });
+              if (!scopeValidation.ok) {
+                executionSingleChat.appendAiNotice(scopeValidation.message);
+                return { outcome: "blocked", message: scopeValidation.message };
+              }
+            }
             workItemsForWip = scoped.selectedWorkItems;
-            scopedWorkItemsCount = workItemsForWip.length;
           }
 
           const wipResult = executeCodeAgentWipWorkRequest(
@@ -2502,10 +2627,12 @@ export function PrototypePreviewPanel({
               executionState: runtimeExecutionState,
               selectedTaskId: scopedTaskId,
               selectedWorkItemIds: workItemsForWip.map((w) => w.id),
+              totalCandidateCount: wipCandidateCount,
             },
           );
 
           if (wipResult.kind === "blocked") {
+            executionSingleChat.appendAiNotice(wipResult.message);
             return { outcome: "blocked", message: wipResult.message };
           }
           if (wipResult.kind === "already_active") {
@@ -2513,18 +2640,7 @@ export function PrototypePreviewPanel({
             return { outcome: "executed" };
           }
 
-          const devCount = wipResult.developerTaskCount;
-          const selectedTaskId =
-            wipResult.selectedTaskId ??
-            scopedTaskId ??
-            (taskList && runtimeExecutionState
-              ? pickFirstExecutableDeveloperTaskId(
-                  buildImplementationExecutionBoardFromRequirementsState({
-                    projectId: pid,
-                    orchestration: parsedRequirementsState,
-                  })!,
-                )
-              : null);
+          const selectedTaskId = wipResult.selectedTaskId ?? scopedTaskId;
 
           if (selectedTaskId) {
             const acceptedBoardState = markReworkRequestsAcceptedForTask({
@@ -2536,18 +2652,161 @@ export function PrototypePreviewPanel({
               implementationExecutionBoardStateV1: acceptedBoardState,
             });
           }
-          const successNotice =
-            selectedTaskId && runtimeWorkItems.length
-              ? formatTaskScopedWipExecutionSuccessNotice({
-                  totalCandidateCount: runtimeWorkItems.length,
-                  selectedTaskId,
-                  selectedWorkItemsCount: scopedWorkItemsCount,
-                })
-              : devCount > 0
+          const integratedWipSummary = Boolean(scopedTaskId && wipCandidateCount !== undefined);
+          if (!integratedWipSummary) {
+            const devCount = wipResult.developerTaskCount;
+            const successNotice =
+              devCount > 0
                 ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
                 : "Code Agent WIP 작업 요청을 시작했습니다.";
-          executionSingleChat.appendAiNotice(successNotice);
-          showToast(successNotice);
+            executionSingleChat.appendAiNotice(successNotice);
+            showToast(successNotice);
+          } else {
+            showToast("Code Agent WIP 초안이 생성되었습니다.");
+          }
+          return { outcome: "executed" };
+        }
+        case "REQUEST_CURSOR_BRIDGE_EXECUTION": {
+          const pid = projectId.trim();
+          const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
+          if (!wip) {
+            const message =
+              "WIP 초안 또는 Cursor 실행 결과가 저장되어 있지 않습니다. 먼저 [생성요청]을 실행해 WIP 초안을 생성해 주세요.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const bridgeStatus = wip.bridgeExecutionStatus;
+          if (
+            bridgeStatus !== "draft_created" &&
+            bridgeStatus !== "draft_approved" &&
+            bridgeStatus !== "failed"
+          ) {
+            const message = `현재 bridge 상태(${bridgeStatus ?? "unknown"})에서는 Cursor 실행 요청을 할 수 없습니다.`;
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const selectedTaskId = wip.selectedTaskId?.trim();
+          const selectedWorkItemIds = wip.selectedWorkItemIds ?? [];
+          if (!selectedTaskId || !selectedWorkItemIds.length) {
+            const message = "WIP 실행 대상 taskId 또는 workItem이 없습니다. [생성요청]을 다시 실행해 주세요.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const bridgeWorkItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          const workItems = bridgeWorkItems.filter((w) => selectedWorkItemIds.includes(w.id));
+          const bridgeTaskList = orchestrationAwareRequirementsState.implementationTaskListV1;
+          if (!workItems.length) {
+            const message = "선택된 Cursor WorkItem을 찾을 수 없습니다.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const stubCommit = wip.commits.find((c) => c.sha?.startsWith("wip-stub"));
+          const commitMessage = stubCommit?.commitMessage ?? `wip(cursor): [${selectedTaskId}]`;
+
+          void (async () => {
+            showToast("Cursor Bridge 실행을 시작합니다...");
+            const requestedWip: typeof wip = {
+              ...wip,
+              bridgeExecutionStatus: "bridge_requested",
+            };
+            void persistChatToDb(undefined, { codeAgentWipExecutionV1: requestedWip });
+
+            try {
+              const res = await fetch("/api/prototype/cursor-bridge/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  projectId: pid,
+                  selectedTaskId,
+                  selectedWorkItemIds,
+                  workItems,
+                  branchName: wip.branchName,
+                  baseBranch: "main",
+                  commitMessage,
+                }),
+              });
+              const json = (await res.json()) as {
+                success?: boolean;
+                message?: string;
+                result?: import("@/lib/prototype/cursorBridgeExecution").CursorBridgeExecuteResult;
+              };
+              if (!json.result) {
+                const message = json.message ?? "Cursor Bridge API 응답이 올바르지 않습니다.";
+                executionSingleChat.appendAiNotice(message);
+                showToast(message);
+                return;
+              }
+              const orchestration = buildCursorBridgeOrchestrationResult({
+                requirementsStateJson,
+                wip: requestedWip,
+                bridgeResult: json.result,
+                promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
+              });
+              if (orchestration.kind === "blocked" || orchestration.kind === "failed") {
+                if (orchestration.orchestrationPatch) {
+                  applyImplementationOrchestrationResult({
+                    messages: orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+                    orchestrationPatch: orchestration.orchestrationPatch,
+                  });
+                } else {
+                  executionSingleChat.appendAiNotice(orchestration.message);
+                }
+                showToast(orchestration.message);
+                return;
+              }
+              if (orchestration.chatPatch && orchestration.orchestrationPatch) {
+                const approvedWip = orchestration.orchestrationPatch.codeAgentWipExecutionV1;
+                const executionState = syncDeveloperTaskExecutionFromCodeAgentWip({
+                  state: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+                  taskList: bridgeTaskList ?? undefined,
+                  cursorWorkItems: bridgeWorkItems,
+                  codeAgentWipExecutionV1: approvedWip,
+                  projectId: pid,
+                });
+                applyImplementationOrchestrationResult({
+                  messages: orchestration.chatPatch.messages,
+                  orchestrationPatch: {
+                    ...orchestration.orchestrationPatch,
+                    ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
+                  },
+                });
+                if (selectedTaskId) {
+                  const acceptedBoardState = markReworkRequestsAcceptedForTask({
+                    state: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+                    projectId: pid,
+                    taskId: selectedTaskId,
+                  });
+                  void persistChatToDb(undefined, {
+                    implementationExecutionBoardStateV1: acceptedBoardState,
+                  });
+                }
+                const board = buildImplementationExecutionBoardFromRequirementsState({
+                  projectId: pid,
+                  orchestration: {
+                    ...orchestrationAwareRequirementsState,
+                    codeAgentWipExecutionV1: approvedWip,
+                    implementationTaskExecutionStateV1: executionState ?? undefined,
+                  },
+                });
+                if (board) {
+                  appendImplementationTaskListAiMessage(
+                    buildImplementationExecutionBoardMessage({
+                      board,
+                      nowIso: new Date().toISOString(),
+                      previewReady: prototypeRunSyncSnapshot.previewReady,
+                      codeAgentWipExecutionV1: approvedWip,
+                    }),
+                  );
+                }
+                showToast(orchestration.message);
+              }
+            } catch (e) {
+              const message = e instanceof Error ? e.message : String(e);
+              executionSingleChat.appendAiNotice(`Cursor Bridge 실행 오류: ${message}`);
+              showToast(message);
+            }
+          })();
+
           return { outcome: "executed" };
         }
         case "RESOLVE_USER_CONFIRMATION": {
@@ -2850,6 +3109,7 @@ export function PrototypePreviewPanel({
     },
     [
       applyImplementationStageActionExecutionResult,
+      generateImplementationTaskList,
       generateImplementationWorkPlanDraft,
       confirmImplementationTaskPlan,
       reviewDbIntegrationNeed,
@@ -2863,6 +3123,7 @@ export function PrototypePreviewPanel({
       appendImplementationTaskListAiMessage,
       chatInputRef,
       parsedRequirementsState,
+      orchestrationAwareRequirementsState,
       projectId,
       requirementsStateJson,
       effectiveImplementationState,
@@ -2942,18 +3203,7 @@ export function PrototypePreviewPanel({
             window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
           },
           generateTaskListFromSeed: () => {
-            const seed = parsedRequirementsState.implementationSeedV1;
-            const pid = projectId.trim();
-            if (!seed?.readiness?.ready || !pid) {
-              showToast("구현 Seed가 준비된 뒤 작업목록을 생성할 수 있습니다.");
-              return;
-            }
-            const built = buildImplementationTaskListFromSeed({ projectId: pid, seed });
-            void persistChatToDb(
-              resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
-              { implementationTaskListV1: built },
-            );
-            showToast("구현 작업목록을 생성했습니다.");
+            void generateImplementationTaskList();
           },
           showToast,
         });

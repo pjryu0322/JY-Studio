@@ -1,5 +1,6 @@
 import {
   buildCodeAgentWipTimelineEntry,
+  describeDeveloperApprovalPrecheck,
   evaluateDeveloperApprovalGate,
 } from "@/lib/prototype/codeAgentWipExecution";
 import {
@@ -11,7 +12,10 @@ import {
   REFACTOR_REQUEST_PROMPT,
   type CodeAgentWipChatPatch,
 } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
-import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  validateTaskScopedWorkItems,
+  type CursorWorkItem,
+} from "@/lib/prototype/implementationCursorWorkItems";
 import {
   markDeveloperTasksInProgressForWip,
   markPostDeveloperReviewTasksQueued,
@@ -132,6 +136,7 @@ export function executeCodeAgentWipWorkRequest(
     readonly executionState?: ImplementationTaskExecutionStateV1 | null;
     readonly selectedTaskId?: string | null;
     readonly selectedWorkItemIds?: readonly string[];
+    readonly totalCandidateCount?: number;
   },
 ): ExecuteCodeAgentWipWorkRequestResult {
   const pid = deps.projectId.trim();
@@ -140,6 +145,17 @@ export function executeCodeAgentWipWorkRequest(
       kind: "blocked",
       message: "먼저 구현 작업목록 또는 작업 계획을 준비해 주세요.",
     };
+  }
+
+  const selectedTaskId = runtime.selectedTaskId?.trim() || runtime.workItems[0]?.taskId?.trim() || "";
+  if (selectedTaskId) {
+    const validation = validateTaskScopedWorkItems({
+      selectedTaskId,
+      selectedWorkItems: runtime.workItems,
+    });
+    if (!validation.ok) {
+      return { kind: "blocked", message: validation.message };
+    }
   }
 
   const result = buildRequestCodeAgentWipWorkResult({
@@ -151,10 +167,14 @@ export function executeCodeAgentWipWorkRequest(
     promptTimeline: deps.parsedState.promptTimeline,
     selectedTaskId: runtime.selectedTaskId,
     selectedWorkItemIds: runtime.selectedWorkItemIds,
+    totalCandidateCount: runtime.totalCandidateCount,
   });
 
   if (result.kind === "already_active") {
     return { kind: "already_active" };
+  }
+  if (result.kind === "blocked") {
+    return { kind: "blocked", message: result.message };
   }
 
   const wip = result.orchestrationPatch.codeAgentWipExecutionV1;
@@ -275,7 +295,8 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         promptTimeline: deps.parsedState.promptTimeline,
       });
       if (result.kind === "blocked") {
-        appendBlockedNotice(deps, "구현 결과 승인 조건이 충족되지 않았습니다.", result.missing);
+        const precheck = describeDeveloperApprovalPrecheck(wip);
+        appendBlockedNotice(deps, precheck.title, [...precheck.lines, ...result.missing]);
         return;
       }
       const approvedWip = result.orchestrationPatch.codeAgentWipExecutionV1;
@@ -350,9 +371,11 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       });
     },
     canApproveDeveloperResult: () => {
-      const gate = evaluateDeveloperApprovalGate(deps.parsedState.codeAgentWipExecutionV1);
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
+      const precheck = describeDeveloperApprovalPrecheck(wip);
+      const gate = evaluateDeveloperApprovalGate(wip);
       if (!gate.allowed) {
-        appendBlockedNotice(deps, "구현 결과 승인 전 확인이 필요합니다.", gate.missing);
+        appendBlockedNotice(deps, precheck.title, [...precheck.lines, ...gate.missing]);
         return false;
       }
       return true;

@@ -95,7 +95,8 @@ export function tryHandlePrototypeExecutionChip(
     case "추가 수정 요청":
       handlers.requestAdditionalEdit();
       return true;
-    case "구현 결과 승인": {
+    case "구현 결과 승인":
+    case "WIP 초안 승인": {
       if (!handlers.canApproveDeveloperResult()) return true;
       handlers.approveDeveloperResult();
       return true;

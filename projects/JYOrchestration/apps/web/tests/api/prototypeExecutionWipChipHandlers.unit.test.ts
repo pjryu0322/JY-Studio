@@ -391,6 +391,35 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(exec?.items.find((i) => i.taskId === "scm-1")?.status).toBe("ready");
   });
 
+  it("canApproveDeveloperResult accepts draft_created wip in parsed state", () => {
+    const appendNotice = vi.fn();
+    const wip: CodeAgentWipExecutionV1 = {
+      ...wipForReview(),
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_created",
+      selectedTaskId: "dev-1",
+    };
+    const { canApproveDeveloperResult } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: sampleTaskList(),
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: wip,
+        implementationTaskExecutionStateV1: undefined,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice,
+      persistOrchestration: vi.fn(),
+      focusComposer: vi.fn(),
+      showToast: vi.fn(),
+    });
+    expect(canApproveDeveloperResult()).toBe(true);
+    expect(appendNotice).not.toHaveBeenCalled();
+  });
+
   it("requestScmOfficialCommit persists scm task in_progress", () => {
     const showToast = vi.fn();
     const persistOrchestration = vi.fn();

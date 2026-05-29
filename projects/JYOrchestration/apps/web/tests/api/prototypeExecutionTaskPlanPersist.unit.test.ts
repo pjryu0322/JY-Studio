@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
+import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
+import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildPrototypeExecutionOrchestrationPersistPatch } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationStageActionRun } from "@/lib/prototype/implementationStageActionRun";
 import { buildInitialImplementationTaskExecutionStateFromTaskList } from "@/lib/prototype/implementationTaskExecutionState";
 import { buildMockImplementationQualityGateResult } from "@/lib/prototype/implementationQualityGate";
@@ -98,6 +102,36 @@ describe("buildPrototypeExecutionOrchestrationPersistPatch", () => {
       implementationQualityGateResultsV1: [gate],
     });
     expect(patch.implementationQualityGateResultsV1?.[0]?.role).toBe("reviewer");
+  });
+
+  it("includes codeAgentWipExecutionV1 in orchestration patch", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["upload"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const taskId = plan.items[0]?.id ?? "";
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({
+        projectId: "p1",
+        plan,
+        workItems,
+        selectedTaskId: taskId,
+        executionMode: "stub",
+        bridgeExecutionStatus: "draft_created",
+      }),
+      status: "developer_reviewing" as const,
+      selectedTaskId: taskId,
+      selectedWorkItemIds: [workItems[0]?.id ?? ""],
+    };
+    const patch = buildPrototypeExecutionOrchestrationPersistPatch({}, { codeAgentWipExecutionV1: wip });
+    const parsed = parseRequirementsStateJson(patch);
+    expect(parsed.codeAgentWipExecutionV1?.executionMode).toBe("stub");
+    expect(parsed.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe("draft_created");
+    expect(parsed.codeAgentWipExecutionV1?.selectedTaskId).toBe(taskId);
   });
 });
 

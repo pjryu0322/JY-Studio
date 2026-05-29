@@ -5,6 +5,7 @@ import {
 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
   enrichCursorWorkItemsWithBoardReworkContext,
+  validateTaskScopedWorkItems,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -24,6 +25,26 @@ const baseWorkItem: CursorWorkItem = {
   blockers: [],
   qualityGate: { score: 1, promptReady: true, missing: [] },
 };
+
+describe("validateTaskScopedWorkItems", () => {
+  it("passes when all workItems match selectedTaskId", () => {
+    const result = validateTaskScopedWorkItems({
+      selectedTaskId: "dev-1",
+      selectedWorkItems: [baseWorkItem],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("fails when any workItem taskId differs", () => {
+    const result = validateTaskScopedWorkItems({
+      selectedTaskId: "dev-1",
+      selectedWorkItems: [{ ...baseWorkItem, taskId: "dev-2" }],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("일치하지 않습니다");
+  });
+});
 
 describe("enrichCursorWorkItemsWithBoardReworkContext", () => {
   it("active rework request is injected into selected workItem prompt", () => {

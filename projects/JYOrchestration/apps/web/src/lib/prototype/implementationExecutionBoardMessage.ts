@@ -2,54 +2,29 @@ import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
   boardShowsRequestTaskReworkChip,
   buildImplementationReviewStageReadinessNotice,
-  deriveIntegratedStageInterviewChips,
   formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,
   formatImplementationExecutionBoardTaskLine,
-  isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { formatCodeAgentExecutionModeDiagnosticLines } from "@/lib/prototype/codeAgentWipExecution";
+import { formatCursorBridgeAvailabilityDiagnosticLines } from "@/lib/prototype/cursorBridgeRuntime";
+import { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
   buildImplementationUserTestSummaryLines,
   deriveImplementationUserTestReadiness,
 } from "@/lib/prototype/implementationUserTestReadiness";
+import { formatImplementationTaskListRoleSummaryLines } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
 import {
-  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
-  AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-
-const ROLE_LABEL_KO: Readonly<Record<string, string>> = {
-  developer: "AI 개발자",
-  reviewer: "AI 검수자",
-  security: "AI 보안관",
-  scm: "SCM",
-  refactor_common: "리팩토링/공통화",
-  integrated_review: "통합 검수",
-  integrated_security: "통합 보안 점검",
-  final_scm: "최종 SCM 반영",
-};
-
-function formatCurrentRunningLine(board: ImplementationExecutionBoardV1): string | null {
-  if (board.currentTaskId && board.currentStep && board.currentStep in ROLE_LABEL_KO) {
-    const row = board.taskRows.find((r) => r.taskId === board.currentTaskId);
-    const roleLabel = ROLE_LABEL_KO[board.currentStep] ?? board.currentStep;
-    return `${board.currentTaskId} / ${roleLabel} / ${row?.statusLabel ?? "진행 중"}`;
-  }
-  if (board.currentStep && board.currentStep in ROLE_LABEL_KO) {
-    const roleLabel = ROLE_LABEL_KO[board.currentStep] ?? board.currentStep;
-    return `${roleLabel} / ${board.integratedRows.find((r) => r.step === board.currentStep)?.status ?? "ready"}`;
-  }
-  return null;
-}
 
 export function buildImplementationExecutionBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1;
@@ -57,15 +32,15 @@ export function buildImplementationExecutionBoardMessage(input: {
   readonly previewReady?: boolean;
   readonly hasExecutionState?: boolean;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly includeTaskSummary?: boolean;
+  readonly envOk?: boolean;
+  readonly codeAgentWipExecutionV1?: import("@/lib/prototype/codeAgentWipExecution").CodeAgentWipExecutionV1 | null;
 }): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
-  const currentLine = formatCurrentRunningLine(input.board);
   const taskLines = input.board.taskRows.map(formatImplementationExecutionBoardTaskLine);
   const integratedLines = input.board.integratedRows.map(formatImplementationExecutionBoardIntegratedLine);
 
-  const hasFailed = input.board.summary.failedTasks > 0;
-  const integratedChips = deriveIntegratedStageInterviewChips(input.board);
-  const executionTargetLines = formatBoardExecutionTargetLines(input.board);
   const previewReady = input.previewReady === true;
   const testReadiness = deriveImplementationUserTestReadiness({
     board: input.board,
@@ -83,29 +58,30 @@ export function buildImplementationExecutionBoardMessage(input: {
     board: input.board,
     previewReady,
   });
-  const reviewReady = testReadiness.reviewStageMoveAllowed;
-  const showReworkChip = boardShowsRequestTaskReworkChip(input.board);
-  const chips = [
-    IMPLEMENTATION_GENERATION_REQUEST_CHIP,
-    ...integratedChips,
-    ...(reviewReady ? [MOVE_TO_REVIEW_STAGE_CHIP] : []),
-    ...(showReworkChip ? [REQUEST_TASK_REWORK_CHIP] : []),
-    TASK_LIST_VIEW_CHIP,
-    ...(input.board.summary.userConfirmationRequired > 0
-      ? [IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP]
-      : []),
-    ...(hasFailed || showReworkChip
-      ? [AI_DEVELOPER_REMEDIATION_REQUEST_CHIP]
-      : [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP]),
-  ];
+  const executionTargetLines = formatBoardExecutionTargetLines(input.board);
+  const chips = deriveImplementationBoardInterviewChips({
+    board: input.board,
+    envOk: input.envOk,
+    previewReady,
+    hasExecutionState: input.hasExecutionState,
+    boardState: input.boardState,
+  });
+
+  const headline =
+    input.includeTaskSummary === true
+      ? "구현 작업목록이 준비되었습니다."
+      : "구현 작업 보드입니다.";
+
+  const summarySection =
+    input.includeTaskSummary === true && input.taskList
+      ? ["", "작업 요약:", ...formatImplementationTaskListRoleSummaryLines(input.taskList), ""]
+      : [];
 
   const content = [
-    "구현 작업 보드입니다.",
-    "",
-    ...(executionTargetLines.length ? [...executionTargetLines, ""] : []),
-    ...(currentLine && !executionTargetLines.some((line) => line.startsWith("현재 실행 중"))
-      ? [`현재 실행 중:`, currentLine, ""]
-      : []),
+    headline,
+    ...summarySection,
+    ...(executionTargetLines.length ? executionTargetLines : []),
+    ...(executionTargetLines.length ? [""] : []),
     "작업 목록:",
     "TASK ID | 작업 | 개발자 | 검수자 | 보안관 | SCM | 사용자 확인 | 재작업 | 상태",
     ...(taskLines.length ? taskLines : ["(개발자 작업이 없습니다)"]),
@@ -114,6 +90,9 @@ export function buildImplementationExecutionBoardMessage(input: {
     ...(integratedLines.length ? integratedLines : ["(통합 단계 없음)"]),
     "",
     ...testSummaryLines,
+    "",
+    ...formatCodeAgentExecutionModeDiagnosticLines(input.codeAgentWipExecutionV1),
+    ...formatCursorBridgeAvailabilityDiagnosticLines(),
     "",
     ...(reviewReadinessNotice ? [reviewReadinessNotice, ""] : []),
     ...(testReadiness.ready ? [] : [`진단: ${testReadiness.message}`, ""]),

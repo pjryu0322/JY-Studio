@@ -185,6 +185,23 @@ describe("buildImplementationExecutionBoardMessage", () => {
 });
 
 describe("implementation stage CTA regression", () => {
+  it("confirmed seed without taskList → GENERATE_IMPLEMENTATION_TASK_LIST primary", () => {
+    const seed = makeSeedForBoard();
+    const taskList = buildImplementationTaskListFromSeed({ projectId: "p1", seed });
+    const actions = deriveImplementationStageNextActions(
+      "task_list_ready",
+      null,
+      null,
+      null,
+      {
+        implementationSeedV1: seed,
+        implementationTaskListV1: null,
+      },
+    );
+    expect(actions[0]?.actionId).toBe("GENERATE_IMPLEMENTATION_TASK_LIST");
+    expect(actions[0]?.label).toBe("구현 작업목록 생성");
+  });
+
   it("taskList exists → no work plan draft primary", () => {
     const taskList = buildImplementationTaskListFromSeed({ projectId: "p1", seed: makeSeedForBoard() });
     const executionState = buildInitialImplementationTaskExecutionStateFromTaskList({

@@ -35,6 +35,26 @@ export type CursorWorkItem = Readonly<{
   qualityGate: CursorWorkItemQualityGate;
 }>;
 
+export function validateTaskScopedWorkItems(input: {
+  readonly selectedTaskId: string;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+}): Readonly<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+  const selectedTaskId = input.selectedTaskId.trim();
+  if (!selectedTaskId) {
+    return { ok: false, message: "WIP 실행 대상 taskId가 비어 있습니다." };
+  }
+  if (!input.selectedWorkItems.length) {
+    return { ok: false, message: `${selectedTaskId}에 해당하는 Cursor WorkItem이 없습니다.` };
+  }
+  if (input.selectedWorkItems.some((item) => item.taskId !== selectedTaskId)) {
+    return {
+      ok: false,
+      message: "선택된 WIP 작업의 taskId가 실행 대상 taskId와 일치하지 않습니다.",
+    };
+  }
+  return { ok: true };
+}
+
 export function collectCursorWorkItemGateMissing(item: CursorWorkItem): readonly string[] {
   const missing: string[] = [];
   if (!item.testCommands.length) missing.push(`${item.title}: 테스트 명령 없음`);
