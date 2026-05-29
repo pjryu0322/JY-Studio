@@ -7,7 +7,11 @@ import {
   formatBoardExecutionTargetLines,
   isImplementationBoardComplete,
   pickFirstExecutableDeveloperTaskId,
+  pickQualityGateTargetTaskIds,
+  pickTaskIdForReworkRequest,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
+import { REQUEST_TASK_REWORK_CHIP } from "@/lib/requirements/implementationUxLabels";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -738,5 +742,67 @@ describe("implementationExecutionBoard", () => {
       nowIso: NOW,
     });
     expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+  });
+
+  it("pickTaskIdForReworkRequest prefers quality-failed task", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-2"],
+      },
+    ];
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.ownerRole === "developer" ? { ...task, dependencies: [] as string[] } : task,
+      ),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(pickTaskIdForReworkRequest(board)).toBe("dev-2");
+  });
+
+  it("pickQualityGateTargetTaskIds returns failed reviewer tasks first", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-2"],
+      },
+    ];
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.ownerRole === "developer" ? { ...task, dependencies: [] as string[] } : task,
+      ),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(pickQualityGateTargetTaskIds({ role: "reviewer", board })).toEqual(["dev-2"]);
+  });
+
+  it("mapImplementationChipToAction maps 작업 재작업 요청 to REQUEST_TASK_REWORK", () => {
+    expect(mapImplementationChipToAction(REQUEST_TASK_REWORK_CHIP)).toBe("REQUEST_TASK_REWORK");
   });
 });

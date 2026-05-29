@@ -14,7 +14,7 @@ import {
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import { getActiveReworkRequestsForTask } from "@/lib/prototype/implementationExecutionBoardState";
 import {
-  getLatestImplementationQualityGateResultForRole,
+  formatImplementationQualityGateFailureLinesForTask,
   type ImplementationQualityGateResultV1,
 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
@@ -200,28 +200,6 @@ export function evaluateCursorExecutionRequestGate(input: CursorExecutionRequest
   return { allowed: uniq.length === 0, missing: uniq };
 }
 
-function formatQualityGateFailureLines(input: {
-  readonly taskId: string;
-  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
-  readonly role: "reviewer" | "security";
-  readonly roleLabel: string;
-}): readonly string[] {
-  const latest = getLatestImplementationQualityGateResultForRole(
-    input.qualityGateResults,
-    input.role,
-  );
-  if (!latest || latest.status !== "failed" || !latest.failedTaskIds.includes(input.taskId)) {
-    return [];
-  }
-  const lines: string[] = [`- ${input.roleLabel}: ${latest.summary}`];
-  for (const check of latest.checks) {
-    if (check.status !== "failed") continue;
-    if (check.targetTaskIds?.length && !check.targetTaskIds.includes(input.taskId)) continue;
-    lines.push(`  - ${check.title}${check.detail ? `: ${check.detail}` : ""}`);
-  }
-  return lines;
-}
-
 export function enrichCursorWorkItemsWithBoardReworkContext(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
@@ -231,13 +209,13 @@ export function enrichCursorWorkItemsWithBoardReworkContext(input: {
     const reworkLines = getActiveReworkRequestsForTask(input.boardState, item.taskId).map(
       (r) => `  - [${r.targetRole}] ${r.reason}`,
     );
-    const reviewerLines = formatQualityGateFailureLines({
+    const reviewerLines = formatImplementationQualityGateFailureLinesForTask({
       taskId: item.taskId,
       qualityGateResults: input.qualityGateResults,
       role: "reviewer",
       roleLabel: "AI 검수자",
     });
-    const securityLines = formatQualityGateFailureLines({
+    const securityLines = formatImplementationQualityGateFailureLinesForTask({
       taskId: item.taskId,
       qualityGateResults: input.qualityGateResults,
       role: "security",

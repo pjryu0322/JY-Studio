@@ -36,6 +36,10 @@ import {
   RUN_INTEGRATED_REVIEW_CHIP,
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
+  IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
+  MOVE_TO_REVIEW_STAGE_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 
 export type ImplementationStageActionId =
@@ -59,7 +63,8 @@ export type ImplementationStageActionId =
   | "RUN_FINAL_SCM"
   | "RESOLVE_USER_CONFIRMATION"
   | "SHOW_USER_CONFIRMATION_ITEMS"
-  | "MOVE_TO_REVIEW_STAGE";
+  | "MOVE_TO_REVIEW_STAGE"
+  | "REQUEST_TASK_REWORK";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -252,6 +257,8 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "SHOW_USER_CONFIRMATION_ITEMS";
     case MOVE_TO_REVIEW_STAGE_CHIP:
       return "MOVE_TO_REVIEW_STAGE";
+    case REQUEST_TASK_REWORK_CHIP:
+      return "REQUEST_TASK_REWORK";
     default:
       return null;
   }

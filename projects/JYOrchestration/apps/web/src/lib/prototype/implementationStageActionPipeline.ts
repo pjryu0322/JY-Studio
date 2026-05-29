@@ -9,7 +9,8 @@ import {
   type ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
-  buildImplementationExecutionBoard,
+  buildImplementationExecutionBoardFromOrchestration,
+  isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -40,7 +41,7 @@ export function buildImplementationStageBoardGateContext(input: {
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   return {
-    board: buildImplementationExecutionBoard({
+    board: buildImplementationExecutionBoardFromOrchestration({
       projectId: input.projectId,
       taskList: input.taskList,
       executionState: input.executionState,
@@ -311,7 +312,9 @@ export function buildStageActionRunCompletionTimelineEntries(
   const message =
     runResult.outcome === "blocked"
       ? runResult.message
-      : (runResult.message ?? runResult.outcome);
+      : runResult.outcome === "no_op"
+        ? (runResult.message ?? runResult.outcome)
+        : runResult.outcome;
   return [
     routed,
     buildImplementationStageActionTimelineEntry({
@@ -408,8 +411,29 @@ export function evaluateImplementationStageActionGate(
     case "EDIT_IMPLEMENTATION_SCOPE":
     case "RESOLVE_USER_CONFIRMATION":
     case "SHOW_USER_CONFIRMATION_ITEMS":
-    case "MOVE_TO_REVIEW_STAGE":
       return { ok: true };
+    case "MOVE_TO_REVIEW_STAGE": {
+      if (!boardContext) {
+        return { ok: false, message: "구현 작업 보드가 준비된 뒤 검토단계로 이동할 수 있습니다." };
+      }
+      if (!isImplementationReadyForReviewStage(boardContext)) {
+        return {
+          ok: false,
+          message:
+            "모든 작업·통합 단계가 완료되고 Preview가 준비된 뒤 검토단계로 이동할 수 있습니다.",
+        };
+      }
+      return { ok: true };
+    }
+    case "REQUEST_TASK_REWORK": {
+      if (!isTaskListReadyForImplementationStageActions(state)) {
+        return { ok: false, message: "구현 작업목록이 준비된 뒤 재작업 요청을 등록할 수 있습니다." };
+      }
+      if (!boardContext) {
+        return { ok: false, message: "구현 작업 보드가 준비된 뒤 재작업 요청을 등록할 수 있습니다." };
+      }
+      return { ok: true };
+    }
     case "RUN_REVIEWER_CHECK":
     case "RUN_SECURITY_CHECK": {
       if (!isTaskListReadyForImplementationStageActions(state)) {

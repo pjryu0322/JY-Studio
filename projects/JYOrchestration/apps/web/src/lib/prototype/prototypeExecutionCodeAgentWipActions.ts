@@ -48,6 +48,8 @@ export function buildRequestCodeAgentWipWorkResult(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly existingWip: CodeAgentWipExecutionV1 | null | undefined;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly selectedTaskId?: string | null;
+  readonly selectedWorkItemIds?: readonly string[];
   readonly nowIso?: string;
 }):
   | Readonly<{ readonly kind: "already_active" }>
@@ -63,13 +65,24 @@ export function buildRequestCodeAgentWipWorkResult(input: {
   const prior = resolved.messages ?? [];
   const now = input.nowIso ?? new Date().toISOString();
 
+  const selectedTaskId = input.selectedTaskId?.trim() || input.workItems[0]?.taskId?.trim() || undefined;
+  const selectedWorkItemIds =
+    input.selectedWorkItemIds?.length
+      ? input.selectedWorkItemIds
+      : input.workItems.map((w) => w.id);
+
   let wip = buildInitialCodeAgentWipExecution({
     projectId: input.projectId,
     plan: input.plan,
     workItems: input.workItems,
     nowIso: now,
   });
-  wip = { ...wip, status: "drafting" };
+  wip = {
+    ...wip,
+    status: "drafting",
+    ...(selectedTaskId ? { selectedTaskId } : {}),
+    ...(selectedWorkItemIds.length ? { selectedWorkItemIds } : {}),
+  };
 
   const stubCommit = buildStubCodeAgentWipCommit({ wip, plan: input.plan, workItems: input.workItems, nowIso: now });
   wip = applyStubWipCommitToExecution(wip, stubCommit);

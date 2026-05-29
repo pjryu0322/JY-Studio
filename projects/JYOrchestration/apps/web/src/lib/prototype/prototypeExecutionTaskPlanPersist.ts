@@ -9,6 +9,7 @@ import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implemen
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
@@ -88,6 +89,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
   readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
+  readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -144,6 +146,9 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1: input.implementationExecutionBoardStateV1 }
+      : {}),
+    ...(input.implementationReviewStageReadyV1 !== undefined
+      ? { implementationReviewStageReadyV1: input.implementationReviewStageReadyV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),

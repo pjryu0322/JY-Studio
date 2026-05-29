@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildInitialImplementationIntegratedExecutionState } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import { buildPrototypeExecutionOrchestrationPersistPatch } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -104,5 +105,17 @@ describe("requirementsStateJson implementation execution board state", () => {
       implementationExecutionBoardStateV1: boardState ?? null,
     });
     expect(merged.implementationExecutionBoardStateV1?.reworkRequests[0]?.requestId).toBe("rw-1");
+  });
+
+  it("parseRequirementsStateJson preserves implementationReviewStageReadyV1", () => {
+    const marker = buildImplementationReviewStageReadyMarker({
+      previewReady: true,
+      nowIso: NOW,
+    });
+    const state = parseRequirementsStateJson({
+      implementationReviewStageReadyV1: marker,
+    });
+    expect(state.implementationReviewStageReadyV1?.ready).toBe(true);
+    expect(state.implementationReviewStageReadyV1?.previewReady).toBe(true);
   });
 });

@@ -27,9 +27,10 @@ import {
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import {
-  buildImplementationExecutionBoard,
+  buildImplementationExecutionBoardFromRequirementsState,
   buildNextDeveloperTaskContinuationNotice,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { markReworkRequestsDoneForTask } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -59,7 +60,12 @@ export type WipChipHandlerDeps = Readonly<{
 }>;
 
 export type ExecuteCodeAgentWipWorkRequestResult =
-  | Readonly<{ readonly kind: "created"; readonly developerTaskCount: number }>
+  | Readonly<{
+      readonly kind: "created";
+      readonly developerTaskCount: number;
+      readonly selectedTaskId?: string;
+      readonly selectedWorkItemIds?: readonly string[];
+    }>
   | Readonly<{ readonly kind: "already_active" }>
   | Readonly<{ readonly kind: "blocked"; readonly message: string }>;
 
@@ -124,6 +130,8 @@ export function executeCodeAgentWipWorkRequest(
     readonly workItems: readonly CursorWorkItem[];
     readonly taskList?: ImplementationTaskListV1;
     readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+    readonly selectedTaskId?: string | null;
+    readonly selectedWorkItemIds?: readonly string[];
   },
 ): ExecuteCodeAgentWipWorkRequestResult {
   const pid = deps.projectId.trim();
@@ -141,6 +149,8 @@ export function executeCodeAgentWipWorkRequest(
     workItems: runtime.workItems,
     existingWip: deps.parsedState.codeAgentWipExecutionV1,
     promptTimeline: deps.parsedState.promptTimeline,
+    selectedTaskId: runtime.selectedTaskId,
+    selectedWorkItemIds: runtime.selectedWorkItemIds,
   });
 
   if (result.kind === "already_active") {
@@ -170,7 +180,12 @@ export function executeCodeAgentWipWorkRequest(
     executionState: executionState ?? undefined,
   });
 
-  return { kind: "created", developerTaskCount };
+  return {
+    kind: "created",
+    developerTaskCount,
+    ...(wip.selectedTaskId ? { selectedTaskId: wip.selectedTaskId } : {}),
+    ...(wip.selectedWorkItemIds?.length ? { selectedWorkItemIds: wip.selectedWorkItemIds } : {}),
+  };
 }
 
 export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
@@ -271,16 +286,23 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         ...result,
         executionState,
       });
+      if (approvedWip.selectedTaskId?.trim()) {
+        const boardStatePatch = markReworkRequestsDoneForTask({
+          state: deps.parsedState.implementationExecutionBoardStateV1,
+          projectId: deps.projectId,
+          taskId: approvedWip.selectedTaskId,
+        });
+        deps.persistOrchestration(undefined, {
+          implementationExecutionBoardStateV1: boardStatePatch,
+        });
+      }
       const taskList = deps.parsedState.implementationTaskListV1;
       if (taskList && executionState) {
-        const board = buildImplementationExecutionBoard({
+        const board = buildImplementationExecutionBoardFromRequirementsState({
           projectId: deps.projectId,
-          taskList,
-          executionState,
-          integratedExecutionState: deps.parsedState.implementationIntegratedExecutionStateV1,
-          boardState: deps.parsedState.implementationExecutionBoardStateV1,
-          qualityGateResults: deps.parsedState.implementationQualityGateResultsV1,
+          orchestration: deps.parsedState,
         });
+        if (!board) return;
         const notice = buildNextDeveloperTaskContinuationNotice(board);
         if (notice) deps.appendNotice(notice);
       }

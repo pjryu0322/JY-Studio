@@ -127,6 +127,9 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
   const refactorRequests = refactorRaw
     .map((r) => parseRefactorRequest(r, provider))
     .filter((r): r is CodeAgentRefactorRequest => Boolean(r));
+  const selectedTaskId =
+    typeof o.selectedTaskId === "string" && o.selectedTaskId.trim() ? o.selectedTaskId.trim() : undefined;
+  const selectedWorkItemIds = parseStringArray(o.selectedWorkItemIds);
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -139,6 +142,8 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     commits,
     developerReview: parseDeveloperReview(o.developerReview),
     refactorRequests,
+    ...(selectedTaskId ? { selectedTaskId } : {}),
+    ...(selectedWorkItemIds.length ? { selectedWorkItemIds } : {}),
   };
 }
 

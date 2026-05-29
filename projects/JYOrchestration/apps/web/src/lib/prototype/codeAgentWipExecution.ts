@@ -98,6 +98,9 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   commits: readonly CodeAgentWipCommit[];
   developerReview?: CodeAgentDeveloperReview;
   refactorRequests: readonly CodeAgentRefactorRequest[];
+  /** Task-scoped WIP selection from execution board. */
+  selectedTaskId?: string;
+  selectedWorkItemIds?: readonly string[];
 }>;
 
 export { codeAgentIsNotSingleChatMember };

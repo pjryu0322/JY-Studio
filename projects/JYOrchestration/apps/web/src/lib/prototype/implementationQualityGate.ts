@@ -149,13 +149,122 @@ export function formatImplementationQualityGateResultLines(
   return lines;
 }
 
+/** Task-scoped failure lines for WIP prompt enrichment (reviewer/security). */
+export function formatImplementationQualityGateFailureLinesForTask(input: {
+  readonly taskId: string;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly role: ImplementationQualityGateRole;
+  readonly roleLabel: string;
+}): readonly string[] {
+  const latest = getLatestImplementationQualityGateResultForRole(
+    input.qualityGateResults,
+    input.role,
+  );
+  if (!latest || latest.status !== "failed" || !latest.failedTaskIds.includes(input.taskId)) {
+    return [];
+  }
+  const lines: string[] = [`- ${input.roleLabel}: ${latest.summary}`];
+  for (const check of latest.checks) {
+    if (check.status !== "failed") continue;
+    if (check.targetTaskIds?.length && !check.targetTaskIds.includes(input.taskId)) continue;
+    lines.push(`  - ${check.title}${check.detail ? `: ${check.detail}` : ""}`);
+  }
+  return lines;
+}
+
+function buildMockGateForTargetTaskIds(input: {
+  readonly role: ImplementationQualityGateRole;
+  readonly targetTaskIds: readonly string[];
+  readonly executionState: ImplementationTaskExecutionStateV1 | null | undefined;
+  readonly nowIso: string;
+}): ImplementationQualityGateResultV1 {
+  const roleLabel = input.role === "reviewer" ? "검수" : "보안";
+  const scoped = (input.executionState?.items ?? []).filter(
+    (item) => item.ownerRole === "developer" && input.targetTaskIds.includes(item.taskId),
+  );
+  const failed = scoped.filter((item) => item.status === "failed");
+  if (failed.length) {
+    const failedTaskIds = failed.map((item) => item.taskId);
+    return {
+      version: IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION,
+      role: input.role,
+      status: "failed",
+      createdAt: input.nowIso,
+      updatedAt: input.nowIso,
+      source: "mock_local_gate",
+      summary: `${failedTaskIds.length}개 대상 작업 ${roleLabel} 실패`,
+      checks: [
+        {
+          id: "target-failed",
+          title: "대상 작업 실패",
+          status: "failed",
+          severity: "high",
+          detail: failedTaskIds.join(", "),
+          targetTaskIds: failedTaskIds,
+        },
+      ],
+      failedTaskIds,
+    };
+  }
+  const notDone = scoped.filter((item) => item.status !== "done" && item.status !== "skipped");
+  if (notDone.length) {
+    const failedTaskIds = notDone.map((item) => item.taskId);
+    return {
+      version: IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION,
+      role: input.role,
+      status: "failed",
+      createdAt: input.nowIso,
+      updatedAt: input.nowIso,
+      source: "mock_local_gate",
+      summary: `대상 작업 미완료로 ${roleLabel} 점검 불가`,
+      checks: [
+        {
+          id: "target-not-done",
+          title: "대상 작업 미완료",
+          status: "failed",
+          severity: "high",
+          targetTaskIds: failedTaskIds,
+        },
+      ],
+      failedTaskIds,
+    };
+  }
+  return {
+    version: IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION,
+    role: input.role,
+    status: "passed",
+    createdAt: input.nowIso,
+    updatedAt: input.nowIso,
+    source: "mock_local_gate",
+    summary: `대상 ${input.targetTaskIds.length}건 ${roleLabel} 통과`,
+    checks: input.targetTaskIds.map((taskId, index) => ({
+      id: `target-pass-${index}`,
+      title: `${taskId} ${roleLabel}`,
+      status: "passed" as const,
+      targetTaskIds: [taskId],
+    })),
+    failedTaskIds: [],
+  };
+}
+
 export function buildMockImplementationQualityGateResult(input: {
   readonly role: ImplementationQualityGateRole;
   readonly taskList: ImplementationTaskListV1;
   readonly executionState: ImplementationTaskExecutionStateV1 | null | undefined;
+  readonly targetTaskIds?: readonly string[];
   readonly nowIso?: string;
 }): ImplementationQualityGateResultV1 {
   const now = input.nowIso ?? new Date().toISOString();
+  const targets = (input.targetTaskIds ?? []).map((id) => id.trim()).filter(Boolean);
+  if (targets.length) {
+    return buildMockGateForTargetTaskIds({
+      role: input.role,
+      targetTaskIds: targets,
+      executionState: input.executionState,
+      nowIso: now,
+    });
+  }
+
   const developerItems = (input.executionState?.items ?? []).filter((i) => i.ownerRole === "developer");
   const developerFailed = developerItems.filter((i) => i.status === "failed");
   const developerDone = developerItems.some((i) => i.status === "done");
@@ -313,6 +422,7 @@ export function executeImplementationQualityGateCheck(input: {
   readonly executionState: ImplementationTaskExecutionStateV1 | null | undefined;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly projectId: string;
+  readonly targetTaskIds?: readonly string[];
   readonly nowIso?: string;
 }): ImplementationQualityGateCheckOutcome | Readonly<{ blocked: string }> {
   const now = input.nowIso ?? new Date().toISOString();
@@ -340,10 +450,21 @@ export function executeImplementationQualityGateCheck(input: {
     resultSummary: inProgressSummary,
   });
 
+  const targetTaskIds = (input.targetTaskIds ?? []).map((id) => id.trim()).filter(Boolean);
+  if (input.targetTaskIds !== undefined && !targetTaskIds.length) {
+    return {
+      blocked:
+        input.role === "reviewer"
+          ? "재점검 대상 검수 작업이 없습니다."
+          : "재점검 대상 보안 점검 작업이 없습니다.",
+    };
+  }
+
   const gateResult = buildMockImplementationQualityGateResult({
     role: input.role,
     taskList: input.taskList,
     executionState: state,
+    ...(targetTaskIds.length ? { targetTaskIds } : {}),
     nowIso: now,
   });
 

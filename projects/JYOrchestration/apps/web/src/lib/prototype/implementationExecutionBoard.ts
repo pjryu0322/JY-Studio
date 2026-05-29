@@ -9,7 +9,10 @@ import {
   type ImplementationIntegratedStep,
   type ImplementationIntegratedStepStatus,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
-import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  enrichCursorWorkItemsWithBoardReworkContext,
+  type CursorWorkItem,
+} from "@/lib/prototype/implementationCursorWorkItems";
 import type {
   ImplementationQualityGateResultV1,
   ImplementationQualityGateRole,
@@ -232,6 +235,63 @@ export function pickFirstExecutableDeveloperTaskId(
   return executable[0]?.taskId ?? null;
 }
 
+/** Target task for REQUEST_TASK_REWORK (no per-task UI yet). */
+export function pickTaskIdForReworkRequest(board: ImplementationExecutionBoardV1): string | null {
+  const qualityFailed = board.taskRows.filter(
+    (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+  );
+  if (qualityFailed.length) return qualityFailed[0]?.taskId ?? null;
+
+  const failedWithoutRework = board.taskRows.filter(
+    (row) => row.developerStatus === "failed" && row.reworkCount === 0,
+  );
+  if (failedWithoutRework.length) return failedWithoutRework[0]?.taskId ?? null;
+
+  return pickFirstExecutableDeveloperTaskId(board);
+}
+
+export function boardShowsRequestTaskReworkChip(board: ImplementationExecutionBoardV1): boolean {
+  if (board.summary.failedTasks > 0) return true;
+  if (
+    board.taskRows.some(
+      (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+    )
+  ) {
+    return true;
+  }
+  if (board.summary.userConfirmationRequired > 0) return true;
+  if (board.taskRows.some((row) => row.reworkCount > 0)) return true;
+  return false;
+}
+
+export function pickQualityGateTargetTaskIds(input: {
+  readonly role: "reviewer" | "security";
+  readonly board: ImplementationExecutionBoardV1;
+}): readonly string[] {
+  const { role, board } = input;
+  const resultStatusKey =
+    role === "reviewer" ? ("reviewerResultStatus" as const) : ("securityResultStatus" as const);
+  const roleStatusKey = role === "reviewer" ? ("reviewerStatus" as const) : ("securityStatus" as const);
+
+  const fromFailedResult = board.taskRows
+    .filter((row) => row[resultStatusKey] === "failed")
+    .map((row) => row.taskId);
+  if (fromFailedResult.length) return fromFailedResult;
+
+  const fromRework = board.taskRows.filter((row) => row.reworkCount > 0).map((row) => row.taskId);
+  if (fromRework.length) return fromRework;
+
+  const fromPendingReview = board.taskRows
+    .filter(
+      (row) =>
+        (row.developerStatus === "done" || row.developerStatus === "skipped") &&
+        row[roleStatusKey] !== "done" &&
+        row[roleStatusKey] !== "skipped",
+    )
+    .map((row) => row.taskId);
+  return fromPendingReview;
+}
+
 export function filterCursorWorkItemsForExecutableTask(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly workItems: readonly CursorWorkItem[];
@@ -257,6 +317,80 @@ export function filterCursorWorkItemsForExecutableTask(input: {
     };
   }
   return { selectedTaskId, selectedWorkItems };
+}
+
+export type ImplementationExecutionBoardOrchestrationInput = Readonly<{
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly nowIso?: string;
+}>;
+
+/** Requirements/orchestration slice used to build the execution board. */
+export type ImplementationRequirementsBoardOrchestrationSlice = Readonly<{
+  readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+  readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
+  readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
+  readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
+}>;
+
+export function buildImplementationExecutionBoardFromOrchestration(
+  input: ImplementationExecutionBoardOrchestrationInput,
+): ImplementationExecutionBoardV1 {
+  return buildImplementationExecutionBoard(input);
+}
+
+export function buildImplementationExecutionBoardFromRequirementsState(input: {
+  readonly projectId: string;
+  readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly nowIso?: string;
+}): ImplementationExecutionBoardV1 | null {
+  const taskList = input.taskList ?? input.orchestration.implementationTaskListV1 ?? null;
+  if (!taskList) return null;
+  const projectId = input.projectId.trim() || taskList.projectId;
+  return buildImplementationExecutionBoard({
+    projectId,
+    taskList,
+    executionState: input.orchestration.implementationTaskExecutionStateV1,
+    integratedExecutionState:
+      input.integratedExecutionState ?? input.orchestration.implementationIntegratedExecutionStateV1,
+    boardState: input.orchestration.implementationExecutionBoardStateV1,
+    qualityGateResults: input.orchestration.implementationQualityGateResultsV1,
+    nowIso: input.nowIso,
+  });
+}
+
+export function selectCursorWorkItemsForWipExecution(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly workItems: readonly CursorWorkItem[];
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+}): {
+  readonly selectedTaskId: string | null;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+  readonly blockedReason?: string;
+} {
+  const scoped = filterCursorWorkItemsForExecutableTask({
+    board: input.board,
+    workItems: input.workItems,
+  });
+  if (!scoped.selectedWorkItems.length) {
+    return scoped;
+  }
+  return {
+    ...scoped,
+    selectedWorkItems: enrichCursorWorkItemsWithBoardReworkContext({
+      workItems: scoped.selectedWorkItems,
+      boardState: input.boardState,
+      qualityGateResults: input.qualityGateResults,
+    }),
+  };
 }
 
 const ROLE_LABEL_KO: Readonly<Record<string, string>> = {

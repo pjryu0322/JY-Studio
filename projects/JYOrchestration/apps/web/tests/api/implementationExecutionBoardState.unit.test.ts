@@ -6,6 +6,8 @@ import {
   getActiveReworkRequestsForTask,
   getUserConfirmationForTask,
   parseImplementationExecutionBoardStateV1,
+  markReworkRequestsAcceptedForTask,
+  markReworkRequestsDoneForTask,
   resolveAllPendingUserConfirmations,
   resolveUserConfirmationForTask,
 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -170,5 +172,33 @@ describe("implementationExecutionBoardState", () => {
     expect(row?.canContinueWithoutUserConfirmation).toBe(true);
     expect(board.summary.blockingUserConfirmation).toBe(0);
     expect(board.summary.userConfirmationRequired).toBe(1);
+  });
+
+  it("markReworkRequestsAcceptedForTask transitions requested to accepted", () => {
+    const next = markReworkRequestsAcceptedForTask({
+      state: boardState,
+      projectId: "p1",
+      taskId: "dev-1",
+      nowIso: NOW,
+    });
+    const active = getActiveReworkRequestsForTask(next, "dev-1");
+    expect(active).toHaveLength(1);
+    expect(active[0]?.status).toBe("accepted");
+  });
+
+  it("markReworkRequestsDoneForTask excludes done from active count", () => {
+    const accepted = markReworkRequestsAcceptedForTask({
+      state: boardState,
+      projectId: "p1",
+      taskId: "dev-1",
+      nowIso: NOW,
+    });
+    const done = markReworkRequestsDoneForTask({
+      state: accepted,
+      projectId: "p1",
+      taskId: "dev-1",
+      nowIso: NOW,
+    });
+    expect(countActiveReworkRequestsForTask(done, "dev-1")).toBe(0);
   });
 });

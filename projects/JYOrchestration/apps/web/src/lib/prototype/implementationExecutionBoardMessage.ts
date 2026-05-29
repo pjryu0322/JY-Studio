@@ -1,5 +1,6 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
+  boardShowsRequestTaskReworkChip,
   buildImplementationReviewStageReadinessNotice,
   deriveIntegratedStageInterviewChips,
   formatBoardExecutionTargetLines,
@@ -16,6 +17,7 @@ import {
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
   TASK_LIST_VIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -65,15 +67,19 @@ export function buildImplementationExecutionBoardMessage(input: {
     board: input.board,
     previewReady: input.previewReady === true,
   });
+  const showReworkChip = boardShowsRequestTaskReworkChip(input.board);
   const chips = [
     IMPLEMENTATION_GENERATION_REQUEST_CHIP,
     ...integratedChips,
     ...(reviewReady ? [MOVE_TO_REVIEW_STAGE_CHIP] : []),
+    ...(showReworkChip ? [REQUEST_TASK_REWORK_CHIP] : []),
     TASK_LIST_VIEW_CHIP,
     ...(input.board.summary.userConfirmationRequired > 0
       ? [IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP]
       : []),
-    ...(hasFailed ? [AI_DEVELOPER_REMEDIATION_REQUEST_CHIP] : [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP]),
+    ...(hasFailed || showReworkChip
+      ? [AI_DEVELOPER_REMEDIATION_REQUEST_CHIP]
+      : [AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP]),
   ];
 
   const content = [
@@ -157,4 +163,33 @@ export function buildImplementationUserConfirmationBoardMessage(input: {
       prototypeOrderKey: 1185,
     },
   });
+}
+
+export type AppendImplementationUserConfirmationBoardMessageResult =
+  | Readonly<{ readonly kind: "appended" }>
+  | Readonly<{ readonly kind: "no_board"; readonly message: string }>
+  | Readonly<{ readonly kind: "no_items"; readonly message: string }>;
+
+export function tryAppendImplementationUserConfirmationBoardMessage(input: {
+  readonly board: ImplementationExecutionBoardV1 | null;
+  readonly nowIso: string;
+  readonly appendAiMessage: (message: RequirementsMessage) => void;
+  readonly showToast?: (message: string) => void;
+}): AppendImplementationUserConfirmationBoardMessageResult {
+  if (!input.board) {
+    const message = "표시할 구현 작업목록이 없습니다.";
+    input.showToast?.(message);
+    return { kind: "no_board", message };
+  }
+  const message = buildImplementationUserConfirmationBoardMessage({
+    board: input.board,
+    nowIso: input.nowIso,
+  });
+  if (!message) {
+    const blocked = "사용자 확인이 필요한 작업이 없습니다.";
+    input.showToast?.(blocked);
+    return { kind: "no_items", message: blocked };
+  }
+  input.appendAiMessage(message);
+  return { kind: "appended" };
 }

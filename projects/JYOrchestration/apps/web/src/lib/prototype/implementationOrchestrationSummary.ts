@@ -24,7 +24,7 @@ import {
 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
-  buildImplementationExecutionBoard,
+  buildImplementationExecutionBoardFromOrchestration,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
@@ -299,7 +299,7 @@ function buildTaskListReadyImplementationBootstrapBundle(
         nowIso: now,
       }),
       buildImplementationExecutionBoardMessage({
-        board: buildImplementationExecutionBoard({
+        board: buildImplementationExecutionBoardFromOrchestration({
           projectId: input.projectId,
           taskList,
           nowIso: now,

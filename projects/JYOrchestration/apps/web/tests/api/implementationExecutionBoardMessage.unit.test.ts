@@ -36,8 +36,10 @@ import {
   SCM_CRITERIA_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 const NOW = "2026-05-28T12:00:00.000Z";
@@ -521,5 +523,29 @@ describe("implementationExecutionBoardMessage helpers", () => {
       previewReady: false,
     });
     expect(message.meta?.interviewSuggestions).not.toContain(MOVE_TO_REVIEW_STAGE_CHIP);
+  });
+
+  it("board with quality failed row contains 작업 재작업 요청 chip", () => {
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "failed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "fail",
+        checks: [],
+        failedTaskIds: ["dev-1"],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
+    expect(message.meta?.interviewSuggestions).toContain(REQUEST_TASK_REWORK_CHIP);
   });
 });

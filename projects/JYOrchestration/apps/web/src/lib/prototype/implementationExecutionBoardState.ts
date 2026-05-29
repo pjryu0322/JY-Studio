@@ -274,3 +274,56 @@ export function getActiveReworkContextForTask(
     (r) => `[${r.targetRole}] ${r.reason}`,
   );
 }
+
+const ACTIVE_REWORK_STATUSES = new Set<ImplementationTaskReworkRequestV1["status"]>([
+  "requested",
+  "accepted",
+]);
+
+export function markReworkRequestsAcceptedForTask(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly nowIso?: string;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskId = input.taskId.trim();
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  return {
+    ...base,
+    updatedAt: now,
+    reworkRequests: base.reworkRequests.map((r) =>
+      r.taskId === taskId && r.status === "requested"
+        ? { ...r, status: "accepted", updatedAt: now }
+        : r,
+    ),
+  };
+}
+
+export function markReworkRequestsDoneForTask(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly nowIso?: string;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskId = input.taskId.trim();
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  return {
+    ...base,
+    updatedAt: now,
+    reworkRequests: base.reworkRequests.map((r) =>
+      r.taskId === taskId && ACTIVE_REWORK_STATUSES.has(r.status)
+        ? { ...r, status: "done", updatedAt: now }
+        : r,
+    ),
+  };
+}

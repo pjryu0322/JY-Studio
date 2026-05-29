@@ -212,6 +212,33 @@ describe("executeImplementationQualityGateCheck", () => {
   });
 });
 
+describe("buildMockImplementationQualityGateResult with targetTaskIds", () => {
+  it("scopes failedTaskIds to target tasks only", () => {
+    const execution = executionWithDeveloperDone();
+    const result = buildMockImplementationQualityGateResult({
+      role: "reviewer",
+      taskList: taskListWithRoles(),
+      executionState: execution,
+      targetTaskIds: ["dev-1"],
+      nowIso: NOW,
+    });
+    expect(result.failedTaskIds).toEqual([]);
+    expect(result.status).toBe("passed");
+  });
+
+  it("executeImplementationQualityGateCheck blocks when targetTaskIds empty", () => {
+    const outcome = executeImplementationQualityGateCheck({
+      role: "reviewer",
+      taskList: taskListWithRoles(),
+      executionState: executionWithDeveloperDone(),
+      projectId: "p1",
+      targetTaskIds: [],
+      nowIso: NOW,
+    });
+    expect("blocked" in outcome).toBe(true);
+  });
+});
+
 describe("appendImplementationQualityGateResult", () => {
   it("appends to existing results", () => {
     const base = buildMockImplementationQualityGateResult({

@@ -14,7 +14,7 @@ import {
   type ImplementationPrototypeRunSyncSnapshot,
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
-  buildImplementationExecutionBoard,
+  buildImplementationExecutionBoardFromOrchestration,
   isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
@@ -32,6 +32,7 @@ import {
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
@@ -154,6 +155,47 @@ function deriveNextActionsFromIntegratedBoard(
     ];
   }
   return null;
+}
+
+function boardNeedsRemediation(board: ImplementationExecutionBoardV1): boolean {
+  if (board.summary.failedTasks > 0) return true;
+  if (
+    board.taskRows.some(
+      (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+    )
+  ) {
+    return true;
+  }
+  if (board.taskRows.some((row) => row.reworkCount > 0)) return true;
+  return false;
+}
+
+function deriveNextActionsFromBoardRemediation(
+  board: ImplementationExecutionBoardV1,
+): readonly ImplementationStageNextAction[] {
+  const hasRework = board.taskRows.some((row) => row.reworkCount > 0);
+  return [
+    {
+      actionId: "REQUEST_CODE_AGENT_WIP",
+      label: AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+      priority: "primary",
+      reason: hasRework
+        ? "등록된 재작업 요청 task 보완 WIP 실행"
+        : "검수/보안 실패 또는 실패 작업 보완 WIP 실행",
+    },
+    {
+      actionId: "REQUEST_TASK_REWORK",
+      label: REQUEST_TASK_REWORK_CHIP,
+      priority: "secondary",
+      reason: "재작업 요청을 boardState에 등록",
+    },
+    {
+      actionId: "SHOW_ARTIFACTS",
+      label: TASK_LIST_VIEW_CHIP,
+      priority: "secondary",
+      reason: "작업목록 및 점검 결과 확인",
+    },
+  ];
 }
 
 function deriveNextActionsFromPrototypeComplete(
@@ -311,7 +353,7 @@ export function deriveImplementationStageNextActions(
   let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =
     null;
   if (boardInput) {
-    const board = buildImplementationExecutionBoard({
+    const board = buildImplementationExecutionBoardFromOrchestration({
       projectId: boardInput.projectId,
       taskList: boardInput.taskList,
       executionState: boardInput.executionState,
@@ -325,6 +367,10 @@ export function deriveImplementationStageNextActions(
       boardInput.previewReady === true,
     );
     if (fromIntegrated?.length) return fromIntegrated;
+
+    if (boardNeedsRemediation(board)) {
+      return deriveNextActionsFromBoardRemediation(board);
+    }
   }
 
   const fromExecution = deriveNextActionsFromExecutionState(
