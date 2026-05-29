@@ -1,3 +1,19 @@
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  countActiveReworkRequestsForTask,
+  getUserConfirmationForTask,
+} from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  deriveIntegratedExecutionStateReadiness,
+  type ImplementationIntegratedExecutionStateV1,
+  type ImplementationIntegratedStep,
+  type ImplementationIntegratedStepStatus,
+} from "@/lib/prototype/implementationIntegratedExecutionState";
+import type {
+  ImplementationQualityGateResultV1,
+  ImplementationQualityGateRole,
+} from "@/lib/prototype/implementationQualityGate";
+import { getLatestImplementationQualityGateResultForRole } from "@/lib/prototype/implementationQualityGate";
 import type {
   ImplementationTaskExecutionStateV1,
   ImplementationTaskExecutionStatus,
@@ -13,11 +29,7 @@ export const IMPLEMENTATION_EXECUTION_BOARD_VERSION =
 
 export type ImplementationBoardRoleStep = "developer" | "reviewer" | "security" | "scm";
 
-export type ImplementationBoardIntegratedStep =
-  | "refactor_common"
-  | "integrated_review"
-  | "integrated_security"
-  | "final_scm";
+export type ImplementationBoardIntegratedStep = ImplementationIntegratedStep;
 
 export type ImplementationBoardStepStatus =
   | "not_started"
@@ -46,6 +58,8 @@ export type ImplementationFailureReason =
   | "blocked_by_user_confirmation"
   | "unknown";
 
+export type ImplementationQualityGateRowStatus = "passed" | "failed" | "none";
+
 export type ImplementationExecutionBoardTaskRowV1 = Readonly<{
   taskId: string;
   title: string;
@@ -56,6 +70,9 @@ export type ImplementationExecutionBoardTaskRowV1 = Readonly<{
   reviewerStatus: ImplementationBoardStepStatus;
   securityStatus: ImplementationBoardStepStatus;
   scmStatus: ImplementationBoardStepStatus;
+  reviewerResultStatus: ImplementationQualityGateRowStatus;
+  securityResultStatus: ImplementationQualityGateRowStatus;
+  qualityGateFailedTaskIds: readonly string[];
   userConfirmation: ImplementationUserConfirmationStatus;
   userConfirmationReason?: string;
   failureReason: ImplementationFailureReason;
@@ -117,6 +134,18 @@ const EXECUTION_TO_BOARD_STATUS: Readonly<
   skipped: "skipped",
 };
 
+const INTEGRATED_TO_BOARD_STATUS: Readonly<
+  Record<ImplementationIntegratedStepStatus, ImplementationBoardStepStatus>
+> = {
+  not_started: "not_started",
+  ready: "ready",
+  queued: "queued",
+  in_progress: "in_progress",
+  done: "done",
+  failed: "failed",
+  skipped: "skipped",
+};
+
 const BOARD_STATUS_RANK: Readonly<Record<ImplementationBoardStepStatus, number>> = {
   failed: 0,
   in_progress: 1,
@@ -133,11 +162,39 @@ export function canContinueTaskDespiteUserConfirmation(
   return status !== "blocking";
 }
 
+export function deriveQualityGateStatusForTask(
+  taskId: string,
+  qualityGateResults: readonly ImplementationQualityGateResultV1[] | null | undefined,
+  role: ImplementationQualityGateRole,
+): ImplementationQualityGateRowStatus {
+  const latest = getLatestImplementationQualityGateResultForRole(qualityGateResults, role);
+  if (!latest) return "none";
+  if (latest.status === "passed") return "passed";
+  if (latest.failedTaskIds.includes(taskId)) return "failed";
+  return "none";
+}
+
+function collectQualityGateFailedTaskIds(
+  qualityGateResults: readonly ImplementationQualityGateResultV1[] | null | undefined,
+): readonly string[] {
+  const ids = new Set<string>();
+  for (const result of qualityGateResults ?? []) {
+    if (result.status === "failed") {
+      for (const id of result.failedTaskIds) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 function mapExecutionStatus(
   status: ImplementationTaskExecutionStatus | undefined,
 ): ImplementationBoardStepStatus {
   if (!status) return "not_started";
   return EXECUTION_TO_BOARD_STATUS[status];
+}
+
+function mapIntegratedStatus(status: ImplementationIntegratedStepStatus): ImplementationBoardStepStatus {
+  return INTEGRATED_TO_BOARD_STATUS[status];
 }
 
 function aggregateRoleBoardStatus(
@@ -155,6 +212,15 @@ function aggregateRoleBoardStatus(
     }
   }
   return worst;
+}
+
+function applyQualityGateToRoleStatus(
+  taskId: string,
+  globalStatus: ImplementationBoardStepStatus,
+  gateStatus: ImplementationQualityGateRowStatus,
+): ImplementationBoardStepStatus {
+  if (gateStatus === "failed") return "failed";
+  return globalStatus;
 }
 
 function isRoleStepComplete(status: ImplementationBoardStepStatus): boolean {
@@ -236,26 +302,58 @@ function deriveStatusLabel(input: {
 function buildTaskRow(input: {
   readonly task: ImplementationTaskV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
-  readonly reviewerStatus: ImplementationBoardStepStatus;
-  readonly securityStatus: ImplementationBoardStepStatus;
-  readonly scmStatus: ImplementationBoardStepStatus;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly reviewerGlobal: ImplementationBoardStepStatus;
+  readonly securityGlobal: ImplementationBoardStepStatus;
+  readonly scmGlobal: ImplementationBoardStepStatus;
+  readonly qualityGateFailedTaskIds: readonly string[];
 }): ImplementationExecutionBoardTaskRowV1 {
   const devItem = input.executionState?.items.find((item) => item.taskId === input.task.taskId);
   const developerStatus = mapExecutionStatus(devItem?.status ?? input.task.status);
-  const userConfirmation: ImplementationUserConfirmationStatus = "none";
+
+  const reviewerGate = deriveQualityGateStatusForTask(
+    input.task.taskId,
+    input.qualityGateResults,
+    "reviewer",
+  );
+  const securityGate = deriveQualityGateStatusForTask(
+    input.task.taskId,
+    input.qualityGateResults,
+    "security",
+  );
+
+  const reviewerStatus = applyQualityGateToRoleStatus(
+    input.task.taskId,
+    input.reviewerGlobal,
+    reviewerGate,
+  );
+  const securityStatus = applyQualityGateToRoleStatus(
+    input.task.taskId,
+    input.securityGlobal,
+    securityGate,
+  );
+  const scmStatus = input.scmGlobal;
+
+  const confirmation = getUserConfirmationForTask(input.boardState, input.task.taskId);
+  const userConfirmation: ImplementationUserConfirmationStatus = confirmation?.status ?? "none";
+  const userConfirmationReason = confirmation?.reason;
+
   const currentRole = deriveCurrentRole({
     developerStatus,
-    reviewerStatus: input.reviewerStatus,
-    securityStatus: input.securityStatus,
-    scmStatus: input.scmStatus,
+    reviewerStatus,
+    securityStatus,
+    scmStatus,
   });
   const failureReason = deriveFailureReason({
     developerStatus,
-    reviewerStatus: input.reviewerStatus,
-    securityStatus: input.securityStatus,
-    scmStatus: input.scmStatus,
+    reviewerStatus,
+    securityStatus,
+    scmStatus,
     userConfirmation,
   });
+
+  const reworkCount = countActiveReworkRequestsForTask(input.boardState, input.task.taskId);
 
   return {
     taskId: input.task.taskId,
@@ -264,80 +362,36 @@ function buildTaskRow(input: {
     dependencies: input.task.dependencies,
     currentRole,
     developerStatus,
-    reviewerStatus: input.reviewerStatus,
-    securityStatus: input.securityStatus,
-    scmStatus: input.scmStatus,
+    reviewerStatus,
+    securityStatus,
+    scmStatus,
+    reviewerResultStatus: reviewerGate,
+    securityResultStatus: securityGate,
+    qualityGateFailedTaskIds: input.qualityGateFailedTaskIds.filter((id) => id === input.task.taskId),
     userConfirmation,
+    ...(userConfirmationReason ? { userConfirmationReason } : {}),
     failureReason,
-    reworkCount: 0,
+    reworkCount,
     canContinueWithoutUserConfirmation: canContinueTaskDespiteUserConfirmation(userConfirmation),
     statusLabel: deriveStatusLabel({
       currentRole,
       developerStatus,
-      reviewerStatus: input.reviewerStatus,
-      securityStatus: input.securityStatus,
-      scmStatus: input.scmStatus,
+      reviewerStatus,
+      securityStatus,
+      scmStatus,
       userConfirmation,
     }),
   };
 }
 
 function deriveIntegratedRows(
-  taskRows: readonly ImplementationExecutionBoardTaskRowV1[],
-  executionState: ImplementationTaskExecutionStateV1 | null | undefined,
+  integratedState: ImplementationIntegratedExecutionStateV1,
 ): readonly ImplementationExecutionBoardIntegratedRowV1[] {
-  const allTasksCompleted = taskRows.length > 0 && taskRows.every((row) => row.currentRole === "completed");
-  if (!allTasksCompleted) {
-    return INTEGRATED_STEP_DEFS.map((def) => ({
-      step: def.step,
-      title: def.title,
-      status: "not_started" as const,
-      ownerRole: def.ownerRole,
-      failureReason: "none" as const,
-      reworkCount: 0,
-    }));
-  }
-
-  const reviewerGlobal = aggregateRoleBoardStatus(executionState, "reviewer");
-  const securityGlobal = aggregateRoleBoardStatus(executionState, "security");
-  const scmGlobal = aggregateRoleBoardStatus(executionState, "scm");
-
-  const statuses: Record<ImplementationBoardIntegratedStep, ImplementationBoardStepStatus> = {
-    refactor_common: "ready",
-    integrated_review: "not_started",
-    integrated_security: "not_started",
-    final_scm: "not_started",
-  };
-
-  if (reviewerGlobal === "failed") {
-    statuses.integrated_review = "failed";
-  } else if (reviewerGlobal === "done" || reviewerGlobal === "skipped") {
-    statuses.refactor_common = "done";
-    statuses.integrated_review = "done";
-    if (securityGlobal === "failed") {
-      statuses.integrated_security = "failed";
-    } else if (securityGlobal === "done" || securityGlobal === "skipped") {
-      statuses.integrated_security = "done";
-      if (scmGlobal === "failed") {
-        statuses.final_scm = "failed";
-      } else if (scmGlobal === "done" || scmGlobal === "skipped") {
-        statuses.final_scm = "done";
-      } else if (scmGlobal === "in_progress") {
-        statuses.final_scm = "in_progress";
-      } else {
-        statuses.final_scm = "ready";
-      }
-    } else if (securityGlobal === "in_progress") {
-      statuses.integrated_security = "in_progress";
-    } else {
-      statuses.integrated_security = "ready";
-    }
-  } else if (reviewerGlobal === "in_progress") {
-    statuses.integrated_review = "in_progress";
-  }
+  const byStep = new Map(integratedState.items.map((item) => [item.step, item]));
 
   return INTEGRATED_STEP_DEFS.map((def) => {
-    const status = statuses[def.step];
+    const item = byStep.get(def.step);
+    const status = mapIntegratedStatus(item?.status ?? "not_started");
     const failureReason: ImplementationFailureReason =
       status === "failed"
         ? def.step === "integrated_review"
@@ -354,7 +408,7 @@ function deriveIntegratedRows(
       status,
       ownerRole: def.ownerRole,
       failureReason,
-      reworkCount: 0,
+      reworkCount: item?.reworkCount ?? 0,
     };
   });
 }
@@ -393,25 +447,42 @@ export function buildImplementationExecutionBoard(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly nowIso?: string;
 }): ImplementationExecutionBoardV1 {
   const now = input.nowIso ?? new Date().toISOString();
-  const reviewerStatus = aggregateRoleBoardStatus(input.executionState, "reviewer");
-  const securityStatus = aggregateRoleBoardStatus(input.executionState, "security");
-  const scmStatus = aggregateRoleBoardStatus(input.executionState, "scm");
+  const reviewerGlobal = aggregateRoleBoardStatus(input.executionState, "reviewer");
+  const securityGlobal = aggregateRoleBoardStatus(input.executionState, "security");
+  const scmGlobal = aggregateRoleBoardStatus(input.executionState, "scm");
+  const qualityGateFailedTaskIds = collectQualityGateFailedTaskIds(input.qualityGateResults);
 
   const developerTasks = input.taskList.tasks.filter((task) => task.ownerRole === "developer");
   const taskRows = developerTasks.map((task) =>
     buildTaskRow({
       task,
       executionState: input.executionState,
-      reviewerStatus,
-      securityStatus,
-      scmStatus,
+      boardState: input.boardState,
+      qualityGateResults: input.qualityGateResults,
+      reviewerGlobal,
+      securityGlobal,
+      scmGlobal,
+      qualityGateFailedTaskIds,
     }),
   );
 
-  const integratedRows = deriveIntegratedRows(taskRows, input.executionState);
+  const allTasksCompleted =
+    taskRows.length > 0 && taskRows.every((row) => row.currentRole === "completed");
+
+  const integratedState = deriveIntegratedExecutionStateReadiness({
+    projectId: input.projectId.trim(),
+    state: input.integratedExecutionState,
+    taskRowsCompleted: allTasksCompleted,
+    nowIso: now,
+  });
+
+  const integratedRows = deriveIntegratedRows(integratedState);
   const { currentTaskId, currentStep } = pickCurrentTaskAndStep(taskRows, integratedRows);
 
   const completedTasks = taskRows.filter((row) => row.currentRole === "completed").length;
@@ -480,6 +551,7 @@ export function formatImplementationExecutionBoardTaskLine(
     row.securityStatus,
     row.scmStatus,
     confirm,
+    String(row.reworkCount),
     row.statusLabel,
   ].join(" | ");
 }

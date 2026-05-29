@@ -14,6 +14,7 @@ import {
 } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
+import { IMPLEMENTATION_GENERATION_REQUEST_CHIP } from "@/lib/requirements/implementationUxLabels";
 
 function makeDraft(id: string): ImplementationWorkPlanDraftV1 {
   return {
@@ -177,6 +178,9 @@ describe("mapImplementationChipToAction", () => {
     expect(mapImplementationChipToAction(DATA_MODEL_DRAFT_CHIP)).toBe("GENERATE_DATA_MODEL_DRAFT");
     expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
     expect(mapImplementationChipToAction("환경설정 열기")).toBe("OPEN_ENV_SETTINGS");
+    expect(mapImplementationChipToAction(IMPLEMENTATION_GENERATION_REQUEST_CHIP)).toBe(
+      "REQUEST_CODE_AGENT_WIP",
+    );
     expect(mapImplementationChipToAction("unknown")).toBeNull();
   });
 });

@@ -62,7 +62,7 @@ export function buildImplementationExecutionBoardMessage(input: {
     "",
     ...(currentLine ? [`현재 실행 중:`, currentLine, ""] : []),
     "작업 목록:",
-    "TASK ID | 작업 | 개발자 | 검수자 | 보안관 | SCM | 사용자 확인 | 상태",
+    "TASK ID | 작업 | 개발자 | 검수자 | 보안관 | SCM | 사용자 확인 | 재작업 | 상태",
     ...(taskLines.length ? taskLines : ["(개발자 작업이 없습니다)"]),
     "",
     "통합 정리 단계:",

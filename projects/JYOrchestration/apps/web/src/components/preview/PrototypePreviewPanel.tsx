@@ -2402,6 +2402,8 @@ export function PrototypePreviewPanel({
           projectId,
           taskList,
           executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+          integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+          boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
           qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
           prototypeSnapshot: prototypeRunSyncSnapshot,
           envOk: canRequestGeneration.envOk,

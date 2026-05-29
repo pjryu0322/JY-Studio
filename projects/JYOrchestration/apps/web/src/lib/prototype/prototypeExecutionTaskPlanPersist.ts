@@ -7,6 +7,8 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
@@ -84,6 +86,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -134,6 +138,12 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
               ? null
               : [...input.implementationQualityGateResultsV1],
         }
+      : {}),
+    ...(input.implementationIntegratedExecutionStateV1 !== undefined
+      ? { implementationIntegratedExecutionStateV1: input.implementationIntegratedExecutionStateV1 }
+      : {}),
+    ...(input.implementationExecutionBoardStateV1 !== undefined
+      ? { implementationExecutionBoardStateV1: input.implementationExecutionBoardStateV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),

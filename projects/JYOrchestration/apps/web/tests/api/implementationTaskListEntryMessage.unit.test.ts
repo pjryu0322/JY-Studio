@@ -200,7 +200,7 @@ describe("implementationTaskListEntryMessage", () => {
     expect(openEnvSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("routes generation request chip like AI developer request", () => {
+  it("delegates generation request chip to action pipeline", () => {
     const appendAiMessage = vi.fn();
     const handled = tryHandleImplementationTaskListChip({
       label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
@@ -213,8 +213,8 @@ describe("implementationTaskListEntryMessage", () => {
       returnToPlanningStage: vi.fn(),
       showToast: vi.fn(),
     });
-    expect(handled).toBe(true);
-    expect(appendAiMessage).toHaveBeenCalledTimes(1);
+    expect(handled).toBe(false);
+    expect(appendAiMessage).toHaveBeenCalledTimes(0);
   });
 
   it("shows execution board on 구현 작업 보드 chip", () => {

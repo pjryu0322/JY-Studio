@@ -5,9 +5,9 @@ import {
   type ImplementationPrototypeRunSyncSnapshot,
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import { IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/prototype/implementationOrchestrationSummary";
-import {
-  buildImplementationExecutionBoard,
-} from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import { buildImplementationExecutionBoard } from "@/lib/prototype/implementationExecutionBoard";
 import {
   buildImplementationExecutionBoardMessage,
   buildImplementationUserConfirmationBoardMessage,
@@ -314,6 +314,9 @@ export function buildImplementationPrototypeCompleteMessage(input: {
 export function buildImplementationTaskListViewMessage(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null;
   readonly nowIso: string;
 }): RequirementsMessage {
@@ -322,6 +325,9 @@ export function buildImplementationTaskListViewMessage(input: {
     projectId: input.taskList.projectId,
     taskList: input.taskList,
     executionState: input.executionState,
+    integratedExecutionState: input.integratedExecutionState,
+    boardState: input.boardState,
+    qualityGateResults: input.qualityGateResults,
     nowIso: input.nowIso,
   });
   const boardSummaryLines = [
@@ -609,7 +615,9 @@ export function tryHandleImplementationTaskListChip(input: {
   readonly label: string;
   readonly projectId?: string;
   readonly taskList: ImplementationTaskListV1 | null;
-  readonly executionState?: import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null;
   readonly envOk: boolean;
@@ -626,17 +634,26 @@ export function tryHandleImplementationTaskListChip(input: {
   const now = input.nowIso ?? new Date().toISOString();
   const list = input.taskList;
 
-  const appendBoardMessage = () => {
-    if (!list) return;
+  const buildBoard = () => {
+    if (!list) return null;
     const projectId = input.projectId?.trim() || list.projectId;
+    return buildImplementationExecutionBoard({
+      projectId,
+      taskList: list,
+      executionState: input.executionState,
+      integratedExecutionState: input.integratedExecutionState,
+      boardState: input.boardState,
+      qualityGateResults: input.qualityGateResults,
+      nowIso: now,
+    });
+  };
+
+  const appendBoardMessage = () => {
+    const board = buildBoard();
+    if (!board) return;
     input.appendAiMessage(
       buildImplementationExecutionBoardMessage({
-        board: buildImplementationExecutionBoard({
-          projectId,
-          taskList: list,
-          executionState: input.executionState,
-          nowIso: now,
-        }),
+        board,
         nowIso: now,
       }),
     );
@@ -663,6 +680,7 @@ export function tryHandleImplementationTaskListChip(input: {
 
   switch (t) {
     case IMPLEMENTATION_GENERATION_REQUEST_CHIP:
+      return false;
     case AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP:
       appendDeveloperRequestPrep();
       return true;
@@ -679,13 +697,11 @@ export function tryHandleImplementationTaskListChip(input: {
         return true;
       }
       {
-        const projectId = input.projectId?.trim() || list.projectId;
-        const board = buildImplementationExecutionBoard({
-          projectId,
-          taskList: list,
-          executionState: input.executionState,
-          nowIso: now,
-        });
+        const board = buildBoard();
+        if (!board) {
+          input.showToast("표시할 구현 작업목록이 없습니다.");
+          return true;
+        }
         const message = buildImplementationUserConfirmationBoardMessage({ board, nowIso: now });
         if (!message) {
           input.showToast("사용자 확인이 필요한 작업이 없습니다.");
@@ -703,6 +719,9 @@ export function tryHandleImplementationTaskListChip(input: {
         buildImplementationTaskListViewMessage({
           taskList: list,
           executionState: input.executionState,
+          integratedExecutionState: input.integratedExecutionState,
+          boardState: input.boardState,
+          qualityGateResults: input.qualityGateResults,
           prototypeSnapshot: input.prototypeSnapshot,
           nowIso: now,
         }),
