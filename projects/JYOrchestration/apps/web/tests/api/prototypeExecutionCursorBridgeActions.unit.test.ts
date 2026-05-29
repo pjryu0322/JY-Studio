@@ -70,6 +70,8 @@ describe("applyCursorBridgeResultToWipExecution", () => {
       nowIso: NOW,
     });
     expect(updated.bridgeExecutionStatus).toBe("bridge_completed");
+    expect(updated.executionMode).toBe("cursor_api");
+    expect(updated.bridgeAdapter).toBe("cursor_api");
     expect(updated.commitSha).toBe("abc123def4567890");
     expect(updated.pushStatus).toBe("skipped");
     expect(updated.commits[updated.commits.length - 1]?.changedFiles).toEqual(["src/App.tsx"]);

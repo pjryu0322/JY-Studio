@@ -146,9 +146,7 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     : undefined;
   const bridgeAdapterRaw = String(o.bridgeAdapter ?? "").trim();
   const bridgeAdapter =
-    bridgeAdapterRaw === "cursor_api" ||
-    bridgeAdapterRaw === "http_bridge" ||
-    bridgeAdapterRaw === "local_runner"
+    bridgeAdapterRaw === "cursor_api"
       ? (bridgeAdapterRaw as import("@/lib/prototype/codeAgentWipExecution").CodeAgentBridgeAdapter)
       : undefined;
   const bridgeRaw = String(o.bridgeExecutionStatus ?? o.executionStatus ?? "").trim() as CodeAgentWipBridgeExecutionStatus;

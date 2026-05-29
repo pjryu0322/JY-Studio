@@ -9,9 +9,8 @@ import {
   validateBridgeResultForRealSourceGeneration,
   bridgeResultValidationContextFromRequest,
 } from "@/lib/prototype/cursorBridgeExecution";
-import type { CursorExecutionMode } from "@/lib/prototype/cursorExecutionAvailability";
 
-export type CursorBridgeAdapter = "cursor_api" | "http_bridge" | "local_runner";
+export type CursorBridgeAdapter = "cursor_api";
 
 export function buildCursorApiDirectRequestFromBridgeRequest(
   request: CursorBridgeExecuteRequest,
@@ -119,11 +118,4 @@ export async function executeCursorApiDirectFromBridgeRequest(input: {
   );
   const directResult = await executeCursorApiDirect(directRequest);
   return mapCursorApiDirectResultToBridgeResult(input.request, directResult);
-}
-
-export function resolveCursorBridgeAdapter(mode: CursorExecutionMode): CursorBridgeAdapter | null {
-  if (mode === "cursor_api") return "cursor_api";
-  if (mode === "http_bridge") return "http_bridge";
-  if (mode === "local_runner") return "local_runner";
-  return null;
 }

@@ -128,3 +128,22 @@
 - Cursor API unsupported인데 bridge_completed 표시
 - commitSha/changedFiles 없이 bridge_completed
 - Cursor API endpoint 404/501인데 성공으로 표시
+
+## 11. 실제 실행모드: cursor_api only
+
+구현단계 실제 소스 생성 실행은 **Cursor API 직접 호출(`cursor_api`)** 만 사용한다.
+
+| 항목 | 값 |
+|------|-----|
+| 허용 모드 | `cursor_api`, `none` |
+| 사용 금지 (실행 경로) | `http_bridge`, `local_runner`, env bridge fallback |
+| Availability 기준 | ExecutionSetup만 (`cursorApiUrl`, Cursor Token, Git 저장소, `workspacePath`) |
+| `[Cursor 실행 요청]` | `executeCursorApiDirect` → `{cursorApiUrl}/execute` |
+| API 실패 시 | local runner 등으로 fallback 하지 않음 |
+| 성공 저장 | `executionMode: cursor_api`, `bridgeAdapter: cursor_api`, `bridgeExecutionStatus: bridge_completed` |
+
+검증:
+
+- `CURSOR_BRIDGE_ENABLED` / `CURSOR_BRIDGE_ENDPOINT` 가 있어도 mode가 `http_bridge`로 선택되지 않음
+- ExecutionSetup에 Cursor API가 있으면 `Status: disabled` 가 아님
+- 보드 진단에 `Mode: cursor_api` 또는 `Mode: none` 만 표시

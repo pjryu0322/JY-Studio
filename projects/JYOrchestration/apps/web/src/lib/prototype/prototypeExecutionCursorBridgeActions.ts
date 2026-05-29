@@ -175,8 +175,8 @@ export function applyCursorBridgeResultToWipExecution(input: {
 
   return {
     ...input.wip,
-    executionMode: "cursor_bridge",
-    bridgeAdapter: input.bridgeRequest?.bridgeAdapter ?? input.wip.bridgeAdapter,
+    executionMode: "cursor_api",
+    bridgeAdapter: "cursor_api",
     bridgeExecutionStatus: "bridge_completed",
     status: "developer_reviewing",
     branchName: commit.branchName,
@@ -203,7 +203,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
       status: "pending",
       reviewedAt: now,
       reviewedBy: "ai_developer",
-      summary: "Cursor Bridge WIP commit 결과 검토 대기",
+      summary: "Cursor API WIP commit 결과 검토 대기",
       findings: commit.unresolvedIssues,
       requestedActions: [],
     },
@@ -397,7 +397,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
 
   return {
     kind: "completed",
-    message: "Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다.",
+    message: "Cursor API가 대상 프로젝트 저장소에 실제 소스를 생성했습니다.",
     chatPatch: {
       messages,
       slots: resolved.slots ?? [],

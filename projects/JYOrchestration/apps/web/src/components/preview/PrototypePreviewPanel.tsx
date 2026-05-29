@@ -53,7 +53,6 @@ import {
   buildImplementationWipDraftLifecycleTimelineEntry,
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
-import { isCursorBridgeExecutionAvailable as isCursorBridgeRuntimeAvailable } from "@/lib/prototype/cursorBridgeRuntime";
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
@@ -2765,7 +2764,7 @@ export function PrototypePreviewPanel({
           };
 
           const wip = wipResult.orchestrationPatch.codeAgentWipExecutionV1;
-          const bridgeEnabled = isCursorBridgeRuntimeAvailable();
+          const bridgeEnabled = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
           const timelineTaskId = wip.selectedTaskId ?? selectedTaskId ?? "";
           const timelineBase = {
             projectId: pid,
@@ -2995,11 +2994,7 @@ export function PrototypePreviewPanel({
               ],
             });
 
-            showToast(
-              cursorAvailability.mode === "cursor_api"
-                ? "Cursor API 직접 실행을 시작합니다..."
-                : "Cursor Bridge 실행을 시작합니다...",
-            );
+            showToast("Cursor API 직접 실행을 시작합니다...");
             const requestedTimeline = buildCursorApiDirectTimelineEntry({
               action: "cursor_api_direct_execution_requested",
               projectId: pid,
@@ -3050,7 +3045,7 @@ export function PrototypePreviewPanel({
                 result?: import("@/lib/prototype/cursorBridgeExecution").CursorBridgeExecuteResult;
               };
               if (!json.result) {
-                const message = json.message ?? "Cursor Bridge API 응답이 올바르지 않습니다.";
+                const message = json.message ?? "Cursor API 응답이 올바르지 않습니다.";
                 if (String(message).includes("일치하지 않습니다")) {
                   void persistChatToDb(undefined, {
                     promptTimeline: [
@@ -3161,7 +3156,7 @@ export function PrototypePreviewPanel({
               }
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
-              executionSingleChat.appendAiNotice(`Cursor Bridge 실행 오류: ${message}`);
+              executionSingleChat.appendAiNotice(`Cursor API 실행 오류: ${message}`);
               showToast(message);
             }
           })();

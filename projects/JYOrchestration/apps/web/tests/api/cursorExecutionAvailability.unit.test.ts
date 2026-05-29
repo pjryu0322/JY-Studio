@@ -17,15 +17,13 @@ describe("cursorExecutionAvailability", () => {
         hasCursorToken: true,
         hasGithubAccessToken: true,
       },
-      env: { CURSOR_BRIDGE_ENABLED: "false" },
     });
     expect(availability.mode).toBe("cursor_api");
     expect(availability.status).toBe("ready");
     expect(availability.ready).toBe(true);
-    expect(availability.status).not.toBe("disabled");
   });
 
-  it("cursor_api is not disabled when env bridge disabled", () => {
+  it("cursor_api is ready when env bridge is disabled", () => {
     const availability = evaluateCursorExecutionAvailability({
       setup: {
         gitRepoUrl: "https://github.com/o/r",
@@ -34,13 +32,12 @@ describe("cursorExecutionAvailability", () => {
         hasCursorToken: true,
         workspacePath: "C:/workspace/r",
       },
-      env: { CURSOR_BRIDGE_ENABLED: "false" },
     });
     expect(availability.mode).toBe("cursor_api");
     expect(availability.ready).toBe(true);
   });
 
-  it("missing cursor token returns missing_cursor_token", () => {
+  it("missing cursor token returns none/missing_cursor_token", () => {
     const availability = evaluateCursorExecutionAvailability({
       setup: {
         gitRepoUrl: "https://github.com/o/r",
@@ -50,11 +47,12 @@ describe("cursorExecutionAvailability", () => {
         workspacePath: "C:/workspace/r",
       },
     });
+    expect(availability.mode).toBe("none");
     expect(availability.status).toBe("missing_cursor_token");
     expect(availability.ready).toBe(false);
   });
 
-  it("missing workspace returns missing_workspace", () => {
+  it("missing workspace returns none/missing_workspace", () => {
     const availability = evaluateCursorExecutionAvailability({
       setup: {
         gitRepoUrl: "https://github.com/o/r",
@@ -62,38 +60,33 @@ describe("cursorExecutionAvailability", () => {
         cursorApiUrl: "http://localhost:9999",
         hasCursorToken: true,
       },
-      env: {},
     });
+    expect(availability.mode).toBe("none");
     expect(availability.status).toBe("missing_workspace");
   });
 
-  it("http_bridge used when cursor api missing and endpoint exists", () => {
-    const availability = evaluateCursorExecutionAvailability({
-      setup: null,
-      env: {
-        CURSOR_BRIDGE_ENABLED: "true",
-        CURSOR_BRIDGE_ENDPOINT: "http://bridge.local",
-      },
-    });
-    expect(availability.mode).toBe("http_bridge");
-    expect(availability.ready).toBe(true);
+  it("missing cursor api returns none/missing_cursor_api", () => {
+    const availability = evaluateCursorExecutionAvailability({ setup: null });
+    expect(availability.mode).toBe("none");
+    expect(availability.status).toBe("missing_cursor_api");
+    expect(availability.ready).toBe(false);
   });
 
-  it("cursor_api beats http_bridge when both configured", () => {
+  it("does not select http_bridge when env bridge endpoint exists", () => {
+    const availability = evaluateCursorExecutionAvailability({ setup: null });
+    expect(availability.mode).toBe("none");
+    expect(availability.mode).not.toBe("http_bridge");
+  });
+
+  it("does not select local_runner when env local bridge is configured", () => {
     const availability = evaluateCursorExecutionAvailability({
       setup: {
         gitRepoUrl: "https://github.com/o/r",
         gitRepoName: "o/r",
-        cursorApiUrl: "http://localhost:9999",
-        hasCursorToken: true,
-        workspacePath: "C:/workspace/r",
-      },
-      env: {
-        CURSOR_BRIDGE_ENABLED: "true",
-        CURSOR_BRIDGE_ENDPOINT: "http://bridge.local",
       },
     });
-    expect(availability.mode).toBe("cursor_api");
+    expect(availability.mode).toBe("none");
+    expect(availability.mode).not.toBe("local_runner");
   });
 
   it("board diagnostic shows cursor_api and masks token", () => {
@@ -105,7 +98,6 @@ describe("cursorExecutionAvailability", () => {
         hasCursorToken: true,
         workspacePath: "C:/workspace/r",
       },
-      env: { CURSOR_BRIDGE_ENABLED: "false" },
     });
     const text = lines.join("\n");
     expect(text).toContain("Mode: cursor_api");

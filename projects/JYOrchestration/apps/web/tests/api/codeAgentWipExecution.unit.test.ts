@@ -272,7 +272,7 @@ describe("codeAgentWipExecution", () => {
     if (result.kind !== "created") throw new Error("expected created");
     const review = result.chatPatch.messages.at(-1);
     expect(review?.content).toContain("WIP 초안");
-    expect(review?.content).toContain("실제 Cursor Bridge: 미연결");
+    expect(review?.content).toContain("실제 Cursor API: 미설정");
     expect(review?.content).not.toContain("WIP 작업을 완료했습니다");
     expect(review?.content).toContain("stub validation: passed");
     expect(review?.content).toContain("이번 요청 대상:");
@@ -415,7 +415,7 @@ describe("codeAgentWipExecution", () => {
     });
     const lines = formatCodeAgentExecutionModeDiagnosticLines(wip);
     expect(lines.join("\n")).toContain("WIP 초안 생성됨");
-    expect(lines.join("\n")).toContain("미연결");
+    expect(lines.join("\n")).toContain("미설정");
   });
 
   it("bridge_completed message may contain WIP 작업이 완료되었습니다", () => {
@@ -445,6 +445,6 @@ describe("codeAgentWipExecution", () => {
       selectedTaskId: taskId,
       selectedWorkItems: workItems.filter((w) => w.taskId === taskId),
     });
-    expect(msg.content).toContain("Cursor Bridge가 대상 프로젝트 저장소에 실제 소스를 생성했습니다");
+    expect(msg.content).toContain("Cursor API가 대상 프로젝트 저장소에 실제 소스를 생성했습니다");
   });
 });

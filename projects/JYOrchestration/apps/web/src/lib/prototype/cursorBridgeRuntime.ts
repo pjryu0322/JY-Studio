@@ -166,19 +166,7 @@ export function formatCursorBridgeAvailabilityDiagnosticLines(input?: {
   if (input?.setup !== undefined) {
     return formatCursorExecutionAvailabilityDiagnosticLines({
       setup: input.setup,
-      env: input.env,
     });
   }
-  const availability = getCursorBridgeAvailability(input);
-  const pushEnabled = isTruthyEnv(envRecord(input?.env).GIT_APPLY_PUSH_ENABLED);
-  return [
-    "Cursor Bridge 설정:",
-    `- Enabled: ${isTruthyEnv(envRecord(input?.env).CURSOR_BRIDGE_ENABLED) ? "yes" : "no"}`,
-    `- Mode: ${availability.mode}`,
-    `- Status: ${availability.status}`,
-    `- Endpoint: ${availability.endpoint ?? "(없음)"}`,
-    `- Clone root: ${availability.workspaceRoot ?? "(없음)"}`,
-    `- Git push: ${pushEnabled ? "enabled" : "disabled (GIT_APPLY_PUSH_ENABLED)"}`,
-    ...(availability.available ? [] : [`- 안내: ${availability.reason}`]),
-  ];
+  return formatCursorExecutionAvailabilityDiagnosticLines({ setup: null });
 }

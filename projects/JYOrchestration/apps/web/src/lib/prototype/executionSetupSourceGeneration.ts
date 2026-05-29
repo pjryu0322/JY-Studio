@@ -1,8 +1,5 @@
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
-import {
-  getCursorBridgeAvailability,
-  resolveCursorBridgeCloneRoot,
-} from "@/lib/prototype/cursorBridgeRuntime";
+import { resolveCursorBridgeCloneRoot } from "@/lib/prototype/cursorBridgeRuntime";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import {
   resolveProjectTargetRepositoryFromExecutionSetup,
@@ -54,7 +51,6 @@ export function isCursorSourceGenerationConfigured(input: {
       cursorApiUrl: input.cursorApiUrl,
       cursorApiToken: input.cursorApiToken,
     },
-    env: input.env,
   }).ready;
 }
 
@@ -111,7 +107,6 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
 
   const workspace = resolveSourceGenerationWorkspaceRoot({
     workspacePath: input.setup.workspacePath,
-    env: input.env,
   });
   if (!workspace) {
     missing.push("workspacePath 없음");
@@ -119,18 +114,13 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
 
   const cursorAvailability = evaluateCursorExecutionAvailability({
     setup: input.setup,
-    env: input.env,
   });
-  const bridgeAvailable = cursorAvailability.ready;
+  const cursorApiReady = cursorAvailability.ready;
   const hasCursorToken =
     input.setup.hasCursorToken === true || Boolean(String(input.setup.cursorApiToken ?? "").trim());
   const hasCursorApiUrl = Boolean(String(input.setup.cursorApiUrl ?? "").trim());
-  if (!bridgeAvailable) {
-    if (cursorAvailability.mode === "cursor_api") {
-      missing.push(cursorAvailability.reason);
-    } else {
-      missing.push("Cursor API/Bridge 설정 없음");
-    }
+  if (!cursorApiReady) {
+    missing.push(cursorAvailability.reason);
   }
 
   if (missing.length) {
@@ -141,9 +131,6 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
         "",
         "부족 항목:",
         ...missing.map((m) => `- ${m}`),
-        ...(workspace?.source === "env_fallback"
-          ? ["", "참고: workspacePath가 없어 서버 환경 변수 workdir을 fallback으로 사용합니다."]
-          : []),
       ].join("\n"),
       missing,
     };
@@ -158,12 +145,6 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
       targetRepository: targetRepository!,
       workspaceRoot: workspace!.workspaceRoot,
       workspaceRootSource: workspace!.source,
-      ...(workspace!.source === "env_fallback"
-        ? {
-            workspaceRootFallbackWarning:
-              "ExecutionSetup.workspacePath가 없어 서버 환경 변수 workdir을 사용합니다.",
-          }
-        : {}),
       baseBranch: targetRepository!.defaultBranch,
       allowedPathGlobs,
       forbiddenPathGlobs,
@@ -175,7 +156,7 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
       hasGithubToken:
         input.setup!.hasGithubAccessToken === true ||
         Boolean(String(input.setup!.githubAccessToken ?? "").trim()),
-      bridgeAvailable,
+      bridgeAvailable: cursorApiReady,
     },
   };
 }
@@ -199,9 +180,9 @@ export function formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
       })
     : null;
   const workspace = setup
-    ? resolveSourceGenerationWorkspaceRoot({ workspacePath: setup.workspacePath, env })
+    ? resolveSourceGenerationWorkspaceRoot({ workspacePath: setup.workspacePath })
     : null;
-  const bridgeAvailable = getCursorBridgeAvailability({ env }).available;
+  const cursorAvailability = evaluateCursorExecutionAvailability({ setup });
   const hasCursorToken =
     setup?.hasCursorToken === true || Boolean(String(setup?.cursorApiToken ?? "").trim());
   const hasCursorApiUrl = Boolean(String(setup?.cursorApiUrl ?? "").trim());
@@ -212,11 +193,8 @@ export function formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
     `- Git 저장소: ${targetRepository?.repoFullName ?? "(미설정)"}`,
     `- 기준 브랜치: ${targetRepository?.defaultBranch ?? (setup?.baseBranch?.trim() || "(미설정)")}`,
     `- 작업 경로: ${workspace?.workspaceRoot ?? (setup?.workspacePath?.trim() || "(미설정)")}`,
-    ...(workspace?.source === "env_fallback"
-      ? ["- 참고: workspacePath가 없어 서버 환경 변수 workdir을 fallback으로 사용합니다."]
-      : []),
-    `- Cursor API: ${hasCursorToken && hasCursorApiUrl ? "설정됨" : "미설정"}`,
-    `- Cursor Bridge: ${bridgeAvailable ? "연결됨" : "미연결"}`,
+    `- Cursor API: ${cursorAvailability.ready ? "준비됨" : "미설정"}`,
+    `- Cursor 실행 모드: ${cursorAvailability.mode}`,
     `- GitHub 토큰: ${
       setup?.hasGithubAccessToken === true || Boolean(String(setup?.githubAccessToken ?? "").trim())
         ? "설정됨"
@@ -250,8 +228,7 @@ export function formatExecutionSetupSourceGenerationDiagnosticLines(
     `- 기준 브랜치: ${context.baseBranch}`,
     `- 작업 경로: ${context.workspaceRoot}`,
     ...(context.workspaceRootFallbackWarning ? [`- 참고: ${context.workspaceRootFallbackWarning}`] : []),
-    `- Cursor API: ${context.hasCursorToken ? "설정됨" : "미설정"}`,
-    `- Cursor Bridge: ${context.bridgeAvailable ? "연결됨" : "미연결"}`,
+    `- Cursor API: ${context.bridgeAvailable ? "준비됨" : "미설정"}`,
     `- GitHub 토큰: ${context.hasGithubToken ? "설정됨" : "미설정"}`,
     `- autoCommit: ${context.autoCommit ? "on" : "off"}`,
     `- autoPush: ${context.autoPush ? "on" : "off"}`,

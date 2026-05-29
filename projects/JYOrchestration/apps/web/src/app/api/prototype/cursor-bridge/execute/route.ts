@@ -67,10 +67,7 @@ export async function POST(request: NextRequest) {
       env: process.env as Record<string, string | undefined>,
     });
 
-    const availability = evaluateCursorExecutionAvailability({
-      setup,
-      env: process.env as Record<string, string | undefined>,
-    });
+    const availability = evaluateCursorExecutionAvailability({ setup });
 
     if (!readiness.ok) {
       return NextResponse.json(
@@ -166,31 +163,21 @@ export async function POST(request: NextRequest) {
     const bridgeRequest = built as CursorBridgeExecuteRequest;
     const bridgeRequestWithAdapter: CursorBridgeExecuteRequest = {
       ...bridgeRequest,
-      ...(readiness.context.cursorApiUrl
-        ? { cursorApiUrl: readiness.context.cursorApiUrl }
-        : {}),
-      ...(availability.mode === "cursor_api" && cursorApiToken
-        ? { cursorApiToken, bridgeAdapter: "cursor_api" as const }
-        : availability.mode === "http_bridge"
-          ? { bridgeAdapter: "http_bridge" as const }
-          : availability.mode === "local_runner"
-            ? { bridgeAdapter: "local_runner" as const }
-            : {}),
+      cursorApiUrl: readiness.context.cursorApiUrl,
+      cursorApiToken,
+      bridgeAdapter: "cursor_api",
     };
 
     const result = await executeCursorBridgeWorkItem(bridgeRequestWithAdapter, {
-      env: process.env as Record<string, string | undefined>,
-      executionMode: availability.mode,
-      cursorApiToken: cursorApiToken || undefined,
-      bridgeAdapter: bridgeRequestWithAdapter.bridgeAdapter,
+      cursorApiToken,
     });
 
     return NextResponse.json({
       success: result.ok && result.status === "completed",
       result,
       workspaceRootSource: context.workspaceRootSource,
-      executionMode: availability.mode,
-      bridgeAdapter: bridgeRequestWithAdapter.bridgeAdapter ?? availability.mode,
+      executionMode: "cursor_api",
+      bridgeAdapter: "cursor_api",
       ...(context.workspaceRootFallbackWarning
         ? { workspaceRootFallbackWarning: context.workspaceRootFallbackWarning }
         : {}),
