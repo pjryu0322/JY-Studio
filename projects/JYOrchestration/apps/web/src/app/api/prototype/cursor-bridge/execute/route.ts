@@ -8,7 +8,10 @@ import {
 } from "@/lib/prototype/cursorBridgeExecution";
 import { executeCursorBridgeWorkItem } from "@/lib/prototype/cursorBridgeClient";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
-import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
+import {
+  evaluateExecutionSetupSourceGenerationReadiness,
+  mapExecutionSetupPrismaRowToSourceGenerationRow,
+} from "@/lib/prototype/executionSetupSourceGeneration";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
 import { prisma } from "@/lib/prisma";
@@ -62,10 +65,11 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    const setup = await prisma.executionSetup.findUnique({
+    const setupRow = await prisma.executionSetup.findUnique({
       where: { projectId },
       select: EXECUTION_SETUP_SOURCE_GENERATION_SELECT,
     });
+    const setup = mapExecutionSetupPrismaRowToSourceGenerationRow(setupRow);
 
     const readiness = evaluateExecutionSetupSourceGenerationReadiness({
       setup,
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cursorApiToken = String(setup?.cursorApiToken ?? "").trim();
+    const cursorApiToken = String(setupRow?.cursorApiToken ?? "").trim();
     if (availability.mode === "cursor_api" && !cursorApiToken) {
       return NextResponse.json(
         {

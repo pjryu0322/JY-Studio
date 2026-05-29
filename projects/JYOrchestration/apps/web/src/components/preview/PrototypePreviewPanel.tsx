@@ -55,9 +55,15 @@ import {
 } from "@/lib/prototype/codeAgentWipExecution";
 import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
-import { evaluateExecutionSetupSourceGenerationReadiness } from "@/lib/prototype/executionSetupSourceGeneration";
+import {
+  evaluateExecutionSetupSourceGenerationReadiness,
+  mapExecutionSetupDtoToSourceGenerationRow,
+} from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
-import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
+import {
+  buildExecutionSetupAvailabilityTimelineEntry,
+  evaluateCursorExecutionAvailability,
+} from "@/lib/prototype/cursorExecutionAvailability";
 import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompletionPolicy";
 import {
   buildTargetRepoE2eTimelineEntry,
@@ -129,6 +135,7 @@ import {
   buildImplementationStatusQueryTimelineEntry,
   hasImplementationRoleCheckDetailsShown,
   implementationEntryChipsForBootstrap,
+  sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
 import { resolveImplementationOperationalSend } from "@/lib/prototype/implementationOperationalSend";
@@ -182,6 +189,7 @@ import {
 } from "@/lib/prototype/reviewStageMessage";
 import {
   buildImplementationExecutionBoardMessage,
+  replaceLatestImplementationBoardMessageWithSetup,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
@@ -195,8 +203,7 @@ import {
   markDeveloperTasksFailedForWip,
   syncDeveloperTaskExecutionFromCodeAgentWip,
 } from "@/lib/prototype/implementationTaskExecutionState";
-import { buildImplementationTaskPlanFromTaskList } from "@/lib/prototype/implementationTaskPlan";
-import { shouldUseTaskListBoardWipGate } from "@/lib/prototype/implementationTaskListBoardWipGate";
+import { hasTaskListForWipOrchestration, shouldUseTaskListBoardWipGate } from "@/lib/prototype/implementationTaskListBoardWipGate";
 import {
   finalizeIntegratedStageStep,
   type ImplementationIntegratedStep,
@@ -209,9 +216,12 @@ import {
 import { buildPrototypeRunExecutionSyncPatch, deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import {
+  appendPromptTimelineEntries,
+  buildImplementationWipGenerationTimelineEntry,
   buildTaskListDerivedWipOrchestration,
   canUseTaskListForWipOrchestration,
   mergeTaskListWipRuntimeState,
+  prepareWipRequestRuntime,
 } from "@/lib/prototype/implementationTaskListWipPrep";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -510,34 +520,22 @@ export function PrototypePreviewPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
   }, [projectId]);
 
-  useEffect(() => {
+  const reloadExecutionSetupRow = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid) {
       setExecutionSetupRow(null);
-      return;
+      return null;
     }
-    void fetchExecutionSetup(pid).then((res) => {
-      const data = res.res.ok && res.json.success ? res.json.data : null;
-      if (!data) {
-        setExecutionSetupRow(null);
-        return;
-      }
-      setExecutionSetupRow({
-        gitRepoUrl: data.gitRepoUrl,
-        gitRepoName: data.gitRepoName,
-        gitRepoProvider: data.gitRepoProvider,
-        baseBranch: data.baseBranch,
-        workspacePath: data.workspacePath,
-        allowedPathGlobs: data.allowedPathGlobs,
-        autoCommit: data.autoCommit,
-        autoPush: data.autoPush,
-        autoPr: data.autoPr,
-        cursorApiUrl: data.cursorApiUrl,
-        hasCursorToken: data.hasCursorToken,
-        hasGithubAccessToken: data.hasGithubAccessToken,
-      });
-    });
+    const res = await fetchExecutionSetup(pid);
+    const data = res.res.ok && res.json.success ? res.json.data : null;
+    const row = mapExecutionSetupDtoToSourceGenerationRow(data);
+    setExecutionSetupRow(row);
+    return row;
   }, [projectId]);
+
+  useEffect(() => {
+    void reloadExecutionSetupRow();
+  }, [reloadExecutionSetupRow]);
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
   const persistChatToDb = useCallback(
@@ -1455,12 +1453,12 @@ export function PrototypePreviewPanel({
         designOk: canRequestGeneration.designOk,
         orchestration: parsedRequirementsState.singleChatOrchestrationV1,
         slotDefinitions: planningSlotDefinitions,
-        implementationSeedV1: parsedRequirementsState.implementationSeedV1,
-        implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
-        implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
-        cursorWorkItemsV1: parsedRequirementsState.cursorWorkItemsV1,
+        implementationSeedV1: orchestrationAwareRequirementsState.implementationSeedV1,
+        implementationTaskListV1: orchestrationAwareRequirementsState.implementationTaskListV1,
+        implementationTaskPlanV1: orchestrationAwareRequirementsState.implementationTaskPlanV1,
+        cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
         fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
-        promptTimeline: parsedRequirementsState.promptTimeline,
+        promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
       }),
     [
       executionEnvLoading,
@@ -1472,12 +1470,12 @@ export function PrototypePreviewPanel({
       featureDraftTitles,
       executionArtifacts,
       parsedRequirementsState.singleChatOrchestrationV1,
-      parsedRequirementsState.implementationSeedV1,
-      parsedRequirementsState.implementationTaskListV1,
-      parsedRequirementsState.implementationTaskPlanV1,
-      parsedRequirementsState.cursorWorkItemsV1,
+      orchestrationAwareRequirementsState.implementationSeedV1,
+      orchestrationAwareRequirementsState.implementationTaskListV1,
+      orchestrationAwareRequirementsState.implementationTaskPlanV1,
+      orchestrationAwareRequirementsState.cursorWorkItemsV1,
       parsedRequirementsState.fastPlanDraftV1,
-      parsedRequirementsState.promptTimeline,
+      orchestrationAwareRequirementsState.promptTimeline,
       planningSlotDefinitions,
     ],
   );
@@ -2050,6 +2048,78 @@ export function PrototypePreviewPanel({
     [requirementsStateJson, executionSingleChat, persistChatToDb],
   );
 
+  const refreshImplementationBoardWithExecutionSetup = useCallback(
+    (setup: ExecutionSetupSourceGenerationRow | null, source = "board_refresh") => {
+      const pid = projectId.trim();
+      const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
+      if (!pid || !taskList || !setup) return;
+      const board = buildImplementationExecutionBoardFromRequirementsState({
+        projectId: pid,
+        orchestration: orchestrationAwareRequirementsState,
+      });
+      if (!board) return;
+      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      const nowIso = new Date().toISOString();
+      const nextMessages = replaceLatestImplementationBoardMessageWithSetup({
+        messages: resolved.messages ?? [],
+        board,
+        nowIso,
+        previewReady: prototypeRunSyncSnapshot.previewReady,
+        hasExecutionState: true,
+        boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+        taskList,
+        envOk: canRequestGeneration.envOk,
+        codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+        executionSetup: setup,
+      });
+      executionSingleChat.applyPersistedMessages(nextMessages);
+      void persistChatToDb(
+        {
+          messages: nextMessages,
+          slots: resolved.slots ?? [],
+          answers: resolved.answers ?? {},
+          currentSlotKey: resolved.currentSlotKey ?? null,
+        },
+        {
+          promptTimeline: [
+            ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
+            buildExecutionSetupAvailabilityTimelineEntry({
+              action:
+                source === "execution_setup_saved"
+                  ? "execution_setup_saved_and_board_refreshed"
+                  : "execution_setup_availability_computed",
+              projectId: pid,
+              setup,
+              source,
+            }),
+          ],
+        },
+      );
+    },
+    [
+      projectId,
+      orchestrationAwareRequirementsState,
+      requirementsStateJson,
+      executionSingleChat,
+      persistChatToDb,
+      prototypeRunSyncSnapshot.previewReady,
+      canRequestGeneration.envOk,
+    ],
+  );
+
+  useEffect(() => {
+    if (!executionSetupRow) return;
+    refreshImplementationBoardWithExecutionSetup(executionSetupRow, "execution_setup_loaded");
+  }, [executionSetupRow, refreshImplementationBoardWithExecutionSetup]);
+
+  const handleExecutionSetupChanged = useCallback(async () => {
+    await loadEnv();
+    const row = await reloadExecutionSetupRow();
+    if (row) {
+      refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
+    }
+  }, [loadEnv, reloadExecutionSetupRow, refreshImplementationBoardWithExecutionSetup]);
+
   const applyDbStrategyResult = useCallback(
     (
       result:
@@ -2255,7 +2325,12 @@ export function PrototypePreviewPanel({
       buildWipChipHandlerSlice({
         projectId,
         requirementsStateJson,
+        baseRequirementsState: parsedRequirementsState,
+        pendingPatch: pendingImplementationPatch,
         parsedState: orchestrationAwareRequirementsState,
+        envOk: effectiveImplementationState.envOk,
+        designOk: effectiveImplementationState.designOk,
+        cursorApiConfigured: evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready,
         applyMessages: executionSingleChat.applyPersistedMessages,
         appendNotice: (text) => executionSingleChat.appendAiNotice(text),
         persistOrchestration: (chat, orch) => {
@@ -2275,7 +2350,12 @@ export function PrototypePreviewPanel({
     [
       projectId,
       requirementsStateJson,
+      parsedRequirementsState,
+      pendingImplementationPatch,
       orchestrationAwareRequirementsState,
+      effectiveImplementationState.envOk,
+      effectiveImplementationState.designOk,
+      executionSetupRow,
       executionSingleChat,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
@@ -2693,59 +2773,50 @@ export function PrototypePreviewPanel({
         case "RUN_SECURITY_CHECK":
           return runImplementationQualityGate("security");
         case "REQUEST_CODE_AGENT_WIP": {
-          if (!effectiveImplementationState.envOk) {
-            const message = "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다.";
+          const pid = projectId.trim();
+          const cursorApiReady = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
+
+          const prepared = prepareWipRequestRuntime({
+            projectId: pid,
+            baseState: parsedRequirementsState,
+            pendingPatch: pendingImplementationPatch,
+            envOk: effectiveImplementationState.envOk,
+            designOk: effectiveImplementationState.designOk,
+            cursorApiConfigured: cursorApiReady,
+          });
+
+          let runtimeState = prepared.state;
+          let runtimeTaskPlan = prepared.taskPlan;
+          let runtimeWorkItems = prepared.workItems;
+          let runtimeSlots = runtimeState.implementationSlotsV1 ?? null;
+          let runtimeDbStrategy = runtimeState.implementationDbStrategyV1 ?? null;
+          let runtimeExecutionState = prepared.executionState;
+          let runtimeTimeline = appendPromptTimelineEntries(
+            runtimeState.promptTimeline,
+            prepared.timelineEntries,
+          );
+          runtimeState = { ...runtimeState, promptTimeline: runtimeTimeline };
+
+          const taskList = runtimeState.implementationTaskListV1;
+          const seed = runtimeState.implementationSeedV1;
+          const canUseTaskList = canUseTaskListForWipOrchestration({ taskList, seed });
+
+          if (prepared.unconfirmedSlotsNote) {
+            executionSingleChat.appendAiNotice(prepared.unconfirmedSlotsNote);
+          }
+
+          if (!runtimeWorkItems.length) {
+            const message = "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다.";
             executionSingleChat.appendAiNotice(message);
             return { outcome: "blocked", message };
           }
 
-          const pid = projectId.trim();
-          const taskList = parsedRequirementsState.implementationTaskListV1;
-          const seed = parsedRequirementsState.implementationSeedV1;
-          const canUseTaskList = canUseTaskListForWipOrchestration({ taskList, seed });
-
-          let runtimeState = { ...parsedRequirementsState };
-          let runtimeTaskPlan =
-            runtimeState.implementationTaskPlanV1 ?? effectiveImplementationState.implementationTaskPlanV1;
-          let runtimeWorkItems = runtimeState.cursorWorkItemsV1 ?? null;
-          let runtimeSlots = runtimeState.implementationSlotsV1 ?? null;
-          let runtimeDbStrategy = runtimeState.implementationDbStrategyV1 ?? null;
-          let runtimeExecutionState = runtimeState.implementationTaskExecutionStateV1 ?? null;
-
-          if (taskList && shouldUseTaskListBoardWipGate({ taskList, executionState: runtimeExecutionState })) {
-            if (!runtimeExecutionState) {
-              runtimeExecutionState = buildInitialImplementationTaskExecutionStateFromTaskList({
-                projectId: pid,
-                taskList,
-              });
-              runtimeState = { ...runtimeState, implementationTaskExecutionStateV1: runtimeExecutionState };
-            }
-            if (!runtimeWorkItems?.length) {
-              runtimeWorkItems = buildCursorWorkItemsFromImplementationTaskList({
-                projectId: pid,
-                taskList,
-              });
-              runtimeState = { ...runtimeState, cursorWorkItemsV1: runtimeWorkItems };
-            }
-            if (!runtimeTaskPlan) {
-              runtimeTaskPlan = buildImplementationTaskPlanFromTaskList({
-                projectId: pid,
-                taskList,
-                envOk: effectiveImplementationState.envOk,
-                designOk: effectiveImplementationState.designOk,
-              });
-              runtimeState = { ...runtimeState, implementationTaskPlanV1: runtimeTaskPlan };
-            }
-          }
-
-          const cursorGate = evaluateImplementationCursorGate(
-            buildImplementationCursorGateContext(runtimeState, {
-              envOk: effectiveImplementationState.envOk,
-              designOk: effectiveImplementationState.designOk,
-            }, { projectId: pid }),
-          );
-
-          if (!cursorGate.allowed && pid && canUseTaskList && !shouldUseTaskListBoardWipGate({ taskList, executionState: runtimeExecutionState })) {
+          if (
+            !shouldUseTaskListBoardWipGate({ taskList, executionState: runtimeExecutionState }) &&
+            pid &&
+            canUseTaskList &&
+            hasTaskListForWipOrchestration(taskList)
+          ) {
             const derived = buildTaskListDerivedWipOrchestration({
               projectId: pid,
               taskList: taskList!,
@@ -2754,7 +2825,7 @@ export function PrototypePreviewPanel({
               envOk: effectiveImplementationState.envOk,
               designOk: effectiveImplementationState.designOk,
               envCursorBadge: effectiveImplementationState.envOk ? "ok" : "needs",
-              priorTimeline: parsedRequirementsState.promptTimeline,
+              priorTimeline: runtimeTimeline,
               priorExecutionState: runtimeExecutionState,
             });
             runtimeTaskPlan = derived.plan;
@@ -2763,20 +2834,17 @@ export function PrototypePreviewPanel({
             runtimeDbStrategy = derived.dbStrategy;
             runtimeExecutionState = derived.executionState;
             runtimeState = mergeTaskListWipRuntimeState(runtimeState, derived);
-
-            void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-              implementationTaskPlanV1: derived.plan,
-              cursorWorkItemsV1: derived.workItems,
-              implementationSlotsV1: derived.slots,
-              implementationDbStrategyV1: derived.dbStrategy,
-              implementationTaskExecutionStateV1: derived.executionState,
-              promptTimeline: derived.promptTimeline,
-            });
+            runtimeTimeline = runtimeState.promptTimeline ?? runtimeTimeline;
           }
 
           const reGate = evaluateImplementationCursorGate(
             buildImplementationCursorGateContext(
-              runtimeState,
+              {
+                ...runtimeState,
+                cursorWorkItemsV1: runtimeWorkItems,
+                implementationTaskPlanV1: runtimeTaskPlan,
+                implementationTaskExecutionStateV1: runtimeExecutionState,
+              },
               {
                 envOk: effectiveImplementationState.envOk,
                 designOk: effectiveImplementationState.designOk,
@@ -2787,7 +2855,12 @@ export function PrototypePreviewPanel({
           if (!reGate.allowed) {
             const message = formatImplementationCursorBlockedNotice(
               buildImplementationCursorGateContext(
-                runtimeState,
+                {
+                  ...runtimeState,
+                  cursorWorkItemsV1: runtimeWorkItems,
+                  implementationTaskPlanV1: runtimeTaskPlan,
+                  implementationTaskExecutionStateV1: runtimeExecutionState,
+                },
                 {
                   envOk: effectiveImplementationState.envOk,
                   designOk: effectiveImplementationState.designOk,
@@ -2795,7 +2868,7 @@ export function PrototypePreviewPanel({
                 { projectId: pid },
               ),
             );
-            if (runtimeWorkItems?.length && runtimeExecutionState && taskList) {
+            if (runtimeWorkItems.length && runtimeExecutionState && taskList) {
               const failedState = markDeveloperTasksFailedForWip({
                 state: runtimeExecutionState,
                 cursorWorkItems: runtimeWorkItems,
@@ -2807,12 +2880,6 @@ export function PrototypePreviewPanel({
             }
             executionSingleChat.appendAiNotice(message);
             showToast("Code Agent WIP 요청을 시작하지 못했습니다. 개발자 작업 상태를 실패로 기록했습니다.");
-            return { outcome: "blocked", message };
-          }
-
-          if (!runtimeTaskPlan || !runtimeWorkItems?.length) {
-            const message = "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다.";
-            executionSingleChat.appendAiNotice(message);
             return { outcome: "blocked", message };
           }
 
@@ -2832,6 +2899,21 @@ export function PrototypePreviewPanel({
               qualityGateResults: runtimeState.implementationQualityGateResultsV1,
             });
             scopedTaskId = scoped.selectedTaskId;
+            if (scopedTaskId) {
+              runtimeTimeline = appendPromptTimelineEntries(runtimeTimeline, [
+                buildImplementationWipGenerationTimelineEntry({
+                  action: "implementation_wip_selected_task_resolved",
+                  projectId: pid,
+                  hasImplementationTaskList: true,
+                  hasCursorWorkItems: true,
+                  selectedTaskId: scopedTaskId,
+                  selectedWorkItemCount: scoped.selectedWorkItems.length,
+                  cursorApiConfigured: cursorApiReady,
+                  nowIso: new Date().toISOString(),
+                }),
+              ]);
+              runtimeState = { ...runtimeState, promptTimeline: runtimeTimeline };
+            }
             if (!scoped.selectedWorkItems.length) {
               const message = formatTaskScopedWipExecutionBlockedNotice({
                 selectedTaskId: scoped.selectedTaskId,
@@ -2853,6 +2935,11 @@ export function PrototypePreviewPanel({
               }
             }
             workItemsForWip = scoped.selectedWorkItems;
+          } else if (runtimeWorkItems.length) {
+            scopedTaskId = runtimeWorkItems[0]?.taskId ?? null;
+            workItemsForWip = scopedTaskId
+              ? runtimeWorkItems.filter((w) => w.taskId === scopedTaskId)
+              : runtimeWorkItems.slice(0, 1);
           }
 
           const wipResult = executeCodeAgentWipWorkRequest(
@@ -2876,6 +2963,9 @@ export function PrototypePreviewPanel({
               selectedTaskId: scopedTaskId,
               selectedWorkItemIds: workItemsForWip.map((w) => w.id),
               totalCandidateCount: wipCandidateCount,
+              cursorWorkItemsV1: runtimeWorkItems ?? undefined,
+              implementationTaskPlanV1: runtimeTaskPlan ?? undefined,
+              promptTimeline: runtimeTimeline,
             },
           );
 
@@ -2912,7 +3002,6 @@ export function PrototypePreviewPanel({
           };
 
           const wip = wipResult.orchestrationPatch.codeAgentWipExecutionV1;
-          const cursorApiReady = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
           const timelineTaskId = wip.selectedTaskId ?? selectedTaskId ?? "";
           const timelineBase = {
             projectId: pid,
@@ -2922,9 +3011,7 @@ export function PrototypePreviewPanel({
             hasCodeAgentWipExecutionV1: true,
           };
           let timeline = [
-            ...(wipResult.orchestrationPatch.promptTimeline ??
-              parsedRequirementsState.promptTimeline ??
-              []),
+            ...(wipResult.orchestrationPatch.promptTimeline ?? runtimeTimeline ?? []),
           ];
           timeline = appendPromptTimeline(
             timeline,
@@ -2979,8 +3066,14 @@ export function PrototypePreviewPanel({
             );
           }
 
+          const staleSanitizeCtx = {
+            implementationTaskListV1: runtimeState.implementationTaskListV1,
+            cursorWorkItemsV1: runtimeWorkItems,
+            implementationSeedV1: runtimeState.implementationSeedV1,
+          };
           const baseMessages = wipResult.chatMessages;
-          const nextMessages = boardMessage ? [...baseMessages, boardMessage] : baseMessages;
+          const rawNextMessages = boardMessage ? [...baseMessages, boardMessage] : baseMessages;
+          const nextMessages = sanitizeImplementationConversationMessages(rawNextMessages, staleSanitizeCtx);
           applyImplementationOrchestrationResult({
             messages: nextMessages,
             orchestrationPatch: {
@@ -2989,6 +3082,10 @@ export function PrototypePreviewPanel({
               ...(wipResult.executionState
                 ? { implementationTaskExecutionStateV1: wipResult.executionState }
                 : {}),
+              ...(runtimeWorkItems?.length ? { cursorWorkItemsV1: [...runtimeWorkItems] } : {}),
+              ...(runtimeTaskPlan ? { implementationTaskPlanV1: runtimeTaskPlan } : {}),
+              ...(runtimeSlots ? { implementationSlotsV1: runtimeSlots } : {}),
+              ...(runtimeDbStrategy ? { implementationDbStrategyV1: runtimeDbStrategy } : {}),
               ...(acceptedBoardState
                 ? { implementationExecutionBoardStateV1: acceptedBoardState }
                 : {}),
@@ -3641,10 +3738,12 @@ export function PrototypePreviewPanel({
       appendImplementationTaskListAiMessage,
       chatInputRef,
       parsedRequirementsState,
+      pendingImplementationPatch,
       orchestrationAwareRequirementsState,
       projectId,
       requirementsStateJson,
       effectiveImplementationState,
+      executionSetupRow,
       persistChatToDb,
       showToast,
       executionArtifacts,
@@ -4717,7 +4816,10 @@ export function PrototypePreviewPanel({
         open={executionEnvironmentModalOpen}
         onClose={() => {
           setExecutionEnvironmentModalOpen(false);
-          void loadEnv();
+          void handleExecutionSetupChanged();
+        }}
+        onSetupSaved={() => {
+          void handleExecutionSetupChanged();
         }}
         projectId={projectId}
         project={executionEnvironmentModalProject}

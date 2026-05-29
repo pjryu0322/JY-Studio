@@ -139,6 +139,18 @@ export function usePrototypeExecutionSingleChat({
 
   const aiTitle = displayedWorkspaceAiTitle("prototype_build");
 
+  const messageSanitizeCtx = useMemo(
+    () =>
+      implementationBootstrapInput
+        ? {
+            implementationTaskListV1: implementationBootstrapInput.implementationTaskListV1,
+            cursorWorkItemsV1: implementationBootstrapInput.cursorWorkItemsV1,
+            implementationSeedV1: implementationBootstrapInput.implementationSeedV1,
+          }
+        : null,
+    [implementationBootstrapInput],
+  );
+
   useEffect(() => {
     const pid = projectId.trim();
     if (!pid) {
@@ -148,7 +160,7 @@ export function usePrototypeExecutionSingleChat({
     }
     setConversationStatus("loading");
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    const sanitized = sanitizeImplementationConversationMessages(resolved.messages ?? []);
+    const sanitized = sanitizeImplementationConversationMessages(resolved.messages ?? [], messageSanitizeCtx);
     setConversationMessages(sanitized);
     setSlots(resolved.slots ?? []);
     setAnswers(resolved.answers ?? {});
@@ -158,7 +170,7 @@ export function usePrototypeExecutionSingleChat({
     setConversationStatus("loaded");
     slotsBootstrapRef.current = (resolved.slots?.length ?? 0) > 0;
     implementationBootstrapRef.current = hasAnyValidImplementationBootstrap(sanitized);
-  }, [projectId, requirementsStateJson, conversationResetNonce]);
+  }, [projectId, requirementsStateJson, conversationResetNonce, messageSanitizeCtx]);
 
   useEffect(() => {
     slotsBootstrapRef.current = false;
@@ -171,13 +183,13 @@ export function usePrototypeExecutionSingleChat({
     if (implementationBootstrapRef.current || !implementationBootstrapInput) return;
     const bootstrap = buildImplementationBootstrapBundle(implementationBootstrapInput);
     setConversationMessages((prev) => {
-      const base = sanitizeImplementationConversationMessages(prev);
+      const base = sanitizeImplementationConversationMessages(prev, messageSanitizeCtx);
       if (hasAnyValidImplementationBootstrap(base)) {
         implementationBootstrapRef.current = true;
         return base;
       }
       implementationBootstrapRef.current = true;
-      const next = sanitizeImplementationConversationMessages([...base, ...bootstrap.messages]);
+      const next = sanitizeImplementationConversationMessages([...base, ...bootstrap.messages], messageSanitizeCtx);
       deferPersistStateJson(() => {
         onPersistStateJson({
           messages: next,

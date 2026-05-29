@@ -180,6 +180,31 @@ describe("implementationTaskListBoardWipGate", () => {
     expect(gate.missing.some((m) => m.includes("구현 슬롯"))).toBe(false);
   });
 
+  it("missing cursor api still allows task-list WIP gate", () => {
+    const taskList = makeTaskList(14);
+    const executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-reg",
+      taskList,
+      nowIso: NOW,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskList({
+      projectId: "p-reg",
+      taskList,
+      nowIso: NOW,
+    });
+
+    const gate = evaluateTaskListBoardWipGate({
+      projectId: "p-reg",
+      taskList,
+      executionState,
+      workItems,
+      envOk: false,
+    });
+
+    expect(gate.allowed).toBe(true);
+    expect(gate.selectedTaskId).toBeTruthy();
+  });
+
   it("taskList missing → blocked with task list message", () => {
     const effective = resolveEffectiveImplementationState({
       parsedRequirementsState: { implementationSeedV1: seed },

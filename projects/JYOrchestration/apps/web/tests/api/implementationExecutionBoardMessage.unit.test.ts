@@ -575,10 +575,36 @@ describe("implementationExecutionBoardMessage helpers", () => {
     const text = message.content;
     expect(text).toContain("Cursor 실행 설정:");
     expect(text).toContain("Mode: cursor_api");
+    expect(text).toContain("Cursor API Key: 설정됨");
     expect(text).not.toContain("Cursor Bridge 설정:");
     expect(text).not.toContain("CURSOR_BRIDGE_ENABLED");
     expect(text).not.toContain("GIT_APPLY_PUSH_ENABLED");
     expect(text).not.toContain("http_bridge");
     expect(text).not.toContain("local_runner");
+  });
+
+  it("board diagnostic preserves partial setup when only workspace is missing", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      executionSetup: {
+        gitRepoName: "pjryu0322/aiproject",
+        gitRepoProvider: "github",
+        baseBranch: "main",
+        hasCursorToken: true,
+        hasGithubAccessToken: true,
+      },
+    });
+    const text = message.content;
+    expect(text).toContain("Status: missing_workspace");
+    expect(text).toContain("Git 저장소: 설정됨");
+    expect(text).toContain("GitHub Token: 설정됨");
+    expect(text).toContain("Cursor API Key: 설정됨");
+    expect(text).toContain("Workspace: 미설정");
   });
 });

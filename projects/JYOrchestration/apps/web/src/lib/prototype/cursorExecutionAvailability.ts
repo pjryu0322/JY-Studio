@@ -1,8 +1,13 @@
 import {
+  DEFAULT_CURSOR_API_BASE,
+  normalizeCursorApiBaseUrl,
+} from "@/lib/executionSetup/cursorApiValidation";
+import {
   resolveProjectTargetRepositoryFromExecutionSetup,
   type ProjectTargetRepository,
 } from "@/lib/prototype/projectTargetRepository";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type CursorExecutionMode = "cursor_api" | "none";
 
@@ -11,6 +16,7 @@ export type CursorExecutionAvailabilityStatus =
   | "missing_git_repo"
   | "missing_workspace"
   | "missing_cursor_api"
+  | "missing_cursor_api_url"
   | "missing_cursor_token"
   | "configured_but_unverified"
   | "unsupported";
@@ -21,6 +27,7 @@ export type CursorExecutionAvailability = Readonly<{
   readonly ready: boolean;
   readonly reason: string;
   readonly hasCursorApiUrl: boolean;
+  readonly usesDefaultCursorApiUrl: boolean;
   readonly hasCursorToken: boolean;
   readonly hasGitRepo: boolean;
   readonly hasWorkspace: boolean;
@@ -40,10 +47,25 @@ function resolveSetupGithubToken(setup: ExecutionSetupSourceGenerationRow | null
   );
 }
 
+export function resolveEffectiveCursorApiUrlFromSetup(
+  setup: ExecutionSetupSourceGenerationRow | null | undefined,
+): Readonly<{ readonly url?: string; readonly usesDefault: boolean }> {
+  if (!setup) return { usesDefault: false };
+  const explicit = String(setup.cursorApiUrl ?? "").trim();
+  if (explicit) {
+    return { url: normalizeCursorApiBaseUrl(explicit), usesDefault: false };
+  }
+  if (resolveSetupCursorToken(setup)) {
+    return { url: DEFAULT_CURSOR_API_BASE, usesDefault: true };
+  }
+  return { usesDefault: false };
+}
+
 function missingAvailability(input: {
   readonly status: CursorExecutionAvailabilityStatus;
   readonly reason: string;
   readonly hasCursorApiUrl: boolean;
+  readonly usesDefaultCursorApiUrl: boolean;
   readonly hasCursorToken: boolean;
   readonly hasGitRepo: boolean;
   readonly hasWorkspace: boolean;
@@ -63,7 +85,6 @@ export function evaluateCursorExecutionAvailability(input?: {
   readonly setup?: ExecutionSetupSourceGenerationRow | null;
 }): CursorExecutionAvailability {
   const setup = input?.setup ?? null;
-  const hasCursorApiUrl = Boolean(String(setup?.cursorApiUrl ?? "").trim());
   const hasCursorToken = resolveSetupCursorToken(setup);
   const hasGithubToken = resolveSetupGithubToken(setup);
   const targetRepository = setup
@@ -77,18 +98,30 @@ export function evaluateCursorExecutionAvailability(input?: {
   const hasGitRepo = Boolean(targetRepository);
   const workspacePath = String(setup?.workspacePath ?? "").trim() || undefined;
   const hasWorkspace = Boolean(workspacePath);
+  const effectiveApi = resolveEffectiveCursorApiUrlFromSetup(setup);
+  const hasCursorApiUrl = Boolean(effectiveApi.url);
+  const partialBase = {
+    hasCursorApiUrl,
+    usesDefaultCursorApiUrl: effectiveApi.usesDefault,
+    hasCursorToken,
+    hasGitRepo,
+    hasWorkspace,
+    hasGithubToken,
+    ...(targetRepository ? { targetRepository } : {}),
+    ...(workspacePath ? { workspacePath } : {}),
+    ...(effectiveApi.url ? { cursorApiUrl: effectiveApi.url } : {}),
+  };
 
-  if (!setup || !hasCursorApiUrl) {
+  if (!setup) {
     return missingAvailability({
       status: "missing_cursor_api",
       reason: "환경설정에서 Cursor API URL과 키를 저장해 주세요.",
       hasCursorApiUrl: false,
-      hasCursorToken,
-      hasGitRepo,
-      hasWorkspace,
-      hasGithubToken,
-      ...(targetRepository ? { targetRepository } : {}),
-      ...(workspacePath ? { workspacePath } : {}),
+      usesDefaultCursorApiUrl: false,
+      hasCursorToken: false,
+      hasGitRepo: false,
+      hasWorkspace: false,
+      hasGithubToken: false,
     });
   }
 
@@ -96,14 +129,19 @@ export function evaluateCursorExecutionAvailability(input?: {
     return missingAvailability({
       status: "missing_cursor_token",
       reason: "환경설정에서 Cursor API 키를 저장해 주세요.",
-      hasCursorApiUrl: true,
-      hasCursorToken: false,
-      hasGitRepo,
-      hasWorkspace,
-      hasGithubToken,
-      cursorApiUrl: String(setup.cursorApiUrl).trim(),
-      ...(targetRepository ? { targetRepository } : {}),
-      ...(workspacePath ? { workspacePath } : {}),
+      ...partialBase,
+      hasCursorApiUrl: Boolean(String(setup.cursorApiUrl ?? "").trim()),
+      usesDefaultCursorApiUrl: false,
+    });
+  }
+
+  if (!hasCursorApiUrl) {
+    return missingAvailability({
+      status: "missing_cursor_api_url",
+      reason: "환경설정에서 Cursor API URL을 저장해 주세요.",
+      ...partialBase,
+      hasCursorApiUrl: false,
+      usesDefaultCursorApiUrl: false,
     });
   }
 
@@ -111,13 +149,7 @@ export function evaluateCursorExecutionAvailability(input?: {
     return missingAvailability({
       status: "missing_git_repo",
       reason: "Git 저장소 설정이 없습니다. 환경설정에서 Git 저장소를 저장해 주세요.",
-      hasCursorApiUrl: true,
-      hasCursorToken: true,
-      hasGitRepo: false,
-      hasWorkspace,
-      hasGithubToken,
-      cursorApiUrl: String(setup.cursorApiUrl).trim(),
-      ...(workspacePath ? { workspacePath } : {}),
+      ...partialBase,
     });
   }
 
@@ -125,13 +157,7 @@ export function evaluateCursorExecutionAvailability(input?: {
     return missingAvailability({
       status: "missing_workspace",
       reason: "workspacePath가 없습니다. 환경설정에서 작업 경로를 저장해 주세요.",
-      hasCursorApiUrl: true,
-      hasCursorToken: true,
-      hasGitRepo: true,
-      hasWorkspace: false,
-      hasGithubToken,
-      cursorApiUrl: String(setup.cursorApiUrl).trim(),
-      targetRepository: targetRepository!,
+      ...partialBase,
     });
   }
 
@@ -140,14 +166,8 @@ export function evaluateCursorExecutionAvailability(input?: {
     status: "ready",
     ready: true,
     reason: "ExecutionSetup Cursor API 직접 호출 모드가 준비되었습니다.",
-    hasCursorApiUrl: true,
-    hasCursorToken: true,
-    hasGitRepo: true,
-    hasWorkspace: true,
-    hasGithubToken,
-    cursorApiUrl: String(setup.cursorApiUrl).trim(),
+    ...partialBase,
     targetRepository: targetRepository!,
-    workspacePath,
   };
 }
 
@@ -163,19 +183,68 @@ export function formatCursorExecutionAvailabilityDiagnosticLines(input?: {
   const availability = evaluateCursorExecutionAvailability(input);
   const setup = input?.setup ?? null;
   const pushLabel = setup?.autoPush === true ? "autoPush=on" : "autoPush=off";
+  const cursorApiUrlLabel = availability.usesDefaultCursorApiUrl
+    ? "기본값 사용"
+    : availability.hasCursorApiUrl
+      ? "설정됨"
+      : "미설정";
 
   return [
     "Cursor 실행 설정:",
     `- Mode: ${availability.mode}`,
     `- Status: ${availability.status}`,
-    `- Cursor API: ${availability.hasCursorApiUrl ? "설정됨" : "미설정"}`,
-    `- Cursor Token: ${availability.hasCursorToken ? "설정됨" : "미설정"}`,
+    `- Cursor API URL: ${cursorApiUrlLabel}`,
+    `- Cursor API Key: ${availability.hasCursorToken ? "설정됨" : "미설정"}`,
     `- Git 저장소: ${availability.hasGitRepo ? "설정됨" : "미설정"}`,
     `- Workspace: ${availability.hasWorkspace ? "설정됨" : "미설정"}`,
     `- GitHub Token: ${availability.hasGithubToken ? "설정됨" : "미설정"}`,
     `- Push: ${pushLabel}`,
     ...(availability.ready ? [] : [`- 안내: ${availability.reason}`]),
   ];
+}
+
+export type ExecutionSetupAvailabilityTimelineAction =
+  | "execution_setup_loaded_for_implementation_board"
+  | "execution_setup_missing_for_implementation_board"
+  | "execution_setup_saved_and_board_refreshed"
+  | "execution_setup_availability_computed"
+  | "execution_setup_availability_mismatch_detected"
+  | "cursor_api_key_present_url_missing";
+
+export function buildExecutionSetupAvailabilityTimelineEntry(input: {
+  readonly action: ExecutionSetupAvailabilityTimelineAction;
+  readonly projectId: string;
+  readonly setup?: ExecutionSetupSourceGenerationRow | null;
+  readonly source?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const availability = evaluateCursorExecutionAvailability({ setup: input.setup });
+  const effectiveApi = resolveEffectiveCursorApiUrlFromSetup(input.setup);
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: input.action,
+    source: input.source ?? "system",
+    responseText: [
+      `type=${input.action}`,
+      `projectId=${input.projectId}`,
+      `hasSetup=${Boolean(input.setup)}`,
+      `hasGitRepo=${availability.hasGitRepo}`,
+      `hasGithubToken=${availability.hasGithubToken}`,
+      `hasCursorApiUrl=${availability.hasCursorApiUrl}`,
+      `hasCursorToken=${availability.hasCursorToken}`,
+      `hasWorkspace=${availability.hasWorkspace}`,
+      `availabilityStatus=${availability.status}`,
+      `usesDefaultCursorApiUrl=${availability.usesDefaultCursorApiUrl}`,
+      ...(input.source ? [`source=${input.source}`] : []),
+      ...(effectiveApi.usesDefault && !String(input.setup?.cursorApiUrl ?? "").trim()
+        ? ["cursorApiKeyPresentUrlMissing=true"]
+        : []),
+    ].join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
 }
 
 export const CURSOR_API_NOT_CONFIGURED_MESSAGE =

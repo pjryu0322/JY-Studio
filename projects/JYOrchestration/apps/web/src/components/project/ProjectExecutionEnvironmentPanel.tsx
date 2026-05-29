@@ -52,6 +52,7 @@ type Props = {
   /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
   settingsSurface?: "admin" | "modal";
   settingsPurpose?: "prototype" | "env-test";
+  onExecutionSetupChanged?: (setup: ExecutionSetupDto) => void;
 };
 
 const PLACEHOLDERS = {
@@ -452,6 +453,7 @@ export function ProjectExecutionEnvironmentPanel({
   canRevealCursorApiKey = false,
   settingsSurface,
   settingsPurpose,
+  onExecutionSetupChanged,
 }: Props) {
   const isModalCompact = settingsSurface === "modal";
   const isAdminSettings = settingsSurface === "admin";
@@ -482,6 +484,13 @@ export function ProjectExecutionEnvironmentPanel({
   /** true = PR 생성 후 자동 Merge 테스트 (mergeMode `auto`) */
   const [mergeAfterPr, setMergeAfterPr] = useState(false);
   const [busyMvpSave, setBusyMvpSave] = useState(false);
+  const [busyModalValidate, setBusyModalValidate] = useState(false);
+  const notifyExecutionSetupChanged = useCallback(
+    (setup: ExecutionSetupDto) => {
+      onExecutionSetupChanged?.(setup);
+    },
+    [onExecutionSetupChanged],
+  );
   const executionSetupPanelRef = useRef<ExecutionSetupPanelHandle>(null);
   /** Stage1 경과: 클릭 시각 기준(실행 시작 리셋). `pending`은 POST 응답 전까지 */
   const [stage1TimerSession, setStage1TimerSession] = useState<{
@@ -746,11 +755,12 @@ export function ProjectExecutionEnvironmentPanel({
       }
       setPeerHintsWhenNoSetup(null);
       setExecutionSetup(json.data);
+      notifyExecutionSetupChanged(json.data);
       setExecutionMessage("저장했습니다.");
     } finally {
       setBusyGit(null);
     }
-  }, [projectId, gitVals]);
+  }, [projectId, gitVals, notifyExecutionSetupChanged]);
 
   const handleMvpSaveAll = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -782,15 +792,18 @@ export function ProjectExecutionEnvironmentPanel({
       setGithubTokenRevealPlaintext(null);
       const cursorOk = (await executionSetupPanelRef.current?.saveCursorConnection(json.data)) ?? true;
       if (!cursorOk) return;
+      let latestSetup = json.data;
       const { res: vres, json: vjson } = await postExecutionSetupValidate(projectId, { scope: "all" });
       if (vres.ok && vjson.success && vjson.data) {
-        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, vjson.data as ValidateResponseData) : p));
+        latestSetup = mergeValidateIntoSetup(latestSetup, vjson.data as ValidateResponseData);
+        setExecutionSetup(latestSetup);
       }
+      notifyExecutionSetupChanged(latestSetup);
       setExecutionMessage("저장했습니다.");
     } finally {
       setBusyMvpSave(false);
     }
-  }, [projectId, gitVals, githubTokenDraft, setExecutionSetup]);
+  }, [projectId, gitVals, githubTokenDraft, notifyExecutionSetupChanged]);
 
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -847,10 +860,15 @@ export function ProjectExecutionEnvironmentPanel({
       setExecutionMessage(
         (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
       );
+      const setupRes = await fetchExecutionSetup(projectId);
+      if (setupRes.res.ok && setupRes.json.success && setupRes.json.data) {
+        setExecutionSetup(setupRes.json.data);
+        notifyExecutionSetupChanged(setupRes.json.data);
+      }
     } finally {
       setBusyEnvTest(false);
     }
-  }, [projectId, loadEnvTestLast, mergeAfterPr, effectivePurpose, executionSetup?.autoPush, executionSetup?.stopOnOutOfScopeChange]);
+  }, [projectId, loadEnvTestLast, mergeAfterPr, effectivePurpose, executionSetup?.autoPush, executionSetup?.stopOnOutOfScopeChange, notifyExecutionSetupChanged]);
 
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -866,14 +884,16 @@ export function ProjectExecutionEnvironmentPanel({
         return;
       }
       if (json.data) {
-        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+        const merged = mergeValidateIntoSetup(executionSetup, json.data as ValidateResponseData);
+        setExecutionSetup(merged);
+        notifyExecutionSetupChanged(merged);
       }
       const detail = (json.data?.messages ?? []).join(" / ");
       setExecutionMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
     } finally {
       setBusyGit(null);
     }
-  }, [projectId, executionSetup]);
+  }, [projectId, executionSetup, notifyExecutionSetupChanged]);
 
   const handleModalValidateAll = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -889,14 +909,16 @@ export function ProjectExecutionEnvironmentPanel({
         return;
       }
       if (json.data) {
-        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+        const merged = mergeValidateIntoSetup(executionSetup, json.data as ValidateResponseData);
+        setExecutionSetup(merged);
+        notifyExecutionSetupChanged(merged);
       }
       const detail = (json.data?.messages ?? []).join(" / ");
       setExecutionMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? "검증을 완료했습니다."));
     } finally {
       setBusyModalValidate(false);
     }
-  }, [projectId, executionSetup, setExecutionSetup]);
+  }, [projectId, executionSetup, notifyExecutionSetupChanged]);
 
   const connectionTestSatisfied = useMemo(() => {
     const last = envTestLast;
@@ -1052,6 +1074,7 @@ export function ProjectExecutionEnvironmentPanel({
                   return;
                 }
                 setExecutionSetup(json.data);
+                notifyExecutionSetupChanged(json.data);
                 setGithubTokenDraft("");
                 setGithubReplaceMode(false);
                 setGithubTokenRevealPlaintext(null);
@@ -1102,6 +1125,7 @@ export function ProjectExecutionEnvironmentPanel({
                   return;
                 }
                 setExecutionSetup(json.data);
+                notifyExecutionSetupChanged(json.data);
                 setGithubTokenDraft("");
                 setGithubReplaceMode(false);
                 setGithubTokenRevealPlaintext(null);
@@ -2151,6 +2175,7 @@ export function ProjectExecutionEnvironmentPanel({
                   return;
                 }
                 setExecutionSetup(json.data);
+                notifyExecutionSetupChanged(json.data);
                 setGithubTokenDraft("");
                 setGithubReplaceMode(false);
                 setGithubTokenRevealPlaintext(null);
@@ -2304,6 +2329,7 @@ export function ProjectExecutionEnvironmentPanel({
           connectionTestSatisfied={connectionTestSatisfied}
           peerCredentialHintsFallback={peerHintsWhenNoSetup}
           canRevealCursorApiKey={canRevealCursorApiKey}
+          onSetupPersisted={notifyExecutionSetupChanged}
         />
       );
     }
@@ -2451,6 +2477,7 @@ export function ProjectExecutionEnvironmentPanel({
               connectionTestSatisfied={connectionTestSatisfied}
               peerCredentialHintsFallback={peerHintsWhenNoSetup}
               canRevealCursorApiKey={canRevealCursorApiKey}
+              onSetupPersisted={notifyExecutionSetupChanged}
             />
           </PrototypeEnvSettingsStepCard>
           <div
@@ -2495,6 +2522,7 @@ export function ProjectExecutionEnvironmentPanel({
             connectionSlotGithubAuth={isPrototypeMvpUi ? undefined : githubAuthSlot}
             connectionSlotAfterCursor={isPrototypeMvpUi ? undefined : stage1ValidationSlot}
             canRevealCursorApiKey={canRevealCursorApiKey}
+            onSetupPersisted={notifyExecutionSetupChanged}
           />
         </>
       )}

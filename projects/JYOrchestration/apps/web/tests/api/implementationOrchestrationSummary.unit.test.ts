@@ -313,6 +313,46 @@ describe("implementationOrchestrationSummary", () => {
     expect(isLegacyImplementationMemberBootstrapMessage(legacyReviewer)).toBe(true);
   });
 
+  it("removes stale blocked_missing_planning message when taskList exists", () => {
+    const blocked = newRequirementsMessage({
+      role: "ai",
+      speakerType: "AI",
+      speakerId: "prototype_build",
+      speakerName: "AI개발자",
+      messageType: "STATEMENT",
+      content: IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
+      meta: {
+        internalType: "IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_V1",
+        implementationBootstrapKind: "blocked_missing_planning_artifacts",
+      },
+    });
+    const taskList = {
+      version: "implementation_task_list_v1" as const,
+      projectId: "p1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      source: "implementation_seed" as const,
+      tasks: [
+        {
+          taskId: "dev-1",
+          title: "t",
+          description: "d",
+          taskType: "screen" as const,
+          ownerRole: "developer" as const,
+          priority: "high" as const,
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready" as const,
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const sanitized = sanitizeImplementationConversationMessages([blocked], {
+      implementationTaskListV1: taskList,
+    });
+    expect(sanitized).toHaveLength(0);
+  });
+
   it("shows only one lead developer message on implementation initial entry", () => {
     const bundle = buildImplementationBootstrapBundle(baseInput);
     expect(bundle.messages.filter((m) => m.role === "ai")).toHaveLength(1);

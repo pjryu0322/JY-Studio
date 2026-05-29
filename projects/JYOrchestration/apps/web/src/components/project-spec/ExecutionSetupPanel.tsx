@@ -105,6 +105,8 @@ type ExecutionSetupPanelProps = {
   peerCredentialHintsFallback?: ExecutionSetupDto["peerCredentialHints"] | null;
   /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
   canRevealCursorApiKey?: boolean;
+  /** PATCH 성공 후 부모(구현단계 보드 등)에 최신 setup 전달 */
+  onSetupPersisted?: (setup: ExecutionSetupDto) => void;
 };
 
 export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, ExecutionSetupPanelProps>(
@@ -127,7 +129,16 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
     connectionTestSatisfied = false,
     peerCredentialHintsFallback = null,
     canRevealCursorApiKey = false,
+    onSetupPersisted,
   } = props;
+
+  const persistSetup = useCallback(
+    (data: ExecutionSetupDto) => {
+      setExecutionSetup(data);
+      onSetupPersisted?.(data);
+    },
+    [setExecutionSetup, onSetupPersisted],
+  );
 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<BusyKey>(null);
@@ -523,7 +534,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                     setMessage(json.message || "저장에 실패했습니다.");
                     return;
                   }
-                  setExecutionSetup(json.data);
+                  persistSetup(json.data);
                   setCursorApiKeyDraft("");
                   if (keyTouched) setCursorKeyReplaceMode(false);
                   setMessage(
@@ -582,7 +593,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                   setMessage(json.message || "키 삭제에 실패했습니다.");
                   return;
                 }
-                setExecutionSetup(json.data);
+                persistSetup(json.data);
                 setCursorApiKeyDraft("");
                 setCursorKeyReplaceMode(false);
                 setCursorKeyRevealPlaintext(null);
@@ -670,7 +681,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             setMessage(json.message || "Cursor 설정 저장에 실패했습니다.");
             return false;
           }
-          setExecutionSetup(json.data);
+          persistSetup(json.data);
           setCursorApiKeyDraft("");
           if (keyTouched) setCursorKeyReplaceMode(false);
           return true;
@@ -687,7 +698,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         return prototypeAutomationLevelToPatch("pr");
       },
     }),
-    [prototypeMvp, projectId, executionSetup, cursorApiKeyDraft, setExecutionSetup, setMessage]
+    [prototypeMvp, projectId, executionSetup, cursorApiKeyDraft, persistSetup, setMessage]
   );
 
   return (
@@ -1584,7 +1595,7 @@ ${GLOB_PLACEHOLDER}`}
                       setMessage(json.message || "저장에 실패했습니다.");
                       return;
                     }
-                    setExecutionSetup(json.data);
+                    persistSetup(json.data);
                     setMessage("실행 옵션을 저장했습니다.");
                   } finally {
                     setBusy(null);
@@ -1759,7 +1770,7 @@ ${GLOB_PLACEHOLDER}`}
                       setMessage(json.message || "정책 저장에 실패했습니다.");
                       return;
                     }
-                    setExecutionSetup(json.data);
+                    persistSetup(json.data);
                     setMessage("실행 정책을 저장했습니다.");
                   } finally {
                     setBusy(null);

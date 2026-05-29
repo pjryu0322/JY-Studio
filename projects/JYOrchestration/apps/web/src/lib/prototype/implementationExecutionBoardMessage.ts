@@ -131,6 +131,31 @@ export function buildImplementationExecutionBoardMessage(input: {
   });
 }
 
+export function replaceLatestImplementationBoardMessageWithSetup(input: {
+  readonly messages: readonly RequirementsMessage[];
+  readonly board: ImplementationExecutionBoardV1;
+  readonly nowIso: string;
+  readonly previewReady?: boolean;
+  readonly hasExecutionState?: boolean;
+  readonly boardState?: ImplementationExecutionBoardStateV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly includeTaskSummary?: boolean;
+  readonly envOk?: boolean;
+  readonly codeAgentWipExecutionV1?: import("@/lib/prototype/codeAgentWipExecution").CodeAgentWipExecutionV1 | null;
+  readonly executionSetup?: ExecutionSetupSourceGenerationRow | null;
+}): RequirementsMessage[] {
+  const fresh = buildImplementationExecutionBoardMessage(input);
+  let replaced = false;
+  const next = [...input.messages].reverse().map((message) => {
+    if (!replaced && message.meta.internalType === IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE) {
+      replaced = true;
+      return fresh;
+    }
+    return message;
+  });
+  return replaced ? next.reverse() : [...input.messages, fresh];
+}
+
 export function buildImplementationUserConfirmationBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly nowIso: string;

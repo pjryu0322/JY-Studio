@@ -220,6 +220,20 @@ export function evaluateCursorExecutionRequestGate(input: CursorExecutionRequest
   return { allowed: uniq.length === 0, missing: uniq };
 }
 
+export function evaluateCursorWorkItemsOnlyWipGate(input: {
+  readonly workItems: readonly CursorWorkItem[] | null | undefined;
+}): Readonly<{ readonly allowed: boolean; readonly missing: readonly string[] }> {
+  const missing: string[] = [];
+  const items = input.workItems ?? [];
+  if (!items.length) missing.push("Cursor work item 없음");
+  if (items.some((w) => w.blocked)) missing.push("차단된 task 존재");
+  for (const w of items) {
+    missing.push(...collectCursorWorkItemGateMissing(w));
+  }
+  const uniq = [...new Set(missing)];
+  return { allowed: uniq.length === 0, missing: uniq };
+}
+
 export function enrichCursorWorkItemsWithBoardReworkContext(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;

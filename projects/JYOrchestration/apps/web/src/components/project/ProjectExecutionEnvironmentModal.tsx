@@ -11,6 +11,7 @@ export type ProjectExecutionEnvironmentModalProps = Readonly<{
   canRevealCursorApiKey?: boolean;
   open: boolean;
   onClose: () => void;
+  onSetupSaved?: () => void;
 }>;
 
 export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentModalProps) {
@@ -81,6 +82,7 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
             canRevealCursorApiKey={p.canRevealCursorApiKey}
             settingsSurface="modal"
             settingsPurpose="prototype"
+            onExecutionSetupChanged={p.onSetupSaved}
           />
         </div>
       </div>

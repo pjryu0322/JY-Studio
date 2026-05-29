@@ -1,6 +1,7 @@
 import {
   buildCursorWorkItemsFromImplementationTaskPlan,
   evaluateCursorExecutionRequestGate,
+  evaluateCursorWorkItemsOnlyWipGate,
   formatCursorExecutionBlockedMessage,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
@@ -10,6 +11,7 @@ import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implemen
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   evaluateTaskListBoardWipGate,
+  hasTaskListForWipOrchestration,
   shouldUseTaskListBoardWipGate,
 } from "@/lib/prototype/implementationTaskListBoardWipGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -94,26 +96,45 @@ export function buildImplementationCursorGateContext(
   };
 }
 
+export function hasTaskListOrCursorWorkItemsForWip(
+  ctx: Pick<ImplementationCursorGateContext, "taskList" | "workItems">,
+): boolean {
+  return hasTaskListForWipOrchestration(ctx.taskList) || (ctx.workItems?.length ?? 0) > 0;
+}
+
 export function evaluateImplementationCursorGate(ctx: ImplementationCursorGateContext) {
-  if (
-    shouldUseTaskListBoardWipGate({
-      taskList: ctx.taskList,
-      executionState: ctx.executionState,
-    }) &&
-    ctx.taskList &&
-    ctx.executionState
-  ) {
-    const pid = ctx.projectId?.trim() || ctx.taskList.projectId;
-    return evaluateTaskListBoardWipGate({
-      projectId: pid,
-      taskList: ctx.taskList,
-      executionState: ctx.executionState,
-      workItems: ctx.workItems,
-      integratedExecutionState: ctx.integratedExecutionState,
-      boardState: ctx.boardState,
-      qualityGateResults: ctx.qualityGateResults,
-      envOk: ctx.envOk,
-    });
+  if (hasTaskListOrCursorWorkItemsForWip(ctx)) {
+    const workItems = ctx.workItems ?? [];
+    const taskList = ctx.taskList;
+    const executionState = ctx.executionState;
+
+    if (
+      shouldUseTaskListBoardWipGate({
+        taskList,
+        executionState,
+      }) &&
+      taskList &&
+      executionState
+    ) {
+      const pid = ctx.projectId?.trim() || taskList.projectId;
+      return evaluateTaskListBoardWipGate({
+        projectId: pid,
+        taskList,
+        executionState,
+        workItems,
+        integratedExecutionState: ctx.integratedExecutionState,
+        boardState: ctx.boardState,
+        qualityGateResults: ctx.qualityGateResults,
+      });
+    }
+
+    if (workItems.length) {
+      return evaluateCursorWorkItemsOnlyWipGate({ workItems });
+    }
+
+    if (hasTaskListForWipOrchestration(taskList)) {
+      return { allowed: false, missing: ["Cursor WorkItem이 없습니다."] as const };
+    }
   }
 
   const base = evaluateCursorExecutionRequestGate(ctx);

@@ -33,10 +33,16 @@ import {
 import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildNextDeveloperTaskContinuationNotice,
+  selectCursorWorkItemsForWipExecution,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { markReworkRequestsDoneForTask } from "@/lib/prototype/implementationExecutionBoardState";
+import {
+  appendPromptTimelineEntries,
+  prepareWipRequestRuntime,
+} from "@/lib/prototype/implementationTaskListWipPrep";
+import type { PendingImplementationPatch } from "@/lib/prototype/effectiveImplementationState";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type WipChipHandlerDeps = Readonly<{
   readonly projectId: string;
@@ -45,6 +51,7 @@ export type WipChipHandlerDeps = Readonly<{
     RequirementsStateJson,
     | "implementationTaskPlanV1"
     | "implementationTaskListV1"
+    | "implementationSeedV1"
     | "cursorWorkItemsV1"
     | "codeAgentWipExecutionV1"
     | "implementationTaskExecutionStateV1"
@@ -61,6 +68,11 @@ export type WipChipHandlerDeps = Readonly<{
   ) => void;
   readonly focusComposer: () => void;
   readonly showToast: (message: string) => void;
+  readonly envOk?: boolean;
+  readonly designOk?: boolean;
+  readonly cursorApiConfigured?: boolean;
+  readonly pendingPatch?: PendingImplementationPatch | null;
+  readonly baseRequirementsState?: RequirementsStateJson;
 }>;
 
 export type ExecuteCodeAgentWipWorkRequestResult =
@@ -75,6 +87,8 @@ export type ExecuteCodeAgentWipWorkRequestResult =
         readonly promptTimeline: NonNullable<PrototypeExecutionOrchestrationPersistInput["promptTimeline"]>;
       };
       readonly executionState?: ImplementationTaskExecutionStateV1;
+      readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
+      readonly implementationTaskPlanV1?: ImplementationTaskPlanV1;
     }>
   | Readonly<{ readonly kind: "already_active" }>
   | Readonly<{ readonly kind: "blocked"; readonly message: string }>;
@@ -88,12 +102,18 @@ function persistWipResult(
       readonly promptTimeline: NonNullable<PrototypeExecutionOrchestrationPersistInput["promptTimeline"]>;
     };
     readonly executionState?: ImplementationTaskExecutionStateV1;
+    readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
+    readonly implementationTaskPlanV1?: ImplementationTaskPlanV1;
   },
 ): void {
   deps.persistOrchestration(result.chatPatch, {
     ...result.orchestrationPatch,
     ...(result.executionState !== undefined
       ? { implementationTaskExecutionStateV1: result.executionState }
+      : {}),
+    ...(result.cursorWorkItemsV1?.length ? { cursorWorkItemsV1: [...result.cursorWorkItemsV1] } : {}),
+    ...(result.implementationTaskPlanV1
+      ? { implementationTaskPlanV1: result.implementationTaskPlanV1 }
       : {}),
   });
 }
@@ -135,17 +155,32 @@ function resolveExecutionStateAfterWipWithPatch(
 export function executeCodeAgentWipWorkRequest(
   deps: WipChipHandlerDeps,
   runtime: {
-    readonly plan: ImplementationTaskPlanV1;
+    readonly plan?: ImplementationTaskPlanV1;
     readonly workItems: readonly CursorWorkItem[];
     readonly taskList?: ImplementationTaskListV1;
     readonly executionState?: ImplementationTaskExecutionStateV1 | null;
     readonly selectedTaskId?: string | null;
     readonly selectedWorkItemIds?: readonly string[];
     readonly totalCandidateCount?: number;
+    readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
+    readonly implementationTaskPlanV1?: ImplementationTaskPlanV1;
+    readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   },
 ): ExecuteCodeAgentWipWorkRequestResult {
   const pid = deps.projectId.trim();
-  if (!pid || !runtime.plan || !runtime.workItems.length) {
+  const workItems = runtime.workItems;
+  if (!pid || !workItems.length) {
+    return {
+      kind: "blocked",
+      message: "먼저 구현 작업목록 또는 작업 계획을 준비해 주세요.",
+    };
+  }
+
+  const plan =
+    runtime.plan ??
+    runtime.implementationTaskPlanV1 ??
+    deps.parsedState.implementationTaskPlanV1;
+  if (!plan) {
     return {
       kind: "blocked",
       message: "먼저 구현 작업목록 또는 작업 계획을 준비해 주세요.",
@@ -169,7 +204,7 @@ export function executeCodeAgentWipWorkRequest(
     plan: runtime.plan,
     workItems: runtime.workItems,
     existingWip: deps.parsedState.codeAgentWipExecutionV1,
-    promptTimeline: deps.parsedState.promptTimeline,
+    promptTimeline: runtime.promptTimeline ?? deps.parsedState.promptTimeline,
     selectedTaskId: runtime.selectedTaskId,
     selectedWorkItemIds: runtime.selectedWorkItemIds,
     totalCandidateCount: runtime.totalCandidateCount,
@@ -203,12 +238,18 @@ export function executeCodeAgentWipWorkRequest(
     chatPatch: result.chatPatch,
     orchestrationPatch: result.orchestrationPatch,
     executionState: executionState ?? undefined,
+    cursorWorkItemsV1: runtime.cursorWorkItemsV1,
+    implementationTaskPlanV1: runtime.implementationTaskPlanV1,
   });
 
   const orchestrationPatch = {
     codeAgentWipExecutionV1: result.orchestrationPatch.codeAgentWipExecutionV1,
     promptTimeline: result.orchestrationPatch.promptTimeline,
     ...(executionState !== undefined ? { implementationTaskExecutionStateV1: executionState } : {}),
+    ...(runtime.cursorWorkItemsV1?.length ? { cursorWorkItemsV1: [...runtime.cursorWorkItemsV1] } : {}),
+    ...(runtime.implementationTaskPlanV1
+      ? { implementationTaskPlanV1: runtime.implementationTaskPlanV1 }
+      : {}),
   };
 
   return {
@@ -217,6 +258,10 @@ export function executeCodeAgentWipWorkRequest(
     chatMessages: result.chatPatch.messages,
     orchestrationPatch,
     ...(executionState != null ? { executionState } : {}),
+    ...(runtime.cursorWorkItemsV1?.length ? { cursorWorkItemsV1: runtime.cursorWorkItemsV1 } : {}),
+    ...(runtime.implementationTaskPlanV1
+      ? { implementationTaskPlanV1: runtime.implementationTaskPlanV1 }
+      : {}),
     ...(wip.selectedTaskId ? { selectedTaskId: wip.selectedTaskId } : {}),
     ...(wip.selectedWorkItemIds?.length ? { selectedWorkItemIds: [...wip.selectedWorkItemIds] } : {}),
   } satisfies Extract<ExecuteCodeAgentWipWorkRequestResult, { kind: "created" }>;
@@ -236,22 +281,101 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
 > {
   return {
     requestCodeAgentWipWork: () => {
-      const plan = deps.parsedState.implementationTaskPlanV1;
-      const workItems = deps.parsedState.cursorWorkItemsV1;
-      if (!plan || !workItems?.length) {
-        const taskListReady = hasImplementationTaskListReady(deps.parsedState.implementationTaskListV1);
+      const pid = deps.projectId.trim();
+      const baseState: RequirementsStateJson = {
+        ...(deps.baseRequirementsState ?? {}),
+        ...deps.parsedState,
+      };
+      const prepared = prepareWipRequestRuntime({
+        projectId: pid,
+        baseState,
+        pendingPatch: deps.pendingPatch,
+        envOk: deps.envOk ?? false,
+        designOk: deps.designOk ?? true,
+        cursorApiConfigured: deps.cursorApiConfigured,
+      });
+
+      const taskList = prepared.state.implementationTaskListV1;
+      let plan = prepared.taskPlan;
+      let workItems = prepared.workItems;
+      let executionState = prepared.executionState;
+      let promptTimeline = appendPromptTimelineEntries(
+        prepared.state.promptTimeline,
+        prepared.timelineEntries,
+      );
+
+      if (!workItems.length) {
+        const taskListReady = hasImplementationTaskListReady(taskList);
         deps.showToast(
           taskListReady
             ? "구현 작업목록 기준 Code Agent WIP 후보를 먼저 준비해 주세요."
-            : "구현 작업목록 또는 작업 계획을 먼저 준비해 주세요.",
+            : prepared.state.implementationSeedV1
+              ? "구현 작업목록을 먼저 생성해 주세요."
+              : "구현 작업목록 또는 작업 계획을 먼저 준비해 주세요.",
         );
         return;
       }
-      const result = executeCodeAgentWipWorkRequest(deps, {
-        plan,
-        workItems,
-        executionState: deps.parsedState.implementationTaskExecutionStateV1,
-      });
+
+      if (prepared.unconfirmedSlotsNote) {
+        deps.appendNotice(prepared.unconfirmedSlotsNote);
+      }
+
+      let workItemsForWip = workItems;
+      let scopedTaskId: string | null = null;
+      if (taskList && executionState) {
+        const orchestrationForBoard = {
+          ...prepared.state,
+          implementationTaskListV1: taskList,
+          implementationTaskExecutionStateV1: executionState,
+          cursorWorkItemsV1: workItems,
+          implementationTaskPlanV1: plan,
+        };
+        const board = buildImplementationExecutionBoardFromRequirementsState({
+          projectId: pid,
+          orchestration: orchestrationForBoard,
+        });
+        if (board) {
+          const scoped = selectCursorWorkItemsForWipExecution({
+            board,
+            workItems,
+            boardState: prepared.state.implementationExecutionBoardStateV1,
+            qualityGateResults: prepared.state.implementationQualityGateResultsV1,
+          });
+          scopedTaskId = scoped.selectedTaskId;
+          if (scoped.selectedWorkItems.length) {
+            workItemsForWip = scoped.selectedWorkItems;
+          }
+        }
+      } else if (!scopedTaskId && workItems.length) {
+        scopedTaskId = workItems[0]?.taskId ?? null;
+        workItemsForWip = scopedTaskId
+          ? workItems.filter((w) => w.taskId === scopedTaskId)
+          : workItems.slice(0, 1);
+      }
+
+      const parsedStateForWip = {
+        ...deps.parsedState,
+        ...prepared.state,
+        implementationTaskPlanV1: plan,
+        cursorWorkItemsV1: workItems,
+        implementationTaskExecutionStateV1: executionState,
+        promptTimeline,
+      };
+
+      const result = executeCodeAgentWipWorkRequest(
+        { ...deps, parsedState: parsedStateForWip },
+        {
+          plan,
+          workItems: workItemsForWip,
+          taskList: taskList ?? undefined,
+          executionState,
+          selectedTaskId: scopedTaskId,
+          selectedWorkItemIds: workItemsForWip.map((w) => w.id),
+          cursorWorkItemsV1: workItems,
+          implementationTaskPlanV1: plan,
+          promptTimeline,
+        },
+      );
       if (result.kind === "blocked") {
         deps.showToast(result.message);
         return;

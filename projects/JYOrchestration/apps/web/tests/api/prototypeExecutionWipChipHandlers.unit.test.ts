@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -161,21 +162,135 @@ function makeDeps(overrides?: Partial<Parameters<typeof buildWipChipHandlerSlice
 }
 
 describe("prototypeExecutionWipChipHandlers", () => {
-  it("requestCodeAgentWipWork without plan/workItems does not show 구현 작업안 확정", () => {
-    const { showToast, requestCodeAgentWipWork } = makeDeps();
+  it("REQUEST_CODE_AGENT_WIP with taskList but no cursorWorkItems creates cursorWorkItems and WIP draft", () => {
+    const { showToast, persistOrchestration, requestCodeAgentWipWork } = makeDeps();
     requestCodeAgentWipWork();
-    expect(showToast).toHaveBeenCalled();
-    const message = String(showToast.mock.calls[0]?.[0] ?? "");
-    expect(message).not.toContain("구현 작업안 확정");
-    expect(message).not.toContain("구현 작업안 초안");
+    expect(persistOrchestration).toHaveBeenCalled();
+    const orch = persistOrchestration.mock.calls[0]?.[1];
+    expect(orch?.cursorWorkItemsV1?.length).toBeGreaterThan(0);
+    expect(orch?.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe("draft_created");
+    expect(orch?.implementationTaskPlanV1).toBeTruthy();
+    expect(orch?.codeAgentWipExecutionV1?.selectedTaskId).toBe("dev-1");
+    const toastMsg = String(showToast.mock.calls[0]?.[0] ?? "");
+    expect(toastMsg).not.toContain("구현 작업목록을 생성");
+    expect(toastMsg).not.toContain("구현 작업안 초안");
   });
 
-  it("requestCodeAgentWipWork without plan/workItems shows TaskList-aware fallback message", () => {
-    const { showToast, requestCodeAgentWipWork } = makeDeps();
+  it("REQUEST_CODE_AGENT_WIP with cursorWorkItems creates WIP draft", () => {
+    const taskList = sampleTaskList();
+    const plan = {
+      version: "implementation_task_plan_v1" as const,
+      projectId: "p-wip",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      envOk: true,
+      designOk: true,
+      items: [],
+    };
+    const persistOrchestration = vi.fn();
+    const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: plan,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: undefined,
+        implementationTaskExecutionStateV1: markDeveloperTasksInProgressForWip({
+          state: buildInitialImplementationTaskExecutionStateFromTaskList({
+            projectId: "p-wip",
+            taskList,
+            nowIso,
+          }),
+          taskList,
+          cursorWorkItems: workItems,
+          projectId: "p-wip",
+          nowIso,
+        }),
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast: vi.fn(),
+    });
     requestCodeAgentWipWork();
-    expect(showToast).toHaveBeenCalledWith(
-      "구현 작업목록 기준 Code Agent WIP 후보를 먼저 준비해 주세요.",
+    expect(persistOrchestration).toHaveBeenCalled();
+    expect(persistOrchestration.mock.calls[0]?.[1]?.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe(
+      "draft_created",
     );
+  });
+
+  it("REQUEST_CODE_AGENT_WIP with seed only returns generate task list message", () => {
+    const showToast = vi.fn();
+    const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: undefined,
+        implementationSeedV1: {
+          version: "implementation_seed_v1",
+          projectId: "p-wip",
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          source: "planning_slots_and_artifacts",
+          lifecycleStatus: "confirmed",
+          readiness: { ready: true, score: 1, missing: [], warnings: [] },
+          processImplementationItems: [],
+          screenImplementationItems: [],
+          actorCapabilityMatrix: [],
+          commonDetailFeatures: [],
+          dataModelSeed: { entities: [], relationships: [] },
+          assumptions: [],
+          gaps: [],
+        },
+        cursorWorkItemsV1: undefined,
+        codeAgentWipExecutionV1: undefined,
+        implementationTaskExecutionStateV1: null,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration: vi.fn(),
+      focusComposer: vi.fn(),
+      showToast,
+    });
+    requestCodeAgentWipWork();
+    expect(showToast).toHaveBeenCalledWith("구현 작업목록을 먼저 생성해 주세요.");
+  });
+
+  it("REQUEST_CODE_AGENT_WIP does not show missing task list when taskList exists", () => {
+    const showToast = vi.fn();
+    const persistOrchestration = vi.fn();
+    const taskList = sampleTaskList();
+    const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: undefined,
+        codeAgentWipExecutionV1: undefined,
+        implementationTaskExecutionStateV1: buildInitialImplementationTaskExecutionStateFromTaskList({
+          projectId: "p-wip",
+          taskList,
+          nowIso,
+        }),
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast,
+    });
+    requestCodeAgentWipWork();
+    for (const call of showToast.mock.calls) {
+      expect(String(call[0])).not.toContain("구현 작업목록을 생성");
+    }
+    expect(persistOrchestration).toHaveBeenCalled();
   });
 
   it("requestCodeAgentWipWork without task list shows generic fallback message", () => {
@@ -463,6 +578,72 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(orch?.codeAgentWipExecutionV1?.status).toBe("scm_commit_pending");
     expect(orch?.implementationTaskExecutionStateV1?.items.find((i) => i.taskId === "scm-1")?.status).toBe(
       "in_progress",
+    );
+  });
+
+  it("REQUEST_CODE_AGENT_WIP with cursorWorkItems only and no taskPlan creates WIP draft", () => {
+    const taskList = sampleTaskList();
+    const workItems = buildCursorWorkItemsFromImplementationTaskList({
+      projectId: "p-wip",
+      taskList,
+      nowIso,
+    });
+    const persistOrchestration = vi.fn();
+    const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: undefined,
+        cursorWorkItemsV1: workItems,
+        codeAgentWipExecutionV1: undefined,
+        implementationTaskExecutionStateV1: null,
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast: vi.fn(),
+    });
+    requestCodeAgentWipWork();
+    expect(persistOrchestration).toHaveBeenCalled();
+    const orch = persistOrchestration.mock.calls[0]?.[1];
+    expect(orch?.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe("draft_created");
+    expect(orch?.implementationTaskPlanV1).toBeTruthy();
+  });
+
+  it("missing cursor api still allows REQUEST_CODE_AGENT_WIP draft via taskList recovery", () => {
+    const persistOrchestration = vi.fn();
+    const taskList = sampleTaskList();
+    const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
+      projectId: "p-wip",
+      requirementsStateJson: {},
+      envOk: false,
+      designOk: true,
+      cursorApiConfigured: false,
+      parsedState: {
+        implementationTaskPlanV1: undefined,
+        implementationTaskListV1: taskList,
+        cursorWorkItemsV1: undefined,
+        codeAgentWipExecutionV1: undefined,
+        implementationTaskExecutionStateV1: buildInitialImplementationTaskExecutionStateFromTaskList({
+          projectId: "p-wip",
+          taskList,
+          nowIso,
+        }),
+        promptTimeline: [],
+      },
+      applyMessages: vi.fn(),
+      appendNotice: vi.fn(),
+      persistOrchestration,
+      focusComposer: vi.fn(),
+      showToast: vi.fn(),
+    });
+    requestCodeAgentWipWork();
+    expect(persistOrchestration).toHaveBeenCalled();
+    expect(persistOrchestration.mock.calls[0]?.[1]?.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe(
+      "draft_created",
     );
   });
 });

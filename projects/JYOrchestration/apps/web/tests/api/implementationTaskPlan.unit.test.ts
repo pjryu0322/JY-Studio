@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildCursorWorkItemsFromImplementationTaskList,
   buildCursorWorkItemsFromImplementationTaskPlan,
   evaluateCursorExecutionRequestGate,
   formatCursorExecutionBlockedMessage,
@@ -309,6 +310,48 @@ describe("cursor execution readiness gate", () => {
       ),
     );
     expect(fullGate.allowed).toBe(true);
+  });
+
+  it("allows WIP gate with cursorWorkItems only and no taskPlan or slots", () => {
+    const workItems = buildCursorWorkItemsFromImplementationTaskList({
+      projectId: "p-wip-only",
+      taskList: {
+        version: "implementation_task_list_v1",
+        projectId: "p-wip-only",
+        createdAt: "2026-05-30T00:00:00.000Z",
+        updatedAt: "2026-05-30T00:00:00.000Z",
+        source: "implementation_seed",
+        tasks: [
+          {
+            taskId: "dev-1",
+            title: "화면",
+            description: "d",
+            taskType: "screen",
+            ownerRole: "developer",
+            priority: "high",
+            dependencies: [],
+            acceptanceCriteria: ["ok"],
+            status: "ready",
+          },
+        ],
+        roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+      },
+      nowIso: "2026-05-30T00:00:00.000Z",
+    });
+    const gate = evaluateImplementationCursorGate(
+      buildImplementationCursorGateContext(
+        {
+          implementationTaskPlanV1: null,
+          cursorWorkItemsV1: workItems,
+          implementationSlotsV1: null,
+        },
+        { envOk: false, designOk: false },
+        { projectId: "p-wip-only" },
+      ),
+    );
+    expect(gate.allowed).toBe(true);
+    expect(gate.missing).not.toContain("구현 task plan 없음");
+    expect(gate.missing.some((m) => m.includes("구현 슬롯"))).toBe(false);
   });
 });
 

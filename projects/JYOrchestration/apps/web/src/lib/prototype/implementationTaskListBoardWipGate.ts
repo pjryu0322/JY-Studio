@@ -25,6 +25,12 @@ export type TaskListBoardWipGateResult = Readonly<{
   readonly selectedWorkItems?: readonly CursorWorkItem[];
 }>;
 
+export function hasTaskListForWipOrchestration(
+  taskList?: ImplementationTaskListV1 | null,
+): boolean {
+  return hasImplementationTaskListReady(taskList);
+}
+
 export function shouldUseTaskListBoardWipGate(input: {
   readonly taskList?: ImplementationTaskListV1 | null;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
@@ -40,12 +46,9 @@ export function evaluateTaskListBoardWipGate(input: {
   readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
-  readonly envOk: boolean;
+  /** @deprecated WIP draft creation no longer requires env; kept for call-site compatibility */
+  readonly envOk?: boolean;
 }): TaskListBoardWipGateResult {
-  if (!input.envOk) {
-    return { allowed: false, missing: ["AI 개발 도구·연결 환경"] };
-  }
-
   const board = buildImplementationExecutionBoardFromOrchestration({
     projectId: input.projectId,
     taskList: input.taskList,

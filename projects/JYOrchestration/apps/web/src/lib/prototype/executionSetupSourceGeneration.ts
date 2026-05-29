@@ -1,6 +1,10 @@
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import type { ExecutionSetupDto } from "@/components/project-spec/api";
 import { resolveCursorBridgeCloneRoot } from "@/lib/prototype/cursorBridgeRuntime";
-import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
+import {
+  evaluateCursorExecutionAvailability,
+  resolveEffectiveCursorApiUrlFromSetup,
+} from "@/lib/prototype/cursorExecutionAvailability";
 import {
   resolveProjectTargetRepositoryFromExecutionSetup,
   type ProjectTargetRepository,
@@ -23,6 +27,39 @@ export type ExecutionSetupSourceGenerationRow = Readonly<{
   readonly githubAccessToken?: string | null;
   readonly hasGithubAccessToken?: boolean | null;
 }>;
+
+export function mapExecutionSetupDtoToSourceGenerationRow(
+  data: ExecutionSetupDto | null | undefined,
+): ExecutionSetupSourceGenerationRow | null {
+  if (!data) return null;
+  return {
+    gitRepoUrl: data.gitRepoUrl,
+    gitRepoName: data.gitRepoName,
+    gitRepoProvider: data.gitRepoProvider,
+    baseBranch: data.baseBranch,
+    workspacePath: data.workspacePath,
+    allowedPathGlobs: data.allowedPathGlobs,
+    autoCommit: data.autoCommit,
+    autoPush: data.autoPush,
+    autoPr: data.autoPr,
+    cursorApiUrl: data.cursorApiUrl,
+    hasCursorToken: data.hasCursorToken,
+    hasGithubAccessToken: data.hasGithubAccessToken,
+  };
+}
+
+export function mapExecutionSetupPrismaRowToSourceGenerationRow(
+  row: ExecutionSetupSourceGenerationRow | null | undefined,
+): ExecutionSetupSourceGenerationRow | null {
+  if (!row) return null;
+  return {
+    ...row,
+    hasCursorToken:
+      row.hasCursorToken === true || Boolean(String(row.cursorApiToken ?? "").trim()),
+    hasGithubAccessToken:
+      row.hasGithubAccessToken === true || Boolean(String(row.githubAccessToken ?? "").trim()),
+  };
+}
 
 export type ExecutionSetupSourceGenerationContext = Readonly<{
   readonly targetRepository: ProjectTargetRepository;
@@ -138,6 +175,7 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
 
   const allowedPathGlobs = parseStringArrayJson(input.setup!.allowedPathGlobs);
   const forbiddenPathGlobs = defaultForbiddenTargetPathGlobs();
+  const effectiveApi = resolveEffectiveCursorApiUrlFromSetup(input.setup);
 
   return {
     ok: true,
@@ -151,7 +189,7 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
       autoCommit: input.setup!.autoCommit !== false,
       autoPush: input.setup!.autoPush === true,
       autoPr: input.setup!.autoPr === true,
-      ...(hasCursorApiUrl ? { cursorApiUrl: String(input.setup!.cursorApiUrl).trim() } : {}),
+      ...(effectiveApi.url ? { cursorApiUrl: effectiveApi.url } : {}),
       hasCursorToken,
       hasGithubToken:
         input.setup!.hasGithubAccessToken === true ||

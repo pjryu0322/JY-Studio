@@ -1003,11 +1003,46 @@ export function hasAnyValidImplementationBootstrap(
   );
 }
 
+export function isStaleImplementationBlockedBootstrapMessage(
+  m: RequirementsMessage,
+  ctx?: Readonly<{
+    readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+    readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+    readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  }> | null,
+): boolean {
+  if (!ctx) return false;
+  const hasTaskList = hasImplementationTaskListReady(ctx.implementationTaskListV1);
+  const hasWorkItems = (ctx.cursorWorkItemsV1?.length ?? 0) > 0;
+  const hasSeed = Boolean(ctx.implementationSeedV1);
+  if (!hasTaskList && !hasWorkItems && !hasSeed) return false;
+
+  if (m.meta.internalType === IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE) {
+    return true;
+  }
+  if (
+    m.meta.internalType === IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_INTERNAL_TYPE &&
+    (hasTaskList || hasWorkItems || hasSeed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function sanitizeImplementationConversationMessages(
   messages: readonly RequirementsMessage[] | null | undefined,
+  ctx?: Readonly<{
+    readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+    readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+    readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  }> | null,
 ): RequirementsMessage[] {
   return dedupeRequirementsMessagesById(
-    (messages ?? []).filter((m) => !isLegacyImplementationMemberBootstrapMessage(m)),
+    (messages ?? []).filter((m) => {
+      if (isLegacyImplementationMemberBootstrapMessage(m)) return false;
+      if (isStaleImplementationBlockedBootstrapMessage(m, ctx)) return false;
+      return true;
+    }),
   );
 }
 

@@ -24,11 +24,14 @@ import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecut
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import {
   mergeRequirementsStateJson,
+  type RequirementsPromptTimelineEntry,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -101,9 +104,12 @@ export type ImplementationStageActionId =
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  implementationTaskListV1?: ImplementationTaskListV1 | null;
+  cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
+  promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -119,6 +125,12 @@ export function resolveOrchestrationAwareRequirementsState(input: {
     ...(pending.implementationTaskPlanV1 !== undefined
       ? { implementationTaskPlanV1: pending.implementationTaskPlanV1 }
       : {}),
+    ...(pending.implementationTaskListV1 !== undefined
+      ? { implementationTaskListV1: pending.implementationTaskListV1 }
+      : {}),
+    ...(pending.cursorWorkItemsV1 !== undefined
+      ? { cursorWorkItemsV1: pending.cursorWorkItemsV1 ? [...pending.cursorWorkItemsV1] : null }
+      : {}),
     ...(pending.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: pending.codeAgentWipExecutionV1 }
       : {}),
@@ -128,7 +140,18 @@ export function resolveOrchestrationAwareRequirementsState(input: {
     ...(pending.implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1: pending.implementationExecutionBoardStateV1 }
       : {}),
+    ...(pending.promptTimeline !== undefined
+      ? { promptTimeline: pending.promptTimeline ? [...pending.promptTimeline] : [] }
+      : {}),
   });
+}
+
+/** WIP [생성요청] 직전: persisted state + pending orchestration patch 병합 */
+export function resolveLatestWipRequestRequirementsState(input: {
+  readonly base: RequirementsStateJson;
+  readonly pendingPatch?: PendingImplementationPatch | null;
+}): RequirementsStateJson {
+  return resolveOrchestrationAwareRequirementsState(input);
 }
 
 export type EffectiveImplementationState = Readonly<{
@@ -217,6 +240,12 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.implementationTaskPlanV1 !== undefined) {
     next.implementationTaskPlanV1 = patch.implementationTaskPlanV1;
   }
+  if (patch.implementationTaskListV1 !== undefined) {
+    next.implementationTaskListV1 = patch.implementationTaskListV1;
+  }
+  if (patch.cursorWorkItemsV1 !== undefined) {
+    next.cursorWorkItemsV1 = patch.cursorWorkItemsV1;
+  }
   if (patch.codeAgentWipExecutionV1 !== undefined) {
     next.codeAgentWipExecutionV1 = patch.codeAgentWipExecutionV1;
   }
@@ -225,6 +254,9 @@ export function mergePendingImplementationPatchFromOrchestration(
   }
   if (patch.implementationExecutionBoardStateV1 !== undefined) {
     next.implementationExecutionBoardStateV1 = patch.implementationExecutionBoardStateV1;
+  }
+  if (patch.promptTimeline !== undefined) {
+    next.promptTimeline = patch.promptTimeline;
   }
   return Object.keys(next).length > 0 ? next : null;
 }
@@ -242,6 +274,12 @@ export function mergePendingImplementationPatch(
     ...(incoming.implementationTaskPlanV1 !== undefined
       ? { implementationTaskPlanV1: incoming.implementationTaskPlanV1 }
       : {}),
+    ...(incoming.implementationTaskListV1 !== undefined
+      ? { implementationTaskListV1: incoming.implementationTaskListV1 }
+      : {}),
+    ...(incoming.cursorWorkItemsV1 !== undefined
+      ? { cursorWorkItemsV1: incoming.cursorWorkItemsV1 }
+      : {}),
     ...(incoming.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: incoming.codeAgentWipExecutionV1 }
       : {}),
@@ -251,6 +289,7 @@ export function mergePendingImplementationPatch(
     ...(incoming.implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1: incoming.implementationExecutionBoardStateV1 }
       : {}),
+    ...(incoming.promptTimeline !== undefined ? { promptTimeline: incoming.promptTimeline } : {}),
   };
 }
 
