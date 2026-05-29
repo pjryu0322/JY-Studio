@@ -10,6 +10,8 @@ import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implemen
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
+import type { ReviewStageUserFeedbackListV1 } from "@/lib/prototype/reviewStageUserFeedback";
+import type { ReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
@@ -90,6 +92,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
+  readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
+  readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
@@ -149,6 +153,12 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationReviewStageReadyV1 !== undefined
       ? { implementationReviewStageReadyV1: input.implementationReviewStageReadyV1 }
+      : {}),
+    ...(input.reviewStageUserTestSessionV1 !== undefined
+      ? { reviewStageUserTestSessionV1: input.reviewStageUserTestSessionV1 }
+      : {}),
+    ...(input.reviewStageUserFeedbackListV1 !== undefined
+      ? { reviewStageUserFeedbackListV1: input.reviewStageUserFeedbackListV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     lastSavedAt: new Date().toISOString(),

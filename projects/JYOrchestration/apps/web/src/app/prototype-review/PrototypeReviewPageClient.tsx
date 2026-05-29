@@ -34,6 +34,10 @@ import {
 } from "@/lib/prototype/prototypeRunApiClient";
 import { getPrototypeDeployStatusSnapshot } from "@/lib/prototype/prototypeDeploySnapshot";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
+import { fetchProjectById } from "@/components/project-spec/api";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildReviewStageEntryNoticeLines } from "@/lib/prototype/reviewStageEntry";
+import { isReviewStageEntryReady } from "@/lib/prototype/reviewStageUserTest";
 
 type Busy = "send" | "summarize" | "improvements" | "drafts" | null;
 
@@ -80,6 +84,8 @@ export function PrototypeReviewPageClient() {
   const [deployProceedBusy, setDeployProceedBusy] = useState(false);
   const [securityRecheckBusy, setSecurityRecheckBusy] = useState(false);
   const [securityFixBusy, setSecurityFixBusy] = useState(false);
+  const [reviewStageNoticeLines, setReviewStageNoticeLines] = useState<readonly string[]>([]);
+  const [reviewStageEntryReady, setReviewStageEntryReady] = useState(false);
   const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
@@ -455,6 +461,20 @@ export function PrototypeReviewPageClient() {
       {error ? (
         <InlineAlert variant="danger" style={{ flexShrink: 0 }}>
           {error}
+        </InlineAlert>
+      ) : null}
+      {reviewStageNoticeLines.length ? (
+        <InlineAlert variant={reviewStageEntryReady ? "info" : "warning"} style={{ flexShrink: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {reviewStageNoticeLines.slice(0, 12).map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+            {reviewStageEntryReady ? (
+              <span style={{ fontSize: 12, color: "#4b5563" }}>
+                구현단계 보완·피드백 등록 CTA는 「프로토타입 생성」 실행 화면 채팅에서 사용할 수 있습니다.
+              </span>
+            ) : null}
+          </div>
         </InlineAlert>
       ) : null}
 

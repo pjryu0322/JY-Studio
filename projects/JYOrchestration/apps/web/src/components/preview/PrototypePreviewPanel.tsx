@@ -135,6 +135,23 @@ import {
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
+  buildInitialReviewStageUserTestSession,
+  isReviewStageEntryReady,
+  markReviewStageReturnedToImplementation,
+  markReviewStageUserTestCompleted,
+  markReviewStageUserTestStarted,
+} from "@/lib/prototype/reviewStageUserTest";
+import {
+  canCompleteReviewStage,
+  convertReviewFeedbackToImplementationRework,
+  getActiveReviewFeedbackItems,
+} from "@/lib/prototype/reviewStageUserFeedback";
+import {
+  buildReviewStageEntryMessage,
+  buildReviewStageViewFeedbackMessage,
+  REVIEW_STAGE_ADD_FEEDBACK_GUIDE,
+} from "@/lib/prototype/reviewStageMessage";
+import {
   buildImplementationExecutionBoardMessage,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
@@ -1255,6 +1272,7 @@ export function PrototypePreviewPanel({
       boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
       qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
       previewReady: prototypeRunSyncSnapshot.previewReady,
+      implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
     });
   }, [projectId, parsedRequirementsState, prototypeRunSyncSnapshot.previewReady]);
 
@@ -1382,15 +1400,35 @@ export function PrototypePreviewPanel({
     const labels = implementationBootstrapInput
       ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
       : [];
+    const pid = projectId.trim();
+    const taskList = parsedRequirementsState.implementationTaskListV1;
+    const boardInput =
+      pid && taskList
+        ? {
+            projectId: pid,
+            taskList,
+            executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+            integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+            boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+            qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+            previewReady: prototypeRunSyncSnapshot.previewReady,
+            implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
+            reviewStageUserTestSessionV1: parsedRequirementsState.reviewStageUserTestSessionV1,
+            reviewStageUserFeedbackListV1: parsedRequirementsState.reviewStageUserFeedbackListV1,
+          }
+        : null;
     return prioritizeImplementationChipsForState(
       labels,
       effectiveImplementationState,
       parsedRequirementsState.implementationTaskExecutionStateV1,
+      boardInput,
     );
   }, [
     implementationBootstrapInput,
     effectiveImplementationState,
-    parsedRequirementsState.implementationTaskExecutionStateV1,
+    parsedRequirementsState,
+    projectId,
+    prototypeRunSyncSnapshot.previewReady,
   ]);
 
   const runImplementationStageActionRef = useRef<
@@ -2611,13 +2649,186 @@ export function PrototypePreviewPanel({
             previewReady: true,
             nowIso: new Date().toISOString(),
           });
+          const previewUrlForReview =
+            previewUrl ?? prototypeRunSyncSnapshot.previewUrl ?? undefined;
+          let session =
+            parsedRequirementsState.reviewStageUserTestSessionV1 ??
+            buildInitialReviewStageUserTestSession({
+              projectId: pid,
+              previewUrl: previewUrlForReview,
+            });
           void persistChatToDb(undefined, {
             implementationReviewStageReadyV1: reviewMarker,
+            reviewStageUserTestSessionV1: session,
           });
+          appendImplementationTaskListAiMessage(
+            buildReviewStageEntryMessage({
+              entryReady: true,
+              implementationReviewStageReadyV1: reviewMarker,
+              previewReady: true,
+              session,
+              feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+              previewUrl: previewUrlForReview,
+            }),
+          );
           const message =
             "검토단계로 이동할 수 있습니다. 좌측 [검토] 메뉴에서 프로토타입 사용자 테스트를 진행하세요.";
           executionSingleChat.appendAiNotice(message);
           showToast(message);
+          return { outcome: "executed" };
+        }
+        case "REVIEW_STAGE_OPEN_PREVIEW": {
+          const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
+          if (url) {
+            window.open(url, "_blank", "noopener,noreferrer");
+            return { outcome: "executed" };
+          }
+          showToast("Preview URL이 아직 없습니다.");
+          return { outcome: "blocked", message: "Preview URL이 아직 없습니다." };
+        }
+        case "REVIEW_STAGE_START_USER_TEST": {
+          const pid = projectId.trim();
+          const previewUrlForReview =
+            previewUrl ?? prototypeRunSyncSnapshot.previewUrl ?? undefined;
+          const session = markReviewStageUserTestStarted({
+            session: parsedRequirementsState.reviewStageUserTestSessionV1,
+            projectId: pid,
+            previewUrl: previewUrlForReview,
+          });
+          void persistChatToDb(undefined, { reviewStageUserTestSessionV1: session });
+          appendImplementationTaskListAiMessage(
+            buildReviewStageEntryMessage({
+              entryReady: true,
+              implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
+              previewReady: prototypeRunSyncSnapshot.previewReady,
+              session,
+              feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+              previewUrl: previewUrlForReview,
+            }),
+          );
+          const notice = "사용자 테스트를 시작했습니다. Preview에서 화면·흐름·문구를 확인해 주세요.";
+          executionSingleChat.appendAiNotice(notice);
+          showToast(notice);
+          return { outcome: "executed" };
+        }
+        case "REVIEW_STAGE_ADD_FEEDBACK": {
+          applyImplementationStageActionExecutionResult(
+            buildImplementationStageActionFocusComposerResult(REVIEW_STAGE_ADD_FEEDBACK_GUIDE),
+          );
+          return { outcome: "executed" };
+        }
+        case "REVIEW_STAGE_VIEW_FEEDBACK": {
+          appendImplementationTaskListAiMessage(
+            buildReviewStageViewFeedbackMessage({
+              feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+            }),
+          );
+          return { outcome: "executed" };
+        }
+        case "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION": {
+          const pid = projectId.trim();
+          const board = buildImplementationExecutionBoardFromRequirementsState({
+            projectId: pid,
+            orchestration: parsedRequirementsState,
+          });
+          if (!board) {
+            const message = "구현 작업 보드가 없어 보완 요청을 등록할 수 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const active = getActiveReviewFeedbackItems(
+            parsedRequirementsState.reviewStageUserFeedbackListV1,
+          );
+          const feedback = active[0];
+          if (!feedback) {
+            const message = "구현단계로 전환할 미처리 피드백이 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const fallbackTaskId =
+            pickFirstExecutableDeveloperTaskId(board) ??
+            board.taskRows.find((row) => row.developerStatus !== "skipped")?.taskId ??
+            "";
+          if (!fallbackTaskId) {
+            const message = "보완 요청을 연결할 developer 작업이 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const feedbackList = parsedRequirementsState.reviewStageUserFeedbackListV1;
+          if (!feedbackList) {
+            const message = "피드백 목록이 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const converted = convertReviewFeedbackToImplementationRework({
+            feedbackList,
+            boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
+            projectId: pid,
+            feedbackId: feedback.feedbackId,
+            fallbackTaskId,
+          });
+          const session = markReviewStageReturnedToImplementation({
+            session:
+              parsedRequirementsState.reviewStageUserTestSessionV1 ??
+              buildInitialReviewStageUserTestSession({ projectId: pid }),
+          });
+          void persistChatToDb(undefined, {
+            reviewStageUserFeedbackListV1: converted.feedbackList,
+            implementationExecutionBoardStateV1: converted.boardState,
+            reviewStageUserTestSessionV1: session,
+          });
+          const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
+            projectId: pid,
+            orchestration: {
+              ...parsedRequirementsState,
+              implementationExecutionBoardStateV1: converted.boardState,
+              reviewStageUserFeedbackListV1: converted.feedbackList,
+              reviewStageUserTestSessionV1: session,
+            },
+          });
+          if (nextBoard) {
+            appendImplementationTaskListAiMessage(
+              buildImplementationExecutionBoardMessage({
+                board: nextBoard,
+                nowIso: new Date().toISOString(),
+                previewReady: prototypeRunSyncSnapshot.previewReady,
+              }),
+            );
+          }
+          const notice = `구현단계에 보완 요청을 등록했습니다. (${feedback.feedbackId} → ${converted.reworkRequestId})`;
+          executionSingleChat.appendAiNotice(notice);
+          showToast(notice);
+          return { outcome: "executed" };
+        }
+        case "REVIEW_STAGE_COMPLETE_TEST": {
+          const completeGate = canCompleteReviewStage({
+            feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+          });
+          if (!completeGate.ok) {
+            showToast(completeGate.message);
+            return { outcome: "blocked", message: completeGate.message };
+          }
+          const session = parsedRequirementsState.reviewStageUserTestSessionV1;
+          if (!session) {
+            const message = "사용자 테스트 세션이 없습니다. 먼저 사용자 테스트를 시작해 주세요.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const completed = markReviewStageUserTestCompleted({ session });
+          void persistChatToDb(undefined, { reviewStageUserTestSessionV1: completed });
+          appendImplementationTaskListAiMessage(
+            buildReviewStageEntryMessage({
+              entryReady: true,
+              implementationReviewStageReadyV1: parsedRequirementsState.implementationReviewStageReadyV1,
+              previewReady: prototypeRunSyncSnapshot.previewReady,
+              session: completed,
+              feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
+              previewUrl: previewUrl ?? prototypeRunSyncSnapshot.previewUrl ?? undefined,
+            }),
+          );
+          const notice = "프로토타입 사용자 테스트 검토를 완료했습니다.";
+          executionSingleChat.appendAiNotice(notice);
+          showToast(notice);
           return { outcome: "executed" };
         }
         case "RUN_REFACTOR_COMMON":

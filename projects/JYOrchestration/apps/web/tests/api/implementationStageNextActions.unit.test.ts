@@ -7,14 +7,19 @@ import {
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   deriveImplementationStageNextActions,
+  deriveReviewStageNextActions,
   prioritizeImplementationChipsByNextActions,
   prioritizeImplementationChipsForState,
 } from "@/lib/prototype/implementationStageNextActions";
+import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
+import { appendReviewStageUserFeedback } from "@/lib/prototype/reviewStageUserFeedback";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
+  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
+  REVIEW_STAGE_START_USER_TEST_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
   RUN_FINAL_SCM_CHIP,
@@ -502,15 +507,57 @@ describe("deriveImplementationStageNextActions integrated board", () => {
     expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 
-  it("board complete + previewReady true + no remediation returns review stage primary", () => {
-    const actions = deriveImplementationStageNextActions(
-      "task_list_ready",
-      fullyIntegratedCompleteInput().executionState,
-      null,
-      fullyIntegratedCompleteInput(),
-    );
-    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
-    expect(actions[0]?.label).toBe(MOVE_TO_REVIEW_STAGE_CHIP);
+  it("review ready marker returns 사용자 테스트 시작 before MOVE_TO_REVIEW", () => {
+    const input = fullyIntegratedCompleteInput();
+    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      implementationReviewStageReadyV1: marker,
+    });
+    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_START_USER_TEST");
+    expect(actions[0]?.label).toBe(REVIEW_STAGE_START_USER_TEST_CHIP);
+  });
+
+  it("active feedback + previewReady true prioritizes 구현단계 보완 요청", () => {
+    const input = fullyIntegratedCompleteInput();
+    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
+    const feedbackList = appendReviewStageUserFeedback({
+      list: null,
+      projectId: "p1",
+      title: "피드백",
+      detail: "수정",
+      nowIso: NOW,
+    });
+    const actions = deriveReviewStageNextActions({
+      feedbackList,
+    });
+    expect(actions[0]?.label).toBe(REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP);
+    expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
+  });
+
+  it("blocking feedback prevents 검토 완료 primary in deriveReviewStageNextActions", () => {
+    const feedbackList = appendReviewStageUserFeedback({
+      list: null,
+      projectId: "p1",
+      title: "blocking",
+      detail: "d",
+      severity: "blocking",
+      nowIso: NOW,
+    });
+    const actions = deriveReviewStageNextActions({ feedbackList });
+    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION");
+    expect(actions.some((a) => a.actionId === "REVIEW_STAGE_COMPLETE_TEST")).toBe(false);
+  });
+
+  it("board complete + previewReady true + review marker returns review stage not MOVE_TO_REVIEW", () => {
+    const input = fullyIntegratedCompleteInput();
+    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
+    const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
+      ...input,
+      implementationReviewStageReadyV1: marker,
+    });
+    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_START_USER_TEST");
+    expect(actions.some((a) => a.actionId === "MOVE_TO_REVIEW_STAGE")).toBe(false);
   });
 });
 

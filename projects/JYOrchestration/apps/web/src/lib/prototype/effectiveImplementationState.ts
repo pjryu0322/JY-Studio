@@ -41,7 +41,14 @@ import {
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
   REQUEST_TASK_REWORK_CHIP,
+  REVIEW_STAGE_ADD_FEEDBACK_CHIP,
+  REVIEW_STAGE_COMPLETE_TEST_CHIP,
+  REVIEW_STAGE_OPEN_PREVIEW_CHIP,
+  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
+  REVIEW_STAGE_START_USER_TEST_CHIP,
+  REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
+import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
 
 export type ImplementationStageActionId =
   | "GENERATE_IMPLEMENTATION_WORK_PLAN"
@@ -65,7 +72,13 @@ export type ImplementationStageActionId =
   | "RESOLVE_USER_CONFIRMATION"
   | "SHOW_USER_CONFIRMATION_ITEMS"
   | "MOVE_TO_REVIEW_STAGE"
-  | "REQUEST_TASK_REWORK";
+  | "REQUEST_TASK_REWORK"
+  | "REVIEW_STAGE_OPEN_PREVIEW"
+  | "REVIEW_STAGE_START_USER_TEST"
+  | "REVIEW_STAGE_ADD_FEEDBACK"
+  | "REVIEW_STAGE_VIEW_FEEDBACK"
+  | "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION"
+  | "REVIEW_STAGE_COMPLETE_TEST";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -200,6 +213,8 @@ export function canConfirmImplementationWorkPlanFromEffectiveState(
 
 /** CTA label → stage action id. Unmapped labels fall back to tryHandlePrototypeExecutionChip. */
 export function mapImplementationChipToAction(label: string): ImplementationStageActionId | null {
+  const reviewAction = mapReviewStageChipToAction(label);
+  if (reviewAction) return reviewAction;
   switch (label.trim()) {
     case WORK_PLAN_DRAFT_GENERATE_CHIP:
     case "구현 작업안 초안 생성":

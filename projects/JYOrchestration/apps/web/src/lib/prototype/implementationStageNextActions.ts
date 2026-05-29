@@ -21,6 +21,14 @@ import {
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
+import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
+import {
+  getActiveReviewFeedbackItems,
+  summarizeReviewStageUserFeedback,
+  type ReviewStageUserFeedbackListV1,
+} from "@/lib/prototype/reviewStageUserFeedback";
+import { isReviewStageEntryReady, type ReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
+import { canCompleteReviewStage } from "@/lib/prototype/reviewStageUserFeedback";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
@@ -33,6 +41,12 @@ import {
   RUN_REFACTOR_COMMON_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
   REQUEST_TASK_REWORK_CHIP,
+  REVIEW_STAGE_ADD_FEEDBACK_CHIP,
+  REVIEW_STAGE_COMPLETE_TEST_CHIP,
+  REVIEW_STAGE_OPEN_PREVIEW_CHIP,
+  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
+  REVIEW_STAGE_START_USER_TEST_CHIP,
+  REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
@@ -59,7 +73,95 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly previewReady?: boolean;
+  readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
+  readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
+  readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
 }>;
+
+export function deriveReviewStageNextActions(input: {
+  readonly session?: ReviewStageUserTestSessionV1 | null;
+  readonly feedbackList?: ReviewStageUserFeedbackListV1 | null;
+}): readonly ImplementationStageNextAction[] {
+  const active = getActiveReviewFeedbackItems(input.feedbackList);
+  const summary = summarizeReviewStageUserFeedback(input.feedbackList);
+  const canComplete = canCompleteReviewStage({ feedbackList: input.feedbackList }).ok;
+
+  if (active.length > 0) {
+    const actions: ImplementationStageNextAction[] = [
+      {
+        actionId: "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION",
+        label: REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
+        priority: "primary",
+        reason: "등록된 검토 피드백을 구현단계 재작업 요청으로 전환",
+      },
+      {
+        actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
+        label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
+        priority: "secondary",
+        reason: "미처리 피드백 목록 확인",
+      },
+      {
+        actionId: "REVIEW_STAGE_ADD_FEEDBACK",
+        label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
+        priority: "secondary",
+        reason: "추가 사용자 테스트 피드백 등록",
+      },
+    ];
+    if (canComplete) {
+      actions.push({
+        actionId: "REVIEW_STAGE_COMPLETE_TEST",
+        label: REVIEW_STAGE_COMPLETE_TEST_CHIP,
+        priority: "tertiary",
+        reason: "blocking 피드백 없음 — 검토 완료 가능",
+      });
+    }
+    actions.push({
+      actionId: "REVIEW_STAGE_OPEN_PREVIEW",
+      label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
+      priority: "tertiary",
+      reason: "프로토타입 Preview 확인",
+    });
+    return actions;
+  }
+
+  const actions: ImplementationStageNextAction[] = [];
+  if (!input.session || input.session.status === "not_started") {
+    actions.push({
+      actionId: "REVIEW_STAGE_START_USER_TEST",
+      label: REVIEW_STAGE_START_USER_TEST_CHIP,
+      priority: "primary",
+      reason: "검토단계 사용자 테스트 세션 시작",
+    });
+  } else if (canComplete && input.session.status !== "completed") {
+    actions.push({
+      actionId: "REVIEW_STAGE_COMPLETE_TEST",
+      label: REVIEW_STAGE_COMPLETE_TEST_CHIP,
+      priority: "primary",
+      reason: "미처리 피드백 없음 — 검토 완료",
+    });
+  }
+  actions.push({
+    actionId: "REVIEW_STAGE_OPEN_PREVIEW",
+    label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
+    priority: actions.length ? "secondary" : "primary",
+    reason: "프로토타입 Preview 열기",
+  });
+  actions.push({
+    actionId: "REVIEW_STAGE_ADD_FEEDBACK",
+    label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
+    priority: "secondary",
+    reason: "사용자 테스트 피드백 등록",
+  });
+  if (summary.total > 0) {
+    actions.push({
+      actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
+      label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
+      priority: "tertiary",
+      reason: "등록된 피드백 확인",
+    });
+  }
+  return actions;
+}
 
 function deriveNextActionsFromIntegratedBoard(
   board: ImplementationExecutionBoardV1,
@@ -365,6 +467,19 @@ export function deriveImplementationStageNextActions(
 
     if (boardNeedsRemediation(board)) {
       return deriveNextActionsFromBoardRemediation(board);
+    }
+
+    if (
+      isReviewStageEntryReady({
+        implementationReviewStageReadyV1: boardInput.implementationReviewStageReadyV1,
+        previewReady: boardInput.previewReady === true,
+      })
+    ) {
+      const reviewActions = deriveReviewStageNextActions({
+        session: boardInput.reviewStageUserTestSessionV1,
+        feedbackList: boardInput.reviewStageUserFeedbackListV1,
+      });
+      if (reviewActions.length) return reviewActions;
     }
 
     const fromIntegrated = deriveNextActionsFromIntegratedBoard(

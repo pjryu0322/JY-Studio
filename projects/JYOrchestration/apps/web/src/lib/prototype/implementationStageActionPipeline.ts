@@ -13,6 +13,8 @@ import {
   isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
+import { isReviewStageEntryReady } from "@/lib/prototype/reviewStageUserTest";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -28,6 +30,7 @@ export type { ImplementationStageActionGateResult, ImplementationStageActionId }
 export type ImplementationStageBoardGateContext = Readonly<{
   readonly board: ImplementationExecutionBoardV1;
   readonly previewReady: boolean;
+  readonly reviewStageEntryReady: boolean;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -38,8 +41,10 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly previewReady?: boolean;
+  readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
+  const previewReady = input.previewReady === true;
   return {
     board: buildImplementationExecutionBoardFromOrchestration({
       projectId: input.projectId,
@@ -49,8 +54,25 @@ export function buildImplementationStageBoardGateContext(input: {
       boardState: input.boardState,
       qualityGateResults: input.qualityGateResults,
     }),
-    previewReady: input.previewReady === true,
+    previewReady,
+    reviewStageEntryReady: isReviewStageEntryReady({
+      implementationReviewStageReadyV1: input.implementationReviewStageReadyV1,
+      previewReady,
+    }),
   };
+}
+
+function evaluateReviewStageActionGate(
+  boardContext: ImplementationStageBoardGateContext | null | undefined,
+): ImplementationStageActionGateResult {
+  if (!boardContext?.reviewStageEntryReady) {
+    return {
+      ok: false,
+      message:
+        "검토단계 진입 조건이 충족되지 않았습니다. 구현단계 완료 및 Preview 준비 후 검토단계로 이동해 주세요.",
+    };
+  }
+  return { ok: true };
 }
 
 function integratedStepBoardStatus(
@@ -434,6 +456,13 @@ export function evaluateImplementationStageActionGate(
       }
       return { ok: true };
     }
+    case "REVIEW_STAGE_OPEN_PREVIEW":
+    case "REVIEW_STAGE_START_USER_TEST":
+    case "REVIEW_STAGE_ADD_FEEDBACK":
+    case "REVIEW_STAGE_VIEW_FEEDBACK":
+    case "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION":
+    case "REVIEW_STAGE_COMPLETE_TEST":
+      return evaluateReviewStageActionGate(boardContext);
     case "RUN_REVIEWER_CHECK":
     case "RUN_SECURITY_CHECK": {
       if (!isTaskListReadyForImplementationStageActions(state)) {
