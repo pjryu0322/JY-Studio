@@ -123,7 +123,6 @@ import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementa
 import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
 import {
   buildImplementationExecutionBoard,
-  buildImplementationReviewStageReadinessNotice,
   buildIntegratedStageStepActionNotice,
   filterCursorWorkItemsForExecutableTask,
   formatTaskScopedWipExecutionBlockedNotice,
@@ -2257,14 +2256,6 @@ export function PrototypePreviewPanel({
           previewReady: prototypeRunSyncSnapshot.previewReady,
         }),
       );
-
-      const reviewNotice = buildImplementationReviewStageReadinessNotice({
-        board: nextBoard,
-        previewReady: prototypeRunSyncSnapshot.previewReady,
-      });
-      if (reviewNotice) {
-        executionSingleChat.appendAiNotice(reviewNotice);
-      }
 
       return { outcome: "executed" };
     },

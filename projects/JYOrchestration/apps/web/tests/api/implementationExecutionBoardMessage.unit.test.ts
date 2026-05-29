@@ -4,6 +4,7 @@ import {
   buildIntegratedStageStepActionNotice,
   buildImplementationReviewStageReadinessNotice,
   deriveIntegratedStageInterviewChips,
+  deriveIntegratedStagePrimaryChip,
   formatTaskScopedWipExecutionBlockedNotice,
   formatTaskScopedWipExecutionSuccessNotice,
   isImplementationReadyForReviewStage,
@@ -24,7 +25,9 @@ import {
   deriveImplementationStageNextActions,
 } from "@/lib/prototype/implementationStageNextActions";
 import {
+  RUN_FINAL_SCM_CHIP,
   RUN_INTEGRATED_REVIEW_CHIP,
+  RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
@@ -275,7 +278,98 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(notice).toContain("통합");
   });
 
-  it("board chips and next actions agree for integrated steps", () => {
+  it("board chips and next actions agree for all integrated steps", () => {
+    const execState = completedExecutionState();
+    const boardInputBase = {
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: execState,
+      previewReady: false,
+    };
+
+    let integrated = deriveIntegratedExecutionStateReadiness({
+      projectId: "p-board",
+      state: null,
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    let board = completedBoard(integrated);
+    expect(deriveIntegratedStagePrimaryChip(board)).toBe(RUN_REFACTOR_COMMON_CHIP);
+    expect(
+      deriveImplementationStageNextActions("task_list_ready", execState, null, {
+        ...boardInputBase,
+        integratedExecutionState: integrated,
+      })[0]?.label,
+    ).toBe(RUN_REFACTOR_COMMON_CHIP);
+
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p-board",
+      step: "refactor_common",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    board = completedBoard(integrated);
+    expect(deriveIntegratedStagePrimaryChip(board)).toBe(RUN_INTEGRATED_REVIEW_CHIP);
+    expect(
+      deriveImplementationStageNextActions("task_list_ready", execState, null, {
+        ...boardInputBase,
+        integratedExecutionState: integrated,
+      })[0]?.label,
+    ).toBe(RUN_INTEGRATED_REVIEW_CHIP);
+
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p-board",
+      step: "integrated_review",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p-board",
+      step: "integrated_review",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    board = completedBoard(integrated);
+    expect(deriveIntegratedStagePrimaryChip(board)).toBe(RUN_INTEGRATED_SECURITY_CHIP);
+    expect(
+      deriveImplementationStageNextActions("task_list_ready", execState, null, {
+        ...boardInputBase,
+        integratedExecutionState: integrated,
+      })[0]?.label,
+    ).toBe(RUN_INTEGRATED_SECURITY_CHIP);
+
+    integrated = markIntegratedStepInProgress({
+      state: integrated,
+      projectId: "p-board",
+      step: "integrated_security",
+      nowIso: NOW,
+    });
+    integrated = markIntegratedStepDone({
+      state: integrated,
+      projectId: "p-board",
+      step: "integrated_security",
+      taskRowsCompleted: true,
+      nowIso: NOW,
+    });
+    board = completedBoard(integrated);
+    expect(deriveIntegratedStagePrimaryChip(board)).toBe(RUN_FINAL_SCM_CHIP);
+    expect(
+      deriveImplementationStageNextActions("task_list_ready", execState, null, {
+        ...boardInputBase,
+        integratedExecutionState: integrated,
+      })[0]?.label,
+    ).toBe(RUN_FINAL_SCM_CHIP);
+  });
+
+  it("board chips and next actions agree for refactor_common ready", () => {
     const board = completedBoard();
     const chips = deriveIntegratedStageInterviewChips(board);
     const actions = deriveImplementationStageNextActions("task_list_ready", completedExecutionState(), null, {

@@ -655,6 +655,7 @@ export function tryHandleImplementationTaskListChip(input: {
       buildImplementationExecutionBoardMessage({
         board,
         nowIso: now,
+        previewReady: input.prototypeSnapshot?.previewReady === true,
       }),
     );
   };

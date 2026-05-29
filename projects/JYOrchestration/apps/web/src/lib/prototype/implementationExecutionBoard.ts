@@ -724,6 +724,14 @@ export function deriveIntegratedStageInterviewChips(
   return chips;
 }
 
+/** Primary integrated-stage chip when tasks are complete; aligns with next action primary label. */
+export function deriveIntegratedStagePrimaryChip(
+  board: ImplementationExecutionBoardV1,
+): string | null {
+  const chips = deriveIntegratedStageInterviewChips(board);
+  return chips[0] ?? null;
+}
+
 export function buildIntegratedStageStepActionNotice(input: {
   readonly step: ImplementationIntegratedStep;
   readonly integratedState: ImplementationIntegratedExecutionStateV1;
