@@ -15,6 +15,9 @@ import type {
   ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
+import { formatTaskRowCodeAgentProgressLine } from "@/lib/prototype/codeAgentExecutionProgressView";
+import boardStyles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 const tableStyle: CSSProperties = {
   width: "100%",
@@ -59,10 +62,14 @@ function WipHint({ overlay }: { readonly overlay: ImplementationExecutionBoardRo
 export function ImplementationExecutionBoardCardList({
   board,
   selectedTaskId,
+  codeAgentWipExecutionV1,
+  codeAgentProgress,
   onSelectTask,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly selectedTaskId: string | null;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly codeAgentProgress?: CodeAgentExecutionProgressView | null;
   readonly onSelectTask: (taskId: string) => void;
 }) {
   return (
@@ -70,6 +77,11 @@ export function ImplementationExecutionBoardCardList({
       {board.taskRows.map((row) => {
         const card = buildTaskRowCardView(row);
         const selected = row.taskId === selectedTaskId;
+        const progressLine = formatTaskRowCodeAgentProgressLine({
+          row,
+          codeAgentWipExecutionV1,
+          progressView: codeAgentProgress,
+        });
         return (
           <button
             key={row.taskId}
@@ -96,6 +108,7 @@ export function ImplementationExecutionBoardCardList({
               <br />
               재작업 {card.reworkCount} · 사용자 확인 {card.userConfirmationLabel}
             </div>
+            {progressLine ? <div className={boardStyles.taskRowProgressLine}>{progressLine}</div> : null}
           </button>
         );
       })}
@@ -107,15 +120,17 @@ export function ImplementationExecutionBoardTable({
   board,
   selectedTaskId,
   codeAgentWipExecutionV1,
+  codeAgentProgress,
   onSelectTask,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly selectedTaskId: string | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly codeAgentProgress?: CodeAgentExecutionProgressView | null;
   readonly onSelectTask: (taskId: string) => void;
 }) {
   return (
-    <div style={{ overflow: "auto", maxHeight: "min(42vh, 360px)" }}>
+    <div>
       <table style={tableStyle} data-testid="implementation-execution-board-table">
         <thead>
           <tr>
@@ -144,6 +159,11 @@ export function ImplementationExecutionBoardTable({
               row,
               codeAgentWipExecutionV1,
             });
+            const progressLine = formatTaskRowCodeAgentProgressLine({
+              row,
+              codeAgentWipExecutionV1,
+              progressView: codeAgentProgress,
+            });
             const selected = row.taskId === selectedTaskId;
             return (
               <tr
@@ -159,6 +179,7 @@ export function ImplementationExecutionBoardTable({
                 <td style={tdStyle}>
                   <div>{row.title}</div>
                   <WipHint overlay={overlay} />
+                  {progressLine ? <div className={boardStyles.taskRowProgressLine}>{progressLine}</div> : null}
                 </td>
                 <td style={tdStyle}>{row.priority}</td>
                 <td style={tdStyle}>{formatImplementationBoardRoleKo(row.currentRole)}</td>

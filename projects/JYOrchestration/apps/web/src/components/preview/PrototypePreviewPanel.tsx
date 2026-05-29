@@ -4795,6 +4795,7 @@ export function PrototypePreviewPanel({
             previewReady={prototypeRunSyncSnapshot.previewReady}
             effectiveImplementationState={effectiveImplementationState}
             boardInput={implementationStageBoardInput}
+            promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             onAction={handleImplementationChip}
           />
         ) : null}

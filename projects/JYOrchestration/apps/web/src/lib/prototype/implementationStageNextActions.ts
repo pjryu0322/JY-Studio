@@ -641,6 +641,38 @@ function deriveNextActionsFromCodeAgentWip(
       },
     ];
   }
+  if (bridgeStatus === "bridge_requested" || bridgeStatus === "bridge_running") {
+    return [
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "Cursor API 실행 중 환경 확인",
+      },
+    ];
+  }
+  if (bridgeStatus === "bridge_completed" && !isRealCursorSourceGenerationCompleted(wip)) {
+    return [
+      {
+        actionId: "REQUEST_CURSOR_BRIDGE_EXECUTION",
+        label: REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+        priority: "primary",
+        reason: "stub WIP 결과 — 실제 Cursor API 실행 필요",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "Cursor API 환경설정",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "작업 폐기",
+        priority: "tertiary",
+        reason: "stub WIP 폐기",
+      },
+    ];
+  }
   return null;
 }
 

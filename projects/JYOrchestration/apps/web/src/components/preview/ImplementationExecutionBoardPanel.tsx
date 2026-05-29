@@ -32,6 +32,12 @@ import {
   ImplementationExecutionBoardTable,
 } from "@/components/preview/ImplementationExecutionBoardTable";
 import { ImplementationExecutionBoardDetail } from "@/components/preview/ImplementationExecutionBoardDetail";
+import { ImplementationCodeAgentExecutionProgressCard } from "@/components/preview/ImplementationCodeAgentExecutionProgressCard";
+import {
+  buildCodeAgentExecutionProgressView,
+  shouldHideBoardPrimaryCtaForProgress,
+} from "@/lib/prototype/codeAgentExecutionProgressView";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 function pillClass(tone: "ok" | "warn" | "muted"): string {
@@ -49,6 +55,7 @@ export function ImplementationExecutionBoardPanel({
   previewReady,
   effectiveImplementationState,
   boardInput,
+  promptTimeline,
   onAction,
 }: {
   readonly board: ImplementationExecutionBoardV1;
@@ -60,6 +67,7 @@ export function ImplementationExecutionBoardPanel({
   readonly previewReady?: boolean;
   readonly effectiveImplementationState: EffectiveImplementationState;
   readonly boardInput: ImplementationStageNextActionsBoardInput;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly onAction: (label: string) => void;
 }) {
   const summaryView = useMemo(
@@ -111,6 +119,18 @@ export function ImplementationExecutionBoardPanel({
     () => resolveNextTaskCardView({ board, codeAgentWipExecutionV1 }),
     [board, codeAgentWipExecutionV1],
   );
+
+  const codeAgentProgress = useMemo(
+    () =>
+      buildCodeAgentExecutionProgressView({
+        codeAgentWipExecutionV1,
+        board,
+        latestTimeline: promptTimeline,
+      }),
+    [codeAgentWipExecutionV1, board, promptTimeline],
+  );
+
+  const hidePrimaryCta = shouldHideBoardPrimaryCtaForProgress(codeAgentProgress.status);
 
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -186,8 +206,10 @@ export function ImplementationExecutionBoardPanel({
         </div>
       ) : null}
 
+      <ImplementationCodeAgentExecutionProgressCard progress={codeAgentProgress} />
+
       <div className={styles.ctaRow}>
-        {actionPartition.primary ? (
+        {actionPartition.primary && !hidePrimaryCta ? (
           <button
             type="button"
             className={styles.ctaPrimary}
@@ -241,23 +263,29 @@ export function ImplementationExecutionBoardPanel({
 
       <details className={styles.disclosure} data-testid="implementation-task-list-disclosure">
         <summary className={styles.disclosureSummary} aria-expanded={false}>
-          작업목록 보기 {board.taskRows.length}개
+          작업목록 {board.taskRows.length}개 · 스크롤 가능
         </summary>
         <div className={styles.disclosureBody}>
-          <div className={styles.mobileCardList}>
-            <ImplementationExecutionBoardCardList
-              board={board}
-              selectedTaskId={detailTaskId}
-              onSelectTask={(taskId) => setDetailTaskId(taskId)}
-            />
-          </div>
-          <div className={styles.desktopTable}>
-            <ImplementationExecutionBoardTable
-              board={board}
-              selectedTaskId={detailTaskId}
-              codeAgentWipExecutionV1={codeAgentWipExecutionV1}
-              onSelectTask={(taskId) => setDetailTaskId(taskId)}
-            />
+          <p className={styles.taskListHint}>1~{board.taskRows.length}개 작업 · 아래로 스크롤하여 더 보기</p>
+          <div className={styles.taskListScrollArea} data-testid="implementation-task-list-scroll-area">
+            <div className={styles.mobileCardList}>
+              <ImplementationExecutionBoardCardList
+                board={board}
+                selectedTaskId={detailTaskId}
+                codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+                codeAgentProgress={codeAgentProgress}
+                onSelectTask={(taskId) => setDetailTaskId(taskId)}
+              />
+            </div>
+            <div className={styles.desktopTable}>
+              <ImplementationExecutionBoardTable
+                board={board}
+                selectedTaskId={detailTaskId}
+                codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+                codeAgentProgress={codeAgentProgress}
+                onSelectTask={(taskId) => setDetailTaskId(taskId)}
+              />
+            </div>
           </div>
         </div>
       </details>
