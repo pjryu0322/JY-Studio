@@ -11,6 +11,7 @@ import {
   type ImplementationWorkPlanDraftV1,
 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
+import { evaluatePlanningArtifactReadiness } from "@/lib/prototype/planningArtifactReadiness";
 import {
   mergeUserFeedbackPatchesIntoWorkPlanDraft,
   parseImplementationUserFeedbackPatchesV1,
@@ -88,6 +89,19 @@ export function buildGenerateImplementationWorkPlanDraftResult(input: {
   }
 
   if (!collectReferencePlanningArtifacts(input.projectArtifacts).length) {
+    const planningReadiness = evaluatePlanningArtifactReadiness({
+      projectArtifacts: input.projectArtifacts,
+      orchestration: input.orchestration,
+      slotDefinitions: input.slotDefinitions,
+      implementationSeedV1: input.implementationSeedV1,
+    });
+    if (planningReadiness.status === "quick_design_draft_unconfirmed") {
+      return {
+        kind: "blocked",
+        message:
+          "Quick Design 초안은 생성되었지만 아직 확정되지 않았습니다. [Quick Design 확정] 또는 [초안 기준 구현 Seed 생성]을 선택해 주세요.",
+      };
+    }
     return {
       kind: "blocked",
       message: IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE,

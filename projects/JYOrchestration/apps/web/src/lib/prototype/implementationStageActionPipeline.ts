@@ -514,5 +514,10 @@ export function evaluateImplementationStageActionGate(
       }
       return { ok: true };
     }
+    case "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION":
+    case "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT":
+    case "START_QUICK_DESIGN_FROM_IMPLEMENTATION":
+    case "RETURN_TO_PLANNING_STAGE":
+      return { ok: true };
   }
 }

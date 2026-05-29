@@ -65,6 +65,8 @@ export const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK
 
 export const IMPLEMENTATION_TASK_LIST_READY_HEADLINE = "구현 작업목록이 준비되었습니다." as const;
 
+export const IMPLEMENTATION_TASK_LIST_MISSING_HEADLINE = "구현 작업목록이 아직 없습니다." as const;
+
 export {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   DESIGNER_REVIEW_CHIP,
@@ -253,7 +255,7 @@ export function buildImplementationTaskListMissingEntryMessage(input: {
         ? readiness.message
         : "기획단계에서 Quick Design을 다시 확정하거나 구현 작업목록을 생성해야 합니다.";
   const content = [
-    "구현 작업목록이 아직 없습니다.",
+    IMPLEMENTATION_TASK_LIST_MISSING_HEADLINE,
     "",
     bodyLine,
     "",
@@ -826,6 +828,13 @@ export function hasValidImplementationTaskListBootstrap(
 ): boolean {
   return (messages ?? []).some((m) => {
     if (m.speakerId !== "prototype_build") return false;
+    if (
+      m.meta.internalType === IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE &&
+      m.meta.implementationBootstrapKind === "task_list_missing" &&
+      m.content.includes(IMPLEMENTATION_TASK_LIST_MISSING_HEADLINE)
+    ) {
+      return true;
+    }
     if (!m.content.includes(IMPLEMENTATION_TASK_LIST_READY_HEADLINE)) return false;
     if (
       m.meta.internalType === IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE &&

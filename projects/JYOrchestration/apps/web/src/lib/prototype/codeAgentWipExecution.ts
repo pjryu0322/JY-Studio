@@ -253,10 +253,10 @@ export function buildStubCodeAgentWipCommit(input: {
     workItemId: workItem?.id ?? "unknown",
     changedFiles: changedFiles.length ? changedFiles : ["projects/JYOrchestration/apps/web/src/lib/prototype/ (stub)"],
     diffSummary: [
-      "WIP 초안: 기획 범위 내 구현 스켈레톤 반영 (stub, 실제 diff는 다음 bridge 단계)",
+      "WIP 초안: 기획 범위 내 구현 스켈레톤 반영 (stub, 실제 diff는 Cursor API 실행 단계)",
       "테스트·타입 정합성 점검 대기",
     ],
-    testResults: ["stub validation: passed", "실제 pnpm test/build: 미실행"],
+    testResults: ["stub validation: passed", "실제 Cursor API 실행: 미실행"],
     unresolvedIssues: [
       "아직 실제 Cursor API 실행, 공식 push, PR, merge는 수행되지 않았습니다.",
     ],
@@ -803,16 +803,22 @@ export type CodeAgentWipTimelineActor = "ai_developer" | "code_agent" | "scm";
 export type ImplementationWipDraftLifecycleTimelineAction =
   | "implementation_wip_draft_created"
   | "implementation_wip_draft_persisted"
-  | "implementation_wip_draft_board_refreshed";
+  | "implementation_wip_draft_local_state_merged"
+  | "implementation_wip_draft_board_refreshed"
+  | "legacy_cursor_bridge_diagnostic_removed";
 
 export function buildImplementationWipDraftLifecycleTimelineEntry(input: {
   readonly action: ImplementationWipDraftLifecycleTimelineAction;
   readonly projectId: string;
   readonly selectedTaskId: string;
   readonly selectedWorkItemCount: number;
-  readonly bridgeEnabled: boolean;
+  readonly cursorApiReady?: boolean;
+  /** @deprecated Use cursorApiReady */
+  readonly bridgeEnabled?: boolean;
+  readonly hasCodeAgentWipExecutionV1?: boolean;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
+  const cursorApiReady = input.cursorApiReady ?? input.bridgeEnabled ?? false;
   return {
     stage: "implementation",
     stageGroup: "구현",
@@ -826,7 +832,10 @@ export function buildImplementationWipDraftLifecycleTimelineEntry(input: {
       `selectedWorkItemCount=${input.selectedWorkItemCount}`,
       `executionMode=stub`,
       `executionStatus=draft_created`,
-      `bridgeEnabled=${input.bridgeEnabled ? "yes" : "no"}`,
+      `bridgeAdapter=cursor_api`,
+      `bridgeExecutionStatus=draft_created`,
+      `hasCodeAgentWipExecutionV1=${input.hasCodeAgentWipExecutionV1 === false ? "no" : "yes"}`,
+      `cursorApiReady=${cursorApiReady ? "yes" : "no"}`,
     ].join(" "),
     createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "implementation_orchestration",

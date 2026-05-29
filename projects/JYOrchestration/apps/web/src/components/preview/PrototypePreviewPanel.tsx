@@ -140,6 +140,10 @@ import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototy
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import { buildGenerateImplementationTaskListFromSeedResult } from "@/lib/prototype/implementationTaskListGeneration";
 import {
+  buildCreateImplementationSeedFromQuickDesignDraftResult,
+  runConfirmQuickDesignForImplementationFromState,
+} from "@/lib/prototype/implementationQuickDesignDraftBridge";
+import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
   buildReworkRequestRegistrationNotice,
@@ -1447,6 +1451,9 @@ export function PrototypePreviewPanel({
         slotDefinitions: planningSlotDefinitions,
         implementationSeedV1: parsedRequirementsState.implementationSeedV1,
         implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
+        implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+        fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
+        promptTimeline: parsedRequirementsState.promptTimeline,
       }),
     [
       executionEnvLoading,
@@ -1460,6 +1467,9 @@ export function PrototypePreviewPanel({
       parsedRequirementsState.singleChatOrchestrationV1,
       parsedRequirementsState.implementationSeedV1,
       parsedRequirementsState.implementationTaskListV1,
+      parsedRequirementsState.implementationTaskPlanV1,
+      parsedRequirementsState.fastPlanDraftV1,
+      parsedRequirementsState.promptTimeline,
       planningSlotDefinitions,
     ],
   );
@@ -1814,20 +1824,29 @@ export function PrototypePreviewPanel({
       readonly messages: readonly RequirementsMessage[];
       readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
     }) => {
-      applyPendingFromOrchestrationPatch(input.orchestrationPatch);
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+      const chatPatch = {
+        messages: input.messages,
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      };
+      const mergedRequirementsState = buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJson, {
+        chat: chatPatch,
+        ...input.orchestrationPatch,
+      });
+      applyPendingFromOrchestrationPatch(input.orchestrationPatch);
+      onRequirementsStateJsonChange?.(mergedRequirementsState);
       executionSingleChat.applyPersistedMessages(input.messages);
-      void persistChatToDb(
-        {
-          messages: input.messages,
-          slots: resolved.slots ?? [],
-          answers: resolved.answers ?? {},
-          currentSlotKey: resolved.currentSlotKey ?? null,
-        },
-        input.orchestrationPatch,
-      );
+      void persistChatToDb(chatPatch, input.orchestrationPatch);
     },
-    [requirementsStateJson, executionSingleChat, persistChatToDb, applyPendingFromOrchestrationPatch],
+    [
+      requirementsStateJson,
+      executionSingleChat,
+      persistChatToDb,
+      applyPendingFromOrchestrationPatch,
+      onRequirementsStateJsonChange,
+    ],
   );
 
   const implementationCursorGate = useMemo(
@@ -2429,6 +2448,7 @@ export function PrototypePreviewPanel({
           board: nextBoard,
           nowIso,
           previewReady: prototypeRunSyncSnapshot.previewReady,
+          codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
           executionSetup: executionSetupRow,
         }),
       );
@@ -2443,8 +2463,85 @@ export function PrototypePreviewPanel({
       showToast,
       appendImplementationTaskListAiMessage,
       prototypeRunSyncSnapshot.previewReady,
+      orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      executionSetupRow,
     ],
   );
+
+  const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
+    const pid = projectId.trim();
+    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
+    const result = buildCreateImplementationSeedFromQuickDesignDraftResult({
+      projectId: pid,
+      projectName: projectName || "프로젝트",
+      fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
+      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
+      slotDefinitions: planningSlotDefinitions,
+      promptTimeline: parsedRequirementsState.promptTimeline,
+    });
+    if (result.kind === "blocked") {
+      showToast(result.message);
+      return { outcome: "blocked", message: result.message };
+    }
+    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+    applyImplementationOrchestrationResult({
+      messages: [...(resolved.messages ?? []), ...result.messages],
+      orchestrationPatch: result.orchestrationPatch,
+    });
+    showToast("Quick Design 초안을 기준으로 구현 Seed를 생성했습니다.");
+    return { outcome: "executed" };
+  }, [
+    projectId,
+    projectName,
+    parsedRequirementsState.fastPlanDraftV1,
+    parsedRequirementsState.singleChatOrchestrationV1,
+    parsedRequirementsState.promptTimeline,
+    planningSlotDefinitions,
+    requirementsStateJson,
+    applyImplementationOrchestrationResult,
+    showToast,
+  ]);
+
+  const confirmQuickDesignForImplementation = useCallback((): ImplementationStageActionRunResult => {
+    const pid = projectId.trim();
+    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
+    void (async () => {
+      setProtoBusy(true);
+      try {
+        const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
+        const result = await runConfirmQuickDesignForImplementationFromState({
+          projectId: pid,
+          projectName: projectName || "프로젝트",
+          projectDescription: projectDescription ?? "",
+          requirementsStateJson,
+          conversationMessages: resolved.messages ?? [],
+          slotDefinitions: planningSlotDefinitions,
+          envOkOverride: canRequestGeneration.envOk,
+        });
+        if (result.kind === "blocked") {
+          showToast(result.message);
+          return;
+        }
+        applyImplementationOrchestrationResult({
+          messages: result.messages,
+          orchestrationPatch: result.orchestrationPatch as PrototypeExecutionOrchestrationPersistInput,
+        });
+        showToast(result.flow.userFacingSummary);
+      } finally {
+        setProtoBusy(false);
+      }
+    })();
+    return { outcome: "executed" };
+  }, [
+    projectId,
+    projectName,
+    projectDescription,
+    requirementsStateJson,
+    planningSlotDefinitions,
+    canRequestGeneration.envOk,
+    applyImplementationOrchestrationResult,
+    showToast,
+  ]);
 
   const generateImplementationTaskList = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
@@ -2498,6 +2595,18 @@ export function PrototypePreviewPanel({
       switch (actionId) {
         case "GENERATE_IMPLEMENTATION_TASK_LIST":
           return generateImplementationTaskList();
+        case "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION":
+          return confirmQuickDesignForImplementation();
+        case "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT":
+          return createImplementationSeedFromQuickDesignDraft();
+        case "RETURN_TO_PLANNING_STAGE":
+        case "START_QUICK_DESIGN_FROM_IMPLEMENTATION": {
+          const pid = projectId.trim();
+          if (pid) {
+            window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
+          }
+          return { outcome: "executed" };
+        }
         case "GENERATE_IMPLEMENTATION_WORK_PLAN":
           return generateImplementationWorkPlanDraft();
         case "CONFIRM_IMPLEMENTATION_WORK_PLAN":
@@ -2710,11 +2819,8 @@ export function PrototypePreviewPanel({
               parsedState: runtimeState,
               applyMessages: executionSingleChat.applyPersistedMessages,
               appendNotice: (text) => executionSingleChat.appendAiNotice(text),
-              persistOrchestration: (chat, orch) => {
-                applyPendingFromOrchestrationPatch(orch);
-                if (chat) {
-                  executionSingleChat.applyPersistedMessages(chat.messages);
-                }
+              persistOrchestration: () => {
+                // Full persist + local merge handled by applyImplementationOrchestrationResult below.
               },
               focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
               showToast,
@@ -2763,13 +2869,14 @@ export function PrototypePreviewPanel({
           };
 
           const wip = wipResult.orchestrationPatch.codeAgentWipExecutionV1;
-          const bridgeEnabled = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
+          const cursorApiReady = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
           const timelineTaskId = wip.selectedTaskId ?? selectedTaskId ?? "";
           const timelineBase = {
             projectId: pid,
             selectedTaskId: timelineTaskId,
             selectedWorkItemCount: wip.selectedWorkItemIds?.length ?? workItemsForWip.length,
-            bridgeEnabled,
+            cursorApiReady,
+            hasCodeAgentWipExecutionV1: true,
           };
           let timeline = [
             ...(wipResult.orchestrationPatch.promptTimeline ??
@@ -2787,6 +2894,20 @@ export function PrototypePreviewPanel({
             timeline,
             buildImplementationWipDraftLifecycleTimelineEntry({
               action: "implementation_wip_draft_persisted",
+              ...timelineBase,
+            }),
+          );
+          timeline = appendPromptTimeline(
+            timeline,
+            buildImplementationWipDraftLifecycleTimelineEntry({
+              action: "implementation_wip_draft_local_state_merged",
+              ...timelineBase,
+            }),
+          );
+          timeline = appendPromptTimeline(
+            timeline,
+            buildImplementationWipDraftLifecycleTimelineEntry({
+              action: "legacy_cursor_bridge_diagnostic_removed",
               ...timelineBase,
             }),
           );
@@ -3462,6 +3583,8 @@ export function PrototypePreviewPanel({
     [
       applyImplementationStageActionExecutionResult,
       generateImplementationTaskList,
+      confirmQuickDesignForImplementation,
+      createImplementationSeedFromQuickDesignDraft,
       generateImplementationWorkPlanDraft,
       confirmImplementationTaskPlan,
       reviewDbIntegrationNeed,

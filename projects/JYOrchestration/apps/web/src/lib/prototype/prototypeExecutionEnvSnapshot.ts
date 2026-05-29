@@ -39,6 +39,9 @@ export function buildImplementationBootstrapInput(input: {
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+  readonly implementationTaskPlanV1?: import("@/lib/prototype/implementationTaskPlan").ImplementationTaskPlanV1 | null;
+  readonly fastPlanDraftV1?: import("@/lib/requirements/fastPlanDraftTypes").FastPlanDraftStateV1 | null;
+  readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
 }): ImplementationOrchestrationSummaryInput | null {
   if (input.envLoading) return null;
   return {
@@ -54,6 +57,9 @@ export function buildImplementationBootstrapInput(input: {
     slotDefinitions: input.slotDefinitions,
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskListV1: input.implementationTaskListV1,
+    implementationTaskPlanV1: input.implementationTaskPlanV1,
+    fastPlanDraftV1: input.fastPlanDraftV1,
+    promptTimeline: input.promptTimeline,
   };
 }
 

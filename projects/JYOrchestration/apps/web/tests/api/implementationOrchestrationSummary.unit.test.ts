@@ -7,13 +7,15 @@ import {
   hasImplementationRoleCheckDetailsShown,
   hasValidImplementationBlockedBootstrap,
   hasValidImplementationLeadBootstrap,
+  hasValidImplementationQuickDesignUnconfirmedBootstrap,
   IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
+  IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE,
   IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE,
   implementationEntryChipsForBootstrap,
   isLegacyImplementationMemberBootstrapMessage,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
-import { implementationBlockedEntryChips } from "@/lib/prototype/implementationWorkPlanDraft";
+import { implementationBlockedEntryChips, implementationQuickDesignUnconfirmedEntryChips } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
@@ -117,6 +119,41 @@ describe("implementationOrchestrationSummary", () => {
       true,
     );
     expect(bundle.messages[0]?.meta.interviewSuggestions).toEqual([...implementationBlockedEntryChips()]);
+  });
+
+  it("shows quick design unconfirmed bootstrap when draft exists without confirmed artifacts", () => {
+    const bundle = buildImplementationBootstrapBundle({
+      ...blockedInput,
+      fastPlanDraftV1: {
+        status: "proposed",
+        generatedAt: nowIso,
+        flowId: "fast_plan_draft",
+        memberRuns: [],
+        memberDrafts: [{ runId: "r1", role: "planner", content: "draft", confidence: "medium" }],
+        assumptions: [],
+        source: "current_conversation_and_slots",
+      },
+      promptTimeline: [
+        {
+          stage: "IDEATION",
+          stageGroup: "기획",
+          workspaceScreenKey: "requirements",
+          action: "quick_design_draft_created",
+          source: "system",
+          responseText: "type=quick_design_draft_created",
+          createdAt: nowIso,
+        },
+      ],
+    });
+    expect(bundle.messages[0]?.content).toContain(IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE);
+    expect(bundle.messages[0]?.content).not.toContain("기획 산출물이 없어");
+    expect(hasValidImplementationQuickDesignUnconfirmedBootstrap(bundle.messages)).toBe(true);
+    expect(bundle.timelineEntries.some((e) => e.action === "implementation_blocked_quick_design_unconfirmed")).toBe(
+      true,
+    );
+    expect(bundle.messages[0]?.meta.interviewSuggestions).toEqual([
+      ...implementationQuickDesignUnconfirmedEntryChips(),
+    ]);
   });
 
   it("does not put raw env readiness lines in AI developer bootstrap message", () => {

@@ -15,7 +15,9 @@ import {
   IMPLEMENTATION_ENTRY_READINESS_HEADLINE,
   implementationBlockedEntryChips,
   implementationEntryChipsForState,
+  implementationQuickDesignUnconfirmedEntryChips,
 } from "@/lib/prototype/implementationWorkPlanDraft";
+import { evaluatePlanningArtifactReadiness } from "@/lib/prototype/planningArtifactReadiness";
 import { evaluateImplementationEntrySurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
 import {
   formatImplementationSeedStatusSummaryLines,
@@ -38,12 +40,18 @@ import type {
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
+import type { FastPlanDraftStateV1 } from "@/lib/requirements/fastPlanDraftTypes";
+import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 
 export const IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_INTERNAL_TYPE = "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1";
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE =
   "IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_V1";
 export const IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE =
-  "기획 산출물이 없어 구현단계를 시작할 수 없습니다.";
+  "참조 가능한 기획 산출물이나 Quick Design 초안이 없어 구현단계를 시작할 수 없습니다.";
+export const IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_INTERNAL_TYPE =
+  "IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_V1";
+export const IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE =
+  "Quick Design 초안이 준비되어 있습니다.";
 export const IMPLEMENTATION_ROLE_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_ROLE_CHECK_DETAILS_V1";
 export const IMPLEMENTATION_SCM_CHECK_DETAILS_INTERNAL_TYPE = "IMPLEMENTATION_SCM_CHECK_DETAILS_V1";
 export const IMPLEMENTATION_ENVIRONMENT_CHECK_DETAILS_INTERNAL_TYPE =
@@ -103,6 +111,9 @@ export type ImplementationOrchestrationSummaryInput = Readonly<{
   readonly slotDefinitions?: readonly SingleChatOrchestrationSlotDefinition[];
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+  readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  readonly fastPlanDraftV1?: FastPlanDraftStateV1 | null;
+  readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[];
   readonly nowIso?: string;
 }>;
 
@@ -217,8 +228,7 @@ function buildImplementationBlockedMissingPlanningArtifactsMessage(input: {
   const lines = [
     IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_HEADLINE,
     "",
-    "구현 작업안 초안은 기획 산출물과 구현 Seed를 기준으로 생성됩니다.",
-    "현재 참조 가능한 기획 산출물이 없으므로, 먼저 기획단계에서 대화와 산출물을 준비해 주세요.",
+    "기획단계에서 Quick Design을 실행하거나 대화를 통해 기획 산출물을 먼저 생성해 주세요.",
     "",
     "다음 작업을 선택해 주세요.",
   ];
@@ -236,6 +246,38 @@ function buildImplementationBlockedMissingPlanningArtifactsMessage(input: {
       implementationBootstrapKind: "blocked_missing_planning_artifacts",
       serviceDesignStage: "implementation",
       interviewSuggestions: [...implementationBlockedEntryChips()],
+      interviewAllowCustomInput: false,
+      prototypeOrderKey: 1000,
+    },
+  });
+}
+
+function buildImplementationBlockedQuickDesignUnconfirmedMessage(input: {
+  readonly nowIso: string;
+}): RequirementsMessage {
+  const def = getWorkspaceAiMember("prototype_build");
+  const lines = [
+    IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE,
+    "",
+    "아직 구현단계 산출물로 확정되지는 않았습니다.",
+    "구현 작업목록을 만들려면 Quick Design을 확정하거나, 현재 초안을 기준으로 구현 Seed를 생성해야 합니다.",
+    "",
+    "다음 작업을 선택해 주세요.",
+  ];
+  return newRequirementsMessage({
+    id: `impl-orch-blocked-qd-unconfirmed-${input.nowIso}`,
+    role: "ai",
+    speakerType: "AI",
+    speakerId: "prototype_build",
+    speakerName: def?.title ?? "AI개발자",
+    messageType: "STATEMENT",
+    content: lines.join("\n"),
+    createdAt: input.nowIso,
+    meta: {
+      internalType: IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_INTERNAL_TYPE,
+      implementationBootstrapKind: "blocked_quick_design_unconfirmed",
+      serviceDesignStage: "implementation",
+      interviewSuggestions: [...implementationQuickDesignUnconfirmedEntryChips()],
       interviewAllowCustomInput: false,
       prototypeOrderKey: 1000,
     },
@@ -264,6 +306,31 @@ function buildImplementationBlockedBootstrapTimelineEntries(input: {
   ];
 }
 
+function buildImplementationBlockedQuickDesignUnconfirmedTimelineEntries(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  const now = input.nowIso ?? new Date().toISOString();
+  return [
+    {
+      stage: "implementation",
+      stageGroup: "구현",
+      workspaceScreenKey: "prototype_execution",
+      action: "implementation_blocked_quick_design_unconfirmed",
+      source: "system",
+      responseText: [
+        "type=implementation_blocked_quick_design_unconfirmed",
+        "mode=implementation",
+        "reason=quick_design_draft_unconfirmed",
+        `projectId=${input.projectId}`,
+        "hasQuickDesignDraft=true",
+      ].join(" "),
+      createdAt: now,
+      orchestrationTraceGroup: "implementation_orchestration",
+    },
+  ];
+}
+
 function emptyRoleCheckSummary(): ImplementationRoleCheckSummary {
   return {
     reviewer: { count: 0, highlights: [] },
@@ -283,6 +350,20 @@ function buildImplementationBlockedBootstrapBundle(
   return {
     messages: [buildImplementationBlockedMissingPlanningArtifactsMessage({ nowIso: now })],
     timelineEntries: buildImplementationBlockedBootstrapTimelineEntries({ nowIso: now }),
+    roleCheckSummary: emptyRoleCheckSummary(),
+  };
+}
+
+function buildImplementationBlockedQuickDesignUnconfirmedBootstrapBundle(
+  input: ImplementationOrchestrationSummaryInput,
+): ImplementationBootstrapBundle {
+  const now = input.nowIso ?? new Date().toISOString();
+  return {
+    messages: [buildImplementationBlockedQuickDesignUnconfirmedMessage({ nowIso: now })],
+    timelineEntries: buildImplementationBlockedQuickDesignUnconfirmedTimelineEntries({
+      projectId: input.projectId,
+      nowIso: now,
+    }),
     roleCheckSummary: emptyRoleCheckSummary(),
   };
 }
@@ -815,8 +896,9 @@ export function isLegacyImplementationMemberBootstrapMessage(m: RequirementsMess
   if (
     m.speakerId === "prototype_build" &&
     (m.meta.implementationBootstrapKind === "task_list_ready" ||
-      m.meta.implementationBootstrapKind === "task_list_missing") &&
-    m.content.includes("구현 작업목록")
+      m.meta.implementationBootstrapKind === "task_list_missing" ||
+      m.meta.implementationBootstrapKind === "blocked_quick_design_unconfirmed") &&
+    (m.content.includes("구현 작업목록") || m.content.includes("Quick Design 초안"))
   ) {
     return false;
   }
@@ -858,12 +940,25 @@ export function hasValidImplementationBlockedBootstrap(
   });
 }
 
+export function hasValidImplementationQuickDesignUnconfirmedBootstrap(
+  messages: readonly RequirementsMessage[] | null | undefined,
+): boolean {
+  return (messages ?? []).some((m) => {
+    if (m.meta.internalType !== IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_INTERNAL_TYPE) return false;
+    if (m.meta.implementationBootstrapKind !== "blocked_quick_design_unconfirmed") return false;
+    if (m.speakerId !== "prototype_build") return false;
+    if (!m.content.includes(IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_HEADLINE)) return false;
+    return true;
+  });
+}
+
 export function hasAnyValidImplementationBootstrap(
   messages: readonly RequirementsMessage[] | null | undefined,
 ): boolean {
   return (
     hasValidImplementationLeadBootstrap(messages) ||
     hasValidImplementationBlockedBootstrap(messages) ||
+    hasValidImplementationQuickDesignUnconfirmedBootstrap(messages) ||
     hasValidImplementationTaskListBootstrap(messages)
   );
 }
@@ -890,8 +985,21 @@ export function hasImplementationRoleCheckDetailsShown(
 
 /** 구현 진입: AI개발자 주도 메시지 1개 + timeline (역할별 상세는 요청 시). */
 export function buildImplementationBootstrapBundle(input: ImplementationOrchestrationSummaryInput): ImplementationBootstrapBundle {
-  const referenceArtifacts = collectReferencePlanningArtifacts(input.projectArtifacts);
-  if (referenceArtifacts.length === 0) {
+  const planningReadiness = evaluatePlanningArtifactReadiness({
+    implementationSeedV1: input.implementationSeedV1,
+    implementationTaskPlanV1: input.implementationTaskPlanV1,
+    projectArtifacts: input.projectArtifacts,
+    fastPlanDraftV1: input.fastPlanDraftV1,
+    promptTimeline: input.promptTimeline,
+    orchestration: input.orchestration,
+    slotDefinitions: input.slotDefinitions,
+  });
+
+  if (planningReadiness.status === "quick_design_draft_unconfirmed") {
+    return buildImplementationBlockedQuickDesignUnconfirmedBootstrapBundle(input);
+  }
+
+  if (planningReadiness.status === "missing_planning_artifacts") {
     return buildImplementationBlockedBootstrapBundle(input);
   }
 

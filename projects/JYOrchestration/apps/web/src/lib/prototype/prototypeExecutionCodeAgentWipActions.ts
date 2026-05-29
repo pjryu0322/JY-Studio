@@ -101,10 +101,19 @@ export function buildRequestCodeAgentWipWorkResult(input: {
     selectedWorkItemIds,
     executionMode: "stub",
     bridgeExecutionStatus: "draft_created",
+    executionStatus: "draft_created",
+    bridgeAdapter: "cursor_api",
   };
 
   const stubCommit = buildStubCodeAgentWipCommit({ wip, plan: input.plan, workItems: input.workItems, nowIso: now });
   wip = applyStubWipCommitToExecution(wip, stubCommit);
+  wip = {
+    ...wip,
+    executionMode: "stub",
+    bridgeExecutionStatus: "draft_created",
+    executionStatus: "draft_created",
+    bridgeAdapter: "cursor_api",
+  };
 
   const taskIds = [selectedTaskId];
   const messages = [

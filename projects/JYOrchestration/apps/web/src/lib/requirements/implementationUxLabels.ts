@@ -18,6 +18,9 @@ export const QUICK_DESIGN_IMPLEMENTATION_SEED_NEEDS_REVIEW_HEADING =
   "구현 준비정보를 정리했습니다." as const;
 
 export const QUICK_DESIGN_CONFIRM_ACTION_LABEL = "Quick Design 확정" as const;
+export const CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL =
+  "초안 기준 구현 Seed 생성" as const;
+export const START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL = "Quick Design 시작" as const;
 
 export const IMPLEMENTATION_ARTIFACT_VIEW_LABEL = "Artifact 보기" as const;
 export const PLANNING_ARTIFACT_VIEW_LABEL = "산출물 보기" as const;

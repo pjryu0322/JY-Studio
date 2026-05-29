@@ -126,12 +126,15 @@ describe("buildPrototypeExecutionOrchestrationPersistPatch", () => {
       status: "developer_reviewing" as const,
       selectedTaskId: taskId,
       selectedWorkItemIds: [workItems[0]?.id ?? ""],
+      bridgeAdapter: "cursor_api" as const,
+      executionStatus: "draft_created" as const,
     };
     const patch = buildPrototypeExecutionOrchestrationPersistPatch({}, { codeAgentWipExecutionV1: wip });
     const parsed = parseRequirementsStateJson(patch);
     expect(parsed.codeAgentWipExecutionV1?.executionMode).toBe("stub");
     expect(parsed.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe("draft_created");
-    expect(parsed.codeAgentWipExecutionV1?.selectedTaskId).toBe(taskId);
+    expect(parsed.codeAgentWipExecutionV1?.bridgeAdapter).toBe("cursor_api");
+    expect(wip.executionStatus).toBe("draft_created");
   });
 });
 

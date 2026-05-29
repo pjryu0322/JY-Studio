@@ -576,7 +576,8 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(text).toContain("Cursor 실행 설정:");
     expect(text).toContain("Mode: cursor_api");
     expect(text).not.toContain("Cursor Bridge 설정:");
-    expect(text).not.toContain("Status: disabled");
+    expect(text).not.toContain("CURSOR_BRIDGE_ENABLED");
+    expect(text).not.toContain("GIT_APPLY_PUSH_ENABLED");
     expect(text).not.toContain("http_bridge");
     expect(text).not.toContain("local_runner");
   });

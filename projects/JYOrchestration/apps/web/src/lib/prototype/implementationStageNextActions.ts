@@ -65,6 +65,7 @@ import {
 } from "@/lib/prototype/implementationStageStatus";
 import {
   CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
+  isRealCursorSourceGenerationCompleted,
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
@@ -590,7 +591,7 @@ function deriveNextActionsFromCodeAgentWip(
       },
     ];
   }
-  if (bridgeStatus === "bridge_completed" && wip.executionMode === "cursor_bridge") {
+  if (isRealCursorSourceGenerationCompleted(wip)) {
     return [
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
@@ -630,7 +631,7 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "추가 수정 요청",
         priority: "secondary",
-        reason: "Bridge 실패 후 WIP 수정",
+        reason: "Cursor API 실패 후 WIP 수정",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",

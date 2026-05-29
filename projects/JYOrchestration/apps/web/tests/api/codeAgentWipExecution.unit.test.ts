@@ -176,6 +176,29 @@ describe("codeAgentWipExecution", () => {
     expect(approved.orchestrationPatch.codeAgentWipExecutionV1.selectedTaskId).toBe(taskId);
   });
 
+  it("REQUEST_CODE_AGENT_WIP returns codeAgentWipExecutionV1 with draft metadata", () => {
+    const taskId = plan.items[0]?.id ?? "";
+    const scopedWorkItems = workItems.filter((w) => w.taskId === taskId);
+    const result = buildRequestCodeAgentWipWorkResult({
+      projectId: "p1",
+      requirementsStateJson: {},
+      plan,
+      workItems: scopedWorkItems,
+      existingWip: undefined,
+      selectedTaskId: taskId,
+    });
+    if (result.kind !== "created") throw new Error("expected created");
+    const wip = result.orchestrationPatch.codeAgentWipExecutionV1;
+    expect(wip.executionMode).toBe("stub");
+    expect(wip.bridgeExecutionStatus).toBe("draft_created");
+    expect(wip.executionStatus).toBe("draft_created");
+    expect(wip.bridgeAdapter).toBe("cursor_api");
+    expect(wip.selectedTaskId).toBe(taskId);
+    expect(wip.selectedWorkItemIds?.length).toBeGreaterThan(0);
+    expect(wip.commits[0]?.sha).toMatch(/^wip-stub-/);
+    expect(wip.commits[0]?.testResults).toContain("실제 Cursor API 실행: 미실행");
+  });
+
   it("persists codeAgentWipExecutionV1 in requirements state json", () => {
     const wip = buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems });
     const parsed = parseRequirementsStateJson({ codeAgentWipExecutionV1: wip });
@@ -276,6 +299,7 @@ describe("codeAgentWipExecution", () => {
     expect(review?.content).toContain("실제 Cursor API: 미설정");
     expect(review?.content).not.toContain("WIP 작업을 완료했습니다");
     expect(review?.content).toContain("stub validation: passed");
+    expect(review?.content).toContain("실제 Cursor API 실행: 미실행");
     expect(review?.content).toContain("이번 요청 대상:");
     expect(review?.content).toContain(plan.items[0]?.id ?? "");
   });
@@ -332,7 +356,9 @@ describe("codeAgentWipExecution", () => {
     expect(entry.action).toBe("implementation_wip_draft_created");
     expect(entry.responseText).toContain("selectedTaskId=DEV-001");
     expect(entry.responseText).toContain("selectedWorkItemCount=2");
-    expect(entry.responseText).toContain("bridgeEnabled=no");
+    expect(entry.responseText).toContain("cursorApiReady=no");
+    expect(entry.responseText).toContain("bridgeAdapter=cursor_api");
+    expect(entry.responseText).toContain("hasCodeAgentWipExecutionV1=yes");
     expect(entry.responseText).toContain("executionStatus=draft_created");
   });
 

@@ -119,6 +119,45 @@ describe("deriveImplementationStageNextActions", () => {
     expect(actions.some((a) => a.label === CODE_AGENT_WIP_DRAFT_APPROVE_CHIP)).toBe(true);
   });
 
+  it("cursor_api completed WIP -> 구현 결과 승인", () => {
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({
+        projectId: "p1",
+        plan: buildImplementationTaskPlan({
+          projectId: "p1",
+          projectArtifacts: [],
+          featureDraftTitles: ["upload"],
+          envOk: true,
+          designOk: true,
+        }),
+        workItems: [],
+        executionMode: "cursor_api",
+        bridgeExecutionStatus: "bridge_completed",
+      }),
+      commits: [
+        {
+          provider: "cursor" as const,
+          sha: "abc123def4567890",
+          branchName: "wip/cursor/dev-1",
+          commitMessage: "wip",
+          taskId: "dev-1",
+          workItemId: "wi-1",
+          changedFiles: ["src/App.tsx"],
+          diffSummary: [],
+          testResults: [],
+          unresolvedIssues: [],
+          createdAt: "2026-05-29T12:00:00.000Z",
+        },
+      ],
+      bridgeAdapter: "cursor_api" as const,
+      executionStatus: "bridge_completed" as const,
+    };
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(actions?.[0]?.label).toBe("구현 결과 승인");
+  });
+
   it("implementation_ready -> GENERATE_IMPLEMENTATION_WORK_PLAN primary", () => {
     const actions = deriveImplementationStageNextActions("implementation_ready");
     expect(actions[0]?.actionId).toBe("GENERATE_IMPLEMENTATION_WORK_PLAN");

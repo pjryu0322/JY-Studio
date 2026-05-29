@@ -55,7 +55,11 @@ import {
   REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
   REVIEW_STAGE_START_USER_TEST_CHIP,
   REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
+  QUICK_DESIGN_CONFIRM_ACTION_LABEL,
+  CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL,
+  START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
+import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
 
 export type ImplementationStageActionId =
@@ -88,7 +92,11 @@ export type ImplementationStageActionId =
   | "REVIEW_STAGE_ADD_FEEDBACK"
   | "REVIEW_STAGE_VIEW_FEEDBACK"
   | "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION"
-  | "REVIEW_STAGE_COMPLETE_TEST";
+  | "REVIEW_STAGE_COMPLETE_TEST"
+  | "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION"
+  | "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT"
+  | "START_QUICK_DESIGN_FROM_IMPLEMENTATION"
+  | "RETURN_TO_PLANNING_STAGE";
 
 export type PendingImplementationPatch = Readonly<{
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
@@ -334,6 +342,15 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "MOVE_TO_REVIEW_STAGE";
     case REQUEST_TASK_REWORK_CHIP:
       return "REQUEST_TASK_REWORK";
+    case QUICK_DESIGN_CONFIRM_ACTION_LABEL:
+      return "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION";
+    case CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL:
+      return "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT";
+    case START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL:
+      return "START_QUICK_DESIGN_FROM_IMPLEMENTATION";
+    case IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP:
+    case "기획단계로 이동":
+      return "RETURN_TO_PLANNING_STAGE";
     default:
       return null;
   }

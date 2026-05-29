@@ -143,6 +143,21 @@ describe("implementationTaskListEntryMessage", () => {
     expect(message.meta?.interviewSuggestions).not.toContain("구현 작업목록 생성");
   });
 
+  it("treats task list missing bootstrap as a valid implementation bootstrap", () => {
+    const message = buildImplementationTaskListMissingEntryMessage({ nowIso: NOW });
+    expect(hasValidImplementationTaskListBootstrap([message])).toBe(true);
+    expect(hasAnyValidImplementationBootstrap([message])).toBe(true);
+    expect(hasImplementationOrchestrationBootstrap([message])).toBe(true);
+  });
+
+  it("keeps task list missing bootstrap after sanitizeImplementationConversationMessages()", () => {
+    const message = buildImplementationTaskListMissingEntryMessage({ nowIso: NOW });
+    const sanitized = sanitizeImplementationConversationMessages([message]);
+    expect(sanitized).toHaveLength(1);
+    expect(sanitized[0]?.meta?.implementationBootstrapKind).toBe("task_list_missing");
+    expect(sanitized[0]?.content).toContain("구현 작업목록이 아직 없습니다");
+  });
+
   it("confirmed seed missing message does not ask Quick Design again", () => {
     const seed = {
       version: "implementation_seed_v1" as const,
