@@ -211,6 +211,57 @@ describe("deriveImplementationStageNextActions", () => {
     expect(actions?.some((a) => a.label === "구현 결과 승인")).toBe(false);
   });
 
+  it("developer_approved cursor WIP hides SCM 반영 요청 when canApplyGit is false", () => {
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({
+        projectId: "p1",
+        plan: buildImplementationTaskPlan({
+          projectId: "p1",
+          projectArtifacts: [],
+          featureDraftTitles: ["upload"],
+          envOk: true,
+          designOk: true,
+        }),
+        workItems: [],
+        executionMode: "cursor_api",
+        bridgeExecutionStatus: "bridge_completed",
+      }),
+      status: "developer_approved" as const,
+      commits: [
+        {
+          provider: "cursor" as const,
+          sha: "abc123def4567890",
+          branchName: "wip/cursor/dev-1",
+          commitMessage: "wip",
+          taskId: "dev-1",
+          workItemId: "wi-1",
+          changedFiles: ["src/App.tsx"],
+          diffSummary: [],
+          testResults: [],
+          unresolvedIssues: [],
+          createdAt: "2026-05-29T12:00:00.000Z",
+        },
+      ],
+      platformScmExecutionV1: {
+        version: "platform_scm_execution_v1" as const,
+        projectId: "p1",
+        selectedTaskId: "dev-1",
+        sourceCommitSha: "abc123def4567890",
+        sourceBranchName: "wip/cursor/dev-1",
+        targetRepository: "owner/repo",
+        pushStatus: "pending" as const,
+        createdAt: "2026-05-29T12:00:00.000Z",
+        updatedAt: "2026-05-29T12:00:00.000Z",
+      },
+    };
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      codeAgentWipExecutionV1: wip,
+      canApplyGit: false,
+    });
+    expect(actions?.some((a) => a.label === "SCM 반영 요청")).toBe(false);
+    expect(actions?.some((a) => a.label === "변경사항 보기")).toBe(true);
+  });
+
   it("push_failed WIP -> SCM 재시도", () => {
     const wip = {
       ...buildInitialCodeAgentWipExecution({

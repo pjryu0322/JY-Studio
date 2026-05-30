@@ -70,6 +70,7 @@ import {
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
+import { filterPlatformScmNextActions } from "@/lib/prototype/platformScmRouteAuth";
 import { isPlatformScmPushPrCompleted } from "@/lib/prototype/platformScmReadiness";
 
 export type ImplementationStageNextAction = Readonly<{
@@ -91,6 +92,8 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
   readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
+  readonly canApplyGit?: boolean;
 }>;
 
 export function deriveReviewStageNextActions(input: {
@@ -767,7 +770,7 @@ function deriveNextActionsFromCodeAgentWip(
   return null;
 }
 
-export function deriveImplementationStageNextActions(
+function deriveImplementationStageNextActionsCore(
   status: ImplementationStageStatus,
   executionState?: ImplementationTaskExecutionStateV1 | null,
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
@@ -945,6 +948,25 @@ export function deriveImplementationStageNextActions(
     default:
       return [];
   }
+}
+
+export function deriveImplementationStageNextActions(
+  status: ImplementationStageStatus,
+  executionState?: ImplementationTaskExecutionStateV1 | null,
+  prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
+  boardInput?: ImplementationStageNextActionsBoardInput | null,
+  taskListContext?: ImplementationStageTaskListContext | null,
+): readonly ImplementationStageNextAction[] {
+  return filterPlatformScmNextActions(
+    deriveImplementationStageNextActionsCore(
+      status,
+      executionState,
+      prototypeSnapshot,
+      boardInput,
+      taskListContext,
+    ),
+    boardInput?.canApplyGit,
+  );
 }
 
 function chipSortIndex(

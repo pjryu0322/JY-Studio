@@ -423,6 +423,7 @@ export function PrototypePreviewPanel({
     useState<PendingImplementationPatch>({});
   const [executionSetupRow, setExecutionSetupRow] =
     useState<ExecutionSetupSourceGenerationRow | null>(null);
+  const [canApplyGit, setCanApplyGit] = useState<boolean | undefined>(undefined);
   const executionSetupBoardSyncedKeyRef = useRef<string | null>(null);
   const refreshImplementationBoardRef = useRef<
     ((setup: ExecutionSetupSourceGenerationRow | null, source?: string) => void) | null
@@ -493,6 +494,37 @@ export function PrototypePreviewPanel({
         setWorkspaceAiGraph(json.data.members);
       } catch {
         if (!cancelled) setWorkspaceAiGraph(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) {
+      setCanApplyGit(undefined);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await credentialsIncludeFetch(
+          `/api/project/session-context?projectId=${encodeURIComponent(pid)}`,
+        );
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: { permissions?: { canApplyGit?: boolean } };
+        };
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          setCanApplyGit(undefined);
+          return;
+        }
+        setCanApplyGit(json.data?.permissions?.canApplyGit === true);
+      } catch {
+        if (!cancelled) setCanApplyGit(undefined);
       }
     })();
     return () => {
@@ -1408,8 +1440,9 @@ export function PrototypePreviewPanel({
       implementationReviewStageReadyV1:
         orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      canApplyGit,
     });
-  }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady]);
+  }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady, canApplyGit]);
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
@@ -1595,11 +1628,13 @@ export function PrototypePreviewPanel({
       reviewStageUserFeedbackListV1:
         orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      canApplyGit,
     };
   }, [
     projectId,
     orchestrationAwareRequirementsState,
     prototypeRunSyncSnapshot.previewReady,
+    canApplyGit,
   ]);
 
   const implementationBoard = implementationStageBoardGateContext?.board ?? null;
@@ -2535,6 +2570,7 @@ export function PrototypePreviewPanel({
         focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
         showToast,
         onAfterScmCommitRequested: executePlatformScmAfterRequest,
+        canApplyGit,
       }),
     [
       projectId,
@@ -2551,6 +2587,7 @@ export function PrototypePreviewPanel({
       applyImplementationOrchestrationResult,
       showToast,
       executePlatformScmAfterRequest,
+      canApplyGit,
     ],
   );
 

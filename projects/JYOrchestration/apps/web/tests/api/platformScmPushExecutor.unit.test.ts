@@ -9,13 +9,9 @@ vi.mock("@/lib/prototype/cursorBridgeGit", () => ({
   pushWorktreeBranch: vi.fn(),
 }));
 
-vi.mock("@/lib/prototype/platformScmGitSecurity", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/prototype/platformScmGitSecurity")>();
-  return {
-    ...actual,
-    verifyWorktreeHeadForPlatformScm: vi.fn(),
-  };
-});
+vi.mock("@/lib/prototype/platformScmWorktreeVerification", () => ({
+  verifyWorktreeHeadForPlatformScm: vi.fn(),
+}));
 
 vi.mock("@/lib/prototype/platformScmGitHub", () => ({
   buildPlatformScmPullRequestTitle: vi.fn(() => "title"),
@@ -24,7 +20,7 @@ vi.mock("@/lib/prototype/platformScmGitHub", () => ({
 }));
 
 import { pushWorktreeBranch } from "@/lib/prototype/cursorBridgeGit";
-import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmGitSecurity";
+import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmWorktreeVerification";
 import { createPlatformScmPullRequest } from "@/lib/prototype/platformScmGitHub";
 
 describe("platformScmPushExecutor", () => {

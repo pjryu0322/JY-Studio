@@ -1,4 +1,6 @@
+import { evaluatePlatformScmPermissionGate } from "@/lib/prototype/platformScmRouteAuth";
 import { validateFinalScmIntegratedStageReadiness, validatePlatformScmMergeStepReadiness } from "@/lib/prototype/platformScmReadiness";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildImplementationStageActionTimelineEntry,
   type ImplementationStageActionTimelineSource,
@@ -34,6 +36,7 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly previewReady: boolean;
   readonly reviewStageEntryReady: boolean;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly canApplyGit?: boolean;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -46,6 +49,7 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly previewReady?: boolean;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly canApplyGit?: boolean;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
@@ -66,6 +70,7 @@ export function buildImplementationStageBoardGateContext(input: {
       implementationReviewStageReadyV1: input.implementationReviewStageReadyV1,
       previewReady,
     }),
+    ...(input.canApplyGit !== undefined ? { canApplyGit: input.canApplyGit } : {}),
   };
 }
 
@@ -404,6 +409,10 @@ export function evaluateImplementationStageActionGate(
     if (!isTaskListReadyForImplementationStageActions(state)) {
       return { ok: false, message: "구현 작업목록이 준비된 뒤 통합 단계를 실행할 수 있습니다." };
     }
+    if (actionId === "RUN_FINAL_SCM") {
+      const permission = evaluatePlatformScmPermissionGate(boardContext?.canApplyGit);
+      if (!permission.ok) return permission;
+    }
     return evaluateIntegratedStageActionGate(actionId, boardContext);
   }
 
@@ -519,6 +528,8 @@ export function evaluateImplementationStageActionGate(
       return { ok: true };
     }
     case "RUN_PLATFORM_SCM_MERGE": {
+      const permission = evaluatePlatformScmPermissionGate(boardContext?.canApplyGit);
+      if (!permission.ok) return permission;
       const readiness = validatePlatformScmMergeStepReadiness(boardContext?.codeAgentWipExecutionV1);
       if (!readiness.ok) {
         return { ok: false, message: readiness.message };

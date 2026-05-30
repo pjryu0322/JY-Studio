@@ -27,6 +27,7 @@ import {
 import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { PrototypeExecutionChipHandlers } from "@/lib/prototype/prototypeExecutionImplementationChips";
+import { PLATFORM_SCM_PERMISSION_DENIED_MESSAGE } from "@/lib/prototype/platformScmRouteAuth";
 import {
   appendPromptTimeline,
   type PrototypeExecutionOrchestrationPersistInput,
@@ -75,6 +76,7 @@ export type WipChipHandlerDeps = Readonly<{
   readonly cursorApiConfigured?: boolean;
   readonly pendingPatch?: PendingImplementationPatch | null;
   readonly baseRequirementsState?: RequirementsStateJson;
+  readonly canApplyGit?: boolean;
 }>;
 
 export type ExecuteCodeAgentWipWorkRequestResult =
@@ -522,6 +524,10 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       return true;
     },
     canRequestScmOfficialCommit: () => {
+      if (deps.canApplyGit === false) {
+        deps.showToast(PLATFORM_SCM_PERMISSION_DENIED_MESSAGE);
+        return false;
+      }
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) return false;
       const scmStatus = wip.platformScmExecutionV1?.pushStatus;

@@ -1,6 +1,6 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import { pushWorktreeBranch } from "@/lib/prototype/cursorBridgeGit";
-import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmGitSecurity";
+import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmWorktreeVerification";
 import { ensureTargetRepositoryWorktree } from "@/lib/prototype/cursorBridgeTargetRepoGit";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { resolveDefaultGitWorkspaceCloneRoot } from "@/lib/prototype/gitRepoAutoWorkspace";

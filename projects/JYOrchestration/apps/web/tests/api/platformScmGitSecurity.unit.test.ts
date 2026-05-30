@@ -19,8 +19,8 @@ import {
   maskSecret,
   sanitizeGitErrorMessage,
   validateScmPushBranchName,
-  verifyWorktreeHeadForPlatformScm,
 } from "@/lib/prototype/platformScmGitSecurity";
+import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmWorktreeVerification";
 
 function mockGitSequence(calls: ReadonlyArray<Readonly<{ stdout: string; stderr?: string }> | Error>) {
   let i = 0;
