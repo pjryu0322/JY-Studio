@@ -522,7 +522,13 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
       return true;
     },
     canRequestScmOfficialCommit: () => {
-      if (deps.parsedState.codeAgentWipExecutionV1?.status !== "developer_approved") {
+      const wip = deps.parsedState.codeAgentWipExecutionV1;
+      if (!wip) return false;
+      const scmStatus = wip.platformScmExecutionV1?.pushStatus;
+      if (scmStatus === "push_failed" || scmStatus === "pr_failed") {
+        return wip.status === "scm_commit_pending" || wip.status === "developer_approved";
+      }
+      if (wip.status !== "developer_approved") {
         deps.showToast("AI개발자 [구현 결과 승인] 후 SCM 공식 반영을 요청할 수 있습니다.");
         return false;
       }

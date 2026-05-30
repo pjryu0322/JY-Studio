@@ -70,6 +70,7 @@ import {
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
+import { isPlatformScmPushPrCompleted } from "@/lib/prototype/platformScmReadiness";
 
 export type ImplementationStageNextAction = Readonly<{
   actionId: ImplementationStageActionId;
@@ -566,6 +567,44 @@ function deriveNextActionsFromCodeAgentWip(
     ];
   }
 
+  if (scm?.pushStatus === "push_failed" || scm?.pushStatus === "pr_failed") {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "SCM 재시도",
+        priority: "primary",
+        reason: "플랫폼 SCM push/PR 실패 후 재시도",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "GitHub 토큰 및 저장소 설정 확인",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "secondary",
+        reason: "SCM 반영 기준 확인",
+      },
+    ];
+  }
+
+  if (
+    scm?.pushStatus === "push_requested" ||
+    scm?.pushStatus === "push_running" ||
+    scm?.pushStatus === "pr_requested"
+  ) {
+    return [
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "플랫폼 SCM push/PR 진행 중",
+      },
+    ];
+  }
+
   const bridgeStatus = wip.bridgeExecutionStatus;
   if (bridgeStatus === "draft_created") {
     return [
@@ -617,6 +656,32 @@ function deriveNextActionsFromCodeAgentWip(
       },
     ];
   }
+  if (
+    (wip.status === "developer_approved" || wip.status === "scm_commit_pending") &&
+    isRealCursorSourceGenerationCompleted(wip) &&
+    !isPlatformScmPushPrCompleted(wip)
+  ) {
+    return [
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "SCM 반영 요청",
+        priority: "primary",
+        reason: "개발자 승인 후 플랫폼 SCM push/PR 수행",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "변경사항 보기",
+        priority: "secondary",
+        reason: "Cursor API 변경사항 확인",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "secondary",
+        reason: "SCM 반영 기준 확인",
+      },
+    ];
+  }
   if (isRealCursorSourceGenerationCompleted(wip)) {
     return [
       {
@@ -630,12 +695,6 @@ function deriveNextActionsFromCodeAgentWip(
         label: "변경사항 보기",
         priority: "secondary",
         reason: "Cursor API 변경사항 확인",
-      },
-      {
-        actionId: "REQUEST_CODE_AGENT_WIP",
-        label: "SCM 반영 요청",
-        priority: "secondary",
-        reason: "개발자 승인 후 플랫폼 SCM push/PR 수행",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",

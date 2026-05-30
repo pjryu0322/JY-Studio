@@ -32,7 +32,8 @@ export async function fetchPlatformScmExecutePersistPatch(input: {
   readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
   readonly taskRowsCompleted?: boolean;
   readonly finalizeIntegratedFinalScm?: boolean;
-}): Promise<PlatformScmExecutePersistPatch> {  const res = await fetch("/api/prototype/platform-scm/execute", {
+}): Promise<PlatformScmExecutePersistPatch> {
+  const res = await fetch("/api/prototype/platform-scm/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

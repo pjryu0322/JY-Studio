@@ -233,6 +233,17 @@ export function buildPlatformScmOrchestrationResult(input: {
       timeline,
       buildScmTimelineEntry({
         ctx,
+        action: "platform_scm_pr_requested",
+        branchName: scm.sourceBranchName,
+        commitSha: scm.sourceCommitSha,
+        status: "running",
+        nowIso: now,
+      }),
+    );
+    timeline = appendPromptTimeline(
+      timeline,
+      buildScmTimelineEntry({
+        ctx,
         action: "platform_scm_pr_created",
         branchName: scm.sourceBranchName,
         commitSha: scm.sourceCommitSha,

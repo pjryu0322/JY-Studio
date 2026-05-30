@@ -251,8 +251,18 @@ export function buildScmOfficialCommitRequestResult(input: {
       readonly chatPatch: CodeAgentWipChatPatch;
       readonly orchestrationPatch: CodeAgentWipOrchestrationPatch;
     }> {
-  if (input.wip.status !== "developer_approved") {
+  if (input.wip.status !== "developer_approved" && input.wip.status !== "scm_commit_pending") {
     return { kind: "blocked", reason: "AI개발자 승인 후 SCM 공식 반영을 요청할 수 있습니다." };
+  }
+  const scmPushStatus = input.wip.platformScmExecutionV1?.pushStatus;
+  if (
+    input.wip.status === "scm_commit_pending" &&
+    scmPushStatus !== "push_failed" &&
+    scmPushStatus !== "pr_failed" &&
+    scmPushStatus !== "pending" &&
+    scmPushStatus !== "push_requested"
+  ) {
+    return { kind: "blocked", reason: "플랫폼 SCM push/PR이 이미 진행 중이거나 완료되었습니다." };
   }
 
   const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);

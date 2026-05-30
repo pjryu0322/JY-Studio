@@ -116,17 +116,27 @@ export async function executePlatformScmPushAndPr(input: {
 
   scm = patchPlatformScmExecutionStatus(scm, "pr_requested", { nowIso: now });
   const repoUrl = targetRepository.gitRepoUrl ?? `https://github.com/${targetRepository.repoFullName}`;
+  const lastCommit = input.wip.commits[input.wip.commits.length - 1];
   const prResult = await createPlatformScmPullRequest({
     repoUrl,
     baseBranch,
     headBranch: branchName,
     githubAccessToken: String(input.setup?.githubAccessToken ?? ""),
-    title: buildPlatformScmPullRequestTitle({ selectedTaskId, branchName }),
+    title: buildPlatformScmPullRequestTitle({
+      selectedTaskId,
+      taskTitle: lastCommit?.commitMessage,
+      branchName,
+    }),
     body: buildPlatformScmPullRequestBody({
+      projectId: input.projectId,
       selectedTaskId,
       branchName,
       commitSha,
       targetRepository: targetRepository.repoFullName,
+      changedFiles: lastCommit?.changedFiles ?? input.wip.changedFiles,
+      diffSummary: lastCommit?.diffSummary,
+      testResults: lastCommit?.testResults,
+      qualityGateSummary: "검수/보안 통과 후 Merge 가능 (플랫폼 SCM merge 액션)",
     }),
     projectId: input.projectId,
   });

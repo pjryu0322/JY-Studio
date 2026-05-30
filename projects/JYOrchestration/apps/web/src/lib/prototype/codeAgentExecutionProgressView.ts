@@ -80,7 +80,11 @@ const RELEVANT_TIMELINE_ACTIONS = new Set([
   "platform_scm_push_started",
   "platform_scm_push_completed",
   "platform_scm_pr_created",
-  "cursor_api_availability_checked",
+  "platform_scm_pr_requested",
+  "platform_scm_pr_failed",
+  "platform_scm_merge_requested",
+  "platform_scm_merge_completed",
+  "platform_scm_merge_failed",
 ]);
 
 const TIMELINE_ACTION_LABELS: Record<string, string> = {
@@ -102,6 +106,11 @@ const TIMELINE_ACTION_LABELS: Record<string, string> = {
   platform_scm_push_started: "SCM push 시작",
   platform_scm_push_completed: "SCM push 완료",
   platform_scm_pr_created: "SCM PR 생성",
+  platform_scm_pr_requested: "SCM PR 요청",
+  platform_scm_pr_failed: "SCM PR 실패",
+  platform_scm_merge_requested: "SCM merge 요청",
+  platform_scm_merge_completed: "SCM merge 완료",
+  platform_scm_merge_failed: "SCM merge 실패",
   cursor_api_availability_checked: "Cursor API 환경 점검",
 };
 
@@ -322,7 +331,24 @@ function summaryLineFor(
   return "Code Agent WIP 작업이 승인되었습니다.";
 }
 
-function nextActionLabelFor(status: CodeAgentExecutionProgressStatus): string | undefined {
+function nextActionLabelFor(
+  status: CodeAgentExecutionProgressStatus,
+  wip?: CodeAgentWipExecutionV1 | null,
+): string | undefined {
+  const scm = wip?.platformScmExecutionV1;
+  if (scm?.pushStatus === "push_failed" || scm?.pushStatus === "pr_failed") {
+    return "SCM 재시도";
+  }
+  if (
+    (wip?.status === "developer_approved" || wip?.status === "scm_commit_pending") &&
+    scm &&
+    !["push_completed", "pr_completed"].includes(scm.pushStatus)
+  ) {
+    return "SCM 반영 요청";
+  }
+  if (scm?.pushStatus === "pr_completed" && scm.mergeStatus !== "merge_completed") {
+    return "PR Merge 실행";
+  }
   switch (status) {
     case "idle":
       return "생성요청";
@@ -447,7 +473,7 @@ export function buildCodeAgentExecutionProgressView(input: {
     testStatusLabel,
     runId,
     failureReason,
-    nextActionLabel: nextActionLabelFor(status),
+    nextActionLabel: nextActionLabelFor(status, wip),
     showGenerationClarification: status === "draft_created" || status === "cursor_request_ready",
     isStubResult,
     scmStatusLabel:
