@@ -5,9 +5,9 @@ import {
 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
-  fetchEnvTestPullDetail,
-  fetchEnvTestPullFiles,
-} from "@/lib/service/githubEnvTestMergeService";
+  fetchGithubPullRequestDetail,
+  fetchGithubPullRequestFiles,
+} from "@/lib/service/githubPullRequestOps";
 import type { PlatformScmExecutionV1 } from "@/lib/prototype/platformScmExecution";
 
 export type PlatformScmDiffGateStatus = "validated" | "failed" | "blocked";
@@ -141,10 +141,11 @@ export async function validatePlatformScmPrDiffGate(input: {
     return { ok: false, status: "blocked", message: "GitHub Access Token이 없어 diff 검증을 수행할 수 없습니다." };
   }
 
-  const detail = await fetchEnvTestPullDetail({
+  const detail = await fetchGithubPullRequestDetail({
     repoUrl: input.repoUrl,
     pullNumber: prNumber,
     token,
+    userAgent: "JYOrchestration/platform-scm-diff-gate",
   });
   if (!detail.ok) {
     return { ok: false, status: "failed", message: detail.message };
@@ -161,10 +162,11 @@ export async function validatePlatformScmPrDiffGate(input: {
     };
   }
 
-  const filesResult = await fetchEnvTestPullFiles({
+  const filesResult = await fetchGithubPullRequestFiles({
     repoUrl: input.repoUrl,
     pullNumber: prNumber,
     token,
+    userAgent: "JYOrchestration/platform-scm-diff-gate-files",
   });
   if (!filesResult.ok) {
     return { ok: false, status: "failed", message: filesResult.message };

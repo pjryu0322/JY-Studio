@@ -1,4 +1,4 @@
-import { isRealCursorSourceGenerationCompleted, type CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -11,8 +11,11 @@ import {
   patchPlatformScmExecutionStatus,
   type PlatformScmExecutionV1,
 } from "@/lib/prototype/platformScmExecution";
+import { validatePlatformScmMergeReadiness } from "@/lib/prototype/platformScmReadiness";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAutoMergeService";
+
+export { validatePlatformScmMergeReadiness } from "@/lib/prototype/platformScmReadiness";
 
 export type PlatformScmMergeExecutorResult = Readonly<{
   readonly ok: boolean;
@@ -24,30 +27,6 @@ export type PlatformScmMergeExecutorResult = Readonly<{
   readonly autoMergeAttempted?: boolean;
   readonly log?: readonly string[];
 }>;
-
-export function validatePlatformScmMergeReadiness(input: {
-  readonly wip: CodeAgentWipExecutionV1;
-  readonly setup: ExecutionSetupSourceGenerationRow | null | undefined;
-}): Readonly<{ readonly ok: true } | Readonly<{ readonly ok: false; readonly message: string }>> {
-  if (!isRealCursorSourceGenerationCompleted(input.wip)) {
-    return { ok: false, message: "실제 Cursor commit 결과가 없어 PR merge를 수행할 수 없습니다." };
-  }
-  const scm = input.wip.platformScmExecutionV1;
-  if (!scm || scm.pushStatus !== "pr_completed") {
-    return { ok: false, message: "플랫폼 SCM PR 생성이 완료된 뒤 merge를 실행할 수 있습니다." };
-  }
-  if (scm.mergeStatus === "merge_completed") {
-    return { ok: false, message: "이미 PR merge가 완료되었습니다." };
-  }
-  if (!scm.prNumber || !scm.prUrl) {
-    return { ok: false, message: "PR 정보가 없어 merge를 수행할 수 없습니다." };
-  }
-  const githubToken = String(input.setup?.githubAccessToken ?? "").trim();
-  if (!githubToken) {
-    return { ok: false, message: "GitHub Access Token이 설정되지 않았습니다." };
-  }
-  return { ok: true };
-}
 
 export async function executePlatformScmMerge(input: {
   readonly projectId: string;

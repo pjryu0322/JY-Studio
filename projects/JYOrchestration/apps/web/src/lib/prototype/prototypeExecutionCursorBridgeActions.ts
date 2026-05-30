@@ -19,10 +19,11 @@ import {
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import type { CodeAgentWipOrchestrationPatch } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
+import {
+  buildPrototypeOrchestrationResult,
+  type PrototypeOrchestrationResult,
+} from "@/lib/prototype/prototypeOrchestrationResult";
 import { CURSOR_API_UNSUPPORTED_MESSAGE } from "@/lib/prototype/cursorApiDirectClient";
 import {
   BRIDGE_CALL_OK_SOURCE_REJECTED_HEADING,
@@ -32,17 +33,7 @@ import {
 
 import type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
 
-export type CursorBridgeOrchestrationResult = Readonly<{
-  readonly kind: "blocked" | "failed" | "completed";
-  readonly message: string;
-  readonly chatPatch?: {
-    readonly messages: readonly RequirementsMessage[];
-    readonly slots: readonly PrototypeExecutionInterviewSlot[];
-    readonly answers: Readonly<Record<string, string>>;
-    readonly currentSlotKey: string | null;
-  };
-  readonly orchestrationPatch?: CodeAgentWipOrchestrationPatch;
-}>;
+export type CursorBridgeOrchestrationResult = PrototypeOrchestrationResult;
 
 export function patchWipForCursorBridgePhase(input: {
   readonly wip: CodeAgentWipExecutionV1;
@@ -301,9 +292,6 @@ export function buildCursorBridgeOrchestrationResult(input: {
   readonly nowIso?: string;
 }): CursorBridgeOrchestrationResult {
   const now = input.nowIso ?? new Date().toISOString();
-  const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
-  const prior = resolved.messages ?? [];
-
   const taskId = input.wip.selectedTaskId ?? input.bridgeResult.selectedTaskId;
   const commitTitle = buildProviderWipCommitMessage(
     input.wip.provider,
@@ -338,27 +326,22 @@ export function buildCursorBridgeOrchestrationResult(input: {
         nowIso: now,
       }),
     );
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "blocked",
       message: errorMessage,
-      chatPatch: {
-        messages: [
-          ...prior,
-          buildBridgeFailedMessage({
-            wip: blockedWip,
-            errorMessage,
-            nowIso: now,
-          }),
-        ],
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: [
+        buildBridgeFailedMessage({
+          wip: blockedWip,
+          errorMessage,
+          nowIso: now,
+        }),
+      ],
       orchestrationPatch: {
         codeAgentWipExecutionV1: blockedWip,
         promptTimeline: timeline,
       },
-    };
+    });
   }
 
   const runningWip: CodeAgentWipExecutionV1 = {
@@ -380,7 +363,6 @@ export function buildCursorBridgeOrchestrationResult(input: {
       bridgeAdapter: "cursor_api",
     };
     const messages = [
-      ...prior,
       buildBridgeFailedMessage({
         wip: failedWip,
         errorMessage,
@@ -405,20 +387,16 @@ export function buildCursorBridgeOrchestrationResult(input: {
         nowIso: now,
       }),
     );
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "failed",
       message: input.bridgeResult.errorMessage ?? "Cursor API 실행에 실패했습니다.",
-      chatPatch: {
-        messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: messages,
       orchestrationPatch: {
         codeAgentWipExecutionV1: failedWip,
         promptTimeline: timeline,
       },
-    };
+    });
   }
 
   const updatedWip = applyCursorBridgeResultToWipExecution({
@@ -431,7 +409,6 @@ export function buildCursorBridgeOrchestrationResult(input: {
 
   if (updatedWip.bridgeExecutionStatus === "failed") {
     const messages = [
-      ...prior,
       buildBridgeFailedMessage({
         wip: updatedWip,
         errorMessage: updatedWip.bridgeErrorMessage ?? "Bridge 결과 검증 실패",
@@ -465,26 +442,21 @@ export function buildCursorBridgeOrchestrationResult(input: {
       ),
       e2eRejected,
     );
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "failed",
       message: updatedWip.bridgeErrorMessage ?? "Cursor API 실행 결과를 인정하지 않았습니다.",
-      chatPatch: {
-        messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: messages,
       orchestrationPatch: {
         codeAgentWipExecutionV1: updatedWip,
         promptTimeline: timeline,
       },
-    };
+    });
   }
 
   const lastCommit = updatedWip.commits[updatedWip.commits.length - 1]!;
 
   const messages = [
-    ...prior,
     buildCodeAgentWipBridgeCompletedMessage({
       wip: updatedWip,
       commit: lastCommit,
@@ -531,18 +503,14 @@ export function buildCursorBridgeOrchestrationResult(input: {
     }),
   );
 
-  return {
+  return buildPrototypeOrchestrationResult({
     kind: "completed",
     message: "Cursor API가 대상 프로젝트 저장소에 실제 소스를 생성했습니다.",
-    chatPatch: {
-      messages,
-      slots: resolved.slots ?? [],
-      answers: resolved.answers ?? {},
-      currentSlotKey: resolved.currentSlotKey ?? null,
-    },
+    requirementsStateJson: input.requirementsStateJson,
+    newMessages: messages,
     orchestrationPatch: {
       codeAgentWipExecutionV1: updatedWip,
       promptTimeline: timelineWithE2e,
     },
-  };
+  });
 }

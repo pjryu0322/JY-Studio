@@ -27,6 +27,12 @@ import {
 } from "@/lib/service/envTestMergeFilePolicy";
 import { ENV_TEST_PR_TITLE, ENV_TEST_STAGE2_PR_TITLE } from "@/lib/service/githubEnvTestPullRequestService";
 import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
+import {
+  fetchGithubPullRequestDetail,
+  fetchGithubPullRequestFiles,
+  type GithubPullRequestDetail,
+  type GithubPullRequestFile,
+} from "@/lib/service/githubPullRequestOps";
 
 export { isEnvTestMergeWhitelistedPath, isEnvTestStage1MergeWhitelistedPath } from "@/lib/service/envTestMergeFilePolicy";
 
@@ -48,69 +54,20 @@ export function resolveEnvTestMergeGithubToken(
   return r.token;
 }
 
-type PullDetailJson = {
-  state?: string;
-  merged?: boolean;
-  title?: string;
-  base?: { ref?: string };
-  head?: { ref?: string; sha?: string };
-  number?: number;
-  html_url?: string;
-  merge_commit_sha?: string | null;
-  mergeable?: boolean | null;
-  mergeable_state?: string | null;
-};
-
-type PullFileJson = { filename?: string; status?: string };
-
-async function githubFetchJson<T>(
-  url: string,
-  token: string,
-  userAgent: string
-): Promise<{ ok: true; data: T; status: number } | { ok: false; status: number; body: string }> {
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "User-Agent": userAgent,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  const txt = await res.text();
-  if (!res.ok) {
-    return { ok: false, status: res.status, body: txt };
-  }
-  try {
-    return { ok: true, data: JSON.parse(txt) as T, status: res.status };
-  } catch {
-    return { ok: false, status: res.status, body: txt.slice(0, 500) };
-  }
-}
-
 export async function fetchEnvTestPullDetail(input: {
   repoUrl: string;
   pullNumber: number;
   token: string;
 }): Promise<
-  | { ok: true; pr: PullDetailJson }
+  | { ok: true; pr: GithubPullRequestDetail }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
-  const parsed = resolveGithubOwnerRepoStrict(input.repoUrl);
-  if (!parsed) {
-    return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
-  }
-  const api = githubRestApiBase();
-  const url = `${api}/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/pulls/${input.pullNumber}`;
-  const r = await githubFetchJson<PullDetailJson>(url, input.token, "JYOrchestration/env-test-merge");
-  if (!r.ok) {
-    return {
-      ok: false,
-      code: "GITHUB_PR_FETCH_FAILED",
-      message: `PR 조회 실패 HTTP ${r.status}`,
-      httpStatus: r.status,
-    };
-  }
-  return { ok: true, pr: r.data };
+  return fetchGithubPullRequestDetail({
+    repoUrl: input.repoUrl,
+    pullNumber: input.pullNumber,
+    token: input.token,
+    userAgent: "JYOrchestration/env-test-merge",
+  });
 }
 
 export async function fetchEnvTestPullFiles(input: {
@@ -118,26 +75,17 @@ export async function fetchEnvTestPullFiles(input: {
   pullNumber: number;
   token: string;
 }): Promise<
-  | { ok: true; files: PullFileJson[] }
+  | { ok: true; files: GithubPullRequestFile[] }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
-  const parsed = resolveGithubOwnerRepoStrict(input.repoUrl);
-  if (!parsed) {
-    return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
-  }
-  const api = githubRestApiBase();
-  const url = `${api}/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/pulls/${input.pullNumber}/files?per_page=100`;
-  const r = await githubFetchJson<PullFileJson[]>(url, input.token, "JYOrchestration/env-test-merge-files");
-  if (!r.ok) {
-    return {
-      ok: false,
-      code: "GITHUB_PR_FILES_FAILED",
-      message: `PR 파일 목록 실패 HTTP ${r.status}`,
-      httpStatus: r.status,
-    };
-  }
-  const arr = Array.isArray(r.data) ? r.data : [];
-  return { ok: true, files: arr };
+  const result = await fetchGithubPullRequestFiles({
+    repoUrl: input.repoUrl,
+    pullNumber: input.pullNumber,
+    token: input.token,
+    userAgent: "JYOrchestration/env-test-merge-files",
+  });
+  if (!result.ok) return result;
+  return { ok: true, files: [...result.files] };
 }
 
 export type EnvTestMergeGuardDiagnostics = {
@@ -155,8 +103,8 @@ export type EnvTestMergeGuardDiagnostics = {
 export type EnvTestMergeGuardResult =
   | {
       ok: true;
-      pr: PullDetailJson;
-      files: PullFileJson[];
+      pr: GithubPullRequestDetail;
+      files: GithubPullRequestFile[];
       /** 진단: 화이트리스트 통과 파일별 패턴 */
       envTestFileWhitelistMatches: Array<{ filename: string; matchedPathPattern: string }>;
     }
@@ -198,8 +146,8 @@ export function envTestMergeGuardAllowedPathGlobsForTaskKind(taskKind: string | 
 export function evaluateEnvTestMergeGuards(input: {
   taskKind: string | null | undefined;
   localBranchName: string | null | undefined;
-  pr: PullDetailJson;
-  files: PullFileJson[];
+  pr: GithubPullRequestDetail;
+  files: GithubPullRequestFile[];
   /** 실행 설정(ExecutionSetup)의 baseBranch — ENV_TEST 머지 가드의 단일 근거 */
   requiredBaseRef: string;
 }): EnvTestMergeGuardResult {

@@ -11,6 +11,10 @@ import {
   formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup,
 } from "@/lib/prototype/executionSetupSourceGeneration";
 import { resolveBridgePushAndPrStatus } from "@/lib/prototype/bridgeCompletionPolicy";
+import {
+  buildImplementationTraceTimelineEntry,
+  maskWorkspacePathForTimeline,
+} from "@/lib/prototype/implementationTraceTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type CursorBridgeConnectionPhase =
@@ -73,12 +77,7 @@ export const QUALITY_GATE_DIFF_ENGINE_PENDING_LINES = [
   "현재 점검은 상태/메타데이터 기준 준비 단계입니다.",
 ] as const;
 
-export function maskWorkspacePathForTimeline(workspacePath: string | undefined): string {
-  const raw = String(workspacePath ?? "").trim();
-  if (!raw) return "(없음)";
-  if (raw.length <= 8) return raw;
-  return `${raw.slice(0, 4)}…${raw.slice(-3)}`;
-}
+export { maskWorkspacePathForTimeline } from "@/lib/prototype/implementationTraceTimeline";
 
 export function resolveCursorBridgeConnectionPhase(input: {
   readonly wip?: CodeAgentWipExecutionV1 | null;
@@ -201,31 +200,25 @@ export function buildTargetRepoE2eTimelineEntry(input: {
   readonly reason?: string;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
-  const parts = [
-    `type=${input.action}`,
-    `projectId=${input.projectId}`,
-    ...(input.selectedTaskId ? [`selectedTaskId=${input.selectedTaskId}`] : []),
-    ...(input.repoFullName ? [`repoFullName=${input.repoFullName}`] : []),
-    ...(input.baseBranch ? [`baseBranch=${input.baseBranch}`] : []),
-    ...(input.workspacePath ? [`workspacePath=${maskWorkspacePathForTimeline(input.workspacePath)}`] : []),
-    ...(input.branchName ? [`branchName=${input.branchName}`] : []),
-    ...(input.commitSha ? [`commitSha=${input.commitSha.slice(0, 12)}`] : []),
-    ...(input.changedFilesCount !== undefined ? [`changedFilesCount=${input.changedFilesCount}`] : []),
-    ...(input.pushStatus ? [`pushStatus=${input.pushStatus}`] : []),
-    ...(input.prStatus ? [`prStatus=${input.prStatus}`] : []),
-    ...(input.status ? [`status=${input.status}`] : []),
-    ...(input.reason ? [`reason=${input.reason.replace(/\s+/g, "_").slice(0, 120)}`] : []),
-  ];
-  return {
-    stage: "implementation",
-    stageGroup: "구현",
-    workspaceScreenKey: "prototype_execution",
+  return buildImplementationTraceTimelineEntry({
     action: input.action,
-    source: "system",
-    responseText: parts.join(" "),
-    createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "target_repo_e2e",
-  };
+    projectId: input.projectId,
+    nowIso: input.nowIso,
+    fields: {
+      selectedTaskId: input.selectedTaskId,
+      repoFullName: input.repoFullName,
+      baseBranch: input.baseBranch,
+      workspacePath: input.workspacePath,
+      branchName: input.branchName,
+      commitSha: input.commitSha,
+      changedFilesCount: input.changedFilesCount,
+      pushStatus: input.pushStatus,
+      prStatus: input.prStatus,
+      status: input.status,
+      reason: input.reason,
+    },
+  });
 }
 
 export function evaluateTargetRepoE2eReadinessFromSetup(input: {
@@ -258,35 +251,27 @@ export function buildCursorApiDirectTimelineEntry(input: {
   readonly reason?: string;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
-  const parts = [
-    `type=${input.action}`,
-    "mode=cursor_api",
-    `projectId=${input.projectId}`,
-    `selectedTaskId=${input.selectedTaskId}`,
-    ...(input.runId ? [`runId=${input.runId}`] : []),
-    `repoFullName=${input.repoFullName ?? "none"}`,
-    `workspacePath=${maskWorkspacePathForTimeline(input.workspacePath)}`,
-    `branchName=${input.branchName ?? "none"}`,
-    `status=${input.status}`,
-    ...(input.commitSha ? [`commitSha=${input.commitSha}`] : []),
-    ...(input.changedFilesCount !== undefined
-      ? [`changedFilesCount=${input.changedFilesCount}`]
-      : []),
-    ...(input.hasCommitSha !== undefined ? [`hasCommitSha=${input.hasCommitSha ? "yes" : "no"}`] : []),
-    ...(input.pushStatus ? [`pushStatus=${input.pushStatus}`] : []),
-    ...(input.prNumber !== undefined ? [`prNumber=${input.prNumber}`] : []),
-    ...(input.reason ? [`reason=${input.reason.slice(0, 120)}`] : []),
-  ];
-  return {
-    stage: "implementation",
-    stageGroup: "구현",
-    workspaceScreenKey: "prototype_execution",
+  return buildImplementationTraceTimelineEntry({
     action: input.action,
-    source: "system",
-    responseText: parts.join(" "),
-    createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "target_repo_e2e",
-  };
+    mode: "cursor_api",
+    projectId: input.projectId,
+    nowIso: input.nowIso,
+    fields: {
+      selectedTaskId: input.selectedTaskId,
+      runId: input.runId,
+      repoFullName: input.repoFullName ?? "none",
+      workspacePath: input.workspacePath,
+      branchName: input.branchName ?? "none",
+      status: input.status,
+      commitSha: input.commitSha,
+      changedFilesCount: input.changedFilesCount,
+      hasCommitSha: input.hasCommitSha,
+      pushStatus: input.pushStatus,
+      prNumber: input.prNumber,
+      reason: input.reason,
+    },
+  });
 }
 
 export function buildPlatformScmTimelineEntry(input: {
@@ -301,26 +286,20 @@ export function buildPlatformScmTimelineEntry(input: {
   readonly reason?: string;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
-  const parts = [
-    `type=${input.action}`,
-    "mode=platform_scm",
-    `projectId=${input.projectId}`,
-    `selectedTaskId=${input.selectedTaskId}`,
-    ...(input.repoFullName ? [`repoFullName=${input.repoFullName}`] : []),
-    ...(input.branchName ? [`branchName=${input.branchName}`] : []),
-    ...(input.commitSha ? [`commitSha=${input.commitSha.slice(0, 12)}`] : []),
-    ...(input.prNumber !== undefined ? [`prNumber=${input.prNumber}`] : []),
-    `status=${input.status}`,
-    ...(input.reason ? [`reason=${input.reason.replace(/\s+/g, "_").slice(0, 120)}`] : []),
-  ];
-  return {
-    stage: "implementation",
-    stageGroup: "구현",
-    workspaceScreenKey: "prototype_execution",
+  return buildImplementationTraceTimelineEntry({
     action: input.action,
-    source: "system",
-    responseText: parts.join(" "),
-    createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "platform_scm",
-  };
+    mode: "platform_scm",
+    projectId: input.projectId,
+    nowIso: input.nowIso,
+    fields: {
+      selectedTaskId: input.selectedTaskId,
+      repoFullName: input.repoFullName,
+      branchName: input.branchName,
+      commitSha: input.commitSha,
+      prNumber: input.prNumber,
+      status: input.status,
+      reason: input.reason,
+    },
+  });
 }

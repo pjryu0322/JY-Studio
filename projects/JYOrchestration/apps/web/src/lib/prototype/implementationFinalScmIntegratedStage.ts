@@ -1,45 +1,14 @@
 import {
-  isRealCursorSourceGenerationCompleted,
-  type CodeAgentWipExecutionV1,
-} from "@/lib/prototype/codeAgentWipExecution";
-import {
   buildWipPlatformScmPushRequestPatch,
   type PlatformScmExecutionV1,
 } from "@/lib/prototype/platformScmExecution";
+import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 
-export function isFinalScmPlatformExecutionCompleted(
-  wip: CodeAgentWipExecutionV1 | null | undefined,
-): boolean {
-  const pushStatus = wip?.platformScmExecutionV1?.pushStatus;
-  return pushStatus === "push_completed" || pushStatus === "pr_completed";
-}
-
-export function validateFinalScmIntegratedStageReadiness(
-  wip: CodeAgentWipExecutionV1 | null | undefined,
-): Readonly<{ readonly ok: true } | Readonly<{ readonly ok: false; readonly message: string }>> {
-  if (!wip) {
-    return {
-      ok: false,
-      message: "Code Agent WIP 실행 결과가 없어 최종 SCM 반영을 실행할 수 없습니다.",
-    };
-  }
-  if (!isRealCursorSourceGenerationCompleted(wip)) {
-    return {
-      ok: false,
-      message: "실제 Cursor commit 결과가 없어 최종 SCM 반영을 실행할 수 없습니다.",
-    };
-  }
-  if (isFinalScmPlatformExecutionCompleted(wip)) {
-    return { ok: true };
-  }
-  if (wip.status !== "developer_approved" && wip.status !== "scm_commit_pending") {
-    return {
-      ok: false,
-      message: "AI개발자 [구현 결과 승인] 후 최종 SCM 반영을 실행할 수 있습니다.",
-    };
-  }
-  return { ok: true };
-}
+export {
+  isFinalScmPlatformExecutionCompleted,
+  isPlatformScmPushPrCompleted,
+  validateFinalScmIntegratedStageReadiness,
+} from "@/lib/prototype/platformScmReadiness";
 
 export function prepareCodeAgentWipForFinalScmIntegratedStage(input: {
   readonly wip: CodeAgentWipExecutionV1;

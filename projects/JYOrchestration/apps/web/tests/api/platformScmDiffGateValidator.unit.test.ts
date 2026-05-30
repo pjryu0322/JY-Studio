@@ -1,78 +1,25 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
-import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
 import {
   evaluatePlatformScmQualityGateMergePolicy,
   validatePlatformScmPrDiffGate,
 } from "@/lib/prototype/platformScmDiffGateValidator";
 import { IMPLEMENTATION_QUALITY_GATE_RESULT_VERSION } from "@/lib/prototype/implementationQualityGate";
+import { buildPlatformScmWipFixture } from "../fixtures/platformScmWipFixture";
 
-vi.mock("@/lib/service/githubEnvTestMergeService", () => ({
-  fetchEnvTestPullDetail: vi.fn(),
-  fetchEnvTestPullFiles: vi.fn(),
+vi.mock("@/lib/service/githubPullRequestOps", () => ({
+  fetchGithubPullRequestDetail: vi.fn(),
+  fetchGithubPullRequestFiles: vi.fn(),
 }));
 
-import { fetchEnvTestPullDetail, fetchEnvTestPullFiles } from "@/lib/service/githubEnvTestMergeService";
-
-const plan = buildImplementationTaskPlan({
-  projectId: "p1",
-  projectArtifacts: [],
-  featureDraftTitles: ["upload"],
-  envOk: true,
-  designOk: true,
-});
-const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
-
-function realCursorWip() {
-  const wip = buildInitialCodeAgentWipExecution({
-    projectId: "p1",
-    plan,
-    workItems,
-    executionMode: "cursor_api",
-    bridgeExecutionStatus: "bridge_completed",
-    selectedTaskId: workItems[0]!.taskId,
-  });
-  return {
-    ...wip,
-    branchName: "wip/cursor/dev-1",
-    commitSha: "abc1234567890abcdef",
-    commits: [
-      {
-        sha: "abc1234567890abcdef",
-        provider: "cursor" as const,
-        branchName: "wip/cursor/dev-1",
-        commitMessage: "wip",
-        taskId: workItems[0]!.taskId,
-        workItemId: workItems[0]!.id,
-        changedFiles: ["src/App.tsx"],
-        diffSummary: [],
-        testResults: [],
-        unresolvedIssues: [],
-        createdAt: "2026-05-30T00:00:00.000Z",
-      },
-    ],
-    platformScmExecutionV1: {
-      version: "platform_scm_execution_v1" as const,
-      projectId: "p1",
-      selectedTaskId: workItems[0]!.taskId,
-      sourceCommitSha: "abc1234567890abcdef",
-      sourceBranchName: "wip/cursor/dev-1",
-      targetRepository: "owner/repo",
-      pushStatus: "pr_completed" as const,
-      prNumber: 42,
-      prUrl: "https://github.com/owner/repo/pull/42",
-      mergeStatus: "merge_pending" as const,
-      createdAt: "2026-05-30T00:00:00.000Z",
-      updatedAt: "2026-05-30T00:00:00.000Z",
-    },
-  };
-}
+import {
+  fetchGithubPullRequestDetail,
+  fetchGithubPullRequestFiles,
+} from "@/lib/service/githubPullRequestOps";
 
 describe("platformScmDiffGateValidator", () => {
   beforeEach(() => {
-    vi.mocked(fetchEnvTestPullDetail).mockReset();
-    vi.mocked(fetchEnvTestPullFiles).mockReset();
+    vi.mocked(fetchGithubPullRequestDetail).mockReset();
+    vi.mocked(fetchGithubPullRequestFiles).mockReset();
   });
 
   it("evaluatePlatformScmQualityGateMergePolicy passes when reviewer/security passed", () => {
@@ -128,16 +75,16 @@ describe("platformScmDiffGateValidator", () => {
   });
 
   it("validatePlatformScmPrDiffGate validates PR files against WIP changed files", async () => {
-    vi.mocked(fetchEnvTestPullDetail).mockResolvedValue({
+    vi.mocked(fetchGithubPullRequestDetail).mockResolvedValue({
       ok: true,
       pr: { head: { sha: "abc1234567890abcdef" } },
     });
-    vi.mocked(fetchEnvTestPullFiles).mockResolvedValue({
+    vi.mocked(fetchGithubPullRequestFiles).mockResolvedValue({
       ok: true,
       files: [{ filename: "src/App.tsx" }],
     });
 
-    const wip = realCursorWip();
+    const wip = buildPlatformScmWipFixture({ preset: "merge_ready" });
     const result = await validatePlatformScmPrDiffGate({
       wip,
       scm: wip.platformScmExecutionV1!,

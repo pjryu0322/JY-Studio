@@ -10,13 +10,18 @@ import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecut
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import type { CodeAgentWipOrchestrationPatch } from "@/lib/prototype/prototypeExecutionCodeAgentWipActions";
 import { buildPlatformScmTimelineEntry } from "@/lib/prototype/targetRepoE2eDiagnostics";
 import type { PlatformScmPushExecutorResult } from "@/lib/prototype/platformScmPushExecutor";
 import type { PlatformScmMergeExecutorResult } from "@/lib/prototype/platformScmMergeExecutor";
+import {
+  resolvePlatformScmWipContext,
+  type PlatformScmWipContext,
+} from "@/lib/prototype/platformScmWipContext";
+import {
+  buildPrototypeOrchestrationResult,
+  type PrototypeOrchestrationResult,
+} from "@/lib/prototype/prototypeOrchestrationResult";
 import {
   markIntegratedStepDone,
   markIntegratedStepFailed,
@@ -28,17 +33,31 @@ import {
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
 
-export type PlatformScmOrchestrationResult = Readonly<{
-  readonly kind: "blocked" | "failed" | "completed";
-  readonly message: string;
-  readonly chatPatch?: {
-    readonly messages: readonly RequirementsMessage[];
-    readonly slots: readonly PrototypeExecutionInterviewSlot[];
-    readonly answers: Readonly<Record<string, string>>;
-    readonly currentSlotKey: string | null;
-  };
-  readonly orchestrationPatch?: CodeAgentWipOrchestrationPatch;
-}>;
+export type PlatformScmOrchestrationResult = PrototypeOrchestrationResult;
+
+function buildScmTimelineEntry(input: {
+  readonly ctx: PlatformScmWipContext;
+  readonly action: string;
+  readonly branchName?: string;
+  readonly commitSha?: string;
+  readonly prNumber?: number;
+  readonly status: string;
+  readonly reason?: string;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlatformScmTimelineEntry({
+    action: input.action,
+    projectId: input.ctx.projectId,
+    selectedTaskId: input.ctx.taskId,
+    repoFullName: input.ctx.repoFullName,
+    branchName: input.branchName ?? input.ctx.branchName,
+    commitSha: input.commitSha ?? input.ctx.commitSha,
+    prNumber: input.prNumber,
+    status: input.status,
+    reason: input.reason,
+    nowIso: input.nowIso,
+  });
+}
 
 function buildPlatformScmCompletedMessage(input: {
   readonly wip: CodeAgentWipExecutionV1;
@@ -124,42 +143,28 @@ export function buildPlatformScmOrchestrationResult(input: {
   readonly nowIso?: string;
 }): PlatformScmOrchestrationResult {
   const now = input.nowIso ?? new Date().toISOString();
-  const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
-  const prior = resolved.messages ?? [];
-  const taskId = input.wip.selectedTaskId ?? input.wip.platformScmExecutionV1?.selectedTaskId ?? "unknown";
-  const repoFullName =
-    input.wip.targetRepoFullName ??
-    input.wip.targetRepository ??
-    input.wip.platformScmExecutionV1?.targetRepository;
+  const ctx = resolvePlatformScmWipContext(input.wip);
 
   if (input.executorResult.status === "blocked") {
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "blocked",
       message: input.executorResult.message,
-      chatPatch: {
-        messages: [...prior, buildPlatformScmFailedMessage({ message: input.executorResult.message, nowIso: now })],
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: [buildPlatformScmFailedMessage({ message: input.executorResult.message, nowIso: now })],
       orchestrationPatch: {
         codeAgentWipExecutionV1: input.wip,
         promptTimeline: appendPromptTimeline(
           input.promptTimeline,
-          buildPlatformScmTimelineEntry({
+          buildScmTimelineEntry({
+            ctx,
             action: "platform_scm_push_failed",
-            projectId: input.wip.projectId,
-            selectedTaskId: taskId,
-            repoFullName,
-            branchName: input.wip.branchName,
-            commitSha: input.wip.commitSha,
             status: "blocked",
             reason: input.executorResult.message,
             nowIso: now,
           }),
         ),
       },
-    };
+    });
   }
 
   const scm = input.executorResult.platformScmExecutionV1;
@@ -172,33 +177,25 @@ export function buildPlatformScmOrchestrationResult(input: {
           nowIso: now,
         })
       : input.wip;
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "failed",
       message: input.executorResult.message,
-      chatPatch: {
-        messages: [...prior, buildPlatformScmFailedMessage({ message: input.executorResult.message, nowIso: now })],
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: [buildPlatformScmFailedMessage({ message: input.executorResult.message, nowIso: now })],
       orchestrationPatch: {
         codeAgentWipExecutionV1: failedWip,
         promptTimeline: appendPromptTimeline(
           input.promptTimeline,
-          buildPlatformScmTimelineEntry({
+          buildScmTimelineEntry({
+            ctx,
             action: "platform_scm_push_failed",
-            projectId: input.wip.projectId,
-            selectedTaskId: taskId,
-            repoFullName,
-            branchName: input.wip.branchName,
-            commitSha: input.wip.commitSha,
             status: "failed",
             reason: input.executorResult.message,
             nowIso: now,
           }),
         ),
       },
-    };
+    });
   }
 
   const updatedWip = applyPlatformScmPushSuccessToWip({
@@ -211,11 +208,9 @@ export function buildPlatformScmOrchestrationResult(input: {
 
   let timeline = appendPromptTimeline(
     input.promptTimeline,
-    buildPlatformScmTimelineEntry({
+    buildScmTimelineEntry({
+      ctx,
       action: "platform_scm_push_started",
-      projectId: input.wip.projectId,
-      selectedTaskId: taskId,
-      repoFullName,
       branchName: scm.sourceBranchName,
       commitSha: scm.sourceCommitSha,
       status: "running",
@@ -224,11 +219,9 @@ export function buildPlatformScmOrchestrationResult(input: {
   );
   timeline = appendPromptTimeline(
     timeline,
-    buildPlatformScmTimelineEntry({
+    buildScmTimelineEntry({
+      ctx,
       action: "platform_scm_push_completed",
-      projectId: input.wip.projectId,
-      selectedTaskId: taskId,
-      repoFullName,
       branchName: scm.sourceBranchName,
       commitSha: scm.sourceCommitSha,
       status: "completed",
@@ -238,11 +231,9 @@ export function buildPlatformScmOrchestrationResult(input: {
   if (input.executorResult.prNumber !== undefined) {
     timeline = appendPromptTimeline(
       timeline,
-      buildPlatformScmTimelineEntry({
+      buildScmTimelineEntry({
+        ctx,
         action: "platform_scm_pr_created",
-        projectId: input.wip.projectId,
-        selectedTaskId: taskId,
-        repoFullName,
         branchName: scm.sourceBranchName,
         commitSha: scm.sourceCommitSha,
         prNumber: input.executorResult.prNumber,
@@ -252,28 +243,23 @@ export function buildPlatformScmOrchestrationResult(input: {
     );
   }
 
-  return {
+  return buildPrototypeOrchestrationResult({
     kind: "completed",
     message: input.executorResult.message,
-    chatPatch: {
-      messages: [
-        ...prior,
-        buildPlatformScmCompletedMessage({
-          wip: updatedWip,
-          scm: updatedWip.platformScmExecutionV1 ?? scm,
-          message: input.executorResult.message,
-          nowIso: now,
-        }),
-      ],
-      slots: resolved.slots ?? [],
-      answers: resolved.answers ?? {},
-      currentSlotKey: resolved.currentSlotKey ?? null,
-    },
+    requirementsStateJson: input.requirementsStateJson,
+    newMessages: [
+      buildPlatformScmCompletedMessage({
+        wip: updatedWip,
+        scm: updatedWip.platformScmExecutionV1 ?? scm,
+        message: input.executorResult.message,
+        nowIso: now,
+      }),
+    ],
     orchestrationPatch: {
       codeAgentWipExecutionV1: updatedWip,
       promptTimeline: timeline,
     },
-  };
+  });
 }
 
 export function buildPlatformScmExecutionPersistPatch(input: {
@@ -403,30 +389,21 @@ export function buildPlatformScmMergeOrchestrationResult(input: {
   readonly nowIso?: string;
 }): PlatformScmOrchestrationResult {
   const now = input.nowIso ?? new Date().toISOString();
-  const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
-  const prior = resolved.messages ?? [];
-  const taskId = input.wip.selectedTaskId ?? input.wip.platformScmExecutionV1?.selectedTaskId ?? "unknown";
-  const repoFullName =
-    input.wip.targetRepoFullName ??
-    input.wip.targetRepository ??
-    input.wip.platformScmExecutionV1?.targetRepository;
-
+  const ctx = resolvePlatformScmWipContext(input.wip);
   const scm = input.executorResult.platformScmExecutionV1;
   let timeline = input.promptTimeline ?? [];
 
   if (input.executorResult.diffGate) {
     timeline = appendPromptTimeline(
       timeline,
-      buildPlatformScmTimelineEntry({
+      buildScmTimelineEntry({
+        ctx,
         action:
           input.executorResult.diffGate.ok
             ? "platform_scm_diff_gate_validated"
             : "platform_scm_diff_gate_failed",
-        projectId: input.wip.projectId,
-        selectedTaskId: taskId,
-        repoFullName,
-        branchName: scm?.sourceBranchName ?? input.wip.branchName,
-        commitSha: scm?.sourceCommitSha ?? input.wip.commitSha,
+        branchName: scm?.sourceBranchName,
+        commitSha: scm?.sourceCommitSha,
         prNumber: scm?.prNumber,
         status: input.executorResult.diffGate.status,
         reason: input.executorResult.diffGate.message,
@@ -436,20 +413,16 @@ export function buildPlatformScmMergeOrchestrationResult(input: {
   }
 
   if (input.executorResult.status === "blocked") {
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "blocked",
       message: input.executorResult.message,
-      chatPatch: {
-        messages: [...prior, buildPlatformScmMergeFailedMessage({ message: input.executorResult.message, nowIso: now })],
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: [buildPlatformScmMergeFailedMessage({ message: input.executorResult.message, nowIso: now })],
       orchestrationPatch: {
         codeAgentWipExecutionV1: input.wip,
         promptTimeline: timeline,
       },
-    };
+    });
   }
 
   if (!input.executorResult.ok || !scm) {
@@ -463,42 +436,34 @@ export function buildPlatformScmMergeOrchestrationResult(input: {
       : input.wip;
     timeline = appendPromptTimeline(
       timeline,
-      buildPlatformScmTimelineEntry({
+      buildScmTimelineEntry({
+        ctx,
         action: "platform_scm_merge_failed",
-        projectId: input.wip.projectId,
-        selectedTaskId: taskId,
-        repoFullName,
-        branchName: scm?.sourceBranchName ?? input.wip.branchName,
-        commitSha: scm?.sourceCommitSha ?? input.wip.commitSha,
+        branchName: scm?.sourceBranchName,
+        commitSha: scm?.sourceCommitSha,
         prNumber: scm?.prNumber,
         status: "failed",
         reason: input.executorResult.message,
         nowIso: now,
       }),
     );
-    return {
+    return buildPrototypeOrchestrationResult({
       kind: "failed",
       message: input.executorResult.message,
-      chatPatch: {
-        messages: [...prior, buildPlatformScmMergeFailedMessage({ message: input.executorResult.message, nowIso: now })],
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      },
+      requirementsStateJson: input.requirementsStateJson,
+      newMessages: [buildPlatformScmMergeFailedMessage({ message: input.executorResult.message, nowIso: now })],
       orchestrationPatch: {
         codeAgentWipExecutionV1: failedWip,
         promptTimeline: timeline,
       },
-    };
+    });
   }
 
   timeline = appendPromptTimeline(
     timeline,
-    buildPlatformScmTimelineEntry({
+    buildScmTimelineEntry({
+      ctx,
       action: "platform_scm_merge_requested",
-      projectId: input.wip.projectId,
-      selectedTaskId: taskId,
-      repoFullName,
       branchName: scm.sourceBranchName,
       commitSha: scm.sourceCommitSha,
       prNumber: scm.prNumber,
@@ -515,11 +480,9 @@ export function buildPlatformScmMergeOrchestrationResult(input: {
   if (input.executorResult.merged) {
     timeline = appendPromptTimeline(
       timeline,
-      buildPlatformScmTimelineEntry({
+      buildScmTimelineEntry({
+        ctx,
         action: "platform_scm_merge_completed",
-        projectId: input.wip.projectId,
-        selectedTaskId: taskId,
-        repoFullName,
         branchName: scm.sourceBranchName,
         commitSha: scm.sourceCommitSha,
         prNumber: scm.prNumber,
@@ -538,20 +501,16 @@ export function buildPlatformScmMergeOrchestrationResult(input: {
           nowIso: now,
         });
 
-  return {
+  return buildPrototypeOrchestrationResult({
     kind: "completed",
     message: input.executorResult.message,
-    chatPatch: {
-      messages: [...prior, completedMessage],
-      slots: resolved.slots ?? [],
-      answers: resolved.answers ?? {},
-      currentSlotKey: resolved.currentSlotKey ?? null,
-    },
+    requirementsStateJson: input.requirementsStateJson,
+    newMessages: [completedMessage],
     orchestrationPatch: {
       codeAgentWipExecutionV1: updatedWip,
       promptTimeline: timeline,
     },
-  };
+  });
 }
 
 export function buildPlatformScmMergePersistPatch(input: {

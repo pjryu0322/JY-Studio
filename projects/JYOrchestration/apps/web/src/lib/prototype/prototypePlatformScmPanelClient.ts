@@ -10,6 +10,11 @@ import {
 import type { PlatformScmMergeExecutorResult } from "@/lib/prototype/platformScmMergeExecutor";
 import type { PlatformScmPushExecutorResult } from "@/lib/prototype/platformScmPushExecutor";
 
+export {
+  shouldAttemptAutoPlatformScmMerge,
+  validatePlatformScmMergeStepReadiness,
+} from "@/lib/prototype/platformScmReadiness";
+
 export type PlatformScmExecutePersistPatch = ReturnType<typeof buildPlatformScmExecutionPersistPatch>;
 export type PlatformScmMergePersistPatch = ReturnType<typeof buildPlatformScmMergePersistPatch>;
 
@@ -17,26 +22,6 @@ export type PlatformScmOrchestrationApplyInput = Readonly<{
   readonly persistPatch: PlatformScmExecutePersistPatch | PlatformScmMergePersistPatch;
   readonly fallbackMessages: readonly unknown[];
 }>;
-
-export function shouldAttemptAutoPlatformScmMerge(wip: CodeAgentWipExecutionV1): boolean {
-  const scm = wip.platformScmExecutionV1;
-  return scm?.pushStatus === "pr_completed" && scm.mergeStatus !== "merge_completed";
-}
-
-export function validatePlatformScmMergeStepReadiness(
-  wip: CodeAgentWipExecutionV1 | null | undefined,
-): Readonly<{ readonly ok: true } | Readonly<{ readonly ok: false; readonly message: string; readonly noOp?: boolean }>> {
-  if (!wip) {
-    return { ok: false, message: "Code Agent WIP 실행 결과가 없어 PR merge를 실행할 수 없습니다." };
-  }
-  if (wip.platformScmExecutionV1?.pushStatus !== "pr_completed") {
-    return { ok: false, message: "플랫폼 SCM PR 생성이 완료된 뒤 merge를 실행할 수 있습니다." };
-  }
-  if (wip.platformScmExecutionV1?.mergeStatus === "merge_completed") {
-    return { ok: false, message: "이미 PR merge가 완료되었습니다.", noOp: true };
-  }
-  return { ok: true };
-}
 
 export async function fetchPlatformScmExecutePersistPatch(input: {
   readonly projectId: string;
@@ -47,8 +32,7 @@ export async function fetchPlatformScmExecutePersistPatch(input: {
   readonly integratedExecutionState?: ImplementationIntegratedExecutionStateV1 | null;
   readonly taskRowsCompleted?: boolean;
   readonly finalizeIntegratedFinalScm?: boolean;
-}): Promise<PlatformScmExecutePersistPatch> {
-  const res = await fetch("/api/prototype/platform-scm/execute", {
+}): Promise<PlatformScmExecutePersistPatch> {  const res = await fetch("/api/prototype/platform-scm/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
