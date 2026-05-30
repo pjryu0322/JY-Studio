@@ -2,6 +2,7 @@ import {
   buildCodeAgentWipTimelineEntry,
   describeDeveloperApprovalPrecheck,
   evaluateDeveloperApprovalGate,
+  type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildDeveloperApproveWipResult,
@@ -68,6 +69,7 @@ export type WipChipHandlerDeps = Readonly<{
   ) => void;
   readonly focusComposer: () => void;
   readonly showToast: (message: string) => void;
+  readonly onAfterScmCommitRequested?: (wip: CodeAgentWipExecutionV1) => void;
   readonly envOk?: boolean;
   readonly designOk?: boolean;
   readonly cursorApiConfigured?: boolean;
@@ -507,6 +509,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
           }),
         ),
       });
+      deps.onAfterScmCommitRequested?.(scmWip);
     },
     canApproveDeveloperResult: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;

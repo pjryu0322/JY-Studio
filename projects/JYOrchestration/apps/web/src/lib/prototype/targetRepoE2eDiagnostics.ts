@@ -30,6 +30,20 @@ export type TargetRepoE2eTimelineAction =
   | "cursor_bridge_source_generation_rejected"
   | "review_security_diff_engine_pending";
 
+export type PlatformScmTimelineAction =
+  | "platform_scm_push_requested"
+  | "platform_scm_push_started"
+  | "platform_scm_push_completed"
+  | "platform_scm_push_failed"
+  | "platform_scm_pr_requested"
+  | "platform_scm_pr_created"
+  | "platform_scm_pr_failed"
+  | "platform_scm_diff_gate_validated"
+  | "platform_scm_diff_gate_failed"
+  | "platform_scm_merge_requested"
+  | "platform_scm_merge_completed"
+  | "platform_scm_merge_failed";
+
 export type CursorApiDirectTimelineAction =
   | "cursor_api_availability_checked"
   | "cursor_api_direct_execution_requested"
@@ -272,5 +286,41 @@ export function buildCursorApiDirectTimelineEntry(input: {
     responseText: parts.join(" "),
     createdAt: input.nowIso ?? new Date().toISOString(),
     orchestrationTraceGroup: "target_repo_e2e",
+  };
+}
+
+export function buildPlatformScmTimelineEntry(input: {
+  readonly action: PlatformScmTimelineAction;
+  readonly projectId: string;
+  readonly selectedTaskId: string;
+  readonly repoFullName?: string;
+  readonly branchName?: string;
+  readonly commitSha?: string;
+  readonly status: string;
+  readonly prNumber?: number;
+  readonly reason?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const parts = [
+    `type=${input.action}`,
+    "mode=platform_scm",
+    `projectId=${input.projectId}`,
+    `selectedTaskId=${input.selectedTaskId}`,
+    ...(input.repoFullName ? [`repoFullName=${input.repoFullName}`] : []),
+    ...(input.branchName ? [`branchName=${input.branchName}`] : []),
+    ...(input.commitSha ? [`commitSha=${input.commitSha.slice(0, 12)}`] : []),
+    ...(input.prNumber !== undefined ? [`prNumber=${input.prNumber}`] : []),
+    `status=${input.status}`,
+    ...(input.reason ? [`reason=${input.reason.replace(/\s+/g, "_").slice(0, 120)}`] : []),
+  ];
+  return {
+    stage: "implementation",
+    stageGroup: "구현",
+    workspaceScreenKey: "prototype_execution",
+    action: input.action,
+    source: "system",
+    responseText: parts.join(" "),
+    createdAt: input.nowIso ?? new Date().toISOString(),
+    orchestrationTraceGroup: "platform_scm",
   };
 }

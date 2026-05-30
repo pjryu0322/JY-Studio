@@ -5,6 +5,7 @@ import {
   isStubCodeAgentWipExecution,
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
+import { platformScmStatusLabel } from "@/lib/prototype/platformScmExecution";
 import type {
   ImplementationExecutionBoardTaskRowV1,
   ImplementationExecutionBoardV1,
@@ -55,6 +56,7 @@ export type CodeAgentExecutionProgressView = Readonly<{
   readonly nextActionLabel?: string;
   readonly showGenerationClarification: boolean;
   readonly isStubResult: boolean;
+  readonly scmStatusLabel?: string;
   readonly steps: readonly CodeAgentExecutionProgressStep[];
   readonly recentEvents: readonly CodeAgentExecutionProgressEvent[];
 }>;
@@ -74,8 +76,10 @@ const RELEVANT_TIMELINE_ACTIONS = new Set([
   "cursor_api_direct_execution_failed",
   "cursor_api_direct_execution_unsupported",
   "cursor_api_git_commit_created",
-  "cursor_api_git_push_completed",
-  "cursor_api_git_push_failed",
+  "platform_scm_push_requested",
+  "platform_scm_push_started",
+  "platform_scm_push_completed",
+  "platform_scm_pr_created",
   "cursor_api_availability_checked",
 ]);
 
@@ -94,8 +98,10 @@ const TIMELINE_ACTION_LABELS: Record<string, string> = {
   cursor_api_direct_execution_failed: "Cursor API 실패",
   cursor_api_direct_execution_unsupported: "Cursor API 미지원",
   cursor_api_git_commit_created: "Git 커밋 생성",
-  cursor_api_git_push_completed: "Git push 완료",
-  cursor_api_git_push_failed: "Git push 실패",
+  platform_scm_push_requested: "SCM push 요청",
+  platform_scm_push_started: "SCM push 시작",
+  platform_scm_push_completed: "SCM push 완료",
+  platform_scm_pr_created: "SCM PR 생성",
   cursor_api_availability_checked: "Cursor API 환경 점검",
 };
 
@@ -305,7 +311,7 @@ function summaryLineFor(
     return "Cursor API 실행 결과를 기다리는 중입니다.";
   }
   if (status === "cursor_completed") {
-    return "Cursor API 실행이 완료되었습니다. 변경사항을 확인한 뒤 구현 결과 승인 또는 재작업을 선택하세요.";
+    return "소스 생성/commit 완료. SCM Push/PR은 플랫폼 SCM 단계에서 수행합니다. 구현 결과 승인 또는 재작업을 선택하세요.";
   }
   if (status === "cursor_failed") {
     return wip?.bridgeErrorMessage?.trim() || "Cursor API 실행에 실패했습니다.";
@@ -345,7 +351,15 @@ function buildProgressSteps(
   const cursorRequested = bridge === "bridge_requested" || bridge === "bridge_running" || realDone || bridge === "bridge_completed";
   const cursorRunning = bridge === "bridge_running";
   const sourceReceived = realDone;
-  const pushed = wip?.pushed === true;
+  const scmPending = sourceReceived && wip?.pushed !== true;
+  const scmDone =
+    wip?.platformScmExecutionV1?.pushStatus === "push_completed" ||
+    wip?.platformScmExecutionV1?.pushStatus === "pr_completed";
+  const mergeDone = wip?.platformScmExecutionV1?.mergeStatus === "merge_completed";
+  const mergePending =
+    scmDone &&
+    wip?.platformScmExecutionV1?.pushStatus === "pr_completed" &&
+    wip?.platformScmExecutionV1?.mergeStatus === "merge_pending";
   const reviewed =
     (status === "developer_reviewing" || status === "developer_approved") &&
     Boolean(wip && isRealCursorSourceGenerationCompleted(wip));
@@ -371,9 +385,14 @@ function buildProgressSteps(
       sourceReceived ? "done" : cursorRunning ? "active" : cursorRequested ? "pending" : "pending",
     ),
     step(
-      "git_push",
-      "Git 커밋/푸시",
-      pushed ? "done" : sourceReceived ? "pending" : "pending",
+      "scm_reflection",
+      "SCM Push/PR",
+      scmDone ? "done" : sourceReceived ? (scmPending ? "pending" : "active") : "pending",
+    ),
+    step(
+      "scm_merge",
+      "SCM Merge",
+      mergeDone ? "done" : mergePending ? "pending" : scmDone ? "pending" : "pending",
     ),
     step(
       "developer_review",
@@ -431,6 +450,10 @@ export function buildCodeAgentExecutionProgressView(input: {
     nextActionLabel: nextActionLabelFor(status),
     showGenerationClarification: status === "draft_created" || status === "cursor_request_ready",
     isStubResult,
+    scmStatusLabel:
+      status === "cursor_completed" || status === "developer_reviewing"
+        ? platformScmStatusLabel(wip?.platformScmExecutionV1)
+        : undefined,
     steps: buildProgressSteps(status, wip),
     recentEvents,
   };

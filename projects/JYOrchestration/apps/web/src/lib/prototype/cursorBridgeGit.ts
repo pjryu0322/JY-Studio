@@ -37,6 +37,26 @@ export async function listWorktreeChangedFiles(workdir: string): Promise<readonl
     .filter(Boolean);
 }
 
+export async function pushWorktreeBranch(input: {
+  readonly workdir: string;
+  readonly branchName: string;
+}): Promise<Readonly<{ readonly pushed: boolean; readonly errorMessage?: string; readonly log: readonly string[] }>> {
+  const log: string[] = [];
+  try {
+    await git(input.workdir, ["rev-parse", "--is-inside-work-tree"]);
+    log.push("[GIT] worktree OK");
+    await git(input.workdir, ["checkout", input.branchName]);
+    log.push(`[GIT] checkout ${input.branchName}`);
+    await git(input.workdir, ["push", "-u", "origin", input.branchName]);
+    log.push("[GIT] push OK");
+    return { pushed: true, log };
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    log.push(`[GIT] push failed: ${errorMessage}`);
+    return { pushed: false, errorMessage, log };
+  }
+}
+
 export async function commitWorktreeChanges(input: {
   readonly workdir: string;
   readonly branchName: string;

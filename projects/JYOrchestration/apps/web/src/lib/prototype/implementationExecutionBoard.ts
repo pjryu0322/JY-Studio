@@ -905,7 +905,7 @@ const INTEGRATED_STEP_DONE_MESSAGE: Readonly<Record<ImplementationIntegratedStep
   refactor_common: "리팩토링/공통화 정리 단계가 완료되었습니다.",
   integrated_review: "통합 검수가 완료되었습니다.",
   integrated_security: "통합 보안 점검이 완료되었습니다.",
-  final_scm: "최종 SCM 반영 단계가 완료되었습니다.",
+  final_scm: "플랫폼 SCM push/PR 반영이 완료되었습니다.",
 };
 
 const INTEGRATED_STEP_NEXT_CHIP: Readonly<

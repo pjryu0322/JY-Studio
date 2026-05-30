@@ -52,7 +52,7 @@ function baseWip() {
 }
 
 describe("applyCursorBridgeResultToWipExecution", () => {
-  it("valid result becomes bridge_completed with commitSha and push skipped", () => {
+  it("valid result becomes bridge_completed with commitSha and platform SCM pending", () => {
     const updated = applyCursorBridgeResultToWipExecution({
       wip: baseWip(),
       bridgeResult: {
@@ -64,7 +64,6 @@ describe("applyCursorBridgeResultToWipExecution", () => {
         branchName: "wip/cursor/dev-1",
         commitSha: "abc123def4567890",
         changedFiles: ["src/App.tsx"],
-        pushed: false,
         workspacePath: "C:/workspace/aiproject",
       },
       commitTitle: "wip: test",
@@ -73,11 +72,39 @@ describe("applyCursorBridgeResultToWipExecution", () => {
     expect(updated.bridgeExecutionStatus).toBe("bridge_completed");
     expect(updated.executionMode).toBe("cursor_api");
     expect(updated.bridgeAdapter).toBe("cursor_api");
-    expect(updated.bridgeAdapter).toBe("cursor_api");
     expect(updated.executionStatus).toBe("bridge_completed");
     expect(updated.commitSha).toBe("abc123def4567890");
-    expect(updated.pushStatus).toBe("skipped");
+    expect(updated.pushed).toBe(false);
+    expect(updated.pushStatus).toBeUndefined();
+    expect(updated.platformScmExecutionV1?.pushStatus).toBe("pending");
+    expect(updated.commits[updated.commits.length - 1]?.unresolvedIssues).toContain(
+      "SCM push/PR은 플랫폼 SCM 단계에서 수행합니다.",
+    );
     expect(updated.commits[updated.commits.length - 1]?.changedFiles).toEqual(["src/App.tsx"]);
+  });
+
+  it("stores external push reference without marking platform SCM completed", () => {
+    const updated = applyCursorBridgeResultToWipExecution({
+      wip: baseWip(),
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        targetRepository: targetRepository.repoFullName,
+        branchName: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890",
+        changedFiles: ["src/App.tsx"],
+        cursorExternalPushStatus: "success",
+        cursorExternalPrNumber: 12,
+      },
+      commitTitle: "wip: test",
+      nowIso: NOW,
+    });
+    expect(updated.pushed).toBe(false);
+    expect(updated.cursorExternalPushStatus).toBe("success");
+    expect(updated.cursorExternalPrNumber).toBe(12);
+    expect(updated.platformScmExecutionV1?.pushStatus).toBe("pending");
   });
 
   it("wip-stub sha becomes failed", () => {
@@ -141,7 +168,7 @@ describe("buildCursorBridgeOrchestrationResult", () => {
     expect(result.orchestrationPatch?.codeAgentWipExecutionV1.bridgeExecutionStatus).toBe("failed");
   });
 
-  it("completed result adds cursor_api_direct_execution_completed timeline", () => {
+  it("completed result adds commit timeline without cursor push events", () => {
     const wip = baseWip();
     const result = buildCursorBridgeOrchestrationResult({
       requirementsStateJson: {},
@@ -155,9 +182,8 @@ describe("buildCursorBridgeOrchestrationResult", () => {
         branchName: "wip/cursor/dev-1",
         commitSha: "abc123def4567890",
         changedFiles: ["src/App.tsx", "src/B.tsx"],
-        pushed: true,
-        pushStatus: "success",
-        prStatus: "PR: 미수행",
+        cursorExternalPushStatus: "success",
+        cursorExternalPrNumber: 5,
         workspacePath: "C:/workspace/aiproject",
       },
       runId: "cursor-run-001",
@@ -167,7 +193,8 @@ describe("buildCursorBridgeOrchestrationResult", () => {
     const actions = result.orchestrationPatch?.promptTimeline?.map((e) => e.action) ?? [];
     expect(actions).toContain("cursor_api_direct_execution_completed");
     expect(actions).toContain("cursor_api_git_commit_created");
-    expect(actions).toContain("cursor_api_git_push_completed");
+    expect(actions).not.toContain("cursor_api_git_push_completed");
+    expect(result.orchestrationPatch?.codeAgentWipExecutionV1.pushed).toBe(false);
   });
 });
 

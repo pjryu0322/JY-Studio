@@ -51,6 +51,10 @@ export type CursorBridgeExecuteResult = Readonly<{
   readonly pushStatus?: "success" | "skipped" | "failed";
   readonly pushErrorMessage?: string;
   readonly prStatus?: string;
+  /** External Cursor API push reference — not platform SCM state. */
+  readonly cursorExternalPushStatus?: string;
+  readonly cursorExternalPrNumber?: number;
+  readonly cursorExternalPrStatus?: string;
 }>;
 
 export type BridgeResultValidationContext = Readonly<{

@@ -40,6 +40,7 @@ import {
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
   RUN_FINAL_SCM_CHIP,
+  RUN_PLATFORM_SCM_MERGE_CHIP,
   RUN_INTEGRATED_REVIEW_CHIP,
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
@@ -540,6 +541,31 @@ function deriveNextActionsFromCodeAgentWip(
   wip: CodeAgentWipExecutionV1 | null | undefined,
 ): readonly ImplementationStageNextAction[] | null {
   if (!wip) return null;
+
+  const scm = wip.platformScmExecutionV1;
+  if (
+    scm?.pushStatus === "pr_completed" &&
+    scm.mergeStatus !== "merge_completed"
+  ) {
+    return [
+      {
+        actionId: "RUN_PLATFORM_SCM_MERGE",
+        label: RUN_PLATFORM_SCM_MERGE_CHIP,
+        priority: "primary",
+        reason:
+          scm.mergeStatus === "merge_failed"
+            ? "PR merge 실패 후 재시도"
+            : "검수/보안 diff 검증 후 PR merge 실행",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "secondary",
+        reason: "SCM merge 정책 및 PR 상태 확인",
+      },
+    ];
+  }
+
   const bridgeStatus = wip.bridgeExecutionStatus;
   if (bridgeStatus === "draft_created") {
     return [
@@ -597,13 +623,19 @@ function deriveNextActionsFromCodeAgentWip(
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "구현 결과 승인",
         priority: "primary",
-        reason: "Cursor API 완료 후 구현 결과 승인",
+        reason: "Cursor API commit 완료 후 구현 결과 승인",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",
         label: "변경사항 보기",
         priority: "secondary",
         reason: "Cursor API 변경사항 확인",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "SCM 반영 요청",
+        priority: "secondary",
+        reason: "개발자 승인 후 플랫폼 SCM push/PR 수행",
       },
       {
         actionId: "REQUEST_CODE_AGENT_WIP",

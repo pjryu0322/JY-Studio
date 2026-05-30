@@ -106,6 +106,7 @@ export function tryHandlePrototypeExecutionChip(
       return true;
 
     // SCM officialization
+    case "SCM 반영 요청":
     case "SCM에게 공식 반영 요청": {
       if (!handlers.canRequestScmOfficialCommit()) return true;
       handlers.requestScmOfficialCommit();

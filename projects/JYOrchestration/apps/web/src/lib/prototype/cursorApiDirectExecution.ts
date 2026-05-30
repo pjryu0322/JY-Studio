@@ -5,6 +5,10 @@ import {
 } from "@/lib/prototype/cursorApiDirectClient";
 import type { CursorBridgeExecuteRequest, CursorBridgeExecuteResult } from "@/lib/prototype/cursorBridgeExecution";
 import {
+  extractCursorExternalScmFromDirectResult,
+  normalizeCursorBridgeResultForPlatform,
+} from "@/lib/prototype/platformScmExecution";
+import {
   failedCursorBridgeResult,
   validateBridgeResultForRealSourceGeneration,
   bridgeResultValidationContextFromRequest,
@@ -29,9 +33,9 @@ export function buildCursorApiDirectRequestFromBridgeRequest(
     branchName: request.branchName,
     commitMessage: request.commitMessage,
     prompt: request.prompt,
-    autoCommit: request.autoCommit,
-    autoPush: request.autoPush,
-    autoPr: request.autoPr,
+    autoCommit: request.autoCommit !== false,
+    autoPush: false,
+    autoPr: false,
     allowedPathGlobs: request.allowedPathGlobs,
   };
 }
@@ -82,12 +86,8 @@ export function mapCursorApiDirectResultToBridgeResult(
     changedFiles: result.changedFiles ?? [],
     diffSummary: result.diffSummary ?? [],
     testResults: result.testResults ?? [],
-    pushed: result.pushed,
-    ...(result.prNumber !== undefined ? { prNumber: result.prNumber } : {}),
-    ...(result.pushStatus ? { pushStatus: result.pushStatus } : {}),
-    ...(result.pushErrorMessage ? { pushErrorMessage: result.pushErrorMessage } : {}),
-    ...(result.prStatus ? { prStatus: result.prStatus } : {}),
     rawLog: result.rawLog,
+    ...extractCursorExternalScmFromDirectResult(result),
   };
 
   const validation = validateBridgeResultForRealSourceGeneration(
@@ -105,7 +105,7 @@ export function mapCursorApiDirectResultToBridgeResult(
     });
   }
 
-  return bridgeResult;
+  return normalizeCursorBridgeResultForPlatform(bridgeResult);
 }
 
 export async function executeCursorApiDirectFromBridgeRequest(input: {

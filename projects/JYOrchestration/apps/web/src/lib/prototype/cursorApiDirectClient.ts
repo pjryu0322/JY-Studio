@@ -1,5 +1,6 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import { extractCursorExternalScmReference } from "@/lib/prototype/platformScmExecution";
 
 export type CursorApiDirectExecuteRequest = Readonly<{
   readonly projectId: string;
@@ -38,9 +39,9 @@ export type CursorApiDirectExecuteResult = Readonly<{
   readonly rawLog?: string;
   readonly workspacePath?: string;
   readonly targetRepository?: string;
-  readonly pushStatus?: "success" | "skipped" | "failed";
-  readonly pushErrorMessage?: string;
-  readonly prStatus?: string;
+  readonly cursorExternalPushStatus?: string;
+  readonly cursorExternalPrNumber?: number;
+  readonly cursorExternalPrStatus?: string;
 }>;
 
 const FETCH_TIMEOUT_MS = 600_000;
@@ -135,12 +136,14 @@ function mapParsedToDirectResult(
     testResults: Array.isArray(parsed.testResults)
       ? parsed.testResults.map((t) => String(t))
       : ["실제 pnpm test/build: Cursor API 후 대상 저장소에서 실행 필요"],
-    pushed: parsed.pushed === true,
-    ...(parsed.prNumber !== undefined ? { prNumber: Number(parsed.prNumber) } : {}),
-    ...(parsed.pushStatus ? { pushStatus: parsed.pushStatus as "success" | "skipped" | "failed" } : {}),
-    ...(parsed.pushErrorMessage ? { pushErrorMessage: String(parsed.pushErrorMessage) } : {}),
-    ...(parsed.prStatus ? { prStatus: String(parsed.prStatus) } : {}),
     rawLog: JSON.stringify(parsed).slice(0, 2000),
+    ...extractCursorExternalScmReference({
+      pushed: parsed.pushed === true,
+      pushStatus: parsed.pushStatus ? String(parsed.pushStatus) : undefined,
+      pushErrorMessage: parsed.pushErrorMessage ? String(parsed.pushErrorMessage) : undefined,
+      prNumber: parsed.prNumber !== undefined ? Number(parsed.prNumber) : undefined,
+      prStatus: parsed.prStatus ? String(parsed.prStatus) : undefined,
+    }),
   };
 }
 
@@ -168,9 +171,9 @@ export async function executeCursorApiDirect(
     prompt: request.prompt,
     workItems: request.workItems,
     commitMessage: request.commitMessage,
-    autoCommit: request.autoCommit,
-    autoPush: request.autoPush,
-    autoPr: request.autoPr,
+    autoCommit: request.autoCommit !== false,
+    autoPush: false,
+    autoPr: false,
     allowedPathGlobs: request.allowedPathGlobs,
   };
 

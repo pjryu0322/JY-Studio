@@ -59,12 +59,30 @@ import {
   buildImplementationWipDraftLifecycleTimelineEntry,
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
   mapBlockedMessageToWipDraftFailureReason,
+  type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildCursorBridgeApiBlockedResult,
   buildCursorBridgeOrchestrationResult,
   patchWipForCursorBridgePhase,
 } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
+import {
+  validateFinalScmIntegratedStageReadiness,
+  prepareCodeAgentWipForFinalScmIntegratedStage,
+  isFinalScmPlatformExecutionCompleted,
+  buildFinalScmIntegratedStageStartedNotice,
+  buildFinalScmIntegratedStageCompletedNotice,
+  buildFinalScmIntegratedStageFailedNotice,
+} from "@/lib/prototype/implementationFinalScmIntegratedStage";
+import {
+  buildPlatformScmOrchestrationPatchFromPersist,
+  fetchPlatformScmExecutePersistPatch,
+  fetchPlatformScmMergePersistPatch,
+  shouldAttemptAutoPlatformScmMerge,
+  validatePlatformScmMergeStepReadiness,
+  type PlatformScmExecutePersistPatch,
+  type PlatformScmMergePersistPatch,
+} from "@/lib/prototype/prototypePlatformScmPanelClient";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import {
   evaluateExecutionSetupSourceGenerationReadiness,
@@ -223,6 +241,7 @@ import {
 import { hasTaskListForWipOrchestration, shouldUseTaskListBoardWipGate } from "@/lib/prototype/implementationTaskListBoardWipGate";
 import {
   finalizeIntegratedStageStep,
+  markIntegratedStepInProgress,
   type ImplementationIntegratedStep,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
@@ -2373,6 +2392,122 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  const applyPlatformScmExecutorJson = useCallback(
+    async (input: {
+      readonly wip: CodeAgentWipExecutionV1;
+      readonly finalizeIntegratedFinalScm?: boolean;
+      readonly taskRowsCompleted?: boolean;
+    }) => {
+      const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
+      return fetchPlatformScmExecutePersistPatch({
+        projectId,
+        wip: input.wip,
+        requirementsStateJson: requirementsStateJsonRef.current,
+        promptTimeline: refState.promptTimeline ?? [],
+        executionState: refState.implementationTaskExecutionStateV1,
+        integratedExecutionState: refState.implementationIntegratedExecutionStateV1,
+        taskRowsCompleted: input.taskRowsCompleted,
+        finalizeIntegratedFinalScm: input.finalizeIntegratedFinalScm,
+      });
+    },
+    [projectId],
+  );
+
+  const applyPlatformScmMergeExecutorJson = useCallback(
+    async (input: {
+      readonly wip: CodeAgentWipExecutionV1;
+      readonly autoMergeOnly?: boolean;
+    }) => {
+      const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
+      return fetchPlatformScmMergePersistPatch({
+        projectId,
+        wip: input.wip,
+        requirementsStateJson: requirementsStateJsonRef.current,
+        promptTimeline: refState.promptTimeline ?? [],
+        executionState: refState.implementationTaskExecutionStateV1,
+        qualityGateResults: refState.implementationQualityGateResultsV1,
+        autoMergeOnly: input.autoMergeOnly,
+      });
+    },
+    [projectId],
+  );
+
+  const persistPlatformScmOrchestrationPatch = useCallback(
+    (persistPatch: PlatformScmExecutePersistPatch) => {
+      const patch = buildPlatformScmOrchestrationPatchFromPersist(persistPatch);
+      if (!patch) return;
+      applyImplementationOrchestrationResult({
+        messages:
+          persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          ...patch.orchestrationPatch,
+          ...(patch.executionState
+            ? { implementationTaskExecutionStateV1: patch.executionState }
+            : {}),
+          ...(patch.integratedExecutionState
+            ? { implementationIntegratedExecutionStateV1: patch.integratedExecutionState }
+            : {}),
+        },
+      });
+    },
+    [applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
+  );
+
+  const persistPlatformScmMergePatch = useCallback(
+    (persistPatch: PlatformScmMergePersistPatch) => {
+      const patch = buildPlatformScmOrchestrationPatchFromPersist(persistPatch);
+      if (!patch) return;
+      applyImplementationOrchestrationResult({
+        messages:
+          persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          ...patch.orchestrationPatch,
+          ...(patch.executionState
+            ? { implementationTaskExecutionStateV1: patch.executionState }
+            : {}),
+        },
+      });
+    },
+    [applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
+  );
+
+  const tryAutoPlatformScmMergeAfterPush = useCallback(
+    async (wip: CodeAgentWipExecutionV1) => {
+      if (!shouldAttemptAutoPlatformScmMerge(wip)) return;
+      try {
+        const mergePatch = await applyPlatformScmMergeExecutorJson({ wip, autoMergeOnly: true });
+        persistPlatformScmMergePatch(mergePatch);
+        if (mergePatch.orchestration.message) {
+          showToast(mergePatch.orchestration.message);
+        }
+      } catch {
+        // auto-merge is best-effort after push/PR
+      }
+    },
+    [applyPlatformScmMergeExecutorJson, persistPlatformScmMergePatch, showToast],
+  );
+
+  const executePlatformScmAfterRequest = useCallback(
+    (wip: CodeAgentWipExecutionV1) => {
+      void (async () => {
+        showToast("플랫폼 SCM push/PR 실행을 시작합니다...");
+        try {
+          const persistPatch = await applyPlatformScmExecutorJson({ wip });
+          persistPlatformScmOrchestrationPatch(persistPatch);
+          showToast(persistPatch.orchestration.message);
+          const updatedWip =
+            persistPatch.orchestration.orchestrationPatch?.codeAgentWipExecutionV1 ?? wip;
+          if (persistPatch.orchestration.kind === "completed") {
+            await tryAutoPlatformScmMergeAfterPush(updatedWip);
+          }
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : String(error));
+        }
+      })();
+    },
+    [applyPlatformScmExecutorJson, persistPlatformScmOrchestrationPatch, tryAutoPlatformScmMergeAfterPush, showToast],
+  );
+
   const wipChipHandlers = useMemo(
     () =>
       buildWipChipHandlerSlice({
@@ -2399,6 +2534,7 @@ export function PrototypePreviewPanel({
         },
         focusComposer: () => queueMicrotask(() => chatInputRef.current?.focus()),
         showToast,
+        onAfterScmCommitRequested: executePlatformScmAfterRequest,
       }),
     [
       projectId,
@@ -2414,6 +2550,7 @@ export function PrototypePreviewPanel({
       applyPendingFromOrchestrationPatch,
       applyImplementationOrchestrationResult,
       showToast,
+      executePlatformScmAfterRequest,
     ],
   );
 
@@ -2610,8 +2747,200 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
   );
 
+  const runFinalScmIntegratedStageStep = useCallback((): ImplementationStageActionRunResult => {
+    const pid = projectId.trim();
+    if (!pid) {
+      const message = "프로젝트를 선택해 주세요.";
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
+
+    const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
+    const readiness = validateFinalScmIntegratedStageReadiness(wip);
+    if (!readiness.ok) {
+      showToast(readiness.message);
+      return { outcome: "blocked", message: readiness.message };
+    }
+
+    const taskList = parsedRequirementsState.implementationTaskListV1;
+    if (!taskList) {
+      const message = "구현 작업목록이 없어 통합 단계를 실행할 수 없습니다.";
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
+
+    const boardBefore = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: pid,
+      orchestration: parsedRequirementsState,
+    })!;
+    const allTasksComplete = boardBefore.taskRows.every((row) => row.currentRole === "completed");
+
+    if (isFinalScmPlatformExecutionCompleted(wip)) {
+      const prior = parsedRequirementsState.implementationIntegratedExecutionStateV1;
+      const done = finalizeIntegratedStageStep({
+        state: prior,
+        projectId: pid,
+        step: "final_scm",
+        taskRowsCompleted: allTasksComplete,
+      });
+      void persistChatToDb(undefined, {
+        implementationIntegratedExecutionStateV1: done,
+      });
+      const actionNotice = buildIntegratedStageStepActionNotice({ step: "final_scm", integratedState: done });
+      executionSingleChat.appendAiNotice(actionNotice);
+      const nowIso = new Date().toISOString();
+      const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
+        projectId: pid,
+        orchestration: parsedRequirementsState,
+        integratedExecutionState: done,
+      })!;
+      appendImplementationTaskListAiMessage(
+        buildImplementationExecutionBoardMessage({
+          board: nextBoard,
+          nowIso,
+          previewReady: prototypeRunSyncSnapshot.previewReady,
+          codeAgentWipExecutionV1: wip,
+          executionSetup: executionSetupRow,
+        }),
+      );
+      return { outcome: "executed" };
+    }
+
+    const preparedWip = prepareCodeAgentWipForFinalScmIntegratedStage({ wip: wip! });
+    const inProgressIntegrated = markIntegratedStepInProgress({
+      state: parsedRequirementsState.implementationIntegratedExecutionStateV1,
+      projectId: pid,
+      step: "final_scm",
+      resultSummary: "플랫폼 SCM push/PR 실행 중",
+    });
+
+    applyImplementationOrchestrationResult({
+      orchestrationPatch: {
+        codeAgentWipExecutionV1: preparedWip,
+        implementationIntegratedExecutionStateV1: inProgressIntegrated,
+      },
+    });
+
+    showToast("최종 SCM 반영 실행을 시작합니다...");
+    executionSingleChat.appendAiNotice(buildFinalScmIntegratedStageStartedNotice());
+
+    void (async () => {
+      try {
+        const persistPatch = await applyPlatformScmExecutorJson({
+          wip: preparedWip,
+          finalizeIntegratedFinalScm: true,
+          taskRowsCompleted: allTasksComplete,
+        });
+        const notice =
+          persistPatch.orchestration.kind === "completed"
+            ? buildFinalScmIntegratedStageCompletedNotice({
+                message: persistPatch.orchestration.message,
+                scm:
+                  persistPatch.orchestration.orchestrationPatch?.codeAgentWipExecutionV1
+                    ?.platformScmExecutionV1,
+              })
+            : buildFinalScmIntegratedStageFailedNotice(persistPatch.orchestration.message);
+
+        if (persistPatch.orchestration.orchestrationPatch) {
+          applyImplementationOrchestrationResult({
+            messages:
+              persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+            orchestrationPatch: {
+              ...persistPatch.orchestration.orchestrationPatch,
+              ...(persistPatch.executionState
+                ? { implementationTaskExecutionStateV1: persistPatch.executionState }
+                : {}),
+              ...(persistPatch.integratedExecutionState
+                ? { implementationIntegratedExecutionStateV1: persistPatch.integratedExecutionState }
+                : {}),
+            },
+          });
+        }
+
+        executionSingleChat.appendAiNotice(notice);
+
+        if (persistPatch.orchestration.kind === "completed") {
+          const updatedWip =
+            persistPatch.orchestration.orchestrationPatch?.codeAgentWipExecutionV1 ?? preparedWip;
+          await tryAutoPlatformScmMergeAfterPush(updatedWip);
+        }
+
+        const nowIso = new Date().toISOString();
+        const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
+        const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
+          projectId: pid,
+          orchestration: refState,
+          integratedExecutionState: persistPatch.integratedExecutionState,
+        })!;
+        appendImplementationTaskListAiMessage(
+          buildImplementationExecutionBoardMessage({
+            board: nextBoard,
+            nowIso,
+            previewReady: prototypeRunSyncSnapshot.previewReady,
+            codeAgentWipExecutionV1:
+              persistPatch.orchestration.orchestrationPatch?.codeAgentWipExecutionV1 ??
+              preparedWip,
+            executionSetup: executionSetupRow,
+          }),
+        );
+        showToast(persistPatch.orchestration.message);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showToast(message);
+        executionSingleChat.appendAiNotice(buildFinalScmIntegratedStageFailedNotice(message));
+      }
+    })();
+
+    return { outcome: "executed" };
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+    parsedRequirementsState,
+    showToast,
+    applyImplementationOrchestrationResult,
+    executionSingleChat,
+    applyPlatformScmExecutorJson,
+    tryAutoPlatformScmMergeAfterPush,
+    appendImplementationTaskListAiMessage,
+    prototypeRunSyncSnapshot.previewReady,
+    executionSetupRow,
+    persistChatToDb,
+  ]);
+
+  const runPlatformScmMergeStep = useCallback((): ImplementationStageActionRunResult => {
+    const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
+    const readiness = validatePlatformScmMergeStepReadiness(wip);
+    if (!readiness.ok) {
+      showToast(readiness.message);
+      return readiness.noOp
+        ? { outcome: "no_op", message: readiness.message }
+        : { outcome: "blocked", message: readiness.message };
+    }
+
+    showToast("플랫폼 SCM PR merge를 시작합니다...");
+    void (async () => {
+      try {
+        const persistPatch = await applyPlatformScmMergeExecutorJson({ wip: wip!, autoMergeOnly: false });
+        persistPlatformScmMergePatch(persistPatch);
+        showToast(persistPatch.orchestration.message);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error));
+      }
+    })();
+
+    return { outcome: "executed" };
+  }, [
+    orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+    showToast,
+    applyPlatformScmMergeExecutorJson,
+    persistPlatformScmMergePatch,
+  ]);
+
   const runIntegratedStageStep = useCallback(
     (step: ImplementationIntegratedStep): ImplementationStageActionRunResult => {
+      if (step === "final_scm") {
+        return runFinalScmIntegratedStageStep();
+      }
       const pid = projectId.trim();
       if (!pid) {
         const message = "프로젝트를 선택해 주세요.";
@@ -3848,7 +4177,9 @@ export function PrototypePreviewPanel({
         case "RUN_INTEGRATED_SECURITY":
           return runIntegratedStageStep("integrated_security");
         case "RUN_FINAL_SCM":
-          return runIntegratedStageStep("final_scm");
+          return runFinalScmIntegratedStageStep();
+        case "RUN_PLATFORM_SCM_MERGE":
+          return runPlatformScmMergeStep();
         default:
           return { outcome: "blocked", message: "지원하지 않는 구현단계 action입니다." };
       }
@@ -3868,6 +4199,8 @@ export function PrototypePreviewPanel({
       wipChipHandlers,
       runImplementationQualityGate,
       runIntegratedStageStep,
+      runFinalScmIntegratedStageStep,
+      runPlatformScmMergeStep,
       appendImplementationTaskListAiMessage,
       chatInputRef,
       parsedRequirementsState,

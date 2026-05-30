@@ -124,6 +124,17 @@ describe("codeAgentExecutionProgressView", () => {
       executionMode: "cursor_api" as const,
       bridgeExecutionStatus: "bridge_completed" as const,
       bridgeAdapter: "cursor_api" as const,
+      platformScmExecutionV1: {
+        version: "platform_scm_execution_v1" as const,
+        projectId: "p1",
+        selectedTaskId: "DEV-SCREEN-001",
+        sourceCommitSha: "abc1234567890",
+        sourceBranchName: "wip/cursor/dev-screen-001",
+        targetRepository: "owner/repo",
+        pushStatus: "pending" as const,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
       commits: [
         {
           sha: "abc1234567890",
@@ -146,6 +157,8 @@ describe("codeAgentExecutionProgressView", () => {
     expect(view.testStatusLabel).toBe("passed");
     expect(view.isStubResult).toBe(false);
     expect(view.commitShaDisplay).toContain("abc1234");
+    expect(view.scmStatusLabel).toBe("Push/PR 대기");
+    expect(view.summaryLine).toContain("SCM");
   });
 
   it("does not treat stub wip as real development completion", () => {

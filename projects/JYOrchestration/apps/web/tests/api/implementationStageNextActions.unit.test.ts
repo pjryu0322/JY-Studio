@@ -156,6 +156,7 @@ describe("deriveImplementationStageNextActions", () => {
       codeAgentWipExecutionV1: wip,
     });
     expect(actions?.[0]?.label).toBe("구현 결과 승인");
+    expect(actions?.some((a) => a.label === "SCM 반영 요청")).toBe(true);
   });
 
   it("implementation_ready -> GENERATE_IMPLEMENTATION_WORK_PLAN primary", () => {

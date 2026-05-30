@@ -408,6 +408,35 @@ describe("evaluateImplementationStageActionGate", () => {
         evaluateImplementationStageActionGate("RUN_INTEGRATED_REVIEW", state, boardContext).ok,
       ).toBe(false);
     });
+
+    it("blocks RUN_FINAL_SCM when code agent wip is missing", () => {
+      const state = baseState({
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      const boardContext = {
+        ...boardContextWithAllTasksComplete()!,
+        codeAgentWipExecutionV1: null,
+        board: {
+          ...boardContextWithAllTasksComplete()!.board,
+          integratedRows: boardContextWithAllTasksComplete()!.board.integratedRows.map((row) =>
+            row.step === "refactor_common" ||
+            row.step === "integrated_review" ||
+            row.step === "integrated_security"
+              ? { ...row, status: "done" as const }
+              : row.step === "final_scm"
+                ? { ...row, status: "ready" as const }
+                : row,
+          ),
+        },
+      };
+      const gate = evaluateImplementationStageActionGate("RUN_FINAL_SCM", state, boardContext);
+      expect(gate.ok).toBe(false);
+      if (gate.ok) return;
+      expect(gate.message).toContain("WIP");
+    });
   });
 
   describe("quality gate run actions", () => {

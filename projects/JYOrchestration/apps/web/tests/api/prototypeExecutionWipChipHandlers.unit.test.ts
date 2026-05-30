@@ -576,6 +576,8 @@ describe("prototypeExecutionWipChipHandlers", () => {
     requestScmOfficialCommit();
     const orch = persistOrchestration.mock.calls[0]?.[1];
     expect(orch?.codeAgentWipExecutionV1?.status).toBe("scm_commit_pending");
+    expect(orch?.codeAgentWipExecutionV1?.platformScmExecutionV1?.pushStatus).toBe("push_requested");
+    expect(orch?.promptTimeline?.some((e) => e.action === "platform_scm_push_requested")).toBe(true);
     expect(orch?.implementationTaskExecutionStateV1?.items.find((i) => i.taskId === "scm-1")?.status).toBe(
       "in_progress",
     );

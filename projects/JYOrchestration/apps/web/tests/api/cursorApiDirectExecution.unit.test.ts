@@ -45,10 +45,15 @@ function bridgeRequest(): CursorBridgeExecuteRequest {
 
 describe("cursorApiDirectExecution", () => {
   it("buildCursorApiDirectRequestFromBridgeRequest maps bridge request fields", () => {
-    const direct = buildCursorApiDirectRequestFromBridgeRequest(bridgeRequest(), "token-123");
+    const direct = buildCursorApiDirectRequestFromBridgeRequest(
+      { ...bridgeRequest(), autoPush: true, autoPr: true },
+      "token-123",
+    );
     expect(direct.cursorApiUrl).toBe("https://api.cursor.com");
     expect(direct.workspacePath).toBe("C:/workspace/aiproject");
     expect(direct.branchName).toBe("wip/cursor/dev-mock-001");
+    expect(direct.autoPush).toBe(false);
+    expect(direct.autoPr).toBe(false);
   });
 
   it("rejects wip-stub sha in mapCursorApiDirectResultToBridgeResult", () => {
@@ -78,7 +83,7 @@ describe("cursorApiDirectExecution", () => {
     expect(mapped.ok).toBe(false);
   });
 
-  it("accepts real sha and changedFiles", () => {
+  it("accepts real sha and changedFiles without pushStatus", () => {
     const mapped = mapCursorApiDirectResultToBridgeResult(bridgeRequest(), {
       ok: true,
       status: "completed",
@@ -87,12 +92,33 @@ describe("cursorApiDirectExecution", () => {
       commitSha: "abc1234567890abcdef",
       changedFiles: ["src/mock.ts"],
       branchName: "wip/cursor/dev-mock-001",
-      pushed: false,
-      pushStatus: "skipped",
     });
     expect(mapped.ok).toBe(true);
     expect(mapped.status).toBe("completed");
     expect(mapped.commitSha).toBe("abc1234567890abcdef");
     expect(mapped.changedFiles).toEqual(["src/mock.ts"]);
+    expect(mapped.pushed).toBe(false);
+    expect(mapped.pushStatus).toBeUndefined();
+  });
+
+  it("does not treat external pushed=true as platform SCM completion", () => {
+    const mapped = mapCursorApiDirectResultToBridgeResult(bridgeRequest(), {
+      ok: true,
+      status: "completed",
+      provider: "cursor_api",
+      selectedTaskId: workItems[0]!.taskId,
+      commitSha: "abc1234567890abcdef",
+      changedFiles: ["src/mock.ts"],
+      branchName: "wip/cursor/dev-mock-001",
+      pushed: true,
+      pushStatus: "success",
+      prNumber: 99,
+    });
+    expect(mapped.ok).toBe(true);
+    expect(mapped.pushed).toBe(false);
+    expect(mapped.pushStatus).toBeUndefined();
+    expect(mapped.prNumber).toBeUndefined();
+    expect(mapped.cursorExternalPushStatus).toBe("success");
+    expect(mapped.cursorExternalPrNumber).toBe(99);
   });
 });

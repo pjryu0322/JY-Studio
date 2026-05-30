@@ -11,6 +11,9 @@ import {
   type LegacyCursorWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import {
+  parsePlatformScmExecutionV1,
+} from "@/lib/prototype/platformScmExecution";
+import {
   DEFAULT_CODE_AGENT_PROVIDER,
   inferCodeAgentProviderFromBranch,
   parseCodeAgentProvider,
@@ -226,6 +229,19 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
   const bridgeAllowedPathGlobs = parseStringArray(o.bridgeAllowedPathGlobs);
   const bridgeAutoPush = o.bridgeAutoPush === true ? true : o.bridgeAutoPush === false ? false : undefined;
   const bridgeAutoPr = o.bridgeAutoPr === true ? true : o.bridgeAutoPr === false ? false : undefined;
+  const cursorExternalPushStatus =
+    typeof o.cursorExternalPushStatus === "string" && o.cursorExternalPushStatus.trim()
+      ? o.cursorExternalPushStatus.trim()
+      : undefined;
+  const cursorExternalPrNumber =
+    typeof o.cursorExternalPrNumber === "number" && Number.isFinite(o.cursorExternalPrNumber)
+      ? o.cursorExternalPrNumber
+      : undefined;
+  const cursorExternalPrStatus =
+    typeof o.cursorExternalPrStatus === "string" && o.cursorExternalPrStatus.trim()
+      ? o.cursorExternalPrStatus.trim()
+      : undefined;
+  const platformScmExecutionV1 = parsePlatformScmExecutionV1(o.platformScmExecutionV1);
   return {
     version: CODE_AGENT_WIP_EXECUTION_VERSION,
     projectId,
@@ -260,6 +276,10 @@ export function parseCodeAgentWipExecutionV1(raw: unknown): CodeAgentWipExecutio
     ...(bridgeAllowedPathGlobs.length ? { bridgeAllowedPathGlobs } : {}),
     ...(bridgeAutoPush !== undefined ? { bridgeAutoPush } : {}),
     ...(bridgeAutoPr !== undefined ? { bridgeAutoPr } : {}),
+    ...(cursorExternalPushStatus ? { cursorExternalPushStatus } : {}),
+    ...(cursorExternalPrNumber !== undefined ? { cursorExternalPrNumber } : {}),
+    ...(cursorExternalPrStatus ? { cursorExternalPrStatus } : {}),
+    ...(platformScmExecutionV1 ? { platformScmExecutionV1 } : {}),
   };
 }
 

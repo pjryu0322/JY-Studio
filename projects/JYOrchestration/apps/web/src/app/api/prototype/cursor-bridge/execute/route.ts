@@ -17,6 +17,7 @@ import {
 import { resolveDefaultGitWorkspaceCloneRoot } from "@/lib/prototype/gitRepoAutoWorkspace";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
+import { normalizeCursorBridgeResultForPlatform } from "@/lib/prototype/platformScmExecution";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -213,13 +214,19 @@ export async function POST(request: NextRequest) {
       cursorApiToken,
     });
 
+    const normalizedResult = normalizeCursorBridgeResultForPlatform(result);
+
     return NextResponse.json({
-      success: result.ok && result.status === "completed",
-      result,
+      success: normalizedResult.ok && normalizedResult.status === "completed",
+      result: normalizedResult,
       workspaceRootSource: context.workspaceRootSource,
       executionMode: "cursor_api",
       bridgeAdapter: "cursor_api",
       availability,
+      scm: {
+        status: "pending",
+        message: "Push/PR은 플랫폼 SCM 단계에서 수행합니다.",
+      },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

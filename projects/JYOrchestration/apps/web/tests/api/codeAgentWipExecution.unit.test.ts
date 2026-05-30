@@ -304,6 +304,9 @@ describe("codeAgentWipExecution", () => {
     expect(scm.kind).toBe("pending");
     if (scm.kind !== "pending") return;
     expect(scm.orchestrationPatch.codeAgentWipExecutionV1.status).toBe("scm_commit_pending");
+    expect(scm.orchestrationPatch.codeAgentWipExecutionV1.platformScmExecutionV1?.pushStatus).toBe(
+      "push_requested",
+    );
   });
 
   it("REQUEST_CODE_AGENT_WIP selectedTaskId is used in branch name and commit title", () => {
@@ -363,6 +366,29 @@ describe("codeAgentWipExecution", () => {
     expect(review?.content).toContain("실제 Cursor API 실행: 미실행");
     expect(review?.content).toContain("이번 요청 대상:");
     expect(review?.content).toContain(plan.items[0]?.id ?? "");
+  });
+
+  it("parseCodeAgentWipExecutionV1 preserves platformScmExecutionV1", () => {
+    const wip = {
+      ...buildInitialCodeAgentWipExecution({ projectId: "p1", plan, workItems }),
+      platformScmExecutionV1: {
+        version: "platform_scm_execution_v1",
+        projectId: "p1",
+        selectedTaskId: "dev-1",
+        sourceCommitSha: "abc123",
+        sourceBranchName: "wip/cursor/dev-1",
+        targetRepository: "owner/repo",
+        pushStatus: "pending",
+        createdAt: "2026-05-30T00:00:00.000Z",
+        updatedAt: "2026-05-30T00:00:00.000Z",
+      },
+      cursorExternalPushStatus: "success",
+      cursorExternalPrNumber: 9,
+    };
+    const parsed = parseCodeAgentWipExecutionV1(wip);
+    expect(parsed?.platformScmExecutionV1?.pushStatus).toBe("pending");
+    expect(parsed?.cursorExternalPushStatus).toBe("success");
+    expect(parsed?.cursorExternalPrNumber).toBe(9);
   });
 
   it("parseCodeAgentWipExecutionV1 preserves executionMode and bridgeExecutionStatus", () => {

@@ -1,4 +1,4 @@
-import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import { validateFinalScmIntegratedStageReadiness } from "@/lib/prototype/implementationFinalScmIntegratedStage";
 import {
   buildImplementationStageActionTimelineEntry,
   type ImplementationStageActionTimelineSource,
@@ -139,6 +139,10 @@ function evaluateIntegratedStageActionGate(
       const status = integratedStepBoardStatus(board, "final_scm");
       if (status !== "ready" && status !== "queued" && status !== "in_progress") {
         return { ok: false, message: "최종 SCM 반영 단계가 아직 실행 가능한 상태가 아닙니다." };
+      }
+      const wipReadiness = validateFinalScmIntegratedStageReadiness(boardContext.codeAgentWipExecutionV1);
+      if (!wipReadiness.ok) {
+        return { ok: false, message: wipReadiness.message };
       }
       return { ok: true };
     }
@@ -511,6 +515,25 @@ export function evaluateImplementationStageActionGate(
           ok: false,
           message: "WIP 초안이 없습니다. 먼저 [생성요청]으로 WIP 초안을 생성해 주세요.",
         };
+      }
+      return { ok: true };
+    }
+    case "RUN_PLATFORM_SCM_MERGE": {
+      const wip = boardContext?.codeAgentWipExecutionV1;
+      if (!wip) {
+        return {
+          ok: false,
+          message: "Code Agent WIP 실행 결과가 없어 PR merge를 실행할 수 없습니다.",
+        };
+      }
+      if (wip.platformScmExecutionV1?.pushStatus !== "pr_completed") {
+        return {
+          ok: false,
+          message: "플랫폼 SCM PR 생성이 완료된 뒤 merge를 실행할 수 있습니다.",
+        };
+      }
+      if (wip.platformScmExecutionV1?.mergeStatus === "merge_completed") {
+        return { ok: false, message: "이미 PR merge가 완료되었습니다." };
       }
       return { ok: true };
     }

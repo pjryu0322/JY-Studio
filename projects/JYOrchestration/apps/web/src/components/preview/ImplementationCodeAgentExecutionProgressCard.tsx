@@ -64,6 +64,12 @@ export function ImplementationCodeAgentExecutionProgressCard({
               <span>{progress.changedFileCount}개 · 테스트 {progress.testStatusLabel}</span>
             </div>
           ) : null}
+          {progress.scmStatusLabel ? (
+            <div className={styles.progressMetaLine}>
+              <span className={styles.progressMetaKey}>SCM</span>
+              <span data-testid="code-agent-scm-status">{progress.scmStatusLabel}</span>
+            </div>
+          ) : null}
           {progress.runId ? (
             <div className={styles.progressMetaLine}>
               <span className={styles.progressMetaKey}>runId</span>

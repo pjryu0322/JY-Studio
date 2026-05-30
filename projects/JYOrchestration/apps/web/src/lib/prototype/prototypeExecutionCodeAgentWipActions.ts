@@ -13,8 +13,10 @@ import {
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import { validateTaskScopedWorkItems } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildWipPlatformScmPushRequestPatch } from "@/lib/prototype/platformScmExecution";
 import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import { buildPlatformScmTimelineEntry } from "@/lib/prototype/targetRepoE2eDiagnostics";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeExecutionInterviewSlot } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
@@ -255,14 +257,29 @@ export function buildScmOfficialCommitRequestResult(input: {
 
   const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
   const now = input.nowIso ?? new Date().toISOString();
-  const updated: CodeAgentWipExecutionV1 = { ...input.wip, status: "scm_commit_pending" };
+  const updated: CodeAgentWipExecutionV1 = buildWipPlatformScmPushRequestPatch({
+    wip: { ...input.wip, status: "scm_commit_pending" },
+    nowIso: now,
+  });
   const messages = [...(resolved.messages ?? []), buildScmOfficialCommitPendingMessage({ wip: updated, nowIso: now })];
   const timeline = appendPromptTimeline(
-    input.promptTimeline,
-    buildCodeAgentWipTimelineEntry({
-      action: "scm_official_commit_pending",
-      wip: updated,
-      actor: "scm",
+    appendPromptTimeline(
+      input.promptTimeline,
+      buildCodeAgentWipTimelineEntry({
+        action: "scm_official_commit_pending",
+        wip: updated,
+        actor: "scm",
+        nowIso: now,
+      }),
+    ),
+    buildPlatformScmTimelineEntry({
+      action: "platform_scm_push_requested",
+      projectId: updated.projectId,
+      selectedTaskId: updated.selectedTaskId ?? updated.workItems[0] ?? "unknown",
+      repoFullName: updated.targetRepoFullName ?? updated.targetRepository,
+      branchName: updated.branchName,
+      commitSha: updated.commitSha ?? updated.commits[updated.commits.length - 1]?.sha,
+      status: "requested",
       nowIso: now,
     }),
   );

@@ -11,8 +11,11 @@ import {
   bridgeValidationContextFromWip,
   evaluateBridgeResultEligibleForCompletion,
   formatBridgeSourceGenerationRejectionMessage,
-  resolveBridgePushAndPrStatus,
 } from "@/lib/prototype/bridgeCompletionPolicy";
+import {
+  buildInitialPlatformScmExecutionFromWip,
+  extractCursorExternalScmFromBridgeResult,
+} from "@/lib/prototype/platformScmExecution";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -96,8 +99,6 @@ function appendCursorBridgeGitTimelineEntries(input: {
   readonly branchName?: string;
   readonly commitSha?: string;
   readonly changedFilesCount?: number;
-  readonly pushStatus?: string;
-  readonly prNumber?: number;
   readonly runId?: string;
   readonly nowIso: string;
 }): readonly RequirementsPromptTimelineEntry[] {
@@ -115,8 +116,6 @@ function appendCursorBridgeGitTimelineEntries(input: {
       commitSha: input.commitSha,
       changedFilesCount: input.changedFilesCount,
       hasCommitSha: Boolean(input.commitSha),
-      pushStatus: input.pushStatus,
-      prNumber: input.prNumber,
       nowIso: input.nowIso,
     }),
   );
@@ -134,40 +133,6 @@ function appendCursorBridgeGitTimelineEntries(input: {
         runId: input.runId,
         commitSha: input.commitSha,
         changedFilesCount: input.changedFilesCount,
-        nowIso: input.nowIso,
-      }),
-    );
-  }
-  if (input.pushStatus === "success") {
-    timeline = appendPromptTimeline(
-      timeline,
-      buildCursorApiDirectTimelineEntry({
-        action: "cursor_api_git_push_completed",
-        projectId: input.projectId,
-        selectedTaskId: input.selectedTaskId,
-        repoFullName: input.repoFullName,
-        branchName: input.branchName,
-        status: "completed",
-        runId: input.runId,
-        commitSha: input.commitSha,
-        pushStatus: input.pushStatus,
-        prNumber: input.prNumber,
-        nowIso: input.nowIso,
-      }),
-    );
-  } else if (input.pushStatus === "failed") {
-    timeline = appendPromptTimeline(
-      timeline,
-      buildCursorApiDirectTimelineEntry({
-        action: "cursor_api_git_push_failed",
-        projectId: input.projectId,
-        selectedTaskId: input.selectedTaskId,
-        repoFullName: input.repoFullName,
-        branchName: input.branchName,
-        status: "failed",
-        runId: input.runId,
-        commitSha: input.commitSha,
-        pushStatus: input.pushStatus,
         nowIso: input.nowIso,
       }),
     );
@@ -262,30 +227,7 @@ export function applyCursorBridgeResultToWipExecution(input: {
     input.wip.targetRepository ||
     input.wip.targetRepositorySnapshot?.repoFullName;
 
-  const autoPush = input.bridgeRequest?.autoPush ?? input.wip.bridgeAutoPush ?? input.wip.pushed === true;
-  const autoPr = input.bridgeRequest?.autoPr ?? input.wip.bridgeAutoPr ?? false;
-  const pushPr =
-    input.bridgeResult.pushStatus && input.bridgeResult.prStatus
-      ? {
-          pushStatus: input.bridgeResult.pushStatus,
-          pushStatusLine:
-            input.bridgeResult.pushStatus === "success"
-              ? "Push: 성공"
-              : input.bridgeResult.pushStatus === "failed"
-                ? `Push: 실패 — ${input.bridgeResult.pushErrorMessage ?? "unknown"}`
-                : autoPush
-                  ? "Push: 미수행"
-                  : "Push: 미수행 — 환경설정 autoPush=false",
-          prStatusLine: input.bridgeResult.prStatus,
-          pushErrorMessage: input.bridgeResult.pushErrorMessage,
-        }
-      : resolveBridgePushAndPrStatus({
-          autoPush,
-          autoPr,
-          pushed: input.bridgeResult.pushed,
-          pushErrorMessage: input.bridgeResult.pushErrorMessage,
-          prNumber: input.bridgeResult.prNumber,
-        });
+  const externalScm = extractCursorExternalScmFromBridgeResult(input.bridgeResult);
 
   const commit: CodeAgentWipCommit = {
     provider: input.wip.provider,
@@ -297,22 +239,17 @@ export function applyCursorBridgeResultToWipExecution(input: {
     changedFiles: [...(input.bridgeResult.changedFiles ?? [])],
     diffSummary: [...(input.bridgeResult.diffSummary ?? [])],
     testResults: [...(input.bridgeResult.testResults ?? [])],
-    unresolvedIssues:
-      pushPr.pushStatus === "success"
-        ? ["공식 PR/merge는 AI개발자 승인 후 SCM 단계에서 수행합니다."]
-        : pushPr.pushStatus === "failed"
-          ? [
-              pushPr.pushStatusLine,
-              "Commit은 생성되었습니다. push 실패 후 수동 push 또는 재시도가 필요할 수 있습니다.",
-              "공식 PR/merge는 AI개발자 승인 후 SCM 단계에서 수행합니다.",
-            ]
-          : [
-              pushPr.pushStatusLine,
-              "공식 PR/merge는 AI개발자 승인 후 SCM 단계에서 수행합니다.",
-            ],
+    unresolvedIssues: ["SCM push/PR은 플랫폼 SCM 단계에서 수행합니다."],
     createdAt: now,
     ...(targetRepoFullName ? { targetRepository: targetRepoFullName } : {}),
   };
+
+  const platformScmExecutionV1 = buildInitialPlatformScmExecutionFromWip({
+    wip: input.wip,
+    commitSha: commit.sha!,
+    branchName: commit.branchName,
+    nowIso: now,
+  });
 
   return {
     ...input.wip,
@@ -324,10 +261,13 @@ export function applyCursorBridgeResultToWipExecution(input: {
     branchName: commit.branchName,
     bridgeCompletedAt: now,
     commitSha: commit.sha,
-    pushed: input.bridgeResult.pushed === true,
-    pushStatus: pushPr.pushStatus,
-    ...(pushPr.pushErrorMessage ? { pushErrorMessage: pushPr.pushErrorMessage } : {}),
-    prStatus: pushPr.prStatusLine,
+    pushed: false,
+    pushStatus: undefined,
+    pushErrorMessage: undefined,
+    prStatus: undefined,
+    prNumber: undefined,
+    ...externalScm,
+    platformScmExecutionV1,
     ...(input.bridgeResult.workspacePath?.trim()
       ? { workspacePath: input.bridgeResult.workspacePath.trim() }
       : input.wip.workspacePath
@@ -338,7 +278,6 @@ export function applyCursorBridgeResultToWipExecution(input: {
       : {}),
     ...(targetRepoFullName ? { targetRepository: targetRepoFullName, targetRepoFullName } : {}),
     ...(input.wip.targetRepositorySnapshot ? { targetRepositorySnapshot: input.wip.targetRepositorySnapshot } : {}),
-    ...(input.bridgeResult.prNumber !== undefined ? { prNumber: input.bridgeResult.prNumber } : {}),
     bridgeErrorMessage: undefined,
     commits: [...input.wip.commits.filter((c) => !c.sha?.startsWith("wip-stub")), commit],
     developerReview: {
@@ -572,8 +511,6 @@ export function buildCursorBridgeOrchestrationResult(input: {
     branchName: lastCommit.branchName,
     commitSha: lastCommit.sha,
     changedFilesCount: lastCommit.changedFiles.length,
-    pushStatus: updatedWip.pushStatus,
-    prNumber: updatedWip.prNumber,
     runId: input.runId,
     nowIso: now,
   });
@@ -589,8 +526,6 @@ export function buildCursorBridgeOrchestrationResult(input: {
       branchName: lastCommit.branchName,
       commitSha: lastCommit.sha,
       changedFilesCount: lastCommit.changedFiles.length,
-      pushStatus: updatedWip.pushStatus,
-      prStatus: updatedWip.prStatus,
       status: "completed",
       nowIso: now,
     }),

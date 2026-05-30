@@ -14,6 +14,7 @@ import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTas
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementationUxLabels";
+import type { PlatformScmExecutionV1 } from "@/lib/prototype/platformScmExecution";
 
 export const CODE_AGENT_WIP_EXECUTION_VERSION = "code_agent_wip_execution_v1" as const;
 
@@ -153,6 +154,11 @@ export type CodeAgentWipExecutionV1 = Readonly<{
   bridgeAllowedPathGlobs?: readonly string[];
   bridgeAutoPush?: boolean;
   bridgeAutoPr?: boolean;
+  /** External Cursor API push reference — not platform SCM state. */
+  cursorExternalPushStatus?: string;
+  cursorExternalPrNumber?: number;
+  cursorExternalPrStatus?: string;
+  platformScmExecutionV1?: PlatformScmExecutionV1;
 }>;
 
 function latestWipCommit(wip: CodeAgentWipExecutionV1): CodeAgentWipCommit | undefined {
@@ -417,7 +423,7 @@ export function formatCodeAgentExecutionModeDiagnosticLines(
       ...(wip.workspacePath ? [`- 작업 경로: ${wip.workspacePath}`] : []),
       ...(wip.baseBranch ? [`- 기준 브랜치: ${wip.baseBranch}`] : []),
       `- 실제 commit: ${last?.sha ?? "(없음)"}`,
-      ...(wip.pushed ? ["- push: 완료"] : ["- push: 미수행"]),
+      "- SCM: Push/PR 대기",
     ];
   }
   const cursorApiConfigured = Boolean(
@@ -720,7 +726,7 @@ export function buildScmOfficialCommitPendingMessage(input: {
       `- WIP branch: \`${input.wip.branchName}\``,
       `- WIP commit: ${last?.commitMessage ?? "(없음)"}`,
       "- 정식 branch 생성·정식 commit message 정리",
-      "- push/PR 생성 준비 (이 단계에서는 placeholder — 실제 push/PR은 다음 bridge)",
+      "- 플랫폼 SCM push/PR 실행 준비",
       "",
       `${label} 및 기타 Code Agent는 공식 push/PR/merge를 수행하지 않습니다.`,
     ].join("\n"),
