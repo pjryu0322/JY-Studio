@@ -16,6 +16,7 @@ import {
   TASK_CURSOR_FAILURE_MESSAGES,
   type TaskCursorExecuteApiResult,
   type TaskCursorExecutionV1,
+  type TaskCursorFailureReason,
 } from "@/lib/prototype/taskCursorExecution";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -100,6 +101,7 @@ export function applyTaskCursorGithubVerifyResult(input: {
   readonly ok: boolean;
   readonly message?: string;
   readonly verifiedChangedFiles?: readonly string[];
+  readonly verifiedCommitSha?: string;
   readonly nowIso?: string;
 }): TaskCursorExecutionV1 {
   const now = input.nowIso ?? new Date().toISOString();
@@ -113,7 +115,9 @@ export function applyTaskCursorGithubVerifyResult(input: {
   }
   return patchTaskCursorExecution(input.execution, {
     status: "github_verified",
+    commitSha: input.verifiedCommitSha ?? input.execution.commitSha,
     changedFiles: input.verifiedChangedFiles ?? input.execution.changedFiles,
+    pushed: true,
     failureReason: undefined,
     errorMessage: undefined,
     nowIso: now,
@@ -141,6 +145,17 @@ export function syncTaskExecutionStateAfterGithubVerified(input: {
   });
 }
 
+export function shouldSyncExecutionStateAfterTaskCursorGithubVerify(
+  status: TaskCursorExecutionV1["status"],
+): boolean {
+  return (
+    status === "github_verified" ||
+    status === "review_pending" ||
+    status === "security_pending" ||
+    status === "scm_pending"
+  );
+}
+
 export function buildTaskCursorOrchestrationPatch(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly history?: readonly TaskCursorExecutionV1[] | null;
@@ -156,7 +171,7 @@ export function buildTaskCursorOrchestrationPatch(input: {
 }> {
   const timeline = appendPromptTimeline(input.existingTimeline, ...input.timelineEntries);
   const executionState =
-    input.execution.status === "github_verified" && input.executionState
+    shouldSyncExecutionStateAfterTaskCursorGithubVerify(input.execution.status) && input.executionState
       ? syncTaskExecutionStateAfterGithubVerified({
           executionState: input.executionState,
           taskId: input.execution.taskId,
@@ -259,6 +274,29 @@ export function buildTaskCursorApiFailedTimeline(input: {
     reason: input.execution.failureReason,
     runId: input.execution.cursorRunId,
     nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorFailedOrchestrationPatch(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly message: string;
+  readonly reason?: TaskCursorFailureReason;
+  readonly history?: readonly TaskCursorExecutionV1[] | null;
+  readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly nowIso?: string;
+}) {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const failed = patchTaskCursorExecution(input.execution, {
+    status: "cursor_failed",
+    failureReason: input.reason ?? "unknown",
+    errorMessage: input.message,
+    nowIso,
+  });
+  return buildTaskCursorOrchestrationPatch({
+    execution: failed,
+    history: input.history,
+    timelineEntries: [buildTaskCursorApiFailedTimeline({ execution: failed, nowIso })],
+    existingTimeline: input.existingTimeline,
   });
 }
 

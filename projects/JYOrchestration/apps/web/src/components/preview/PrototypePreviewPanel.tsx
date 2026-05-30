@@ -94,7 +94,10 @@ import {
   buildExecutionSetupAvailabilityTimelineEntry,
   evaluateCursorExecutionAvailability,
 } from "@/lib/prototype/cursorExecutionAvailability";
-import { buildQualityGateBridgeTargetFromWip } from "@/lib/prototype/bridgeCompletionPolicy";
+import {
+  buildQualityGateBridgeTargetFromTaskCursor,
+  buildQualityGateBridgeTargetFromWip,
+} from "@/lib/prototype/bridgeCompletionPolicy";
 import {
   buildTargetRepoE2eTimelineEntry,
   buildCursorApiDirectTimelineEntry,
@@ -265,6 +268,38 @@ import {
   mergeTaskListWipRuntimeState,
   prepareWipRequestRuntime,
 } from "@/lib/prototype/implementationTaskListWipPrep";
+import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
+import {
+  buildTaskCursorApiStartedTimeline,
+  buildTaskCursorExecutionRequest,
+  buildTaskCursorFailedOrchestrationPatch,
+  buildTaskCursorOrchestrationPatch,
+  buildTaskCursorRequestedTimeline,
+  shouldSyncExecutionStateAfterTaskCursorGithubVerify,
+  syncTaskExecutionStateAfterGithubVerified,
+} from "@/lib/prototype/prototypeExecutionTaskCursorActions";
+import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import {
+  buildImplementationAutoQualityGateTriggerKey,
+  isImplementationAutoQualityGateClientInFlight,
+  runImplementationAutoQualityGateClient,
+  shouldTriggerImplementationAutoQualityGateClient,
+} from "@/lib/prototype/implementationAutoQualityGateClient";
+import {
+  buildTaskCursorAutoChainTriggerKey,
+  formatTaskCursorAutoChainNotice,
+  resolveTaskCursorAutoChainDecision,
+} from "@/lib/prototype/implementationTaskCursorAutoChain";
+import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import {
+  formatTaskCursorElapsedMinutes,
+  isInFlightTaskCursorExecution,
+  resolveTaskCursorPollWorkItems,
+  runTaskCursorClientPollLoop,
+} from "@/lib/prototype/taskCursorClientPollLoop";
+import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -1408,6 +1443,10 @@ export function PrototypePreviewPanel({
 
   /** Latest merged requirements JSON — updated synchronously on persist to avoid WIP/timeline race overwrites. */
   const requirementsStateJsonRef = useRef(requirementsStateJson);
+  const taskCursorPollTokenRef = useRef(0);
+  const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
+  const autoQualityGateInFlightRef = useRef<string | null>(null);
+  const taskCursorAutoChainRef = useRef<string | null>(null);
   useEffect(() => {
     requirementsStateJsonRef.current = requirementsStateJson;
   }, [requirementsStateJson]);
@@ -1636,6 +1675,7 @@ export function PrototypePreviewPanel({
         orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
+      implementationAutoQualityGateV1: orchestrationAwareRequirementsState.implementationAutoQualityGateV1,
       canApplyGit,
     };
   }, [
@@ -2035,6 +2075,186 @@ export function PrototypePreviewPanel({
       onRequirementsStateJsonChange,
     ],
   );
+
+  const startTaskCursorClientPollLoop = useCallback(
+    (input: {
+      readonly execution: TaskCursorExecutionV1;
+      readonly workItems: readonly CursorWorkItem[];
+      readonly history?: readonly TaskCursorExecutionV1[] | null;
+      readonly existingTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
+      readonly resume?: boolean;
+    }) => {
+      const runId = String(input.execution.cursorRunId ?? "").trim();
+      if (!runId || !isInFlightTaskCursorExecution(input.execution)) return;
+      if (taskCursorPollActiveRunIdRef.current === runId) return;
+      taskCursorPollActiveRunIdRef.current = runId;
+      const pollToken = ++taskCursorPollTokenRef.current;
+      if (input.resume) {
+        showToast(`${input.execution.taskId} · 진행 중인 Cloud Agent 폴링 재개`);
+      }
+      void runTaskCursorClientPollLoop({
+        projectId: projectId.trim(),
+        initialExecution: input.execution,
+        workItems: input.workItems,
+        history: input.history,
+        existingTimeline: input.existingTimeline,
+        getLatestExecution: () =>
+          parseTaskCursorExecutionV1(requirementsStateJsonRef.current.taskCursorExecutionV1),
+        getExecutionState: () =>
+          parseImplementationTaskExecutionStateV1(
+            requirementsStateJsonRef.current.implementationTaskExecutionStateV1,
+          ),
+        isCancelled: () => taskCursorPollTokenRef.current !== pollToken,
+        onPatch: (orchestrationPatch) => {
+          applyImplementationOrchestrationResult({
+            messages: executionSingleChat.chatMessages,
+            orchestrationPatch,
+          });
+        },
+        onTerminal: (notice) => {
+          taskCursorPollActiveRunIdRef.current = null;
+          executionSingleChat.appendAiNotice(notice);
+          showToast(notice);
+        },
+      }).finally(() => {
+        if (taskCursorPollActiveRunIdRef.current === runId) {
+          taskCursorPollActiveRunIdRef.current = null;
+        }
+      });
+    },
+    [projectId, applyImplementationOrchestrationResult, executionSingleChat, showToast],
+  );
+
+  useEffect(() => {
+    const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
+    if (!execution || !isInFlightTaskCursorExecution(execution)) return;
+    const workItems = resolveTaskCursorPollWorkItems(
+      execution,
+      orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+    );
+    if (!workItems.length) return;
+    startTaskCursorClientPollLoop({
+      execution,
+      workItems,
+      history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+      existingTimeline: orchestrationAwareRequirementsState.promptTimeline,
+      resume: true,
+    });
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+    orchestrationAwareRequirementsState.promptTimeline,
+    startTaskCursorClientPollLoop,
+  ]);
+
+  const triggerImplementationAutoQualityGate = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const orchestration = orchestrationAwareRequirementsState;
+    const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
+    if (!execution) return;
+    const clientInput = {
+      projectId: pid,
+      taskCursorExecutionV1: execution,
+      implementationTaskListV1: orchestration.implementationTaskListV1,
+      implementationTaskExecutionStateV1: orchestration.implementationTaskExecutionStateV1,
+      implementationQualityGateResultsV1: orchestration.implementationQualityGateResultsV1,
+      implementationAutoQualityGateV1: orchestration.implementationAutoQualityGateV1,
+      implementationAutoQualityGateHistoryV1: orchestration.implementationAutoQualityGateHistoryV1,
+      cursorWorkItemsV1: orchestration.cursorWorkItemsV1 ?? [],
+      promptTimeline: orchestration.promptTimeline,
+    };
+    if (!shouldTriggerImplementationAutoQualityGateClient(clientInput)) return;
+    const triggerKey = buildImplementationAutoQualityGateTriggerKey(execution);
+    if (autoQualityGateInFlightRef.current === triggerKey) return;
+    autoQualityGateInFlightRef.current = triggerKey;
+    try {
+      const outcome = await runImplementationAutoQualityGateClient(clientInput);
+      if (outcome.orchestrationPatch) {
+        applyImplementationOrchestrationResult({
+          messages: executionSingleChat.chatMessages,
+          orchestrationPatch: outcome.orchestrationPatch,
+        });
+      }
+      if (outcome.message) {
+        executionSingleChat.appendAiNotice(outcome.message);
+        showToast(outcome.message);
+      }
+    } finally {
+      if (autoQualityGateInFlightRef.current === triggerKey) {
+        autoQualityGateInFlightRef.current = null;
+      }
+    }
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState,
+    applyImplementationOrchestrationResult,
+    executionSingleChat,
+    showToast,
+  ]);
+
+  useEffect(() => {
+    void triggerImplementationAutoQualityGate();
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
+    triggerImplementationAutoQualityGate,
+  ]);
+
+  const triggerTaskCursorAutoChain = useCallback(() => {
+    const board = implementationStageBoardGateContext?.board;
+    const orchestration = orchestrationAwareRequirementsState;
+    const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
+    const autoGate = parseImplementationAutoQualityGateV1(orchestration.implementationAutoQualityGateV1);
+    const decision = resolveTaskCursorAutoChainDecision({
+      board,
+      taskCursorExecution: execution,
+      autoGate,
+      autoQualityGateInFlight: isImplementationAutoQualityGateClientInFlight(autoGate),
+    });
+    if (decision.kind === "none") return;
+    const triggerKey = buildTaskCursorAutoChainTriggerKey(decision);
+    if (taskCursorAutoChainRef.current === triggerKey) return;
+    if (isInFlightTaskCursorExecution(execution)) return;
+    taskCursorAutoChainRef.current = triggerKey;
+    const notice = formatTaskCursorAutoChainNotice(decision, board);
+    showToast(notice);
+    executionSingleChat.appendAiNotice(notice);
+    const result = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    if (result.outcome === "blocked" || result.outcome === "no_op") {
+      taskCursorAutoChainRef.current = null;
+    }
+  }, [
+    implementationStageBoardGateContext?.board,
+    orchestrationAwareRequirementsState,
+    showToast,
+    executionSingleChat,
+  ]);
+
+  useEffect(() => {
+    triggerTaskCursorAutoChain();
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.taskId,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
+    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+    implementationStageBoardGateContext?.board?.summary?.completedTasks,
+    implementationStageBoardGateContext?.board?.summary?.totalTasks,
+    triggerTaskCursorAutoChain,
+  ]);
+
+  useEffect(() => {
+    const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
+    if (execution && isInFlightTaskCursorExecution(execution)) {
+      taskCursorAutoChainRef.current = null;
+    }
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+  ]);
 
   const implementationCursorGate = useMemo(
     () =>
@@ -2726,41 +2946,68 @@ export function PrototypePreviewPanel({
 
   const runImplementationQualityGate = useCallback(
     (role: "reviewer" | "security"): ImplementationStageActionRunResult => {
-      const taskList = parsedRequirementsState.implementationTaskListV1;
+      const orchestration = orchestrationAwareRequirementsState;
+      const taskList = orchestration.implementationTaskListV1;
       const pid = projectId.trim();
       if (!taskList || !pid) {
         const message = "구현 작업목록이 없어 점검을 실행할 수 없습니다.";
         showToast(message);
         return { outcome: "blocked", message };
       }
+
+      const taskCursor = orchestration.taskCursorExecutionV1;
+      let executionState = orchestration.implementationTaskExecutionStateV1;
+      if (
+        taskCursor &&
+        shouldSyncExecutionStateAfterTaskCursorGithubVerify(taskCursor.status) &&
+        executionState
+      ) {
+        executionState = syncTaskExecutionStateAfterGithubVerified({
+          executionState,
+          taskId: taskCursor.taskId,
+          cursorWorkItems: orchestration.cursorWorkItemsV1 ?? [],
+        });
+      }
+
       const board = buildImplementationExecutionBoardFromRequirementsState({
         projectId: pid,
-        orchestration: parsedRequirementsState,
+        orchestration: {
+          ...orchestration,
+          ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
+        },
       });
       if (!board) {
         const message = "구현 작업 보드를 만들 수 없어 점검을 실행할 수 없습니다.";
         showToast(message);
         return { outcome: "blocked", message };
       }
-      const targetTaskIds = pickQualityGateTargetTaskIds({ role, board });
+
+      const pickedTargetTaskIds = pickQualityGateTargetTaskIds({
+        role,
+        board,
+        taskCursorTaskId:
+          taskCursor && shouldSyncExecutionStateAfterTaskCursorGithubVerify(taskCursor.status)
+            ? taskCursor.taskId
+            : null,
+      });
+      const targetTaskIds = pickedTargetTaskIds.length ? pickedTargetTaskIds : undefined;
+      const bridgeTarget =
+        buildQualityGateBridgeTargetFromTaskCursor(taskCursor) ??
+        buildQualityGateBridgeTargetFromWip(orchestration.codeAgentWipExecutionV1);
+
       const outcome = executeImplementationQualityGateCheck({
         role,
         taskList,
-        executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-        qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
+        executionState,
+        qualityGateResults: orchestration.implementationQualityGateResultsV1,
         projectId: pid,
         targetTaskIds,
-        bridgeTarget: buildQualityGateBridgeTargetFromWip(
-          parsedRequirementsState.codeAgentWipExecutionV1,
-        ),
+        bridgeTarget,
       });
       if ("blocked" in outcome) {
         showToast(outcome.blocked);
         return { outcome: "blocked", message: outcome.blocked };
       }
-      const bridgeTarget = buildQualityGateBridgeTargetFromWip(
-        parsedRequirementsState.codeAgentWipExecutionV1,
-      );
       const qgTimeline =
         outcome.qualityGateResult.engineConnectionStatus === "pending_engine_connection"
           ? buildTargetRepoE2eTimelineEntry({
@@ -2779,17 +3026,14 @@ export function PrototypePreviewPanel({
         implementationQualityGateResultsV1: outcome.qualityGateResults,
         ...(qgTimeline
           ? {
-              promptTimeline: [
-                ...(parsedRequirementsState.promptTimeline ?? []),
-                qgTimeline,
-              ],
+              promptTimeline: [...(orchestration.promptTimeline ?? []), qgTimeline],
             }
           : {}),
       });
       executionSingleChat.appendAiNotice(outcome.aiMessageContent);
       return { outcome: "executed" };
     },
-    [parsedRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
+    [orchestrationAwareRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
   );
 
   const runFinalScmIntegratedStageStep = useCallback((): ImplementationStageActionRunResult => {
@@ -3570,6 +3814,13 @@ export function PrototypePreviewPanel({
           const pid = projectId.trim();
           const board = implementationStageBoardGateContext?.board;
           const workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          const inFlight = orchestrationAwareRequirementsState.taskCursorExecutionV1;
+          if (isInFlightTaskCursorExecution(inFlight)) {
+            const message = `${inFlight.taskId} · Cursor 실행이 이미 진행 중입니다(runId: ${inFlight.cursorRunId}). 완료까지 기다리거나 [상태 확인]을 사용해 주세요.`;
+            executionSingleChat.appendAiNotice(message);
+            showToast(message);
+            return { outcome: "no_op", message };
+          }
           if (!board) {
             const message = "구현 Execution Board가 준비되지 않았습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -3586,10 +3837,53 @@ export function PrototypePreviewPanel({
             executionSingleChat.appendAiNotice(message);
             return { outcome: "blocked", message };
           }
-          showToast("AI 개발자 Task Cursor 실행을 시작합니다...");
+          const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+            gitRepoUrl: executionSetupRow?.gitRepoUrl,
+            gitRepoName: executionSetupRow?.gitRepoName,
+            gitRepoProvider: executionSetupRow?.gitRepoProvider,
+            baseBranch: executionSetupRow?.baseBranch,
+          });
+          if (!targetRepository) {
+            const message = "GitHub 저장소 설정이 없습니다. 환경설정을 확인해 주세요.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const nowIso = new Date().toISOString();
+          let pendingExecution = buildTaskCursorExecutionRequest({
+            projectId: pid,
+            taskId: scoped.selectedTaskId,
+            workItemIds: scoped.selectedWorkItems.map((w) => w.id),
+            workItems: scoped.selectedWorkItems,
+            targetRepository,
+            baseBranch: targetRepository.defaultBranch,
+            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+            existing: orchestrationAwareRequirementsState.taskCursorExecutionV1,
+            nowIso,
+          });
+          pendingExecution = patchTaskCursorExecution(pendingExecution, {
+            status: "cursor_running",
+            nowIso,
+          });
+          applyImplementationOrchestrationResult({
+            messages: executionSingleChat.chatMessages,
+            orchestrationPatch: buildTaskCursorOrchestrationPatch({
+              execution: pendingExecution,
+              history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+              timelineEntries: [
+                ...buildTaskCursorRequestedTimeline({ execution: pendingExecution, nowIso }),
+                buildTaskCursorApiStartedTimeline({ execution: pendingExecution, nowIso }),
+              ],
+              existingTimeline: orchestrationAwareRequirementsState.promptTimeline,
+            }),
+          });
+          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId} · Cloud Agent 폴링 중...`);
+          const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
+          const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
+          const pollWorkItems = scoped.selectedWorkItems;
+
           void (async () => {
             try {
-              const res = await fetch("/api/prototype/task-cursor/execute", {
+              const res = await credentialsIncludeFetch("/api/prototype/task-cursor/execute", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -3598,11 +3892,13 @@ export function PrototypePreviewPanel({
                   selectedWorkItemIds: scoped.selectedWorkItems.map((w) => w.id),
                   workItems: scoped.selectedWorkItems,
                   verifyGithub: true,
+                  launchOnly: true,
                 }),
               });
               const json = (await res.json()) as {
                 success?: boolean;
                 message?: string;
+                pollRequired?: boolean;
                 execution?: { status?: string; errorMessage?: string; failureReason?: string };
                 orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
               };
@@ -3612,16 +3908,58 @@ export function PrototypePreviewPanel({
                   orchestrationPatch: json.orchestrationPatch,
                 });
               }
+              const launchedExecution =
+                parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
+                parseTaskCursorExecutionV1(requirementsStateJsonRef.current.taskCursorExecutionV1) ??
+                pendingExecution;
+
+              if (json.pollRequired && launchedExecution.status === "cursor_running") {
+                showToast(`${scoped.selectedTaskId} · Cloud Agent 실행 중 · 폴링 시작`);
+                startTaskCursorClientPollLoop({
+                  execution: launchedExecution,
+                  workItems: pollWorkItems,
+                  history: pollHistory,
+                  existingTimeline: pollTimeline,
+                });
+                return;
+              }
+
               const notice =
                 json.execution?.errorMessage ??
                 json.message ??
                 (json.success ? "Task Cursor 실행이 완료되었습니다." : "Task Cursor 실행에 실패했습니다.");
+              if (!json.success && !json.pollRequired) {
+                applyImplementationOrchestrationResult({
+                  messages: executionSingleChat.chatMessages,
+                  orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
+                    execution:
+                      parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
+                      pendingExecution,
+                    message: notice,
+                    history: pollHistory,
+                    existingTimeline: pollTimeline,
+                  }),
+                });
+              }
               executionSingleChat.appendAiNotice(notice);
               showToast(notice);
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
-              executionSingleChat.appendAiNotice(`Task Cursor 실행 오류: ${message}`);
-              showToast(`Task Cursor 실행 오류: ${message}`);
+              const friendly =
+                message.toLowerCase().includes("fetch")
+                  ? "서버 연결이 끊어졌습니다. dev 서버 재컴파일/HMR 직후면 잠시 후 다시 시도해 주세요."
+                  : message;
+              applyImplementationOrchestrationResult({
+                messages: executionSingleChat.chatMessages,
+                orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
+                  execution: pendingExecution,
+                  message: friendly,
+                  history: pollHistory,
+                  existingTimeline: pollTimeline,
+                }),
+              });
+              executionSingleChat.appendAiNotice(`Task Cursor 실행 오류: ${friendly}`);
+              showToast(`Task Cursor 실행 오류: ${friendly}`);
             }
           })();
           return { outcome: "executed" };
@@ -3631,9 +3969,13 @@ export function PrototypePreviewPanel({
           if (!execution) {
             return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
           }
+          const elapsed = formatTaskCursorElapsedMinutes(execution.updatedAt ?? execution.createdAt);
           const message = [
             `Task: ${execution.taskId}`,
             `상태: ${execution.status}`,
+            execution.cursorRunId ? `runId: ${execution.cursorRunId}` : null,
+            execution.cursorAgentStatus ? `Agent: ${execution.cursorAgentStatus}` : null,
+            elapsed != null && elapsed > 0 ? `경과: ${elapsed}분` : null,
             execution.commitSha ? `Commit: ${execution.commitSha}` : null,
             execution.errorMessage ? `사유: ${execution.errorMessage}` : null,
           ]
@@ -3641,6 +3983,22 @@ export function PrototypePreviewPanel({
             .join("\n");
           executionSingleChat.appendAiNotice(message);
           showToast(`Task Cursor 상태: ${execution.status}`);
+          if (isInFlightTaskCursorExecution(execution)) {
+            const workItems = resolveTaskCursorPollWorkItems(
+              execution,
+              orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+            );
+            if (workItems.length) {
+              taskCursorPollActiveRunIdRef.current = null;
+              startTaskCursorClientPollLoop({
+                execution,
+                workItems,
+                history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+                existingTimeline: orchestrationAwareRequirementsState.promptTimeline,
+                resume: true,
+              });
+            }
+          }
           return { outcome: "executed" };
         }
         case "VERIFY_TASK_CURSOR_GITHUB": {
@@ -3655,7 +4013,13 @@ export function PrototypePreviewPanel({
               const res = await fetch("/api/prototype/task-cursor/verify-github", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ projectId: pid, execution }),
+                body: JSON.stringify({
+                  projectId: pid,
+                  execution,
+                  implementationTaskExecutionStateV1:
+                    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+                  workItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                }),
               });
               const json = (await res.json()) as {
                 success?: boolean;
@@ -4408,6 +4772,7 @@ export function PrototypePreviewPanel({
       executionSetupRow,
       persistChatToDb,
       showToast,
+      startTaskCursorClientPollLoop,
       executionArtifacts,
       prototypeRunSyncSnapshot,
     ],
@@ -5460,6 +5825,8 @@ export function PrototypePreviewPanel({
             executionSetup={executionSetupRow}
             codeAgentWipExecutionV1={orchestrationAwareRequirementsState.codeAgentWipExecutionV1}
             taskCursorExecutionV1={orchestrationAwareRequirementsState.taskCursorExecutionV1}
+            taskCursorExecutionHistoryV1={orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1}
+            implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}
@@ -5467,6 +5834,7 @@ export function PrototypePreviewPanel({
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             onAction={handleImplementationBoardAction}
+            onOpenEnvSettings={() => setExecutionEnvironmentModalOpen(true)}
           />
         ) : null}
         <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>

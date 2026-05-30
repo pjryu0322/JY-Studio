@@ -7,6 +7,7 @@ import type { ImplementationDbStrategyV1 } from "@/lib/prototype/implementationD
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -92,6 +93,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  readonly implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
   readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
@@ -157,6 +160,17 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
             input.implementationQualityGateResultsV1 === null
               ? null
               : [...input.implementationQualityGateResultsV1],
+        }
+      : {}),
+    ...(input.implementationAutoQualityGateV1 !== undefined
+      ? { implementationAutoQualityGateV1: input.implementationAutoQualityGateV1 }
+      : {}),
+    ...(input.implementationAutoQualityGateHistoryV1 !== undefined
+      ? {
+          implementationAutoQualityGateHistoryV1:
+            input.implementationAutoQualityGateHistoryV1 === null
+              ? null
+              : [...input.implementationAutoQualityGateHistoryV1],
         }
       : {}),
     ...(input.implementationIntegratedExecutionStateV1 !== undefined

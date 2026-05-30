@@ -27,6 +27,8 @@ import {
   CHECK_TASK_CURSOR_STATUS_CHIP,
   VERIFY_TASK_CURSOR_GITHUB_CHIP,
 } from "@/lib/prototype/taskCursorExecution";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -40,7 +42,6 @@ import {
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
-import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
@@ -120,6 +121,9 @@ export type PendingImplementationPatch = Readonly<{
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+  implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
+  implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
@@ -152,6 +156,15 @@ export function resolveOrchestrationAwareRequirementsState(input: {
       : {}),
     ...(pending.taskCursorExecutionHistoryV1 !== undefined
       ? { taskCursorExecutionHistoryV1: pending.taskCursorExecutionHistoryV1 }
+      : {}),
+    ...(pending.implementationAutoQualityGateV1 !== undefined
+      ? { implementationAutoQualityGateV1: pending.implementationAutoQualityGateV1 }
+      : {}),
+    ...(pending.implementationAutoQualityGateHistoryV1 !== undefined
+      ? { implementationAutoQualityGateHistoryV1: pending.implementationAutoQualityGateHistoryV1 }
+      : {}),
+    ...(pending.implementationQualityGateResultsV1 !== undefined
+      ? { implementationQualityGateResultsV1: pending.implementationQualityGateResultsV1 }
       : {}),
     ...(pending.implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1: pending.implementationTaskExecutionStateV1 }
@@ -274,6 +287,15 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.taskCursorExecutionHistoryV1 !== undefined) {
     next.taskCursorExecutionHistoryV1 = patch.taskCursorExecutionHistoryV1;
   }
+  if (patch.implementationAutoQualityGateV1 !== undefined) {
+    next.implementationAutoQualityGateV1 = patch.implementationAutoQualityGateV1;
+  }
+  if (patch.implementationAutoQualityGateHistoryV1 !== undefined) {
+    next.implementationAutoQualityGateHistoryV1 = patch.implementationAutoQualityGateHistoryV1;
+  }
+  if (patch.implementationQualityGateResultsV1 !== undefined) {
+    next.implementationQualityGateResultsV1 = patch.implementationQualityGateResultsV1;
+  }
   if (patch.implementationTaskExecutionStateV1 !== undefined) {
     next.implementationTaskExecutionStateV1 = patch.implementationTaskExecutionStateV1;
   }
@@ -313,6 +335,15 @@ export function mergePendingImplementationPatch(
       : {}),
     ...(incoming.taskCursorExecutionHistoryV1 !== undefined
       ? { taskCursorExecutionHistoryV1: incoming.taskCursorExecutionHistoryV1 }
+      : {}),
+    ...(incoming.implementationAutoQualityGateV1 !== undefined
+      ? { implementationAutoQualityGateV1: incoming.implementationAutoQualityGateV1 }
+      : {}),
+    ...(incoming.implementationAutoQualityGateHistoryV1 !== undefined
+      ? { implementationAutoQualityGateHistoryV1: incoming.implementationAutoQualityGateHistoryV1 }
+      : {}),
+    ...(incoming.implementationQualityGateResultsV1 !== undefined
+      ? { implementationQualityGateResultsV1: incoming.implementationQualityGateResultsV1 }
       : {}),
     ...(incoming.implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1: incoming.implementationTaskExecutionStateV1 }

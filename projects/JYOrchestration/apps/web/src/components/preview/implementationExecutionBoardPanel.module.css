@@ -354,6 +354,18 @@
   border-top: 1px solid #ddd6fe;
 }
 
+.progressDetails {
+  margin-top: 8px;
+}
+
+.progressDetailsBody {
+  margin-top: 8px;
+}
+
+.nextTaskMetaDetail {
+  display: none;
+}
+
 .progressEventsTitle {
   font-size: 10px;
   font-weight: 900;
@@ -386,11 +398,72 @@
 }
 
 .taskRowProgressLine {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin-top: 4px;
   font-size: 10px;
   font-weight: 800;
   color: #4338ca;
   line-height: 1.35;
+}
+
+.taskRowProgressIdle {
+  color: #64748b;
+}
+
+.taskRowProgressPolling {
+  color: #2563eb;
+}
+
+.taskRowProgressVerifying {
+  color: #7c3aed;
+}
+
+.taskRowProgressDone {
+  color: #16a34a;
+}
+
+.taskRowProgressFailed {
+  color: #dc2626;
+}
+
+.taskRowProgressBadge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: #dbeafe;
+  animation: taskRowProgressPulse 1.4s ease-in-out infinite;
+}
+
+.taskRowProgressSpinner {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 1px;
+  border: 2px solid #93c5fd;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: taskRowProgressSpin 0.8s linear infinite;
+}
+
+@keyframes taskRowProgressSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes taskRowProgressPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
 }
 
 .desktopTable {
@@ -464,6 +537,48 @@
   padding: 0 14px 12px;
 }
 
+.envDetailBody {
+  margin-top: 8px;
+}
+
+.envDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.envDetailReason {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.envWarningList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #b45309;
+}
+
+.envSettingsBtn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.envSettingsBtn:hover {
+  background: #f8fafc;
+}
+
 .envPre {
   margin-top: 8px;
   font-size: 10px;
@@ -499,6 +614,10 @@
 
   .summaryCard .summaryPrimary {
     display: none;
+  }
+
+  .nextTaskMetaDetail {
+    display: inline;
   }
 
   .taskListScrollArea {

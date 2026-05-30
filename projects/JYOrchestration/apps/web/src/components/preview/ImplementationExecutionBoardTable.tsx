@@ -16,7 +16,11 @@ import type {
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
-import { formatTaskRowCodeAgentProgressLine } from "@/lib/prototype/codeAgentExecutionProgressView";
+import {
+  buildTaskRowCursorProgressView,
+  type TaskRowCursorProgressView,
+} from "@/lib/prototype/codeAgentExecutionProgressView";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import boardStyles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 const tableStyle: CSSProperties = {
@@ -59,16 +63,44 @@ function WipHint({ overlay }: { readonly overlay: ImplementationExecutionBoardRo
   );
 }
 
+function TaskRowCursorProgressBadge({ progress }: { readonly progress: TaskRowCursorProgressView }) {
+  const toneClass =
+    progress.tone === "polling"
+      ? boardStyles.taskRowProgressPolling
+      : progress.tone === "verifying"
+        ? boardStyles.taskRowProgressVerifying
+        : progress.tone === "done"
+          ? boardStyles.taskRowProgressDone
+          : progress.tone === "failed"
+            ? boardStyles.taskRowProgressFailed
+            : boardStyles.taskRowProgressIdle;
+
+  return (
+    <div
+      className={`${boardStyles.taskRowProgressLine} ${toneClass}`}
+      data-testid="implementation-task-row-cursor-progress"
+      data-polling={progress.isPolling ? "true" : "false"}
+    >
+      {progress.isPolling ? <span className={boardStyles.taskRowProgressSpinner} aria-hidden /> : null}
+      <span>{progress.text}</span>
+    </div>
+  );
+}
+
 export function ImplementationExecutionBoardCardList({
   board,
   selectedTaskId,
   codeAgentWipExecutionV1,
+  taskCursorExecutionV1,
+  taskCursorExecutionHistoryV1,
   codeAgentProgress,
   onSelectTask,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly selectedTaskId: string | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView | null;
   readonly onSelectTask: (taskId: string) => void;
 }) {
@@ -77,9 +109,11 @@ export function ImplementationExecutionBoardCardList({
       {board.taskRows.map((row) => {
         const card = buildTaskRowCardView(row);
         const selected = row.taskId === selectedTaskId;
-        const progressLine = formatTaskRowCodeAgentProgressLine({
+        const progressView = buildTaskRowCursorProgressView({
           row,
           codeAgentWipExecutionV1,
+          taskCursorExecutionV1,
+          taskCursorExecutionHistoryV1,
           progressView: codeAgentProgress,
         });
         return (
@@ -99,7 +133,12 @@ export function ImplementationExecutionBoardCardList({
               minHeight: 44,
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#2563eb" }}>{card.taskId}</div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, color: "#2563eb" }}>{card.taskId}</div>
+              {progressView?.isPolling ? (
+                <span className={boardStyles.taskRowProgressBadge}>{progressView.shortLabel}</span>
+              ) : null}
+            </div>
             <div style={{ marginTop: 2, fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{card.title}</div>
             <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: "#64748b", lineHeight: 1.4 }}>
               {card.priority} · {card.developerStatusLabel}
@@ -108,7 +147,7 @@ export function ImplementationExecutionBoardCardList({
               <br />
               재작업 {card.reworkCount} · 사용자 확인 {card.userConfirmationLabel}
             </div>
-            {progressLine ? <div className={boardStyles.taskRowProgressLine}>{progressLine}</div> : null}
+            {progressView ? <TaskRowCursorProgressBadge progress={progressView} /> : null}
           </button>
         );
       })}
@@ -120,12 +159,16 @@ export function ImplementationExecutionBoardTable({
   board,
   selectedTaskId,
   codeAgentWipExecutionV1,
+  taskCursorExecutionV1,
+  taskCursorExecutionHistoryV1,
   codeAgentProgress,
   onSelectTask,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly selectedTaskId: string | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView | null;
   readonly onSelectTask: (taskId: string) => void;
 }) {
@@ -159,9 +202,11 @@ export function ImplementationExecutionBoardTable({
               row,
               codeAgentWipExecutionV1,
             });
-            const progressLine = formatTaskRowCodeAgentProgressLine({
+            const progressView = buildTaskRowCursorProgressView({
               row,
               codeAgentWipExecutionV1,
+              taskCursorExecutionV1,
+              taskCursorExecutionHistoryV1,
               progressView: codeAgentProgress,
             });
             const selected = row.taskId === selectedTaskId;
@@ -179,7 +224,7 @@ export function ImplementationExecutionBoardTable({
                 <td style={tdStyle}>
                   <div>{row.title}</div>
                   <WipHint overlay={overlay} />
-                  {progressLine ? <div className={boardStyles.taskRowProgressLine}>{progressLine}</div> : null}
+                  {progressView ? <TaskRowCursorProgressBadge progress={progressView} /> : null}
                 </td>
                 <td style={tdStyle}>{row.priority}</td>
                 <td style={tdStyle}>{formatImplementationBoardRoleKo(row.currentRole)}</td>

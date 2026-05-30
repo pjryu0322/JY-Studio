@@ -31,6 +31,7 @@ import {
   RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
+  REQUEST_TASK_REWORK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import {
@@ -246,6 +247,101 @@ describe("deriveImplementationStageNextActions", () => {
     });
     expect(actions[0]?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
     expect(actions[0]?.reason).toContain("endpoint");
+  });
+
+  it("task cursor github verified -> no manual reviewer/security primary CTAs", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: {
+        version: "implementation_seed_v1",
+        projectId: "p1",
+        createdAt: "2026-05-29T12:00:00.000Z",
+        updatedAt: "2026-05-29T12:00:00.000Z",
+        source: "planning_slots_and_artifacts",
+        lifecycleStatus: "confirmed",
+        readiness: { ready: true, score: 1, missing: [], warnings: [] },
+        processImplementationItems: [],
+        screenImplementationItems: [],
+        actorCapabilityMatrix: [],
+        commonDetailFeatures: [],
+        dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+        assumptions: [],
+        gaps: [],
+      },
+    });
+    const execution = {
+      ...buildInitialTaskCursorExecution({
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+      }),
+      status: "review_pending" as const,
+      commitSha: "eb3db901234567890abcdef1234567890abcdef",
+    };
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      taskList,
+      taskCursorExecutionV1: execution,
+    });
+    expect(actions.some((action) => action.actionId === "RUN_REVIEWER_CHECK" && action.priority === "primary")).toBe(
+      false,
+    );
+    expect(actions.some((action) => action.actionId === "RUN_SECURITY_CHECK" && action.priority === "primary")).toBe(
+      false,
+    );
+  });
+
+  it("auto gate failed -> rework primary CTA", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: {
+        version: "implementation_seed_v1",
+        projectId: "p1",
+        createdAt: "2026-05-29T12:00:00.000Z",
+        updatedAt: "2026-05-29T12:00:00.000Z",
+        source: "planning_slots_and_artifacts",
+        lifecycleStatus: "confirmed",
+        readiness: { ready: true, score: 1, missing: [], warnings: [] },
+        processImplementationItems: [],
+        screenImplementationItems: [],
+        actorCapabilityMatrix: [],
+        commonDetailFeatures: [],
+        dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+        assumptions: [],
+        gaps: [],
+      },
+    });
+    const execution = {
+      ...buildInitialTaskCursorExecution({
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+      }),
+      status: "review_pending" as const,
+      commitSha: "eb3db901234567890abcdef1234567890abcdef",
+    };
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      taskList,
+      taskCursorExecutionV1: execution,
+      implementationAutoQualityGateV1: {
+        version: "implementation_auto_quality_gate_v1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        sourceCommitSha: "eb3db901234567890abcdef1234567890abcdef",
+        changedFiles: ["src/a.ts"],
+        status: "failed",
+        failureReason: "review failed",
+        startedAt: "2026-05-30T12:00:00.000Z",
+        updatedAt: "2026-05-30T12:00:00.000Z",
+      },
+    });
+    expect(actions[0]?.actionId).toBe("REQUEST_TASK_REWORK");
+    expect(actions[0]?.label).toBe(REQUEST_TASK_REWORK_CHIP);
   });
 
   it("cursor_api completed WIP -> 구현 결과 승인", () => {

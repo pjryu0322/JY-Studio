@@ -10,22 +10,9 @@ function stepClass(state: CodeAgentExecutionProgressView["steps"][number]["state
   return styles.progressStep;
 }
 
-export function ImplementationCodeAgentExecutionProgressCard({
-  progress,
-}: {
-  readonly progress: CodeAgentExecutionProgressView;
-}) {
+function ProgressTechnicalDetails({ progress }: { readonly progress: CodeAgentExecutionProgressView }) {
   return (
-    <div className={styles.progressCard} data-testid="implementation-code-agent-progress-card">
-      <div className={styles.progressTitle}>Code Agent 실행 진행</div>
-      <div className={styles.progressStatusRow}>
-        <span className={styles.progressStatusLabel}>현재 상태</span>
-        <span className={styles.progressStatusValue} data-testid="code-agent-progress-status">
-          {progress.statusLabel}
-        </span>
-      </div>
-      <div className={styles.progressSummary}>{progress.summaryLine}</div>
-
+    <>
       {progress.selectedTaskId ? (
         <div className={styles.progressMetaBlock}>
           <div className={styles.progressMetaLine}>
@@ -110,6 +97,38 @@ export function ImplementationCodeAgentExecutionProgressCard({
           </ul>
         </div>
       ) : null}
+    </>
+  );
+}
+
+export function ImplementationCodeAgentExecutionProgressCard({
+  progress,
+}: {
+  readonly progress: CodeAgentExecutionProgressView;
+}) {
+  const compact = progress.compactMainPresentation === true;
+
+  return (
+    <div className={styles.progressCard} data-testid="implementation-code-agent-progress-card">
+      <div className={styles.progressTitle}>{progress.progressCardTitle ?? "Code Agent 실행 진행"}</div>
+      <div className={styles.progressStatusRow}>
+        <span className={styles.progressStatusLabel}>현재 상태</span>
+        <span className={styles.progressStatusValue} data-testid="code-agent-progress-status">
+          {progress.statusLabel}
+        </span>
+      </div>
+      <div className={styles.progressSummary}>{progress.summaryLine}</div>
+
+      {compact ? (
+        <details className={styles.progressDetails} data-testid="implementation-progress-details">
+          <summary className={styles.disclosureSummary}>상세 보기</summary>
+          <div className={styles.progressDetailsBody}>
+            <ProgressTechnicalDetails progress={progress} />
+          </div>
+        </details>
+      ) : (
+        <ProgressTechnicalDetails progress={progress} />
+      )}
     </div>
   );
 }

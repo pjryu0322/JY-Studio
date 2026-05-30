@@ -1,4 +1,6 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { shouldSyncExecutionStateAfterTaskCursorGithubVerify } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { defaultForbiddenTargetPathGlobs } from "@/lib/prototype/targetRepositoryPathGuard";
 import type {
   BridgeResultValidationContext,
@@ -146,6 +148,28 @@ export function buildQualityGateBridgeTargetFromWip(
     changedFiles: last.changedFiles,
     ...(wip.workspacePath ? { workspacePath: wip.workspacePath } : {}),
     ...(wip.baseBranch ? { baseBranch: wip.baseBranch } : {}),
+  };
+}
+
+export function buildQualityGateBridgeTargetFromTaskCursor(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): ImplementationQualityGateBridgeTarget | undefined {
+  if (!execution) return undefined;
+  const commitSha = String(execution.commitSha ?? "").trim();
+  if (!commitSha || commitSha.startsWith("wip-stub")) return undefined;
+  if (
+    !shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status) &&
+    execution.status !== "cursor_completed"
+  ) {
+    return undefined;
+  }
+  return {
+    selectedTaskId: execution.taskId,
+    targetRepository: execution.targetRepository,
+    branchName: execution.workBranch,
+    commitSha,
+    changedFiles: execution.changedFiles,
+    baseBranch: execution.baseBranch,
   };
 }
 

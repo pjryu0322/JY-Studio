@@ -73,6 +73,11 @@ import {
 import { filterPlatformScmNextActions } from "@/lib/prototype/platformScmRouteAuth";
 import { isPlatformScmPushPrCompleted } from "@/lib/prototype/platformScmReadiness";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import {
+  isImplementationAutoQualityGateInFlight,
+  summarizeImplementationAutoQualityGateForProgress,
+} from "@/lib/prototype/implementationAutoQualityGate";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
   CHECK_TASK_CURSOR_STATUS_CHIP,
@@ -100,6 +105,7 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
   readonly canApplyGit?: boolean;
 }>;
@@ -551,6 +557,7 @@ function deriveNextActionsWhenTaskListMissing(
 
 function deriveNextActionsFromTaskCursorExecution(
   execution: TaskCursorExecutionV1 | null | undefined,
+  autoGate?: ImplementationAutoQualityGateV1 | null,
 ): readonly ImplementationStageNextAction[] | null {
   if (!execution) return null;
   const status = execution.status;
@@ -603,24 +610,43 @@ function deriveNextActionsFromTaskCursorExecution(
     ];
   }
   if (status === "github_verified" || status === "review_pending") {
+    const gateSummary = summarizeImplementationAutoQualityGateForProgress(autoGate);
+    const gateMatches =
+      autoGate &&
+      autoGate.taskId === execution.taskId &&
+      autoGate.sourceCommitSha === String(execution.commitSha ?? "").trim();
+    if (gateMatches && autoGate.status === "failed") {
+      return [
+        {
+          actionId: "REQUEST_TASK_REWORK",
+          label: REQUEST_TASK_REWORK_CHIP,
+          priority: "primary",
+          reason: autoGate.failureReason ?? "검수자 또는 보안관 점검에서 수정 필요 항목이 발견되었습니다.",
+        },
+        {
+          actionId: "SHOW_ARTIFACTS",
+          label: TASK_LIST_VIEW_CHIP,
+          priority: "secondary",
+          reason: "점검 결과 및 작업 상세 보기",
+        },
+      ];
+    }
+    if (gateMatches && isImplementationAutoQualityGateInFlight(autoGate)) {
+      return [
+        {
+          actionId: "SHOW_ARTIFACTS",
+          label: TASK_LIST_VIEW_CHIP,
+          priority: "secondary",
+          reason: gateSummary?.summaryLine ?? "자동 품질 게이트 진행 중",
+        },
+      ];
+    }
     return [
       {
-        actionId: "RUN_REVIEWER_CHECK",
-        label: REVIEWER_CHECK_RUN_CHIP,
-        priority: "primary",
-        reason: "GitHub commit 확인 후 검수자 점검",
-      },
-      {
-        actionId: "RUN_SECURITY_CHECK",
-        label: SECURITY_CHECK_RUN_CHIP,
+        actionId: "SHOW_ARTIFACTS",
+        label: TASK_LIST_VIEW_CHIP,
         priority: "secondary",
-        reason: "GitHub commit 확인 후 보안관 점검",
-      },
-      {
-        actionId: "SHOW_SCM_CHECK",
-        label: SCM_CRITERIA_CHIP,
-        priority: "tertiary",
-        reason: "SCM 반영 기준 확인",
+        reason: "검수자·보안관 점검을 자동으로 시작합니다 — 상세 보기",
       },
     ];
   }
@@ -643,13 +669,21 @@ function deriveNextActionsFromTaskCursorExecution(
     ];
   }
   if (status === "security_pending" || status === "scm_pending") {
+    const gatePassed =
+      autoGate &&
+      autoGate.taskId === execution.taskId &&
+      autoGate.status === "passed";
+    if (gatePassed || status === "scm_pending") {
+      return [
+        {
+          actionId: "SHOW_ARTIFACTS",
+          label: TASK_LIST_VIEW_CHIP,
+          priority: "secondary",
+          reason: "다음 작업은 우선순위 기준으로 자동 시작됩니다 — 상세 보기",
+        },
+      ];
+    }
     return [
-      {
-        actionId: "RUN_SECURITY_CHECK",
-        label: SECURITY_CHECK_RUN_CHIP,
-        priority: "primary",
-        reason: "보안 점검 진행",
-      },
       {
         actionId: "SHOW_SCM_CHECK",
         label: SCM_CRITERIA_CHIP,
@@ -932,7 +966,10 @@ function deriveImplementationStageNextActionsCore(
     return missingTaskListActions;
   }
 
-  const fromTaskCursor = deriveNextActionsFromTaskCursorExecution(boardInput?.taskCursorExecutionV1);
+  const fromTaskCursor = deriveNextActionsFromTaskCursorExecution(
+    boardInput?.taskCursorExecutionV1,
+    boardInput?.implementationAutoQualityGateV1,
+  );
   if (fromTaskCursor?.length) {
     return fromTaskCursor;
   }

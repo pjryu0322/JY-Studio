@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { executeTaskCursorApi } from "@/lib/prototype/taskCursorApiClient";
+import { executeTaskCursorApi, shouldUseTaskCursorCloudAgentApi } from "@/lib/prototype/taskCursorApiClient";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
@@ -8,7 +8,12 @@ vi.mock("@/lib/prototype/cursorApiDirectClient", () => ({
   executeCursorApiDirect: vi.fn(),
 }));
 
+vi.mock("@/lib/prototype/taskCursorCloudAgentClient", () => ({
+  executeTaskCursorViaCloudAgent: vi.fn(),
+}));
+
 import { executeCursorApiDirect } from "@/lib/prototype/cursorApiDirectClient";
+import { executeTaskCursorViaCloudAgent } from "@/lib/prototype/taskCursorCloudAgentClient";
 
 const plan = buildImplementationTaskPlan({
   projectId: "p1",
@@ -45,9 +50,27 @@ function baseRequest() {
 describe("executeTaskCursorApi", () => {
   beforeEach(() => {
     vi.mocked(executeCursorApiDirect).mockReset();
+    vi.mocked(executeTaskCursorViaCloudAgent).mockReset();
   });
 
-  it("uses autoPush true contract via direct client", async () => {
+  it("routes default Cursor API URL to Cloud Agent execution", async () => {
+    expect(shouldUseTaskCursorCloudAgentApi("https://api.cursor.com")).toBe(true);
+    vi.mocked(executeTaskCursorViaCloudAgent).mockResolvedValue({
+      ok: true,
+      status: "completed",
+      taskId,
+      commitSha: "abc123def4567890",
+      changedFiles: ["src/App.tsx"],
+      pushed: true,
+    });
+    const request = { ...baseRequest(), cursorApiUrl: "https://api.cursor.com" };
+    const result = await executeTaskCursorApi(request);
+    expect(result.ok).toBe(true);
+    expect(executeTaskCursorViaCloudAgent).toHaveBeenCalledWith(request);
+    expect(executeCursorApiDirect).not.toHaveBeenCalled();
+  });
+
+  it("uses autoPush true contract via direct client for custom bridge URL", async () => {
     vi.mocked(executeCursorApiDirect).mockResolvedValue({
       ok: true,
       status: "completed",
@@ -65,16 +88,44 @@ describe("executeTaskCursorApi", () => {
     );
   });
 
-  it("maps unsupported endpoint to cursor_endpoint_unsupported", async () => {
+  it("falls back to Cloud Agent when custom bridge /execute is unsupported", async () => {
     vi.mocked(executeCursorApiDirect).mockResolvedValue({
       ok: false,
       status: "unsupported",
       provider: "cursor_api",
       selectedTaskId: taskId,
     });
+    vi.mocked(executeTaskCursorViaCloudAgent).mockResolvedValue({
+      ok: true,
+      status: "completed",
+      taskId,
+      commitSha: "abc123def4567890",
+      changedFiles: ["src/App.tsx"],
+      pushed: true,
+    });
+    const result = await executeTaskCursorApi(baseRequest());
+    expect(result.ok).toBe(true);
+    expect(executeTaskCursorViaCloudAgent).toHaveBeenCalled();
+  });
+
+  it("returns cloud agent failure when custom bridge /execute is unsupported", async () => {
+    vi.mocked(executeCursorApiDirect).mockResolvedValue({
+      ok: false,
+      status: "unsupported",
+      provider: "cursor_api",
+      selectedTaskId: taskId,
+    });
+    vi.mocked(executeTaskCursorViaCloudAgent).mockResolvedValue({
+      ok: false,
+      status: "failed",
+      taskId,
+      reason: "unknown",
+      message: "Cloud Agent 실행 실패",
+    });
     const result = await executeTaskCursorApi(baseRequest());
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("cursor_endpoint_unsupported");
+    expect(result.message).toBe("Cloud Agent 실행 실패");
+    expect(executeTaskCursorViaCloudAgent).toHaveBeenCalled();
   });
 
   it("rejects wip-stub success", async () => {

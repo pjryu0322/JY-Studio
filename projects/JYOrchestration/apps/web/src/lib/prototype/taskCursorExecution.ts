@@ -56,6 +56,7 @@ export type TaskCursorExecutionV1 = Readonly<{
   readonly pushed?: boolean;
   readonly failureReason?: TaskCursorFailureReason;
   readonly errorMessage?: string;
+  readonly cursorAgentStatus?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }>;
@@ -200,6 +201,8 @@ export function parseTaskCursorExecutionV1(raw: unknown): TaskCursorExecutionV1 
     pushed: o.pushed === true ? true : o.pushed === false ? false : undefined,
     failureReason,
     errorMessage: o.errorMessage === undefined ? undefined : String(o.errorMessage),
+    cursorAgentStatus:
+      o.cursorAgentStatus === undefined ? undefined : String(o.cursorAgentStatus).trim() || undefined,
     createdAt: String(o.createdAt ?? new Date().toISOString()),
     updatedAt: String(o.updatedAt ?? new Date().toISOString()),
   };
@@ -251,8 +254,15 @@ export type TaskCursorExecuteApiResult = Readonly<{
 
 export function validateTaskCursorExecuteApiResult(
   result: TaskCursorExecuteApiResult,
+  options?: Readonly<{
+    readonly allowEmptyChangedFilesWithCommit?: boolean;
+    readonly deferCommitDiscoveryToGithub?: boolean;
+  }>,
 ): TaskCursorExecuteApiResult {
   if (!result.ok || result.status !== "completed") {
+    return result;
+  }
+  if (options?.deferCommitDiscoveryToGithub) {
     return result;
   }
   if (isStubSha(result.commitSha)) {
@@ -265,13 +275,17 @@ export function validateTaskCursorExecuteApiResult(
     };
   }
   if (!result.changedFiles?.length) {
-    return {
-      ...result,
-      ok: false,
-      status: "failed",
-      reason: "no_changed_files",
-      message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
-    };
+    if (options?.allowEmptyChangedFilesWithCommit && result.commitSha && !isStubSha(result.commitSha)) {
+      // Cloud Agent는 changedFiles를 비울 수 있음 — GitHub verify에서 확인
+    } else {
+      return {
+        ...result,
+        ok: false,
+        status: "failed",
+        reason: "no_changed_files",
+        message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
+      };
+    }
   }
   if (result.pushed !== true) {
     return {

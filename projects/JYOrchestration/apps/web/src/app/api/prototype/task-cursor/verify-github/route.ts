@@ -2,27 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import {
-  evaluateExecutionSetupSourceGenerationReadiness,
-  mapExecutionSetupPrismaRowToSourceGenerationRow,
-} from "@/lib/prototype/executionSetupSourceGeneration";
+import { mapExecutionSetupPrismaRowToSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import {
   applyTaskCursorGithubVerifyResult,
   buildTaskCursorGithubVerifyTimeline,
   buildTaskCursorOrchestrationPatch,
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
-import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  evaluateTaskCursorGithubVerifyReadiness,
+  verifyTaskCursorGithubResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import {
   buildTaskCursorTimelineEntry,
   parseTaskCursorExecutionV1,
   patchTaskCursorExecution,
   TASK_CURSOR_FAILURE_MESSAGES,
 } from "@/lib/prototype/taskCursorExecution";
+import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { prisma } from "@/lib/prisma";
 
 type Body = {
   readonly projectId?: string;
   readonly execution?: unknown;
+  readonly implementationTaskExecutionStateV1?: unknown;
+  readonly workItems?: readonly import("@/lib/prototype/implementationCursorWorkItems").CursorWorkItem[];
 };
 
 const EXECUTION_SETUP_SELECT = {
@@ -48,6 +51,17 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (execution.status === "cursor_requested" || execution.status === "cursor_running") {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "blocked",
+          message:
+            "Cursor Cloud Agent가 아직 실행 중입니다. Agent 완료 후 자동으로 GitHub commit 확인이 진행되거나, 완료 뒤 [GitHub 결과 확인]을 눌러 주세요.",
+        },
+        { status: 200 },
+      );
+    }
 
     try {
       await requireProjectPermission(
@@ -67,10 +81,7 @@ export async function POST(request: NextRequest) {
       select: EXECUTION_SETUP_SELECT,
     });
     const setup = mapExecutionSetupPrismaRowToSourceGenerationRow(setupRow);
-    const readiness = evaluateExecutionSetupSourceGenerationReadiness({
-      setup,
-      env: process.env as Record<string, string | undefined>,
-    });
+    const readiness = evaluateTaskCursorGithubVerifyReadiness({ setup });
     if (!readiness.ok) {
       return NextResponse.json(
         { success: false, status: "blocked", message: readiness.message },
@@ -109,9 +120,9 @@ export async function POST(request: NextRequest) {
 
     const verify = await verifyTaskCursorGithubResult({
       execution: nextExecution,
-      targetRepository: readiness.context.targetRepository,
+      targetRepository: readiness.targetRepository,
       githubToken,
-      allowedPathGlobs: readiness.context.allowedPathGlobs,
+      allowedPathGlobs: readiness.allowedPathGlobs,
     });
 
     nextExecution = applyTaskCursorGithubVerifyResult({
@@ -119,6 +130,7 @@ export async function POST(request: NextRequest) {
       ok: verify.ok,
       message: verify.message,
       verifiedChangedFiles: verify.verifiedChangedFiles,
+      verifiedCommitSha: verify.verifiedCommitSha,
       nowIso,
     });
     if (nextExecution.status === "github_verified") {
@@ -136,6 +148,14 @@ export async function POST(request: NextRequest) {
     const patch = buildTaskCursorOrchestrationPatch({
       execution: nextExecution,
       timelineEntries: timeline,
+      cursorWorkItems: Array.isArray(body.workItems) ? body.workItems : [],
+      ...(parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1)
+        ? {
+            executionState: parseImplementationTaskExecutionStateV1(
+              body.implementationTaskExecutionStateV1,
+            ),
+          }
+        : {}),
     });
 
     return NextResponse.json({

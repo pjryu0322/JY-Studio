@@ -20,6 +20,7 @@ import {
   resolveNextTaskCardView,
   shouldEmphasizeIntegratedStep,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { formatTaskCursorSetupReadinessPillValue } from "@/lib/prototype/implementationBoardEnvDetailView";
 import {
   deriveImplementationStageNextActions,
   type ImplementationStageNextActionsBoardInput,
@@ -39,6 +40,8 @@ import {
   buildCodeAgentExecutionProgressView,
   shouldHideBoardPrimaryCtaForProgress,
 } from "@/lib/prototype/codeAgentExecutionProgressView";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import { isImplementationAutoQualityGateClientInFlight } from "@/lib/prototype/implementationAutoQualityGateClient";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
@@ -54,18 +57,23 @@ export function ImplementationExecutionBoardPanel({
   executionSetup,
   codeAgentWipExecutionV1,
   taskCursorExecutionV1,
+  taskCursorExecutionHistoryV1,
+  implementationAutoQualityGateV1,
   boardState,
   previewReady,
   effectiveImplementationState,
   boardInput,
   promptTimeline,
   onAction,
+  onOpenEnvSettings,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
   readonly executionSetup?: ExecutionSetupSourceGenerationRow | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly previewReady?: boolean;
@@ -73,6 +81,7 @@ export function ImplementationExecutionBoardPanel({
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly onAction: (input: ImplementationStageActionClickInput) => void;
+  readonly onOpenEnvSettings?: () => void;
 }) {
   const summaryView = useMemo(
     () =>
@@ -131,11 +140,15 @@ export function ImplementationExecutionBoardPanel({
         taskCursorExecutionV1,
         board,
         latestTimeline: promptTimeline,
+        implementationAutoQualityGateV1,
       }),
-    [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline],
+    [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline, implementationAutoQualityGateV1],
   );
 
-  const hidePrimaryCta = shouldHideBoardPrimaryCtaForProgress(codeAgentProgress.status);
+  const hidePrimaryCta = shouldHideBoardPrimaryCtaForProgress(
+    codeAgentProgress.status,
+    isImplementationAutoQualityGateClientInFlight(implementationAutoQualityGateV1),
+  );
 
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -197,16 +210,18 @@ export function ImplementationExecutionBoardPanel({
           <div className={styles.nextTaskLabel}>다음 작업</div>
           <div className={styles.nextTaskId}>{nextTask.taskId}</div>
           <div className={styles.nextTaskTitle}>{nextTask.title}</div>
-          <div className={styles.nextTaskMeta}>
+          <div className={`${styles.nextTaskMeta} ${styles.nextTaskMetaCompact}`}>
             {nextTask.developerStatusLabel} · {nextTask.priority}
-            <br />
-            선정 사유: {nextTask.selectionReason}
-            {nextTask.dependencies.length ? (
-              <>
-                <br />
-                선행 의존성: {nextTask.dependencies.join(", ")}
-              </>
-            ) : null}
+            <span className={styles.nextTaskMetaDetail}>
+              <br />
+              선정 사유: {nextTask.selectionReason}
+              {nextTask.dependencies.length ? (
+                <>
+                  <br />
+                  선행 의존성: {nextTask.dependencies.join(", ")}
+                </>
+              ) : null}
+            </span>
           </div>
         </div>
       ) : null}
@@ -293,7 +308,7 @@ export function ImplementationExecutionBoardPanel({
 
       <details className={styles.disclosure} data-testid="implementation-task-list-disclosure">
         <summary className={styles.disclosureSummary} aria-expanded={false}>
-          작업목록 {board.taskRows.length}개 · 스크롤 가능
+          작업목록 {board.taskRows.length}개 · 보기
         </summary>
         <div className={styles.disclosureBody}>
           <p className={styles.taskListHint}>1~{board.taskRows.length}개 작업 · 아래로 스크롤하여 더 보기</p>
@@ -303,6 +318,8 @@ export function ImplementationExecutionBoardPanel({
                 board={board}
                 selectedTaskId={detailTaskId}
                 codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+                taskCursorExecutionV1={taskCursorExecutionV1}
+                taskCursorExecutionHistoryV1={taskCursorExecutionHistoryV1}
                 codeAgentProgress={codeAgentProgress}
                 onSelectTask={(taskId) => setDetailTaskId(taskId)}
               />
@@ -312,6 +329,8 @@ export function ImplementationExecutionBoardPanel({
                 board={board}
                 selectedTaskId={detailTaskId}
                 codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+                taskCursorExecutionV1={taskCursorExecutionV1}
+                taskCursorExecutionHistoryV1={taskCursorExecutionHistoryV1}
                 codeAgentProgress={codeAgentProgress}
                 onSelectTask={(taskId) => setDetailTaskId(taskId)}
               />
@@ -347,22 +366,56 @@ export function ImplementationExecutionBoardPanel({
       </details>
 
       {detailRow ? (
-        <div className={styles.detailSection} data-testid="implementation-selected-task-detail">
-          <ImplementationExecutionBoardDetail
-            row={detailRow}
-            codeAgentWipExecutionV1={codeAgentWipExecutionV1}
-            nextActions={nextActions}
-            onAction={onAction}
-            onClose={() => setDetailTaskId(null)}
-          />
-        </div>
+        <details className={styles.disclosure} data-testid="implementation-selected-task-detail">
+          <summary className={styles.disclosureSummary}>선택 작업 상세 · {detailRow.taskId}</summary>
+          <div className={styles.disclosureBody}>
+            <ImplementationExecutionBoardDetail
+              row={detailRow}
+              codeAgentWipExecutionV1={codeAgentWipExecutionV1}
+              nextActions={nextActions}
+              onAction={onAction}
+              onClose={() => setDetailTaskId(null)}
+            />
+          </div>
+        </details>
       ) : null}
 
-      <details className={styles.envDetails}>
+      <details className={styles.envDetails} data-testid="implementation-env-details">
         <summary className={styles.disclosureSummary}>환경설정 상세 보기</summary>
-        <pre className={styles.envPre}>
-          {summaryView.envDiagnosticLines.join("\n") || "환경설정 정보 없음"}
-        </pre>
+        <div className={styles.envDetailBody}>
+          <div className={styles.envDetailHeader}>
+            <span
+              className={pillClass(summaryView.taskCursorSetupReadiness.ready ? "ok" : "warn")}
+              data-testid="implementation-env-readiness-pill"
+            >
+              Task Cursor:{" "}
+              {formatTaskCursorSetupReadinessPillValue(summaryView.taskCursorSetupReadiness)}
+            </span>
+            {onOpenEnvSettings ? (
+              <button
+                type="button"
+                className={styles.envSettingsBtn}
+                data-testid="implementation-env-open-settings"
+                onClick={onOpenEnvSettings}
+              >
+                환경설정 열기
+              </button>
+            ) : null}
+          </div>
+          <p className={styles.envDetailReason} data-testid="implementation-env-readiness-reason">
+            {summaryView.taskCursorSetupReadiness.reason}
+          </p>
+          {summaryView.taskCursorSetupReadiness.warnings.length ? (
+            <ul className={styles.envWarningList} data-testid="implementation-env-warnings">
+              {summaryView.taskCursorSetupReadiness.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+          <pre className={styles.envPre} data-testid="implementation-env-diagnostic">
+            {summaryView.envDiagnosticLines.join("\n")}
+          </pre>
+        </div>
       </details>
     </section>
   );

@@ -1,5 +1,6 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import {
   defaultForbiddenTargetPathGlobs,
   validateTargetRepositoryChangedFiles,
@@ -23,6 +24,7 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly reason?: TaskCursorFailureReason;
   readonly message?: string;
   readonly verifiedChangedFiles?: readonly string[];
+  readonly verifiedCommitSha?: string;
 }>;
 
 type GithubCommitResponse = Readonly<{
@@ -80,14 +82,9 @@ export async function verifyTaskCursorGithubResult(
     };
   }
 
-  const commitSha = String(input.execution.commitSha ?? "").trim();
-  if (!commitSha || commitSha.startsWith("wip-stub")) {
-    return {
-      ok: false,
-      reason: "commit_not_created",
-      message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
-    };
-  }
+  const commitShaFromExecution = String(input.execution.commitSha ?? "").trim();
+  const hasStoredCommitSha =
+    Boolean(commitShaFromExecution) && !commitShaFromExecution.startsWith("wip-stub");
 
   const userAgent = input.userAgent ?? "JYOrchestration/task-cursor-github-verify";
   const api = githubRestApiBase();
@@ -108,6 +105,16 @@ export async function verifyTaskCursorGithubResult(
       ok: false,
       reason: "github_verify_failed",
       message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+    };
+  }
+
+  const branchHeadSha = String(refRes.data?.object?.sha ?? "").trim();
+  const commitSha = hasStoredCommitSha ? commitShaFromExecution : branchHeadSha;
+  if (!commitSha) {
+    return {
+      ok: false,
+      reason: "commit_not_created",
+      message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
     };
   }
 
@@ -163,5 +170,39 @@ export async function verifyTaskCursorGithubResult(
     };
   }
 
-  return { ok: true, verifiedChangedFiles: changedFiles };
+  return { ok: true, verifiedChangedFiles: changedFiles, verifiedCommitSha: commitSha };
+}
+
+export function evaluateTaskCursorGithubVerifyReadiness(input: {
+  readonly setup?: import("@/lib/prototype/executionSetupSourceGeneration").ExecutionSetupSourceGenerationRow | null;
+}): Readonly<
+  | {
+      readonly ok: true;
+      readonly targetRepository: ProjectTargetRepository;
+      readonly allowedPathGlobs: readonly string[];
+    }
+  | { readonly ok: false; readonly message: string }
+> {
+  const setup = input.setup ?? null;
+  if (!setup) {
+    return { ok: false, message: "실행환경 설정이 없습니다. 환경설정에서 GitHub 저장소를 저장해 주세요." };
+  }
+  const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+    gitRepoUrl: setup.gitRepoUrl,
+    gitRepoName: setup.gitRepoName,
+    gitRepoProvider: setup.gitRepoProvider,
+    baseBranch: setup.baseBranch,
+  });
+  if (!targetRepository) {
+    return { ok: false, message: "Git 저장소 설정이 없습니다. 환경설정에서 GitHub 저장소를 저장해 주세요." };
+  }
+  const hasGithubToken =
+    setup.hasGithubAccessToken === true || Boolean(String(setup.githubAccessToken ?? "").trim());
+  if (!hasGithubToken) {
+    return { ok: false, message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed };
+  }
+  const allowedPathGlobs = Array.isArray(setup.allowedPathGlobs)
+    ? setup.allowedPathGlobs.map((g) => String(g).trim()).filter(Boolean)
+    : [];
+  return { ok: true, targetRepository, allowedPathGlobs };
 }

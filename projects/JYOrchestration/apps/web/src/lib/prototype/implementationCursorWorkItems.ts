@@ -77,10 +77,19 @@ export function buildCursorWorkItemsFromImplementationTaskPlan(
   return plan.items.map((item) => toCursorWorkItem(item));
 }
 
-function taskListPriorityToSortKey(p: ImplementationTaskV1["priority"]): number {
-  if (p === "high") return 0;
-  if (p === "medium") return 1;
-  return 2;
+function taskListPriorityToSortKey(p: ImplementationTaskV1["priority"] | string): number {
+  const raw = String(p ?? "").trim().toLowerCase();
+  if (raw === "high" || raw === "p1" || raw === "critical") return 0;
+  if (raw === "medium" || raw === "p2") return 1;
+  if (raw === "low" || raw === "p3") return 2;
+  return 3;
+}
+
+export function compareImplementationTaskListPriority(
+  a: ImplementationTaskV1["priority"] | string,
+  b: ImplementationTaskV1["priority"] | string,
+): number {
+  return taskListPriorityToSortKey(a) - taskListPriorityToSortKey(b);
 }
 
 function taskListTaskToArtifactTypes(task: ImplementationTaskV1): readonly string[] {
@@ -105,7 +114,7 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
   const tasks = (input.taskList.tasks ?? [])
     .filter((t) => t.ownerRole === "developer" && t.status === "ready")
     .slice()
-    .sort((a, b) => taskListPriorityToSortKey(a.priority) - taskListPriorityToSortKey(b.priority));
+    .sort((a, b) => compareImplementationTaskListPriority(a.priority, b.priority));
 
   const now = input.nowIso ?? new Date().toISOString();
 

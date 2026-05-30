@@ -36,6 +36,11 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import {
+  parseImplementationAutoQualityGateHistoryV1,
+  parseImplementationAutoQualityGateV1,
+} from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -599,6 +604,10 @@ export type RequirementsStateJson = {
   taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   /** Task Cursor 실행 이력(JSON) */
   taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+  /** Task Cursor GitHub 확인 후 자동 검수·보안 게이트 실행 상태 */
+  implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  /** 자동 품질 게이트 실행 이력 */
+  implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1051,6 +1060,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const taskCursorExecutionHistoryV1 = parseTaskCursorExecutionHistoryV1(
     "taskCursorExecutionHistoryV1" in o ? o.taskCursorExecutionHistoryV1 : undefined,
   );
+  const implementationAutoQualityGateV1 = parseImplementationAutoQualityGateV1(
+    "implementationAutoQualityGateV1" in o ? o.implementationAutoQualityGateV1 : undefined,
+  );
+  const implementationAutoQualityGateHistoryV1 = parseImplementationAutoQualityGateHistoryV1(
+    "implementationAutoQualityGateHistoryV1" in o ? o.implementationAutoQualityGateHistoryV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1213,6 +1228,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
     ...(taskCursorExecutionV1 !== undefined ? { taskCursorExecutionV1 } : {}),
     ...(taskCursorExecutionHistoryV1 !== undefined ? { taskCursorExecutionHistoryV1 } : {}),
+    ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
+    ...(implementationAutoQualityGateHistoryV1 !== undefined
+      ? { implementationAutoQualityGateHistoryV1 }
+      : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),

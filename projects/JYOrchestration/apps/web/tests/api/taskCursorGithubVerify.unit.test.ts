@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  evaluateTaskCursorGithubVerifyReadiness,
+  verifyTaskCursorGithubResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import { buildInitialTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 
@@ -55,6 +58,34 @@ describe("verifyTaskCursorGithubResult", () => {
     expect(result.verifiedChangedFiles).toContain("src/App.tsx");
   });
 
+  it("resolves commitSha from branch head when execution has no commitSha", async () => {
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: "https://github.com/owner/repo",
+      gitRepoName: "owner/repo",
+      baseBranch: "main",
+    })!;
+    const execution = {
+      ...buildInitialTaskCursorExecution({
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+      }),
+      status: "cursor_completed" as const,
+      workBranch: "wip/cursor/dev-mock-001",
+      pushed: undefined,
+    };
+    const result = await verifyTaskCursorGithubResult({
+      execution,
+      targetRepository,
+      githubToken: "gh-token",
+      allowedPathGlobs: ["src/**"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.verifiedCommitSha).toBe("abc123def4567890");
+  });
+
   it("fails without github token", async () => {
     const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
       gitRepoUrl: "https://github.com/owner/repo",
@@ -75,5 +106,35 @@ describe("verifyTaskCursorGithubResult", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("github_auth_failed");
+  });
+});
+
+describe("evaluateTaskCursorGithubVerifyReadiness", () => {
+  it("does not require Cursor API key when GitHub repo and token are configured", () => {
+    const readiness = evaluateTaskCursorGithubVerifyReadiness({
+      setup: {
+        gitRepoUrl: "https://github.com/owner/repo",
+        gitRepoName: "owner/repo",
+        baseBranch: "main",
+        githubAccessToken: "gh-token",
+        hasGithubAccessToken: true,
+        hasCursorToken: false,
+      },
+    });
+    expect(readiness.ok).toBe(true);
+    if (readiness.ok) {
+      expect(readiness.targetRepository.repoFullName).toBe("owner/repo");
+    }
+  });
+
+  it("fails when GitHub token is missing", () => {
+    const readiness = evaluateTaskCursorGithubVerifyReadiness({
+      setup: {
+        gitRepoUrl: "https://github.com/owner/repo",
+        gitRepoName: "owner/repo",
+        hasGithubAccessToken: false,
+      },
+    });
+    expect(readiness.ok).toBe(false);
   });
 });

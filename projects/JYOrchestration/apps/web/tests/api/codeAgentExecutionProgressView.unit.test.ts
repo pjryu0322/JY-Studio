@@ -6,6 +6,7 @@ import { ImplementationCodeAgentExecutionProgressCard } from "@/components/previ
 import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildCodeAgentExecutionProgressView,
+  buildTaskRowCursorProgressView,
   extractRecentCodeAgentTimelineEvents,
   formatTaskRowCodeAgentProgressLine,
   shouldHideBoardPrimaryCtaForProgress,
@@ -294,6 +295,20 @@ describe("codeAgentExecutionProgressView", () => {
     expect(events[0]?.label).toContain("REQUEST_CODE_AGENT_WIP");
   });
 
+  it("ignores null timeline entries when extracting recent events", () => {
+    const events = extractRecentCodeAgentTimelineEvents([
+      null as never,
+      {
+        stage: "implementation",
+        action: "task_cursor_api_started",
+        source: "platform",
+        createdAt: NOW,
+      },
+    ]);
+    expect(events.length).toBe(1);
+    expect(events[0]?.label).toContain("Cursor");
+  });
+
   it("renders progress card markup", () => {
     const html = renderToStaticMarkup(
       createElement(ImplementationCodeAgentExecutionProgressCard, {
@@ -355,6 +370,104 @@ describe("codeAgentExecutionProgressView", () => {
     expect(view.summaryLine).toBe("endpoint unsupported");
     expect(view.showGenerationClarification).toBe(false);
     expect(view.isStubResult).toBe(false);
+  });
+
+  it("shows polling progress on matching task row during cursor_running", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    const row = board.taskRows[0]!;
+    const execution = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: row.taskId,
+      workItemIds: ["wi-1"],
+      status: "cursor_running" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-001",
+      cursorRunId: "task-cursor-test-run",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const progress = buildTaskRowCursorProgressView({
+      row,
+      taskCursorExecutionV1: execution,
+    });
+    expect(progress?.isPolling).toBe(true);
+    expect(progress?.shortLabel).toBe("폴링 중");
+    expect(progress?.text).toContain("Cloud Agent 폴링 중");
+  });
+
+  it("resolves historical task cursor execution for completed rows", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    const row = board.taskRows[0]!;
+    const historyEntry = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: row.taskId,
+      workItemIds: ["wi-1"],
+      status: "github_verified" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-001",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const progress = buildTaskRowCursorProgressView({
+      row,
+      taskCursorExecutionHistoryV1: [historyEntry],
+    });
+    expect(progress?.tone).toBe("done");
+    expect(progress?.text).toContain("GitHub commit 확인됨");
+  });
+
+  it("uses compact main presentation after github verify with auto gate", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    const execution = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: "DEV-SCREEN-001",
+      workItemIds: ["wi-1"],
+      status: "review_pending" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-001",
+      commitSha: "eb3db901234567890abcdef1234567890abcdef",
+      changedFiles: ["src/a.ts"],
+      cursorRunId: "run-1",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const view = buildCodeAgentExecutionProgressView({
+      taskCursorExecutionV1: execution,
+      board,
+      implementationAutoQualityGateV1: {
+        version: "implementation_auto_quality_gate_v1",
+        projectId: "p1",
+        taskId: "DEV-SCREEN-001",
+        sourceCommitSha: "eb3db901234567890abcdef1234567890abcdef",
+        changedFiles: ["src/a.ts"],
+        status: "review_running",
+        startedAt: NOW,
+        updatedAt: NOW,
+      },
+    });
+    expect(view.compactMainPresentation).toBe(true);
+    expect(view.progressCardTitle).toBe("개발 결과 확인됨");
+    const html = renderToStaticMarkup(createElement(ImplementationCodeAgentExecutionProgressCard, { progress: view }));
+    expect(html).toContain("상세 보기");
+    expect(html).toContain("implementation-progress-details");
   });
 });
 

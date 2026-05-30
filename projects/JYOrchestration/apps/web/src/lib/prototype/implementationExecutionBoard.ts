@@ -10,6 +10,7 @@ import {
   type ImplementationIntegratedStepStatus,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import {
+  compareImplementationTaskListPriority,
   enrichCursorWorkItemsWithBoardReworkContext,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
@@ -224,11 +225,21 @@ export function countTaskListWipCandidateTasks(board: ImplementationExecutionBoa
   return board.taskRows.length;
 }
 
-/** First developer task for WIP: quality-failed → rework → next ready (dependencies met). */
+function sortDeveloperTaskRowsByPriority(
+  rows: readonly ImplementationExecutionBoardTaskRowV1[],
+): readonly ImplementationExecutionBoardTaskRowV1[] {
+  return [...rows].sort(
+    (a, b) =>
+      compareImplementationTaskListPriority(a.priority, b.priority) ||
+      a.taskId.localeCompare(b.taskId),
+  );
+}
+
+/** First developer task for WIP: quality-failed → rework → next ready (dependencies met, priority order). */
 export function pickFirstExecutableDeveloperTaskId(
   board: ImplementationExecutionBoardV1,
 ): string | null {
-  const executable = collectExecutableDeveloperRows(board);
+  const executable = sortDeveloperTaskRowsByPriority(collectExecutableDeveloperRows(board));
   if (!executable.length) return null;
 
   const qualityFailed = executable.filter(
@@ -320,6 +331,7 @@ export function boardShowsRequestTaskReworkChip(board: ImplementationExecutionBo
 export function pickQualityGateTargetTaskIds(input: {
   readonly role: "reviewer" | "security";
   readonly board: ImplementationExecutionBoardV1;
+  readonly taskCursorTaskId?: string | null;
 }): readonly string[] {
   const { role, board } = input;
   const resultStatusKey =
@@ -342,7 +354,14 @@ export function pickQualityGateTargetTaskIds(input: {
         row[roleStatusKey] !== "skipped",
     )
     .map((row) => row.taskId);
-  return fromPendingReview;
+  if (fromPendingReview.length) return fromPendingReview;
+
+  const taskCursorTaskId = String(input.taskCursorTaskId ?? "").trim();
+  if (taskCursorTaskId && board.taskRows.some((row) => row.taskId === taskCursorTaskId)) {
+    return [taskCursorTaskId];
+  }
+
+  return [];
 }
 
 export function filterCursorWorkItemsForExecutableTask(input: {
@@ -813,7 +832,10 @@ export function buildImplementationExecutionBoard(input: {
   const scmGlobal = aggregateRoleBoardStatus(input.executionState, "scm");
   const qualityGateFailedTaskIds = collectQualityGateFailedTaskIds(input.qualityGateResults);
 
-  const developerTasks = input.taskList.tasks.filter((task) => task.ownerRole === "developer");
+  const developerTasks = input.taskList.tasks
+    .filter((task) => task.ownerRole === "developer")
+    .slice()
+    .sort((a, b) => compareImplementationTaskListPriority(a.priority, b.priority) || a.taskId.localeCompare(b.taskId));
   const taskRows = developerTasks.map((task) =>
     buildTaskRow({
       task,

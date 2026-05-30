@@ -870,6 +870,22 @@ describe("implementationExecutionBoard", () => {
     expect(pickQualityGateTargetTaskIds({ role: "reviewer", board })).toEqual(["dev-2"]);
   });
 
+  it("pickQualityGateTargetTaskIds falls back to taskCursorTaskId when developer not marked done", () => {
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    expect(pickQualityGateTargetTaskIds({ role: "reviewer", board })).toEqual([]);
+    expect(
+      pickQualityGateTargetTaskIds({
+        role: "reviewer",
+        board,
+        taskCursorTaskId: "dev-1",
+      }),
+    ).toEqual(["dev-1"]);
+  });
+
   it("mapImplementationChipToAction maps 작업 재작업 요청 to REQUEST_TASK_REWORK", () => {
     expect(mapImplementationChipToAction(REQUEST_TASK_REWORK_CHIP)).toBe("REQUEST_TASK_REWORK");
   });

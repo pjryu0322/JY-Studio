@@ -1,10 +1,15 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   evaluateCursorExecutionAvailability,
-  formatCursorExecutionAvailabilityDiagnosticLines,
   type CursorExecutionAvailability,
   type CursorExecutionAvailabilityStatus,
 } from "@/lib/prototype/cursorExecutionAvailability";
+import {
+  buildImplementationBoardEnvDetailLines,
+  evaluateTaskCursorExecutionSetupReadiness,
+  formatTaskCursorSetupReadinessPillValue,
+  type TaskCursorSetupReadiness,
+} from "@/lib/prototype/implementationBoardEnvDetailView";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import {
   explainExecutableTaskSelection,
@@ -98,12 +103,14 @@ export function formatMobileCursorEnvPillValue(status: CursorExecutionAvailabili
 export function buildMobileBoardEnvPills(input: {
   readonly executionSetup?: ExecutionSetupSourceGenerationRow | null;
 }): readonly { readonly label: string; readonly value: string; readonly tone: "ok" | "warn" | "muted" }[] {
+  const readiness = evaluateTaskCursorExecutionSetupReadiness({ setup: input.executionSetup });
   const availability = evaluateCursorExecutionAvailability({ setup: input.executionSetup });
+  const setupStatus = input.executionSetup?.status;
   return [
     {
-      label: "Cursor",
-      value: formatMobileCursorEnvPillValue(availability.status),
-      tone: availability.ready ? "ok" : "warn",
+      label: "Task Cursor",
+      value: formatTaskCursorSetupReadinessPillValue(readiness),
+      tone: readiness.ready ? "ok" : "warn",
     },
     {
       label: "GitHub",
@@ -111,9 +118,9 @@ export function buildMobileBoardEnvPills(input: {
       tone: availability.hasGithubToken ? "ok" : "warn",
     },
     {
-      label: "Push",
-      value: input.executionSetup?.autoPush === true ? "on" : "off",
-      tone: input.executionSetup?.autoPush === true ? "ok" : "muted",
+      label: "검증",
+      value: setupStatus === "validated" ? "완료" : setupStatus === "invalid" ? "실패" : "필요",
+      tone: setupStatus === "validated" ? "ok" : setupStatus === "invalid" ? "warn" : "muted",
     },
   ];
 }
@@ -215,7 +222,7 @@ export function partitionMobileBoardActions(
   actions: readonly ImplementationStageNextAction[],
 ): MobileBoardActionPartition {
   const deduped = dedupeImplementationStageNextActions(actions);
-  const primary = deduped.find((action) => action.priority === "primary") ?? deduped[0] ?? null;
+  const primary = deduped.find((action) => action.priority === "primary") ?? null;
   const withoutPrimary = deduped.filter((action) => action !== primary);
   const secondary = withoutPrimary.filter((action) => action.priority === "secondary").slice(0, 2);
   const secondarySet = new Set(secondary);
@@ -349,6 +356,7 @@ export function buildImplementationExecutionBoardRowWipOverlay(input: {
 export type ImplementationExecutionBoardSummaryView = Readonly<{
   readonly cursorAvailability: CursorExecutionAvailability;
   readonly cursorAvailabilityLabel: string;
+  readonly taskCursorSetupReadiness: TaskCursorSetupReadiness;
   readonly envPills: readonly { readonly label: string; readonly value: string; readonly tone: "ok" | "warn" | "muted" }[];
   readonly envDiagnosticLines: readonly string[];
   readonly testReadiness: ImplementationUserTestReadiness;
@@ -363,6 +371,9 @@ export function buildImplementationExecutionBoardSummaryView(input: {
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
 }): ImplementationExecutionBoardSummaryView {
   const cursorAvailability = evaluateCursorExecutionAvailability({ setup: input.executionSetup });
+  const taskCursorSetupReadiness = evaluateTaskCursorExecutionSetupReadiness({
+    setup: input.executionSetup,
+  });
   const testReadiness = deriveImplementationUserTestReadiness({
     board: input.board,
     previewReady: input.previewReady === true,
@@ -371,11 +382,13 @@ export function buildImplementationExecutionBoardSummaryView(input: {
     boardState: input.boardState,
   });
 
+  const setupStatus = input.executionSetup?.status;
+
   const envPills = [
     {
-      label: "Cursor",
-      value: cursorAvailability.status,
-      tone: cursorAvailability.ready ? ("ok" as const) : ("warn" as const),
+      label: "Task Cursor",
+      value: formatTaskCursorSetupReadinessPillValue(taskCursorSetupReadiness),
+      tone: taskCursorSetupReadiness.ready ? ("ok" as const) : ("warn" as const),
     },
     {
       label: "GitHub",
@@ -383,22 +396,23 @@ export function buildImplementationExecutionBoardSummaryView(input: {
       tone: cursorAvailability.hasGithubToken ? ("ok" as const) : ("warn" as const),
     },
     {
-      label: "Workspace",
-      value: cursorAvailability.hasWorkspace ? "설정됨" : "미설정",
-      tone: cursorAvailability.hasWorkspace ? ("ok" as const) : ("warn" as const),
-    },
-    {
-      label: "Push",
-      value: input.executionSetup?.autoPush === true ? "on" : "off",
-      tone: input.executionSetup?.autoPush === true ? ("ok" as const) : ("muted" as const),
+      label: "검증",
+      value: setupStatus === "validated" ? "완료" : setupStatus === "invalid" ? "실패" : "필요",
+      tone:
+        setupStatus === "validated"
+          ? ("ok" as const)
+          : setupStatus === "invalid"
+            ? ("warn" as const)
+            : ("muted" as const),
     },
   ] as const;
 
   return {
     cursorAvailability,
     cursorAvailabilityLabel: cursorAvailability.status,
+    taskCursorSetupReadiness,
     envPills,
-    envDiagnosticLines: formatCursorExecutionAvailabilityDiagnosticLines({
+    envDiagnosticLines: buildImplementationBoardEnvDetailLines({
       setup: input.executionSetup,
     }),
     testReadiness,

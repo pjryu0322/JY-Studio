@@ -24,7 +24,8 @@ import {
   buildTaskCursorOrchestrationPatch,
   buildTaskCursorRequestedTimeline,
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
-import { buildTaskCursorAuthRef, executeTaskCursorApi } from "@/lib/prototype/taskCursorApiClient";
+import { buildTaskCursorAuthRef, executeTaskCursorApi, shouldUseTaskCursorCloudAgentApi } from "@/lib/prototype/taskCursorApiClient";
+import { launchTaskCursorCloudAgent } from "@/lib/prototype/taskCursorCloudAgentClient";
 import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
 import {
   buildTaskCursorTimelineEntry,
@@ -40,7 +41,10 @@ type Body = {
   readonly selectedWorkItemIds?: readonly string[];
   readonly workItems?: readonly CursorWorkItem[];
   readonly verifyGithub?: boolean;
+  readonly launchOnly?: boolean;
 };
+
+export const maxDuration = 120;
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -201,7 +205,7 @@ export async function POST(request: NextRequest) {
     execution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
 
     const commitMessage = buildProviderWipCommitMessage("cursor", `task ${taskId}`, false, taskId);
-    const apiResult = await executeTaskCursorApi({
+    const apiRequest = {
       projectId,
       taskId,
       workItemIds: scopedWorkItems.map((w) => w.id),
@@ -215,7 +219,45 @@ export async function POST(request: NextRequest) {
       commitMessage,
       prompt: execution.cursorPrompt ?? "",
       allowedPathGlobs: context.allowedPathGlobs,
-    });
+    };
+
+    const launchOnly = body.launchOnly !== false;
+    const useCloudAgentLaunch =
+      launchOnly && shouldUseTaskCursorCloudAgentApi(readiness.context.cursorApiUrl!);
+
+    if (useCloudAgentLaunch) {
+      const launch = await launchTaskCursorCloudAgent(apiRequest);
+      if (!launch.ok) {
+        execution = patchTaskCursorExecution(execution, {
+          status: "cursor_failed",
+          failureReason: launch.reason,
+          errorMessage: launch.message,
+          nowIso,
+        });
+        timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
+      } else {
+        execution = patchTaskCursorExecution(execution, {
+          status: "cursor_running",
+          cursorRunId: launch.agentId,
+          nowIso,
+        });
+      }
+      const patch = buildTaskCursorOrchestrationPatch({
+        execution,
+        timelineEntries: timeline,
+        cursorWorkItems: scopedWorkItems,
+      });
+      return NextResponse.json({
+        success: launch.ok,
+        status: execution.status,
+        execution: patch.taskCursorExecutionV1,
+        orchestrationPatch: patch,
+        executionMode: "task_cursor_launch",
+        pollRequired: launch.ok,
+      });
+    }
+
+    const apiResult = await executeTaskCursorApi(apiRequest);
 
     execution = applyTaskCursorApiResult({ execution, result: apiResult, nowIso });
     timeline.push(
@@ -252,6 +294,7 @@ export async function POST(request: NextRequest) {
         ok: verify.ok,
         message: verify.message,
         verifiedChangedFiles: verify.verifiedChangedFiles,
+        verifiedCommitSha: verify.verifiedCommitSha,
         nowIso,
       });
       if (execution.status === "github_verified") {

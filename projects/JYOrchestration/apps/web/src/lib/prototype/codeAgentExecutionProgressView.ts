@@ -16,6 +16,9 @@ import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
   TASK_CURSOR_FAILURE_MESSAGES,
 } from "@/lib/prototype/taskCursorExecution";
+import { formatTaskCursorElapsedMinutes } from "@/lib/prototype/taskCursorClientPollLoop";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import { summarizeImplementationAutoQualityGateForProgress } from "@/lib/prototype/implementationAutoQualityGate";
 
 export type CodeAgentExecutionProgressStatus =
   | "idle"
@@ -64,6 +67,9 @@ export type CodeAgentExecutionProgressView = Readonly<{
   readonly scmStatusLabel?: string;
   readonly steps: readonly CodeAgentExecutionProgressStep[];
   readonly recentEvents: readonly CodeAgentExecutionProgressEvent[];
+  /** 모바일 메인 화면 단순화 — 기술 상세는 상세 보기로 이동 */
+  readonly compactMainPresentation?: boolean;
+  readonly progressCardTitle?: string;
 }>;
 
 const RELEVANT_TIMELINE_ACTIONS = new Set([
@@ -198,6 +204,7 @@ export function extractRecentCodeAgentTimelineEvents(
 ): readonly CodeAgentExecutionProgressEvent[] {
   if (!timeline?.length) return [];
   return [...timeline]
+    .filter((entry): entry is RequirementsPromptTimelineEntry => Boolean(entry?.action))
     .filter((entry) => RELEVANT_TIMELINE_ACTIONS.has(entry.action))
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, limit)
@@ -526,7 +533,14 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
     return "Cursor 작업 완료. GitHub에서 commit/push 결과를 확인해 주세요.";
   }
   if (execution.status === "cursor_running" || execution.status === "github_verifying") {
-    return "Cursor API 실행 결과를 기다리는 중입니다.";
+    const elapsed = formatTaskCursorElapsedMinutes(execution.updatedAt ?? execution.createdAt);
+    const agentStatus = String(execution.cursorAgentStatus ?? "").trim();
+    const elapsedPart = elapsed != null && elapsed > 0 ? ` (${elapsed}분 경과)` : "";
+    const agentPart = agentStatus ? ` · Agent: ${agentStatus}` : "";
+    return `Cloud Agent API 폴링 중입니다${elapsedPart}${agentPart}. 완료까지 수 분 걸릴 수 있습니다.`;
+  }
+  if (execution.status === "cursor_requested") {
+    return "Cursor Cloud Agent 실행을 요청했습니다. 응답을 기다리는 중입니다.";
   }
   return "Task 단위 AI 개발자 Cursor 실행을 시작할 수 있습니다.";
 }
@@ -555,10 +569,67 @@ function buildTaskCursorProgressSteps(execution: TaskCursorExecutionV1): readonl
   ];
 }
 
+function inferInFlightTaskCursorExecutionFromTimeline(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+): TaskCursorExecutionV1 | null {
+  if (!timeline?.length) return null;
+  const terminalActions = new Set([
+    "task_cursor_api_completed",
+    "task_cursor_api_failed",
+    "task_cursor_github_verified",
+    "task_cursor_github_verify_failed",
+  ]);
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const entry = timeline[index];
+    if (!entry?.action) continue;
+    const action = String(entry.action).trim();
+    const meta = (entry.meta ?? {}) as Record<string, unknown>;
+    if (terminalActions.has(action)) return null;
+    if (action !== "task_cursor_api_started" && action !== "task_cursor_execution_requested") continue;
+    const taskId = String(meta.taskId ?? "").trim();
+    if (!taskId) continue;
+    const createdAt = String(entry.createdAt ?? new Date().toISOString());
+    return {
+      version: "task_cursor_execution_v1",
+      projectId: String(meta.projectId ?? ""),
+      taskId,
+      workItemIds: [],
+      status: "cursor_running",
+      cursorProvider: "cursor",
+      targetRepository: String(meta.targetRepository ?? ""),
+      baseBranch: String(meta.baseBranch ?? "main"),
+      workBranch: String(meta.workBranch ?? ""),
+      cursorRunId: String(meta.runId ?? ""),
+      createdAt,
+      updatedAt: createdAt,
+    };
+  }
+  return null;
+}
+
+function shouldUseCompactTaskCursorPresentation(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+}): boolean {
+  const postVerifyStatuses = new Set([
+    "github_verified",
+    "review_pending",
+    "security_pending",
+    "scm_pending",
+  ]);
+  if (!postVerifyStatuses.has(input.execution.status)) return false;
+  if (input.execution.status === "scm_pending") return true;
+  const gate = input.autoGate;
+  if (!gate || gate.taskId !== input.execution.taskId) return false;
+  const commitSha = String(input.execution.commitSha ?? "").trim();
+  return !commitSha || gate.sourceCommitSha === commitSha;
+}
+
 function buildTaskCursorExecutionProgressView(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly board?: ImplementationExecutionBoardV1 | null;
   readonly latestTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly autoGate?: ImplementationAutoQualityGateV1 | null;
 }): CodeAgentExecutionProgressView {
   const execution = input.execution;
   const status = mapTaskCursorToProgressStatus(execution);
@@ -566,10 +637,35 @@ function buildTaskCursorExecutionProgressView(input: {
   const isStubResult = Boolean(rawSha?.startsWith("wip-stub"));
   const recentEvents = extractRecentCodeAgentTimelineEvents(input.latestTimeline);
   const runId = execution.cursorRunId ?? recentEvents.find((event) => event.runId)?.runId;
+  const compactMainPresentation = shouldUseCompactTaskCursorPresentation({
+    execution,
+    autoGate: input.autoGate,
+  });
+  const autoGateSummary = summarizeImplementationAutoQualityGateForProgress(input.autoGate);
+  let statusLabel = taskCursorStatusLabel(execution);
+  let summaryLine = taskCursorSummaryLine(execution);
+  let progressCardTitle = "Code Agent 실행 진행";
+  if (compactMainPresentation) {
+    progressCardTitle = "개발 결과 확인됨";
+    if (autoGateSummary) {
+      statusLabel = autoGateSummary.statusLabel;
+      summaryLine = autoGateSummary.summaryLine;
+    } else if (
+      execution.status === "github_verified" ||
+      execution.status === "review_pending"
+    ) {
+      statusLabel = "개발 결과 확인됨";
+      summaryLine =
+        "Cursor 작업이 완료되었고 GitHub commit이 확인되었습니다. 검수자·보안관 점검을 자동으로 진행합니다.";
+    } else if (execution.status === "scm_pending") {
+      statusLabel = "품질 게이트 통과";
+      summaryLine = "검수자·보안관 점검이 완료되었습니다. 우선순위 기준 다음 작업을 자동으로 시작합니다.";
+    }
+  }
   return {
     status,
-    statusLabel: taskCursorStatusLabel(execution),
-    summaryLine: taskCursorSummaryLine(execution),
+    statusLabel,
+    summaryLine,
     selectedTaskId: execution.taskId,
     selectedTaskTitle: resolveSelectedTaskTitle(input.board ?? null, execution.taskId),
     cursorApiLabel:
@@ -593,7 +689,9 @@ function buildTaskCursorExecutionProgressView(input: {
           (execution.failureReason
             ? TASK_CURSOR_FAILURE_MESSAGES[execution.failureReason]
             : undefined)
-        : undefined,
+        : input.autoGate?.status === "failed"
+          ? input.autoGate.failureReason
+          : undefined,
     nextActionLabel:
       status === "cursor_failed"
         ? AI_DEVELOPER_EXECUTION_REQUEST_CHIP
@@ -606,6 +704,8 @@ function buildTaskCursorExecutionProgressView(input: {
     isStubResult,
     steps: buildTaskCursorProgressSteps(execution),
     recentEvents,
+    compactMainPresentation,
+    progressCardTitle,
   };
 }
 
@@ -614,12 +714,16 @@ export function buildCodeAgentExecutionProgressView(input: {
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly board?: ImplementationExecutionBoardV1 | null;
   readonly latestTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
 }): CodeAgentExecutionProgressView {
-  if (input.taskCursorExecutionV1) {
+  const inferredTaskCursor =
+    input.taskCursorExecutionV1 ?? inferInFlightTaskCursorExecutionFromTimeline(input.latestTimeline);
+  if (inferredTaskCursor) {
     return buildTaskCursorExecutionProgressView({
-      execution: input.taskCursorExecutionV1,
+      execution: inferredTaskCursor,
       board: input.board,
       latestTimeline: input.latestTimeline,
+      autoGate: input.implementationAutoQualityGateV1,
     });
   }
   const wip = input.codeAgentWipExecutionV1 ?? null;
@@ -674,33 +778,117 @@ export function buildCodeAgentExecutionProgressView(input: {
   };
 }
 
-export function formatTaskRowCodeAgentProgressLine(input: {
+export function resolveTaskCursorExecutionForRow(input: {
+  readonly taskId: string;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+}): TaskCursorExecutionV1 | null {
+  const active = input.taskCursorExecutionV1;
+  if (active?.taskId === input.taskId) return active;
+  const history = input.taskCursorExecutionHistoryV1;
+  if (!history?.length) return null;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (entry?.taskId === input.taskId) return entry;
+  }
+  return null;
+}
+
+export type TaskRowCursorProgressTone = "idle" | "polling" | "verifying" | "done" | "failed";
+
+export type TaskRowCursorProgressView = Readonly<{
+  readonly text: string;
+  readonly tone: TaskRowCursorProgressTone;
+  readonly isPolling: boolean;
+  readonly shortLabel: string;
+}>;
+
+function taskRowProgressFromTaskCursorExecution(
+  execution: TaskCursorExecutionV1,
+  row: ImplementationExecutionBoardTaskRowV1,
+): TaskRowCursorProgressView {
+  const devLabel = row.developerStatus === "in_progress" ? "개발 진행 중" : "개발 준비";
+  const runHint = execution.cursorRunId ? ` · ${execution.cursorRunId.slice(-12)}` : "";
+
+  switch (execution.status) {
+    case "pending":
+    case "prompt_ready":
+      return {
+        text: `${devLabel} · AI 개발자 실행 대기`,
+        tone: "idle",
+        isPolling: false,
+        shortLabel: "실행 대기",
+      };
+    case "cursor_requested":
+      return {
+        text: `${devLabel} · Cursor 실행 요청됨 · 응답 대기${runHint}`,
+        tone: "polling",
+        isPolling: true,
+        shortLabel: "요청됨",
+      };
+    case "cursor_running":
+      return {
+        text: `${devLabel} · Cloud Agent 폴링 중${runHint}`,
+        tone: "polling",
+        isPolling: true,
+        shortLabel: "폴링 중",
+      };
+    case "cursor_completed":
+      return {
+        text: `${devLabel} · Cursor 완료 · GitHub 확인 대기`,
+        tone: "verifying",
+        isPolling: true,
+        shortLabel: "GitHub 대기",
+      };
+    case "github_verifying":
+      return {
+        text: `${devLabel} · GitHub commit 확인 중${runHint}`,
+        tone: "verifying",
+        isPolling: true,
+        shortLabel: "GitHub 확인",
+      };
+    case "github_verified":
+    case "review_pending":
+    case "security_pending":
+    case "scm_pending":
+      return {
+        text: `${devLabel} · GitHub commit 확인됨 · 검수 대기`,
+        tone: "done",
+        isPolling: false,
+        shortLabel: "확인됨",
+      };
+    case "cursor_failed":
+    case "github_verify_failed":
+      return {
+        text: `${devLabel} · Cursor 실행 실패`,
+        tone: "failed",
+        isPolling: false,
+        shortLabel: "실패",
+      };
+    default:
+      return {
+        text: `${devLabel} · ${execution.status}`,
+        tone: "idle",
+        isPolling: false,
+        shortLabel: execution.status,
+      };
+  }
+}
+
+export function buildTaskRowCursorProgressView(input: {
   readonly row: ImplementationExecutionBoardTaskRowV1;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   readonly progressView?: CodeAgentExecutionProgressView | null;
-}): string | null {
-  const taskCursor = input.taskCursorExecutionV1;
-  if (taskCursor && taskCursor.taskId === input.row.taskId) {
-    const progress =
-      input.progressView ??
-      buildCodeAgentExecutionProgressView({ taskCursorExecutionV1: taskCursor });
-    const devLabel = input.row.developerStatus === "in_progress" ? "개발 진행 중" : "개발 준비";
-    if (progress.status === "cursor_running" || progress.status === "cursor_requested") {
-      return `${devLabel} · Cursor 작업 진행 중`;
-    }
-    if (progress.status === "cursor_completed" && !progress.isStubResult) {
-      return `${devLabel} · Cursor 완료 · GitHub 확인 대기`;
-    }
-    if (progress.status === "developer_reviewing") {
-      return `${devLabel} · GitHub commit 확인됨 · 검수 대기`;
-    }
-    if (progress.status === "cursor_failed") {
-      return `${devLabel} · Cursor 실행 실패`;
-    }
-    if (progress.status === "cursor_request_ready") {
-      return `${devLabel} · AI 개발자 실행 대기`;
-    }
+}): TaskRowCursorProgressView | null {
+  const taskCursor = resolveTaskCursorExecutionForRow({
+    taskId: input.row.taskId,
+    taskCursorExecutionV1: input.taskCursorExecutionV1,
+    taskCursorExecutionHistoryV1: input.taskCursorExecutionHistoryV1,
+  });
+  if (taskCursor) {
+    return taskRowProgressFromTaskCursorExecution(taskCursor, input.row);
   }
 
   const wip = input.codeAgentWipExecutionV1;
@@ -708,27 +896,70 @@ export function formatTaskRowCodeAgentProgressLine(input: {
   const selectedTaskId = wip.selectedTaskId?.trim();
   if (selectedTaskId && selectedTaskId !== input.row.taskId) return null;
 
-  const progress = input.progressView ?? buildCodeAgentExecutionProgressView({ codeAgentWipExecutionV1: wip });
+  const progress =
+    input.progressView ?? buildCodeAgentExecutionProgressView({ codeAgentWipExecutionV1: wip });
   const devLabel = input.row.developerStatus === "in_progress" ? "개발 진행 중" : "개발 준비";
 
   if (progress.status === "cursor_running" || progress.status === "cursor_requested") {
-    return `${devLabel} · Cursor 실행 중`;
+    return {
+      text: `${devLabel} · Cursor 실행 중`,
+      tone: "polling",
+      isPolling: true,
+      shortLabel: "실행 중",
+    };
   }
   if (progress.status === "cursor_completed" && !progress.isStubResult) {
-    return `개발 완료 · 변경 ${progress.changedFileCount}개 · 테스트 ${progress.testStatusLabel}`;
+    return {
+      text: `개발 완료 · 변경 ${progress.changedFileCount}개 · 테스트 ${progress.testStatusLabel}`,
+      tone: "done",
+      isPolling: false,
+      shortLabel: "완료",
+    };
   }
   if (progress.status === "draft_created" || progress.status === "cursor_request_ready" || progress.isStubResult) {
-    return `${devLabel} · WIP 초안 생성됨 · Cursor: 미실행`;
+    return {
+      text: `${devLabel} · WIP 초안 생성됨 · Cursor: 미실행`,
+      tone: "idle",
+      isPolling: false,
+      shortLabel: "WIP 초안",
+    };
   }
   if (progress.status === "cursor_failed") {
-    return `${devLabel} · Cursor 실행 실패`;
+    return {
+      text: `${devLabel} · Cursor 실행 실패`,
+      tone: "failed",
+      isPolling: false,
+      shortLabel: "실패",
+    };
   }
   if (progress.status === "developer_reviewing") {
-    return `${devLabel} · Cursor 결과 검토 중`;
+    return {
+      text: `${devLabel} · Cursor 결과 검토 중`,
+      tone: "done",
+      isPolling: false,
+      shortLabel: "검토 중",
+    };
   }
   return null;
 }
 
-export function shouldHideBoardPrimaryCtaForProgress(status: CodeAgentExecutionProgressStatus): boolean {
-  return status === "cursor_requested" || status === "cursor_running";
+export function formatTaskRowCodeAgentProgressLine(input: {
+  readonly row: ImplementationExecutionBoardTaskRowV1;
+  readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+  readonly progressView?: CodeAgentExecutionProgressView | null;
+}): string | null {
+  return buildTaskRowCursorProgressView(input)?.text ?? null;
+}
+
+export function shouldHideBoardPrimaryCtaForProgress(
+  status: CodeAgentExecutionProgressStatus,
+  autoGateInFlight?: boolean,
+): boolean {
+  return (
+    status === "cursor_requested" ||
+    status === "cursor_running" ||
+    autoGateInFlight === true
+  );
 }

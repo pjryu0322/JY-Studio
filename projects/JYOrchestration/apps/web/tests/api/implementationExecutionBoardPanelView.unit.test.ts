@@ -115,8 +115,8 @@ describe("implementationExecutionBoardPanelView", () => {
     });
     expect(summary.cursorAvailability.status).toBe("ready");
     expect(summary.cursorAvailability.workspaceAutoFromGit).toBe(true);
-    expect(summary.envPills.some((pill) => pill.label === "Cursor")).toBe(true);
-    expect(summary.envDiagnosticLines.length).toBeGreaterThan(0);
+    expect(summary.envPills.some((pill) => pill.label === "Task Cursor")).toBe(true);
+    expect(summary.taskCursorSetupReadiness.ready).toBe(false);
   });
 
   it("resolves selected task from wip execution when board has no current task", () => {
@@ -170,7 +170,7 @@ describe("implementationExecutionBoardPanelView", () => {
       ),
     );
     const partitioned = partitionMobileBoardActions(actions);
-    expect(partitioned.primary?.actionId).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(partitioned.primary?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
     expect(partitioned.secondary.length).toBeLessThanOrEqual(2);
   });
 
@@ -184,7 +184,8 @@ describe("implementationExecutionBoardPanelView", () => {
         hasCursorToken: true,
       },
     });
-    expect(pills.find((pill) => pill.label === "Cursor")?.value).toBe("준비됨");
+    expect(pills.find((pill) => pill.label === "Task Cursor")?.value).toBe("검증 필요");
+    expect(pills.find((pill) => pill.label === "검증")?.value).toBe("필요");
   });
 
   it("builds compact task row card view", () => {

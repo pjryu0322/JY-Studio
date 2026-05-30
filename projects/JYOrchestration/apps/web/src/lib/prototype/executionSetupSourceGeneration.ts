@@ -30,6 +30,12 @@ export type ExecutionSetupSourceGenerationRow = Readonly<{
   readonly hasCursorToken?: boolean | null;
   readonly githubAccessToken?: string | null;
   readonly hasGithubAccessToken?: boolean | null;
+  readonly status?: "draft" | "validated" | "invalid" | null;
+  readonly lastValidatedAt?: string | null;
+  readonly lastValidationError?: string | null;
+  readonly repoConnectionOk?: boolean | null;
+  readonly cursorApiConnectionOk?: boolean | null;
+  readonly executorConnectionOk?: boolean | null;
 }>;
 
 export function mapExecutionSetupDtoToSourceGenerationRow(
@@ -49,6 +55,12 @@ export function mapExecutionSetupDtoToSourceGenerationRow(
     cursorApiUrl: data.cursorApiUrl,
     hasCursorToken: data.hasCursorToken,
     hasGithubAccessToken: data.hasGithubAccessToken,
+    status: data.status,
+    lastValidatedAt: data.lastValidatedAt,
+    lastValidationError: data.lastValidationError,
+    repoConnectionOk: data.repoConnectionOk,
+    cursorApiConnectionOk: data.cursorApiConnectionOk,
+    executorConnectionOk: data.executorConnectionOk,
   };
 }
 

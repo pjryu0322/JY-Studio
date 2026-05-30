@@ -1,10 +1,15 @@
 import {
+  DEFAULT_CURSOR_API_BASE,
+  normalizeCursorApiBaseUrl,
+} from "@/lib/executionSetup/cursorApiValidation";
+import {
   executeCursorApiDirect,
   type CursorApiDirectExecuteRequest,
   type CursorApiDirectExecuteResult,
 } from "@/lib/prototype/cursorApiDirectClient";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import { executeTaskCursorViaCloudAgent } from "@/lib/prototype/taskCursorCloudAgentClient";
 import {
   mapTaskCursorApiFailureReason,
   TASK_CURSOR_FAILURE_MESSAGES,
@@ -28,6 +33,10 @@ export type TaskCursorApiExecuteRequest = Readonly<{
   readonly prompt: string;
   readonly allowedPathGlobs: readonly string[];
 }>;
+
+export function shouldUseTaskCursorCloudAgentApi(cursorApiUrl: string): boolean {
+  return normalizeCursorApiBaseUrl(cursorApiUrl) === DEFAULT_CURSOR_API_BASE;
+}
 
 function mapDirectResultToTaskResult(
   request: TaskCursorApiExecuteRequest,
@@ -83,6 +92,10 @@ function mapDirectResultToTaskResult(
 export async function executeTaskCursorApi(
   request: TaskCursorApiExecuteRequest,
 ): Promise<TaskCursorExecuteApiResult> {
+  if (shouldUseTaskCursorCloudAgentApi(request.cursorApiUrl)) {
+    return executeTaskCursorViaCloudAgent(request);
+  }
+
   const directRequest: CursorApiDirectExecuteRequest = {
     projectId: request.projectId,
     selectedTaskId: request.taskId,
@@ -104,7 +117,11 @@ export async function executeTaskCursorApi(
 
   try {
     const result = await executeCursorApiDirect(directRequest);
-    return mapDirectResultToTaskResult(request, result);
+    const mapped = mapDirectResultToTaskResult(request, result);
+    if (!mapped.ok && mapped.reason === "cursor_endpoint_unsupported") {
+      return executeTaskCursorViaCloudAgent(request);
+    }
+    return mapped;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const reason: TaskCursorFailureReason = mapTaskCursorApiFailureReason({ message });
