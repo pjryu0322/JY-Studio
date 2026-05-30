@@ -9,6 +9,7 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { mapExecutionSetupPrismaRowToSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 
 import { executePlatformScmMerge } from "@/lib/prototype/platformScmMergeExecutor";
+import { PLATFORM_SCM_MERGE_PERMISSION } from "@/lib/prototype/platformScmRouteAuth";
 
 import { parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 
@@ -78,7 +79,12 @@ export async function POST(request: NextRequest) {
 
     try {
 
-      await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/prototype/platform-scm/merge");
+      await requireProjectPermission(
+        projectId,
+        userId,
+        PLATFORM_SCM_MERGE_PERMISSION,
+        "POST /api/prototype/platform-scm/merge",
+      );
 
     } catch (error) {
 

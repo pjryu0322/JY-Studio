@@ -1,5 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  buildGithubAuthenticatedPushUrl,
+  sanitizeGitErrorMessage,
+} from "@/lib/prototype/platformScmGitSecurity";
 
 const execFileAsync = promisify(execFile);
 
@@ -40,18 +44,37 @@ export async function listWorktreeChangedFiles(workdir: string): Promise<readonl
 export async function pushWorktreeBranch(input: {
   readonly workdir: string;
   readonly branchName: string;
+  readonly targetRepository?: string;
+  readonly githubAccessToken?: string;
 }): Promise<Readonly<{ readonly pushed: boolean; readonly errorMessage?: string; readonly log: readonly string[] }>> {
   const log: string[] = [];
+  const token = String(input.githubAccessToken ?? "").trim();
+  const pushUrl =
+    input.targetRepository && token
+      ? buildGithubAuthenticatedPushUrl({
+          repoFullName: input.targetRepository,
+          githubAccessToken: token,
+        })
+      : null;
+
   try {
     await git(input.workdir, ["rev-parse", "--is-inside-work-tree"]);
     log.push("[GIT] worktree OK");
     await git(input.workdir, ["checkout", input.branchName]);
     log.push(`[GIT] checkout ${input.branchName}`);
-    await git(input.workdir, ["push", "-u", "origin", input.branchName]);
-    log.push("[GIT] push OK");
+
+    if (pushUrl) {
+      await git(input.workdir, ["push", pushUrl, `refs/heads/${input.branchName}:refs/heads/${input.branchName}`]);
+      log.push("[GIT] push OK (token auth URL)");
+    } else {
+      await git(input.workdir, ["push", "-u", "origin", input.branchName]);
+      log.push("[GIT] push OK (origin remote)");
+    }
+
     return { pushed: true, log };
   } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
+    const rawMessage = e instanceof Error ? e.message : String(e);
+    const errorMessage = sanitizeGitErrorMessage(rawMessage, token);
     log.push(`[GIT] push failed: ${errorMessage}`);
     return { pushed: false, errorMessage, log };
   }

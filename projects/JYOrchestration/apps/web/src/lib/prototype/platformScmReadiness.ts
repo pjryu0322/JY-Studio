@@ -3,6 +3,8 @@ import {
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import { validateScmPushBranchName } from "@/lib/prototype/platformScmGitSecurity";
+import { resolvePlatformScmWipContext } from "@/lib/prototype/platformScmWipContext";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 
 export type PlatformScmReadinessResult = Readonly<
@@ -51,6 +53,17 @@ export function validatePlatformScmPushReadiness(input: {
   });
   if (!targetRepository) {
     return { ok: false, message: "대상 Git 저장소가 설정되지 않았습니다." };
+  }
+  const ctx = resolvePlatformScmWipContext(input.wip);
+  const branchName = String(ctx.branchName ?? "").trim();
+  const commitSha = String(ctx.commitSha ?? "").trim();
+  const baseBranch = String(input.wip.baseBranch ?? input.setup?.baseBranch ?? targetRepository.defaultBranch ?? "main").trim();
+  const branchPolicy = validateScmPushBranchName({ branchName, baseBranch });
+  if (!branchPolicy.ok) {
+    return { ok: false, message: branchPolicy.message };
+  }
+  if (!commitSha || commitSha.startsWith("wip-stub")) {
+    return { ok: false, message: "SCM push 차단: wip-stub 또는 유효하지 않은 commit SHA입니다." };
   }
   return { ok: true };
 }

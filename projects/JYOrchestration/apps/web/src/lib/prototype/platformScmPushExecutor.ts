@@ -1,5 +1,6 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import { pushWorktreeBranch } from "@/lib/prototype/cursorBridgeGit";
+import { verifyWorktreeHeadForPlatformScm } from "@/lib/prototype/platformScmGitSecurity";
 import { ensureTargetRepositoryWorktree } from "@/lib/prototype/cursorBridgeTargetRepoGit";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { resolveDefaultGitWorkspaceCloneRoot } from "@/lib/prototype/gitRepoAutoWorkspace";
@@ -88,7 +89,31 @@ export async function executePlatformScmPushAndPr(input: {
     }
   }
 
-  const pushResult = await pushWorktreeBranch({ workdir: workdir!, branchName });
+  const verifyResult = await verifyWorktreeHeadForPlatformScm({
+    workdir: workdir!,
+    expectedBranchName: branchName,
+    expectedCommitSha: commitSha,
+    baseBranch,
+  });
+  log.push(...verifyResult.log);
+  if (!verifyResult.ok) {
+    scm = patchPlatformScmExecutionStatus(scm, "push_failed", { nowIso: now });
+    return {
+      ok: false,
+      status: "failed",
+      message: verifyResult.message ?? "SCM push 차단: worktree 검증에 실패했습니다.",
+      platformScmExecutionV1: scm,
+      log,
+    };
+  }
+
+  const githubAccessToken = String(input.setup?.githubAccessToken ?? "").trim();
+  const pushResult = await pushWorktreeBranch({
+    workdir: workdir!,
+    branchName,
+    targetRepository: targetRepository.repoFullName,
+    githubAccessToken,
+  });
   log.push(...pushResult.log);
   if (!pushResult.pushed) {
     scm = patchPlatformScmExecutionStatus(scm, "push_failed", { nowIso: now });

@@ -177,6 +177,8 @@ export function buildPlatformScmOrchestrationResult(input: {
           nowIso: now,
         })
       : input.wip;
+    const failureAction =
+      scm.pushStatus === "pr_failed" ? "platform_scm_pr_failed" : "platform_scm_push_failed";
     return buildPrototypeOrchestrationResult({
       kind: "failed",
       message: input.executorResult.message,
@@ -188,7 +190,7 @@ export function buildPlatformScmOrchestrationResult(input: {
           input.promptTimeline,
           buildScmTimelineEntry({
             ctx,
-            action: "platform_scm_push_failed",
+            action: failureAction,
             status: "failed",
             reason: input.executorResult.message,
             nowIso: now,

@@ -151,4 +151,62 @@ describe("platformScmPushPrMergeFlow", () => {
     expect(body).toContain("src/App.tsx");
     expect(body).toContain("vitest passed");
   });
+
+  /**
+   * Manual GitHub E2E checklist (operational verification):
+   * 1. Cursor 실행 완료 후 실제 commitSha 생성
+   * 2. 내부 worktree HEAD === commitSha
+   * 3. SCM 반영 요청 → POST /api/prototype/platform-scm/execute
+   * 4. GitHub 원격에 작업 branch 생성
+   * 5. PR 생성 및 head/base 정확성
+   * 6. 검수/보안 gate 미통과 시 merge 차단
+   * 7. token 원문이 log/DB/timeline에 남지 않음
+   */
+  describe("github e2e checklist (automated preconditions)", () => {
+    it("1-2: real commitSha and wip branch are present after cursor completion", () => {
+      const wip = buildPlatformScmWipFixture({ preset: "push_ready" });
+      expect(wip.commits[0]?.sha).toMatch(/^abc123/);
+      expect(wip.branchName).toMatch(/^wip\//);
+      expect(wip.platformScmExecutionV1?.sourceCommitSha).not.toMatch(/^wip-stub/);
+    });
+
+    it("3: SCM request routes to push_requested state", () => {
+      const wip = buildPlatformScmWipFixture({ preset: "developer_approved" });
+      const result = buildScmOfficialCommitRequestResult({
+        requirementsStateJson: {},
+        wip,
+        nowIso: "2026-05-30T00:00:00.000Z",
+      });
+      expect(result.kind).toBe("pending");
+    });
+
+    it("6-7: merge blocked before quality gate; PR body excludes raw tokens", () => {
+      const policy = evaluatePlatformScmQualityGateMergePolicy({
+        qualityGateResults: [
+          {
+            version: "implementation_quality_gate_result_v1",
+            role: "security",
+            status: "failed",
+            createdAt: "2026-05-30T00:00:00.000Z",
+            updatedAt: "2026-05-30T00:00:00.000Z",
+            source: "mock_local_gate",
+            summary: "failed",
+            checks: [],
+            failedTaskIds: [],
+          },
+        ],
+      });
+      expect(policy.ok).toBe(false);
+      const body = buildPlatformScmPullRequestBody({
+        projectId: "p1",
+        selectedTaskId: "DEV-1",
+        branchName: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890",
+        targetRepository: "owner/repo",
+        changedFiles: ["src/App.tsx"],
+      });
+      expect(body).not.toMatch(/gh[pousr]_/);
+      expect(body).not.toMatch(/github_pat_/);
+    });
+  });
 });

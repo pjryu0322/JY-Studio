@@ -80,6 +80,53 @@ describe("platformScmReadiness", () => {
     expect(isPlatformScmPushPrCompleted(wip)).toBe(true);
   });
 
+  it("validatePlatformScmPushReadiness blocks wip-stub commit sha", () => {
+    const base = buildPlatformScmWipFixture({ preset: "push_ready" });
+    const wip = buildPlatformScmWipFixture({
+      preset: "push_ready",
+      overrides: {
+        platformScmExecutionV1: {
+          ...base.platformScmExecutionV1!,
+          sourceCommitSha: "wip-stub-no-real-commit",
+        },
+      },
+    });
+    const result = validatePlatformScmPushReadiness({
+      wip,
+      setup: {
+        githubAccessToken: "token",
+        gitRepoName: "owner/repo",
+        baseBranch: "main",
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("wip-stub");
+  });
+
+  it("validatePlatformScmPushReadiness blocks main branch push", () => {
+    const wip = buildPlatformScmWipFixture({
+      preset: "push_ready",
+      overrides: {
+        platformScmExecutionV1: {
+          ...buildPlatformScmWipFixture({ preset: "push_ready" }).platformScmExecutionV1!,
+          sourceBranchName: "main",
+        },
+      },
+    });
+    const result = validatePlatformScmPushReadiness({
+      wip,
+      setup: {
+        githubAccessToken: "token",
+        gitRepoName: "owner/repo",
+        baseBranch: "main",
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("main/master");
+  });
+
   it("shouldAttemptAutoPlatformScmMerge is true when pr_completed and merge pending", () => {
     expect(shouldAttemptAutoPlatformScmMerge(buildPlatformScmWipFixture({ preset: "merge_ready" }))).toBe(true);
   });

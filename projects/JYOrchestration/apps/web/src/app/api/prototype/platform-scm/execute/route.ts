@@ -6,6 +6,7 @@ import {
   mapExecutionSetupPrismaRowToSourceGenerationRow,
 } from "@/lib/prototype/executionSetupSourceGeneration";
 import { executePlatformScmPushAndPr } from "@/lib/prototype/platformScmPushExecutor";
+import { PLATFORM_SCM_EXECUTE_PERMISSION } from "@/lib/prototype/platformScmRouteAuth";
 import { parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
 import { prisma } from "@/lib/prisma";
 
@@ -36,7 +37,12 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/prototype/platform-scm/execute");
+      await requireProjectPermission(
+        projectId,
+        userId,
+        PLATFORM_SCM_EXECUTE_PERMISSION,
+        "POST /api/prototype/platform-scm/execute",
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
