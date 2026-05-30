@@ -5,13 +5,14 @@ import {
   DB_INTEGRATION_REVIEW_CHIP,
   MOCK_IMPLEMENTATION_CHIP,
 } from "@/lib/prototype/implementationDbStrategy";
-import { CODE_AGENT_WIP_WORK_REQUEST_CHIP } from "@/lib/prototype/codeAgentWipExecution";
+import { CODE_AGENT_WIP_WORK_REQUEST_CHIP, REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP } from "@/lib/prototype/codeAgentWipExecution";
 import {
   FALLBACK_LEGACY_CHIP_LABELS,
   STAGE_ACTION_ONLY_CHIP_LABELS,
   tryHandlePrototypeExecutionChip,
 } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
+import { IMPLEMENTATION_GENERATION_REQUEST_CHIP } from "@/lib/requirements/implementationUxLabels";
 
 const baseHandlers = () => ({
   openEnvSettings: vi.fn(),
@@ -108,6 +109,14 @@ describe("stage action chip mapping", () => {
     expect(mapImplementationChipToAction(MOCK_IMPLEMENTATION_CHIP)).toBe("CONFIRM_MOCK_IMPLEMENTATION");
     expect(mapImplementationChipToAction(CODE_AGENT_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
     expect(mapImplementationChipToAction("구현 실행")).toBeNull();
+  });
+
+  it("regression: 생성요청 and Cursor 실행 요청 map to distinct actionIds", () => {
+    const generation = mapImplementationChipToAction(IMPLEMENTATION_GENERATION_REQUEST_CHIP);
+    const cursorExecution = mapImplementationChipToAction(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
+    expect(generation).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(cursorExecution).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
+    expect(generation).not.toBe(cursorExecution);
   });
 
   it("keeps stage-only labels out of fallback handler", () => {

@@ -115,8 +115,59 @@ describe("deriveImplementationStageNextActions", () => {
       }),
       codeAgentWipExecutionV1: wip,
     });
+    expect(actions[0]?.actionId).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
     expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
     expect(actions.some((a) => a.label === CODE_AGENT_WIP_DRAFT_APPROVE_CHIP)).toBe(true);
+  });
+
+  it("draft_approved wip -> primary action REQUEST_CURSOR_BRIDGE_EXECUTION", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["upload"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "stub",
+      bridgeExecutionStatus: "draft_approved",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(actions[0]?.actionId).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
+    expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
+  });
+
+  it("failed wip -> primary action REQUEST_CURSOR_BRIDGE_EXECUTION", () => {
+    const plan = buildImplementationTaskPlan({
+      projectId: "p1",
+      projectArtifacts: [],
+      featureDraftTitles: ["upload"],
+      envOk: true,
+      designOk: true,
+    });
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const wip = buildInitialCodeAgentWipExecution({
+      projectId: "p1",
+      plan,
+      workItems,
+      executionMode: "cursor_api",
+      bridgeExecutionStatus: "failed",
+      selectedTaskId: plan.items[0]?.id,
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      codeAgentWipExecutionV1: wip,
+    });
+    expect(actions[0]?.actionId).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
+    expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
   });
 
   it("cursor_api completed WIP -> 구현 결과 승인", () => {

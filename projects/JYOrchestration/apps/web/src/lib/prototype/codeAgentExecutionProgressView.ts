@@ -63,6 +63,7 @@ export type CodeAgentExecutionProgressView = Readonly<{
 
 const RELEVANT_TIMELINE_ACTIONS = new Set([
   "implementation_stage_action_routed",
+  "implementation_stage_action_clicked",
   "implementation_stage_action_executed",
   "implementation_stage_action_blocked",
   "code_agent_wip_requested",
@@ -90,6 +91,7 @@ const RELEVANT_TIMELINE_ACTIONS = new Set([
 
 const TIMELINE_ACTION_LABELS: Record<string, string> = {
   implementation_stage_action_routed: "구현 액션 라우팅",
+  implementation_stage_action_clicked: "구현 액션 클릭",
   implementation_stage_action_executed: "구현 액션 실행",
   implementation_stage_action_blocked: "구현 액션 차단",
   code_agent_wip_requested: "Code Agent WIP 요청",

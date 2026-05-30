@@ -142,6 +142,12 @@ import {
 } from "@/lib/prototype/implementationStageActionPipeline";
 import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
 import {
+  buildImplementationStageActionClickedTimelineEntry,
+  resolveImplementationStageActionClick,
+  type ImplementationStageActionClickInput,
+  type ImplementationStageActionClickSource,
+} from "@/lib/prototype/implementationStageActionBinding";
+import {
   buildImplementationStageActionRunLogPatch,
   type ImplementationStageActionRun,
 } from "@/lib/prototype/implementationStageActionRun";
@@ -3775,6 +3781,26 @@ export function PrototypePreviewPanel({
             });
 
             try {
+              const routeCallingTimeline = buildCursorApiDirectTimelineEntry({
+                action: "cursor_bridge_execute_route_calling",
+                projectId: pid,
+                selectedTaskId,
+                repoFullName: targetRepository.repoFullName,
+                workspacePath: readiness.context.workspaceRoot,
+                branchName: wip.branchName,
+                status: "calling",
+                runId: bridgeRunId,
+                changedFilesCount: workItems.length,
+                nowIso: new Date().toISOString(),
+              });
+              applyImplementationOrchestrationResult({
+                messages: executionSingleChat.chatMessages,
+                orchestrationPatch: {
+                  codeAgentWipExecutionV1: runningWip,
+                  promptTimeline: [...refTimeline(), routeCallingTimeline],
+                },
+              });
+
               const res = await fetch("/api/prototype/cursor-bridge/execute", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -3911,6 +3937,25 @@ export function PrototypePreviewPanel({
               }
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
+              const routeFailedTimeline = buildCursorApiDirectTimelineEntry({
+                action: "cursor_bridge_execute_route_failed",
+                projectId: pid,
+                selectedTaskId,
+                repoFullName: targetRepository.repoFullName,
+                workspacePath: readiness.context.workspaceRoot,
+                branchName: wip.branchName,
+                status: "failed",
+                runId: bridgeRunId,
+                reason: message,
+                nowIso: new Date().toISOString(),
+              });
+              applyImplementationOrchestrationResult({
+                messages: executionSingleChat.chatMessages,
+                orchestrationPatch: {
+                  codeAgentWipExecutionV1: runningWip,
+                  promptTimeline: [...refTimeline(), routeFailedTimeline],
+                },
+              });
               applyBridgeFailure(`Cursor API 실행 오류: ${message}`);
             }
           })();
@@ -4253,20 +4298,50 @@ export function PrototypePreviewPanel({
   );
 
   const executeImplementationStageAction = useCallback(
-    (actionId: ImplementationStageActionId): boolean => {
+    (
+      actionId: ImplementationStageActionId,
+      clickContext?: {
+        readonly label: string;
+        readonly source: ImplementationStageActionClickSource;
+        readonly buttonIndex?: number;
+      },
+    ): boolean => {
       const pid = projectId.trim();
       if (!pid) {
         showToast("프로젝트를 선택해 주세요.");
         return true;
       }
 
+      const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
+      const resolvedActionId = clickContext
+        ? resolveImplementationStageActionClick({
+            actionId,
+            label: clickContext.label,
+            wip,
+          })
+        : actionId;
+
+      if (clickContext) {
+        persistStageActionTimelineEntries([
+          buildImplementationStageActionClickedTimelineEntry({
+            actionId: resolvedActionId,
+            label: clickContext.label,
+            source: clickContext.source,
+            buttonIndex: clickContext.buttonIndex,
+            selectedTaskId: wip?.selectedTaskId,
+            currentBridgeExecutionStatus: wip?.bridgeExecutionStatus,
+            currentExecutionMode: wip?.executionMode,
+          }),
+        ]);
+      }
+
       void orchestrateImplementationStageAction({
         projectId: pid,
-        actionId,
+        actionId: resolvedActionId,
         source: "cta",
         effectiveState: effectiveImplementationState,
         boardGateContext: implementationStageBoardGateContext,
-        execute: () => runImplementationStageAction(actionId),
+        execute: () => runImplementationStageAction(resolvedActionId),
       }).then((run) => {
         persistImplementationStageActionRun(run);
         const gateBlocked = run.gateResult != null && !run.gateResult.ok;
@@ -4283,10 +4358,23 @@ export function PrototypePreviewPanel({
       projectId,
       effectiveImplementationState,
       implementationStageBoardGateContext,
+      orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       runImplementationStageAction,
       persistImplementationStageActionRun,
+      persistStageActionTimelineEntries,
       showToast,
     ],
+  );
+
+  const handleImplementationBoardAction = useCallback(
+    (input: ImplementationStageActionClickInput) => {
+      executeImplementationStageAction(input.actionId, {
+        label: input.label,
+        source: input.source,
+        buttonIndex: input.buttonIndex,
+      });
+    },
+    [executeImplementationStageAction],
   );
 
   useEffect(() => {
@@ -4362,7 +4450,7 @@ export function PrototypePreviewPanel({
       }
 
       const actionId = mapImplementationChipToAction(label);
-      if (actionId && executeImplementationStageAction(actionId)) return true;
+      if (actionId && executeImplementationStageAction(actionId, { label, source: "chat_chip" })) return true;
 
       return tryHandlePrototypeExecutionChip(label, {
         openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
@@ -5261,7 +5349,7 @@ export function PrototypePreviewPanel({
             effectiveImplementationState={effectiveImplementationState}
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
-            onAction={handleImplementationChip}
+            onAction={handleImplementationBoardAction}
           />
         ) : null}
         <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>

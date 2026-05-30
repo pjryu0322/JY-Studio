@@ -17,8 +17,8 @@ import {
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import {
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
-  LEGACY_CURSOR_EXECUTION_REQUEST_CHIP,
   LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP,
+  REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -362,8 +362,8 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "SHOW_ENV_CHECK";
     case CODE_AGENT_WIP_WORK_REQUEST_CHIP:
     case LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP:
-    case LEGACY_CURSOR_EXECUTION_REQUEST_CHIP:
       return "REQUEST_CODE_AGENT_WIP";
+    case REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP:
     case "Cursor 실행 요청":
       return "REQUEST_CURSOR_BRIDGE_EXECUTION";
     case RUN_REFACTOR_COMMON_CHIP:

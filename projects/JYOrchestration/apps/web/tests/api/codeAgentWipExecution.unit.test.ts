@@ -275,6 +275,16 @@ describe("codeAgentWipExecution", () => {
     expect(mapImplementationChipToAction(LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
   });
 
+  it("maps Cursor 실행 요청 chip to REQUEST_CURSOR_BRIDGE_EXECUTION", () => {
+    expect(mapImplementationChipToAction(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP)).toBe(
+      "REQUEST_CURSOR_BRIDGE_EXECUTION",
+    );
+    expect(mapImplementationChipToAction("Cursor 실행 요청")).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
+    expect(mapImplementationChipToAction(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP)).not.toBe(
+      "REQUEST_CODE_AGENT_WIP",
+    );
+  });
+
   it("approves developer result and requests SCM official commit", () => {
     const taskId = plan.items[0]?.id ?? "";
     const scopedWorkItems = workItems.filter((w) => w.taskId === taskId);

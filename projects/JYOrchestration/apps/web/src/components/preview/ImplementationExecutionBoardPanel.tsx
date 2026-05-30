@@ -26,6 +26,7 @@ import {
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
+import type { ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 import {
   ImplementationExecutionBoardCardList,
   ImplementationExecutionBoardIntegratedTable,
@@ -68,7 +69,7 @@ export function ImplementationExecutionBoardPanel({
   readonly effectiveImplementationState: EffectiveImplementationState;
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
-  readonly onAction: (label: string) => void;
+  readonly onAction: (input: ImplementationStageActionClickInput) => void;
 }) {
   const summaryView = useMemo(
     () =>
@@ -214,17 +215,35 @@ export function ImplementationExecutionBoardPanel({
             type="button"
             className={styles.ctaPrimary}
             data-testid="implementation-board-primary-cta"
-            onClick={() => onAction(actionPartition.primary!.label)}
+            data-action-id={actionPartition.primary.actionId}
+            data-action-label={actionPartition.primary.label}
+            onClick={() =>
+              onAction({
+                actionId: actionPartition.primary!.actionId,
+                label: actionPartition.primary!.label,
+                source: "execution_board",
+                buttonIndex: 0,
+              })
+            }
           >
             {actionPartition.primary.label}
           </button>
         ) : null}
-        {actionPartition.secondary.map((action) => (
+        {actionPartition.secondary.map((action, index) => (
           <button
             key={`${action.actionId}-${action.label}`}
             type="button"
             className={styles.ctaSecondary}
-            onClick={() => onAction(action.label)}
+            data-action-id={action.actionId}
+            data-action-label={action.label}
+            onClick={() =>
+              onAction({
+                actionId: action.actionId,
+                label: action.label,
+                source: "execution_board",
+                buttonIndex: index + 1,
+              })
+            }
           >
             {action.label}
           </button>
@@ -241,15 +260,22 @@ export function ImplementationExecutionBoardPanel({
             </button>
             {moreOpen ? (
               <div className={styles.moreMenu} role="menu">
-                {actionPartition.more.map((action) => (
+                {actionPartition.more.map((action, index) => (
                   <button
                     key={`${action.actionId}-${action.label}`}
                     type="button"
                     className={styles.moreItem}
                     role="menuitem"
+                    data-action-id={action.actionId}
+                    data-action-label={action.label}
                     onClick={() => {
                       setMoreOpen(false);
-                      onAction(action.label);
+                      onAction({
+                        actionId: action.actionId,
+                        label: action.label,
+                        source: "more_menu",
+                        buttonIndex: index,
+                      });
                     }}
                   >
                     {action.label}

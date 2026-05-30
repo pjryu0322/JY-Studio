@@ -50,6 +50,8 @@ export type PlatformScmTimelineAction =
 
 export type CursorApiDirectTimelineAction =
   | "cursor_api_availability_checked"
+  | "cursor_bridge_execute_route_calling"
+  | "cursor_bridge_execute_route_failed"
   | "cursor_api_direct_execution_requested"
   | "cursor_api_direct_execution_started"
   | "cursor_api_direct_execution_completed"

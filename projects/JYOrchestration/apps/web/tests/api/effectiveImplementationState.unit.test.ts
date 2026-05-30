@@ -15,6 +15,10 @@ import {
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { WORK_PLAN_DRAFT_GENERATE_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 import { IMPLEMENTATION_GENERATION_REQUEST_CHIP } from "@/lib/requirements/implementationUxLabels";
+import {
+  CODE_AGENT_WIP_WORK_REQUEST_CHIP,
+  REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
+} from "@/lib/prototype/codeAgentWipExecution";
 
 function makeDraft(id: string): ImplementationWorkPlanDraftV1 {
   return {
@@ -182,6 +186,18 @@ describe("mapImplementationChipToAction", () => {
       "REQUEST_CODE_AGENT_WIP",
     );
     expect(mapImplementationChipToAction("unknown")).toBeNull();
+  });
+
+  it("maps Cursor 실행 요청 to REQUEST_CURSOR_BRIDGE_EXECUTION not REQUEST_CODE_AGENT_WIP", () => {
+    expect(mapImplementationChipToAction(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP)).toBe(
+      "REQUEST_CURSOR_BRIDGE_EXECUTION",
+    );
+    expect(mapImplementationChipToAction("Cursor 실행 요청")).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
+    expect(mapImplementationChipToAction(CODE_AGENT_WIP_WORK_REQUEST_CHIP)).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(mapImplementationChipToAction(IMPLEMENTATION_GENERATION_REQUEST_CHIP)).toBe(
+      "REQUEST_CODE_AGENT_WIP",
+    );
+    expect(mapImplementationChipToAction("Cursor 실행 요청")).not.toBe("REQUEST_CODE_AGENT_WIP");
   });
 });
 

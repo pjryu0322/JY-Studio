@@ -10,6 +10,7 @@ import {
 import type { ImplementationExecutionBoardTaskRowV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ImplementationStageNextAction } from "@/lib/prototype/implementationStageNextActions";
+import type { ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 
 const cardStyle: CSSProperties = {
   border: "1px solid #e2e8f0",
@@ -58,7 +59,7 @@ export function ImplementationExecutionBoardDetail({
   readonly row: ImplementationExecutionBoardTaskRowV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly nextActions: readonly ImplementationStageNextAction[];
-  readonly onAction: (label: string) => void;
+  readonly onAction: (input: ImplementationStageActionClickInput) => void;
   readonly onClose?: () => void;
 }) {
   if (!row) return null;
@@ -145,12 +146,21 @@ export function ImplementationExecutionBoardDetail({
 
       {rowActions.length ? (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {rowActions.map((action) => (
+          {rowActions.map((action, index) => (
             <button
               key={`${action.actionId}-${action.label}`}
               type="button"
               style={action.priority === "primary" ? btnPrimary : btnSecondary}
-              onClick={() => onAction(action.label)}
+              data-action-id={action.actionId}
+              data-action-label={action.label}
+              onClick={() =>
+                onAction({
+                  actionId: action.actionId,
+                  label: action.label,
+                  source: "execution_board",
+                  buttonIndex: index,
+                })
+              }
             >
               {action.label}
             </button>
