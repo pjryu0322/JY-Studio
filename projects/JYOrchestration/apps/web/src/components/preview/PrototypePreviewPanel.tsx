@@ -60,7 +60,11 @@ import {
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
   mapBlockedMessageToWipDraftFailureReason,
 } from "@/lib/prototype/codeAgentWipExecution";
-import { buildCursorBridgeOrchestrationResult } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
+import {
+  buildCursorBridgeApiBlockedResult,
+  buildCursorBridgeOrchestrationResult,
+  patchWipForCursorBridgePhase,
+} from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import {
   evaluateExecutionSetupSourceGenerationReadiness,
@@ -3224,8 +3228,37 @@ export function PrototypePreviewPanel({
           }
           const stubCommit = wip.commits.find((c) => c.sha?.startsWith("wip-stub"));
           const commitMessage = stubCommit?.commitMessage ?? `wip(cursor): [${selectedTaskId}]`;
+          const bridgeRunId = `cursor-bridge-${new Date().toISOString().replace(/[:.]/g, "")}`;
 
           void (async () => {
+            const refTimeline = () =>
+              parseRequirementsStateJson(requirementsStateJsonRef.current).promptTimeline ?? [];
+
+            const applyBridgeFailure = (message: string, openEnv = false) => {
+              const blocked = buildCursorBridgeApiBlockedResult({ selectedTaskId, message });
+              const orchestration = buildCursorBridgeOrchestrationResult({
+                requirementsStateJson: requirementsStateJsonRef.current,
+                wip: patchWipForCursorBridgePhase({
+                  wip,
+                  phase: "running",
+                  targetRepository: wip.targetRepoFullName ?? wip.targetRepository,
+                }),
+                bridgeResult: blocked,
+                promptTimeline: refTimeline(),
+                runId: bridgeRunId,
+              });
+              if (orchestration.orchestrationPatch) {
+                applyImplementationOrchestrationResult({
+                  messages: orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+                  orchestrationPatch: orchestration.orchestrationPatch,
+                });
+              } else {
+                executionSingleChat.appendAiNotice(message);
+              }
+              showToast(message);
+              if (openEnv) setExecutionEnvironmentModalOpen(true);
+            };
+
             const setupRes = await fetchExecutionSetup(pid);
             const executionSetup =
               setupRes.res.ok && setupRes.json.success ? (setupRes.json.data ?? null) : null;
@@ -3266,10 +3299,7 @@ export function PrototypePreviewPanel({
 
             if (!isCursorBridgeConfiguredForSourceGeneration({ setup: setupRow })) {
               const diagnostic = formatTargetRepoE2eDiagnosticLines({ setup: setupRow, wip }).join("\n");
-              const blockedMessage = CURSOR_API_NOT_CONFIGURED_MESSAGE;
-              executionSingleChat.appendAiNotice(`${blockedMessage}\n\n${diagnostic}`);
-              showToast("Cursor 실행 설정이 준비되지 않았습니다.");
-              setExecutionEnvironmentModalOpen(true);
+              applyBridgeFailure(`${CURSOR_API_NOT_CONFIGURED_MESSAGE}\n\n${diagnostic}`, true);
               return;
             }
 
@@ -3282,14 +3312,14 @@ export function PrototypePreviewPanel({
               workspacePath: setupRow?.workspacePath ?? undefined,
               branchName: wip.branchName,
               status: cursorAvailability.status,
+              runId: bridgeRunId,
               nowIso: new Date().toISOString(),
             });
-            void persistChatToDb(undefined, {
-              promptTimeline: [
-                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
-                availabilityTimeline,
-              ],
-            });
+
+            if (!cursorAvailability.ready) {
+              applyBridgeFailure(cursorAvailability.reason, true);
+              return;
+            }
 
             if (!readiness.ok) {
               const diagnostic = formatTargetRepoE2eDiagnosticLines({
@@ -3297,11 +3327,9 @@ export function PrototypePreviewPanel({
                 workspaceOriginStatus: "unchecked",
                 wip,
               }).join("\n");
-              executionSingleChat.appendAiNotice(`${readiness.message}\n\n${diagnostic}`);
-              showToast("Cursor 실행 요청이 차단되었습니다.");
-              if (readiness.missing.some((m) => m.includes("Git") || m.includes("실행환경"))) {
-                setExecutionEnvironmentModalOpen(true);
-              }
+              applyBridgeFailure(`${readiness.message}\n\n${diagnostic}`, readiness.missing.some(
+                (m) => m.includes("Git") || m.includes("실행환경") || m.includes("Workspace"),
+              ));
               return;
             }
 
@@ -3327,12 +3355,6 @@ export function PrototypePreviewPanel({
               status: "ready",
               nowIso: new Date().toISOString(),
             });
-            void persistChatToDb(undefined, {
-              promptTimeline: [
-                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
-                readinessTimeline,
-              ],
-            });
 
             showToast("Cursor API 직접 실행을 시작합니다...");
             const requestedTimeline = buildCursorApiDirectTimelineEntry({
@@ -3343,28 +3365,50 @@ export function PrototypePreviewPanel({
               workspacePath: readiness.context.workspaceRoot,
               branchName: wip.branchName,
               status: cursorAvailability.mode,
+              runId: bridgeRunId,
               nowIso: new Date().toISOString(),
             });
-            void persistChatToDb(undefined, {
-              promptTimeline: [
-                ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
-                availabilityTimeline,
-                requestedTimeline,
-              ],
-            });
-            const requestedWip: typeof wip = {
-              ...wip,
-              bridgeExecutionStatus: "bridge_requested",
+            const requestedWip = patchWipForCursorBridgePhase({
+              wip,
+              phase: "requested",
               targetRepository: targetRepository.repoFullName,
-              targetRepoFullName: targetRepository.repoFullName,
               targetRepositorySnapshot: targetSnapshot,
               workspacePath: readiness.context.workspaceRoot,
               baseBranch: readiness.context.baseBranch,
-              bridgeAllowedPathGlobs: readiness.context.allowedPathGlobs,
-              bridgeAutoPush: readiness.context.autoPush,
-              bridgeAutoPr: readiness.context.autoPr,
-            };
-            void persistChatToDb(undefined, { codeAgentWipExecutionV1: requestedWip });
+              allowedPathGlobs: readiness.context.allowedPathGlobs,
+              autoPush: readiness.context.autoPush,
+              autoPr: readiness.context.autoPr,
+            });
+            applyImplementationOrchestrationResult({
+              messages: executionSingleChat.chatMessages,
+              orchestrationPatch: {
+                codeAgentWipExecutionV1: requestedWip,
+                promptTimeline: [...refTimeline(), availabilityTimeline, readinessTimeline, requestedTimeline],
+              },
+            });
+
+            const runningWip = patchWipForCursorBridgePhase({
+              wip: requestedWip,
+              phase: "running",
+            });
+            const startedTimeline = buildCursorApiDirectTimelineEntry({
+              action: "cursor_api_direct_execution_started",
+              projectId: pid,
+              selectedTaskId,
+              repoFullName: targetRepository.repoFullName,
+              workspacePath: readiness.context.workspaceRoot,
+              branchName: wip.branchName,
+              status: "running",
+              runId: bridgeRunId,
+              nowIso: new Date().toISOString(),
+            });
+            applyImplementationOrchestrationResult({
+              messages: executionSingleChat.chatMessages,
+              orchestrationPatch: {
+                codeAgentWipExecutionV1: runningWip,
+                promptTimeline: [...refTimeline(), startedTimeline],
+              },
+            });
 
             try {
               const res = await fetch("/api/prototype/cursor-bridge/execute", {
@@ -3384,33 +3428,39 @@ export function PrototypePreviewPanel({
                 message?: string;
                 result?: import("@/lib/prototype/cursorBridgeExecution").CursorBridgeExecuteResult;
               };
+              const bridgeResult =
+                json.result ??
+                buildCursorBridgeApiBlockedResult({
+                  selectedTaskId,
+                  message: json.message ?? "Cursor API 응답이 올바르지 않습니다.",
+                });
               if (!json.result) {
-                const message = json.message ?? "Cursor API 응답이 올바르지 않습니다.";
-                if (String(message).includes("일치하지 않습니다")) {
-                  void persistChatToDb(undefined, {
-                    promptTimeline: [
-                      ...(orchestrationAwareRequirementsState.promptTimeline ?? []),
-                      buildTargetRepoE2eTimelineEntry({
-                        action: "target_repo_workspace_origin_mismatch",
-                        projectId: pid,
-                        selectedTaskId,
-                        repoFullName: targetRepository.repoFullName,
-                        workspacePath: readiness.context.workspaceRoot,
-                        status: "blocked",
-                        reason: message,
-                      }),
-                    ],
+                if (String(json.message ?? "").includes("일치하지 않습니다")) {
+                  applyImplementationOrchestrationResult({
+                    messages: executionSingleChat.chatMessages,
+                    orchestrationPatch: {
+                      promptTimeline: [
+                        ...refTimeline(),
+                        buildTargetRepoE2eTimelineEntry({
+                          action: "target_repo_workspace_origin_mismatch",
+                          projectId: pid,
+                          selectedTaskId,
+                          repoFullName: targetRepository.repoFullName,
+                          workspacePath: readiness.context.workspaceRoot,
+                          status: "blocked",
+                          reason: json.message,
+                        }),
+                      ],
+                    },
                   });
                 }
-                executionSingleChat.appendAiNotice(message);
-                showToast(message);
-                return;
               }
               const orchestration = buildCursorBridgeOrchestrationResult({
-                requirementsStateJson,
-                wip: requestedWip,
-                bridgeResult: json.result,
-                promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
+                requirementsStateJson: requirementsStateJsonRef.current,
+                wip: runningWip,
+                bridgeResult,
+                promptTimeline: refTimeline(),
+                runId: bridgeRunId,
               });
               if (orchestration.kind === "blocked" || orchestration.kind === "failed") {
                 const mismatchTimeline = String(json.message ?? orchestration.message ?? "").includes(
@@ -3449,8 +3499,9 @@ export function PrototypePreviewPanel({
               }
               if (orchestration.chatPatch && orchestration.orchestrationPatch) {
                 const approvedWip = orchestration.orchestrationPatch.codeAgentWipExecutionV1;
+                const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
                 const executionState = syncDeveloperTaskExecutionFromCodeAgentWip({
-                  state: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
+                  state: refState.implementationTaskExecutionStateV1,
                   taskList: bridgeTaskList ?? undefined,
                   cursorWorkItems: bridgeWorkItems,
                   codeAgentWipExecutionV1: approvedWip,
@@ -3465,7 +3516,7 @@ export function PrototypePreviewPanel({
                 });
                 if (selectedTaskId) {
                   const acceptedBoardState = markReworkRequestsAcceptedForTask({
-                    state: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+                    state: refState.implementationExecutionBoardStateV1,
                     projectId: pid,
                     taskId: selectedTaskId,
                   });
@@ -3476,7 +3527,7 @@ export function PrototypePreviewPanel({
                 const board = buildImplementationExecutionBoardFromRequirementsState({
                   projectId: pid,
                   orchestration: {
-                    ...orchestrationAwareRequirementsState,
+                    ...refState,
                     codeAgentWipExecutionV1: approvedWip,
                     implementationTaskExecutionStateV1: executionState ?? undefined,
                   },
@@ -3496,8 +3547,7 @@ export function PrototypePreviewPanel({
               }
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
-              executionSingleChat.appendAiNotice(`Cursor API 실행 오류: ${message}`);
-              showToast(message);
+              applyBridgeFailure(`Cursor API 실행 오류: ${message}`);
             }
           })();
 

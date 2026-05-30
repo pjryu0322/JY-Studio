@@ -55,7 +55,7 @@ describe("cursorExecutionAvailability", () => {
     expect(availability.hasGitRepo).toBe(true);
   });
 
-  it("missing workspace returns none/missing_workspace with partial setup preserved", () => {
+  it("git repo without explicit workspacePath is ready via git_repo_auto workspace", () => {
     const availability = evaluateCursorExecutionAvailability({
       setup: {
         gitRepoUrl: "https://github.com/o/r",
@@ -65,12 +65,12 @@ describe("cursorExecutionAvailability", () => {
         hasGithubAccessToken: true,
       },
     });
-    expect(availability.mode).toBe("none");
-    expect(availability.status).toBe("missing_workspace");
-    expect(availability.hasGitRepo).toBe(true);
-    expect(availability.hasCursorToken).toBe(true);
-    expect(availability.hasGithubToken).toBe(true);
-    expect(availability.hasWorkspace).toBe(false);
+    expect(availability.mode).toBe("cursor_api");
+    expect(availability.status).toBe("ready");
+    expect(availability.ready).toBe(true);
+    expect(availability.hasWorkspace).toBe(true);
+    expect(availability.workspaceAutoFromGit).toBe(true);
+    expect(availability.workspacePath).toContain("o-r");
   });
 
   it("gitRepoName owner/repo resolves targetRepository without gitRepoUrl", () => {

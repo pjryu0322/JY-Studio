@@ -33,9 +33,13 @@ export type TargetRepoE2eTimelineAction =
 export type CursorApiDirectTimelineAction =
   | "cursor_api_availability_checked"
   | "cursor_api_direct_execution_requested"
+  | "cursor_api_direct_execution_started"
   | "cursor_api_direct_execution_completed"
   | "cursor_api_direct_execution_failed"
-  | "cursor_api_direct_execution_unsupported";
+  | "cursor_api_direct_execution_unsupported"
+  | "cursor_api_git_commit_created"
+  | "cursor_api_git_push_completed"
+  | "cursor_api_git_push_failed";
 
 export const CURSOR_BRIDGE_NOT_CONFIGURED_MESSAGE =
   "Cursor API가 설정되지 않았습니다.\n\n현재는 WIP 초안까지만 생성되었습니다.\n실제 소스 생성을 진행하려면 환경설정에서 Cursor API URL과 키를 저장해 주세요." as const;
@@ -231,9 +235,12 @@ export function buildCursorApiDirectTimelineEntry(input: {
   readonly workspacePath?: string;
   readonly branchName?: string;
   readonly status: string;
+  readonly runId?: string;
+  readonly commitSha?: string;
   readonly changedFilesCount?: number;
   readonly hasCommitSha?: boolean;
   readonly pushStatus?: string;
+  readonly prNumber?: number;
   readonly reason?: string;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
@@ -242,15 +249,18 @@ export function buildCursorApiDirectTimelineEntry(input: {
     "mode=cursor_api",
     `projectId=${input.projectId}`,
     `selectedTaskId=${input.selectedTaskId}`,
+    ...(input.runId ? [`runId=${input.runId}`] : []),
     `repoFullName=${input.repoFullName ?? "none"}`,
     `workspacePath=${maskWorkspacePathForTimeline(input.workspacePath)}`,
     `branchName=${input.branchName ?? "none"}`,
     `status=${input.status}`,
+    ...(input.commitSha ? [`commitSha=${input.commitSha}`] : []),
     ...(input.changedFilesCount !== undefined
       ? [`changedFilesCount=${input.changedFilesCount}`]
       : []),
     ...(input.hasCommitSha !== undefined ? [`hasCommitSha=${input.hasCommitSha ? "yes" : "no"}`] : []),
     ...(input.pushStatus ? [`pushStatus=${input.pushStatus}`] : []),
+    ...(input.prNumber !== undefined ? [`prNumber=${input.prNumber}`] : []),
     ...(input.reason ? [`reason=${input.reason.slice(0, 120)}`] : []),
   ];
   return {

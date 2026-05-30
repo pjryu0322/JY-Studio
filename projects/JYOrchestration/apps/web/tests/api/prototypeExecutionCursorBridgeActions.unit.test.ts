@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyCursorBridgeResultToWipExecution,
   buildCursorBridgeOrchestrationResult,
+  patchWipForCursorBridgePhase,
 } from "@/lib/prototype/prototypeExecutionCursorBridgeActions";
 import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
@@ -138,5 +139,50 @@ describe("buildCursorBridgeOrchestrationResult", () => {
     });
     expect(result.kind).toBe("failed");
     expect(result.orchestrationPatch?.codeAgentWipExecutionV1.bridgeExecutionStatus).toBe("failed");
+  });
+
+  it("completed result adds cursor_api_direct_execution_completed timeline", () => {
+    const wip = baseWip();
+    const result = buildCursorBridgeOrchestrationResult({
+      requirementsStateJson: {},
+      wip,
+      bridgeResult: {
+        ok: true,
+        provider: "cursor",
+        status: "completed",
+        selectedTaskId: workItems[0]!.taskId,
+        targetRepository: targetRepository.repoFullName,
+        branchName: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890",
+        changedFiles: ["src/App.tsx", "src/B.tsx"],
+        pushed: true,
+        pushStatus: "success",
+        prStatus: "PR: 미수행",
+        workspacePath: "C:/workspace/aiproject",
+      },
+      runId: "cursor-run-001",
+      nowIso: NOW,
+    });
+    expect(result.kind).toBe("completed");
+    const actions = result.orchestrationPatch?.promptTimeline?.map((e) => e.action) ?? [];
+    expect(actions).toContain("cursor_api_direct_execution_completed");
+    expect(actions).toContain("cursor_api_git_commit_created");
+    expect(actions).toContain("cursor_api_git_push_completed");
+  });
+});
+
+describe("patchWipForCursorBridgePhase", () => {
+  it("sets bridge_requested with cursor_api execution mode", () => {
+    const wip = baseWip();
+    const patched = patchWipForCursorBridgePhase({
+      wip,
+      phase: "requested",
+      targetRepository: targetRepository.repoFullName,
+      workspacePath: "C:/workspace/aiproject",
+      baseBranch: "main",
+    });
+    expect(patched.bridgeExecutionStatus).toBe("bridge_requested");
+    expect(patched.executionMode).toBe("cursor_api");
+    expect(patched.executionStatus).toBe("bridge_requested");
   });
 });

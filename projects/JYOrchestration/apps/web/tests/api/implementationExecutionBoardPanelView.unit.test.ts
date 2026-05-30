@@ -113,7 +113,8 @@ describe("implementationExecutionBoardPanelView", () => {
         hasGithubAccessToken: true,
       },
     });
-    expect(summary.cursorAvailability.status).toBe("missing_workspace");
+    expect(summary.cursorAvailability.status).toBe("ready");
+    expect(summary.cursorAvailability.workspaceAutoFromGit).toBe(true);
     expect(summary.envPills.some((pill) => pill.label === "Cursor")).toBe(true);
     expect(summary.envDiagnosticLines.length).toBeGreaterThan(0);
   });
@@ -173,16 +174,17 @@ describe("implementationExecutionBoardPanelView", () => {
     expect(partitioned.secondary.length).toBeLessThanOrEqual(2);
   });
 
-  it("formats mobile env pill for missing workspace", () => {
+  it("formats mobile env pill for git-repo auto workspace", () => {
     expect(formatMobileCursorEnvPillValue("missing_workspace")).toBe("Workspace 필요");
     const pills = buildMobileBoardEnvPills({
       executionSetup: {
         gitRepoUrl: "https://github.com/org/repo",
+        gitRepoName: "org/repo",
         hasGithubAccessToken: true,
         hasCursorToken: true,
       },
     });
-    expect(pills.find((pill) => pill.label === "Cursor")?.value).toBe("Workspace 필요");
+    expect(pills.find((pill) => pill.label === "Cursor")?.value).toBe("준비됨");
   });
 
   it("builds compact task row card view", () => {

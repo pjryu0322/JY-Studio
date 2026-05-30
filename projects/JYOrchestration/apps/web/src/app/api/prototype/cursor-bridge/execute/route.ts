@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import path from "node:path";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
@@ -7,11 +8,13 @@ import {
   type CursorBridgeExecuteRequest,
 } from "@/lib/prototype/cursorBridgeExecution";
 import { executeCursorBridgeWorkItem } from "@/lib/prototype/cursorBridgeClient";
+import { ensureTargetRepositoryWorktree } from "@/lib/prototype/cursorBridgeTargetRepoGit";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import {
   evaluateExecutionSetupSourceGenerationReadiness,
   mapExecutionSetupPrismaRowToSourceGenerationRow,
 } from "@/lib/prototype/executionSetupSourceGeneration";
+import { resolveDefaultGitWorkspaceCloneRoot } from "@/lib/prototype/gitRepoAutoWorkspace";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { validateWorkspaceMatchesTargetRepository } from "@/lib/prototype/workspaceTargetRepositoryValidation";
 import { prisma } from "@/lib/prisma";
@@ -119,9 +122,20 @@ export async function POST(request: NextRequest) {
 
     const { context } = readiness;
 
+    const selectedTaskId = String(body.selectedTaskId ?? "").trim();
+    const workItems = Array.isArray(body.workItems) ? body.workItems : [];
+    const selectedWorkItemIds = Array.isArray(body.selectedWorkItemIds)
+      ? body.selectedWorkItemIds.map((id) => String(id))
+      : [];
+    const branchName =
+      String(body.branchName ?? body.workBranch ?? "").trim() ||
+      `wip/cursor/${selectedTaskId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+    let workspaceRoot = context.workspaceRoot;
+
     if (context.workspaceRootSource === "execution_setup") {
       const workspaceMatch = await validateWorkspaceMatchesTargetRepository({
-        workspacePath: context.workspaceRoot,
+        workspacePath: workspaceRoot,
         targetRepoFullName: context.targetRepository.repoFullName,
       });
       if (!workspaceMatch.ok) {
@@ -135,16 +149,34 @@ export async function POST(request: NextRequest) {
           { status: 200 },
         );
       }
+    } else if (context.workspaceRootSource === "git_repo_auto") {
+      const cloneRootRaw = resolveDefaultGitWorkspaceCloneRoot(
+        process.env as Record<string, string | undefined>,
+      );
+      const cloneRoot = path.isAbsolute(cloneRootRaw)
+        ? cloneRootRaw
+        : path.join(process.cwd(), cloneRootRaw);
+      try {
+        const prepared = await ensureTargetRepositoryWorktree({
+          cloneRoot,
+          targetRepository: context.targetRepository,
+          baseBranch: context.baseBranch,
+          workBranch: branchName,
+        });
+        workspaceRoot = prepared.workdir;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return NextResponse.json(
+          {
+            success: false,
+            status: "blocked",
+            message: `Git 저장소 작업공간 준비에 실패했습니다.\n사유: ${message}`,
+            availability,
+          },
+          { status: 200 },
+        );
+      }
     }
-
-    const selectedTaskId = String(body.selectedTaskId ?? "").trim();
-    const workItems = Array.isArray(body.workItems) ? body.workItems : [];
-    const selectedWorkItemIds = Array.isArray(body.selectedWorkItemIds)
-      ? body.selectedWorkItemIds.map((id) => String(id))
-      : [];
-    const branchName =
-      String(body.branchName ?? body.workBranch ?? "").trim() ||
-      `wip/cursor/${selectedTaskId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
     const built = buildCursorBridgeExecuteRequestFromWorkItems({
       projectId,
@@ -154,7 +186,7 @@ export async function POST(request: NextRequest) {
       targetRepository: context.targetRepository,
       branchName,
       baseBranch: context.baseBranch,
-      workspaceRoot: context.workspaceRoot,
+      workspaceRoot,
       commitMessage: String(body.commitMessage ?? "").trim(),
       allowedPathGlobs: context.allowedPathGlobs,
       forbiddenPathGlobs: context.forbiddenPathGlobs,

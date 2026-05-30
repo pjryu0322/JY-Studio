@@ -27,6 +27,8 @@ import {
   buildTargetRepoE2eTimelineEntry,
 } from "@/lib/prototype/targetRepoE2eDiagnostics";
 
+import type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectTargetRepository";
+
 export type CursorBridgeOrchestrationResult = Readonly<{
   readonly kind: "blocked" | "failed" | "completed";
   readonly message: string;
@@ -38,6 +40,140 @@ export type CursorBridgeOrchestrationResult = Readonly<{
   };
   readonly orchestrationPatch?: CodeAgentWipOrchestrationPatch;
 }>;
+
+export function patchWipForCursorBridgePhase(input: {
+  readonly wip: CodeAgentWipExecutionV1;
+  readonly phase: "requested" | "running";
+  readonly targetRepository?: string;
+  readonly targetRepositorySnapshot?: CodeAgentTargetRepositorySnapshot;
+  readonly workspacePath?: string;
+  readonly baseBranch?: string;
+  readonly allowedPathGlobs?: readonly string[];
+  readonly autoPush?: boolean;
+  readonly autoPr?: boolean;
+}): CodeAgentWipExecutionV1 {
+  const bridgeStatus = input.phase === "requested" ? "bridge_requested" : "bridge_running";
+  return {
+    ...input.wip,
+    executionMode: "cursor_api",
+    bridgeAdapter: "cursor_api",
+    bridgeExecutionStatus: bridgeStatus,
+    executionStatus: bridgeStatus,
+    ...(input.targetRepository
+      ? { targetRepository: input.targetRepository, targetRepoFullName: input.targetRepository }
+      : {}),
+    ...(input.targetRepositorySnapshot
+      ? { targetRepositorySnapshot: input.targetRepositorySnapshot }
+      : {}),
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(input.baseBranch ? { baseBranch: input.baseBranch } : {}),
+    ...(input.allowedPathGlobs ? { bridgeAllowedPathGlobs: input.allowedPathGlobs } : {}),
+    ...(input.autoPush !== undefined ? { bridgeAutoPush: input.autoPush } : {}),
+    ...(input.autoPr !== undefined ? { bridgeAutoPr: input.autoPr } : {}),
+    bridgeErrorMessage: undefined,
+  };
+}
+
+export function buildCursorBridgeApiBlockedResult(input: {
+  readonly selectedTaskId: string;
+  readonly message: string;
+}): CursorBridgeExecuteResult {
+  return {
+    ok: false,
+    provider: "cursor",
+    status: "blocked",
+    selectedTaskId: input.selectedTaskId,
+    errorMessage: input.message,
+  };
+}
+
+function appendCursorBridgeGitTimelineEntries(input: {
+  readonly timeline: readonly RequirementsPromptTimelineEntry[] | undefined;
+  readonly projectId: string;
+  readonly selectedTaskId: string;
+  readonly repoFullName?: string;
+  readonly workspacePath?: string;
+  readonly branchName?: string;
+  readonly commitSha?: string;
+  readonly changedFilesCount?: number;
+  readonly pushStatus?: string;
+  readonly prNumber?: number;
+  readonly runId?: string;
+  readonly nowIso: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  let timeline = appendPromptTimeline(
+    input.timeline,
+    buildCursorApiDirectTimelineEntry({
+      action: "cursor_api_direct_execution_completed",
+      projectId: input.projectId,
+      selectedTaskId: input.selectedTaskId,
+      repoFullName: input.repoFullName,
+      workspacePath: input.workspacePath,
+      branchName: input.branchName,
+      status: "completed",
+      runId: input.runId,
+      commitSha: input.commitSha,
+      changedFilesCount: input.changedFilesCount,
+      hasCommitSha: Boolean(input.commitSha),
+      pushStatus: input.pushStatus,
+      prNumber: input.prNumber,
+      nowIso: input.nowIso,
+    }),
+  );
+  if (input.commitSha) {
+    timeline = appendPromptTimeline(
+      timeline,
+      buildCursorApiDirectTimelineEntry({
+        action: "cursor_api_git_commit_created",
+        projectId: input.projectId,
+        selectedTaskId: input.selectedTaskId,
+        repoFullName: input.repoFullName,
+        workspacePath: input.workspacePath,
+        branchName: input.branchName,
+        status: "completed",
+        runId: input.runId,
+        commitSha: input.commitSha,
+        changedFilesCount: input.changedFilesCount,
+        nowIso: input.nowIso,
+      }),
+    );
+  }
+  if (input.pushStatus === "success") {
+    timeline = appendPromptTimeline(
+      timeline,
+      buildCursorApiDirectTimelineEntry({
+        action: "cursor_api_git_push_completed",
+        projectId: input.projectId,
+        selectedTaskId: input.selectedTaskId,
+        repoFullName: input.repoFullName,
+        branchName: input.branchName,
+        status: "completed",
+        runId: input.runId,
+        commitSha: input.commitSha,
+        pushStatus: input.pushStatus,
+        prNumber: input.prNumber,
+        nowIso: input.nowIso,
+      }),
+    );
+  } else if (input.pushStatus === "failed") {
+    timeline = appendPromptTimeline(
+      timeline,
+      buildCursorApiDirectTimelineEntry({
+        action: "cursor_api_git_push_failed",
+        projectId: input.projectId,
+        selectedTaskId: input.selectedTaskId,
+        repoFullName: input.repoFullName,
+        branchName: input.branchName,
+        status: "failed",
+        runId: input.runId,
+        commitSha: input.commitSha,
+        pushStatus: input.pushStatus,
+        nowIso: input.nowIso,
+      }),
+    );
+  }
+  return timeline;
+}
 
 function buildBridgeFailedMessage(input: {
   readonly wip: CodeAgentWipExecutionV1;
@@ -110,7 +246,10 @@ export function applyCursorBridgeResultToWipExecution(input: {
   if (!input.bridgeResult.ok || input.bridgeResult.status !== "completed") {
     return {
       ...input.wip,
+      executionMode: "cursor_api",
+      bridgeAdapter: "cursor_api",
       bridgeExecutionStatus: "failed",
+      status: "failed",
       bridgeErrorMessage: input.bridgeResult.errorMessage,
       bridgeCompletedAt: undefined,
       executionStatus: "cursor_api_failed",
@@ -219,6 +358,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
   readonly bridgeResult: CursorBridgeExecuteResult;
   readonly bridgeRequest?: CursorBridgeExecuteRequest;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly runId?: string;
   readonly nowIso?: string;
 }): CursorBridgeOrchestrationResult {
   const now = input.nowIso ?? new Date().toISOString();
@@ -234,9 +374,51 @@ export function buildCursorBridgeOrchestrationResult(input: {
   );
 
   if (input.bridgeResult.status === "blocked") {
+    const errorMessage = input.bridgeResult.errorMessage ?? "Cursor API 실행이 차단되었습니다.";
+    const blockedWip: CodeAgentWipExecutionV1 = {
+      ...input.wip,
+      executionMode: "cursor_api",
+      bridgeAdapter: "cursor_api",
+      bridgeExecutionStatus: "failed",
+      status: "failed",
+      executionStatus: "cursor_api_failed",
+      bridgeErrorMessage: errorMessage,
+    };
+    const timeline = appendPromptTimeline(
+      input.promptTimeline,
+      buildCursorApiDirectTimelineEntry({
+        action: "cursor_api_direct_execution_failed",
+        projectId: input.wip.projectId,
+        selectedTaskId: taskId,
+        repoFullName: blockedWip.targetRepoFullName ?? blockedWip.targetRepository,
+        workspacePath: blockedWip.workspacePath,
+        branchName: blockedWip.branchName,
+        status: "blocked",
+        reason: errorMessage,
+        runId: input.runId,
+        nowIso: now,
+      }),
+    );
     return {
       kind: "blocked",
-      message: input.bridgeResult.errorMessage ?? "Cursor API 실행이 차단되었습니다.",
+      message: errorMessage,
+      chatPatch: {
+        messages: [
+          ...prior,
+          buildBridgeFailedMessage({
+            wip: blockedWip,
+            errorMessage,
+            nowIso: now,
+          }),
+        ],
+        slots: resolved.slots ?? [],
+        answers: resolved.answers ?? {},
+        currentSlotKey: resolved.currentSlotKey ?? null,
+      },
+      orchestrationPatch: {
+        codeAgentWipExecutionV1: blockedWip,
+        promptTimeline: timeline,
+      },
     };
   }
 
@@ -252,6 +434,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
       errorMessage.includes("endpoint가 지원되지 않습니다");
     const failedWip: CodeAgentWipExecutionV1 = {
       ...runningWip,
+      status: "failed",
       bridgeExecutionStatus: "failed",
       bridgeErrorMessage: errorMessage,
       executionStatus: unsupported ? "cursor_api_unsupported" : "cursor_api_failed",
@@ -279,6 +462,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
         branchName: failedWip.branchName,
         status: unsupported ? "unsupported" : "failed",
         reason: errorMessage,
+        runId: input.runId,
         nowIso: now,
       }),
     );
@@ -369,23 +553,8 @@ export function buildCursorBridgeOrchestrationResult(input: {
     }),
   ];
 
-  const e2eCompleted = buildTargetRepoE2eTimelineEntry({
-    action: "cursor_bridge_source_generation_completed",
-    projectId: input.wip.projectId,
-    selectedTaskId: taskId,
-    repoFullName: updatedWip.targetRepoFullName ?? updatedWip.targetRepository,
-    baseBranch: updatedWip.baseBranch,
-    workspacePath: updatedWip.workspacePath,
-    branchName: lastCommit.branchName,
-    commitSha: lastCommit.sha,
-    changedFilesCount: lastCommit.changedFiles.length,
-    pushStatus: updatedWip.pushStatus,
-    prStatus: updatedWip.prStatus,
-    status: "completed",
-    nowIso: now,
-  });
-  const timeline = appendPromptTimeline(
-    appendPromptTimeline(
+  const timeline = appendCursorBridgeGitTimelineEntries({
+    timeline: appendPromptTimeline(
       input.promptTimeline,
       buildCodeAgentWipTimelineEntry({
         action: "cursor_bridge_completed",
@@ -396,7 +565,35 @@ export function buildCursorBridgeOrchestrationResult(input: {
         nowIso: now,
       }),
     ),
-    e2eCompleted,
+    projectId: input.wip.projectId,
+    selectedTaskId: taskId,
+    repoFullName: updatedWip.targetRepoFullName ?? updatedWip.targetRepository,
+    workspacePath: updatedWip.workspacePath,
+    branchName: lastCommit.branchName,
+    commitSha: lastCommit.sha,
+    changedFilesCount: lastCommit.changedFiles.length,
+    pushStatus: updatedWip.pushStatus,
+    prNumber: updatedWip.prNumber,
+    runId: input.runId,
+    nowIso: now,
+  });
+  const timelineWithE2e = appendPromptTimeline(
+    timeline,
+    buildTargetRepoE2eTimelineEntry({
+      action: "cursor_bridge_source_generation_completed",
+      projectId: input.wip.projectId,
+      selectedTaskId: taskId,
+      repoFullName: updatedWip.targetRepoFullName ?? updatedWip.targetRepository,
+      baseBranch: updatedWip.baseBranch,
+      workspacePath: updatedWip.workspacePath,
+      branchName: lastCommit.branchName,
+      commitSha: lastCommit.sha,
+      changedFilesCount: lastCommit.changedFiles.length,
+      pushStatus: updatedWip.pushStatus,
+      prStatus: updatedWip.prStatus,
+      status: "completed",
+      nowIso: now,
+    }),
   );
 
   return {
@@ -410,7 +607,7 @@ export function buildCursorBridgeOrchestrationResult(input: {
     },
     orchestrationPatch: {
       codeAgentWipExecutionV1: updatedWip,
-      promptTimeline: timeline,
+      promptTimeline: timelineWithE2e,
     },
   };
 }

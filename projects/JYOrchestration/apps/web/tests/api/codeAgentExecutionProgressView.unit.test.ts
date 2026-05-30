@@ -203,6 +203,50 @@ describe("codeAgentExecutionProgressView", () => {
     expect(view.summaryLine).toContain("실제 Cursor API: 아직 실행하지 않음");
   });
 
+  it("stub developer_approved shows WIP 초안 승인됨 and Cursor 미실행", () => {
+    const wip = {
+      ...draftWip(),
+      status: "developer_approved" as const,
+      bridgeExecutionStatus: "draft_approved" as const,
+      developerReview: {
+        status: "approved" as const,
+        reviewedAt: NOW,
+        reviewedBy: "ai_developer",
+        summary: "WIP 초안 승인",
+        findings: [],
+        requestedActions: [],
+      },
+    };
+    const view = buildCodeAgentExecutionProgressView({ codeAgentWipExecutionV1: wip });
+    expect(view.status).toBe("cursor_request_ready");
+    expect(view.statusLabel).toBe("WIP 초안 승인됨");
+    expect(view.cursorApiLabel).toContain("미실행");
+    expect(view.nextActionLabel).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
+    expect(view.isStubResult).toBe(true);
+  });
+
+  it("renders bridge_requested and bridge_running statuses", () => {
+    const requested = buildCodeAgentExecutionProgressView({
+      codeAgentWipExecutionV1: {
+        ...draftWip(),
+        executionMode: "cursor_api",
+        bridgeExecutionStatus: "bridge_requested",
+      },
+    });
+    expect(requested.status).toBe("cursor_requested");
+    expect(requested.statusLabel).toBe("Cursor API 요청됨");
+
+    const running = buildCodeAgentExecutionProgressView({
+      codeAgentWipExecutionV1: {
+        ...draftWip(),
+        executionMode: "cursor_api",
+        bridgeExecutionStatus: "bridge_running",
+      },
+    });
+    expect(running.status).toBe("cursor_running");
+    expect(running.statusLabel).toBe("Cursor API 실행 중");
+  });
+
   it("formats selected task row progress line", () => {
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",

@@ -634,14 +634,14 @@ describe("implementationExecutionBoardMessage helpers", () => {
     });
     const freshKey = buildImplementationBoardRefreshSyncKey({
       setup,
-      previewContent: "Status: missing_workspace\nGit 저장소: 설정됨",
+      previewContent: "Status: ready\nGit 저장소: 설정됨",
       taskCount: 20,
       codeAgentWipStatus: null,
     });
     expect(staleKey).not.toBe(freshKey);
   });
 
-  it("board diagnostic preserves partial setup when only workspace is missing", () => {
+  it("board diagnostic shows ready when git repo and cursor api are configured without workspacePath", () => {
     const board = buildImplementationExecutionBoard({
       projectId: "p-board",
       taskList: sampleTaskList(),
@@ -659,11 +659,11 @@ describe("implementationExecutionBoardMessage helpers", () => {
       },
     });
     const text = message.content;
-    expect(text).toContain("Status: missing_workspace");
+    expect(text).toContain("Status: ready");
     expect(text).toContain("Git 저장소: 설정됨");
     expect(text).toContain("GitHub Token: 설정됨");
     expect(text).toContain("Cursor API Key: 설정됨");
-    expect(text).toContain("Workspace: 미설정");
+    expect(text).toContain("Workspace: Git 저장소 기준 자동");
   });
 
   it("buildCompactImplementationExecutionBoardNoticeMessage avoids long task table text", () => {

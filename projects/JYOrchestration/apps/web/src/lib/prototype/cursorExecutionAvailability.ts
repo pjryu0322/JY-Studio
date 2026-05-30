@@ -7,6 +7,9 @@ import {
   type ProjectTargetRepository,
 } from "@/lib/prototype/projectTargetRepository";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import {
+  resolveSourceGenerationWorkspaceRoot,
+} from "@/lib/prototype/gitRepoAutoWorkspace";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
   DETERMINISTIC_PLATFORM_TIMELINE_META,
@@ -35,6 +38,7 @@ export type CursorExecutionAvailability = Readonly<{
   readonly hasCursorToken: boolean;
   readonly hasGitRepo: boolean;
   readonly hasWorkspace: boolean;
+  readonly workspaceAutoFromGit?: boolean;
   readonly hasGithubToken: boolean;
   readonly targetRepository?: ProjectTargetRepository;
   readonly workspacePath?: string;
@@ -100,7 +104,17 @@ export function evaluateCursorExecutionAvailability(input?: {
       })
     : null;
   const hasGitRepo = Boolean(targetRepository);
-  const workspacePath = String(setup?.workspacePath ?? "").trim() || undefined;
+  const explicitWorkspacePath = String(setup?.workspacePath ?? "").trim() || undefined;
+  const resolvedWorkspace = targetRepository
+    ? resolveSourceGenerationWorkspaceRoot({
+        workspacePath: setup?.workspacePath,
+        targetRepository,
+      })
+    : explicitWorkspacePath
+      ? { workspaceRoot: explicitWorkspacePath, source: "execution_setup" as const }
+      : null;
+  const workspacePath = resolvedWorkspace?.workspaceRoot ?? explicitWorkspacePath;
+  const workspaceAutoFromGit = resolvedWorkspace?.source === "git_repo_auto";
   const hasWorkspace = Boolean(workspacePath);
   const effectiveApi = resolveEffectiveCursorApiUrlFromSetup(setup);
   const hasCursorApiUrl = Boolean(effectiveApi.url);
@@ -111,6 +125,7 @@ export function evaluateCursorExecutionAvailability(input?: {
     hasGitRepo,
     hasWorkspace,
     hasGithubToken,
+    ...(workspaceAutoFromGit ? { workspaceAutoFromGit: true } : {}),
     ...(targetRepository ? { targetRepository } : {}),
     ...(workspacePath ? { workspacePath } : {}),
     ...(effectiveApi.url ? { cursorApiUrl: effectiveApi.url } : {}),
@@ -157,19 +172,13 @@ export function evaluateCursorExecutionAvailability(input?: {
     });
   }
 
-  if (!hasWorkspace) {
-    return missingAvailability({
-      status: "missing_workspace",
-      reason: "workspacePath가 없습니다. 환경설정에서 작업 경로를 저장해 주세요.",
-      ...partialBase,
-    });
-  }
-
   return {
     mode: "cursor_api",
     status: "ready",
     ready: true,
-    reason: "ExecutionSetup Cursor API 직접 호출 모드가 준비되었습니다.",
+    reason: workspaceAutoFromGit
+      ? "Git 저장소 기준 Cursor API 실행 준비가 완료되었습니다."
+      : "ExecutionSetup Cursor API 직접 호출 모드가 준비되었습니다.",
     ...partialBase,
     targetRepository: targetRepository!,
   };
@@ -200,7 +209,13 @@ export function formatCursorExecutionAvailabilityDiagnosticLines(input?: {
     `- Cursor API URL: ${cursorApiUrlLabel}`,
     `- Cursor API Key: ${availability.hasCursorToken ? "설정됨" : "미설정"}`,
     `- Git 저장소: ${availability.hasGitRepo ? "설정됨" : "미설정"}`,
-    `- Workspace: ${availability.hasWorkspace ? "설정됨" : "미설정"}`,
+    `- Workspace: ${
+      availability.workspaceAutoFromGit
+        ? "Git 저장소 기준 자동"
+        : availability.hasWorkspace
+          ? "설정됨"
+          : "미설정"
+    }`,
     `- GitHub Token: ${availability.hasGithubToken ? "설정됨" : "미설정"}`,
     `- Push: ${pushLabel}`,
     ...(availability.ready ? [] : [`- 안내: ${availability.reason}`]),

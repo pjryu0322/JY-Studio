@@ -69,9 +69,13 @@ const RELEVANT_TIMELINE_ACTIONS = new Set([
   "implementation_wip_draft_created",
   "implementation_wip_draft_persisted",
   "cursor_api_direct_execution_requested",
+  "cursor_api_direct_execution_started",
   "cursor_api_direct_execution_completed",
   "cursor_api_direct_execution_failed",
   "cursor_api_direct_execution_unsupported",
+  "cursor_api_git_commit_created",
+  "cursor_api_git_push_completed",
+  "cursor_api_git_push_failed",
   "cursor_api_availability_checked",
 ]);
 
@@ -85,9 +89,13 @@ const TIMELINE_ACTION_LABELS: Record<string, string> = {
   implementation_wip_draft_created: "WIP 초안 생성",
   implementation_wip_draft_persisted: "WIP 초안 저장",
   cursor_api_direct_execution_requested: "Cursor API 요청",
+  cursor_api_direct_execution_started: "Cursor API 실행 시작",
   cursor_api_direct_execution_completed: "Cursor API 완료",
   cursor_api_direct_execution_failed: "Cursor API 실패",
   cursor_api_direct_execution_unsupported: "Cursor API 미지원",
+  cursor_api_git_commit_created: "Git 커밋 생성",
+  cursor_api_git_push_completed: "Git push 완료",
+  cursor_api_git_push_failed: "Git push 실패",
   cursor_api_availability_checked: "Cursor API 환경 점검",
 };
 
@@ -197,12 +205,16 @@ function resolveTestStatus(wip: CodeAgentWipExecutionV1 | null | undefined): {
     : { testStatus: "passed", testStatusLabel: "passed" };
 }
 
+function isStubApprovedWip(wip: CodeAgentWipExecutionV1): boolean {
+  return (
+    wip.status === "developer_approved" &&
+    isStubCodeAgentWipExecution(wip) &&
+    !isRealCursorSourceGenerationCompleted(wip)
+  );
+}
+
 function resolveProgressStatus(wip: CodeAgentWipExecutionV1 | null | undefined): CodeAgentExecutionProgressStatus {
   if (!wip) return "idle";
-  if (wip.status === "developer_approved") return "developer_approved";
-  if (wip.status === "developer_reviewing" && isRealCursorSourceGenerationCompleted(wip)) {
-    return "developer_reviewing";
-  }
   const bridge = wip.bridgeExecutionStatus;
   const executionStatus = wip.executionStatus;
   if (bridge === "failed" || executionStatus === "cursor_api_failed") return "cursor_failed";
@@ -210,6 +222,13 @@ function resolveProgressStatus(wip: CodeAgentWipExecutionV1 | null | undefined):
   if (bridge === "bridge_requested") return "cursor_requested";
   if (bridge === "bridge_completed") {
     return isRealCursorSourceGenerationCompleted(wip) ? "cursor_completed" : "draft_created";
+  }
+  if (isStubApprovedWip(wip)) {
+    return bridge === "draft_approved" ? "cursor_request_ready" : "draft_created";
+  }
+  if (wip.status === "developer_approved") return "developer_approved";
+  if (wip.status === "developer_reviewing" && isRealCursorSourceGenerationCompleted(wip)) {
+    return "developer_reviewing";
   }
   if (bridge === "draft_approved") return "cursor_request_ready";
   if (
@@ -222,7 +241,13 @@ function resolveProgressStatus(wip: CodeAgentWipExecutionV1 | null | undefined):
   return "idle";
 }
 
-function statusLabelFor(status: CodeAgentExecutionProgressStatus): string {
+function statusLabelFor(
+  status: CodeAgentExecutionProgressStatus,
+  wip?: CodeAgentWipExecutionV1 | null,
+): string {
+  if (status === "cursor_request_ready" && wip && isStubApprovedWip(wip)) {
+    return "WIP 초안 승인됨";
+  }
   switch (status) {
     case "idle":
       return "대기";
@@ -271,6 +296,9 @@ function summaryLineFor(
     return "아직 Code Agent WIP 초안이 없습니다. [생성요청]으로 첫 작업 초안을 만들 수 있습니다.";
   }
   if (status === "draft_created" || status === "cursor_request_ready") {
+    if (wip && isStubApprovedWip(wip)) {
+      return "WIP 초안 승인됨. 실제 Cursor API: 아직 실행하지 않음. 다음 단계: Cursor 실행 요청";
+    }
     return "WIP 초안 생성됨. 실제 Cursor API: 아직 실행하지 않음. 다음 단계: Cursor 실행 요청";
   }
   if (status === "cursor_requested" || status === "cursor_running") {
@@ -318,7 +346,9 @@ function buildProgressSteps(
   const cursorRunning = bridge === "bridge_running";
   const sourceReceived = realDone;
   const pushed = wip?.pushed === true;
-  const reviewed = status === "developer_reviewing" || status === "developer_approved";
+  const reviewed =
+    (status === "developer_reviewing" || status === "developer_approved") &&
+    Boolean(wip && isRealCursorSourceGenerationCompleted(wip));
 
   return [
     step("wip_draft", "WIP 초안 생성", wipDone ? "done" : status === "idle" ? "pending" : "active"),
@@ -385,7 +415,7 @@ export function buildCodeAgentExecutionProgressView(input: {
 
   return {
     status,
-    statusLabel: statusLabelFor(status),
+    statusLabel: statusLabelFor(status, wip),
     summaryLine,
     selectedTaskId,
     selectedTaskTitle: resolveSelectedTaskTitle(input.board ?? null, selectedTaskId),

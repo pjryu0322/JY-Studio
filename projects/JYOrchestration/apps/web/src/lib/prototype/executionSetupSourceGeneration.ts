@@ -1,6 +1,10 @@
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import type { ExecutionSetupDto } from "@/components/project-spec/api";
-import { resolveCursorBridgeCloneRoot } from "@/lib/prototype/cursorBridgeRuntime";
+import {
+  formatGitRepoWorkspaceSourceLabel,
+  resolveSourceGenerationWorkspaceRoot,
+  type GitRepoWorkspaceRootSource,
+} from "@/lib/prototype/gitRepoAutoWorkspace";
 import {
   evaluateCursorExecutionAvailability,
   resolveEffectiveCursorApiUrlFromSetup,
@@ -64,7 +68,7 @@ export function mapExecutionSetupPrismaRowToSourceGenerationRow(
 export type ExecutionSetupSourceGenerationContext = Readonly<{
   readonly targetRepository: ProjectTargetRepository;
   readonly workspaceRoot: string;
-  readonly workspaceRootSource: "execution_setup" | "env_fallback";
+  readonly workspaceRootSource: GitRepoWorkspaceRootSource;
   readonly workspaceRootFallbackWarning?: string;
   readonly baseBranch: string;
   readonly allowedPathGlobs: readonly string[];
@@ -91,22 +95,15 @@ export function isCursorSourceGenerationConfigured(input: {
   }).ready;
 }
 
-export function resolveSourceGenerationWorkspaceRoot(input: {
+export function resolveSourceGenerationWorkspaceRootFromSetup(input: {
   readonly workspacePath?: string | null;
+  readonly targetRepository?: ProjectTargetRepository | null;
   readonly env?: Record<string, string | undefined>;
-}):
-  | Readonly<{ readonly workspaceRoot: string; readonly source: "execution_setup" | "env_fallback" }>
-  | null {
-  const fromSetup = String(input.workspacePath ?? "").trim();
-  if (fromSetup) {
-    return { workspaceRoot: fromSetup, source: "execution_setup" };
-  }
-  const fromEnv = resolveCursorBridgeCloneRoot(input.env ?? {});
-  if (fromEnv) {
-    return { workspaceRoot: fromEnv, source: "env_fallback" };
-  }
-  return null;
+}) {
+  return resolveSourceGenerationWorkspaceRoot(input);
 }
+
+export { resolveSourceGenerationWorkspaceRoot } from "@/lib/prototype/gitRepoAutoWorkspace";
 
 export function evaluateExecutionSetupSourceGenerationReadiness(input: {
   readonly setup: ExecutionSetupSourceGenerationRow | null | undefined;
@@ -144,20 +141,25 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
 
   const workspace = resolveSourceGenerationWorkspaceRoot({
     workspacePath: input.setup.workspacePath,
+    targetRepository,
+    env: input.env,
   });
-  if (!workspace) {
-    missing.push("workspacePath 없음");
-  }
 
   const cursorAvailability = evaluateCursorExecutionAvailability({
     setup: input.setup,
+    env: input.env,
   });
   const cursorApiReady = cursorAvailability.ready;
   const hasCursorToken =
     input.setup.hasCursorToken === true || Boolean(String(input.setup.cursorApiToken ?? "").trim());
-  const hasCursorApiUrl = Boolean(String(input.setup.cursorApiUrl ?? "").trim());
   if (!cursorApiReady) {
     missing.push(cursorAvailability.reason);
+  }
+
+  if (!targetRepository) {
+    // already pushed above
+  } else if (!workspace) {
+    missing.push("Git 저장소 기준 작업공간을 준비할 수 없습니다.");
   }
 
   if (missing.length) {
@@ -183,6 +185,17 @@ export function evaluateExecutionSetupSourceGenerationReadiness(input: {
       targetRepository: targetRepository!,
       workspaceRoot: workspace!.workspaceRoot,
       workspaceRootSource: workspace!.source,
+      ...(workspace!.source === "env_fallback"
+        ? {
+            workspaceRootFallbackWarning:
+              "ExecutionSetup에 workspacePath가 없어 서버 env clone root를 사용합니다.",
+          }
+        : workspace!.source === "git_repo_auto"
+          ? {
+              workspaceRootFallbackWarning:
+                "Git 저장소를 기준으로 서버가 작업공간 경로를 자동 준비합니다.",
+            }
+          : {}),
       baseBranch: targetRepository!.defaultBranch,
       allowedPathGlobs,
       forbiddenPathGlobs,
@@ -218,7 +231,11 @@ export function formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
       })
     : null;
   const workspace = setup
-    ? resolveSourceGenerationWorkspaceRoot({ workspacePath: setup.workspacePath })
+    ? resolveSourceGenerationWorkspaceRoot({
+        workspacePath: setup.workspacePath,
+        targetRepository,
+        env,
+      })
     : null;
   const cursorAvailability = evaluateCursorExecutionAvailability({ setup });
   const hasCursorToken =
@@ -230,7 +247,7 @@ export function formatExecutionSetupSourceGenerationDiagnosticLinesFromSetup(
     "실제 소스 생성 대상:",
     `- Git 저장소: ${targetRepository?.repoFullName ?? "(미설정)"}`,
     `- 기준 브랜치: ${targetRepository?.defaultBranch ?? (setup?.baseBranch?.trim() || "(미설정)")}`,
-    `- 작업 경로: ${workspace?.workspaceRoot ?? (setup?.workspacePath?.trim() || "(미설정)")}`,
+    `- 작업 경로: ${workspace?.workspaceRoot ?? "(미설정)"} (${formatGitRepoWorkspaceSourceLabel(workspace?.source)})`,
     `- Cursor API: ${cursorAvailability.ready ? "준비됨" : "미설정"}`,
     `- Cursor 실행 모드: ${cursorAvailability.mode}`,
     `- GitHub 토큰: ${
@@ -264,7 +281,7 @@ export function formatExecutionSetupSourceGenerationDiagnosticLines(
     "실제 소스 생성 대상:",
     `- Git 저장소: ${context.targetRepository.repoFullName}`,
     `- 기준 브랜치: ${context.baseBranch}`,
-    `- 작업 경로: ${context.workspaceRoot}`,
+    `- 작업 경로: ${context.workspaceRoot} (${formatGitRepoWorkspaceSourceLabel(context.workspaceRootSource)})`,
     ...(context.workspaceRootFallbackWarning ? [`- 참고: ${context.workspaceRootFallbackWarning}`] : []),
     `- Cursor API: ${context.bridgeAvailable ? "준비됨" : "미설정"}`,
     `- GitHub 토큰: ${context.hasGithubToken ? "설정됨" : "미설정"}`,
