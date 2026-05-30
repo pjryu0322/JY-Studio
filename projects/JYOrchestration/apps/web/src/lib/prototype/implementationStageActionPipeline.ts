@@ -1,6 +1,7 @@
 import { evaluatePlatformScmPermissionGate } from "@/lib/prototype/platformScmRouteAuth";
 import { validateFinalScmIntegratedStageReadiness, validatePlatformScmMergeStepReadiness } from "@/lib/prototype/platformScmReadiness";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
   buildImplementationStageActionTimelineEntry,
   type ImplementationStageActionTimelineSource,
@@ -36,6 +37,7 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly previewReady: boolean;
   readonly reviewStageEntryReady: boolean;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly canApplyGit?: boolean;
 }>;
 
@@ -49,6 +51,7 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly previewReady?: boolean;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly canApplyGit?: boolean;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
@@ -56,6 +59,9 @@ export function buildImplementationStageBoardGateContext(input: {
   return {
     ...(input.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
+      : {}),
+    ...(input.taskCursorExecutionV1 !== undefined
+      ? { taskCursorExecutionV1: input.taskCursorExecutionV1 }
       : {}),
     board: buildImplementationExecutionBoardFromOrchestration({
       projectId: input.projectId,
@@ -522,8 +528,24 @@ export function evaluateImplementationStageActionGate(
       if (!boardContext?.codeAgentWipExecutionV1) {
         return {
           ok: false,
-          message: "WIP 초안이 없습니다. 먼저 [생성요청]으로 WIP 초안을 생성해 주세요.",
+          message: "WIP 초안이 없습니다. Task 단위 [AI 개발자 실행 요청]을 사용해 주세요.",
         };
+      }
+      return { ok: true };
+    }
+    case "REQUEST_TASK_CURSOR_EXECUTION": {
+      if (!state.envOk) {
+        return { ok: false, message: "환경 준비가 완료된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
+      }
+      if (!isTaskListReadyForImplementationStageActions(state)) {
+        return { ok: false, message: "구현 작업목록이 준비된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
+      }
+      return { ok: true };
+    }
+    case "CHECK_TASK_CURSOR_STATUS":
+    case "VERIFY_TASK_CURSOR_GITHUB": {
+      if (!boardContext?.taskCursorExecutionV1) {
+        return { ok: false, message: "Task Cursor 실행 상태가 없습니다. [AI 개발자 실행 요청]을 먼저 실행해 주세요." };
       }
       return { ok: true };
     }

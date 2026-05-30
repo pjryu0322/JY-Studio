@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -52,6 +53,7 @@ export function ImplementationExecutionBoardPanel({
   taskList,
   executionSetup,
   codeAgentWipExecutionV1,
+  taskCursorExecutionV1,
   boardState,
   previewReady,
   effectiveImplementationState,
@@ -63,6 +65,7 @@ export function ImplementationExecutionBoardPanel({
   readonly taskList: ImplementationTaskListV1;
   readonly executionSetup?: ExecutionSetupSourceGenerationRow | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly previewReady?: boolean;
@@ -125,10 +128,11 @@ export function ImplementationExecutionBoardPanel({
     () =>
       buildCodeAgentExecutionProgressView({
         codeAgentWipExecutionV1,
+        taskCursorExecutionV1,
         board,
         latestTimeline: promptTimeline,
       }),
-    [codeAgentWipExecutionV1, board, promptTimeline],
+    [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline],
   );
 
   const hidePrimaryCta = shouldHideBoardPrimaryCtaForProgress(codeAgentProgress.status);

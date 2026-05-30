@@ -57,6 +57,7 @@ import {
   CODE_AGENT_WIP_DRAFT_APPROVE_CHIP,
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
+import { AI_DEVELOPER_EXECUTION_REQUEST_CHIP, buildInitialTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
 import { buildImplementationTaskPlan } from "@/lib/prototype/implementationTaskPlan";
 import { buildCursorWorkItemsFromImplementationTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
 
@@ -168,6 +169,83 @@ describe("deriveImplementationStageNextActions", () => {
     });
     expect(actions[0]?.actionId).toBe("REQUEST_CURSOR_BRIDGE_EXECUTION");
     expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
+  });
+
+  it("task cursor pending -> AI 개발자 실행 요청 primary without WIP draft", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: {
+        version: "implementation_seed_v1",
+        projectId: "p1",
+        createdAt: "2026-05-29T12:00:00.000Z",
+        updatedAt: "2026-05-29T12:00:00.000Z",
+        source: "planning_slots_and_artifacts",
+        lifecycleStatus: "confirmed",
+        readiness: { ready: true, score: 1, missing: [], warnings: [] },
+        processImplementationItems: [],
+        screenImplementationItems: [],
+        actorCapabilityMatrix: [],
+        commonDetailFeatures: [],
+        dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+        assumptions: [],
+        gaps: [],
+      },
+    });
+    const execution = buildInitialTaskCursorExecution({
+      projectId: "p1",
+      taskId: "DEV-MOCK-001",
+      workItemIds: ["wi-1"],
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+    });
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      taskList,
+      taskCursorExecutionV1: execution,
+    });
+    expect(actions[0]?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
+    expect(actions[0]?.label).toBe(AI_DEVELOPER_EXECUTION_REQUEST_CHIP);
+  });
+
+  it("task cursor failed -> endpoint unsupported retry CTA", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: {
+        version: "implementation_seed_v1",
+        projectId: "p1",
+        createdAt: "2026-05-29T12:00:00.000Z",
+        updatedAt: "2026-05-29T12:00:00.000Z",
+        source: "planning_slots_and_artifacts",
+        lifecycleStatus: "confirmed",
+        readiness: { ready: true, score: 1, missing: [], warnings: [] },
+        processImplementationItems: [],
+        screenImplementationItems: [],
+        actorCapabilityMatrix: [],
+        commonDetailFeatures: [],
+        dataModelSeed: { entities: [], fieldsByEntity: {}, relationships: [], mockDataNotes: [] },
+        assumptions: [],
+        gaps: [],
+      },
+    });
+    const execution = {
+      ...buildInitialTaskCursorExecution({
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+      }),
+      status: "cursor_failed" as const,
+      failureReason: "cursor_endpoint_unsupported" as const,
+      errorMessage: "endpoint unsupported",
+    };
+    const actions = deriveImplementationStageNextActions("task_list_ready", null, null, {
+      projectId: "p1",
+      taskList,
+      taskCursorExecutionV1: execution,
+    });
+    expect(actions[0]?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
+    expect(actions[0]?.reason).toContain("endpoint");
   });
 
   it("cursor_api completed WIP -> 구현 결과 승인", () => {

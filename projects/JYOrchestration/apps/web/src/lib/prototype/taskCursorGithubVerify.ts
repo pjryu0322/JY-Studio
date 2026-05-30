@@ -1,0 +1,167 @@
+import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
+import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import {
+  defaultForbiddenTargetPathGlobs,
+  validateTargetRepositoryChangedFiles,
+} from "@/lib/prototype/targetRepositoryPathGuard";
+import {
+  TASK_CURSOR_FAILURE_MESSAGES,
+  type TaskCursorExecutionV1,
+  type TaskCursorFailureReason,
+} from "@/lib/prototype/taskCursorExecution";
+
+export type TaskCursorGithubVerifyInput = Readonly<{
+  readonly execution: TaskCursorExecutionV1;
+  readonly targetRepository: ProjectTargetRepository;
+  readonly githubToken: string;
+  readonly allowedPathGlobs: readonly string[];
+  readonly userAgent?: string;
+}>;
+
+export type TaskCursorGithubVerifyResult = Readonly<{
+  readonly ok: boolean;
+  readonly reason?: TaskCursorFailureReason;
+  readonly message?: string;
+  readonly verifiedChangedFiles?: readonly string[];
+}>;
+
+type GithubCommitResponse = Readonly<{
+  readonly sha?: string;
+  readonly commit?: Readonly<{ readonly message?: string }>;
+  readonly files?: readonly Readonly<{ readonly filename?: string }>[];
+}>;
+
+type GithubRefResponse = Readonly<{ readonly object?: Readonly<{ readonly sha?: string }> }>;
+
+async function githubFetchJson<T>(
+  url: string,
+  token: string,
+  userAgent: string,
+): Promise<
+  | Readonly<{ readonly ok: true; readonly data: T; readonly status: number }>
+  | Readonly<{ readonly ok: false; readonly status: number; readonly body: string }>
+> {
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": userAgent,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+  const txt = await res.text();
+  if (!res.ok) return { ok: false, status: res.status, body: txt.slice(0, 500) };
+  try {
+    return { ok: true, data: JSON.parse(txt) as T, status: res.status };
+  } catch {
+    return { ok: false, status: res.status, body: txt.slice(0, 500) };
+  }
+}
+
+export async function verifyTaskCursorGithubResult(
+  input: TaskCursorGithubVerifyInput,
+): Promise<TaskCursorGithubVerifyResult> {
+  const token = input.githubToken.trim();
+  if (!token) {
+    return {
+      ok: false,
+      reason: "github_auth_failed",
+      message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+    };
+  }
+
+  const repoUrl = input.targetRepository.gitRepoUrl;
+  const parsed = resolveGithubOwnerRepoStrict(repoUrl);
+  if (!parsed) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: "GitHub 저장소 URL이 올바르지 않습니다.",
+    };
+  }
+
+  const commitSha = String(input.execution.commitSha ?? "").trim();
+  if (!commitSha || commitSha.startsWith("wip-stub")) {
+    return {
+      ok: false,
+      reason: "commit_not_created",
+      message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
+    };
+  }
+
+  const userAgent = input.userAgent ?? "JYOrchestration/task-cursor-github-verify";
+  const api = githubRestApiBase();
+  const owner = encodeURIComponent(parsed.owner);
+  const repo = encodeURIComponent(parsed.repo);
+  const branch = input.execution.workBranch.trim();
+  const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
+  const refRes = await githubFetchJson<GithubRefResponse>(refUrl, token, userAgent);
+  if (!refRes.ok) {
+    if (refRes.status === 401 || refRes.status === 403) {
+      return {
+        ok: false,
+        reason: "github_auth_failed",
+        message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+      };
+    }
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+    };
+  }
+
+  const commitUrl = `${api}/repos/${owner}/${repo}/commits/${encodeURIComponent(commitSha)}`;
+  const commitRes = await githubFetchJson<GithubCommitResponse>(commitUrl, token, userAgent);
+  if (!commitRes.ok) {
+    if (commitRes.status === 401 || commitRes.status === 403) {
+      return {
+        ok: false,
+        reason: "github_auth_failed",
+        message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+      };
+    }
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+    };
+  }
+
+  const commitMessage = String(commitRes.data.commit?.message ?? "");
+  if (!commitMessage.includes(input.execution.taskId)) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: "GitHub commit message에 taskId가 포함되어 있지 않습니다.",
+    };
+  }
+
+  const apiFiles =
+    commitRes.data.files?.map((f) => String(f.filename ?? "").trim()).filter(Boolean) ?? [];
+  const changedFiles =
+    apiFiles.length > 0 ? apiFiles : [...(input.execution.changedFiles ?? [])];
+  if (!changedFiles.length) {
+    return {
+      ok: false,
+      reason: "no_changed_files",
+      message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
+    };
+  }
+
+  const pathValidation = validateTargetRepositoryChangedFiles({
+    changedFiles,
+    targetRepository: input.targetRepository,
+    allowedPathGlobs: input.allowedPathGlobs,
+    forbiddenPathGlobs: defaultForbiddenTargetPathGlobs(),
+  });
+  if (!pathValidation.ok) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: pathValidation.message,
+    };
+  }
+
+  return { ok: true, verifiedChangedFiles: changedFiles };
+}

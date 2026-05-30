@@ -332,6 +332,30 @@ describe("codeAgentExecutionProgressView", () => {
     expect(actions[0]?.label).toBe(REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP);
     expect(actions[0]?.priority).toBe("primary");
   });
+
+  it("prefers task cursor execution progress over WIP stub", () => {
+    const view = buildCodeAgentExecutionProgressView({
+      taskCursorExecutionV1: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        status: "cursor_failed",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-mock-001",
+        failureReason: "cursor_endpoint_unsupported",
+        errorMessage: "endpoint unsupported",
+        createdAt: "2026-05-30T12:00:00.000Z",
+        updatedAt: "2026-05-30T12:00:00.000Z",
+      },
+    });
+    expect(view.statusLabel).toBe("실패");
+    expect(view.summaryLine).toBe("endpoint unsupported");
+    expect(view.showGenerationClarification).toBe(false);
+    expect(view.isStubResult).toBe(false);
+  });
 });
 
 describe("implementationExecutionBoardPanel scroll structure", () => {

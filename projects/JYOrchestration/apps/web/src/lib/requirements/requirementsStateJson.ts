@@ -19,6 +19,11 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import { parseProjectArtifactsFromState } from "@/lib/requirements/projectArtifactTypes";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import { parseCodeAgentWipExecutionFromState } from "@/lib/prototype/codeAgentWipExecutionStateWire";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import {
+  parseTaskCursorExecutionHistoryV1,
+  parseTaskCursorExecutionV1,
+} from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import {
@@ -590,6 +595,10 @@ export type RequirementsStateJson = {
   implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   /** Code Agent WIP 검토 루프 상태(JSON) */
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  /** Task 단위 Cursor API 실행 상태(JSON) */
+  taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  /** Task Cursor 실행 이력(JSON) */
+  taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1036,6 +1045,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "codeAgentWipExecutionV1" in o ? o.codeAgentWipExecutionV1 : undefined,
     "cursorWipExecutionV1" in o ? o.cursorWipExecutionV1 : undefined,
   );
+  const taskCursorExecutionV1 = parseTaskCursorExecutionV1(
+    "taskCursorExecutionV1" in o ? o.taskCursorExecutionV1 : undefined,
+  );
+  const taskCursorExecutionHistoryV1 = parseTaskCursorExecutionHistoryV1(
+    "taskCursorExecutionHistoryV1" in o ? o.taskCursorExecutionHistoryV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1196,6 +1211,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       ? { implementationUserFeedbackPatchesV1 }
       : {}),
     ...(codeAgentWipExecutionV1 !== undefined ? { codeAgentWipExecutionV1 } : {}),
+    ...(taskCursorExecutionV1 !== undefined ? { taskCursorExecutionV1 } : {}),
+    ...(taskCursorExecutionHistoryV1 !== undefined ? { taskCursorExecutionHistoryV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),

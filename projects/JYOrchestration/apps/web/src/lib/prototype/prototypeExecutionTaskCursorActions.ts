@@ -1,0 +1,285 @@
+import {
+  markDeveloperTasksDoneForWip,
+  markPostDeveloperReviewTasksQueued,
+  type ImplementationTaskExecutionStateV1,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
+import {
+  appendTaskCursorExecutionHistory,
+  buildInitialTaskCursorExecution,
+  buildTaskCursorPrompt,
+  buildTaskCursorRunId,
+  buildTaskCursorTimelineEntry,
+  buildTaskCursorWorkBranch,
+  patchTaskCursorExecution,
+  TASK_CURSOR_FAILURE_MESSAGES,
+  type TaskCursorExecuteApiResult,
+  type TaskCursorExecutionV1,
+} from "@/lib/prototype/taskCursorExecution";
+import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+
+export function buildTaskCursorExecutionRequest(input: {
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly workItemIds: readonly string[];
+  readonly workItems: readonly CursorWorkItem[];
+  readonly targetRepository: ProjectTargetRepository;
+  readonly baseBranch: string;
+  readonly allowedPathGlobs: readonly string[];
+  readonly existing?: TaskCursorExecutionV1 | null;
+  readonly nowIso?: string;
+}): TaskCursorExecutionV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const workBranch = buildTaskCursorWorkBranch(input.taskId);
+  const commitMessage = buildProviderWipCommitMessage("cursor", `task ${input.taskId}`, false, input.taskId);
+  const prompt = buildTaskCursorPrompt({
+    taskId: input.taskId,
+    workItems: input.workItems,
+    targetRepository: input.targetRepository,
+    commitMessage,
+    allowedPathGlobs: input.allowedPathGlobs,
+  });
+  const base =
+    input.existing && input.existing.taskId === input.taskId
+      ? input.existing
+      : buildInitialTaskCursorExecution({
+          projectId: input.projectId,
+          taskId: input.taskId,
+          workItemIds: input.workItemIds,
+          targetRepository: input.targetRepository.repoFullName,
+          baseBranch: input.baseBranch,
+          workBranch,
+          nowIso: now,
+        });
+  return patchTaskCursorExecution(base, {
+    workItemIds: input.workItemIds,
+    status: "prompt_ready",
+    cursorPrompt: prompt,
+    cursorRunId: buildTaskCursorRunId(now),
+    targetRepository: input.targetRepository.repoFullName,
+    baseBranch: input.baseBranch,
+    workBranch,
+    failureReason: undefined,
+    errorMessage: undefined,
+    nowIso: now,
+  });
+}
+
+export function applyTaskCursorApiResult(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly result: TaskCursorExecuteApiResult;
+  readonly nowIso?: string;
+}): TaskCursorExecutionV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  if (!input.result.ok || input.result.status !== "completed") {
+    return patchTaskCursorExecution(input.execution, {
+      status: "cursor_failed",
+      failureReason: input.result.reason ?? "unknown",
+      errorMessage: input.result.message ?? TASK_CURSOR_FAILURE_MESSAGES.unknown,
+      nowIso: now,
+    });
+  }
+  return patchTaskCursorExecution(input.execution, {
+    status: "cursor_completed",
+    commitSha: input.result.commitSha,
+    changedFiles: input.result.changedFiles ?? [],
+    diffSummary: input.result.diffSummary,
+    testResults: input.result.testResults,
+    pushed: input.result.pushed === true,
+    failureReason: undefined,
+    errorMessage: undefined,
+    nowIso: now,
+  });
+}
+
+export function applyTaskCursorGithubVerifyResult(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly ok: boolean;
+  readonly message?: string;
+  readonly verifiedChangedFiles?: readonly string[];
+  readonly nowIso?: string;
+}): TaskCursorExecutionV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  if (!input.ok) {
+    return patchTaskCursorExecution(input.execution, {
+      status: "github_verify_failed",
+      failureReason: "github_verify_failed",
+      errorMessage: input.message ?? TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+      nowIso: now,
+    });
+  }
+  return patchTaskCursorExecution(input.execution, {
+    status: "github_verified",
+    changedFiles: input.verifiedChangedFiles ?? input.execution.changedFiles,
+    failureReason: undefined,
+    errorMessage: undefined,
+    nowIso: now,
+  });
+}
+
+export function syncTaskExecutionStateAfterGithubVerified(input: {
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly taskId: string;
+  readonly cursorWorkItems: readonly CursorWorkItem[];
+  readonly nowIso?: string;
+}): ImplementationTaskExecutionStateV1 | undefined {
+  if (!input.executionState) return undefined;
+  const now = input.nowIso ?? new Date().toISOString();
+  const afterDevDone = markDeveloperTasksDoneForWip({
+    state: input.executionState,
+    cursorWorkItems: input.cursorWorkItems,
+    selectedTaskId: input.taskId,
+    nowIso: now,
+    resultSummary: "Task Cursor GitHub commit 확인됨",
+  });
+  return markPostDeveloperReviewTasksQueued({
+    state: afterDevDone,
+    nowIso: now,
+  });
+}
+
+export function buildTaskCursorOrchestrationPatch(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly history?: readonly TaskCursorExecutionV1[] | null;
+  readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[];
+  readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+}): Readonly<{
+  readonly taskCursorExecutionV1: TaskCursorExecutionV1;
+  readonly taskCursorExecutionHistoryV1: readonly TaskCursorExecutionV1[];
+  readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
+  readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1;
+}> {
+  const timeline = appendPromptTimeline(input.existingTimeline, ...input.timelineEntries);
+  const executionState =
+    input.execution.status === "github_verified" && input.executionState
+      ? syncTaskExecutionStateAfterGithubVerified({
+          executionState: input.executionState,
+          taskId: input.execution.taskId,
+          cursorWorkItems: input.cursorWorkItems ?? [],
+        })
+      : input.executionState ?? undefined;
+  return {
+    taskCursorExecutionV1: input.execution,
+    taskCursorExecutionHistoryV1: appendTaskCursorExecutionHistory(
+      input.history,
+      input.execution,
+    ),
+    promptTimeline: timeline,
+    ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
+  };
+}
+
+export function buildTaskCursorRequestedTimeline(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  const common = {
+    projectId: input.execution.projectId,
+    taskId: input.execution.taskId,
+    targetRepository: input.execution.targetRepository,
+    baseBranch: input.execution.baseBranch,
+    workBranch: input.execution.workBranch,
+    runId: input.execution.cursorRunId,
+    workItemCount: input.execution.workItemIds.length,
+    nowIso: input.nowIso,
+  };
+  return [
+    buildTaskCursorTimelineEntry({
+      action: "task_cursor_execution_requested",
+      status: "requested",
+      ...common,
+    }),
+    buildTaskCursorTimelineEntry({
+      action: "task_cursor_prompt_built",
+      status: "prompt_ready",
+      ...common,
+    }),
+    buildTaskCursorTimelineEntry({
+      action: "task_cursor_api_requested",
+      status: "cursor_requested",
+      ...common,
+    }),
+  ];
+}
+
+export function buildTaskCursorApiStartedTimeline(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildTaskCursorTimelineEntry({
+    action: "task_cursor_api_started",
+    projectId: input.execution.projectId,
+    taskId: input.execution.taskId,
+    status: "cursor_running",
+    targetRepository: input.execution.targetRepository,
+    baseBranch: input.execution.baseBranch,
+    workBranch: input.execution.workBranch,
+    runId: input.execution.cursorRunId,
+    workItemCount: input.execution.workItemIds.length,
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorApiCompletedTimeline(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildTaskCursorTimelineEntry({
+    action: "task_cursor_api_completed",
+    projectId: input.execution.projectId,
+    taskId: input.execution.taskId,
+    status: "cursor_completed",
+    targetRepository: input.execution.targetRepository,
+    baseBranch: input.execution.baseBranch,
+    workBranch: input.execution.workBranch,
+    commitSha: input.execution.commitSha,
+    changedFileCount: input.execution.changedFiles?.length ?? 0,
+    runId: input.execution.cursorRunId,
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorApiFailedTimeline(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildTaskCursorTimelineEntry({
+    action: "task_cursor_api_failed",
+    projectId: input.execution.projectId,
+    taskId: input.execution.taskId,
+    status: "cursor_failed",
+    targetRepository: input.execution.targetRepository,
+    baseBranch: input.execution.baseBranch,
+    workBranch: input.execution.workBranch,
+    reason: input.execution.failureReason,
+    runId: input.execution.cursorRunId,
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorGithubVerifyTimeline(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildTaskCursorTimelineEntry({
+    action: input.ok ? "task_cursor_github_verified" : "task_cursor_github_verify_failed",
+    projectId: input.execution.projectId,
+    taskId: input.execution.taskId,
+    status: input.ok ? "github_verified" : "github_verify_failed",
+    targetRepository: input.execution.targetRepository,
+    baseBranch: input.execution.baseBranch,
+    workBranch: input.execution.workBranch,
+    commitSha: input.execution.commitSha,
+    changedFileCount: input.execution.changedFiles?.length ?? 0,
+    reason: input.reason,
+    runId: input.execution.cursorRunId,
+    nowIso: input.nowIso,
+  });
+}

@@ -1446,6 +1446,7 @@ export function PrototypePreviewPanel({
       implementationReviewStageReadyV1:
         orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
       canApplyGit,
     });
   }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady, canApplyGit]);
@@ -1634,6 +1635,7 @@ export function PrototypePreviewPanel({
       reviewStageUserFeedbackListV1:
         orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+      taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
       canApplyGit,
     };
   }, [
@@ -3564,6 +3566,120 @@ export function PrototypePreviewPanel({
           }
           return { outcome: "executed" };
         }
+        case "REQUEST_TASK_CURSOR_EXECUTION": {
+          const pid = projectId.trim();
+          const board = implementationStageBoardGateContext?.board;
+          const workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          if (!board) {
+            const message = "구현 Execution Board가 준비되지 않았습니다.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          const scoped = selectCursorWorkItemsForWipExecution({
+            board,
+            workItems,
+            boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
+            qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
+          });
+          if (!scoped.selectedTaskId || !scoped.selectedWorkItems.length) {
+            const message = scoped.blockedReason ?? "실행 가능한 Task를 찾을 수 없습니다.";
+            executionSingleChat.appendAiNotice(message);
+            return { outcome: "blocked", message };
+          }
+          showToast("AI 개발자 Task Cursor 실행을 시작합니다...");
+          void (async () => {
+            try {
+              const res = await fetch("/api/prototype/task-cursor/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  projectId: pid,
+                  taskId: scoped.selectedTaskId,
+                  selectedWorkItemIds: scoped.selectedWorkItems.map((w) => w.id),
+                  workItems: scoped.selectedWorkItems,
+                  verifyGithub: true,
+                }),
+              });
+              const json = (await res.json()) as {
+                success?: boolean;
+                message?: string;
+                execution?: { status?: string; errorMessage?: string; failureReason?: string };
+                orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
+              };
+              if (json.orchestrationPatch) {
+                applyImplementationOrchestrationResult({
+                  messages: executionSingleChat.chatMessages,
+                  orchestrationPatch: json.orchestrationPatch,
+                });
+              }
+              const notice =
+                json.execution?.errorMessage ??
+                json.message ??
+                (json.success ? "Task Cursor 실행이 완료되었습니다." : "Task Cursor 실행에 실패했습니다.");
+              executionSingleChat.appendAiNotice(notice);
+              showToast(notice);
+            } catch (e) {
+              const message = e instanceof Error ? e.message : String(e);
+              executionSingleChat.appendAiNotice(`Task Cursor 실행 오류: ${message}`);
+              showToast(`Task Cursor 실행 오류: ${message}`);
+            }
+          })();
+          return { outcome: "executed" };
+        }
+        case "CHECK_TASK_CURSOR_STATUS": {
+          const execution = orchestrationAwareRequirementsState.taskCursorExecutionV1;
+          if (!execution) {
+            return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
+          }
+          const message = [
+            `Task: ${execution.taskId}`,
+            `상태: ${execution.status}`,
+            execution.commitSha ? `Commit: ${execution.commitSha}` : null,
+            execution.errorMessage ? `사유: ${execution.errorMessage}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n");
+          executionSingleChat.appendAiNotice(message);
+          showToast(`Task Cursor 상태: ${execution.status}`);
+          return { outcome: "executed" };
+        }
+        case "VERIFY_TASK_CURSOR_GITHUB": {
+          const pid = projectId.trim();
+          const execution = orchestrationAwareRequirementsState.taskCursorExecutionV1;
+          if (!execution) {
+            return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
+          }
+          showToast("GitHub commit 결과를 확인합니다...");
+          void (async () => {
+            try {
+              const res = await fetch("/api/prototype/task-cursor/verify-github", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ projectId: pid, execution }),
+              });
+              const json = (await res.json()) as {
+                success?: boolean;
+                message?: string;
+                orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
+              };
+              if (json.orchestrationPatch) {
+                applyImplementationOrchestrationResult({
+                  messages: executionSingleChat.chatMessages,
+                  orchestrationPatch: json.orchestrationPatch,
+                });
+              }
+              const notice =
+                json.message ??
+                (json.success ? "GitHub commit 확인 완료" : "GitHub commit 확인 실패");
+              executionSingleChat.appendAiNotice(notice);
+              showToast(notice);
+            } catch (e) {
+              const message = e instanceof Error ? e.message : String(e);
+              showToast(`GitHub 확인 오류: ${message}`);
+            }
+          })();
+          return { outcome: "executed" };
+        }
         case "REQUEST_CURSOR_BRIDGE_EXECUTION": {
           const pid = projectId.trim();
           const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
@@ -5343,6 +5459,7 @@ export function PrototypePreviewPanel({
             taskList={implementationStageBoardInput.taskList}
             executionSetup={executionSetupRow}
             codeAgentWipExecutionV1={orchestrationAwareRequirementsState.codeAgentWipExecutionV1}
+            taskCursorExecutionV1={orchestrationAwareRequirementsState.taskCursorExecutionV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}

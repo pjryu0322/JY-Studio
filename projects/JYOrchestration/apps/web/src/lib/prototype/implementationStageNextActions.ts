@@ -72,6 +72,13 @@ import {
 } from "@/lib/prototype/codeAgentWipExecution";
 import { filterPlatformScmNextActions } from "@/lib/prototype/platformScmRouteAuth";
 import { isPlatformScmPushPrCompleted } from "@/lib/prototype/platformScmReadiness";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import {
+  AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+  CHECK_TASK_CURSOR_STATUS_CHIP,
+  isTaskCursorExecutionFailed,
+  VERIFY_TASK_CURSOR_GITHUB_CHIP,
+} from "@/lib/prototype/taskCursorExecution";
 
 export type ImplementationStageNextAction = Readonly<{
   actionId: ImplementationStageActionId;
@@ -92,6 +99,7 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
   readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
   readonly canApplyGit?: boolean;
 }>;
@@ -541,6 +549,145 @@ function deriveNextActionsWhenTaskListMissing(
   return null;
 }
 
+function deriveNextActionsFromTaskCursorExecution(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): readonly ImplementationStageNextAction[] | null {
+  if (!execution) return null;
+  const status = execution.status;
+  if (status === "pending" || status === "prompt_ready") {
+    return [
+      {
+        actionId: "REQUEST_TASK_CURSOR_EXECUTION",
+        label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+        priority: "primary",
+        reason: "Task 단위 AI 개발자 Cursor API 실행",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "GitHub/Cursor API 환경설정",
+      },
+    ];
+  }
+  if (status === "cursor_requested" || status === "cursor_running" || status === "github_verifying") {
+    return [
+      {
+        actionId: "CHECK_TASK_CURSOR_STATUS",
+        label: CHECK_TASK_CURSOR_STATUS_CHIP,
+        priority: "primary",
+        reason: "Cursor API 실행 상태 확인",
+      },
+      {
+        actionId: "VERIFY_TASK_CURSOR_GITHUB",
+        label: VERIFY_TASK_CURSOR_GITHUB_CHIP,
+        priority: "secondary",
+        reason: "GitHub commit/push 결과 확인",
+      },
+    ];
+  }
+  if (status === "cursor_completed") {
+    return [
+      {
+        actionId: "VERIFY_TASK_CURSOR_GITHUB",
+        label: VERIFY_TASK_CURSOR_GITHUB_CHIP,
+        priority: "primary",
+        reason: "Cursor 작업 완료 — GitHub commit 확인",
+      },
+      {
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: "변경사항 보기",
+        priority: "secondary",
+        reason: "Cursor API 변경사항 확인",
+      },
+    ];
+  }
+  if (status === "github_verified" || status === "review_pending") {
+    return [
+      {
+        actionId: "RUN_REVIEWER_CHECK",
+        label: REVIEWER_CHECK_RUN_CHIP,
+        priority: "primary",
+        reason: "GitHub commit 확인 후 검수자 점검",
+      },
+      {
+        actionId: "RUN_SECURITY_CHECK",
+        label: SECURITY_CHECK_RUN_CHIP,
+        priority: "secondary",
+        reason: "GitHub commit 확인 후 보안관 점검",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "tertiary",
+        reason: "SCM 반영 기준 확인",
+      },
+    ];
+  }
+  if (isTaskCursorExecutionFailed(execution) || status === "github_verify_failed") {
+    return [
+      {
+        actionId: "REQUEST_TASK_CURSOR_EXECUTION",
+        label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+        priority: "primary",
+        reason: execution.failureReason === "cursor_endpoint_unsupported"
+          ? "Cursor API endpoint 미지원 — 재시도 또는 환경설정 확인"
+          : "Task Cursor 실행 실패 후 재시도",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "GitHub/Cursor API 환경설정",
+      },
+    ];
+  }
+  if (status === "security_pending" || status === "scm_pending") {
+    return [
+      {
+        actionId: "RUN_SECURITY_CHECK",
+        label: SECURITY_CHECK_RUN_CHIP,
+        priority: "primary",
+        reason: "보안 점검 진행",
+      },
+      {
+        actionId: "SHOW_SCM_CHECK",
+        label: SCM_CRITERIA_CHIP,
+        priority: "secondary",
+        reason: "SCM merge 정책 확인",
+      },
+    ];
+  }
+  return null;
+}
+
+function deriveNextActionsWhenTaskListReadyForCursor(
+  boardInput?: ImplementationStageNextActionsBoardInput | null,
+): readonly ImplementationStageNextAction[] | null {
+  if (!boardInput?.taskList?.tasks?.length) return null;
+  if (boardInput.taskCursorExecutionV1) return null;
+  return [
+    {
+      actionId: "REQUEST_TASK_CURSOR_EXECUTION",
+      label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+      priority: "primary",
+      reason: "구현 Task 단위 AI 개발자 Cursor 실행",
+    },
+    {
+      actionId: "OPEN_ENV_SETTINGS",
+      label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+      priority: "secondary",
+      reason: "GitHub/Cursor API 환경설정",
+    },
+    {
+      actionId: "SHOW_ARTIFACTS",
+      label: TASK_LIST_VIEW_CHIP,
+      priority: "tertiary",
+      reason: "작업목록 확인",
+    },
+  ];
+}
+
 function deriveNextActionsFromCodeAgentWip(
   wip: CodeAgentWipExecutionV1 | null | undefined,
 ): readonly ImplementationStageNextAction[] | null {
@@ -785,6 +932,11 @@ function deriveImplementationStageNextActionsCore(
     return missingTaskListActions;
   }
 
+  const fromTaskCursor = deriveNextActionsFromTaskCursorExecution(boardInput?.taskCursorExecutionV1);
+  if (fromTaskCursor?.length) {
+    return fromTaskCursor;
+  }
+
   const fromWip = deriveNextActionsFromCodeAgentWip(boardInput?.codeAgentWipExecutionV1);
   if (fromWip?.length) {
     return fromWip;
@@ -823,12 +975,14 @@ function deriveImplementationStageNextActionsCore(
         reviewGate,
       );
       if (fromExecutionWhileBoard?.length) return fromExecutionWhileBoard;
+      const fromTaskReady = deriveNextActionsWhenTaskListReadyForCursor(boardInput);
+      if (fromTaskReady?.length) return fromTaskReady;
       return [
         {
-          actionId: "REQUEST_CODE_AGENT_WIP",
-          label: IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+          actionId: "REQUEST_TASK_CURSOR_EXECUTION",
+          label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
           priority: "primary",
-          reason: "구현 작업 보드 기준 task-scoped 생성요청 WIP",
+          reason: "구현 Task 단위 AI 개발자 Cursor 실행",
         },
         {
           actionId: "OPEN_ENV_SETTINGS",

@@ -1,4 +1,5 @@
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { summarizeTaskPlanExecutionStats } from "@/lib/prototype/implementationTaskPlanSummary";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -86,6 +87,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationUserFeedbackPatchesV1?: readonly ImplementationUserFeedbackPatchV1[] | null;
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   readonly implementationStageActionRunLogV1?: ImplementationStageActionRunLogV1 | null;
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
@@ -130,6 +133,17 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
     ...(input.implementationSeedV1 !== undefined ? { implementationSeedV1: input.implementationSeedV1 } : {}),
     ...(input.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
+      : {}),
+    ...(input.taskCursorExecutionV1 !== undefined
+      ? { taskCursorExecutionV1: input.taskCursorExecutionV1 }
+      : {}),
+    ...(input.taskCursorExecutionHistoryV1 !== undefined
+      ? {
+          taskCursorExecutionHistoryV1:
+            input.taskCursorExecutionHistoryV1 === null
+              ? null
+              : [...input.taskCursorExecutionHistoryV1],
+        }
       : {}),
     ...(input.implementationStageActionRunLogV1 !== undefined
       ? { implementationStageActionRunLogV1: input.implementationStageActionRunLogV1 }

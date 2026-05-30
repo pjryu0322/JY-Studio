@@ -21,6 +21,12 @@ import {
   REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP,
 } from "@/lib/prototype/codeAgentWipExecution";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import {
+  AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+  CHECK_TASK_CURSOR_STATUS_CHIP,
+  VERIFY_TASK_CURSOR_GITHUB_CHIP,
+} from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -81,6 +87,9 @@ export type ImplementationStageActionId =
   | "SHOW_ENV_CHECK"
   | "REQUEST_CODE_AGENT_WIP"
   | "REQUEST_CURSOR_BRIDGE_EXECUTION"
+  | "REQUEST_TASK_CURSOR_EXECUTION"
+  | "CHECK_TASK_CURSOR_STATUS"
+  | "VERIFY_TASK_CURSOR_GITHUB"
   | "RUN_REVIEWER_CHECK"
   | "RUN_SECURITY_CHECK"
   | "RUN_REFACTOR_COMMON"
@@ -109,6 +118,8 @@ export type PendingImplementationPatch = Readonly<{
   implementationTaskListV1?: ImplementationTaskListV1 | null;
   cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
@@ -135,6 +146,12 @@ export function resolveOrchestrationAwareRequirementsState(input: {
       : {}),
     ...(pending.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: pending.codeAgentWipExecutionV1 }
+      : {}),
+    ...(pending.taskCursorExecutionV1 !== undefined
+      ? { taskCursorExecutionV1: pending.taskCursorExecutionV1 }
+      : {}),
+    ...(pending.taskCursorExecutionHistoryV1 !== undefined
+      ? { taskCursorExecutionHistoryV1: pending.taskCursorExecutionHistoryV1 }
       : {}),
     ...(pending.implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1: pending.implementationTaskExecutionStateV1 }
@@ -251,6 +268,12 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.codeAgentWipExecutionV1 !== undefined) {
     next.codeAgentWipExecutionV1 = patch.codeAgentWipExecutionV1;
   }
+  if (patch.taskCursorExecutionV1 !== undefined) {
+    next.taskCursorExecutionV1 = patch.taskCursorExecutionV1;
+  }
+  if (patch.taskCursorExecutionHistoryV1 !== undefined) {
+    next.taskCursorExecutionHistoryV1 = patch.taskCursorExecutionHistoryV1;
+  }
   if (patch.implementationTaskExecutionStateV1 !== undefined) {
     next.implementationTaskExecutionStateV1 = patch.implementationTaskExecutionStateV1;
   }
@@ -284,6 +307,12 @@ export function mergePendingImplementationPatch(
       : {}),
     ...(incoming.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: incoming.codeAgentWipExecutionV1 }
+      : {}),
+    ...(incoming.taskCursorExecutionV1 !== undefined
+      ? { taskCursorExecutionV1: incoming.taskCursorExecutionV1 }
+      : {}),
+    ...(incoming.taskCursorExecutionHistoryV1 !== undefined
+      ? { taskCursorExecutionHistoryV1: incoming.taskCursorExecutionHistoryV1 }
       : {}),
     ...(incoming.implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1: incoming.implementationTaskExecutionStateV1 }
@@ -366,6 +395,12 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
     case REQUEST_CURSOR_BRIDGE_EXECUTION_CHIP:
     case "Cursor 실행 요청":
       return "REQUEST_CURSOR_BRIDGE_EXECUTION";
+    case AI_DEVELOPER_EXECUTION_REQUEST_CHIP:
+      return "REQUEST_TASK_CURSOR_EXECUTION";
+    case CHECK_TASK_CURSOR_STATUS_CHIP:
+      return "CHECK_TASK_CURSOR_STATUS";
+    case VERIFY_TASK_CURSOR_GITHUB_CHIP:
+      return "VERIFY_TASK_CURSOR_GITHUB";
     case RUN_REFACTOR_COMMON_CHIP:
       return "RUN_REFACTOR_COMMON";
     case RUN_INTEGRATED_REVIEW_CHIP:
