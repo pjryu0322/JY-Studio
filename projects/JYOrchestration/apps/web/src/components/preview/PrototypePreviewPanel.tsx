@@ -3705,8 +3705,6 @@ export function PrototypePreviewPanel({
               workspacePath: readiness.context.workspaceRoot,
               baseBranch: readiness.context.baseBranch,
               allowedPathGlobs: readiness.context.allowedPathGlobs,
-              autoPush: readiness.context.autoPush,
-              autoPr: readiness.context.autoPr,
             });
             applyImplementationOrchestrationResult({
               messages: executionSingleChat.chatMessages,

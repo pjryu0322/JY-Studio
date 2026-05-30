@@ -192,8 +192,8 @@ export async function POST(request: NextRequest) {
       allowedPathGlobs: context.allowedPathGlobs,
       forbiddenPathGlobs: context.forbiddenPathGlobs,
       autoCommit: context.autoCommit,
-      autoPush: context.autoPush,
-      autoPr: context.autoPr,
+      autoPush: false,
+      autoPr: false,
       ...(context.cursorApiUrl ? { cursorApiUrl: context.cursorApiUrl } : {}),
     });
 

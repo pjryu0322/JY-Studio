@@ -50,7 +50,7 @@ describe("buildCursorBridgeExecuteRequestFromWorkItems", () => {
       expect(built.baseBranch).toBe("main");
       expect(built.workspaceRoot).toBe("C:/workspace/aiproject");
       expect(built.allowedPathGlobs).toEqual(["src/**"]);
-      expect(built.autoPush).toBe(true);
+      expect(built.autoPush).toBe(false);
       expect(built.autoPr).toBe(false);
     }
   });

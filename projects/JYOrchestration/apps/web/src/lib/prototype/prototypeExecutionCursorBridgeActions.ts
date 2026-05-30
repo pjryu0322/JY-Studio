@@ -43,8 +43,6 @@ export function patchWipForCursorBridgePhase(input: {
   readonly workspacePath?: string;
   readonly baseBranch?: string;
   readonly allowedPathGlobs?: readonly string[];
-  readonly autoPush?: boolean;
-  readonly autoPr?: boolean;
 }): CodeAgentWipExecutionV1 {
   const bridgeStatus = input.phase === "requested" ? "bridge_requested" : "bridge_running";
   return {
@@ -62,8 +60,8 @@ export function patchWipForCursorBridgePhase(input: {
     ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
     ...(input.baseBranch ? { baseBranch: input.baseBranch } : {}),
     ...(input.allowedPathGlobs ? { bridgeAllowedPathGlobs: input.allowedPathGlobs } : {}),
-    ...(input.autoPush !== undefined ? { bridgeAutoPush: input.autoPush } : {}),
-    ...(input.autoPr !== undefined ? { bridgeAutoPr: input.autoPr } : {}),
+    bridgeAutoPush: false,
+    bridgeAutoPr: false,
     bridgeErrorMessage: undefined,
   };
 }

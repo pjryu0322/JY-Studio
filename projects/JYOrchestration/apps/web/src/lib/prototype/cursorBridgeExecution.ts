@@ -178,8 +178,9 @@ export function buildCursorBridgeExecuteRequestFromWorkItems(input: {
     allowedPathGlobs,
     forbiddenPathGlobs,
     autoCommit: input.autoCommit,
-    autoPush: input.autoPush,
-    autoPr: input.autoPr,
+    // Push/PR are owned by platform SCM — never request them from Cursor API.
+    autoPush: false,
+    autoPr: false,
     ...(input.cursorApiUrl?.trim() ? { cursorApiUrl: input.cursorApiUrl.trim() } : {}),
   };
 }
