@@ -265,7 +265,7 @@ import {
   validateTaskScopedWorkItems,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import {
-  buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry,
+  buildImplementationExecutionBlockedByPlanningGateTimelineEntry,
   evaluateImplementationPlanningExecutionGate,
   IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationPlanningReadiness";
@@ -4189,7 +4189,7 @@ export function PrototypePreviewPanel({
             const nowIso = new Date().toISOString();
             const blockedTimeline = appendPromptTimeline(
               orchestrationAwareRequirementsState.promptTimeline ?? [],
-              buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
+              buildImplementationExecutionBlockedByPlanningGateTimelineEntry({
                 projectId: pid,
                 reason: planningGate.reason,
                 nowIso,
@@ -6121,7 +6121,7 @@ export function PrototypePreviewPanel({
       void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
         promptTimeline: appendPromptTimeline(
           parsedRequirementsState.promptTimeline,
-          buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
+          buildImplementationExecutionBlockedByPlanningGateTimelineEntry({
             projectId: pid,
             reason: planningGate.reason,
             nowIso,

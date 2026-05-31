@@ -392,6 +392,13 @@ export function buildTaskCursorPollStatusLabel(input: {
   if (isServerTaskCursorPolling() && input.serverJob?.taskId === input.taskId) {
     const parts = ["서버 Worker", input.serverJob.status];
     if (input.serverJob.pollCount > 0) parts.push(`${input.serverJob.pollCount}회`);
+    if (input.serverJob.lastPollAt) {
+      parts.push(`last ${input.serverJob.lastPollAt.slice(11, 19)}`);
+    }
+    if (input.serverJob.nextPollAt) {
+      parts.push(`next ${input.serverJob.nextPollAt.slice(11, 19)}`);
+    }
+    if (input.serverJob.failureReason) parts.push(input.serverJob.failureReason);
     if (input.serverJob.cursorRunId) parts.push(`run ${input.serverJob.cursorRunId.slice(0, 8)}`);
     const elapsed = formatTaskCursorElapsedMinutes(
       input.serverJob.lastPollAt ?? execution.updatedAt ?? execution.createdAt,

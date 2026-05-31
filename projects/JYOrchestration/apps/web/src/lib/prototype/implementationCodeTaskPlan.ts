@@ -50,6 +50,27 @@ export type ImplementationCodeTaskV1 = Readonly<{
   priority: "P0" | "P1" | "P2";
   status: ImplementationCodeTaskStatus;
   blockers: readonly string[];
+  refinementSource?: "heuristic" | "llm";
+  llmRationale?: string;
+}>;
+
+export type ImplementationCodeTaskPlanRefinementSource =
+  | "heuristic"
+  | "llm_refined"
+  | "llm_failed_heuristic_fallback";
+
+export type ImplementationCodeTaskPlanRefinementStatus =
+  | "heuristic_only"
+  | "llm_refined"
+  | "llm_validation_failed"
+  | "llm_unavailable_fallback"
+  | "llm_parse_failed_fallback";
+
+export type ImplementationCodeTaskPlanValidationReportV1 = Readonly<{
+  status: "passed" | "failed";
+  checkedAt: string;
+  errors: readonly string[];
+  warnings: readonly string[];
 }>;
 
 export type ImplementationCodeTaskPlanV1 = Readonly<{
@@ -65,7 +86,34 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
     ready: boolean;
     missing: readonly string[];
   }>;
+  refinementSource?: ImplementationCodeTaskPlanRefinementSource;
+  refinementStatus?: ImplementationCodeTaskPlanRefinementStatus;
+  validationReport?: ImplementationCodeTaskPlanValidationReportV1;
+  llmRefinedAt?: string;
+  heuristicTaskCount?: number;
+  refinedTaskCount?: number;
 }>;
+
+export const IMPLEMENTATION_CODE_TASK_CHANGE_TYPES: readonly ImplementationCodeTaskChangeType[] = [
+  "component",
+  "state",
+  "api",
+  "data",
+  "test",
+  "style",
+  "config",
+  "integration",
+  "unknown",
+] as const;
+
+export const IMPLEMENTATION_CODE_TASK_STATUSES: readonly ImplementationCodeTaskStatus[] = [
+  "draft",
+  "ready",
+  "blocked",
+  "running",
+  "done",
+  "failed",
+] as const;
 
 type CodeTaskBlueprint = Readonly<{
   readonly changeType: ImplementationCodeTaskChangeType;
@@ -324,6 +372,7 @@ function decomposeDeveloperTaskToCodeTasks(input: {
       forbiddenPaths,
       priority,
       blockers: [],
+      refinementSource: "heuristic",
     };
     const requiredFieldsMissing = codeTaskRequiredFieldsMissing(draft);
     return {
@@ -385,6 +434,25 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
       ready: missing.length === 0 && codeTasks.length > 0 && codeTasks.every((task) => task.status === "ready"),
       missing,
     },
+    refinementSource: "heuristic",
+    refinementStatus: "heuristic_only",
+    heuristicTaskCount: codeTasks.length,
+    refinedTaskCount: codeTasks.length,
+  };
+}
+
+export function parseImplementationCodeTaskPlanValidationReportV1(
+  raw: unknown,
+): ImplementationCodeTaskPlanValidationReportV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  return {
+    status: o.status === "failed" ? "failed" : "passed",
+    checkedAt: String(o.checkedAt ?? new Date().toISOString()),
+    errors: Array.isArray(o.errors) ? o.errors.map((v) => String(v ?? "").trim()).filter(Boolean) : [],
+    warnings: Array.isArray(o.warnings)
+      ? o.warnings.map((v) => String(v ?? "").trim()).filter(Boolean)
+      : [],
   };
 }
 
@@ -459,8 +527,15 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
       blockers: Array.isArray(row.blockers)
         ? row.blockers.map((v) => String(v ?? "").trim()).filter(Boolean)
         : [],
+      ...(row.refinementSource === "llm" || row.refinementSource === "heuristic"
+        ? { refinementSource: row.refinementSource }
+        : {}),
+      ...(typeof row.llmRationale === "string" && row.llmRationale.trim()
+        ? { llmRationale: row.llmRationale.trim() }
+        : {}),
     });
   }
+  const validationReport = parseImplementationCodeTaskPlanValidationReportV1(o.validationReport);
   const readinessRaw =
     o.readiness && typeof o.readiness === "object"
       ? (o.readiness as Record<string, unknown>)
@@ -480,6 +555,24 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
         ? readinessRaw.missing.map((v) => String(v ?? "").trim()).filter(Boolean)
         : [],
     },
+    ...(o.refinementSource === "heuristic" ||
+    o.refinementSource === "llm_refined" ||
+    o.refinementSource === "llm_failed_heuristic_fallback"
+      ? { refinementSource: o.refinementSource }
+      : {}),
+    ...(o.refinementStatus === "heuristic_only" ||
+    o.refinementStatus === "llm_refined" ||
+    o.refinementStatus === "llm_validation_failed" ||
+    o.refinementStatus === "llm_unavailable_fallback" ||
+    o.refinementStatus === "llm_parse_failed_fallback"
+      ? { refinementStatus: o.refinementStatus }
+      : {}),
+    ...(validationReport ? { validationReport } : {}),
+    ...(typeof o.llmRefinedAt === "string" && o.llmRefinedAt.trim()
+      ? { llmRefinedAt: o.llmRefinedAt.trim() }
+      : {}),
+    ...(typeof o.heuristicTaskCount === "number" ? { heuristicTaskCount: o.heuristicTaskCount } : {}),
+    ...(typeof o.refinedTaskCount === "number" ? { refinedTaskCount: o.refinedTaskCount } : {}),
   };
 }
 

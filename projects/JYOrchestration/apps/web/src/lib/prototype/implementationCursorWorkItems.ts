@@ -354,7 +354,12 @@ function buildCursorWorkItemFromCodeTask(input: {
     ? [...codeTask.acceptanceCriteria]
     : [`${codeTask.title} 완료`];
   const candidateFiles = codeTask.candidateFiles ? [...codeTask.candidateFiles] : [];
-  const candidateFileHints = codeTask.candidateFileHints ? [...codeTask.candidateFileHints] : [];
+  let candidateFileHints = codeTask.candidateFileHints ? [...codeTask.candidateFileHints] : [];
+  if (!candidateFileHints.length && !candidateFiles.length) {
+    candidateFileHints = (codeTask.targetHints ?? [])
+      .slice(0, 4)
+      .map((hint) => (hint.startsWith("dir:") ? hint : `dir:apps/web/src/${hint}`));
+  }
   const verificationHints = codeTask.verificationHints.length
     ? [...codeTask.verificationHints]
     : ["pnpm test"];
@@ -383,6 +388,9 @@ function buildCursorWorkItemFromCodeTask(input: {
       `변경 유형: ${codeTask.changeType}`,
       "",
       codeTask.description,
+      ...(codeTask.llmRationale?.trim()
+        ? ["", `구현 요약: ${codeTask.llmRationale.trim().slice(0, 200)}`]
+        : []),
       ...dependencyLines,
       "",
       "완료 기준:",

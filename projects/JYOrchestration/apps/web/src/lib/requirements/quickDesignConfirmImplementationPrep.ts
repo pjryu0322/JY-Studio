@@ -21,8 +21,10 @@ import {
 import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
 import {
   buildImplementationPlanningReadinessPatch,
+  buildImplementationPlanningReadinessPatchWithLlm,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
+import { isLlmCodeTaskRefinementEnabled, type LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
@@ -409,6 +411,64 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     prepComplete,
     postConfirmState,
     timelineEntries,
+  };
+}
+
+export async function runQuickDesignConfirmImplementationPrepAsync(input: {
+  readonly projectId: string;
+  readonly projectName?: string;
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly nowIso: string;
+  readonly generatedArtifactCount?: number;
+  readonly envOk?: boolean;
+  readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly existingTaskList?: ImplementationTaskListV1 | null;
+  readonly llmCaller?: LlmCodeTaskRefinementCaller;
+  readonly forceLlm?: boolean;
+}): Promise<QuickDesignConfirmImplementationPrepResult> {
+  const useLlm = input.forceLlm === true || isLlmCodeTaskRefinementEnabled();
+  if (!useLlm) {
+    return runQuickDesignConfirmImplementationPrep(input);
+  }
+
+  const syncResult = runQuickDesignConfirmImplementationPrep(input);
+  const taskListForReadiness = input.existingTaskList ?? syncResult.implementationTaskListV1;
+  if (!syncResult.prepComplete || !taskListForReadiness?.tasks?.length) {
+    return syncResult;
+  }
+
+  const now = input.nowIso;
+  const readinessPatch = await buildImplementationPlanningReadinessPatchWithLlm({
+    projectId: input.projectId,
+    taskList: taskListForReadiness,
+    projectArtifacts: input.projectArtifacts ?? [],
+    implementationSeedV1: syncResult.implementationSeedV1,
+    envOk: input.envOk === true,
+    designOk: syncResult.postConfirmState.designOk,
+    priorTimeline: input.promptTimeline,
+    nowIso: now,
+    includeTaskListCreatedEvent: !input.existingTaskList,
+    syncMode: input.existingTaskList ? "synced" : "created",
+    llmCaller: input.llmCaller,
+    forceLlm: input.forceLlm,
+  });
+
+  const nonPlanningTimeline = syncResult.timelineEntries.filter(
+    (entry) => !String(entry.action ?? "").startsWith("implementation_"),
+  );
+  const planningTimeline = readinessPatch.promptTimeline.filter((entry) =>
+    String(entry.action ?? "").startsWith("implementation_"),
+  );
+
+  return {
+    ...syncResult,
+    implementationCodeTaskPlanV1: readinessPatch.implementationCodeTaskPlanV1,
+    cursorWorkItemsV1: readinessPatch.cursorWorkItemsV1,
+    implementationWorkItemPreflightSummaryV1: readinessPatch.implementationWorkItemPreflightSummaryV1,
+    timelineEntries: [...nonPlanningTimeline, ...planningTimeline],
   };
 }
 

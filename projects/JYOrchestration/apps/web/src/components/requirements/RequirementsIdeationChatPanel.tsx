@@ -59,6 +59,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   /** H7.5: explainability 보조 매핑용 */
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   onOpenPromptTimeline?: () => void;
+  /** 기획단계 구현준비 확인 카드 */
+  chatHeaderLeading?: ReactNode;
 }>;
 
 export function RequirementsIdeationChatPanel({
@@ -98,6 +100,7 @@ export function RequirementsIdeationChatPanel({
   plusMenuRender,
   promptTimeline,
   onOpenPromptTimeline,
+  chatHeaderLeading,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
     const pending = aiInvokePending || serviceFlowAnalyzePending;
@@ -178,6 +181,7 @@ export function RequirementsIdeationChatPanel({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
+        headerLeading={chatHeaderLeading ?? null}
         typingIndicator={showTypingIndicator}
         typingIndicatorSpeakerLine={
           serviceFlowAnalyzePending

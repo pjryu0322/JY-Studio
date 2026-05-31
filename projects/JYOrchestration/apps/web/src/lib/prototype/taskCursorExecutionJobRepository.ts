@@ -104,6 +104,12 @@ export async function createQueuedTaskCursorExecutionJob(input: {
   readonly history?: readonly TaskCursorExecutionV1[] | null;
   readonly now?: Date;
 }): Promise<TaskCursorExecutionJobRow> {
+  const existing = await findActiveTaskCursorJob({
+    projectId: input.projectId,
+    taskId: input.execution.taskId,
+  });
+  if (existing) return existing;
+
   const now = input.now ?? new Date();
   return prisma.taskCursorExecutionJob.create({
     data: {

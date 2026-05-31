@@ -223,6 +223,55 @@ describe("ImplementationCodeTaskPlanV1", () => {
     );
   });
 
+  it("blocks Quick Run and Task Cursor when code task validation failed", () => {
+    const readiness = buildImplementationPlanningReadinessPatch({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const failedPlan = {
+      ...readiness.implementationCodeTaskPlanV1,
+      validationReport: {
+        status: "failed" as const,
+        checkedAt: NOW,
+        errors: ["invalid plan"],
+        warnings: [],
+      },
+    };
+    const gate = evaluateImplementationPlanningExecutionGate({
+      codeTaskPlan: failedPlan,
+      cursorWorkItems: readiness.cursorWorkItemsV1,
+      preflightSummary: readiness.implementationWorkItemPreflightSummaryV1,
+    });
+    expect(gate.ok).toBe(false);
+    if (gate.ok) return;
+    expect(gate.reason).toBe("code_task_validation_failed");
+
+    const effectiveState = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: confirmedSeed(),
+        implementationTaskListV1: sampleTaskList(),
+      },
+      envOk: true,
+      designOk: true,
+    });
+    const boardContext = buildImplementationStageBoardGateContext({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      implementationCodeTaskPlanV1: failedPlan,
+      cursorWorkItemsV1: readiness.cursorWorkItemsV1,
+      implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
+    });
+    expect(
+      evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", effectiveState, boardContext).ok,
+    ).toBe(false);
+    expect(
+      evaluateImplementationStageActionGate("REQUEST_TASK_CURSOR_EXECUTION", effectiveState, boardContext).ok,
+    ).toBe(false);
+  });
+
   it("blocks Quick Run and Task Cursor when planning preflight failed", () => {
     const readiness = buildImplementationPlanningReadinessPatch({
       projectId: PROJECT_ID,
@@ -293,6 +342,38 @@ describe("ImplementationCodeTaskPlanV1", () => {
       expect(item.refinementStatus).toBe("draft");
       expect(item.noCodeChangeEvidenceRequired).toBe(true);
     }
+  });
+
+  it("includes llmRationale and targetHints-based candidateFileHints in WorkItem prompt", () => {
+    const taskList = sampleTaskList();
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const codeTask = plan.tasks[0]!;
+    const llmPlan = {
+      ...plan,
+      tasks: [
+        {
+          ...codeTask,
+          candidateFiles: [],
+          candidateFileHints: [],
+          llmRationale: "화면 컴포넌트를 분리해 구현한다.",
+        },
+      ],
+    };
+    const [workItem] = buildCursorWorkItemsFromImplementationCodeTaskPlan({
+      projectId: PROJECT_ID,
+      codeTaskPlan: llmPlan,
+      originStage: "planning",
+      nowIso: NOW,
+    });
+    expect(workItem?.prompt).toContain("구현 요약:");
+    expect(workItem?.prompt).toContain("화면 컴포넌트");
+    expect(workItem?.candidateFileHints?.length).toBeGreaterThan(0);
   });
 
   it("creates planning readiness bundle with implementation_ready_for_execution timeline", () => {

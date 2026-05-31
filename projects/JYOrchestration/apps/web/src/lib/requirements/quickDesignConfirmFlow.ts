@@ -19,8 +19,10 @@ import {
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import {
   runQuickDesignConfirmImplementationPrep,
+  runQuickDesignConfirmImplementationPrepAsync,
   type QuickDesignConfirmImplementationPrepResult,
 } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
+import { isLlmCodeTaskRefinementEnabled } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type {
@@ -134,6 +136,110 @@ export function buildQuickDesignConfirmStatePatch(input: {
   };
 }
 
+/** Slot confirm + artifacts + implementation prep. Env resolved in `runQuickDesignConfirmFlow`. */
+export async function runQuickDesignConfirmFlowWithPrep(input: {
+  readonly flow: QuickDesignConfirmFlowInput;
+  readonly envOk: boolean;
+}): Promise<QuickDesignConfirmFlowResult> {
+  const { flow, envOk } = input;
+  const confirm = confirmFastPlanDraftSlots({
+    fastPlanDraftV1: flow.fastPlanDraftV1,
+    orchestration: flow.orchestrationForConfirm,
+    definitions: flow.slotDefinitions,
+    nowIso: flow.nowIso,
+    projectId: flow.projectId,
+    onlyPatchedSlotKeys: true,
+  });
+  if (confirm.blocked) {
+    return {
+      kind: "blocked",
+      message: confirm.blockReason ?? "확정할 Quick Design 초안 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const st = flow.planningState;
+  const artifactBundle = generateQuickDesignConfirmArtifacts({
+    projectId: flow.projectId,
+    projectName: flow.projectName,
+    projectDescription: flow.projectDescription,
+    conversationMessages: flow.conversationMessages,
+    serviceFlow: flow.serviceFlow ?? st.serviceFlowV1 ?? null,
+    orchestration: confirm.orchestration,
+    slotDefinitions: flow.slotDefinitions,
+    featurePlanning: st.featurePlanningSlotsV1 ?? null,
+    problemInterview: flow.problemInterview,
+    sourceStage: flow.sourceStage,
+    nowIso: flow.nowIso,
+    fastPlanDraftV1: confirm.fastPlanDraftV1,
+  });
+
+  const merged = mergeQuickDesignArtifactsIntoState({
+    priorArtifacts: st.projectArtifacts,
+    priorDeliverables: st.deliverableAssets,
+    newArtifacts: artifactBundle.artifacts,
+    projectId: flow.projectId,
+    replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
+  });
+
+  const prep = isLlmCodeTaskRefinementEnabled()
+    ? await runQuickDesignConfirmImplementationPrepAsync({
+        projectId: flow.projectId,
+        projectName: flow.projectName,
+        orchestration: confirm.orchestration,
+        definitions: flow.slotDefinitions,
+        nowIso: flow.nowIso,
+        generatedArtifactCount: artifactBundle.artifacts.length,
+        envOk,
+        projectArtifacts: merged.projectArtifacts,
+        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
+        existingTaskList: st.implementationTaskListV1,
+      })
+    : runQuickDesignConfirmImplementationPrep({
+        projectId: flow.projectId,
+        projectName: flow.projectName,
+        orchestration: confirm.orchestration,
+        definitions: flow.slotDefinitions,
+        nowIso: flow.nowIso,
+        generatedArtifactCount: artifactBundle.artifacts.length,
+        envOk,
+        projectArtifacts: merged.projectArtifacts,
+        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
+        existingTaskList: st.implementationTaskListV1,
+      });
+
+  const readyMessage = buildQuickDesignImplementationReadyChatMessage({
+    artifactIds: artifactBundle.artifactIds,
+    artifactTitles: artifactBundle.artifacts.map((a) => a.title),
+    planningSummary: artifactBundle.artifactOrchestrationV1.planningSummary,
+    nowIso: flow.nowIso,
+    prep,
+    definitions: flow.slotDefinitions,
+  });
+
+  const statePatch = buildQuickDesignConfirmStatePatch({
+    confirm,
+    artifactBundle,
+    mergedProjectArtifacts: merged.projectArtifacts,
+    mergedDeliverableAssets: merged.deliverableAssets,
+    prep,
+    existingRequirementsStage: st.requirementsOrchestrationStageV1,
+    existingImplementationTaskListV1: st.implementationTaskListV1,
+    nowIso: flow.nowIso,
+  });
+
+  return {
+    kind: "success",
+    confirm,
+    artifactBundle,
+    prep,
+    readyMessage,
+    statePatch,
+    primaryArtifactId: artifactBundle.primaryArtifactId,
+    userFacingSummary: artifactBundle.userFacingSummary,
+    timelineEntries: [confirm.timelineEntry, ...prep.timelineEntries],
+  };
+}
+
 /** Slot confirm + artifacts + implementation prep (sync). Env resolved in `runQuickDesignConfirmFlow`. */
 export function runQuickDesignConfirmFlowSync(input: {
   readonly flow: QuickDesignConfirmFlowInput;
@@ -232,5 +338,5 @@ export async function runQuickDesignConfirmFlow(
   const envOk =
     input.envOkOverride ??
     (await resolveProjectExecutionEnvOk(input.projectId));
-  return runQuickDesignConfirmFlowSync({ flow: input, envOk });
+  return runQuickDesignConfirmFlowWithPrep({ flow: input, envOk });
 }

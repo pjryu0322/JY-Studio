@@ -3,6 +3,11 @@ import {
   type ImplementationCodeTaskPlanV1,
 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  isLlmCodeTaskRefinementEnabled,
+  resolveImplementationCodeTaskPlanForPlanningReadiness,
+  type LlmCodeTaskRefinementCaller,
+} from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import {
   buildCursorWorkItemsFromImplementationCodeTaskPlan,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
@@ -12,6 +17,8 @@ import {
   buildWorkItemPreflightTimelineEntry,
   runWorkItemPreflightBatch,
 } from "@/lib/prototype/implementationWorkItemPreflight";
+import { validateImplementationCodeTaskPlan } from "@/lib/prototype/implementationCodeTaskPlanValidator";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -80,31 +87,22 @@ export type ImplementationPlanningReadinessPatch = Readonly<{
   readonly syncMode: "created" | "synced";
 }>;
 
-export function buildImplementationPlanningReadinessPatch(input: {
+function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
-  readonly projectArtifacts?: readonly ProjectArtifact[];
-  readonly envOk: boolean;
-  readonly designOk: boolean;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
   readonly allowedPathGlobs?: readonly string[];
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
-  readonly nowIso?: string;
+  readonly extraTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly nowIso: string;
   readonly includeTaskListCreatedEvent?: boolean;
   readonly syncMode?: "created" | "synced";
 }): ImplementationPlanningReadinessPatch {
-  const now = input.nowIso ?? new Date().toISOString();
+  const now = input.nowIso;
   const pid = input.projectId.trim();
-  const codeTaskPlan = buildImplementationCodeTaskPlanFromTaskList({
-    projectId: pid,
-    taskList: input.taskList,
-    projectArtifacts: input.projectArtifacts,
-    envOk: input.envOk,
-    designOk: input.designOk,
-    nowIso: now,
-  });
   const cursorWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
     projectId: pid,
-    codeTaskPlan,
+    codeTaskPlan: input.codeTaskPlan,
     nowIso: now,
     originStage: "planning",
   });
@@ -122,7 +120,7 @@ export function buildImplementationPlanningReadinessPatch(input: {
     failedReasons: preflight.results.flatMap((result) => result.failedReasons).slice(0, 20),
   };
 
-  let promptTimeline = [...(input.priorTimeline ?? [])];
+  let promptTimeline = [...(input.priorTimeline ?? []), ...(input.extraTimeline ?? [])];
   if (input.includeTaskListCreatedEvent) {
     promptTimeline = appendPromptTimeline(
       promptTimeline,
@@ -143,8 +141,11 @@ export function buildImplementationPlanningReadinessPatch(input: {
       action: "implementation_code_task_plan_created",
       projectId: pid,
       fields: {
-        parentTaskCount: codeTaskPlan.parentTaskCount,
-        codeTaskCount: codeTaskPlan.codeTaskCount,
+        parentTaskCount: input.codeTaskPlan.parentTaskCount,
+        codeTaskCount: input.codeTaskPlan.codeTaskCount,
+        refinementSource: input.codeTaskPlan.refinementSource ?? "heuristic",
+        refinementStatus: input.codeTaskPlan.refinementStatus ?? "heuristic_only",
+        validationStatus: input.codeTaskPlan.validationReport?.status ?? "unknown",
       },
       nowIso: now,
     }),
@@ -153,7 +154,7 @@ export function buildImplementationPlanningReadinessPatch(input: {
     promptTimeline,
     buildImplementationWorkItemsDraftCreatedTimelineEntry({
       projectId: pid,
-      taskCount: codeTaskPlan.parentTaskCount,
+      taskCount: input.codeTaskPlan.parentTaskCount,
       workItemCount: cursorWorkItems.length,
       originStage: "planning",
       nowIso: now,
@@ -187,20 +188,129 @@ export function buildImplementationPlanningReadinessPatch(input: {
       action: "implementation_ready_for_execution",
       projectId: pid,
       fields: {
-        ok: preflight.status === "passed" && codeTaskPlan.readiness.ready,
-        codeTaskCount: codeTaskPlan.codeTaskCount,
+        ok:
+          preflight.status === "passed" &&
+          input.codeTaskPlan.readiness.ready &&
+          input.codeTaskPlan.validationReport?.status !== "failed",
+        codeTaskCount: input.codeTaskPlan.codeTaskCount,
       },
       nowIso: now,
     }),
   );
 
   return {
-    implementationCodeTaskPlanV1: codeTaskPlan,
+    implementationCodeTaskPlanV1: input.codeTaskPlan,
     cursorWorkItemsV1: cursorWorkItems,
     implementationWorkItemPreflightSummaryV1: preflightSummary,
     promptTimeline,
     syncMode: input.syncMode ?? "created",
   };
+}
+
+export function buildImplementationPlanningReadinessPatch(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly allowedPathGlobs?: readonly string[];
+  readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly nowIso?: string;
+  readonly includeTaskListCreatedEvent?: boolean;
+  readonly syncMode?: "created" | "synced";
+}): ImplementationPlanningReadinessPatch {
+  const now = input.nowIso ?? new Date().toISOString();
+  const pid = input.projectId.trim();
+  const heuristicPlan = buildImplementationCodeTaskPlanFromTaskList({
+    projectId: pid,
+    taskList: input.taskList,
+    projectArtifacts: input.projectArtifacts,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    nowIso: now,
+  });
+  const validationReport = validateImplementationCodeTaskPlan({
+    plan: heuristicPlan,
+    taskList: input.taskList,
+    nowIso: now,
+  });
+  const codeTaskPlan: ImplementationCodeTaskPlanV1 = {
+    ...heuristicPlan,
+    validationReport,
+  };
+  return buildPlanningReadinessPatchFromCodeTaskPlan({
+    projectId: pid,
+    taskList: input.taskList,
+    codeTaskPlan,
+    allowedPathGlobs: input.allowedPathGlobs,
+    priorTimeline: input.priorTimeline,
+    extraTimeline: [
+      buildPlanningReadinessTimelineEntry({
+        action: "implementation_code_task_plan_validated",
+        projectId: pid,
+        fields: {
+          validationStatus: validationReport.status,
+          heuristicTaskCount: heuristicPlan.tasks.length,
+          source: "heuristic",
+        },
+        nowIso: now,
+      }),
+    ],
+    nowIso: now,
+    includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
+    syncMode: input.syncMode,
+  });
+}
+
+export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly allowedPathGlobs?: readonly string[];
+  readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly nowIso?: string;
+  readonly includeTaskListCreatedEvent?: boolean;
+  readonly syncMode?: "created" | "synced";
+  readonly llmCaller?: LlmCodeTaskRefinementCaller;
+  readonly forceLlm?: boolean;
+}): Promise<ImplementationPlanningReadinessPatch> {
+  const now = input.nowIso ?? new Date().toISOString();
+  const pid = input.projectId.trim();
+  const heuristicPlan = buildImplementationCodeTaskPlanFromTaskList({
+    projectId: pid,
+    taskList: input.taskList,
+    projectArtifacts: input.projectArtifacts,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    nowIso: now,
+  });
+  const useLlm = input.forceLlm === true || isLlmCodeTaskRefinementEnabled();
+  const resolved = await resolveImplementationCodeTaskPlanForPlanningReadiness({
+    projectId: pid,
+    taskList: input.taskList,
+    heuristicPlan,
+    projectArtifacts: input.projectArtifacts,
+    implementationSeedV1: input.implementationSeedV1,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    nowIso: now,
+    useLlmRefinement: useLlm,
+    llmCaller: input.llmCaller,
+  });
+  return buildPlanningReadinessPatchFromCodeTaskPlan({
+    projectId: pid,
+    taskList: input.taskList,
+    codeTaskPlan: resolved.plan,
+    allowedPathGlobs: input.allowedPathGlobs,
+    priorTimeline: input.priorTimeline,
+    extraTimeline: resolved.timelineEntries,
+    nowIso: now,
+    includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
+    syncMode: input.syncMode,
+  });
 }
 
 export function buildImplementationWorkItemsFallbackExecutionTimelineEntry(input: {
@@ -236,6 +346,36 @@ export function buildImplementationWorkItemsFallbackFromTaskListTimelineEntry(in
   });
 }
 
+export function buildImplementationExecutionBlockedByCodeTaskValidationTimelineEntry(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_execution_blocked_by_code_task_validation",
+    projectId: input.projectId,
+    fields: { mode: "implementation" },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
+export function buildImplementationExecutionBlockedByPlanningGateTimelineEntry(input: {
+  readonly projectId: string;
+  readonly reason: ImplementationPlanningExecutionGateReason;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  if (input.reason === "code_task_validation_failed") {
+    return buildImplementationExecutionBlockedByCodeTaskValidationTimelineEntry({
+      projectId: input.projectId,
+      nowIso: input.nowIso,
+    });
+  }
+  return buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
+    projectId: input.projectId,
+    reason: input.reason,
+    nowIso: input.nowIso,
+  });
+}
+
 export function buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry(input: {
   readonly projectId: string;
   readonly reason: ImplementationPlanningExecutionGateReason;
@@ -258,7 +398,8 @@ export const IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE =
 export type ImplementationPlanningExecutionGateReason =
   | "missing_code_task_plan"
   | "missing_work_items"
-  | "preflight_failed";
+  | "preflight_failed"
+  | "code_task_validation_failed";
 
 export type ImplementationPlanningExecutionGateResult =
   | Readonly<{ readonly ok: true }>
@@ -294,6 +435,13 @@ export function evaluateImplementationPlanningExecutionGate(input: {
       ok: false,
       message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
       reason: "preflight_failed",
+    };
+  }
+  if (input.codeTaskPlan?.validationReport?.status === "failed") {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      reason: "code_task_validation_failed",
     };
   }
   return { ok: true };

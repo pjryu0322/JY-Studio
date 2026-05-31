@@ -100,6 +100,16 @@ describe("taskCursorWorkerAuth", () => {
     ).toBe(false);
   });
 
+  it("rejects worker calls without token in production", () => {
+    const request = { headers: { get: () => null } } as never;
+    expect(
+      isTaskCursorWorkerAuthorized(request, {
+        NODE_ENV: "production",
+        INTERNAL_WORKER_TOKEN: "secret",
+      }),
+    ).toBe(false);
+  });
+
   it("allows missing token in non-production", () => {
     const request = { headers: { get: () => null } } as never;
     expect(isTaskCursorWorkerAuthorized(request, { NODE_ENV: "development" })).toBe(true);
