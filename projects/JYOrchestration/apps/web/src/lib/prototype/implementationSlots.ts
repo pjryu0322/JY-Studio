@@ -3,6 +3,7 @@ import {
   DEFAULT_CODE_AGENT_PROVIDER,
   type CodeAgentProvider,
 } from "@/lib/prototype/codeAgentProvider";
+import { CODE_AGENT_WIP_POLICY_SLOT_LINES } from "@/lib/prototype/codeAgentWipDeliveryPolicy";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { COMMON_FORBIDDEN_PATHS } from "@/lib/prototype/implementationExecutionHints";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -93,13 +94,6 @@ export type BuildImplementationSlotsInput = Readonly<{
   readonly envCursorBadge?: "ok" | "needs" | "error" | "loading";
   readonly nowIso?: string;
 }>;
-
-const WIP_POLICY_LINES = [
-  "WIP branch에서만 작업",
-  "WIP commit 생성",
-  "공식 push/PR/merge 금지",
-  "AI개발자 승인 전 공식 반영 금지",
-] as const;
 
 export const IMPLEMENTATION_SLOT_META: Record<
   ImplementationSlotKey,
@@ -465,7 +459,7 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
     }),
     makeSlot("wip_policy", {
       status: "confirmed",
-      value: [...WIP_POLICY_LINES],
+      value: [...CODE_AGENT_WIP_POLICY_SLOT_LINES],
       source: ["codeAgentWipExecution"],
       reason: "Code Agent WIP 공통 정책",
       nowIso: now,

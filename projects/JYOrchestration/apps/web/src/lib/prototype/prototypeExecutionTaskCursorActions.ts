@@ -1,5 +1,6 @@
 import {
   markDeveloperTasksDoneForWip,
+  markDeveloperTaskFailedForTaskId,
   markPostDeveloperReviewTasksQueued,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -37,6 +38,7 @@ export function buildTaskCursorExecutionRequest(input: {
   const commitMessage = buildProviderWipCommitMessage("cursor", `task ${input.taskId}`, false, input.taskId);
   const prompt = buildTaskCursorPrompt({
     taskId: input.taskId,
+    workBranch,
     workItems: input.workItems,
     targetRepository: input.targetRepository,
     commitMessage,
@@ -98,6 +100,7 @@ export function applyTaskCursorGithubVerifyResult(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly ok: boolean;
   readonly message?: string;
+  readonly reason?: TaskCursorFailureReason;
   readonly verifiedChangedFiles?: readonly string[];
   readonly verifiedCommitSha?: string;
   readonly nowIso?: string;
@@ -106,7 +109,7 @@ export function applyTaskCursorGithubVerifyResult(input: {
   if (!input.ok) {
     return patchTaskCursorExecution(input.execution, {
       status: "github_verify_failed",
-      failureReason: "github_verify_failed",
+      failureReason: input.reason ?? "github_verify_failed",
       errorMessage: input.message ?? TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
       nowIso: now,
     });
@@ -143,6 +146,21 @@ export function syncTaskExecutionStateAfterGithubVerified(input: {
   });
 }
 
+export function syncTaskExecutionStateAfterGithubVerifyFailed(input: {
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly taskId: string;
+  readonly errorMessage: string;
+  readonly nowIso?: string;
+}): ImplementationTaskExecutionStateV1 | undefined {
+  if (!input.executionState) return undefined;
+  return markDeveloperTaskFailedForTaskId({
+    state: input.executionState,
+    taskId: input.taskId,
+    nowIso: input.nowIso,
+    errorMessage: input.errorMessage,
+  });
+}
+
 export function shouldSyncExecutionStateAfterTaskCursorGithubVerify(
   status: TaskCursorExecutionV1["status"],
 ): boolean {
@@ -175,7 +193,14 @@ export function buildTaskCursorOrchestrationPatch(input: {
           taskId: input.execution.taskId,
           cursorWorkItems: input.cursorWorkItems ?? [],
         })
-      : input.executionState ?? undefined;
+      : input.execution.status === "github_verify_failed" && input.executionState
+        ? syncTaskExecutionStateAfterGithubVerifyFailed({
+            executionState: input.executionState,
+            taskId: input.execution.taskId,
+            errorMessage:
+              input.execution.errorMessage ?? TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+          })
+        : input.executionState ?? undefined;
   return {
     taskCursorExecutionV1: input.execution,
     taskCursorExecutionHistoryV1: appendTaskCursorExecutionHistory(

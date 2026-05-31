@@ -4,6 +4,7 @@ import {
   type CursorWorkItemQualityGate,
 } from "@/lib/prototype/implementationCursorPromptQuality";
 import { appendWipPolicyToCodeAgentPrompt } from "@/lib/prototype/codeAgentWipExecution";
+import { buildTaskCursorWorkBranch } from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationTaskPlanItem, ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import { evaluateImplementationTaskPlanReadiness } from "@/lib/prototype/implementationTaskPlan";
 import { buildCursorPromptDraft } from "@/lib/prototype/implementationTaskPlan";
@@ -126,10 +127,12 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
       projectArtifacts: [],
     });
     const title = `[${task.taskId}] ${task.title}`;
-    const prompt = appendWipPolicyToCodeAgentPrompt(
-      buildCursorPromptDraft({
-        title,
-        description: [
+    const workBranch = buildTaskCursorWorkBranch(task.taskId);
+    const prompt = buildCursorPromptDraft({
+      title,
+      taskId: task.taskId,
+      workBranch,
+      description: [
           "기획단계에서 생성된 Implementation Task List 기준 작업입니다.",
           "",
           `작업 ID: ${task.taskId}`,
@@ -146,8 +149,7 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
         securityChecks: [],
         reviewChecks: [],
         executionHints,
-      }),
-    );
+    });
 
     const draft: CursorWorkItem = {
       id: `cursor-wi-tasklist-${index + 1}-${task.taskId}`,
@@ -182,7 +184,10 @@ function toCursorWorkItem(item: ImplementationTaskPlanItem): CursorWorkItem {
     id: `cursor-wi-${item.id}`,
     taskId: item.id,
     title: item.title,
-    prompt: appendWipPolicyToCodeAgentPrompt(item.cursorPromptDraft),
+    prompt: appendWipPolicyToCodeAgentPrompt(item.cursorPromptDraft, "cursor", {
+      taskId: item.id,
+      workBranch: buildTaskCursorWorkBranch(item.id),
+    }),
     requiredFilesHint,
     expectedOutput: [
       "변경된 소스 파일 목록",

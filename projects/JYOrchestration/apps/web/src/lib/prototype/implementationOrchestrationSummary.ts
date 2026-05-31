@@ -808,7 +808,7 @@ export function buildImplementationRoleCheckDetailsMessage(input: {
     "SCM:",
     ...summary.scm.highlights.map((h) => `- ${h}`),
     "",
-    "WIP 정책: Code Agent는 WIP branch/commit까지만 담당하며, 공식 push/PR/merge는 SCM이 수행합니다.",
+    "WIP 정책: Code Agent는 WIP branch에 commit·push까지 담당하며, main 반영용 PR/merge는 SCM이 수행합니다.",
   ];
 
   return prototypeBuildAiDeveloperMessage({

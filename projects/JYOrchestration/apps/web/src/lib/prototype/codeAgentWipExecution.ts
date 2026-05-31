@@ -1,3 +1,10 @@
+import {
+  appendCodeAgentWipPolicyToPrompt,
+  buildCodeAgentWipPolicySection as buildCodeAgentWipPolicySectionFromContext,
+  CODE_AGENT_WIP_POLICY_HEADING,
+  CODE_AGENT_WIP_POLICY_SLOT_LINES,
+  promptIncludesWipPolicy,
+} from "@/lib/prototype/codeAgentWipDeliveryPolicy";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
   buildProviderWipBranchName,
@@ -24,21 +31,11 @@ export const LEGACY_CURSOR_WIP_WORK_REQUEST_CHIP = "Cursor WIP 작업 요청";
 /** @deprecated — 이전 칩 라벨; WIP 요청과 동일하게 라우팅 */
 export const LEGACY_CURSOR_EXECUTION_REQUEST_CHIP = "Cursor 실행 요청";
 
-export function buildCodeAgentWipPolicySection(provider: CodeAgentProvider = DEFAULT_CODE_AGENT_PROVIDER): string {
-  const label = codeAgentProviderLabel(provider);
-  return `## WIP 작업 정책
+export { CODE_AGENT_WIP_POLICY_HEADING, CODE_AGENT_WIP_POLICY_SLOT_LINES };
 
-- 이 작업은 검토용 Code Agent WIP 작업이다.
-- 실행 도구는 ${label}이다.
-- main 브랜치에 직접 반영하지 않는다.
-- 공식 push/PR/merge를 수행하지 않는다.
-- WIP branch에서만 작업한다.
-- 작업 완료 후 WIP commit을 생성한다.
-- 변경 파일 목록, diff 요약, 테스트 결과, 미해결 이슈를 보고한다.
-- AI개발자 승인 전에는 공식 반영 대상으로 보지 않는다.`;
-}
-
-export const CODE_AGENT_WIP_POLICY_SECTION = buildCodeAgentWipPolicySection(DEFAULT_CODE_AGENT_PROVIDER);
+export const CODE_AGENT_WIP_POLICY_SECTION = buildCodeAgentWipPolicySectionFromContext({
+  provider: DEFAULT_CODE_AGENT_PROVIDER,
+});
 
 export type CodeAgentWipExecutionStatus =
   | "not_requested"
@@ -183,12 +180,30 @@ export type { CodeAgentTargetRepositorySnapshot } from "@/lib/prototype/projectT
 
 export { codeAgentIsNotSingleChatMember };
 
+export function buildCodeAgentWipPolicySection(
+  provider: CodeAgentProvider = DEFAULT_CODE_AGENT_PROVIDER,
+  context?: Readonly<{ readonly workBranch?: string; readonly taskId?: string; readonly baseBranch?: string }>,
+): string {
+  return buildCodeAgentWipPolicySectionFromContext({
+    provider,
+    workBranch: context?.workBranch,
+    taskId: context?.taskId,
+    baseBranch: context?.baseBranch,
+  });
+}
+
 export function appendWipPolicyToCodeAgentPrompt(
   prompt: string,
   provider: CodeAgentProvider = DEFAULT_CODE_AGENT_PROVIDER,
+  context?: Readonly<{ readonly workBranch?: string; readonly taskId?: string; readonly baseBranch?: string }>,
 ): string {
-  if (prompt.includes("## WIP 작업 정책")) return prompt;
-  return `${prompt.trim()}\n\n${buildCodeAgentWipPolicySection(provider)}\n`;
+  if (promptIncludesWipPolicy(prompt)) return prompt.trim();
+  return appendCodeAgentWipPolicyToPrompt(prompt, {
+    provider,
+    workBranch: context?.workBranch,
+    taskId: context?.taskId,
+    baseBranch: context?.baseBranch,
+  });
 }
 
 export function buildInitialCodeAgentWipExecution(input: {
@@ -728,7 +743,7 @@ export function buildScmOfficialCommitPendingMessage(input: {
       "- 정식 branch 생성·정식 commit message 정리",
       "- 플랫폼 SCM push/PR 실행 준비",
       "",
-      `${label} 및 기타 Code Agent는 공식 push/PR/merge를 수행하지 않습니다.`,
+      `${label}는 WIP branch push까지 담당하며, main 반영용 PR/merge는 SCM이 수행합니다.`,
     ].join("\n"),
     createdAt: input.nowIso ?? new Date().toISOString(),
     meta: {

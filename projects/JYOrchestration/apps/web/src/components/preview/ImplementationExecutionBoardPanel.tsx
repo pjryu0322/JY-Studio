@@ -1,6 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  buildImplementationIntegratedPipelineLines,
+  PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
+} from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -146,6 +150,11 @@ export function ImplementationExecutionBoardPanel({
     [board, activeTaskId],
   );
 
+  const integratedPipelineLines = useMemo(
+    () => buildImplementationIntegratedPipelineLines(board.integratedRows),
+    [board.integratedRows],
+  );
+
   const codeAgentProgress = useMemo(
     () =>
       buildCodeAgentExecutionProgressView({
@@ -253,6 +262,23 @@ export function ImplementationExecutionBoardPanel({
         <div className={styles.taskTreeSectionTitle}>작업 트리 {board.taskRows.length}개</div>
         <ImplementationExecutionBoardTaskTree nodes={taskTreeNodes} />
       </section>
+
+      {integratedPipelineLines.length ? (
+        <section
+          className={styles.taskTreeSection}
+          data-testid="implementation-integrated-pipeline-section"
+        >
+          <div className={styles.taskTreeSectionTitle}>통합 단계 (전체 Task 완료 후)</div>
+          <p className={styles.summarySecondary}>{PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE}</p>
+          <div className={styles.taskTreeList}>
+            {integratedPipelineLines.map((line) => (
+              <div key={line.stepId} className={styles.taskTreeChildLine}>
+                {line.label}: {line.statusLabel}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

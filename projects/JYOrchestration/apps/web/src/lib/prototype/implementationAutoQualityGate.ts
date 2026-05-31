@@ -416,8 +416,9 @@ export function runImplementationAutoQualityGate(input: {
   }
 
   autoGate = patchImplementationAutoQualityGate(autoGate, {
-    status: "security_running",
+    status: "passed",
     reviewResultId,
+    completedAt: now,
     nowIso: now,
   });
   timeline.push(
@@ -427,120 +428,6 @@ export function runImplementationAutoQualityGate(input: {
       taskId: execution.taskId,
       sourceCommitSha: commitSha,
       reviewResult: "passed",
-      status: "security_running",
-      runId: execution.cursorRunId,
-      nowIso: now,
-    }),
-    buildImplementationAutoQualityGateTimelineEntry({
-      action: "implementation_auto_security_started",
-      projectId: input.projectId,
-      taskId: execution.taskId,
-      sourceCommitSha: commitSha,
-      status: "security_running",
-      runId: execution.cursorRunId,
-      nowIso: now,
-    }),
-  );
-
-  const securityOutcome = executeImplementationQualityGateCheck({
-    role: "security",
-    taskList: input.taskList,
-    executionState,
-    qualityGateResults,
-    projectId: input.projectId,
-    targetTaskIds: scopedTargetTaskIds,
-    nowIso: now,
-  });
-  if ("blocked" in securityOutcome) {
-    return { blocked: securityOutcome.blocked };
-  }
-
-  qualityGateResults = securityOutcome.qualityGateResults;
-  executionState = securityOutcome.executionState;
-  const securityResultId = `${execution.taskId}-security-${now}`;
-
-  if (!securityOutcome.passed) {
-    autoGate = patchImplementationAutoQualityGate(autoGate, {
-      status: "failed",
-      securityResultId,
-      failureReason: securityOutcome.qualityGateResult.summary,
-      completedAt: now,
-      nowIso: now,
-    });
-    timeline.push(
-      buildImplementationAutoQualityGateTimelineEntry({
-        action: "implementation_auto_security_failed",
-        projectId: input.projectId,
-        taskId: execution.taskId,
-        sourceCommitSha: commitSha,
-        securityResult: securityOutcome.qualityGateResult.status,
-        status: "failed",
-        reason: securityOutcome.qualityGateResult.summary,
-        runId: execution.cursorRunId,
-        nowIso: now,
-      }),
-      buildImplementationAutoQualityGateTimelineEntry({
-        action: "implementation_auto_quality_gate_failed",
-        projectId: input.projectId,
-        taskId: execution.taskId,
-        sourceCommitSha: commitSha,
-        status: "failed",
-        reason: securityOutcome.qualityGateResult.summary,
-        runId: execution.cursorRunId,
-        nowIso: now,
-      }),
-    );
-    const taskCursorExecution = patchTaskCursorExecution(execution, {
-      status: "review_pending",
-      errorMessage: securityOutcome.qualityGateResult.summary,
-      nowIso: now,
-    });
-    return {
-      ok: false,
-      message: securityOutcome.aiMessageContent,
-      autoGate,
-      orchestrationPatch: {
-        implementationAutoQualityGateV1: autoGate,
-        implementationAutoQualityGateHistoryV1: appendImplementationAutoQualityGateHistory(
-          input.existingAutoQualityGateHistory,
-          autoGate,
-        ),
-        taskCursorExecutionV1: taskCursorExecution,
-        implementationTaskExecutionStateV1: executionState,
-        implementationQualityGateResultsV1: qualityGateResults,
-        promptTimeline: appendImplementationAutoQualityGateTimelineEntries(input.existingTimeline, timeline),
-      },
-    };
-  }
-
-  if (executionState) {
-    executionState = markRoleTasksDone({
-      state: executionState,
-      ownerRole: "reviewer",
-      nowIso: now,
-      resultSummary: reviewOutcome.qualityGateResult.summary,
-    });
-    executionState = markRoleTasksDone({
-      state: executionState,
-      ownerRole: "security",
-      nowIso: now,
-      resultSummary: securityOutcome.qualityGateResult.summary,
-    });
-  }
-
-  autoGate = patchImplementationAutoQualityGate(autoGate, {
-    status: "passed",
-    securityResultId,
-    completedAt: now,
-    nowIso: now,
-  });
-  timeline.push(
-    buildImplementationAutoQualityGateTimelineEntry({
-      action: "implementation_auto_security_passed",
-      projectId: input.projectId,
-      taskId: execution.taskId,
-      sourceCommitSha: commitSha,
-      securityResult: "passed",
       status: "passed",
       runId: execution.cursorRunId,
       nowIso: now,
@@ -551,12 +438,20 @@ export function runImplementationAutoQualityGate(input: {
       taskId: execution.taskId,
       sourceCommitSha: commitSha,
       reviewResult: "passed",
-      securityResult: "passed",
       status: "passed",
       runId: execution.cursorRunId,
       nowIso: now,
     }),
   );
+
+  if (executionState) {
+    executionState = markRoleTasksDone({
+      state: executionState,
+      ownerRole: "reviewer",
+      nowIso: now,
+      resultSummary: reviewOutcome.qualityGateResult.summary,
+    });
+  }
 
   const taskCursorExecution = patchTaskCursorExecution(execution, {
     status: "scm_pending",
@@ -568,7 +463,8 @@ export function runImplementationAutoQualityGate(input: {
   return {
     ok: true,
     message: [
-      "검수자·보안관 자동 점검이 완료되었습니다.",
+      "검수 자동 점검이 완료되었습니다.",
+      "보안 점검·SCM merge는 모든 Task 완료 후 통합 단계에서 진행합니다.",
       "우선순위 기준 다음 작업을 자동으로 시작합니다.",
     ].join("\n"),
     autoGate,
@@ -599,20 +495,20 @@ export function summarizeImplementationAutoQualityGateForProgress(
     case "security_running":
     case "review_passed":
       return {
-        statusLabel: "자동 보안 점검 중",
-        summaryLine: "보안관 점검을 자동으로 진행합니다.",
+        statusLabel: "자동 검수 중",
+        summaryLine: "검수자 점검을 자동으로 진행합니다.",
       };
     case "passed":
       return {
-        statusLabel: "품질 게이트 통과",
-        summaryLine: "검수자·보안관 점검이 완료되었습니다.",
+        statusLabel: "검수 통과",
+        summaryLine: "검수자 점검이 완료되었습니다.",
       };
     case "failed":
       return {
         statusLabel: "재작업 필요",
         summaryLine:
           gate.failureReason ??
-          "검수자 또는 보안관 점검에서 수정 필요 항목이 발견되었습니다.",
+          "검수자 점검에서 수정 필요 항목이 발견되었습니다.",
       };
     default:
       return null;

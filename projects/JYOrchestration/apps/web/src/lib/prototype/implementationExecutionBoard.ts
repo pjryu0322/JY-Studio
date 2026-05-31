@@ -1,4 +1,5 @@
-import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import { derivePerTaskPipelineRole, isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
+import { countTasksBlockedByDependency, collectDependentTaskIds } from "@/lib/prototype/implementationTaskDependencyGraph";
 import {
   countActiveReworkRequestsForTask,
   getUserConfirmationForTask,
@@ -119,6 +120,8 @@ export type ImplementationExecutionBoardV1 = Readonly<{
     completedTasks: number;
     inProgressTasks: number;
     failedTasks: number;
+    reworkRequiredTasks: number;
+    blockedByDependencyTasks: number;
     userConfirmationRequired: number;
     blockingUserConfirmation: number;
     integratedCompleted: number;
@@ -659,8 +662,10 @@ function deriveFailureReason(input: {
   readonly securityStatus: ImplementationBoardStepStatus;
   readonly scmStatus: ImplementationBoardStepStatus;
   readonly userConfirmation: ImplementationUserConfirmationStatus;
+  readonly blockedByDependency?: boolean;
 }): ImplementationFailureReason {
   if (input.userConfirmation === "blocking") return "blocked_by_user_confirmation";
+  if (input.blockedByDependency) return "blocked_by_dependency";
   if (input.developerStatus === "failed") return "failed_by_cursor";
   if (input.reviewerStatus === "failed") return "failed_by_review";
   if (input.securityStatus === "failed") return "failed_by_security";
@@ -681,7 +686,7 @@ function deriveStatusLabel(input: {
   if (input.userConfirmation === "blocking") return "사용자 확인 차단";
   if (input.currentRole === "developer") {
     if (input.developerStatus === "in_progress") return "Cursor 작업 중";
-    if (input.developerStatus === "failed") return "개발 실패";
+    if (input.developerStatus === "failed") return "재작업 필요";
     if (input.developerStatus === "done") return "개발 완료";
     return "개발 대기";
   }
@@ -698,6 +703,33 @@ function deriveStatusLabel(input: {
   if (input.scmStatus === "in_progress") return "SCM 반영 중";
   if (input.scmStatus === "failed") return "SCM 실패";
   return "SCM 대기";
+}
+
+function applyDependencyBlockingToTaskRows(
+  taskRows: readonly ImplementationExecutionBoardTaskRowV1[],
+): readonly ImplementationExecutionBoardTaskRowV1[] {
+  const failedTaskIds = taskRows
+    .filter((row) => row.developerStatus === "failed")
+    .map((row) => row.taskId);
+  const blockedIds = new Set(
+    collectDependentTaskIds({ taskRows, failedTaskIds }),
+  );
+  if (!blockedIds.size) return taskRows;
+  return taskRows.map((row) => {
+    if (
+      !blockedIds.has(row.taskId) ||
+      row.developerStatus === "done" ||
+      row.developerStatus === "failed" ||
+      row.developerStatus === "skipped"
+    ) {
+      return row;
+    }
+    return {
+      ...row,
+      failureReason: "blocked_by_dependency" as const,
+      statusLabel: "의존 작업 차단",
+    };
+  });
 }
 
 function buildTaskRow(input: {
@@ -741,11 +773,9 @@ function buildTaskRow(input: {
     confirmation?.resolvedAt ? "none" : (confirmation?.status ?? "none");
   const userConfirmationReason = confirmation?.resolvedAt ? undefined : confirmation?.reason;
 
-  const currentRole = deriveCurrentRole({
+  const currentRole = derivePerTaskPipelineRole({
     developerStatus,
     reviewerStatus,
-    securityStatus,
-    scmStatus,
   });
   const failureReason = deriveFailureReason({
     developerStatus,
@@ -864,7 +894,7 @@ export function buildImplementationExecutionBoard(input: {
     .filter((task) => task.ownerRole === "developer")
     .slice()
     .sort((a, b) => compareImplementationTaskListPriority(a.priority, b.priority) || a.taskId.localeCompare(b.taskId));
-  const taskRows = developerTasks.map((task) =>
+  const taskRowsRaw = developerTasks.map((task) =>
     buildTaskRow({
       task,
       executionState: input.executionState,
@@ -876,9 +906,16 @@ export function buildImplementationExecutionBoard(input: {
       qualityGateFailedTaskIds,
     }),
   );
+  const taskRows = applyDependencyBlockingToTaskRows(taskRowsRaw);
 
   const allTasksCompleted =
-    taskRows.length > 0 && taskRows.every((row) => row.currentRole === "completed");
+    taskRows.length > 0 &&
+    taskRows.every((row) =>
+      isPerTaskPipelineComplete({
+        developerStatus: row.developerStatus,
+        reviewerStatus: row.reviewerStatus,
+      }),
+    );
 
   const integratedState = deriveIntegratedExecutionStateReadiness({
     projectId: input.projectId.trim(),
@@ -890,11 +927,22 @@ export function buildImplementationExecutionBoard(input: {
   const integratedRows = deriveIntegratedRows(integratedState);
   const { currentTaskId, currentStep } = pickCurrentTaskAndStep(taskRows, integratedRows);
 
-  const completedTasks = taskRows.filter((row) => row.currentRole === "completed").length;
-  const inProgressTasks = taskRows.filter((row) =>
-    ["developer", "reviewer", "security", "scm"].includes(row.currentRole),
+  const completedTasks = taskRows.filter((row) =>
+    isPerTaskPipelineComplete({
+      developerStatus: row.developerStatus,
+      reviewerStatus: row.reviewerStatus,
+    }),
   ).length;
+  const inProgressTasks = taskRows.filter((row) => {
+    const role = derivePerTaskPipelineRole({
+      developerStatus: row.developerStatus,
+      reviewerStatus: row.reviewerStatus,
+    });
+    return role !== "completed";
+  }).length;
   const failedTasks = taskRows.filter((row) => row.failureReason !== "none").length;
+  const reworkRequiredTasks = taskRows.filter((row) => row.developerStatus === "failed").length;
+  const blockedByDependencyTasks = countTasksBlockedByDependency({ taskRows });
   const userConfirmationRequired = taskRows.filter(
     (row) =>
       row.userConfirmation === "required_non_blocking" || row.userConfirmation === "blocking",
@@ -918,6 +966,8 @@ export function buildImplementationExecutionBoard(input: {
       completedTasks,
       inProgressTasks,
       failedTasks,
+      reworkRequiredTasks,
+      blockedByDependencyTasks,
       userConfirmationRequired,
       blockingUserConfirmation,
       integratedCompleted,

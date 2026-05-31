@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
         execution: nextExecution,
         ok: verify.ok,
         message: verify.message,
+        reason: verify.reason,
         verifiedChangedFiles: verify.verifiedChangedFiles,
         verifiedCommitSha: verify.verifiedCommitSha,
         nowIso,

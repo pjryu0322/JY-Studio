@@ -2,6 +2,10 @@ import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementat
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import {
+  canContinueTaskCursorAutoChainAfterFailure,
+  resolveTaskCursorFailurePolicyFromExecution,
+} from "@/lib/prototype/taskCursorFailurePolicy";
+import {
   isTaskCursorExecutionFailed,
   type TaskCursorExecutionStatus,
   type TaskCursorExecutionV1,
@@ -138,6 +142,11 @@ export function deriveImplementationQuickRunStatus(input: {
     execution &&
     (isTaskCursorExecutionFailed(execution) || execution.status === "github_verify_failed")
   ) {
+    if (canContinueTaskCursorAutoChainAfterFailure(execution)) {
+      return "running";
+    }
+    const policy = resolveTaskCursorFailurePolicyFromExecution(execution);
+    if (policy?.shouldStopAll) return "blocked";
     return "blocked";
   }
   if (input.quickRun?.status === "preview_ready") return "preview_ready";

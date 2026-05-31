@@ -1,3 +1,10 @@
+import {
+  buildCodeAgentGitDeliveryRequirementSection,
+  buildCodeAgentTaskCompletionRequirementSection,
+  buildCodeAgentWipPolicySection,
+  CODE_AGENT_WIP_POLICY_HEADING,
+  promptIncludesWipPolicy,
+} from "@/lib/prototype/codeAgentWipDeliveryPolicy";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
@@ -65,11 +72,16 @@ export type BridgeResultValidationContext = Readonly<{
 
 export function buildCursorSourceGenerationPrompt(input: {
   readonly selectedTaskId: string;
+  readonly workBranch?: string;
   readonly workItems: readonly CursorWorkItem[];
   readonly targetRepository: ProjectTargetRepository;
   readonly commitMessage: string;
   readonly allowedPathGlobs: readonly string[];
 }): string {
+  const selectedTaskId = input.selectedTaskId.trim();
+  const workBranch = input.workBranch?.trim() ?? "";
+  const baseBranch = input.targetRepository.defaultBranch || "main";
+
   const sections = input.workItems.map((w) => {
     const lines = [
       `## Task ${w.taskId}`,
@@ -90,16 +102,48 @@ export function buildCursorSourceGenerationPrompt(input: {
     ? input.allowedPathGlobs.map((g) => `- ${g}`)
     : ["- (제한 없음, 금지 경로만 적용)"];
 
+  const nestedHasWipPolicy = input.workItems.some((w) => promptIncludesWipPolicy(w.prompt));
+  const gitDelivery =
+    workBranch && selectedTaskId
+      ? buildCodeAgentGitDeliveryRequirementSection({
+          workBranch,
+          taskId: selectedTaskId,
+          commitMessage: input.commitMessage,
+          targetRepository: input.targetRepository.repoFullName,
+          baseBranch,
+        })
+      : null;
+  const topLevelWipPolicy = nestedHasWipPolicy
+    ? null
+    : buildCodeAgentWipPolicySection({
+        provider: "cursor",
+        workBranch: workBranch || undefined,
+        taskId: selectedTaskId,
+        baseBranch,
+      });
+
+  const completionRequirements =
+    selectedTaskId
+      ? buildCodeAgentTaskCompletionRequirementSection({
+          workBranch: workBranch || undefined,
+          taskId: selectedTaskId,
+        })
+      : null;
+
   return [
     "# Cursor 소스 생성 요청",
     "",
     `프로젝트 저장소: ${input.targetRepository.repoFullName}`,
     `gitRepoUrl: ${input.targetRepository.gitRepoUrl}`,
-    `selectedTaskId: ${input.selectedTaskId}`,
-    `기본 브랜치: ${input.targetRepository.defaultBranch}`,
+    `selectedTaskId: ${selectedTaskId}`,
+    ...(workBranch ? [`WIP branch: ${workBranch}`] : []),
+    `기본 브랜치: ${baseBranch}`,
     "",
+    ...(gitDelivery ? [gitDelivery, ""] : []),
+    ...(completionRequirements ? [completionRequirements, ""] : []),
     ...sections,
     "",
+    ...(topLevelWipPolicy ? [topLevelWipPolicy, ""] : []),
     "## 허용 경로 (allowedPathGlobs)",
     ...allowedLines,
     "",
@@ -157,6 +201,7 @@ export function buildCursorBridgeExecuteRequestFromWorkItems(input: {
 
   const prompt = buildCursorSourceGenerationPrompt({
     selectedTaskId: input.selectedTaskId.trim(),
+    workBranch: input.branchName.trim(),
     workItems,
     targetRepository: input.targetRepository,
     commitMessage,

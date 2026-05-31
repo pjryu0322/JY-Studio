@@ -2260,7 +2260,9 @@ export function PrototypePreviewPanel({
     showToast(notice);
     executionSingleChat.appendAiNotice(notice);
     taskCursorAutoChainPreferredTaskIdRef.current =
-      decision.kind === "continue" ? decision.toTaskId : decision.taskId;
+      decision.kind === "continue" || decision.kind === "continue_after_failure"
+        ? decision.toTaskId
+        : decision.taskId;
     const result = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     if (result.outcome === "blocked" || result.outcome === "no_op") {
       taskCursorAutoChainRef.current = null;

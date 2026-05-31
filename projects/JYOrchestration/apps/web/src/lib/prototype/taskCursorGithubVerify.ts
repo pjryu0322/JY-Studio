@@ -19,9 +19,17 @@ export type TaskCursorGithubVerifyInput = Readonly<{
   readonly userAgent?: string;
 }>;
 
+export type TaskCursorGithubVerifyDetailReason =
+  | "branch_not_found"
+  | "commit_not_found"
+  | "commit_message_missing_task_id"
+  | "changed_files_empty"
+  | "path_guard_failed";
+
 export type TaskCursorGithubVerifyResult = Readonly<{
   readonly ok: boolean;
   readonly reason?: TaskCursorFailureReason;
+  readonly detailReason?: TaskCursorGithubVerifyDetailReason;
   readonly message?: string;
   readonly verifiedChangedFiles?: readonly string[];
   readonly verifiedCommitSha?: string;
@@ -34,6 +42,28 @@ type GithubCommitResponse = Readonly<{
 }>;
 
 type GithubRefResponse = Readonly<{ readonly object?: Readonly<{ readonly sha?: string }> }>;
+
+export function formatTaskCursorGithubRefFailureMessage(input: {
+  readonly branch: string;
+  readonly repoFullName: string;
+  readonly httpStatus: number;
+}): string {
+  if (input.httpStatus === 404) {
+    return `GitHub에 WIP branch \`${input.branch}\`가 없습니다. Cursor Agent가 ${input.repoFullName} 저장소에 WIP commit을 push했는지 확인해 주세요.`;
+  }
+  return TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed;
+}
+
+export function formatTaskCursorGithubCommitFailureMessage(input: {
+  readonly commitSha: string;
+  readonly repoFullName: string;
+  readonly httpStatus: number;
+}): string {
+  if (input.httpStatus === 404) {
+    return `GitHub에서 commit \`${input.commitSha.slice(0, 12)}\`을(를) 찾지 못했습니다. WIP branch push가 완료되었는지 확인해 주세요.`;
+  }
+  return TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed;
+}
 
 async function githubFetchJson<T>(
   url: string,
@@ -91,6 +121,7 @@ export async function verifyTaskCursorGithubResult(
   const owner = encodeURIComponent(parsed.owner);
   const repo = encodeURIComponent(parsed.repo);
   const branch = input.execution.workBranch.trim();
+  const repoFullName = input.targetRepository.repoFullName;
   const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
   const refRes = await githubFetchJson<GithubRefResponse>(refUrl, token, userAgent);
   if (!refRes.ok) {
@@ -103,8 +134,13 @@ export async function verifyTaskCursorGithubResult(
     }
     return {
       ok: false,
-      reason: "github_verify_failed",
-      message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+      reason: refRes.status === 404 ? "github_verify_failed" : "github_verify_failed",
+      detailReason: refRes.status === 404 ? "branch_not_found" : undefined,
+      message: formatTaskCursorGithubRefFailureMessage({
+        branch,
+        repoFullName,
+        httpStatus: refRes.status,
+      }),
     };
   }
 
@@ -130,8 +166,13 @@ export async function verifyTaskCursorGithubResult(
     }
     return {
       ok: false,
-      reason: "github_verify_failed",
-      message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+      reason: commitRes.status === 404 ? "commit_not_created" : "github_verify_failed",
+      detailReason: commitRes.status === 404 ? "commit_not_found" : undefined,
+      message: formatTaskCursorGithubCommitFailureMessage({
+        commitSha,
+        repoFullName,
+        httpStatus: commitRes.status,
+      }),
     };
   }
 
@@ -140,7 +181,8 @@ export async function verifyTaskCursorGithubResult(
     return {
       ok: false,
       reason: "github_verify_failed",
-      message: "GitHub commit message에 taskId가 포함되어 있지 않습니다.",
+      detailReason: "commit_message_missing_task_id",
+      message: `GitHub commit message에 taskId \`${input.execution.taskId}\`가 포함되어 있지 않습니다. WIP branch \`${branch}\`의 최신 commit message를 확인해 주세요.`,
     };
   }
 
@@ -152,6 +194,7 @@ export async function verifyTaskCursorGithubResult(
     return {
       ok: false,
       reason: "no_changed_files",
+      detailReason: "changed_files_empty",
       message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
     };
   }
@@ -166,6 +209,7 @@ export async function verifyTaskCursorGithubResult(
     return {
       ok: false,
       reason: "github_verify_failed",
+      detailReason: "path_guard_failed",
       message: pathValidation.message,
     };
   }

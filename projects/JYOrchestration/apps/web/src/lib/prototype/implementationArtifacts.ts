@@ -366,7 +366,7 @@ export function buildDerivedImplementationArtifacts(input: {
         `- work items: ${wip.workItems.join(", ") || "—"}`,
         `- commits: ${wip.commits.length}건`,
         "",
-        "공식 push/PR/merge는 SCM이 담당합니다.",
+        "WIP branch push는 Code Agent가, main 반영용 PR/merge는 SCM이 담당합니다.",
       ].join("\n"),
       source: ["codeAgentWipExecutionV1"],
       status: wip.status === "scm_commit_pending" ? "ready" : "completed",

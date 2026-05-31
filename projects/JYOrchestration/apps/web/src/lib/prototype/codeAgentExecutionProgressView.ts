@@ -11,6 +11,11 @@ import type {
   ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { pickFirstExecutableDeveloperTaskId } from "@/lib/prototype/implementationExecutionBoard";
+import { resolveTaskCursorAutoChainDecision } from "@/lib/prototype/implementationTaskCursorAutoChain";
+import {
+  canContinueTaskCursorAutoChainAfterFailure,
+  resolveTaskCursorFailurePolicyFromExecution,
+} from "@/lib/prototype/taskCursorFailurePolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
@@ -509,9 +514,9 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
     case "review_pending":
       return "GitHub commit 확인됨";
     case "security_pending":
-      return "보안 점검 대기";
+      return "검수 완료";
     case "scm_pending":
-      return "SCM 통제 대기";
+      return "Task 완료 — 다음 작업 대기";
     case "cursor_failed":
     case "github_verify_failed":
       return "실패";
@@ -530,16 +535,16 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
     );
   }
   if (execution.status === "github_verified" || execution.status === "review_pending") {
-    return "검수자·보안관 점검을 자동으로 진행합니다.";
+    return "검수 자동 점검을 진행합니다.";
   }
   if (execution.status === "security_pending" || execution.status === "scm_pending") {
-    return "검수·보안 점검이 완료되었습니다. 다음 작업을 자동으로 진행합니다.";
+    return "검수가 완료되었습니다. 다음 작업을 자동으로 진행합니다.";
   }
   if (execution.status === "cursor_completed" || execution.status === "github_verifying") {
     return "GitHub commit 확인을 진행합니다.";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    return "AI 개발자가 작업을 진행 중입니다.\n완료되면 GitHub commit 확인과 검수·보안 점검을 자동으로 진행합니다.";
+    return "AI 개발자가 작업을 진행 중입니다.\n완료되면 GitHub commit 확인과 검수를 자동으로 진행합니다.";
   }
   return "Quick 실행으로 프로토타입 생성을 시작할 수 있습니다.";
 }
@@ -552,15 +557,15 @@ function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string 
     return "다음 처리: 우선순위 기준 다음 작업 자동 실행";
   }
   if (execution.status === "github_verified" || execution.status === "review_pending" || execution.status === "security_pending") {
-    return "다음 처리: 검수자·보안관 자동 점검 → 다음 Task";
+    return "다음 처리: 검수 자동 점검 → 다음 Task";
   }
   if (execution.status === "cursor_completed" || execution.status === "github_verifying") {
-    return "다음 처리: GitHub commit 확인 → 자동 검수 → 자동 보안";
+    return "다음 처리: GitHub commit 확인 → 검수";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    return "다음 처리: GitHub commit 확인 → 자동 검수 → 자동 보안";
+    return "다음 처리: GitHub commit 확인 → 검수 → 다음 Task";
   }
-  return "다음 처리: AI 개발자 실행 → GitHub 확인 → 검수/보안 → Preview 준비";
+  return "다음 처리: AI 개발자 실행 → GitHub 확인 → 검수 → (전체 완료 후) 통합 보안·SCM";
 }
 
 function buildTaskCursorProgressSteps(execution: TaskCursorExecutionV1): readonly CodeAgentExecutionProgressStep[] {
@@ -581,9 +586,11 @@ function buildTaskCursorProgressSteps(execution: TaskCursorExecutionV1): readonl
       "GitHub commit 확인",
       s === "github_verify_failed" ? "failed" : githubDone ? "done" : s === "github_verifying" || s === "cursor_completed" ? "active" : "pending",
     ),
-    step("review", "검수 대기", githubDone ? "pending" : "pending"),
-    step("security", "보안 점검", "pending"),
-    step("scm", "SCM 통제", "pending"),
+    step(
+      "review",
+      "검수",
+      s === "scm_pending" || s === "security_pending" ? "done" : githubDone ? "active" : "pending",
+    ),
   ];
 }
 
@@ -596,8 +603,8 @@ export function buildCompactDashboardProgressSteps(
     return [
       step("development", "개발 중", "pending"),
       step("github", "GitHub 확인", "pending"),
-      step("quality", "검수/보안", "pending"),
-      step("preview", "Preview 준비", "pending"),
+      step("quality", "검수", "pending"),
+      step("preview", "다음 작업", "pending"),
     ];
   }
   const s = execution.status;
@@ -609,15 +616,13 @@ export function buildCompactDashboardProgressSteps(
   const githubFailed = s === "github_verify_failed";
   const qualityActive =
     s === "review_pending" ||
-    s === "security_pending" ||
-    autoGate?.taskId === execution.taskId &&
-      (autoGate.status === "review_running" || autoGate.status === "security_running");
+    (autoGate?.taskId === execution.taskId && autoGate.status === "review_running");
   const qualityDone =
     autoGate?.taskId === execution.taskId &&
     autoGate.status === "passed" &&
     ["security_pending", "scm_pending"].includes(s);
   const qualityFailed = autoGate?.taskId === execution.taskId && autoGate.status === "failed";
-  const previewDone = s === "scm_pending" && autoGate?.status === "passed";
+  const nextTaskReady = s === "scm_pending" && autoGate?.status === "passed";
 
   return [
     step(
@@ -632,10 +637,10 @@ export function buildCompactDashboardProgressSteps(
     ),
     step(
       "quality",
-      "검수/보안",
+      "검수",
       qualityFailed ? "failed" : qualityDone ? "done" : qualityActive ? "active" : "pending",
     ),
-    step("preview", "Preview 준비", previewDone ? "done" : "pending"),
+    step("preview", "다음 작업", nextTaskReady ? "done" : "pending"),
   ];
 }
 
@@ -734,24 +739,68 @@ function buildTaskCursorExecutionProgressView(input: {
       execution.status === "review_pending"
     ) {
       statusLabel = "개발 결과 확인됨";
-      summaryLine = "검수자·보안관 점검을 자동으로 진행합니다.";
+      summaryLine = "검수자 점검을 자동으로 진행합니다.";
     } else if (execution.status === "scm_pending") {
-      statusLabel = "검수 통과 · 보안 통과";
+      statusLabel = "검수 통과";
       summaryLine = "다음 작업을 실행합니다.";
     }
   }
   if (execution.status === "cursor_failed" || execution.status === "github_verify_failed") {
-    progressCardTitle = "자동실행 중단";
-    statusLabel = "실패";
-    summaryLine = summaryLine || "자동실행이 중단되었습니다.";
+    const chainDecision = input.board
+      ? resolveTaskCursorAutoChainDecision({
+          board: input.board,
+          taskCursorExecution: execution,
+          autoGate: input.autoGate,
+        })
+      : null;
+    const canContinueAfterFailure =
+      chainDecision?.kind === "continue_after_failure" ||
+      (!input.board && canContinueTaskCursorAutoChainAfterFailure(execution));
+    const policy = resolveTaskCursorFailurePolicyFromExecution(execution);
+    if (canContinueAfterFailure) {
+      progressCardTitle = "재작업 필요 · 계속 진행";
+      statusLabel = "재작업 필요";
+      summaryLine =
+        execution.errorMessage ??
+        policy?.userMessage ??
+        "GitHub branch/commit 미확인";
+    } else if (policy?.shouldStopAll) {
+      progressCardTitle = "자동실행 중단";
+      statusLabel = "실패";
+      summaryLine = policy.userMessage || "환경설정을 확인해 주세요.";
+    } else {
+      progressCardTitle = "자동실행 중단";
+      statusLabel = "실패";
+      summaryLine = summaryLine || "자동실행이 중단되었습니다.";
+    }
   }
+  const nextProcessingHint =
+    execution.status === "cursor_failed" || execution.status === "github_verify_failed"
+      ? (() => {
+          const chainDecision = input.board
+            ? resolveTaskCursorAutoChainDecision({
+                board: input.board,
+                taskCursorExecution: execution,
+                autoGate: input.autoGate,
+              })
+            : null;
+          if (chainDecision?.kind === "continue_after_failure") {
+            return "1개 작업은 재작업 필요로 분류했습니다. 독립적인 다음 작업을 계속 진행합니다.";
+          }
+          const policy = resolveTaskCursorFailurePolicyFromExecution(execution);
+          if (policy?.shouldStopAll) {
+            return "자동실행이 중단되었습니다. 환경설정을 확인해 주세요.";
+          }
+          return taskCursorNextProcessingHint(execution);
+        })()
+      : taskCursorNextProcessingHint(execution);
   return {
     status,
     statusLabel,
     summaryLine,
     selectedTaskId: execution.taskId,
     selectedTaskTitle: resolveSelectedTaskTitle(input.board ?? null, execution.taskId),
-    nextProcessingHint: taskCursorNextProcessingHint(execution),
+    nextProcessingHint,
     cursorApiLabel:
       status === "cursor_failed"
         ? "실행 실패"
@@ -833,7 +882,7 @@ export function buildCodeAgentExecutionProgressView(input: {
       compactMainPresentation: true,
       compactSteps: buildCompactDashboardProgressSteps(null, null),
       nextProcessingHint: activeTaskId
-        ? "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 검수·보안 자동 점검"
+        ? "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 검수 자동 점검"
         : undefined,
       steps: buildCompactDashboardProgressSteps(null, null).map((step) => ({
         id: step.id,

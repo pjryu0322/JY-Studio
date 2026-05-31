@@ -55,7 +55,6 @@ describe("taskCursorExecution", () => {
     });
     expect(execution.status).toBe("prompt_ready");
     expect(execution.cursorPrompt?.length).toBeGreaterThan(0);
-    expect(execution.cursorRunId).toBeTruthy();
   });
 
   it("rejects wip-stub sha on success validation", () => {
@@ -92,6 +91,47 @@ describe("taskCursorExecution", () => {
         changedFiles: [],
       }).reason,
     ).toBe("no_changed_files");
+  });
+
+  it("rejects diffSummary-only success without commit evidence", () => {
+    const result = validateTaskCursorExecuteApiResult({
+      ok: true,
+      status: "completed",
+      taskId,
+      diffSummary: ["결과 화면 ui"],
+      pushed: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("commit_not_created");
+  });
+
+  it("accepts noCodeChangeEvidence when inspection proof is present", () => {
+    const result = validateTaskCursorExecuteApiResult({
+      ok: true,
+      status: "completed",
+      taskId,
+      noCodeChangeEvidence: {
+        noCodeChange: true,
+        reason: "already implemented",
+        inspectedFiles: ["src/App.tsx"],
+        validationSummary: "existing tests pass",
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("buildTaskCursorExecutionRequest includes completion requirements", () => {
+    const execution = buildTaskCursorExecutionRequest({
+      projectId: "p1",
+      taskId,
+      workItemIds: workItems.filter((w) => w.taskId === taskId).map((w) => w.id),
+      workItems: workItems.filter((w) => w.taskId === taskId),
+      targetRepository,
+      baseBranch: "main",
+      allowedPathGlobs: ["src/**"],
+    });
+    expect(execution.cursorPrompt).toContain("## 작업 완료 조건");
+    expect(execution.cursorPrompt).toContain("noCodeChange=true");
   });
 
   it("maps endpoint unsupported reason", () => {

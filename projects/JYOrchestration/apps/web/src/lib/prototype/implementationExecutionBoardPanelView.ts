@@ -1,4 +1,4 @@
-import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
+import { isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import {
   evaluateCursorExecutionAvailability,
   type CursorExecutionAvailability,
@@ -287,7 +287,15 @@ export function buildDashboardProgressHeadline(board: ImplementationExecutionBoa
   const total = board.summary.totalTasks;
   const completed = board.summary.completedTasks;
   const inProgress = board.summary.inProgressTasks;
+  const rework = board.summary.reworkRequiredTasks ?? 0;
+  const blocked = board.summary.blockedByDependencyTasks ?? 0;
   if (total <= 0) return "작업 없음";
+  if (rework > 0 || blocked > 0) {
+    const parts = [`${total}개 중 ${completed}개 완료`];
+    if (rework > 0) parts.push(`${rework}개 재작업 필요`);
+    if (blocked > 0) parts.push(`${blocked}개 차단`);
+    return parts.join(" · ");
+  }
   if (inProgress > 0) {
     const current = Math.min(completed + inProgress, total);
     return `${current}/${total} 진행 중`;
@@ -346,17 +354,21 @@ export function buildImplementationTaskTreeNodes(input: {
             : "GitHub: 대기",
       },
       { roleLabel: "검수", statusLabel: formatTaskTreeRoleStatus("reviewer", row.reviewerStatus) },
-      { roleLabel: "보안", statusLabel: formatTaskTreeRoleStatus("security", row.securityStatus) },
-      { roleLabel: "SCM", statusLabel: formatTaskTreeRoleStatus("scm", row.scmStatus) },
     ];
-    const collapsedSummary =
-      row.developerStatus === "done"
-        ? "완료"
+    const collapsedSummary = isPerTaskPipelineComplete({
+      developerStatus: row.developerStatus,
+      reviewerStatus: row.reviewerStatus,
+    })
+      ? "완료"
+      : row.developerStatus === "done"
+        ? "검수 대기"
         : row.developerStatus === "in_progress"
           ? "개발 진행"
           : row.developerStatus === "failed"
-            ? "실패"
-            : "개발 대기";
+            ? "재작업 필요"
+            : row.failureReason === "blocked_by_dependency"
+              ? "의존 차단"
+              : "개발 대기";
     return {
       taskId: row.taskId,
       title: row.title,

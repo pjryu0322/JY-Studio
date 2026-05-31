@@ -78,9 +78,10 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
   cursor_auth_failed: "Cursor API 인증에 실패했습니다.",
   github_auth_failed: "프로젝트 GitHub Token 인증에 실패했습니다.",
   commit_not_created: "Cursor 실행 결과 commitSha를 확인하지 못했습니다.",
-  push_failed: "Cursor가 작업 브랜치 push에 실패했습니다.",
+  push_failed: "Cursor가 WIP branch push에 실패했습니다. GitHub remote에 WIP branch commit이 있어야 검수를 통과할 수 있습니다.",
   no_changed_files: "Cursor 실행 결과 changedFiles를 확인하지 못했습니다.",
-  github_verify_failed: "Cursor 응답은 받았지만 GitHub에서 commit을 확인하지 못했습니다.",
+  github_verify_failed:
+    "Cursor 응답은 받았지만 GitHub WIP branch에서 commit을 확인하지 못했습니다. WIP branch push 여부를 확인해 주세요.",
   unknown: "Task Cursor 실행에 실패했습니다.",
 };
 
@@ -237,13 +238,28 @@ export function appendTaskCursorExecutionHistory(
 
 export function buildTaskCursorPrompt(input: {
   readonly taskId: string;
+  readonly workBranch: string;
   readonly workItems: readonly CursorWorkItem[];
   readonly targetRepository: ProjectTargetRepository;
   readonly commitMessage: string;
   readonly allowedPathGlobs: readonly string[];
 }): string {
-  return buildCursorSourceGenerationPrompt(input);
+  return buildCursorSourceGenerationPrompt({
+    selectedTaskId: input.taskId,
+    workBranch: input.workBranch,
+    workItems: input.workItems,
+    targetRepository: input.targetRepository,
+    commitMessage: input.commitMessage,
+    allowedPathGlobs: input.allowedPathGlobs,
+  });
 }
+
+export type TaskCursorNoCodeChangeEvidence = Readonly<{
+  readonly noCodeChange: true;
+  readonly reason: string;
+  readonly inspectedFiles: readonly string[];
+  readonly validationSummary: string;
+}>;
 
 export type TaskCursorExecuteApiResult = Readonly<{
   readonly ok: boolean;
@@ -255,6 +271,7 @@ export type TaskCursorExecuteApiResult = Readonly<{
   readonly changedFiles?: readonly string[];
   readonly diffSummary?: readonly string[];
   readonly testResults?: readonly string[];
+  readonly noCodeChangeEvidence?: TaskCursorNoCodeChangeEvidence;
   readonly reason?: TaskCursorFailureReason;
   readonly message?: string;
 }>;
@@ -269,6 +286,38 @@ export function validateTaskCursorExecuteApiResult(
   if (!result.ok || result.status !== "completed") {
     return result;
   }
+
+  const noCodeChange = result.noCodeChangeEvidence;
+  if (noCodeChange?.noCodeChange) {
+    if (
+      noCodeChange.inspectedFiles.length > 0 &&
+      String(noCodeChange.validationSummary ?? "").trim()
+    ) {
+      return result;
+    }
+    return {
+      ...result,
+      ok: false,
+      status: "failed",
+      reason: "no_changed_files",
+      message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
+    };
+  }
+
+  if (
+    !result.commitSha &&
+    !result.changedFiles?.length &&
+    result.diffSummary?.length
+  ) {
+    return {
+      ...result,
+      ok: false,
+      status: "failed",
+      reason: "commit_not_created",
+      message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
+    };
+  }
+
   if (options?.deferCommitDiscoveryToGithub) {
     return result;
   }

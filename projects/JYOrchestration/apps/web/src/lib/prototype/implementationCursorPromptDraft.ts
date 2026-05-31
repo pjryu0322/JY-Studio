@@ -1,4 +1,5 @@
 import type { ImplementationTaskExecutionHints } from "@/lib/prototype/implementationExecutionHints";
+import { buildCodeAgentWipPolicySection } from "@/lib/prototype/codeAgentWipDeliveryPolicy";
 
 export function buildCursorPromptDraft(input: {
   readonly title: string;
@@ -8,6 +9,9 @@ export function buildCursorPromptDraft(input: {
   readonly securityChecks: readonly string[];
   readonly reviewChecks: readonly string[];
   readonly executionHints: ImplementationTaskExecutionHints;
+  readonly taskId?: string;
+  readonly workBranch?: string;
+  readonly baseBranch?: string;
 }): string {
   const h = input.executionHints;
   const lines = [
@@ -69,14 +73,12 @@ export function buildCursorPromptDraft(input: {
     "### 회귀 범위",
     ...h.regressionScope.map((c) => `- ${c}`),
     "",
-    "## WIP 작업 정책",
-    "- 이 작업은 검토용 WIP 작업이다.",
-    "- main 브랜치에 직접 반영하지 않는다.",
-    "- 공식 push/PR/merge를 수행하지 않는다.",
-    "- WIP branch에서만 작업한다.",
-    "- 작업 완료 후 WIP commit을 생성한다.",
-    "- 변경 파일 목록, diff 요약, 테스트 결과, 미해결 이슈를 보고한다.",
-    "- AI개발자 승인 전에는 공식 반영 대상으로 보지 않는다.",
+    buildCodeAgentWipPolicySection({
+      provider: "cursor",
+      taskId: input.taskId,
+      workBranch: input.workBranch,
+      baseBranch: input.baseBranch,
+    }),
     "",
     "## 10. 금지사항",
     ...h.forbiddenPaths.map((p) => `- ${p}`),

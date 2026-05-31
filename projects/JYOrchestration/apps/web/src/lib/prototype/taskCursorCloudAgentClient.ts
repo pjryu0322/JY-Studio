@@ -4,6 +4,7 @@ import {
   type CursorRunResult,
 } from "@/lib/execution/cursorExecutionAdapter";
 import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
+import { TASK_CURSOR_DEFERRED_GITHUB_VERIFY_HINT } from "@/lib/prototype/codeAgentWipDeliveryPolicy";
 import {
   mapTaskCursorApiFailureReason,
   TASK_CURSOR_FAILURE_MESSAGES,
@@ -57,9 +58,7 @@ function mapCloudAgentResultToTaskResult(
         branchName: result.branchName || request.workBranch,
         changedFiles: result.changedFiles ?? [],
         diffSummary: result.summary ? [result.summary] : undefined,
-        testResults: [
-          "Cloud Agent 완료 — API 응답에 commitSha가 없어 GitHub branch에서 commit을 확인합니다.",
-        ],
+        testResults: [TASK_CURSOR_DEFERRED_GITHUB_VERIFY_HINT],
       },
       { deferCommitDiscoveryToGithub: true },
     );

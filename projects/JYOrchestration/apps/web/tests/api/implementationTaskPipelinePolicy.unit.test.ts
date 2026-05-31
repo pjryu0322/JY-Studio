@@ -1,0 +1,134 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildImplementationExecutionBoardFromRequirementsState,
+} from "@/lib/prototype/implementationExecutionBoard";
+import { buildImplementationTaskTreeNodes } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import {
+  derivePerTaskPipelineRole,
+  isPerTaskPipelineComplete,
+} from "@/lib/prototype/implementationTaskPipelinePolicy";
+import { runImplementationAutoQualityGate } from "@/lib/prototype/implementationAutoQualityGate";
+import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
+  markPostDeveloperReviewTasksQueued,
+  summarizeImplementationTaskExecutionItems,
+} from "@/lib/prototype/implementationTaskExecutionState";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+
+const NOW = "2026-05-31T12:00:00.000Z";
+
+function sampleList(): ImplementationTaskListV1 {
+  return {
+    version: "implementation_task_list_v1",
+    projectId: "p1",
+    createdAt: NOW,
+    updatedAt: NOW,
+    source: "implementation_seed",
+    tasks: [
+      {
+        taskId: "DEV-1",
+        title: "Dev",
+        description: "d",
+        taskType: "feature",
+        ownerRole: "developer",
+        priority: "high",
+        dependencies: [],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+      {
+        taskId: "REV-1",
+        title: "Review",
+        description: "d",
+        taskType: "validation",
+        ownerRole: "reviewer",
+        priority: "medium",
+        dependencies: ["DEV-1"],
+        acceptanceCriteria: [],
+        status: "ready",
+      },
+    ],
+    roleSummary: { developer: 1, designer: 0, reviewer: 1, security: 0, scm: 0 },
+  };
+}
+
+describe("implementationTaskPipelinePolicy", () => {
+  it("marks task complete after developer and reviewer are done", () => {
+    expect(
+      isPerTaskPipelineComplete({
+        developerStatus: "done",
+        reviewerStatus: "done",
+      }),
+    ).toBe(true);
+    expect(
+      derivePerTaskPipelineRole({
+        developerStatus: "done",
+        reviewerStatus: "ready",
+      }),
+    ).toBe("reviewer");
+  });
+
+  it("task tree omits per-task security and scm steps", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleList() },
+    })!;
+    const nodes = buildImplementationTaskTreeNodes({ board, activeTaskId: "DEV-1" });
+    expect(nodes[0]?.childSteps.map((step) => step.roleLabel)).toEqual([
+      "AI 개발자",
+      "GitHub",
+      "검수",
+    ]);
+  });
+
+  it("auto quality gate skips per-task security and continues chain", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList: sampleList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+      ),
+      summary: summarizeImplementationTaskExecutionItems(
+        state.items.map((item) =>
+          item.ownerRole === "developer" ? { ...item, status: "done" as const, completedAt: NOW } : item,
+        ),
+      ),
+    };
+    state = markPostDeveloperReviewTasksQueued({ state, nowIso: NOW });
+    const outcome = runImplementationAutoQualityGate({
+      projectId: "p1",
+      taskCursorExecution: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-1",
+        workItemIds: ["wi-1"],
+        status: "review_pending",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-1",
+        commitSha: "abc123def4567890abcdef1234567890abcdef",
+        changedFiles: ["src/a.ts"],
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      taskList: sampleList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    expect("blocked" in outcome).toBe(false);
+    if ("blocked" in outcome) return;
+    expect(outcome.autoGate.status).toBe("passed");
+    expect(outcome.autoGate.securityResultId).toBeUndefined();
+    expect(outcome.message).toContain("통합 단계");
+    expect(
+      outcome.orchestrationPatch.implementationTaskExecutionStateV1?.items.some(
+        (item) => item.ownerRole === "security" && item.status === "done",
+      ),
+    ).toBe(false);
+  });
+});

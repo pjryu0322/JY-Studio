@@ -475,6 +475,28 @@ export function markDeveloperTasksFailedForWip(input: {
   };
 }
 
+export function markDeveloperTaskFailedForTaskId(input: {
+  readonly state: ImplementationTaskExecutionStateV1;
+  readonly taskId: string;
+  readonly nowIso?: string;
+  readonly errorMessage: string;
+}): ImplementationTaskExecutionStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const taskId = input.taskId.trim();
+  const patchByTaskId = new Map<string, Partial<ImplementationTaskExecutionItemV1>>();
+  patchByTaskId.set(taskId, {
+    status: "failed",
+    errorMessage: input.errorMessage.trim() || "Task Cursor 실행 실패",
+  });
+  const items = patchExecutionItems(input.state.items, patchByTaskId, now);
+  return {
+    ...input.state,
+    updatedAt: now,
+    items,
+    summary: summarizeImplementationTaskExecutionItems(items),
+  };
+}
+
 const WIP_ACTIVE_STATUSES = new Set<CodeAgentWipExecutionV1["status"]>([
   "requested",
   "drafting",
