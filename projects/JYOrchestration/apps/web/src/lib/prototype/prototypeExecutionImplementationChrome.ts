@@ -1,4 +1,6 @@
 import type { WorkspaceConversationInterviewUi } from "@/components/workspace/WorkspaceConversationHubIconRow";
+import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import {
   evaluateImplementationSlotsReadiness,
@@ -94,6 +96,51 @@ export function buildImplementationOrchestrationSlotSections(
         level: implementationSlotStatusToLevel(s.status),
       })),
   })).filter((sec) => sec.slots.length > 0);
+}
+
+export function resolveImplementationTaskExecutionProgress(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly quickRun?: ImplementationQuickRunV1 | null;
+}): Readonly<{ covered: number; total: number; readinessPercent: number }> | null {
+  const total = input.board.summary.totalTasks;
+  if (total <= 0) return null;
+
+  let completed = input.board.summary.completedTasks;
+  const quickRunDone = input.quickRun?.completedTaskIds?.length ?? 0;
+  completed = Math.max(completed, quickRunDone);
+
+  const inProgress = input.board.summary.inProgressTasks;
+  const covered =
+    inProgress > 0 ? Math.min(total, completed + inProgress) : completed;
+  const readinessPercent = Math.min(100, Math.round((covered / total) * 100));
+
+  return { covered, total, readinessPercent };
+}
+
+export function overlayImplementationInterviewUiWithTaskExecutionProgress(
+  base: WorkspaceConversationInterviewUi,
+  input: {
+    readonly board?: ImplementationExecutionBoardV1 | null;
+    readonly quickRun?: ImplementationQuickRunV1 | null;
+  },
+): WorkspaceConversationInterviewUi {
+  const board = input.board;
+  if (!board) return base;
+
+  const progress = resolveImplementationTaskExecutionProgress({
+    board,
+    quickRun: input.quickRun,
+  });
+  if (!progress) return base;
+
+  return {
+    ...base,
+    readinessPercent: progress.readinessPercent,
+    covered: progress.covered,
+    total: progress.total,
+    statusCounts: null,
+    progressCountKind: "tasks",
+  };
 }
 
 export function buildImplementationSlotsInterviewUi(input: {

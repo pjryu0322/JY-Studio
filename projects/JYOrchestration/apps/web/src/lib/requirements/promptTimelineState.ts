@@ -3,6 +3,23 @@ import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/require
 const PROMPT_TIMELINE_MAX_ENTRIES = 120;
 const DEFAULT_PROMPT_TIMELINE_FINGERPRINT_WINDOW = 50;
 
+export function isValidPromptTimelineEntry(
+  entry: RequirementsPromptTimelineEntry | null | undefined,
+): entry is RequirementsPromptTimelineEntry {
+  return (
+    entry != null &&
+    typeof entry === "object" &&
+    typeof entry.action === "string" &&
+    entry.action.length > 0
+  );
+}
+
+export function sanitizePromptTimelineEntries(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+): RequirementsPromptTimelineEntry[] {
+  return (timeline ?? []).filter(isValidPromptTimelineEntry);
+}
+
 export const DETERMINISTIC_PLATFORM_TIMELINE_META = {
   source: "platform",
   provider: "platform",
@@ -14,7 +31,10 @@ export function appendPromptTimeline(
   existing: readonly RequirementsPromptTimelineEntry[] | null | undefined,
   entry: RequirementsPromptTimelineEntry,
 ): RequirementsPromptTimelineEntry[] {
-  return [...(existing ?? []), entry].slice(-PROMPT_TIMELINE_MAX_ENTRIES);
+  if (!isValidPromptTimelineEntry(entry)) {
+    return sanitizePromptTimelineEntries(existing);
+  }
+  return [...sanitizePromptTimelineEntries(existing), entry].slice(-PROMPT_TIMELINE_MAX_ENTRIES);
 }
 
 export function withDeterministicPlatformTimelineMeta(
@@ -31,6 +51,7 @@ export function withDeterministicPlatformTimelineMeta(
 export function buildPromptTimelineEntryFingerprint(
   entry: RequirementsPromptTimelineEntry,
 ): string {
+  if (!isValidPromptTimelineEntry(entry)) return "";
   return [
     entry.action,
     entry.responseText ?? "",
@@ -44,7 +65,7 @@ export function hasPromptTimelineFingerprint(
   fingerprint: string,
   fingerprintWindow = DEFAULT_PROMPT_TIMELINE_FINGERPRINT_WINDOW,
 ): boolean {
-  const recent = (timeline ?? []).slice(-fingerprintWindow);
+  const recent = sanitizePromptTimelineEntries(timeline).slice(-fingerprintWindow);
   return recent.some((entry) => buildPromptTimelineEntryFingerprint(entry) === fingerprint);
 }
 
@@ -64,7 +85,7 @@ export function appendPromptTimelineEntryOnce(
     hasPromptTimelineFingerprint(existing, fingerprint, window) ||
     hasPromptTimelineFingerprint(existing, entryFingerprint, window)
   ) {
-    return [...(existing ?? [])];
+    return sanitizePromptTimelineEntries(existing);
   }
   return appendPromptTimeline(existing, normalized);
 }
@@ -74,8 +95,9 @@ export function appendPromptTimelineEntriesOnce(
   entries: readonly RequirementsPromptTimelineEntry[],
   options?: { readonly fingerprintWindow?: number },
 ): RequirementsPromptTimelineEntry[] {
-  let timeline = existing ?? [];
+  let timeline = sanitizePromptTimelineEntries(existing);
   for (const entry of entries) {
+    if (!isValidPromptTimelineEntry(entry)) continue;
     timeline = appendPromptTimelineEntryOnce(timeline, entry, options);
   }
   return timeline;

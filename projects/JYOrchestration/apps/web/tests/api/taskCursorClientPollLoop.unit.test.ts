@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
   isInFlightTaskCursorExecution,
   resolveTaskCursorPollWorkItems,
@@ -26,10 +27,22 @@ function baseExecution(overrides: Partial<TaskCursorExecutionV1> = {}): TaskCurs
 }
 
 describe("taskCursorClientPollLoop helpers", () => {
-  it("isInFlightTaskCursorExecution requires runId and in-flight status", () => {
+  it("isInFlightTaskCursorExecution tracks launch/poll in-flight statuses", () => {
     expect(isInFlightTaskCursorExecution(baseExecution())).toBe(true);
-    expect(isInFlightTaskCursorExecution(baseExecution({ cursorRunId: undefined }))).toBe(false);
+    expect(isInFlightTaskCursorExecution(baseExecution({ status: "cursor_requested", cursorRunId: undefined }))).toBe(
+      true,
+    );
     expect(isInFlightTaskCursorExecution(baseExecution({ status: "cursor_completed" }))).toBe(false);
+  });
+
+  it("canPollTaskCursorCloudAgent requires bc-uuid runId", () => {
+    expect(canPollTaskCursorCloudAgent(baseExecution())).toBe(true);
+    expect(
+      canPollTaskCursorCloudAgent(
+        baseExecution({ cursorRunId: "task-cursor-20260530120000" }),
+      ),
+    ).toBe(false);
+    expect(canPollTaskCursorCloudAgent(baseExecution({ cursorRunId: undefined }))).toBe(false);
   });
 
   it("resolveTaskCursorPollWorkItems prefers workItemIds then taskId", () => {

@@ -29,7 +29,10 @@ import {
   buildImplementationArtifactsTimelineEntry,
   derivedHubEntryToDeliverableAsset,
 } from "@/lib/prototype/implementationArtifacts";
-import { buildImplementationSlotsInterviewUi } from "@/lib/prototype/prototypeExecutionImplementationChrome";
+import {
+  buildImplementationSlotsInterviewUi,
+  overlayImplementationInterviewUiWithTaskExecutionProgress,
+} from "@/lib/prototype/prototypeExecutionImplementationChrome";
 import { resolvePrototypeExecutionActivityStatus } from "@/lib/prototype/prototypeExecutionActivityStatus";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
@@ -308,6 +311,7 @@ import {
   postTaskCursorExecuteWithRetry,
 } from "@/lib/prototype/taskCursorLaunchRetry";
 import {
+  canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
   isInFlightTaskCursorExecution,
   resolveTaskCursorPollWorkItems,
@@ -1465,6 +1469,7 @@ export function PrototypePreviewPanel({
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const taskCursorAutoChainRef = useRef<string | null>(null);
+  const taskCursorAutoChainPreferredTaskIdRef = useRef<string | null>(null);
   useEffect(() => {
     requirementsStateJsonRef.current = requirementsStateJson;
   }, [requirementsStateJson]);
@@ -2107,7 +2112,7 @@ export function PrototypePreviewPanel({
       readonly resume?: boolean;
     }) => {
       const runId = String(input.execution.cursorRunId ?? "").trim();
-      if (!runId || !isInFlightTaskCursorExecution(input.execution)) return;
+      if (!runId || !canPollTaskCursorCloudAgent(input.execution)) return;
       if (taskCursorPollActiveRunIdRef.current === runId) return;
       taskCursorPollActiveRunIdRef.current = runId;
       const pollToken = ++taskCursorPollTokenRef.current;
@@ -2149,7 +2154,7 @@ export function PrototypePreviewPanel({
 
   useEffect(() => {
     const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
-    if (!execution || !isInFlightTaskCursorExecution(execution)) return;
+    if (!execution || !canPollTaskCursorCloudAgent(execution)) return;
     const workItems = resolveTaskCursorPollWorkItems(
       execution,
       orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -2254,6 +2259,8 @@ export function PrototypePreviewPanel({
     const notice = formatTaskCursorAutoChainNotice(decision, board);
     showToast(notice);
     executionSingleChat.appendAiNotice(notice);
+    taskCursorAutoChainPreferredTaskIdRef.current =
+      decision.kind === "continue" ? decision.toTaskId : decision.taskId;
     const result = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     if (result.outcome === "blocked" || result.outcome === "no_op") {
       taskCursorAutoChainRef.current = null;
@@ -3867,12 +3874,23 @@ export function PrototypePreviewPanel({
             executionSingleChat.appendAiNotice(message);
             return { outcome: "blocked", message };
           }
-          const scoped = selectCursorWorkItemsForWipExecution({
+          const preferredTaskId = taskCursorAutoChainPreferredTaskIdRef.current?.trim() || null;
+          taskCursorAutoChainPreferredTaskIdRef.current = null;
+          let scoped = selectCursorWorkItemsForWipExecution({
             board,
             workItems,
             boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
             qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
           });
+          if (preferredTaskId) {
+            const preferredWorkItems = workItems.filter((item) => item.taskId === preferredTaskId);
+            if (preferredWorkItems.length) {
+              scoped = {
+                selectedTaskId: preferredTaskId,
+                selectedWorkItems: preferredWorkItems,
+              };
+            }
+          }
           if (!scoped.selectedTaskId || !scoped.selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "실행 가능한 Task를 찾을 수 없습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -3898,11 +3916,15 @@ export function PrototypePreviewPanel({
             targetRepository,
             baseBranch: targetRepository.defaultBranch,
             allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-            existing: orchestrationAwareRequirementsState.taskCursorExecutionV1,
+            existing:
+              orchestrationAwareRequirementsState.taskCursorExecutionV1?.taskId === scoped.selectedTaskId
+                ? orchestrationAwareRequirementsState.taskCursorExecutionV1
+                : null,
             nowIso,
           });
           pendingExecution = patchTaskCursorExecution(pendingExecution, {
-            status: "cursor_running",
+            status: "cursor_requested",
+            cursorRunId: undefined,
             nowIso,
           });
           applyImplementationOrchestrationResult({
@@ -5665,14 +5687,25 @@ export function PrototypePreviewPanel({
     confirmImplementationTaskPlan,
   ]);
 
-  const implementationInterviewUi = useMemo(
-    () =>
-      buildImplementationSlotsInterviewUi({
-        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
-        onQuickExecution: onImplementationQuickExecution,
-      }),
-    [parsedRequirementsState.implementationSlotsV1, onImplementationQuickExecution],
-  );
+  const implementationInterviewUi = useMemo(() => {
+    const base = buildImplementationSlotsInterviewUi({
+      implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
+      onQuickExecution: onImplementationQuickExecution,
+    });
+    const board = implementationStageBoardGateContext?.board ?? null;
+    const quickRun = parseImplementationQuickRunV1(
+      orchestrationAwareRequirementsState.implementationQuickRunV1,
+    );
+    return overlayImplementationInterviewUiWithTaskExecutionProgress(base, {
+      board,
+      quickRun,
+    });
+  }, [
+    parsedRequirementsState.implementationSlotsV1,
+    onImplementationQuickExecution,
+    implementationStageBoardGateContext?.board,
+    orchestrationAwareRequirementsState.implementationQuickRunV1,
+  ]);
 
   const onDownloadImplementationConversationMarkdown = useCallback(() => {
     const pid = projectId.trim();

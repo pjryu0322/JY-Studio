@@ -1,5 +1,5 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
-import { pickFirstExecutableDeveloperTaskId } from "@/lib/prototype/implementationExecutionBoard";
+import { pickFirstExecutableDeveloperTaskIdExcluding } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import {
@@ -13,11 +13,40 @@ export type TaskCursorAutoChainDecision =
   | Readonly<{ readonly kind: "continue"; readonly fromTaskId: string; readonly toTaskId: string }>
   | Readonly<{ readonly kind: "none" }>;
 
+function isAutoGatePassedForExecution(
+  execution: TaskCursorExecutionV1,
+  autoGate: ImplementationAutoQualityGateV1 | null | undefined,
+): boolean {
+  if (!autoGate || autoGate.status !== "passed" || autoGate.taskId !== execution.taskId) {
+    return false;
+  }
+  const gateCommit = String(autoGate.sourceCommitSha ?? "").trim();
+  const executionCommit = String(execution.commitSha ?? "").trim();
+  if (!gateCommit || !executionCommit) return true;
+  return gateCommit === executionCommit;
+}
+
+function isTaskReadyForAutoChainContinue(
+  execution: TaskCursorExecutionV1,
+  autoGate: ImplementationAutoQualityGateV1 | null | undefined,
+): boolean {
+  if (!isAutoGatePassedForExecution(execution, autoGate)) return false;
+  return (
+    execution.status === "scm_pending" ||
+    execution.status === "security_pending" ||
+    execution.status === "review_pending"
+  );
+}
+
 export function resolveNextTaskCursorAutoChainTarget(
   board: ImplementationExecutionBoardV1 | null | undefined,
+  excludeTaskIds?: readonly string[],
 ): string | null {
   if (!board) return null;
-  return pickFirstExecutableDeveloperTaskId(board);
+  if (excludeTaskIds?.length) {
+    return pickFirstExecutableDeveloperTaskIdExcluding(board, excludeTaskIds);
+  }
+  return pickFirstExecutableDeveloperTaskIdExcluding(board);
 }
 
 export function resolveTaskCursorAutoChainDecision(input: {
@@ -30,10 +59,14 @@ export function resolveTaskCursorAutoChainDecision(input: {
   const execution = input.taskCursorExecution ?? null;
   if (execution && isInFlightTaskCursorExecution(execution)) return { kind: "none" };
 
-  const nextTaskId = resolveNextTaskCursorAutoChainTarget(input.board);
+  const autoGate = input.autoGate ?? null;
+  const excludeTaskIds =
+    execution && isTaskReadyForAutoChainContinue(execution, autoGate)
+      ? [execution.taskId]
+      : [];
+  const nextTaskId = resolveNextTaskCursorAutoChainTarget(input.board, excludeTaskIds);
   if (!nextTaskId) return { kind: "none" };
 
-  const autoGate = input.autoGate ?? null;
   if (
     autoGate?.status === "failed" &&
     execution &&
@@ -59,9 +92,7 @@ export function resolveTaskCursorAutoChainDecision(input: {
   }
 
   if (
-    execution.status === "scm_pending" &&
-    autoGate?.status === "passed" &&
-    autoGate.taskId === execution.taskId &&
+    isTaskReadyForAutoChainContinue(execution, autoGate) &&
     nextTaskId !== execution.taskId
   ) {
     return {

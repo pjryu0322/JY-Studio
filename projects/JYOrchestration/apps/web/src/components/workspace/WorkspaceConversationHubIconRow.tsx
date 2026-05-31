@@ -26,6 +26,8 @@ export type WorkspaceConversationInterviewUi = Readonly<{
   /** 슬롯 그리드 셀 라벨 → 보조 설명(구현 슬롯 값 요약 등) */
   readonly slotCellHints?: Readonly<Record<string, string>> | null;
   readonly onForceGeneratePlanNow: () => void;
+  /** 슬롯 확정(기본) vs 작업 완료(구현 실행 보드) */
+  readonly progressCountKind?: "slots" | "tasks";
 }>;
 
 export type WorkspaceSlotsChromeLabels = Readonly<{
@@ -392,7 +394,7 @@ export function WorkspaceConversationHubIconRow({
           <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, overflow: "auto", flex: 1, minHeight: 0 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <div style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-                확정 {slotsUi.covered} / 전체 {slotsUi.total}
+                {progressCountLabel} {slotsUi.covered} / 전체 {slotsUi.total}
               </div>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
                 예상 남은 질문: {Math.max(0, slotsUi.remainingQuestionsEstimate)}개
@@ -514,6 +516,8 @@ export function WorkspaceConversationHubIconRow({
       document.removeEventListener("mousedown", onDown);
     };
   }, [overflowOpen]);
+
+  const progressCountLabel = slotsUi?.progressCountKind === "tasks" ? "완료" : "확정";
 
   const quickButton =
     slotsUi ? (

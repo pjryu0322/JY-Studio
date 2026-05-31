@@ -19,6 +19,7 @@ import { pollTaskCursorCloudAgentStep } from "@/lib/prototype/taskCursorCloudAge
 import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
 import {
   buildTaskCursorTimelineEntry,
+  isCursorCloudAgentRunId,
   parseTaskCursorExecutionV1,
   patchTaskCursorExecution,
 } from "@/lib/prototype/taskCursorExecution";
@@ -75,6 +76,15 @@ export async function POST(request: NextRequest) {
         { success: false, message: "cursorRunId(Cloud Agent id)가 없습니다." },
         { status: 200 },
       );
+    }
+    if (!isCursorCloudAgentRunId(agentId)) {
+      return NextResponse.json({
+        success: false,
+        status: "poll_not_ready",
+        message: "Cloud Agent ID가 아직 준비되지 않았습니다. launch 완료 후 다시 폴링합니다.",
+        execution,
+        executionMode: "task_cursor_poll",
+      });
     }
 
     const setupRow = await prisma.executionSetup.findUnique({

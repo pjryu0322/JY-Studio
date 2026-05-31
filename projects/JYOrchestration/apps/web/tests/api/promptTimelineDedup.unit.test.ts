@@ -200,4 +200,20 @@ describe("promptTimeline dedup", () => {
     });
     expect(buildPromptTimelineEntryFingerprint(entry)).toBe(buildPromptTimelineEntryFingerprint(entry));
   });
+
+  it("ignores null timeline entries when deduplicating bootstrap append", () => {
+    const entry = buildExecutionSetupAvailabilityTimelineEntry({
+      action: "execution_setup_saved_and_board_refreshed",
+      projectId: "p1",
+      setup: { hasCursorToken: true },
+      source: "execution_setup_saved",
+      nowIso: NOW,
+    });
+    const merged = appendPromptTimelineEntryOnce(
+      [null as unknown as typeof entry, entry],
+      entry,
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.action).toBe(entry.action);
+  });
 });

@@ -137,6 +137,26 @@ describe("implementationAutoQualityGate", () => {
     expect(outcome.orchestrationPatch.taskCursorExecutionV1?.status).toBe("scm_pending");
   });
 
+  it("passes auto gate when execution state was missing but github verified", () => {
+    const list = taskList();
+    const execution = verifiedExecution();
+    const outcome = runImplementationAutoQualityGate({
+      projectId: "p1",
+      taskCursorExecution: execution,
+      taskList: list,
+      executionState: null,
+      nowIso: NOW,
+    });
+    expect("blocked" in outcome).toBe(false);
+    if ("blocked" in outcome) return;
+    expect(outcome.autoGate.status).toBe("passed");
+    expect(
+      outcome.orchestrationPatch.implementationTaskExecutionStateV1?.items.find(
+        (item) => item.taskId === "DEV-MOCK-001" && item.ownerRole === "developer",
+      )?.status,
+    ).toBe("done");
+  });
+
   it("review fail skips security and marks gate failed", () => {
     const list = taskList();
     const execution = verifiedExecution();

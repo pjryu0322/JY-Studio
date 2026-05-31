@@ -253,6 +253,34 @@ export function pickFirstExecutableDeveloperTaskId(
   return executable[0]?.taskId ?? null;
 }
 
+/** Auto-chain: treat completed task as done even if board execution state is stale. */
+export function pickFirstExecutableDeveloperTaskIdExcluding(
+  board: ImplementationExecutionBoardV1,
+  excludeTaskIds?: readonly string[],
+): string | null {
+  const extraCompleted = new Set(
+    (excludeTaskIds ?? []).map((id) => String(id ?? "").trim()).filter(Boolean),
+  );
+  const completedDeveloperIds = completedDeveloperTaskIds(board);
+  for (const taskId of extraCompleted) completedDeveloperIds.add(taskId);
+  const executable = sortDeveloperTaskRowsByPriority(
+    board.taskRows.filter(
+      (row) => !extraCompleted.has(row.taskId) && isDeveloperRowExecutableForWip(row, completedDeveloperIds),
+    ),
+  );
+  if (!executable.length) return null;
+
+  const qualityFailed = executable.filter(
+    (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+  );
+  if (qualityFailed.length) return qualityFailed[0]?.taskId ?? null;
+
+  const rework = executable.filter((row) => row.reworkCount > 0);
+  if (rework.length) return rework[0]?.taskId ?? null;
+
+  return executable[0]?.taskId ?? null;
+}
+
 /** Why `pickFirstExecutableDeveloperTaskId` would select this developer task. */
 export function explainExecutableTaskSelection(input: {
   readonly board: ImplementationExecutionBoardV1;

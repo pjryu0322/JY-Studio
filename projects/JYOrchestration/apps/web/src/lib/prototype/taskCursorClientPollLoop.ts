@@ -2,6 +2,7 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import {
+  isCursorCloudAgentRunId,
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
@@ -28,8 +29,19 @@ const IN_FLIGHT_TASK_CURSOR_STATUSES = new Set([
 export function isInFlightTaskCursorExecution(
   execution: TaskCursorExecutionV1 | null | undefined,
 ): execution is TaskCursorExecutionV1 {
-  if (!execution?.cursorRunId?.trim()) return false;
+  if (!execution) return false;
   return IN_FLIGHT_TASK_CURSOR_STATUSES.has(execution.status);
+}
+
+/** Cloud Agent 폴링은 launch 응답의 `bc-<uuid>` runId가 있을 때만 시작한다. */
+export function canPollTaskCursorCloudAgent(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): execution is TaskCursorExecutionV1 {
+  if (!execution) return false;
+  if (execution.status !== "cursor_running" && execution.status !== "github_verifying") {
+    return false;
+  }
+  return isCursorCloudAgentRunId(execution.cursorRunId);
 }
 
 export function resolveTaskCursorPollWorkItems(
@@ -65,8 +77,7 @@ export async function runTaskCursorClientPollLoop(input: {
     await new Promise((resolve) => setTimeout(resolve, round === 0 ? 2_000 : 10_000));
     const latestExecution =
       parseTaskCursorExecutionV1(input.getLatestExecution()) ?? input.initialExecution;
-    if (!latestExecution?.cursorRunId?.trim()) return;
-    if (!isInFlightTaskCursorExecution(latestExecution)) return;
+    if (!canPollTaskCursorCloudAgent(latestExecution)) return;
 
     try {
       const pollRes = await credentialsIncludeFetch("/api/prototype/task-cursor/poll", {
@@ -108,6 +119,9 @@ export async function runTaskCursorClientPollLoop(input: {
         input.onPatch(blockedPatch);
         input.onTerminal(notice);
         return;
+      }
+      if (status === "poll_not_ready") {
+        continue;
       }
       if (status && TERMINAL_TASK_CURSOR_STATUSES.has(status)) {
         const notice =

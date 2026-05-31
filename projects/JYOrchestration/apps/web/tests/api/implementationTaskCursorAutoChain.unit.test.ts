@@ -179,4 +179,43 @@ describe("implementationTaskCursorAutoChain", () => {
     });
     expect(decision).toEqual({ kind: "none" });
   });
+
+  it("continues to next task when board execution state is stale but current task passed gate", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: taskListThree() },
+    })!;
+    const decision = resolveTaskCursorAutoChainDecision({
+      board,
+      taskCursorExecution: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-HIGH",
+        workItemIds: ["wi-1"],
+        status: "scm_pending",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-high",
+        commitSha: "abc123def4567890abcdef1234567890abcdef12",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      autoGate: {
+        version: "implementation_auto_quality_gate_v1",
+        projectId: "p1",
+        taskId: "DEV-HIGH",
+        sourceCommitSha: "abc123def4567890abcdef1234567890abcdef12",
+        changedFiles: ["src/a.ts"],
+        status: "passed",
+        startedAt: NOW,
+        updatedAt: NOW,
+      },
+    });
+    expect(decision).toEqual({
+      kind: "continue",
+      fromTaskId: "DEV-HIGH",
+      toTaskId: "DEV-MED",
+    });
+  });
 });

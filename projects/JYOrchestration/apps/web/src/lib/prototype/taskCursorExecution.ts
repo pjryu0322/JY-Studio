@@ -129,6 +129,13 @@ export function buildTaskCursorRunId(nowIso?: string): string {
   return `task-cursor-${stamp}`;
 }
 
+/** Cursor Cloud Agent API agent id (`bc-<uuid>`). */
+export function isCursorCloudAgentRunId(runId: string | null | undefined): boolean {
+  return /^bc-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    String(runId ?? "").trim(),
+  );
+}
+
 export function buildInitialTaskCursorExecution(input: {
   readonly projectId: string;
   readonly taskId: string;

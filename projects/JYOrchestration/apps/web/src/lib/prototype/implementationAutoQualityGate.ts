@@ -8,10 +8,12 @@ import {
   type ImplementationQualityGateResultV1,
 } from "@/lib/prototype/implementationQualityGate";
 import {
+  buildInitialImplementationTaskExecutionStateFromTaskList,
   markRoleTasksDone,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
+  buildImplementationExecutionBoardFromRequirementsState,
   pickQualityGateTargetTaskIds,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
@@ -308,19 +310,35 @@ export function runImplementationAutoQualityGate(input: {
   });
 
   let executionState =
-    input.executionState &&
-    syncTaskExecutionStateAfterGithubVerified({
-      executionState: input.executionState,
-      taskId: execution.taskId,
-      cursorWorkItems: input.cursorWorkItems ?? [],
+    input.executionState ??
+    buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: input.projectId,
+      taskList: input.taskList,
       nowIso: now,
     });
 
+  executionState = syncTaskExecutionStateAfterGithubVerified({
+    executionState,
+    taskId: execution.taskId,
+    cursorWorkItems: input.cursorWorkItems ?? [],
+    nowIso: now,
+  });
+
+  const boardForGate =
+    buildImplementationExecutionBoardFromRequirementsState({
+      projectId: input.projectId,
+      orchestration: {
+        implementationTaskListV1: input.taskList,
+        implementationTaskExecutionStateV1: executionState,
+        implementationQualityGateResultsV1: input.qualityGateResults,
+      },
+    }) ?? input.board ?? null;
+
   const targetTaskIds =
-    input.board != null
+    boardForGate != null
       ? pickQualityGateTargetTaskIds({
           role: "reviewer",
-          board: input.board,
+          board: boardForGate,
           taskCursorTaskId: execution.taskId,
         })
       : [execution.taskId];

@@ -13,6 +13,7 @@ import {
   appendPromptTimelineEntriesOnce,
   buildPromptTimelineEntryFingerprint,
   hasPromptTimelineFingerprint,
+  sanitizePromptTimelineEntries,
   withDeterministicPlatformTimelineMeta,
 } from "@/lib/requirements/promptTimelineState";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -1079,7 +1080,10 @@ function collectNewBootstrapTimelineEntries(input: {
   readonly candidateEntries: readonly RequirementsPromptTimelineEntry[];
 }): readonly RequirementsPromptTimelineEntry[] {
   const beforeCount = (input.existingTimeline ?? []).length;
-  const merged = appendPromptTimelineEntriesOnce(input.existingTimeline, input.candidateEntries);
+  const merged = appendPromptTimelineEntriesOnce(
+    input.existingTimeline,
+    sanitizePromptTimelineEntries(input.candidateEntries),
+  );
   if (merged.length <= beforeCount) return [];
   return merged.slice(beforeCount);
 }

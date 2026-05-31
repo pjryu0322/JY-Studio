@@ -39,6 +39,7 @@ import {
   type RequirementsPromptTimelineEntry,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import { sanitizePromptTimelineEntries } from "@/lib/requirements/promptTimelineState";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
@@ -176,7 +177,7 @@ export function resolveOrchestrationAwareRequirementsState(input: {
       ? { implementationExecutionBoardStateV1: pending.implementationExecutionBoardStateV1 }
       : {}),
     ...(pending.promptTimeline !== undefined
-      ? { promptTimeline: pending.promptTimeline ? [...pending.promptTimeline] : [] }
+      ? { promptTimeline: sanitizePromptTimelineEntries(pending.promptTimeline) }
       : {}),
   });
 }
