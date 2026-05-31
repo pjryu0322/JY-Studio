@@ -48,7 +48,10 @@ describe("buildGenerateImplementationTaskListFromSeedResult", () => {
     expect(result.patch.implementationTaskListV1?.tasks.length).toBeGreaterThan(0);
     expect(result.patch.implementationTaskExecutionStateV1?.items.length).toBeGreaterThan(0);
     expect(result.patch.cursorWorkItemsV1?.length).toBeGreaterThan(0);
+    expect(result.patch.implementationCodeTaskPlanV1?.codeTaskCount).toBeGreaterThan(0);
+    expect(result.patch.implementationWorkItemPreflightSummaryV1?.workItemCount).toBeGreaterThan(0);
     expect(result.alreadyExisted).toBe(false);
+    expect(result.userMessage).toBe("구현 준비 산출물을 생성했습니다.");
   });
 
   it("GENERATE success appends exactly one unified board message", () => {

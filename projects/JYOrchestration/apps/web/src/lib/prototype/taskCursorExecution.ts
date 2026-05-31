@@ -38,6 +38,7 @@ export type TaskCursorFailureReason =
   | "poll_cancelled"
   | "work_item_preflight_failed"
   | "prompt_preflight_failed"
+  | "poll_timeout"
   | "unknown";
 
 export type TaskCursorExecutionV1 = Readonly<{
@@ -90,6 +91,7 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
     "WorkItem 품질 검증에 실패했습니다. 실행 로그에서 보완 항목을 확인한 뒤 WorkItem을 수정해 주세요.",
   prompt_preflight_failed:
     "Cursor Prompt Preflight에 실패했습니다. 실행 로그에서 누락 항목을 확인해 주세요.",
+  poll_timeout: "Cloud Agent 폴링 시간 초과입니다. Cursor 대시보드에서 Agent 상태를 확인해 주세요.",
   unknown: "Task Cursor 실행에 실패했습니다.",
 };
 
@@ -122,6 +124,7 @@ const TASK_CURSOR_FAILURE_REASONS = new Set<TaskCursorFailureReason>([
   "poll_cancelled",
   "work_item_preflight_failed",
   "prompt_preflight_failed",
+  "poll_timeout",
   "unknown",
 ]);
 

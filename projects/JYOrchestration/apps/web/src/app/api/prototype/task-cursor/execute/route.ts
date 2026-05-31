@@ -34,6 +34,9 @@ import {
   TASK_CURSOR_FAILURE_MESSAGES,
 } from "@/lib/prototype/taskCursorExecution";
 import { prisma } from "@/lib/prisma";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import { upsertTaskCursorExecutionJobFromLaunch } from "@/lib/prototype/taskCursorExecutionJobRepository";
+import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 type Body = {
   readonly projectId?: string;
@@ -244,16 +247,41 @@ export async function POST(request: NextRequest) {
       }
       const patch = buildTaskCursorOrchestrationPatch({
         execution,
-        timelineEntries: timeline,
+        timelineEntries: [
+          ...timeline,
+          ...(launch.ok && isServerTaskCursorPolling()
+            ? [
+                buildTaskCursorJobLifecycleTimelineEntry({
+                  action: "task_cursor_job_created",
+                  projectId,
+                  taskId,
+                  status: execution.status,
+                  message: "server worker polling",
+                  nowIso,
+                }),
+              ]
+            : []),
+        ],
         cursorWorkItems: scopedWorkItems,
       });
+      let jobId: string | undefined;
+      if (launch.ok && isServerTaskCursorPolling()) {
+        const job = await upsertTaskCursorExecutionJobFromLaunch({
+          projectId,
+          execution,
+          workItems: scopedWorkItems,
+        });
+        jobId = job.id;
+      }
       return NextResponse.json({
         success: launch.ok,
         status: execution.status,
         execution: patch.taskCursorExecutionV1,
         orchestrationPatch: patch,
-        executionMode: "task_cursor_launch",
-        pollRequired: launch.ok,
+        executionMode: "task_cursor_job",
+        pollRequired: launch.ok && !isServerTaskCursorPolling(),
+        serverPolling: launch.ok && isServerTaskCursorPolling(),
+        jobId,
       });
     }
 

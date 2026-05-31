@@ -19,6 +19,7 @@ import {
   type ImplementationQualityGateResultV1,
 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 export type { CursorWorkItemQualityGate } from "@/lib/prototype/implementationCursorPromptQuality";
 
@@ -52,6 +53,8 @@ export type CursorWorkItem = Readonly<{
   originStage?: CursorWorkItemOriginStage;
   refinementStatus?: CursorWorkItemRefinementStatus;
   sourceRefinedAt?: string;
+  parentTaskId?: string;
+  codeTaskId?: string;
 }>;
 
 export function mergeCursorWorkItemsByTask(input: {
@@ -274,6 +277,117 @@ function buildWorkItemDraftsForDeveloperTask(input: {
     };
     return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
   });
+}
+
+export function buildCursorWorkItemsFromImplementationCodeTaskPlan(input: {
+  readonly projectId: string;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
+  readonly nowIso?: string;
+  readonly originStage?: CursorWorkItemOriginStage;
+}): readonly CursorWorkItem[] {
+  const now = input.nowIso ?? new Date().toISOString();
+  const originStage = input.originStage ?? "planning";
+  return input.codeTaskPlan.tasks.map((codeTask, index) =>
+    buildCursorWorkItemFromCodeTask({
+      projectId: input.projectId,
+      codeTask,
+      index,
+      nowIso: now,
+      originStage,
+    }),
+  );
+}
+
+function buildCursorWorkItemFromCodeTask(input: {
+  readonly projectId: string;
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly index: number;
+  readonly nowIso: string;
+  readonly originStage: CursorWorkItemOriginStage;
+}): CursorWorkItem {
+  const { codeTask } = input;
+  const parentTaskId = codeTask.parentTaskId;
+  const acceptanceCriteria = codeTask.acceptanceCriteria.length
+    ? [...codeTask.acceptanceCriteria]
+    : [`${codeTask.title} 완료`];
+  const candidateFiles = codeTask.candidateFiles ? [...codeTask.candidateFiles] : [];
+  const candidateFileHints = codeTask.candidateFileHints ? [...codeTask.candidateFileHints] : [];
+  const verificationHints = codeTask.verificationHints.length
+    ? [...codeTask.verificationHints]
+    : ["pnpm test"];
+  const workBranch = buildTaskCursorWorkBranch(parentTaskId);
+  const prompt = buildCursorPromptDraft({
+    title: codeTask.title,
+    taskId: parentTaskId,
+    workBranch,
+    description: [
+      "기획단계 CodeTaskPlan 기준 작업입니다.",
+      "",
+      `CodeTask: ${codeTask.codeTaskId}`,
+      `Parent Task: ${parentTaskId}`,
+      `변경 유형: ${codeTask.changeType}`,
+      "",
+      codeTask.description,
+      "",
+      "완료 기준:",
+      ...acceptanceCriteria.map((item) => `- ${item}`),
+    ].join("\n"),
+    artifactLabels: [],
+    acceptanceCriteria,
+    securityChecks: [],
+    reviewChecks: [],
+    executionHints: {
+      candidateFiles,
+      candidateDirectories: candidateFileHints
+        .filter((hint) => hint.startsWith("dir:"))
+        .map((hint) => hint.slice(4)),
+      candidateApiRoutes: codeTask.changeType === "api" ? candidateFiles : [],
+      candidateComponents: codeTask.changeType === "component" ? candidateFiles : [],
+      candidateTests: codeTask.changeType === "test" ? verificationHints : [],
+      testCommands: verificationHints.filter((hint) => hint.includes("test") || hint.includes("pnpm")),
+      manualVerification: verificationHints,
+      forbiddenPaths: [...codeTask.forbiddenPaths],
+      expectedBehavior: [`${codeTask.title} 완료 기준을 충족한다.`],
+      regressionScope: ["기존 Stage1/ENV_TEST/Cursor 실행 파이프라인 회귀 없음"],
+    },
+  });
+
+  const draft: CursorWorkItem = {
+    id: `cursor-wi-${codeTask.codeTaskId}`,
+    taskId: parentTaskId,
+    parentTaskId,
+    codeTaskId: codeTask.codeTaskId,
+    title: codeTask.title,
+    prompt,
+    requiredFilesHint: [
+      `taskList:${input.projectId}`,
+      `task:${parentTaskId}`,
+      `codeTask:${codeTask.codeTaskId}`,
+      ...candidateFiles,
+      ...candidateFileHints.slice(0, 4),
+    ],
+    expectedOutput: [
+      "변경된 소스 파일 목록",
+      "실행한 테스트 명령과 결과 요약",
+      "핵심 동작 검증 요약",
+      "미해결 이슈(있을 경우)",
+    ],
+    testCommands: verificationHints.filter((hint) => hint.startsWith("pnpm") || hint.includes("test")),
+    forbiddenPaths: codeTask.forbiddenPaths.length ? codeTask.forbiddenPaths : COMMON_FORBIDDEN_PATHS,
+    blocked: false,
+    blockers: [],
+    qualityGate: { promptReady: false, missing: [], score: 0 },
+    objective: codeTask.title,
+    expectedChange: codeTask.description.split("\n")[0]?.trim() || codeTask.title,
+    ...(candidateFiles.length ? { candidateFiles } : {}),
+    ...(candidateFileHints.length ? { candidateFileHints } : {}),
+    acceptanceCriteria,
+    verificationHints,
+    noCodeChangeEvidenceRequired: true,
+    originStage: input.originStage,
+    refinementStatus: "draft",
+  };
+  return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
 }
 
 function toCursorWorkItem(item: ImplementationTaskPlanItem): CursorWorkItem {

@@ -1,5 +1,5 @@
-import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildImplementationWorkItemsDraftCreatedTimelineEntry } from "@/lib/prototype/implementationWorkItemRefinement";
+import { buildImplementationPlanningReadinessPatch } from "@/lib/prototype/implementationPlanningReadiness";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
 import { deriveImplementationTaskListReadiness } from "@/lib/prototype/implementationTaskListReadiness";
@@ -29,6 +29,8 @@ export type GenerateImplementationTaskListResult =
       readonly patch: Partial<RequirementsStateJson>;
       readonly messages: readonly RequirementsMessage[];
       readonly alreadyExisted: boolean;
+      readonly syncedArtifacts?: boolean;
+      readonly userMessage?: string;
     }
   | { readonly ok: false; readonly message: string };
 
@@ -66,15 +68,19 @@ function buildOrchestrationSlice(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly seed?: ImplementationSeedV1 | null;
   readonly integratedExecutionState?: RequirementsStateJson["implementationIntegratedExecutionStateV1"];
   readonly boardState?: RequirementsStateJson["implementationExecutionBoardStateV1"];
   readonly qualityGateResults?: RequirementsStateJson["implementationQualityGateResultsV1"];
+  readonly preflightSummary?: RequirementsStateJson["implementationWorkItemPreflightSummaryV1"];
 }): RequirementsStateJson {
   return {
     implementationTaskListV1: input.taskList,
     implementationTaskExecutionStateV1: input.executionState ?? undefined,
     cursorWorkItemsV1: input.cursorWorkItems ? [...input.cursorWorkItems] : undefined,
+    implementationCodeTaskPlanV1: input.codeTaskPlan ?? undefined,
+    implementationWorkItemPreflightSummaryV1: input.preflightSummary ?? undefined,
     implementationSeedV1: input.seed ?? undefined,
     implementationIntegratedExecutionStateV1: input.integratedExecutionState,
     implementationExecutionBoardStateV1: input.boardState,
@@ -82,10 +88,52 @@ function buildOrchestrationSlice(input: {
   };
 }
 
+function needsPlanningReadinessSync(input: {
+  readonly existingCodeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
+}): boolean {
+  const hasWorkItems = (input.existingCursorWorkItems?.length ?? 0) > 0;
+  const hasCodeTaskPlan = Boolean(input.existingCodeTaskPlan?.tasks?.length);
+  return !hasCodeTaskPlan || !hasWorkItems;
+}
+
+function appendPlanningReadinessToPatch(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly patch: Partial<RequirementsStateJson>;
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly nowIso: string;
+  readonly includeTaskListCreatedEvent?: boolean;
+  readonly syncMode?: "created" | "synced";
+}): Partial<RequirementsStateJson> {
+  const readiness = buildImplementationPlanningReadinessPatch({
+    projectId: input.projectId,
+    taskList: input.taskList,
+    projectArtifacts: input.projectArtifacts,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    priorTimeline: input.priorTimeline,
+    nowIso: input.nowIso,
+    includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
+    syncMode: input.syncMode,
+  });
+  return {
+    ...input.patch,
+    implementationCodeTaskPlanV1: readiness.implementationCodeTaskPlanV1,
+    cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
+    implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
+    promptTimeline: readiness.promptTimeline,
+  };
+}
+
 export function buildGenerateImplementationTaskListFromSeedResult(input: {
   readonly projectId: string;
   readonly seed: ImplementationSeedV1 | null | undefined;
   readonly existingTaskList?: ImplementationTaskListV1 | null;
+  readonly existingCodeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly existingExecutionState?: ImplementationTaskExecutionStateV1 | null;
   readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
@@ -110,6 +158,58 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
 
   if (readiness.status === "task_list_exists" && input.existingTaskList) {
     const taskList = input.existingTaskList;
+    const existingCodeTaskPlan = input.existingCodeTaskPlan ?? null;
+    if (needsPlanningReadinessSync({
+      existingCodeTaskPlan,
+      existingCursorWorkItems: input.existingCursorWorkItems,
+    })) {
+      const executionState =
+        input.existingExecutionState ??
+        buildInitialImplementationTaskExecutionStateFromTaskList({
+          projectId: pid,
+          taskList,
+          nowIso: now,
+        });
+      let patch: Partial<RequirementsStateJson> = {
+        implementationTaskExecutionStateV1: executionState,
+      };
+      patch = appendPlanningReadinessToPatch({
+        projectId: pid,
+        taskList,
+        patch,
+        projectArtifacts: input.projectArtifacts,
+        envOk: input.envOk,
+        designOk: input.designOk,
+        priorTimeline: input.priorTimeline,
+        nowIso: now,
+        syncMode: "synced",
+      });
+      const messages = buildPostGenerateMessages({
+        projectId: pid,
+        taskList,
+        orchestration: buildOrchestrationSlice({
+          taskList,
+          executionState: patch.implementationTaskExecutionStateV1 ?? executionState,
+          cursorWorkItems: patch.cursorWorkItemsV1 ?? input.existingCursorWorkItems,
+          codeTaskPlan: patch.implementationCodeTaskPlanV1 ?? existingCodeTaskPlan,
+          seed: input.seed,
+          preflightSummary: patch.implementationWorkItemPreflightSummaryV1,
+        }),
+        envOk: input.envOk,
+        previewReady: input.previewReady === true,
+        nowIso: now,
+        includeTaskSummary: false,
+      });
+      return {
+        ok: true,
+        taskList,
+        patch,
+        messages,
+        alreadyExisted: true,
+        syncedArtifacts: true,
+        userMessage: "구현 준비 산출물을 동기화했습니다.",
+      };
+    }
     const messages = buildPostGenerateMessages({
       projectId: pid,
       taskList,
@@ -117,6 +217,7 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
         taskList,
         executionState: input.existingExecutionState,
         cursorWorkItems: input.existingCursorWorkItems,
+        codeTaskPlan: existingCodeTaskPlan,
         seed: input.seed,
       }),
       envOk: input.envOk,
@@ -130,6 +231,7 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
       patch: {},
       messages,
       alreadyExisted: true,
+      userMessage: "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다.",
     };
   }
 
@@ -158,36 +260,23 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
       nowIso: now,
     });
 
-  const cursorWorkItems =
-    input.existingCursorWorkItems?.length
-      ? [...input.existingCursorWorkItems]
-      : buildCursorWorkItemsFromImplementationTaskList({
-          projectId: pid,
-          taskList,
-          nowIso: now,
-        });
-
   let patch: Partial<RequirementsStateJson> = {
     implementationTaskListV1: taskList,
     implementationTaskExecutionStateV1: executionState,
-    cursorWorkItemsV1: cursorWorkItems,
   };
 
-  if (!input.existingCursorWorkItems?.length && cursorWorkItems.length) {
-    patch = {
-      ...patch,
-      promptTimeline: appendPromptTimeline(
-        input.priorTimeline,
-        buildImplementationWorkItemsDraftCreatedTimelineEntry({
-          projectId: pid,
-          taskCount: taskList.tasks.filter((task) => task.ownerRole === "developer").length,
-          workItemCount: cursorWorkItems.length,
-          originStage: "planning",
-          nowIso: now,
-        }),
-      ),
-    };
-  }
+  patch = appendPlanningReadinessToPatch({
+    projectId: pid,
+    taskList,
+    patch,
+    projectArtifacts: input.projectArtifacts,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    priorTimeline: input.priorTimeline,
+    nowIso: now,
+    includeTaskListCreatedEvent: true,
+    syncMode: "created",
+  });
 
   if (
     canUseTaskListForWipOrchestration({ taskList, seed: input.seed }) &&
@@ -201,29 +290,17 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
       envOk: input.envOk,
       designOk: input.designOk,
       envCursorBadge: input.envCursorBadge ?? (input.envOk ? "ok" : "needs"),
-      priorTimeline: input.priorTimeline,
+      priorTimeline: patch.promptTimeline ?? input.priorTimeline,
       priorExecutionState: executionState,
       nowIso: now,
     });
     patch = {
       ...patch,
       implementationTaskPlanV1: derived.plan,
-      cursorWorkItemsV1: [...derived.workItems],
       implementationSlotsV1: derived.slots,
       implementationDbStrategyV1: derived.dbStrategy,
       implementationTaskExecutionStateV1: derived.executionState,
-      promptTimeline: !input.existingCursorWorkItems?.length
-        ? appendPromptTimeline(
-            derived.promptTimeline,
-            buildImplementationWorkItemsDraftCreatedTimelineEntry({
-              projectId: pid,
-              taskCount: taskList.tasks.filter((task) => task.ownerRole === "developer").length,
-              workItemCount: derived.workItems.length,
-              originStage: "planning",
-              nowIso: now,
-            }),
-          )
-        : [...derived.promptTimeline],
+      promptTimeline: derived.promptTimeline,
     };
   }
 
@@ -233,11 +310,13 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
     orchestration: buildOrchestrationSlice({
       taskList,
       executionState: patch.implementationTaskExecutionStateV1 ?? executionState,
-      cursorWorkItems: patch.cursorWorkItemsV1 ?? cursorWorkItems,
+      cursorWorkItems: patch.cursorWorkItemsV1,
+      codeTaskPlan: patch.implementationCodeTaskPlanV1,
       seed: input.seed,
       integratedExecutionState: patch.implementationIntegratedExecutionStateV1,
       boardState: patch.implementationExecutionBoardStateV1,
       qualityGateResults: patch.implementationQualityGateResultsV1,
+      preflightSummary: patch.implementationWorkItemPreflightSummaryV1,
     }),
     envOk: input.envOk,
     previewReady: input.previewReady === true,
@@ -251,5 +330,6 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
     patch,
     messages,
     alreadyExisted: false,
+    userMessage: "구현 준비 산출물을 생성했습니다.",
   };
 }

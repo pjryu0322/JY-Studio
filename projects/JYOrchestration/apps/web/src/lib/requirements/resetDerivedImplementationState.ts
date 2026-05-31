@@ -71,6 +71,8 @@ export const DERIVED_IMPLEMENTATION_STATE_NULL_PATCH: Pick<
   | "implementationDbStrategyV1"
   | "implementationSeedV1"
   | "implementationWorkPlanDraftV1"
+  | "implementationCodeTaskPlanV1"
+  | "implementationWorkItemPreflightSummaryV1"
   | "codeAgentWipExecutionV1"
 > = {
   prototypeExecutionSingleChatV1: null,
@@ -82,6 +84,8 @@ export const DERIVED_IMPLEMENTATION_STATE_NULL_PATCH: Pick<
   implementationDbStrategyV1: null,
   implementationSeedV1: null,
   implementationWorkPlanDraftV1: null,
+  implementationCodeTaskPlanV1: null,
+  implementationWorkItemPreflightSummaryV1: null,
   codeAgentWipExecutionV1: null,
 };
 
@@ -174,7 +178,7 @@ export function appendPlanningResetClearedImplementationTrace(
     responseText: [
       "type=planning_reset_cleared_implementation_derivatives",
       "mode=planning",
-      "cleared=[implementationSeedV1,implementationWorkPlanDraftV1,implementationTaskPlanV1,implementationSlotsV1,cursorWorkItemsV1,codeAgentWipExecutionV1,implementationMessages,implementationTimeline]",
+      "cleared=[implementationSeedV1,implementationWorkPlanDraftV1,implementationTaskPlanV1,implementationCodeTaskPlanV1,implementationSlotsV1,cursorWorkItemsV1,implementationWorkItemPreflightSummaryV1,codeAgentWipExecutionV1,implementationMessages,implementationTimeline]",
     ].join(" "),
     createdAt: nowIso,
   };

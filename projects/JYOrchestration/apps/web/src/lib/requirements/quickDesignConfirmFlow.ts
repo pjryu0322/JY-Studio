@@ -7,6 +7,9 @@ import {
 } from "@/lib/requirements/fastPlanDraftConfirmation";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
 import {
   buildQuickDesignImplementationReadyChatMessage,
   generateQuickDesignConfirmArtifacts,
@@ -60,6 +63,9 @@ export type QuickDesignConfirmFlowStatePatch = Readonly<{
   readonly singleChatOrchestrationV1: RequirementsSingleChatOrchestrationStateV1;
   readonly implementationSeedV1: ImplementationSeedV1;
   readonly implementationTaskListV1?: ImplementationTaskListV1;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1;
+  readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
+  readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1;
   readonly projectArtifacts: readonly ProjectArtifact[];
   readonly deliverableAssets: readonly IdeationDeliverableAsset[];
   readonly artifactOrchestrationV1: ArtifactOrchestrationStateV1;
@@ -95,6 +101,17 @@ export function buildQuickDesignConfirmStatePatch(input: {
   readonly existingImplementationTaskListV1: ImplementationTaskListV1 | null | undefined;
   readonly nowIso: string;
 }): QuickDesignConfirmFlowStatePatch {
+  const planningArtifacts = {
+    ...(input.prep.implementationCodeTaskPlanV1
+      ? { implementationCodeTaskPlanV1: input.prep.implementationCodeTaskPlanV1 }
+      : {}),
+    ...(input.prep.cursorWorkItemsV1?.length
+      ? { cursorWorkItemsV1: [...input.prep.cursorWorkItemsV1] }
+      : {}),
+    ...(input.prep.implementationWorkItemPreflightSummaryV1
+      ? { implementationWorkItemPreflightSummaryV1: input.prep.implementationWorkItemPreflightSummaryV1 }
+      : {}),
+  };
   const base: QuickDesignConfirmFlowStatePatch = {
     fastPlanDraftV1: input.confirm.fastPlanDraftV1,
     singleChatOrchestrationV1: input.prep.orchestration,
@@ -106,6 +123,7 @@ export function buildQuickDesignConfirmStatePatch(input: {
       existing: input.existingRequirementsStage,
       nowIso: input.nowIso,
     }),
+    ...planningArtifacts,
   };
   if (input.existingImplementationTaskListV1 != null) {
     return base;
@@ -171,6 +189,7 @@ export function runQuickDesignConfirmFlowSync(input: {
     envOk,
     projectArtifacts: merged.projectArtifacts,
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
+    existingTaskList: st.implementationTaskListV1,
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({

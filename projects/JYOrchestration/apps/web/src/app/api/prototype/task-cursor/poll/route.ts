@@ -7,23 +7,9 @@ import {
   evaluateExecutionSetupSourceGenerationReadiness,
   mapExecutionSetupPrismaRowToSourceGenerationRow,
 } from "@/lib/prototype/executionSetupSourceGeneration";
-import {
-  applyTaskCursorApiResult,
-  applyTaskCursorGithubVerifyResult,
-  buildTaskCursorApiCompletedTimeline,
-  buildTaskCursorApiFailedTimeline,
-  buildTaskCursorGithubVerifyTimeline,
-  buildTaskCursorOrchestrationPatch,
-} from "@/lib/prototype/prototypeExecutionTaskCursorActions";
-import { pollTaskCursorCloudAgentStep } from "@/lib/prototype/taskCursorCloudAgentClient";
-import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
-import {
-  buildTaskCursorTimelineEntry,
-  isCursorCloudAgentRunId,
-  parseTaskCursorExecutionV1,
-  patchTaskCursorExecution,
-} from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import { pollTaskCursorExecutionOnce } from "@/lib/prototype/taskCursorPollService";
+import { isCursorCloudAgentRunId, parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 120;
@@ -113,131 +99,34 @@ export async function POST(request: NextRequest) {
     }
 
     const { context } = readiness;
-    const nowIso = new Date().toISOString();
-    const executionState = parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1);
-    const buildPatch = (execution: ReturnType<typeof patchTaskCursorExecution>, timelineEntries: typeof timeline) =>
-      buildTaskCursorOrchestrationPatch({
-        execution,
-        timelineEntries,
-        cursorWorkItems: Array.isArray(body.workItems) ? body.workItems : [],
-        ...(executionState ? { executionState } : {}),
-      });
-    const pollStep = await pollTaskCursorCloudAgentStep({
-      request: {
-        projectId,
-        taskId: execution.taskId,
-        workItemIds: execution.workItemIds,
-        workItems: Array.isArray(body.workItems) ? body.workItems : [],
+    const pollResult = await pollTaskCursorExecutionOnce({
+      projectId,
+      execution,
+      workItems: Array.isArray(body.workItems) ? body.workItems : [],
+      implementationTaskExecutionStateV1: parseImplementationTaskExecutionStateV1(
+        body.implementationTaskExecutionStateV1,
+      ),
+      verifyGithub: body.verifyGithub !== false,
+      context: {
         cursorApiUrl: context.cursorApiUrl!,
         cursorApiToken,
+        githubToken,
         targetRepository: context.targetRepository,
-        workspacePath: context.workspaceRoot,
+        workspaceRoot: context.workspaceRoot,
         baseBranch: context.baseBranch,
-        workBranch: execution.workBranch,
-        commitMessage: "",
-        prompt: execution.cursorPrompt ?? "",
         allowedPathGlobs: context.allowedPathGlobs,
       },
-      agentId,
     });
-
-    const timeline = [];
-    let nextExecution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
-
-    if (pollStep.kind === "running") {
-      nextExecution = patchTaskCursorExecution(execution, {
-        status: "cursor_running",
-        cursorAgentStatus: pollStep.statusUpper,
-        nowIso,
-      });
-      return NextResponse.json({
-        success: true,
-        status: "cursor_running",
-        agentStatus: pollStep.statusUpper,
-        execution: nextExecution,
-        orchestrationPatch: buildPatch(nextExecution, timeline),
-        executionMode: "task_cursor_poll",
-      });
-    }
-    if (pollStep.kind === "failed") {
-      nextExecution = patchTaskCursorExecution(execution, {
-        status: "cursor_failed",
-        failureReason: pollStep.reason,
-        errorMessage: pollStep.message,
-        nowIso,
-      });
-      timeline.push(buildTaskCursorApiFailedTimeline({ execution: nextExecution, nowIso }));
-      const patch = buildPatch(nextExecution, timeline);
-      return NextResponse.json({
-        success: false,
-        status: nextExecution.status,
-        execution: nextExecution,
-        orchestrationPatch: patch,
-        executionMode: "task_cursor_poll",
-      });
-    }
-
-    nextExecution = applyTaskCursorApiResult({
-      execution,
-      result: pollStep.result,
-      nowIso,
-    });
-    timeline.push(buildTaskCursorApiCompletedTimeline({ execution: nextExecution, nowIso }));
-
-    const verifyGithub = body.verifyGithub !== false;
-    if (nextExecution.status === "cursor_completed" && verifyGithub && githubToken) {
-      nextExecution = patchTaskCursorExecution(nextExecution, { status: "github_verifying", nowIso });
-      timeline.push(
-        buildTaskCursorTimelineEntry({
-          action: "task_cursor_github_verify_requested",
-          projectId,
-          taskId: execution.taskId,
-          status: "github_verifying",
-          targetRepository: nextExecution.targetRepository,
-          baseBranch: nextExecution.baseBranch,
-          workBranch: nextExecution.workBranch,
-          commitSha: nextExecution.commitSha,
-          runId: nextExecution.cursorRunId,
-          nowIso,
-        }),
-      );
-      const verify = await verifyTaskCursorGithubResult({
-        execution: nextExecution,
-        targetRepository: context.targetRepository,
-        githubToken,
-        allowedPathGlobs: context.allowedPathGlobs,
-      });
-      nextExecution = applyTaskCursorGithubVerifyResult({
-        execution: nextExecution,
-        ok: verify.ok,
-        message: verify.message,
-        reason: verify.reason,
-        verifiedChangedFiles: verify.verifiedChangedFiles,
-        verifiedCommitSha: verify.verifiedCommitSha,
-        nowIso,
-      });
-      if (nextExecution.status === "github_verified") {
-        nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
-      }
-      timeline.push(
-        buildTaskCursorGithubVerifyTimeline({
-          execution: nextExecution,
-          ok: verify.ok,
-          reason: verify.reason,
-          nowIso,
-        }),
-      );
-    }
-
-    const patch = buildPatch(nextExecution, timeline);
 
     return NextResponse.json({
-      success: pollStep.result.ok,
-      status: nextExecution.status,
-      result: pollStep.result,
-      execution: nextExecution,
-      orchestrationPatch: patch,
+      success: pollResult.success,
+      status: pollResult.status,
+      agentStatus: pollResult.agentStatus,
+      message: pollResult.message,
+      execution: pollResult.execution,
+      orchestrationPatch: pollResult.orchestrationPatch,
       executionMode: "task_cursor_poll",
+      terminal: pollResult.terminal,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

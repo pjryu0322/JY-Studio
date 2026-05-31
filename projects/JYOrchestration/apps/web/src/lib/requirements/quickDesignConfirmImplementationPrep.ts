@@ -20,6 +20,12 @@ import {
 } from "@/lib/requirements/implementationReadinessGates";
 import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
 import {
+  buildImplementationPlanningReadinessPatch,
+  type ImplementationWorkItemPreflightSummaryV1,
+} from "@/lib/prototype/implementationPlanningReadiness";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
   buildImplementationTaskListFromSeed,
   isPlanningReadyForImplementationExecution,
   summarizeImplementationTaskRoles,
@@ -37,6 +43,9 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
   readonly implementationSeedV1: ImplementationSeedV1;
   readonly implementationTaskListV1: ImplementationTaskListV1 | null;
+  readonly implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItemsV1: readonly CursorWorkItem[] | null;
+  readonly implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly readiness: ImplementationSeedReadiness;
   readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
   readonly autoCandidateGenerated: boolean;
@@ -223,6 +232,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   readonly envOk?: boolean;
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly existingTaskList?: ImplementationTaskListV1 | null;
 }): QuickDesignConfirmImplementationPrepResult {
   const now = input.nowIso;
   const initialReadiness = evaluateImplementationSeedReadiness({
@@ -299,6 +309,30 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   });
   const chipLabels = quickDesignPostConfirmChipLabelsForState(postConfirmState);
 
+  const taskListForReadiness = input.existingTaskList ?? implementationTaskListV1;
+  let implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null = null;
+  let cursorWorkItemsV1: readonly CursorWorkItem[] | null = null;
+  let implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null = null;
+  let planningReadinessTimeline: RequirementsPromptTimelineEntry[] = [];
+
+  if (prepComplete && taskListForReadiness?.tasks?.length) {
+    const readinessPatch = buildImplementationPlanningReadinessPatch({
+      projectId: input.projectId,
+      taskList: taskListForReadiness,
+      projectArtifacts: input.projectArtifacts ?? [],
+      envOk: input.envOk === true,
+      designOk: postConfirmState.designOk,
+      priorTimeline: input.promptTimeline,
+      nowIso: now,
+      includeTaskListCreatedEvent: !input.existingTaskList,
+      syncMode: input.existingTaskList ? "synced" : "created",
+    });
+    implementationCodeTaskPlanV1 = readinessPatch.implementationCodeTaskPlanV1;
+    cursorWorkItemsV1 = readinessPatch.cursorWorkItemsV1;
+    implementationWorkItemPreflightSummaryV1 = readinessPatch.implementationWorkItemPreflightSummaryV1;
+    planningReadinessTimeline = [...readinessPatch.promptTimeline];
+  }
+
   const artifactCount = input.generatedArtifactCount ?? 0;
   const timelineEntries: RequirementsPromptTimelineEntry[] = [
     buildQuickDesignSeedAutoBuiltTimelineEntry({
@@ -355,11 +389,17 @@ export function runQuickDesignConfirmImplementationPrep(input: {
       }),
     );
   }
+  if (planningReadinessTimeline.length) {
+    timelineEntries.push(...planningReadinessTimeline);
+  }
 
   return {
     orchestration,
     implementationSeedV1,
     implementationTaskListV1,
+    implementationCodeTaskPlanV1,
+    cursorWorkItemsV1,
+    implementationWorkItemPreflightSummaryV1,
     readiness,
     lifecycleStatus,
     autoCandidateGenerated,

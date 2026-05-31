@@ -98,6 +98,8 @@ describe("quickDesignConfirmFlow", () => {
 
     expect(result.statePatch.implementationSeedV1).toBeTruthy();
     expect(result.statePatch.implementationTaskListV1?.tasks?.length).toBeGreaterThan(0);
+    expect(result.statePatch.implementationCodeTaskPlanV1?.codeTaskCount).toBeGreaterThan(0);
+    expect(result.statePatch.cursorWorkItemsV1?.length).toBeGreaterThan(0);
     expect(result.statePatch).not.toHaveProperty("implementationWorkPlanDraftV1");
     expect(result.readyMessage.meta?.internalType).toBe("quick_design_implementation_ready");
     expect(result.timelineEntries.length).toBeGreaterThan(0);

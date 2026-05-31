@@ -32,6 +32,7 @@ const TASK_REWORK_REASONS = new Set<TaskCursorFailureReason>([
   "poll_cancelled",
   "work_item_preflight_failed",
   "prompt_preflight_failed",
+  "poll_timeout",
   "unknown",
 ]);
 

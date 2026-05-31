@@ -45,6 +45,7 @@ import {
   resolveTaskTreeSelectAll,
   resolveTaskTreeSelectionToggle,
 } from "@/lib/prototype/implementationTaskTreeSelection";
+import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -61,6 +62,7 @@ export function ImplementationExecutionBoardPanel({
   effectiveImplementationState,
   boardInput,
   promptTimeline,
+  activeTaskCursorJob,
   onAction,
   onCancelTaskCursorPolling,
   onRestartTask,
@@ -80,6 +82,7 @@ export function ImplementationExecutionBoardPanel({
   readonly effectiveImplementationState: EffectiveImplementationState;
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
   readonly onAction: (input: ImplementationStageActionClickInput) => void;
   readonly onCancelTaskCursorPolling?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
@@ -188,8 +191,9 @@ export function ImplementationExecutionBoardPanel({
         checkedTaskIds,
         taskCursorExecution: taskCursorExecutionV1 ?? null,
         promptTimeline,
+        serverJob: activeTaskCursorJob ?? null,
       }),
-    [board, activeTaskId, selectedTaskId, checkedTaskIds, taskCursorExecutionV1, promptTimeline],
+    [board, activeTaskId, selectedTaskId, checkedTaskIds, taskCursorExecutionV1, promptTimeline, activeTaskCursorJob],
   );
 
   const integratedPipelineLines = useMemo(

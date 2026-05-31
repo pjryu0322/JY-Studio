@@ -32,6 +32,8 @@ import {
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ImplementationStageNextAction } from "@/lib/prototype/implementationStageNextActions";
 import { parseExecutionLogResponseFields } from "@/lib/prototype/promptTimelineExecutionLogTabs";
+import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import {
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
@@ -378,6 +380,7 @@ export function buildTaskCursorPollStatusLabel(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly developerStatus?: ImplementationBoardStepStatus | null;
+  readonly serverJob?: TaskCursorJobSummary | null;
 }): string | undefined {
   const execution = input.taskCursorExecution;
   if (!execution || execution.taskId !== input.taskId) return undefined;
@@ -385,6 +388,16 @@ export function buildTaskCursorPollStatusLabel(input: {
     !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
   ) {
     return undefined;
+  }
+  if (isServerTaskCursorPolling() && input.serverJob?.taskId === input.taskId) {
+    const parts = ["서버 Worker", input.serverJob.status];
+    if (input.serverJob.pollCount > 0) parts.push(`${input.serverJob.pollCount}회`);
+    if (input.serverJob.cursorRunId) parts.push(`run ${input.serverJob.cursorRunId.slice(0, 8)}`);
+    const elapsed = formatTaskCursorElapsedMinutes(
+      input.serverJob.lastPollAt ?? execution.updatedAt ?? execution.createdAt,
+    );
+    if (elapsed != null) parts.push(`${elapsed}분 경과`);
+    return parts.join(" · ");
   }
   const tick = findLatestTaskCursorPollTickForTask(input.promptTimeline, input.taskId);
   const parts = ["Cloud Agent 폴링"];
@@ -439,6 +452,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly checkedTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly serverJob?: TaskCursorJobSummary | null;
 }): readonly ImplementationTaskTreeNode[] {
   const activeTaskId = input.activeTaskId?.trim() || null;
   const selectedTaskId = input.selectedTaskId?.trim() || activeTaskId;
@@ -466,6 +480,7 @@ export function buildImplementationTaskTreeNodes(input: {
       taskCursorExecution,
       promptTimeline: input.promptTimeline,
       developerStatus: row.developerStatus,
+      serverJob: input.serverJob,
     });
     const canStop = resolveTaskRowStopCapability({
       taskId: row.taskId,

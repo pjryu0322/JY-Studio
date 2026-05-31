@@ -47,8 +47,12 @@ describe("planning stage work item drafts", () => {
     expect(result.patch.cursorWorkItemsV1?.length).toBeGreaterThan(0);
     expect(result.patch.cursorWorkItemsV1?.every((item) => item.originStage === "planning")).toBe(true);
     expect(result.patch.cursorWorkItemsV1?.every((item) => item.refinementStatus === "draft")).toBe(true);
+    expect(result.patch.cursorWorkItemsV1?.every((item) => item.codeTaskId)).toBe(true);
     expect(
-      result.patch.promptTimeline?.some((entry) => entry.action === "implementation_work_items_draft_created"),
+      result.patch.promptTimeline?.some((entry) => entry.action === "implementation_code_task_plan_created"),
+    ).toBe(true);
+    expect(
+      result.patch.promptTimeline?.some((entry) => entry.action === "implementation_ready_for_execution"),
     ).toBe(true);
   });
 });

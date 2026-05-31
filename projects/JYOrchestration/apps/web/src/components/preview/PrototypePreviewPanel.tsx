@@ -260,10 +260,12 @@ import {
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import {
+  buildCursorWorkItemsFromImplementationCodeTaskPlan,
   buildCursorWorkItemsFromImplementationTaskList,
   mergeCursorWorkItemsByTask,
   validateTaskScopedWorkItems,
 } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildImplementationWorkItemsFallbackExecutionTimelineEntry } from "@/lib/prototype/implementationPlanningReadiness";
 import { refineCursorWorkItemsForImplementation } from "@/lib/prototype/implementationWorkItemRefinement";
 import {
   buildWorkItemPreflightTimelineEntry,
@@ -339,6 +341,8 @@ import {
   releaseAllInFlightTaskCursorPollingFromRequirementsState,
   TASK_CURSOR_POLL_CANCELLED_MESSAGE,
 } from "@/lib/prototype/taskCursorClientPollLoop";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
@@ -2194,6 +2198,7 @@ export function PrototypePreviewPanel({
       readonly existingTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
       readonly resume?: boolean;
     }) => {
+      if (isServerTaskCursorPolling()) return;
       const runId = String(input.execution.cursorRunId ?? "").trim();
       if (!runId || !canPollTaskCursorCloudAgent(input.execution)) return;
       if (taskCursorPollActiveRunIdRef.current === runId) return;
@@ -2348,6 +2353,7 @@ export function PrototypePreviewPanel({
   ]);
 
   useEffect(() => {
+    if (isServerTaskCursorPolling()) return;
     const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
     if (!execution || !canPollTaskCursorCloudAgent(execution)) return;
     const workItems = resolveTaskCursorPollWorkItems(
@@ -2368,6 +2374,62 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.cursorWorkItemsV1,
     orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
     startTaskCursorClientPollLoop,
+  ]);
+
+  const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
+
+  useEffect(() => {
+    if (!isServerTaskCursorPolling()) return;
+    const pid = projectId.trim();
+    if (!pid) return;
+    const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
+    const inFlight =
+      execution &&
+      (execution.status === "cursor_requested" ||
+        execution.status === "cursor_running" ||
+        execution.status === "github_verifying");
+    if (!inFlight && !activeTaskCursorJob) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await credentialsIncludeFetch(
+          `/api/prototype/task-cursor/jobs?projectId=${encodeURIComponent(pid)}`,
+        );
+        const json = (await res.json()) as {
+          success?: boolean;
+          activeJob?: TaskCursorJobSummary | null;
+          orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
+        };
+        if (cancelled || !json.success) return;
+        setActiveTaskCursorJob(json.activeJob ?? null);
+        if (json.orchestrationPatch) {
+          applyImplementationOrchestrationResult({
+            messages: executionSingleChat.chatMessages,
+            orchestrationPatch: json.orchestrationPatch,
+          });
+        }
+      } catch {
+        // ignore refresh errors
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.updatedAt,
+    activeTaskCursorJob?.id,
+    activeTaskCursorJob?.status,
+    applyImplementationOrchestrationResult,
+    executionSingleChat.chatMessages,
   ]);
 
   const triggerImplementationAutoQualityGate = useCallback(async () => {
@@ -3637,6 +3699,7 @@ export function PrototypePreviewPanel({
       projectId: pid,
       seed,
       existingTaskList: parsedRequirementsState.implementationTaskListV1,
+      existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
       existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
       existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
       priorTimeline: parsedRequirementsState.promptTimeline,
@@ -3659,9 +3722,10 @@ export function PrototypePreviewPanel({
       appendImplementationTaskListAiMessage(message);
     }
     showToast(
-      result.alreadyExisted
-        ? "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다."
-        : "구현 작업목록을 생성했습니다.",
+      result.userMessage ??
+        (result.alreadyExisted
+          ? "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다."
+          : "구현 작업목록을 생성했습니다."),
     );
     return { outcome: "executed" };
   }, [
@@ -4078,7 +4142,11 @@ export function PrototypePreviewPanel({
         case "REQUEST_TASK_CURSOR_EXECUTION": {
           const pid = projectId.trim();
           const board = implementationStageBoardGateContext?.board;
-          const workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          let workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          const codeTaskPlan = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1;
+          const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
+          let workItemsFallbackGenerated = false;
+          let fallbackTimelinePatch: RequirementsPromptTimelineEntry[] | undefined;
           if (!board) {
             const message = "구현 Execution Board가 준비되지 않았습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -4150,9 +4218,23 @@ export function PrototypePreviewPanel({
           }
           const nowIso = new Date().toISOString();
           const allowedPathGlobs = parseStringArrayJson(executionSetupRow?.allowedPathGlobs);
-          const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
           let selectedWorkItems = [...scoped.selectedWorkItems];
 
+          if (!selectedWorkItems.length && codeTaskPlan?.tasks?.length && scoped.selectedTaskId) {
+            selectedWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
+              projectId: pid,
+              codeTaskPlan,
+              originStage: "implementation",
+              nowIso,
+            }).filter((item) => item.taskId === scoped.selectedTaskId);
+            if (selectedWorkItems.length) {
+              workItems = [
+                ...workItems.filter((item) => item.taskId !== scoped.selectedTaskId),
+                ...selectedWorkItems,
+              ];
+              workItemsFallbackGenerated = true;
+            }
+          }
           if (!selectedWorkItems.length && taskList && scoped.selectedTaskId) {
             selectedWorkItems = buildCursorWorkItemsFromImplementationTaskList({
               projectId: pid,
@@ -4160,6 +4242,22 @@ export function PrototypePreviewPanel({
               originStage: "implementation",
               nowIso,
             }).filter((item) => item.taskId === scoped.selectedTaskId);
+            if (selectedWorkItems.length) {
+              workItems = [
+                ...workItems.filter((item) => item.taskId !== scoped.selectedTaskId),
+                ...selectedWorkItems,
+              ];
+              workItemsFallbackGenerated = true;
+            }
+          }
+          if (workItemsFallbackGenerated) {
+            fallbackTimelinePatch = [
+              buildImplementationWorkItemsFallbackExecutionTimelineEntry({
+                projectId: pid,
+                taskId: scoped.selectedTaskId ?? undefined,
+                nowIso,
+              }),
+            ];
           }
           if (!selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "선택 Task에 연결된 WorkItem이 없습니다.";
@@ -4194,6 +4292,11 @@ export function PrototypePreviewPanel({
             allowedPathGlobs,
           });
           let preflightTimeline = orchestrationAwareRequirementsState.promptTimeline ?? [];
+          if (fallbackTimelinePatch?.length) {
+            for (const entry of fallbackTimelinePatch) {
+              preflightTimeline = appendPromptTimeline(preflightTimeline, entry);
+            }
+          }
           for (const entry of refinement.timelineEntries) {
             preflightTimeline = appendPromptTimeline(preflightTimeline, entry);
           }
@@ -4235,7 +4338,9 @@ export function PrototypePreviewPanel({
                   nowIso,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
-                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  existingWorkItems: workItemsFallbackGenerated
+                    ? workItems
+                    : orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
                   updatedWorkItems: selectedWorkItems.map((item) => ({
                     ...item,
                     refinementStatus: "preflight_failed" as const,
@@ -4291,7 +4396,9 @@ export function PrototypePreviewPanel({
                   existingTimeline: preflightTimeline,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
-                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  existingWorkItems: workItemsFallbackGenerated
+                    ? workItems
+                    : orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
                   updatedWorkItems: selectedWorkItems,
                   taskId: scoped.selectedTaskId,
                 }),
@@ -4299,7 +4406,7 @@ export function PrototypePreviewPanel({
             },
             { persist: false },
           );
-          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId} · Cloud Agent 폴링 중...`);
+          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId} · ${isServerTaskCursorPolling() ? "서버 Worker 추적 중" : "Cloud Agent 폴링 중..."}`);
           const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
           const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
           const pollWorkItems = scoped.selectedWorkItems;
@@ -4320,6 +4427,8 @@ export function PrototypePreviewPanel({
                 success?: boolean;
                 message?: string;
                 pollRequired?: boolean;
+                serverPolling?: boolean;
+                jobId?: string;
                 execution?: { status?: string; errorMessage?: string; failureReason?: string };
                 orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
               };
@@ -4333,6 +4442,11 @@ export function PrototypePreviewPanel({
                 parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
                 parseTaskCursorExecutionV1(requirementsStateJsonRef.current.taskCursorExecutionV1) ??
                 pendingExecution;
+
+              if (json.serverPolling && launchedExecution.status === "cursor_running") {
+                showToast(`${scoped.selectedTaskId} · 서버 Worker가 Cloud Agent 상태를 추적합니다`);
+                return;
+              }
 
               if (json.pollRequired && launchedExecution.status === "cursor_running") {
                 showToast(`${scoped.selectedTaskId} · Cloud Agent 실행 중 · 폴링 시작`);
@@ -4408,6 +4522,10 @@ export function PrototypePreviewPanel({
             .join("\n");
           executionSingleChat.appendAiNotice(message);
           showToast(`Task Cursor 상태: ${execution.status}`);
+          if (isServerTaskCursorPolling()) {
+            executionSingleChat.appendAiNotice("서버 Worker Job 상태는 자동 새로고침됩니다.");
+            return { outcome: "executed" };
+          }
           if (isInFlightTaskCursorExecution(execution)) {
             const workItems = resolveTaskCursorPollWorkItems(
               execution,
@@ -5435,15 +5553,7 @@ export function PrototypePreviewPanel({
           taskList?.tasks?.length &&
           (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
         ) {
-          const pid = projectId.trim();
-          if (pid) {
-            const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList });
-            if (workItems.length) {
-              void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-                cursorWorkItemsV1: workItems,
-              });
-            }
-          }
+          void generateImplementationTaskList();
         }
         return true;
       }
@@ -5453,15 +5563,7 @@ export function PrototypePreviewPanel({
         taskList?.tasks?.length &&
         (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
       ) {
-        const pid = projectId.trim();
-        if (pid) {
-          const workItems = buildCursorWorkItemsFromImplementationTaskList({ projectId: pid, taskList });
-          if (workItems.length) {
-            void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-              cursorWorkItemsV1: workItems,
-            });
-          }
-        }
+        void generateImplementationTaskList();
       }
 
       const actionId = mapImplementationChipToAction(label);
@@ -6507,6 +6609,7 @@ export function PrototypePreviewPanel({
             effectiveImplementationState={effectiveImplementationState}
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
+            activeTaskCursorJob={activeTaskCursorJob}
             onAction={handleImplementationBoardAction}
             onCancelTaskCursorPolling={cancelTaskCursorClientPoll}
             onRestartTask={handleRestartBoardTask}

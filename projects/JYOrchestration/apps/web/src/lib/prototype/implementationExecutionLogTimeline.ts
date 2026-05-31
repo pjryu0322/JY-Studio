@@ -116,6 +116,39 @@ export function buildTaskCursorAutoChainTimelineEntry(input: {
   });
 }
 
+export function buildTaskCursorJobLifecycleTimelineEntry(input: {
+  readonly action:
+    | "task_cursor_job_created"
+    | "task_cursor_job_claimed"
+    | "task_cursor_job_tick"
+    | "task_cursor_job_completed"
+    | "task_cursor_job_failed"
+    | "task_cursor_job_timeout"
+    | "task_cursor_job_cancelled";
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly jobId?: string;
+  readonly status?: string;
+  readonly pollCount?: number;
+  readonly message?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: input.action,
+    orchestrationTraceGroup: "task_cursor_execution",
+    routingDecision: input.taskId,
+    fields: {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      ...(input.jobId ? { jobId: input.jobId } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.pollCount != null ? { pollCount: input.pollCount } : {}),
+      ...(input.message ? { message: input.message } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
 export function buildTaskCursorPollLifecycleTimelineEntry(input: {
   readonly action:
     | "task_cursor_poll_loop_started"

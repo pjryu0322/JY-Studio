@@ -36,6 +36,10 @@ import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { ImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
+import { parseImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
   parseImplementationAutoQualityGateHistoryV1,
@@ -580,6 +584,10 @@ export type RequirementsStateJson = {
   implementationSeedV1?: ImplementationSeedV1 | null;
   /** 구현 단계 실행 단위 작업목록(Task List) — Seed 기반으로 생성 */
   implementationTaskListV1?: ImplementationTaskListV1 | null;
+  /** TaskList developer Task → 코드 변경 단위 분해(CodeTaskPlan) */
+  implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  /** 기획단계 1차 WorkItem preflight 요약 */
+  implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
   /** TaskList 작업별 WIP/실행 상태(원본 taskList는 mutate하지 않음) */
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   /** reviewer/security 품질 게이트 점검 결과(append, UI는 role별 최신 사용) */
@@ -1025,6 +1033,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationTaskListV1 = parseImplementationTaskListV1(
     "implementationTaskListV1" in o ? o.implementationTaskListV1 : undefined,
   );
+  const implementationCodeTaskPlanV1 = parseImplementationCodeTaskPlanV1(
+    "implementationCodeTaskPlanV1" in o ? o.implementationCodeTaskPlanV1 : undefined,
+  );
+  const implementationWorkItemPreflightSummaryV1 = parseImplementationWorkItemPreflightSummaryV1(
+    "implementationWorkItemPreflightSummaryV1" in o ? o.implementationWorkItemPreflightSummaryV1 : undefined,
+  );
   const implementationTaskExecutionStateV1 = parseImplementationTaskExecutionStateV1(
     "implementationTaskExecutionStateV1" in o ? o.implementationTaskExecutionStateV1 : undefined,
   );
@@ -1211,6 +1225,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationDbStrategyV1 !== undefined ? { implementationDbStrategyV1 } : {}),
     ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
     ...(implementationTaskListV1 !== undefined ? { implementationTaskListV1 } : {}),
+    ...(implementationCodeTaskPlanV1 !== undefined ? { implementationCodeTaskPlanV1 } : {}),
+    ...(implementationWorkItemPreflightSummaryV1 !== undefined
+      ? { implementationWorkItemPreflightSummaryV1 }
+      : {}),
     ...(implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1 }
       : {}),
