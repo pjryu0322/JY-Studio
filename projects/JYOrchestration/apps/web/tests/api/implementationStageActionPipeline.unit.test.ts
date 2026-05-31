@@ -326,6 +326,30 @@ describe("evaluateImplementationStageActionGate", () => {
     });
   });
 
+  describe("START_IMPLEMENTATION_QUICK_RUN", () => {
+    it("allows when task list is ready and envOk", () => {
+      const state = baseState({
+        envOk: true,
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      expect(evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state).ok).toBe(true);
+    });
+
+    it("blocks when env is not ready", () => {
+      const state = baseState({
+        envOk: false,
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      expect(evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state).ok).toBe(false);
+    });
+  });
+
   describe("always allowed actions", () => {
     const alwaysAllowed = [
       "OPEN_ENV_SETTINGS",

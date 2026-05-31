@@ -6,6 +6,7 @@ import {
   isTaskCursorExecutionFailed,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
+import { isTransientTaskCursorLaunchError } from "@/lib/prototype/taskCursorLaunchRetry";
 
 export type TaskCursorAutoChainDecision =
   | Readonly<{ readonly kind: "start"; readonly taskId: string }>
@@ -44,6 +45,12 @@ export function resolveTaskCursorAutoChainDecision(input: {
     execution &&
     (isTaskCursorExecutionFailed(execution) || execution.status === "github_verify_failed")
   ) {
+    if (
+      isTaskCursorExecutionFailed(execution) &&
+      isTransientTaskCursorLaunchError(execution.errorMessage)
+    ) {
+      return { kind: "start", taskId: execution.taskId };
+    }
     return { kind: "none" };
   }
 

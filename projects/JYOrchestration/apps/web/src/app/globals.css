@@ -162,6 +162,56 @@ html:has(.jyo-execution-route-root) body {
   flex-direction: column;
 }
 
+/**
+ * 구현 단계: 현황판+대화창을 stage-shell에서 세로 스크롤, 대화 메시지는 chat-messages에서 스크롤.
+ */
+.jyo-prototype-stage-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.jyo-prototype-execution-chat-region {
+  flex: none;
+  min-height: min(42vh, 420px);
+  height: min(42vh, 420px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.jyo-prototype-execution-chat-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.jyo-prototype-execution-chat-shell > .chat-viewport,
+.jyo-prototype-execution-chat-shell .chat-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.jyo-prototype-execution-chat-shell .chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .jyo-platform-main {
   flex: 1 1 0;
   min-height: 0;

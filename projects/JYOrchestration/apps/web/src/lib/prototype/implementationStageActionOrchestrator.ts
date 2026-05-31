@@ -33,11 +33,12 @@ export async function orchestrateImplementationStageAction(input: {
     nowIso: input.nowIso,
   });
 
-  const gate = evaluateImplementationStageActionGate(
-    input.actionId,
-    input.effectiveState,
-    input.boardGateContext,
-  );
+  const gate =
+    evaluateImplementationStageActionGate(
+      input.actionId,
+      input.effectiveState,
+      input.boardGateContext,
+    ) ?? { ok: false, message: "구현단계 action gate 결과를 확인할 수 없습니다." };
   if (!gate.ok) {
     const timelineEntries = buildStageActionRunCompletionTimelineEntries(
       input.actionId,

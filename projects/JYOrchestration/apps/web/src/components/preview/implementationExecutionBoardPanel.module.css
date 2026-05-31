@@ -4,7 +4,6 @@
   border: 1px solid #dbeafe;
   border-radius: 14px;
   background: #fff;
-  overflow: hidden;
   box-shadow: 0 10px 30px -24px rgba(37, 99, 235, 0.35);
 }
 
@@ -230,6 +229,143 @@
   color: #4338ca;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.currentTaskBlock {
+  margin-top: 10px;
+}
+
+.currentTaskId {
+  font-size: 12px;
+  font-weight: 900;
+  color: #2563eb;
+}
+
+.currentTaskTitle {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.currentTaskEmpty {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.progressNextHint {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.compactProgressSteps {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.compactProgressSteps .progressStep {
+  font-size: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #eef2ff;
+}
+
+.taskTreeSection {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0 14px 12px;
+}
+
+.taskTreeSectionTitle {
+  padding: 12px 0 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #334155;
+}
+
+.taskTreeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taskTreeItem {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.taskTreeItemActive {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.taskTreeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.taskTreeToggle {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #64748b;
+  width: 12px;
+}
+
+.taskTreeTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.taskTreeCollapsedMeta {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.taskTreeChildren {
+  padding: 0 12px 10px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskTreeChildLine {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.headerEnvPills {
+  display: none;
+}
+
+.dashboardSecondaryLine {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .progressStatusRow {
@@ -593,6 +729,12 @@
 
 .desktopSummaryGrid {
   display: none;
+}
+
+@media (max-width: 1023px) {
+  .root {
+    margin-bottom: 8px;
+  }
 }
 
 @media (min-width: 1024px) {

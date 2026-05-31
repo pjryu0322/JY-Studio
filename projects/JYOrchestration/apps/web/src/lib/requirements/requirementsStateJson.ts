@@ -41,6 +41,8 @@ import {
   parseImplementationAutoQualityGateHistoryV1,
   parseImplementationAutoQualityGateV1,
 } from "@/lib/prototype/implementationAutoQualityGate";
+import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -608,6 +610,8 @@ export type RequirementsStateJson = {
   implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   /** 자동 품질 게이트 실행 이력 */
   implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
+  /** 구현단계 Quick 자동실행(Preview 준비까지) 상위 상태 */
+  implementationQuickRunV1?: ImplementationQuickRunV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1066,6 +1070,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationAutoQualityGateHistoryV1 = parseImplementationAutoQualityGateHistoryV1(
     "implementationAutoQualityGateHistoryV1" in o ? o.implementationAutoQualityGateHistoryV1 : undefined,
   );
+  const implementationQuickRunV1 = parseImplementationQuickRunV1(
+    "implementationQuickRunV1" in o ? o.implementationQuickRunV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1229,6 +1236,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(taskCursorExecutionV1 !== undefined ? { taskCursorExecutionV1 } : {}),
     ...(taskCursorExecutionHistoryV1 !== undefined ? { taskCursorExecutionHistoryV1 } : {}),
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
+    ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
     ...(implementationAutoQualityGateHistoryV1 !== undefined
       ? { implementationAutoQualityGateHistoryV1 }
       : {}),

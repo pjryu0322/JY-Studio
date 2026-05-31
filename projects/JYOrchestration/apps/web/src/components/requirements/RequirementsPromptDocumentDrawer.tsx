@@ -11,6 +11,12 @@ import {
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { pickOrchestrationPromptTimelineEntries } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
+import {
+  formatExecutionLogTimelineLabel,
+  hasExecutionLogTimelineEntries,
+  pickExecutionLogTimelineEntries,
+  type PromptTimelineDrawerTab,
+} from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -297,6 +303,7 @@ export function RequirementsPromptDocumentDrawer({
   conversationMessages,
   exportBaseName,
   orchestrationDebugSummary,
+  initialTab = "prompt",
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -308,16 +315,23 @@ export function RequirementsPromptDocumentDrawer({
   /** 다운로드 파일명 접두사(예: 프로젝트명). 비어 있으면 `project` 사용 */
   readonly exportBaseName?: string | null;
   readonly orchestrationDebugSummary?: string | null;
+  readonly initialTab?: PromptTimelineDrawerTab;
 }) {
   const show = useShowScreenLabels();
-  const [tab, setTab] = useState<"prompt" | "history">("prompt");
+  const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (open) setTab("prompt");
-  }, [open]);
+    if (open) setTab(initialTab);
+  }, [open, initialTab]);
+
+  const executionLogTimeline = useMemo(
+    () => pickExecutionLogTimelineEntries(promptTimeline),
+    [promptTimeline],
+  );
+  const showExecutionLogTab = hasExecutionLogTimelineEntries(promptTimeline);
 
   useEffect(() => {
     if (!open) {
@@ -547,6 +561,24 @@ export function RequirementsPromptDocumentDrawer({
             >
               대화 기록
             </button>
+            {showExecutionLogTab ? (
+              <button
+                type="button"
+                onClick={() => setTab("execution_log")}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  border: tab === "execution_log" ? "1px solid #0d7377" : "1px solid #e2e8f0",
+                  background: tab === "execution_log" ? "#ecfdf5" : "#fff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  color: "#0f172a",
+                }}
+              >
+                실행 로그
+              </button>
+            ) : null}
             {promptTimelineExportAsc.length > 0 ? (
               <button
                 type="button"
@@ -979,6 +1011,50 @@ export function RequirementsPromptDocumentDrawer({
                     </pre>
                   </div>
                 </>
+              )}
+            </div>
+          ) : tab === "execution_log" ? (
+            <div style={docBlock} data-testid="prompt-timeline-execution-log-tab">
+              <div style={labelSm}>실행 로그</div>
+              {!executionLogTimeline.length ? (
+                <div style={{ ...bodyLg, color: "#64748b" }}>표시할 실행 로그가 없습니다.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {executionLogTimeline.map((entry, index) => (
+                    <div
+                      key={`${entry.action}-${entry.createdAt}-${index}`}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, color: "#0f172a" }}>
+                        {formatExecutionLogTimelineLabel(entry)}
+                      </div>
+                      <div style={{ color: "#64748b", marginTop: 4 }}>
+                        {new Date(entry.createdAt).toLocaleString("ko-KR")}
+                      </div>
+                      {entry.responseText?.trim() ? (
+                        <pre
+                          style={{
+                            margin: "8px 0 0",
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                            fontSize: 11,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            color: "#334155",
+                          }}
+                        >
+                          {entry.responseText}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           ) : (

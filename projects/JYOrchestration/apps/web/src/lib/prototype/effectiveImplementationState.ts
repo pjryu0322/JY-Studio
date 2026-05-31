@@ -69,6 +69,8 @@ import {
   QUICK_DESIGN_CONFIRM_ACTION_LABEL,
   CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL,
   START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL,
+  IMPLEMENTATION_QUICK_RUN_CHIP,
+  IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
@@ -111,6 +113,7 @@ export type ImplementationStageActionId =
   | "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION"
   | "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT"
   | "START_QUICK_DESIGN_FROM_IMPLEMENTATION"
+  | "START_IMPLEMENTATION_QUICK_RUN"
   | "RETURN_TO_PLANNING_STAGE";
 
 export type PendingImplementationPatch = Readonly<{
@@ -428,6 +431,10 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "REQUEST_CURSOR_BRIDGE_EXECUTION";
     case AI_DEVELOPER_EXECUTION_REQUEST_CHIP:
       return "REQUEST_TASK_CURSOR_EXECUTION";
+    case IMPLEMENTATION_QUICK_RUN_CHIP:
+      return "START_IMPLEMENTATION_QUICK_RUN";
+    case IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP:
+      return "CHECK_TASK_CURSOR_STATUS";
     case CHECK_TASK_CURSOR_STATUS_CHIP:
       return "CHECK_TASK_CURSOR_STATUS";
     case VERIFY_TASK_CURSOR_GITHUB_CHIP:

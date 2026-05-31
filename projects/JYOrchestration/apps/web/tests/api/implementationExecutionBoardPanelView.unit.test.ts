@@ -13,6 +13,9 @@ import {
   buildMobileBoardEnvPills,
   buildTaskRowCardView,
   collapseImplementationBoardChatMessagesForPanelView,
+  filterImplementationDashboardChatMessages,
+  isImplementationDashboardInterventionMessage,
+  shouldShowImplementationDashboardChatMessage,
   dedupeImplementationStageNextActions,
   formatMobileCursorEnvPillValue,
   hasImplementationExecutionBoardOrchestrationData,
@@ -170,7 +173,7 @@ describe("implementationExecutionBoardPanelView", () => {
       ),
     );
     const partitioned = partitionMobileBoardActions(actions);
-    expect(partitioned.primary?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
+    expect(partitioned.primary?.actionId).toBe("START_IMPLEMENTATION_QUICK_RUN");
     expect(partitioned.secondary.length).toBeLessThanOrEqual(2);
   });
 
@@ -227,7 +230,7 @@ describe("implementationExecutionBoardPanelView", () => {
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleTaskList() },
     })!;
-    expect(buildCompactBoardSummaryLine(board)).toContain("전체 2");
+    expect(buildCompactBoardSummaryLine(board)).toContain("2/2");
   });
 
   it("collapses long stale board chat messages when panel is active", () => {
@@ -251,8 +254,44 @@ describe("implementationExecutionBoardPanelView", () => {
       true,
     );
     expect(collapsed.some((m) => m.id === longBoard.id)).toBe(false);
-    expect(collapsed.some((m) => m.id === compact.id)).toBe(true);
+    expect(collapsed.some((m) => m.id === compact.id)).toBe(false);
     expect(collapsed.some((m) => m.id === "u1")).toBe(true);
+  });
+
+  it("keeps intervention AI messages when dashboard panel is active", () => {
+    const failureNotice = newRequirementsMessage({
+      id: "fail1",
+      role: "ai",
+      content: "Task Cursor 실행 오류: 서버 연결이 끊어졌습니다.",
+      createdAt: NOW,
+      meta: { internalType: "PROTOTYPE_EXECUTION_NOTICE" },
+    });
+    const previewComplete = newRequirementsMessage({
+      id: "done1",
+      role: "ai",
+      content: "프로토타입 생성이 완료되었습니다.\nPreview URL에서 결과를 확인할 수 있습니다.",
+      createdAt: NOW,
+      meta: { internalType: "IMPLEMENTATION_TASK_LIST_READY_V1" },
+    });
+    const filtered = filterImplementationDashboardChatMessages(
+      [failureNotice, previewComplete],
+      true,
+    );
+    expect(filtered.map((m) => m.id)).toEqual(["fail1", "done1"]);
+    expect(
+      isImplementationDashboardInterventionMessage("자동실행이 중단되었습니다. 보안 점검에서 수정 필요"),
+    ).toBe(true);
+    expect(
+      shouldShowImplementationDashboardChatMessage(
+        newRequirementsMessage({
+          id: "routine",
+          role: "ai",
+          content: "구현 작업 보드가 준비되었습니다.",
+          createdAt: NOW,
+          meta: { internalType: "IMPLEMENTATION_TASK_LIST_READY_V1" },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("extracts board-visible action labels from primary and secondary actions", () => {

@@ -33,6 +33,8 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   activityStatus?: PrototypeExecutionActivityStatus | null;
   headerLeading?: ReactNode;
   headerIconToolbar?: ReactNode;
+  /** 구현 현황판 활성 시 — 개입 메시지 없으면 AI 답변 영역 축소 */
+  dashboardPanelActive?: boolean;
 }>;
 
 /** 구현 단계 — 기획 `RequirementsIdeationChatPanel`과 동일 SingleChat 셸 */
@@ -56,13 +58,14 @@ export function PrototypeExecutionChatPanel({
   aiInvokePending,
   activityStatus = null,
   headerIconToolbar,
+  dashboardPanelActive = false,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
     aiInvokePending &&
     (conversationStatus !== "loaded" || !chatMessages.length || chatMessages[chatMessages.length - 1]?.role !== "ai");
 
-  const composer = (
-    <>
+  const composer = dashboardPanelActive ? null : (
+    <RequirementsChatComposerFooter>
       {replyTo ? <WorkspaceChatReplyComposerBar preview={replyTo.preview} onClear={onClearReplyTo} /> : null}
       <PrototypeExecutionComposer
         value={input}
@@ -74,7 +77,7 @@ export function PrototypeExecutionChatPanel({
         textAreaRef={textAreaRef}
         targetPickerItems={targetPickerItems}
       />
-    </>
+    </RequirementsChatComposerFooter>
   );
 
   return (
@@ -84,8 +87,7 @@ export function PrototypeExecutionChatPanel({
       data-testid="prototype-generation-chat-panel"
     >
       {activityStatus?.active ? <PrototypeExecutionActivityStatusBar status={activityStatus} /> : null}
-      <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <RequirementsChatPanel
+      <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId="prototype_build"
         typingIndicator={showTyping}
@@ -98,13 +100,8 @@ export function PrototypeExecutionChatPanel({
           window.setTimeout(() => textAreaRef.current?.focus(), 0);
         }}
         onInterviewSuggestionPick={onInterviewSuggestionPick}
-        composer={
-          <div data-prototype-composer-root>
-            <RequirementsChatComposerFooter>{composer}</RequirementsChatComposerFooter>
-          </div>
-        }
+        composer={composer}
       />
-      </div>
     </div>
   );
 }

@@ -36,6 +36,9 @@ import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
+  IMPLEMENTATION_QUICK_RUN_CHIP,
+  IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
+  IMPLEMENTATION_PREVIEW_OPEN_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
@@ -78,6 +81,7 @@ import {
   isImplementationAutoQualityGateInFlight,
   summarizeImplementationAutoQualityGateForProgress,
 } from "@/lib/prototype/implementationAutoQualityGate";
+import type { ImplementationQuickRunStatus, ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
   CHECK_TASK_CURSOR_STATUS_CHIP,
@@ -106,6 +110,8 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  readonly implementationQuickRunV1?: ImplementationQuickRunV1 | null;
+  readonly quickRunStatus?: ImplementationQuickRunStatus | null;
   /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
   readonly canApplyGit?: boolean;
 }>;
@@ -581,15 +587,9 @@ function deriveNextActionsFromTaskCursorExecution(
     return [
       {
         actionId: "CHECK_TASK_CURSOR_STATUS",
-        label: CHECK_TASK_CURSOR_STATUS_CHIP,
+        label: IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
         priority: "primary",
         reason: "Cursor API 실행 상태 확인",
-      },
-      {
-        actionId: "VERIFY_TASK_CURSOR_GITHUB",
-        label: VERIFY_TASK_CURSOR_GITHUB_CHIP,
-        priority: "secondary",
-        reason: "GitHub commit/push 결과 확인",
       },
     ];
   }
@@ -632,14 +632,7 @@ function deriveNextActionsFromTaskCursorExecution(
       ];
     }
     if (gateMatches && isImplementationAutoQualityGateInFlight(autoGate)) {
-      return [
-        {
-          actionId: "SHOW_ARTIFACTS",
-          label: TASK_LIST_VIEW_CHIP,
-          priority: "secondary",
-          reason: gateSummary?.summaryLine ?? "자동 품질 게이트 진행 중",
-        },
-      ];
+      return null;
     }
     return [
       {
@@ -653,18 +646,20 @@ function deriveNextActionsFromTaskCursorExecution(
   if (isTaskCursorExecutionFailed(execution) || status === "github_verify_failed") {
     return [
       {
-        actionId: "REQUEST_TASK_CURSOR_EXECUTION",
-        label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
+        actionId: "REQUEST_TASK_REWORK",
+        label: REQUEST_TASK_REWORK_CHIP,
         priority: "primary",
-        reason: execution.failureReason === "cursor_endpoint_unsupported"
-          ? "Cursor API endpoint 미지원 — 재시도 또는 환경설정 확인"
-          : "Task Cursor 실행 실패 후 재시도",
+        reason:
+          execution.errorMessage ??
+          (execution.failureReason === "cursor_endpoint_unsupported"
+            ? "Cursor API endpoint 미지원 — 재작업 또는 환경설정 확인"
+            : "Task Cursor 실행 실패 — 재작업 요청"),
       },
       {
-        actionId: "OPEN_ENV_SETTINGS",
-        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        actionId: "SHOW_ARTIFACTS",
+        label: TASK_LIST_VIEW_CHIP,
         priority: "secondary",
-        reason: "GitHub/Cursor API 환경설정",
+        reason: "실행 로그 및 상세 보기",
       },
     ];
   }
@@ -700,26 +695,34 @@ function deriveNextActionsWhenTaskListReadyForCursor(
 ): readonly ImplementationStageNextAction[] | null {
   if (!boardInput?.taskList?.tasks?.length) return null;
   if (boardInput.taskCursorExecutionV1) return null;
-  return [
-    {
-      actionId: "REQUEST_TASK_CURSOR_EXECUTION",
-      label: AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
-      priority: "primary",
-      reason: "구현 Task 단위 AI 개발자 Cursor 실행",
-    },
-    {
-      actionId: "OPEN_ENV_SETTINGS",
-      label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
-      priority: "secondary",
-      reason: "GitHub/Cursor API 환경설정",
-    },
-    {
-      actionId: "SHOW_ARTIFACTS",
-      label: TASK_LIST_VIEW_CHIP,
-      priority: "tertiary",
-      reason: "작업목록 확인",
-    },
-  ];
+  const quickStatus = boardInput.quickRunStatus ?? boardInput.implementationQuickRunV1?.status ?? "idle";
+  if (quickStatus === "preview_ready" && boardInput.previewReady) {
+    return [
+      {
+        actionId: "SHOW_ARTIFACTS",
+        label: IMPLEMENTATION_PREVIEW_OPEN_CHIP,
+        priority: "primary",
+        reason: "프로토타입 Preview 확인",
+      },
+    ];
+  }
+  if (quickStatus === "idle") {
+    return [
+      {
+        actionId: "START_IMPLEMENTATION_QUICK_RUN",
+        label: IMPLEMENTATION_QUICK_RUN_CHIP,
+        priority: "primary",
+        reason: "구현 작업목록을 우선순위대로 자동 실행하여 Preview 준비까지 진행",
+      },
+      {
+        actionId: "OPEN_ENV_SETTINGS",
+        label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+        priority: "secondary",
+        reason: "GitHub/Cursor API 환경설정",
+      },
+    ];
+  }
+  return null;
 }
 
 function deriveNextActionsFromCodeAgentWip(

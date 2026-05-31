@@ -316,7 +316,7 @@ describe("codeAgentExecutionProgressView", () => {
       }),
     );
     expect(html).toContain("implementation-code-agent-progress-card");
-    expect(html).toContain("Code Agent 실행 진행");
+    expect(html).toContain("현재 실행 상태");
   });
 
   it("uses Cursor execution request as primary CTA when draft exists", () => {
@@ -464,7 +464,7 @@ describe("codeAgentExecutionProgressView", () => {
       },
     });
     expect(view.compactMainPresentation).toBe(true);
-    expect(view.progressCardTitle).toBe("개발 결과 확인됨");
+    expect(view.progressCardTitle).toBe("현재 실행 상태");
     const html = renderToStaticMarkup(createElement(ImplementationCodeAgentExecutionProgressCard, { progress: view }));
     expect(html).toContain("상세 보기");
     expect(html).toContain("implementation-progress-details");

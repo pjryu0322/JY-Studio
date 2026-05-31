@@ -542,6 +542,15 @@ export function evaluateImplementationStageActionGate(
       }
       return { ok: true };
     }
+    case "START_IMPLEMENTATION_QUICK_RUN": {
+      if (!state.envOk) {
+        return { ok: false, message: "환경 준비가 완료된 뒤 Quick 실행을 시작할 수 있습니다." };
+      }
+      if (!isTaskListReadyForImplementationStageActions(state)) {
+        return { ok: false, message: "구현 작업목록이 준비된 뒤 Quick 실행을 시작할 수 있습니다." };
+      }
+      return { ok: true };
+    }
     case "CHECK_TASK_CURSOR_STATUS":
     case "VERIFY_TASK_CURSOR_GITHUB": {
       if (!boardContext?.taskCursorExecutionV1) {
@@ -563,5 +572,7 @@ export function evaluateImplementationStageActionGate(
     case "START_QUICK_DESIGN_FROM_IMPLEMENTATION":
     case "RETURN_TO_PLANNING_STAGE":
       return { ok: true };
+    default:
+      return { ok: false, message: `지원하지 않는 구현단계 action입니다: ${actionId}` };
   }
 }

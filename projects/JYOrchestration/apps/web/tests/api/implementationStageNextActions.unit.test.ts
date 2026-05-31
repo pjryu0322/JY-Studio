@@ -245,7 +245,7 @@ describe("deriveImplementationStageNextActions", () => {
       taskList,
       taskCursorExecutionV1: execution,
     });
-    expect(actions[0]?.actionId).toBe("REQUEST_TASK_CURSOR_EXECUTION");
+    expect(actions[0]?.actionId).toBe("REQUEST_TASK_REWORK");
     expect(actions[0]?.reason).toContain("endpoint");
   });
 

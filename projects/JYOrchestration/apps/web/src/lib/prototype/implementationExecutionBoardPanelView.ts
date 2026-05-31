@@ -51,7 +51,13 @@ export function hasImplementationExecutionBoardOrchestrationData(
 export function resolveImplementationExecutionBoardSelectedTaskId(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1 | null;
 }): string | null {
+  const cursorTaskId = input.taskCursorExecutionV1?.taskId?.trim();
+  const cursorStatus = input.taskCursorExecutionV1?.status;
+  if (cursorTaskId && cursorStatus && cursorStatus !== "scm_pending") {
+    return cursorTaskId;
+  }
   const fromBoard = input.board.currentTaskId?.trim();
   if (fromBoard) return fromBoard;
   const fromWip = input.codeAgentWipExecutionV1?.selectedTaskId?.trim();
@@ -138,6 +144,7 @@ export type ImplementationNextTaskCardView = Readonly<{
 export function resolveNextTaskCardView(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
+  readonly taskCursorExecutionV1?: import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1 | null;
 }): ImplementationNextTaskCardView | null {
   const taskId = resolveImplementationExecutionBoardSelectedTaskId(input);
   if (!taskId) return null;
@@ -273,7 +280,92 @@ export function filterBoardDuplicateChatInterviewSuggestions(
 }
 
 export function buildCompactBoardSummaryLine(board: ImplementationExecutionBoardV1): string {
-  return `전체 ${board.summary.totalTasks} · 완료 ${board.summary.completedTasks} · 진행 ${board.summary.inProgressTasks} · 실패 ${board.summary.failedTasks}`;
+  return buildDashboardProgressHeadline(board);
+}
+
+export function buildDashboardProgressHeadline(board: ImplementationExecutionBoardV1): string {
+  const total = board.summary.totalTasks;
+  const completed = board.summary.completedTasks;
+  const inProgress = board.summary.inProgressTasks;
+  if (total <= 0) return "작업 없음";
+  if (inProgress > 0) {
+    const current = Math.min(completed + inProgress, total);
+    return `${current}/${total} 진행 중`;
+  }
+  if (completed >= total) return `${total}/${total} 완료`;
+  return `${completed}/${total} 대기`;
+}
+
+export type ImplementationTaskTreeChildStep = Readonly<{
+  readonly roleLabel: string;
+  readonly statusLabel: string;
+}>;
+
+export type ImplementationTaskTreeNode = Readonly<{
+  readonly taskId: string;
+  readonly title: string;
+  readonly isActive: boolean;
+  readonly defaultExpanded: boolean;
+  readonly collapsedSummary: string;
+  readonly childSteps: readonly ImplementationTaskTreeChildStep[];
+}>;
+
+function formatTaskTreeRoleStatus(
+  role: "developer" | "reviewer" | "security" | "scm",
+  status: ImplementationBoardStepStatus,
+): string {
+  const roleKo =
+    role === "developer"
+      ? "AI 개발자"
+      : role === "reviewer"
+        ? "검수"
+        : role === "security"
+          ? "보안"
+          : "SCM";
+  const statusKo = formatImplementationBoardStepStatusKo(status);
+  if (statusKo === "진행") return `${roleKo}: 진행 중`;
+  if (statusKo === "완료") return `${roleKo}: 완료`;
+  if (statusKo === "실패") return `${roleKo}: 실패`;
+  return `${roleKo}: ${statusKo === "준비" ? "대기" : statusKo}`;
+}
+
+export function buildImplementationTaskTreeNodes(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly activeTaskId?: string | null;
+}): readonly ImplementationTaskTreeNode[] {
+  const activeTaskId = input.activeTaskId?.trim() || null;
+  return input.board.taskRows.map((row) => {
+    const isActive = activeTaskId === row.taskId;
+    const childSteps: ImplementationTaskTreeChildStep[] = [
+      { roleLabel: "AI 개발자", statusLabel: formatTaskTreeRoleStatus("developer", row.developerStatus) },
+      {
+        roleLabel: "GitHub",
+        statusLabel:
+          row.developerStatus === "done" || row.developerStatus === "skipped"
+            ? "GitHub: 완료"
+            : "GitHub: 대기",
+      },
+      { roleLabel: "검수", statusLabel: formatTaskTreeRoleStatus("reviewer", row.reviewerStatus) },
+      { roleLabel: "보안", statusLabel: formatTaskTreeRoleStatus("security", row.securityStatus) },
+      { roleLabel: "SCM", statusLabel: formatTaskTreeRoleStatus("scm", row.scmStatus) },
+    ];
+    const collapsedSummary =
+      row.developerStatus === "done"
+        ? "완료"
+        : row.developerStatus === "in_progress"
+          ? "개발 진행"
+          : row.developerStatus === "failed"
+            ? "실패"
+            : "개발 대기";
+    return {
+      taskId: row.taskId,
+      title: row.title,
+      isActive,
+      defaultExpanded: isActive,
+      collapsedSummary,
+      childSteps,
+    };
+  });
 }
 
 export function buildCompactBoardSecondarySummaryLine(input: {
@@ -428,20 +520,78 @@ export function isLongImplementationBoardChatMessage(content: string): boolean {
   );
 }
 
-export function collapseImplementationBoardChatMessagesForPanelView(
+const IMPLEMENTATION_DASHBOARD_ROUTINE_AI_INTERNAL_TYPES = new Set<string>([
+  "IMPLEMENTATION_ORCHESTRATION_BOOTSTRAP_V1",
+  "IMPLEMENTATION_WORK_PLAN_DRAFT_MESSAGE_V1",
+  "IMPLEMENTATION_TASK_PLAN_SUMMARY_V1",
+  "IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_MESSAGE_V1",
+  "IMPLEMENTATION_ROLE_CHECK_DETAILS_V1",
+  "IMPLEMENTATION_SCM_CHECK_DETAILS_V1",
+  "IMPLEMENTATION_ENVIRONMENT_CHECK_DETAILS_V1",
+  "IMPLEMENTATION_REVIEWER_CHECK_DETAILS_V1",
+  "IMPLEMENTATION_SECURITY_CHECK_DETAILS_V1",
+]);
+
+const IMPLEMENTATION_DASHBOARD_ALWAYS_SHOW_AI_INTERNAL_TYPES = new Set<string>([
+  "IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_V1",
+  "IMPLEMENTATION_BLOCKED_QUICK_DESIGN_UNCONFIRMED_V1",
+  "IMPLEMENTATION_USER_FEEDBACK_APPLIED_V1",
+]);
+
+const IMPLEMENTATION_DASHBOARD_INTERVENTION_CONTENT = [
+  /실패|오류|중단|차단|\bfailed\b|\berror\b/i,
+  /재작업|보완 요청|보완이 필요|remediation/i,
+  /프로토타입.*완료|Preview URL|Preview를 확인|preview.*ready/i,
+  /검수.*(실패|수정)|보안.*(실패|수정)|품질.*실패/,
+  /Task Cursor.*(실패|오류)|GitHub.*(실패|오류)|commit.*실패/i,
+  /자동실행이 중단/,
+  /SCM.*(실패|재시도)|merge|승인.*필요/i,
+  /사용자 확인.*필요|blocking feedback/i,
+  /피드백.*(등록|blocking)/i,
+] as const;
+
+export function isImplementationDashboardInterventionMessage(content: string): boolean {
+  const text = String(content ?? "").trim();
+  if (!text) return false;
+  return IMPLEMENTATION_DASHBOARD_INTERVENTION_CONTENT.some((pattern) => pattern.test(text));
+}
+
+export function shouldShowImplementationDashboardChatMessage(message: RequirementsMessage): boolean {
+  if (message.role === "user") return true;
+
+  const internalType = String(message.meta?.internalType ?? "").trim();
+  if (IMPLEMENTATION_DASHBOARD_ALWAYS_SHOW_AI_INTERNAL_TYPES.has(internalType)) return true;
+  if (IMPLEMENTATION_DASHBOARD_ROUTINE_AI_INTERNAL_TYPES.has(internalType)) return false;
+
+  if (internalType === IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE) {
+    if (isLongImplementationBoardChatMessage(message.content)) return false;
+    return isImplementationDashboardInterventionMessage(message.content);
+  }
+
+  if (internalType === "PROTOTYPE_EXECUTION_NOTICE") {
+    return isImplementationDashboardInterventionMessage(message.content);
+  }
+
+  if (message.role === "ai") {
+    return isImplementationDashboardInterventionMessage(message.content);
+  }
+
+  return true;
+}
+
+export function filterImplementationDashboardChatMessages(
   messages: readonly RequirementsMessage[],
   boardPanelActive: boolean,
 ): readonly RequirementsMessage[] {
   if (!boardPanelActive) return messages;
-  return messages.flatMap((message) => {
-    if (message.meta.internalType !== IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE) {
-      return [message];
-    }
-    if (!isLongImplementationBoardChatMessage(message.content)) {
-      return [message];
-    }
-    return [];
-  });
+  return messages.filter(shouldShowImplementationDashboardChatMessage);
+}
+
+export function collapseImplementationBoardChatMessagesForPanelView(
+  messages: readonly RequirementsMessage[],
+  boardPanelActive: boolean,
+): readonly RequirementsMessage[] {
+  return filterImplementationDashboardChatMessages(messages, boardPanelActive);
 }
 
 export function dedupeImplementationStageNextActions(

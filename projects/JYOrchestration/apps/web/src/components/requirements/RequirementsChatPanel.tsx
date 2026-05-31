@@ -413,10 +413,6 @@ export function RequirementsChatPanel({
               <ScreenLabel label="요구사항-불러오기상태" visible={showScreenLabels} />
               대화 이력을 불러오는 중입니다…
             </div>
-          ) : messages.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>
-              메시지가 여기에 쌓입니다. 아래에서 입력해 협의를 시작하세요.
-            </div>
           ) : null}
 
           {(messages ?? []).map((m) => {

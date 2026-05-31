@@ -34,6 +34,7 @@ import { resolvePrototypeExecutionActivityStatus } from "@/lib/prototype/prototy
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   IMPLEMENTATION_ARTIFACT_HUB_LABEL,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROGRESS_LABEL,
   IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
@@ -291,7 +292,21 @@ import {
   formatTaskCursorAutoChainNotice,
   resolveTaskCursorAutoChainDecision,
 } from "@/lib/prototype/implementationTaskCursorAutoChain";
+import {
+  buildImplementationQuickRunStartedPatch,
+  buildImplementationQuickRunTimelineEntry,
+  parseImplementationQuickRunV1,
+  shouldAllowTaskCursorAutoChain,
+} from "@/lib/prototype/implementationQuickRun";
+import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
+import type { PromptTimelineDrawerTab } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import {
+  buildTaskCursorLaunchTransientFailurePatch,
+  formatTransientTaskCursorLaunchErrorMessage,
+  isTransientTaskCursorLaunchError,
+  postTaskCursorExecuteWithRetry,
+} from "@/lib/prototype/taskCursorLaunchRetry";
 import {
   formatTaskCursorElapsedMinutes,
   isInFlightTaskCursorExecution,
@@ -488,6 +503,9 @@ export function PrototypePreviewPanel({
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
   const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
+  const [implementationPromptDrawerOpen, setImplementationPromptDrawerOpen] = useState(false);
+  const [implementationPromptDrawerTab, setImplementationPromptDrawerTab] =
+    useState<PromptTimelineDrawerTab>("execution_log");
   const [artifactHubOpen, setArtifactHubOpen] = useState(false);
   const [executionAiSummaryBusy, setExecutionAiSummaryBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
@@ -1740,6 +1758,10 @@ export function PrototypePreviewPanel({
   const runImplementationStageActionRef = useRef<
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult
   >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
+  const startImplementationQuickRunRef = useRef<() => ImplementationStageActionRunResult>(() => ({
+    outcome: "blocked",
+    message: "Quick 실행을 준비하는 중입니다.",
+  }));
   const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
 
   const derivedChatMessages = useMemo(
@@ -2208,6 +2230,15 @@ export function PrototypePreviewPanel({
     const board = implementationStageBoardGateContext?.board;
     const orchestration = orchestrationAwareRequirementsState;
     const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
+    const quickRun = parseImplementationQuickRunV1(orchestration.implementationQuickRunV1);
+    if (
+      !shouldAllowTaskCursorAutoChain({
+        quickRun,
+        taskCursorExecution: execution,
+      })
+    ) {
+      return;
+    }
     const autoGate = parseImplementationAutoQualityGateV1(orchestration.implementationAutoQualityGateV1);
     const decision = resolveTaskCursorAutoChainDecision({
       board,
@@ -2251,9 +2282,17 @@ export function PrototypePreviewPanel({
     if (execution && isInFlightTaskCursorExecution(execution)) {
       taskCursorAutoChainRef.current = null;
     }
+    if (
+      execution &&
+      execution.status === "cursor_failed" &&
+      isTransientTaskCursorLaunchError(execution.errorMessage)
+    ) {
+      taskCursorAutoChainRef.current = null;
+    }
   }, [
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.errorMessage,
   ]);
 
   const implementationCursorGate = useMemo(
@@ -3425,6 +3464,8 @@ export function PrototypePreviewPanel({
           return confirmQuickDesignForImplementation();
         case "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT":
           return createImplementationSeedFromQuickDesignDraft();
+        case "START_IMPLEMENTATION_QUICK_RUN":
+          return startImplementationQuickRunRef.current();
         case "RETURN_TO_PLANNING_STAGE":
         case "START_QUICK_DESIGN_FROM_IMPLEMENTATION": {
           const pid = projectId.trim();
@@ -3883,17 +3924,15 @@ export function PrototypePreviewPanel({
 
           void (async () => {
             try {
-              const res = await credentialsIncludeFetch("/api/prototype/task-cursor/execute", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
+              const res = await postTaskCursorExecuteWithRetry({
+                body: {
                   projectId: pid,
                   taskId: scoped.selectedTaskId,
                   selectedWorkItemIds: scoped.selectedWorkItems.map((w) => w.id),
                   workItems: scoped.selectedWorkItems,
                   verifyGithub: true,
                   launchOnly: true,
-                }),
+                },
               });
               const json = (await res.json()) as {
                 success?: boolean;
@@ -3944,19 +3983,23 @@ export function PrototypePreviewPanel({
               executionSingleChat.appendAiNotice(notice);
               showToast(notice);
             } catch (e) {
-              const message = e instanceof Error ? e.message : String(e);
-              const friendly =
-                message.toLowerCase().includes("fetch")
-                  ? "서버 연결이 끊어졌습니다. dev 서버 재컴파일/HMR 직후면 잠시 후 다시 시도해 주세요."
-                  : message;
+              const friendly = formatTransientTaskCursorLaunchErrorMessage(e);
+              const orchestrationPatch = isTransientTaskCursorLaunchError(friendly)
+                ? buildTaskCursorLaunchTransientFailurePatch({
+                    execution: pendingExecution,
+                    message: friendly,
+                    history: pollHistory,
+                    existingTimeline: pollTimeline,
+                  })
+                : buildTaskCursorFailedOrchestrationPatch({
+                    execution: pendingExecution,
+                    message: friendly,
+                    history: pollHistory,
+                    existingTimeline: pollTimeline,
+                  });
               applyImplementationOrchestrationResult({
                 messages: executionSingleChat.chatMessages,
-                orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
-                  execution: pendingExecution,
-                  message: friendly,
-                  history: pollHistory,
-                  existingTimeline: pollTimeline,
-                }),
+                orchestrationPatch,
               });
               executionSingleChat.appendAiNotice(`Task Cursor 실행 오류: ${friendly}`);
               showToast(`Task Cursor 실행 오류: ${friendly}`);
@@ -5488,6 +5531,46 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const startImplementationQuickRun = useCallback((): ImplementationStageActionRunResult => {
+    const pid = projectId.trim();
+    if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
+    const board = implementationStageBoardGateContext?.board ?? null;
+    const nextTaskId = board ? pickFirstExecutableDeveloperTaskId(board) : null;
+    const resolvedTaskId = nextTaskId ?? board?.taskRows[0]?.taskId ?? null;
+    const nowIso = new Date().toISOString();
+    const quickRun = buildImplementationQuickRunStartedPatch({
+      projectId: pid,
+      currentTaskId: resolvedTaskId,
+      nowIso,
+    });
+    void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+      implementationQuickRunV1: quickRun,
+      promptTimeline: appendPromptTimeline(
+        parsedRequirementsState.promptTimeline,
+        buildImplementationQuickRunTimelineEntry({
+          action: "implementation_quick_run_started",
+          projectId: pid,
+          taskId: resolvedTaskId,
+          nowIso,
+        }),
+      ),
+    });
+    showToast("Quick 실행을 시작합니다. 작업목록을 우선순위대로 자동 진행합니다.");
+    taskCursorAutoChainRef.current = null;
+    return runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+  }, [
+    projectId,
+    implementationStageBoardGateContext?.board,
+    persistChatToDb,
+    requirementsStateJson,
+    parsedRequirementsState.promptTimeline,
+    showToast,
+  ]);
+
+  useEffect(() => {
+    startImplementationQuickRunRef.current = startImplementationQuickRun;
+  }, [startImplementationQuickRun]);
+
   const onImplementationQuickExecution = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -5530,7 +5613,7 @@ export function PrototypePreviewPanel({
       }
       const gate = evaluateImplementationCursorGate(implementationCursorGate);
       if (gate.allowed) {
-        wipChipHandlers.requestCodeAgentWipWork();
+        startImplementationQuickRun();
         return;
       }
       executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
@@ -5697,31 +5780,84 @@ export function PrototypePreviewPanel({
   const implementationTemplateChangeDisabled =
     !canRequestGeneration.envOk || shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
 
+  const onOpenExecutionEnvironmentSettings = useCallback(() => {
+    setExecutionEnvironmentModalOpen(true);
+  }, []);
+
+  const onOpenImplementationExecutionLog = useCallback(() => {
+    setImplementationPromptDrawerTab("execution_log");
+    setImplementationPromptDrawerOpen(true);
+  }, []);
+
   const executionConversationIconToolbar = useMemo(
     () => (
       <>
         {!isImplementationToolbarMobileCompact ? (
-          <WorkspaceHubChromeIconButton
-            title="템플릿 변경"
-            ariaLabel="템플릿 변경"
-            disabled={implementationTemplateChangeDisabled}
-            onClick={onOpenImplementationTemplateChange}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
+          <>
+            <WorkspaceHubChromeIconButton
+              title={IMPLEMENTATION_ENV_SETTINGS_LABEL}
+              ariaLabel={IMPLEMENTATION_ENV_SETTINGS_LABEL}
+              disabled={false}
+              onClick={onOpenExecutionEnvironmentSettings}
             >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-            </svg>
-          </WorkspaceHubChromeIconButton>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </WorkspaceHubChromeIconButton>
+            <WorkspaceHubChromeIconButton
+              title="상세 로그 보기"
+              ariaLabel="상세 로그 보기"
+              disabled={false}
+              onClick={onOpenImplementationExecutionLog}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M15 12h-5" />
+                <path d="M15 8h-5" />
+                <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+                <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
+              </svg>
+            </WorkspaceHubChromeIconButton>
+            <WorkspaceHubChromeIconButton
+              title="템플릿 변경"
+              ariaLabel="템플릿 변경"
+              disabled={implementationTemplateChangeDisabled}
+              onClick={onOpenImplementationTemplateChange}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+            </WorkspaceHubChromeIconButton>
+          </>
         ) : null}
 
         <WorkspaceConversationHubIconRow
@@ -5757,6 +5893,16 @@ export function PrototypePreviewPanel({
             isImplementationToolbarMobileCompact
               ? [
                   {
+                    id: "env-settings",
+                    label: IMPLEMENTATION_ENV_SETTINGS_LABEL,
+                    onClick: onOpenExecutionEnvironmentSettings,
+                  },
+                  {
+                    id: "execution-log",
+                    label: "상세 로그 보기",
+                    onClick: onOpenImplementationExecutionLog,
+                  },
+                  {
                     id: "template-change",
                     label: "템플릿 변경",
                     onClick: onOpenImplementationTemplateChange,
@@ -5777,6 +5923,8 @@ export function PrototypePreviewPanel({
       implementationArtifactHubView.badgeCount,
       implementationTemplateChangeDisabled,
       onOpenImplementationTemplateChange,
+      onOpenExecutionEnvironmentSettings,
+      onOpenImplementationExecutionLog,
       onDownloadImplementationConversationMarkdown,
       onResetImplementationConversation,
       onSummarizeImplementationConversation,
@@ -5803,7 +5951,7 @@ export function PrototypePreviewPanel({
     >
       <style>{`
         @keyframes jyo-proto-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .jyo-prototype-stage-shell { height: 100%; }
+        .jyo-prototype-stage-shell { height: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; }
         .jyo-prototype-generation-root input,
         .jyo-prototype-generation-root select {
           box-sizing: border-box;
@@ -5827,6 +5975,7 @@ export function PrototypePreviewPanel({
             taskCursorExecutionV1={orchestrationAwareRequirementsState.taskCursorExecutionV1}
             taskCursorExecutionHistoryV1={orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1}
             implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
+            implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}
@@ -5834,13 +5983,13 @@ export function PrototypePreviewPanel({
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             onAction={handleImplementationBoardAction}
-            onOpenEnvSettings={() => setExecutionEnvironmentModalOpen(true)}
           />
         ) : null}
-        <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="jyo-prototype-execution-chat-region">
         <PrototypeExecutionChatPanel
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={prioritizedChatMessages}
+          dashboardPanelActive={boardPanelVisible}
           memberControls={null}
           input={executionSingleChat.input}
           onInputChange={executionSingleChat.setInput}
@@ -5936,6 +6085,16 @@ export function PrototypePreviewPanel({
             count === 1 ? "선택한 산출물을 Doc으로 내려받았습니다." : `선택한 산출물 ${count}건을 Doc으로 내려받았습니다.`,
           );
         }}
+      />
+
+      <RequirementsPromptDocumentDrawer
+        open={implementationPromptDrawerOpen}
+        onClose={() => setImplementationPromptDrawerOpen(false)}
+        view={null}
+        promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
+        conversationMessages={executionSingleChat.chatMessages}
+        exportBaseName={projectName || "project"}
+        initialTab={implementationPromptDrawerTab}
       />
 
       <RequirementsDeliverableViewerModal
