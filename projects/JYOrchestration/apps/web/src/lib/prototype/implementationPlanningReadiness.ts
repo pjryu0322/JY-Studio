@@ -191,7 +191,7 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
         ok:
           preflight.status === "passed" &&
           input.codeTaskPlan.readiness.ready &&
-          input.codeTaskPlan.validationReport?.status !== "failed",
+          input.codeTaskPlan.validationReport?.status === "passed",
         codeTaskCount: input.codeTaskPlan.codeTaskCount,
       },
       nowIso: now,
@@ -276,6 +276,7 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   readonly syncMode?: "created" | "synced";
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
+  readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
 }): Promise<ImplementationPlanningReadinessPatch> {
   const now = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
@@ -299,6 +300,7 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     nowIso: now,
     useLlmRefinement: useLlm,
     llmCaller: input.llmCaller,
+    providerContext: input.providerContext,
   });
   return buildPlanningReadinessPatchFromCodeTaskPlan({
     projectId: pid,
@@ -358,11 +360,29 @@ export function buildImplementationExecutionBlockedByCodeTaskValidationTimelineE
   });
 }
 
+export function buildImplementationExecutionBlockedByMissingCodeTaskValidationTimelineEntry(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_execution_blocked_by_missing_code_task_validation",
+    projectId: input.projectId,
+    fields: { mode: "implementation" },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
 export function buildImplementationExecutionBlockedByPlanningGateTimelineEntry(input: {
   readonly projectId: string;
   readonly reason: ImplementationPlanningExecutionGateReason;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
+  if (input.reason === "missing_code_task_validation") {
+    return buildImplementationExecutionBlockedByMissingCodeTaskValidationTimelineEntry({
+      projectId: input.projectId,
+      nowIso: input.nowIso,
+    });
+  }
   if (input.reason === "code_task_validation_failed") {
     return buildImplementationExecutionBlockedByCodeTaskValidationTimelineEntry({
       projectId: input.projectId,
@@ -399,7 +419,8 @@ export type ImplementationPlanningExecutionGateReason =
   | "missing_code_task_plan"
   | "missing_work_items"
   | "preflight_failed"
-  | "code_task_validation_failed";
+  | "code_task_validation_failed"
+  | "missing_code_task_validation";
 
 export type ImplementationPlanningExecutionGateResult =
   | Readonly<{ readonly ok: true }>
@@ -437,7 +458,15 @@ export function evaluateImplementationPlanningExecutionGate(input: {
       reason: "preflight_failed",
     };
   }
-  if (input.codeTaskPlan?.validationReport?.status === "failed") {
+  const validationStatus = input.codeTaskPlan?.validationReport?.status;
+  if (!validationStatus) {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      reason: "missing_code_task_validation",
+    };
+  }
+  if (validationStatus === "failed") {
     return {
       ok: false,
       message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,

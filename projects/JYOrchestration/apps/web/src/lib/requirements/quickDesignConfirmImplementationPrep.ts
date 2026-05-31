@@ -24,7 +24,8 @@ import {
   buildImplementationPlanningReadinessPatchWithLlm,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
-import { isLlmCodeTaskRefinementEnabled, type LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import type { LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
@@ -414,7 +415,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   };
 }
 
-export async function runQuickDesignConfirmImplementationPrepAsync(input: {
+export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
   readonly projectId: string;
   readonly projectName?: string;
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
@@ -429,11 +430,6 @@ export async function runQuickDesignConfirmImplementationPrepAsync(input: {
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
 }): Promise<QuickDesignConfirmImplementationPrepResult> {
-  const useLlm = input.forceLlm === true || isLlmCodeTaskRefinementEnabled();
-  if (!useLlm) {
-    return runQuickDesignConfirmImplementationPrep(input);
-  }
-
   const syncResult = runQuickDesignConfirmImplementationPrep(input);
   const taskListForReadiness = input.existingTaskList ?? syncResult.implementationTaskListV1;
   if (!syncResult.prepComplete || !taskListForReadiness?.tasks?.length) {
@@ -441,6 +437,9 @@ export async function runQuickDesignConfirmImplementationPrepAsync(input: {
   }
 
   const now = input.nowIso;
+  const llmCaller =
+    input.llmCaller ??
+    (typeof fetch === "function" ? createProjectLlmCodeTaskRefinementCaller(input.projectId) : undefined);
   const readinessPatch = await buildImplementationPlanningReadinessPatchWithLlm({
     projectId: input.projectId,
     taskList: taskListForReadiness,
@@ -452,7 +451,7 @@ export async function runQuickDesignConfirmImplementationPrepAsync(input: {
     nowIso: now,
     includeTaskListCreatedEvent: !input.existingTaskList,
     syncMode: input.existingTaskList ? "synced" : "created",
-    llmCaller: input.llmCaller,
+    llmCaller,
     forceLlm: input.forceLlm,
   });
 
@@ -471,6 +470,9 @@ export async function runQuickDesignConfirmImplementationPrepAsync(input: {
     timelineEntries: [...nonPlanningTimeline, ...planningTimeline],
   };
 }
+
+/** @deprecated Use runQuickDesignConfirmImplementationPrepWithLlm */
+export const runQuickDesignConfirmImplementationPrepAsync = runQuickDesignConfirmImplementationPrepWithLlm;
 
 const QUICK_DESIGN_IMPLEMENTATION_PREP_INFO_LINES: readonly string[] = [
   "- 프로세스별 구현 항목",

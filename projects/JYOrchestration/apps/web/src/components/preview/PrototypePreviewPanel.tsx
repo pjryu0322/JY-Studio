@@ -191,7 +191,7 @@ import {
 } from "@/lib/prototype/implementationIntentTimeline";
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
-import { buildGenerateImplementationTaskListFromSeedResult } from "@/lib/prototype/implementationTaskListGeneration";
+import { buildGenerateImplementationTaskListFromSeedResult, buildGenerateImplementationTaskListFromSeedResultWithLlm } from "@/lib/prototype/implementationTaskListGeneration";
 import {
   buildCreateImplementationSeedFromQuickDesignDraftResult,
   runConfirmQuickDesignForImplementationFromState,
@@ -3702,38 +3702,40 @@ export function PrototypePreviewPanel({
   const generateImplementationTaskList = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
     const seed = parsedRequirementsState.implementationSeedV1;
-    const result = buildGenerateImplementationTaskListFromSeedResult({
-      projectId: pid,
-      seed,
-      existingTaskList: parsedRequirementsState.implementationTaskListV1,
-      existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
-      existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-      existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
-      priorTimeline: parsedRequirementsState.promptTimeline,
-      projectArtifacts: executionArtifacts.projectArtifacts,
-      artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-      envOk: canRequestGeneration.envOk,
-      designOk: effectiveImplementationState.designOk,
-      envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
-      previewReady: prototypeRunSyncSnapshot.previewReady,
-    });
-    if (!result.ok) {
-      showToast(result.message);
-      return { outcome: "blocked", message: result.message };
-    }
-    void persistChatToDb(
-      resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
-      result.patch,
-    );
-    for (const message of result.messages) {
-      appendImplementationTaskListAiMessage(message);
-    }
-    showToast(
-      result.userMessage ??
-        (result.alreadyExisted
-          ? "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다."
-          : "구현 준비 산출물을 생성했습니다."),
-    );
+    void (async () => {
+      const result = await buildGenerateImplementationTaskListFromSeedResultWithLlm({
+        projectId: pid,
+        seed,
+        existingTaskList: parsedRequirementsState.implementationTaskListV1,
+        existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+        existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+        existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+        priorTimeline: parsedRequirementsState.promptTimeline,
+        projectArtifacts: executionArtifacts.projectArtifacts,
+        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+        envOk: canRequestGeneration.envOk,
+        designOk: effectiveImplementationState.designOk,
+        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
+        previewReady: prototypeRunSyncSnapshot.previewReady,
+      });
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      void persistChatToDb(
+        resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
+        result.patch,
+      );
+      for (const message of result.messages) {
+        appendImplementationTaskListAiMessage(message);
+      }
+      showToast(
+        result.userMessage ??
+          (result.alreadyExisted
+            ? "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다."
+            : "구현 준비 산출물을 생성했습니다."),
+      );
+    })();
     return { outcome: "executed" };
   }, [
     projectId,

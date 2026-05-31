@@ -34,6 +34,7 @@ import type { ImplementationStageNextAction } from "@/lib/prototype/implementati
 import { parseExecutionLogResponseFields } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import { evaluateTaskCursorJobObservability } from "@/lib/prototype/taskCursorJobObservability";
 import {
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
@@ -390,6 +391,11 @@ export function buildTaskCursorPollStatusLabel(input: {
     return undefined;
   }
   if (isServerTaskCursorPolling() && input.serverJob?.taskId === input.taskId) {
+    const observability = evaluateTaskCursorJobObservability({
+      serverPolling: true,
+      serverJob: input.serverJob,
+    });
+    if (observability.statusLabel) return observability.statusLabel;
     const parts = ["서버 Worker", input.serverJob.status];
     if (input.serverJob.pollCount > 0) parts.push(`${input.serverJob.pollCount}회`);
     if (input.serverJob.lastPollAt) {

@@ -1,5 +1,5 @@
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
-import { resolveOpenAiFromEnv } from "@/lib/ai/openAiEnv";
+import { resolveOpenAiFromEnv, resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import {
   COMMON_FORBIDDEN_PATHS,
 } from "@/lib/prototype/implementationExecutionHints";
@@ -14,6 +14,7 @@ import {
   type ImplementationCodeTaskV1,
 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { validateImplementationCodeTaskPlan } from "@/lib/prototype/implementationCodeTaskPlanValidator";
+import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -252,17 +253,30 @@ function buildPlanFromTasks(input: {
   };
 }
 
-async function defaultLlmCaller(prompt: string): Promise<
+async function defaultLlmCaller(
+  prompt: string,
+  providerContext?: LlmCodeTaskRefinementProviderContext | null,
+): Promise<
   | Readonly<{ readonly ok: true; readonly text: string }>
   | Readonly<{ readonly ok: false; readonly message: string }>
 > {
+  const projectKey = String(providerContext?.apiKey ?? "").trim();
   const env = resolveOpenAiFromEnv();
-  if (!env.ok) {
-    return { ok: false, message: env.message };
+  const apiKey = projectKey || (env.ok ? env.apiKey : "");
+  const model = String(providerContext?.model ?? (env.ok ? env.model : resolveOpenAiModelFromEnv()));
+  if (!apiKey) {
+    return {
+      ok: false,
+      message: projectKey
+        ? "OpenAI API key가 유효하지 않습니다."
+        : env.ok
+          ? env.message
+          : "OpenAI Planner API key가 설정되어 있지 않습니다.",
+    };
   }
   const result = await postOpenAiChatCompletion({
-    apiKey: env.apiKey,
-    model: env.model,
+    apiKey,
+    model,
     temperature: 0.2,
     responseFormatJsonObject: true,
     maxTokens: 4096,
@@ -292,6 +306,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   readonly nowIso?: string;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
+  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
 }): Promise<{
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly usedLlm: boolean;
@@ -353,7 +368,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     }),
   );
 
-  const caller = input.llmCaller ?? defaultLlmCaller;
+  const caller = input.llmCaller ?? ((prompt) => defaultLlmCaller(prompt, input.providerContext));
   const prompt = buildCodeTaskLlmRefinementUserPrompt({
     projectId: pid,
     taskList: input.taskList,
@@ -553,6 +568,7 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
   readonly nowIso?: string;
   readonly useLlmRefinement?: boolean;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
+  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
 }): Promise<{
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
@@ -569,6 +585,7 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
       designOk: input.designOk,
       nowIso: now,
       llmCaller: input.llmCaller,
+      providerContext: input.providerContext,
       forceLlm: true,
     });
     return { plan: refined.plan, timelineEntries: refined.timelineEntries };

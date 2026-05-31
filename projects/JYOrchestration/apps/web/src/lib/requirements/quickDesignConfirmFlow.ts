@@ -19,10 +19,10 @@ import {
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import {
   runQuickDesignConfirmImplementationPrep,
-  runQuickDesignConfirmImplementationPrepAsync,
+  runQuickDesignConfirmImplementationPrepWithLlm,
   type QuickDesignConfirmImplementationPrepResult,
 } from "@/lib/requirements/quickDesignConfirmImplementationPrep";
-import { isLlmCodeTaskRefinementEnabled } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type {
@@ -181,31 +181,19 @@ export async function runQuickDesignConfirmFlowWithPrep(input: {
     replacedTypes: artifactBundle.artifactOrchestrationV1.requiredTypes,
   });
 
-  const prep = isLlmCodeTaskRefinementEnabled()
-    ? await runQuickDesignConfirmImplementationPrepAsync({
-        projectId: flow.projectId,
-        projectName: flow.projectName,
-        orchestration: confirm.orchestration,
-        definitions: flow.slotDefinitions,
-        nowIso: flow.nowIso,
-        generatedArtifactCount: artifactBundle.artifacts.length,
-        envOk,
-        projectArtifacts: merged.projectArtifacts,
-        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
-        existingTaskList: st.implementationTaskListV1,
-      })
-    : runQuickDesignConfirmImplementationPrep({
-        projectId: flow.projectId,
-        projectName: flow.projectName,
-        orchestration: confirm.orchestration,
-        definitions: flow.slotDefinitions,
-        nowIso: flow.nowIso,
-        generatedArtifactCount: artifactBundle.artifacts.length,
-        envOk,
-        projectArtifacts: merged.projectArtifacts,
-        artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
-        existingTaskList: st.implementationTaskListV1,
-      });
+  const prep = await runQuickDesignConfirmImplementationPrepWithLlm({
+    projectId: flow.projectId,
+    projectName: flow.projectName,
+    orchestration: confirm.orchestration,
+    definitions: flow.slotDefinitions,
+    nowIso: flow.nowIso,
+    generatedArtifactCount: artifactBundle.artifacts.length,
+    envOk,
+    projectArtifacts: merged.projectArtifacts,
+    artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
+    existingTaskList: st.implementationTaskListV1,
+    llmCaller: createProjectLlmCodeTaskRefinementCaller(flow.projectId),
+  });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({
     artifactIds: artifactBundle.artifactIds,

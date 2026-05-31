@@ -76,6 +76,8 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   }
   if (plan?.validationReport?.status === "failed") {
     supplementReasons.push(...(plan.validationReport.errors.slice(0, 3) ?? []));
+  } else if (!plan?.validationReport?.status) {
+    supplementReasons.push("CodeTask validationReport가 없습니다. 구현 준비 산출물 동기화가 필요합니다.");
   }
   if (input.preflightSummary?.status === "failed") {
     supplementReasons.push(...(input.preflightSummary.failedReasons.slice(0, 3) ?? []));

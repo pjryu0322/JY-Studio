@@ -1,4 +1,5 @@
-import { buildImplementationPlanningReadinessPatch } from "@/lib/prototype/implementationPlanningReadiness";
+import { buildImplementationPlanningReadinessPatch, buildImplementationPlanningReadinessPatchWithLlm } from "@/lib/prototype/implementationPlanningReadiness";
+import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
@@ -95,6 +96,41 @@ function needsPlanningReadinessSync(input: {
   const hasWorkItems = (input.existingCursorWorkItems?.length ?? 0) > 0;
   const hasCodeTaskPlan = Boolean(input.existingCodeTaskPlan?.tasks?.length);
   return !hasCodeTaskPlan || !hasWorkItems;
+}
+
+async function appendPlanningReadinessToPatchWithLlm(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly patch: Partial<RequirementsStateJson>;
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly nowIso: string;
+  readonly includeTaskListCreatedEvent?: boolean;
+  readonly syncMode?: "created" | "synced";
+}): Promise<Partial<RequirementsStateJson>> {
+  const readiness = await buildImplementationPlanningReadinessPatchWithLlm({
+    projectId: input.projectId,
+    taskList: input.taskList,
+    projectArtifacts: input.projectArtifacts,
+    implementationSeedV1: input.implementationSeedV1,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    priorTimeline: input.priorTimeline,
+    nowIso: input.nowIso,
+    includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
+    syncMode: input.syncMode,
+    llmCaller: createProjectLlmCodeTaskRefinementCaller(input.projectId),
+  });
+  return {
+    ...input.patch,
+    implementationCodeTaskPlanV1: readiness.implementationCodeTaskPlanV1,
+    cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
+    implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
+    promptTimeline: readiness.promptTimeline,
+  };
 }
 
 function appendPlanningReadinessToPatch(input: {
@@ -331,5 +367,69 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
     messages,
     alreadyExisted: false,
     userMessage: "구현 준비 산출물을 생성했습니다.",
+  };
+}
+
+export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(input: {
+  readonly projectId: string;
+  readonly seed: ImplementationSeedV1 | null | undefined;
+  readonly existingTaskList?: ImplementationTaskListV1 | null;
+  readonly existingCodeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly existingExecutionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly envCursorBadge?: "ok" | "needs" | "error" | "loading";
+  readonly previewReady?: boolean;
+  readonly nowIso?: string;
+}): Promise<GenerateImplementationTaskListResult> {
+  const base = buildGenerateImplementationTaskListFromSeedResult(input);
+  if (!base.ok || !base.taskList?.tasks?.length) {
+    return base;
+  }
+
+  const now = input.nowIso ?? new Date().toISOString();
+  const pid = input.projectId.trim();
+  const llmPatch = await appendPlanningReadinessToPatchWithLlm({
+    projectId: pid,
+    taskList: base.taskList,
+    patch: base.patch,
+    projectArtifacts: input.projectArtifacts,
+    implementationSeedV1: input.seed,
+    envOk: input.envOk,
+    designOk: input.designOk,
+    priorTimeline: base.patch.promptTimeline ?? input.priorTimeline,
+    nowIso: now,
+    includeTaskListCreatedEvent: !base.alreadyExisted,
+    syncMode: base.alreadyExisted ? "synced" : "created",
+  });
+
+  const messages = buildPostGenerateMessages({
+    projectId: pid,
+    taskList: base.taskList,
+    orchestration: buildOrchestrationSlice({
+      taskList: base.taskList,
+      executionState: llmPatch.implementationTaskExecutionStateV1 ?? base.patch.implementationTaskExecutionStateV1,
+      cursorWorkItems: llmPatch.cursorWorkItemsV1,
+      codeTaskPlan: llmPatch.implementationCodeTaskPlanV1,
+      seed: input.seed,
+      preflightSummary: llmPatch.implementationWorkItemPreflightSummaryV1,
+    }),
+    envOk: input.envOk,
+    previewReady: input.previewReady === true,
+    nowIso: now,
+    includeTaskSummary: !base.alreadyExisted,
+  });
+
+  return {
+    ...base,
+    patch: {
+      ...base.patch,
+      ...llmPatch,
+    },
+    messages: messages.length ? messages : base.messages,
   };
 }
