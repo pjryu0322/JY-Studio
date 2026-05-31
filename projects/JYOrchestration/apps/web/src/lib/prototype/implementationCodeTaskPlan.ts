@@ -40,7 +40,10 @@ export type ImplementationCodeTaskV1 = Readonly<{
   targetHints: readonly string[];
   candidateFiles?: readonly string[];
   candidateFileHints?: readonly string[];
+  /** @deprecated 호환용 — parentTaskDependencies + codeTaskDependencies 합산 */
   dependencies: readonly string[];
+  parentTaskDependencies?: readonly string[];
+  codeTaskDependencies?: readonly string[];
   acceptanceCriteria: readonly string[];
   verificationHints: readonly string[];
   forbiddenPaths: readonly string[];
@@ -228,9 +231,45 @@ function buildCodeTaskId(parentTaskId: string, sequence: number): string {
   return `CODE-${parentTaskId}-${String(sequence).padStart(3, "0")}`;
 }
 
+function codeTaskRequiredFieldsMissing(input: {
+  readonly codeTaskId: string;
+  readonly parentTaskId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly changeType: ImplementationCodeTaskChangeType;
+  readonly targetHints: readonly string[];
+  readonly acceptanceCriteria: readonly string[];
+  readonly verificationHints: readonly string[];
+  readonly forbiddenPaths: readonly string[];
+}): boolean {
+  return (
+    !input.codeTaskId.trim() ||
+    !input.parentTaskId.trim() ||
+    !input.title.trim() ||
+    !input.description.trim() ||
+    !input.changeType ||
+    input.targetHints.length === 0 ||
+    input.acceptanceCriteria.length === 0 ||
+    input.verificationHints.length === 0 ||
+    input.forbiddenPaths.length === 0
+  );
+}
+
+function resolveCodeTaskStatus(input: {
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly requiredFieldsMissing: boolean;
+}): ImplementationCodeTaskStatus {
+  if (!input.envOk || !input.designOk) return "blocked";
+  if (input.requiredFieldsMissing) return "draft";
+  return "ready";
+}
+
 function decomposeDeveloperTaskToCodeTasks(input: {
   readonly task: ImplementationTaskV1;
   readonly projectArtifacts: readonly ProjectArtifact[];
+  readonly envOk: boolean;
+  readonly designOk: boolean;
 }): readonly ImplementationCodeTaskV1[] {
   const { task } = input;
   const blueprints = blueprintsForTaskType(task.taskType);
@@ -258,12 +297,10 @@ function decomposeDeveloperTaskToCodeTasks(input: {
       blueprint.changeType === "component" || blueprint.changeType === "api"
         ? executionHints.candidateFiles.slice(0, 2)
         : undefined;
-    const dependencies =
-      index === 0
-        ? [...(task.dependencies ?? [])]
-        : [buildCodeTaskId(task.taskId, index)];
-
-    return {
+    const parentTaskDependencies = index === 0 ? [...(task.dependencies ?? [])] : [];
+    const codeTaskDependencies = index === 0 ? [] : [buildCodeTaskId(task.taskId, index)];
+    const dependencies = [...parentTaskDependencies, ...codeTaskDependencies];
+    const draft = {
       codeTaskId,
       parentTaskId: task.taskId,
       title: `${task.title} · ${blueprint.titleSuffix}`,
@@ -273,6 +310,8 @@ function decomposeDeveloperTaskToCodeTasks(input: {
       ...(candidateFiles?.length ? { candidateFiles } : {}),
       ...(candidateFileHints.length ? { candidateFileHints } : {}),
       dependencies,
+      parentTaskDependencies,
+      codeTaskDependencies,
       acceptanceCriteria: [
         ...acceptanceBase.slice(0, 2),
         blueprint.verificationHint,
@@ -284,8 +323,21 @@ function decomposeDeveloperTaskToCodeTasks(input: {
       ],
       forbiddenPaths,
       priority,
-      status: "draft",
       blockers: [],
+    };
+    const requiredFieldsMissing = codeTaskRequiredFieldsMissing(draft);
+    return {
+      ...draft,
+      status: resolveCodeTaskStatus({
+        envOk: input.envOk,
+        designOk: input.designOk,
+        requiredFieldsMissing,
+      }),
+      ...(requiredFieldsMissing && (!input.envOk || !input.designOk)
+        ? {}
+        : requiredFieldsMissing
+          ? { blockers: ["필수 CodeTask 필드 누락"] as const }
+          : {}),
     } satisfies ImplementationCodeTaskV1;
   });
 }
@@ -304,7 +356,12 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
   );
   const projectArtifacts = input.projectArtifacts ?? [];
   const codeTasks = developerTasks.flatMap((task) =>
-    decomposeDeveloperTaskToCodeTasks({ task, projectArtifacts }),
+    decomposeDeveloperTaskToCodeTasks({
+      task,
+      projectArtifacts,
+      envOk: input.envOk,
+      designOk: input.designOk,
+    }),
   );
 
   const missing: string[] = [];
@@ -312,6 +369,8 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
   if (!codeTasks.length) missing.push("CodeTask 없음");
   if (!input.envOk) missing.push("실행환경 미준비");
   if (!input.designOk) missing.push("디자인 산출물 미준비");
+  if (codeTasks.some((task) => task.status === "blocked")) missing.push("blocked CodeTask 존재");
+  if (codeTasks.some((task) => task.status === "draft")) missing.push("draft CodeTask 존재");
 
   return {
     version: IMPLEMENTATION_CODE_TASK_PLAN_VERSION,
@@ -323,7 +382,7 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
     codeTaskCount: codeTasks.length,
     tasks: codeTasks,
     readiness: {
-      ready: missing.length === 0 && codeTasks.length > 0,
+      ready: missing.length === 0 && codeTasks.length > 0 && codeTasks.every((task) => task.status === "ready"),
       missing,
     },
   };
@@ -365,6 +424,20 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
       dependencies: Array.isArray(row.dependencies)
         ? row.dependencies.map((v) => String(v ?? "").trim()).filter(Boolean)
         : [],
+      ...(Array.isArray(row.parentTaskDependencies)
+        ? {
+            parentTaskDependencies: row.parentTaskDependencies
+              .map((v) => String(v ?? "").trim())
+              .filter(Boolean),
+          }
+        : {}),
+      ...(Array.isArray(row.codeTaskDependencies)
+        ? {
+            codeTaskDependencies: row.codeTaskDependencies
+              .map((v) => String(v ?? "").trim())
+              .filter(Boolean),
+          }
+        : {}),
       acceptanceCriteria: Array.isArray(row.acceptanceCriteria)
         ? row.acceptanceCriteria.map((v) => String(v ?? "").trim()).filter(Boolean)
         : [],

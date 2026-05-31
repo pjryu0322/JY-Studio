@@ -260,12 +260,15 @@ import {
 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import {
-  buildCursorWorkItemsFromImplementationCodeTaskPlan,
-  buildCursorWorkItemsFromImplementationTaskList,
+  buildCursorWorkItemsFromImplementationTaskListFallback,
   mergeCursorWorkItemsByTask,
   validateTaskScopedWorkItems,
 } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildImplementationWorkItemsFallbackExecutionTimelineEntry } from "@/lib/prototype/implementationPlanningReadiness";
+import {
+  buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry,
+  evaluateImplementationPlanningExecutionGate,
+  IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+} from "@/lib/prototype/implementationPlanningReadiness";
 import { refineCursorWorkItemsForImplementation } from "@/lib/prototype/implementationWorkItemRefinement";
 import {
   buildWorkItemPreflightTimelineEntry,
@@ -1571,6 +1574,10 @@ export function PrototypePreviewPanel({
       codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
       canApplyGit,
+      implementationCodeTaskPlanV1: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+      cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+      implementationWorkItemPreflightSummaryV1:
+        orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
     });
   }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady, canApplyGit]);
 
@@ -3724,8 +3731,8 @@ export function PrototypePreviewPanel({
     showToast(
       result.userMessage ??
         (result.alreadyExisted
-          ? "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다."
-          : "구현 작업목록을 생성했습니다."),
+          ? "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다."
+          : "구현 준비 산출물을 생성했습니다."),
     );
     return { outcome: "executed" };
   }, [
@@ -4142,11 +4149,9 @@ export function PrototypePreviewPanel({
         case "REQUEST_TASK_CURSOR_EXECUTION": {
           const pid = projectId.trim();
           const board = implementationStageBoardGateContext?.board;
-          let workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
+          const workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
           const codeTaskPlan = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1;
           const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
-          let workItemsFallbackGenerated = false;
-          let fallbackTimelinePatch: RequirementsPromptTimelineEntry[] | undefined;
           if (!board) {
             const message = "구현 Execution Board가 준비되지 않았습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -4174,6 +4179,33 @@ export function PrototypePreviewPanel({
             executionSingleChat.appendAiNotice(message);
             showToast(message);
             return { outcome: "no_op", message };
+          }
+          const planningGate = evaluateImplementationPlanningExecutionGate({
+            codeTaskPlan,
+            cursorWorkItems: workItems,
+            preflightSummary: orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
+          });
+          if (!planningGate.ok) {
+            const nowIso = new Date().toISOString();
+            const blockedTimeline = appendPromptTimeline(
+              orchestrationAwareRequirementsState.promptTimeline ?? [],
+              buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
+                projectId: pid,
+                reason: planningGate.reason,
+                nowIso,
+              }),
+            );
+            void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+              promptTimeline: blockedTimeline,
+            });
+            const message =
+              planningGate.message ??
+              IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE;
+            executionSingleChat.appendAiNotice(
+              `${message} [구현 준비 산출물 동기화] 또는 기획단계 보완 후 다시 시도해 주세요.`,
+            );
+            showToast(message);
+            return { outcome: "blocked", message };
           }
           const preferredTaskId = taskCursorAutoChainPreferredTaskIdRef.current?.trim() || null;
           taskCursorAutoChainPreferredTaskIdRef.current = null;
@@ -4220,45 +4252,6 @@ export function PrototypePreviewPanel({
           const allowedPathGlobs = parseStringArrayJson(executionSetupRow?.allowedPathGlobs);
           let selectedWorkItems = [...scoped.selectedWorkItems];
 
-          if (!selectedWorkItems.length && codeTaskPlan?.tasks?.length && scoped.selectedTaskId) {
-            selectedWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
-              projectId: pid,
-              codeTaskPlan,
-              originStage: "implementation",
-              nowIso,
-            }).filter((item) => item.taskId === scoped.selectedTaskId);
-            if (selectedWorkItems.length) {
-              workItems = [
-                ...workItems.filter((item) => item.taskId !== scoped.selectedTaskId),
-                ...selectedWorkItems,
-              ];
-              workItemsFallbackGenerated = true;
-            }
-          }
-          if (!selectedWorkItems.length && taskList && scoped.selectedTaskId) {
-            selectedWorkItems = buildCursorWorkItemsFromImplementationTaskList({
-              projectId: pid,
-              taskList,
-              originStage: "implementation",
-              nowIso,
-            }).filter((item) => item.taskId === scoped.selectedTaskId);
-            if (selectedWorkItems.length) {
-              workItems = [
-                ...workItems.filter((item) => item.taskId !== scoped.selectedTaskId),
-                ...selectedWorkItems,
-              ];
-              workItemsFallbackGenerated = true;
-            }
-          }
-          if (workItemsFallbackGenerated) {
-            fallbackTimelinePatch = [
-              buildImplementationWorkItemsFallbackExecutionTimelineEntry({
-                projectId: pid,
-                taskId: scoped.selectedTaskId ?? undefined,
-                nowIso,
-              }),
-            ];
-          }
           if (!selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "선택 Task에 연결된 WorkItem이 없습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -4292,11 +4285,6 @@ export function PrototypePreviewPanel({
             allowedPathGlobs,
           });
           let preflightTimeline = orchestrationAwareRequirementsState.promptTimeline ?? [];
-          if (fallbackTimelinePatch?.length) {
-            for (const entry of fallbackTimelinePatch) {
-              preflightTimeline = appendPromptTimeline(preflightTimeline, entry);
-            }
-          }
           for (const entry of refinement.timelineEntries) {
             preflightTimeline = appendPromptTimeline(preflightTimeline, entry);
           }
@@ -4338,9 +4326,7 @@ export function PrototypePreviewPanel({
                   nowIso,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
-                  existingWorkItems: workItemsFallbackGenerated
-                    ? workItems
-                    : orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
                   updatedWorkItems: selectedWorkItems.map((item) => ({
                     ...item,
                     refinementStatus: "preflight_failed" as const,
@@ -4396,9 +4382,7 @@ export function PrototypePreviewPanel({
                   existingTimeline: preflightTimeline,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
-                  existingWorkItems: workItemsFallbackGenerated
-                    ? workItems
-                    : orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
                   updatedWorkItems: selectedWorkItems,
                   taskId: scoped.selectedTaskId,
                 }),
@@ -6127,6 +6111,27 @@ export function PrototypePreviewPanel({
   const startImplementationQuickRun = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
     if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
+    const planningGate = evaluateImplementationPlanningExecutionGate({
+      codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+      cursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+      preflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
+    });
+    if (!planningGate.ok) {
+      const nowIso = new Date().toISOString();
+      void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+        promptTimeline: appendPromptTimeline(
+          parsedRequirementsState.promptTimeline,
+          buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
+            projectId: pid,
+            reason: planningGate.reason,
+            nowIso,
+          }),
+        ),
+      });
+      const message = planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE;
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
     const board = implementationStageBoardGateContext?.board ?? null;
     const selectedTaskIds = board
       ? normalizeSelectedTaskIds({
@@ -6180,6 +6185,9 @@ export function PrototypePreviewPanel({
     persistChatToDb,
     requirementsStateJson,
     parsedRequirementsState.promptTimeline,
+    parsedRequirementsState.implementationCodeTaskPlanV1,
+    parsedRequirementsState.cursorWorkItemsV1,
+    parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
     showToast,
   ]);
 
@@ -6208,6 +6216,7 @@ export function PrototypePreviewPanel({
         const recovery = buildImplementationEntryCursorWorkItemsRecovery({
           projectId: pid,
           taskList: parsedRequirementsState.implementationTaskListV1,
+          codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
           existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
         });
         if (recovery.regenerated) {
@@ -6216,6 +6225,7 @@ export function PrototypePreviewPanel({
             cursorWorkItemsV1: [...recovery.cursorWorkItems],
             promptTimeline: [
               ...(parsedRequirementsState.promptTimeline ?? []),
+              ...(recovery.timelineEntry ? [recovery.timelineEntry] : []),
               buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry({
                 projectId: pid,
                 taskCount: entryState.taskCount,
@@ -6224,7 +6234,7 @@ export function PrototypePreviewPanel({
               }),
             ],
           });
-          showToast("구현 작업목록을 기준으로 AI 개발자 실행 항목을 복구했습니다.");
+          showToast("누락된 구현 준비 산출물을 복구했습니다.");
         }
       }
       const gate = evaluateImplementationCursorGate(implementationCursorGate);

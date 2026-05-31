@@ -20,6 +20,8 @@ import {
 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type { CursorWorkItemQualityGate } from "@/lib/prototype/implementationCursorPromptQuality";
 
@@ -55,6 +57,8 @@ export type CursorWorkItem = Readonly<{
   sourceRefinedAt?: string;
   parentTaskId?: string;
   codeTaskId?: string;
+  parentTaskDependencies?: readonly string[];
+  codeTaskDependencies?: readonly string[];
 }>;
 
 export function mergeCursorWorkItemsByTask(input: {
@@ -149,6 +153,10 @@ function taskListTaskToArtifactTypes(task: ImplementationTaskV1): readonly strin
   }
 }
 
+/**
+ * Fallback 전용: TaskList developer Task → WorkItem 직접 생성.
+ * 기본 경로는 ImplementationCodeTaskPlanV1 → buildCursorWorkItemsFromImplementationCodeTaskPlan() 를 사용한다.
+ */
 export function buildCursorWorkItemsFromImplementationTaskList(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
@@ -174,6 +182,41 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
       projectArtifacts: input.projectArtifacts ?? [],
     }),
   );
+}
+
+export function buildCursorWorkItemsFromImplementationTaskListFallback(input: {
+  readonly projectId: string;
+  readonly taskList: ImplementationTaskListV1;
+  readonly nowIso?: string;
+  readonly originStage?: CursorWorkItemOriginStage;
+  readonly projectArtifacts?: readonly import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[];
+  readonly taskId?: string;
+}): Readonly<{
+  readonly workItems: readonly CursorWorkItem[];
+  readonly timelineEntry: RequirementsPromptTimelineEntry;
+}> {
+  const now = input.nowIso ?? new Date().toISOString();
+  const workItems = buildCursorWorkItemsFromImplementationTaskList({
+    projectId: input.projectId,
+    taskList: input.taskList,
+    nowIso: now,
+    originStage: input.originStage ?? "implementation",
+    projectArtifacts: input.projectArtifacts,
+  }).filter((item) => !input.taskId || item.taskId === input.taskId);
+  return {
+    workItems,
+    timelineEntry: buildImplementationExecutionLogTimelineEntry({
+      action: "implementation_work_items_fallback_generated_from_task_list",
+      orchestrationTraceGroup: "implementation_planning_readiness",
+      fields: {
+        projectId: input.projectId,
+        mode: "fallback",
+        source: "implementation_task_list",
+        ...(input.taskId ? { taskId: input.taskId } : {}),
+      },
+      nowIso: now,
+    }),
+  };
 }
 
 function buildWorkItemDraftsForDeveloperTask(input: {
@@ -315,6 +358,18 @@ function buildCursorWorkItemFromCodeTask(input: {
   const verificationHints = codeTask.verificationHints.length
     ? [...codeTask.verificationHints]
     : ["pnpm test"];
+  const parentTaskDependencies = codeTask.parentTaskDependencies ?? [];
+  const codeTaskDependencies = codeTask.codeTaskDependencies ?? [];
+  const dependencyLines = [
+    "",
+    "의존성:",
+    ...(parentTaskDependencies.length
+      ? ["Parent Task Dependencies:", ...parentTaskDependencies.map((dep) => `- ${dep}`)]
+      : ["Parent Task Dependencies: (없음)"]),
+    ...(codeTaskDependencies.length
+      ? ["Code Task Dependencies:", ...codeTaskDependencies.map((dep) => `- ${dep}`)]
+      : ["Code Task Dependencies: (없음)"]),
+  ];
   const workBranch = buildTaskCursorWorkBranch(parentTaskId);
   const prompt = buildCursorPromptDraft({
     title: codeTask.title,
@@ -328,6 +383,7 @@ function buildCursorWorkItemFromCodeTask(input: {
       `변경 유형: ${codeTask.changeType}`,
       "",
       codeTask.description,
+      ...dependencyLines,
       "",
       "완료 기준:",
       ...acceptanceCriteria.map((item) => `- ${item}`),
@@ -386,6 +442,8 @@ function buildCursorWorkItemFromCodeTask(input: {
     noCodeChangeEvidenceRequired: true,
     originStage: input.originStage,
     refinementStatus: "draft",
+    ...(parentTaskDependencies.length ? { parentTaskDependencies } : {}),
+    ...(codeTaskDependencies.length ? { codeTaskDependencies } : {}),
   };
   return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
 }

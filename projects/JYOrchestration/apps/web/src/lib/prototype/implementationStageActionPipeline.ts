@@ -29,6 +29,13 @@ import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/require
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import { deriveImplementationTaskListReadiness } from "@/lib/prototype/implementationTaskListReadiness";
 import { isPlanningReadyForImplementationExecution } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  evaluateImplementationPlanningExecutionGate,
+  IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+  type ImplementationWorkItemPreflightSummaryV1,
+} from "@/lib/prototype/implementationPlanningReadiness";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
 
@@ -39,6 +46,9 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly canApplyGit?: boolean;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+  readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -53,6 +63,9 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly canApplyGit?: boolean;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+  readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
@@ -77,6 +90,13 @@ export function buildImplementationStageBoardGateContext(input: {
       previewReady,
     }),
     ...(input.canApplyGit !== undefined ? { canApplyGit: input.canApplyGit } : {}),
+    ...(input.implementationCodeTaskPlanV1 !== undefined
+      ? { implementationCodeTaskPlanV1: input.implementationCodeTaskPlanV1 }
+      : {}),
+    ...(input.cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1: input.cursorWorkItemsV1 } : {}),
+    ...(input.implementationWorkItemPreflightSummaryV1 !== undefined
+      ? { implementationWorkItemPreflightSummaryV1: input.implementationWorkItemPreflightSummaryV1 }
+      : {}),
   };
 }
 
@@ -540,6 +560,14 @@ export function evaluateImplementationStageActionGate(
       if (!isTaskListReadyForImplementationStageActions(state)) {
         return { ok: false, message: "구현 작업목록이 준비된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
       }
+      const planningGate = evaluateImplementationPlanningExecutionGate({
+        codeTaskPlan: boardContext?.implementationCodeTaskPlanV1,
+        cursorWorkItems: boardContext?.cursorWorkItemsV1,
+        preflightSummary: boardContext?.implementationWorkItemPreflightSummaryV1,
+      });
+      if (!planningGate.ok) {
+        return { ok: false, message: planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE };
+      }
       return { ok: true };
     }
     case "START_IMPLEMENTATION_QUICK_RUN": {
@@ -548,6 +576,14 @@ export function evaluateImplementationStageActionGate(
       }
       if (!isTaskListReadyForImplementationStageActions(state)) {
         return { ok: false, message: "구현 작업목록이 준비된 뒤 Quick 실행을 시작할 수 있습니다." };
+      }
+      const planningGate = evaluateImplementationPlanningExecutionGate({
+        codeTaskPlan: boardContext?.implementationCodeTaskPlanV1,
+        cursorWorkItems: boardContext?.cursorWorkItemsV1,
+        preflightSummary: boardContext?.implementationWorkItemPreflightSummaryV1,
+      });
+      if (!planningGate.ok) {
+        return { ok: false, message: planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE };
       }
       return { ok: true };
     }

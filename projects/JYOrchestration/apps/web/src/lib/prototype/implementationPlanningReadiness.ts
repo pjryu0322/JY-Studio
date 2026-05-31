@@ -218,3 +218,83 @@ export function buildImplementationWorkItemsFallbackExecutionTimelineEntry(input
     nowIso: input.nowIso ?? new Date().toISOString(),
   });
 }
+
+export function buildImplementationWorkItemsFallbackFromTaskListTimelineEntry(input: {
+  readonly projectId: string;
+  readonly taskId?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_work_items_fallback_generated_from_task_list",
+    projectId: input.projectId,
+    fields: {
+      ...(input.taskId ? { taskId: input.taskId } : {}),
+      mode: "fallback",
+      source: "implementation_task_list",
+    },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
+export function buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry(input: {
+  readonly projectId: string;
+  readonly reason: ImplementationPlanningExecutionGateReason;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_execution_blocked_by_planning_preflight",
+    projectId: input.projectId,
+    fields: {
+      reason: input.reason,
+      mode: "implementation",
+    },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
+export const IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE =
+  "구현 준비 산출물 보완이 필요합니다." as const;
+
+export type ImplementationPlanningExecutionGateReason =
+  | "missing_code_task_plan"
+  | "missing_work_items"
+  | "preflight_failed";
+
+export type ImplementationPlanningExecutionGateResult =
+  | Readonly<{ readonly ok: true }>
+  | Readonly<{
+      readonly ok: false;
+      readonly message: string;
+      readonly reason: ImplementationPlanningExecutionGateReason;
+    }>;
+
+export function evaluateImplementationPlanningExecutionGate(input: {
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly preflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly skipGate?: boolean;
+}): ImplementationPlanningExecutionGateResult {
+  if (input.skipGate) return { ok: true };
+  if (!input.codeTaskPlan?.tasks?.length) {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      reason: "missing_code_task_plan",
+    };
+  }
+  if (!input.cursorWorkItems?.length) {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      reason: "missing_work_items",
+    };
+  }
+  if (input.preflightSummary?.status === "failed") {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      reason: "preflight_failed",
+    };
+  }
+  return { ok: true };
+}

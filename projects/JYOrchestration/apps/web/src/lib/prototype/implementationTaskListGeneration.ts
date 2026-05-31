@@ -231,7 +231,7 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
       patch: {},
       messages,
       alreadyExisted: true,
-      userMessage: "구현 작업목록이 이미 있습니다. 작업 보드를 표시합니다.",
+      userMessage: "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다.",
     };
   }
 

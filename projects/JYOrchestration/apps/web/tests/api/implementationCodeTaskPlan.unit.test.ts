@@ -3,9 +3,15 @@ import {
   buildImplementationCodeTaskPlanFromTaskList,
   IMPLEMENTATION_CODE_TASK_PLAN_VERSION,
 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { buildCursorWorkItemsFromImplementationCodeTaskPlan } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildCursorWorkItemsFromImplementationCodeTaskPlan, buildCursorWorkItemsFromImplementationTaskListFallback } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildGenerateImplementationTaskListFromSeedResult } from "@/lib/prototype/implementationTaskListGeneration";
-import { buildImplementationPlanningReadinessPatch } from "@/lib/prototype/implementationPlanningReadiness";
+import {
+  buildImplementationPlanningReadinessPatch,
+  evaluateImplementationPlanningExecutionGate,
+  IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+} from "@/lib/prototype/implementationPlanningReadiness";
+import { evaluateImplementationStageActionGate, buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
+import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { runWorkItemPreflightBatch } from "@/lib/prototype/implementationWorkItemPreflight";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
@@ -126,7 +132,140 @@ describe("ImplementationCodeTaskPlanV1", () => {
     const screenTasks = plan.tasks.filter((task) => task.parentTaskId === "DEV-SCREEN-001");
     expect(screenTasks.length).toBeGreaterThan(0);
     expect(screenTasks[0]?.codeTaskId).toBe("CODE-DEV-SCREEN-001-001");
+    expect(screenTasks.every((task) => task.status === "ready")).toBe(true);
+    expect(plan.readiness.ready).toBe(true);
     expect(new Set(plan.tasks.map((task) => task.codeTaskId)).size).toBe(plan.tasks.length);
+  });
+
+  it("marks CodeTask blocked when env or design is not ready", () => {
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      envOk: false,
+      designOk: true,
+      nowIso: NOW,
+    });
+    expect(plan.tasks.every((task) => task.status === "blocked")).toBe(true);
+    expect(plan.readiness.ready).toBe(false);
+    expect(plan.readiness.missing).toContain("실행환경 미준비");
+    expect(plan.readiness.missing).toContain("blocked CodeTask 존재");
+  });
+
+  it("separates parent task and code task dependency namespaces", () => {
+    const taskList: ImplementationTaskListV1 = {
+      ...sampleTaskList(),
+      tasks: [
+        {
+          ...developerTask({ taskId: "DEV-SCREEN-001", taskType: "screen", title: "화면 A" }),
+          dependencies: ["DEV-MOCK-001"],
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const screenTasks = plan.tasks.filter((task) => task.parentTaskId === "DEV-SCREEN-001");
+    expect(screenTasks[0]?.parentTaskDependencies).toContain("DEV-MOCK-001");
+    expect(screenTasks[1]?.codeTaskDependencies).toContain("CODE-DEV-SCREEN-001-001");
+    expect(screenTasks[0]?.dependencies).toEqual(
+      expect.arrayContaining(["DEV-MOCK-001"]),
+    );
+    expect(screenTasks[1]?.dependencies).toEqual(
+      expect.arrayContaining(["CODE-DEV-SCREEN-001-001"]),
+    );
+  });
+
+  it("includes dependency context in CodeTask-based WorkItem prompt", () => {
+    const taskList: ImplementationTaskListV1 = {
+      ...sampleTaskList(),
+      tasks: [
+        {
+          ...developerTask({ taskId: "DEV-SCREEN-001", taskType: "screen", title: "화면 A" }),
+          dependencies: ["DEV-MOCK-001"],
+        },
+      ],
+      roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const [firstWorkItem] = buildCursorWorkItemsFromImplementationCodeTaskPlan({
+      projectId: PROJECT_ID,
+      codeTaskPlan: plan,
+      originStage: "planning",
+      nowIso: NOW,
+    });
+    expect(firstWorkItem?.prompt).toContain("CodeTask:");
+    expect(firstWorkItem?.prompt).toContain("Parent Task:");
+    expect(firstWorkItem?.prompt).toContain("Parent Task Dependencies:");
+    expect(firstWorkItem?.prompt).toContain("DEV-MOCK-001");
+  });
+
+  it("records timeline when TaskList direct WorkItem fallback is used", () => {
+    const fallback = buildCursorWorkItemsFromImplementationTaskListFallback({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+      originStage: "implementation",
+    });
+    expect(fallback.workItems.length).toBeGreaterThan(0);
+    expect(fallback.timelineEntry.action).toBe(
+      "implementation_work_items_fallback_generated_from_task_list",
+    );
+  });
+
+  it("blocks Quick Run and Task Cursor when planning preflight failed", () => {
+    const readiness = buildImplementationPlanningReadinessPatch({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const failedSummary = {
+      ...readiness.implementationWorkItemPreflightSummaryV1,
+      status: "failed" as const,
+    };
+    const gate = evaluateImplementationPlanningExecutionGate({
+      codeTaskPlan: readiness.implementationCodeTaskPlanV1,
+      cursorWorkItems: readiness.cursorWorkItemsV1,
+      preflightSummary: failedSummary,
+    });
+    expect(gate.ok).toBe(false);
+    if (gate.ok) return;
+    expect(gate.message).toBe(IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE);
+    expect(gate.reason).toBe("preflight_failed");
+
+    const effectiveState = resolveEffectiveImplementationState({
+      parsedRequirementsState: {
+        implementationSeedV1: confirmedSeed(),
+        implementationTaskListV1: sampleTaskList(),
+      },
+      envOk: true,
+      designOk: true,
+    });
+    const boardContext = buildImplementationStageBoardGateContext({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      implementationCodeTaskPlanV1: readiness.implementationCodeTaskPlanV1,
+      cursorWorkItemsV1: readiness.cursorWorkItemsV1,
+      implementationWorkItemPreflightSummaryV1: failedSummary,
+    });
+    expect(
+      evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", effectiveState, boardContext).ok,
+    ).toBe(false);
+    expect(
+      evaluateImplementationStageActionGate("REQUEST_TASK_CURSOR_EXECUTION", effectiveState, boardContext).ok,
+    ).toBe(false);
   });
 
   it("builds CursorWorkItems from CodeTaskPlan with planning draft metadata", () => {

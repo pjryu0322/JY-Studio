@@ -1,5 +1,9 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildCursorWorkItemsFromImplementationTaskList } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  buildCursorWorkItemsFromImplementationCodeTaskPlan,
+  buildCursorWorkItemsFromImplementationTaskListFallback,
+} from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import {
   detectQuickDesignDraftPresence,
@@ -197,21 +201,37 @@ export function buildImplementationEntryTimelineEntry(input: {
 export function buildImplementationEntryCursorWorkItemsRecovery(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly nowIso?: string;
 }): Readonly<{
   readonly cursorWorkItems: readonly CursorWorkItem[];
   readonly regenerated: boolean;
+  readonly timelineEntry?: RequirementsPromptTimelineEntry;
 }> {
   if ((input.existingCursorWorkItems?.length ?? 0) > 0) {
     return { cursorWorkItems: input.existingCursorWorkItems ?? [], regenerated: false };
   }
-  const cursorWorkItems = buildCursorWorkItemsFromImplementationTaskList({
+  if (input.codeTaskPlan?.tasks?.length) {
+    const cursorWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
+      projectId: input.projectId,
+      codeTaskPlan: input.codeTaskPlan,
+      nowIso: input.nowIso,
+      originStage: "implementation",
+    });
+    return { cursorWorkItems, regenerated: cursorWorkItems.length > 0 };
+  }
+  const fallback = buildCursorWorkItemsFromImplementationTaskListFallback({
     projectId: input.projectId,
     taskList: input.taskList,
     nowIso: input.nowIso,
+    originStage: "implementation",
   });
-  return { cursorWorkItems, regenerated: cursorWorkItems.length > 0 };
+  return {
+    cursorWorkItems: fallback.workItems,
+    regenerated: fallback.workItems.length > 0,
+    timelineEntry: fallback.timelineEntry,
+  };
 }
 
 export function buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry(input: {

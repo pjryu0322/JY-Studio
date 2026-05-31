@@ -327,7 +327,69 @@ describe("evaluateImplementationStageActionGate", () => {
   });
 
   describe("START_IMPLEMENTATION_QUICK_RUN", () => {
-    it("allows when task list is ready and envOk", () => {
+    function planningReadyBoardContext() {
+      const taskList = makeTaskListReady();
+      return buildImplementationStageBoardGateContext({
+        projectId: "p1",
+        taskList,
+        implementationCodeTaskPlanV1: {
+          version: "implementation_code_task_plan_v1",
+          projectId: "p1",
+          createdAt: NOW,
+          updatedAt: NOW,
+          source: "implementation_task_list",
+          parentTaskCount: 1,
+          codeTaskCount: 1,
+          tasks: [
+            {
+              codeTaskId: "CODE-DEV-001-001",
+              parentTaskId: "DEV-001",
+              title: "개발",
+              description: "dev",
+              changeType: "component",
+              targetHints: ["components"],
+              dependencies: [],
+              acceptanceCriteria: ["ok"],
+              verificationHints: ["check"],
+              forbiddenPaths: ["package.json"],
+              priority: "P1",
+              status: "ready",
+              blockers: [],
+            },
+          ],
+          readiness: { ready: true, missing: [] },
+        },
+        cursorWorkItemsV1: workItems,
+        implementationWorkItemPreflightSummaryV1: {
+          version: "implementation_work_item_preflight_summary_v1",
+          projectId: "p1",
+          checkedAt: NOW,
+          status: "passed",
+          workItemCount: 1,
+          failedWorkItemIds: [],
+          failedReasons: [],
+        },
+      });
+    }
+
+    const NOW = "2026-05-28T12:00:00.000Z";
+    const workItems: readonly CursorWorkItem[] = [
+      {
+        id: "wi-1",
+        taskId: "DEV-001",
+        title: "t",
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: ["pnpm test"],
+        forbiddenPaths: ["package.json"],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      },
+    ];
+
+    it("allows when task list and planning readiness are ready", () => {
       const state = baseState({
         envOk: true,
         parsedRequirementsState: {
@@ -335,7 +397,41 @@ describe("evaluateImplementationStageActionGate", () => {
           implementationTaskListV1: makeTaskListReady(),
         },
       });
-      expect(evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state).ok).toBe(true);
+      expect(
+        evaluateImplementationStageActionGate(
+          "START_IMPLEMENTATION_QUICK_RUN",
+          state,
+          planningReadyBoardContext(),
+        ).ok,
+      ).toBe(true);
+    });
+
+    it("blocks when planning preflight summary failed", () => {
+      const state = baseState({
+        envOk: true,
+        parsedRequirementsState: {
+          implementationSeedV1: makeSeed("confirmed", true),
+          implementationTaskListV1: makeTaskListReady(),
+        },
+      });
+      const board = planningReadyBoardContext();
+      const failedBoard = board
+        ? {
+            ...board,
+            implementationWorkItemPreflightSummaryV1: {
+              version: "implementation_work_item_preflight_summary_v1" as const,
+              projectId: "p1",
+              checkedAt: NOW,
+              status: "failed" as const,
+              workItemCount: 1,
+              failedWorkItemIds: ["wi-1"],
+              failedReasons: ["missing candidate files"],
+            },
+          }
+        : null;
+      expect(
+        evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state, failedBoard).ok,
+      ).toBe(false);
     });
 
     it("blocks when env is not ready", () => {
