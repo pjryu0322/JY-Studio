@@ -6,6 +6,7 @@ import {
   planImmediateTaskCursorAutoChainAfterFailure,
   resolveTaskCursorAutoChainDecision,
 } from "@/lib/prototype/implementationTaskCursorAutoChain";
+import { canContinueTaskCursorAutoChainAfterFailure } from "@/lib/prototype/taskCursorFailurePolicy";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 const NOW = "2026-05-30T12:00:00.000Z";
@@ -374,6 +375,85 @@ describe("implementationTaskCursorAutoChain", () => {
       },
       preferredTaskId: "DEV-SCREEN-003",
     });
+  });
+
+  it("continues after work_item_preflight_failed when independent task exists", () => {
+    const list: ImplementationTaskListV1 = {
+      version: "implementation_task_list_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "implementation_seed",
+      tasks: [
+        {
+          taskId: "DEV-SCREEN-001",
+          title: "Screen 1",
+          description: "d",
+          taskType: "screen",
+          ownerRole: "developer",
+          priority: "high",
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+        {
+          taskId: "DEV-SCREEN-002",
+          title: "Screen 2",
+          description: "d",
+          taskType: "screen",
+          ownerRole: "developer",
+          priority: "medium",
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+        {
+          taskId: "DEV-SCREEN-003",
+          title: "Screen 3",
+          description: "d",
+          taskType: "screen",
+          ownerRole: "developer",
+          priority: "low",
+          dependencies: ["DEV-SCREEN-001"],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+      ],
+      roleSummary: { developer: 3, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: list },
+    })!;
+    const execution = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: "DEV-SCREEN-001",
+      workItemIds: ["wi-1"],
+      status: "cursor_failed" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-001",
+      failureReason: "work_item_preflight_failed" as const,
+      errorMessage: "WorkItem preflight failed",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const decision = resolveTaskCursorAutoChainDecision({
+      board,
+      taskCursorExecution: execution,
+      autoGate: null,
+    });
+    expect(decision).toEqual({
+      kind: "continue_after_failure",
+      failedTaskId: "DEV-SCREEN-001",
+      toTaskId: "DEV-SCREEN-002",
+      blockedTaskIds: ["DEV-SCREEN-003"],
+    });
+    expect(
+      canContinueTaskCursorAutoChainAfterFailure(execution),
+    ).toBe(true);
   });
 
   it("stops auto chain on github_auth_failed", () => {

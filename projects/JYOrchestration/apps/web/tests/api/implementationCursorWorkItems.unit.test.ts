@@ -5,6 +5,7 @@ import {
 } from "@/lib/prototype/implementationExecutionBoardState";
 import {
   enrichCursorWorkItemsWithBoardReworkContext,
+  mergeCursorWorkItemsByTask,
   validateTaskScopedWorkItems,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
@@ -25,6 +26,103 @@ const baseWorkItem: CursorWorkItem = {
   blockers: [],
   qualityGate: { score: 1, promptReady: true, missing: [] },
 };
+
+describe("mergeCursorWorkItemsByTask", () => {
+  const workItem = (
+    id: string,
+    taskId: string,
+    refinementStatus: CursorWorkItem["refinementStatus"] = "draft",
+  ): CursorWorkItem => ({
+    ...baseWorkItem,
+    id,
+    taskId,
+    refinementStatus,
+  });
+
+  it("preserves other task work items when updating one task", () => {
+    const existing = [
+      workItem("A-1", "TASK-A", "draft"),
+      workItem("B-1", "TASK-B", "draft"),
+      workItem("C-1", "TASK-C", "draft"),
+    ];
+    const updated = [workItem("B-1", "TASK-B", "preflight_passed")];
+
+    const merged = mergeCursorWorkItemsByTask({
+      existingWorkItems: existing,
+      updatedWorkItems: updated,
+      taskId: "TASK-B",
+    });
+
+    expect(merged.map((item) => item.id).sort()).toEqual(["A-1", "B-1", "C-1"]);
+    expect(merged.find((item) => item.id === "A-1")?.refinementStatus).toBe("draft");
+    expect(merged.find((item) => item.id === "B-1")?.refinementStatus).toBe("preflight_passed");
+    expect(merged.find((item) => item.id === "C-1")?.refinementStatus).toBe("draft");
+  });
+
+  it("keeps full array on preflight failure with only failed task updated", () => {
+    const existing = [
+      workItem("A-1", "TASK-A", "draft"),
+      workItem("B-1", "TASK-B", "draft"),
+      workItem("C-1", "TASK-C", "draft"),
+    ];
+    const updated = [workItem("B-1", "TASK-B", "preflight_failed")];
+
+    const merged = mergeCursorWorkItemsByTask({
+      existingWorkItems: existing,
+      updatedWorkItems: updated,
+      taskId: "TASK-B",
+    });
+
+    expect(merged).toHaveLength(3);
+    expect(merged.find((item) => item.id === "B-1")?.refinementStatus).toBe("preflight_failed");
+    expect(merged.find((item) => item.id === "A-1")?.refinementStatus).toBe("draft");
+    expect(merged.find((item) => item.id === "C-1")?.refinementStatus).toBe("draft");
+  });
+
+  it("keeps full array on preflight pass with only passed task updated", () => {
+    const existing = [
+      workItem("A-1", "TASK-A", "draft"),
+      workItem("B-1", "TASK-B", "draft"),
+      workItem("C-1", "TASK-C", "source_refined"),
+    ];
+    const updated = [workItem("B-1", "TASK-B", "preflight_passed")];
+
+    const merged = mergeCursorWorkItemsByTask({
+      existingWorkItems: existing,
+      updatedWorkItems: updated,
+      taskId: "TASK-B",
+    });
+
+    expect(merged).toHaveLength(3);
+    expect(merged.find((item) => item.id === "B-1")?.refinementStatus).toBe("preflight_passed");
+    expect(merged.find((item) => item.id === "A-1")?.refinementStatus).toBe("draft");
+    expect(merged.find((item) => item.id === "C-1")?.refinementStatus).toBe("source_refined");
+  });
+
+  it("returns existing items unchanged when taskId is empty", () => {
+    const existing = [workItem("A-1", "TASK-A")];
+    const merged = mergeCursorWorkItemsByTask({
+      existingWorkItems: existing,
+      updatedWorkItems: [workItem("B-1", "TASK-B", "preflight_passed")],
+      taskId: "",
+    });
+    expect(merged).toEqual(existing);
+  });
+
+  it("appends new work item ids for the same task", () => {
+    const existing = [workItem("B-1", "TASK-B", "draft")];
+    const updated = [
+      workItem("B-1", "TASK-B", "preflight_passed"),
+      workItem("B-2", "TASK-B", "preflight_passed"),
+    ];
+    const merged = mergeCursorWorkItemsByTask({
+      existingWorkItems: existing,
+      updatedWorkItems: updated,
+      taskId: "TASK-B",
+    });
+    expect(merged.map((item) => item.id).sort()).toEqual(["B-1", "B-2"]);
+  });
+});
 
 describe("validateTaskScopedWorkItems", () => {
   it("passes when all workItems match selectedTaskId", () => {

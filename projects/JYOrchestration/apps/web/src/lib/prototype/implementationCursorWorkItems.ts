@@ -54,6 +54,27 @@ export type CursorWorkItem = Readonly<{
   sourceRefinedAt?: string;
 }>;
 
+export function mergeCursorWorkItemsByTask(input: {
+  readonly existingWorkItems: readonly CursorWorkItem[];
+  readonly updatedWorkItems: readonly CursorWorkItem[];
+  readonly taskId: string;
+}): readonly CursorWorkItem[] {
+  const taskId = input.taskId.trim();
+  if (!taskId) return [...input.existingWorkItems];
+
+  const updatedById = new Map(input.updatedWorkItems.map((item) => [item.id, item]));
+  const preserved = input.existingWorkItems.filter((item) => item.taskId !== taskId);
+  const existingSameTask = input.existingWorkItems.filter((item) => item.taskId === taskId);
+
+  const mergedSameTask = existingSameTask.map((item) => updatedById.get(item.id) ?? item);
+  const existingSameTaskIds = new Set(existingSameTask.map((item) => item.id));
+  const appendedNew = input.updatedWorkItems.filter((item) => !existingSameTaskIds.has(item.id));
+
+  const result = [...preserved, ...mergedSameTask, ...appendedNew];
+  const deduped = new Map(result.map((item) => [item.id, item]));
+  return [...deduped.values()];
+}
+
 export function validateTaskScopedWorkItems(input: {
   readonly selectedTaskId: string;
   readonly selectedWorkItems: readonly CursorWorkItem[];

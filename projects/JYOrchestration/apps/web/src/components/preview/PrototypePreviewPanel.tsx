@@ -261,6 +261,7 @@ import {
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import {
   buildCursorWorkItemsFromImplementationTaskList,
+  mergeCursorWorkItemsByTask,
   validateTaskScopedWorkItems,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import { refineCursorWorkItemsForImplementation } from "@/lib/prototype/implementationWorkItemRefinement";
@@ -4233,10 +4234,14 @@ export function PrototypePreviewPanel({
                   existingTimeline: preflightTimeline,
                   nowIso,
                 }),
-                cursorWorkItemsV1: selectedWorkItems.map((item) => ({
-                  ...item,
-                  refinementStatus: "preflight_failed" as const,
-                })),
+                cursorWorkItemsV1: mergeCursorWorkItemsByTask({
+                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  updatedWorkItems: selectedWorkItems.map((item) => ({
+                    ...item,
+                    refinementStatus: "preflight_failed" as const,
+                  })),
+                  taskId: scoped.selectedTaskId,
+                }),
               },
             });
             executionSingleChat.appendAiNotice(message);
@@ -4285,7 +4290,11 @@ export function PrototypePreviewPanel({
                   ],
                   existingTimeline: preflightTimeline,
                 }),
-                cursorWorkItemsV1: selectedWorkItems,
+                cursorWorkItemsV1: mergeCursorWorkItemsByTask({
+                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  updatedWorkItems: selectedWorkItems,
+                  taskId: scoped.selectedTaskId,
+                }),
               },
             },
             { persist: false },

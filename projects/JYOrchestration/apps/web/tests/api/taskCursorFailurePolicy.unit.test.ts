@@ -48,6 +48,32 @@ describe("taskCursorFailurePolicy", () => {
     expect(policy.scope).toBe("global_blocker");
   });
 
+  it("classifies work_item_preflight_failed as task_rework with continue", () => {
+    const policy = resolveTaskCursorFailurePolicy({
+      failureReason: "work_item_preflight_failed",
+    });
+    expect(policy.scope).toBe("task_rework");
+    expect(policy.canContinueIndependentTasks).toBe(true);
+    expect(policy.shouldStopAll).toBe(false);
+  });
+
+  it("classifies prompt_preflight_failed as task_rework with continue", () => {
+    const policy = resolveTaskCursorFailurePolicy({
+      failureReason: "prompt_preflight_failed",
+    });
+    expect(policy.scope).toBe("task_rework");
+    expect(policy.canContinueIndependentTasks).toBe(true);
+    expect(policy.shouldStopAll).toBe(false);
+  });
+
+  it("canContinueTaskCursorAutoChainAfterFailure for work_item_preflight_failed", () => {
+    expect(
+      canContinueTaskCursorAutoChainAfterFailure(
+        execution({ status: "cursor_failed", failureReason: "work_item_preflight_failed" }),
+      ),
+    ).toBe(true);
+  });
+
   it("canContinueTaskCursorAutoChainAfterFailure for verify failure", () => {
     expect(
       canContinueTaskCursorAutoChainAfterFailure(
