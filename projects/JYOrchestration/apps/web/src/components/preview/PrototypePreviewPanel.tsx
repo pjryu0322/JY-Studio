@@ -279,6 +279,7 @@ import {
   buildTaskCursorExecutionRequest,
   buildTaskCursorFailedOrchestrationPatch,
   buildTaskCursorOrchestrationPatch,
+  buildTaskCursorPollCancelledOrchestrationPatch,
   buildTaskCursorRequestedTimeline,
   shouldSyncExecutionStateAfterTaskCursorGithubVerify,
   syncTaskExecutionStateAfterGithubVerified,
@@ -314,8 +315,10 @@ import {
   canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
   isInFlightTaskCursorExecution,
+  isTaskCursorCloudAgentPollingCancellable,
   resolveTaskCursorPollWorkItems,
   runTaskCursorClientPollLoop,
+  TASK_CURSOR_POLL_CANCELLED_MESSAGE,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -2151,6 +2154,31 @@ export function PrototypePreviewPanel({
     },
     [projectId, applyImplementationOrchestrationResult, executionSingleChat, showToast],
   );
+
+  const cancelTaskCursorClientPoll = useCallback(() => {
+    const state = requirementsStateJsonRef.current;
+    const execution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    if (!execution || !isTaskCursorCloudAgentPollingCancellable(execution)) return;
+
+    taskCursorPollTokenRef.current += 1;
+    taskCursorPollActiveRunIdRef.current = null;
+    taskCursorAutoChainRef.current = null;
+
+    const notice = TASK_CURSOR_POLL_CANCELLED_MESSAGE;
+    applyImplementationOrchestrationResult({
+      messages: executionSingleChat.chatMessages,
+      orchestrationPatch: buildTaskCursorPollCancelledOrchestrationPatch({
+        execution,
+        history: state.taskCursorExecutionHistoryV1,
+        existingTimeline: state.promptTimeline,
+        executionState: parseImplementationTaskExecutionStateV1(
+          state.implementationTaskExecutionStateV1,
+        ),
+      }),
+    });
+    executionSingleChat.appendAiNotice(`${execution.taskId} · ${notice}`);
+    showToast(`${execution.taskId} · Cloud Agent 폴링 중단`);
+  }, [applyImplementationOrchestrationResult, executionSingleChat, showToast]);
 
   useEffect(() => {
     const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
@@ -6018,6 +6046,7 @@ export function PrototypePreviewPanel({
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             onAction={handleImplementationBoardAction}
+            onCancelTaskCursorPolling={cancelTaskCursorClientPoll}
           />
         ) : null}
         <div className="jyo-prototype-execution-chat-region">

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ImplementationCodeAgentExecutionProgressCard } from "@/components/preview/ImplementationCodeAgentExecutionProgressCard";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
+import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
@@ -61,5 +63,32 @@ describe("ImplementationExecutionBoardPanel", () => {
     expect(html).toContain("작업 트리");
     expect(html).not.toContain("implementation-env-details");
     expect(html).not.toContain("상세 로그 보기");
+  });
+
+  it("shows Cloud Agent poll cancel button while polling", () => {
+    const progress = buildCodeAgentExecutionProgressView({
+      taskCursorExecutionV1: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["w1"],
+        status: "cursor_running",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-mock-001",
+        cursorRunId: "bc-aa13fda9-21e2-4d4b-af82-6006c4fbc40e",
+        createdAt: "2026-05-30T12:00:00.000Z",
+        updatedAt: "2026-05-30T12:00:00.000Z",
+      },
+    });
+    const html = renderToStaticMarkup(
+      createElement(ImplementationCodeAgentExecutionProgressCard, {
+        progress,
+        onCancelPolling: () => {},
+      }),
+    );
+    expect(html).toContain("task-cursor-cancel-polling-button");
+    expect(html).toContain("Cloud Agent 폴링 중단");
   });
 });

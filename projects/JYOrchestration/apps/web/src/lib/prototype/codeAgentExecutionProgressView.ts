@@ -17,6 +17,7 @@ import {
   resolveTaskCursorFailurePolicyFromExecution,
 } from "@/lib/prototype/taskCursorFailurePolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { isTaskCursorCloudAgentPollingCancellable } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
@@ -78,6 +79,7 @@ export type CodeAgentExecutionProgressView = Readonly<{
   /** 모바일 메인 화면 단순화 — 기술 상세는 상세 보기로 이동 */
   readonly compactMainPresentation?: boolean;
   readonly progressCardTitle?: string;
+  readonly canCancelCloudAgentPolling?: boolean;
 }>;
 
 export const RELEVANT_TIMELINE_ACTIONS = new Set([
@@ -840,6 +842,7 @@ function buildTaskCursorExecutionProgressView(input: {
     recentEvents,
     compactMainPresentation,
     progressCardTitle,
+    canCancelCloudAgentPolling: isTaskCursorCloudAgentPollingCancellable(execution),
   };
 }
 

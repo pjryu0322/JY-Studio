@@ -264,6 +264,26 @@
   line-height: 1.45;
 }
 
+.progressCancelRow {
+  margin-top: 10px;
+}
+
+.progressCancelButton {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.progressCancelButton:hover {
+  background: #fef2f2;
+}
+
 .compactProgressSteps {
   margin-top: 10px;
   display: grid;

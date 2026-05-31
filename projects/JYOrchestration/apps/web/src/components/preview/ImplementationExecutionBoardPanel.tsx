@@ -56,6 +56,7 @@ export function ImplementationExecutionBoardPanel({
   boardInput,
   promptTimeline,
   onAction,
+  onCancelTaskCursorPolling,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -72,6 +73,7 @@ export function ImplementationExecutionBoardPanel({
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly onAction: (input: ImplementationStageActionClickInput) => void;
+  readonly onCancelTaskCursorPolling?: () => void;
 }) {
   const summaryView = useMemo(
     () =>
@@ -197,7 +199,10 @@ export function ImplementationExecutionBoardPanel({
         </div>
       </div>
 
-      <ImplementationCodeAgentExecutionProgressCard progress={codeAgentProgress} />
+      <ImplementationCodeAgentExecutionProgressCard
+        progress={codeAgentProgress}
+        onCancelPolling={onCancelTaskCursorPolling}
+      />
 
       <div className={styles.ctaRow}>
         {actionPartition.primary && !hidePrimaryCta ? (

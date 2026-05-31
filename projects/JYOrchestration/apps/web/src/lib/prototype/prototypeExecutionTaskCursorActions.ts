@@ -4,6 +4,7 @@ import {
   markPostDeveloperReviewTasksQueued,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
+import { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
 import {
@@ -297,6 +298,50 @@ export function buildTaskCursorApiFailedTimeline(input: {
     reason: input.execution.failureReason,
     runId: input.execution.cursorRunId,
     nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorPollCancelledOrchestrationPatch(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly history?: readonly TaskCursorExecutionV1[] | null;
+  readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly nowIso?: string;
+}) {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const failed = patchTaskCursorExecution(input.execution, {
+    status: "cursor_failed",
+    failureReason: "unknown",
+    errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
+    nowIso,
+  });
+  const executionState = input.executionState
+    ? markDeveloperTaskFailedForTaskId({
+        state: input.executionState,
+        taskId: input.execution.taskId,
+        nowIso,
+        errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
+      })
+    : undefined;
+  return buildTaskCursorOrchestrationPatch({
+    execution: failed,
+    history: input.history,
+    timelineEntries: [
+      buildTaskCursorTimelineEntry({
+        action: "task_cursor_api_failed",
+        projectId: failed.projectId,
+        taskId: failed.taskId,
+        status: "cursor_failed",
+        targetRepository: failed.targetRepository,
+        baseBranch: failed.baseBranch,
+        workBranch: failed.workBranch,
+        reason: "poll_cancelled",
+        runId: failed.cursorRunId,
+        nowIso,
+      }),
+    ],
+    existingTimeline: input.existingTimeline,
+    executionState,
   });
 }
 

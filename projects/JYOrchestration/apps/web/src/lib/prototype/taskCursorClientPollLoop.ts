@@ -33,6 +33,9 @@ export function isInFlightTaskCursorExecution(
   return IN_FLIGHT_TASK_CURSOR_STATUSES.has(execution.status);
 }
 
+export const TASK_CURSOR_POLL_CANCELLED_MESSAGE =
+  "사용자가 Cloud Agent 폴링을 중단했습니다." as const;
+
 /** Cloud Agent 폴링은 launch 응답의 `bc-<uuid>` runId가 있을 때만 시작한다. */
 export function canPollTaskCursorCloudAgent(
   execution: TaskCursorExecutionV1 | null | undefined,
@@ -42,6 +45,15 @@ export function canPollTaskCursorCloudAgent(
     return false;
   }
   return isCursorCloudAgentRunId(execution.cursorRunId);
+}
+
+/** UI에서 Cloud Agent 폴링 중단 버튼 표시 여부 */
+export function isTaskCursorCloudAgentPollingCancellable(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): execution is TaskCursorExecutionV1 {
+  if (!execution) return false;
+  if (execution.status === "cursor_requested") return true;
+  return canPollTaskCursorCloudAgent(execution);
 }
 
 export function resolveTaskCursorPollWorkItems(

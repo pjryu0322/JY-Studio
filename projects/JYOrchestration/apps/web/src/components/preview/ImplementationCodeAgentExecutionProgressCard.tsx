@@ -110,8 +110,10 @@ function CompactProgressSteps({
 
 export function ImplementationCodeAgentExecutionProgressCard({
   progress,
+  onCancelPolling,
 }: {
   readonly progress: CodeAgentExecutionProgressView;
+  readonly onCancelPolling?: () => void;
 }) {
   const compact = progress.compactMainPresentation === true;
   const title = progress.progressCardTitle ?? "현재 실행 상태";
@@ -144,6 +146,19 @@ export function ImplementationCodeAgentExecutionProgressCard({
       {progress.nextProcessingHint ? (
         <div className={styles.progressNextHint} data-testid="implementation-next-processing-hint">
           {progress.nextProcessingHint}
+        </div>
+      ) : null}
+
+      {progress.canCancelCloudAgentPolling && onCancelPolling ? (
+        <div className={styles.progressCancelRow}>
+          <button
+            type="button"
+            className={styles.progressCancelButton}
+            data-testid="task-cursor-cancel-polling-button"
+            onClick={onCancelPolling}
+          >
+            Cloud Agent 폴링 중단
+          </button>
         </div>
       ) : null}
 

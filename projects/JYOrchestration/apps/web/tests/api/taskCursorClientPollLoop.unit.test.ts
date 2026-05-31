@@ -3,6 +3,7 @@ import {
   canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
   isInFlightTaskCursorExecution,
+  isTaskCursorCloudAgentPollingCancellable,
   resolveTaskCursorPollWorkItems,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -54,6 +55,12 @@ describe("taskCursorClientPollLoop helpers", () => {
     expect(
       resolveTaskCursorPollWorkItems(baseExecution({ workItemIds: [] }), items).map((w) => w.id),
     ).toEqual(["w1"]);
+  });
+
+  it("isTaskCursorCloudAgentPollingCancellable includes requested and active poll", () => {
+    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution({ status: "cursor_requested" }))).toBe(true);
+    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution())).toBe(true);
+    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution({ status: "cursor_completed" }))).toBe(false);
   });
 
   it("formatTaskCursorElapsedMinutes returns floored minutes", () => {
