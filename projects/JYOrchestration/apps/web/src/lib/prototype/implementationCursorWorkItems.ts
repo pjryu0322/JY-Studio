@@ -22,6 +22,13 @@ import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requi
 
 export type { CursorWorkItemQualityGate } from "@/lib/prototype/implementationCursorPromptQuality";
 
+export type CursorWorkItemOriginStage = "planning" | "implementation";
+export type CursorWorkItemRefinementStatus =
+  | "draft"
+  | "source_refined"
+  | "preflight_passed"
+  | "preflight_failed";
+
 export type CursorWorkItem = Readonly<{
   id: string;
   taskId: string;
@@ -34,6 +41,17 @@ export type CursorWorkItem = Readonly<{
   blocked: boolean;
   blockers: readonly string[];
   qualityGate: CursorWorkItemQualityGate;
+  objective?: string;
+  expectedChange?: string;
+  candidateFiles?: readonly string[];
+  candidateFileHints?: readonly string[];
+  acceptanceCriteria?: readonly string[];
+  verificationHints?: readonly string[];
+  allowedPathHints?: readonly string[];
+  noCodeChangeEvidenceRequired?: boolean;
+  originStage?: CursorWorkItemOriginStage;
+  refinementStatus?: CursorWorkItemRefinementStatus;
+  sourceRefinedAt?: string;
 }>;
 
 export function validateTaskScopedWorkItems(input: {
@@ -111,6 +129,8 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
   readonly nowIso?: string;
+  readonly originStage?: CursorWorkItemOriginStage;
+  readonly projectArtifacts?: readonly import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[];
 }): readonly CursorWorkItem[] {
   const tasks = (input.taskList.tasks ?? [])
     .filter((t) => t.ownerRole === "developer" && t.status === "ready")
@@ -118,45 +138,97 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
     .sort((a, b) => compareImplementationTaskListPriority(a.priority, b.priority));
 
   const now = input.nowIso ?? new Date().toISOString();
+  const originStage = input.originStage ?? "planning";
 
-  return tasks.map((task, index) => {
-    const sourceArtifactTypes = taskListTaskToArtifactTypes(task);
-    const executionHints = buildImplementationTaskExecutionHints({
-      taskTitle: task.title,
-      sourceArtifactTypes,
-      projectArtifacts: [],
-    });
-    const title = `[${task.taskId}] ${task.title}`;
+  return tasks.flatMap((task, index) =>
+    buildWorkItemDraftsForDeveloperTask({
+      projectId: input.projectId,
+      task,
+      taskIndex: index,
+      nowIso: now,
+      originStage,
+      projectArtifacts: input.projectArtifacts ?? [],
+    }),
+  );
+}
+
+function buildWorkItemDraftsForDeveloperTask(input: {
+  readonly projectId: string;
+  readonly task: ImplementationTaskV1;
+  readonly taskIndex: number;
+  readonly nowIso: string;
+  readonly originStage: CursorWorkItemOriginStage;
+  readonly projectArtifacts: readonly import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[];
+}): readonly CursorWorkItem[] {
+  const { task } = input;
+  const sourceArtifactTypes = taskListTaskToArtifactTypes(task);
+  const executionHints = buildImplementationTaskExecutionHints({
+    taskTitle: task.title,
+    sourceArtifactTypes,
+    projectArtifacts: input.projectArtifacts,
+  });
+  const acceptanceCriteria = task.acceptanceCriteria?.length
+    ? [...task.acceptanceCriteria]
+    : [`${task.title} 기능이 기획 범위 안에서 동작한다.`];
+  const splitTargets = [
+    ...executionHints.candidateComponents.slice(0, 3),
+    ...(executionHints.candidateComponents.length
+      ? []
+      : executionHints.candidateFiles.filter((file) => !file.includes("**")).slice(0, 2)),
+  ];
+  const targets = splitTargets.length ? splitTargets : [`scope:${task.taskId}`];
+
+  return targets.map((target, workItemIndex) => {
+    const focusedTitle =
+      targets.length > 1
+        ? `[${task.taskId}] ${task.title} · ${target.split("/").pop() ?? target}`
+        : `[${task.taskId}] ${task.title}`;
+    const objective = `${task.title} — ${target} 관련 구현`;
+    const expectedChange = String(task.description ?? "").trim() || `${task.title} 요구사항 반영`;
+    const candidateFiles = target.startsWith("scope:") ? [] : [target];
+    const candidateFileHints = [
+      ...executionHints.candidateDirectories.slice(0, 3).map((dir) => `dir:${dir}`),
+      ...(candidateFiles.length ? [] : executionHints.candidateFiles.slice(0, 4)),
+    ];
+    const verificationHints = [
+      ...executionHints.manualVerification.slice(0, 2),
+      ...executionHints.testCommands.slice(0, 2),
+    ];
     const workBranch = buildTaskCursorWorkBranch(task.taskId);
     const prompt = buildCursorPromptDraft({
-      title,
+      title: focusedTitle,
       taskId: task.taskId,
       workBranch,
       description: [
-          "기획단계에서 생성된 Implementation Task List 기준 작업입니다.",
-          "",
-          `작업 ID: ${task.taskId}`,
-          "역할: AI 개발자",
-          `우선순위: ${task.priority}`,
-          "",
-          `설명: ${String(task.description ?? "").trim() || task.title}`,
-          "",
-          "완료 기준:",
-          ...(task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((a) => `- ${a}`) : ["- (기준 없음)"]),
-        ].join("\n"),
-        artifactLabels: sourceArtifactTypes,
-        acceptanceCriteria: task.acceptanceCriteria?.length ? [...task.acceptanceCriteria] : [],
-        securityChecks: [],
-        reviewChecks: [],
-        executionHints,
+        "기획단계에서 생성된 Implementation Task List 기준 작업입니다.",
+        "",
+        `작업 ID: ${task.taskId}`,
+        `목표: ${objective}`,
+        `변경 내용: ${expectedChange}`,
+        "",
+        `설명: ${String(task.description ?? "").trim() || task.title}`,
+        "",
+        "완료 기준:",
+        ...acceptanceCriteria.map((a) => `- ${a}`),
+      ].join("\n"),
+      artifactLabels: sourceArtifactTypes,
+      acceptanceCriteria,
+      securityChecks: [],
+      reviewChecks: [],
+      executionHints,
     });
 
     const draft: CursorWorkItem = {
-      id: `cursor-wi-tasklist-${index + 1}-${task.taskId}`,
+      id: `cursor-wi-tasklist-${input.taskIndex + 1}-${workItemIndex + 1}-${task.taskId}`,
       taskId: task.taskId,
-      title,
+      title: focusedTitle,
       prompt,
-      requiredFilesHint: [`taskList:${input.taskList.version}`, `task:${task.taskId}`],
+      requiredFilesHint: [
+        `taskList:${input.projectId}`,
+        `task:${task.taskId}`,
+        ...candidateFiles,
+        ...candidateFileHints.slice(0, 4),
+      ],
       expectedOutput: [
         "변경된 소스 파일 목록",
         "실행한 테스트 명령과 결과 요약",
@@ -168,6 +240,16 @@ export function buildCursorWorkItemsFromImplementationTaskList(input: {
       blocked: false,
       blockers: [],
       qualityGate: { promptReady: false, missing: [], score: 0 },
+      objective,
+      expectedChange,
+      ...(candidateFiles.length ? { candidateFiles } : {}),
+      ...(candidateFileHints.length ? { candidateFileHints } : {}),
+      acceptanceCriteria,
+      verificationHints,
+      allowedPathHints: executionHints.candidateDirectories.slice(0, 4),
+      noCodeChangeEvidenceRequired: true,
+      originStage: input.originStage,
+      refinementStatus: "draft",
     };
     return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
   });
@@ -200,6 +282,16 @@ function toCursorWorkItem(item: ImplementationTaskPlanItem): CursorWorkItem {
     blocked: item.status === "blocked" || item.blockers.length > 0,
     blockers: item.blockers,
     qualityGate: { promptReady: false, missing: [], score: 0 },
+    objective: item.title,
+    expectedChange: item.description?.trim() || item.title,
+    candidateFiles: h.candidateFiles.slice(0, 6),
+    candidateFileHints: h.candidateDirectories.slice(0, 4).map((dir) => `dir:${dir}`),
+    acceptanceCriteria: item.acceptanceCriteria?.length ? [...item.acceptanceCriteria] : [],
+    verificationHints: [...h.manualVerification.slice(0, 2), ...h.testCommands.slice(0, 2)],
+    allowedPathHints: h.candidateDirectories.slice(0, 4),
+    noCodeChangeEvidenceRequired: true,
+    originStage: "planning",
+    refinementStatus: "draft",
   };
   return { ...draft, qualityGate: evaluateCursorWorkItemQuality(draft) };
 }

@@ -3,6 +3,7 @@ import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/pr
 import { pickFirstExecutableDeveloperTaskId } from "@/lib/prototype/implementationExecutionBoard";
 import {
   buildTaskCursorAutoChainTriggerKey,
+  planImmediateTaskCursorAutoChainAfterFailure,
   resolveTaskCursorAutoChainDecision,
 } from "@/lib/prototype/implementationTaskCursorAutoChain";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -280,6 +281,98 @@ describe("implementationTaskCursorAutoChain", () => {
       failedTaskId: "DEV-SCREEN-002",
       toTaskId: "DEV-SCREEN-003",
       blockedTaskIds: [],
+    });
+  });
+
+  it("continues after poll cancelled cursor failure when independent task exists", () => {
+    const list: ImplementationTaskListV1 = {
+      version: "implementation_task_list_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "implementation_seed",
+      tasks: [
+        {
+          taskId: "DEV-SCREEN-002",
+          title: "Screen 2",
+          description: "d",
+          taskType: "screen",
+          ownerRole: "developer",
+          priority: "high",
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+        {
+          taskId: "DEV-SCREEN-003",
+          title: "Screen 3",
+          description: "d",
+          taskType: "screen",
+          ownerRole: "developer",
+          priority: "medium",
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+      ],
+      roleSummary: { developer: 2, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: {
+        implementationTaskListV1: list,
+        implementationTaskExecutionStateV1: {
+          version: "implementation_task_execution_state_v1",
+          projectId: "p1",
+          createdAt: NOW,
+          updatedAt: NOW,
+          items: [
+            {
+              taskId: "DEV-SCREEN-002",
+              ownerRole: "developer",
+              status: "failed",
+              updatedAt: NOW,
+              errorMessage: "사용자가 Cloud Agent 폴링을 중단했습니다.",
+            },
+          ],
+          summary: { total: 1, done: 0, inProgress: 0, failed: 1, skipped: 0, queued: 0 },
+        },
+      },
+    })!;
+    const execution = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: "DEV-SCREEN-002",
+      workItemIds: ["wi-1"],
+      status: "cursor_failed" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-002",
+      failureReason: "poll_cancelled" as const,
+      errorMessage: "사용자가 Cloud Agent 폴링을 중단했습니다.",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const decision = resolveTaskCursorAutoChainDecision({
+      board,
+      taskCursorExecution: execution,
+      autoGate: null,
+    });
+    expect(decision).toEqual({
+      kind: "continue_after_failure",
+      failedTaskId: "DEV-SCREEN-002",
+      toTaskId: "DEV-SCREEN-003",
+      blockedTaskIds: [],
+    });
+    expect(planImmediateTaskCursorAutoChainAfterFailure({ board, execution })).toEqual({
+      decision: {
+        kind: "continue_after_failure",
+        failedTaskId: "DEV-SCREEN-002",
+        toTaskId: "DEV-SCREEN-003",
+        blockedTaskIds: [],
+      },
+      preferredTaskId: "DEV-SCREEN-003",
     });
   });
 

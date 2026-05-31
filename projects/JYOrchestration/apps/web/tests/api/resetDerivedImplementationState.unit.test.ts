@@ -175,9 +175,22 @@ describe("resetDerivedImplementationState", () => {
         responseText: "type=planning_implementation_seed_evaluated",
         createdAt: nowIso,
       },
+      {
+        stage: "implementation",
+        stageGroup: "구현",
+        workspaceScreenKey: "prototype_execution",
+        action: "task_cursor_execution_requested",
+        source: "platform",
+        orchestrationTraceGroup: "task_cursor_execution",
+        responseText: "taskId=DEV-SCREEN-002",
+        createdAt: nowIso,
+      },
     ]);
-    expect(timeline).toHaveLength(1);
-    expect(timeline[0]?.action).toBe("quick_design_confirmed");
+    expect(timeline).toHaveLength(2);
+    expect(timeline.map((entry) => entry.action)).toEqual([
+      "quick_design_confirmed",
+      "task_cursor_execution_requested",
+    ]);
   });
 
   it("keeps environment-related project meta when planning is reset", () => {
@@ -240,6 +253,38 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationSeedV1).toBeNull();
     expect(reset.promptTimeline?.some((e) => e.action === "implementation_seed_evaluated")).toBe(false);
     expect(reset.promptTimeline?.some((e) => e.action === "quick_design_confirmed")).toBe(true);
+  });
+
+  it("keeps execution log timeline when only implementation is reset", () => {
+    const base: RequirementsStateJson = {
+      implementationSeedV1: { version: "implementation_seed_v1" } as never,
+      promptTimeline: [
+        {
+          stage: "implementation",
+          stageGroup: "구현",
+          workspaceScreenKey: "prototype_execution",
+          action: "implementation_seed_evaluated",
+          source: "system",
+          responseText: "impl",
+          createdAt: nowIso,
+        },
+        {
+          stage: "implementation",
+          stageGroup: "구현",
+          workspaceScreenKey: "prototype_execution",
+          action: "task_cursor_api_started",
+          source: "platform",
+          orchestrationTraceGroup: "task_cursor_execution",
+          responseText: "taskId=DEV-SCREEN-002 status=cursor_running",
+          createdAt: nowIso,
+        },
+      ],
+    };
+
+    const reset = buildImplementationConversationResetStateJson(base, nowIso);
+
+    expect(reset.promptTimeline?.some((e) => e.action === "implementation_seed_evaluated")).toBe(false);
+    expect(reset.promptTimeline?.some((e) => e.action === "task_cursor_api_started")).toBe(true);
   });
 
   it("shows reset warning that implementation derived data will be cleared but environment settings remain", () => {

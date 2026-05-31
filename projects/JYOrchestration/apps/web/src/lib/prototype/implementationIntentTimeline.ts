@@ -3,7 +3,7 @@ import type {
   ImplementationIntentClassification,
 } from "@/lib/prototype/implementationIntentRouterTypes";
 import type { ImplementationStageActionId } from "@/lib/prototype/effectiveImplementationState";
-import { appendPromptTimeline, appendPromptTimelineEntryOnce, sanitizePromptTimelineEntries } from "@/lib/requirements/promptTimelineState";
+import { appendPromptTimeline, appendPromptTimelineEntryOnce, appendPromptTimelineEntriesOnce, sanitizePromptTimelineEntries } from "@/lib/requirements/promptTimelineState";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type ImplementationStageActionTimelineSource = "cta" | "natural_language" | "system";
@@ -226,7 +226,7 @@ export function mergePromptTimelineWithBootstrapEntries(input: {
 }): readonly RequirementsPromptTimelineEntry[] {
   let timeline = sanitizePromptTimelineEntries(input.baseTimeline);
   if (input.orchestrationTimeline?.length) {
-    timeline = sanitizePromptTimelineEntries(input.orchestrationTimeline);
+    timeline = appendPromptTimelineEntriesOnce(timeline, input.orchestrationTimeline);
   }
   for (const entry of input.bootstrapTimeline ?? []) {
     timeline = appendPromptTimelineEntryOnce(timeline, entry);

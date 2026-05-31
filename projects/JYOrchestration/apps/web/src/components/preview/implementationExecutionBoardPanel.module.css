@@ -328,12 +328,78 @@
   background: #f8fbff;
 }
 
+.taskTreeItemSelected {
+  box-shadow: inset 0 0 0 2px #2563eb;
+}
+
+.taskTreeHeaderRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.taskTreeSelectAllRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.taskTreeSelectAllLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.taskTreeSelectAllMeta {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.taskTreeCheckbox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin: 0 0 0 10px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.taskTreeDependencyLine {
+  margin: 0 12px 6px 56px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.taskTreeToggleButton {
+  flex-shrink: 0;
+  width: 32px;
+  border: none;
+  background: transparent;
+  font-size: 10px;
+  color: #64748b;
+  cursor: pointer;
+}
+
 .taskTreeHeader {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px 10px 0;
   border: none;
   background: transparent;
   text-align: left;
@@ -374,6 +440,66 @@
   font-size: 10px;
   font-weight: 700;
   color: #475569;
+  line-height: 1.4;
+}
+
+.taskTreeRestartButton {
+  align-self: flex-start;
+  margin-top: 4px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.taskTreeActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.taskTreeActionRow .taskTreeRestartButton {
+  margin-top: 0;
+}
+
+.taskTreeStopButton {
+  align-self: flex-start;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.taskTreeStopButton:hover {
+  background: #fee2e2;
+}
+
+.taskTreePollStatus {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  line-height: 1.4;
+}
+
+.taskTreeRestartButton:hover {
+  background: #dbeafe;
+}
+
+.taskTreeRestartHint {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
   line-height: 1.4;
 }
 

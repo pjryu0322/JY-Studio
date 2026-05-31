@@ -1,37 +1,89 @@
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { RELEVANT_TIMELINE_ACTIONS } from "@/lib/prototype/codeAgentExecutionProgressView";
 
 export type PromptTimelineDrawerTab = "prompt" | "history" | "execution_log";
 
-const QUICK_RUN_TIMELINE_ACTIONS = new Set([
-  "implementation_quick_run_started",
-  "implementation_quick_run_blocked",
-  "implementation_quick_run_preview_ready",
+const IMPLEMENTATION_TRACE_GROUPS = new Set([
+  "task_cursor_execution",
+  "implementation_orchestration",
+  "target_repo_e2e",
+  "platform_scm",
 ]);
 
-const EXECUTION_LOG_TIMELINE_ACTIONS = new Set<string>([
-  ...RELEVANT_TIMELINE_ACTIONS,
-  ...QUICK_RUN_TIMELINE_ACTIONS,
-  "implementation_auto_quality_gate_requested",
-  "implementation_auto_review_started",
-  "implementation_auto_review_passed",
-  "implementation_auto_review_failed",
-  "implementation_auto_security_started",
-  "implementation_auto_security_passed",
-  "implementation_auto_security_failed",
-  "implementation_auto_quality_gate_passed",
-  "implementation_auto_quality_gate_failed",
-]);
+const IMPLEMENTATION_ACTION_PREFIXES = [
+  "implementation_",
+  "task_cursor_",
+  "code_agent_",
+  "cursor_api_",
+  "platform_scm_",
+] as const;
 
 const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   implementation_quick_run_started: "Quick 실행 시작",
   implementation_quick_run_blocked: "자동실행 중단",
   implementation_quick_run_preview_ready: "Preview 준비 완료",
-  implementation_auto_quality_gate_started: "검수자·보안관 점검 시작",
-  implementation_auto_quality_gate_completed: "검수자·보안관 점검 완료",
-  implementation_auto_quality_gate_failed: "검수자·보안관 점검 실패",
+  implementation_auto_quality_gate_requested: "검수·보안 자동 점검 요청",
+  implementation_auto_review_started: "검수자 점검 시작",
+  implementation_auto_review_passed: "검수자 점검 통과",
+  implementation_auto_review_failed: "검수자 점검 실패",
+  implementation_auto_security_started: "보안관 점검 시작",
+  implementation_auto_security_passed: "보안관 점검 통과",
+  implementation_auto_security_failed: "보안관 점검 실패",
+  implementation_auto_quality_gate_passed: "검수·보안 자동 점검 통과",
+  implementation_auto_quality_gate_failed: "검수·보안 자동 점검 실패",
+  implementation_stage_action_routed: "구현 액션 라우팅",
+  implementation_stage_action_clicked: "구현 액션 클릭",
+  implementation_stage_action_executed: "구현 액션 실행",
+  implementation_stage_action_blocked: "구현 액션 차단",
+  implementation_intent_routed: "구현 의도 라우팅",
+  implementation_action_executed: "구현 액션 실행",
+  implementation_action_gate_blocked: "구현 액션 게이트 차단",
+  implementation_task_plan: "구현 작업안 생성",
+  implementation_work_plan_draft_generated: "작업안 초안 생성",
+  implementation_work_plan_draft_confirmed: "작업안 확정",
+  implementation_wip_draft_created: "WIP 초안 생성",
+  implementation_wip_draft_persisted: "WIP 초안 저장",
+  implementation_generation_request_received: "코드 생성 요청 수신",
+  implementation_entry_cursor_work_items_regenerated: "Cursor work item 재생성",
+  implementation_entry_cursor_work_items_detected: "Cursor work item 감지",
+  implementation_work_items_draft_created: "WorkItem 초안 생성",
+  implementation_work_item_refined: "WorkItem 소스 기준 보정",
+  implementation_work_item_preflight_passed: "WorkItem Preflight 통과",
+  implementation_work_item_preflight_failed: "WorkItem Preflight 실패",
+  implementation_entry_tasklist_detected: "TaskList 감지",
+  implementation_entry_state_snapshot: "구현 진입 상태 스냅샷",
+  implementation_task_cursor_state_changed: "Task Cursor 상태 변경",
+  implementation_auto_quality_gate_state_changed: "검수·보안 자동 점검 상태 변경",
+  implementation_code_agent_wip_state_changed: "Code Agent WIP 상태 변경",
+  implementation_quick_run_state_changed: "Quick 실행 상태 변경",
+  implementation_stage_action_run_recorded: "구현 스테이지 액션 실행 기록",
+  implementation_task_execution_state_changed: "Task 실행 상태 변경",
+  implementation_artifacts_derived: "산출물 파생",
+  implementation_artifact_hub_opened: "산출물 허브 열기",
+  implementation_artifact_viewed: "산출물 조회",
+  implementation_status_query_handled: "구현 상태 조회",
+  implementation_user_feedback_applied: "사용자 피드백 반영",
+  code_agent_wip_requested: "Code Agent WIP 요청",
+  code_agent_wip_draft_created: "WIP 초안 생성",
+  code_agent_wip_draft_failed: "WIP 초안 생성 실패",
+  cursor_api_direct_execution_requested: "Cursor API 요청",
+  cursor_api_direct_execution_started: "Cursor API 실행 시작",
+  cursor_api_direct_execution_completed: "Cursor API 완료",
+  cursor_api_direct_execution_failed: "Cursor API 실패",
+  cursor_api_direct_execution_unsupported: "Cursor API 미지원",
+  cursor_api_git_commit_created: "Git 커밋 생성",
+  cursor_api_availability_checked: "Cursor API 환경 점검",
+  platform_scm_push_requested: "SCM push 요청",
+  platform_scm_push_started: "SCM push 시작",
+  platform_scm_push_completed: "SCM push 완료",
+  platform_scm_push_failed: "SCM push 실패",
+  platform_scm_pr_created: "SCM PR 생성",
+  platform_scm_pr_requested: "SCM PR 요청",
+  platform_scm_pr_failed: "SCM PR 실패",
+  platform_scm_merge_requested: "SCM merge 요청",
+  platform_scm_merge_completed: "SCM merge 완료",
+  platform_scm_merge_failed: "SCM merge 실패",
   task_cursor_execution_requested: "AI 개발자 실행 요청",
-  task_cursor_prompt_built: "Task 선택",
+  task_cursor_prompt_built: "Cursor prompt 생성",
   task_cursor_api_requested: "Cursor API 요청",
   task_cursor_api_started: "Cursor 작업 진행 중",
   task_cursor_api_completed: "Cursor 작업 완료",
@@ -39,7 +91,40 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   task_cursor_github_verify_requested: "GitHub commit 확인 시작",
   task_cursor_github_verified: "GitHub commit 확인 완료",
   task_cursor_github_verify_failed: "GitHub commit 확인 실패",
+  task_cursor_auto_chain_started: "Task 자동 연속 실행 시작",
+  task_cursor_auto_chain_continued: "Task 자동 연속 실행(다음 작업)",
+  task_cursor_auto_chain_continued_after_failure: "실패 후 독립 Task 자동 계속",
+  task_cursor_auto_chain_blocked: "Task 자동 연속 실행 차단",
+  task_cursor_poll_loop_started: "Cloud Agent 폴링 시작",
+  task_cursor_poll_tick: "Cloud Agent 폴링 갱신",
+  task_cursor_poll_cancelled: "Cloud Agent 폴링 중단",
+  task_cursor_poll_timeout: "Cloud Agent 폴링 시간 초과",
 };
+
+const PERSISTENT_EXECUTION_LOG_TRACE_GROUPS = new Set([
+  "task_cursor_execution",
+  "target_repo_e2e",
+  "platform_scm",
+]);
+
+/** 구현 초기화·타임라인 병합 시에도 유지할 런타임 실행 이력 */
+const NON_PERSISTENT_EXECUTION_LOG_ACTIONS = new Set([
+  "implementation_bootstrap_lead_developer_summary",
+  "implementation_seed_evaluated",
+  "planning_implementation_seed_evaluated",
+  "implementation_work_plan_draft_generated",
+  "implementation_work_plan_draft_confirmed",
+  "implementation_intent_routed",
+  "implementation_task_plan",
+  "implementation_entry_cursor_work_items_regenerated",
+  "implementation_entry_cursor_work_items_detected",
+  "implementation_entry_tasklist_detected",
+  "implementation_slots_built",
+]);
+
+function hasImplementationActionPrefix(action: string): boolean {
+  return IMPLEMENTATION_ACTION_PREFIXES.some((prefix) => action.startsWith(prefix));
+}
 
 export function isExecutionLogTimelineEntry(
   entry: RequirementsPromptTimelineEntry | null | undefined,
@@ -47,8 +132,45 @@ export function isExecutionLogTimelineEntry(
   if (!entry) return false;
   const action = String(entry.action ?? "").trim();
   if (!action) return false;
-  if (EXECUTION_LOG_TIMELINE_ACTIONS.has(action)) return true;
-  return entry.stage === "implementation" && action.startsWith("task_cursor_");
+  if (entry.stage === "implementation") return true;
+  if (entry.workspaceScreenKey === "prototype_execution") return true;
+  const traceGroup = String(entry.orchestrationTraceGroup ?? "").trim();
+  if (traceGroup && IMPLEMENTATION_TRACE_GROUPS.has(traceGroup)) return true;
+  return hasImplementationActionPrefix(action);
+}
+
+/** Task Cursor·품질 게이트 등 런타임 실행 이력 — 사용자가 초기화하기 전까지 보존 */
+export function isPersistentExecutionLogTimelineEntry(
+  entry: RequirementsPromptTimelineEntry | null | undefined,
+): boolean {
+  if (!entry) return false;
+  const action = String(entry.action ?? "").trim();
+  if (!action || NON_PERSISTENT_EXECUTION_LOG_ACTIONS.has(action)) return false;
+  if (action.startsWith("planning_implementation_seed_")) return false;
+  if (action.startsWith("task_cursor_")) return true;
+  if (action.startsWith("cursor_api_")) return true;
+  if (action.startsWith("platform_scm_")) return true;
+  const traceGroup = String(entry.orchestrationTraceGroup ?? "").trim();
+  if (PERSISTENT_EXECUTION_LOG_TRACE_GROUPS.has(traceGroup)) return true;
+  if (
+    action.endsWith("_state_changed") ||
+    action.startsWith("implementation_auto_quality_gate_") ||
+    action.startsWith("implementation_quick_run_") ||
+    action.startsWith("implementation_stage_action_") ||
+    action === "implementation_entry_state_snapshot"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function pickPersistentExecutionLogTimelineEntries(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+): readonly RequirementsPromptTimelineEntry[] {
+  if (!timeline?.length) return [];
+  return [...timeline]
+    .filter(isPersistentExecutionLogTimelineEntry)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
 export function pickExecutionLogTimelineEntries(
@@ -60,16 +182,117 @@ export function pickExecutionLogTimelineEntries(
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
+export function parseExecutionLogResponseFields(
+  responseText: string | null | undefined,
+): Readonly<Record<string, string>> {
+  const text = String(responseText ?? "").trim();
+  if (!text) return {};
+  const fields: Record<string, string> = {};
+  const regex = /(\w+)=((?:[^\s]|(?:\s(?!\w+=)))*)/g;
+  let match: RegExpExecArray | null = regex.exec(text);
+  while (match) {
+    fields[match[1]!] = match[2]!.trim();
+    match = regex.exec(text);
+  }
+  return fields;
+}
+
 export function formatExecutionLogTimelineLabel(
   entry: RequirementsPromptTimelineEntry | null | undefined,
 ): string {
   if (!entry) return "";
   const action = String(entry.action ?? "").trim();
-  return EXECUTION_LOG_ACTION_LABELS[action] ?? action;
+  const base = EXECUTION_LOG_ACTION_LABELS[action] ?? action;
+  const fields = parseExecutionLogResponseFields(entry.responseText);
+  if (action === "task_cursor_api_failed" && fields.reason === "poll_cancelled") {
+    return "Cloud Agent 폴링 중단(실행 실패 처리)";
+  }
+  const taskId = fields.taskId ?? fields.selectedTaskId ?? fields.toTaskId ?? fields.failedTaskId;
+  if (taskId && !base.includes(taskId)) {
+    return `${base} · ${taskId}`;
+  }
+  return base;
+}
+
+export function formatExecutionLogEntryMetadataLines(
+  entry: RequirementsPromptTimelineEntry | null | undefined,
+): readonly string[] {
+  if (!entry) return [];
+  const lines: string[] = [];
+  if (entry.source) lines.push(`source: ${entry.source}`);
+  if (entry.stage) lines.push(`stage: ${entry.stage}`);
+  if (entry.orchestrationTraceGroup) lines.push(`traceGroup: ${entry.orchestrationTraceGroup}`);
+  if (entry.routingDecision) lines.push(`routing: ${entry.routingDecision}`);
+  if (entry.provider) lines.push(`provider: ${entry.provider}`);
+  if (entry.model) lines.push(`model: ${entry.model}`);
+  return lines;
 }
 
 export function hasExecutionLogTimelineEntries(
   timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
 ): boolean {
   return pickExecutionLogTimelineEntries(timeline).length > 0;
+}
+
+export function buildExecutionLogEntryCopyText(
+  entry: RequirementsPromptTimelineEntry | null | undefined,
+): string {
+  if (!entry) return "";
+  const lines: string[] = [];
+  lines.push(formatExecutionLogTimelineLabel(entry));
+  lines.push(`createdAt: ${entry.createdAt ?? ""}`);
+  if (entry.action) lines.push(`action: ${entry.action}`);
+  for (const line of formatExecutionLogEntryMetadataLines(entry)) {
+    lines.push(line);
+  }
+  const fields = parseExecutionLogResponseFields(entry.responseText);
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === "type") continue;
+    lines.push(`${key}: ${value}`);
+  }
+  if (entry.error?.trim()) lines.push(`error: ${entry.error.trim()}`);
+  if (entry.responseText?.trim() && Object.keys(fields).length === 0) {
+    lines.push(`responseText: ${entry.responseText.trim()}`);
+  }
+  if (entry.promptText?.trim()) {
+    lines.push("");
+    lines.push("--- prompt ---");
+    lines.push(entry.promptText.trim());
+  }
+  return lines.join("\n");
+}
+
+export function buildExecutionLogTimelineMarkdown(
+  entries: readonly RequirementsPromptTimelineEntry[],
+): string {
+  const lines: string[] = [];
+  lines.push("# 실행 로그");
+  lines.push("");
+  lines.push(`생성: ${new Date().toISOString()}`);
+  lines.push(`항목 수: ${entries.length}`);
+  lines.push("");
+  entries.forEach((entry, index) => {
+    const n = index + 1;
+    const label = formatExecutionLogTimelineLabel(entry);
+    lines.push(`## ${n}. ${label}`);
+    lines.push("");
+    lines.push(`- **action**: ${entry.action ?? "—"}`);
+    lines.push(`- **createdAt**: ${entry.createdAt ?? "—"}`);
+    if (entry.source) lines.push(`- **source**: ${entry.source}`);
+    if (entry.stage) lines.push(`- **stage**: ${entry.stage}`);
+    if (entry.orchestrationTraceGroup) {
+      lines.push(`- **traceGroup**: ${entry.orchestrationTraceGroup}`);
+    }
+    if (entry.routingDecision) lines.push(`- **routing**: ${entry.routingDecision}`);
+    if (entry.provider) lines.push(`- **provider**: ${entry.provider}`);
+    if (entry.model) lines.push(`- **model**: ${entry.model}`);
+    lines.push("");
+    lines.push("```text");
+    lines.push(buildExecutionLogEntryCopyText(entry).trim() || "(없음)");
+    lines.push("```");
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  });
+  return lines.join("\n");
 }

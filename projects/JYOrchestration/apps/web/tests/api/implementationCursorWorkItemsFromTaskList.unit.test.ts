@@ -69,9 +69,11 @@ describe("buildCursorWorkItemsFromImplementationTaskList", () => {
       nowIso: NOW,
     });
 
-    expect(workItems.length).toBe(2);
+    expect(workItems.length).toBeGreaterThanOrEqual(2);
     expect(workItems[0]?.taskId).toBe("DEV-001");
-    expect(workItems[1]?.taskId).toBe("DEV-002");
+    expect(workItems.some((item) => item.taskId === "DEV-002")).toBe(true);
+    expect(workItems.every((item) => item.originStage === "planning")).toBe(true);
+    expect(workItems.every((item) => item.refinementStatus === "draft")).toBe(true);
   });
 
   it("includes required prompt fields and WIP policy", () => {

@@ -29,6 +29,7 @@ export type ImplementationQuickRunV1 = Readonly<{
   readonly completedAt?: string;
   readonly currentTaskId?: string;
   readonly completedTaskIds?: readonly string[];
+  readonly selectedTaskIds?: readonly string[];
   readonly blockedReason?: string;
   readonly previewUrl?: string;
 }>;
@@ -60,6 +61,9 @@ export function parseImplementationQuickRunV1(raw: unknown): ImplementationQuick
   const completedTaskIds = Array.isArray(o.completedTaskIds)
     ? o.completedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean)
     : undefined;
+  const selectedTaskIds = Array.isArray(o.selectedTaskIds)
+    ? o.selectedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean)
+    : undefined;
   return {
     version: "implementation_quick_run_v1",
     projectId,
@@ -71,6 +75,7 @@ export function parseImplementationQuickRunV1(raw: unknown): ImplementationQuick
       ? { currentTaskId: o.currentTaskId.trim() }
       : {}),
     ...(completedTaskIds?.length ? { completedTaskIds } : {}),
+    ...(selectedTaskIds?.length ? { selectedTaskIds } : {}),
     ...(typeof o.blockedReason === "string" && o.blockedReason.trim()
       ? { blockedReason: o.blockedReason.trim() }
       : {}),
@@ -81,9 +86,13 @@ export function parseImplementationQuickRunV1(raw: unknown): ImplementationQuick
 export function buildImplementationQuickRunStartedPatch(input: {
   readonly projectId: string;
   readonly currentTaskId?: string | null;
+  readonly selectedTaskIds?: readonly string[] | null;
   readonly nowIso?: string;
 }): ImplementationQuickRunV1 {
   const nowIso = input.nowIso ?? new Date().toISOString();
+  const selectedTaskIds = (input.selectedTaskIds ?? [])
+    .map((taskId) => String(taskId ?? "").trim())
+    .filter(Boolean);
   return {
     version: "implementation_quick_run_v1",
     projectId: input.projectId,
@@ -91,8 +100,17 @@ export function buildImplementationQuickRunStartedPatch(input: {
     startedAt: nowIso,
     updatedAt: nowIso,
     ...(input.currentTaskId?.trim() ? { currentTaskId: input.currentTaskId.trim() } : {}),
+    ...(selectedTaskIds.length ? { selectedTaskIds } : {}),
     completedTaskIds: [],
   };
+}
+
+export function resolveQuickRunAllowedTaskIds(
+  quickRun?: ImplementationQuickRunV1 | null,
+): readonly string[] | null {
+  const selectedTaskIds = quickRun?.selectedTaskIds;
+  if (!selectedTaskIds?.length) return null;
+  return selectedTaskIds;
 }
 
 export function buildImplementationQuickRunTimelineEntry(input: {

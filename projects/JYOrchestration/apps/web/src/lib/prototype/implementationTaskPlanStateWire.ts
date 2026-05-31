@@ -159,6 +159,38 @@ export function parseCursorWorkItemsV1(raw: unknown): readonly CursorWorkItem[] 
       blocked: Boolean(o.blocked),
       blockers: parseStringArray(o.blockers),
       qualityGate: { promptReady: false, missing: [], score: 0 },
+      ...(typeof o.objective === "string" && o.objective.trim() ? { objective: o.objective.trim() } : {}),
+      ...(typeof o.expectedChange === "string" && o.expectedChange.trim()
+        ? { expectedChange: o.expectedChange.trim() }
+        : {}),
+      ...(parseStringArray(o.candidateFiles).length ? { candidateFiles: parseStringArray(o.candidateFiles) } : {}),
+      ...(parseStringArray(o.candidateFileHints).length
+        ? { candidateFileHints: parseStringArray(o.candidateFileHints) }
+        : {}),
+      ...(parseStringArray(o.acceptanceCriteria).length
+        ? { acceptanceCriteria: parseStringArray(o.acceptanceCriteria) }
+        : {}),
+      ...(parseStringArray(o.verificationHints).length
+        ? { verificationHints: parseStringArray(o.verificationHints) }
+        : {}),
+      ...(parseStringArray(o.allowedPathHints).length
+        ? { allowedPathHints: parseStringArray(o.allowedPathHints) }
+        : {}),
+      ...(typeof o.noCodeChangeEvidenceRequired === "boolean"
+        ? { noCodeChangeEvidenceRequired: o.noCodeChangeEvidenceRequired }
+        : {}),
+      ...(o.originStage === "planning" || o.originStage === "implementation"
+        ? { originStage: o.originStage }
+        : {}),
+      ...(o.refinementStatus === "draft" ||
+      o.refinementStatus === "source_refined" ||
+      o.refinementStatus === "preflight_passed" ||
+      o.refinementStatus === "preflight_failed"
+        ? { refinementStatus: o.refinementStatus }
+        : {}),
+      ...(typeof o.sourceRefinedAt === "string" && o.sourceRefinedAt.trim()
+        ? { sourceRefinedAt: o.sourceRefinedAt.trim() }
+        : {}),
     };
     out.push({ ...draft, qualityGate: parseQualityGate(o.qualityGate, draft) });
   }

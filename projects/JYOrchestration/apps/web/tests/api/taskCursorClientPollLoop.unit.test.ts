@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
+  isActiveTaskCursorExecution,
   isInFlightTaskCursorExecution,
+  isStaleAbandonedTaskCursorExecution,
   isTaskCursorCloudAgentPollingCancellable,
   resolveTaskCursorPollWorkItems,
+  runTaskCursorClientPollLoop,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -34,6 +37,33 @@ describe("taskCursorClientPollLoop helpers", () => {
       true,
     );
     expect(isInFlightTaskCursorExecution(baseExecution({ status: "cursor_completed" }))).toBe(false);
+  });
+
+  it("isStaleAbandonedTaskCursorExecution detects abandoned poll state", () => {
+    expect(
+      isStaleAbandonedTaskCursorExecution(baseExecution({ cursorRunId: undefined }), {
+        developerStatus: "failed",
+      }),
+    ).toBe(true);
+    expect(
+      isStaleAbandonedTaskCursorExecution(
+        baseExecution({ cursorRunId: "task-cursor-20260530120000" }),
+        { developerStatus: "failed" },
+      ),
+    ).toBe(true);
+    expect(
+      isStaleAbandonedTaskCursorExecution(baseExecution({ cursorRunId: undefined })),
+    ).toBe(true);
+    expect(isStaleAbandonedTaskCursorExecution(baseExecution())).toBe(false);
+  });
+
+  it("isActiveTaskCursorExecution ignores stale abandoned executions", () => {
+    expect(
+      isActiveTaskCursorExecution(baseExecution({ cursorRunId: undefined }), {
+        developerStatus: "failed",
+      }),
+    ).toBe(false);
+    expect(isActiveTaskCursorExecution(baseExecution())).toBe(true);
   });
 
   it("canPollTaskCursorCloudAgent requires bc-uuid runId", () => {
@@ -67,5 +97,43 @@ describe("taskCursorClientPollLoop helpers", () => {
     const iso = new Date(Date.now() - 20 * 60_000 - 5_000).toISOString();
     expect(formatTaskCursorElapsedMinutes(iso)).toBe(20);
     expect(formatTaskCursorElapsedMinutes(null)).toBeNull();
+  });
+
+  it("runTaskCursorClientPollLoop detects terminal status on first poll round", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({
+        success: true,
+        status: "github_verified",
+        execution: { status: "github_verified" },
+        orchestrationPatch: {
+          taskCursorExecutionV1: baseExecution({ status: "github_verified" }),
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onTerminal = vi.fn();
+    const onPatch = vi.fn();
+    const execution = baseExecution();
+
+    const loopPromise = runTaskCursorClientPollLoop({
+      projectId: "p1",
+      initialExecution: execution,
+      workItems: [{ id: "w1", taskId: "DEV-MOCK-001", role: "developer", title: "A", status: "ready" }],
+      getLatestExecution: () => execution,
+      isCancelled: () => false,
+      onPatch,
+      onTerminal,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await loopPromise;
+
+    expect(onTerminal).toHaveBeenCalledTimes(1);
+    expect(onPatch).toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 });

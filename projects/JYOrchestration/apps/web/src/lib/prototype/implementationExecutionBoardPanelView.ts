@@ -14,6 +14,7 @@ import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executio
 import {
   explainExecutableTaskSelection,
   pickFirstExecutableDeveloperTaskId,
+  resolveTaskRowUserRestartCapability,
   type ImplementationBoardStepStatus,
   type ImplementationExecutionBoardIntegratedRowV1,
   type ImplementationExecutionBoardTaskRowV1,
@@ -30,6 +31,20 @@ import {
 } from "@/lib/prototype/implementationUserTestReadiness";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { ImplementationStageNextAction } from "@/lib/prototype/implementationStageNextActions";
+import { parseExecutionLogResponseFields } from "@/lib/prototype/promptTimelineExecutionLogTabs";
+import {
+  formatTaskCursorElapsedMinutes,
+  isActiveTaskCursorExecution,
+  isTaskCursorCloudAgentPollingCancellable,
+} from "@/lib/prototype/taskCursorClientPollLoop";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  computeTaskTreeDependencyViews,
+  formatTaskTreeDependencyLabel,
+  normalizeSelectedTaskIds,
+  orderTaskRowsForTreeDisplay,
+} from "@/lib/prototype/implementationTaskTreeSelection";
 
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
 
@@ -313,10 +328,90 @@ export type ImplementationTaskTreeNode = Readonly<{
   readonly taskId: string;
   readonly title: string;
   readonly isActive: boolean;
+  readonly isSelected: boolean;
+  readonly isChecked: boolean;
+  readonly treeDepth: number;
+  readonly dependencyLabel?: string;
   readonly defaultExpanded: boolean;
   readonly collapsedSummary: string;
   readonly childSteps: readonly ImplementationTaskTreeChildStep[];
+  readonly canRestart: boolean;
+  readonly canStop: boolean;
+  readonly pollStatusLabel?: string;
+  readonly restartBlockedReason?: string;
+  readonly needsReworkRegistration: boolean;
 }>;
+
+export type TaskCursorPollTickSnapshot = Readonly<{
+  readonly round?: number;
+  readonly agentStatus?: string;
+  readonly executionStatus?: string;
+  readonly updatedAt?: string;
+}>;
+
+export function findLatestTaskCursorPollTickForTask(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+  taskId: string,
+): TaskCursorPollTickSnapshot | null {
+  const normalizedTaskId = taskId.trim();
+  if (!normalizedTaskId || !timeline?.length) return null;
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const entry = timeline[index];
+    if (entry?.action !== "task_cursor_poll_tick") continue;
+    const fields = parseExecutionLogResponseFields(entry.responseText);
+    if (fields.taskId !== normalizedTaskId) continue;
+    const round = Number(fields.round);
+    return {
+      ...(Number.isFinite(round) && round > 0 ? { round } : {}),
+      ...(fields.agentStatus?.trim() ? { agentStatus: fields.agentStatus.trim() } : {}),
+      ...(fields.executionStatus?.trim()
+        ? { executionStatus: fields.executionStatus.trim() }
+        : {}),
+      ...(entry.createdAt?.trim() ? { updatedAt: entry.createdAt.trim() } : {}),
+    };
+  }
+  return null;
+}
+
+export function buildTaskCursorPollStatusLabel(input: {
+  readonly taskId: string;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly developerStatus?: ImplementationBoardStepStatus | null;
+}): string | undefined {
+  const execution = input.taskCursorExecution;
+  if (!execution || execution.taskId !== input.taskId) return undefined;
+  if (
+    !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
+  ) {
+    return undefined;
+  }
+  const tick = findLatestTaskCursorPollTickForTask(input.promptTimeline, input.taskId);
+  const parts = ["Cloud Agent 폴링"];
+  if (tick?.round != null) parts.push(`${tick.round}회`);
+  const agentStatus = tick?.agentStatus?.trim() || execution.status?.trim();
+  if (agentStatus) parts.push(agentStatus);
+  const elapsed = formatTaskCursorElapsedMinutes(
+    tick?.updatedAt ?? execution.updatedAt ?? execution.createdAt,
+  );
+  if (elapsed != null) parts.push(`${elapsed}분 경과`);
+  return parts.join(" · ");
+}
+
+export function resolveTaskRowStopCapability(input: {
+  readonly taskId: string;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly developerStatus?: ImplementationBoardStepStatus;
+}): boolean {
+  const execution = input.taskCursorExecution;
+  if (!execution || execution.taskId !== input.taskId) return false;
+  if (
+    !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
+  ) {
+    return false;
+  }
+  return isTaskCursorCloudAgentPollingCancellable(execution);
+}
 
 function formatTaskTreeRoleStatus(
   role: "developer" | "reviewer" | "security" | "scm",
@@ -340,10 +435,43 @@ function formatTaskTreeRoleStatus(
 export function buildImplementationTaskTreeNodes(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly activeTaskId?: string | null;
+  readonly selectedTaskId?: string | null;
+  readonly checkedTaskIds?: readonly string[] | null;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
 }): readonly ImplementationTaskTreeNode[] {
   const activeTaskId = input.activeTaskId?.trim() || null;
-  return input.board.taskRows.map((row) => {
+  const selectedTaskId = input.selectedTaskId?.trim() || activeTaskId;
+  const taskCursorExecution = input.taskCursorExecution ?? null;
+  const orderedRows = orderTaskRowsForTreeDisplay(input.board.taskRows);
+  const dependencyViews = computeTaskTreeDependencyViews(input.board.taskRows);
+  const checkedTaskIds = new Set(
+    normalizeSelectedTaskIds({
+      selectedTaskIds: input.checkedTaskIds,
+      taskRows: input.board.taskRows,
+    }),
+  );
+  return orderedRows.map((row) => {
+    const dependencyView = dependencyViews.get(row.taskId);
     const isActive = activeTaskId === row.taskId;
+    const isSelected = selectedTaskId === row.taskId;
+    const isChecked = checkedTaskIds.has(row.taskId);
+    const restart = resolveTaskRowUserRestartCapability({
+      row,
+      board: input.board,
+      taskCursorExecution,
+    });
+    const pollStatusLabel = buildTaskCursorPollStatusLabel({
+      taskId: row.taskId,
+      taskCursorExecution,
+      promptTimeline: input.promptTimeline,
+      developerStatus: row.developerStatus,
+    });
+    const canStop = resolveTaskRowStopCapability({
+      taskId: row.taskId,
+      taskCursorExecution,
+      developerStatus: row.developerStatus,
+    });
     const childSteps: ImplementationTaskTreeChildStep[] = [
       { roleLabel: "AI 개발자", statusLabel: formatTaskTreeRoleStatus("developer", row.developerStatus) },
       {
@@ -353,7 +481,6 @@ export function buildImplementationTaskTreeNodes(input: {
             ? "GitHub: 완료"
             : "GitHub: 대기",
       },
-      { roleLabel: "검수", statusLabel: formatTaskTreeRoleStatus("reviewer", row.reviewerStatus) },
     ];
     const collapsedSummary = isPerTaskPipelineComplete({
       developerStatus: row.developerStatus,
@@ -361,21 +488,36 @@ export function buildImplementationTaskTreeNodes(input: {
     })
       ? "완료"
       : row.developerStatus === "done"
-        ? "검수 대기"
+        ? "개발 완료"
         : row.developerStatus === "in_progress"
           ? "개발 진행"
           : row.developerStatus === "failed"
             ? "재작업 필요"
             : row.failureReason === "blocked_by_dependency"
               ? "의존 차단"
-              : "개발 대기";
+              : pollStatusLabel
+                ? "Cursor 실행 중"
+                : "개발 대기";
     return {
       taskId: row.taskId,
       title: row.title,
       isActive,
-      defaultExpanded: isActive,
+      isSelected,
+      isChecked,
+      treeDepth: dependencyView?.depth ?? 0,
+      ...(formatTaskTreeDependencyLabel(dependencyView)
+        ? { dependencyLabel: formatTaskTreeDependencyLabel(dependencyView) }
+        : {}),
+      defaultExpanded: isActive || isSelected,
       collapsedSummary,
       childSteps,
+      canRestart: restart.canRestart,
+      canStop,
+      ...(pollStatusLabel ? { pollStatusLabel } : {}),
+      ...(!pollStatusLabel && restart.blockedReason
+        ? { restartBlockedReason: restart.blockedReason }
+        : {}),
+      needsReworkRegistration: restart.needsReworkRegistration,
     };
   });
 }

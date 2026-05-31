@@ -12,6 +12,10 @@ import {
   validateTargetRepositoryChangedFiles,
 } from "@/lib/prototype/targetRepositoryPathGuard";
 
+function readStringArray(value: readonly string[] | null | undefined): readonly string[] {
+  return (value ?? []).map((item) => String(item ?? "").trim()).filter(Boolean);
+}
+
 export type CursorSourceGenerationRequest = Readonly<{
   readonly projectId: string;
   readonly selectedTaskId: string;
@@ -83,15 +87,32 @@ export function buildCursorSourceGenerationPrompt(input: {
   const baseBranch = input.targetRepository.defaultBranch || "main";
 
   const sections = input.workItems.map((w) => {
+    const candidateLines = [
+      ...readStringArray(w.candidateFiles).map((file) => `- file: ${file}`),
+      ...readStringArray(w.candidateFileHints).map((hint) => `- hint: ${hint}`),
+      ...w.requiredFilesHint
+        .filter((hint) => !hint.startsWith("taskList:") && !hint.startsWith("task:"))
+        .map((hint) => `- ${hint}`),
+    ];
     const lines = [
-      `## Task ${w.taskId}`,
+      `## WorkItem ${w.id}`,
+      `taskId: ${w.taskId}`,
       w.title ? `제목: ${w.title}` : "",
+      w.objective ? `목적(objective): ${w.objective}` : "",
+      w.expectedChange ? `변경 내용(expectedChange): ${w.expectedChange}` : "",
+      readStringArray(w.acceptanceCriteria).length
+        ? `완료 조건(acceptanceCriteria):\n${readStringArray(w.acceptanceCriteria).map((c) => `- ${c}`).join("\n")}`
+        : "",
+      readStringArray(w.verificationHints).length
+        ? `검증 방법(verificationHints):\n${readStringArray(w.verificationHints).map((c) => `- ${c}`).join("\n")}`
+        : "",
+      candidateLines.length ? `후보 파일/탐색 기준:\n${candidateLines.join("\n")}` : "",
       w.expectedOutput.length
         ? `기대 산출물:\n${w.expectedOutput.map((o) => `- ${o}`).join("\n")}`
         : "",
       w.testCommands.length ? `테스트 기준:\n${w.testCommands.map((t) => `- ${t}`).join("\n")}` : "",
-      w.requiredFilesHint.length
-        ? `예상 수정 위치:\n${w.requiredFilesHint.map((f) => `- ${f}`).join("\n")}`
+      w.forbiddenPaths.length
+        ? `금지 경로(forbiddenScopes):\n${w.forbiddenPaths.map((f) => `- ${f}`).join("\n")}`
         : "",
       w.prompt.trim() ? `구현 지시:\n${w.prompt.trim()}` : "",
     ].filter(Boolean);
@@ -136,6 +157,7 @@ export function buildCursorSourceGenerationPrompt(input: {
     `프로젝트 저장소: ${input.targetRepository.repoFullName}`,
     `gitRepoUrl: ${input.targetRepository.gitRepoUrl}`,
     `selectedTaskId: ${selectedTaskId}`,
+    `selectedWorkItemIds: ${input.workItems.map((item) => item.id).join(", ")}`,
     ...(workBranch ? [`WIP branch: ${workBranch}`] : []),
     `기본 브랜치: ${baseBranch}`,
     "",
@@ -149,6 +171,17 @@ export function buildCursorSourceGenerationPrompt(input: {
     "",
     "## Commit 메시지",
     input.commitMessage.trim(),
+    "",
+    "## 반환 필드 (필수)",
+    "- status",
+    "- taskId",
+    "- branchName",
+    "- commitSha (변경 없으면 noCodeChangeEvidence 필수)",
+    "- pushed",
+    "- changedFiles",
+    "- diffSummary",
+    "- testResults",
+    "- noCodeChangeEvidence (코드 변경이 없을 때)",
   ].join("\n");
 }
 

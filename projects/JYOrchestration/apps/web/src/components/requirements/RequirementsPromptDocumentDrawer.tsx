@@ -12,8 +12,12 @@ import {
 import { pickOrchestrationPromptTimelineEntries } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
 import {
+  buildExecutionLogEntryCopyText,
+  buildExecutionLogTimelineMarkdown,
+  formatExecutionLogEntryMetadataLines,
   formatExecutionLogTimelineLabel,
   hasExecutionLogTimelineEntries,
+  parseExecutionLogResponseFields,
   pickExecutionLogTimelineEntries,
   type PromptTimelineDrawerTab,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
@@ -331,7 +335,8 @@ export function RequirementsPromptDocumentDrawer({
     () => pickExecutionLogTimelineEntries(promptTimeline),
     [promptTimeline],
   );
-  const showExecutionLogTab = hasExecutionLogTimelineEntries(promptTimeline);
+  const showExecutionLogTab =
+    hasExecutionLogTimelineEntries(promptTimeline) || initialTab === "execution_log";
 
   useEffect(() => {
     if (!open) {
@@ -436,6 +441,23 @@ export function RequirementsPromptDocumentDrawer({
     const date = localDateSlug();
     downloadTextFile(`${exportStem}-prompt-timeline-${date}.md`, md, "text/markdown;charset=utf-8");
   }, [exportStem, promptTimelineExportAsc]);
+
+  const onDownloadExecutionLogMarkdown = useCallback(() => {
+    if (!executionLogTimeline.length) return;
+    const md = buildExecutionLogTimelineMarkdown(executionLogTimeline);
+    const date = localDateSlug();
+    downloadTextFile(`${exportStem}-execution-log-${date}.md`, md, "text/markdown;charset=utf-8");
+  }, [exportStem, executionLogTimeline]);
+
+  const onCopyExecutionLogEntry = useCallback(
+    async (entry: RequirementsPromptTimelineEntry) => {
+      const text = buildExecutionLogEntryCopyText(entry);
+      if (!text.trim()) return;
+      const ok = await writeClipboardText(text);
+      showCopyFeedback(ok ? "실행 로그를 클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+    },
+    [showCopyFeedback],
+  );
 
   const toggleSelectAll = useCallback(() => {
     if (!orderedMessages.length) return;
@@ -1015,12 +1037,45 @@ export function RequirementsPromptDocumentDrawer({
             </div>
           ) : tab === "execution_log" ? (
             <div style={docBlock} data-testid="prompt-timeline-execution-log-tab">
-              <div style={labelSm}>실행 로그</div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <div style={labelSm}>실행 로그</div>
+                {executionLogTimeline.length ? (
+                  <button
+                    type="button"
+                    onClick={onDownloadExecutionLogMarkdown}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      color: "#0f172a",
+                    }}
+                  >
+                    실행 로그 MD 저장
+                  </button>
+                ) : null}
+              </div>
               {!executionLogTimeline.length ? (
                 <div style={{ ...bodyLg, color: "#64748b" }}>표시할 실행 로그가 없습니다.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {executionLogTimeline.map((entry, index) => (
+                  {executionLogTimeline.map((entry, index) => {
+                    const parsedFields = parseExecutionLogResponseFields(entry.responseText);
+                    const metadataLines = formatExecutionLogEntryMetadataLines(entry);
+                    const fieldEntries = Object.entries(parsedFields).filter(([key]) => key !== "type");
+                    return (
                     <div
                       key={`${entry.action}-${entry.createdAt}-${index}`}
                       style={{
@@ -1032,13 +1087,81 @@ export function RequirementsPromptDocumentDrawer({
                         lineHeight: 1.45,
                       }}
                     >
-                      <div style={{ fontWeight: 800, color: "#0f172a" }}>
-                        {formatExecutionLogTimelineLabel(entry)}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ flex: "1 1 0%", minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, color: "#0f172a" }}>
+                            {formatExecutionLogTimelineLabel(entry)}
+                          </div>
+                          <div style={{ color: "#64748b", marginTop: 4 }}>
+                            {new Date(entry.createdAt).toLocaleString("ko-KR")}
+                            {entry.action ? ` · ${entry.action}` : ""}
+                          </div>
+                        </div>
+                        <CopyIconButton
+                          ariaLabel="실행 로그 항목 복사"
+                          title="이 실행 로그 복사"
+                          disabled={!buildExecutionLogEntryCopyText(entry).trim()}
+                          onClick={() => void onCopyExecutionLogEntry(entry)}
+                        />
                       </div>
-                      <div style={{ color: "#64748b", marginTop: 4 }}>
-                        {new Date(entry.createdAt).toLocaleString("ko-KR")}
-                      </div>
-                      {entry.responseText?.trim() ? (
+                      {metadataLines.length ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            color: "#475569",
+                            fontSize: 11,
+                          }}
+                        >
+                          {metadataLines.map((line) => (
+                            <div key={line}>{line}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {fieldEntries.length ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            display: "grid",
+                            gridTemplateColumns: "minmax(96px, auto) 1fr",
+                            gap: "4px 10px",
+                            fontSize: 11,
+                            color: "#334155",
+                          }}
+                        >
+                          {fieldEntries.map(([key, value]) => (
+                            <div key={`${entry.createdAt}-${key}`} style={{ display: "contents" }}>
+                              <div style={{ fontWeight: 700, color: "#64748b" }}>{key}</div>
+                              <div style={{ wordBreak: "break-word" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {entry.error?.trim() ? (
+                        <pre
+                          style={{
+                            margin: "8px 0 0",
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                            fontSize: 11,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            color: "#991b1b",
+                          }}
+                        >
+                          {entry.error}
+                        </pre>
+                      ) : null}
+                      {entry.responseText?.trim() && !fieldEntries.length ? (
                         <pre
                           style={{
                             margin: "8px 0 0",
@@ -1052,8 +1175,28 @@ export function RequirementsPromptDocumentDrawer({
                           {entry.responseText}
                         </pre>
                       ) : null}
+                      {entry.promptText?.trim() ? (
+                        <>
+                          <div style={{ ...labelSm, marginTop: 10, marginBottom: 4 }}>프롬프트</div>
+                          <pre
+                            style={{
+                              margin: 0,
+                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                              fontSize: 11,
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              color: "#334155",
+                              maxHeight: 180,
+                              overflow: "auto",
+                            }}
+                          >
+                            {entry.promptText}
+                          </pre>
+                        </>
+                      ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

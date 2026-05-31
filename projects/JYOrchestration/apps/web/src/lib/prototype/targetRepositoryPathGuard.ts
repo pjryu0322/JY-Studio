@@ -51,8 +51,14 @@ function pathMatchesGlob(filePath: string, glob: string): boolean {
   return false;
 }
 
-function pathMatchesAnyGlob(filePath: string, globs: readonly string[]): boolean {
+export function pathMatchesAnyGlob(filePath: string, globs: readonly string[]): boolean {
   return globs.some((glob) => pathMatchesGlob(filePath, glob));
+}
+
+export function isPathAllowedByGlobs(filePath: string, allowedPathGlobs: readonly string[]): boolean {
+  const allowed = allowedPathGlobs.map((g) => String(g).trim()).filter(Boolean);
+  if (!allowed.length) return true;
+  return pathMatchesAnyGlob(normalizeRepoRelativePath(filePath), allowed);
 }
 
 export function defaultForbiddenTargetPathGlobs(): readonly string[] {

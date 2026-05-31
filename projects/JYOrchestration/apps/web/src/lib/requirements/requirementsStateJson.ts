@@ -868,7 +868,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ? promptTimelineRaw
         .map((row) => coerceRequirementsPromptTimelineEntry(row))
         .filter((x): x is RequirementsPromptTimelineEntry => Boolean(x))
-        .slice(-50)
+        .slice(-120)
     : undefined;
   const implementationStageActionRunLogV1 = coerceImplementationStageActionRunLogV1(
     o.implementationStageActionRunLogV1,

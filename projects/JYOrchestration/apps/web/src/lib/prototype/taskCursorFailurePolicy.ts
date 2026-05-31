@@ -29,6 +29,7 @@ const TASK_REWORK_REASONS = new Set<TaskCursorFailureReason>([
   "push_failed",
   "no_changed_files",
   "github_verify_failed",
+  "poll_cancelled",
   "unknown",
 ]);
 

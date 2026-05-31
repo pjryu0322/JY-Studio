@@ -1,4 +1,5 @@
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { isPersistentExecutionLogTimelineEntry } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
 const PROMPT_TIMELINE_MAX_ENTRIES = 120;
 const DEFAULT_PROMPT_TIMELINE_FINGERPRINT_WINDOW = 50;
@@ -26,6 +27,23 @@ export const DETERMINISTIC_PLATFORM_TIMELINE_META = {
   model: "deterministic",
 } as const;
 
+function trimPromptTimelineEntries(
+  timeline: readonly RequirementsPromptTimelineEntry[],
+): RequirementsPromptTimelineEntry[] {
+  const sanitized = sanitizePromptTimelineEntries(timeline);
+  if (sanitized.length <= PROMPT_TIMELINE_MAX_ENTRIES) return sanitized;
+
+  const executionLogs = sanitized.filter(isPersistentExecutionLogTimelineEntry);
+  const nonLogs = sanitized.filter((entry) => !isPersistentExecutionLogTimelineEntry(entry));
+  const trimmedNonLogs = nonLogs.slice(-PROMPT_TIMELINE_MAX_ENTRIES);
+  const merged = [...trimmedNonLogs, ...executionLogs].sort((a, b) =>
+    String(a.createdAt).localeCompare(String(b.createdAt)),
+  );
+  return merged.length > PROMPT_TIMELINE_MAX_ENTRIES
+    ? merged.slice(-Math.max(PROMPT_TIMELINE_MAX_ENTRIES, executionLogs.length))
+    : merged;
+}
+
 /** requirementsStateJson.promptTimeline에 엔트리를追加합니다. */
 export function appendPromptTimeline(
   existing: readonly RequirementsPromptTimelineEntry[] | null | undefined,
@@ -34,7 +52,10 @@ export function appendPromptTimeline(
   if (!isValidPromptTimelineEntry(entry)) {
     return sanitizePromptTimelineEntries(existing);
   }
-  return [...sanitizePromptTimelineEntries(existing), entry].slice(-PROMPT_TIMELINE_MAX_ENTRIES);
+  if (isPersistentExecutionLogTimelineEntry(entry)) {
+    return [...sanitizePromptTimelineEntries(existing), entry];
+  }
+  return trimPromptTimelineEntries([...sanitizePromptTimelineEntries(existing), entry]);
 }
 
 export function withDeterministicPlatformTimelineMeta(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   buildImplementationIntegratedPipelineLines,
   PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
@@ -39,6 +39,12 @@ import {
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { isImplementationAutoQualityGateClientInFlight } from "@/lib/prototype/implementationAutoQualityGateClient";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  isTaskTreeFullySelected,
+  normalizeSelectedTaskIds,
+  resolveTaskTreeSelectAll,
+  resolveTaskTreeSelectionToggle,
+} from "@/lib/prototype/implementationTaskTreeSelection";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -57,6 +63,8 @@ export function ImplementationExecutionBoardPanel({
   promptTimeline,
   onAction,
   onCancelTaskCursorPolling,
+  onRestartTask,
+  onSelectedTaskIdsChange,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -74,6 +82,8 @@ export function ImplementationExecutionBoardPanel({
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly onAction: (input: ImplementationStageActionClickInput) => void;
   readonly onCancelTaskCursorPolling?: () => void;
+  readonly onRestartTask?: (taskId: string) => void;
+  readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
 }) {
   const summaryView = useMemo(
     () =>
@@ -147,9 +157,39 @@ export function ImplementationExecutionBoardPanel({
     [board, codeAgentWipExecutionV1, taskCursorExecutionV1],
   );
 
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
+  const checkedTaskIds = useMemo(
+    () =>
+      normalizeSelectedTaskIds({
+        selectedTaskIds: boardState?.selectedTaskIds,
+        taskRows: board.taskRows,
+      }),
+    [boardState?.selectedTaskIds, board.taskRows],
+  );
+  const allTasksChecked = useMemo(
+    () => isTaskTreeFullySelected({ selectedTaskIds: checkedTaskIds, taskRows: board.taskRows }),
+    [checkedTaskIds, board.taskRows],
+  );
+
+  useEffect(() => {
+    setSelectedTaskId((current) => current ?? activeTaskId);
+  }, [activeTaskId]);
+
+  const updateCheckedTaskIds = (nextSelectedTaskIds: readonly string[]) => {
+    onSelectedTaskIdsChange?.(nextSelectedTaskIds);
+  };
+
   const taskTreeNodes = useMemo(
-    () => buildImplementationTaskTreeNodes({ board, activeTaskId }),
-    [board, activeTaskId],
+    () =>
+      buildImplementationTaskTreeNodes({
+        board,
+        activeTaskId,
+        selectedTaskId,
+        checkedTaskIds,
+        taskCursorExecution: taskCursorExecutionV1 ?? null,
+        promptTimeline,
+      }),
+    [board, activeTaskId, selectedTaskId, checkedTaskIds, taskCursorExecutionV1, promptTimeline],
   );
 
   const integratedPipelineLines = useMemo(
@@ -265,7 +305,30 @@ export function ImplementationExecutionBoardPanel({
 
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
         <div className={styles.taskTreeSectionTitle}>작업 트리 {board.taskRows.length}개</div>
-        <ImplementationExecutionBoardTaskTree nodes={taskTreeNodes} />
+        <p className={styles.summarySecondary}>
+          실행할 Task를 체크한 뒤 툴바 [빠른 실행]으로 선택 Task만 자동 진행할 수 있습니다. 자식 Task를 선택하면 선행 Task도 함께 선택됩니다.
+        </p>
+        <ImplementationExecutionBoardTaskTree
+          nodes={taskTreeNodes}
+          selectedTaskId={selectedTaskId}
+          allChecked={allTasksChecked}
+          onSelectTask={setSelectedTaskId}
+          onToggleTaskChecked={(taskId, checked) => {
+            updateCheckedTaskIds(
+              resolveTaskTreeSelectionToggle({
+                taskId,
+                checked,
+                selectedTaskIds: checkedTaskIds,
+                taskRows: board.taskRows,
+              }),
+            );
+          }}
+          onToggleSelectAll={(checked) => {
+            updateCheckedTaskIds(resolveTaskTreeSelectAll({ selectAll: checked, taskRows: board.taskRows }));
+          }}
+          onRestartTask={onRestartTask}
+          onStopTask={() => onCancelTaskCursorPolling?.()}
+        />
       </section>
 
       {integratedPipelineLines.length ? (

@@ -35,6 +35,9 @@ export type TaskCursorFailureReason =
   | "push_failed"
   | "no_changed_files"
   | "github_verify_failed"
+  | "poll_cancelled"
+  | "work_item_preflight_failed"
+  | "prompt_preflight_failed"
   | "unknown";
 
 export type TaskCursorExecutionV1 = Readonly<{
@@ -82,8 +85,16 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
   no_changed_files: "Cursor 실행 결과 changedFiles를 확인하지 못했습니다.",
   github_verify_failed:
     "Cursor 응답은 받았지만 GitHub WIP branch에서 commit을 확인하지 못했습니다. WIP branch push 여부를 확인해 주세요.",
+  poll_cancelled: "사용자가 Cloud Agent 폴링을 중단했습니다.",
+  work_item_preflight_failed:
+    "WorkItem 품질 검증에 실패했습니다. 실행 로그에서 보완 항목을 확인한 뒤 WorkItem을 수정해 주세요.",
+  prompt_preflight_failed:
+    "Cursor Prompt Preflight에 실패했습니다. 실행 로그에서 누락 항목을 확인해 주세요.",
   unknown: "Task Cursor 실행에 실패했습니다.",
 };
+
+export const TASK_CURSOR_POLL_CANCELLED_MESSAGE =
+  TASK_CURSOR_FAILURE_MESSAGES.poll_cancelled;
 
 const TASK_CURSOR_STATUSES = new Set<TaskCursorExecutionStatus>([
   "pending",
@@ -108,6 +119,9 @@ const TASK_CURSOR_FAILURE_REASONS = new Set<TaskCursorFailureReason>([
   "push_failed",
   "no_changed_files",
   "github_verify_failed",
+  "poll_cancelled",
+  "work_item_preflight_failed",
+  "prompt_preflight_failed",
   "unknown",
 ]);
 

@@ -1,9 +1,14 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  buildPromptTimelineOrchestrationPatch,
+  buildTaskCursorPollLifecycleTimelineEntry,
+} from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import {
   isCursorCloudAgentRunId,
   parseTaskCursorExecutionV1,
+  TASK_CURSOR_POLL_CANCELLED_MESSAGE,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -33,8 +38,83 @@ export function isInFlightTaskCursorExecution(
   return IN_FLIGHT_TASK_CURSOR_STATUSES.has(execution.status);
 }
 
-export const TASK_CURSOR_POLL_CANCELLED_MESSAGE =
-  "사용자가 Cloud Agent 폴링을 중단했습니다." as const;
+/** persisted requirementsStateJson에서 in-flight Cursor 폴링을 모두 해제한다. */
+export function releaseAllInFlightTaskCursorPollingFromRequirementsState(
+  raw: unknown,
+  nowIso?: string,
+): { readonly next: Record<string, unknown>; readonly releasedTaskIds: readonly string[] } {
+  const now = nowIso ?? new Date().toISOString();
+  if (!raw || typeof raw !== "object") {
+    return { next: {}, releasedTaskIds: [] };
+  }
+  const source = raw as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...source };
+  const releasedTaskIds: string[] = [];
+
+  const execution = parseTaskCursorExecutionV1(source.taskCursorExecutionV1);
+  if (execution && isInFlightTaskCursorExecution(execution)) {
+    releasedTaskIds.push(execution.taskId);
+    next.taskCursorExecutionV1 = {
+      ...execution,
+      status: "cursor_failed",
+      failureReason: "poll_cancelled",
+      errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
+      updatedAt: now,
+    };
+  }
+
+  const quickRunRaw = source.implementationQuickRunV1;
+  if (quickRunRaw && typeof quickRunRaw === "object") {
+    const status = String((quickRunRaw as Record<string, unknown>).status ?? "").trim();
+    if (status === "running") {
+      next.implementationQuickRunV1 = {
+        ...(quickRunRaw as Record<string, unknown>),
+        status: "paused",
+        updatedAt: now,
+        blockedReason: "폴링 일괄 해제",
+      };
+    }
+  }
+
+  return { next, releasedTaskIds };
+}
+
+/** 폴링이 끊긴 채 persisted state만 in-flight로 남은 실행 */
+export function isStaleAbandonedTaskCursorExecution(
+  execution: TaskCursorExecutionV1 | null | undefined,
+  input?: { readonly developerStatus?: string | null },
+): boolean {
+  if (!execution || !isInFlightTaskCursorExecution(execution)) return false;
+  if (input?.developerStatus === "failed") return true;
+  if (isTaskCursorPollCancelledExecution(execution)) return true;
+  if (execution.status === "cursor_running" && !isCursorCloudAgentRunId(execution.cursorRunId)) {
+    return true;
+  }
+  if (execution.status === "cursor_requested" && !String(execution.cursorRunId ?? "").trim()) {
+    return true;
+  }
+  return false;
+}
+
+/** 다른 Task 실행/재시작을 막아야 하는 실제 in-flight Cursor 실행 */
+export function isActiveTaskCursorExecution(
+  execution: TaskCursorExecutionV1 | null | undefined,
+  input?: { readonly developerStatus?: string | null },
+): execution is TaskCursorExecutionV1 {
+  if (!execution || !isInFlightTaskCursorExecution(execution)) return false;
+  return !isStaleAbandonedTaskCursorExecution(execution, input);
+}
+
+export { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorExecution";
+
+export function isTaskCursorPollCancelledExecution(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): execution is TaskCursorExecutionV1 {
+  if (!execution) return false;
+  if (execution.failureReason === "poll_cancelled") return true;
+  const message = String(execution.errorMessage ?? "").trim();
+  return message === TASK_CURSOR_POLL_CANCELLED_MESSAGE || message.includes("폴링을 중단");
+}
 
 /** Cloud Agent 폴링은 launch 응답의 `bc-<uuid>` runId가 있을 때만 시작한다. */
 export function canPollTaskCursorCloudAgent(
@@ -75,6 +155,7 @@ export async function runTaskCursorClientPollLoop(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly history?: readonly TaskCursorExecutionV1[] | null;
   readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly getExistingTimeline?: () => readonly RequirementsPromptTimelineEntry[] | null | undefined;
   readonly getLatestExecution: () => TaskCursorExecutionV1 | null | undefined;
   readonly getExecutionState?: () => import("@/lib/prototype/implementationTaskExecutionState").ImplementationTaskExecutionStateV1 | null | undefined;
   readonly isCancelled: () => boolean;
@@ -83,6 +164,10 @@ export async function runTaskCursorClientPollLoop(input: {
 }): Promise<void> {
   const pid = input.projectId.trim();
   if (!pid) return;
+
+  let lastLoggedAgentStatus = "";
+  const resolveExistingTimeline = (): readonly RequirementsPromptTimelineEntry[] =>
+    input.getExistingTimeline?.() ?? input.existingTimeline ?? [];
 
   for (let round = 0; round < 270; round += 1) {
     if (input.isCancelled()) return;
@@ -116,6 +201,7 @@ export async function runTaskCursorClientPollLoop(input: {
       if (pollJson.orchestrationPatch) {
         input.onPatch(pollJson.orchestrationPatch);
       }
+      const agentStatus = String(pollJson.agentStatus ?? "").trim();
       const status = String(pollJson.execution?.status ?? pollJson.status ?? "").trim();
       if (status === "blocked") {
         const notice =
@@ -143,17 +229,54 @@ export async function runTaskCursorClientPollLoop(input: {
         input.onTerminal(notice);
         return;
       }
+      const shouldLogTick =
+        Boolean(agentStatus && agentStatus !== lastLoggedAgentStatus) ||
+        round % 3 === 0 ||
+        (status && status !== "poll_not_ready" && status !== "cursor_running");
+      if (shouldLogTick) {
+        if (agentStatus) lastLoggedAgentStatus = agentStatus;
+        input.onPatch(
+          buildPromptTimelineOrchestrationPatch(
+            resolveExistingTimeline(),
+            buildTaskCursorPollLifecycleTimelineEntry({
+              action: "task_cursor_poll_tick",
+              projectId: pid,
+              taskId: latestExecution.taskId,
+              runId: latestExecution.cursorRunId,
+              round: round + 1,
+              agentStatus: agentStatus || undefined,
+              executionStatus: status || latestExecution.status,
+              message: pollJson.message,
+            }),
+          ),
+        );
+      }
     } catch {
       // 단일 poll 실패는 네트워크 일시 오류일 수 있어 다음 라운드에서 재시도
     }
   }
 
+  const timedOutExecution =
+    parseTaskCursorExecutionV1(input.getLatestExecution()) ?? input.initialExecution;
+  input.onPatch(
+    buildPromptTimelineOrchestrationPatch(
+      resolveExistingTimeline(),
+      buildTaskCursorPollLifecycleTimelineEntry({
+        action: "task_cursor_poll_timeout",
+        projectId: pid,
+        taskId: timedOutExecution.taskId,
+        runId: timedOutExecution.cursorRunId,
+        round: 270,
+        executionStatus: timedOutExecution.status,
+        message: "Cloud Agent 폴링 시간 초과(45분). Cursor 대시보드에서 Agent 상태를 확인해 주세요.",
+      }),
+    ),
+  );
   const timeoutPatch = buildTaskCursorFailedOrchestrationPatch({
-    execution:
-      parseTaskCursorExecutionV1(input.getLatestExecution()) ?? input.initialExecution,
+    execution: timedOutExecution,
     message: "Cloud Agent 폴링 시간 초과(45분). Cursor 대시보드에서 Agent 상태를 확인해 주세요.",
     history: input.history,
-    existingTimeline: input.existingTimeline,
+    existingTimeline: resolveExistingTimeline(),
   });
   input.onPatch(timeoutPatch);
   input.onTerminal("Task Cursor 폴링 시간 초과");

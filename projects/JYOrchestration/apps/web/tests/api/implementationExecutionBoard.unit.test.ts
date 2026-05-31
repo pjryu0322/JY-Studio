@@ -12,6 +12,7 @@ import {
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
   pickTaskIdForReworkRequest,
+  resolveTaskRowUserRestartCapability,
   deriveImplementationBoardInterviewChips,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplementationState";
@@ -157,6 +158,29 @@ function executionStateWithDeveloperDone() {
   return state;
 }
 
+function reviewerQualityGatePassedForDeveloperTasks(
+  taskIds: readonly string[],
+): readonly ImplementationQualityGateResultV1[] {
+  return [
+    {
+      version: "implementation_quality_gate_result_v1",
+      role: "reviewer",
+      status: "passed",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "mock_local_gate",
+      summary: "pass",
+      checks: taskIds.map((taskId, index) => ({
+        id: `review-pass-${index}`,
+        title: `${taskId} 검수`,
+        status: "passed" as const,
+        targetTaskIds: [taskId],
+      })),
+      failedTaskIds: [],
+    },
+  ];
+}
+
 describe("implementationExecutionBoard", () => {
   it("creates task rows from developer tasks", () => {
     const board = buildImplementationExecutionBoard({
@@ -238,43 +262,78 @@ describe("implementationExecutionBoard", () => {
     expect(board.taskRows[0]?.currentRole).toBe("reviewer");
   });
 
-  it("currentRole is security when reviewer done but security not done", () => {
+  it("currentRole is completed when per-task developer and reviewer quality gate are done", () => {
     let state = executionStateWithDeveloperDone();
     state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "passed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "pass",
+        checks: [
+          { id: "dev-1", title: "dev-1 검수", status: "passed", targetTaskIds: ["dev-1"] },
+          { id: "dev-2", title: "dev-2 검수", status: "passed", targetTaskIds: ["dev-2"] },
+        ],
+        failedTaskIds: [],
+      },
+    ];
     const board = buildImplementationExecutionBoard({
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
-      nowIso: NOW,
-    });
-    expect(board.taskRows[0]?.currentRole).toBe("security");
-  });
-
-  it("currentRole is scm when security done but scm not done", () => {
-    let state = executionStateWithDeveloperDone();
-    state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
-    state = markRoleTasksDone({ state, ownerRole: "security", nowIso: NOW });
-    const board = buildImplementationExecutionBoard({
-      projectId: "p-board",
-      taskList: sampleTaskList(),
-      executionState: state,
-      nowIso: NOW,
-    });
-    expect(board.taskRows[0]?.currentRole).toBe("scm");
-  });
-
-  it("currentRole is completed when all role steps done", () => {
-    let state = executionStateWithDeveloperDone();
-    state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
-    state = markRoleTasksDone({ state, ownerRole: "security", nowIso: NOW });
-    state = markRoleTasksDone({ state, ownerRole: "scm", nowIso: NOW });
-    const board = buildImplementationExecutionBoard({
-      projectId: "p-board",
-      taskList: sampleTaskList(),
-      executionState: state,
+      qualityGateResults,
       nowIso: NOW,
     });
     expect(board.taskRows.every((row) => row.currentRole === "completed")).toBe(true);
+  });
+
+  it("does not mark reviewer done on developer-failed task when global reviewer is done", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) => {
+        if (item.ownerRole !== "developer") return item;
+        if (item.taskId === "dev-1") {
+          return { ...item, status: "done" as const, completedAt: NOW };
+        }
+        if (item.taskId === "dev-2") {
+          return { ...item, status: "failed" as const, completedAt: NOW, errorMessage: "cursor failed" };
+        }
+        return item;
+      }),
+    };
+    state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
+    const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
+      {
+        version: "implementation_quality_gate_result_v1",
+        role: "reviewer",
+        status: "passed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        source: "mock_local_gate",
+        summary: "pass",
+        checks: [{ id: "dev-1", title: "dev-1 검수", status: "passed", targetTaskIds: ["dev-1"] }],
+        failedTaskIds: [],
+      },
+    ];
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      qualityGateResults,
+      nowIso: NOW,
+    });
+    expect(board.taskRows[0]?.reviewerStatus).toBe("done");
+    expect(board.taskRows[1]?.reviewerStatus).toBe("not_started");
+    expect(board.taskRows[1]?.developerStatus).toBe("failed");
   });
 
   it("canContinueTaskDespiteUserConfirmation respects blocking policy", () => {
@@ -302,6 +361,7 @@ describe("implementationExecutionBoard", () => {
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     expect(board.integratedRows.find((r) => r.step === "refactor_common")?.status).toBe("ready");
@@ -317,6 +377,7 @@ describe("implementationExecutionBoard", () => {
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     expect(isImplementationBoardComplete({ board, previewReady: true })).toBe(false);
@@ -331,6 +392,7 @@ describe("implementationExecutionBoard", () => {
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     const incompleteBoard = {
@@ -351,6 +413,7 @@ describe("implementationExecutionBoard", () => {
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     expect(isImplementationBoardComplete({ board, previewReady: false })).toBe(false);
@@ -365,6 +428,7 @@ describe("implementationExecutionBoard", () => {
       projectId: "p-board",
       taskList: sampleTaskList(),
       executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     const withBlocking = {
@@ -400,12 +464,26 @@ describe("implementationExecutionBoard", () => {
       taskList: sampleTaskList(),
       executionState: state,
       integratedExecutionState,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
       nowIso: NOW,
     });
     expect(isImplementationBoardComplete({ board, previewReady: true })).toBe(true);
   });
 
   it("applies quality gate failedTaskIds only to matching task row", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.taskId === "dev-1" && item.ownerRole === "developer"
+          ? { ...item, status: "done" as const, completedAt: NOW }
+          : item,
+      ),
+    };
     const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
       {
         version: "implementation_quality_gate_result_v1",
@@ -422,6 +500,7 @@ describe("implementationExecutionBoard", () => {
     const board = buildImplementationExecutionBoard({
       projectId: "p-board",
       taskList: sampleTaskList(),
+      executionState: state,
       qualityGateResults,
       nowIso: NOW,
     });
@@ -431,6 +510,19 @@ describe("implementationExecutionBoard", () => {
   });
 
   it("applies security quality gate failedTaskIds only to matching task row", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.taskId === "dev-2" && item.ownerRole === "developer"
+          ? { ...item, status: "done" as const, completedAt: NOW }
+          : item,
+      ),
+    };
     const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
       {
         version: "implementation_quality_gate_result_v1",
@@ -447,6 +539,7 @@ describe("implementationExecutionBoard", () => {
     const board = buildImplementationExecutionBoard({
       projectId: "p-board",
       taskList: sampleTaskList(),
+      executionState: state,
       qualityGateResults,
       nowIso: NOW,
     });
@@ -774,6 +867,43 @@ describe("implementationExecutionBoard", () => {
     expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-3");
   });
 
+  it("pickFirstExecutableDeveloperTaskId skips failed developer task until rework is requested", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: sampleTaskList().tasks.map((task) =>
+        task.ownerRole === "developer" ? { ...task, dependencies: [] as string[] } : task,
+      ),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      executionState: {
+        version: "implementation_task_execution_state_v1",
+        projectId: "p-board",
+        createdAt: NOW,
+        updatedAt: NOW,
+        items: [
+          {
+            taskId: "dev-1",
+            ownerRole: "developer",
+            status: "failed",
+            updatedAt: NOW,
+            errorMessage: "poll cancelled",
+          },
+          {
+            taskId: "dev-2",
+            ownerRole: "developer",
+            status: "queued",
+            updatedAt: NOW,
+          },
+        ],
+        summary: { total: 2, done: 0, inProgress: 0, failed: 1, skipped: 0, queued: 1 },
+      },
+      nowIso: NOW,
+    });
+    expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+  });
+
   it("pickFirstExecutableDeveloperTaskId skips blocking task even when quality failed", () => {
     const taskList = {
       ...sampleTaskList(),
@@ -1013,5 +1143,147 @@ describe("implementationExecutionBoard", () => {
     expect(board.taskRows.find((r) => r.taskId === "dev-1")?.reworkCount).toBe(0);
     expect(board.taskRows.find((r) => r.taskId === "dev-2")?.reworkCount).toBe(1);
     expect(pickFirstExecutableDeveloperTaskId(board)).toBe("dev-2");
+  });
+
+  it("resolveTaskRowUserRestartCapability allows failed task with dependency met", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) => {
+        if (item.taskId === "dev-1" && item.ownerRole === "developer") {
+          return { ...item, status: "done" as const, completedAt: NOW };
+        }
+        if (item.taskId === "dev-2" && item.ownerRole === "developer") {
+          return { ...item, status: "failed" as const, completedAt: NOW, errorMessage: "fail" };
+        }
+        return item;
+      }),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    const row = board.taskRows.find((item) => item.taskId === "dev-2");
+    expect(row).toBeTruthy();
+    expect(
+      resolveTaskRowUserRestartCapability({
+        row: row!,
+        board,
+      }),
+    ).toEqual({
+      canRestart: true,
+      needsReworkRegistration: true,
+    });
+    expect(pickTaskIdForReworkRequest(board, "dev-2")).toBe("dev-2");
+  });
+
+  it("resolveTaskRowUserRestartCapability blocks completed task restart", () => {
+    const state = executionStateWithDeveloperDone();
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      qualityGateResults: reviewerQualityGatePassedForDeveloperTasks(["dev-1", "dev-2"]),
+      nowIso: NOW,
+    });
+    const row = board.taskRows.find((item) => item.taskId === "dev-1");
+    expect(
+      resolveTaskRowUserRestartCapability({
+        row: row!,
+        board,
+      }).canRestart,
+    ).toBe(false);
+  });
+
+  it("resolveTaskRowUserRestartCapability allows restart when same task cursor state is stale", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) => {
+        if (item.taskId === "dev-1" && item.ownerRole === "developer") {
+          return { ...item, status: "done" as const, completedAt: NOW };
+        }
+        if (item.taskId === "dev-2" && item.ownerRole === "developer") {
+          return { ...item, status: "failed" as const, completedAt: NOW, errorMessage: "fail" };
+        }
+        return item;
+      }),
+    };
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    const row = board.taskRows.find((item) => item.taskId === "dev-2");
+    expect(row).toBeTruthy();
+    expect(
+      resolveTaskRowUserRestartCapability({
+        row: row!,
+        board,
+        taskCursorExecution: {
+          version: "task_cursor_execution_v1",
+          projectId: "p-board",
+          taskId: "dev-2",
+          workItemIds: ["w-dev-2"],
+          status: "cursor_running",
+          cursorProvider: "cursor",
+          targetRepository: "owner/repo",
+          baseBranch: "main",
+          workBranch: "wip/dev-2",
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      }),
+    ).toEqual({
+      canRestart: true,
+      needsReworkRegistration: true,
+    });
+  });
+
+  it("resolveTaskRowUserRestartCapability blocks restart when another task cursor is actively running", () => {
+    const state = executionStateWithDeveloperDone();
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList: sampleTaskList(),
+      executionState: state,
+      nowIso: NOW,
+    });
+    const row = board.taskRows.find((item) => item.taskId === "dev-2");
+    expect(row).toBeTruthy();
+    expect(
+      resolveTaskRowUserRestartCapability({
+        row: row!,
+        board,
+        taskCursorExecution: {
+          version: "task_cursor_execution_v1",
+          projectId: "p-board",
+          taskId: "dev-1",
+          workItemIds: ["w-dev-1"],
+          status: "cursor_running",
+          cursorProvider: "cursor",
+          targetRepository: "owner/repo",
+          baseBranch: "main",
+          workBranch: "wip/dev-1",
+          cursorRunId: "bc-aa13fda9-21e2-4d4b-af82-6006c4fbc40e",
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      }),
+    ).toEqual({
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "다른 Task의 Cursor 실행이 진행 중입니다.",
+    });
   });
 });

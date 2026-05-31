@@ -1,11 +1,14 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
-import { pickFirstExecutableDeveloperTaskIdExcluding } from "@/lib/prototype/implementationExecutionBoard";
+import {
+  pickFirstExecutableDeveloperTaskId,
+  pickFirstExecutableDeveloperTaskIdExcluding,
+} from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
   collectDependentTaskIds,
   shouldStopAutoChainForFoundationFailure,
 } from "@/lib/prototype/implementationTaskDependencyGraph";
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import { isInFlightTaskCursorExecution, isTaskCursorPollCancelledExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import {
   resolveTaskCursorFailurePolicyFromExecution,
 } from "@/lib/prototype/taskCursorFailurePolicy";
@@ -54,19 +57,21 @@ function isTaskReadyForAutoChainContinue(
 export function resolveNextTaskCursorAutoChainTarget(
   board: ImplementationExecutionBoardV1 | null | undefined,
   excludeTaskIds?: readonly string[],
+  allowedTaskIds?: readonly string[] | null,
 ): string | null {
   if (!board) return null;
   if (excludeTaskIds?.length) {
-    return pickFirstExecutableDeveloperTaskIdExcluding(board, excludeTaskIds);
+    return pickFirstExecutableDeveloperTaskIdExcluding(board, excludeTaskIds, allowedTaskIds);
   }
-  return pickFirstExecutableDeveloperTaskIdExcluding(board);
+  return pickFirstExecutableDeveloperTaskId(board, allowedTaskIds);
 }
 
 function resolveFailureAutoChainDecision(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly execution: TaskCursorExecutionV1;
+  readonly allowedTaskIds?: readonly string[] | null;
 }): TaskCursorAutoChainDecision {
-  const { execution, board } = input;
+  const { execution, board, allowedTaskIds } = input;
   const policy = resolveTaskCursorFailurePolicyFromExecution(execution);
   if (!policy) return { kind: "none" };
 
@@ -74,13 +79,14 @@ function resolveFailureAutoChainDecision(input: {
 
   if (
     execution.status === "cursor_failed" &&
+    !isTaskCursorPollCancelledExecution(execution) &&
     isTransientTaskCursorLaunchError(execution.errorMessage)
   ) {
     return { kind: "start", taskId: execution.taskId };
   }
 
   const excludeTaskIds = [execution.taskId];
-  const nextTaskId = resolveNextTaskCursorAutoChainTarget(board, excludeTaskIds);
+  const nextTaskId = resolveNextTaskCursorAutoChainTarget(board, excludeTaskIds, allowedTaskIds);
   if (
     shouldStopAutoChainForFoundationFailure({
       failedTaskId: execution.taskId,
@@ -110,6 +116,7 @@ export function resolveTaskCursorAutoChainDecision(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
   readonly autoQualityGateInFlight?: boolean;
+  readonly allowedTaskIds?: readonly string[] | null;
 }): TaskCursorAutoChainDecision {
   if (input.autoQualityGateInFlight) return { kind: "none" };
   const execution = input.taskCursorExecution ?? null;
@@ -117,11 +124,12 @@ export function resolveTaskCursorAutoChainDecision(input: {
 
   const board = input.board ?? null;
   const autoGate = input.autoGate ?? null;
+  const allowedTaskIds = input.allowedTaskIds ?? null;
   const excludeTaskIds =
     execution && isTaskReadyForAutoChainContinue(execution, autoGate)
       ? [execution.taskId]
       : [];
-  const nextTaskId = resolveNextTaskCursorAutoChainTarget(board, excludeTaskIds);
+  const nextTaskId = resolveNextTaskCursorAutoChainTarget(board, excludeTaskIds, allowedTaskIds);
   if (!nextTaskId && !execution) return { kind: "none" };
 
   if (
@@ -137,7 +145,7 @@ export function resolveTaskCursorAutoChainDecision(input: {
     (isTaskCursorExecutionFailed(execution) || execution.status === "github_verify_failed")
   ) {
     if (!board) return { kind: "none" };
-    return resolveFailureAutoChainDecision({ board, execution });
+    return resolveFailureAutoChainDecision({ board, execution, allowedTaskIds });
   }
 
   if (!nextTaskId) return { kind: "none" };
@@ -203,4 +211,24 @@ export function formatTaskCursorAutoChainNotice(
     ].join("\n");
   }
   return `작업 ${decision.fromTaskId} 통과 — 다음 작업 ${decision.toTaskId}${title}을(를) 자동으로 시작합니다.`;
+}
+
+export function planImmediateTaskCursorAutoChainAfterFailure(input: {
+  readonly board: ImplementationExecutionBoardV1 | null | undefined;
+  readonly execution: TaskCursorExecutionV1;
+  readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+}): Readonly<{
+  readonly decision: Exclude<TaskCursorAutoChainDecision, Readonly<{ readonly kind: "none" }>>;
+  readonly preferredTaskId: string;
+}> | null {
+  const decision = resolveTaskCursorAutoChainDecision({
+    board: input.board,
+    taskCursorExecution: input.execution,
+    autoGate: input.autoGate ?? null,
+  });
+  if (decision.kind === "none") return null;
+  if (decision.kind === "start" && decision.taskId === input.execution.taskId) return null;
+  const preferredTaskId =
+    decision.kind === "start" ? decision.taskId : decision.toTaskId;
+  return { decision, preferredTaskId };
 }

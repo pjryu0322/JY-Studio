@@ -10,6 +10,9 @@ import {
 import {
   buildCompactBoardSummaryLine,
   buildImplementationExecutionBoardSummaryView,
+  buildImplementationTaskTreeNodes,
+  buildTaskCursorPollStatusLabel,
+  findLatestTaskCursorPollTickForTask,
   buildMobileBoardEnvPills,
   buildTaskRowCardView,
   collapseImplementationBoardChatMessagesForPanelView,
@@ -337,5 +340,82 @@ describe("implementationExecutionBoardPanelView", () => {
     expect((filtered[0]?.meta as { interviewSuggestions?: string[] }).interviewSuggestions).toEqual([
       "환경설정 열기",
     ]);
+  });
+
+  it("derives poll status label from latest task_cursor_poll_tick timeline entry", () => {
+    const timeline = [
+      {
+        id: "log-1",
+        action: "task_cursor_poll_tick",
+        createdAt: "2026-05-31T10:04:00.000Z",
+        responseText: "type=task_cursor_poll_tick taskId=DEV-FEATURE-004 round=4 agentStatus=RUNNING executionStatus=cursor_running",
+      },
+    ];
+    expect(findLatestTaskCursorPollTickForTask(timeline, "DEV-FEATURE-004")).toEqual({
+      round: 4,
+      agentStatus: "RUNNING",
+      executionStatus: "cursor_running",
+      updatedAt: "2026-05-31T10:04:00.000Z",
+    });
+    const label = buildTaskCursorPollStatusLabel({
+      taskId: "DEV-FEATURE-004",
+      taskCursorExecution: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-FEATURE-004",
+        workItemIds: ["wi-1"],
+        status: "cursor_running",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-feature-004",
+        cursorRunId: "bc-12345678-1234-1234-1234-123456789012",
+        createdAt: "2026-05-31T10:00:00.000Z",
+        updatedAt: "2026-05-31T10:04:00.000Z",
+      },
+      promptTimeline: timeline,
+      developerStatus: "in_progress",
+    });
+    expect(label).toContain("Cloud Agent 폴링");
+    expect(label).toContain("4회");
+    expect(label).toContain("RUNNING");
+  });
+
+  it("shows poll status and stop capability on active task tree node", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleTaskList() },
+    })!;
+    const nodes = buildImplementationTaskTreeNodes({
+      board,
+      activeTaskId: "DEV-SCREEN-002",
+      taskCursorExecution: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-SCREEN-002",
+        workItemIds: ["wi-1"],
+        status: "cursor_running",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-screen-002",
+        cursorRunId: "bc-abcdef12-3456-7890-abcd-ef1234567890",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      promptTimeline: [
+        {
+          id: "log-2",
+          action: "task_cursor_poll_tick",
+          createdAt: NOW,
+          responseText:
+            "type=task_cursor_poll_tick taskId=DEV-SCREEN-002 round=2 agentStatus=RUNNING executionStatus=cursor_running",
+        },
+      ],
+    });
+    const node = nodes.find((item) => item.taskId === "DEV-SCREEN-002");
+    expect(node?.pollStatusLabel).toContain("2회");
+    expect(node?.canStop).toBe(true);
+    expect(node?.restartBlockedReason).toBeUndefined();
   });
 });

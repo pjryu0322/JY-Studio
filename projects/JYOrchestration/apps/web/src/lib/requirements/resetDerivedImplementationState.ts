@@ -11,6 +11,7 @@ import type {
 } from "@/lib/requirements/requirementsStateJson";
 import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { isImplementationTimelineResetAction } from "@/lib/requirements/promptTimelineActionCatalog";
+import { isPersistentExecutionLogTimelineEntry } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
 /** 기획 단계 대화 초기화 확인 메시지(구현 파생 데이터 동시 삭제 안내). */
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
@@ -136,7 +137,10 @@ export function isImplementationPromptTimelineEntry(
 export function filterImplementationPromptTimeline(
   entries: readonly RequirementsPromptTimelineEntry[],
 ): RequirementsPromptTimelineEntry[] {
-  return (entries ?? []).filter((e) => !isImplementationPromptTimelineEntry(e));
+  return (entries ?? []).filter((entry) => {
+    if (isPersistentExecutionLogTimelineEntry(entry)) return true;
+    return !isImplementationPromptTimelineEntry(entry);
+  });
 }
 
 export function isImplementationProjectArtifact(artifact: ProjectArtifact): boolean {

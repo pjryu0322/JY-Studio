@@ -4,8 +4,9 @@ import {
   markPostDeveloperReviewTasksQueued,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
-import { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorClientPollLoop";
+import { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildTaskCursorPollLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
 import {
   appendTaskCursorExecutionHistory,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 
 export function buildTaskCursorExecutionRequest(input: {
   readonly projectId: string;
@@ -186,7 +187,7 @@ export function buildTaskCursorOrchestrationPatch(input: {
   readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1;
 }> {
-  const timeline = appendPromptTimeline(input.existingTimeline, ...input.timelineEntries);
+  const timeline = appendPromptTimelineEntries(input.existingTimeline, input.timelineEntries);
   const executionState =
     shouldSyncExecutionStateAfterTaskCursorGithubVerify(input.execution.status) && input.executionState
       ? syncTaskExecutionStateAfterGithubVerified({
@@ -311,7 +312,7 @@ export function buildTaskCursorPollCancelledOrchestrationPatch(input: {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const failed = patchTaskCursorExecution(input.execution, {
     status: "cursor_failed",
-    failureReason: "unknown",
+    failureReason: "poll_cancelled",
     errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
     nowIso,
   });
@@ -327,6 +328,15 @@ export function buildTaskCursorPollCancelledOrchestrationPatch(input: {
     execution: failed,
     history: input.history,
     timelineEntries: [
+      buildTaskCursorPollLifecycleTimelineEntry({
+        action: "task_cursor_poll_cancelled",
+        projectId: failed.projectId,
+        taskId: failed.taskId,
+        runId: failed.cursorRunId,
+        executionStatus: "cursor_failed",
+        message: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
+        nowIso,
+      }),
       buildTaskCursorTimelineEntry({
         action: "task_cursor_api_failed",
         projectId: failed.projectId,

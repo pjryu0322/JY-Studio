@@ -29,6 +29,7 @@ export type ImplementationExecutionBoardStateV1 = Readonly<{
   updatedAt: string;
   userConfirmations: readonly ImplementationTaskUserConfirmationV1[];
   reworkRequests: readonly ImplementationTaskReworkRequestV1[];
+  selectedTaskIds?: readonly string[];
 }>;
 
 const CONFIRMATION_STATUSES = new Set<ImplementationUserConfirmationStatus>([
@@ -117,6 +118,10 @@ export function parseImplementationExecutionBoardStateV1(
     }
   }
 
+  const selectedTaskIds = Array.isArray(o.selectedTaskIds)
+    ? o.selectedTaskIds.map((id) => readString(id)).filter(Boolean)
+    : undefined;
+
   return {
     version: IMPLEMENTATION_EXECUTION_BOARD_STATE_VERSION,
     projectId,
@@ -124,6 +129,7 @@ export function parseImplementationExecutionBoardStateV1(
     updatedAt,
     userConfirmations,
     reworkRequests,
+    ...(selectedTaskIds?.length ? { selectedTaskIds } : {}),
   };
 }
 
@@ -253,6 +259,26 @@ export function appendReworkRequest(input: {
     ...base,
     updatedAt: now,
     reworkRequests: [...base.reworkRequests, request],
+  };
+}
+
+export function updateBoardSelectedTaskIds(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly selectedTaskIds: readonly string[];
+  readonly nowIso?: string;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const selectedTaskIds = input.selectedTaskIds.map((taskId) => taskId.trim()).filter(Boolean);
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  return {
+    ...base,
+    updatedAt: now,
+    ...(selectedTaskIds.length ? { selectedTaskIds } : { selectedTaskIds: [] }),
   };
 }
 

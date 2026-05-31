@@ -18,7 +18,9 @@ describe("buildTaskCursorPollCancelledOrchestrationPatch", () => {
     };
     const patch = buildTaskCursorPollCancelledOrchestrationPatch({ execution });
     expect(patch.taskCursorExecutionV1.status).toBe("cursor_failed");
+    expect(patch.taskCursorExecutionV1.failureReason).toBe("poll_cancelled");
     expect(patch.taskCursorExecutionV1.errorMessage).toBe(TASK_CURSOR_POLL_CANCELLED_MESSAGE);
-    expect(patch.promptTimeline?.some((entry) => String(entry.action).includes("failed"))).toBe(true);
+    expect(patch.promptTimeline?.some((entry) => entry.action === "task_cursor_poll_cancelled")).toBe(true);
+    expect(patch.promptTimeline?.some((entry) => entry.action === "task_cursor_api_failed")).toBe(true);
   });
 });

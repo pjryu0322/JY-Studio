@@ -35,6 +35,11 @@ import {
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import {
+  isActiveTaskCursorExecution,
+  isStaleAbandonedTaskCursorExecution,
+} from "@/lib/prototype/taskCursorClientPollLoop";
 
 export { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
 
@@ -185,9 +190,48 @@ export function deriveQualityGateStatusForTask(input: {
 }): ImplementationQualityGateRowStatus {
   const latest = getLatestImplementationQualityGateResultForRole(input.qualityGateResults, input.role);
   if (!latest) return "none";
-  if (latest.status === "passed") return "passed";
   if (latest.failedTaskIds.includes(input.taskId)) return "failed";
+  if (latest.status === "passed") {
+    const passedForTask = latest.checks.some(
+      (check) =>
+        check.status === "passed" &&
+        (!check.targetTaskIds?.length || check.targetTaskIds.includes(input.taskId)),
+    );
+    return passedForTask ? "passed" : "none";
+  }
   return "none";
+}
+
+/** Developer task row의 검수/보안 상태 — 전역 reviewer/security task 완료를 그대로 물려받지 않는다. */
+function derivePostDeveloperRoleStatusForTaskRow(input: {
+  readonly taskId: string;
+  readonly developerStatus: ImplementationBoardStepStatus;
+  readonly role: ImplementationQualityGateRole;
+  readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly globalRoleStatus: ImplementationBoardStepStatus;
+}): ImplementationBoardStepStatus {
+  const gate = deriveQualityGateStatusForTask({
+    taskId: input.taskId,
+    qualityGateResults: input.qualityGateResults,
+    role: input.role,
+  });
+  if (gate === "failed") return "failed";
+
+  if (input.developerStatus === "skipped") return "skipped";
+  if (input.developerStatus === "failed" || !isRoleStepComplete(input.developerStatus)) {
+    return "not_started";
+  }
+  if (gate === "passed") return "done";
+
+  if (
+    input.globalRoleStatus === "in_progress" ||
+    input.globalRoleStatus === "queued" ||
+    input.globalRoleStatus === "ready"
+  ) {
+    return input.globalRoleStatus;
+  }
+
+  return "not_started";
 }
 
 function completedDeveloperTaskIds(board: ImplementationExecutionBoardV1): Set<string> {
@@ -213,6 +257,8 @@ function isDeveloperRowExecutableForWip(
   if (needsRemediation) return true;
 
   if (row.developerStatus === "done" || row.developerStatus === "skipped") return false;
+  if (row.developerStatus === "failed") return false;
+
   return true;
 }
 
@@ -238,11 +284,9 @@ function sortDeveloperTaskRowsByPriority(
   );
 }
 
-/** First developer task for WIP: quality-failed → rework → next ready (dependencies met, priority order). */
-export function pickFirstExecutableDeveloperTaskId(
-  board: ImplementationExecutionBoardV1,
+function pickFirstFromExecutableDeveloperRows(
+  executable: readonly ImplementationExecutionBoardTaskRowV1[],
 ): string | null {
-  const executable = sortDeveloperTaskRowsByPriority(collectExecutableDeveloperRows(board));
   if (!executable.length) return null;
 
   const qualityFailed = executable.filter(
@@ -256,32 +300,40 @@ export function pickFirstExecutableDeveloperTaskId(
   return executable[0]?.taskId ?? null;
 }
 
+/** First developer task for WIP: quality-failed → rework → next ready (dependencies met, priority order). */
+export function pickFirstExecutableDeveloperTaskId(
+  board: ImplementationExecutionBoardV1,
+  allowedTaskIds?: readonly string[] | null,
+): string | null {
+  let executable = sortDeveloperTaskRowsByPriority(collectExecutableDeveloperRows(board));
+  if (allowedTaskIds?.length) {
+    const allowed = new Set(allowedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean));
+    executable = executable.filter((row) => allowed.has(row.taskId));
+  }
+  return pickFirstFromExecutableDeveloperRows(executable);
+}
+
 /** Auto-chain: treat completed task as done even if board execution state is stale. */
 export function pickFirstExecutableDeveloperTaskIdExcluding(
   board: ImplementationExecutionBoardV1,
   excludeTaskIds?: readonly string[],
+  allowedTaskIds?: readonly string[] | null,
 ): string | null {
   const extraCompleted = new Set(
     (excludeTaskIds ?? []).map((id) => String(id ?? "").trim()).filter(Boolean),
   );
   const completedDeveloperIds = completedDeveloperTaskIds(board);
   for (const taskId of extraCompleted) completedDeveloperIds.add(taskId);
-  const executable = sortDeveloperTaskRowsByPriority(
+  let executable = sortDeveloperTaskRowsByPriority(
     board.taskRows.filter(
       (row) => !extraCompleted.has(row.taskId) && isDeveloperRowExecutableForWip(row, completedDeveloperIds),
     ),
   );
-  if (!executable.length) return null;
-
-  const qualityFailed = executable.filter(
-    (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
-  );
-  if (qualityFailed.length) return qualityFailed[0]?.taskId ?? null;
-
-  const rework = executable.filter((row) => row.reworkCount > 0);
-  if (rework.length) return rework[0]?.taskId ?? null;
-
-  return executable[0]?.taskId ?? null;
+  if (allowedTaskIds?.length) {
+    const allowed = new Set(allowedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean));
+    executable = executable.filter((row) => allowed.has(row.taskId));
+  }
+  return pickFirstFromExecutableDeveloperRows(executable);
 }
 
 /** Why `pickFirstExecutableDeveloperTaskId` would select this developer task. */
@@ -330,8 +382,25 @@ export function buildReworkRequestRegistrationNotice(input: {
   ].join("\n");
 }
 
-/** Target task for REQUEST_TASK_REWORK (no per-task UI yet). */
-export function pickTaskIdForReworkRequest(board: ImplementationExecutionBoardV1): string | null {
+/** Target task for REQUEST_TASK_REWORK — preferredTaskId가 유효하면 우선 사용. */
+export function pickTaskIdForReworkRequest(
+  board: ImplementationExecutionBoardV1,
+  preferredTaskId?: string | null,
+): string | null {
+  const preferred = String(preferredTaskId ?? "").trim();
+  if (preferred) {
+    const row = board.taskRows.find((item) => item.taskId === preferred);
+    if (row) {
+      const capability = resolveTaskRowUserRestartCapability({
+        row,
+        board,
+      });
+      if (capability.canRestart && capability.needsReworkRegistration) {
+        return preferred;
+      }
+    }
+  }
+
   const qualityFailed = board.taskRows.filter(
     (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
   );
@@ -343,6 +412,98 @@ export function pickTaskIdForReworkRequest(board: ImplementationExecutionBoardV1
   if (failedWithoutRework.length) return failedWithoutRework[0]?.taskId ?? null;
 
   return pickFirstExecutableDeveloperTaskId(board);
+}
+
+export type TaskRowUserRestartCapability = Readonly<{
+  readonly canRestart: boolean;
+  readonly needsReworkRegistration: boolean;
+  readonly blockedReason?: string;
+}>;
+
+export function resolveTaskRowUserRestartCapability(input: {
+  readonly row: ImplementationExecutionBoardTaskRowV1;
+  readonly board: ImplementationExecutionBoardV1;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+}): TaskRowUserRestartCapability {
+  const execution = input.taskCursorExecution ?? null;
+  if (
+    execution &&
+    isActiveTaskCursorExecution(execution, { developerStatus: input.row.developerStatus })
+  ) {
+    if (execution.taskId === input.row.taskId) {
+      return {
+        canRestart: false,
+        needsReworkRegistration: false,
+        blockedReason: "이 Task의 Cursor 실행이 진행 중입니다.",
+      };
+    }
+    return {
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "다른 Task의 Cursor 실행이 진행 중입니다.",
+    };
+  }
+  if (input.row.userConfirmation === "blocking") {
+    return {
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "사용자 확인이 필요합니다.",
+    };
+  }
+  if (input.row.failureReason === "blocked_by_dependency") {
+    return {
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "선행 Task가 완료되지 않았습니다.",
+    };
+  }
+  if (input.row.developerStatus === "in_progress") {
+    const sameTaskStaleExecution =
+      execution?.taskId === input.row.taskId &&
+      isStaleAbandonedTaskCursorExecution(execution, { developerStatus: input.row.developerStatus });
+    if (!sameTaskStaleExecution) {
+      return {
+        canRestart: false,
+        needsReworkRegistration: false,
+        blockedReason: "이 Task는 현재 실행 중입니다.",
+      };
+    }
+  }
+  if (
+    isPerTaskPipelineComplete({
+      developerStatus: input.row.developerStatus,
+      reviewerStatus: input.row.reviewerStatus,
+    })
+  ) {
+    return {
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "이미 완료된 Task입니다.",
+    };
+  }
+
+  const completedDeveloperIds = new Set(
+    input.board.taskRows
+      .filter((row) => row.developerStatus === "done" || row.developerStatus === "skipped")
+      .map((row) => row.taskId),
+  );
+  if (!input.row.dependencies.every((dep) => completedDeveloperIds.has(dep))) {
+    return {
+      canRestart: false,
+      needsReworkRegistration: false,
+      blockedReason: "선행 Task가 완료되지 않았습니다.",
+    };
+  }
+
+  const needsReworkRegistration =
+    (input.row.developerStatus === "failed" && input.row.reworkCount === 0) ||
+    ((input.row.reviewerResultStatus === "failed" || input.row.securityResultStatus === "failed") &&
+      input.row.reworkCount === 0);
+
+  return {
+    canRestart: true,
+    needsReworkRegistration,
+  };
 }
 
 export function boardShowsRequestTaskReworkChip(board: ImplementationExecutionBoardV1): boolean {
@@ -398,12 +559,13 @@ export function pickQualityGateTargetTaskIds(input: {
 export function filterCursorWorkItemsForExecutableTask(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly workItems: readonly CursorWorkItem[];
+  readonly allowedTaskIds?: readonly string[] | null;
 }): {
   readonly selectedTaskId: string | null;
   readonly selectedWorkItems: readonly CursorWorkItem[];
   readonly blockedReason?: string;
 } {
-  const selectedTaskId = pickFirstExecutableDeveloperTaskId(input.board);
+  const selectedTaskId = pickFirstExecutableDeveloperTaskId(input.board, input.allowedTaskIds);
   if (!selectedTaskId) {
     return {
       selectedTaskId: null,
@@ -474,6 +636,7 @@ export function selectCursorWorkItemsForWipExecution(input: {
   readonly workItems: readonly CursorWorkItem[];
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly allowedTaskIds?: readonly string[] | null;
 }): {
   readonly selectedTaskId: string | null;
   readonly selectedWorkItems: readonly CursorWorkItem[];
@@ -482,6 +645,7 @@ export function selectCursorWorkItemsForWipExecution(input: {
   const scoped = filterCursorWorkItemsForExecutableTask({
     board: input.board,
     workItems: input.workItems,
+    allowedTaskIds: input.allowedTaskIds,
   });
   if (!scoped.selectedWorkItems.length) {
     return scoped;
@@ -618,15 +782,6 @@ function aggregateRoleBoardStatus(
   return worst;
 }
 
-function applyQualityGateToRoleStatus(
-  taskId: string,
-  globalStatus: ImplementationBoardStepStatus,
-  gateStatus: ImplementationQualityGateRowStatus,
-): ImplementationBoardStepStatus {
-  if (gateStatus === "failed") return "failed";
-  return globalStatus;
-}
-
 function isRoleStepComplete(status: ImplementationBoardStepStatus): boolean {
   return status === "done" || status === "skipped";
 }
@@ -756,16 +911,20 @@ function buildTaskRow(input: {
     role: "security",
   });
 
-  const reviewerStatus = applyQualityGateToRoleStatus(
-    input.task.taskId,
-    input.reviewerGlobal,
-    reviewerGate,
-  );
-  const securityStatus = applyQualityGateToRoleStatus(
-    input.task.taskId,
-    input.securityGlobal,
-    securityGate,
-  );
+  const reviewerStatus = derivePostDeveloperRoleStatusForTaskRow({
+    taskId: input.task.taskId,
+    developerStatus,
+    role: "reviewer",
+    qualityGateResults: input.qualityGateResults,
+    globalRoleStatus: input.reviewerGlobal,
+  });
+  const securityStatus = derivePostDeveloperRoleStatusForTaskRow({
+    taskId: input.task.taskId,
+    developerStatus,
+    role: "security",
+    qualityGateResults: input.qualityGateResults,
+    globalRoleStatus: input.securityGlobal,
+  });
   const scmStatus = input.scmGlobal;
 
   const confirmation = getUserConfirmationForTask(input.boardState, input.task.taskId);

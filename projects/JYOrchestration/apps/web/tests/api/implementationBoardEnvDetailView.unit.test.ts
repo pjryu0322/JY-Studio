@@ -3,6 +3,7 @@ import {
   buildImplementationBoardEnvDetailLines,
   evaluateTaskCursorExecutionSetupReadiness,
   formatTaskCursorSetupReadinessPillValue,
+  resolveTaskCursorExecutionEnvGate,
 } from "@/lib/prototype/implementationBoardEnvDetailView";
 
 describe("implementationBoardEnvDetailView", () => {
@@ -75,5 +76,44 @@ describe("implementationBoardEnvDetailView", () => {
     expect(text).toContain("develop");
     expect(text).toContain("Cursor API 연결 실패");
     expect(text).toContain("Task Cursor 정책");
+  });
+
+  it("resolveTaskCursorExecutionEnvGate blocks unvalidated setup with guidance message", () => {
+    expect(
+      resolveTaskCursorExecutionEnvGate({
+        setup: {
+          gitRepoUrl: "https://github.com/org/repo",
+          gitRepoName: "org/repo",
+          gitRepoProvider: "github",
+          baseBranch: "main",
+          hasCursorToken: true,
+          hasGithubAccessToken: true,
+          status: "draft",
+        },
+      }),
+    ).toEqual({
+      blocked: true,
+      message:
+        "환경설정 실행 검증이 완료되지 않았습니다. [환경설정] → 환경 검증을 완료한 뒤 Task를 실행해 주세요.",
+    });
+  });
+
+  it("resolveTaskCursorExecutionEnvGate allows validated setup", () => {
+    expect(
+      resolveTaskCursorExecutionEnvGate({
+        setup: {
+          gitRepoUrl: "https://github.com/org/repo",
+          gitRepoName: "org/repo",
+          gitRepoProvider: "github",
+          baseBranch: "main",
+          hasCursorToken: true,
+          hasGithubAccessToken: true,
+          status: "validated",
+          repoConnectionOk: true,
+          cursorApiConnectionOk: true,
+          executorConnectionOk: true,
+        },
+      }),
+    ).toEqual({ blocked: false });
   });
 });

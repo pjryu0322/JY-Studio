@@ -152,6 +152,21 @@ export function evaluateTaskCursorExecutionSetupReadiness(input?: {
   };
 }
 
+export function resolveTaskCursorExecutionEnvGate(input?: {
+  readonly setup?: ExecutionSetupSourceGenerationRow | null;
+}): Readonly<{ readonly blocked: boolean; readonly message?: string }> {
+  const readiness = evaluateTaskCursorExecutionSetupReadiness(input);
+  if (readiness.ready) return { blocked: false };
+  if (readiness.status === "not_validated") {
+    return {
+      blocked: true,
+      message:
+        "환경설정 실행 검증이 완료되지 않았습니다. [환경설정] → 환경 검증을 완료한 뒤 Task를 실행해 주세요.",
+    };
+  }
+  return { blocked: true, message: readiness.reason };
+}
+
 export function buildImplementationBoardEnvDetailLines(input?: {
   readonly setup?: ExecutionSetupSourceGenerationRow | null;
 }): readonly string[] {

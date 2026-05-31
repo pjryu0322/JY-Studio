@@ -11,6 +11,7 @@ import { runImplementationAutoQualityGate } from "@/lib/prototype/implementation
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
   markPostDeveloperReviewTasksQueued,
+  markRoleTasksDone,
   summarizeImplementationTaskExecutionItems,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -68,17 +69,13 @@ describe("implementationTaskPipelinePolicy", () => {
     ).toBe("reviewer");
   });
 
-  it("task tree omits per-task security and scm steps", () => {
+  it("task tree omits per-task security, scm, and reviewer steps", () => {
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleList() },
     })!;
     const nodes = buildImplementationTaskTreeNodes({ board, activeTaskId: "DEV-1" });
-    expect(nodes[0]?.childSteps.map((step) => step.roleLabel)).toEqual([
-      "AI 개발자",
-      "GitHub",
-      "검수",
-    ]);
+    expect(nodes[0]?.childSteps.map((step) => step.roleLabel)).toEqual(["AI 개발자", "GitHub"]);
   });
 
   it("auto quality gate skips per-task security and continues chain", () => {
@@ -130,5 +127,99 @@ describe("implementationTaskPipelinePolicy", () => {
         (item) => item.ownerRole === "security" && item.status === "done",
       ),
     ).toBe(false);
+  });
+
+  it("task tree shows reviewer waiting when developer failed even if another task passed review", () => {
+    let state = buildInitialImplementationTaskExecutionStateFromTaskList({
+      projectId: "p1",
+      taskList: sampleList(),
+      nowIso: NOW,
+    });
+    state = {
+      ...state,
+      items: state.items.map((item) =>
+        item.ownerRole === "developer" && item.taskId === "DEV-1"
+          ? { ...item, status: "done" as const, completedAt: NOW }
+          : item,
+      ),
+    };
+    state = markRoleTasksDone({ state, ownerRole: "reviewer", nowIso: NOW });
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: {
+        implementationTaskListV1: sampleList(),
+        implementationTaskExecutionStateV1: state,
+        implementationQualityGateResultsV1: [
+          {
+            version: "implementation_quality_gate_result_v1",
+            role: "reviewer",
+            status: "passed",
+            createdAt: NOW,
+            updatedAt: NOW,
+            source: "mock_local_gate",
+            summary: "pass",
+            checks: [{ id: "c1", title: "DEV-1 검수", status: "passed", targetTaskIds: ["DEV-1"] }],
+            failedTaskIds: [],
+          },
+        ],
+      },
+    })!;
+    const failedDevBoard = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: {
+        implementationTaskListV1: {
+          ...sampleList(),
+          tasks: [
+            ...sampleList().tasks,
+            {
+              taskId: "DEV-2",
+              title: "Fail screen",
+              description: "d",
+              taskType: "screen",
+              ownerRole: "developer",
+              priority: "medium",
+              dependencies: ["DEV-1"],
+              acceptanceCriteria: [],
+              status: "ready",
+            },
+          ],
+          roleSummary: { developer: 2, designer: 0, reviewer: 1, security: 0, scm: 0 },
+        },
+        implementationTaskExecutionStateV1: {
+          ...state,
+          items: [
+            ...state.items,
+            {
+              taskId: "DEV-2",
+              ownerRole: "developer",
+              status: "failed",
+              errorMessage: "cursor failed",
+              completedAt: NOW,
+            },
+          ],
+        },
+        implementationQualityGateResultsV1: [
+          {
+            version: "implementation_quality_gate_result_v1",
+            role: "reviewer",
+            status: "passed",
+            createdAt: NOW,
+            updatedAt: NOW,
+            source: "mock_local_gate",
+            summary: "pass",
+            checks: [{ id: "c1", title: "DEV-1 검수", status: "passed", targetTaskIds: ["DEV-1"] }],
+            failedTaskIds: [],
+          },
+        ],
+      },
+    })!;
+    const dev2Node = buildImplementationTaskTreeNodes({
+      board: failedDevBoard,
+      activeTaskId: "DEV-2",
+    }).find((node) => node.taskId === "DEV-2");
+    expect(dev2Node?.childSteps.map((step) => step.roleLabel)).toEqual(["AI 개발자", "GitHub"]);
+    expect(dev2Node?.childSteps.find((step) => step.roleLabel === "AI 개발자")?.statusLabel).toBe(
+      "AI 개발자: 실패",
+    );
   });
 });
