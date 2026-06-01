@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   fetchEnvironmentTestLast,
@@ -34,6 +35,13 @@ import {
   isGithubTokenCredentialsError,
   resolvePrototypeEnvTestDisabledTitle,
 } from "@/lib/project/prototypeEnvSettingsReadiness";
+import {
+  buildMvpAiExecutionSettingsPatch,
+  llmRefinementStatusLabel,
+  openaiPlannerCredentialLooksStored,
+  resolvePlannerKeyUiState,
+  syncEnableLlmCodeTaskRefinementFromSetup,
+} from "@/lib/project/prototypeAiExecutionSettings";
 import {
   githubCredentialLooksStored,
   cursorCredentialLooksStored,
@@ -480,6 +488,10 @@ export function ProjectExecutionEnvironmentPanel({
   const [githubTokenDraft, setGithubTokenDraft] = useState("");
   const [githubReplaceMode, setGithubReplaceMode] = useState(false);
   const [githubTokenRevealPlaintext, setGithubTokenRevealPlaintext] = useState<string | null>(null);
+  const [enableLlmCodeTaskRefinement, setEnableLlmCodeTaskRefinement] = useState(false);
+  const [openaiPlannerApiKeyInput, setOpenaiPlannerApiKeyInput] = useState("");
+  const [openaiPlannerApiKeyPendingDelete, setOpenaiPlannerApiKeyPendingDelete] = useState(false);
+  const [openaiPlannerReplaceMode, setOpenaiPlannerReplaceMode] = useState(false);
   const [stage1DetailsOpen, setStage1DetailsOpen] = useState(false);
   /** true = PR 생성 후 자동 Merge 테스트 (mergeMode `auto`) */
   const [mergeAfterPr, setMergeAfterPr] = useState(false);
@@ -545,6 +557,16 @@ export function ProjectExecutionEnvironmentPanel({
   useEffect(() => {
     void loadExecutionSetup();
   }, [loadExecutionSetup]);
+
+  useEffect(() => {
+    setEnableLlmCodeTaskRefinement(syncEnableLlmCodeTaskRefinementFromSetup(executionSetup));
+  }, [executionSetup?.enableLlmCodeTaskRefinement]);
+
+  useEffect(() => {
+    setOpenaiPlannerApiKeyInput("");
+    setOpenaiPlannerApiKeyPendingDelete(false);
+    setOpenaiPlannerReplaceMode(false);
+  }, [projectId]);
 
   const loadEnvTestLast = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -780,6 +802,14 @@ export function ProjectExecutionEnvironmentPanel({
         ...policyPatch,
       };
       if (githubTokenDraft.trim()) body.githubAccessToken = githubTokenDraft.trim();
+      Object.assign(
+        body,
+        buildMvpAiExecutionSettingsPatch({
+          enableLlmCodeTaskRefinement,
+          openaiPlannerApiKeyInput,
+          openaiPlannerApiKeyPendingDelete,
+        })
+      );
       const { res, json } = await patchExecutionSetup(projectId, body);
       if (!res.ok || !json.success || !json.data) {
         setExecutionMessage(json.message || "저장에 실패했습니다.");
@@ -790,6 +820,10 @@ export function ProjectExecutionEnvironmentPanel({
       setGithubTokenDraft("");
       setGithubReplaceMode(false);
       setGithubTokenRevealPlaintext(null);
+      setOpenaiPlannerApiKeyInput("");
+      setOpenaiPlannerApiKeyPendingDelete(false);
+      setOpenaiPlannerReplaceMode(false);
+      setEnableLlmCodeTaskRefinement(syncEnableLlmCodeTaskRefinementFromSetup(json.data));
       const cursorOk = (await executionSetupPanelRef.current?.saveCursorConnection(json.data)) ?? true;
       if (!cursorOk) return;
       let latestSetup = json.data;
@@ -803,7 +837,15 @@ export function ProjectExecutionEnvironmentPanel({
     } finally {
       setBusyMvpSave(false);
     }
-  }, [projectId, gitVals, githubTokenDraft, notifyExecutionSetupChanged]);
+  }, [
+    projectId,
+    gitVals,
+    githubTokenDraft,
+    enableLlmCodeTaskRefinement,
+    openaiPlannerApiKeyInput,
+    openaiPlannerApiKeyPendingDelete,
+    notifyExecutionSetupChanged,
+  ]);
 
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -1965,6 +2007,15 @@ export function ProjectExecutionEnvironmentPanel({
   const githubPeerMask =
     peerGithubCredentialMasked(executionSetup) ??
     (String(peerHintsWhenNoSetup?.githubAccessTokenMasked ?? "").trim() || null);
+  const plannerKeyOnThisProject = openaiPlannerCredentialLooksStored(executionSetup);
+  const plannerKeyUi = resolvePlannerKeyUiState({
+    executionSetup,
+    pendingDelete: openaiPlannerApiKeyPendingDelete,
+  });
+  const refineImplementationPrepHref = `/execution?projectId=${encodeURIComponent(projectId.trim())}&refineImplementationPrep=1`;
+  const executionPipelineRunning = Boolean(envTestLast?.isRunning) || busyEnvTest;
+  const refineImplementationPrepDisabled =
+    !enableLlmCodeTaskRefinement || !plannerKeyUi.hasKey || executionPipelineRunning || !projectId.trim();
 
   const envTestDisabledTitle = isPrototypeMvpUi
     ? resolvePrototypeEnvTestDisabledTitle({
@@ -2243,6 +2294,211 @@ export function ProjectExecutionEnvironmentPanel({
     </div>
   ) : null;
 
+  const mvpAiExecutionSettingsFields = isPrototypeMvpUi && !isModalCompact ? (
+    <div id="execution-ai-settings-panel" data-testid="execution-ai-settings-panel">
+      <p style={{ margin: "0 0 10px 0", fontSize: 12, fontWeight: 700, color: "#475569", lineHeight: 1.55 }}>
+        LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본
+        규칙(heuristic) 기반으로 CodeTask를 생성합니다.
+      </p>
+
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 12,
+          padding: "8px 0",
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 900, color: "#334155" }}>LLM 기반 CodeTask 정제 사용</span>
+        <input
+          type="checkbox"
+          data-testid="enable-llm-codetask-refinement-toggle"
+          disabled={!canEdit}
+          checked={enableLlmCodeTaskRefinement}
+          onChange={(e) => setEnableLlmCodeTaskRefinement(e.target.checked)}
+          style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: canEdit ? "pointer" : "not-allowed" }}
+        />
+      </label>
+
+      <div style={{ marginBottom: 10, fontSize: 12, color: "#334155" }}>
+        <span style={{ fontWeight: 800 }}>Planner API Key: </span>
+        <span data-testid="planner-api-key-status">{plannerKeyUi.statusLabel}</span>
+        {openaiPlannerApiKeyPendingDelete ? (
+          <span style={{ marginLeft: 8, fontSize: 11, color: "#b45309", fontWeight: 700 }}>
+            (저장 시 삭제됩니다)
+          </span>
+        ) : null}
+      </div>
+
+      {!plannerKeyUi.hasKey || openaiPlannerReplaceMode ? (
+        <label style={{ display: "grid", gap: 4, marginBottom: 8, maxWidth: 720 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>OpenAI Planner API Key</span>
+          {openaiPlannerReplaceMode && plannerKeyUi.hasKey ? (
+            <div style={{ marginBottom: 6, fontSize: 11, color: "#475569", lineHeight: 1.45 }}>
+              현재 저장:{" "}
+              <code style={{ fontSize: 11, color: "#0f172a" }} data-testid="planner-api-key-masked">
+                {plannerKeyUi.masked}
+              </code>
+            </div>
+          ) : null}
+          <input
+            type="password"
+            autoComplete="off"
+            data-testid="openai-planner-api-key-input"
+            value={openaiPlannerApiKeyInput}
+            disabled={!canEdit}
+            placeholder={openaiPlannerReplaceMode ? "새 키 붙여넣기" : "sk-…"}
+            onChange={(e) => setOpenaiPlannerApiKeyInput(e.target.value)}
+            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+      ) : (
+        <div style={{ marginBottom: 10, fontSize: 12, color: "#334155", maxWidth: 720 }}>
+          <code
+            data-testid="planner-api-key-masked"
+            style={{
+              display: "block",
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: "#f0f9ff",
+              border: "1px solid #bae6fd",
+              fontSize: 13,
+              wordBreak: "break-all",
+              fontFamily: "ui-monospace, monospace",
+              letterSpacing: 0.02,
+              color: "#0f172a",
+            }}
+          >
+            {plannerKeyUi.masked}
+          </code>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <button
+          type="button"
+          disabled={!canEdit || !plannerKeyUi.hasKey}
+          onClick={() => {
+            setOpenaiPlannerReplaceMode(true);
+            setOpenaiPlannerApiKeyInput("");
+            setOpenaiPlannerApiKeyPendingDelete(false);
+          }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: !canEdit || !plannerKeyUi.hasKey ? "not-allowed" : "pointer",
+          }}
+        >
+          새 키로 교체
+        </button>
+        <button
+          type="button"
+          disabled={!canEdit || !plannerKeyOnThisProject || openaiPlannerApiKeyPendingDelete}
+          onClick={() => {
+            const ok = window.confirm("저장된 Planner API Key를 삭제합니다. 저장 버튼을 누르면 반영됩니다. 계속할까요?");
+            if (!ok) return;
+            setOpenaiPlannerApiKeyPendingDelete(true);
+            setOpenaiPlannerApiKeyInput("");
+            setOpenaiPlannerReplaceMode(false);
+          }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #fecaca",
+            background: "#fff",
+            color: "#b91c1c",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: !canEdit ? "not-allowed" : "pointer",
+          }}
+        >
+          삭제
+        </button>
+        {refineImplementationPrepDisabled ? (
+          <button
+            type="button"
+            disabled
+            data-testid="refine-implementation-prep-button"
+            title={
+              !enableLlmCodeTaskRefinement
+                ? "LLM 기반 CodeTask 정제를 켜야 합니다."
+                : !plannerKeyUi.hasKey
+                  ? "Planner API Key를 설정하세요."
+                  : executionPipelineRunning
+                    ? "구현단계 실행 중에는 재정제할 수 없습니다."
+                    : undefined
+            }
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #e2e8f0",
+              background: "#f1f5f9",
+              color: "#94a3b8",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: "not-allowed",
+            }}
+          >
+            구현준비 산출물 다시 정제
+          </button>
+        ) : (
+          <Link
+            href={refineImplementationPrepHref}
+            prefetch={false}
+            data-testid="refine-implementation-prep-button"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #bfdbfe",
+              background: "#eff6ff",
+              color: "#2563eb",
+              fontWeight: 800,
+              fontSize: 12,
+              textDecoration: "none",
+            }}
+          >
+            구현준비 산출물 다시 정제
+          </Link>
+        )}
+      </div>
+
+      <p style={{ margin: 0, fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+        LLM 기반 CodeTask 정제는 Planner API Key가 설정된 경우 기획 확정/구현준비 동기화 시 사용됩니다.
+      </p>
+    </div>
+  ) : null;
+
+  const prototypeMvpAiConnectionStatus = isPrototypeMvpUi && !isModalCompact ? (
+    <div
+      data-testid="prototype-ai-connection-status"
+      style={{
+        marginBottom: 12,
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid #e2e8f0",
+        background: "#f8fafc",
+        fontSize: 12,
+        color: "#475569",
+        lineHeight: 1.55,
+      }}
+    >
+      <div>
+        <span style={{ fontWeight: 800, color: "#334155" }}>Planner API Key: </span>
+        {plannerKeyUi.statusLabel}
+      </div>
+      <div>
+        <span style={{ fontWeight: 800, color: "#334155" }}>LLM CodeTask 정제: </span>
+        <span data-testid="llm-codetask-refinement-status">{llmRefinementStatusLabel(enableLlmCodeTaskRefinement)}</span>
+      </div>
+    </div>
+  ) : null;
+
   const prototypeMvpToolbar = isPrototypeMvpUi ? (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
       <button
@@ -2404,21 +2660,7 @@ export function ProjectExecutionEnvironmentPanel({
       data-ui-label="[P-6-4] 실행 환경 — 연결·정책·검증"
       style={{ marginBottom: 8 }}
     >
-      {isAdminSettings && effectivePurpose === "prototype" ? (
-        <header style={{ marginBottom: 16 }}>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              margin: 0,
-              color: "#0f172a",
-              lineHeight: 1.25,
-            }}
-          >
-            프로젝트 자동 생성 환경설정
-          </h1>
-        </header>
-      ) : (
+      {isAdminSettings && effectivePurpose === "prototype" ? null : (
         <header style={{ marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
             {isAdminSettings ? "환경 검증/설정" : "실행 환경"}
@@ -2480,6 +2722,12 @@ export function ProjectExecutionEnvironmentPanel({
               onSetupPersisted={notifyExecutionSetupChanged}
             />
           </PrototypeEnvSettingsStepCard>
+          {mvpAiExecutionSettingsFields ? (
+            <PrototypeEnvSettingsStepCard step={4} title="AI 실행 설정">
+              {mvpAiExecutionSettingsFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          {prototypeMvpAiConnectionStatus}
           <div
             data-testid="prototype-env-save-and-test"
             style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 16 }}
@@ -2524,6 +2772,12 @@ export function ProjectExecutionEnvironmentPanel({
             canRevealCursorApiKey={canRevealCursorApiKey}
             onSetupPersisted={notifyExecutionSetupChanged}
           />
+          {mvpAiExecutionSettingsFields ? (
+            <PrototypeEnvSettingsStepCard step={4} title="AI 실행 설정">
+              {mvpAiExecutionSettingsFields}
+            </PrototypeEnvSettingsStepCard>
+          ) : null}
+          {prototypeMvpAiConnectionStatus}
         </>
       )}
 
