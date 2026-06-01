@@ -58,11 +58,13 @@ describe("ImplementationExecutionBoardPanel", () => {
       }),
     );
     expect(html).not.toContain("implementation-next-task-card");
+    expect(html).not.toContain("implementation-code-agent-progress-card");
+    expect(html).not.toContain("구현 실행 현황");
     expect(html).toContain("implementation-execution-overview-card");
+    expect(html).toMatch(/구현 실행 (중|대기)/);
     expect(html).toContain("implementation-task-tree-section");
     expect(html).toContain("작업 트리");
     expect(html).not.toContain("implementation-env-details");
-    expect(html).not.toContain("상세 로그 보기");
   });
 
   it("shows Cloud Agent poll cancel button while polling", () => {

@@ -15,7 +15,7 @@ function stepClass(state: CodeAgentExecutionProgressView["steps"][number]["state
   return styles.progressStep;
 }
 
-function ProgressTechnicalDetails({ progress }: { readonly progress: CodeAgentExecutionProgressView }) {
+export function ProgressTechnicalDetails({ progress }: { readonly progress: CodeAgentExecutionProgressView }) {
   return (
     <>
       <div className={styles.progressMetaBlock}>

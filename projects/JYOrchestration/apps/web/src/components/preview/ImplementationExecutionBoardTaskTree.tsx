@@ -7,6 +7,9 @@ import type {
   ImplementationTaskTreeMetaLine,
 } from "@/lib/prototype/implementationTaskTreeView";
 import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
+import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementationCodeTaskInlineExecution";
+import { CodeTaskInlineExecutionDetailBlock } from "@/components/preview/CodeTaskInlineExecutionDetail";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 function TaskTreeMetaBlock({ lines }: { readonly lines: readonly ImplementationTaskTreeMetaLine[] }) {
@@ -68,12 +71,23 @@ function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecut
 function CodeTaskTreeItem({
   node,
   depth,
+  codeAgentProgress,
+  onCancelTaskCursorPolling,
   onSelect,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly depth: number;
+  readonly codeAgentProgress?: CodeAgentExecutionProgressView;
+  readonly onCancelTaskCursorPolling?: () => void;
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
 }) {
+  const inlineExecution = codeAgentProgress
+    ? buildCodeTaskInlineExecutionDetail({
+        progress: codeAgentProgress,
+        parentTaskId: node.parentTaskId,
+        isSelected: node.isSelected,
+      })
+    : undefined;
   const itemClass = [
     styles.taskTreeCodeTaskItem,
     node.isActive ? styles.taskTreeItemActive : "",
@@ -133,10 +147,14 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleSelectAll,
   onRestartTask,
   onStopTask,
+  codeAgentProgress,
+  onCancelTaskCursorPolling,
 }: {
   readonly nodes: readonly ImplementationProcessTaskTreeNode[];
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
+  readonly codeAgentProgress?: CodeAgentExecutionProgressView;
+  readonly onCancelTaskCursorPolling?: () => void;
   readonly allChecked?: boolean;
   readonly onSelectTask?: (taskId: string) => void;
   readonly onSelectCodeTask?: (parentTaskId: string, codeTaskId: string) => void;
@@ -258,6 +276,8 @@ export function ImplementationExecutionBoardTaskTree({
                             (isSelected && !selectedCodeTaskId && codeTask === node.codeTasks[0]),
                         }}
                         depth={1}
+                        codeAgentProgress={codeAgentProgress}
+                        onCancelTaskCursorPolling={onCancelTaskCursorPolling}
                         onSelect={(parentTaskId, codeTaskId) => {
                           onSelectTask?.(parentTaskId);
                           onSelectCodeTask?.(parentTaskId, codeTaskId);

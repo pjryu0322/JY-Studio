@@ -161,7 +161,11 @@ function buildCodeTaskNode(input: {
 
   const metaLines: ImplementationTaskTreeMetaLine[] = [
     formatMetaLine("상태", formatCodeTaskExecutionFlowPhaseKo(phase)),
-    formatMetaLine("진행", formatCodeTaskExecutionProgressLine(phase)),
+    formatMetaLine(
+      "진행",
+      phase === "prompt_ready" ? "Quick 실행 대기" : formatCodeTaskExecutionProgressLine(phase),
+    ),
+    formatMetaLine("역할", "AI 개발자"),
     formatMetaLine("ID", input.codeTask.codeTaskId),
   ];
 

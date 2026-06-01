@@ -21,7 +21,6 @@ import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implemen
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   buildCompactBoardSecondarySummaryLine,
-  buildCompactBoardSummaryLine,
   buildImplementationExecutionBoardSummaryView,
   buildImplementationTaskTreeNodes,
   dedupeImplementationStageNextActions,
@@ -43,7 +42,6 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import type { ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
-import { ImplementationCodeAgentExecutionProgressCard } from "@/components/preview/ImplementationCodeAgentExecutionProgressCard";
 import {
   buildCodeAgentExecutionProgressView,
   shouldHideBoardPrimaryCtaForProgress,
@@ -290,7 +288,7 @@ export function ImplementationExecutionBoardPanel({
       <div className={styles.summaryCard} data-testid="implementation-execution-overview-card">
         <div className={styles.overviewCard}>
           <div className={styles.overviewCardTitle}>
-            {executionOverview.isRunning ? "구현 실행 중" : "구현 실행 현황"}
+            {executionOverview.isRunning ? "구현 실행 중" : "구현 실행 대기"}
           </div>
           <ul className={styles.overviewCardLines}>
             {formatImplementationExecutionOverviewLines(executionOverview).map((line) => (
@@ -298,7 +296,6 @@ export function ImplementationExecutionBoardPanel({
             ))}
           </ul>
         </div>
-        <div className={styles.summaryPrimary}>{buildCompactBoardSummaryLine(board)}</div>
         <div className={`${styles.summarySecondary} ${styles.dashboardSecondaryLine}`}>
           {quickRunStatus === "preview_ready"
             ? "프로토타입 생성 완료 · Preview를 확인할 수 있습니다."
@@ -358,12 +355,6 @@ export function ImplementationExecutionBoardPanel({
           </div>
         ) : null}
       </div>
-
-      <ImplementationCodeAgentExecutionProgressCard
-        progress={codeAgentProgress}
-        executionOverview={executionOverview}
-        onCancelPolling={onCancelTaskCursorPolling}
-      />
 
       <div className={styles.ctaRow}>
         {actionPartition.primary && !hidePrimaryCta ? (
@@ -425,7 +416,10 @@ export function ImplementationExecutionBoardPanel({
       </div>
 
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
-        <div className={styles.taskTreeSectionTitle}>작업 트리 {board.taskRows.length}개</div>
+        <div className={styles.taskTreeSectionTitle}>
+          작업 트리 · Process {executionOverview.processTaskCount} · CodeTask{" "}
+          {executionOverview.codeTaskCount}
+        </div>
         <p className={styles.summarySecondary}>
           실행할 Task를 체크한 뒤 툴바 [빠른 실행]으로 선택 Task만 자동 진행할 수 있습니다. 자식 Task를 선택하면 선행 Task도 함께 선택됩니다.
         </p>
@@ -433,6 +427,8 @@ export function ImplementationExecutionBoardPanel({
           nodes={taskTreeNodes}
           selectedTaskId={selectedTaskId}
           selectedCodeTaskId={selectedCodeTaskId}
+          codeAgentProgress={codeAgentProgress}
+          onCancelTaskCursorPolling={onCancelTaskCursorPolling}
           allChecked={allTasksChecked}
           onSelectTask={setSelectedTaskId}
           onSelectCodeTask={(_parentTaskId, codeTaskId) => setSelectedCodeTaskId(codeTaskId)}

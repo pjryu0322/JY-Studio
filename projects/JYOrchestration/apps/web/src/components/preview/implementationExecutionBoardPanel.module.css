@@ -542,6 +542,27 @@
   background: #fef2f2;
 }
 
+.taskTreeInlineExecution {
+  margin: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taskTreeInlineSummary {
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.taskTreeTimelineHint {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
 .overviewCard {
   display: flex;
   flex-direction: column;

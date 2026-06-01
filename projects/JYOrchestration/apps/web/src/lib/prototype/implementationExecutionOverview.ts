@@ -61,14 +61,11 @@ export function formatImplementationExecutionOverviewLines(
       ...(overview.currentTitle ? [`현재: ${overview.currentTitle}`] : []),
     ];
   }
+  const progressDone = overview.completedCount + overview.inProgressCount;
   return [
-    `Process Task: ${overview.processTaskCount}개`,
-    `CodeTask: ${overview.codeTaskCount}개`,
-    `진행 중: ${overview.inProgressCount}개`,
-    `완료: ${overview.completedCount}개`,
-    `실패: ${overview.failedCount}개`,
-    `차단: ${overview.blockedCount}개`,
-    "다음 단계:",
-    "Quick 실행으로 선택한 CodeTask를 실행합니다.",
+    `진행: ${progressDone} / ${overview.codeTaskCount}`,
+    `실패: ${overview.failedCount}`,
+    `차단: ${overview.blockedCount}`,
+    overview.currentTitle ? `현재: ${overview.currentTitle}` : "현재: 없음",
   ];
 }

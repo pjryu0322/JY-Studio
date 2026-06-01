@@ -101,6 +101,7 @@ describe("implementationTaskTreeView", () => {
     const codeTask = nodes[0]?.codeTasks[0];
     expect(codeTask?.title).toBe("로딩 상태 공통 기능 구현");
     expect(codeTask?.metaLines.find((m) => m.label === "ID")?.value).toBe("DEV-COMMON-001");
+    expect(codeTask?.metaLines.find((m) => m.label === "역할")?.value).toBe("AI 개발자");
     expect(codeTask?.executionFlowSteps.map((s) => s.label)).toEqual([
       "개발 프롬프트 생성",
       "Cursor 실행",
