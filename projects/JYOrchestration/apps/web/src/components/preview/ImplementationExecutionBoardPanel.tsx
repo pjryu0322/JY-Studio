@@ -35,6 +35,11 @@ import {
 } from "@/lib/prototype/implementationStageNextActions";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
+import {
+  buildImplementationExecutionOverview,
+  formatImplementationExecutionOverviewLines,
+} from "@/lib/prototype/implementationExecutionOverview";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import type { ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
@@ -76,6 +81,7 @@ export function ImplementationExecutionBoardPanel({
   onSelectedTaskIdsChange,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
+  cursorWorkItemsV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -98,6 +104,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -184,6 +191,7 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
+  const [selectedCodeTaskId, setSelectedCodeTaskId] = useState<string | null>(null);
   const checkedTaskIds = useMemo(
     () =>
       normalizeSelectedTaskIds({
@@ -205,18 +213,47 @@ export function ImplementationExecutionBoardPanel({
     onSelectedTaskIdsChange?.(nextSelectedTaskIds);
   };
 
+  const executionOverview = useMemo(
+    () =>
+      buildImplementationExecutionOverview({
+        board,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        activeTaskId,
+        activeCodeTaskTitle:
+          implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === selectedCodeTaskId)?.title ??
+          board.taskRows.find((row) => row.taskId === activeTaskId)?.title,
+      }),
+    [board, implementationCodeTaskPlanV1, activeTaskId, selectedCodeTaskId],
+  );
+
   const taskTreeNodes = useMemo(
     () =>
       buildImplementationTaskTreeNodes({
         board,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        cursorWorkItems: cursorWorkItemsV1,
         activeTaskId,
         selectedTaskId,
+        selectedCodeTaskId,
         checkedTaskIds,
         taskCursorExecution: taskCursorExecutionV1 ?? null,
+        implementationAutoQualityGateV1,
         promptTimeline,
         serverJob: activeTaskCursorJob ?? null,
       }),
-    [board, activeTaskId, selectedTaskId, checkedTaskIds, taskCursorExecutionV1, promptTimeline, activeTaskCursorJob],
+    [
+      board,
+      implementationCodeTaskPlanV1,
+      cursorWorkItemsV1,
+      activeTaskId,
+      selectedTaskId,
+      selectedCodeTaskId,
+      checkedTaskIds,
+      taskCursorExecutionV1,
+      implementationAutoQualityGateV1,
+      promptTimeline,
+      activeTaskCursorJob,
+    ],
   );
 
   const integratedPipelineLines = useMemo(
@@ -250,7 +287,17 @@ export function ImplementationExecutionBoardPanel({
       data-testid="implementation-execution-board-panel"
       aria-label="구현 Execution Board"
     >
-      <div className={styles.summaryCard}>
+      <div className={styles.summaryCard} data-testid="implementation-execution-overview-card">
+        <div className={styles.overviewCard}>
+          <div className={styles.overviewCardTitle}>
+            {executionOverview.isRunning ? "구현 실행 중" : "구현 실행 현황"}
+          </div>
+          <ul className={styles.overviewCardLines}>
+            {formatImplementationExecutionOverviewLines(executionOverview).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
         <div className={styles.summaryPrimary}>{buildCompactBoardSummaryLine(board)}</div>
         <div className={`${styles.summarySecondary} ${styles.dashboardSecondaryLine}`}>
           {quickRunStatus === "preview_ready"
@@ -314,6 +361,7 @@ export function ImplementationExecutionBoardPanel({
 
       <ImplementationCodeAgentExecutionProgressCard
         progress={codeAgentProgress}
+        executionOverview={executionOverview}
         onCancelPolling={onCancelTaskCursorPolling}
       />
 
@@ -384,8 +432,10 @@ export function ImplementationExecutionBoardPanel({
         <ImplementationExecutionBoardTaskTree
           nodes={taskTreeNodes}
           selectedTaskId={selectedTaskId}
+          selectedCodeTaskId={selectedCodeTaskId}
           allChecked={allTasksChecked}
           onSelectTask={setSelectedTaskId}
+          onSelectCodeTask={(_parentTaskId, codeTaskId) => setSelectedCodeTaskId(codeTaskId)}
           onToggleTaskChecked={(taskId, checked) => {
             updateCheckedTaskIds(
               resolveTaskTreeSelectionToggle({
@@ -410,7 +460,9 @@ export function ImplementationExecutionBoardPanel({
           data-testid="implementation-integrated-pipeline-section"
         >
           <div className={styles.taskTreeSectionTitle}>통합 단계 (전체 Task 완료 후)</div>
-          <p className={styles.summarySecondary}>{PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE}</p>
+          <p className={styles.summarySecondary}>
+            {PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE} 모든 작업 완료 후 통합 검수/보안을 진행합니다.
+          </p>
           <div className={styles.taskTreeList}>
             {integratedPipelineLines.map((line) => (
               <div key={line.stepId} className={styles.taskTreeChildLine}>

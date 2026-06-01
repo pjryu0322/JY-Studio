@@ -69,13 +69,14 @@ describe("implementationTaskPipelinePolicy", () => {
     ).toBe("reviewer");
   });
 
-  it("task tree omits per-task security, scm, and reviewer steps", () => {
+  it("task tree nests code tasks under process tasks", () => {
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleList() },
     })!;
     const nodes = buildImplementationTaskTreeNodes({ board, activeTaskId: "DEV-1" });
-    expect(nodes[0]?.childSteps.map((step) => step.roleLabel)).toEqual(["AI 개발자", "GitHub"]);
+    expect(nodes[0]?.metaLines.some((m) => m.label === "역할" && m.value === "AI 개발자")).toBe(true);
+    expect(nodes[0]?.title).not.toContain("DEV-1");
   });
 
   it("auto quality gate skips per-task security and continues chain", () => {
@@ -217,9 +218,6 @@ describe("implementationTaskPipelinePolicy", () => {
       board: failedDevBoard,
       activeTaskId: "DEV-2",
     }).find((node) => node.taskId === "DEV-2");
-    expect(dev2Node?.childSteps.map((step) => step.roleLabel)).toEqual(["AI 개발자", "GitHub"]);
-    expect(dev2Node?.childSteps.find((step) => step.roleLabel === "AI 개발자")?.statusLabel).toBe(
-      "AI 개발자: 실패",
-    );
+    expect(dev2Node?.metaLines.find((m) => m.label === "상태")?.value).toBe("실패");
   });
 });

@@ -1,23 +1,145 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ImplementationTaskTreeNode } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import type {
+  ImplementationCodeTaskTreeNode,
+  ImplementationProcessTaskTreeNode,
+  ImplementationTaskTreeMetaLine,
+} from "@/lib/prototype/implementationTaskTreeView";
+import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
+
+function TaskTreeMetaBlock({ lines }: { readonly lines: readonly ImplementationTaskTreeMetaLine[] }) {
+  if (!lines.length) return null;
+  return (
+    <div className={styles.taskTreeMetaBlock} data-testid="implementation-task-tree-meta">
+      {lines.map((line) => (
+        <div key={`${line.label}-${line.value}`} className={styles.taskTreeMetaLine}>
+          <span className={styles.taskTreeMetaKey}>{line.label}</span>
+          <span className={styles.taskTreeMetaValue}>{line.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecutionFlowStepVm[] }) {
+  if (!steps.length) return null;
+  return (
+    <div className={styles.taskTreeFlowBlock} data-testid="implementation-code-task-flow">
+      <div className={styles.taskTreeFlowTitle}>실행 흐름</div>
+      <ol className={styles.taskTreeFlowList}>
+        {steps.map((step) => {
+          const marker =
+            step.state === "done"
+              ? "✓"
+              : step.state === "active"
+                ? "●"
+                : step.state === "failed"
+                  ? "✕"
+                  : step.state === "skipped"
+                    ? "−"
+                    : "○";
+          return (
+            <li
+              key={step.id}
+              className={[
+                styles.taskTreeFlowItem,
+                step.state === "active" ? styles.taskTreeFlowItemActive : "",
+                step.state === "done" ? styles.taskTreeFlowItemDone : "",
+                step.state === "failed" ? styles.taskTreeFlowItemFailed : "",
+                step.state === "skipped" ? styles.taskTreeFlowItemSkipped : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <span className={styles.taskTreeFlowMarker} aria-hidden>
+                {marker}
+              </span>
+              <span>{step.label}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function CodeTaskTreeItem({
+  node,
+  depth,
+  onSelect,
+}: {
+  readonly node: ImplementationCodeTaskTreeNode;
+  readonly depth: number;
+  readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
+}) {
+  const itemClass = [
+    styles.taskTreeCodeTaskItem,
+    node.isActive ? styles.taskTreeItemActive : "",
+    node.isSelected ? styles.taskTreeItemSelected : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div
+      className={itemClass}
+      style={{ marginInlineStart: `${depth * 14}px` }}
+      data-testid={`implementation-code-task-tree-item-${node.codeTaskId}`}
+      data-selected={node.isSelected ? "true" : "false"}
+    >
+      <button
+        type="button"
+        className={styles.taskTreeCodeTaskHeader}
+        aria-pressed={node.isSelected}
+        onClick={() => onSelect(node.parentTaskId, node.codeTaskId)}
+      >
+        <span className={styles.taskTreeTitle}>{node.title}</span>
+        <span className={styles.taskTreeCollapsedMeta}>{node.collapsedSummary}</span>
+      </button>
+      {node.isSelected ? (
+        <div className={styles.taskTreeCodeTaskDetail}>
+          <TaskTreeMetaBlock lines={node.metaLines} />
+          {node.failureReason ? (
+            <div className={styles.taskTreeFailureBlock}>
+              <div className={styles.taskTreeMetaLine}>
+                <span className={styles.taskTreeMetaKey}>사유</span>
+                <span className={styles.taskTreeMetaValue}>{node.failureReason}</span>
+              </div>
+              {node.nextActionHint ? (
+                <div className={styles.taskTreeMetaLine}>
+                  <span className={styles.taskTreeMetaKey}>다음 처리</span>
+                  <span className={styles.taskTreeMetaValue}>{node.nextActionHint}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <ExecutionFlowSteps steps={node.executionFlowSteps} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function ImplementationExecutionBoardTaskTree({
   nodes,
   selectedTaskId,
+  selectedCodeTaskId,
   allChecked,
   onSelectTask,
+  onSelectCodeTask,
   onToggleTaskChecked,
   onToggleSelectAll,
   onRestartTask,
   onStopTask,
 }: {
-  readonly nodes: readonly ImplementationTaskTreeNode[];
+  readonly nodes: readonly ImplementationProcessTaskTreeNode[];
   readonly selectedTaskId?: string | null;
+  readonly selectedCodeTaskId?: string | null;
   readonly allChecked?: boolean;
   readonly onSelectTask?: (taskId: string) => void;
+  readonly onSelectCodeTask?: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleTaskChecked?: (taskId: string, checked: boolean) => void;
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onRestartTask?: (taskId: string) => void;
@@ -31,8 +153,13 @@ export function ImplementationExecutionBoardTaskTree({
   const [expanded, setExpanded] = useState<Set<string>>(defaultExpanded);
 
   useEffect(() => {
-    setExpanded(defaultExpanded);
-  }, [defaultExpanded]);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of defaultExpanded) next.add(id);
+      if (selectedTaskId) next.add(selectedTaskId);
+      return next;
+    });
+  }, [defaultExpanded, selectedTaskId]);
 
   const toggle = (taskId: string) => {
     setExpanded((prev) => {
@@ -42,6 +169,9 @@ export function ImplementationExecutionBoardTaskTree({
       return next;
     });
   };
+
+  const processCount = nodes.length;
+  const codeTaskCount = nodes.reduce((sum, node) => sum + node.codeTasks.length, 0);
 
   return (
     <div className={styles.taskTreeList} data-testid="implementation-task-tree">
@@ -57,7 +187,7 @@ export function ImplementationExecutionBoardTaskTree({
           <span>전체 선택</span>
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
-          {nodes.filter((node) => node.isChecked).length}/{nodes.length}개 선택
+          {nodes.filter((node) => node.isChecked).length}/{processCount} Process · CodeTask {codeTaskCount}개
         </span>
       </div>
       {nodes.map((node) => {
@@ -85,7 +215,7 @@ export function ImplementationExecutionBoardTaskTree({
                 type="checkbox"
                 className={styles.taskTreeCheckbox}
                 checked={node.isChecked}
-                aria-label={`${node.taskId} 선택`}
+                aria-label={`${node.title} 선택`}
                 data-testid={`implementation-task-check-${node.taskId}`}
                 onChange={(event) => onToggleTaskChecked?.(node.taskId, event.target.checked)}
               />
@@ -104,8 +234,8 @@ export function ImplementationExecutionBoardTaskTree({
                 aria-pressed={isSelected}
                 onClick={() => onSelectTask?.(node.taskId)}
               >
-                <span className={styles.taskTreeTitle}>
-                  {node.taskId} {node.title}
+                <span className={styles.taskTreeTitle} data-testid={`implementation-process-task-title-${node.taskId}`}>
+                  {node.title}
                 </span>
                 {!isOpen ? <span className={styles.taskTreeCollapsedMeta}>{node.collapsedSummary}</span> : null}
               </button>
@@ -115,11 +245,27 @@ export function ImplementationExecutionBoardTaskTree({
             ) : null}
             {isOpen ? (
               <div className={styles.taskTreeChildren}>
-                {node.childSteps.map((step) => (
-                  <div key={`${node.taskId}-${step.roleLabel}`} className={styles.taskTreeChildLine}>
-                    {step.statusLabel}
+                <TaskTreeMetaBlock lines={node.metaLines} />
+                {node.codeTasks.length ? (
+                  <div className={styles.taskTreeCodeTaskList}>
+                    {node.codeTasks.map((codeTask) => (
+                      <CodeTaskTreeItem
+                        key={codeTask.codeTaskId}
+                        node={{
+                          ...codeTask,
+                          isSelected:
+                            selectedCodeTaskId === codeTask.codeTaskId ||
+                            (isSelected && !selectedCodeTaskId && codeTask === node.codeTasks[0]),
+                        }}
+                        depth={1}
+                        onSelect={(parentTaskId, codeTaskId) => {
+                          onSelectTask?.(parentTaskId);
+                          onSelectCodeTask?.(parentTaskId, codeTaskId);
+                        }}
+                      />
+                    ))}
                   </div>
-                ))}
+                ) : null}
                 {node.pollStatusLabel ? (
                   <div
                     className={styles.taskTreePollStatus}
@@ -151,8 +297,6 @@ export function ImplementationExecutionBoardTaskTree({
                       </button>
                     ) : null}
                   </div>
-                ) : node.restartBlockedReason ? (
-                  <div className={styles.taskTreeRestartHint}>{node.restartBlockedReason}</div>
                 ) : null}
               </div>
             ) : null}

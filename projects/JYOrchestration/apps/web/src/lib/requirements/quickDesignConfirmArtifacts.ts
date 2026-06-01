@@ -28,7 +28,11 @@ import {
 } from "@/lib/requirements/projectArtifactPlan";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsOrchestrationStageV1 } from "@/lib/requirements/requirementsStateJson";
-import { formatCodeTaskLlmRefinementUserSummaryLines } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import {
+  buildImplementationReadinessUserSummary,
+  formatCodeTaskLlmRefinementSummaryFromPlan,
+  formatImplementationReadinessIntroLines,
+} from "@/lib/prototype/implementationReadinessSummary";
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -271,9 +275,18 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     ...prepSummaryLines,
   ];
 
-  const llmRefinementLines = formatCodeTaskLlmRefinementUserSummaryLines(
-    input.prep.implementationCodeTaskPlanV1,
-  );
+  const readinessUserSummary = buildImplementationReadinessUserSummary({
+    codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
+    timelineEntries: input.prep.timelineEntries,
+  });
+  const llmRefinementIntroLines = formatImplementationReadinessIntroLines(readinessUserSummary);
+  const llmRefinementLines = formatCodeTaskLlmRefinementSummaryFromPlan({
+    codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
+    timelineEntries: input.prep.timelineEntries,
+  });
+  if (llmRefinementIntroLines.length) {
+    contentParts.push("", ...llmRefinementIntroLines);
+  }
   if (llmRefinementLines.length) {
     contentParts.push("", ...llmRefinementLines);
   }

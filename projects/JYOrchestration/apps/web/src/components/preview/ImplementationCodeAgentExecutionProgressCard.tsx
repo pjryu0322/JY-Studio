@@ -4,6 +4,8 @@ import type {
   CodeAgentExecutionProgressView,
   CodeAgentExecutionProgressStep,
 } from "@/lib/prototype/codeAgentExecutionProgressView";
+import type { ImplementationExecutionOverview } from "@/lib/prototype/implementationExecutionOverview";
+import { formatImplementationExecutionOverviewLines } from "@/lib/prototype/implementationExecutionOverview";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 function stepClass(state: CodeAgentExecutionProgressView["steps"][number]["state"]): string {
@@ -110,26 +112,37 @@ function CompactProgressSteps({
 
 export function ImplementationCodeAgentExecutionProgressCard({
   progress,
+  executionOverview,
   onCancelPolling,
 }: {
   readonly progress: CodeAgentExecutionProgressView;
+  readonly executionOverview?: ImplementationExecutionOverview;
   readonly onCancelPolling?: () => void;
 }) {
   const compact = progress.compactMainPresentation === true;
-  const title = progress.progressCardTitle ?? "현재 실행 상태";
+  const title = progress.progressCardTitle ?? "구현 실행 현황";
+  const hideTaskDetail = compact && progress.hideTaskDetailInCompact === true;
 
   return (
     <div className={styles.progressCard} data-testid="implementation-code-agent-progress-card">
       <div className={styles.progressTitle}>{title}</div>
 
-      {progress.selectedTaskId ? (
+      {executionOverview && hideTaskDetail ? (
+        <ul className={styles.overviewCardLines} data-testid="implementation-progress-overview-lines">
+          {formatImplementationExecutionOverviewLines(executionOverview).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!hideTaskDetail && progress.selectedTaskId ? (
         <div className={styles.currentTaskBlock} data-testid="implementation-current-task-block">
-          <div className={styles.currentTaskId}>{progress.selectedTaskId}</div>
           {progress.selectedTaskTitle ? (
             <div className={styles.currentTaskTitle}>{progress.selectedTaskTitle}</div>
           ) : null}
+          <div className={styles.currentTaskId}>ID: {progress.selectedTaskId}</div>
         </div>
-      ) : progress.status === "idle" ? (
+      ) : !hideTaskDetail && progress.status === "idle" ? (
         <div className={styles.currentTaskEmpty} data-testid="implementation-current-task-empty">
           현재 실행 작업 없음
         </div>

@@ -107,13 +107,25 @@ export function RequirementsIdeationChatPanel({
   chatHeaderLeading,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
-    const pending = aiInvokePending || serviceFlowAnalyzePending || quickDesignConfirmPending;
+    if (quickDesignConfirmPending) return false;
+    const pending = aiInvokePending || serviceFlowAnalyzePending;
     if (!pending) return false;
-    if (quickDesignConfirmPending) return true;
     if (!chatMessages.length) return true;
     const last = chatMessages[chatMessages.length - 1];
     return last?.role !== "ai";
   }, [aiInvokePending, quickDesignConfirmPending, serviceFlowAnalyzePending, chatMessages]);
+
+  const headerLeading = useMemo(() => {
+    if (quickDesignConfirmPending) {
+      return (
+        <>
+          <ImplementationPrepProgressCard active />
+          {chatHeaderLeading}
+        </>
+      );
+    }
+    return chatHeaderLeading ?? null;
+  }, [chatHeaderLeading, quickDesignConfirmPending]);
 
   const composer: ReactNode = (
     <>
@@ -186,22 +198,16 @@ export function RequirementsIdeationChatPanel({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
-        headerLeading={chatHeaderLeading ?? null}
+        headerLeading={headerLeading}
         typingIndicator={showTypingIndicator}
         typingIndicatorSpeakerLine={
-          quickDesignConfirmPending
-            ? "구현준비 생성 중 — CodeTask LLM 정제를 Batch 기준으로 처리하고 있습니다…"
-            : serviceFlowAnalyzePending
+          serviceFlowAnalyzePending
               ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
                 "AI 기획자가 응답을 준비하고 있습니다…"
               : typingIndicatorSpeakerLine
         }
         typingIndicatorResolvedSpeakerSource={
-          quickDesignConfirmPending
-            ? "quick-design-confirm"
-            : serviceFlowAnalyzePending
-              ? "service-flow-analyze"
-              : typingIndicatorResolvedSpeakerSource
+          serviceFlowAnalyzePending ? "service-flow-analyze" : typingIndicatorResolvedSpeakerSource
         }
         interviewSuggestionPickDisabled={quickDesignConfirmPending}
         sessionUserDisplayName={sessionUserDisplayName}

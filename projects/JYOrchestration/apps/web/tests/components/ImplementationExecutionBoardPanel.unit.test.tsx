@@ -58,7 +58,7 @@ describe("ImplementationExecutionBoardPanel", () => {
       }),
     );
     expect(html).not.toContain("implementation-next-task-card");
-    expect(html).toContain("implementation-current-task-block");
+    expect(html).toContain("implementation-execution-overview-card");
     expect(html).toContain("implementation-task-tree-section");
     expect(html).toContain("작업 트리");
     expect(html).not.toContain("implementation-env-details");

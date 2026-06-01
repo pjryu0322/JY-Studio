@@ -33,6 +33,8 @@ describe("formatCodeTaskLlmRefinementUserSummaryLines", () => {
     expect(lines.join("\n")).toContain("LLM 정제: 55개");
     expect(lines.join("\n")).toContain("Fallback: 0개");
     expect(lines.join("\n")).toContain("Batch: 14개");
+    expect(lines.join("\n")).toContain("병렬 처리: 3개씩");
+    expect(lines.join("\n")).toContain("소요 시간: 1분 2초");
     expect(lines.join("\n")).toContain("LLM 정제 완료");
   });
 

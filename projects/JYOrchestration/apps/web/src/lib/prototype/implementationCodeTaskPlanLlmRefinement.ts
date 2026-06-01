@@ -19,6 +19,7 @@ import {
   buildSourceTaskListFingerprint,
   type ImplementationCodeTaskPlanLlmUsage,
 } from "@/lib/prototype/implementationCodeTaskPlanFingerprint";
+import { formatCodeTaskLlmRefinementSummaryFromPlan } from "@/lib/prototype/implementationReadinessSummary";
 import {
   COMMON_FORBIDDEN_PATHS,
 } from "@/lib/prototype/implementationExecutionHints";
@@ -68,37 +69,9 @@ export function isLlmCodeTaskRefinementEnabled(): boolean {
 /** User-facing CodeTask LLM refinement summary for Quick Design confirm chat. */
 export function formatCodeTaskLlmRefinementUserSummaryLines(
   plan: ImplementationCodeTaskPlanV1 | null | undefined,
+  timelineEntries?: readonly RequirementsPromptTimelineEntry[],
 ): readonly string[] {
-  if (!plan) return [];
-  const total = plan.codeTaskCount ?? plan.tasks.length;
-  const summary = plan.llmRefinementSummary;
-  const llmRefined = summary?.llmRefinedTaskCount ?? plan.tasks.filter((t) => t.refinementSource === "llm").length;
-  const fallback =
-    summary?.fallbackTaskCount ?? plan.tasks.filter((t) => t.refinementSource !== "llm").length;
-  const batchCount = summary?.totalBatches;
-  const status = plan.refinementStatus ?? "heuristic_only";
-
-  let statusLabel = "기본 규칙 기반으로 대체 완료";
-  if (status === "llm_refined") statusLabel = "LLM 정제 완료";
-  else if (status === "llm_partial_refined") statusLabel = "일부 정제 완료";
-
-  const lines = [
-    "CodeTask LLM 정제:",
-    `- 전체 CodeTask: ${total}개`,
-    `- LLM 정제: ${llmRefined}개`,
-    `- Fallback: ${fallback}개`,
-  ];
-  if (batchCount != null) {
-    lines.push(`- Batch: ${batchCount}개`);
-  }
-  if (summary?.concurrency != null) {
-    lines.push(`- 병렬 처리: ${summary.concurrency}`);
-  }
-  if (summary?.elapsedMs != null) {
-    lines.push(`- 소요: ${Math.round(summary.elapsedMs / 1000)}초`);
-  }
-  lines.push(`- 상태: ${statusLabel}`);
-  return lines;
+  return formatCodeTaskLlmRefinementSummaryFromPlan({ codeTaskPlan: plan, timelineEntries });
 }
 
 function buildPlanningLlmTimelineEntry(input: {

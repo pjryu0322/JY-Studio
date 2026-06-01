@@ -1,4 +1,3 @@
-import { isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import {
   evaluateCursorExecutionAvailability,
   type CursorExecutionAvailability,
@@ -14,7 +13,6 @@ import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executio
 import {
   explainExecutableTaskSelection,
   pickFirstExecutableDeveloperTaskId,
-  resolveTaskRowUserRestartCapability,
   type ImplementationBoardStepStatus,
   type ImplementationExecutionBoardIntegratedRowV1,
   type ImplementationExecutionBoardTaskRowV1,
@@ -50,12 +48,13 @@ import {
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
-  computeTaskTreeDependencyViews,
-  formatTaskTreeDependencyLabel,
-  normalizeSelectedTaskIds,
-  orderTaskRowsForTreeDisplay,
-} from "@/lib/prototype/implementationTaskTreeSelection";
+  buildImplementationProcessTaskTreeNodes,
+  type ImplementationProcessTaskTreeNode,
+} from "@/lib/prototype/implementationTaskTreeView";
 
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
 
@@ -330,28 +329,14 @@ export function buildDashboardProgressHeadline(board: ImplementationExecutionBoa
   return `${completed}/${total} 대기`;
 }
 
-export type ImplementationTaskTreeChildStep = Readonly<{
-  readonly roleLabel: string;
-  readonly statusLabel: string;
-}>;
-
-export type ImplementationTaskTreeNode = Readonly<{
-  readonly taskId: string;
-  readonly title: string;
-  readonly isActive: boolean;
-  readonly isSelected: boolean;
-  readonly isChecked: boolean;
-  readonly treeDepth: number;
-  readonly dependencyLabel?: string;
-  readonly defaultExpanded: boolean;
-  readonly collapsedSummary: string;
-  readonly childSteps: readonly ImplementationTaskTreeChildStep[];
-  readonly canRestart: boolean;
-  readonly canStop: boolean;
-  readonly pollStatusLabel?: string;
-  readonly restartBlockedReason?: string;
-  readonly needsReworkRegistration: boolean;
-}>;
+export type {
+  ImplementationCodeTaskTreeNode,
+  ImplementationProcessTaskTreeNode,
+  ImplementationTaskTreeChildStep,
+  ImplementationTaskTreeMetaLine,
+  ImplementationTaskTreeNode,
+} from "@/lib/prototype/implementationTaskTreeView";
+export { stripLeadingTaskIdFromTitle } from "@/lib/prototype/implementationTaskTreeView";
 
 export type TaskCursorPollTickSnapshot = Readonly<{
   readonly round?: number;
@@ -454,113 +439,53 @@ export function resolveTaskRowStopCapability(input: {
   return isTaskCursorCloudAgentPollingCancellable(execution);
 }
 
-function formatTaskTreeRoleStatus(
-  role: "developer" | "reviewer" | "security" | "scm",
-  status: ImplementationBoardStepStatus,
-): string {
-  const roleKo =
-    role === "developer"
-      ? "AI 개발자"
-      : role === "reviewer"
-        ? "검수"
-        : role === "security"
-          ? "보안"
-          : "SCM";
-  const statusKo = formatImplementationBoardStepStatusKo(status);
-  if (statusKo === "진행") return `${roleKo}: 진행 중`;
-  if (statusKo === "완료") return `${roleKo}: 완료`;
-  if (statusKo === "실패") return `${roleKo}: 실패`;
-  return `${roleKo}: ${statusKo === "준비" ? "대기" : statusKo}`;
-}
-
 export function buildImplementationTaskTreeNodes(input: {
   readonly board: ImplementationExecutionBoardV1;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly activeTaskId?: string | null;
   readonly selectedTaskId?: string | null;
+  readonly selectedCodeTaskId?: string | null;
   readonly checkedTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly serverJob?: TaskCursorJobSummary | null;
-}): readonly ImplementationTaskTreeNode[] {
-  const activeTaskId = input.activeTaskId?.trim() || null;
-  const selectedTaskId = input.selectedTaskId?.trim() || activeTaskId;
+}): readonly ImplementationProcessTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
-  const orderedRows = orderTaskRowsForTreeDisplay(input.board.taskRows);
-  const dependencyViews = computeTaskTreeDependencyViews(input.board.taskRows);
-  const checkedTaskIds = new Set(
-    normalizeSelectedTaskIds({
-      selectedTaskIds: input.checkedTaskIds,
-      taskRows: input.board.taskRows,
-    }),
-  );
-  return orderedRows.map((row) => {
-    const dependencyView = dependencyViews.get(row.taskId);
-    const isActive = activeTaskId === row.taskId;
-    const isSelected = selectedTaskId === row.taskId;
-    const isChecked = checkedTaskIds.has(row.taskId);
-    const restart = resolveTaskRowUserRestartCapability({
-      row,
-      board: input.board,
-      taskCursorExecution,
-    });
+  const nodes = buildImplementationProcessTaskTreeNodes({
+    board: input.board,
+    codeTaskPlan: input.codeTaskPlan,
+    cursorWorkItems: input.cursorWorkItems,
+    activeTaskId: input.activeTaskId,
+    selectedTaskId: input.selectedTaskId,
+    selectedCodeTaskId: input.selectedCodeTaskId,
+    checkedTaskIds: input.checkedTaskIds,
+    taskCursorExecution,
+    implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
+  });
+  return nodes.map((node) => {
+    const row = input.board.taskRows.find((r) => r.taskId === node.taskId);
+    if (!row) return node;
     const pollStatusLabel = buildTaskCursorPollStatusLabel({
-      taskId: row.taskId,
+      taskId: node.taskId,
       taskCursorExecution,
       promptTimeline: input.promptTimeline,
       developerStatus: row.developerStatus,
       serverJob: input.serverJob,
     });
     const canStop = resolveTaskRowStopCapability({
-      taskId: row.taskId,
+      taskId: node.taskId,
       taskCursorExecution,
       developerStatus: row.developerStatus,
     });
-    const childSteps: ImplementationTaskTreeChildStep[] = [
-      { roleLabel: "AI 개발자", statusLabel: formatTaskTreeRoleStatus("developer", row.developerStatus) },
-      {
-        roleLabel: "GitHub",
-        statusLabel:
-          row.developerStatus === "done" || row.developerStatus === "skipped"
-            ? "GitHub: 완료"
-            : "GitHub: 대기",
-      },
-    ];
-    const collapsedSummary = isPerTaskPipelineComplete({
-      developerStatus: row.developerStatus,
-      reviewerStatus: row.reviewerStatus,
-    })
-      ? "완료"
-      : row.developerStatus === "done"
-        ? "개발 완료"
-        : row.developerStatus === "in_progress"
-          ? "개발 진행"
-          : row.developerStatus === "failed"
-            ? "재작업 필요"
-            : row.failureReason === "blocked_by_dependency"
-              ? "의존 차단"
-              : pollStatusLabel
-                ? "Cursor 실행 중"
-                : "개발 대기";
     return {
-      taskId: row.taskId,
-      title: row.title,
-      isActive,
-      isSelected,
-      isChecked,
-      treeDepth: dependencyView?.depth ?? 0,
-      ...(formatTaskTreeDependencyLabel(dependencyView)
-        ? { dependencyLabel: formatTaskTreeDependencyLabel(dependencyView) }
-        : {}),
-      defaultExpanded: isActive || isSelected,
-      collapsedSummary,
-      childSteps,
-      canRestart: restart.canRestart,
+      ...node,
       canStop,
       ...(pollStatusLabel ? { pollStatusLabel } : {}),
-      ...(!pollStatusLabel && restart.blockedReason
-        ? { restartBlockedReason: restart.blockedReason }
+      ...(!pollStatusLabel && node.restartBlockedReason
+        ? { restartBlockedReason: node.restartBlockedReason }
         : {}),
-      needsReworkRegistration: restart.needsReworkRegistration,
     };
   });
 }

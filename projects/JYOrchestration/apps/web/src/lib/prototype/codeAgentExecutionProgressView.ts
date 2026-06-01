@@ -80,6 +80,7 @@ export type CodeAgentExecutionProgressView = Readonly<{
   readonly compactMainPresentation?: boolean;
   readonly progressCardTitle?: string;
   readonly canCancelCloudAgentPolling?: boolean;
+  readonly hideTaskDetailInCompact?: boolean;
 }>;
 
 export const RELEVANT_TIMELINE_ACTIONS = new Set([
@@ -559,15 +560,15 @@ function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string 
     return "다음 처리: 우선순위 기준 다음 작업 자동 실행";
   }
   if (execution.status === "github_verified" || execution.status === "review_pending" || execution.status === "security_pending") {
-    return "다음 처리: 검수 자동 점검 → 다음 Task";
+    return "다음 처리: 경량검사 → 필요 시 검수/보안 → 다음 Task";
   }
   if (execution.status === "cursor_completed" || execution.status === "github_verifying") {
-    return "다음 처리: GitHub commit 확인 → 검수";
+    return "다음 처리: GitHub commit 확인 → 경량검사";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    return "다음 처리: GitHub commit 확인 → 검수 → 다음 Task";
+    return "다음 처리: GitHub commit 확인 → 경량검사 → 필요 시 검수/보안";
   }
-  return "다음 처리: AI 개발자 실행 → GitHub 확인 → 검수 → (전체 완료 후) 통합 보안·SCM";
+  return "다음 처리: AI 개발자 실행 → GitHub 확인 → 경량검사 → (전체 완료 후) 통합 검수/보안";
 }
 
 function buildTaskCursorProgressSteps(execution: TaskCursorExecutionV1): readonly CodeAgentExecutionProgressStep[] {
@@ -728,7 +729,7 @@ function buildTaskCursorExecutionProgressView(input: {
   const autoGateSummary = summarizeImplementationAutoQualityGateForProgress(input.autoGate);
   let statusLabel = taskCursorStatusLabel(execution);
   let summaryLine = taskCursorSummaryLine(execution);
-  let progressCardTitle = "현재 실행 상태";
+  let progressCardTitle = "구현 실행 중";
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
     statusLabel = "Cursor 작업 진행 중";
   }
@@ -842,6 +843,7 @@ function buildTaskCursorExecutionProgressView(input: {
     recentEvents,
     compactMainPresentation,
     progressCardTitle,
+    hideTaskDetailInCompact: true,
     canCancelCloudAgentPolling: isTaskCursorCloudAgentPollingCancellable(execution),
   };
 }
@@ -872,10 +874,9 @@ export function buildCodeAgentExecutionProgressView(input: {
     return {
       status: "idle",
       statusLabel: "대기",
-      progressCardTitle: "현재 실행 상태",
-      summaryLine: "Quick 실행으로 프로토타입 생성을 시작할 수 있습니다.",
-      selectedTaskId: activeTaskId,
-      selectedTaskTitle: activeRow?.title,
+      progressCardTitle: "구현 실행 현황",
+      summaryLine: "Quick 실행으로 선택한 CodeTask를 실행할 수 있습니다.",
+      hideTaskDetailInCompact: true,
       cursorApiLabel: "실제 Cursor API 미실행",
       changedFileCount: 0,
       testStatus: "unknown",
@@ -885,8 +886,8 @@ export function buildCodeAgentExecutionProgressView(input: {
       compactMainPresentation: true,
       compactSteps: buildCompactDashboardProgressSteps(null, null),
       nextProcessingHint: activeTaskId
-        ? "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 검수 자동 점검"
-        : undefined,
+        ? "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안"
+        : "모든 작업 완료 후 통합 검수/보안을 진행합니다.",
       steps: buildCompactDashboardProgressSteps(null, null).map((step) => ({
         id: step.id,
         label: step.label,

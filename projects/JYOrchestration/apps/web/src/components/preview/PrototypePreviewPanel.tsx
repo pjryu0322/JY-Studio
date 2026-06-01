@@ -6727,6 +6727,7 @@ export function PrototypePreviewPanel({
             implementationCodeTaskPlanV1={
               orchestrationAwareRequirementsState.implementationCodeTaskPlanV1
             }
+            cursorWorkItemsV1={orchestrationAwareRequirementsState.cursorWorkItemsV1}
           />
         ) : null}
         <div className="jyo-prototype-execution-chat-region">

@@ -5,8 +5,11 @@
  * (POST quick-design/confirm → jobId → GET progress snapshot).
  */
 
+export const IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY = 3;
+
 export type ImplementationPrepProgressPhase =
   | "idle"
+  | "confirming"
   | "seed_building"
   | "task_list_building"
   | "codetask_refining"
@@ -15,68 +18,123 @@ export type ImplementationPrepProgressPhase =
   | "ready"
   | "failed";
 
-export type ImplementationPrepProgressSnapshot = Readonly<{
-  readonly phase: ImplementationPrepProgressPhase;
+export type ImplementationPrepStepStatus = "done" | "active" | "pending";
+
+export type ImplementationPrepStepItem = Readonly<{
   readonly label: string;
-  readonly detail?: string;
-  readonly percent: number;
-  readonly estimatedRemainingLabel?: string;
-  readonly stepLabels: readonly string[];
-  readonly completedStepCount: number;
+  readonly status: ImplementationPrepStepStatus;
 }>;
 
-const PSEUDO_PHASES: readonly Readonly<{
-  readonly key: ImplementationPrepProgressPhase;
-  readonly label: string;
+export type ImplementationPrepProgressSnapshot = Readonly<{
+  readonly phase: ImplementationPrepProgressPhase;
+  readonly percent: number;
+  readonly headline: string;
+  readonly description: string;
+  readonly detailLine?: string;
+  readonly metaLines: readonly string[];
+  readonly steps: readonly ImplementationPrepStepItem[];
+}>;
+
+const PSEUDO_PHASE_THRESHOLDS: readonly Readonly<{
+  readonly phase: ImplementationPrepProgressPhase;
   readonly startPercent: number;
   readonly endPercent: number;
 }>[] = [
-  { key: "seed_building", label: "구현 Seed 생성", startPercent: 10, endPercent: 25 },
-  { key: "task_list_building", label: "구현 TaskList 생성", startPercent: 25, endPercent: 40 },
-  {
-    key: "codetask_refining",
-    label: "CodeTask LLM 정제",
-    startPercent: 40,
-    endPercent: 85,
-  },
-  { key: "workitem_building", label: "WorkItem 생성", startPercent: 85, endPercent: 95 },
-  { key: "preflight_checking", label: "Preflight 확인", startPercent: 95, endPercent: 100 },
+  { phase: "confirming", startPercent: 0, endPercent: 10 },
+  { phase: "seed_building", startPercent: 10, endPercent: 25 },
+  { phase: "task_list_building", startPercent: 25, endPercent: 40 },
+  { phase: "codetask_refining", startPercent: 40, endPercent: 85 },
+  { phase: "workitem_building", startPercent: 85, endPercent: 95 },
+  { phase: "preflight_checking", startPercent: 95, endPercent: 99 },
 ];
 
-/** Monotonic pseudo progress from elapsed time during a single confirm request. */
-export function buildPseudoImplementationPrepProgress(elapsedMs: number): ImplementationPrepProgressSnapshot {
-  const elapsed = Math.max(0, elapsedMs);
-  const rampMs = 90_000;
-  const rawPercent = Math.min(99, 10 + Math.floor((elapsed / rampMs) * 89));
+const STEP_DEFINITIONS: readonly Readonly<{
+  readonly phase: ImplementationPrepProgressPhase;
+  readonly label: string;
+}>[] = [
+  { phase: "confirming", label: "Quick Design 확정" },
+  { phase: "seed_building", label: "구현 Seed 생성" },
+  { phase: "task_list_building", label: "구현 TaskList 생성" },
+  { phase: "codetask_refining", label: "CodeTask LLM 정제" },
+  { phase: "workitem_building", label: "WorkItem 생성" },
+  { phase: "preflight_checking", label: "Preflight 확인" },
+];
 
-  let phase: ImplementationPrepProgressPhase = "seed_building";
-  let label = PSEUDO_PHASES[0]?.label ?? "구현준비 생성";
-  let completedStepCount = 0;
-
-  for (const step of PSEUDO_PHASES) {
-    if (rawPercent >= step.endPercent) {
-      completedStepCount += 1;
-      phase = step.key;
-      label = step.label;
-    } else if (rawPercent >= step.startPercent) {
-      phase = step.key;
-      label = step.label;
-      break;
-    }
+function resolvePhase(rawPercent: number): ImplementationPrepProgressPhase {
+  for (const row of PSEUDO_PHASE_THRESHOLDS) {
+    if (rawPercent < row.endPercent) return row.phase;
   }
+  return "preflight_checking";
+}
 
-  const detail =
+function buildSteps(activePhase: ImplementationPrepProgressPhase): readonly ImplementationPrepStepItem[] {
+  const activeIndex = STEP_DEFINITIONS.findIndex((s) => s.phase === activePhase);
+  return STEP_DEFINITIONS.map((step, index) => {
+    if (index < activeIndex || (activeIndex < 0 && step.phase === "confirming")) {
+      return { label: step.label, status: "done" as const };
+    }
+    if (step.phase === activePhase) {
+      return { label: step.label, status: "active" as const };
+    }
+    return { label: step.label, status: "pending" as const };
+  });
+}
+
+function stepStatusLabel(status: ImplementationPrepStepStatus): string {
+  if (status === "done") return "완료";
+  if (status === "active") return "진행 중";
+  return "대기";
+}
+
+/** Monotonic pseudo progress from elapsed time during a single confirm request. */
+export function buildPseudoImplementationPrepProgress(
+  elapsedMs: number,
+  options?: Readonly<{ readonly batchConcurrency?: number }>,
+): ImplementationPrepProgressSnapshot {
+  const elapsed = Math.max(0, elapsedMs);
+  const rampMs = 150_000;
+  const rawPercent = Math.min(95, 10 + Math.floor((elapsed / rampMs) * 85));
+  const phase = resolvePhase(rawPercent);
+  const concurrency = options?.batchConcurrency ?? IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY;
+  const steps = buildSteps(phase === "confirming" ? "seed_building" : phase);
+
+  const headline =
     phase === "codetask_refining"
-      ? "Batch 기준으로 처리 중입니다. 예상 소요: 1~2분"
+      ? "CodeTask LLM 정제를 Batch 기준으로 병렬 처리하고 있습니다."
+      : "구현준비 산출물을 순서대로 생성하고 있습니다.";
+
+  const description =
+    phase === "codetask_refining"
+      ? "기획 내용을 Cursor가 수행하기 좋은 CodeTask 단위로 정리하는 단계입니다."
+      : "Quick Design 확정 결과를 바탕으로 구현 준비 산출물을 만드는 중입니다.";
+
+  const detailLine =
+    phase === "codetask_refining"
+      ? "Batch 기준으로 병렬 처리 중입니다. 완료 수는 API 응답 후 표시됩니다."
       : undefined;
+
+  const metaLines = [
+    "전체 CodeTask: 준비 중",
+    "Batch: 준비 중",
+    `병렬 처리: ${concurrency}개씩`,
+    "예상 소요: 약 2~3분",
+    "상세 로그: 로그 탭",
+  ];
 
   return {
     phase,
-    label,
-    detail,
     percent: rawPercent,
-    estimatedRemainingLabel: phase === "codetask_refining" ? "약 1~2분" : undefined,
-    stepLabels: PSEUDO_PHASES.map((s) => s.label),
-    completedStepCount,
+    headline,
+    description,
+    detailLine,
+    metaLines,
+    steps,
   };
 }
+
+export function formatImplementationPrepStepLine(step: ImplementationPrepStepItem): string {
+  const suffix = step.status === "done" ? " 완료" : step.status === "active" ? " 중" : " 대기";
+  return `${step.label}${suffix}`;
+}
+
+export { stepStatusLabel };

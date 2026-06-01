@@ -1,13 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { buildPseudoImplementationPrepProgress } from "@/lib/requirements/implementationPrepProgress";
+import {
+  buildPseudoImplementationPrepProgress,
+  IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY,
+} from "@/lib/requirements/implementationPrepProgress";
 
 describe("buildPseudoImplementationPrepProgress", () => {
   it("enters codetask_refining phase without fake batch counts", () => {
-    const snap = buildPseudoImplementationPrepProgress(50_000);
+    const snap = buildPseudoImplementationPrepProgress(90_000);
     expect(snap.phase).toBe("codetask_refining");
-    expect(snap.detail).toContain("Batch 기준");
-    expect(snap.detail).not.toMatch(/\d+\/\d+/);
+    expect(snap.detailLine).toContain("Batch 기준");
+    expect(snap.detailLine).not.toMatch(/\d+\/\d+/);
     expect(snap.percent).toBeGreaterThanOrEqual(40);
-    expect(snap.percent).toBeLessThan(90);
+    expect(snap.percent).toBeLessThanOrEqual(95);
+  });
+
+  it("shows 준비 중 meta and default concurrency", () => {
+    const snap = buildPseudoImplementationPrepProgress(0);
+    expect(snap.metaLines.join("\n")).toContain("준비 중");
+    expect(snap.metaLines.some((l) => l.includes(`${IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY}개씩`))).toBe(
+      true,
+    );
+    expect(snap.metaLines.join("\n")).not.toMatch(/Batch\s+\d+\/\d+/);
+  });
+
+  it("lists quick design confirm as done during prep", () => {
+    const snap = buildPseudoImplementationPrepProgress(5_000);
+    expect(snap.steps[0]?.label).toBe("Quick Design 확정");
+    expect(snap.steps[0]?.status).toBe("done");
   });
 });
