@@ -2417,7 +2417,18 @@ export function RequirementsWorkspace({
 
   const handleConfirmFastPlanDraftSlots = useCallback(async () => {
     const pid = resolvedProjectId.trim();
-    if (!pid || busy || deliverableGenerateBusy || remoteLocked) return;
+    if (!pid) {
+      showErrorToast("프로젝트를 먼저 저장해 주세요.");
+      return;
+    }
+    if (busy || deliverableGenerateBusy) {
+      showErrorToast("다른 작업이 진행 중입니다. 완료 후 다시 시도해 주세요.");
+      return;
+    }
+    if (remoteLocked) {
+      showErrorToast("원격 저장소 잠금 상태입니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
     const draft = stateJsonRef.current.fastPlanDraftV1;
     if (!draft?.memberDrafts?.length) {
       showErrorToast(`확인할 Quick Design 초안이 없습니다. 먼저 「${QUICK_DESIGN_LABEL}」을 실행해 주세요.`);
@@ -2429,6 +2440,7 @@ export function RequirementsWorkspace({
       return;
     }
     setDeliverableGenerateBusy(true);
+    showSuccessToast("Quick Design 확정 중입니다. LLM 설정이 켜져 있으면 1분 이상 걸릴 수 있습니다.");
     try {
       const st = stateJsonRef.current;
       const { res, json } = await postQuickDesignConfirm(pid, {
@@ -2452,17 +2464,22 @@ export function RequirementsWorkspace({
         return;
       }
 
-      await persistStateJsonOnly(flowResult.statePatch);
+      const statePatchWithTimeline = flowResult.timelineEntries?.length
+        ? {
+            ...flowResult.statePatch,
+            promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
+              ...(flowResult.timelineEntries as import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[]),
+            ]),
+          }
+        : flowResult.statePatch;
+      const persisted = await persistStateJsonOnly(statePatchWithTimeline);
+      if (!persisted) {
+        showErrorToast("Quick Design 확정 결과 저장에 실패했습니다. 다시 시도해 주세요.");
+        return;
+      }
       lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId ?? null;
       if (flowResult.messages?.[0]) {
         await appendServiceFlowWorkshopMessages([flowResult.messages[0]]);
-      }
-      if (flowResult.timelineEntries?.length) {
-        void persistStateJsonOnly({
-          promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
-            ...(flowResult.timelineEntries as import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[]),
-          ]),
-        });
       }
       showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
     } catch (e) {
@@ -3322,6 +3339,7 @@ export function RequirementsWorkspace({
         aiInvokePending={aiInvokePending}
         serviceFlowAnalyzePending={serviceFlowChatPending}
         serviceFlowPendingStatusLabel={serviceFlowAlternativeCanvas.pendingStatusLabel}
+        quickDesignConfirmPending={deliverableGenerateBusy}
         serviceDesignStage={activeStage}
         onInsertComposerPrompt={insertComposerPrompt}
         onInterviewSuggestionPick={handleFastPlanDraftSuggestionPick}

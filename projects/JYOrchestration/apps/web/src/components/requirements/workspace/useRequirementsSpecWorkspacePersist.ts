@@ -42,7 +42,7 @@ export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorksp
   const argsRef = useRef(args);
   argsRef.current = args;
 
-  const persistStateJsonOnly = useCallback(async (patch: Partial<RequirementsStateJson>) => {
+  const persistStateJsonOnly = useCallback(async (patch: Partial<RequirementsStateJson>): Promise<boolean> => {
     const {
       resolvedProjectId,
       stateJsonRef,
@@ -51,7 +51,7 @@ export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorksp
       setLastSavedAt,
     } = argsRef.current;
     const pid = resolvedProjectId.trim();
-    if (!pid) return;
+    if (!pid) return false;
     const ts = new Date().toISOString();
     const merged = mergeRequirementsStateJson(stateJsonRef.current, { ...patch, lastSavedAt: patch.lastSavedAt ?? ts });
     stateJsonRef.current = merged;
@@ -61,19 +61,21 @@ export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorksp
       const json = raw as SpecWorkspaceProjectPatchResponseBody;
       if (!res.ok || !json.success || !json.data?.project) {
         setSaveState("error");
-        return;
+        return false;
       }
       if (json.data.patchApplied === false) {
         setSaveState("error");
-        return;
+        return false;
       }
       setProject(json.data.project);
       stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
       notifyAppFlowProjectContextRefresh();
       setSaveState("saved");
       setLastSavedAt(merged.lastSavedAt ?? ts);
+      return true;
     } catch {
       setSaveState("error");
+      return false;
     }
   }, []);
 

@@ -114,6 +114,7 @@ export function RequirementsChatPanel({
   onInsertComposerPrompt,
   onInterviewSuggestionPick,
   onSetReplyTo,
+  interviewSuggestionPickDisabled = false,
   onOpenDeliverableDocument,
   onOpenDeliverableList,
   onOpenDeliverableDocuments,
@@ -140,6 +141,8 @@ export function RequirementsChatPanel({
   readonly onInsertComposerPrompt?: (text: string) => void;
   /** SingleChat 인터뷰 추천 칩 선택 */
   readonly onInterviewSuggestionPick?: (label: string) => void;
+  /** 장시간 액션 진행 중 칩 비활성화 */
+  readonly interviewSuggestionPickDisabled?: boolean;
   /** 답글 달기: replyTo messageId 설정 */
   readonly onSetReplyTo?: (messageId: string, preview: string) => void;
   readonly onOpenDeliverableDocument?: (assetId: string) => void;
@@ -713,15 +716,20 @@ export function RequirementsChatPanel({
                             <button
                               key={`${m.id}-${label}`}
                               type="button"
+                              disabled={interviewSuggestionPickDisabled}
                               onClick={() => {
+                                if (interviewSuggestionPickDisabled) return;
                                 setPinnedActionsMessageId(m.id);
                                 onInterviewSuggestionPick?.(label);
                               }}
-                              style={
-                                isRecommendedInitialProposalChip
+                              style={{
+                                ...(isRecommendedInitialProposalChip
                                   ? interviewChipBtnRecommended
-                                  : interviewChipBtn
-                              }
+                                  : interviewChipBtn),
+                                ...(interviewSuggestionPickDisabled
+                                  ? { opacity: 0.55, cursor: "not-allowed" }
+                                  : {}),
+                              }}
                             >
                               {isRecommendedInitialProposalChip ? (
                                 <>

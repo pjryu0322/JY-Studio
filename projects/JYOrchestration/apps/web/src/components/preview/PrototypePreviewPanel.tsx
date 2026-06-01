@@ -3670,6 +3670,7 @@ export function PrototypePreviewPanel({
     if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
     void (async () => {
       setProtoBusy(true);
+      showToast("Quick Design 확정 중입니다. LLM 설정이 켜져 있으면 1분 이상 걸릴 수 있습니다.");
       try {
         const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
         const { res, json } = await postQuickDesignConfirm(pid, {
@@ -3690,6 +3691,9 @@ export function PrototypePreviewPanel({
           orchestrationPatch: (json.data.orchestrationPatch ?? {}) as PrototypeExecutionOrchestrationPersistInput,
         });
         showToast(json.data.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
+        showToast(msg);
       } finally {
         setProtoBusy(false);
       }

@@ -24,6 +24,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   /** service-flow analyze API 대기(통합 채팅 typing/busy 연동) */
   serviceFlowAnalyzePending?: boolean;
   serviceFlowPendingStatusLabel?: string | null;
+  /** Quick Design 확정 등 장시간 기획 액션 대기 */
+  quickDesignConfirmPending?: boolean;
   /** SingleChat 입력·하네스 라우팅용 내부 단계 */
   serviceDesignStage: RequirementsWorkspaceStage;
   /** 채팅 헤더 참가자 배지(통합 화면에서는 항상 전달 권장) */
@@ -71,6 +73,7 @@ export function RequirementsIdeationChatPanel({
   aiInvokePending,
   serviceFlowAnalyzePending = false,
   serviceFlowPendingStatusLabel = null,
+  quickDesignConfirmPending = false,
   serviceDesignStage,
   memberControls,
   onInsertComposerPrompt,
@@ -103,12 +106,13 @@ export function RequirementsIdeationChatPanel({
   chatHeaderLeading,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
-    const pending = aiInvokePending || serviceFlowAnalyzePending;
+    const pending = aiInvokePending || serviceFlowAnalyzePending || quickDesignConfirmPending;
     if (!pending) return false;
+    if (quickDesignConfirmPending) return true;
     if (!chatMessages.length) return true;
     const last = chatMessages[chatMessages.length - 1];
     return last?.role !== "ai";
-  }, [aiInvokePending, serviceFlowAnalyzePending, chatMessages]);
+  }, [aiInvokePending, quickDesignConfirmPending, serviceFlowAnalyzePending, chatMessages]);
 
   const composer: ReactNode = (
     <>
@@ -153,7 +157,7 @@ export function RequirementsIdeationChatPanel({
         textAreaRef={composerTextAreaRef}
         value={input}
         onChange={onInputChange}
-        busy={busy || aiInvokePending || serviceFlowAnalyzePending}
+        busy={busy || aiInvokePending || serviceFlowAnalyzePending || quickDesignConfirmPending}
         disabled={false}
         placeholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
@@ -184,14 +188,21 @@ export function RequirementsIdeationChatPanel({
         headerLeading={chatHeaderLeading ?? null}
         typingIndicator={showTypingIndicator}
         typingIndicatorSpeakerLine={
-          serviceFlowAnalyzePending
-            ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
-              "AI 기획자가 응답을 준비하고 있습니다…"
-            : typingIndicatorSpeakerLine
+          quickDesignConfirmPending
+            ? "Quick Design 확정 및 구현준비 산출물 생성 중입니다…"
+            : serviceFlowAnalyzePending
+              ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
+                "AI 기획자가 응답을 준비하고 있습니다…"
+              : typingIndicatorSpeakerLine
         }
         typingIndicatorResolvedSpeakerSource={
-          serviceFlowAnalyzePending ? "service-flow-analyze" : typingIndicatorResolvedSpeakerSource
+          quickDesignConfirmPending
+            ? "quick-design-confirm"
+            : serviceFlowAnalyzePending
+              ? "service-flow-analyze"
+              : typingIndicatorResolvedSpeakerSource
         }
+        interviewSuggestionPickDisabled={quickDesignConfirmPending}
         sessionUserDisplayName={sessionUserDisplayName}
         memberControls={memberControls}
         promptTimeline={promptTimeline}
