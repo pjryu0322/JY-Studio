@@ -6,7 +6,17 @@ import {
 } from "@/lib/prototype/implementationTaskExecutionState";
 import { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import { buildTaskCursorPollLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  resolveSelectedWorkItemsForExecution,
+  updateImplementationCodeTaskExecutionFeedback,
+  type ImplementationCodeTaskExecutionFeedbackV1,
+} from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import { diagnoseImplementationCodeTaskFailure } from "@/lib/prototype/implementationCodeTaskFailureDiagnosis";
+import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
+import {
+  buildImplementationExecutionLogTimelineEntry,
+  buildTaskCursorPollLifecycleTimelineEntry,
+} from "@/lib/prototype/implementationExecutionLogTimeline";
 import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider";
 import {
   appendTaskCursorExecutionHistory,
@@ -181,13 +191,47 @@ export function buildTaskCursorOrchestrationPatch(input: {
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[];
   readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
+  readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
 }): Readonly<{
   readonly taskCursorExecutionV1: TaskCursorExecutionV1;
   readonly taskCursorExecutionHistoryV1: readonly TaskCursorExecutionV1[];
   readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1;
+  readonly implementationCodeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1;
 }> {
-  const timeline = appendPromptTimelineEntries(input.existingTimeline, input.timelineEntries);
+  const selectedWorkItems = resolveSelectedWorkItemsForExecution({
+    cursorWorkItems: input.cursorWorkItems,
+    workItemIds: input.execution.workItemIds,
+  });
+  const diagnosis =
+    input.execution.status === "cursor_failed" || input.execution.status === "github_verify_failed"
+      ? diagnoseImplementationCodeTaskFailure({
+          failureReason: input.execution.failureReason,
+          selectedWorkItems,
+          codeTaskQualityGate: input.codeTaskQualityGate,
+          githubVerifyFailed: input.execution.status === "github_verify_failed",
+        })
+      : null;
+  const timelineEntries = diagnosis
+    ? [
+        ...input.timelineEntries,
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_code_task_failure_diagnosed",
+          orchestrationTraceGroup: "implementation_execution_log",
+          fields: {
+            projectId: input.execution.projectId,
+            taskId: input.execution.taskId,
+            causeLayer: diagnosis.causeLayer,
+            message: diagnosis.message,
+            affectedCodeTaskIds: diagnosis.affectedCodeTaskIds.join(","),
+            failureReason: input.execution.failureReason ?? "",
+          },
+          nowIso: input.execution.updatedAt ?? new Date().toISOString(),
+        }),
+      ]
+    : input.timelineEntries;
+  const timeline = appendPromptTimelineEntries(input.existingTimeline, timelineEntries);
   const executionState =
     shouldSyncExecutionStateAfterTaskCursorGithubVerify(input.execution.status) && input.executionState
       ? syncTaskExecutionStateAfterGithubVerified({
@@ -203,6 +247,15 @@ export function buildTaskCursorOrchestrationPatch(input: {
               input.execution.errorMessage ?? TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
           })
         : input.executionState ?? undefined;
+  const implementationCodeTaskExecutionFeedbackV1 = selectedWorkItems.length
+    ? updateImplementationCodeTaskExecutionFeedback({
+        projectId: input.execution.projectId,
+        existing: input.existingCodeTaskExecutionFeedback,
+        selectedWorkItems,
+        execution: input.execution,
+        nowIso: input.execution.updatedAt,
+      })
+    : undefined;
   return {
     taskCursorExecutionV1: input.execution,
     taskCursorExecutionHistoryV1: appendTaskCursorExecutionHistory(
@@ -211,6 +264,9 @@ export function buildTaskCursorOrchestrationPatch(input: {
     ),
     promptTimeline: timeline,
     ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
+    ...(implementationCodeTaskExecutionFeedbackV1
+      ? { implementationCodeTaskExecutionFeedbackV1 }
+      : {}),
   };
 }
 

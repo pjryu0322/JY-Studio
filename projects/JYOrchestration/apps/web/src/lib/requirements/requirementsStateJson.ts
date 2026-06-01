@@ -40,6 +40,10 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
 import { parseImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
+import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
+import { parseImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
+import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import { parseImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
   parseImplementationAutoQualityGateHistoryV1,
@@ -588,6 +592,10 @@ export type RequirementsStateJson = {
   implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   /** 기획단계 1차 WorkItem preflight 요약 */
   implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
+  /** CodeTask 실행 적합성 품질 게이트 */
+  implementationCodeTaskQualityGateV1?: ImplementationCodeTaskQualityGateV1 | null;
+  /** CodeTask/WorkItem 단위 실행 feedback(진단용) */
+  implementationCodeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   /** TaskList 작업별 WIP/실행 상태(원본 taskList는 mutate하지 않음) */
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   /** reviewer/security 품질 게이트 점검 결과(append, UI는 role별 최신 사용) */
@@ -1039,6 +1047,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationWorkItemPreflightSummaryV1 = parseImplementationWorkItemPreflightSummaryV1(
     "implementationWorkItemPreflightSummaryV1" in o ? o.implementationWorkItemPreflightSummaryV1 : undefined,
   );
+  const implementationCodeTaskQualityGateV1 = parseImplementationCodeTaskQualityGateV1(
+    "implementationCodeTaskQualityGateV1" in o ? o.implementationCodeTaskQualityGateV1 : undefined,
+  );
+  const implementationCodeTaskExecutionFeedbackV1 = parseImplementationCodeTaskExecutionFeedbackV1(
+    "implementationCodeTaskExecutionFeedbackV1" in o
+      ? o.implementationCodeTaskExecutionFeedbackV1
+      : undefined,
+  );
   const implementationTaskExecutionStateV1 = parseImplementationTaskExecutionStateV1(
     "implementationTaskExecutionStateV1" in o ? o.implementationTaskExecutionStateV1 : undefined,
   );
@@ -1228,6 +1244,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationCodeTaskPlanV1 !== undefined ? { implementationCodeTaskPlanV1 } : {}),
     ...(implementationWorkItemPreflightSummaryV1 !== undefined
       ? { implementationWorkItemPreflightSummaryV1 }
+      : {}),
+    ...(implementationCodeTaskQualityGateV1 !== undefined
+      ? { implementationCodeTaskQualityGateV1 }
+      : {}),
+    ...(implementationCodeTaskExecutionFeedbackV1 !== undefined
+      ? { implementationCodeTaskExecutionFeedbackV1 }
       : {}),
     ...(implementationTaskExecutionStateV1 !== undefined
       ? { implementationTaskExecutionStateV1 }

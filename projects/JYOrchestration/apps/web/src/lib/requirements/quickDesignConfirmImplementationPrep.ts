@@ -26,6 +26,7 @@ import {
 } from "@/lib/prototype/implementationPlanningReadiness";
 import type { LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
+import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
@@ -49,6 +50,7 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1 | null;
   readonly readiness: ImplementationSeedReadiness;
   readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
   readonly autoCandidateGenerated: boolean;
@@ -316,6 +318,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   let implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null = null;
   let cursorWorkItemsV1: readonly CursorWorkItem[] | null = null;
   let implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null = null;
+  let implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1 | null = null;
   let planningReadinessTimeline: RequirementsPromptTimelineEntry[] = [];
 
   if (prepComplete && taskListForReadiness?.tasks?.length) {
@@ -333,6 +336,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     implementationCodeTaskPlanV1 = readinessPatch.implementationCodeTaskPlanV1;
     cursorWorkItemsV1 = readinessPatch.cursorWorkItemsV1;
     implementationWorkItemPreflightSummaryV1 = readinessPatch.implementationWorkItemPreflightSummaryV1;
+    implementationCodeTaskQualityGateV1 = readinessPatch.implementationCodeTaskQualityGateV1;
     planningReadinessTimeline = [...readinessPatch.promptTimeline];
   }
 
@@ -403,6 +407,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     implementationCodeTaskPlanV1,
     cursorWorkItemsV1,
     implementationWorkItemPreflightSummaryV1,
+    implementationCodeTaskQualityGateV1,
     readiness,
     lifecycleStatus,
     autoCandidateGenerated,
@@ -467,6 +472,7 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
     implementationCodeTaskPlanV1: readinessPatch.implementationCodeTaskPlanV1,
     cursorWorkItemsV1: readinessPatch.cursorWorkItemsV1,
     implementationWorkItemPreflightSummaryV1: readinessPatch.implementationWorkItemPreflightSummaryV1,
+    implementationCodeTaskQualityGateV1: readinessPatch.implementationCodeTaskQualityGateV1,
     timelineEntries: [...nonPlanningTimeline, ...planningTimeline],
   };
 }

@@ -1,7 +1,12 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type {
+  ImplementationCodeTaskQualityGateV1,
+  ImplementationCodeTaskQualityIssueV1,
+} from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   evaluateImplementationPlanningExecutionGate,
+  IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE,
   IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
@@ -19,6 +24,7 @@ export type ImplementationPlanningReadinessCardTaskRow = Readonly<{
   readonly acceptanceCriteria: readonly string[];
   readonly verificationHints: readonly string[];
   readonly llmRationale?: string;
+  readonly qualityIssues?: readonly ImplementationCodeTaskQualityIssueV1[];
 }>;
 
 export type ImplementationPlanningReadinessCardVM = Readonly<{
@@ -31,6 +37,11 @@ export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly preflightStatus: "passed" | "failed" | "unknown";
   readonly llmRefinementLabel: string;
   readonly validationStatus: "passed" | "failed" | "unknown";
+  readonly qualityStatus: "passed" | "warning" | "failed" | "unknown";
+  readonly qualityIssueCount: number;
+  readonly qualityWarnings: readonly string[];
+  readonly qualityErrors: readonly string[];
+  readonly riskyCodeTaskIds: readonly string[];
   readonly executionReady: boolean;
   readonly supplementReasons: readonly string[];
   readonly advancedTasks: readonly ImplementationPlanningReadinessCardTaskRow[];
@@ -53,10 +64,41 @@ function formatLlmRefinementLabel(plan: ImplementationCodeTaskPlanV1 | null | un
       return "LLM Refinement: heuristic only";
   }
 }
+
+function formatQualityStatusLabel(
+  status: ImplementationPlanningReadinessCardVM["qualityStatus"],
+): string {
+  switch (status) {
+    case "passed":
+      return "통과";
+    case "warning":
+      return "경고";
+    case "failed":
+      return "실패";
+    default:
+      return "미확인";
+  }
+}
+
+export { formatQualityStatusLabel };
+
+function groupIssuesByCodeTaskId(
+  issues: readonly ImplementationCodeTaskQualityIssueV1[],
+): Readonly<Record<string, readonly ImplementationCodeTaskQualityIssueV1[]>> {
+  const grouped: Record<string, ImplementationCodeTaskQualityIssueV1[]> = {};
+  for (const issue of issues) {
+    const bucket = grouped[issue.codeTaskId] ?? [];
+    bucket.push(issue);
+    grouped[issue.codeTaskId] = bucket;
+  }
+  return grouped;
+}
+
 export function buildImplementationPlanningReadinessCardVM(input: {
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly preflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
 }): ImplementationPlanningReadinessCardVM | null {
   const plan = input.codeTaskPlan;
@@ -66,7 +108,27 @@ export function buildImplementationPlanningReadinessCardVM(input: {
     codeTaskPlan: plan,
     cursorWorkItems: input.cursorWorkItems,
     preflightSummary: input.preflightSummary,
+    codeTaskQualityGate: input.codeTaskQualityGate,
   });
+
+  const qualityGate = input.codeTaskQualityGate;
+  const qualityStatus = qualityGate?.status ?? "unknown";
+  const qualityWarnings = (qualityGate?.issues ?? [])
+    .filter((issue) => issue.severity === "warning")
+    .map((issue) => issue.message)
+    .slice(0, 3);
+  const qualityErrors = (qualityGate?.issues ?? [])
+    .filter((issue) => issue.severity === "error")
+    .map((issue) => issue.message)
+    .slice(0, 3);
+  const riskyCodeTaskIds = [
+    ...new Set(
+      (qualityGate?.issues ?? [])
+        .filter((issue) => issue.severity === "error" || issue.severity === "warning")
+        .map((issue) => issue.codeTaskId),
+    ),
+  ];
+  const issuesByCodeTaskId = groupIssuesByCodeTaskId(qualityGate?.issues ?? []);
 
   const supplementReasons: string[] = [];
   if (plan?.readiness.missing.length) {
@@ -76,6 +138,12 @@ export function buildImplementationPlanningReadinessCardVM(input: {
     supplementReasons.push(...(plan.validationReport.errors.slice(0, 3) ?? []));
   } else if (!plan?.validationReport?.status) {
     supplementReasons.push(IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE);
+  }
+  if (qualityGate?.status === "failed") {
+    supplementReasons.push(IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE);
+    supplementReasons.push(...qualityErrors.slice(0, 3));
+  } else if (qualityGate?.status === "warning") {
+    supplementReasons.push(...qualityWarnings.slice(0, 3));
   }
   if (input.preflightSummary?.status === "failed") {
     supplementReasons.push(...(input.preflightSummary.failedReasons.slice(0, 3) ?? []));
@@ -97,8 +165,16 @@ export function buildImplementationPlanningReadinessCardVM(input: {
     preflightStatus: input.preflightSummary?.status ?? "unknown",
     llmRefinementLabel: formatLlmRefinementLabel(plan),
     validationStatus: plan?.validationReport?.status ?? "unknown",
+    qualityStatus,
+    qualityIssueCount: qualityGate?.issueCount ?? 0,
+    qualityWarnings,
+    qualityErrors,
+    riskyCodeTaskIds,
     executionReady,
-    supplementReasons: [...new Set(supplementReasons.map((v) => v.trim()).filter(Boolean))],
+    supplementReasons: [...new Set(supplementReasons.map((v) => v.trim()).filter(Boolean))].slice(
+      0,
+      3,
+    ),
     advancedTasks: (plan?.tasks ?? []).map((task) => ({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,
@@ -111,6 +187,9 @@ export function buildImplementationPlanningReadinessCardVM(input: {
       acceptanceCriteria: task.acceptanceCriteria ?? [],
       verificationHints: task.verificationHints ?? [],
       ...(task.llmRationale ? { llmRationale: task.llmRationale } : {}),
+      ...(issuesByCodeTaskId[task.codeTaskId]?.length
+        ? { qualityIssues: issuesByCodeTaskId[task.codeTaskId] }
+        : {}),
     })),
   };
 }

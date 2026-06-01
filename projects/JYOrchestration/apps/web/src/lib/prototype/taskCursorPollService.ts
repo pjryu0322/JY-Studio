@@ -1,4 +1,5 @@
-import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   applyTaskCursorApiResult,
@@ -47,6 +48,8 @@ export async function pollTaskCursorExecutionOnce(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly workItems: readonly CursorWorkItem[];
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
+  readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
+  readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly verifyGithub: boolean;
   readonly nowIso?: string;
   readonly context: TaskCursorPollRuntimeContext;
@@ -64,6 +67,10 @@ export async function pollTaskCursorExecutionOnce(input: {
       timelineEntries,
       cursorWorkItems: input.workItems,
       ...(executionState ? { executionState } : {}),
+      ...(input.existingCodeTaskExecutionFeedback
+        ? { existingCodeTaskExecutionFeedback: input.existingCodeTaskExecutionFeedback }
+        : {}),
+      ...(input.codeTaskQualityGate ? { codeTaskQualityGate: input.codeTaskQualityGate } : {}),
     });
 
   const agentId = String(execution.cursorRunId ?? "").trim();

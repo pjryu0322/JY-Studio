@@ -277,6 +277,8 @@ async function processPollingTaskCursorJob(
     implementationTaskExecutionStateV1: parseImplementationTaskExecutionStateV1(
       state.implementationTaskExecutionStateV1,
     ),
+    existingCodeTaskExecutionFeedback: state.implementationCodeTaskExecutionFeedbackV1 ?? null,
+    codeTaskQualityGate: state.implementationCodeTaskQualityGateV1 ?? null,
     verifyGithub: true,
     nowIso,
     context: runtime.context,

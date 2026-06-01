@@ -902,6 +902,7 @@ export function RequirementsWorkspace({
       codeTaskPlan: mergedState.implementationCodeTaskPlanV1,
       cursorWorkItems: mergedState.cursorWorkItemsV1,
       preflightSummary: mergedState.implementationWorkItemPreflightSummaryV1,
+      codeTaskQualityGate: mergedState.implementationCodeTaskQualityGateV1,
       taskList: mergedState.implementationTaskListV1,
     });
   }, [
@@ -909,6 +910,7 @@ export function RequirementsWorkspace({
     persistedPromptState.implementationCodeTaskPlanV1,
     persistedPromptState.cursorWorkItemsV1,
     persistedPromptState.implementationWorkItemPreflightSummaryV1,
+    persistedPromptState.implementationCodeTaskQualityGateV1,
     persistedPromptState.implementationTaskListV1,
     saveState,
     fetchNonce,

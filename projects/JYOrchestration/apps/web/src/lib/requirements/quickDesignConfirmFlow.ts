@@ -113,6 +113,9 @@ export function buildQuickDesignConfirmStatePatch(input: {
     ...(input.prep.implementationWorkItemPreflightSummaryV1
       ? { implementationWorkItemPreflightSummaryV1: input.prep.implementationWorkItemPreflightSummaryV1 }
       : {}),
+    ...(input.prep.implementationCodeTaskQualityGateV1
+      ? { implementationCodeTaskQualityGateV1: input.prep.implementationCodeTaskQualityGateV1 }
+      : {}),
   };
   const base: QuickDesignConfirmFlowStatePatch = {
     fastPlanDraftV1: input.confirm.fastPlanDraftV1,

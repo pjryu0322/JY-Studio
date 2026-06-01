@@ -1578,6 +1578,8 @@ export function PrototypePreviewPanel({
       cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
       implementationWorkItemPreflightSummaryV1:
         orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
+      implementationCodeTaskQualityGateV1:
+        orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
     });
   }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady, canApplyGit]);
 
@@ -3711,6 +3713,7 @@ export function PrototypePreviewPanel({
         existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
         existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
         existingPreflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
+        existingQualityGate: parsedRequirementsState.implementationCodeTaskQualityGateV1,
         priorTimeline: parsedRequirementsState.promptTimeline,
         projectArtifacts: executionArtifacts.projectArtifacts,
         artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
@@ -4187,6 +4190,7 @@ export function PrototypePreviewPanel({
             codeTaskPlan,
             cursorWorkItems: workItems,
             preflightSummary: orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
+            codeTaskQualityGate: orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
           });
           if (!planningGate.ok) {
             const nowIso = new Date().toISOString();
@@ -4383,6 +4387,11 @@ export function PrototypePreviewPanel({
                     buildTaskCursorApiStartedTimeline({ execution: pendingExecution, nowIso }),
                   ],
                   existingTimeline: preflightTimeline,
+                  cursorWorkItems: selectedWorkItems,
+                  existingCodeTaskExecutionFeedback:
+                    orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1,
+                  codeTaskQualityGate:
+                    orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
                   existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -6118,6 +6127,7 @@ export function PrototypePreviewPanel({
       codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
       cursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
       preflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
+      codeTaskQualityGate: parsedRequirementsState.implementationCodeTaskQualityGateV1,
     });
     if (!planningGate.ok) {
       const nowIso = new Date().toISOString();

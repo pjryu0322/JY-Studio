@@ -62,6 +62,17 @@ export function ImplementationPlanningReadinessCard({
         <div>CodeTask: {vm.codeTaskCount}</div>
         <div>WorkItem: {vm.workItemCount}</div>
         <div>Validation: {vm.validationStatus === "passed" ? "통과" : vm.validationStatus === "failed" ? "실패" : "미확인"}</div>
+        <div>
+          CodeTask 품질:{" "}
+          {vm.qualityStatus === "passed"
+            ? "통과"
+            : vm.qualityStatus === "warning"
+              ? "경고"
+              : vm.qualityStatus === "failed"
+                ? "실패"
+                : "미확인"}
+        </div>
+        <div>위험 CodeTask: {vm.riskyCodeTaskIds.length}개</div>
         <div>Preflight: {vm.preflightStatus === "passed" ? "통과" : vm.preflightStatus === "failed" ? "실패" : "미확인"}</div>
         <div>{vm.llmRefinementLabel}</div>
         <div>구현단계 진입: {vm.executionReady ? "가능" : "불가"}</div>
@@ -136,6 +147,15 @@ export function ImplementationPlanningReadinessCard({
                     <div>hints: {task.candidateFileHints.slice(0, 3).join(", ")}</div>
                   ) : null}
                   {task.llmRationale ? <div>rationale: {task.llmRationale}</div> : null}
+                  {task.qualityIssues?.length ? (
+                    <div>
+                      quality:{" "}
+                      {task.qualityIssues
+                        .slice(0, 3)
+                        .map((issue) => `${issue.issueCode}(${issue.severity})`)
+                        .join(", ")}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

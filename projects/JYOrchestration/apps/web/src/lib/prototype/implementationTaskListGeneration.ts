@@ -1,5 +1,6 @@
 import { buildImplementationPlanningReadinessPatch, buildImplementationPlanningReadinessPatchWithLlm } from "@/lib/prototype/implementationPlanningReadiness";
 import type { ImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
+import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
 import { shouldRefreshImplementationPlanningReadiness } from "@/lib/prototype/implementationPlanningReadinessReuse";
 import type { LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -152,6 +153,7 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
   return {
     ...input.patch,
     implementationCodeTaskPlanV1: readiness.implementationCodeTaskPlanV1,
+    implementationCodeTaskQualityGateV1: readiness.implementationCodeTaskQualityGateV1,
     cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
     implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
     promptTimeline: readiness.promptTimeline,
@@ -184,6 +186,7 @@ function appendPlanningReadinessToPatch(input: {
   return {
     ...input.patch,
     implementationCodeTaskPlanV1: readiness.implementationCodeTaskPlanV1,
+    implementationCodeTaskQualityGateV1: readiness.implementationCodeTaskQualityGateV1,
     cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
     implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
     promptTimeline: readiness.promptTimeline,
@@ -403,6 +406,7 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
   readonly existingExecutionState?: ImplementationTaskExecutionStateV1 | null;
   readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly existingPreflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly existingQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly projectArtifacts?: readonly ProjectArtifact[];
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
@@ -431,6 +435,8 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
       base.patch.implementationWorkItemPreflightSummaryV1 ??
       input.existingPreflightSummary ??
       null;
+    const effectiveQualityGate =
+      base.patch.implementationCodeTaskQualityGateV1 ?? input.existingQualityGate ?? null;
 
     const refreshDecision = shouldRefreshImplementationPlanningReadiness({
       existingCodeTaskPlan: effectivePlan,
@@ -455,6 +461,7 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
         patch: {
           ...base.patch,
           implementationCodeTaskPlanV1: effectivePlan ?? undefined,
+          implementationCodeTaskQualityGateV1: effectiveQualityGate ?? undefined,
           cursorWorkItemsV1: effectiveWorkItems ? [...effectiveWorkItems] : undefined,
           implementationWorkItemPreflightSummaryV1: effectivePreflight ?? undefined,
           promptTimeline,

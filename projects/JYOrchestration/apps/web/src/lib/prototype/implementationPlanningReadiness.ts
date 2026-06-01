@@ -18,6 +18,10 @@ import {
   runWorkItemPreflightBatch,
 } from "@/lib/prototype/implementationWorkItemPreflight";
 import { validateImplementationCodeTaskPlan } from "@/lib/prototype/implementationCodeTaskPlanValidator";
+import {
+  evaluateImplementationCodeTaskQualityGate,
+  type ImplementationCodeTaskQualityGateV1,
+} from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -81,6 +85,7 @@ function buildPlanningReadinessTimelineEntry(input: {
 
 export type ImplementationPlanningReadinessPatch = Readonly<{
   readonly implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1;
+  readonly implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1;
   readonly cursorWorkItemsV1: readonly CursorWorkItem[];
   readonly implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1;
   readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
@@ -100,6 +105,11 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
 }): ImplementationPlanningReadinessPatch {
   const now = input.nowIso;
   const pid = input.projectId.trim();
+  const qualityGate = evaluateImplementationCodeTaskQualityGate({
+    projectId: pid,
+    codeTaskPlan: input.codeTaskPlan,
+    nowIso: now,
+  });
   const cursorWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
     projectId: pid,
     codeTaskPlan: input.codeTaskPlan,
@@ -152,6 +162,20 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
   );
   promptTimeline = appendPromptTimeline(
     promptTimeline,
+    buildPlanningReadinessTimelineEntry({
+      action: "implementation_code_task_quality_gate_checked",
+      projectId: pid,
+      fields: {
+        status: qualityGate.status,
+        issueCount: qualityGate.issueCount,
+        errorCount: qualityGate.errorCount,
+        warningCount: qualityGate.warningCount,
+      },
+      nowIso: now,
+    }),
+  );
+  promptTimeline = appendPromptTimeline(
+    promptTimeline,
     buildImplementationWorkItemsDraftCreatedTimelineEntry({
       projectId: pid,
       taskCount: input.codeTaskPlan.parentTaskCount,
@@ -191,8 +215,10 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
         ok:
           preflight.status === "passed" &&
           input.codeTaskPlan.readiness.ready &&
-          input.codeTaskPlan.validationReport?.status === "passed",
+          input.codeTaskPlan.validationReport?.status === "passed" &&
+          qualityGate.status !== "failed",
         codeTaskCount: input.codeTaskPlan.codeTaskCount,
+        qualityStatus: qualityGate.status,
       },
       nowIso: now,
     }),
@@ -200,6 +226,7 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
 
   return {
     implementationCodeTaskPlanV1: input.codeTaskPlan,
+    implementationCodeTaskQualityGateV1: qualityGate,
     cursorWorkItemsV1: cursorWorkItems,
     implementationWorkItemPreflightSummaryV1: preflightSummary,
     promptTimeline,
@@ -389,6 +416,12 @@ export function buildImplementationExecutionBlockedByPlanningGateTimelineEntry(i
       nowIso: input.nowIso,
     });
   }
+  if (input.reason === "code_task_quality_failed") {
+    return buildImplementationExecutionBlockedByCodeTaskQualityTimelineEntry({
+      projectId: input.projectId,
+      nowIso: input.nowIso,
+    });
+  }
   return buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
     projectId: input.projectId,
     reason: input.reason,
@@ -412,8 +445,23 @@ export function buildImplementationExecutionBlockedByPlanningPreflightTimelineEn
   });
 }
 
+export function buildImplementationExecutionBlockedByCodeTaskQualityTimelineEntry(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_execution_blocked_by_code_task_quality",
+    projectId: input.projectId,
+    fields: { mode: "implementation" },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
+export const IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE =
+  "구현 CodeTask 품질 보완이 필요합니다." as const;
+
 export const IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE =
-  "구현 준비 산출물 보완이 필요합니다." as const;
+  "구현 준비 산출물 보완이 필요습니다." as const;
 
 export const IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE =
   "구현 준비 검증 결과가 없습니다. 구현 준비 산출물을 동기화해 주세요." as const;
@@ -423,7 +471,8 @@ export type ImplementationPlanningExecutionGateReason =
   | "missing_work_items"
   | "preflight_failed"
   | "code_task_validation_failed"
-  | "missing_code_task_validation";
+  | "missing_code_task_validation"
+  | "code_task_quality_failed";
 
 export type ImplementationPlanningExecutionGateResult =
   | Readonly<{ readonly ok: true }>
@@ -437,6 +486,7 @@ export function evaluateImplementationPlanningExecutionGate(input: {
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
   readonly preflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly skipGate?: boolean;
 }): ImplementationPlanningExecutionGateResult {
   if (input.skipGate) return { ok: true };
@@ -474,6 +524,13 @@ export function evaluateImplementationPlanningExecutionGate(input: {
       ok: false,
       message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
       reason: "code_task_validation_failed",
+    };
+  }
+  if (input.codeTaskQualityGate?.status === "failed") {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE,
+      reason: "code_task_quality_failed",
     };
   }
   return { ok: true };

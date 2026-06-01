@@ -49,6 +49,7 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly implementationCodeTaskQualityGateV1?: import("@/lib/prototype/implementationCodeTaskQualityGate").ImplementationCodeTaskQualityGateV1 | null;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -66,6 +67,7 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
+  readonly implementationCodeTaskQualityGateV1?: import("@/lib/prototype/implementationCodeTaskQualityGate").ImplementationCodeTaskQualityGateV1 | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
@@ -96,6 +98,9 @@ export function buildImplementationStageBoardGateContext(input: {
     ...(input.cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1: input.cursorWorkItemsV1 } : {}),
     ...(input.implementationWorkItemPreflightSummaryV1 !== undefined
       ? { implementationWorkItemPreflightSummaryV1: input.implementationWorkItemPreflightSummaryV1 }
+      : {}),
+    ...(input.implementationCodeTaskQualityGateV1 !== undefined
+      ? { implementationCodeTaskQualityGateV1: input.implementationCodeTaskQualityGateV1 }
       : {}),
   };
 }
@@ -564,6 +569,7 @@ export function evaluateImplementationStageActionGate(
         codeTaskPlan: boardContext?.implementationCodeTaskPlanV1,
         cursorWorkItems: boardContext?.cursorWorkItemsV1,
         preflightSummary: boardContext?.implementationWorkItemPreflightSummaryV1,
+        codeTaskQualityGate: boardContext?.implementationCodeTaskQualityGateV1,
       });
       if (!planningGate.ok) {
         return { ok: false, message: planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE };
@@ -581,6 +587,7 @@ export function evaluateImplementationStageActionGate(
         codeTaskPlan: boardContext?.implementationCodeTaskPlanV1,
         cursorWorkItems: boardContext?.cursorWorkItemsV1,
         preflightSummary: boardContext?.implementationWorkItemPreflightSummaryV1,
+        codeTaskQualityGate: boardContext?.implementationCodeTaskQualityGateV1,
       });
       if (!planningGate.ok) {
         return { ok: false, message: planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE };
