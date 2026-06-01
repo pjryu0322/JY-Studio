@@ -131,7 +131,51 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
     expect(result.usedLlm).toBe(true);
     expect(result.fallbackUsed).toBe(true);
     expect(result.plan.refinementSource).toBe("llm_failed_heuristic_fallback");
-    expect(result.plan.refinementStatus).toBe("llm_validation_failed");
+    expect(result.plan.refinementStatus).toBe("llm_validation_failed_fallback");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    expect(String(failed?.responseText ?? "")).toContain("errorCode=validation_failed");
+  });
+
+  it("parses markdown-fenced JSON and refines successfully", async () => {
+    const plan = heuristicPlan();
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => ({
+        ok: true,
+        text: "```json\n" + validLlmTaskJson() + "\n```",
+      }),
+    });
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.plan.refinementStatus).toBe("llm_refined");
+    expect(
+      result.timelineEntries.some((e) => e.action === "implementation_code_task_llm_json_recovered"),
+    ).toBe(true);
+  });
+
+  it("5-4: records safe metadata on parse failure without raw body in timeline", async () => {
+    const plan = heuristicPlan();
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => ({ ok: true, text: "not-json" }),
+      providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project_execution_setup" },
+    });
+    expect(result.plan.refinementStatus).toBe("llm_parse_failed_fallback");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    expect(String(failed?.responseText ?? "")).toContain("errorCode=json_parse_failed");
+    expect(String(failed?.responseText ?? "")).toContain("responseHash=");
+    expect(String(failed?.responseText ?? "")).not.toContain("not-json");
   });
 
   it("uses refined plan when LLM response passes validation", async () => {

@@ -80,8 +80,10 @@ function formatLlmRefinementLabel(plan: ImplementationCodeTaskPlanV1 | null | un
     case "llm_refined":
       return "LLM Refinement: 적용됨";
     case "llm_validation_failed":
+    case "llm_validation_failed_fallback":
     case "llm_unavailable_fallback":
     case "llm_parse_failed_fallback":
+    case "llm_timeout_fallback":
       return "LLM Refinement: heuristic fallback";
     default:
       return "LLM Refinement: heuristic only";

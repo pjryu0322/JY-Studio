@@ -7,6 +7,7 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import {
   refineImplementationCodeTaskPlanWithLlm,
 } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
+import { CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS } from "@/lib/prototype/llmJsonParseRecovery";
 import { resolveLlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -95,8 +96,7 @@ export async function POST(request: NextRequest) {
     messages: [
       {
         role: "system",
-        content:
-          "You refine implementation code task plans for JYOrchestration. Output JSON only. Keep scope inside projects/JYOrchestration.",
+        content: CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
       },
       { role: "user", content: prompt },
     ],

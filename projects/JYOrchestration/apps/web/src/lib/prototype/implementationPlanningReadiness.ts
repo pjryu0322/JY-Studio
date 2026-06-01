@@ -211,19 +211,33 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
       nowIso: now,
     }),
   );
+  const executionGate = evaluateImplementationPlanningExecutionGate({
+    codeTaskPlan: input.codeTaskPlan,
+    cursorWorkItems,
+    preflightSummary,
+    codeTaskQualityGate: qualityGate,
+  });
+  const refinementStatus = input.codeTaskPlan.refinementStatus ?? "heuristic_only";
+  const fallbackUsed =
+    refinementStatus === "llm_parse_failed_fallback" ||
+    refinementStatus === "llm_validation_failed_fallback" ||
+    refinementStatus === "llm_validation_failed" ||
+    refinementStatus === "llm_unavailable_fallback" ||
+    refinementStatus === "llm_timeout_fallback";
+
   promptTimeline = appendPromptTimeline(
     promptTimeline,
     buildPlanningReadinessTimelineEntry({
       action: "implementation_ready_for_execution",
       projectId: pid,
       fields: {
-        ok:
-          preflight.status === "passed" &&
-          input.codeTaskPlan.readiness.ready &&
-          input.codeTaskPlan.validationReport?.status === "passed" &&
-          qualityGate.status !== "failed",
+        ok: executionGate.ok,
         codeTaskCount: input.codeTaskPlan.codeTaskCount,
         qualityStatus: qualityGate.status,
+        validationStatus: input.codeTaskPlan.validationReport?.status ?? "unknown",
+        preflightStatus: preflight.status,
+        fallbackUsed,
+        ...(executionGate.ok ? {} : { blockReason: executionGate.reason }),
       },
       nowIso: now,
     }),

@@ -1,6 +1,12 @@
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiFromEnv, resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import {
+  classifyLlmProviderFallbackReason,
+  CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
+  hashLlmResponsePreview,
+  parseLlmJsonObjectWithRecovery,
+} from "@/lib/prototype/llmJsonParseRecovery";
+import {
   attachCodeTaskPlanRefinementMeta,
   buildLlmPromptFingerprint,
   buildLlmResultFingerprint,
@@ -123,6 +129,13 @@ export function buildCodeTaskLlmRefinementUserPrompt(input: {
     "- Do not modify Stage1/ENV_TEST/GitHub/Cursor pipeline",
     "- Do not reference tasks outside developer task list as parentTaskId",
     "- Do not emit empty acceptanceCriteria or verificationHints",
+    "",
+    "Output requirements:",
+    "- Output JSON only.",
+    "- Do not use markdown.",
+    "- Do not wrap the JSON in ```json fences.",
+    "- Do not include explanation before or after JSON.",
+    "- Every task must include codeTaskId, parentTaskId, and required fields.",
     "",
     "Return JSON only:",
     `{
@@ -312,8 +325,7 @@ async function defaultLlmCaller(
     messages: [
       {
         role: "system",
-        content:
-          "You refine implementation code task plans for JYOrchestration. Output JSON only. Keep scope inside projects/JYOrchestration.",
+        content: CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
       },
       { role: "user", content: prompt },
     ],
@@ -453,12 +465,26 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   const refinementRequestedAt = now;
   const llmResult = await caller(prompt);
 
+  const providerSource = String(input.providerContext?.providerSource ?? "none");
+  const modelName = String(input.providerContext?.model ?? resolveOpenAiModelFromEnv());
+
   if (!llmResult.ok) {
+    const providerReason = classifyLlmProviderFallbackReason({
+      message: llmResult.message,
+      providerSource,
+    });
+    const refinementStatus =
+      providerReason === "llm_timeout_fallback" ? "llm_timeout_fallback" : "llm_unavailable_fallback";
     timelineEntries.push(
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_failed",
         projectId: pid,
-        fields: { errorMessage: llmResult.message.slice(0, 200) },
+        fields: {
+          errorCode: "provider_failed",
+          errorMessage: llmResult.message.slice(0, 200),
+          providerSource,
+          model: modelName,
+        },
         nowIso: now,
       }),
     );
@@ -468,13 +494,10 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         projectId: pid,
         fields: {
           fallbackUsed: true,
-          reason:
-            String(input.providerContext?.providerSource ?? "none") === "none"
-              ? "missing_provider_key"
-              : "llm_unavailable_fallback",
+          reason: providerReason,
           llmPromptFingerprint,
-          providerSource: String(input.providerContext?.providerSource ?? "none"),
-          refinementStatus: "llm_unavailable_fallback",
+          providerSource,
+          refinementStatus,
         },
         nowIso: now,
       }),
@@ -483,7 +506,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
       refinementSource: "heuristic",
-      refinementStatus: "llm_unavailable_fallback",
+      refinementStatus,
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
@@ -502,20 +525,41 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     };
   }
 
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(llmResult.text);
-  } catch {
-    parsedJson = null;
+  const parseRecovery = parseLlmJsonObjectWithRecovery(llmResult.text);
+  if (parseRecovery.ok && parseRecovery.strategy !== "direct_json_parse") {
+    timelineEntries.push(
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_json_recovered",
+        projectId: pid,
+        fields: {
+          strategy: parseRecovery.strategy,
+          rawLength: parseRecovery.rawLength,
+          responseHash: hashLlmResponsePreview(llmResult.text),
+          providerSource,
+          model: modelName,
+        },
+        nowIso: now,
+      }),
+    );
   }
-  const llmTasks = parseLlmCodeTasksFromJson(parsedJson);
-  if (!llmTasks) {
-    const message = "LLM CodeTask JSON parse failed";
+  const llmTasks = parseRecovery.ok ? parseLlmCodeTasksFromJson(parseRecovery.value) : null;
+  if (!parseRecovery.ok || !llmTasks) {
+    const message = parseRecovery.ok ? "LLM CodeTask JSON shape invalid" : "LLM CodeTask JSON parse failed";
     timelineEntries.push(
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_failed",
         projectId: pid,
-        fields: { errorMessage: message },
+        fields: {
+          errorCode: parseRecovery.ok ? "json_shape_invalid" : "json_parse_failed",
+          errorMessage: message,
+          parseStrategy: parseRecovery.ok ? "parsed_but_invalid_shape" : parseRecovery.lastParseStrategy,
+          rawLength: parseRecovery.ok ? llmResult.text.length : parseRecovery.rawLength,
+          responseHash: parseRecovery.ok
+            ? hashLlmResponsePreview(llmResult.text)
+            : parseRecovery.previewHash,
+          providerSource,
+          model: modelName,
+        },
         nowIso: now,
       }),
     );
@@ -527,7 +571,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
           fallbackUsed: true,
           reason: "llm_parse_failed_fallback",
           llmPromptFingerprint,
-          providerSource: String(input.providerContext?.providerSource ?? "none"),
+          providerSource,
           refinementStatus: "llm_parse_failed_fallback",
         },
         nowIso: now,
@@ -590,8 +634,11 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         action: "implementation_code_task_llm_refinement_failed",
         projectId: pid,
         fields: {
+          errorCode: "validation_failed",
           errorMessage: llmValidation.errors.slice(0, 3).join("; ").slice(0, 200),
           validationStatus: "failed",
+          providerSource,
+          model: modelName,
         },
         nowIso: now,
       }),
@@ -602,10 +649,10 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         projectId: pid,
         fields: {
           fallbackUsed: true,
-          reason: "validation_failed",
+          reason: "llm_validation_failed_fallback",
           heuristicTaskCount,
           llmPromptFingerprint,
-          refinementStatus: "llm_validation_failed",
+          refinementStatus: "llm_validation_failed_fallback",
         },
         nowIso: now,
       }),
@@ -615,7 +662,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
       refinementSource: "llm_failed_heuristic_fallback",
-      refinementStatus: "llm_validation_failed",
+      refinementStatus: "llm_validation_failed_fallback",
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,

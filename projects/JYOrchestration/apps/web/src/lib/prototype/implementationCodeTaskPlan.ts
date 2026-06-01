@@ -63,8 +63,10 @@ export type ImplementationCodeTaskPlanRefinementStatus =
   | "heuristic_only"
   | "llm_refined"
   | "llm_validation_failed"
+  | "llm_validation_failed_fallback"
   | "llm_unavailable_fallback"
-  | "llm_parse_failed_fallback";
+  | "llm_parse_failed_fallback"
+  | "llm_timeout_fallback";
 
 export type ImplementationCodeTaskPlanValidationReportV1 = Readonly<{
   status: "passed" | "failed";
@@ -575,8 +577,10 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
     ...(o.refinementStatus === "heuristic_only" ||
     o.refinementStatus === "llm_refined" ||
     o.refinementStatus === "llm_validation_failed" ||
+    o.refinementStatus === "llm_validation_failed_fallback" ||
     o.refinementStatus === "llm_unavailable_fallback" ||
-    o.refinementStatus === "llm_parse_failed_fallback"
+    o.refinementStatus === "llm_parse_failed_fallback" ||
+    o.refinementStatus === "llm_timeout_fallback"
       ? { refinementStatus: o.refinementStatus }
       : {}),
     ...(validationReport ? { validationReport } : {}),
