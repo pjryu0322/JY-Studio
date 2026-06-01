@@ -57,17 +57,27 @@ export type ImplementationCodeTaskV1 = Readonly<{
 export type ImplementationCodeTaskPlanRefinementSource =
   | "heuristic"
   | "llm_refined"
+  | "llm_partial_refined"
   | "llm_failed_heuristic_fallback";
 
 export type ImplementationCodeTaskPlanRefinementStatus =
   | "heuristic_only"
   | "llm_refined"
+  | "llm_partial_refined"
   | "llm_validation_failed"
   | "llm_validation_failed_fallback"
   | "llm_unavailable_fallback"
   | "llm_parse_failed_fallback"
   | "llm_shape_invalid_fallback"
   | "llm_timeout_fallback";
+
+export type ImplementationCodeTaskPlanLlmRefinementSummaryV1 = Readonly<{
+  readonly totalBatches: number;
+  readonly llmRefinedBatches: number;
+  readonly fallbackBatches: number;
+  readonly llmRefinedTaskCount: number;
+  readonly fallbackTaskCount: number;
+}>;
 
 export type ImplementationCodeTaskPlanValidationReportV1 = Readonly<{
   status: "passed" | "failed";
@@ -107,6 +117,7 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
     readonly totalTokens?: number;
     readonly model?: string;
   }>;
+  llmRefinementSummary?: ImplementationCodeTaskPlanLlmRefinementSummaryV1;
 }>;
 
 export const IMPLEMENTATION_CODE_TASK_CHANGE_TYPES: readonly ImplementationCodeTaskChangeType[] = [
@@ -572,11 +583,13 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
     },
     ...(o.refinementSource === "heuristic" ||
     o.refinementSource === "llm_refined" ||
+    o.refinementSource === "llm_partial_refined" ||
     o.refinementSource === "llm_failed_heuristic_fallback"
       ? { refinementSource: o.refinementSource }
       : {}),
     ...(o.refinementStatus === "heuristic_only" ||
     o.refinementStatus === "llm_refined" ||
+    o.refinementStatus === "llm_partial_refined" ||
     o.refinementStatus === "llm_validation_failed" ||
     o.refinementStatus === "llm_validation_failed_fallback" ||
     o.refinementStatus === "llm_unavailable_fallback" ||
@@ -628,6 +641,22 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
               : {}),
           },
         }
+      : {}),
+    ...(o.llmRefinementSummary && typeof o.llmRefinementSummary === "object"
+      ? (() => {
+          const s = o.llmRefinementSummary as Record<string, unknown>;
+          const num = (key: string) =>
+            typeof s[key] === "number" && Number.isFinite(s[key] as number) ? (s[key] as number) : 0;
+          return {
+            llmRefinementSummary: {
+              totalBatches: num("totalBatches"),
+              llmRefinedBatches: num("llmRefinedBatches"),
+              fallbackBatches: num("fallbackBatches"),
+              llmRefinedTaskCount: num("llmRefinedTaskCount"),
+              fallbackTaskCount: num("fallbackTaskCount"),
+            },
+          };
+        })()
       : {}),
   };
 }

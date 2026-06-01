@@ -79,6 +79,8 @@ function formatLlmRefinementLabel(plan: ImplementationCodeTaskPlanV1 | null | un
   switch (status) {
     case "llm_refined":
       return "LLM Refinement: 적용됨";
+    case "llm_partial_refined":
+      return "LLM Refinement: 부분 적용 (LLM + heuristic)";
     case "llm_validation_failed":
     case "llm_validation_failed_fallback":
     case "llm_unavailable_fallback":

@@ -221,6 +221,7 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
   const fallbackUsed =
     refinementStatus === "llm_parse_failed_fallback" ||
     refinementStatus === "llm_shape_invalid_fallback" ||
+    refinementStatus === "llm_partial_refined" ||
     refinementStatus === "llm_validation_failed_fallback" ||
     refinementStatus === "llm_validation_failed" ||
     refinementStatus === "llm_unavailable_fallback" ||

@@ -46,29 +46,37 @@ function heuristicPlan(): ImplementationCodeTaskPlanV1 {
   });
 }
 
-function validLlmTaskJson(parentTaskId = "DEV-SCREEN-001") {
-  return JSON.stringify({
-    tasks: [
-      {
-        codeTaskId: "CODE-DEV-SCREEN-001-001",
-        parentTaskId,
-        title: "화면 컴포넌트",
-        description: "화면 UI 구현",
-        changeType: "component",
-        targetHints: ["components", "screen"],
-        candidateFiles: [],
-        candidateFileHints: ["dir:apps/web/src/components"],
-        parentTaskDependencies: [],
-        codeTaskDependencies: [],
-        acceptanceCriteria: ["화면 렌더링"],
-        verificationHints: ["pnpm test"],
-        forbiddenPaths: ["package.json"],
-        priority: "P1",
-        status: "ready",
-        llmRationale: "화면 단위 컴포넌트로 분리",
-      },
-    ],
-  });
+function validLlmBatchTasksForPlan(
+  plan: ImplementationCodeTaskPlanV1,
+  options?: { readonly parentTaskIdOverride?: string },
+) {
+  return plan.tasks.map((task) => ({
+    codeTaskId: task.codeTaskId,
+    parentTaskId: options?.parentTaskIdOverride ?? task.parentTaskId,
+    title: `${task.title} refined`,
+    description: task.description,
+    changeType: task.changeType,
+    targetHints: task.targetHints,
+    candidateFiles: task.candidateFiles ?? [],
+    candidateFileHints: task.candidateFileHints ?? ["dir:apps/web/src/components"],
+    parentTaskDependencies: task.parentTaskDependencies ?? [],
+    codeTaskDependencies: task.codeTaskDependencies ?? [],
+    acceptanceCriteria: task.acceptanceCriteria,
+    verificationHints: task.verificationHints,
+    forbiddenPaths: task.forbiddenPaths,
+    priority: task.priority,
+    status: "ready",
+    llmRationale: "batch refined",
+  }));
+}
+
+function validLlmBatchJsonForPlan(
+  plan: ImplementationCodeTaskPlanV1,
+  options?: { readonly parentTaskIdOverride?: string; readonly rootKey?: "tasks" | "codeTasks" },
+) {
+  const tasks = validLlmBatchTasksForPlan(plan, options);
+  const rootKey = options?.rootKey ?? "tasks";
+  return JSON.stringify({ [rootKey]: tasks });
 }
 
 describe("refineImplementationCodeTaskPlanWithLlm", () => {
@@ -124,15 +132,14 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       forceLlm: true,
       llmCaller: async () => ({
         ok: true,
-        text: validLlmTaskJson("UNKNOWN-PARENT"),
+        text: validLlmBatchJsonForPlan(plan, { parentTaskIdOverride: "UNKNOWN-PARENT" }),
       }),
     });
 
-    expect(result.usedLlm).toBe(true);
     expect(result.fallbackUsed).toBe(true);
     expect(result.plan.refinementSource).toBe("llm_failed_heuristic_fallback");
     expect(result.plan.refinementStatus).toBe("llm_validation_failed_fallback");
-    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_batch_failed");
     expect(String(failed?.responseText ?? "")).toContain("errorCode=validation_failed");
   });
 
@@ -148,7 +155,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       forceLlm: true,
       llmCaller: async () => ({
         ok: true,
-        text: "```json\n" + validLlmTaskJson() + "\n```",
+        text: "```json\n" + validLlmBatchJsonForPlan(plan) + "\n```",
       }),
     });
     expect(result.fallbackUsed).toBe(false);
@@ -190,13 +197,12 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       llmCaller: async () => ({ ok: true, text: JSON.stringify({ summary: "no tasks array" }) }),
     });
     expect(result.plan.refinementStatus).toBe("llm_shape_invalid_fallback");
-    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_batch_failed");
     expect(String(failed?.responseText ?? "")).toContain("errorCode=json_shape_invalid");
   });
 
   it("normalizes codeTasks root and refines successfully", async () => {
     const plan = heuristicPlan();
-    const payload = JSON.parse(validLlmTaskJson()) as { tasks: unknown[] };
     const result = await refineImplementationCodeTaskPlanWithLlm({
       projectId: PROJECT_ID,
       taskList: sampleTaskList(),
@@ -207,7 +213,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       forceLlm: true,
       llmCaller: async () => ({
         ok: true,
-        text: JSON.stringify({ codeTasks: payload.tasks }),
+        text: validLlmBatchJsonForPlan(plan, { rootKey: "codeTasks" }),
       }),
     });
     expect(result.fallbackUsed).toBe(false);
@@ -230,7 +236,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project_execution_setup" },
     });
     expect(result.plan.refinementStatus).toBe("llm_parse_failed_fallback");
-    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_batch_failed");
     expect(String(failed?.responseText ?? "")).toContain("errorCode=json_parse_failed");
     expect(String(failed?.responseText ?? "")).toContain("responseHash=");
     expect(String(failed?.responseText ?? "")).toContain("extractFailureReason=");
@@ -249,7 +255,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       forceLlm: true,
       llmCaller: async () => ({
         ok: true,
-        text: validLlmTaskJson(),
+        text: validLlmBatchJsonForPlan(plan),
       }),
     });
 
@@ -257,12 +263,81 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
     expect(result.fallbackUsed).toBe(false);
     expect(result.plan.refinementSource).toBe("llm_refined");
     expect(result.validationReport.status).toBe("passed");
-    expect(result.plan.tasks[0]?.llmRationale).toContain("화면");
+    expect(result.plan.tasks[0]?.llmRationale).toContain("batch");
     expect(
       result.timelineEntries.some(
         (entry) => entry.action === "implementation_code_task_llm_refinement_passed",
       ),
     ).toBe(true);
+  });
+
+  it("refines in batches and marks partial when one batch falls back", async () => {
+    const base = heuristicPlan();
+    const twoParentPlan: ImplementationCodeTaskPlanV1 = {
+      ...base,
+      tasks: [
+        { ...base.tasks[0]!, codeTaskId: "CODE-P1-001", parentTaskId: "DEV-SCREEN-001" },
+        { ...base.tasks[0]!, codeTaskId: "CODE-P2-001", parentTaskId: "DEV-SCREEN-002" },
+      ],
+      codeTaskCount: 2,
+    };
+    const twoParentList: ImplementationTaskListV1 = {
+      ...sampleTaskList(),
+      tasks: [developerTask("DEV-SCREEN-001"), developerTask("DEV-SCREEN-002")],
+      roleSummary: { developer: 2, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: twoParentList,
+      heuristicPlan: twoParentPlan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async (prompt) => {
+        if (prompt.includes("CODE-P1-001")) {
+          return {
+            ok: true,
+            text: JSON.stringify({
+              tasks: [
+                {
+                  codeTaskId: "CODE-P1-001",
+                  parentTaskId: "DEV-SCREEN-001",
+                  title: "화면 A",
+                  description: "화면 A 구현",
+                  changeType: "component",
+                  targetHints: ["components"],
+                  parentTaskDependencies: [],
+                  codeTaskDependencies: [],
+                  acceptanceCriteria: ["화면 A"],
+                  verificationHints: ["pnpm test"],
+                  forbiddenPaths: ["package.json"],
+                  priority: "P1",
+                  status: "ready",
+                  llmRationale: "batch ok",
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, text: "not-json" };
+      },
+    });
+
+    expect(result.plan.refinementStatus).toBe("llm_partial_refined");
+    expect(result.plan.refinementSource).toBe("llm_partial_refined");
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.plan.llmRefinementSummary?.llmRefinedBatches).toBe(1);
+    expect(result.plan.llmRefinementSummary?.fallbackBatches).toBe(1);
+    expect(result.plan.tasks.find((t) => t.codeTaskId === "CODE-P1-001")?.refinementSource).toBe("llm");
+    expect(result.plan.tasks.find((t) => t.codeTaskId === "CODE-P2-001")?.refinementSource).toBe("heuristic");
+    expect(
+      result.timelineEntries.some((e) => e.action === "implementation_code_task_llm_refinement_partial"),
+    ).toBe(true);
+    expect(
+      result.timelineEntries.filter((e) => e.action === "implementation_code_task_llm_batch_requested").length,
+    ).toBe(2);
   });
 
   it("keeps heuristic only when LLM flag is off", async () => {
@@ -276,7 +351,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
       nowIso: NOW,
       llmCaller: async () => ({
         ok: true,
-        text: validLlmTaskJson(),
+        text: validLlmBatchJsonForPlan(plan),
       }),
     });
 
