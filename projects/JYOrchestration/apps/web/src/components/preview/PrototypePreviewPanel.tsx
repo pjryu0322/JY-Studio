@@ -2407,9 +2407,6 @@ export function PrototypePreviewPanel({
     startTaskCursorClientPollLoop,
   ]);
 
-  const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
-  const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
-  activeTaskCursorJobRef.current = activeTaskCursorJob;
   const lastServerTaskCursorJobSyncFingerprintRef = useRef("");
 
   useEffect(() => {
