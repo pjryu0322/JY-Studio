@@ -6,8 +6,6 @@ import { ImplementationExecutionBoardPanel } from "@/components/preview/Implemen
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
-
 function sampleTaskList(): ImplementationTaskListV1 {
   return {
     version: "implementation_task_list_v1",
@@ -39,22 +37,14 @@ describe("ImplementationExecutionBoardPanel", () => {
       projectId: "p1",
       orchestration: { implementationTaskListV1: taskList },
     })!;
-    const effective = resolveEffectiveImplementationState({
-      parsedRequirementsState: { implementationTaskListV1: taskList },
-      envOk: true,
-      designOk: true,
-      latestRun: null,
-    });
     const html = renderToStaticMarkup(
       createElement(ImplementationExecutionBoardPanel, {
         board,
         taskList,
-        effectiveImplementationState: effective,
         boardInput: {
           projectId: "p1",
           taskList,
         },
-        onAction: () => {},
       }),
     );
     expect(html).not.toContain("implementation-next-task-card");
@@ -63,7 +53,10 @@ describe("ImplementationExecutionBoardPanel", () => {
     expect(html).toContain("implementation-execution-overview-card");
     expect(html).toMatch(/구현 실행 (중|대기)/);
     expect(html).toContain("implementation-task-tree-section");
-    expect(html).toContain("작업 트리");
+    expect(html).not.toContain("implementation-board-primary-cta");
+    expect(html).not.toContain("Quick 실행");
+    expect(html).not.toContain("더보기");
+    expect(html).not.toContain("툴바 [빠른 실행]");
     expect(html).not.toContain("implementation-env-details");
   });
 

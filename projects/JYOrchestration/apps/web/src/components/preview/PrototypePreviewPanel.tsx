@@ -40,6 +40,7 @@ import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROGRESS_LABEL,
+  IMPLEMENTATION_QUICK_RUN_CHIP,
   IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import { RequirementsArtifactHubDrawer } from "@/components/requirements/RequirementsArtifactHubDrawer";
@@ -6295,6 +6296,15 @@ export function PrototypePreviewPanel({
     const pid = projectId.trim();
     if (!pid) return;
 
+    const board = implementationStageBoardGateContext?.board ?? null;
+    if (board?.taskRows.length) {
+      executeImplementationStageAction("START_IMPLEMENTATION_QUICK_RUN", {
+        label: IMPLEMENTATION_QUICK_RUN_CHIP,
+        source: "execution_board",
+      });
+      return;
+    }
+
     const entryState = deriveImplementationEntryState({
       implementationSeedV1: parsedRequirementsState.implementationSeedV1,
       implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
@@ -6386,6 +6396,9 @@ export function PrototypePreviewPanel({
     confirmQuickDesignForImplementation,
     effectiveImplementationState.implementationTaskPlanV1,
     confirmImplementationTaskPlan,
+    executeImplementationStageAction,
+    implementationStageBoardGateContext,
+    startImplementationQuickRun,
   ]);
 
   const implementationInterviewUi = useMemo(() => {
@@ -6601,8 +6614,8 @@ export function PrototypePreviewPanel({
             progressLabel: IMPLEMENTATION_PROGRESS_LABEL,
             detailAriaLabel: IMPLEMENTATION_SLOTS_DETAIL_ARIA_LABEL,
           }}
-          quickExecutionTitle="빠른 실행: 구현 작업안·WIP"
-          quickExecutionAriaLabel="빠른 실행: 구현 작업안 확정 또는 코드 에이전트 WIP 작업 요청"
+          quickExecutionTitle="빠른 실행 - 구현 작업안WIP"
+          quickExecutionAriaLabel="빠른 실행 - 선택한 구현 Task를 자동 진행합니다"
           memberControls={{
             count: implementationParticipantCount,
             onOpen: () => setProtoMembersModalOpen(true),
@@ -6713,11 +6726,9 @@ export function PrototypePreviewPanel({
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}
-            effectiveImplementationState={effectiveImplementationState}
             boardInput={implementationStageBoardInput}
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             activeTaskCursorJob={activeTaskCursorJob}
-            onAction={handleImplementationBoardAction}
             onCancelTaskCursorPolling={cancelTaskCursorClientPoll}
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}

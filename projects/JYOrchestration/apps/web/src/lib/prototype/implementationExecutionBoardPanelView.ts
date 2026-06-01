@@ -483,9 +483,7 @@ export function buildImplementationTaskTreeNodes(input: {
       ...node,
       canStop,
       ...(pollStatusLabel ? { pollStatusLabel } : {}),
-      ...(!pollStatusLabel && node.restartBlockedReason
-        ? { restartBlockedReason: node.restartBlockedReason }
-        : {}),
+      restartBlockedReason: pollStatusLabel ? undefined : node.restartBlockedReason,
     };
   });
 }

@@ -23,31 +23,18 @@ import {
   buildCompactBoardSecondarySummaryLine,
   buildImplementationExecutionBoardSummaryView,
   buildImplementationTaskTreeNodes,
-  dedupeImplementationStageNextActions,
-  partitionMobileBoardActions,
   resolveImplementationExecutionBoardSelectedTaskId,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { deriveImplementationQuickRunStatus, type ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
-import {
-  deriveImplementationStageNextActions,
-  type ImplementationStageNextActionsBoardInput,
-} from "@/lib/prototype/implementationStageNextActions";
-import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
-import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
+import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationExecutionOverview,
   formatImplementationExecutionOverviewLines,
 } from "@/lib/prototype/implementationExecutionOverview";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import type { EffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
-import type { ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
-import {
-  buildCodeAgentExecutionProgressView,
-  shouldHideBoardPrimaryCtaForProgress,
-} from "@/lib/prototype/codeAgentExecutionProgressView";
+import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
-import { isImplementationAutoQualityGateClientInFlight } from "@/lib/prototype/implementationAutoQualityGateClient";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
   isTaskTreeFullySelected,
@@ -69,11 +56,9 @@ export function ImplementationExecutionBoardPanel({
   implementationQuickRunV1,
   boardState,
   previewReady,
-  effectiveImplementationState,
   boardInput,
   promptTimeline,
   activeTaskCursorJob,
-  onAction,
   onCancelTaskCursorPolling,
   onRestartTask,
   onSelectedTaskIdsChange,
@@ -92,11 +77,9 @@ export function ImplementationExecutionBoardPanel({
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly previewReady?: boolean;
-  readonly effectiveImplementationState: EffectiveImplementationState;
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
-  readonly onAction: (input: ImplementationStageActionClickInput) => void;
   readonly onCancelTaskCursorPolling?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
@@ -138,44 +121,6 @@ export function ImplementationExecutionBoardPanel({
         previewReady,
       }),
     [implementationQuickRunV1, board, taskCursorExecutionV1, implementationAutoQualityGateV1, previewReady],
-  );
-
-  const nextActions = useMemo(() => {
-    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
-      latestRun: effectiveImplementationState.latestRun,
-      workUnits: effectiveImplementationState.latestRun?.workUnits,
-    });
-    const status = deriveImplementationStageStatus(
-      effectiveImplementationState,
-      boardInput.executionState,
-    );
-    return dedupeImplementationStageNextActions(
-      deriveImplementationStageNextActions(
-        status,
-        boardInput.executionState,
-        prototypeSnapshot,
-        {
-          ...boardInput,
-          implementationQuickRunV1,
-          quickRunStatus,
-        },
-        {
-          implementationSeedV1: effectiveImplementationState.implementationSeedV1,
-          implementationTaskListV1: taskList,
-        },
-      ),
-    );
-  }, [
-    effectiveImplementationState,
-    boardInput,
-    taskList,
-    implementationQuickRunV1,
-    quickRunStatus,
-  ]);
-
-  const actionPartition = useMemo(
-    () => partitionMobileBoardActions(nextActions),
-    [nextActions],
   );
 
   const activeTaskId = useMemo(
@@ -271,12 +216,6 @@ export function ImplementationExecutionBoardPanel({
     [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline, implementationAutoQualityGateV1],
   );
 
-  const hidePrimaryCta = shouldHideBoardPrimaryCtaForProgress(
-    codeAgentProgress.status,
-    isImplementationAutoQualityGateClientInFlight(implementationAutoQualityGateV1),
-  );
-
-  const [moreOpen, setMoreOpen] = useState(false);
   const [reworkOpen, setReworkOpen] = useState(false);
 
   return (
@@ -356,73 +295,7 @@ export function ImplementationExecutionBoardPanel({
         ) : null}
       </div>
 
-      <div className={styles.ctaRow}>
-        {actionPartition.primary && !hidePrimaryCta ? (
-          <button
-            type="button"
-            className={styles.ctaPrimary}
-            data-testid="implementation-board-primary-cta"
-            data-action-id={actionPartition.primary.actionId}
-            data-action-label={actionPartition.primary.label}
-            onClick={() =>
-              onAction({
-                actionId: actionPartition.primary!.actionId,
-                label: actionPartition.primary!.label,
-                source: "execution_board",
-                buttonIndex: 0,
-              })
-            }
-          >
-            {actionPartition.primary.label}
-          </button>
-        ) : null}
-        {actionPartition.more.length || actionPartition.secondary.length ? (
-          <div className={styles.moreWrap}>
-            <button
-              type="button"
-              className={styles.ctaSecondary}
-              aria-expanded={moreOpen}
-              onClick={() => setMoreOpen((open) => !open)}
-            >
-              더보기
-            </button>
-            {moreOpen ? (
-              <div className={styles.moreMenu} role="menu">
-                {[...actionPartition.secondary, ...actionPartition.more].map((action, index) => (
-                  <button
-                    key={`${action.actionId}-${action.label}`}
-                    type="button"
-                    className={styles.moreItem}
-                    role="menuitem"
-                    data-action-id={action.actionId}
-                    data-action-label={action.label}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onAction({
-                        actionId: action.actionId,
-                        label: action.label,
-                        source: "more_menu",
-                        buttonIndex: index,
-                      });
-                    }}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
-        <div className={styles.taskTreeSectionTitle}>
-          작업 트리 · Process {executionOverview.processTaskCount} · CodeTask{" "}
-          {executionOverview.codeTaskCount}
-        </div>
-        <p className={styles.summarySecondary}>
-          실행할 Task를 체크한 뒤 툴바 [빠른 실행]으로 선택 Task만 자동 진행할 수 있습니다. 자식 Task를 선택하면 선행 Task도 함께 선택됩니다.
-        </p>
         <ImplementationExecutionBoardTaskTree
           nodes={taskTreeNodes}
           selectedTaskId={selectedTaskId}
