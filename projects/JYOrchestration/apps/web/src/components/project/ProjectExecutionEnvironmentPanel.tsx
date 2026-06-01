@@ -832,6 +832,7 @@ export function ProjectExecutionEnvironmentPanel({
         setExecutionSetup(latestSetup);
       }
       notifyExecutionSetupChanged(latestSetup);
+      await loadExecutionSetup();
       setExecutionMessage("저장했습니다.");
     } finally {
       setBusyMvpSave(false);
@@ -844,6 +845,7 @@ export function ProjectExecutionEnvironmentPanel({
     openaiPlannerApiKeyInput,
     openaiPlannerApiKeyPendingDelete,
     notifyExecutionSetupChanged,
+    loadExecutionSetup,
   ]);
 
   const handleEnvironmentTest = useCallback(async () => {
@@ -2296,8 +2298,8 @@ export function ProjectExecutionEnvironmentPanel({
         규칙(heuristic) 기반으로 CodeTask를 생성합니다.
       </p>
       <p style={{ margin: "0 0 12px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
-        LLM 기반 CodeTask 정제는 기획단계에서 Quick Design을 확정할 때 자동으로 적용됩니다. 이미 생성된 구현준비
-        산출물은 기획단계를 초기화한 뒤 다시 Quick Design을 확정하면 새 설정으로 재생성됩니다.
+        LLM 기반 CodeTask 정제는 Quick Design 확정 시 자동으로 적용됩니다. 설정 변경 후 기획단계를 초기화하고 Quick
+        Design을 다시 확정하면 새 설정으로 구현준비 산출물이 생성됩니다.
       </p>
 
       <label

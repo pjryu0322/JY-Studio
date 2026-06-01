@@ -153,8 +153,8 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
           LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본 규칙(heuristic) 기반으로 CodeTask를 생성합니다.
         </p>
         <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
-          LLM 기반 CodeTask 정제는 기획단계에서 Quick Design을 확정할 때 자동으로 적용됩니다. 이미 생성된 구현준비
-          산출물은 기획단계를 초기화한 뒤 다시 Quick Design을 확정하면 새 설정으로 재생성됩니다.
+          LLM 기반 CodeTask 정제는 Quick Design 확정 시 자동으로 적용됩니다. 설정 변경 후 기획단계를 초기화하고 Quick
+          Design을 다시 확정하면 새 설정으로 구현준비 산출물이 생성됩니다.
         </p>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 0" }}>

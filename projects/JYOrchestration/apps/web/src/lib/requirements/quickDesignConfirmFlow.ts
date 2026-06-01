@@ -36,6 +36,8 @@ import type {
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { resolveProjectExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
+import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
+import type { ProjectCodeTaskRefinementSettings } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
 
 /** Planning-stage snapshot needed to run Quick Design confirm (no UI deps). */
 export type QuickDesignConfirmPlanningStateSnapshot = Readonly<{
@@ -55,8 +57,9 @@ export type QuickDesignConfirmFlowInput = Readonly<
     readonly orchestrationForConfirm: RequirementsSingleChatOrchestrationStateV1;
     readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
     readonly planningState: QuickDesignConfirmPlanningStateSnapshot;
-    /** Project-level toggle: LLM-based CodeTask refinement */
-    readonly enableLlmCodeTaskRefinement?: boolean;
+    /** Injected by server API routes with latest ExecutionSetup. */
+    readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
+    readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
     /** When set, skips `resolveProjectExecutionEnvOk` (unit tests). */
     readonly envOkOverride?: boolean;
   }
@@ -197,8 +200,11 @@ export async function runQuickDesignConfirmFlowWithPrep(input: {
     projectArtifacts: merged.projectArtifacts,
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
-    llmCaller: createProjectLlmCodeTaskRefinementCaller(flow.projectId),
-    enableLlmCodeTaskRefinement: flow.enableLlmCodeTaskRefinement,
+    llmCaller: flow.providerContext?.apiKey
+      ? undefined
+      : createProjectLlmCodeTaskRefinementCaller(flow.projectId),
+    refinementSettings: flow.refinementSettings,
+    providerContext: flow.providerContext,
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({

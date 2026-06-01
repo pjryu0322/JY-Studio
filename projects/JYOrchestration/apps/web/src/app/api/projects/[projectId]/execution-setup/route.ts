@@ -180,6 +180,7 @@ export async function GET(
       prisma.executionSetup.findUnique({ where: { projectId: pid } })
     );
     if (!row) {
+      console.info(`[ExecutionSetup] GET projectId=${pid} rowExists=false`);
       const projectMetaNoRow = await prisma.project.findUnique({
         where: { id: pid },
         select: { ownerUserId: true },
@@ -206,6 +207,12 @@ export async function GET(
         peerCredentialHints: peerCredentialHintsNoRow,
       });
     }
+
+    console.info(
+      `[ExecutionSetup] GET projectId=${pid} rowExists=true enableLlmCodeTaskRefinement=${Boolean(
+        (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement,
+      )} hasOpenaiPlannerApiKey=${Boolean(String(row.openaiPlannerApiKey ?? "").trim() || String(row.openaiPlannerApiKeyMasked ?? "").trim())}`,
+    );
 
     const ghTok = clientGithubTokenMeta(row);
     const curTok = clientCursorTokenMeta(row);
@@ -703,6 +710,12 @@ export async function PATCH(
         }
       }
     }
+
+    console.info(
+      `[ExecutionSetup] PATCH saved projectId=${pid} enableLlmCodeTaskRefinement=${Boolean(
+        (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement,
+      )} hasOpenaiPlannerApiKey=${openAiTokPatch.hasToken} openaiPlannerMaskedPresent=${Boolean(openAiTokPatch.masked)}`,
+    );
 
     return NextResponse.json({
       success: true,

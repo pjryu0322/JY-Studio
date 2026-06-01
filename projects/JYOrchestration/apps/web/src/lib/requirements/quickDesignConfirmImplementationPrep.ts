@@ -26,6 +26,8 @@ import {
 } from "@/lib/prototype/implementationPlanningReadiness";
 import type { LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
+import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
+import type { ProjectCodeTaskRefinementSettings } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
 import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -434,7 +436,8 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
   readonly existingTaskList?: ImplementationTaskListV1 | null;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
-  readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
+  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
 }): Promise<QuickDesignConfirmImplementationPrepResult> {
   const syncResult = runQuickDesignConfirmImplementationPrep(input);
   const taskListForReadiness = input.existingTaskList ?? syncResult.implementationTaskListV1;
@@ -445,7 +448,11 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
   const now = input.nowIso;
   const llmCaller =
     input.llmCaller ??
-    (typeof fetch === "function" ? createProjectLlmCodeTaskRefinementCaller(input.projectId) : undefined);
+    (input.providerContext?.apiKey
+      ? undefined
+      : typeof fetch === "function"
+        ? createProjectLlmCodeTaskRefinementCaller(input.projectId)
+        : undefined);
   const readinessPatch = await buildImplementationPlanningReadinessPatchWithLlm({
     projectId: input.projectId,
     taskList: taskListForReadiness,
@@ -459,7 +466,8 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
     syncMode: input.existingTaskList ? "synced" : "created",
     llmCaller,
     forceLlm: input.forceLlm,
-    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
+    refinementSettings: input.refinementSettings,
+    providerContext: input.providerContext,
   });
 
   const nonPlanningTimeline = syncResult.timelineEntries.filter(

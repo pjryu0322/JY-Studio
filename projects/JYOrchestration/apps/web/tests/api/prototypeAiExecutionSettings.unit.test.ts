@@ -125,7 +125,7 @@ describe("prototypeAiExecutionSettings", () => {
     expect(ui.masked).toBe("sk-****abcd");
   });
 
-  it("passes enableLlmCodeTaskRefinement=true into LLM readiness path", async () => {
+  it("passes injected refinementSettings into LLM readiness path", async () => {
     const prev = process.env.ENABLE_LLM_CODE_TASK_REFINEMENT;
     delete process.env.ENABLE_LLM_CODE_TASK_REFINEMENT;
     try {
@@ -135,8 +135,12 @@ describe("prototypeAiExecutionSettings", () => {
         envOk: true,
         designOk: true,
         nowIso: NOW,
-        enableLlmCodeTaskRefinement: true,
-        providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project" },
+        refinementSettings: {
+          enableLlmCodeTaskRefinement: true,
+          hasOpenaiPlannerApiKey: true,
+          providerSource: "project_execution_setup",
+        },
+        providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project_execution_setup" },
         llmCaller: async () => ({ ok: true, text: validLlmTaskJson() }),
         forceLlm: true,
       });

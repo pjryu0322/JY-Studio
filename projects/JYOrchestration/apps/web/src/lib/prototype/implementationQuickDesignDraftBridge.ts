@@ -18,6 +18,8 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { runQuickDesignConfirmFlow, type QuickDesignConfirmFlowResult } from "@/lib/requirements/quickDesignConfirmFlow";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
+import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
+import type { ProjectCodeTaskRefinementSettings } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 
@@ -215,7 +217,8 @@ export type ConfirmQuickDesignForImplementationFromStateInput = Readonly<{
   readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly sourceStage?: OrchestrationStage;
   readonly envOkOverride?: boolean;
-  readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
+  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
 }>;
 
 export type ConfirmQuickDesignForImplementationResult =
@@ -275,10 +278,9 @@ export async function runConfirmQuickDesignForImplementationFromState(
         (state.implementationTaskListV1 as import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null) ??
         null,
     },
-    ...(input.enableLlmCodeTaskRefinement !== undefined
-      ? { enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement }
-      : {}),
     ...(input.envOkOverride !== undefined ? { envOkOverride: input.envOkOverride } : {}),
+    ...(input.refinementSettings !== undefined ? { refinementSettings: input.refinementSettings } : {}),
+    ...(input.providerContext !== undefined ? { providerContext: input.providerContext } : {}),
   });
 
   if (flowResult.kind === "blocked") {

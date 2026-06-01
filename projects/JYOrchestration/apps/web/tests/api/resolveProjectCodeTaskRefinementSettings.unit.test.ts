@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import { buildImplementationPlanningReadinessPatchWithLlm } from "@/lib/prototype/implementationPlanningReadiness";
 import {
   buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry,
   resolveLlmRefinementDecision,
-} from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings";
+  resolveLlmRefinementDecisionFromServerSettings,
+} from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
 
 const PROJECT_ID = "PROJ-RESOLVE-LLM";
 const NOW = "2026-06-01T00:00:00.000Z";
@@ -61,18 +62,6 @@ function validLlmTaskJson(parentTaskId = "DEV-SCREEN-001") {
   });
 }
 
-vi.mock("@/lib/prototype/resolveProjectCodeTaskRefinementSettings", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/prototype/resolveProjectCodeTaskRefinementSettings")>();
-  return {
-    ...actual,
-    resolveProjectCodeTaskRefinementSettings: vi.fn(async () => ({
-      enableLlmCodeTaskRefinement: true,
-      hasOpenaiPlannerApiKey: true,
-      providerSource: "project_execution_setup" as const,
-    })),
-  };
-});
-
 describe("resolveProjectCodeTaskRefinementSettings helpers", () => {
   it("decision=enabled when project toggle on and provider key exists", () => {
     const decision = resolveLlmRefinementDecision({
@@ -115,6 +104,14 @@ describe("resolveProjectCodeTaskRefinementSettings helpers", () => {
     });
   });
 
+  it("uses disabled_by_missing_server_settings when refinementSettings is null", () => {
+    const resolved = resolveLlmRefinementDecisionFromServerSettings({
+      refinementSettings: null,
+    });
+    expect(resolved.skipReason).toBe("disabled_by_missing_server_settings");
+    expect(resolved.useLlm).toBe(false);
+  });
+
   it("builds decision timeline without api key values", () => {
     const entry = buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry({
       projectId: PROJECT_ID,
@@ -134,39 +131,45 @@ describe("resolveProjectCodeTaskRefinementSettings helpers", () => {
   });
 });
 
-describe("buildImplementationPlanningReadinessPatchWithLlm server settings", () => {
-  it("uses server-resolved enableLlmCodeTaskRefinement when client override is omitted", async () => {
+describe("buildImplementationPlanningReadinessPatchWithLlm injected settings", () => {
+  it("uses injected server refinementSettings for LLM path", async () => {
     const patch = await buildImplementationPlanningReadinessPatchWithLlm({
       projectId: PROJECT_ID,
       taskList: sampleTaskList(),
       envOk: true,
       designOk: true,
       nowIso: NOW,
+      refinementSettings: {
+        enableLlmCodeTaskRefinement: true,
+        hasOpenaiPlannerApiKey: true,
+        providerSource: "project_execution_setup",
+      },
       providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project_execution_setup" },
       llmCaller: async () => ({ ok: true, text: validLlmTaskJson() }),
       forceLlm: true,
     });
     expect(patch.implementationCodeTaskPlanV1.refinementStatus).toBe("llm_refined");
-    expect(
-      patch.promptTimeline.some((entry) => entry.action === "implementation_code_task_llm_refinement_decision"),
-    ).toBe(true);
+    const decision = patch.promptTimeline.find(
+      (entry) => entry.action === "implementation_code_task_llm_refinement_decision",
+    );
+    expect(String(decision?.responseText ?? "")).toContain("decision=enabled");
+    expect(String(decision?.responseText ?? "")).toContain("enableLlmCodeTaskRefinement=true");
   });
 
-  it("respects explicit test override when client passes enableLlmCodeTaskRefinement=false", async () => {
+  it("skips LLM when refinementSettings missing on client path", async () => {
     const patch = await buildImplementationPlanningReadinessPatchWithLlm({
       projectId: PROJECT_ID,
       taskList: sampleTaskList(),
       envOk: true,
       designOk: true,
       nowIso: NOW,
-      enableLlmCodeTaskRefinement: false,
+      refinementSettings: null,
       providerContext: { apiKey: "sk-test", model: "gpt-4o-mini", providerSource: "project_execution_setup" },
-      llmCaller: async () => ({ ok: true, text: validLlmTaskJson() }),
     });
     expect(patch.implementationCodeTaskPlanV1.refinementStatus).toBe("heuristic_only");
     const decision = patch.promptTimeline.find(
       (entry) => entry.action === "implementation_code_task_llm_refinement_decision",
     );
-    expect(String(decision?.responseText ?? "")).toContain("decision=skipped");
+    expect(String(decision?.responseText ?? "")).toContain("disabled_by_missing_server_settings");
   });
 });

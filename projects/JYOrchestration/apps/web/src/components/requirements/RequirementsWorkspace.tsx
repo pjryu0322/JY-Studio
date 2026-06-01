@@ -203,7 +203,7 @@ import {
   patchRequirementsStageForImplementationStart,
   QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
-import { runQuickDesignConfirmFlow } from "@/lib/requirements/quickDesignConfirmFlow";
+import { postQuickDesignConfirm } from "@/components/project-spec/apis/quickDesignConfirmApi";
 import {
   buildImplementationCandidateItems,
   implementationCandidateLabelForKey,
@@ -2428,45 +2428,43 @@ export function RequirementsWorkspace({
       showErrorToast("슬롯 상태를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
-    const nowIso = new Date().toISOString();
     setDeliverableGenerateBusy(true);
     try {
       const st = stateJsonRef.current;
-      const flowResult = await runQuickDesignConfirmFlow({
-        projectId: pid,
+      const { res, json } = await postQuickDesignConfirm(pid, {
+        mode: "planning",
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
+        requirementsStateJson: st,
         conversationMessages: ideationConversationOnly.length ? ideationConversationOnly : conversationMessages,
+        slotDefinitions: slotDefsForProgress,
         serviceFlow: serviceFlow ?? st.serviceFlowV1 ?? null,
         problemInterview: latestProblemInterviewStateForGate(),
         sourceStage: resolveAuthoritativeOrchestrationStage(st),
-        nowIso,
-        fastPlanDraftV1: draft,
-        orchestrationForConfirm,
-        slotDefinitions: slotDefsForProgress,
-        planningState: {
-          featurePlanningSlotsV1: st.featurePlanningSlotsV1 ?? null,
-          serviceFlowV1: st.serviceFlowV1 ?? null,
-          projectArtifacts: st.projectArtifacts,
-          deliverableAssets: st.deliverableAssets,
-          requirementsOrchestrationStageV1: st.requirementsOrchestrationStageV1,
-          implementationTaskListV1: st.implementationTaskListV1,
-        },
       });
-      if (flowResult.kind === "blocked") {
-        showErrorToast(flowResult.message);
+      if (!res.ok || !json.success || !json.data || json.data.mode !== "planning") {
+        showErrorToast(json.message || "Quick Design 확정에 실패했습니다.");
+        return;
+      }
+      const flowResult = json.data;
+      if (!flowResult.statePatch) {
+        showErrorToast("Quick Design 확정 결과를 적용할 수 없습니다.");
         return;
       }
 
       await persistStateJsonOnly(flowResult.statePatch);
-      lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId;
-      await appendServiceFlowWorkshopMessages([flowResult.readyMessage]);
-      void persistStateJsonOnly({
-        promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
-          ...flowResult.timelineEntries,
-        ]),
-      });
-      showSuccessToast(flowResult.userFacingSummary);
+      lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId ?? null;
+      if (flowResult.messages?.[0]) {
+        await appendServiceFlowWorkshopMessages([flowResult.messages[0]]);
+      }
+      if (flowResult.timelineEntries?.length) {
+        void persistStateJsonOnly({
+          promptTimeline: appendIdeationBootstrapPromptTimelineBatch(stateJsonRef.current.promptTimeline, [
+            ...(flowResult.timelineEntries as import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[]),
+          ]),
+        });
+      }
+      showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
       showErrorToast(msg);

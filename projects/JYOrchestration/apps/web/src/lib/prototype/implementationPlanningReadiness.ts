@@ -27,10 +27,10 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import {
   buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry,
-  resolveLlmRefinementDecision,
-  resolveProjectCodeTaskRefinementSettings,
-} from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings";
-import { resolveLlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
+  resolveLlmRefinementDecisionFromServerSettings,
+  type ProjectCodeTaskRefinementSettings,
+} from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
+import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 
 export const IMPLEMENTATION_WORK_ITEM_PREFLIGHT_SUMMARY_VERSION =
@@ -308,41 +308,28 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   readonly syncMode?: "created" | "synced";
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
-  /** Project-level toggle. If undefined, resolved from server ExecutionSetup. */
-  readonly enableLlmCodeTaskRefinement?: boolean;
-  readonly actorUserId?: string | null;
-  readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
+  /** Injected by server API routes. Client paths must not prisma-resolve settings. */
+  readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
+  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
 }): Promise<ImplementationPlanningReadinessPatch> {
   const now = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
-  const refinementSettings = await resolveProjectCodeTaskRefinementSettings({
-    projectId: pid,
-    actorUserId: input.actorUserId ?? null,
-  });
-  const enableLlmCodeTaskRefinement =
-    input.enableLlmCodeTaskRefinement !== undefined
-      ? input.enableLlmCodeTaskRefinement
-      : refinementSettings.enableLlmCodeTaskRefinement;
-  const refinementDecision = resolveLlmRefinementDecision({
-    settings: refinementSettings,
+  const resolvedDecision = resolveLlmRefinementDecisionFromServerSettings({
+    refinementSettings: input.refinementSettings,
     forceLlm: input.forceLlm,
-    projectSettingOverride: enableLlmCodeTaskRefinement,
   });
+  const refinementSettings = resolvedDecision.settings;
+  const enableLlmCodeTaskRefinement = refinementSettings.enableLlmCodeTaskRefinement;
   const decisionTimelineEntry = buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry({
     projectId: pid,
-    settings: { ...refinementSettings, enableLlmCodeTaskRefinement },
-    decision: refinementDecision.decision,
-    skipReason: refinementDecision.skipReason,
-    useLlm: refinementDecision.useLlm,
+    settings: refinementSettings,
+    decision: resolvedDecision.decision,
+    skipReason: resolvedDecision.skipReason,
+    useLlm: resolvedDecision.useLlm,
     nowIso: now,
   });
   const priorTimelineWithDecision = appendPromptTimeline(input.priorTimeline ?? [], decisionTimelineEntry);
-  const providerContext =
-    input.providerContext ??
-    (await resolveLlmCodeTaskRefinementProviderContext({
-      projectId: pid,
-      actorUserId: input.actorUserId ?? null,
-    }));
+  const providerContext = input.providerContext ?? null;
   const heuristicPlan = buildImplementationCodeTaskPlanFromTaskList({
     projectId: pid,
     taskList: input.taskList,
@@ -354,8 +341,8 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   const useLlm =
     input.forceLlm === true
       ? true
-      : refinementDecision.useLlm ||
-        (input.enableLlmCodeTaskRefinement === undefined &&
+      : resolvedDecision.useLlm ||
+        (input.refinementSettings == null &&
           !enableLlmCodeTaskRefinement &&
           isLlmCodeTaskRefinementEnabled());
   const resolved = await resolveImplementationCodeTaskPlanForPlanningReadiness({
@@ -372,7 +359,7 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     providerContext,
     enableLlmCodeTaskRefinement,
     hasOpenaiPlannerApiKey: refinementSettings.hasOpenaiPlannerApiKey,
-    skipReason: refinementDecision.skipReason,
+    skipReason: resolvedDecision.skipReason,
   });
   return buildPlanningReadinessPatchFromCodeTaskPlan({
     projectId: pid,
@@ -388,11 +375,11 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
               action: "implementation_code_task_llm_refinement_skipped",
               projectId: pid,
               fields: {
-                reason: "disabled_by_project_setting",
+                reason: resolvedDecision.skipReason ?? "disabled_by_project_setting",
                 enableLlmCodeTaskRefinement: false,
                 hasOpenaiPlannerApiKey: refinementSettings.hasOpenaiPlannerApiKey,
                 useLlm: false,
-                skipReason: "disabled_by_project_setting",
+                skipReason: resolvedDecision.skipReason ?? "disabled_by_project_setting",
               },
               nowIso: now,
             }),

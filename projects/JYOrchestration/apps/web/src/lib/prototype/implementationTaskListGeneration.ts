@@ -134,11 +134,17 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
   readonly syncMode?: "created" | "synced";
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
-  readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly refinementSettings?: import("@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared").ProjectCodeTaskRefinementSettings | null;
+  readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
 }): Promise<Partial<RequirementsStateJson>> {
   const { createProjectLlmCodeTaskRefinementCaller } = await import(
     "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient"
   );
+  const llmCaller =
+    input.llmCaller ??
+    (input.providerContext?.apiKey
+      ? undefined
+      : createProjectLlmCodeTaskRefinementCaller(input.projectId));
   const readiness = await buildImplementationPlanningReadinessPatchWithLlm({
     projectId: input.projectId,
     taskList: input.taskList,
@@ -150,9 +156,10 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
     nowIso: input.nowIso,
     includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
     syncMode: input.syncMode,
-    llmCaller: input.llmCaller ?? createProjectLlmCodeTaskRefinementCaller(input.projectId),
+    llmCaller,
     forceLlm: input.forceLlm,
-    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
+    refinementSettings: input.refinementSettings,
+    providerContext: input.providerContext,
   });
   return {
     ...input.patch,
@@ -422,7 +429,8 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
   readonly forceRefresh?: boolean;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
-  readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly refinementSettings?: import("@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared").ProjectCodeTaskRefinementSettings | null;
+  readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
 }): Promise<GenerateImplementationTaskListResult> {
   const base = buildGenerateImplementationTaskListFromSeedResult(input);
   if (!base.ok || !base.taskList?.tasks?.length) {
@@ -504,7 +512,8 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
     syncMode: base.alreadyExisted ? "synced" : "created",
     llmCaller: input.llmCaller,
     forceLlm: input.forceLlm,
-    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
+    refinementSettings: input.refinementSettings,
+    providerContext: input.providerContext,
   });
 
   const messages = buildPostGenerateMessages({

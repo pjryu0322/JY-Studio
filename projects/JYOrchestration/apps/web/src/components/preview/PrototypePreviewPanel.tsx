@@ -191,10 +191,13 @@ import {
 } from "@/lib/prototype/implementationIntentTimeline";
 import { buildImplementationUserFeedbackOrchestrationPatch } from "@/lib/prototype/implementationUserFeedback";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
-import { buildGenerateImplementationTaskListFromSeedResult, buildGenerateImplementationTaskListFromSeedResultWithLlm } from "@/lib/prototype/implementationTaskListGeneration";
+import { buildGenerateImplementationTaskListFromSeedResult } from "@/lib/prototype/implementationTaskListGeneration";
+import {
+  postImplementationPrepSync,
+  postQuickDesignConfirm,
+} from "@/components/project-spec/apis/quickDesignConfirmApi";
 import {
   buildCreateImplementationSeedFromQuickDesignDraftResult,
-  runConfirmQuickDesignForImplementationFromState,
 } from "@/lib/prototype/implementationQuickDesignDraftBridge";
 import {
   buildImplementationEntryCursorWorkItemsRecovery,
@@ -3669,8 +3672,8 @@ export function PrototypePreviewPanel({
       setProtoBusy(true);
       try {
         const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-        const result = await runConfirmQuickDesignForImplementationFromState({
-          projectId: pid,
+        const { res, json } = await postQuickDesignConfirm(pid, {
+          mode: "implementation",
           projectName: projectName || "프로젝트",
           projectDescription: projectDescription ?? "",
           requirementsStateJson,
@@ -3678,15 +3681,15 @@ export function PrototypePreviewPanel({
           slotDefinitions: planningSlotDefinitions,
           envOkOverride: canRequestGeneration.envOk,
         });
-        if (result.kind === "blocked") {
-          showToast(result.message);
+        if (!res.ok || !json.success || !json.data) {
+          showToast(json.message || "Quick Design 확정에 실패했습니다.");
           return;
         }
         applyImplementationOrchestrationResult({
-          messages: result.messages,
-          orchestrationPatch: result.orchestrationPatch as PrototypeExecutionOrchestrationPersistInput,
+          messages: json.data.messages ?? [],
+          orchestrationPatch: (json.data.orchestrationPatch ?? {}) as PrototypeExecutionOrchestrationPersistInput,
         });
-        showToast(result.flow.userFacingSummary);
+        showToast(json.data.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
       } finally {
         setProtoBusy(false);
       }
@@ -3707,8 +3710,7 @@ export function PrototypePreviewPanel({
     const pid = projectId.trim();
     const seed = parsedRequirementsState.implementationSeedV1;
     void (async () => {
-      const result = await buildGenerateImplementationTaskListFromSeedResultWithLlm({
-        projectId: pid,
+      const { res, json } = await postImplementationPrepSync(pid, {
         seed,
         existingTaskList: parsedRequirementsState.implementationTaskListV1,
         existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
@@ -3721,11 +3723,11 @@ export function PrototypePreviewPanel({
         artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
         envOk: canRequestGeneration.envOk,
         designOk: effectiveImplementationState.designOk,
-        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
         previewReady: prototypeRunSyncSnapshot.previewReady,
       });
-      if (!result.ok) {
-        showToast(result.message);
+      const result = json.data;
+      if (!res.ok || !json.success || !result?.ok) {
+        showToast(json.message || result?.message || "구현 작업목록 생성에 실패했습니다.");
         return;
       }
       void persistChatToDb(
@@ -5352,8 +5354,7 @@ export function PrototypePreviewPanel({
     const pid = projectId.trim();
     const seed = parsedRequirementsState.implementationSeedV1;
     void (async () => {
-      const result = await buildGenerateImplementationTaskListFromSeedResultWithLlm({
-        projectId: pid,
+      const { res, json } = await postImplementationPrepSync(pid, {
         seed,
         existingTaskList: parsedRequirementsState.implementationTaskListV1,
         existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
@@ -5366,13 +5367,13 @@ export function PrototypePreviewPanel({
         artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
         envOk: canRequestGeneration.envOk,
         designOk: effectiveImplementationState.designOk,
-        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
         previewReady: prototypeRunSyncSnapshot.previewReady,
         forceRefresh: true,
         forceLlm: true,
       });
-      if (!result.ok) {
-        showToast(result.message);
+      const result = json.data;
+      if (!res.ok || !json.success || !result?.ok) {
+        showToast(json.message || result?.message || "구현준비 산출물 재정제에 실패했습니다.");
         return;
       }
       void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), result.patch);
