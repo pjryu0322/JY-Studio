@@ -67,12 +67,20 @@ function countMixedDomains(text: string): number {
   return count;
 }
 
-function isWeakAcceptanceCriteria(criteria: readonly string[]): boolean {
-  if (!criteria.length) return true;
+function isEmptyAcceptanceCriteria(criteria: readonly string[]): boolean {
+  return (criteria ?? []).every((item) => !String(item ?? "").trim());
+}
+
+function isGenericOnlyAcceptanceCriteria(criteria: readonly string[]): boolean {
+  if (isEmptyAcceptanceCriteria(criteria)) return false;
   return criteria.every((item) => {
     const normalized = normText(item);
     return !normalized || GENERIC_ACCEPTANCE.some((term) => normalized === normText(term));
   });
+}
+
+function isWeakAcceptanceCriteria(criteria: readonly string[]): boolean {
+  return isEmptyAcceptanceCriteria(criteria) || isGenericOnlyAcceptanceCriteria(criteria);
 }
 
 function isWeakVerificationHints(hints: readonly string[]): boolean {
@@ -110,10 +118,11 @@ function evaluateCodeTaskQualityIssues(input: {
   const issues: ImplementationCodeTaskQualityIssueV1[] = [];
   const combinedText = `${task.title} ${task.description}`;
   const hintCount = (task.candidateFileHints ?? []).length;
+  const acceptanceCount = task.acceptanceCriteria?.length ?? 0;
   const broadTermCount = BROAD_TERMS.filter((term) => containsAny(combinedText, [term])).length;
   const mixedDomains = countMixedDomains(combinedText);
 
-  if (hintCount >= 6 || (mixedDomains >= 3 && hintCount >= 5)) {
+  if (mixedDomains >= 3 && (hintCount >= 5 || acceptanceCount >= 5)) {
     issues.push({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,
@@ -121,13 +130,21 @@ function evaluateCodeTaskQualityIssues(input: {
       issueCode: "too_broad",
       message: "CodeTask 범위가 과도하게 넓습니다.",
     });
-  } else if (hintCount >= 5 || broadTermCount >= 2) {
+  } else if (hintCount >= 6 || (mixedDomains >= 3 && hintCount >= 5) || broadTermCount >= 2) {
     issues.push({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,
       severity: "warning",
       issueCode: "too_broad",
       message: "CodeTask 범위가 넓을 수 있습니다.",
+    });
+  } else if (hintCount >= 5) {
+    issues.push({
+      codeTaskId: task.codeTaskId,
+      parentTaskId: task.parentTaskId,
+      severity: "warning",
+      issueCode: "too_broad",
+      message: "candidateFileHints가 많습니다.",
     });
   }
 
@@ -168,23 +185,40 @@ function evaluateCodeTaskQualityIssues(input: {
     });
   }
 
-  if (mixedDomains >= 3) {
+  if (mixedDomains >= 3 && (hintCount >= 5 || acceptanceCount >= 5)) {
     issues.push({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,
       severity: "error",
       issueCode: "mixed_change_types",
-      message: "하나의 CodeTask에 UI/API/DB/테스트 변경이 섞여 있습니다.",
+      message: "하나의 CodeTask에 UI/API/DB/테스트 변경이 과도하게 섞여 있습니다.",
+    });
+  } else if (mixedDomains >= 3) {
+    issues.push({
+      codeTaskId: task.codeTaskId,
+      parentTaskId: task.parentTaskId,
+      severity: "warning",
+      issueCode: "mixed_change_types",
+      message: "하나의 CodeTask 설명에 여러 변경 영역이 언급되어 있습니다.",
     });
   }
 
-  if (isWeakAcceptanceCriteria(task.acceptanceCriteria ?? [])) {
+  const acceptanceCriteria = task.acceptanceCriteria ?? [];
+  if (isEmptyAcceptanceCriteria(acceptanceCriteria)) {
     issues.push({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,
       severity: "error",
       issueCode: "weak_acceptance_criteria",
-      message: "acceptanceCriteria가 비어 있거나 일반 문구뿐입니다.",
+      message: "acceptanceCriteria가 비어 있습니다.",
+    });
+  } else if (isGenericOnlyAcceptanceCriteria(acceptanceCriteria)) {
+    issues.push({
+      codeTaskId: task.codeTaskId,
+      parentTaskId: task.parentTaskId,
+      severity: "warning",
+      issueCode: "weak_acceptance_criteria",
+      message: "acceptanceCriteria가 일반 문구뿐입니다.",
     });
   }
 

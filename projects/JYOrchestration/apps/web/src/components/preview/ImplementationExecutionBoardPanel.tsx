@@ -9,6 +9,8 @@ import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementat
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import { buildImplementationCodeTaskFeedbackSummary } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -67,6 +69,7 @@ export function ImplementationExecutionBoardPanel({
   onCancelTaskCursorPolling,
   onRestartTask,
   onSelectedTaskIdsChange,
+  codeTaskExecutionFeedbackV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -87,7 +90,12 @@ export function ImplementationExecutionBoardPanel({
   readonly onCancelTaskCursorPolling?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
+  readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
 }) {
+  const feedbackSummary = useMemo(
+    () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
+    [codeTaskExecutionFeedbackV1],
+  );
   const summaryView = useMemo(
     () =>
       buildImplementationExecutionBoardSummaryView({
@@ -239,6 +247,7 @@ export function ImplementationExecutionBoardPanel({
                     board,
                     previewReady: summaryView.previewReady,
                     reviewReady: summaryView.testReadiness.ready,
+                    feedbackSummary,
                   })}
         </div>
       </div>

@@ -4331,6 +4331,11 @@ export function PrototypePreviewPanel({
                   history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
                   existingTimeline: preflightTimeline,
                   nowIso,
+                  cursorWorkItems: selectedWorkItems,
+                  existingCodeTaskExecutionFeedback:
+                    orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1,
+                  codeTaskQualityGate:
+                    orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
                   existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -6637,6 +6642,9 @@ export function PrototypePreviewPanel({
             onCancelTaskCursorPolling={cancelTaskCursorClientPoll}
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
+            codeTaskExecutionFeedbackV1={
+              orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
+            }
           />
         ) : null}
         <div className="jyo-prototype-execution-chat-region">

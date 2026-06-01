@@ -1,5 +1,14 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type {
+  ImplementationCodeTaskExecutionFeedbackV1,
+} from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import {
+  buildImplementationCodeTaskFeedbackSummary,
+  buildImplementationCodeTaskFeedbackTaskRows,
+  type ImplementationCodeTaskFeedbackSummaryV1,
+  type ImplementationCodeTaskFeedbackTaskRowV1,
+} from "@/lib/prototype/implementationCodeTaskFeedbackUi";
+import type {
   ImplementationCodeTaskQualityGateV1,
   ImplementationCodeTaskQualityIssueV1,
 } from "@/lib/prototype/implementationCodeTaskQualityGate";
@@ -45,6 +54,8 @@ export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly executionReady: boolean;
   readonly supplementReasons: readonly string[];
   readonly advancedTasks: readonly ImplementationPlanningReadinessCardTaskRow[];
+  readonly feedbackSummary?: ImplementationCodeTaskFeedbackSummaryV1;
+  readonly feedbackTaskRows?: readonly ImplementationCodeTaskFeedbackTaskRowV1[];
 }>;
 
 function countDeveloperTasks(taskList: ImplementationTaskListV1 | null | undefined): number {
@@ -100,6 +111,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   readonly preflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
+  readonly codeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
 }): ImplementationPlanningReadinessCardVM | null {
   const plan = input.codeTaskPlan;
   if (!plan?.tasks?.length && !input.taskList?.tasks?.length) return null;
@@ -154,6 +166,8 @@ export function buildImplementationPlanningReadinessCardVM(input: {
 
   const executionReady = gate.ok;
   const overallTone: "ok" | "warn" = executionReady ? "ok" : "warn";
+  const feedbackSummary = buildImplementationCodeTaskFeedbackSummary(input.codeTaskExecutionFeedback);
+  const feedbackTaskRows = buildImplementationCodeTaskFeedbackTaskRows(input.codeTaskExecutionFeedback);
 
   return {
     visible: true,
@@ -191,5 +205,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
         ? { qualityIssues: issuesByCodeTaskId[task.codeTaskId] }
         : {}),
     })),
+    ...(feedbackSummary ? { feedbackSummary } : {}),
+    ...(feedbackTaskRows.length ? { feedbackTaskRows } : {}),
   };
 }

@@ -422,6 +422,12 @@ export function buildImplementationExecutionBlockedByPlanningGateTimelineEntry(i
       nowIso: input.nowIso,
     });
   }
+  if (input.reason === "missing_code_task_quality") {
+    return buildImplementationExecutionBlockedByMissingCodeTaskQualityTimelineEntry({
+      projectId: input.projectId,
+      nowIso: input.nowIso,
+    });
+  }
   return buildImplementationExecutionBlockedByPlanningPreflightTimelineEntry({
     projectId: input.projectId,
     reason: input.reason,
@@ -457,8 +463,23 @@ export function buildImplementationExecutionBlockedByCodeTaskQualityTimelineEntr
   });
 }
 
+export function buildImplementationExecutionBlockedByMissingCodeTaskQualityTimelineEntry(input: {
+  readonly projectId: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildPlanningReadinessTimelineEntry({
+    action: "implementation_execution_blocked_by_missing_code_task_quality",
+    projectId: input.projectId,
+    fields: { mode: "implementation" },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
+}
+
 export const IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE =
   "구현 CodeTask 품질 보완이 필요합니다." as const;
+
+export const IMPLEMENTATION_PLANNING_MISSING_CODE_TASK_QUALITY_MESSAGE =
+  "구현 CodeTask 품질 점검 결과가 없습니다. 구현 준비 산출물을 동기화해 주세요." as const;
 
 export const IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE =
   "구현 준비 산출물 보완이 필요습니다." as const;
@@ -472,7 +493,8 @@ export type ImplementationPlanningExecutionGateReason =
   | "preflight_failed"
   | "code_task_validation_failed"
   | "missing_code_task_validation"
-  | "code_task_quality_failed";
+  | "code_task_quality_failed"
+  | "missing_code_task_quality";
 
 export type ImplementationPlanningExecutionGateResult =
   | Readonly<{ readonly ok: true }>
@@ -526,7 +548,14 @@ export function evaluateImplementationPlanningExecutionGate(input: {
       reason: "code_task_validation_failed",
     };
   }
-  if (input.codeTaskQualityGate?.status === "failed") {
+  if (!input.codeTaskQualityGate) {
+    return {
+      ok: false,
+      message: IMPLEMENTATION_PLANNING_MISSING_CODE_TASK_QUALITY_MESSAGE,
+      reason: "missing_code_task_quality",
+    };
+  }
+  if (input.codeTaskQualityGate.status === "failed") {
     return {
       ok: false,
       message: IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE,

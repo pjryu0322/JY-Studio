@@ -1,3 +1,5 @@
+import type { ImplementationCodeTaskFailureCauseLayer } from "@/lib/prototype/implementationCodeTaskFailureDiagnosis";
+import type { ImplementationCodeTaskFailureDiagnosisV1 } from "@/lib/prototype/implementationCodeTaskFailureDiagnosis";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { TaskCursorExecutionV1, TaskCursorFailureReason } from "@/lib/prototype/taskCursorExecution";
 
@@ -20,6 +22,8 @@ export type ImplementationCodeTaskExecutionFeedbackEntryV1 = Readonly<{
   readonly lastCommitSha?: string;
   readonly lastFailureReason?: string;
   readonly lastErrorMessage?: string;
+  readonly lastCauseLayer?: ImplementationCodeTaskFailureCauseLayer;
+  readonly lastDiagnosisMessage?: string;
   readonly workItemIds: readonly string[];
   readonly updatedAt: string;
 }>;
@@ -54,11 +58,28 @@ function mapExecutionStatusToFeedbackStatus(
   }
 }
 
+function resolveDiagnosisTargetCodeTaskIds(input: {
+  readonly diagnosis?: ImplementationCodeTaskFailureDiagnosisV1 | null;
+  readonly selectedWorkItems: readonly CursorWorkItem[];
+}): readonly string[] | null {
+  if (!input.diagnosis) return null;
+  const affected = input.diagnosis.affectedCodeTaskIds.filter(Boolean);
+  if (affected.length) return affected;
+  return [
+    ...new Set(
+      input.selectedWorkItems
+        .map((item) => String(item.codeTaskId ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export function updateImplementationCodeTaskExecutionFeedback(input: {
   readonly projectId: string;
   readonly existing?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly selectedWorkItems: readonly CursorWorkItem[];
   readonly execution: TaskCursorExecutionV1;
+  readonly diagnosis?: ImplementationCodeTaskFailureDiagnosisV1 | null;
   readonly nowIso?: string;
 }): ImplementationCodeTaskExecutionFeedbackV1 {
   const now = input.nowIso ?? new Date().toISOString();
@@ -68,6 +89,10 @@ export function updateImplementationCodeTaskExecutionFeedback(input: {
   };
 
   const status = mapExecutionStatusToFeedbackStatus(input.execution);
+  const diagnosisTargetIds = resolveDiagnosisTargetCodeTaskIds({
+    diagnosis: input.diagnosis,
+    selectedWorkItems: input.selectedWorkItems,
+  });
   const grouped = new Map<string, CursorWorkItem[]>();
   for (const workItem of input.selectedWorkItems) {
     const codeTaskId = String(workItem.codeTaskId ?? "").trim();
@@ -79,6 +104,10 @@ export function updateImplementationCodeTaskExecutionFeedback(input: {
 
   for (const [codeTaskId, workItems] of grouped.entries()) {
     const parentTaskId = String(workItems[0]?.parentTaskId ?? input.execution.taskId).trim();
+    const shouldApplyDiagnosis =
+      status === "failed" &&
+      input.diagnosis &&
+      (!diagnosisTargetIds?.length || diagnosisTargetIds.includes(codeTaskId));
     feedbackByCodeTaskId[codeTaskId] = {
       codeTaskId,
       parentTaskId,
@@ -90,6 +119,12 @@ export function updateImplementationCodeTaskExecutionFeedback(input: {
         ? { lastFailureReason: input.execution.failureReason }
         : {}),
       ...(input.execution.errorMessage ? { lastErrorMessage: input.execution.errorMessage } : {}),
+      ...(shouldApplyDiagnosis && input.diagnosis?.causeLayer
+        ? { lastCauseLayer: input.diagnosis.causeLayer }
+        : {}),
+      ...(shouldApplyDiagnosis && input.diagnosis?.message
+        ? { lastDiagnosisMessage: input.diagnosis.message }
+        : {}),
       workItemIds: workItems.map((item) => item.id),
       updatedAt: now,
     };
@@ -141,6 +176,12 @@ export function parseImplementationCodeTaskExecutionFeedbackV1(
         : {}),
       ...(typeof row.lastErrorMessage === "string"
         ? { lastErrorMessage: row.lastErrorMessage.trim() }
+        : {}),
+      ...(typeof row.lastCauseLayer === "string" && row.lastCauseLayer.trim()
+        ? { lastCauseLayer: row.lastCauseLayer.trim() as ImplementationCodeTaskFailureCauseLayer }
+        : {}),
+      ...(typeof row.lastDiagnosisMessage === "string"
+        ? { lastDiagnosisMessage: row.lastDiagnosisMessage.trim() }
         : {}),
       workItemIds: Array.isArray(row.workItemIds)
         ? row.workItemIds.map((item) => String(item ?? "").trim()).filter(Boolean)

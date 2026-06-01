@@ -204,15 +204,19 @@ export function buildTaskCursorOrchestrationPatch(input: {
     cursorWorkItems: input.cursorWorkItems,
     workItemIds: input.execution.workItemIds,
   });
-  const diagnosis =
-    input.execution.status === "cursor_failed" || input.execution.status === "github_verify_failed"
-      ? diagnoseImplementationCodeTaskFailure({
-          failureReason: input.execution.failureReason,
-          selectedWorkItems,
-          codeTaskQualityGate: input.codeTaskQualityGate,
-          githubVerifyFailed: input.execution.status === "github_verify_failed",
-        })
-      : null;
+  const shouldDiagnose =
+    input.execution.status === "cursor_failed" ||
+    input.execution.status === "github_verify_failed" ||
+    input.execution.failureReason === "work_item_preflight_failed";
+  const diagnosis = shouldDiagnose
+    ? diagnoseImplementationCodeTaskFailure({
+        failureReason: input.execution.failureReason,
+        selectedWorkItems,
+        codeTaskQualityGate: input.codeTaskQualityGate,
+        preflightFailed: input.execution.failureReason === "work_item_preflight_failed",
+        githubVerifyFailed: input.execution.status === "github_verify_failed",
+      })
+    : null;
   const timelineEntries = diagnosis
     ? [
         ...input.timelineEntries,
@@ -253,6 +257,7 @@ export function buildTaskCursorOrchestrationPatch(input: {
         existing: input.existingCodeTaskExecutionFeedback,
         selectedWorkItems,
         execution: input.execution,
+        diagnosis,
         nowIso: input.execution.updatedAt,
       })
     : undefined;
@@ -418,6 +423,9 @@ export function buildTaskCursorFailedOrchestrationPatch(input: {
   readonly history?: readonly TaskCursorExecutionV1[] | null;
   readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly nowIso?: string;
+  readonly cursorWorkItems?: readonly CursorWorkItem[];
+  readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
+  readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
 }) {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const failed = patchTaskCursorExecution(input.execution, {
@@ -431,6 +439,9 @@ export function buildTaskCursorFailedOrchestrationPatch(input: {
     history: input.history,
     timelineEntries: [buildTaskCursorApiFailedTimeline({ execution: failed, nowIso })],
     existingTimeline: input.existingTimeline,
+    cursorWorkItems: input.cursorWorkItems,
+    existingCodeTaskExecutionFeedback: input.existingCodeTaskExecutionFeedback,
+    codeTaskQualityGate: input.codeTaskQualityGate,
   });
 }
 

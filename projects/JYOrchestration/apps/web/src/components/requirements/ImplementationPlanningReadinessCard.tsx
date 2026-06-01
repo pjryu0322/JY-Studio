@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ImplementationPlanningReadinessCardVM } from "@/lib/prototype/implementationPlanningReadinessUi";
+import { formatCodeTaskFeedbackSummaryLine } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
 
 function toneColor(tone: "ok" | "warn"): string {
   return tone === "ok" ? "#15803d" : "#b45309";
@@ -77,6 +78,12 @@ export function ImplementationPlanningReadinessCard({
         <div>{vm.llmRefinementLabel}</div>
         <div>구현단계 진입: {vm.executionReady ? "가능" : "불가"}</div>
       </div>
+
+      {vm.feedbackSummary ? (
+        <div style={{ fontSize: 11, color: t.textPrimary, lineHeight: 1.5 }}>
+          {formatCodeTaskFeedbackSummaryLine(vm.feedbackSummary)}
+        </div>
+      ) : null}
 
       {vm.supplementReasons.length ? (
         <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
@@ -158,6 +165,31 @@ export function ImplementationPlanningReadinessCard({
                   ) : null}
                 </div>
               ))}
+              {vm.feedbackTaskRows?.length ? (
+                <div style={{ marginTop: 4, fontSize: 10.5, color: t.textMuted }}>
+                  <strong style={{ color: t.textPrimary }}>CodeTask 실행 feedback</strong>
+                  {vm.feedbackTaskRows.map((row) => (
+                    <div
+                      key={`feedback-${row.codeTaskId}`}
+                      style={{
+                        marginTop: 4,
+                        border: `1px solid ${t.border}`,
+                        borderRadius: 8,
+                        padding: "6px 8px",
+                        background: "#fff",
+                        color: t.textPrimary,
+                      }}
+                    >
+                      <div>
+                        {row.codeTaskId} · {row.status}
+                      </div>
+                      {row.lastFailureReason ? <div>failure: {row.lastFailureReason}</div> : null}
+                      {row.lastCauseLayer ? <div>cause: {row.lastCauseLayer}</div> : null}
+                      {row.lastCommitSha ? <div>commit: {row.lastCommitSha}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
