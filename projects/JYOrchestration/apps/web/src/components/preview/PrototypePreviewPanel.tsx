@@ -3710,6 +3710,7 @@ export function PrototypePreviewPanel({
         existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
         existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
         existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+        existingPreflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
         priorTimeline: parsedRequirementsState.promptTimeline,
         projectArtifacts: executionArtifacts.projectArtifacts,
         artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,

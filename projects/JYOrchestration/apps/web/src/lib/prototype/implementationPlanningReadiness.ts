@@ -415,6 +415,9 @@ export function buildImplementationExecutionBlockedByPlanningPreflightTimelineEn
 export const IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE =
   "구현 준비 산출물 보완이 필요합니다." as const;
 
+export const IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE =
+  "구현 준비 검증 결과가 없습니다. 구현 준비 산출물을 동기화해 주세요." as const;
+
 export type ImplementationPlanningExecutionGateReason =
   | "missing_code_task_plan"
   | "missing_work_items"
@@ -462,7 +465,7 @@ export function evaluateImplementationPlanningExecutionGate(input: {
   if (!validationStatus) {
     return {
       ok: false,
-      message: IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
+      message: IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE,
       reason: "missing_code_task_validation",
     };
   }

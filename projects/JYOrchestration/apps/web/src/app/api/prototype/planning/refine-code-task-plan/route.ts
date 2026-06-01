@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     temperature: 0.2,
     responseFormatJsonObject: true,
     maxTokens: 4096,
+    returnUsage: true,
     messages: [
       {
         role: "system",
@@ -105,5 +106,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: llmResult.message }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true, text: llmResult.text });
+  return NextResponse.json({
+    ok: true,
+    text: llmResult.text,
+    ...(llmResult.usage
+      ? {
+          usage: {
+            promptTokens: llmResult.usage.promptTokens,
+            completionTokens: llmResult.usage.completionTokens,
+            totalTokens: llmResult.usage.totalTokens,
+            model: String(providerContext.model ?? "gpt-4o-mini"),
+          },
+        }
+      : {}),
+  });
 }

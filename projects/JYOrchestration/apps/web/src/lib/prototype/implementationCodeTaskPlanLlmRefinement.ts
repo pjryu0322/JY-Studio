@@ -1,6 +1,14 @@
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiFromEnv, resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import {
+  attachCodeTaskPlanRefinementMeta,
+  buildLlmPromptFingerprint,
+  buildLlmResultFingerprint,
+  buildSourceSeedFingerprint,
+  buildSourceTaskListFingerprint,
+  type ImplementationCodeTaskPlanLlmUsage,
+} from "@/lib/prototype/implementationCodeTaskPlanFingerprint";
+import {
   COMMON_FORBIDDEN_PATHS,
 } from "@/lib/prototype/implementationExecutionHints";
 import {
@@ -21,12 +29,17 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
+export type LlmCodeTaskRefinementCallerResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly text: string;
+      readonly usage?: ImplementationCodeTaskPlanLlmUsage | null;
+    }>
+  | Readonly<{ readonly ok: false; readonly message: string }>;
+
 export type LlmCodeTaskRefinementCaller = (
   prompt: string,
-) => Promise<
-  | Readonly<{ readonly ok: true; readonly text: string }>
-  | Readonly<{ readonly ok: false; readonly message: string }>
->;
+) => Promise<LlmCodeTaskRefinementCallerResult>;
 
 export function isLlmCodeTaskRefinementEnabled(): boolean {
   return String(process.env.ENABLE_LLM_CODE_TASK_REFINEMENT ?? "").trim().toLowerCase() === "true";
@@ -225,13 +238,20 @@ function buildPlanFromTasks(input: {
   readonly heuristicTaskCount: number;
   readonly nowIso: string;
   readonly llmRefinedAt?: string;
+  readonly sourceTaskListFingerprint?: string;
+  readonly sourceSeedFingerprint?: string;
+  readonly llmPromptFingerprint?: string;
+  readonly llmResultFingerprint?: string;
+  readonly refinementRequestedAt?: string;
+  readonly refinementCompletedAt?: string;
+  readonly llmUsage?: ImplementationCodeTaskPlanLlmUsage | null;
 }): ImplementationCodeTaskPlanV1 {
   const missing = [...(input.basePlan.readiness.missing ?? [])];
   if (input.tasks.some((task) => task.status === "blocked")) missing.push("blocked CodeTask 존재");
   if (input.tasks.some((task) => task.status === "draft")) missing.push("draft CodeTask 존재");
   if (input.validationReport.status === "failed") missing.push("CodeTaskPlan validation failed");
 
-  return {
+  const plan: ImplementationCodeTaskPlanV1 = {
     ...input.basePlan,
     updatedAt: input.nowIso,
     tasks: input.tasks,
@@ -251,15 +271,23 @@ function buildPlanFromTasks(input: {
     refinedTaskCount: input.tasks.length,
     ...(input.llmRefinedAt ? { llmRefinedAt: input.llmRefinedAt } : {}),
   };
+
+  return attachCodeTaskPlanRefinementMeta({
+    plan,
+    sourceTaskListFingerprint: input.sourceTaskListFingerprint,
+    sourceSeedFingerprint: input.sourceSeedFingerprint,
+    llmPromptFingerprint: input.llmPromptFingerprint,
+    llmResultFingerprint: input.llmResultFingerprint,
+    refinementRequestedAt: input.refinementRequestedAt,
+    refinementCompletedAt: input.refinementCompletedAt,
+    llmUsage: input.llmUsage,
+  });
 }
 
 async function defaultLlmCaller(
   prompt: string,
   providerContext?: LlmCodeTaskRefinementProviderContext | null,
-): Promise<
-  | Readonly<{ readonly ok: true; readonly text: string }>
-  | Readonly<{ readonly ok: false; readonly message: string }>
-> {
+): Promise<LlmCodeTaskRefinementCallerResult> {
   const projectKey = String(providerContext?.apiKey ?? "").trim();
   const env = resolveOpenAiFromEnv();
   const apiKey = projectKey || (env.ok ? env.apiKey : "");
@@ -280,6 +308,7 @@ async function defaultLlmCaller(
     temperature: 0.2,
     responseFormatJsonObject: true,
     maxTokens: 4096,
+    returnUsage: true,
     messages: [
       {
         role: "system",
@@ -292,7 +321,15 @@ async function defaultLlmCaller(
   if (!result.ok) {
     return { ok: false, message: result.message };
   }
-  return { ok: true, text: result.text };
+  const usage: ImplementationCodeTaskPlanLlmUsage | null = result.usage
+    ? {
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        totalTokens: result.usage.totalTokens,
+        model,
+      }
+    : { model };
+  return { ok: true, text: result.text, usage };
 }
 
 export async function refineImplementationCodeTaskPlanWithLlm(input: {
@@ -319,6 +356,13 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   const pid = input.projectId.trim();
   const heuristicTaskCount = input.heuristicPlan.tasks.length;
   let timelineEntries: RequirementsPromptTimelineEntry[] = [];
+
+  const sourceTaskListFingerprint = buildSourceTaskListFingerprint(input.taskList);
+  const sourceSeedFingerprint = buildSourceSeedFingerprint(input.implementationSeedV1);
+  const refinementMetaBase = {
+    sourceTaskListFingerprint,
+    sourceSeedFingerprint,
+  };
 
   const heuristicValidation = validateImplementationCodeTaskPlan({
     plan: input.heuristicPlan,
@@ -349,6 +393,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
+      ...refinementMetaBase,
     });
     return {
       plan,
@@ -363,7 +408,11 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     buildPlanningLlmTimelineEntry({
       action: "implementation_code_task_llm_refinement_requested",
       projectId: pid,
-      fields: { heuristicTaskCount },
+      fields: {
+        heuristicTaskCount,
+        sourceTaskListFingerprint,
+        refinementStatus: "requested",
+      },
       nowIso: now,
     }),
   );
@@ -376,6 +425,8 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     projectArtifacts: input.projectArtifacts,
     implementationSeedV1: input.implementationSeedV1,
   });
+  const llmPromptFingerprint = buildLlmPromptFingerprint(prompt);
+  const refinementRequestedAt = now;
   const llmResult = await caller(prompt);
 
   if (!llmResult.ok) {
@@ -391,7 +442,12 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_fallback_used",
         projectId: pid,
-        fields: { fallbackUsed: true, reason: "llm_unavailable" },
+        fields: {
+          fallbackUsed: true,
+          reason: "llm_unavailable",
+          llmPromptFingerprint,
+          refinementStatus: "llm_unavailable_fallback",
+        },
         nowIso: now,
       }),
     );
@@ -403,6 +459,10 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
+      ...refinementMetaBase,
+      llmPromptFingerprint,
+      refinementRequestedAt,
+      refinementCompletedAt: now,
     });
     return {
       plan,
@@ -435,10 +495,16 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_fallback_used",
         projectId: pid,
-        fields: { fallbackUsed: true, reason: "parse_failed" },
+        fields: {
+          fallbackUsed: true,
+          reason: "parse_failed",
+          llmPromptFingerprint,
+          refinementStatus: "llm_parse_failed_fallback",
+        },
         nowIso: now,
       }),
     );
+    const llmResultFingerprint = buildLlmResultFingerprint(llmResult.text);
     const plan = buildPlanFromTasks({
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
@@ -447,6 +513,12 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
+      ...refinementMetaBase,
+      llmPromptFingerprint,
+      llmResultFingerprint,
+      refinementRequestedAt,
+      refinementCompletedAt: now,
+      llmUsage: llmResult.usage ?? null,
     });
     return {
       plan,
@@ -503,10 +575,13 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
           fallbackUsed: true,
           reason: "validation_failed",
           heuristicTaskCount,
+          llmPromptFingerprint,
+          refinementStatus: "llm_validation_failed",
         },
         nowIso: now,
       }),
     );
+    const llmResultFingerprint = buildLlmResultFingerprint(llmResult.text);
     const plan = buildPlanFromTasks({
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
@@ -515,6 +590,12 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
+      ...refinementMetaBase,
+      llmPromptFingerprint,
+      llmResultFingerprint,
+      refinementRequestedAt,
+      refinementCompletedAt: now,
+      llmUsage: llmResult.usage ?? null,
     });
     return {
       plan,
@@ -533,11 +614,19 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       fields: {
         refinedTaskCount: llmTasks.length,
         heuristicTaskCount,
+        llmPromptFingerprint,
+        sourceTaskListFingerprint,
+        refinementStatus: "llm_refined",
+        fallbackUsed: false,
+        ...(llmResult.usage?.totalTokens != null
+          ? { totalTokens: llmResult.usage.totalTokens }
+          : {}),
       },
       nowIso: now,
     }),
   );
 
+  const llmResultFingerprint = buildLlmResultFingerprint(llmResult.text);
   const plan = buildPlanFromTasks({
     basePlan: input.heuristicPlan,
     tasks: llmTasks,
@@ -547,6 +636,12 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     heuristicTaskCount,
     nowIso: now,
     llmRefinedAt: now,
+    ...refinementMetaBase,
+    llmPromptFingerprint,
+    llmResultFingerprint,
+    refinementRequestedAt,
+    refinementCompletedAt: now,
+    llmUsage: llmResult.usage ?? null,
   });
   return {
     plan,

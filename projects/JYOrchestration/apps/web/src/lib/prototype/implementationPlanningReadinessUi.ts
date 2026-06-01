@@ -2,6 +2,7 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   evaluateImplementationPlanningExecutionGate,
+  IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -43,18 +44,15 @@ function formatLlmRefinementLabel(plan: ImplementationCodeTaskPlanV1 | null | un
   const status = plan?.refinementStatus ?? "heuristic_only";
   switch (status) {
     case "llm_refined":
-      return "LLM 정제 적용";
+      return "LLM Refinement: 적용됨";
     case "llm_validation_failed":
-      return "LLM 정제 실패 · heuristic 유지";
     case "llm_unavailable_fallback":
-      return "LLM 사용 불가 · heuristic 유지";
     case "llm_parse_failed_fallback":
-      return "LLM 응답 파싱 실패 · heuristic 유지";
+      return "LLM Refinement: heuristic fallback";
     default:
-      return "Heuristic only";
+      return "LLM Refinement: heuristic only";
   }
 }
-
 export function buildImplementationPlanningReadinessCardVM(input: {
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
@@ -77,7 +75,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   if (plan?.validationReport?.status === "failed") {
     supplementReasons.push(...(plan.validationReport.errors.slice(0, 3) ?? []));
   } else if (!plan?.validationReport?.status) {
-    supplementReasons.push("CodeTask validationReport가 없습니다. 구현 준비 산출물 동기화가 필요합니다.");
+    supplementReasons.push(IMPLEMENTATION_PLANNING_MISSING_VALIDATION_MESSAGE);
   }
   if (input.preflightSummary?.status === "failed") {
     supplementReasons.push(...(input.preflightSummary.failedReasons.slice(0, 3) ?? []));

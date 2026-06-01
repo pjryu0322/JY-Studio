@@ -61,7 +61,7 @@ describe("buildImplementationPlanningReadinessCardVM", () => {
     expect(vm.overallLabel).toBe("준비됨");
     expect(vm.codeTaskCount).toBeGreaterThan(0);
     expect(vm.workItemCount).toBeGreaterThan(0);
-    expect(vm.llmRefinementLabel).toContain("Heuristic");
+    expect(vm.llmRefinementLabel).toContain("heuristic only");
     expect(vm.executionReady).toBe(true);
     expect(vm.advancedTasks.length).toBeGreaterThan(0);
   });
@@ -109,6 +109,6 @@ describe("buildImplementationPlanningReadinessCardVM", () => {
       cursorWorkItems: readiness.cursorWorkItemsV1,
       preflightSummary: readiness.implementationWorkItemPreflightSummaryV1,
     });
-    expect(vm?.llmRefinementLabel).toContain("LLM 정제");
+    expect(vm?.llmRefinementLabel).toContain("적용됨");
   });
 });

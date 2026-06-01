@@ -1,5 +1,7 @@
 import { buildImplementationPlanningReadinessPatch, buildImplementationPlanningReadinessPatchWithLlm } from "@/lib/prototype/implementationPlanningReadiness";
-import { createProjectLlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient";
+import type { ImplementationWorkItemPreflightSummaryV1 } from "@/lib/prototype/implementationPlanningReadiness";
+import { shouldRefreshImplementationPlanningReadiness } from "@/lib/prototype/implementationPlanningReadinessReuse";
+import type { LlmCodeTaskRefinementCaller } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationExecutionBoardMessage } from "@/lib/prototype/implementationExecutionBoardMessage";
@@ -22,6 +24,7 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 export type GenerateImplementationTaskListResult =
   | {
@@ -98,6 +101,24 @@ function needsPlanningReadinessSync(input: {
   return !hasCodeTaskPlan || !hasWorkItems;
 }
 
+function buildPlanningReadinessReuseTimelineEntry(input: {
+  readonly action: "implementation_planning_readiness_reused" | "implementation_planning_readiness_refresh_requested";
+  readonly projectId: string;
+  readonly reason: string;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: input.action,
+    orchestrationTraceGroup: "implementation_planning_readiness",
+    fields: {
+      projectId: input.projectId,
+      mode: "planning",
+      reason: input.reason,
+    },
+    nowIso: input.nowIso,
+  });
+}
+
 async function appendPlanningReadinessToPatchWithLlm(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
@@ -110,7 +131,11 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
   readonly nowIso: string;
   readonly includeTaskListCreatedEvent?: boolean;
   readonly syncMode?: "created" | "synced";
+  readonly llmCaller?: LlmCodeTaskRefinementCaller;
 }): Promise<Partial<RequirementsStateJson>> {
+  const { createProjectLlmCodeTaskRefinementCaller } = await import(
+    "@/lib/prototype/implementationCodeTaskPlanLlmRefinementClient"
+  );
   const readiness = await buildImplementationPlanningReadinessPatchWithLlm({
     projectId: input.projectId,
     taskList: input.taskList,
@@ -122,7 +147,7 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
     nowIso: input.nowIso,
     includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
     syncMode: input.syncMode,
-    llmCaller: createProjectLlmCodeTaskRefinementCaller(input.projectId),
+    llmCaller: input.llmCaller ?? createProjectLlmCodeTaskRefinementCaller(input.projectId),
   });
   return {
     ...input.patch,
@@ -377,6 +402,7 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
   readonly existingCodeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly existingExecutionState?: ImplementationTaskExecutionStateV1 | null;
   readonly existingCursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly existingPreflightSummary?: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly projectArtifacts?: readonly ProjectArtifact[];
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
@@ -385,6 +411,8 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
   readonly envCursorBadge?: "ok" | "needs" | "error" | "loading";
   readonly previewReady?: boolean;
   readonly nowIso?: string;
+  readonly forceRefresh?: boolean;
+  readonly llmCaller?: LlmCodeTaskRefinementCaller;
 }): Promise<GenerateImplementationTaskListResult> {
   const base = buildGenerateImplementationTaskListFromSeedResult(input);
   if (!base.ok || !base.taskList?.tasks?.length) {
@@ -393,18 +421,75 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
 
   const now = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
+
+  if (base.alreadyExisted) {
+    const effectivePlan =
+      base.patch.implementationCodeTaskPlanV1 ?? input.existingCodeTaskPlan ?? null;
+    const effectiveWorkItems =
+      base.patch.cursorWorkItemsV1 ?? input.existingCursorWorkItems ?? null;
+    const effectivePreflight =
+      base.patch.implementationWorkItemPreflightSummaryV1 ??
+      input.existingPreflightSummary ??
+      null;
+
+    const refreshDecision = shouldRefreshImplementationPlanningReadiness({
+      existingCodeTaskPlan: effectivePlan,
+      existingCursorWorkItems: effectiveWorkItems,
+      existingPreflightSummary: effectivePreflight,
+      forceRefresh: input.forceRefresh,
+    });
+
+    if (!refreshDecision.refresh) {
+      const priorTimeline = base.patch.promptTimeline ?? input.priorTimeline ?? [];
+      const promptTimeline = appendPromptTimeline(
+        priorTimeline,
+        buildPlanningReadinessReuseTimelineEntry({
+          action: "implementation_planning_readiness_reused",
+          projectId: pid,
+          reason: refreshDecision.reason,
+          nowIso: now,
+        }),
+      );
+      return {
+        ...base,
+        patch: {
+          ...base.patch,
+          implementationCodeTaskPlanV1: effectivePlan ?? undefined,
+          cursorWorkItemsV1: effectiveWorkItems ? [...effectiveWorkItems] : undefined,
+          implementationWorkItemPreflightSummaryV1: effectivePreflight ?? undefined,
+          promptTimeline,
+        },
+        userMessage:
+          base.userMessage ??
+          "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다.",
+      };
+    }
+  }
+
+  const priorTimelineForRefresh = base.patch.promptTimeline ?? input.priorTimeline ?? [];
+  const refreshTimeline = appendPromptTimeline(
+    priorTimelineForRefresh,
+    buildPlanningReadinessReuseTimelineEntry({
+      action: "implementation_planning_readiness_refresh_requested",
+      projectId: pid,
+      reason: base.alreadyExisted ? "sync_refresh" : "created",
+      nowIso: now,
+    }),
+  );
+
   const llmPatch = await appendPlanningReadinessToPatchWithLlm({
     projectId: pid,
     taskList: base.taskList,
-    patch: base.patch,
+    patch: { ...base.patch, promptTimeline: refreshTimeline },
     projectArtifacts: input.projectArtifacts,
     implementationSeedV1: input.seed,
     envOk: input.envOk,
     designOk: input.designOk,
-    priorTimeline: base.patch.promptTimeline ?? input.priorTimeline,
+    priorTimeline: refreshTimeline,
     nowIso: now,
     includeTaskListCreatedEvent: !base.alreadyExisted,
     syncMode: base.alreadyExisted ? "synced" : "created",
+    llmCaller: input.llmCaller,
   });
 
   const messages = buildPostGenerateMessages({
@@ -431,5 +516,6 @@ export async function buildGenerateImplementationTaskListFromSeedResultWithLlm(i
       ...llmPatch,
     },
     messages: messages.length ? messages : base.messages,
+    userMessage: "구현준비 산출물을 생성했습니다.",
   };
 }

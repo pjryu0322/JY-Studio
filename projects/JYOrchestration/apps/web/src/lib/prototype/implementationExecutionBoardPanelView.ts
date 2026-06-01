@@ -36,6 +36,10 @@ import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJo
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import { evaluateTaskCursorJobObservability } from "@/lib/prototype/taskCursorJobObservability";
 import {
+  buildTaskCursorExecutionJobSummaryVm,
+  formatTaskCursorExecutionJobBoardLabel,
+} from "@/lib/prototype/taskCursorExecutionJobUi";
+import {
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
   isTaskCursorCloudAgentPollingCancellable,
@@ -391,6 +395,13 @@ export function buildTaskCursorPollStatusLabel(input: {
     return undefined;
   }
   if (isServerTaskCursorPolling() && input.serverJob?.taskId === input.taskId) {
+    const summaryVm = buildTaskCursorExecutionJobSummaryVm({
+      serverPolling: true,
+      serverJob: input.serverJob,
+    });
+    const summaryLabel = formatTaskCursorExecutionJobBoardLabel(summaryVm);
+    if (summaryLabel) return summaryLabel;
+
     const observability = evaluateTaskCursorJobObservability({
       serverPolling: true,
       serverJob: input.serverJob,

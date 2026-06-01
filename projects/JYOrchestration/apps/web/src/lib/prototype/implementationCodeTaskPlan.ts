@@ -92,6 +92,18 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
   llmRefinedAt?: string;
   heuristicTaskCount?: number;
   refinedTaskCount?: number;
+  llmPromptFingerprint?: string;
+  llmResultFingerprint?: string;
+  sourceTaskListFingerprint?: string;
+  sourceSeedFingerprint?: string;
+  refinementRequestedAt?: string;
+  refinementCompletedAt?: string;
+  llmUsage?: Readonly<{
+    readonly promptTokens?: number;
+    readonly completionTokens?: number;
+    readonly totalTokens?: number;
+    readonly model?: string;
+  }>;
 }>;
 
 export const IMPLEMENTATION_CODE_TASK_CHANGE_TYPES: readonly ImplementationCodeTaskChangeType[] = [
@@ -573,6 +585,44 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
       : {}),
     ...(typeof o.heuristicTaskCount === "number" ? { heuristicTaskCount: o.heuristicTaskCount } : {}),
     ...(typeof o.refinedTaskCount === "number" ? { refinedTaskCount: o.refinedTaskCount } : {}),
+    ...(typeof o.llmPromptFingerprint === "string" && o.llmPromptFingerprint.trim()
+      ? { llmPromptFingerprint: o.llmPromptFingerprint.trim() }
+      : {}),
+    ...(typeof o.llmResultFingerprint === "string" && o.llmResultFingerprint.trim()
+      ? { llmResultFingerprint: o.llmResultFingerprint.trim() }
+      : {}),
+    ...(typeof o.sourceTaskListFingerprint === "string" && o.sourceTaskListFingerprint.trim()
+      ? { sourceTaskListFingerprint: o.sourceTaskListFingerprint.trim() }
+      : {}),
+    ...(typeof o.sourceSeedFingerprint === "string" && o.sourceSeedFingerprint.trim()
+      ? { sourceSeedFingerprint: o.sourceSeedFingerprint.trim() }
+      : {}),
+    ...(typeof o.refinementRequestedAt === "string" && o.refinementRequestedAt.trim()
+      ? { refinementRequestedAt: o.refinementRequestedAt.trim() }
+      : {}),
+    ...(typeof o.refinementCompletedAt === "string" && o.refinementCompletedAt.trim()
+      ? { refinementCompletedAt: o.refinementCompletedAt.trim() }
+      : {}),
+    ...(o.llmUsage && typeof o.llmUsage === "object"
+      ? {
+          llmUsage: {
+            ...(typeof (o.llmUsage as Record<string, unknown>).promptTokens === "number"
+              ? { promptTokens: (o.llmUsage as Record<string, unknown>).promptTokens as number }
+              : {}),
+            ...(typeof (o.llmUsage as Record<string, unknown>).completionTokens === "number"
+              ? {
+                  completionTokens: (o.llmUsage as Record<string, unknown>).completionTokens as number,
+                }
+              : {}),
+            ...(typeof (o.llmUsage as Record<string, unknown>).totalTokens === "number"
+              ? { totalTokens: (o.llmUsage as Record<string, unknown>).totalTokens as number }
+              : {}),
+            ...(typeof (o.llmUsage as Record<string, unknown>).model === "string"
+              ? { model: String((o.llmUsage as Record<string, unknown>).model).trim() }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

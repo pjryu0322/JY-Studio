@@ -20,11 +20,21 @@ export function createProjectLlmCodeTaskRefinementCaller(projectId: string): Llm
         readonly ok?: boolean;
         readonly text?: string;
         readonly message?: string;
+        readonly usage?: {
+          readonly promptTokens?: number;
+          readonly completionTokens?: number;
+          readonly totalTokens?: number;
+          readonly model?: string;
+        };
       };
       if (!response.ok || !json.ok || !json.text) {
         return { ok: false, message: json.message ?? "LLM CodeTask refinement API failed" };
       }
-      return { ok: true, text: json.text };
+      return {
+        ok: true,
+        text: json.text,
+        ...(json.usage ? { usage: json.usage } : {}),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, message };

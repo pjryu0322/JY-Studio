@@ -61,6 +61,7 @@ export function ImplementationPlanningReadinessCard({
         <div>Process Task: {vm.parentTaskCount}</div>
         <div>CodeTask: {vm.codeTaskCount}</div>
         <div>WorkItem: {vm.workItemCount}</div>
+        <div>Validation: {vm.validationStatus === "passed" ? "통과" : vm.validationStatus === "failed" ? "실패" : "미확인"}</div>
         <div>Preflight: {vm.preflightStatus === "passed" ? "통과" : vm.preflightStatus === "failed" ? "실패" : "미확인"}</div>
         <div>{vm.llmRefinementLabel}</div>
         <div>구현단계 진입: {vm.executionReady ? "가능" : "불가"}</div>
@@ -70,7 +71,7 @@ export function ImplementationPlanningReadinessCard({
         <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
           <strong style={{ color: t.textPrimary }}>보완 필요 사유</strong>
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {vm.supplementReasons.slice(0, 5).map((reason) => (
+            {vm.supplementReasons.slice(0, 3).map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
