@@ -5,7 +5,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -41,6 +40,7 @@ import {
 } from "@/components/project-spec/PrototypeSimpleExecutionPolicy";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
+import Link from "next/link";
 
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
 
@@ -142,6 +142,62 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<BusyKey>(null);
+  const renderAiExecutionSettingsBlock = useCallback(() => {
+    const pid = projectId.trim();
+    const enabled = Boolean((executionSetup as ExecutionSetupDto | null | undefined)?.enableLlmCodeTaskRefinement);
+    const hasPlannerKey = Boolean((executionSetup as ExecutionSetupDto | null | undefined)?.hasOpenaiPlannerApiKey);
+    const canToggle = canEdit && Boolean(pid);
+    return (
+      <div id="execution-ai-settings-panel">
+        <p style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>AI 실행 설정</p>
+        <p style={{ margin: "0 0 10px 0", fontSize: 12, fontWeight: 700, color: "#475569", lineHeight: 1.5 }}>
+          LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본 규칙(heuristic) 기반으로 CodeTask를 생성합니다.
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 0" }}>
+          <span style={{ fontSize: 13, fontWeight: 900, color: "#334155" }}>LLM 기반 CodeTask 정제</span>
+          <input
+            type="checkbox"
+            disabled={!canToggle}
+            checked={enabled}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setBusy("save-policy");
+              void (async () => {
+                try {
+                  const { res, json } = await patchExecutionSetup(pid, { enableLlmCodeTaskRefinement: next });
+                  if (!res.ok || !json.success || !json.data) {
+                    setMessage(json.message || "AI 실행 설정 저장에 실패했습니다.");
+                    return;
+                  }
+                  persistSetup(json.data);
+                } finally {
+                  setBusy(null);
+                }
+              })();
+            }}
+            style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: canToggle ? "pointer" : "not-allowed" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+              Planner API Key: {hasPlannerKey ? "설정됨" : "미설정"}
+            </span>
+            <Link
+              href={`/execution?projectId=${encodeURIComponent(pid)}&refineImplementationPrep=1`}
+              prefetch={false}
+              style={{ fontSize: 12, fontWeight: 900, color: "#2563eb", textDecoration: "none" }}
+              title="실행 중이면 자동으로 차단됩니다."
+            >
+              구현준비 산출물 다시 정제
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }, [canEdit, executionSetup, persistSetup, projectId, setBusy, setMessage]);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [cursorApiDetailOpen, setCursorApiDetailOpen] = useState(false);
   const [cursorApiKeyDraft, setCursorApiKeyDraft] = useState("");
@@ -797,6 +853,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                 {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}
                 {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
                 {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
+                {sectionCard("AI 실행 설정", "프로젝트 단위 LLM CodeTask 정제 토글", renderAiExecutionSettingsBlock())}
                 {sectionCard(
                   "4. 실행 정책",
                   "프로젝트 자동화에 필요한 최소 옵션만 표시합니다.",
@@ -822,6 +879,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                   {renderCursorConnectionBlock({ compactTitle: true })}
                 </>
               )}
+              {sectionCard("AI 실행 설정", "프로젝트 단위 LLM CodeTask 정제 토글", renderAiExecutionSettingsBlock())}
               {connectionSlotAfterCursor
                 ? sectionCard(
                     "2 연결 테스트",

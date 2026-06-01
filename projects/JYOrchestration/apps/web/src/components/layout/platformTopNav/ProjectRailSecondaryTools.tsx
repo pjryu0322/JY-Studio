@@ -14,6 +14,7 @@ import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
 import { ProjectRailRecommendationButton } from "@/components/layout/platformTopNav/ProjectRailRecommendationButton";
 import { ProjectWorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
+import { ProjectRailAiSettingsButton } from "@/components/layout/platformTopNav/ProjectRailAiSettingsButton";
 
 type Props = Readonly<{
   effectiveProjectId: string;
@@ -123,6 +124,7 @@ export function ProjectRailSecondaryTools({
           <span style={platformRailNavPrimaryText}>로그</span>
         </Link>
       ) : null}
+      {Boolean(me) ? <ProjectRailAiSettingsButton projectId={effectiveProjectId} /> : null}
     </div>
   );
 }

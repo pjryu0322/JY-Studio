@@ -9,7 +9,6 @@ import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSett
 import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { WorkspaceModeSwitcher } from "@/components/layout/WorkspaceModeSwitcher";
-import { fetchExecutionSetup, patchExecutionSetup, type ExecutionSetupDto } from "@/components/project-spec/apis/executionSetupApi";
 
 function sectionTitle(text: string, opts?: { first?: boolean }) {
   return (
@@ -67,37 +66,6 @@ export function SettingsPanelBody() {
     : "/project-admin/settings";
   const projectInfoHref = hasProjectContext ? `/requirements?projectId=${encodedProjectId}` : "/";
   const projectMembersHref = hasProjectContext ? projectMembersAdminHref(pid) : "/project-members";
-  const executionHref = hasProjectContext ? `/execution?projectId=${encodedProjectId}` : "/execution";
-
-  const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
-  const [executionSetupLoaded, setExecutionSetupLoaded] = useState(false);
-  const [savingAiToggle, setSavingAiToggle] = useState(false);
-
-  useEffect(() => {
-    if (!hasProjectContext || !pid) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { res, json } = await fetchExecutionSetup(pid);
-        if (cancelled) return;
-        if (!res.ok || !json.success) {
-          setExecutionSetup(null);
-          setExecutionSetupLoaded(true);
-          return;
-        }
-        setExecutionSetup(json.data ?? null);
-        setExecutionSetupLoaded(true);
-      } catch {
-        if (!cancelled) {
-          setExecutionSetup(null);
-          setExecutionSetupLoaded(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasProjectContext, pid]);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,54 +222,6 @@ export function SettingsPanelBody() {
             열기
           </Link>,
         )}
-
-        {sectionTitle("AI 실행 설정")}
-        <div style={{ padding: "2px 0 8px" }}>
-          <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 700, color: "#475569", lineHeight: 1.5 }}>
-            LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본 규칙(heuristic) 기반으로 CodeTask를 생성합니다.
-          </p>
-          {row(
-            "LLM 기반 CodeTask 정제",
-            <input
-              type="checkbox"
-              disabled={!hasProjectContext || !executionSetupLoaded || savingAiToggle}
-              checked={Boolean(executionSetup?.enableLlmCodeTaskRefinement)}
-              onChange={(e) => {
-                if (!pid) return;
-                const next = e.target.checked;
-                setSavingAiToggle(true);
-                void (async () => {
-                  try {
-                    const { res, json } = await patchExecutionSetup(pid, { enableLlmCodeTaskRefinement: next });
-                    if (!res.ok || !json.success || !json.data) return;
-                    setExecutionSetup(json.data);
-                  } finally {
-                    setSavingAiToggle(false);
-                  }
-                })();
-              }}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />,
-          )}
-          <div style={{ marginTop: 8 }}>
-            <p style={{ margin: "0 0 6px 0", fontSize: 12, fontWeight: 800, color: "#334155" }}>
-              Planner API Key: {executionSetup?.hasOpenaiPlannerApiKey ? "설정됨" : "미설정"}
-            </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Link href={projectSettingsHref} prefetch={false} style={linkStyle}>
-                API Key 설정
-              </Link>
-              <Link
-                href={`${executionHref}&refineImplementationPrep=1`}
-                prefetch={false}
-                style={linkStyle}
-                title="실행 중이면 자동으로 차단됩니다."
-              >
-                구현준비 산출물 다시 정제
-              </Link>
-            </div>
-          </div>
-        </div>
 
         {sectionTitle("연동")}
         {row(
