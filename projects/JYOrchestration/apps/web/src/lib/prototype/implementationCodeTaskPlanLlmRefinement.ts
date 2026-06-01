@@ -4,7 +4,12 @@ import {
   classifyLlmProviderFallbackReason,
   CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
   hashLlmResponsePreview,
+  logLlmCodeTaskJsonDevPreview,
+  formatLlmParseAttemptsForTimeline,
+  normalizeLlmCodeTaskPlanRoot,
   parseLlmJsonObjectWithRecovery,
+  safeLlmResponsePreviewStart,
+  type LlmJsonParseAttemptTrace,
 } from "@/lib/prototype/llmJsonParseRecovery";
 import {
   attachCodeTaskPlanRefinementMeta,
@@ -168,11 +173,33 @@ function parseChangeType(raw: unknown): ImplementationCodeTaskChangeType {
   return IMPLEMENTATION_CODE_TASK_CHANGE_TYPES.includes(value) ? value : "unknown";
 }
 
-function parseLlmCodeTasksFromJson(raw: unknown): readonly ImplementationCodeTaskV1[] | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const tasksRaw = Array.isArray(o.tasks) ? o.tasks : null;
-  if (!tasksRaw) return null;
+function appendLlmParseAttemptTimelineEntries(input: {
+  readonly projectId: string;
+  readonly nowIso: string;
+  readonly attempts: readonly LlmJsonParseAttemptTrace[];
+}): RequirementsPromptTimelineEntry[] {
+  return input.attempts.map((attempt) =>
+    buildPlanningLlmTimelineEntry({
+      action: "implementation_code_task_llm_parse_attempt",
+      projectId: input.projectId,
+      fields: {
+        strategy: attempt.strategy,
+        outcome: attempt.outcome,
+        ...(attempt.detail ? { detail: attempt.detail.slice(0, 120) } : {}),
+      },
+      nowIso: input.nowIso,
+    }),
+  );
+}
+
+function parseLlmCodeTasksFromJson(raw: unknown): Readonly<{
+  readonly tasks: readonly ImplementationCodeTaskV1[];
+  readonly normalizeSource: string;
+}> | null {
+  const normalized = normalizeLlmCodeTaskPlanRoot(raw);
+  if (!normalized) return null;
+  const tasksRaw = normalized.value.tasks;
+  if (!tasksRaw.length) return null;
 
   const tasks: ImplementationCodeTaskV1[] = [];
   for (const item of tasksRaw) {
@@ -239,7 +266,9 @@ function parseLlmCodeTasksFromJson(raw: unknown): readonly ImplementationCodeTas
         : {}),
     });
   }
-  return tasks.length ? tasks : null;
+  return tasks.length
+    ? { tasks, normalizeSource: normalized.normalizeSource }
+    : null;
 }
 
 function buildPlanFromTasks(input: {
@@ -526,6 +555,17 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   }
 
   const parseRecovery = parseLlmJsonObjectWithRecovery(llmResult.text);
+  const responseHash = hashLlmResponsePreview(llmResult.text);
+  const previewStart = safeLlmResponsePreviewStart(llmResult.text);
+
+  timelineEntries.push(
+    ...appendLlmParseAttemptTimelineEntries({
+      projectId: pid,
+      nowIso: now,
+      attempts: parseRecovery.attempts,
+    }),
+  );
+
   if (parseRecovery.ok && parseRecovery.strategy !== "direct_json_parse") {
     timelineEntries.push(
       buildPlanningLlmTimelineEntry({
@@ -534,7 +574,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         fields: {
           strategy: parseRecovery.strategy,
           rawLength: parseRecovery.rawLength,
-          responseHash: hashLlmResponsePreview(llmResult.text),
+          responseHash,
           providerSource,
           model: modelName,
         },
@@ -542,23 +582,44 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       }),
     );
   }
-  const llmTasks = parseRecovery.ok ? parseLlmCodeTasksFromJson(parseRecovery.value) : null;
-  if (!parseRecovery.ok || !llmTasks) {
-    const message = parseRecovery.ok ? "LLM CodeTask JSON shape invalid" : "LLM CodeTask JSON parse failed";
+
+  const parsedTasks = parseRecovery.ok ? parseLlmCodeTasksFromJson(parseRecovery.value) : null;
+  if (!parseRecovery.ok || !parsedTasks) {
+    const shapeInvalid = parseRecovery.ok;
+    const message = shapeInvalid ? "LLM CodeTask JSON shape invalid" : "LLM CodeTask JSON parse failed";
+    const lastAttempt = parseRecovery.attempts[parseRecovery.attempts.length - 1];
+    const parseStrategy = shapeInvalid ? "parsed_but_invalid_shape" : (lastAttempt?.strategy ?? "unknown");
+    const parseAttemptsSummary = formatLlmParseAttemptsForTimeline(parseRecovery.attempts);
+    const refinementStatus = shapeInvalid ? "llm_shape_invalid_fallback" : "llm_parse_failed_fallback";
+    const fallbackReason = shapeInvalid ? "llm_shape_invalid_fallback" : "llm_parse_failed_fallback";
+
+    logLlmCodeTaskJsonDevPreview({
+      phase: shapeInvalid ? "shape_invalid" : "parse_failed",
+      projectId: pid,
+      responseHash,
+      previewStart,
+      parseAttemptsSummary,
+      ...(!shapeInvalid && !parseRecovery.ok && parseRecovery.extractFailureReason
+        ? { extractFailureReason: parseRecovery.extractFailureReason }
+        : {}),
+    });
+
     timelineEntries.push(
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_failed",
         projectId: pid,
         fields: {
-          errorCode: parseRecovery.ok ? "json_shape_invalid" : "json_parse_failed",
+          errorCode: shapeInvalid ? "json_shape_invalid" : "json_parse_failed",
           errorMessage: message,
-          parseStrategy: parseRecovery.ok ? "parsed_but_invalid_shape" : parseRecovery.lastParseStrategy,
-          rawLength: parseRecovery.ok ? llmResult.text.length : parseRecovery.rawLength,
-          responseHash: parseRecovery.ok
-            ? hashLlmResponsePreview(llmResult.text)
-            : parseRecovery.previewHash,
+          parseStrategy,
+          parseAttemptsSummary,
+          rawLength: shapeInvalid ? llmResult.text.length : parseRecovery.rawLength,
+          responseHash: shapeInvalid ? responseHash : parseRecovery.previewHash,
           providerSource,
           model: modelName,
+          ...(!shapeInvalid && !parseRecovery.ok && parseRecovery.extractFailureReason
+            ? { extractFailureReason: parseRecovery.extractFailureReason }
+            : {}),
         },
         nowIso: now,
       }),
@@ -569,10 +630,10 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         projectId: pid,
         fields: {
           fallbackUsed: true,
-          reason: "llm_parse_failed_fallback",
+          reason: fallbackReason,
           llmPromptFingerprint,
           providerSource,
-          refinementStatus: "llm_parse_failed_fallback",
+          refinementStatus,
         },
         nowIso: now,
       }),
@@ -582,7 +643,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
       refinementSource: "llm_failed_heuristic_fallback",
-      refinementStatus: "llm_parse_failed_fallback",
+      refinementStatus,
       validationReport: heuristicValidation,
       heuristicTaskCount,
       nowIso: now,
@@ -601,6 +662,32 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       errorMessage: message,
       timelineEntries,
     };
+  }
+
+  const llmTasks = parsedTasks.tasks;
+  if (parsedTasks.normalizeSource !== "root.tasks") {
+    timelineEntries.push(
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_json_normalized",
+        projectId: pid,
+        fields: {
+          normalizeSource: parsedTasks.normalizeSource,
+          taskCount: llmTasks.length,
+          responseHash,
+          providerSource,
+          model: modelName,
+        },
+        nowIso: now,
+      }),
+    );
+    logLlmCodeTaskJsonDevPreview({
+      phase: "json_normalized",
+      projectId: pid,
+      normalizeSource: parsedTasks.normalizeSource,
+      taskCount: llmTasks.length,
+      responseHash,
+      previewStart,
+    });
   }
 
   const llmPlanDraft: ImplementationCodeTaskPlanV1 = {

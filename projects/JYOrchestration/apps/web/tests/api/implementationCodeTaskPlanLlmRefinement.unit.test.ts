@@ -158,6 +158,64 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
     ).toBe(true);
   });
 
+  it("records parse attempt timeline entries on JSON parse failure", async () => {
+    const plan = heuristicPlan();
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => ({ ok: true, text: "not-json" }),
+    });
+    const attempts = result.timelineEntries.filter(
+      (e) => e.action === "implementation_code_task_llm_parse_attempt",
+    );
+    expect(attempts.length).toBeGreaterThanOrEqual(3);
+    expect(attempts.some((e) => String(e.responseText ?? "").includes("direct_json_parse"))).toBe(true);
+  });
+
+  it("uses json_shape_invalid when JSON parses but tasks shape is wrong", async () => {
+    const plan = heuristicPlan();
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => ({ ok: true, text: JSON.stringify({ summary: "no tasks array" }) }),
+    });
+    expect(result.plan.refinementStatus).toBe("llm_shape_invalid_fallback");
+    const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
+    expect(String(failed?.responseText ?? "")).toContain("errorCode=json_shape_invalid");
+  });
+
+  it("normalizes codeTasks root and refines successfully", async () => {
+    const plan = heuristicPlan();
+    const payload = JSON.parse(validLlmTaskJson()) as { tasks: unknown[] };
+    const result = await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => ({
+        ok: true,
+        text: JSON.stringify({ codeTasks: payload.tasks }),
+      }),
+    });
+    expect(result.fallbackUsed).toBe(false);
+    expect(
+      result.timelineEntries.some((e) => e.action === "implementation_code_task_llm_json_normalized"),
+    ).toBe(true);
+  });
+
   it("5-4: records safe metadata on parse failure without raw body in timeline", async () => {
     const plan = heuristicPlan();
     const result = await refineImplementationCodeTaskPlanWithLlm({
@@ -175,6 +233,7 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
     const failed = result.timelineEntries.find((e) => e.action === "implementation_code_task_llm_refinement_failed");
     expect(String(failed?.responseText ?? "")).toContain("errorCode=json_parse_failed");
     expect(String(failed?.responseText ?? "")).toContain("responseHash=");
+    expect(String(failed?.responseText ?? "")).toContain("extractFailureReason=");
     expect(String(failed?.responseText ?? "")).not.toContain("not-json");
   });
 

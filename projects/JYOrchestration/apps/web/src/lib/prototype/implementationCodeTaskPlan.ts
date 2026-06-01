@@ -66,6 +66,7 @@ export type ImplementationCodeTaskPlanRefinementStatus =
   | "llm_validation_failed_fallback"
   | "llm_unavailable_fallback"
   | "llm_parse_failed_fallback"
+  | "llm_shape_invalid_fallback"
   | "llm_timeout_fallback";
 
 export type ImplementationCodeTaskPlanValidationReportV1 = Readonly<{
@@ -580,6 +581,7 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
     o.refinementStatus === "llm_validation_failed_fallback" ||
     o.refinementStatus === "llm_unavailable_fallback" ||
     o.refinementStatus === "llm_parse_failed_fallback" ||
+    o.refinementStatus === "llm_shape_invalid_fallback" ||
     o.refinementStatus === "llm_timeout_fallback"
       ? { refinementStatus: o.refinementStatus }
       : {}),

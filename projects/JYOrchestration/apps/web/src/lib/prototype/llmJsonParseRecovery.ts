@@ -1,11 +1,32 @@
 import { createHash } from "node:crypto";
 
+export type LlmJsonParseStrategy =
+  | "direct_json_parse"
+  | "markdown_fence_unwrapped"
+  | "first_json_object_extracted";
+
+export type LlmJsonParseAttemptOutcome =
+  | "success"
+  | "syntax_error"
+  | "not_object"
+  | "skipped_no_fence"
+  | "skipped_no_json_object"
+  | "unbalanced_json_object"
+  | "extract_syntax_error";
+
+export type LlmJsonParseAttemptTrace = Readonly<{
+  readonly strategy: LlmJsonParseStrategy;
+  readonly outcome: LlmJsonParseAttemptOutcome;
+  readonly detail?: string;
+}>;
+
 export type LlmJsonParseRecoveryResult =
   | Readonly<{
       readonly ok: true;
       readonly value: unknown;
-      readonly strategy: "direct_json_parse" | "markdown_fence_unwrapped" | "first_json_object_extracted";
+      readonly strategy: LlmJsonParseStrategy;
       readonly rawLength: number;
+      readonly attempts: readonly LlmJsonParseAttemptTrace[];
     }>
   | Readonly<{
       readonly ok: false;
@@ -13,8 +34,15 @@ export type LlmJsonParseRecoveryResult =
       readonly rawLength: number;
       readonly previewHash: string;
       readonly previewStart?: string;
-      readonly lastParseStrategy?: string;
+      readonly attempts: readonly LlmJsonParseAttemptTrace[];
+      readonly extractFailureReason?: string;
     }>;
+
+export type LlmCodeTaskPlanNormalizeResult = Readonly<{
+  /** Payload shaped as `{ tasks: unknown[] }` for downstream parsing. */
+  readonly value: Readonly<{ readonly tasks: readonly unknown[] }>;
+  readonly normalizeSource: string;
+}>;
 
 export const CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS = [
   "You refine implementation code task plans for JYOrchestration.",
@@ -27,21 +55,29 @@ export const CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS = [
   "Keep scope inside projects/JYOrchestration.",
 ].join(" ");
 
+const DEV_PREVIEW_MAX_LEN = 100;
+
 export function hashLlmResponsePreview(raw: string): string {
   return createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
-export function safeLlmResponsePreviewStart(raw: string, maxLen = 100): string {
+export function safeLlmResponsePreviewStart(raw: string, maxLen = DEV_PREVIEW_MAX_LEN): string {
   const collapsed = raw.trim().replace(/\s+/g, " ");
   if (!collapsed) return "";
   return collapsed.slice(0, maxLen);
 }
 
-function tryJsonParse(text: string): unknown | null {
+/** Dev-only diagnostic log — never includes API keys; not written to prompt timeline. */
+export function logLlmCodeTaskJsonDevPreview(input: Readonly<Record<string, string | number | boolean>>): void {
+  if (String(process.env.NODE_ENV ?? "").trim() === "production") return;
+  console.info("[implementation_code_task_llm_json]", input);
+}
+
+function tryJsonParse(text: string): Readonly<{ readonly ok: true; readonly value: unknown } | { readonly ok: false }> {
   try {
-    return JSON.parse(text) as unknown;
+    return { ok: true, value: JSON.parse(text) as unknown };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 
@@ -57,9 +93,13 @@ function unwrapMarkdownJsonFence(text: string): string | null {
   return null;
 }
 
-export function extractFirstBalancedJsonObject(text: string): string | null {
+export function extractFirstBalancedJsonObject(text: string): Readonly<
+  | { readonly kind: "found"; readonly json: string }
+  | { readonly kind: "no_open_brace" }
+  | { readonly kind: "unbalanced" }
+> {
   const start = text.indexOf("{");
-  if (start < 0) return null;
+  if (start < 0) return { kind: "no_open_brace" };
 
   let depth = 0;
   let inString = false;
@@ -86,66 +126,168 @@ export function extractFirstBalancedJsonObject(text: string): string | null {
     } else if (ch === "}") {
       depth -= 1;
       if (depth === 0) {
-        return text.slice(start, i + 1);
+        return { kind: "found", json: text.slice(start, i + 1) };
       }
     }
   }
+  return { kind: "unbalanced" };
+}
+
+function tasksPayloadFromRecord(
+  record: Record<string, unknown>,
+): Readonly<{ readonly tasks: readonly unknown[]; readonly field: "tasks" | "codeTasks" }> | null {
+  if (Array.isArray(record.tasks)) {
+    return { tasks: record.tasks, field: "tasks" };
+  }
+  if (Array.isArray(record.codeTasks)) {
+    return { tasks: record.codeTasks, field: "codeTasks" };
+  }
   return null;
+}
+
+/** Accept alternate LLM root shapes and normalize to `{ tasks: [...] }`. */
+export function normalizeLlmCodeTaskPlanRoot(raw: unknown): LlmCodeTaskPlanNormalizeResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  const rootPayload = tasksPayloadFromRecord(o);
+  if (rootPayload) {
+    return {
+      value: { tasks: rootPayload.tasks },
+      normalizeSource: `root.${rootPayload.field}`,
+    };
+  }
+
+  for (const key of ["plan", "data", "implementationCodeTaskPlan", "codeTaskPlan", "payload"] as const) {
+    const nested = o[key];
+    if (!nested || typeof nested !== "object") continue;
+    const nestedPayload = tasksPayloadFromRecord(nested as Record<string, unknown>);
+    if (nestedPayload) {
+      return {
+        value: { tasks: nestedPayload.tasks },
+        normalizeSource: `root.${key}.${nestedPayload.field}`,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function formatLlmParseAttemptsForTimeline(
+  attempts: readonly LlmJsonParseAttemptTrace[],
+): string {
+  return attempts
+    .map((a) => `${a.strategy}:${a.outcome}${a.detail ? `(${a.detail.slice(0, 40)})` : ""}`)
+    .join("|");
 }
 
 export function parseLlmJsonObjectWithRecovery(raw: string): LlmJsonParseRecoveryResult {
   const trimmed = String(raw ?? "").trim();
   const rawLength = trimmed.length;
+  const attempts: LlmJsonParseAttemptTrace[] = [];
+
   if (!rawLength) {
     return {
       ok: false,
       errorCode: "empty_response",
       rawLength: 0,
       previewHash: hashLlmResponsePreview(""),
+      attempts,
     };
   }
 
   const previewHash = hashLlmResponsePreview(trimmed);
   const previewStart = safeLlmResponsePreviewStart(trimmed);
 
-  const direct = tryJsonParse(trimmed);
-  if (direct !== null && typeof direct === "object") {
-    return { ok: true, value: direct, strategy: "direct_json_parse", rawLength };
+  const directParsed = tryJsonParse(trimmed);
+  if (directParsed.ok) {
+    if (directParsed.value !== null && typeof directParsed.value === "object") {
+      attempts.push({ strategy: "direct_json_parse", outcome: "success" });
+      return {
+        ok: true,
+        value: directParsed.value,
+        strategy: "direct_json_parse",
+        rawLength,
+        attempts,
+      };
+    }
+    attempts.push({
+      strategy: "direct_json_parse",
+      outcome: "not_object",
+      detail: typeof directParsed.value,
+    });
+  } else {
+    attempts.push({ strategy: "direct_json_parse", outcome: "syntax_error" });
   }
 
   const fenced = unwrapMarkdownJsonFence(trimmed);
-  if (fenced) {
-    const parsed = tryJsonParse(fenced);
-    if (parsed !== null && typeof parsed === "object") {
+  if (!fenced) {
+    attempts.push({ strategy: "markdown_fence_unwrapped", outcome: "skipped_no_fence" });
+  } else {
+    const fenceParsed = tryJsonParse(fenced);
+    if (fenceParsed.ok && fenceParsed.value !== null && typeof fenceParsed.value === "object") {
+      attempts.push({ strategy: "markdown_fence_unwrapped", outcome: "success" });
       return {
         ok: true,
-        value: parsed,
+        value: fenceParsed.value,
         strategy: "markdown_fence_unwrapped",
         rawLength,
+        attempts,
       };
     }
+    attempts.push({
+      strategy: "markdown_fence_unwrapped",
+      outcome: fenceParsed.ok ? "not_object" : "syntax_error",
+    });
   }
 
   const extracted = extractFirstBalancedJsonObject(trimmed);
-  if (extracted) {
-    const parsed = tryJsonParse(extracted);
-    if (parsed !== null && typeof parsed === "object") {
+  if (extracted.kind === "no_open_brace") {
+    attempts.push({
+      strategy: "first_json_object_extracted",
+      outcome: "skipped_no_json_object",
+      detail: "no_open_brace",
+    });
+  } else if (extracted.kind === "unbalanced") {
+    attempts.push({
+      strategy: "first_json_object_extracted",
+      outcome: "unbalanced_json_object",
+      detail: "unclosed_object",
+    });
+  } else {
+    const extractParsed = tryJsonParse(extracted.json);
+    if (extractParsed.ok && extractParsed.value !== null && typeof extractParsed.value === "object") {
+      attempts.push({ strategy: "first_json_object_extracted", outcome: "success" });
       return {
         ok: true,
-        value: parsed,
+        value: extractParsed.value,
         strategy: "first_json_object_extracted",
         rawLength,
+        attempts,
       };
     }
+    attempts.push({
+      strategy: "first_json_object_extracted",
+      outcome: "extract_syntax_error",
+      detail: extractParsed.ok ? "not_object" : "syntax_error",
+    });
   }
+
+  const extractFailureReason =
+    extracted.kind === "no_open_brace"
+      ? "no_json_object_in_response"
+      : extracted.kind === "unbalanced"
+        ? "unbalanced_json_object"
+        : "extracted_object_syntax_error";
 
   return {
     ok: false,
-    errorCode: extracted ? "json_parse_failed" : "no_json_object_found",
+    errorCode: extracted.kind === "no_open_brace" ? "no_json_object_found" : "json_parse_failed",
     rawLength,
     previewHash,
     previewStart: previewStart || undefined,
-    lastParseStrategy: extracted ? "first_json_object_extracted" : fenced ? "markdown_fence_unwrapped" : "direct_json_parse",
+    attempts,
+    extractFailureReason,
   };
 }
 
