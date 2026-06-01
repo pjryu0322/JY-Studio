@@ -86,8 +86,12 @@ export async function enqueueNextTaskCursorJobAfterTerminal(input: {
     nextTaskId,
     orchestrationPatch: buildTaskCursorOrchestrationPatch({
       execution: pendingExecution,
+      history: input.requirementsState.taskCursorExecutionHistoryV1 ?? null,
       timelineEntries: [timelineEntry],
       cursorWorkItems: input.requirementsState.cursorWorkItemsV1 ?? [],
+      existingCodeTaskExecutionFeedback:
+        input.requirementsState.implementationCodeTaskExecutionFeedbackV1 ?? null,
+      codeTaskQualityGate: input.requirementsState.implementationCodeTaskQualityGateV1 ?? null,
     }),
   };
 }

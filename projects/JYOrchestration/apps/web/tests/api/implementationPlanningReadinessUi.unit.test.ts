@@ -54,11 +54,12 @@ describe("buildImplementationPlanningReadinessCardVM", () => {
       codeTaskPlan: readiness.implementationCodeTaskPlanV1,
       cursorWorkItems: readiness.cursorWorkItemsV1,
       preflightSummary: readiness.implementationWorkItemPreflightSummaryV1,
+      codeTaskQualityGate: readiness.implementationCodeTaskQualityGateV1,
       taskList: sampleTaskList(),
     });
     expect(vm).not.toBeNull();
     if (!vm) return;
-    expect(vm.overallLabel).toBe("준비됨");
+    expect(["준비됨", "준비됨 · 경고 있음"]).toContain(vm.overallLabel);
     expect(vm.codeTaskCount).toBeGreaterThan(0);
     expect(vm.workItemCount).toBeGreaterThan(0);
     expect(vm.llmRefinementLabel).toContain("heuristic only");
@@ -110,5 +111,41 @@ describe("buildImplementationPlanningReadinessCardVM", () => {
       preflightSummary: readiness.implementationWorkItemPreflightSummaryV1,
     });
     expect(vm?.llmRefinementLabel).toContain("적용됨");
+  });
+
+  it("shows ready with warning label when quality gate is warning only", () => {
+    const readiness = buildImplementationPlanningReadinessPatch({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const warningGate = {
+      ...readiness.implementationCodeTaskQualityGateV1,
+      status: "warning" as const,
+      warningCount: 1,
+      issueCount: 1,
+      issues: [
+        {
+          codeTaskId: readiness.implementationCodeTaskPlanV1.tasks[0]?.codeTaskId ?? "CODE-1",
+          parentTaskId: "DEV-SCREEN-001",
+          severity: "warning" as const,
+          issueCode: "missing_test_task" as const,
+          message: "test task missing",
+        },
+      ],
+    };
+    const vm = buildImplementationPlanningReadinessCardVM({
+      codeTaskPlan: readiness.implementationCodeTaskPlanV1,
+      cursorWorkItems: readiness.cursorWorkItemsV1,
+      preflightSummary: readiness.implementationWorkItemPreflightSummaryV1,
+      codeTaskQualityGate: warningGate,
+    });
+    expect(vm?.executionReady).toBe(true);
+    expect(vm?.overallLabel).toBe("준비됨 · 경고 있음");
+    expect(vm?.overallTone).toBe("ok");
+    expect(vm?.attentionItems.length).toBeGreaterThan(0);
+    expect(vm?.supplementReasons.some((reason) => reason.includes("test task missing"))).toBe(false);
   });
 });

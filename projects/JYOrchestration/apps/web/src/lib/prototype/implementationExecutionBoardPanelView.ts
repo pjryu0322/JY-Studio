@@ -23,6 +23,8 @@ import {
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationCodeTaskFeedbackSummaryV1 } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
 import { formatCodeTaskFeedbackBoardLine } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
+import type { ImplementationCodeTaskReworkVmV1 } from "@/lib/prototype/implementationCodeTaskReworkVm";
+import { formatCodeTaskReworkBoardSummaryLine } from "@/lib/prototype/implementationCodeTaskReworkVm";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -568,6 +570,7 @@ export function buildCompactBoardSecondarySummaryLine(input: {
   readonly previewReady: boolean;
   readonly reviewReady: boolean;
   readonly feedbackSummary?: ImplementationCodeTaskFeedbackSummaryV1 | null;
+  readonly reworkVm?: ImplementationCodeTaskReworkVmV1 | null;
 }): string {
   const parts = [
     input.previewReady ? "Preview 준비됨" : "Preview 미준비",
@@ -576,8 +579,13 @@ export function buildCompactBoardSecondarySummaryLine(input: {
   if (input.board.summary.userConfirmationRequired > 0) {
     parts.unshift(`사용자 확인 ${input.board.summary.userConfirmationRequired}`);
   }
-  const feedbackLine = formatCodeTaskFeedbackBoardLine(input.feedbackSummary);
-  if (feedbackLine) parts.push(feedbackLine);
+  const reworkLine = formatCodeTaskReworkBoardSummaryLine(input.reworkVm);
+  if (reworkLine) {
+    parts.push(reworkLine);
+  } else {
+    const feedbackLine = formatCodeTaskFeedbackBoardLine(input.feedbackSummary);
+    if (feedbackLine) parts.push(feedbackLine);
+  }
   return parts.join(" · ");
 }
 

@@ -68,7 +68,7 @@ export function ImplementationPlanningReadinessCard({
           {vm.qualityStatus === "passed"
             ? "통과"
             : vm.qualityStatus === "warning"
-              ? "경고"
+              ? `경고 ${vm.qualityWarningCount}개`
               : vm.qualityStatus === "failed"
                 ? "실패"
                 : "미확인"}
@@ -82,6 +82,17 @@ export function ImplementationPlanningReadinessCard({
       {vm.feedbackSummary ? (
         <div style={{ fontSize: 11, color: t.textPrimary, lineHeight: 1.5 }}>
           {formatCodeTaskFeedbackSummaryLine(vm.feedbackSummary)}
+        </div>
+      ) : null}
+
+      {vm.attentionItems.length ? (
+        <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
+          <strong style={{ color: t.textPrimary }}>주의 항목</strong>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {vm.attentionItems.slice(0, 3).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

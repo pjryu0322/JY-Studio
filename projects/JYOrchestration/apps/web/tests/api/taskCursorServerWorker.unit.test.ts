@@ -137,6 +137,52 @@ describe("mergeOrchestrationPatchIntoRequirementsState", () => {
     expect(merged.taskCursorExecutionV1?.status).toBe("review_pending");
     expect(merged.taskCursorExecutionV1?.taskId).toBe("TASK-A");
   });
+
+  it("preserves code task execution feedback across sequential orchestration patches", () => {
+    const feedback = {
+      version: "implementation_code_task_execution_feedback_v1" as const,
+      projectId: "p1",
+      updatedAt: NOW,
+      feedbackByCodeTaskId: {
+        "CODE-A": {
+          codeTaskId: "CODE-A",
+          parentTaskId: "TASK-A",
+          status: "failed" as const,
+          lastCauseLayer: "github_verify" as const,
+          workItemIds: ["wi-a"],
+          updatedAt: NOW,
+        },
+      },
+    };
+    const merged = mergeOrchestrationPatchIntoRequirementsState(
+      { implementationCodeTaskExecutionFeedbackV1: feedback },
+      {
+        taskCursorExecutionV1: execution({ taskId: "TASK-B", status: "requested" }),
+        implementationCodeTaskExecutionFeedbackV1: {
+          ...feedback,
+          feedbackByCodeTaskId: {
+            ...feedback.feedbackByCodeTaskId,
+            "CODE-B": {
+              codeTaskId: "CODE-B",
+              parentTaskId: "TASK-B",
+              status: "not_started",
+              workItemIds: ["wi-b"],
+              updatedAt: NOW,
+            },
+          },
+        },
+      },
+    );
+    expect(merged.implementationCodeTaskExecutionFeedbackV1?.feedbackByCodeTaskId["CODE-A"]?.status).toBe(
+      "failed",
+    );
+    expect(
+      merged.implementationCodeTaskExecutionFeedbackV1?.feedbackByCodeTaskId["CODE-A"]?.lastCauseLayer,
+    ).toBe("github_verify");
+    expect(merged.implementationCodeTaskExecutionFeedbackV1?.feedbackByCodeTaskId["CODE-B"]?.status).toBe(
+      "not_started",
+    );
+  });
 });
 
 describe("client polling fallback policy", () => {

@@ -38,7 +38,7 @@ export type ImplementationPlanningReadinessCardTaskRow = Readonly<{
 
 export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly visible: true;
-  readonly overallLabel: "준비됨" | "보완 필요";
+  readonly overallLabel: "준비됨" | "준비됨 · 경고 있음" | "보완 필요";
   readonly overallTone: "ok" | "warn";
   readonly parentTaskCount: number;
   readonly codeTaskCount: number;
@@ -48,11 +48,13 @@ export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly validationStatus: "passed" | "failed" | "unknown";
   readonly qualityStatus: "passed" | "warning" | "failed" | "unknown";
   readonly qualityIssueCount: number;
+  readonly qualityWarningCount: number;
   readonly qualityWarnings: readonly string[];
   readonly qualityErrors: readonly string[];
   readonly riskyCodeTaskIds: readonly string[];
   readonly executionReady: boolean;
   readonly supplementReasons: readonly string[];
+  readonly attentionItems: readonly string[];
   readonly advancedTasks: readonly ImplementationPlanningReadinessCardTaskRow[];
   readonly feedbackSummary?: ImplementationCodeTaskFeedbackSummaryV1;
   readonly feedbackTaskRows?: readonly ImplementationCodeTaskFeedbackTaskRowV1[];
@@ -143,6 +145,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   const issuesByCodeTaskId = groupIssuesByCodeTaskId(qualityGate?.issues ?? []);
 
   const supplementReasons: string[] = [];
+  const attentionItems: string[] = [];
   if (plan?.readiness.missing.length) {
     supplementReasons.push(...plan.readiness.missing.slice(0, 4));
   }
@@ -155,7 +158,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
     supplementReasons.push(IMPLEMENTATION_PLANNING_CODE_TASK_QUALITY_FAILED_MESSAGE);
     supplementReasons.push(...qualityErrors.slice(0, 3));
   } else if (qualityGate?.status === "warning") {
-    supplementReasons.push(...qualityWarnings.slice(0, 3));
+    attentionItems.push(...qualityWarnings.slice(0, 3));
   }
   if (input.preflightSummary?.status === "failed") {
     supplementReasons.push(...(input.preflightSummary.failedReasons.slice(0, 3) ?? []));
@@ -165,13 +168,20 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   }
 
   const executionReady = gate.ok;
+  const qualityWarningCount = qualityGate?.warningCount ?? qualityWarnings.length;
+  const hasQualityWarningsOnly = executionReady && qualityStatus === "warning" && qualityWarningCount > 0;
+  const overallLabel: ImplementationPlanningReadinessCardVM["overallLabel"] = executionReady
+    ? hasQualityWarningsOnly
+      ? "준비됨 · 경고 있음"
+      : "준비됨"
+    : "보완 필요";
   const overallTone: "ok" | "warn" = executionReady ? "ok" : "warn";
   const feedbackSummary = buildImplementationCodeTaskFeedbackSummary(input.codeTaskExecutionFeedback);
   const feedbackTaskRows = buildImplementationCodeTaskFeedbackTaskRows(input.codeTaskExecutionFeedback);
 
   return {
     visible: true,
-    overallLabel: executionReady ? "준비됨" : "보완 필요",
+    overallLabel,
     overallTone,
     parentTaskCount: plan?.parentTaskCount ?? countDeveloperTasks(input.taskList),
     codeTaskCount: plan?.codeTaskCount ?? plan?.tasks.length ?? 0,
@@ -181,6 +191,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
     validationStatus: plan?.validationReport?.status ?? "unknown",
     qualityStatus,
     qualityIssueCount: qualityGate?.issueCount ?? 0,
+    qualityWarningCount,
     qualityWarnings,
     qualityErrors,
     riskyCodeTaskIds,
@@ -189,6 +200,7 @@ export function buildImplementationPlanningReadinessCardVM(input: {
       0,
       3,
     ),
+    attentionItems: [...new Set(attentionItems.map((v) => v.trim()).filter(Boolean))].slice(0, 3),
     advancedTasks: (plan?.tasks ?? []).map((task) => ({
       codeTaskId: task.codeTaskId,
       parentTaskId: task.parentTaskId,

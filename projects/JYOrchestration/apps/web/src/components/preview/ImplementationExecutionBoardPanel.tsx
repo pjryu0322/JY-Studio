@@ -11,6 +11,11 @@ import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
 import { buildImplementationCodeTaskFeedbackSummary } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
+import {
+  buildImplementationCodeTaskReworkVm,
+  formatCodeTaskReworkRecommendedActionKo,
+} from "@/lib/prototype/implementationCodeTaskReworkVm";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -70,6 +75,7 @@ export function ImplementationExecutionBoardPanel({
   onRestartTask,
   onSelectedTaskIdsChange,
   codeTaskExecutionFeedbackV1,
+  implementationCodeTaskPlanV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -91,10 +97,19 @@ export function ImplementationExecutionBoardPanel({
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
     [codeTaskExecutionFeedbackV1],
+  );
+  const reworkVm = useMemo(
+    () =>
+      buildImplementationCodeTaskReworkVm({
+        feedback: codeTaskExecutionFeedbackV1,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+      }),
+    [codeTaskExecutionFeedbackV1, implementationCodeTaskPlanV1],
   );
   const summaryView = useMemo(
     () =>
@@ -227,6 +242,7 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reworkOpen, setReworkOpen] = useState(false);
 
   return (
     <section
@@ -248,8 +264,52 @@ export function ImplementationExecutionBoardPanel({
                     previewReady: summaryView.previewReady,
                     reviewReady: summaryView.testReadiness.ready,
                     feedbackSummary,
+                    reworkVm,
                   })}
         </div>
+        {reworkVm?.candidateCount ? (
+          <div className={styles.reworkSummary}>
+            <button
+              type="button"
+              className={styles.reworkToggle}
+              aria-expanded={reworkOpen}
+              onClick={() => setReworkOpen((open) => !open)}
+            >
+              {reworkOpen ? "재작업 후보 닫기" : `재작업 후보 ${reworkVm.candidateCount}개 보기`}
+            </button>
+            {reworkOpen ? (
+              <ul className={styles.reworkList}>
+                {reworkVm.candidates.map((candidate) => (
+                  <li key={candidate.codeTaskId} className={styles.reworkItem}>
+                    <div>
+                      {candidate.parentTaskId} · {candidate.codeTaskId}
+                      {candidate.title ? ` · ${candidate.title}` : ""}
+                    </div>
+                    <div className={styles.reworkMeta}>
+                      {candidate.causeLayer ? `원인: ${candidate.causeLayer}` : null}
+                      {candidate.failureReason ? ` · ${candidate.failureReason}` : null}
+                    </div>
+                    <div className={styles.reworkMeta}>
+                      권장: {formatCodeTaskReworkRecommendedActionKo(candidate.recommendedAction)}
+                      {candidate.recommendedAction === "rerun_task" && onRestartTask ? (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            className={styles.reworkActionLink}
+                            onClick={() => onRestartTask(candidate.parentTaskId)}
+                          >
+                            Task 재실행
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <ImplementationCodeAgentExecutionProgressCard
