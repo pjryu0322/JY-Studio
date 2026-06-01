@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   fetchEnvironmentTestLast,
@@ -2012,10 +2011,6 @@ export function ProjectExecutionEnvironmentPanel({
     executionSetup,
     pendingDelete: openaiPlannerApiKeyPendingDelete,
   });
-  const refineImplementationPrepHref = `/execution?projectId=${encodeURIComponent(projectId.trim())}&refineImplementationPrep=1`;
-  const executionPipelineRunning = Boolean(envTestLast?.isRunning) || busyEnvTest;
-  const refineImplementationPrepDisabled =
-    !enableLlmCodeTaskRefinement || !plannerKeyUi.hasKey || executionPipelineRunning || !projectId.trim();
 
   const envTestDisabledTitle = isPrototypeMvpUi
     ? resolvePrototypeEnvTestDisabledTitle({
@@ -2300,6 +2295,10 @@ export function ProjectExecutionEnvironmentPanel({
         LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본
         규칙(heuristic) 기반으로 CodeTask를 생성합니다.
       </p>
+      <p style={{ margin: "0 0 12px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+        LLM 기반 CodeTask 정제는 기획단계에서 Quick Design을 확정할 때 자동으로 적용됩니다. 이미 생성된 구현준비
+        산출물은 기획단계를 초기화한 뒤 다시 Quick Design을 확정하면 새 설정으로 재생성됩니다.
+      </p>
 
       <label
         style={{
@@ -2420,52 +2419,6 @@ export function ProjectExecutionEnvironmentPanel({
         >
           삭제
         </button>
-        {refineImplementationPrepDisabled ? (
-          <button
-            type="button"
-            disabled
-            data-testid="refine-implementation-prep-button"
-            title={
-              !enableLlmCodeTaskRefinement
-                ? "LLM 기반 CodeTask 정제를 켜야 합니다."
-                : !plannerKeyUi.hasKey
-                  ? "Planner API Key를 설정하세요."
-                  : executionPipelineRunning
-                    ? "구현단계 실행 중에는 재정제할 수 없습니다."
-                    : undefined
-            }
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #e2e8f0",
-              background: "#f1f5f9",
-              color: "#94a3b8",
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: "not-allowed",
-            }}
-          >
-            구현준비 산출물 다시 정제
-          </button>
-        ) : (
-          <Link
-            href={refineImplementationPrepHref}
-            prefetch={false}
-            data-testid="refine-implementation-prep-button"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #bfdbfe",
-              background: "#eff6ff",
-              color: "#2563eb",
-              fontWeight: 800,
-              fontSize: 12,
-              textDecoration: "none",
-            }}
-          >
-            구현준비 산출물 다시 정제
-          </Link>
-        )}
       </div>
 
       <p style={{ margin: 0, fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>

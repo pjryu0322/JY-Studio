@@ -3677,7 +3677,6 @@ export function PrototypePreviewPanel({
           conversationMessages: resolved.messages ?? [],
           slotDefinitions: planningSlotDefinitions,
           envOkOverride: canRequestGeneration.envOk,
-          enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
         });
         if (result.kind === "blocked") {
           showToast(result.message);
@@ -3724,7 +3723,6 @@ export function PrototypePreviewPanel({
         designOk: effectiveImplementationState.designOk,
         envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
         previewReady: prototypeRunSyncSnapshot.previewReady,
-        enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
       });
       if (!result.ok) {
         showToast(result.message);
@@ -5372,7 +5370,6 @@ export function PrototypePreviewPanel({
         previewReady: prototypeRunSyncSnapshot.previewReady,
         forceRefresh: true,
         forceLlm: true,
-        enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
       });
       if (!result.ok) {
         showToast(result.message);

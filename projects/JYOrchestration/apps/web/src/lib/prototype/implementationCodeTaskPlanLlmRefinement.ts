@@ -392,13 +392,19 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     projectSetting === true ||
     (projectSetting === undefined && envFallback);
   if (!llmEnabled) {
+    const hasOpenaiPlannerApiKey = Boolean(String(input.providerContext?.apiKey ?? "").trim());
+    const skipReason =
+      projectSetting === false ? "disabled_by_project_setting" : "disabled";
     timelineEntries.push(
       buildPlanningLlmTimelineEntry({
         action: "implementation_code_task_llm_refinement_skipped",
         projectId: pid,
         fields: {
-          reason: projectSetting === false ? "disabled_by_project_setting" : "disabled",
-          enableLlmCodeTaskRefinement: projectSetting === true ? true : false,
+          reason: skipReason,
+          enableLlmCodeTaskRefinement: projectSetting === true,
+          hasOpenaiPlannerApiKey,
+          useLlm: false,
+          skipReason,
         },
         nowIso: now,
       }),
@@ -688,6 +694,8 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
   readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly hasOpenaiPlannerApiKey?: boolean;
+  readonly skipReason?: string;
 }): Promise<{
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
@@ -734,6 +742,18 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
           validationStatus: validationReport.status,
           heuristicTaskCount: input.heuristicPlan.tasks.length,
           source: "heuristic",
+        },
+        nowIso: now,
+      }),
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_refinement_skipped",
+        projectId: input.projectId.trim(),
+        fields: {
+          reason: input.skipReason ?? "llm_refinement_not_used",
+          enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement === true,
+          hasOpenaiPlannerApiKey: input.hasOpenaiPlannerApiKey === true,
+          useLlm: false,
+          skipReason: input.skipReason ?? "llm_refinement_not_used",
         },
         nowIso: now,
       }),

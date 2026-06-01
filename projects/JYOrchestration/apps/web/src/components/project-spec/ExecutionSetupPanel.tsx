@@ -40,7 +40,6 @@ import {
 } from "@/components/project-spec/PrototypeSimpleExecutionPolicy";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
-import Link from "next/link";
 
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
 
@@ -153,6 +152,10 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         <p style={{ margin: "0 0 10px 0", fontSize: 12, fontWeight: 700, color: "#475569", lineHeight: 1.5 }}>
           LLM 기반 CodeTask 정제는 기획 내용을 실제 Cursor 작업 단위로 더 정교하게 분해합니다. 비활성화 시 기본 규칙(heuristic) 기반으로 CodeTask를 생성합니다.
         </p>
+        <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+          LLM 기반 CodeTask 정제는 기획단계에서 Quick Design을 확정할 때 자동으로 적용됩니다. 이미 생성된 구현준비
+          산출물은 기획단계를 초기화한 뒤 다시 Quick Design을 확정하면 새 설정으로 재생성됩니다.
+        </p>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 0" }}>
           <span style={{ fontSize: 13, fontWeight: 900, color: "#334155" }}>LLM 기반 CodeTask 정제</span>
@@ -181,19 +184,9 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-              Planner API Key: {hasPlannerKey ? "설정됨" : "미설정"}
-            </span>
-            <Link
-              href={`/execution?projectId=${encodeURIComponent(pid)}&refineImplementationPrep=1`}
-              prefetch={false}
-              style={{ fontSize: 12, fontWeight: 900, color: "#2563eb", textDecoration: "none" }}
-              title="실행 중이면 자동으로 차단됩니다."
-            >
-              구현준비 산출물 다시 정제
-            </Link>
-          </div>
+          <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+            Planner API Key: {hasPlannerKey ? "설정됨" : "미설정"}
+          </span>
         </div>
       </div>
     );

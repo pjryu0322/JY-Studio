@@ -25,7 +25,12 @@ import {
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry,
+  resolveLlmRefinementDecision,
+  resolveProjectCodeTaskRefinementSettings,
+} from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings";
+import { resolveLlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 
 export const IMPLEMENTATION_WORK_ITEM_PREFLIGHT_SUMMARY_VERSION =
@@ -303,12 +308,41 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   readonly syncMode?: "created" | "synced";
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
-  /** Project-level toggle. If undefined, falls back to env flag in non-prod. */
+  /** Project-level toggle. If undefined, resolved from server ExecutionSetup. */
   readonly enableLlmCodeTaskRefinement?: boolean;
+  readonly actorUserId?: string | null;
   readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
 }): Promise<ImplementationPlanningReadinessPatch> {
   const now = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
+  const refinementSettings = await resolveProjectCodeTaskRefinementSettings({
+    projectId: pid,
+    actorUserId: input.actorUserId ?? null,
+  });
+  const enableLlmCodeTaskRefinement =
+    input.enableLlmCodeTaskRefinement !== undefined
+      ? input.enableLlmCodeTaskRefinement
+      : refinementSettings.enableLlmCodeTaskRefinement;
+  const refinementDecision = resolveLlmRefinementDecision({
+    settings: refinementSettings,
+    forceLlm: input.forceLlm,
+    projectSettingOverride: enableLlmCodeTaskRefinement,
+  });
+  const decisionTimelineEntry = buildImplementationCodeTaskLlmRefinementDecisionTimelineEntry({
+    projectId: pid,
+    settings: { ...refinementSettings, enableLlmCodeTaskRefinement },
+    decision: refinementDecision.decision,
+    skipReason: refinementDecision.skipReason,
+    useLlm: refinementDecision.useLlm,
+    nowIso: now,
+  });
+  const priorTimelineWithDecision = appendPromptTimeline(input.priorTimeline ?? [], decisionTimelineEntry);
+  const providerContext =
+    input.providerContext ??
+    (await resolveLlmCodeTaskRefinementProviderContext({
+      projectId: pid,
+      actorUserId: input.actorUserId ?? null,
+    }));
   const heuristicPlan = buildImplementationCodeTaskPlanFromTaskList({
     projectId: pid,
     taskList: input.taskList,
@@ -317,12 +351,13 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     designOk: input.designOk,
     nowIso: now,
   });
-  const projectSetting = input.enableLlmCodeTaskRefinement;
-  const envFallback = isLlmCodeTaskRefinementEnabled();
   const useLlm =
-    input.forceLlm === true ||
-    projectSetting === true ||
-    (projectSetting === undefined && envFallback);
+    input.forceLlm === true
+      ? true
+      : refinementDecision.useLlm ||
+        (input.enableLlmCodeTaskRefinement === undefined &&
+          !enableLlmCodeTaskRefinement &&
+          isLlmCodeTaskRefinementEnabled());
   const resolved = await resolveImplementationCodeTaskPlanForPlanningReadiness({
     projectId: pid,
     taskList: input.taskList,
@@ -334,17 +369,19 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     nowIso: now,
     useLlmRefinement: useLlm,
     llmCaller: input.llmCaller,
-    providerContext: input.providerContext,
-    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
+    providerContext,
+    enableLlmCodeTaskRefinement,
+    hasOpenaiPlannerApiKey: refinementSettings.hasOpenaiPlannerApiKey,
+    skipReason: refinementDecision.skipReason,
   });
   return buildPlanningReadinessPatchFromCodeTaskPlan({
     projectId: pid,
     taskList: input.taskList,
     codeTaskPlan: resolved.plan,
     allowedPathGlobs: input.allowedPathGlobs,
-    priorTimeline: input.priorTimeline,
+    priorTimeline: priorTimelineWithDecision,
     extraTimeline:
-      !useLlm && projectSetting === false && input.forceLlm !== true
+      !useLlm && enableLlmCodeTaskRefinement === false && input.forceLlm !== true
         ? [
             ...resolved.timelineEntries,
             buildPlanningReadinessTimelineEntry({
@@ -353,6 +390,9 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
               fields: {
                 reason: "disabled_by_project_setting",
                 enableLlmCodeTaskRefinement: false,
+                hasOpenaiPlannerApiKey: refinementSettings.hasOpenaiPlannerApiKey,
+                useLlm: false,
+                skipReason: "disabled_by_project_setting",
               },
               nowIso: now,
             }),
