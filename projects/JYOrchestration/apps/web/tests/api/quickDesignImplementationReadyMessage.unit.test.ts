@@ -36,10 +36,18 @@ function prepBase(overrides: Partial<QuickDesignConfirmImplementationPrepResult>
       updatedAt: NOW,
       source: "implementation_task_list",
       parentTaskCount: 1,
-      codeTaskCount: 1,
-      tasks: [{ codeTaskId: "CODE-1", parentTaskId: "DEV-1" } as never],
+      codeTaskCount: 55,
+      tasks: [{ codeTaskId: "CODE-1", parentTaskId: "DEV-1", refinementSource: "llm" } as never],
       readiness: { ready: true, missing: [] },
+      refinementStatus: "llm_refined",
       validationReport: { status: "passed", checkedAt: NOW, errors: [], warnings: [] },
+      llmRefinementSummary: {
+        totalBatches: 14,
+        llmRefinedBatches: 14,
+        fallbackBatches: 0,
+        llmRefinedTaskCount: 55,
+        fallbackTaskCount: 0,
+      },
     } as never,
     cursorWorkItemsV1: [{ id: "wi-1" } as never],
     implementationWorkItemPreflightSummaryV1: {
@@ -94,8 +102,9 @@ describe("buildQuickDesignImplementationReadyChatMessage readiness summary", () 
     });
     expect(msg.content).toContain("구현 준비가 완료되었습니다.");
     expect(msg.content).toContain("상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.");
+    expect(msg.content).toContain("CodeTask LLM 정제:");
+    expect(msg.content).toContain("전체 CodeTask: 55개");
     expect(msg.content).not.toContain("Process Task");
-    expect(msg.content).not.toContain("CodeTask:");
     expect(msg.content).not.toContain("WorkItem:");
     expect(msg.content).not.toContain("Validation");
     expect(msg.content).not.toContain("Preflight");

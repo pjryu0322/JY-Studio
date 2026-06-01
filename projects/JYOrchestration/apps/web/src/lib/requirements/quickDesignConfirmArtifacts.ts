@@ -28,6 +28,7 @@ import {
 } from "@/lib/requirements/projectArtifactPlan";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsOrchestrationStageV1 } from "@/lib/requirements/requirementsStateJson";
+import { formatCodeTaskLlmRefinementUserSummaryLines } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -269,6 +270,13 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     copy.prepInfoSectionLabel,
     ...prepSummaryLines,
   ];
+
+  const llmRefinementLines = formatCodeTaskLlmRefinementUserSummaryLines(
+    input.prep.implementationCodeTaskPlanV1,
+  );
+  if (llmRefinementLines.length) {
+    contentParts.push("", ...llmRefinementLines);
+  }
 
   contentParts.push(...formatImplementationTaskListSummarySection(input.prep.implementationTaskListV1));
 

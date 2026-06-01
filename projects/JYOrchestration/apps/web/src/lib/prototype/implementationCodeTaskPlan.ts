@@ -77,6 +77,8 @@ export type ImplementationCodeTaskPlanLlmRefinementSummaryV1 = Readonly<{
   readonly fallbackBatches: number;
   readonly llmRefinedTaskCount: number;
   readonly fallbackTaskCount: number;
+  readonly concurrency?: number;
+  readonly elapsedMs?: number;
 }>;
 
 export type ImplementationCodeTaskPlanValidationReportV1 = Readonly<{
@@ -654,6 +656,12 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
               fallbackBatches: num("fallbackBatches"),
               llmRefinedTaskCount: num("llmRefinedTaskCount"),
               fallbackTaskCount: num("fallbackTaskCount"),
+              ...(typeof s.concurrency === "number" && Number.isFinite(s.concurrency)
+                ? { concurrency: Math.floor(s.concurrency) }
+                : {}),
+              ...(typeof s.elapsedMs === "number" && Number.isFinite(s.elapsedMs)
+                ? { elapsedMs: Math.floor(s.elapsedMs) }
+                : {}),
             },
           };
         })()

@@ -13,6 +13,7 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
+import { ImplementationPrepProgressCard } from "@/components/requirements/ImplementationPrepProgressCard";
 
 export type RequirementsIdeationChatPanelProps = Readonly<{
   showScreenLabels: boolean;
@@ -189,7 +190,7 @@ export function RequirementsIdeationChatPanel({
         typingIndicator={showTypingIndicator}
         typingIndicatorSpeakerLine={
           quickDesignConfirmPending
-            ? "Quick Design 확정 및 구현준비 산출물 생성 중입니다…"
+            ? "구현준비 생성 중 — CodeTask LLM 정제를 Batch 기준으로 처리하고 있습니다…"
             : serviceFlowAnalyzePending
               ? String(serviceFlowPendingStatusLabel ?? "").trim() ||
                 "AI 기획자가 응답을 준비하고 있습니다…"

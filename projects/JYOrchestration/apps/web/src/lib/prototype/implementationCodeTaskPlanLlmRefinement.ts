@@ -32,6 +32,8 @@ import {
   type ImplementationCodeTaskPlanValidationReportV1,
   type ImplementationCodeTaskV1,
 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { runWithConcurrency } from "@/lib/async/runWithConcurrency";
+import { resolveCodeTaskLlmBatchConcurrency } from "@/lib/prototype/codeTaskLlmBatchConcurrency";
 import {
   buildCodeTaskLlmRefinementBatchPlan,
   buildCodeTaskLlmRefinementBatchUserPrompt,
@@ -61,6 +63,42 @@ export type LlmCodeTaskRefinementCaller = (
 
 export function isLlmCodeTaskRefinementEnabled(): boolean {
   return String(process.env.ENABLE_LLM_CODE_TASK_REFINEMENT ?? "").trim().toLowerCase() === "true";
+}
+
+/** User-facing CodeTask LLM refinement summary for Quick Design confirm chat. */
+export function formatCodeTaskLlmRefinementUserSummaryLines(
+  plan: ImplementationCodeTaskPlanV1 | null | undefined,
+): readonly string[] {
+  if (!plan) return [];
+  const total = plan.codeTaskCount ?? plan.tasks.length;
+  const summary = plan.llmRefinementSummary;
+  const llmRefined = summary?.llmRefinedTaskCount ?? plan.tasks.filter((t) => t.refinementSource === "llm").length;
+  const fallback =
+    summary?.fallbackTaskCount ?? plan.tasks.filter((t) => t.refinementSource !== "llm").length;
+  const batchCount = summary?.totalBatches;
+  const status = plan.refinementStatus ?? "heuristic_only";
+
+  let statusLabel = "기본 규칙 기반으로 대체 완료";
+  if (status === "llm_refined") statusLabel = "LLM 정제 완료";
+  else if (status === "llm_partial_refined") statusLabel = "일부 정제 완료";
+
+  const lines = [
+    "CodeTask LLM 정제:",
+    `- 전체 CodeTask: ${total}개`,
+    `- LLM 정제: ${llmRefined}개`,
+    `- Fallback: ${fallback}개`,
+  ];
+  if (batchCount != null) {
+    lines.push(`- Batch: ${batchCount}개`);
+  }
+  if (summary?.concurrency != null) {
+    lines.push(`- 병렬 처리: ${summary.concurrency}`);
+  }
+  if (summary?.elapsedMs != null) {
+    lines.push(`- 소요: ${Math.round(summary.elapsedMs / 1000)}초`);
+  }
+  lines.push(`- 상태: ${statusLabel}`);
+  return lines;
 }
 
 function buildPlanningLlmTimelineEntry(input: {
@@ -677,6 +715,54 @@ async function processCodeTaskLlmBatch(input: {
   };
 }
 
+function buildUnexpectedBatchFallbackResult(input: {
+  readonly projectId: string;
+  readonly batch: CodeTaskLlmRefinementBatch;
+  readonly error: unknown;
+  readonly nowIso: string;
+}): CodeTaskLlmBatchProcessResult {
+  const message =
+    input.error instanceof Error ? input.error.message.slice(0, 200) : String(input.error ?? "unknown");
+  const promptFingerprint = buildLlmPromptFingerprint(`unexpected:${input.batch.batchId}`);
+  return {
+    source: "heuristic_fallback",
+    tasks: input.batch.heuristicTasks,
+    promptFingerprint,
+    failureReason: "llm_unavailable_fallback",
+    timelineEntries: [
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_batch_requested",
+        projectId: input.projectId,
+        fields: {
+          batchId: input.batch.batchId,
+          batchIndex: input.batch.batchIndex,
+          codeTaskCount: input.batch.codeTaskIds.length,
+        },
+        nowIso: input.nowIso,
+      }),
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_batch_failed",
+        projectId: input.projectId,
+        fields: {
+          batchId: input.batch.batchId,
+          errorCode: "unexpected_exception",
+          errorMessage: message,
+        },
+        nowIso: input.nowIso,
+      }),
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_batch_fallback_used",
+        projectId: input.projectId,
+        fields: {
+          batchId: input.batch.batchId,
+          reason: "unexpected_exception_fallback",
+        },
+        nowIso: input.nowIso,
+      }),
+    ],
+  };
+}
+
 function resolveBatchedRefinementOutcome(input: {
   readonly merge: ReturnType<typeof mergeBatchedCodeTaskRefinementResults>;
   readonly totalBatches: number;
@@ -821,12 +907,14 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   );
 
   const batchPlan = buildCodeTaskLlmRefinementBatchPlan(input.heuristicPlan.tasks);
+  const concurrency = resolveCodeTaskLlmBatchConcurrency();
   const caller = input.llmCaller ?? ((prompt) => defaultLlmCaller(prompt, input.providerContext));
   const providerSource = String(input.providerContext?.providerSource ?? "none");
   const modelName = String(input.providerContext?.model ?? resolveOpenAiModelFromEnv());
   const refinementRequestedAt = now;
   const projectArtifactsSummary = summarizeArtifacts(input.projectArtifacts) || "(none)";
   const implementationSeedSummary = summarizeSeed(input.implementationSeedV1);
+  const refinementStartedAtMs = Date.now();
 
   timelineEntries.push(
     buildPlanningLlmTimelineEntry({
@@ -835,12 +923,42 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
       fields: {
         heuristicTaskCount,
         batchCount: batchPlan.batches.length,
+        concurrency,
         sourceTaskListFingerprint,
       },
       nowIso: now,
     }),
   );
 
+  const batchResults = await runWithConcurrency(
+    batchPlan.batches,
+    concurrency,
+    async (batch) => {
+      try {
+        return await processCodeTaskLlmBatch({
+          projectId: pid,
+          batch,
+          heuristicPlan: input.heuristicPlan,
+          taskList: input.taskList,
+          projectArtifactsSummary,
+          implementationSeedSummary,
+          caller,
+          providerSource,
+          modelName,
+          nowIso: now,
+        });
+      } catch (error) {
+        return buildUnexpectedBatchFallbackResult({
+          projectId: pid,
+          batch,
+          error,
+          nowIso: now,
+        });
+      }
+    },
+  );
+
+  const elapsedMs = Date.now() - refinementStartedAtMs;
   const batchOutcomes: Array<{
     readonly batch: CodeTaskLlmRefinementBatch;
     readonly tasks: readonly ImplementationCodeTaskV1[];
@@ -851,19 +969,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   let aggregatedUsage: ImplementationCodeTaskPlanLlmUsage | null = null;
   let dominantFailureReason: CodeTaskLlmBatchFailureReason | undefined;
 
-  for (const batch of batchPlan.batches) {
-    const batchResult = await processCodeTaskLlmBatch({
-      projectId: pid,
-      batch,
-      heuristicPlan: input.heuristicPlan,
-      taskList: input.taskList,
-      projectArtifactsSummary,
-      implementationSeedSummary,
-      caller,
-      providerSource,
-      modelName,
-      nowIso: now,
-    });
+  for (const batchResult of batchResults) {
     timelineEntries.push(...batchResult.timelineEntries);
     promptFingerprints.push(batchResult.promptFingerprint);
     if (batchResult.resultFingerprint) resultFingerprints.push(batchResult.resultFingerprint);
@@ -871,12 +977,17 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     if (batchResult.failureReason && !dominantFailureReason) {
       dominantFailureReason = batchResult.failureReason;
     }
+  }
+
+  batchPlan.batches.forEach((batch, index) => {
+    const batchResult = batchResults[index];
+    if (!batchResult) return;
     batchOutcomes.push({
       batch,
       tasks: batchResult.tasks,
       source: batchResult.source,
     });
-  }
+  });
 
   const merge = mergeBatchedCodeTaskRefinementResults({
     heuristicTasks: input.heuristicPlan.tasks,
@@ -888,6 +999,8 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     fallbackBatches: merge.fallbackBatches,
     llmRefinedTaskCount: merge.llmRefinedTaskCount,
     fallbackTaskCount: merge.fallbackTaskCount,
+    concurrency,
+    elapsedMs,
   };
   const outcome = resolveBatchedRefinementOutcome({
     merge,
@@ -935,6 +1048,10 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
           fallbackBatches: merge.fallbackBatches,
           llmRefinedTaskCount: merge.llmRefinedTaskCount,
           fallbackTaskCount: merge.fallbackTaskCount,
+          batchCount: batchPlan.batches.length,
+          concurrency,
+          elapsedMs,
+          ...(aggregatedUsage?.totalTokens != null ? { totalTokens: aggregatedUsage.totalTokens } : {}),
         },
         nowIso: now,
       }),
@@ -948,6 +1065,8 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
           refinedTaskCount: merge.llmRefinedTaskCount,
           heuristicTaskCount,
           batchCount: batchPlan.batches.length,
+          concurrency,
+          elapsedMs,
           llmPromptFingerprint,
           sourceTaskListFingerprint,
           refinementStatus: "llm_refined",
@@ -966,6 +1085,8 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
           fallbackUsed: true,
           reason: outcome.refinementStatus,
           batchCount: batchPlan.batches.length,
+          concurrency,
+          elapsedMs,
           fallbackBatches: merge.fallbackBatches,
           llmPromptFingerprint,
           providerSource,

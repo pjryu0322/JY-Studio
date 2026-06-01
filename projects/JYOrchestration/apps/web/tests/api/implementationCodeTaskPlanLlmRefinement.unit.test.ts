@@ -340,6 +340,44 @@ describe("refineImplementationCodeTaskPlanWithLlm", () => {
     ).toBe(2);
   });
 
+  it("runs batch refinement in parallel faster than sequential", async () => {
+    const base = heuristicPlan();
+    const plan: ImplementationCodeTaskPlanV1 = {
+      ...base,
+      tasks: Array.from({ length: 12 }, (_, i) => ({
+        ...base.tasks[0]!,
+        codeTaskId: `CODE-MULTI-${String(i + 1).padStart(3, "0")}`,
+        parentTaskId: "DEV-SCREEN-001",
+      })),
+      codeTaskCount: 12,
+    };
+    const delayMs = 40;
+    let maxInFlight = 0;
+    let inFlight = 0;
+
+    const parallelStart = Date.now();
+    await refineImplementationCodeTaskPlanWithLlm({
+      projectId: PROJECT_ID,
+      taskList: sampleTaskList(),
+      heuristicPlan: plan,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+      forceLlm: true,
+      llmCaller: async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, delayMs));
+        inFlight -= 1;
+        return { ok: true, text: validLlmBatchJsonForPlan(plan) };
+      },
+    });
+    const parallelMs = Date.now() - parallelStart;
+
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(parallelMs).toBeLessThan(delayMs * 3);
+  });
+
   it("keeps heuristic only when LLM flag is off", async () => {
     const plan = heuristicPlan();
     const result = await refineImplementationCodeTaskPlanWithLlm({
