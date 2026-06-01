@@ -283,8 +283,6 @@ import {
 } from "@/lib/requirements/projectArtifactHub";
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
-import { ImplementationPlanningReadinessCard } from "@/components/requirements/ImplementationPlanningReadinessCard";
-import { buildImplementationPlanningReadinessCardVM } from "@/lib/prototype/implementationPlanningReadinessUi";
 import { buildWorkspacePlanningOrchestrationView } from "@/lib/requirements/buildWorkspacePlanningOrchestrationView";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
 import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requirementsOrchestrationTimelineView";
@@ -893,37 +891,6 @@ export function RequirementsWorkspace({
     project?.requirementsStateJson,
     conversationResetNonce,
   ]);
-
-  const planningReadinessCardVm = useMemo(() => {
-    const mergedState: RequirementsStateJson = {
-      ...persistedPromptState,
-      ...stateJsonRef.current,
-    };
-    return buildImplementationPlanningReadinessCardVM({
-      codeTaskPlan: mergedState.implementationCodeTaskPlanV1,
-      cursorWorkItems: mergedState.cursorWorkItemsV1,
-      preflightSummary: mergedState.implementationWorkItemPreflightSummaryV1,
-      codeTaskQualityGate: mergedState.implementationCodeTaskQualityGateV1,
-      codeTaskExecutionFeedback: mergedState.implementationCodeTaskExecutionFeedbackV1,
-      taskList: mergedState.implementationTaskListV1,
-    });
-  }, [
-    persistedPromptState,
-    persistedPromptState.implementationCodeTaskPlanV1,
-    persistedPromptState.cursorWorkItemsV1,
-    persistedPromptState.implementationWorkItemPreflightSummaryV1,
-    persistedPromptState.implementationCodeTaskQualityGateV1,
-    persistedPromptState.implementationCodeTaskExecutionFeedbackV1,
-    persistedPromptState.implementationTaskListV1,
-    saveState,
-    fetchNonce,
-    conversationResetNonce,
-  ]);
-
-  const planningReadinessCard = useMemo(() => {
-    if (!planningReadinessCardVm || activeStage === "implementation") return null;
-    return <ImplementationPlanningReadinessCard vm={planningReadinessCardVm} />;
-  }, [planningReadinessCardVm, activeStage]);
 
   const workspacePlanningView = useMemo(() => {
     const mergedState: RequirementsStateJson = {
@@ -3399,7 +3366,6 @@ export function RequirementsWorkspace({
         )}
         promptTimeline={promptTimelineUi ?? null}
         onOpenPromptTimeline={() => setPromptDrawerOpen(true)}
-        chatHeaderLeading={planningReadinessCard}
       />
     </div>
   );

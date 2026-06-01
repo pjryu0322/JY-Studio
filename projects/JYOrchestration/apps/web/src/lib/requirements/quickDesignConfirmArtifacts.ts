@@ -222,6 +222,33 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     definitions: input.definitions,
   });
 
+  const qualityWarningCount =
+    input.prep.implementationCodeTaskQualityGateV1?.status === "warning"
+      ? input.prep.implementationCodeTaskQualityGateV1.warningCount
+      : 0;
+  const hasQualityWarnings = qualityWarningCount > 0;
+  const executionReady =
+    Boolean(input.prep.implementationTaskListV1?.tasks?.length) &&
+    Boolean(input.prep.implementationCodeTaskPlanV1?.tasks?.length) &&
+    Boolean(input.prep.cursorWorkItemsV1?.length) &&
+    input.prep.implementationWorkItemPreflightSummaryV1?.status !== "failed" &&
+    input.prep.implementationCodeTaskQualityGateV1 != null &&
+    input.prep.implementationCodeTaskQualityGateV1.status !== "failed";
+
+  const readinessSummaryLines = executionReady
+    ? [
+        "구현 준비가 완료되었습니다.",
+        ...(hasQualityWarnings
+          ? [`주의 항목 ${qualityWarningCount}개가 있지만 구현단계 진행은 가능합니다.`]
+          : []),
+        "상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.",
+      ]
+    : [
+        "구현 준비 보완이 필요합니다.",
+        "일부 구현 준비 산출물에 보완이 필요하여 구현단계 자동실행을 바로 시작할 수 없습니다.",
+        "상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.",
+      ];
+
   const implementationCandidateGapKeys = resolveImplementationCandidateGapKeys({
     touchedGapKeys: input.prep.touchedGapKeys,
     autoCandidateGenerated: input.prep.autoCandidateGenerated,
@@ -231,6 +258,8 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
 
   const contentParts = [
     `**${copy.heading}**`,
+    "",
+    ...readinessSummaryLines,
     "",
     copy.intro,
     "",
