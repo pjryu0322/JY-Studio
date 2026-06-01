@@ -434,6 +434,7 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
   readonly existingTaskList?: ImplementationTaskListV1 | null;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
+  readonly enableLlmCodeTaskRefinement?: boolean;
 }): Promise<QuickDesignConfirmImplementationPrepResult> {
   const syncResult = runQuickDesignConfirmImplementationPrep(input);
   const taskListForReadiness = input.existingTaskList ?? syncResult.implementationTaskListV1;
@@ -458,6 +459,7 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
     syncMode: input.existingTaskList ? "synced" : "created",
     llmCaller,
     forceLlm: input.forceLlm,
+    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
   });
 
   const nonPlanningTimeline = syncResult.timelineEntries.filter(

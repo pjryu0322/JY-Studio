@@ -55,6 +55,8 @@ export type QuickDesignConfirmFlowInput = Readonly<
     readonly orchestrationForConfirm: RequirementsSingleChatOrchestrationStateV1;
     readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
     readonly planningState: QuickDesignConfirmPlanningStateSnapshot;
+    /** Project-level toggle: LLM-based CodeTask refinement */
+    readonly enableLlmCodeTaskRefinement?: boolean;
     /** When set, skips `resolveProjectExecutionEnvOk` (unit tests). */
     readonly envOkOverride?: boolean;
   }
@@ -196,6 +198,7 @@ export async function runQuickDesignConfirmFlowWithPrep(input: {
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
     llmCaller: createProjectLlmCodeTaskRefinementCaller(flow.projectId),
+    enableLlmCodeTaskRefinement: flow.enableLlmCodeTaskRefinement,
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({

@@ -344,6 +344,8 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
   readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
+  /** Project-level toggle (for clearer logging). */
+  readonly enableLlmCodeTaskRefinement?: boolean;
 }): Promise<{
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly usedLlm: boolean;
@@ -383,8 +385,24 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
     }),
   );
 
-  const llmEnabled = input.forceLlm === true || isLlmCodeTaskRefinementEnabled();
+  const projectSetting = input.enableLlmCodeTaskRefinement;
+  const envFallback = isLlmCodeTaskRefinementEnabled();
+  const llmEnabled =
+    input.forceLlm === true ||
+    projectSetting === true ||
+    (projectSetting === undefined && envFallback);
   if (!llmEnabled) {
+    timelineEntries.push(
+      buildPlanningLlmTimelineEntry({
+        action: "implementation_code_task_llm_refinement_skipped",
+        projectId: pid,
+        fields: {
+          reason: projectSetting === false ? "disabled_by_project_setting" : "disabled",
+          enableLlmCodeTaskRefinement: projectSetting === true ? true : false,
+        },
+        nowIso: now,
+      }),
+    );
     const plan = buildPlanFromTasks({
       basePlan: input.heuristicPlan,
       tasks: input.heuristicPlan.tasks,
@@ -444,8 +462,12 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         projectId: pid,
         fields: {
           fallbackUsed: true,
-          reason: "llm_unavailable",
+          reason:
+            String(input.providerContext?.providerSource ?? "none") === "none"
+              ? "missing_provider_key"
+              : "llm_unavailable_fallback",
           llmPromptFingerprint,
+          providerSource: String(input.providerContext?.providerSource ?? "none"),
           refinementStatus: "llm_unavailable_fallback",
         },
         nowIso: now,
@@ -497,8 +519,9 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
         projectId: pid,
         fields: {
           fallbackUsed: true,
-          reason: "parse_failed",
+          reason: "llm_parse_failed_fallback",
           llmPromptFingerprint,
+          providerSource: String(input.providerContext?.providerSource ?? "none"),
           refinementStatus: "llm_parse_failed_fallback",
         },
         nowIso: now,
@@ -664,6 +687,7 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
   readonly useLlmRefinement?: boolean;
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
+  readonly enableLlmCodeTaskRefinement?: boolean;
 }): Promise<{
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
@@ -682,6 +706,7 @@ export async function resolveImplementationCodeTaskPlanForPlanningReadiness(inpu
       llmCaller: input.llmCaller,
       providerContext: input.providerContext,
       forceLlm: true,
+      enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
     });
     return { plan: refined.plan, timelineEntries: refined.timelineEntries };
   }

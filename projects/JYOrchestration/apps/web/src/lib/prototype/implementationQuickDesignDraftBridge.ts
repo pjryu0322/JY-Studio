@@ -215,6 +215,7 @@ export type ConfirmQuickDesignForImplementationFromStateInput = Readonly<{
   readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly sourceStage?: OrchestrationStage;
   readonly envOkOverride?: boolean;
+  readonly enableLlmCodeTaskRefinement?: boolean;
 }>;
 
 export type ConfirmQuickDesignForImplementationResult =
@@ -274,6 +275,9 @@ export async function runConfirmQuickDesignForImplementationFromState(
         (state.implementationTaskListV1 as import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null) ??
         null,
     },
+    ...(input.enableLlmCodeTaskRefinement !== undefined
+      ? { enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement }
+      : {}),
     ...(input.envOkOverride !== undefined ? { envOkOverride: input.envOkOverride } : {}),
   });
 

@@ -41,6 +41,9 @@ export type ExecutionSetupDto = {
   cursorApiUrl: string;
   cursorApiTokenMasked: string | null;
   hasCursorToken: boolean;
+  openaiPlannerApiKeyMasked?: string | null;
+  hasOpenaiPlannerApiKey?: boolean;
+  enableLlmCodeTaskRefinement?: boolean;
   workspacePath: string;
   allowedPathGlobs?: string[];
   autoCommit: boolean;
@@ -104,6 +107,8 @@ export async function patchExecutionSetup(
     cursorApiUrl: string;
     cursorApiToken: string | null;
     githubAccessToken: string | null;
+    openaiPlannerApiKey: string | null;
+    enableLlmCodeTaskRefinement: boolean;
     workspacePath: string;
     allowedPathGlobs?: string[];
     autoCommit: boolean;

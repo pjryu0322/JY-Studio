@@ -15,6 +15,7 @@ import { parseRequirementsStateJson } from "@/lib/requirements/requirementsState
 export function ExecutionPageClient() {
   const search = useSearchParams();
   const projectId = search?.get("projectId")?.trim() ?? "";
+  const refineImplementationPrep = search?.get("refineImplementationPrep") === "1";
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export function ExecutionPageClient() {
               featureDraftTitles={[]}
               checklistGapLabels={[]}
               designFingerprint={`${projectId}:${derived.actors.length}:${derived.flowSteps.length}:${derived.ideationAssets.length}`}
+              autoRefineImplementationPrep={refineImplementationPrep}
             />
           </div>
         )}

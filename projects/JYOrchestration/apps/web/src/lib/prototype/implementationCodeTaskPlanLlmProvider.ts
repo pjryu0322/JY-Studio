@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 export type LlmCodeTaskRefinementProviderContext = Readonly<{
   readonly apiKey?: string | null;
   readonly model?: string | null;
+  readonly providerSource?: "project_execution_setup" | "user_default" | "env_fallback" | "none";
 }>;
 
 function allowEnvOpenAiFallback(): boolean {
@@ -17,7 +18,7 @@ export async function resolveLlmCodeTaskRefinementProviderContext(input: {
   const projectId = input.projectId.trim();
   const model = resolveOpenAiModelFromEnv();
   if (!projectId) {
-    return { apiKey: null, model };
+    return { apiKey: null, model, providerSource: "none" };
   }
 
   let setup: {
@@ -38,7 +39,7 @@ export async function resolveLlmCodeTaskRefinementProviderContext(input: {
 
   const projectKey = String(setup?.openaiPlannerApiKey ?? "").trim();
   if (projectKey) {
-    return { apiKey: projectKey, model };
+    return { apiKey: projectKey, model, providerSource: "project_execution_setup" };
   }
 
   const ownerId = String(setup?.project?.ownerUserId ?? "").trim();
@@ -59,17 +60,17 @@ export async function resolveLlmCodeTaskRefinementProviderContext(input: {
   };
 
   const ownerKey = await tryLegacyUserKey(ownerId);
-  if (ownerKey) return { apiKey: ownerKey, model };
+  if (ownerKey) return { apiKey: ownerKey, model, providerSource: "user_default" };
 
   if (actorId && actorId !== ownerId) {
     const actorKey = await tryLegacyUserKey(actorId);
-    if (actorKey) return { apiKey: actorKey, model };
+    if (actorKey) return { apiKey: actorKey, model, providerSource: "user_default" };
   }
 
   const envKey = String(process.env.OPENAI_API_KEY ?? "").trim();
   if (envKey && allowEnvOpenAiFallback()) {
-    return { apiKey: envKey, model };
+    return { apiKey: envKey, model, providerSource: "env_fallback" };
   }
 
-  return { apiKey: null, model };
+  return { apiKey: null, model, providerSource: "none" };
 }

@@ -36,6 +36,7 @@ export type ExecutionSetupSourceGenerationRow = Readonly<{
   readonly repoConnectionOk?: boolean | null;
   readonly cursorApiConnectionOk?: boolean | null;
   readonly executorConnectionOk?: boolean | null;
+  readonly enableLlmCodeTaskRefinement?: boolean | null;
 }>;
 
 export function mapExecutionSetupDtoToSourceGenerationRow(
@@ -61,6 +62,7 @@ export function mapExecutionSetupDtoToSourceGenerationRow(
     repoConnectionOk: data.repoConnectionOk,
     cursorApiConnectionOk: data.cursorApiConnectionOk,
     executorConnectionOk: data.executorConnectionOk,
+    enableLlmCodeTaskRefinement: data.enableLlmCodeTaskRefinement ?? null,
   };
 }
 

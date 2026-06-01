@@ -303,6 +303,8 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   readonly syncMode?: "created" | "synced";
   readonly llmCaller?: LlmCodeTaskRefinementCaller;
   readonly forceLlm?: boolean;
+  /** Project-level toggle. If undefined, falls back to env flag in non-prod. */
+  readonly enableLlmCodeTaskRefinement?: boolean;
   readonly providerContext?: import("@/lib/prototype/implementationCodeTaskPlanLlmProvider").LlmCodeTaskRefinementProviderContext | null;
 }): Promise<ImplementationPlanningReadinessPatch> {
   const now = input.nowIso ?? new Date().toISOString();
@@ -315,7 +317,12 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     designOk: input.designOk,
     nowIso: now,
   });
-  const useLlm = input.forceLlm === true || isLlmCodeTaskRefinementEnabled();
+  const projectSetting = input.enableLlmCodeTaskRefinement;
+  const envFallback = isLlmCodeTaskRefinementEnabled();
+  const useLlm =
+    input.forceLlm === true ||
+    projectSetting === true ||
+    (projectSetting === undefined && envFallback);
   const resolved = await resolveImplementationCodeTaskPlanForPlanningReadiness({
     projectId: pid,
     taskList: input.taskList,
@@ -328,6 +335,7 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     useLlmRefinement: useLlm,
     llmCaller: input.llmCaller,
     providerContext: input.providerContext,
+    enableLlmCodeTaskRefinement: input.enableLlmCodeTaskRefinement,
   });
   return buildPlanningReadinessPatchFromCodeTaskPlan({
     projectId: pid,
@@ -335,7 +343,21 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     codeTaskPlan: resolved.plan,
     allowedPathGlobs: input.allowedPathGlobs,
     priorTimeline: input.priorTimeline,
-    extraTimeline: resolved.timelineEntries,
+    extraTimeline:
+      !useLlm && projectSetting === false && input.forceLlm !== true
+        ? [
+            ...resolved.timelineEntries,
+            buildPlanningReadinessTimelineEntry({
+              action: "implementation_code_task_llm_refinement_skipped",
+              projectId: pid,
+              fields: {
+                reason: "disabled_by_project_setting",
+                enableLlmCodeTaskRefinement: false,
+              },
+              nowIso: now,
+            }),
+          ]
+        : resolved.timelineEntries,
     nowIso: now,
     includeTaskListCreatedEvent: input.includeTaskListCreatedEvent,
     syncMode: input.syncMode,

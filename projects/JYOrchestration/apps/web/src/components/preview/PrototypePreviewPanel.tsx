@@ -469,6 +469,7 @@ export function PrototypePreviewPanel({
   featureDraftTitles,
   checklistGapLabels,
   designFingerprint,
+  autoRefineImplementationPrep,
   onRequirementsStateJsonChange,
 }: {
   readonly projectId: string;
@@ -482,6 +483,7 @@ export function PrototypePreviewPanel({
   readonly featureDraftTitles?: readonly string[];
   readonly checklistGapLabels: readonly string[];
   readonly designFingerprint: string;
+  readonly autoRefineImplementationPrep?: boolean;
 }) {
   // Avoid hydration mismatch: do not read sessionStorage in initial render.
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => defaultPrototypeGenerationRecord());
@@ -3675,6 +3677,7 @@ export function PrototypePreviewPanel({
           conversationMessages: resolved.messages ?? [],
           slotDefinitions: planningSlotDefinitions,
           envOkOverride: canRequestGeneration.envOk,
+          enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
         });
         if (result.kind === "blocked") {
           showToast(result.message);
@@ -3721,6 +3724,7 @@ export function PrototypePreviewPanel({
         designOk: effectiveImplementationState.designOk,
         envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
         previewReady: prototypeRunSyncSnapshot.previewReady,
+        enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
       });
       if (!result.ok) {
         showToast(result.message);
@@ -3747,6 +3751,7 @@ export function PrototypePreviewPanel({
     executionArtifacts,
     canRequestGeneration,
     effectiveImplementationState.designOk,
+    executionSetupRow,
     prototypeRunSyncSnapshot.previewReady,
     persistChatToDb,
     requirementsStateJson,
@@ -5323,6 +5328,77 @@ export function PrototypePreviewPanel({
       prototypeRunSyncSnapshot,
     ],
   );
+
+  const autoRefineOnceRef = useRef(false);
+  useEffect(() => {
+    if (autoRefineOnceRef.current) return;
+    if (autoRefineImplementationPrep !== true) return;
+    autoRefineOnceRef.current = true;
+
+    const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
+    const wipStatus = String(wip?.status ?? "").trim();
+    const activeStatuses = new Set([
+      "requested",
+      "drafting",
+      "refactoring",
+      "wip_committed",
+      "developer_reviewing",
+      "refactor_requested",
+      "wip_updated",
+    ]);
+    if (wip && activeStatuses.has(wipStatus)) {
+      showToast("실행 중에는 구현준비 산출물을 다시 정제할 수 없습니다.");
+      return;
+    }
+
+    const pid = projectId.trim();
+    const seed = parsedRequirementsState.implementationSeedV1;
+    void (async () => {
+      const result = await buildGenerateImplementationTaskListFromSeedResultWithLlm({
+        projectId: pid,
+        seed,
+        existingTaskList: parsedRequirementsState.implementationTaskListV1,
+        existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+        existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
+        existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+        existingPreflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
+        existingQualityGate: parsedRequirementsState.implementationCodeTaskQualityGateV1,
+        priorTimeline: parsedRequirementsState.promptTimeline,
+        projectArtifacts: executionArtifacts.projectArtifacts,
+        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
+        envOk: canRequestGeneration.envOk,
+        designOk: effectiveImplementationState.designOk,
+        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
+        previewReady: prototypeRunSyncSnapshot.previewReady,
+        forceRefresh: true,
+        forceLlm: true,
+        enableLlmCodeTaskRefinement: executionSetupRow?.enableLlmCodeTaskRefinement === true,
+      });
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), result.patch);
+      for (const message of result.messages) {
+        appendImplementationTaskListAiMessage(message);
+      }
+      showToast("구현준비 산출물을 다시 정제했습니다.");
+    })();
+  }, [
+    autoRefineImplementationPrep,
+    orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
+    projectId,
+    parsedRequirementsState,
+    executionArtifacts,
+    canRequestGeneration.envOk,
+    effectiveImplementationState.designOk,
+    prototypeRunSyncSnapshot.previewReady,
+    executionSetupRow,
+    persistChatToDb,
+    requirementsStateJson,
+    appendImplementationTaskListAiMessage,
+    showToast,
+  ]);
 
   const executeImplementationStageAction = useCallback(
     (

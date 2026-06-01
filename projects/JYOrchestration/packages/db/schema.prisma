@@ -728,6 +728,9 @@ model ExecutionSetup {
   openaiPlannerApiKey String? @db.Text
   openaiPlannerApiKeyMasked String?
 
+  /// Planning readiness: LLM-based CodeTask refinement toggle (project-level)
+  enableLlmCodeTaskRefinement Boolean @default(false)
+
   /// Cursor executor
   cursorApiUrl    String
   /// 평문 DB 저장(백업·접근 통제). 일반 GET/PATCH 응답에는 미포함·마스킹만. 소유자 일시 확인은 전용 reveal API만.

@@ -104,6 +104,8 @@ type PatchBody = Partial<{
   githubAccessToken: string | null;
   /** 프로토타입 생성(작업계획)용 OpenAI 키(프로젝트 단위) */
   openaiPlannerApiKey: string | null;
+  /** Planning readiness: LLM CodeTask refinement toggle */
+  enableLlmCodeTaskRefinement: boolean;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -256,6 +258,9 @@ export async function GET(
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         openaiPlannerApiKeyMasked: openAiTok.masked,
         hasOpenaiPlannerApiKey: openAiTok.hasToken,
+        enableLlmCodeTaskRefinement: Boolean(
+          (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement
+        ),
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTok.masked,
         hasCursorToken: curTok.hasToken,
@@ -410,6 +415,10 @@ export async function PATCH(
         : {}),
       ...(toBoolOrUndefined(body.requireApprovalForSensitiveTasks) !== undefined
         ? { requireApprovalForSensitiveTasks: Boolean(body.requireApprovalForSensitiveTasks) }
+        : {}),
+
+      ...(toBoolOrUndefined(body.enableLlmCodeTaskRefinement) !== undefined
+        ? { enableLlmCodeTaskRefinement: Boolean(body.enableLlmCodeTaskRefinement) }
         : {}),
 
       ...(body.cursorApiUrl !== undefined
@@ -716,6 +725,9 @@ export async function PATCH(
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         openaiPlannerApiKeyMasked: openAiTokPatch.masked,
         hasOpenaiPlannerApiKey: openAiTokPatch.hasToken,
+        enableLlmCodeTaskRefinement: Boolean(
+          (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement
+        ),
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTokPatch.masked,
         hasCursorToken: curTokPatch.hasToken,
