@@ -44,8 +44,10 @@ describe("buildCodeTaskInlineExecutionDetail", () => {
       parentTaskId: "DEV-1",
       isSelected: true,
     });
-    expect(detail?.summaryLine).toContain("Quick 실행");
+    expect(detail?.compactLine).toContain("상태:");
+    expect(detail?.scopeLine).toContain("Process Task");
     expect(detail?.nextProcessingHint).toContain("경량검사");
+    expect(detail?.executionFlowSteps).toBeUndefined();
   });
 });
 

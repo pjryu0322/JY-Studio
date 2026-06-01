@@ -10,6 +10,7 @@ export type ImplementationExecutionLogTimelineAction =
   | "task_cursor_poll_loop_started"
   | "task_cursor_poll_tick"
   | "task_cursor_poll_cancelled"
+  | "task_cursor_poll_resumed"
   | "task_cursor_poll_timeout";
 
 function flattenTimelineFieldValue(value: string | number | boolean | undefined | null): string | undefined {
@@ -154,6 +155,7 @@ export function buildTaskCursorPollLifecycleTimelineEntry(input: {
     | "task_cursor_poll_loop_started"
     | "task_cursor_poll_tick"
     | "task_cursor_poll_cancelled"
+    | "task_cursor_poll_resumed"
     | "task_cursor_poll_timeout";
   readonly projectId: string;
   readonly taskId: string;

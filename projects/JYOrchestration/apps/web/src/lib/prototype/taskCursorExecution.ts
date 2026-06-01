@@ -19,6 +19,7 @@ export type TaskCursorExecutionStatus =
   | "cursor_requested"
   | "cursor_running"
   | "cursor_completed"
+  | "status_check_stopped"
   | "cursor_failed"
   | "github_verifying"
   | "github_verified"
@@ -86,7 +87,7 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
   no_changed_files: "Cursor 실행 결과 changedFiles를 확인하지 못했습니다.",
   github_verify_failed:
     "Cursor 응답은 받았지만 GitHub WIP branch에서 commit을 확인하지 못했습니다. WIP branch push 여부를 확인해 주세요.",
-  poll_cancelled: "사용자가 Cloud Agent 폴링을 중단했습니다.",
+  poll_cancelled: "사용자가 Cloud Agent 상태 확인을 중단했습니다.",
   work_item_preflight_failed:
     "WorkItem 품질 검증에 실패했습니다. 실행 로그에서 보완 항목을 확인한 뒤 WorkItem을 수정해 주세요.",
   prompt_preflight_failed:
@@ -98,12 +99,19 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
 export const TASK_CURSOR_POLL_CANCELLED_MESSAGE =
   TASK_CURSOR_FAILURE_MESSAGES.poll_cancelled;
 
+export const TASK_CURSOR_POLLING_CANCEL_HINT =
+  "Cloud Agent 작업 자체를 취소하는 것이 아니라 플랫폼의 상태 확인만 중단합니다." as const;
+
+export const TASK_CURSOR_STATUS_CHECK_RESUME_HINT =
+  "Cloud Agent 작업은 계속 진행 중일 수 있습니다. 상태 다시 확인으로 결과 확인을 재개할 수 있습니다." as const;
+
 const TASK_CURSOR_STATUSES = new Set<TaskCursorExecutionStatus>([
   "pending",
   "prompt_ready",
   "cursor_requested",
   "cursor_running",
   "cursor_completed",
+  "status_check_stopped",
   "cursor_failed",
   "github_verifying",
   "github_verified",

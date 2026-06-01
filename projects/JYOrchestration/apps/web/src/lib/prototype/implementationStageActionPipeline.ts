@@ -36,6 +36,8 @@ import {
   IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
+import { evaluateActiveImplementationExecutionGate } from "@/lib/prototype/implementationStageRunningGate";
+import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
 
@@ -68,6 +70,7 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly implementationCodeTaskQualityGateV1?: import("@/lib/prototype/implementationCodeTaskQualityGate").ImplementationCodeTaskQualityGateV1 | null;
+  readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
@@ -101,6 +104,9 @@ export function buildImplementationStageBoardGateContext(input: {
       : {}),
     ...(input.implementationCodeTaskQualityGateV1 !== undefined
       ? { implementationCodeTaskQualityGateV1: input.implementationCodeTaskQualityGateV1 }
+      : {}),
+    ...(input.activeTaskCursorJob !== undefined
+      ? { activeTaskCursorJob: input.activeTaskCursorJob }
       : {}),
   };
 }
@@ -535,6 +541,8 @@ export function evaluateImplementationStageActionGate(
       return { ok: true };
     }
     case "REQUEST_CODE_AGENT_WIP": {
+      const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
+      if (activeRun) return activeRun;
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 Code Agent WIP 작업을 요청할 수 있습니다." };
       }
@@ -559,6 +567,8 @@ export function evaluateImplementationStageActionGate(
       return { ok: true };
     }
     case "REQUEST_TASK_CURSOR_EXECUTION": {
+      const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
+      if (activeRun) return activeRun;
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
       }
@@ -577,6 +587,8 @@ export function evaluateImplementationStageActionGate(
       return { ok: true };
     }
     case "START_IMPLEMENTATION_QUICK_RUN": {
+      const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
+      if (activeRun) return activeRun;
       if (!state.envOk) {
         return { ok: false, message: "환경 준비가 완료된 뒤 Quick 실행을 시작할 수 있습니다." };
       }

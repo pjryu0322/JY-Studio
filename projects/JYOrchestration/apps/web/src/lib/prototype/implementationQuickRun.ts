@@ -113,6 +113,33 @@ export function resolveQuickRunAllowedTaskIds(
   return selectedTaskIds;
 }
 
+export type ImplementationQuickRunCursorDispatchOutcome = "executed" | "blocked" | "no_op";
+
+export function buildImplementationQuickRunCursorDispatchTimelineEntry(input: {
+  readonly projectId: string;
+  readonly taskId?: string | null;
+  readonly outcome: ImplementationQuickRunCursorDispatchOutcome;
+  readonly message?: string | null;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const parts = [
+    `projectId=${input.projectId}`,
+    `outcome=${input.outcome}`,
+    "linkedAction=REQUEST_TASK_CURSOR_EXECUTION",
+  ];
+  if (input.taskId?.trim()) parts.push(`taskId=${input.taskId.trim()}`);
+  if (input.message?.trim()) parts.push(`message=${input.message.trim().replace(/\s+/g, " ").slice(0, 240)}`);
+  return {
+    stage: "implementation",
+    action: "implementation_quick_run_cursor_dispatch",
+    source: "platform",
+    responseText: parts.join(" "),
+    createdAt: nowIso,
+    orchestrationTraceGroup: "implementation_orchestration",
+  };
+}
+
 export function buildImplementationQuickRunTimelineEntry(input: {
   readonly action: "implementation_quick_run_started" | "implementation_quick_run_blocked" | "implementation_quick_run_preview_ready";
   readonly projectId: string;

@@ -45,6 +45,8 @@ import {
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
   isTaskCursorCloudAgentPollingCancellable,
+  isTaskCursorStatusCheckResumable,
+  isTaskCursorStatusCheckStopped,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -378,6 +380,11 @@ export function buildTaskCursorPollStatusLabel(input: {
 }): string | undefined {
   const execution = input.taskCursorExecution;
   if (!execution || execution.taskId !== input.taskId) return undefined;
+  if (isTaskCursorStatusCheckStopped(execution)) {
+    return isTaskCursorStatusCheckResumable(execution)
+      ? "상태 확인 중단됨 · [상태 다시 확인]으로 재개"
+      : "상태 확인 중단됨";
+  }
   if (
     !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
   ) {
@@ -413,7 +420,7 @@ export function buildTaskCursorPollStatusLabel(input: {
     return parts.join(" · ");
   }
   const tick = findLatestTaskCursorPollTickForTask(input.promptTimeline, input.taskId);
-  const parts = ["Cloud Agent 폴링"];
+  const parts = ["Cloud Agent 결과 확인 중"];
   if (tick?.round != null) parts.push(`${tick.round}회`);
   const agentStatus = tick?.agentStatus?.trim() || execution.status?.trim();
   if (agentStatus) parts.push(agentStatus);
@@ -437,6 +444,15 @@ export function resolveTaskRowStopCapability(input: {
     return false;
   }
   return isTaskCursorCloudAgentPollingCancellable(execution);
+}
+
+export function resolveTaskRowResumeStatusCheckCapability(input: {
+  readonly taskId: string;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+}): boolean {
+  const execution = input.taskCursorExecution;
+  if (!execution || execution.taskId !== input.taskId) return false;
+  return isTaskCursorStatusCheckResumable(execution);
 }
 
 export function buildImplementationTaskTreeNodes(input: {
@@ -479,9 +495,14 @@ export function buildImplementationTaskTreeNodes(input: {
       taskCursorExecution,
       developerStatus: row.developerStatus,
     });
+    const canResumeStatusCheck = resolveTaskRowResumeStatusCheckCapability({
+      taskId: node.taskId,
+      taskCursorExecution,
+    });
     return {
       ...node,
       canStop,
+      canResumeStatusCheck,
       ...(pollStatusLabel ? { pollStatusLabel } : {}),
       restartBlockedReason: pollStatusLabel ? undefined : node.restartBlockedReason,
     };

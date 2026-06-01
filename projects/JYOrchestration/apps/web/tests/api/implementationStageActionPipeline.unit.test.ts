@@ -19,12 +19,14 @@ import {
   markRoleTasksDone,
 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildInitialImplementationIntegratedExecutionState } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { defaultImplementationDbStrategy } from "@/lib/prototype/implementationDbStrategy";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 
 function makeDraft(updatedAt: string): ImplementationWorkPlanDraftV1 {
   return {
@@ -358,6 +360,7 @@ describe("evaluateImplementationStageActionGate", () => {
             },
           ],
           readiness: { ready: true, missing: [] },
+          validationReport: { status: "passed", checkedAt: NOW, errors: [], warnings: [] },
         },
         cursorWorkItemsV1: workItems,
         implementationWorkItemPreflightSummaryV1: {
@@ -368,6 +371,16 @@ describe("evaluateImplementationStageActionGate", () => {
           workItemCount: 1,
           failedWorkItemIds: [],
           failedReasons: [],
+        },
+        implementationCodeTaskQualityGateV1: {
+          version: "implementation_code_task_quality_gate_v1",
+          projectId: "p1",
+          checkedAt: NOW,
+          status: "passed",
+          issueCount: 0,
+          errorCount: 0,
+          warningCount: 0,
+          issues: [],
         },
       });
     }
@@ -479,6 +492,27 @@ describe("evaluateImplementationStageActionGate", () => {
       },
     ];
 
+    function reviewerQualityGatePassed(taskIds: readonly string[]): readonly ImplementationQualityGateResultV1[] {
+      return [
+        {
+          version: "implementation_quality_gate_result_v1",
+          role: "reviewer",
+          status: "passed",
+          createdAt: NOW,
+          updatedAt: NOW,
+          source: "mock_local_gate",
+          summary: "pass",
+          checks: taskIds.map((taskId, index) => ({
+            id: `review-pass-${index}`,
+            title: `${taskId} 검수`,
+            status: "passed" as const,
+            targetTaskIds: [taskId],
+          })),
+          failedTaskIds: [],
+        },
+      ];
+    }
+
     function boardContextWithAllTasksComplete() {
       const taskList = makeTaskListReady();
       let executionState = buildInitialImplementationTaskExecutionStateFromTaskList({
@@ -495,11 +529,24 @@ describe("evaluateImplementationStageActionGate", () => {
       executionState = markRoleTasksDone({ state: executionState, ownerRole: "reviewer", nowIso: NOW });
       executionState = markRoleTasksDone({ state: executionState, ownerRole: "security", nowIso: NOW });
       executionState = markRoleTasksDone({ state: executionState, ownerRole: "scm", nowIso: NOW });
+      const integratedExecutionState = buildInitialImplementationIntegratedExecutionState({
+        projectId: "p1",
+        nowIso: NOW,
+      });
       return buildImplementationStageBoardGateContext({
         projectId: "p1",
         taskList,
         executionState,
+        integratedExecutionState: {
+          ...integratedExecutionState,
+          items: integratedExecutionState.items.map((item) =>
+            item.step === "refactor_common" ? { ...item, status: "ready" as const } : item,
+          ),
+        },
         previewReady: true,
+        qualityGateResults: reviewerQualityGatePassed(
+          taskList.tasks.filter((task) => task.ownerRole === "developer").map((task) => task.taskId),
+        ),
       });
     }
 
@@ -677,6 +724,63 @@ describe("stageActionRunResultToTimelinePhase", () => {
     expect(stageActionRunResultToTimelinePhase({ outcome: "executed" })).toBe("executed");
     expect(stageActionRunResultToTimelinePhase({ outcome: "blocked", message: "x" })).toBe("blocked");
     expect(stageActionRunResultToTimelinePhase({ outcome: "no_op", message: "x" })).toBe("blocked");
+  });
+});
+
+describe("START_IMPLEMENTATION_QUICK_RUN active execution gate", () => {
+  it("prefers running message over env-not-ready when cursor job is active", () => {
+    const state = baseState({
+      envOk: false,
+      parsedRequirementsState: { implementationTaskListV1: makeTaskListReady() },
+    });
+    const boardContext = buildImplementationStageBoardGateContext({
+      projectId: "p1",
+      taskList: makeTaskListReady(),
+      taskCursorExecutionV1: {
+        version: "task_cursor_execution_v1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        status: "cursor_running",
+        cursorProvider: "cursor",
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/dev-mock-001",
+        createdAt: "2026-06-01T21:43:01.504Z",
+        updatedAt: "2026-06-01T21:43:01.504Z",
+      },
+      activeTaskCursorJob: {
+        id: "job-1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        status: "cursor_running",
+        pollCount: 0,
+        lastPollAt: "2026-06-01T21:43:01.504Z",
+        nextPollAt: null,
+      },
+    });
+    const gate = evaluateImplementationStageActionGate(
+      "START_IMPLEMENTATION_QUICK_RUN",
+      state,
+      boardContext,
+    );
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      expect(gate.message).toContain("현재");
+      expect(gate.message).not.toContain("환경 준비");
+    }
+  });
+
+  it("shows env message only when no active execution", () => {
+    const state = baseState({
+      envOk: false,
+      parsedRequirementsState: { implementationTaskListV1: makeTaskListReady() },
+    });
+    const gate = evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state);
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      expect(gate.message).toContain("환경 준비");
+    }
   });
 });
 

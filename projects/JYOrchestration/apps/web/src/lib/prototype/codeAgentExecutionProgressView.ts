@@ -17,7 +17,14 @@ import {
   resolveTaskCursorFailurePolicyFromExecution,
 } from "@/lib/prototype/taskCursorFailurePolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { isTaskCursorCloudAgentPollingCancellable } from "@/lib/prototype/taskCursorClientPollLoop";
+import {
+  TASK_CURSOR_POLLING_CANCEL_HINT,
+  TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
+} from "@/lib/prototype/taskCursorExecution";
+import {
+  isTaskCursorCloudAgentPollingCancellable,
+  isTaskCursorStatusCheckResumable,
+} from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
@@ -34,6 +41,7 @@ export type CodeAgentExecutionProgressStatus =
   | "cursor_requested"
   | "cursor_running"
   | "cursor_completed"
+  | "status_check_stopped"
   | "cursor_failed"
   | "developer_reviewing"
   | "developer_approved";
@@ -80,6 +88,9 @@ export type CodeAgentExecutionProgressView = Readonly<{
   readonly compactMainPresentation?: boolean;
   readonly progressCardTitle?: string;
   readonly canCancelCloudAgentPolling?: boolean;
+  readonly canResumeStatusCheck?: boolean;
+  readonly pollingCancelHint?: string;
+  readonly statusCheckResumeHint?: string;
   readonly hideTaskDetailInCompact?: boolean;
 }>;
 
@@ -508,7 +519,7 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
     case "cursor_requested":
       return "Cursor 실행 요청됨";
     case "cursor_running":
-      return "Cursor 작업 진행 중";
+      return "AI 개발자 실행 중";
     case "cursor_completed":
       return "Cursor 작업 완료 — GitHub 확인 대기";
     case "github_verifying":
@@ -520,6 +531,8 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
       return "검수 완료";
     case "scm_pending":
       return "Task 완료 — 다음 작업 대기";
+    case "status_check_stopped":
+      return "상태 확인 중단됨";
     case "cursor_failed":
     case "github_verify_failed":
       return "실패";
@@ -529,6 +542,12 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
 }
 
 function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
+  if (execution.status === "status_check_stopped") {
+    return [
+      execution.errorMessage ?? TASK_CURSOR_FAILURE_MESSAGES.poll_cancelled,
+      TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
+    ].join("\n");
+  }
   if (execution.status === "cursor_failed" || execution.status === "github_verify_failed") {
     return (
       execution.errorMessage ??
@@ -547,12 +566,21 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
     return "GitHub commit 확인을 진행합니다.";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    return "AI 개발자가 작업을 진행 중입니다.\n완료되면 GitHub commit 확인과 검수를 자동으로 진행합니다.";
+    const elapsed = formatTaskCursorElapsedMinutes(execution.updatedAt ?? execution.createdAt);
+    const elapsedNote = elapsed != null ? ` · 경과 ${elapsed}분` : "";
+    return [
+      `Cursor Cloud Agent가 코드를 생성하는 중입니다${elapsedNote}.`,
+      "플랫폼은 결과 branch/commit을 확인하고 있습니다.",
+      "Cursor 작업은 외부 Cloud Agent 처리 시간에 따라 오래 걸릴 수 있습니다.",
+    ].join("\n");
   }
   return "Quick 실행으로 프로토타입 생성을 시작할 수 있습니다.";
 }
 
 function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string {
+  if (execution.status === "status_check_stopped") {
+    return "진행: [상태 다시 확인]으로 Cloud Agent 결과 확인 재개";
+  }
   if (execution.status === "cursor_failed" || execution.status === "github_verify_failed") {
     return "실패 원인을 확인한 뒤 재작업 요청을 진행해 주세요.";
   }
@@ -566,7 +594,7 @@ function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string 
     return "다음 처리: GitHub commit 확인 → 경량검사";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    return "다음 처리: GitHub commit 확인 → 경량검사 → 필요 시 검수/보안";
+    return "진행: Cloud Agent 작업 결과 확인 중";
   }
   return "다음 처리: AI 개발자 실행 → GitHub 확인 → 경량검사 → (전체 완료 후) 통합 검수/보안";
 }
@@ -731,7 +759,8 @@ function buildTaskCursorExecutionProgressView(input: {
   let summaryLine = taskCursorSummaryLine(execution);
   let progressCardTitle = "구현 실행 중";
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
-    statusLabel = "Cursor 작업 진행 중";
+    const elapsed = formatTaskCursorElapsedMinutes(execution.updatedAt ?? execution.createdAt);
+    statusLabel = elapsed != null ? `AI 개발자 실행 중 · ${elapsed}분` : "AI 개발자 실행 중";
   }
   if (shouldUseCompactTaskCursorPresentation({ execution, autoGate: input.autoGate })) {
     if (autoGateSummary) {
@@ -845,6 +874,13 @@ function buildTaskCursorExecutionProgressView(input: {
     progressCardTitle,
     hideTaskDetailInCompact: true,
     canCancelCloudAgentPolling: isTaskCursorCloudAgentPollingCancellable(execution),
+    canResumeStatusCheck: isTaskCursorStatusCheckResumable(execution),
+    pollingCancelHint: isTaskCursorCloudAgentPollingCancellable(execution)
+      ? TASK_CURSOR_POLLING_CANCEL_HINT
+      : undefined,
+    statusCheckResumeHint: isTaskCursorStatusCheckResumable(execution)
+      ? TASK_CURSOR_STATUS_CHECK_RESUME_HINT
+      : undefined,
   };
 }
 

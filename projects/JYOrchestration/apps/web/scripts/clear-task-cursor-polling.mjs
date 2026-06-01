@@ -25,8 +25,7 @@ function releaseAllPollingFromState(raw, nowIso) {
       released.push(`taskCursor:${taskId}:${status}`);
       next.taskCursorExecutionV1 = {
         ...execution,
-        status: "cursor_failed",
-        failureReason: "poll_cancelled",
+        status: "status_check_stopped",
         errorMessage: CANCEL_MESSAGE,
         updatedAt: nowIso,
       };

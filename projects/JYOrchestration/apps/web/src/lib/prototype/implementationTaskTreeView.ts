@@ -56,6 +56,7 @@ export type ImplementationProcessTaskTreeNode = Readonly<{
   readonly codeTasks: readonly ImplementationCodeTaskTreeNode[];
   readonly canRestart: boolean;
   readonly canStop?: boolean;
+  readonly canResumeStatusCheck?: boolean;
   readonly pollStatusLabel?: string;
   readonly restartBlockedReason?: string;
   readonly needsReworkRegistration: boolean;

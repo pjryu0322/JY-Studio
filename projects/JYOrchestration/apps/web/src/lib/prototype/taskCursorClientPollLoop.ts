@@ -56,8 +56,7 @@ export function releaseAllInFlightTaskCursorPollingFromRequirementsState(
     releasedTaskIds.push(execution.taskId);
     next.taskCursorExecutionV1 = {
       ...execution,
-      status: "cursor_failed",
-      failureReason: "poll_cancelled",
+      status: "status_check_stopped",
       errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
       updatedAt: now,
     };
@@ -86,7 +85,7 @@ export function isStaleAbandonedTaskCursorExecution(
 ): boolean {
   if (!execution || !isInFlightTaskCursorExecution(execution)) return false;
   if (input?.developerStatus === "failed") return true;
-  if (isTaskCursorPollCancelledExecution(execution)) return true;
+  if (isTaskCursorStatusCheckStopped(execution)) return true;
   if (execution.status === "cursor_running" && !isCursorCloudAgentRunId(execution.cursorRunId)) {
     return true;
   }
@@ -107,13 +106,34 @@ export function isActiveTaskCursorExecution(
 
 export { TASK_CURSOR_POLL_CANCELLED_MESSAGE } from "@/lib/prototype/taskCursorExecution";
 
-export function isTaskCursorPollCancelledExecution(
+export function isTaskCursorStatusCheckStopped(
   execution: TaskCursorExecutionV1 | null | undefined,
 ): execution is TaskCursorExecutionV1 {
   if (!execution) return false;
-  if (execution.failureReason === "poll_cancelled") return true;
+  if (execution.status === "status_check_stopped") return true;
+  if (execution.failureReason === "poll_cancelled" && execution.status === "cursor_failed") {
+    return true;
+  }
   const message = String(execution.errorMessage ?? "").trim();
-  return message === TASK_CURSOR_POLL_CANCELLED_MESSAGE || message.includes("폴링을 중단");
+  return (
+    message === TASK_CURSOR_POLL_CANCELLED_MESSAGE ||
+    message.includes("상태 확인을 중단")
+  );
+}
+
+/** @deprecated Use isTaskCursorStatusCheckStopped */
+export function isTaskCursorPollCancelledExecution(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): execution is TaskCursorExecutionV1 {
+  return isTaskCursorStatusCheckStopped(execution);
+}
+
+/** Cloud Agent runId가 있으면 플랫폼 상태 확인만 재개할 수 있다 (Cursor run 취소 API 없음). */
+export function isTaskCursorStatusCheckResumable(
+  execution: TaskCursorExecutionV1 | null | undefined,
+): execution is TaskCursorExecutionV1 {
+  if (!isTaskCursorStatusCheckStopped(execution)) return false;
+  return isCursorCloudAgentRunId(execution.cursorRunId);
 }
 
 /** Cloud Agent 폴링은 launch 응답의 `bc-<uuid>` runId가 있을 때만 시작한다. */

@@ -19,6 +19,7 @@ const IMPLEMENTATION_ACTION_PREFIXES = [
 
 const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   implementation_quick_run_started: "Quick 실행 시작",
+  implementation_quick_run_cursor_dispatch: "Quick → Cursor 실행 연결",
   implementation_quick_run_blocked: "자동실행 중단",
   implementation_quick_run_preview_ready: "Preview 준비 완료",
   implementation_auto_quality_gate_requested: "검수·보안 자동 점검 요청",
@@ -97,7 +98,8 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   task_cursor_auto_chain_blocked: "Task 자동 연속 실행 차단",
   task_cursor_poll_loop_started: "Cloud Agent 폴링 시작",
   task_cursor_poll_tick: "Cloud Agent 폴링 갱신",
-  task_cursor_poll_cancelled: "Cloud Agent 폴링 중단",
+  task_cursor_poll_cancelled: "Cloud Agent 상태 확인 중단",
+  task_cursor_poll_resumed: "Cloud Agent 상태 확인 재개",
   task_cursor_poll_timeout: "Cloud Agent 폴링 시간 초과",
 };
 
@@ -205,7 +207,7 @@ export function formatExecutionLogTimelineLabel(
   const base = EXECUTION_LOG_ACTION_LABELS[action] ?? action;
   const fields = parseExecutionLogResponseFields(entry.responseText);
   if (action === "task_cursor_api_failed" && fields.reason === "poll_cancelled") {
-    return "Cloud Agent 폴링 중단(실행 실패 처리)";
+    return "Cloud Agent 상태 확인 중단(레거시)";
   }
   const taskId = fields.taskId ?? fields.selectedTaskId ?? fields.toTaskId ?? fields.failedTaskId;
   if (taskId && !base.includes(taskId)) {

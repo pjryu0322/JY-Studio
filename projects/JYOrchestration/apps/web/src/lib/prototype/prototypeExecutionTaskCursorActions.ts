@@ -367,52 +367,61 @@ export function buildTaskCursorPollCancelledOrchestrationPatch(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly history?: readonly TaskCursorExecutionV1[] | null;
   readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
-  readonly executionState?: ImplementationTaskExecutionStateV1 | null;
   readonly nowIso?: string;
 }) {
   const nowIso = input.nowIso ?? new Date().toISOString();
-  const failed = patchTaskCursorExecution(input.execution, {
-    status: "cursor_failed",
-    failureReason: "poll_cancelled",
+  const stopped = patchTaskCursorExecution(input.execution, {
+    status: "status_check_stopped",
+    failureReason: undefined,
     errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
     nowIso,
   });
-  const executionState = input.executionState
-    ? markDeveloperTaskFailedForTaskId({
-        state: input.executionState,
-        taskId: input.execution.taskId,
-        nowIso,
-        errorMessage: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
-      })
-    : undefined;
   return buildTaskCursorOrchestrationPatch({
-    execution: failed,
+    execution: stopped,
     history: input.history,
     timelineEntries: [
       buildTaskCursorPollLifecycleTimelineEntry({
         action: "task_cursor_poll_cancelled",
-        projectId: failed.projectId,
-        taskId: failed.taskId,
-        runId: failed.cursorRunId,
-        executionStatus: "cursor_failed",
+        projectId: stopped.projectId,
+        taskId: stopped.taskId,
+        runId: stopped.cursorRunId,
+        executionStatus: "status_check_stopped",
         message: TASK_CURSOR_POLL_CANCELLED_MESSAGE,
-        nowIso,
-      }),
-      buildTaskCursorTimelineEntry({
-        action: "task_cursor_api_failed",
-        projectId: failed.projectId,
-        taskId: failed.taskId,
-        status: "cursor_failed",
-        targetRepository: failed.targetRepository,
-        baseBranch: failed.baseBranch,
-        workBranch: failed.workBranch,
-        reason: "poll_cancelled",
-        runId: failed.cursorRunId,
         nowIso,
       }),
     ],
     existingTimeline: input.existingTimeline,
-    executionState,
+  });
+}
+
+export function buildTaskCursorPollResumeOrchestrationPatch(input: {
+  readonly execution: TaskCursorExecutionV1;
+  readonly history?: readonly TaskCursorExecutionV1[] | null;
+  readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly nowIso?: string;
+}) {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const resumed = patchTaskCursorExecution(input.execution, {
+    status: "cursor_running",
+    failureReason: undefined,
+    errorMessage: undefined,
+    nowIso,
+  });
+  return buildTaskCursorOrchestrationPatch({
+    execution: resumed,
+    history: input.history,
+    timelineEntries: [
+      buildTaskCursorPollLifecycleTimelineEntry({
+        action: "task_cursor_poll_resumed",
+        projectId: resumed.projectId,
+        taskId: resumed.taskId,
+        runId: resumed.cursorRunId,
+        executionStatus: "cursor_running",
+        message: "Cloud Agent 상태 확인을 다시 시작합니다.",
+        nowIso,
+      }),
+    ],
+    existingTimeline: input.existingTimeline,
   });
 }
 

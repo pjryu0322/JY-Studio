@@ -84,6 +84,6 @@ describe("ImplementationExecutionBoardPanel", () => {
       }),
     );
     expect(html).toContain("task-cursor-cancel-polling-button");
-    expect(html).toContain("Cloud Agent 폴링 중단");
+    expect(html).toContain("상태 확인 중단");
   });
 });

@@ -73,6 +73,81 @@
   color: #64748b;
 }
 
+.workerStallBanner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+}
+
+.workerStallTitle {
+  font-size: 11px;
+  font-weight: 900;
+  color: #92400e;
+  margin-bottom: 4px;
+}
+
+.workerStallMessage {
+  font-size: 11px;
+  font-weight: 700;
+  color: #78350f;
+  line-height: 1.45;
+}
+
+.workerStallHint {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #a16207;
+  line-height: 1.4;
+}
+
+.taskTreeInlineScope {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.taskTreeInlineHint {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.taskTreeInlineCancelHint {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.progressDetailsNested {
+  margin-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 6px;
+}
+
+.taskTreeInlineExecution .taskTreeInlineSummary {
+  font-size: 11px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.4;
+}
+
+.taskTreeCodeTaskDetail .taskTreeInlineExecution {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
 .nextTaskCard {
   margin: 10px 14px 0;
   padding: 12px;
@@ -282,6 +357,22 @@
 
 .progressCancelButton:hover {
   background: #fef2f2;
+}
+
+.progressResumeButton {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.progressResumeButton:hover {
+  background: #eff6ff;
 }
 
 .compactProgressSteps {

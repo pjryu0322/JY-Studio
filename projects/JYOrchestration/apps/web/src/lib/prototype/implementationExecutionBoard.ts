@@ -1,5 +1,9 @@
 import { derivePerTaskPipelineRole, isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
-import { countTasksBlockedByDependency, collectDependentTaskIds } from "@/lib/prototype/implementationTaskDependencyGraph";
+import {
+  collectDependentTaskIds,
+  countTasksBlockedByDependency,
+  isTaskBlockedByFailedDependencies,
+} from "@/lib/prototype/implementationTaskDependencyGraph";
 import {
   countActiveReworkRequestsForTask,
   getUserConfirmationForTask,
@@ -306,6 +310,42 @@ export function pickFirstExecutableDeveloperTaskId(
   allowedTaskIds?: readonly string[] | null,
 ): string | null {
   let executable = sortDeveloperTaskRowsByPriority(collectExecutableDeveloperRows(board));
+  if (allowedTaskIds?.length) {
+    const allowed = new Set(allowedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean));
+    executable = executable.filter((row) => allowed.has(row.taskId));
+  }
+  return pickFirstFromExecutableDeveloperRows(executable);
+}
+
+/**
+ * After a task failure: pick next executable task without treating the failed task as a
+ * satisfied dependency (unlike `pickFirstExecutableDeveloperTaskIdExcluding`).
+ */
+export function pickFirstExecutableDeveloperTaskIdAfterFailure(
+  board: ImplementationExecutionBoardV1,
+  failedTaskId: string,
+  allowedTaskIds?: readonly string[] | null,
+): string | null {
+  const failed = String(failedTaskId ?? "").trim();
+  if (!failed) return pickFirstExecutableDeveloperTaskId(board, allowedTaskIds);
+
+  const completedDeveloperIds = completedDeveloperTaskIds(board);
+  let executable = sortDeveloperTaskRowsByPriority(
+    board.taskRows.filter((row) => {
+      if (row.taskId === failed) return false;
+      if (!isDeveloperRowExecutableForWip(row, completedDeveloperIds)) return false;
+      if (row.dependencies.includes(failed)) return false;
+      if (
+        isTaskBlockedByFailedDependencies({
+          row,
+          failedTaskIds: [failed],
+        })
+      ) {
+        return false;
+      }
+      return true;
+    }),
+  );
   if (allowedTaskIds?.length) {
     const allowed = new Set(allowedTaskIds.map((id) => String(id ?? "").trim()).filter(Boolean));
     executable = executable.filter((row) => allowed.has(row.taskId));

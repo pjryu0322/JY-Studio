@@ -117,6 +117,7 @@ function mapCursorStatusToPhase(input: {
   }
   const s = execution.status;
   if (s === "cursor_failed" || s === "github_verify_failed") return "failed";
+  if (s === "status_check_stopped") return "cursor_running";
   if (s === "scm_pending") return "completed";
   const gate = input.autoGate;
   const gateForTask = gate && gate.taskId === execution.taskId ? gate : null;

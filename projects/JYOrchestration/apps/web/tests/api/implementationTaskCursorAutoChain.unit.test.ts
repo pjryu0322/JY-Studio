@@ -285,7 +285,7 @@ describe("implementationTaskCursorAutoChain", () => {
     });
   });
 
-  it("continues after poll cancelled cursor failure when independent task exists", () => {
+  it("does not auto-chain after status_check_stopped poll cancel", () => {
     const list: ImplementationTaskListV1 = {
       version: "implementation_task_list_v1",
       projectId: "p1",
@@ -320,38 +320,20 @@ describe("implementationTaskCursorAutoChain", () => {
     };
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
-      orchestration: {
-        implementationTaskListV1: list,
-        implementationTaskExecutionStateV1: {
-          version: "implementation_task_execution_state_v1",
-          projectId: "p1",
-          createdAt: NOW,
-          updatedAt: NOW,
-          items: [
-            {
-              taskId: "DEV-SCREEN-002",
-              ownerRole: "developer",
-              status: "failed",
-              updatedAt: NOW,
-              errorMessage: "사용자가 Cloud Agent 폴링을 중단했습니다.",
-            },
-          ],
-          summary: { total: 1, done: 0, inProgress: 0, failed: 1, skipped: 0, queued: 0 },
-        },
-      },
+      orchestration: { implementationTaskListV1: list },
     })!;
     const execution = {
       version: "task_cursor_execution_v1" as const,
       projectId: "p1",
       taskId: "DEV-SCREEN-002",
       workItemIds: ["wi-1"],
-      status: "cursor_failed" as const,
+      status: "status_check_stopped" as const,
       cursorProvider: "cursor" as const,
       targetRepository: "owner/repo",
       baseBranch: "main",
       workBranch: "wip/cursor/dev-screen-002",
-      failureReason: "poll_cancelled" as const,
-      errorMessage: "사용자가 Cloud Agent 폴링을 중단했습니다.",
+      cursorRunId: "bc-run-poll-stop",
+      errorMessage: "사용자가 Cloud Agent 상태 확인을 중단했습니다.",
       createdAt: NOW,
       updatedAt: NOW,
     };
@@ -360,21 +342,8 @@ describe("implementationTaskCursorAutoChain", () => {
       taskCursorExecution: execution,
       autoGate: null,
     });
-    expect(decision).toEqual({
-      kind: "continue_after_failure",
-      failedTaskId: "DEV-SCREEN-002",
-      toTaskId: "DEV-SCREEN-003",
-      blockedTaskIds: [],
-    });
-    expect(planImmediateTaskCursorAutoChainAfterFailure({ board, execution })).toEqual({
-      decision: {
-        kind: "continue_after_failure",
-        failedTaskId: "DEV-SCREEN-002",
-        toTaskId: "DEV-SCREEN-003",
-        blockedTaskIds: [],
-      },
-      preferredTaskId: "DEV-SCREEN-003",
-    });
+    expect(decision).toEqual({ kind: "none" });
+    expect(planImmediateTaskCursorAutoChainAfterFailure({ board, execution })).toBeNull();
   });
 
   it("continues after work_item_preflight_failed when independent task exists", () => {
@@ -454,6 +423,66 @@ describe("implementationTaskCursorAutoChain", () => {
     expect(
       canContinueTaskCursorAutoChainAfterFailure(execution),
     ).toBe(true);
+  });
+
+  it("retries failed foundation task instead of skipping to dependent DEV-COMMON", () => {
+    const list: ImplementationTaskListV1 = {
+      version: "implementation_task_list_v1",
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      source: "implementation_seed",
+      tasks: [
+        {
+          taskId: "DEV-MOCK-001",
+          title: "Mock",
+          description: "d",
+          taskType: "mock",
+          ownerRole: "developer",
+          priority: "high",
+          dependencies: [],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+        {
+          taskId: "DEV-COMMON-001",
+          title: "Common",
+          description: "d",
+          taskType: "feature",
+          ownerRole: "developer",
+          priority: "medium",
+          dependencies: ["DEV-MOCK-001"],
+          acceptanceCriteria: [],
+          status: "ready",
+        },
+      ],
+      roleSummary: { developer: 2, designer: 0, reviewer: 0, security: 0, scm: 0 },
+    };
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: list },
+    })!;
+    const execution = {
+      version: "task_cursor_execution_v1" as const,
+      projectId: "p1",
+      taskId: "DEV-MOCK-001",
+      workItemIds: ["wi-1"],
+      status: "cursor_failed" as const,
+      cursorProvider: "cursor" as const,
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-mock-001",
+      failureReason: "github_verify_failed" as const,
+      errorMessage: "GitHub branch missing",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const decision = resolveTaskCursorAutoChainDecision({
+      board,
+      taskCursorExecution: execution,
+      autoGate: null,
+    });
+    expect(decision).toEqual({ kind: "start", taskId: "DEV-MOCK-001" });
   });
 
   it("stops auto chain on github_auth_failed", () => {

@@ -297,6 +297,7 @@ import {
   buildTaskCursorFailedOrchestrationPatch,
   buildTaskCursorOrchestrationPatch,
   buildTaskCursorPollCancelledOrchestrationPatch,
+  buildTaskCursorPollResumeOrchestrationPatch,
   buildTaskCursorRequestedTimeline,
   shouldSyncExecutionStateAfterTaskCursorGithubVerify,
   syncTaskExecutionStateAfterGithubVerified,
@@ -321,7 +322,14 @@ import {
   resolveTaskCursorAutoChainDecision,
 } from "@/lib/prototype/implementationTaskCursorAutoChain";
 import {
+  buildTaskCursorAutoChainIdempotencyKey,
+  hasTaskCursorAutoChainIdempotencyKey,
+  rememberTaskCursorAutoChainIdempotencyKey,
+  resolveTaskCursorAutoChainTriggerDedupeKey,
+} from "@/lib/prototype/taskCursorAutoChainIdempotency";
+import {
   buildImplementationQuickRunStartedPatch,
+  buildImplementationQuickRunCursorDispatchTimelineEntry,
   buildImplementationQuickRunTimelineEntry,
   parseImplementationQuickRunV1,
   resolveQuickRunAllowedTaskIds,
@@ -343,12 +351,14 @@ import {
   isActiveTaskCursorExecution,
   isInFlightTaskCursorExecution,
   isTaskCursorCloudAgentPollingCancellable,
+  isTaskCursorStatusCheckResumable,
   resolveTaskCursorPollWorkItems,
   runTaskCursorClientPollLoop,
   releaseAllInFlightTaskCursorPollingFromRequirementsState,
   TASK_CURSOR_POLL_CANCELLED_MESSAGE,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import { buildTaskCursorJobOrchestrationSyncFingerprint } from "@/lib/prototype/taskCursorJobStateSync";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -1533,6 +1543,10 @@ export function PrototypePreviewPanel({
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const taskCursorAutoChainRef = useRef<string | null>(null);
   const taskCursorAutoChainPreferredTaskIdRef = useRef<string | null>(null);
+  const taskCursorAutoChainExecutedKeysRef = useRef<Set<string>>(new Set());
+  const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
+  const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
+  activeTaskCursorJobRef.current = activeTaskCursorJob;
   const boardManualPickTaskIdRef = useRef<string | null>(null);
   useEffect(() => {
     const incoming = parseRequirementsStateJson(requirementsStateJson);
@@ -1586,8 +1600,15 @@ export function PrototypePreviewPanel({
         orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
       implementationCodeTaskQualityGateV1:
         orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
+      activeTaskCursorJob,
     });
-  }, [projectId, orchestrationAwareRequirementsState, prototypeRunSyncSnapshot.previewReady, canApplyGit]);
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState,
+    prototypeRunSyncSnapshot.previewReady,
+    canApplyGit,
+    activeTaskCursorJob,
+  ]);
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
@@ -2205,6 +2226,14 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const applyImplementationOrchestrationResultRef = useRef(applyImplementationOrchestrationResult);
+  useEffect(() => {
+    applyImplementationOrchestrationResultRef.current = applyImplementationOrchestrationResult;
+  }, [applyImplementationOrchestrationResult]);
+
+  const executionSingleChatMessagesRef = useRef(executionSingleChat.chatMessages);
+  executionSingleChatMessagesRef.current = executionSingleChat.chatMessages;
+
   const startTaskCursorClientPollLoop = useCallback(
     (input: {
       readonly execution: TaskCursorExecutionV1;
@@ -2301,71 +2330,58 @@ export function PrototypePreviewPanel({
         execution,
         history: state.taskCursorExecutionHistoryV1,
         existingTimeline: state.promptTimeline,
-        executionState: parseImplementationTaskExecutionStateV1(
-          state.implementationTaskExecutionStateV1,
-        ),
       }),
     });
     executionSingleChat.appendAiNotice(`${execution.taskId} · ${notice}`);
-    showToast(`${execution.taskId} · Cloud Agent 폴링 중단`);
-
-    const updatedState = requirementsStateJsonRef.current;
-    const cancelledExecution = parseTaskCursorExecutionV1(updatedState.taskCursorExecutionV1);
-    const pid = projectId.trim();
-    const board =
-      pid && cancelledExecution
-        ? buildImplementationExecutionBoardFromRequirementsState({
-            projectId: pid,
-            orchestration: updatedState,
-          })
-        : null;
-    const continuation =
-      cancelledExecution && board
-        ? planImmediateTaskCursorAutoChainAfterFailure({
-            board,
-            execution: cancelledExecution,
-          })
-        : null;
-    if (continuation) {
-      taskCursorAutoChainRef.current = buildTaskCursorAutoChainTriggerKey(continuation.decision);
-      taskCursorAutoChainPreferredTaskIdRef.current = continuation.preferredTaskId;
-      const chainNotice = formatTaskCursorAutoChainNotice(continuation.decision, board);
-      executionSingleChat.appendAiNotice(chainNotice);
-      showToast(chainNotice);
-      const result = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-      applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
-        orchestrationPatch: buildPromptTimelineOrchestrationPatch(
-          requirementsStateJsonRef.current.promptTimeline,
-          buildTaskCursorAutoChainTimelineEntry({
-            decision: continuation.decision,
-            notice: chainNotice,
-            triggerActionOutcome:
-              result.outcome === "blocked" || result.outcome === "no_op"
-                ? result.outcome
-                : "executed",
-            message:
-              result.outcome === "blocked" || result.outcome === "no_op"
-                ? result.message
-                : undefined,
-          }),
-        ),
-      });
-      if (result.outcome === "blocked" || result.outcome === "no_op") {
-        taskCursorAutoChainRef.current = null;
-      }
-    } else {
-      executionSingleChat.appendAiNotice(
-        `${execution.taskId} · 작업을 중단했습니다. 이 Task를 다시 진행하려면 [작업 재작업 요청]을 사용해 주세요.`,
-      );
-    }
+    showToast(`${execution.taskId} · Cloud Agent 상태 확인 중단`);
+    executionSingleChat.appendAiNotice(
+      `${execution.taskId} · Cloud Agent 작업은 계속 진행 중일 수 있습니다. [상태 다시 확인]으로 결과 확인을 재개할 수 있습니다.`,
+    );
   }, [
     applyImplementationOrchestrationResult,
     executionSingleChat,
-    projectId,
     releaseAllTaskCursorPolling,
     showToast,
   ]);
+
+  const resumeTaskCursorStatusCheck = useCallback(() => {
+    const state = requirementsStateJsonRef.current;
+    const execution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    if (!execution || !isTaskCursorStatusCheckResumable(execution)) return;
+
+    const workItems = resolveTaskCursorPollWorkItems(
+      execution,
+      state.cursorWorkItemsV1 ?? [],
+    );
+    if (!workItems.length) {
+      showToast("WorkItem이 없어 상태 확인을 재개할 수 없습니다.");
+      return;
+    }
+
+    applyImplementationOrchestrationResult({
+      messages: executionSingleChat.chatMessages,
+      orchestrationPatch: buildTaskCursorPollResumeOrchestrationPatch({
+        execution,
+        history: state.taskCursorExecutionHistoryV1,
+        existingTimeline: state.promptTimeline,
+      }),
+    });
+
+    const resumed = parseTaskCursorExecutionV1(
+      requirementsStateJsonRef.current.taskCursorExecutionV1,
+    );
+    if (!resumed) return;
+
+    taskCursorPollActiveRunIdRef.current = null;
+    startTaskCursorClientPollLoop({
+      execution: resumed,
+      workItems,
+      history: state.taskCursorExecutionHistoryV1,
+      existingTimeline: state.promptTimeline,
+      resume: true,
+    });
+    showToast(`${resumed.taskId} · Cloud Agent 상태 확인 재개`);
+  }, [applyImplementationOrchestrationResult, executionSingleChat, showToast, startTaskCursorClientPollLoop]);
 
   useEffect(() => {
     if (isServerTaskCursorPolling()) return;
@@ -2392,6 +2408,9 @@ export function PrototypePreviewPanel({
   ]);
 
   const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
+  const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
+  activeTaskCursorJobRef.current = activeTaskCursorJob;
+  const lastServerTaskCursorJobSyncFingerprintRef = useRef("");
 
   useEffect(() => {
     if (!isServerTaskCursorPolling()) return;
@@ -2403,7 +2422,7 @@ export function PrototypePreviewPanel({
       (execution.status === "cursor_requested" ||
         execution.status === "cursor_running" ||
         execution.status === "github_verifying");
-    if (!inFlight && !activeTaskCursorJob) return;
+    if (!inFlight && !activeTaskCursorJobRef.current) return;
 
     let cancelled = false;
     const refresh = async () => {
@@ -2419,8 +2438,11 @@ export function PrototypePreviewPanel({
         if (cancelled || !json.success) return;
         setActiveTaskCursorJob(json.activeJob ?? null);
         if (json.orchestrationPatch) {
-          applyImplementationOrchestrationResult({
-            messages: executionSingleChat.chatMessages,
+          const syncFingerprint = buildTaskCursorJobOrchestrationSyncFingerprint(json.orchestrationPatch);
+          if (syncFingerprint === lastServerTaskCursorJobSyncFingerprintRef.current) return;
+          lastServerTaskCursorJobSyncFingerprintRef.current = syncFingerprint;
+          applyImplementationOrchestrationResultRef.current({
+            messages: executionSingleChatMessagesRef.current,
             orchestrationPatch: json.orchestrationPatch,
           });
         }
@@ -2440,11 +2462,13 @@ export function PrototypePreviewPanel({
     projectId,
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.updatedAt,
-    activeTaskCursorJob?.id,
-    activeTaskCursorJob?.status,
-    applyImplementationOrchestrationResult,
-    executionSingleChat.chatMessages,
+  ]);
+
+  useEffect(() => {
+    lastServerTaskCursorJobSyncFingerprintRef.current = "";
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
   ]);
 
   const triggerImplementationAutoQualityGate = useCallback(async () => {
@@ -2524,10 +2548,27 @@ export function PrototypePreviewPanel({
       allowedTaskIds: resolveQuickRunAllowedTaskIds(quickRun),
     });
     if (decision.kind === "none") return;
-    const triggerKey = buildTaskCursorAutoChainTriggerKey(decision);
-    if (taskCursorAutoChainRef.current === triggerKey) return;
+    const pid = projectId.trim();
+    const idempotencyKey = buildTaskCursorAutoChainIdempotencyKey({
+      projectId: pid,
+      decision,
+      activeRunId: execution?.cursorRunId,
+    });
+    if (hasTaskCursorAutoChainIdempotencyKey(taskCursorAutoChainExecutedKeysRef.current, idempotencyKey)) {
+      return;
+    }
+    const dedupeKey = resolveTaskCursorAutoChainTriggerDedupeKey({
+      projectId: pid,
+      decision,
+      activeRunId: execution?.cursorRunId,
+    });
+    if (taskCursorAutoChainRef.current === dedupeKey) return;
     if (isInFlightTaskCursorExecution(execution)) return;
-    taskCursorAutoChainRef.current = triggerKey;
+    taskCursorAutoChainRef.current = dedupeKey;
+    rememberTaskCursorAutoChainIdempotencyKey(
+      taskCursorAutoChainExecutedKeysRef.current,
+      idempotencyKey,
+    );
     const notice = formatTaskCursorAutoChainNotice(decision, board);
     showToast(notice);
     executionSingleChat.appendAiNotice(notice);
@@ -2563,6 +2604,7 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState,
     showToast,
     executionSingleChat,
+    projectId,
   ]);
 
   useEffect(() => {
@@ -2581,6 +2623,8 @@ export function PrototypePreviewPanel({
     const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
     if (execution && isInFlightTaskCursorExecution(execution)) {
       taskCursorAutoChainRef.current = null;
+    } else if (execution && !isInFlightTaskCursorExecution(execution)) {
+      taskCursorAutoChainExecutedKeysRef.current.clear();
     }
     if (
       execution &&
@@ -6274,7 +6318,24 @@ export function PrototypePreviewPanel({
         : "Quick 실행을 시작합니다. 작업목록을 우선순위대로 자동 진행합니다.",
     );
     taskCursorAutoChainRef.current = null;
-    return runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    const dispatchNowIso = new Date().toISOString();
+    void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+      promptTimeline: appendPromptTimeline(
+        parsedRequirementsState.promptTimeline,
+        buildImplementationQuickRunCursorDispatchTimelineEntry({
+          projectId: pid,
+          taskId: resolvedTaskId,
+          outcome: cursorDispatchResult.outcome,
+          message:
+            cursorDispatchResult.outcome === "blocked" || cursorDispatchResult.outcome === "no_op"
+              ? cursorDispatchResult.message
+              : null,
+          nowIso: dispatchNowIso,
+        }),
+      ),
+    });
+    return cursorDispatchResult;
   }, [
     projectId,
     implementationStageBoardGateContext?.board,
@@ -6730,6 +6791,7 @@ export function PrototypePreviewPanel({
             promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
             activeTaskCursorJob={activeTaskCursorJob}
             onCancelTaskCursorPolling={cancelTaskCursorClientPoll}
+            onResumeTaskCursorStatusCheck={resumeTaskCursorStatusCheck}
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             codeTaskExecutionFeedbackV1={

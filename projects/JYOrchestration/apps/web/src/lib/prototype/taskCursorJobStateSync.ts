@@ -47,3 +47,23 @@ export function buildTaskCursorJobOrchestrationSlice(
     cursorWorkItemsV1: state.cursorWorkItemsV1 ?? null,
   };
 }
+
+/** Stable fingerprint for server job poll sync — skips redundant apply/persist loops. */
+export function buildTaskCursorJobOrchestrationSyncFingerprint(
+  patch: PrototypeExecutionOrchestrationPersistInput,
+): string {
+  const execution = patch.taskCursorExecutionV1;
+  return JSON.stringify({
+    cursorRunId: execution?.cursorRunId ?? null,
+    status: execution?.status ?? null,
+    updatedAt: execution?.updatedAt ?? null,
+    bridgeExecutionStatus: execution?.bridgeExecutionStatus ?? null,
+    executionUpdatedAt: patch.implementationTaskExecutionStateV1?.updatedAt ?? null,
+    executionSummary: patch.implementationTaskExecutionStateV1?.summary ?? null,
+    autoQualityGateStatus: patch.implementationAutoQualityGateV1?.status ?? null,
+    quickRunStatus: patch.implementationQuickRunV1?.status ?? null,
+    quickRunUpdatedAt: patch.implementationQuickRunV1?.updatedAt ?? null,
+    cursorWorkItemCount: patch.cursorWorkItemsV1?.length ?? 0,
+    promptTimelineLength: patch.promptTimeline?.length ?? 0,
+  });
+}

@@ -73,12 +73,14 @@ function CodeTaskTreeItem({
   depth,
   codeAgentProgress,
   onCancelTaskCursorPolling,
+  onResumeStatusCheck,
   onSelect,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly depth: number;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCancelTaskCursorPolling?: () => void;
+  readonly onResumeStatusCheck?: () => void;
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
 }) {
   const inlineExecution = codeAgentProgress
@@ -86,6 +88,7 @@ function CodeTaskTreeItem({
         progress: codeAgentProgress,
         parentTaskId: node.parentTaskId,
         isSelected: node.isSelected,
+        executionFlowSteps: node.executionFlowSteps,
       })
     : undefined;
   const itemClass = [
@@ -114,22 +117,32 @@ function CodeTaskTreeItem({
       </button>
       {node.isSelected ? (
         <div className={styles.taskTreeCodeTaskDetail}>
-          <TaskTreeMetaBlock lines={node.metaLines} />
-          {node.failureReason ? (
-            <div className={styles.taskTreeFailureBlock}>
-              <div className={styles.taskTreeMetaLine}>
-                <span className={styles.taskTreeMetaKey}>사유</span>
-                <span className={styles.taskTreeMetaValue}>{node.failureReason}</span>
-              </div>
-              {node.nextActionHint ? (
-                <div className={styles.taskTreeMetaLine}>
-                  <span className={styles.taskTreeMetaKey}>다음 처리</span>
-                  <span className={styles.taskTreeMetaValue}>{node.nextActionHint}</span>
+          {inlineExecution ? (
+            <CodeTaskInlineExecutionDetailBlock
+              detail={inlineExecution}
+              onCancelPolling={onCancelTaskCursorPolling}
+              onResumeStatusCheck={onResumeStatusCheck}
+            />
+          ) : (
+            <>
+              <TaskTreeMetaBlock lines={node.metaLines} />
+              {node.failureReason ? (
+                <div className={styles.taskTreeFailureBlock}>
+                  <div className={styles.taskTreeMetaLine}>
+                    <span className={styles.taskTreeMetaKey}>사유</span>
+                    <span className={styles.taskTreeMetaValue}>{node.failureReason}</span>
+                  </div>
+                  {node.nextActionHint ? (
+                    <div className={styles.taskTreeMetaLine}>
+                      <span className={styles.taskTreeMetaKey}>다음 처리</span>
+                      <span className={styles.taskTreeMetaValue}>{node.nextActionHint}</span>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-          <ExecutionFlowSteps steps={node.executionFlowSteps} />
+              <ExecutionFlowSteps steps={node.executionFlowSteps} />
+            </>
+          )}
         </div>
       ) : null}
     </div>
@@ -149,12 +162,14 @@ export function ImplementationExecutionBoardTaskTree({
   onStopTask,
   codeAgentProgress,
   onCancelTaskCursorPolling,
+  onResumeStatusCheck,
 }: {
   readonly nodes: readonly ImplementationProcessTaskTreeNode[];
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCancelTaskCursorPolling?: () => void;
+  readonly onResumeStatusCheck?: () => void;
   readonly allChecked?: boolean;
   readonly onSelectTask?: (taskId: string) => void;
   readonly onSelectCodeTask?: (parentTaskId: string, codeTaskId: string) => void;
@@ -278,6 +293,7 @@ export function ImplementationExecutionBoardTaskTree({
                         depth={1}
                         codeAgentProgress={codeAgentProgress}
                         onCancelTaskCursorPolling={onCancelTaskCursorPolling}
+                        onResumeStatusCheck={onResumeStatusCheck}
                         onSelect={(parentTaskId, codeTaskId) => {
                           onSelectTask?.(parentTaskId);
                           onSelectCodeTask?.(parentTaskId, codeTaskId);
@@ -294,7 +310,7 @@ export function ImplementationExecutionBoardTaskTree({
                     {node.pollStatusLabel}
                   </div>
                 ) : null}
-                {node.canRestart || node.canStop ? (
+                {node.canRestart || node.canStop || node.canResumeStatusCheck ? (
                   <div className={styles.taskTreeActionRow}>
                     {node.canRestart ? (
                       <button
@@ -313,7 +329,17 @@ export function ImplementationExecutionBoardTaskTree({
                         data-testid={`implementation-task-stop-${node.taskId}`}
                         onClick={() => onStopTask?.(node.taskId)}
                       >
-                        Task 중지
+                        상태 확인 중단
+                      </button>
+                    ) : null}
+                    {node.canResumeStatusCheck ? (
+                      <button
+                        type="button"
+                        className={styles.taskTreeRestartButton}
+                        data-testid={`implementation-task-resume-status-check-${node.taskId}`}
+                        onClick={() => onResumeStatusCheck?.()}
+                      >
+                        상태 다시 확인
                       </button>
                     ) : null}
                   </div>

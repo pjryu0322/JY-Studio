@@ -1,6 +1,7 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import {
   pickFirstExecutableDeveloperTaskId,
+  pickFirstExecutableDeveloperTaskIdAfterFailure,
   pickFirstExecutableDeveloperTaskIdExcluding,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
@@ -8,7 +9,10 @@ import {
   collectDependentTaskIds,
   shouldStopAutoChainForFoundationFailure,
 } from "@/lib/prototype/implementationTaskDependencyGraph";
-import { isInFlightTaskCursorExecution, isTaskCursorPollCancelledExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import {
+  isInFlightTaskCursorExecution,
+  isTaskCursorStatusCheckStopped,
+} from "@/lib/prototype/taskCursorClientPollLoop";
 import {
   resolveTaskCursorFailurePolicyFromExecution,
 } from "@/lib/prototype/taskCursorFailurePolicy";
@@ -79,14 +83,23 @@ function resolveFailureAutoChainDecision(input: {
 
   if (
     execution.status === "cursor_failed" &&
-    !isTaskCursorPollCancelledExecution(execution) &&
+    !isTaskCursorStatusCheckStopped(execution) &&
     isTransientTaskCursorLaunchError(execution.errorMessage)
   ) {
     return { kind: "start", taskId: execution.taskId };
   }
 
-  const excludeTaskIds = [execution.taskId];
-  const nextTaskId = resolveNextTaskCursorAutoChainTarget(board, excludeTaskIds, allowedTaskIds);
+  const nextTaskId = pickFirstExecutableDeveloperTaskIdAfterFailure(
+    board,
+    execution.taskId,
+    allowedTaskIds,
+  );
+  if (!nextTaskId) {
+    if (policy.canContinueIndependentTasks && !policy.shouldStopAll) {
+      return { kind: "start", taskId: execution.taskId };
+    }
+    return { kind: "none" };
+  }
   if (
     shouldStopAutoChainForFoundationFailure({
       failedTaskId: execution.taskId,
@@ -96,7 +109,6 @@ function resolveFailureAutoChainDecision(input: {
   ) {
     return { kind: "none" };
   }
-  if (!nextTaskId) return { kind: "none" };
 
   const blockedTaskIds = collectDependentTaskIds({
     taskRows: board.taskRows,

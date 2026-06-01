@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import { evaluateTaskCursorWorkerStallWarning } from "@/lib/prototype/taskCursorWorkerStallWatch";
 import {
   buildImplementationIntegratedPipelineLines,
   PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
@@ -26,6 +28,7 @@ import {
   resolveImplementationExecutionBoardSelectedTaskId,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { deriveImplementationQuickRunStatus, type ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationExecutionOverview,
@@ -60,6 +63,7 @@ export function ImplementationExecutionBoardPanel({
   promptTimeline,
   activeTaskCursorJob,
   onCancelTaskCursorPolling,
+  onResumeTaskCursorStatusCheck,
   onRestartTask,
   onSelectedTaskIdsChange,
   codeTaskExecutionFeedbackV1,
@@ -81,6 +85,7 @@ export function ImplementationExecutionBoardPanel({
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
   readonly onCancelTaskCursorPolling?: () => void;
+  readonly onResumeTaskCursorStatusCheck?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
@@ -217,6 +222,29 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [reworkOpen, setReworkOpen] = useState(false);
+  const [stallTick, setStallTick] = useState(0);
+
+  const workerStallWarning = useMemo(
+    () =>
+      evaluateTaskCursorWorkerStallWarning({
+        serverPolling: isServerTaskCursorPolling(),
+        execution: taskCursorExecutionV1,
+        activeJob: activeTaskCursorJob,
+      }),
+    [taskCursorExecutionV1, activeTaskCursorJob, stallTick],
+  );
+
+  useEffect(() => {
+    if (!isServerTaskCursorPolling()) return;
+    const inFlight =
+      taskCursorExecutionV1 &&
+      (taskCursorExecutionV1.status === "cursor_requested" ||
+        taskCursorExecutionV1.status === "cursor_running" ||
+        taskCursorExecutionV1.status === "github_verifying");
+    if (!inFlight && !activeTaskCursorJob) return;
+    const interval = window.setInterval(() => setStallTick((t) => t + 1), 30_000);
+    return () => window.clearInterval(interval);
+  }, [taskCursorExecutionV1, activeTaskCursorJob]);
 
   return (
     <section
@@ -241,7 +269,12 @@ export function ImplementationExecutionBoardPanel({
             : quickRunStatus === "blocked" || quickRunStatus === "failed"
               ? "자동실행이 중단되었습니다."
               : quickRunStatus === "running"
-                ? "Quick 자동실행 진행 중"
+                ? taskCursorExecutionV1 &&
+                    isInFlightTaskCursorExecution(taskCursorExecutionV1) &&
+                    (taskCursorExecutionV1.status === "cursor_running" ||
+                      taskCursorExecutionV1.status === "cursor_requested")
+                  ? "Quick 자동실행 진행 중 · Cursor Cloud Agent 응답 대기"
+                  : "Quick 자동실행 진행 중"
                 : buildCompactBoardSecondarySummaryLine({
                     board,
                     previewReady: summaryView.previewReady,
@@ -250,6 +283,17 @@ export function ImplementationExecutionBoardPanel({
                     reworkVm,
                   })}
         </div>
+        {workerStallWarning ? (
+          <div
+            className={styles.workerStallBanner}
+            role="alert"
+            data-testid="task-cursor-worker-stall-warning"
+          >
+            <div className={styles.workerStallTitle}>서버 Worker 미동작 가능</div>
+            <div className={styles.workerStallMessage}>{workerStallWarning.message}</div>
+            <div className={styles.workerStallHint}>{workerStallWarning.hint}</div>
+          </div>
+        ) : null}
         {reworkVm?.candidateCount ? (
           <div className={styles.reworkSummary}>
             <button
@@ -320,6 +364,7 @@ export function ImplementationExecutionBoardPanel({
           }}
           onRestartTask={onRestartTask}
           onStopTask={() => onCancelTaskCursorPolling?.()}
+          onResumeStatusCheck={() => onResumeTaskCursorStatusCheck?.()}
         />
       </section>
 
