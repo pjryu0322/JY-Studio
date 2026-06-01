@@ -44,11 +44,14 @@ export type ImplementationEntryState = Readonly<{
   readonly primaryAction: ImplementationEntryPrimaryAction;
   readonly hasImplementationSeed: boolean;
   readonly hasImplementationTaskPlan: boolean;
+  readonly hasImplementationCodeTaskPlan: boolean;
   readonly hasImplementationTaskList: boolean;
   readonly hasCursorWorkItems: boolean;
   readonly needsCursorWorkItemsRegeneration: boolean;
   readonly taskCount: number;
   readonly developerTaskCount: number;
+  readonly codeTaskCount: number;
+  readonly workItemCount: number;
 }>;
 
 export function hasAnyQuickDesignConfirmedSignal(input: {
@@ -66,6 +69,7 @@ export function hasAnyQuickDesignConfirmedSignal(input: {
 export function deriveImplementationEntryState(input: {
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
@@ -79,14 +83,19 @@ export function deriveImplementationEntryState(input: {
   const taskList = input.implementationTaskListV1;
   const taskCount = taskList?.tasks?.length ?? 0;
   const developerTaskCount = taskList?.roleSummary?.developer ?? 0;
+  const codeTaskCount = input.implementationCodeTaskPlanV1?.tasks?.length ?? 0;
+  const workItemCount = input.cursorWorkItemsV1?.length ?? 0;
 
   const baseMeta = {
     hasImplementationSeed: Boolean(input.implementationSeedV1),
     hasImplementationTaskPlan: Boolean(input.implementationTaskPlanV1),
+    hasImplementationCodeTaskPlan: Boolean(input.implementationCodeTaskPlanV1?.tasks?.length),
     hasImplementationTaskList: hasTaskList,
     hasCursorWorkItems,
     taskCount,
     developerTaskCount,
+    codeTaskCount,
+    workItemCount,
   };
 
   if (hasTaskList || hasCursorWorkItems) {
@@ -188,10 +197,14 @@ export function buildImplementationEntryTimelineEntry(input: {
       `primaryAction=${input.entryState.primaryAction}`,
       `hasImplementationSeed=${input.entryState.hasImplementationSeed}`,
       `hasImplementationTaskPlan=${input.entryState.hasImplementationTaskPlan}`,
+      `hasImplementationCodeTaskPlan=${input.entryState.hasImplementationCodeTaskPlan}`,
       `hasImplementationTaskList=${input.entryState.hasImplementationTaskList}`,
       `hasCursorWorkItems=${input.entryState.hasCursorWorkItems}`,
       `taskCount=${input.entryState.taskCount}`,
       `developerTaskCount=${input.entryState.developerTaskCount}`,
+      `codeTaskCount=${input.entryState.codeTaskCount}`,
+      `workItemCount=${input.entryState.workItemCount}`,
+      `planningReadinessReady=${input.entryState.status === "board_ready"}`,
     ].join(" "),
     createdAt: input.nowIso,
     orchestrationTraceGroup: "implementation_orchestration",

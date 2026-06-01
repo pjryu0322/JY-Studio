@@ -40,6 +40,13 @@ export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly visible: true;
   readonly overallLabel: "준비됨" | "준비됨 · 경고 있음" | "보완 필요";
   readonly overallTone: "ok" | "warn";
+  readonly statusLabel: "구현 준비 완료" | "구현 준비 보완 필요";
+  readonly statusTone: "ok" | "warn" | "blocked";
+  readonly summaryMessage: string;
+  readonly warningCount: number;
+  readonly blockingCount: number;
+  readonly hasDetails: boolean;
+  readonly detailHint: string;
   readonly parentTaskCount: number;
   readonly codeTaskCount: number;
   readonly workItemCount: number;
@@ -59,6 +66,9 @@ export type ImplementationPlanningReadinessCardVM = Readonly<{
   readonly feedbackSummary?: ImplementationCodeTaskFeedbackSummaryV1;
   readonly feedbackTaskRows?: readonly ImplementationCodeTaskFeedbackTaskRowV1[];
 }>;
+
+const PLANNING_READINESS_DETAIL_HINT =
+  "상세 정보는 로그 탭의 실행 로그에서 확인할 수 있습니다." as const;
 
 function countDeveloperTasks(taskList: ImplementationTaskListV1 | null | undefined): number {
   return (taskList?.tasks ?? []).filter((task) => task.ownerRole === "developer").length;
@@ -179,10 +189,34 @@ export function buildImplementationPlanningReadinessCardVM(input: {
   const feedbackSummary = buildImplementationCodeTaskFeedbackSummary(input.codeTaskExecutionFeedback);
   const feedbackTaskRows = buildImplementationCodeTaskFeedbackTaskRows(input.codeTaskExecutionFeedback);
 
+  const warningCount = attentionItems.length;
+  const blockingCount = executionReady ? 0 : 1;
+  const statusLabel: ImplementationPlanningReadinessCardVM["statusLabel"] = executionReady
+    ? "구현 준비 완료"
+    : "구현 준비 보완 필요";
+  const statusTone: ImplementationPlanningReadinessCardVM["statusTone"] = !executionReady
+    ? "blocked"
+    : warningCount > 0
+      ? "warn"
+      : "ok";
+  const summaryMessage = executionReady
+    ? warningCount > 0
+      ? `기획 내용을 기준으로 구현 준비가 완료되었습니다. 주의 항목 ${warningCount}개가 있지만 구현단계 진행은 가능합니다.`
+      : "기획 내용을 기준으로 구현 준비가 완료되었습니다."
+    : "구현단계로 이동하기 전에 일부 구현 준비 산출물을 보완해야 합니다.";
+  const hasDetails = true;
+
   return {
     visible: true,
     overallLabel,
     overallTone,
+    statusLabel,
+    statusTone,
+    summaryMessage,
+    warningCount,
+    blockingCount,
+    hasDetails,
+    detailHint: PLANNING_READINESS_DETAIL_HINT,
     parentTaskCount: plan?.parentTaskCount ?? countDeveloperTasks(input.taskList),
     codeTaskCount: plan?.codeTaskCount ?? plan?.tasks.length ?? 0,
     workItemCount: input.cursorWorkItems?.length ?? 0,

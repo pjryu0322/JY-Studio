@@ -295,6 +295,7 @@ export function buildImplementationEntrySnapshotTimelineEntry(input: {
   const entryState = deriveImplementationEntryState({
     implementationSeedV1: input.state.implementationSeedV1,
     implementationTaskPlanV1: input.state.implementationTaskPlanV1,
+    implementationCodeTaskPlanV1: input.state.implementationCodeTaskPlanV1,
     implementationTaskListV1: input.state.implementationTaskListV1,
     cursorWorkItemsV1: input.state.cursorWorkItemsV1,
     promptTimeline: input.state.promptTimeline,

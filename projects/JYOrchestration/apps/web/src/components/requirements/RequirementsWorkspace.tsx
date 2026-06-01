@@ -285,6 +285,7 @@ import { RecommendationEvidenceDrawer } from "@/components/recommendation/Recomm
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
 import { ImplementationPlanningReadinessCard } from "@/components/requirements/ImplementationPlanningReadinessCard";
 import { buildImplementationPlanningReadinessCardVM } from "@/lib/prototype/implementationPlanningReadinessUi";
+import { buildWorkspacePlanningOrchestrationView } from "@/lib/requirements/buildWorkspacePlanningOrchestrationView";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
 import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";

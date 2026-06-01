@@ -6220,6 +6220,7 @@ export function PrototypePreviewPanel({
     const entryState = deriveImplementationEntryState({
       implementationSeedV1: parsedRequirementsState.implementationSeedV1,
       implementationTaskPlanV1: parsedRequirementsState.implementationTaskPlanV1,
+      implementationCodeTaskPlanV1: parsedRequirementsState.implementationCodeTaskPlanV1,
       implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
       cursorWorkItemsV1: parsedRequirementsState.cursorWorkItemsV1,
       projectArtifacts: executionArtifacts.projectArtifacts,

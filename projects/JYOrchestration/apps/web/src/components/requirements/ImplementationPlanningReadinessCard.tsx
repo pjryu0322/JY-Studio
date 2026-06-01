@@ -3,14 +3,17 @@
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ImplementationPlanningReadinessCardVM } from "@/lib/prototype/implementationPlanningReadinessUi";
-import { formatCodeTaskFeedbackSummaryLine } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
 
-function toneColor(tone: "ok" | "warn"): string {
-  return tone === "ok" ? "#15803d" : "#b45309";
+function statusToneColor(tone: ImplementationPlanningReadinessCardVM["statusTone"]): string {
+  if (tone === "ok") return "#15803d";
+  if (tone === "warn") return "#b45309";
+  return "#b91c1c";
 }
 
-function toneBackground(tone: "ok" | "warn"): string {
-  return tone === "ok" ? "#f0fdf4" : "#fffbeb";
+function statusToneBackground(tone: ImplementationPlanningReadinessCardVM["statusTone"]): string {
+  if (tone === "ok") return "#f0fdf4";
+  if (tone === "warn") return "#fffbeb";
+  return "#fef2f2";
 }
 
 export function ImplementationPlanningReadinessCard({
@@ -27,7 +30,7 @@ export function ImplementationPlanningReadinessCard({
         border: `1px solid ${t.border}`,
         borderRadius: 10,
         padding: "10px 12px",
-        background: toneBackground(vm.overallTone),
+        background: statusToneBackground(vm.statusTone),
         display: "flex",
         flexDirection: "column",
         gap: 8,
@@ -40,74 +43,33 @@ export function ImplementationPlanningReadinessCard({
           style={{
             fontSize: 11,
             fontWeight: 800,
-            color: toneColor(vm.overallTone),
-            border: `1px solid ${toneColor(vm.overallTone)}`,
+            color: statusToneColor(vm.statusTone),
+            border: `1px solid ${statusToneColor(vm.statusTone)}`,
             borderRadius: 999,
             padding: "2px 8px",
           }}
         >
-          {vm.overallLabel}
+          {vm.statusLabel}
+          {vm.warningCount > 0 ? " · 주의 항목 있음" : ""}
         </span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          gap: 6,
-          fontSize: 11,
-          color: t.textPrimary,
-        }}
-      >
-        <div>Process Task: {vm.parentTaskCount}</div>
-        <div>CodeTask: {vm.codeTaskCount}</div>
-        <div>WorkItem: {vm.workItemCount}</div>
-        <div>Validation: {vm.validationStatus === "passed" ? "통과" : vm.validationStatus === "failed" ? "실패" : "미확인"}</div>
-        <div>
-          CodeTask 품질:{" "}
-          {vm.qualityStatus === "passed"
-            ? "통과"
-            : vm.qualityStatus === "warning"
-              ? `경고 ${vm.qualityWarningCount}개`
-              : vm.qualityStatus === "failed"
-                ? "실패"
-                : "미확인"}
-        </div>
-        <div>위험 CodeTask: {vm.riskyCodeTaskIds.length}개</div>
-        <div>Preflight: {vm.preflightStatus === "passed" ? "통과" : vm.preflightStatus === "failed" ? "실패" : "미확인"}</div>
-        <div>{vm.llmRefinementLabel}</div>
-        <div>구현단계 진입: {vm.executionReady ? "가능" : "불가"}</div>
+      <div style={{ fontSize: 11, color: t.textPrimary, lineHeight: 1.55 }}>
+        <div style={{ fontWeight: 800 }}>{vm.executionReady ? "구현단계 진입 가능" : "구현단계 진입 불가"}</div>
+        <div style={{ marginTop: 2, color: t.textMuted }}>{vm.summaryMessage}</div>
+        {vm.warningCount > 0 ? (
+          <div style={{ marginTop: 4, color: t.textMuted }}>주의 항목 {vm.warningCount}개</div>
+        ) : null}
+        {!vm.executionReady && vm.supplementReasons.length ? (
+          <div style={{ marginTop: 4, color: t.textMuted }}>
+            보완 필요: {vm.supplementReasons[0]}
+          </div>
+        ) : null}
       </div>
 
-      {vm.feedbackSummary ? (
-        <div style={{ fontSize: 11, color: t.textPrimary, lineHeight: 1.5 }}>
-          {formatCodeTaskFeedbackSummaryLine(vm.feedbackSummary)}
-        </div>
-      ) : null}
+      <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>{vm.detailHint}</div>
 
-      {vm.attentionItems.length ? (
-        <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
-          <strong style={{ color: t.textPrimary }}>주의 항목</strong>
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {vm.attentionItems.slice(0, 3).map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {vm.supplementReasons.length ? (
-        <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>
-          <strong style={{ color: t.textPrimary }}>보완 필요 사유</strong>
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {vm.supplementReasons.slice(0, 3).map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {vm.advancedTasks.length ? (
+      {vm.hasDetails ? (
         <div>
           <button
             type="button"
@@ -123,7 +85,7 @@ export function ImplementationPlanningReadinessCard({
               color: t.textPrimary,
             }}
           >
-            {advancedOpen ? "고급 보기 닫기" : "고급 보기"}
+            {advancedOpen ? "상세 로그 닫기" : "상세 로그 보기"}
           </button>
           {advancedOpen ? (
             <div
@@ -136,6 +98,74 @@ export function ImplementationPlanningReadinessCard({
                 overflowY: "auto",
               }}
             >
+              <div
+                style={{
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 8,
+                  padding: "6px 8px",
+                  background: "#fff",
+                  fontSize: 10.5,
+                  lineHeight: 1.45,
+                  color: t.textPrimary,
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>내부 실행 요약 (로그용)</div>
+                <div>Process Task: {vm.parentTaskCount}</div>
+                <div>CodeTask: {vm.codeTaskCount}</div>
+                <div>WorkItem: {vm.workItemCount}</div>
+                <div>
+                  Validation:{" "}
+                  {vm.validationStatus === "passed"
+                    ? "통과"
+                    : vm.validationStatus === "failed"
+                      ? "실패"
+                      : "미확인"}
+                </div>
+                <div>
+                  CodeTask 품질:{" "}
+                  {vm.qualityStatus === "passed"
+                    ? "통과"
+                    : vm.qualityStatus === "warning"
+                      ? `경고 ${vm.qualityWarningCount}개`
+                      : vm.qualityStatus === "failed"
+                        ? "실패"
+                        : "미확인"}
+                </div>
+                <div>위험 CodeTask: {vm.riskyCodeTaskIds.length}개</div>
+                <div>
+                  Preflight:{" "}
+                  {vm.preflightStatus === "passed"
+                    ? "통과"
+                    : vm.preflightStatus === "failed"
+                      ? "실패"
+                      : "미확인"}
+                </div>
+                <div>{vm.llmRefinementLabel}</div>
+                <div>구현단계 진입: {vm.executionReady ? "가능" : "불가"}</div>
+              </div>
+
+              {vm.attentionItems.length ? (
+                <div style={{ fontSize: 10.5, color: t.textMuted }}>
+                  <strong style={{ color: t.textPrimary }}>주의 항목</strong>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {vm.attentionItems.slice(0, 6).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {vm.supplementReasons.length ? (
+                <div style={{ fontSize: 10.5, color: t.textMuted }}>
+                  <strong style={{ color: t.textPrimary }}>보완 필요 사유</strong>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {vm.supplementReasons.slice(0, 6).map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               {vm.advancedTasks.map((task) => (
                 <div
                   key={task.codeTaskId}

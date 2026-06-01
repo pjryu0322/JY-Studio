@@ -142,6 +142,7 @@ export function implementationEntryChipsForBootstrap(
   const entryState = deriveImplementationEntryState({
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskPlanV1: input.implementationTaskPlanV1,
+    implementationCodeTaskPlanV1: input.implementationCodeTaskPlanV1,
     implementationTaskListV1: input.implementationTaskListV1,
     cursorWorkItemsV1: input.cursorWorkItemsV1,
     projectArtifacts: input.projectArtifacts,
@@ -1121,6 +1122,7 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   const entryState = deriveImplementationEntryState({
     implementationSeedV1: input.implementationSeedV1,
     implementationTaskPlanV1: input.implementationTaskPlanV1,
+    implementationCodeTaskPlanV1: input.implementationCodeTaskPlanV1,
     implementationTaskListV1: input.implementationTaskListV1,
     cursorWorkItemsV1: input.cursorWorkItemsV1,
     projectArtifacts: input.projectArtifacts,
