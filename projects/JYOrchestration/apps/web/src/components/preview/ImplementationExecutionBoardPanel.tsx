@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
+  formatCodeTaskExecutionQueueCompletionDetail,
   formatCodeTaskExecutionQueueSummary,
   summarizeCodeTaskExecutionQueueRuns,
 } from "@/lib/prototype/codeTaskExecutionRunUi";
@@ -237,17 +238,30 @@ export function ImplementationExecutionBoardPanel({
 
   const queueSummaryLine = useMemo(() => {
     if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;
+    const runs = parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [];
     const runSummary = summarizeCodeTaskExecutionQueueRuns({
-      runs: parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+      runs,
       selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
     });
+    if (
+      codeTaskQueue.status === "completed" ||
+      codeTaskQueue.status === "completed_with_issues" ||
+      codeTaskQueue.status === "failed"
+    ) {
+      return formatCodeTaskExecutionQueueCompletionDetail({
+        runSummary,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        runs,
+        selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
+      });
+    }
     return formatCodeTaskExecutionQueueSummary({
       currentIndex: codeTaskQueue.currentIndex,
       total: codeTaskQueue.selectedCodeTaskIds.length,
       status: codeTaskQueue.status,
       runSummary,
     });
-  }, [codeTaskExecutionRunsV1, codeTaskQueue]);
+  }, [codeTaskExecutionRunsV1, codeTaskQueue, implementationCodeTaskPlanV1]);
 
   return (
     <section

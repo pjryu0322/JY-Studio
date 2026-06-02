@@ -41,6 +41,7 @@ import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implem
 type Body = {
   readonly projectId?: string;
   readonly taskId?: string;
+  readonly codeTaskId?: string;
   readonly selectedWorkItemIds?: readonly string[];
   readonly workItems?: readonly CursorWorkItem[];
   readonly verifyGithub?: boolean;

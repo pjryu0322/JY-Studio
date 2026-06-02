@@ -318,8 +318,11 @@ import { buildCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDevel
 import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
+  findActiveCodeTaskExecutionRun,
   findLatestRunForCodeTask,
+  getCurrentCodeTaskRunForQueue,
   parseCodeTaskExecutionRunsV1,
+  updateCodeTaskExecutionRun,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 import {
@@ -331,6 +334,17 @@ import {
   startCodeTaskExecutionQueue,
 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
+import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import {
+  buildCodeTaskRunLaunchToastMessage,
+  buildCodeTaskRunUserStatus,
+  buildCodeTaskStatusCheckUserMessage,
+  CODE_TASK_IN_FLIGHT_USER_MESSAGE,
+} from "@/lib/prototype/codeTaskExecutionRunView";
+import {
+  formatCodeTaskExecutionQueueCompletionDetail,
+  summarizeCodeTaskExecutionQueueRuns,
+} from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   buildImplementationQuickRunStartedPatch,
   buildImplementationQuickRunCursorDispatchTimelineEntry,
@@ -2604,13 +2618,24 @@ export function PrototypePreviewPanel({
       codeTaskQueueDispatchRef.current = null;
       codeTaskQueueAdvanceInFlightRef.current = false;
       if (finished) {
+        const runSummary = summarizeCodeTaskExecutionQueueRuns({
+          runs,
+          selectedCodeTaskIds: queue.selectedCodeTaskIds,
+        });
+        const completionDetail = formatCodeTaskExecutionQueueCompletionDetail({
+          runSummary,
+          codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+          runs,
+          selectedCodeTaskIds: queue.selectedCodeTaskIds,
+        });
         showToast(
           nextQueue.status === "completed"
             ? "선택 CodeTask 실행을 모두 완료했습니다."
             : nextQueue.status === "completed_with_issues"
-              ? "선택 CodeTask 실행 완료 · 일부 재작업/실패/중단 항목이 있습니다."
+              ? "선택 CodeTask 실행 완료 · 일부 이슈가 있습니다."
               : "선택 CodeTask 실행이 중단되었습니다.",
         );
+        executionSingleChat.appendAiNotice(completionDetail);
       }
       return;
     }
@@ -4281,7 +4306,7 @@ export function PrototypePreviewPanel({
               developerStatus: inFlightRow?.developerStatus ?? null,
             })
           ) {
-            const message = `${parsedInFlight.taskId} · Cursor 실행이 이미 진행 중입니다(runId: ${parsedInFlight.cursorRunId}). 완료까지 기다리거나 [상태 확인]을 사용해 주세요.`;
+            const message = CODE_TASK_IN_FLIGHT_USER_MESSAGE;
             executionSingleChat.appendAiNotice(message);
             showToast(message);
             return { outcome: "no_op", message };
@@ -4314,6 +4339,190 @@ export function PrototypePreviewPanel({
             showToast(message);
             return { outcome: "blocked", message };
           }
+          const queueDispatch = codeTaskQueueDispatchRef.current;
+          if (queueDispatch) {
+            const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+              gitRepoUrl: executionSetupRow?.gitRepoUrl,
+              gitRepoName: executionSetupRow?.gitRepoName,
+              gitRepoProvider: executionSetupRow?.gitRepoProvider,
+              baseBranch: executionSetupRow?.baseBranch,
+            });
+            if (!targetRepository) {
+              const message = "GitHub 저장소 설정이 없습니다. 환경설정을 확인해 주세요.";
+              executionSingleChat.appendAiNotice(message);
+              return { outcome: "blocked", message };
+            }
+            const nowIso = new Date().toISOString();
+            const allowedPathGlobs = parseStringArrayJson(executionSetupRow?.allowedPathGlobs);
+            const prep = prepareSelectedCodeTaskCursorExecution({
+              projectId: pid,
+              queueDispatch,
+              runs: parseCodeTaskExecutionRunsV1(
+                orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+              ),
+              codeTaskPlan,
+              taskList,
+              cursorWorkItems: workItems,
+              targetRepository,
+              baseBranch: executionSetupRow?.baseBranch ?? targetRepository.defaultBranch,
+              allowedPathGlobs,
+              existingTaskCursor:
+                parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1) ??
+                null,
+              nowIso,
+            });
+            if (!prep.ok) {
+              executionSingleChat.appendAiNotice(prep.message);
+              showToast(prep.message);
+              return { outcome: prep.outcome, message: prep.message };
+            }
+            const { prepared } = prep;
+            const codeTaskTitle = codeTaskPlan?.tasks.find(
+              (t) => t.codeTaskId === prepared.codeTaskId,
+            )?.title;
+            applyImplementationOrchestrationResult(
+              {
+                messages: executionSingleChat.chatMessages,
+                orchestrationPatch: {
+                  ...buildTaskCursorOrchestrationPatch({
+                    execution: prepared.pendingExecution,
+                    history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+                    timelineEntries: [
+                      ...buildTaskCursorRequestedTimeline({
+                        execution: prepared.pendingExecution,
+                        nowIso,
+                      }),
+                      buildTaskCursorApiStartedTimeline({
+                        execution: prepared.pendingExecution,
+                        nowIso,
+                      }),
+                    ],
+                    existingTimeline: orchestrationAwareRequirementsState.promptTimeline,
+                    cursorWorkItems: [...prepared.selectedWorkItems],
+                    existingCodeTaskExecutionFeedback:
+                      orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1,
+                    codeTaskQualityGate:
+                      orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
+                    implementationExecutionJobsV1:
+                      orchestrationAwareRequirementsState.implementationExecutionJobsV1,
+                    codeTaskExecutionRunsV1: (() => {
+                      const existingRuns =
+                        parseCodeTaskExecutionRunsV1(
+                          orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+                        ) ?? [];
+                      return existingRuns.some((r) => r.runId === prepared.run.runId)
+                        ? updateCodeTaskExecutionRun(existingRuns, prepared.run.runId, prepared.run)
+                        : appendCodeTaskExecutionRun(existingRuns, prepared.run);
+                    })(),
+                    activeCodeTaskId: prepared.codeTaskId,
+                    activeWorkItemId: prepared.workItem.id,
+                  }),
+                  cursorWorkItemsV1: mergeCursorWorkItemsByTask({
+                    existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                    updatedWorkItems: [...prepared.selectedWorkItems],
+                    taskId: prepared.parentTaskId,
+                  }),
+                },
+              },
+              { persist: false },
+            );
+            showToast(
+              buildCodeTaskRunLaunchToastMessage({
+                codeTaskId: prepared.codeTaskId,
+                codeTaskTitle,
+              }),
+            );
+            const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
+            const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
+            const pollWorkItems = [...prepared.selectedWorkItems];
+            void (async () => {
+              try {
+                const res = await postTaskCursorExecuteWithRetry({
+                  body: prepared.requestBody,
+                });
+                const json = (await res.json()) as {
+                  success?: boolean;
+                  message?: string;
+                  pollRequired?: boolean;
+                  serverPolling?: boolean;
+                  orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
+                };
+                if (json.orchestrationPatch) {
+                  applyImplementationOrchestrationResult({
+                    messages: executionSingleChat.chatMessages,
+                    orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
+                  });
+                }
+                const launchedExecution =
+                  parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
+                  parseTaskCursorExecutionV1(requirementsStateJsonRef.current.taskCursorExecutionV1) ??
+                  prepared.pendingExecution;
+                const userStatus = buildCodeTaskRunUserStatus(
+                  findLatestRunForCodeTask(
+                    parseCodeTaskExecutionRunsV1(
+                      requirementsStateJsonRef.current.codeTaskExecutionRunsV1,
+                    ),
+                    prepared.codeTaskId,
+                  ),
+                );
+                if (
+                  (json.serverPolling || json.pollRequired) &&
+                  launchedExecution.status === "cursor_running"
+                ) {
+                  showToast(`${codeTaskTitle ?? prepared.codeTaskId} · ${userStatus.label}`);
+                  if (json.pollRequired && !isServerTaskCursorPolling()) {
+                    startTaskCursorClientPollLoop({
+                      execution: launchedExecution,
+                      workItems: pollWorkItems,
+                      history: pollHistory,
+                      existingTimeline: pollTimeline,
+                    });
+                  }
+                  return;
+                }
+                const notice =
+                  json.message ??
+                  (json.success ? `${userStatus.label} 처리되었습니다.` : "CodeTask 실행에 실패했습니다.");
+                if (!json.success && !json.pollRequired) {
+                  applyImplementationOrchestrationResult({
+                    messages: executionSingleChat.chatMessages,
+                    orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
+                      execution:
+                        parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
+                        prepared.pendingExecution,
+                      message: notice,
+                      history: pollHistory,
+                      existingTimeline: pollTimeline,
+                    }),
+                  });
+                }
+                executionSingleChat.appendAiNotice(notice);
+                showToast(notice);
+              } catch (e) {
+                const friendly = formatTransientTaskCursorLaunchErrorMessage(e);
+                const orchestrationPatch = isTransientTaskCursorLaunchError(friendly)
+                  ? buildTaskCursorLaunchTransientFailurePatch({
+                      execution: prepared.pendingExecution,
+                      message: friendly,
+                      history: pollHistory,
+                      existingTimeline: pollTimeline,
+                    })
+                  : buildTaskCursorFailedOrchestrationPatch({
+                      execution: prepared.pendingExecution,
+                      message: friendly,
+                      history: pollHistory,
+                      existingTimeline: pollTimeline,
+                    });
+                applyImplementationOrchestrationResult({
+                  messages: executionSingleChat.chatMessages,
+                  orchestrationPatch,
+                });
+                executionSingleChat.appendAiNotice(`CodeTask 실행 오류: ${friendly}`);
+                showToast(`CodeTask 실행 오류: ${friendly}`);
+              }
+            })();
+            return { outcome: "executed" };
+          }
           const preferredTaskId = codeTaskDispatchPreferredTaskIdRef.current?.trim() || null;
           codeTaskDispatchPreferredTaskIdRef.current = null;
           const manualTaskId = boardManualPickTaskIdRef.current?.trim() || null;
@@ -4336,19 +4545,6 @@ export function PrototypePreviewPanel({
               scoped = {
                 selectedTaskId: explicitTaskId,
                 selectedWorkItems: preferredWorkItems,
-              };
-            }
-          }
-          const queueDispatch = codeTaskQueueDispatchRef.current;
-          if (queueDispatch) {
-            const dispatchWorkItems = workItems.filter(
-              (item) =>
-                item.codeTaskId === queueDispatch.codeTaskId || item.id === queueDispatch.workItemId,
-            );
-            if (dispatchWorkItems.length) {
-              scoped = {
-                selectedTaskId: queueDispatch.parentTaskId,
-                selectedWorkItems: dispatchWorkItems,
               };
             }
           }
@@ -4625,28 +4821,38 @@ export function PrototypePreviewPanel({
         }
         case "CHECK_TASK_CURSOR_STATUS": {
           const execution = orchestrationAwareRequirementsState.taskCursorExecutionV1;
-          if (!execution) {
-            return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
+          const runs =
+            parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+            [];
+          const queue = parseCodeTaskExecutionQueueV1(
+            orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+          );
+          const run =
+            getCurrentCodeTaskRunForQueue(queue, runs) ?? findActiveCodeTaskExecutionRun(runs);
+          if (!run && !execution) {
+            return { outcome: "blocked", message: "실행 중인 CodeTask가 없습니다." };
           }
-          const elapsed = formatTaskCursorElapsedMinutes(execution.updatedAt ?? execution.createdAt);
-          const message = [
-            `Task: ${execution.taskId}`,
-            `상태: ${execution.status}`,
-            execution.cursorRunId ? `runId: ${execution.cursorRunId}` : null,
-            execution.cursorAgentStatus ? `Agent: ${execution.cursorAgentStatus}` : null,
-            elapsed != null && elapsed > 0 ? `경과: ${elapsed}분` : null,
-            execution.commitSha ? `Commit: ${execution.commitSha}` : null,
-            execution.errorMessage ? `사유: ${execution.errorMessage}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n");
+          const codeTaskTitle = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1?.tasks.find(
+            (t) => t.codeTaskId === run?.codeTaskId,
+          )?.title;
+          const elapsedSource = run ?? execution;
+          const elapsed = elapsedSource
+            ? formatTaskCursorElapsedMinutes(
+                run?.updatedAt ?? run?.startedAt ?? run?.createdAt ?? execution?.updatedAt ?? execution?.createdAt,
+              )
+            : null;
+          const message = buildCodeTaskStatusCheckUserMessage({
+            codeTaskTitle,
+            codeTaskId: run?.codeTaskId,
+            run,
+            elapsedMinutes: elapsed,
+          });
           executionSingleChat.appendAiNotice(message);
-          showToast(`Task Cursor 상태: ${execution.status}`);
+          showToast(buildCodeTaskRunUserStatus(run).label);
           if (isServerTaskCursorPolling()) {
-            executionSingleChat.appendAiNotice("Cursor 작업 상태는 자동으로 갱신됩니다.");
             return { outcome: "executed" };
           }
-          if (isInFlightTaskCursorExecution(execution)) {
+          if (execution && isInFlightTaskCursorExecution(execution)) {
             const workItems = resolveTaskCursorPollWorkItems(
               execution,
               orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],

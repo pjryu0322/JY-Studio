@@ -1,4 +1,6 @@
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { getCurrentQueueCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
 
 export const CODE_TASK_EXECUTION_RUN_VERSION = "code_task_execution_run_v1" as const;
 
@@ -150,6 +152,15 @@ export function findLatestRunForCodeTask(
   const matches = (runs ?? []).filter((r) => r.codeTaskId === id);
   if (!matches.length) return null;
   return [...matches].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null;
+}
+
+export function getCurrentCodeTaskRunForQueue(
+  queue: CodeTaskExecutionQueueV1 | null | undefined,
+  runs: readonly CodeTaskExecutionRunV1[] | null | undefined,
+): CodeTaskExecutionRunV1 | null {
+  const codeTaskId = queue ? getCurrentQueueCodeTaskId(queue) : null;
+  if (!codeTaskId) return null;
+  return findLatestRunForCodeTask(runs, codeTaskId);
 }
 
 export function getNextCodeTaskRunAttemptNo(
