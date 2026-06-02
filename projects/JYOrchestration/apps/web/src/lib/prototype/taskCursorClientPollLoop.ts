@@ -13,6 +13,7 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { isMissingCursorAgentIdDuringLaunchGrace } from "@/lib/runtime/implementationRuntime/implementationRuntimeLaunchGrace";
 
 const TERMINAL_TASK_CURSOR_STATUSES = new Set([
   "cursor_completed",
@@ -81,11 +82,27 @@ export function releaseAllInFlightTaskCursorPollingFromRequirementsState(
 /** 폴링이 끊긴 채 persisted state만 in-flight로 남은 실행 */
 export function isStaleAbandonedTaskCursorExecution(
   execution: TaskCursorExecutionV1 | null | undefined,
-  input?: { readonly developerStatus?: string | null; readonly staleMinutes?: number },
+  input?: {
+    readonly developerStatus?: string | null;
+    readonly staleMinutes?: number;
+    readonly pollCount?: number;
+    readonly serverPolling?: boolean;
+    readonly nowMs?: number;
+  },
 ): boolean {
   if (!execution || !isInFlightTaskCursorExecution(execution)) return false;
   if (input?.developerStatus === "failed") return true;
   if (isTaskCursorStatusCheckStopped(execution)) return true;
+  if (
+    isMissingCursorAgentIdDuringLaunchGrace({
+      execution,
+      pollCount: input?.pollCount,
+      serverPolling: input?.serverPolling,
+      nowMs: input?.nowMs,
+    })
+  ) {
+    return false;
+  }
   if (execution.status === "cursor_running" && !isCursorCloudAgentRunId(execution.cursorRunId)) {
     return true;
   }

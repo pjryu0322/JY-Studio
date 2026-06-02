@@ -59,6 +59,7 @@ export function recoverImplementationRuntimeState(input: {
   readonly projectId: string;
   readonly nowIso?: string;
   readonly forceRelease?: boolean;
+  readonly pollCount?: number;
 }): ImplementationRuntimeRecoveryResult {
   const nowIso = input.nowIso ?? new Date().toISOString();
   let next: Record<string, unknown> = { ...input.rawRequirementsState };
@@ -127,6 +128,7 @@ export function recoverImplementationRuntimeState(input: {
     queue,
     runs,
     taskCursor: execution,
+    pollCount: input.pollCount ?? 0,
     nowIso,
   });
 

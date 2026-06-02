@@ -1071,6 +1071,7 @@ model TaskCursorExecutionJob {
   completedAt     DateTime?
 
   project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  implementationCodeTaskRun ImplementationCodeTaskRun?
 
   @@index([projectId])
   @@index([status, nextPollAt])
@@ -1826,13 +1827,24 @@ model ImplementationCodeTaskRun {
   lastHeartbeatAt DateTime?
   startedAt       DateTime?
   completedAt     DateTime?
+  /// Task Cursor poll Job (1:1) — poll 스케줄 SoT
+  taskCursorJobId String?   @unique
+  nextPollAt      DateTime?
+  pollCount       Int       @default(0)
+  maxPollCount    Int       @default(270)
+  lastPollAt      DateTime?
+  pollLockedBy    String?
+  pollLockExpiresAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  job ImplementationExecutionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job           ImplementationExecutionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  taskCursorJob TaskCursorExecutionJob?    @relation(fields: [taskCursorJobId], references: [id], onDelete: SetNull)
 
   @@index([projectId, codeTaskId])
   @@index([jobId, runtimeState])
+  @@index([nextPollAt, runtimeState])
+  @@index([pollLockExpiresAt])
   @@map("implementation_code_task_runs")
 }
 

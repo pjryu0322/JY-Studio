@@ -40,6 +40,14 @@ import {
   recoverImplementationRuntimeDb,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import {
+  clearImplementationRuntimePollLock,
+  claimDueImplementationRuntimePollRuns,
+  findImplementationRunByTaskCursorJobId,
+  linkTaskCursorJobToImplementationRun,
+  releaseStaleImplementationRuntimePollLocks,
+  syncRunPollScheduleFromJob,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -192,6 +200,21 @@ async function processQueuedTaskCursorJob(
     nextPollAt,
     terminal: !launch.ok,
   });
+  await linkTaskCursorJobToImplementationRun({
+    projectId: job.projectId,
+    taskCursorJobId: job.id,
+    now,
+  });
+  const linkedAfterLaunch = await findImplementationRunByTaskCursorJobId(job.id);
+  if (linkedAfterLaunch) {
+    await syncRunPollScheduleFromJob({
+      runId: linkedAfterLaunch.id,
+      pollCount: job.pollCount,
+      lastPollAt: now,
+      nextPollAt,
+      terminal: !launch.ok,
+    });
+  }
   if (launch.ok) {
     await appendJobTimelinePatch({
       projectId: job.projectId,
@@ -346,6 +369,16 @@ async function processPollingTaskCursorJob(
     errorMessage: pollResult.message ?? pollResult.execution.errorMessage ?? null,
     terminal,
   });
+  const linkedRun = await findImplementationRunByTaskCursorJobId(job.id);
+  if (linkedRun) {
+    await syncRunPollScheduleFromJob({
+      runId: linkedRun.id,
+      pollCount,
+      lastPollAt: now,
+      nextPollAt,
+      terminal,
+    });
+  }
 
   await appendJobTimelinePatch({
     projectId: job.projectId,
@@ -394,17 +427,26 @@ export async function runTaskCursorWorkerTick(input: {
   readonly workerId: string;
   readonly limit?: number;
   readonly now?: Date;
+  readonly projectId?: string | null;
 }): Promise<readonly TaskCursorWorkerTickResult[]> {
   const now = input.now ?? new Date();
+  await releaseStaleImplementationRuntimePollLocks(now);
   await releaseStaleTaskCursorJobLocks(now);
-  const jobs = await claimDueTaskCursorJobs({
+
+  const runRows = await claimDueImplementationRuntimePollRuns({
     workerId: input.workerId,
     limit: input.limit ?? 1,
+    projectId: input.projectId ?? null,
     now,
   });
 
   const results: TaskCursorWorkerTickResult[] = [];
-  for (const job of jobs) {
+  for (const runRow of runRows) {
+    const job = runRow.taskCursorJob;
+    if (!job) {
+      await clearImplementationRuntimePollLock(runRow.id);
+      continue;
+    }
     try {
       await appendJobTimelinePatch({
         projectId: job.projectId,
@@ -430,9 +472,49 @@ export async function runTaskCursorWorkerTick(input: {
         message,
       });
     } finally {
+      await clearImplementationRuntimePollLock(runRow.id);
       await clearTaskCursorJobLock(job.id);
     }
   }
+
+  const remaining = Math.max(0, (input.limit ?? 1) - results.length);
+  if (remaining > 0 && !input.projectId?.trim()) {
+    const jobs = await claimDueTaskCursorJobs({
+      workerId: input.workerId,
+      limit: remaining,
+      now,
+    });
+    for (const job of jobs) {
+      try {
+        await appendJobTimelinePatch({
+          projectId: job.projectId,
+          taskId: job.taskId,
+          jobId: job.id,
+          action: "task_cursor_job_claimed",
+          status: job.status,
+          nowIso: now.toISOString(),
+        });
+        const result =
+          job.status === "queued"
+            ? await processQueuedTaskCursorJob(job, now)
+            : await processPollingTaskCursorJob(job, now);
+        results.push(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        results.push({
+          jobId: job.id,
+          projectId: job.projectId,
+          taskId: job.taskId,
+          status: job.status,
+          terminal: false,
+          message,
+        });
+      } finally {
+        await clearTaskCursorJobLock(job.id);
+      }
+    }
+  }
+
   return results;
 }
 

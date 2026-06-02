@@ -10,6 +10,8 @@ import {
   transitionImplementationCodeTaskRun,
   type ImplementationRuntimeRunView,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { isWithinImplementationRuntimeLaunchGrace } from "@/lib/runtime/implementationRuntime/implementationRuntimeLaunchGrace";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 
 function minutesSince(iso: string | null | undefined, nowMs: number): number | null {
   const raw = String(iso ?? "").trim();
@@ -40,8 +42,18 @@ export function evaluateImplementationRuntimeWatchdog(input: {
   const issues: string[] = [];
   const anchor = run.lastHeartbeatAt ?? run.updatedAt ?? run.startedAt;
   const stallMinutes = minutesSince(anchor, nowMs);
+  const launchGrace =
+    isServerTaskCursorPolling() &&
+    (run.pollCount ?? 0) === 0 &&
+    isWithinImplementationRuntimeLaunchGrace({
+      anchorIso: run.startedAt ?? run.updatedAt,
+      nowMs,
+    });
 
   if (run.runtimeState === "dispatching" && !String(input.cursorAgentId ?? run.cursorAgentId ?? "").trim()) {
+    if (launchGrace) {
+      return { shouldPoll: true, markStale: false, markFailed: false, issues: ["launch_grace"] };
+    }
     if (stallMinutes != null && stallMinutes >= IMPLEMENTATION_RUNTIME_WATCHDOG_STALL_MINUTES) {
       issues.push("orphan_dispatching");
       return { shouldPoll: false, markStale: false, markFailed: true, issues };
@@ -49,6 +61,9 @@ export function evaluateImplementationRuntimeWatchdog(input: {
   }
 
   if (run.runtimeState === "cursor_running") {
+    if (launchGrace && !run.cursorAgentId) {
+      return { shouldPoll: true, markStale: false, markFailed: false, issues: ["launch_grace"] };
+    }
     if (stallMinutes != null && stallMinutes >= IMPLEMENTATION_RUNTIME_WATCHDOG_STALL_MINUTES) {
       issues.push("watchdog_poll");
       if (stallMinutes >= IMPLEMENTATION_RUNTIME_STALE_MINUTES) {

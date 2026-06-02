@@ -2850,6 +2850,7 @@ export function PrototypePreviewPanel({
     const recovery = recoverImplementationRuntimeState({
       rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
       projectId: pid,
+      pollCount: implementationRuntimeDbBundle?.currentRun?.pollCount ?? 0,
     });
     if (!recovery.issues.length) return;
     const queue = parseCodeTaskExecutionQueueV1(
@@ -2901,6 +2902,7 @@ export function PrototypePreviewPanel({
     projectId,
     showToast,
     syncImplementationRuntimeDb,
+    implementationRuntimeDbBundle?.currentRun?.pollCount,
   ]);
 
   const implementationCursorGate = useMemo(

@@ -3,6 +3,7 @@ import {
   touchImplementationCodeTaskRunHeartbeat,
   transitionImplementationCodeTaskRun,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { scheduleImplementationRuntimePoll } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 
 /** Cursor dispatch → DB runtime 상태 반영 */
 export async function markImplementationRuntimeDispatching(input: {
@@ -22,6 +23,7 @@ export async function markImplementationRuntimeDispatching(input: {
     runId: input.runId,
     eventType: "cursor_dispatched",
   });
+  await scheduleImplementationRuntimePoll({ runId: input.runId, now: input.now });
 }
 
 export async function markImplementationRuntimeCursorRunning(input: {
@@ -46,6 +48,7 @@ export async function markImplementationRuntimeCursorRunning(input: {
     cursorAgentId: input.cursorAgentId,
     now: input.now,
   });
+  await scheduleImplementationRuntimePoll({ runId: input.runId, now: input.now });
 }
 
 export async function markImplementationRuntimeGithubVerifying(input: {

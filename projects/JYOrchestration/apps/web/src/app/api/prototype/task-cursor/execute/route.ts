@@ -38,6 +38,7 @@ import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode
 import { upsertTaskCursorExecutionJobFromLaunch } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
+import { linkTaskCursorJobToImplementationRun } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 
 type Body = {
   readonly projectId?: string;
@@ -274,6 +275,12 @@ export async function POST(request: NextRequest) {
           workItems: scopedWorkItems,
         });
         jobId = job.id;
+        await linkTaskCursorJobToImplementationRun({
+          projectId,
+          taskCursorJobId: job.id,
+          codeTaskId: body.codeTaskId,
+          now: new Date(nowIso),
+        });
       }
       return NextResponse.json({
         success: launch.ok,

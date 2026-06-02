@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:worker": "node scripts/run-task-cursor-worker.mjs",
     "db:generate": "prisma generate --schema=../../packages/db/schema.prisma",
     "db:migrate": "dotenv -e ../../.env -e .env.local -- prisma migrate deploy --schema=../../packages/db/schema.prisma",
     "db:migrate:status": "dotenv -e ../../.env -e .env.local -- prisma migrate status --schema=../../packages/db/schema.prisma",

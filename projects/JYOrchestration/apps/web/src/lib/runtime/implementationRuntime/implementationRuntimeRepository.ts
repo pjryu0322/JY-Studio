@@ -33,6 +33,10 @@ function mapRun(row: {
   startedAt: Date | null;
   completedAt: Date | null;
   updatedAt: Date;
+  taskCursorJobId?: string | null;
+  nextPollAt?: Date | null;
+  pollCount?: number;
+  lastPollAt?: Date | null;
 }): ImplementationRuntimeRunView {
   return {
     id: row.id,
@@ -49,6 +53,10 @@ function mapRun(row: {
     startedAt: toIso(row.startedAt),
     completedAt: toIso(row.completedAt),
     updatedAt: row.updatedAt.toISOString(),
+    taskCursorJobId: row.taskCursorJobId ?? null,
+    nextPollAt: toIso(row.nextPollAt ?? null),
+    pollCount: row.pollCount ?? 0,
+    lastPollAt: toIso(row.lastPollAt ?? null),
   };
 }
 

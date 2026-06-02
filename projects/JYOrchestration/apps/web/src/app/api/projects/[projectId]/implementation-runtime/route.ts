@@ -10,6 +10,7 @@ import {
   ensureQueuedRunForRedispatch,
   recoverImplementationRuntimeDb,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
+import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { formatRuntimeStateKo } from "@/lib/prototype/implementationRuntimeState";
 
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           });
         }
       }
+      await pollDueImplementationRuntimeForProject(pid);
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);

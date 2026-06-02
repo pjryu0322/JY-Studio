@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "pnpm --filter web dev",
+    "dev": "node scripts/dev-with-worker.mjs",
+    "dev:web": "pnpm --filter web dev",
+    "dev:worker": "pnpm --filter web run dev:worker",
     "build": "pnpm --recursive build",
     "lint": "pnpm --recursive lint",
     "db:generate": "prisma generate --schema=packages/db/schema.prisma",

@@ -20,6 +20,11 @@ import {
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
+import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
+import {
+  isMissingCursorAgentIdDuringLaunchGrace,
+  shouldDeferRuntimeRecoveryForLaunchGrace,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeLaunchGrace";
 import {
   parseImplementationRuntimeUiSnapshotV1,
   synthesizeRuntimeStateFromUiSnapshot,
@@ -390,6 +395,7 @@ export function evaluateRuntimeRecovery(input: {
   readonly queue?: CodeTaskExecutionQueueV1 | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly taskCursor?: TaskCursorExecutionV1 | null;
+  readonly pollCount?: number;
   readonly nowIso?: string;
 }): RuntimeRecoveryPlan {
   const nowMs = Date.parse(input.nowIso ?? new Date().toISOString());
@@ -397,6 +403,14 @@ export function evaluateRuntimeRecovery(input: {
   const queue = input.queue;
   const runs = input.runs ?? [];
   const execution = input.taskCursor ?? null;
+  const serverPolling = isServerTaskCursorPolling();
+  const pollCount = input.pollCount ?? 0;
+  const launchGrace = shouldDeferRuntimeRecoveryForLaunchGrace({
+    execution,
+    pollCount,
+    serverPolling,
+    nowMs,
+  });
   const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
 
   let shouldRedispatch = false;
@@ -417,7 +431,8 @@ export function evaluateRuntimeRecovery(input: {
   if (
     input.runtime.runtimeState === "dispatching" &&
     !isInFlightTaskCursorExecution(execution) &&
-    !isCursorCloudAgentRunId(execution?.cursorRunId)
+    !isCursorCloudAgentRunId(execution?.cursorRunId) &&
+    !launchGrace
   ) {
     const dispatchAge = minutesSince(input.runtime.lastStateChangeAt, nowMs);
     if (dispatchAge != null && dispatchAge >= IMPLEMENTATION_RUNTIME_WATCHDOG_STALL_MINUTES) {
@@ -437,10 +452,14 @@ export function evaluateRuntimeRecovery(input: {
       shouldWatchdogPoll = true;
     }
     if (
-      isStaleAbandonedTaskCursorExecution(execution, {
+      !launchGrace &&
+      (isStaleAbandonedTaskCursorExecution(execution, {
         staleMinutes: IMPLEMENTATION_RUNTIME_STALE_MINUTES,
+        pollCount,
+        serverPolling,
+        nowMs,
       }) ||
-      (stallMinutes != null && stallMinutes >= IMPLEMENTATION_RUNTIME_STALE_MINUTES)
+        (stallMinutes != null && stallMinutes >= IMPLEMENTATION_RUNTIME_STALE_MINUTES))
     ) {
       issues.push("orphan_cursor_running");
       markStale = true;

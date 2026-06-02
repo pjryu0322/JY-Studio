@@ -63,6 +63,10 @@ export type ImplementationRuntimeRunView = Readonly<{
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly updatedAt: string;
+  readonly taskCursorJobId?: string | null;
+  readonly nextPollAt?: string | null;
+  readonly pollCount?: number;
+  readonly lastPollAt?: string | null;
 }>;
 
 export type ImplementationRuntimeBundleView = Readonly<{

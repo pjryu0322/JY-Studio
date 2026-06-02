@@ -8,3 +8,6 @@ export * from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBrid
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
+export * from "@/lib/runtime/implementationRuntime/implementationRuntimeLaunchGrace";
+export * from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
+export * from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
