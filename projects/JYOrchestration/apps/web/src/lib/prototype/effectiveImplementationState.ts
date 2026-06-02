@@ -131,6 +131,7 @@ export type PendingImplementationPatch = Readonly<{
   implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  implementationExecutionJobsV1?: readonly import("@/lib/prototype/implementationExecutionJob").ImplementationExecutionJobV1[] | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -178,6 +179,13 @@ export function resolveOrchestrationAwareRequirementsState(input: {
       : {}),
     ...(pending.promptTimeline !== undefined
       ? { promptTimeline: sanitizePromptTimelineEntries(pending.promptTimeline) }
+      : {}),
+    ...(pending.implementationExecutionJobsV1 !== undefined
+      ? {
+          implementationExecutionJobsV1: pending.implementationExecutionJobsV1
+            ? [...pending.implementationExecutionJobsV1]
+            : null,
+        }
       : {}),
   });
 }
@@ -309,6 +317,9 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.promptTimeline !== undefined) {
     next.promptTimeline = patch.promptTimeline;
   }
+  if (patch.implementationExecutionJobsV1 !== undefined) {
+    next.implementationExecutionJobsV1 = patch.implementationExecutionJobsV1;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }
 
@@ -356,6 +367,9 @@ export function mergePendingImplementationPatch(
       ? { implementationExecutionBoardStateV1: incoming.implementationExecutionBoardStateV1 }
       : {}),
     ...(incoming.promptTimeline !== undefined ? { promptTimeline: incoming.promptTimeline } : {}),
+    ...(incoming.implementationExecutionJobsV1 !== undefined
+      ? { implementationExecutionJobsV1: incoming.implementationExecutionJobsV1 }
+      : {}),
   };
 }
 

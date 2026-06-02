@@ -51,6 +51,8 @@ import {
 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { parseImplementationExecutionJobsV1 } from "@/lib/prototype/implementationExecutionJob";
+import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -628,6 +630,8 @@ export type RequirementsStateJson = {
   implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
   /** 구현단계 Quick 자동실행(Preview 준비까지) 상위 상태 */
   implementationQuickRunV1?: ImplementationQuickRunV1 | null;
+  /** 구현단계 ExecutionJob 런타임(프로세스 Task 단위 실행 상태 SoT) */
+  implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1277,6 +1281,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(taskCursorExecutionHistoryV1 !== undefined ? { taskCursorExecutionHistoryV1 } : {}),
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
+    ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(implementationAutoQualityGateHistoryV1 !== undefined
       ? { implementationAutoQualityGateHistoryV1 }
       : {}),

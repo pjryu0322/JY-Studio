@@ -78,6 +78,9 @@ describe("buildImplementationTaskListFromSeed", () => {
     const scm = list.tasks.find((t) => t.taskId === "SCM-001");
     expect(scm?.acceptanceCriteria.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(scm?.acceptanceCriteria.join("\n").toLowerCase()).toContain("pr");
+
+    const devTasks = list.tasks.filter((t) => t.ownerRole === "developer" && t.taskId !== "DEV-MOCK-001");
+    expect(devTasks.every((t) => !t.dependencies.includes("DEV-MOCK-001"))).toBe(true);
   });
 
   it("roleSummary counts roles correctly", () => {

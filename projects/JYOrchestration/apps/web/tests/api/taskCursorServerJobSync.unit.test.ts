@@ -33,6 +33,28 @@ describe("shouldSyncTaskCursorServerJobPollState", () => {
     ).toBe(true);
   });
 
+  it("returns true when an implementation execution job is active", () => {
+    expect(
+      shouldSyncTaskCursorServerJobPollState({
+        implementationExecutionJobsV1: [
+          {
+            version: "implementation_execution_job_v1",
+            jobId: "j1",
+            projectId: "p1",
+            processTaskId: "DEV-1",
+            codeTaskIds: [],
+            workItemIds: [],
+            attemptNo: 1,
+            status: "running",
+            currentStep: "cursor_running",
+            createdAt: "2026-06-01T12:00:00.000Z",
+            updatedAt: "2026-06-01T12:00:00.000Z",
+          },
+        ],
+      } as RequirementsStateJson),
+    ).toBe(true);
+  });
+
   it("returns true when quick run is running", () => {
     expect(
       shouldSyncTaskCursorServerJobPollState({

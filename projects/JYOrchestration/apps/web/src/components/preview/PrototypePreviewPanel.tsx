@@ -328,6 +328,13 @@ import {
   resolveTaskCursorAutoChainTriggerDedupeKey,
 } from "@/lib/prototype/taskCursorAutoChainIdempotency";
 import {
+  appendImplementationExecutionJob,
+  createImplementationExecutionJob,
+  parseImplementationExecutionJobsV1,
+} from "@/lib/prototype/implementationExecutionJob";
+import { resolveImplementationExecutionJobAutoChainDecision } from "@/lib/prototype/implementationExecutionJobAutoChain";
+import { pickNextRunnableProcessTaskIdForQuickRun } from "@/lib/prototype/implementationExecutionJobSelection";
+import {
   buildImplementationQuickRunStartedPatch,
   buildImplementationQuickRunCursorDispatchTimelineEntry,
   buildImplementationQuickRunTimelineEntry,
@@ -1608,6 +1615,8 @@ export function PrototypePreviewPanel({
       implementationCodeTaskQualityGateV1:
         orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
       activeTaskCursorJob,
+      implementationExecutionJobsV1:
+        orchestrationAwareRequirementsState.implementationExecutionJobsV1 ?? null,
     });
   }, [
     projectId,
@@ -2538,12 +2547,61 @@ export function PrototypePreviewPanel({
     const orchestration = orchestrationAwareRequirementsState;
     const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
     const quickRun = parseImplementationQuickRunV1(orchestration.implementationQuickRunV1);
+    const jobs =
+      parseImplementationExecutionJobsV1(orchestration.implementationExecutionJobsV1) ?? [];
     if (
       !shouldAllowTaskCursorAutoChain({
         quickRun,
         taskCursorExecution: execution,
       })
     ) {
+      return;
+    }
+    const pid = projectId.trim();
+    const jobAutoDecision = board
+      ? resolveImplementationExecutionJobAutoChainDecision({
+          board,
+          jobs,
+          projectId: pid,
+          allowedTaskIds: resolveQuickRunAllowedTaskIds(quickRun),
+        })
+      : { kind: "none" as const };
+    if (jobAutoDecision.kind === "start") {
+      if (hasTaskCursorAutoChainIdempotencyKey(taskCursorAutoChainExecutedKeysRef.current, jobAutoDecision.idempotencyKey)) {
+        return;
+      }
+      if (taskCursorAutoChainRef.current === jobAutoDecision.idempotencyKey) return;
+      if (isInFlightTaskCursorExecution(execution)) return;
+      taskCursorAutoChainRef.current = jobAutoDecision.idempotencyKey;
+      rememberTaskCursorAutoChainIdempotencyKey(
+        taskCursorAutoChainExecutedKeysRef.current,
+        jobAutoDecision.idempotencyKey,
+      );
+      const notice = `다음 작업 ${jobAutoDecision.taskId}을(를) 자동으로 시작합니다.`;
+      showToast(notice);
+      executionSingleChat.appendAiNotice(notice);
+      taskCursorAutoChainPreferredTaskIdRef.current = jobAutoDecision.taskId;
+      const nowIso = new Date().toISOString();
+      let implementationExecutionJobsV1 = jobs;
+      try {
+        const job = createImplementationExecutionJob({
+          projectId: pid,
+          processTaskId: jobAutoDecision.taskId,
+          jobs: implementationExecutionJobsV1,
+          nowIso,
+        });
+        implementationExecutionJobsV1 = appendImplementationExecutionJob(
+          implementationExecutionJobsV1,
+          job,
+        );
+        applyImplementationOrchestrationResult({
+          messages: executionSingleChat.chatMessages,
+          orchestrationPatch: { implementationExecutionJobsV1 },
+        });
+      } catch {
+        return;
+      }
+      void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
       return;
     }
     const autoGate = parseImplementationAutoQualityGateV1(orchestration.implementationAutoQualityGateV1);
@@ -2623,6 +2681,7 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
     implementationStageBoardGateContext?.board?.summary?.completedTasks,
     implementationStageBoardGateContext?.board?.summary?.totalTasks,
+    orchestrationAwareRequirementsState.implementationExecutionJobsV1,
     triggerTaskCursorAutoChain,
   ]);
 
@@ -4458,6 +4517,8 @@ export function PrototypePreviewPanel({
                     orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1,
                   codeTaskQualityGate:
                     orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
+                  implementationExecutionJobsV1:
+                    orchestrationAwareRequirementsState.implementationExecutionJobsV1,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
                   existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -6307,8 +6368,26 @@ export function PrototypePreviewPanel({
       selectedTaskIds,
       nowIso,
     });
+    let implementationExecutionJobsV1 = existingJobs;
+    if (resolvedTaskId) {
+      try {
+        const job = createImplementationExecutionJob({
+          projectId: pid,
+          processTaskId: resolvedTaskId,
+          jobs: implementationExecutionJobsV1,
+          nowIso,
+        });
+        implementationExecutionJobsV1 = appendImplementationExecutionJob(
+          implementationExecutionJobsV1,
+          job,
+        );
+      } catch {
+        // active job already exists for this process task
+      }
+    }
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       implementationQuickRunV1: quickRun,
+      implementationExecutionJobsV1,
       promptTimeline: appendPromptTimeline(
         parsedRequirementsState.promptTimeline,
         buildImplementationQuickRunTimelineEntry({

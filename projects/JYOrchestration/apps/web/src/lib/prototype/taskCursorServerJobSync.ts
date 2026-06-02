@@ -1,3 +1,4 @@
+import { findActiveImplementationExecutionJob } from "@/lib/prototype/implementationExecutionJob";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -7,6 +8,10 @@ import type { RequirementsStateJson } from "@/lib/requirements/requirementsState
 export function shouldSyncTaskCursorServerJobPollState(
   state: RequirementsStateJson | null | undefined,
 ): boolean {
+  if (findActiveImplementationExecutionJob(state?.implementationExecutionJobsV1)) {
+    return true;
+  }
+
   const execution = parseTaskCursorExecutionV1(state?.taskCursorExecutionV1);
   if (execution && isInFlightTaskCursorExecution(execution)) return true;
 

@@ -3,6 +3,7 @@ import type { ImplementationExecutionBoardTaskRowV1 } from "@/lib/prototype/impl
 export type ImplementationTaskCriticality =
   | "foundation"
   | "common"
+  | "mock"
   | "screen"
   | "feature"
   | "leaf";
@@ -13,7 +14,7 @@ export function classifyImplementationTaskCriticality(input: {
 }): ImplementationTaskCriticality {
   const taskId = input.taskId.trim().toUpperCase();
   const taskType = String(input.taskType ?? "").trim().toLowerCase();
-  if (taskId.startsWith("DEV-MOCK")) return "foundation";
+  if (taskId.startsWith("DEV-MOCK") || taskType === "mock") return "mock";
   if (taskId.startsWith("DEV-COMMON")) return "common";
   if (taskType === "mock" || taskType === "state" || taskType === "security" || taskType === "scm") {
     return "foundation";

@@ -33,6 +33,10 @@ import {
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
+import {
+  parseImplementationExecutionJobsV1,
+  syncImplementationExecutionJobFromTaskCursor,
+} from "@/lib/prototype/implementationExecutionJob";
 
 export function buildTaskCursorExecutionRequest(input: {
   readonly projectId: string;
@@ -193,12 +197,14 @@ export function buildTaskCursorOrchestrationPatch(input: {
   readonly existingTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
+  readonly implementationExecutionJobsV1?: unknown;
 }): Readonly<{
   readonly taskCursorExecutionV1: TaskCursorExecutionV1;
   readonly taskCursorExecutionHistoryV1: readonly TaskCursorExecutionV1[];
   readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1;
   readonly implementationCodeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1;
+  readonly implementationExecutionJobsV1?: ReturnType<typeof syncImplementationExecutionJobFromTaskCursor>;
 }> {
   const selectedWorkItems = resolveSelectedWorkItemsForExecution({
     cursorWorkItems: input.cursorWorkItems,
@@ -261,6 +267,11 @@ export function buildTaskCursorOrchestrationPatch(input: {
         nowIso: input.execution.updatedAt,
       })
     : undefined;
+  const jobs = syncImplementationExecutionJobFromTaskCursor({
+    jobs: parseImplementationExecutionJobsV1(input.implementationExecutionJobsV1) ?? [],
+    execution: input.execution,
+  });
+
   return {
     taskCursorExecutionV1: input.execution,
     taskCursorExecutionHistoryV1: appendTaskCursorExecutionHistory(
@@ -268,6 +279,7 @@ export function buildTaskCursorOrchestrationPatch(input: {
       input.execution,
     ),
     promptTimeline: timeline,
+    implementationExecutionJobsV1: jobs,
     ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
     ...(implementationCodeTaskExecutionFeedbackV1
       ? { implementationCodeTaskExecutionFeedbackV1 }

@@ -4,6 +4,11 @@ import type { ImplementationStageActionGateResult } from "@/lib/prototype/effect
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { formatTaskCursorElapsedMinutes } from "@/lib/prototype/taskCursorClientPollLoop";
 import {
+  findActiveImplementationExecutionJob,
+  type ImplementationExecutionJobV1,
+} from "@/lib/prototype/implementationExecutionJob";
+import { formatImplementationExecutionJobStatusKo } from "@/lib/prototype/implementationExecutionJobUi";
+import {
   isActiveTaskCursorJobStatus,
   type TaskCursorJobSummary,
 } from "@/lib/prototype/taskCursorExecutionJobTypes";
@@ -23,6 +28,15 @@ export function shouldCheckActiveImplementationExecutionGate(
 function formatElapsedSuffix(iso?: string | null): string {
   const elapsed = formatTaskCursorElapsedMinutes(iso);
   return elapsed != null ? ` (${elapsed}분 경과)` : "";
+}
+
+function blockForActiveExecutionJob(job: ImplementationExecutionJobV1): ImplementationStageActionGateResult {
+  const elapsed = formatElapsedSuffix(job.updatedAt ?? job.startedAt);
+  const statusLabel = formatImplementationExecutionJobStatusKo(job.status);
+  return {
+    ok: false,
+    message: `현재 ${job.processTaskId} 작업이 ${statusLabel} 상태입니다${elapsed}. 완료될 때까지 기다리거나 상태 확인을 중단해 주세요.`,
+  };
 }
 
 function blockForActiveJob(job: TaskCursorJobSummary): ImplementationStageActionGateResult {
@@ -55,6 +69,14 @@ export function evaluateActiveImplementationExecutionGate(
   boardContext?: ImplementationStageBoardGateContext | null,
 ): ImplementationStageActionGateResult | null {
   if (!shouldCheckActiveImplementationExecutionGate(actionId)) return null;
+
+  const executionJob = findActiveImplementationExecutionJob(
+    boardContext?.implementationExecutionJobsV1,
+    boardContext?.board.projectId,
+  );
+  if (executionJob) {
+    return blockForActiveExecutionJob(executionJob);
+  }
 
   const job = boardContext?.activeTaskCursorJob ?? null;
   if (job && isActiveTaskCursorJobStatus(job.status) && !job.completedAt) {

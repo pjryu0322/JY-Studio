@@ -38,6 +38,7 @@ import {
 } from "@/lib/prototype/implementationPlanningReadiness";
 import { evaluateActiveImplementationExecutionGate } from "@/lib/prototype/implementationStageRunningGate";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
+import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 
 export type { ImplementationStageActionGateResult, ImplementationStageActionId };
 
@@ -52,6 +53,8 @@ export type ImplementationStageBoardGateContext = Readonly<{
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly implementationCodeTaskQualityGateV1?: import("@/lib/prototype/implementationCodeTaskQualityGate").ImplementationCodeTaskQualityGateV1 | null;
+  readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
+  readonly implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
 }>;
 
 export function buildImplementationStageBoardGateContext(input: {
@@ -107,6 +110,9 @@ export function buildImplementationStageBoardGateContext(input: {
       : {}),
     ...(input.activeTaskCursorJob !== undefined
       ? { activeTaskCursorJob: input.activeTaskCursorJob }
+      : {}),
+    ...(input.implementationExecutionJobsV1 !== undefined
+      ? { implementationExecutionJobsV1: input.implementationExecutionJobsV1 }
       : {}),
   };
 }

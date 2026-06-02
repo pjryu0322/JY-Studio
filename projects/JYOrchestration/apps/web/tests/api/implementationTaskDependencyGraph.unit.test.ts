@@ -70,7 +70,7 @@ describe("implementationTaskDependencyGraph", () => {
   });
 
   it("classifies foundation tasks", () => {
-    expect(classifyImplementationTaskCriticality({ taskId: "DEV-MOCK-001" })).toBe("foundation");
+    expect(classifyImplementationTaskCriticality({ taskId: "DEV-MOCK-001" })).toBe("mock");
     expect(classifyImplementationTaskCriticality({ taskId: "DEV-SCREEN-002", taskType: "screen" })).toBe(
       "screen",
     );

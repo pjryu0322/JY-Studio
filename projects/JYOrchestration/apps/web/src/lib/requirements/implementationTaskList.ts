@@ -186,22 +186,10 @@ export function buildImplementationTaskListFromSeed(input: {
     });
   }
 
-  const mockTaskId = "DEV-MOCK-001";
-
-  // Dependencies: mock data -> dev tasks -> review/security -> scm
+  // REVIEW/SECURITY depend on developer tasks (mock is not a global gate for all DEV tasks).
   const devTaskIds = tasks
     .filter((t) => t.ownerRole === "developer")
     .map((t) => t.taskId);
-
-  for (let i = 0; i < tasks.length; i++) {
-    const t = tasks[i]!;
-    if (t.ownerRole === "developer" && t.taskId !== mockTaskId) {
-      tasks[i] = {
-        ...t,
-        dependencies: t.dependencies.includes(mockTaskId) ? t.dependencies : [...t.dependencies, mockTaskId],
-      };
-    }
-  }
 
   tasks.push({
     taskId: "REVIEW-001",
