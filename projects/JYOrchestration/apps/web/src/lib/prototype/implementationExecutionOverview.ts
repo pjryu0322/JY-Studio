@@ -26,6 +26,8 @@ export function buildImplementationExecutionOverview(input: {
   readonly activeTaskId?: string | null;
   readonly activeCodeTaskTitle?: string | null;
   readonly runtime?: ImplementationRuntimeStateV1 | null;
+  /** DB Runtime Engine (P2) — JSON보다 우선 */
+  readonly dbRuntimeState?: RuntimeState | null;
 }): ImplementationExecutionOverview {
   const processTaskCount = input.board.taskRows.length;
   const planCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
@@ -45,9 +47,8 @@ export function buildImplementationExecutionOverview(input: {
     input.activeCodeTaskTitle?.trim() ||
     activeRow?.title?.trim() ||
     undefined;
-  const runtimeState = input.runtime?.runtimeState;
-  const isRunning =
-    isRuntimeInFlight(runtimeState) || inProgressCount > 0 || runtimeState === "queued";
+  const runtimeState = input.dbRuntimeState ?? input.runtime?.runtimeState;
+  const isRunning = isRuntimeInFlight(runtimeState) || inProgressCount > 0;
 
   return {
     processTaskCount,

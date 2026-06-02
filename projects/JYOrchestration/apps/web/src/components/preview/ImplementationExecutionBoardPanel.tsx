@@ -80,6 +80,7 @@ export function ImplementationExecutionBoardPanel({
   onRedispatchRuntime,
   onShowRuntimeDiagnostics,
   implementationRuntimeStateV1,
+  implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
@@ -204,8 +205,16 @@ export function ImplementationExecutionBoardPanel({
           implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === selectedCodeTaskId)?.title ??
           board.taskRows.find((row) => row.taskId === activeTaskId)?.title,
         runtime: parseImplementationRuntimeStateV1(implementationRuntimeStateV1),
+        dbRuntimeState: implementationRuntimeDbBundle?.currentRun?.runtimeState ?? null,
       }),
-    [board, implementationCodeTaskPlanV1, activeTaskId, selectedCodeTaskId, implementationRuntimeStateV1],
+    [
+      board,
+      implementationCodeTaskPlanV1,
+      activeTaskId,
+      selectedCodeTaskId,
+      implementationRuntimeStateV1,
+      implementationRuntimeDbBundle,
+    ],
   );
 
   const taskTreeNodes = useMemo(

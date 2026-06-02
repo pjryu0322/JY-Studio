@@ -354,6 +354,12 @@ import {
 import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
 import { ImplementationRuntimeDiagnosticsPanel } from "@/components/preview/ImplementationRuntimeDiagnosticsPanel";
 import {
+  fetchImplementationRuntime,
+  postImplementationRuntimeAction,
+  type ImplementationRuntimeDiagnosticsRow,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
+import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import {
   buildActiveDispatchForQueueHead,
   parseImplementationRuntimeStateV1,
   patchRuntimeWatchdogPoll,
@@ -1587,6 +1593,11 @@ export function PrototypePreviewPanel({
   const codeTaskQueueAdvanceInFlightRef = useRef(false);
   const implementationRecoveryKeyRef = useRef("");
   const [runtimeDiagnosticsOpen, setRuntimeDiagnosticsOpen] = useState(false);
+  const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
+    useState<ImplementationRuntimeBundleView | null>(null);
+  const [implementationRuntimeDbDiagnostics, setImplementationRuntimeDbDiagnostics] = useState<
+    readonly ImplementationRuntimeDiagnosticsRow[]
+  >([]);
 
   const enrichCodeTaskRunOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
@@ -1641,6 +1652,31 @@ export function PrototypePreviewPanel({
     () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
     [orchestrationAwareRequirementsState.implementationRuntimeStateV1],
   );
+
+  const syncImplementationRuntimeDb = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    await postImplementationRuntimeAction({
+      projectId: pid,
+      action: "sync_from_json",
+      requirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
+    });
+    const fetched = await fetchImplementationRuntime(pid);
+    if (fetched.bundle) setImplementationRuntimeDbBundle(fetched.bundle);
+    if (fetched.diagnostics?.length) {
+      setImplementationRuntimeDbDiagnostics(fetched.diagnostics);
+    }
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    orchestrationAwareRequirementsState.implementationRuntimeStateV1,
+  ]);
+
+  useEffect(() => {
+    void syncImplementationRuntimeDb();
+  }, [syncImplementationRuntimeDb]);
 
   const prototypeRunSyncSnapshot = useMemo(
     () =>
@@ -2847,12 +2883,17 @@ export function PrototypePreviewPanel({
       });
       void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     }
+    void postImplementationRuntimeAction({ projectId: pid, action: "recover" }).then((dbRecovery) => {
+      if (dbRecovery.bundle) setImplementationRuntimeDbBundle(dbRecovery.bundle);
+      void syncImplementationRuntimeDb();
+    });
   }, [
     applyImplementationOrchestrationResult,
     executionSingleChat,
     orchestrationAwareRequirementsState,
     projectId,
     showToast,
+    syncImplementationRuntimeDb,
   ]);
 
   const implementationCursorGate = useMemo(
@@ -4037,6 +4078,9 @@ export function PrototypePreviewPanel({
           return startImplementationQuickRunRef.current();
         case "REDISPATCH_IMPLEMENTATION_RUNTIME": {
           const pid = projectId.trim();
+          void postImplementationRuntimeAction({ projectId: pid, action: "redispatch" }).then(() => {
+            void syncImplementationRuntimeDb();
+          });
           const queue = parseCodeTaskExecutionQueueV1(
             orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
           );
@@ -4079,6 +4123,12 @@ export function PrototypePreviewPanel({
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
           cancelTaskCursorClientPoll();
           implementationRecoveryKeyRef.current = "";
+          void postImplementationRuntimeAction({
+            projectId: projectId.trim(),
+            action: "force_release",
+          }).then(() => {
+            void syncImplementationRuntimeDb();
+          });
           const release = recoverImplementationRuntimeState({
             rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
             projectId: projectId.trim(),
@@ -7477,6 +7527,8 @@ export function PrototypePreviewPanel({
       {runtimeDiagnosticsOpen ? (
         <ImplementationRuntimeDiagnosticsPanel
           requirementsState={orchestrationAwareRequirementsState as Record<string, unknown>}
+          dbBundle={implementationRuntimeDbBundle}
+          dbDiagnostics={implementationRuntimeDbDiagnostics}
           onClose={() => setRuntimeDiagnosticsOpen(false)}
         />
       ) : null}
@@ -7519,6 +7571,7 @@ export function PrototypePreviewPanel({
             implementationRuntimeStateV1={
               orchestrationAwareRequirementsState.implementationRuntimeStateV1
             }
+            implementationRuntimeDbBundle={implementationRuntimeDbBundle}
             codeTaskExecutionFeedbackV1={
               orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
             }
