@@ -44,11 +44,12 @@ import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentEx
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
-  isTaskTreeFullySelected,
-  normalizeSelectedTaskIds,
-  resolveTaskTreeSelectAll,
-  resolveTaskTreeSelectionToggle,
-} from "@/lib/prototype/implementationTaskTreeSelection";
+  isCodeTaskTreeFullySelected,
+  normalizeSelectedCodeTaskIds,
+  resolveCodeTaskTreeSelectAll,
+  resolveCodeTaskTreeSelectionToggle,
+  resolveProcessTaskCodeTaskSelectionToggle,
+} from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
@@ -70,6 +71,8 @@ export function ImplementationExecutionBoardPanel({
   onResumeTaskCursorStatusCheck,
   onRestartTask,
   onSelectedTaskIdsChange,
+  onSelectedCodeTaskIdsChange,
+  onRunSingleCodeTask,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
@@ -94,6 +97,8 @@ export function ImplementationExecutionBoardPanel({
   readonly onResumeTaskCursorStatusCheck?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
+  readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
+  readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
@@ -148,17 +153,26 @@ export function ImplementationExecutionBoardPanel({
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
   const [selectedCodeTaskId, setSelectedCodeTaskId] = useState<string | null>(null);
-  const checkedTaskIds = useMemo(
+  const checkedCodeTaskIds = useMemo(
     () =>
-      normalizeSelectedTaskIds({
-        selectedTaskIds: boardState?.selectedTaskIds,
-        taskRows: board.taskRows,
+      normalizeSelectedCodeTaskIds({
+        selectedCodeTaskIds: boardState?.selectedCodeTaskIds,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        legacySelectedTaskIds: boardState?.selectedTaskIds,
       }),
-    [boardState?.selectedTaskIds, board.taskRows],
+    [
+      boardState?.selectedCodeTaskIds,
+      boardState?.selectedTaskIds,
+      implementationCodeTaskPlanV1,
+    ],
   );
-  const allTasksChecked = useMemo(
-    () => isTaskTreeFullySelected({ selectedTaskIds: checkedTaskIds, taskRows: board.taskRows }),
-    [checkedTaskIds, board.taskRows],
+  const allCodeTasksChecked = useMemo(
+    () =>
+      isCodeTaskTreeFullySelected({
+        selectedCodeTaskIds: checkedCodeTaskIds,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+      }),
+    [checkedCodeTaskIds, implementationCodeTaskPlanV1],
   );
 
   useEffect(() => {
@@ -192,7 +206,7 @@ export function ImplementationExecutionBoardPanel({
         activeTaskId,
         selectedTaskId,
         selectedCodeTaskId,
-        checkedTaskIds,
+        checkedCodeTaskIds,
         taskCursorExecution: taskCursorExecutionV1 ?? null,
         implementationAutoQualityGateV1,
         promptTimeline,
@@ -206,7 +220,7 @@ export function ImplementationExecutionBoardPanel({
       activeTaskId,
       selectedTaskId,
       selectedCodeTaskId,
-      checkedTaskIds,
+      checkedCodeTaskIds,
       taskCursorExecutionV1,
       implementationAutoQualityGateV1,
       promptTimeline,
@@ -277,7 +291,9 @@ export function ImplementationExecutionBoardPanel({
             {executionOverview.isRunning ? "구현 실행 중" : "구현 실행 대기"}
           </div>
           <ul className={styles.overviewCardLines}>
-            {formatImplementationExecutionOverviewLines(executionOverview).map((line) => (
+            {formatImplementationExecutionOverviewLines(executionOverview, {
+              selectedCodeTaskCount: checkedCodeTaskIds.length,
+            }).map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>
@@ -354,22 +370,39 @@ export function ImplementationExecutionBoardPanel({
           selectedCodeTaskId={selectedCodeTaskId}
           codeAgentProgress={codeAgentProgress}
           onCancelTaskCursorPolling={onCancelTaskCursorPolling}
-          allChecked={allTasksChecked}
+          allChecked={allCodeTasksChecked}
+          selectedCodeTaskCount={checkedCodeTaskIds.length}
           onSelectTask={setSelectedTaskId}
           onSelectCodeTask={(_parentTaskId, codeTaskId) => setSelectedCodeTaskId(codeTaskId)}
           onToggleTaskChecked={(taskId, checked) => {
-            updateCheckedTaskIds(
-              resolveTaskTreeSelectionToggle({
-                taskId,
+            updateCheckedCodeTaskIds(
+              resolveProcessTaskCodeTaskSelectionToggle({
+                parentTaskId: taskId,
                 checked,
-                selectedTaskIds: checkedTaskIds,
-                taskRows: board.taskRows,
+                selectedCodeTaskIds: checkedCodeTaskIds,
+                codeTaskPlan: implementationCodeTaskPlanV1,
+              }),
+            );
+          }}
+          onToggleCodeTaskChecked={(codeTaskId, checked) => {
+            updateCheckedCodeTaskIds(
+              resolveCodeTaskTreeSelectionToggle({
+                codeTaskId,
+                checked,
+                selectedCodeTaskIds: checkedCodeTaskIds,
+                codeTaskPlan: implementationCodeTaskPlanV1,
               }),
             );
           }}
           onToggleSelectAll={(checked) => {
-            updateCheckedTaskIds(resolveTaskTreeSelectAll({ selectAll: checked, taskRows: board.taskRows }));
+            updateCheckedCodeTaskIds(
+              resolveCodeTaskTreeSelectAll({
+                selectAll: checked,
+                codeTaskPlan: implementationCodeTaskPlanV1,
+              }),
+            );
           }}
+          onRunSingleCodeTask={onRunSingleCodeTask}
           onRestartTask={onRestartTask}
           onStopTask={() => onCancelTaskCursorPolling?.()}
           onResumeStatusCheck={() => onResumeTaskCursorStatusCheck?.()}

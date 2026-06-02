@@ -1,6 +1,12 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  checkCodeTaskDependencyReady,
+  type CodeTaskDependencyCheckResult,
+} from "@/lib/prototype/codeTaskDependencyResolver";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { formatCodeTaskExecutionRunStatusKo } from "@/lib/prototype/codeTaskExecutionRunUi";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 export const CODE_TASK_IN_FLIGHT_USER_MESSAGE =
   "현재 선택한 CodeTask 작업이 진행 중입니다. 완료 후 다음 CodeTask를 실행할 수 있습니다." as const;
@@ -114,6 +120,88 @@ export function buildCodeTaskStatusCheckUserMessage(input: {
     lines.push("GitHub: 결과 대기 중");
   }
   return lines.join("\n");
+}
+
+export type CodeTaskRowView = Readonly<{
+  readonly codeTaskId: string;
+  readonly title: string;
+  readonly statusLabel: string;
+  readonly statusTone: CodeTaskRunUserStatusTone;
+  readonly executable: boolean;
+  readonly blockedReason?: string;
+  readonly latestRun?: CodeTaskExecutionRunV1;
+  readonly githubSummary: ReturnType<typeof buildCodeTaskRunGithubEvidenceSummary>;
+  readonly collapsedSummary: string;
+  readonly progressLabel: string;
+}>;
+
+export function buildCodeTaskRowView(input: {
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly queue?: CodeTaskExecutionQueueV1 | null;
+  readonly dependencyCheck?: CodeTaskDependencyCheckResult | null;
+}): CodeTaskRowView {
+  const dependencyCheck =
+    input.dependencyCheck ??
+    (input.codeTaskPlan
+      ? checkCodeTaskDependencyReady({
+          codeTaskId: input.codeTask.codeTaskId,
+          codeTaskPlan: input.codeTaskPlan,
+          runs: input.runs ?? [],
+        })
+      : null);
+  const latestRun = findLatestRunForCodeTask(input.runs, input.codeTask.codeTaskId);
+  const userStatus = buildCodeTaskRunUserStatus(latestRun);
+  const executable = dependencyCheck?.status === "ready";
+  const blockedReason =
+    dependencyCheck && dependencyCheck.status !== "ready"
+      ? dependencyCheck.message?.trim() || "선행 작업 필요"
+      : undefined;
+  const githubSummary = buildCodeTaskRunGithubEvidenceSummary(latestRun);
+
+  let collapsedSummary = userStatus.label;
+  if (!executable && blockedReason) collapsedSummary = "선행 작업 필요";
+  else if (userStatus.tone === "running") collapsedSummary = "실행 중";
+  else if (userStatus.tone === "success") collapsedSummary = "완료";
+  else if (userStatus.tone === "idle" && !latestRun) collapsedSummary = "대기";
+
+  const progressLabel =
+    userStatus.tone === "running"
+      ? userStatus.detail
+      : executable
+        ? "실행 가능"
+        : blockedReason ?? userStatus.detail;
+
+  return {
+    codeTaskId: input.codeTask.codeTaskId,
+    title: input.codeTask.title.trim() || input.codeTask.codeTaskId,
+    statusLabel: userStatus.label,
+    statusTone: userStatus.tone,
+    executable,
+    ...(blockedReason ? { blockedReason } : {}),
+    ...(latestRun ? { latestRun } : {}),
+    githubSummary,
+    collapsedSummary,
+    progressLabel,
+  };
+}
+
+export function summarizeCodeTaskRowViewsForProcess(
+  views: readonly CodeTaskRowView[],
+): string {
+  if (!views.length) return "CodeTask 없음";
+  const total = views.length;
+  const completed = views.filter((v) => v.statusTone === "success").length;
+  const running = views.filter((v) => v.statusTone === "running").length;
+  const blocked = views.filter((v) => !v.executable && v.statusTone !== "success").length;
+  const waiting = total - completed - running - blocked;
+  const parts = [`CodeTask ${total}개`];
+  if (completed) parts.push(`완료 ${completed}`);
+  if (running) parts.push(`실행 중 ${running}`);
+  if (blocked) parts.push(`차단 ${blocked}`);
+  if (waiting > 0) parts.push(`대기 ${waiting}`);
+  return parts.join(" · ");
 }
 
 export function buildCodeTaskRunLaunchToastMessage(input: {

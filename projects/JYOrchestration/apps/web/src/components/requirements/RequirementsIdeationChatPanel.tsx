@@ -13,7 +13,6 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
-import { ImplementationPrepProgressCard } from "@/components/requirements/ImplementationPrepProgressCard";
 
 export type RequirementsIdeationChatPanelProps = Readonly<{
   showScreenLabels: boolean;
@@ -115,17 +114,7 @@ export function RequirementsIdeationChatPanel({
     return last?.role !== "ai";
   }, [aiInvokePending, quickDesignConfirmPending, serviceFlowAnalyzePending, chatMessages]);
 
-  const headerLeading = useMemo(() => {
-    if (quickDesignConfirmPending) {
-      return (
-        <>
-          <ImplementationPrepProgressCard active />
-          {chatHeaderLeading}
-        </>
-      );
-    }
-    return chatHeaderLeading ?? null;
-  }, [chatHeaderLeading, quickDesignConfirmPending]);
+  const headerLeading = chatHeaderLeading ?? null;
 
   const composer: ReactNode = (
     <>

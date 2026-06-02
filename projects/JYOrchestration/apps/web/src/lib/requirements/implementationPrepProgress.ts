@@ -137,4 +137,30 @@ export function formatImplementationPrepStepLine(step: ImplementationPrepStepIte
   return `${step.label}${suffix}`;
 }
 
+/** 대화칩·사용자 요약용 단계명(내부 Batch/LLM 용어 제외) */
+export function formatImplementationPrepProgressUserStepLabel(
+  phase: ImplementationPrepProgressPhase,
+): string {
+  switch (phase) {
+    case "confirming":
+      return "Quick Design 확정";
+    case "seed_building":
+      return "구현 Seed 생성";
+    case "task_list_building":
+      return "구현 TaskList 생성";
+    case "codetask_refining":
+      return "CodeTask 정리";
+    case "workitem_building":
+      return "WorkItem 생성";
+    case "preflight_checking":
+      return "실행 전 점검";
+    case "ready":
+      return "구현준비 완료";
+    case "failed":
+      return "구현준비 생성 실패";
+    default:
+      return "구현준비 생성";
+  }
+}
+
 export { stepStatusLabel };

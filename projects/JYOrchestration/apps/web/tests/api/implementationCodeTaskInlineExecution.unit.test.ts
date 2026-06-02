@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementationCodeTaskInlineExecution";
+import { buildCodeTaskInlineExecutionDetail, CODE_TASK_INLINE_SCOPE_LABEL } from "@/lib/prototype/implementationCodeTaskInlineExecution";
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { formatImplementationExecutionOverviewLines } from "@/lib/prototype/implementationExecutionOverview";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
@@ -45,7 +45,7 @@ describe("buildCodeTaskInlineExecutionDetail", () => {
       isSelected: true,
     });
     expect(detail?.compactLine).toContain("상태:");
-    expect(detail?.scopeLine).toContain("Process Task");
+    expect(detail?.scopeLine).toBe(CODE_TASK_INLINE_SCOPE_LABEL);
     expect(detail?.nextProcessingHint).toContain("경량검사");
     expect(detail?.executionFlowSteps).toBeUndefined();
   });
@@ -60,6 +60,6 @@ describe("formatImplementationExecutionOverviewLines", () => {
     const overview = buildImplementationExecutionOverview({ board });
     const text = formatImplementationExecutionOverviewLines(overview).join("\n");
     expect(text).not.toContain("Quick 실행으로 선택한");
-    expect(text).toContain("진행:");
+    expect(text).toContain("CodeTask 진행:");
   });
 });

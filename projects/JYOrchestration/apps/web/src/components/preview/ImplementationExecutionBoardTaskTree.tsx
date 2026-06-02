@@ -75,6 +75,8 @@ function CodeTaskTreeItem({
   onCancelTaskCursorPolling,
   onResumeStatusCheck,
   onSelect,
+  onToggleChecked,
+  onRunSingle,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly depth: number;
@@ -82,6 +84,8 @@ function CodeTaskTreeItem({
   readonly onCancelTaskCursorPolling?: () => void;
   readonly onResumeStatusCheck?: () => void;
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
+  readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
+  readonly onRunSingle?: (codeTaskId: string) => void;
 }) {
   const inlineExecution = codeAgentProgress
     ? buildCodeTaskInlineExecutionDetail({
@@ -91,6 +95,8 @@ function CodeTaskTreeItem({
         executionFlowSteps: node.executionFlowSteps,
       })
     : undefined;
+  const showInlineActions =
+    inlineExecution?.canCancelCloudAgentPolling || inlineExecution?.canResumeStatusCheck;
   const itemClass = [
     styles.taskTreeCodeTaskItem,
     node.isActive ? styles.taskTreeItemActive : "",
@@ -158,6 +164,9 @@ export function ImplementationExecutionBoardTaskTree({
   onSelectCodeTask,
   onToggleTaskChecked,
   onToggleSelectAll,
+  onToggleCodeTaskChecked,
+  onRunSingleCodeTask,
+  selectedCodeTaskCount,
   onRestartTask,
   onStopTask,
   codeAgentProgress,
@@ -175,6 +184,9 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onSelectCodeTask?: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleTaskChecked?: (taskId: string, checked: boolean) => void;
   readonly onToggleSelectAll?: (checked: boolean) => void;
+  readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
+  readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
+  readonly selectedCodeTaskCount?: number;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onStopTask?: (taskId: string) => void;
 }) {
@@ -220,7 +232,8 @@ export function ImplementationExecutionBoardTaskTree({
           <span>전체 선택</span>
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
-          {nodes.filter((node) => node.isChecked).length}/{processCount} Process · CodeTask {codeTaskCount}개
+          Process Task {processCount}개 · CodeTask {codeTaskCount}개 · 선택됨{" "}
+          {selectedCodeTaskCount ?? nodes.reduce((n, node) => n + node.codeTasks.filter((ct) => ct.isChecked).length, 0)}개
         </span>
       </div>
       {nodes.map((node) => {
@@ -298,6 +311,8 @@ export function ImplementationExecutionBoardTaskTree({
                           onSelectTask?.(parentTaskId);
                           onSelectCodeTask?.(parentTaskId, codeTaskId);
                         }}
+                        onToggleChecked={onToggleCodeTaskChecked}
+                        onRunSingle={onRunSingleCodeTask}
                       />
                     ))}
                   </div>
@@ -310,18 +325,8 @@ export function ImplementationExecutionBoardTaskTree({
                     {node.pollStatusLabel}
                   </div>
                 ) : null}
-                {node.canRestart || node.canStop || node.canResumeStatusCheck ? (
+                {node.canStop || node.canResumeStatusCheck ? (
                   <div className={styles.taskTreeActionRow}>
-                    {node.canRestart ? (
-                      <button
-                        type="button"
-                        className={styles.taskTreeRestartButton}
-                        data-testid={`implementation-task-restart-${node.taskId}`}
-                        onClick={() => onRestartTask?.(node.taskId)}
-                      >
-                        {node.needsReworkRegistration ? "재작업 후 실행" : "이 Task 실행"}
-                      </button>
-                    ) : null}
                     {node.canStop ? (
                       <button
                         type="button"

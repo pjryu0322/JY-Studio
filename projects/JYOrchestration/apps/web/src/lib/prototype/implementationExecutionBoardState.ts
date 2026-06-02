@@ -287,6 +287,26 @@ export function updateBoardSelectedTaskIds(input: {
   };
 }
 
+export function updateBoardSelectedCodeTaskIds(input: {
+  readonly state: ImplementationExecutionBoardStateV1 | null | undefined;
+  readonly projectId: string;
+  readonly selectedCodeTaskIds: readonly string[];
+  readonly nowIso?: string;
+}): ImplementationExecutionBoardStateV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const selectedCodeTaskIds = input.selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  const base = buildInitialImplementationExecutionBoardState({
+    projectId: input.projectId,
+    nowIso: now,
+    existing: input.state,
+  });
+  return {
+    ...base,
+    updatedAt: now,
+    selectedCodeTaskIds: [...new Set(selectedCodeTaskIds)],
+  };
+}
+
 export function getActiveReworkRequestsForTask(
   boardState: ImplementationExecutionBoardStateV1 | null | undefined,
   taskId: string,

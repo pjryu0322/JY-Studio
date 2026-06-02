@@ -248,8 +248,10 @@ import {
   appendReworkRequest,
   markReworkRequestsAcceptedForTask,
   resolveAllPendingUserConfirmations,
+  updateBoardSelectedCodeTaskIds,
   updateBoardSelectedTaskIds,
 } from "@/lib/prototype/implementationExecutionBoardState";
+import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -5951,6 +5953,32 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const handleBoardSelectedCodeTaskIdsChange = useCallback(
+    (selectedCodeTaskIds: readonly string[]) => {
+      const pid = projectId.trim();
+      if (!pid) return;
+      const nowIso = new Date().toISOString();
+      const nextBoardState = updateBoardSelectedCodeTaskIds({
+        state: parsedRequirementsState.implementationExecutionBoardStateV1,
+        projectId: pid,
+        selectedCodeTaskIds,
+        nowIso,
+      });
+      applyImplementationOrchestrationResult({
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          implementationExecutionBoardStateV1: nextBoardState,
+        },
+      });
+    },
+    [
+      projectId,
+      parsedRequirementsState.implementationExecutionBoardStateV1,
+      applyImplementationOrchestrationResult,
+      executionSingleChat.chatMessages,
+    ],
+  );
+
   const handleImplementationBoardAction = useCallback(
     (input: ImplementationStageActionClickInput) => {
       executeImplementationStageAction(input.actionId, {
@@ -6576,7 +6604,9 @@ export function PrototypePreviewPanel({
     ],
   );
 
-  const startImplementationQuickRun = useCallback((): ImplementationStageActionRunResult => {
+  const startImplementationQuickRun = useCallback((options?: {
+    readonly selectedCodeTaskIds?: readonly string[];
+  }): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
     if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
     const planningGate = evaluateImplementationPlanningExecutionGate({
@@ -6601,19 +6631,12 @@ export function PrototypePreviewPanel({
       showToast(message);
       return { outcome: "blocked", message };
     }
-    const board = implementationStageBoardGateContext?.board ?? null;
-    const selectedTaskIds = board
-      ? normalizeSelectedTaskIds({
-          selectedTaskIds:
-            parsedRequirementsState.implementationExecutionBoardStateV1?.selectedTaskIds,
-          taskRows: board.taskRows,
-        })
-      : [];
-    const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForQueue({
+    const selectedCodeTaskIds = normalizeSelectedCodeTaskIds({
       codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
-      processTaskIds: selectedTaskIds,
-      explicitCodeTaskIds:
+      selectedCodeTaskIds:
         parsedRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+      legacySelectedTaskIds:
+        parsedRequirementsState.implementationExecutionBoardStateV1?.selectedTaskIds,
     });
     if (!selectedCodeTaskIds.length) {
       const message = "실행할 CodeTask를 선택해 주세요.";
@@ -6624,7 +6647,6 @@ export function PrototypePreviewPanel({
     const existingRuns =
       parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
       [];
-    const codeTaskPlan = parsedRequirementsState.implementationCodeTaskPlanV1;
     const dependencyPartition = codeTaskPlan
       ? partitionCodeTaskIdsByDependencyReadiness({
           codeTaskIds: selectedCodeTaskIds,
@@ -6676,7 +6698,7 @@ export function PrototypePreviewPanel({
           buildImplementationQuickRunTimelineEntry({
             action: "implementation_quick_run_started",
             projectId: pid,
-            taskId: selectedTaskIds[0] ?? "",
+            taskId: selectedCodeTaskIds[0] ?? "",
             nowIso,
           }),
         ),
@@ -6744,10 +6766,20 @@ export function PrototypePreviewPanel({
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
     };
+    const quickRunParentTaskIds = [
+      ...new Set(
+        dependencyPartition.readyIds
+          .map(
+            (codeTaskId) =>
+              codeTaskPlan?.tasks.find((t) => t.codeTaskId === codeTaskId)?.parentTaskId.trim() ?? "",
+          )
+          .filter(Boolean),
+      ),
+    ];
     const quickRun = buildImplementationQuickRunStartedPatch({
       projectId: pid,
       currentTaskId: dispatchTarget.parentTaskId,
-      selectedTaskIds,
+      selectedTaskIds: quickRunParentTaskIds,
       nowIso,
     });
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
@@ -6809,8 +6841,37 @@ export function PrototypePreviewPanel({
   ]);
 
   useEffect(() => {
-    startImplementationQuickRunRef.current = startImplementationQuickRun;
+    startImplementationQuickRunRef.current = () => startImplementationQuickRun();
   }, [startImplementationQuickRun]);
+
+  const handleRunSingleCodeTask = useCallback(
+    (codeTaskId: string) => {
+      const pid = projectId.trim();
+      const id = codeTaskId.trim();
+      if (!pid || !id) return;
+      const nowIso = new Date().toISOString();
+      const nextBoardState = updateBoardSelectedCodeTaskIds({
+        state: parsedRequirementsState.implementationExecutionBoardStateV1,
+        projectId: pid,
+        selectedCodeTaskIds: [id],
+        nowIso,
+      });
+      applyImplementationOrchestrationResult({
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          implementationExecutionBoardStateV1: nextBoardState,
+        },
+      });
+      startImplementationQuickRun({ selectedCodeTaskIds: [id] });
+    },
+    [
+      projectId,
+      parsedRequirementsState.implementationExecutionBoardStateV1,
+      applyImplementationOrchestrationResult,
+      executionSingleChat.chatMessages,
+      startImplementationQuickRun,
+    ],
+  );
 
   const onImplementationQuickExecution = useCallback(() => {
     const pid = projectId.trim();
@@ -7280,6 +7341,8 @@ export function PrototypePreviewPanel({
             onResumeTaskCursorStatusCheck={resumeTaskCursorStatusCheck}
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
+            onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
+            onRunSingleCodeTask={handleRunSingleCodeTask}
             codeTaskExecutionFeedbackV1={
               orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
             }

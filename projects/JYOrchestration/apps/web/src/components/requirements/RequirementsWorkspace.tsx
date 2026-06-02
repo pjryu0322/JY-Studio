@@ -203,6 +203,16 @@ import {
   patchRequirementsStageForImplementationStart,
   QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE,
 } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import {
+  buildPseudoImplementationPrepProgress,
+  type ImplementationPrepProgressPhase,
+} from "@/lib/requirements/implementationPrepProgress";
+import {
+  IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL,
+  removeImplementationPrepProgressMessages,
+  shouldRefreshImplementationPrepProgressMessage,
+  upsertImplementationPrepProgressMessage,
+} from "@/lib/requirements/implementationPrepProgressChatMessage";
 import { postQuickDesignConfirm } from "@/components/project-spec/apis/quickDesignConfirmApi";
 import {
   buildImplementationCandidateItems,
@@ -2414,6 +2424,21 @@ export function RequirementsWorkspace({
   ]);
 
   const lastFastPlanArtifactIdRef = useRef<string | null>(null);
+  const implementationPrepProgressTrackRef = useRef<{
+    percent: number;
+    phase: ImplementationPrepProgressPhase;
+  } | null>(null);
+  const implementationPrepProgressStartedAtRef = useRef<number | null>(null);
+
+  const applyLocalConversationMessages = useCallback(
+    (messages: readonly RequirementsMessage[]) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) return;
+      const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...messages]);
+      setRoom(nextRoom);
+    },
+    [resolvedProjectId],
+  );
 
   const handleConfirmFastPlanDraftSlots = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -2440,6 +2465,21 @@ export function RequirementsWorkspace({
       return;
     }
     setDeliverableGenerateBusy(true);
+    const prepStartIso = new Date().toISOString();
+    const initialPrepSnapshot = buildPseudoImplementationPrepProgress(0);
+    implementationPrepProgressStartedAtRef.current = Date.now();
+    implementationPrepProgressTrackRef.current = {
+      percent: initialPrepSnapshot.percent,
+      phase: initialPrepSnapshot.phase,
+    };
+    applyLocalConversationMessages(
+      upsertImplementationPrepProgressMessage({
+        messages: roomRef.current.requirementsConversation.messages,
+        progressStatus: "running",
+        snapshot: initialPrepSnapshot,
+        nowIso: prepStartIso,
+      }),
+    );
     showSuccessToast("Quick Design 확정 중입니다. LLM 설정이 켜져 있으면 1분 이상 걸릴 수 있습니다.");
     try {
       const st = stateJsonRef.current;
@@ -2455,12 +2495,34 @@ export function RequirementsWorkspace({
         sourceStage: resolveAuthoritativeOrchestrationStage(st),
       });
       if (!res.ok || !json.success || !json.data || json.data.mode !== "planning") {
-        showErrorToast(json.message || "Quick Design 확정에 실패했습니다.");
+        const failureMessage = json.message || "Quick Design 확정에 실패했습니다.";
+        applyLocalConversationMessages(
+          upsertImplementationPrepProgressMessage({
+            messages: removeImplementationPrepProgressMessages(
+              roomRef.current.requirementsConversation.messages,
+            ),
+            progressStatus: "failed",
+            nowIso: new Date().toISOString(),
+            errorMessage: failureMessage,
+          }),
+        );
+        showErrorToast(failureMessage);
         return;
       }
       const flowResult = json.data;
       if (!flowResult.statePatch) {
-        showErrorToast("Quick Design 확정 결과를 적용할 수 없습니다.");
+        const failureMessage = "Quick Design 확정 결과를 적용할 수 없습니다.";
+        applyLocalConversationMessages(
+          upsertImplementationPrepProgressMessage({
+            messages: removeImplementationPrepProgressMessages(
+              roomRef.current.requirementsConversation.messages,
+            ),
+            progressStatus: "failed",
+            nowIso: new Date().toISOString(),
+            errorMessage: failureMessage,
+          }),
+        );
+        showErrorToast(failureMessage);
         return;
       }
 
@@ -2474,18 +2536,44 @@ export function RequirementsWorkspace({
         : flowResult.statePatch;
       const persisted = await persistStateJsonOnly(statePatchWithTimeline);
       if (!persisted) {
-        showErrorToast("Quick Design 확정 결과 저장에 실패했습니다. 다시 시도해 주세요.");
+        const failureMessage = "Quick Design 확정 결과 저장에 실패했습니다. 다시 시도해 주세요.";
+        applyLocalConversationMessages(
+          upsertImplementationPrepProgressMessage({
+            messages: removeImplementationPrepProgressMessages(
+              roomRef.current.requirementsConversation.messages,
+            ),
+            progressStatus: "failed",
+            nowIso: new Date().toISOString(),
+            errorMessage: failureMessage,
+          }),
+        );
+        showErrorToast(failureMessage);
         return;
       }
       lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId ?? null;
+      applyLocalConversationMessages(
+        removeImplementationPrepProgressMessages(roomRef.current.requirementsConversation.messages),
+      );
       if (flowResult.messages?.[0]) {
         await appendServiceFlowWorkshopMessages([flowResult.messages[0]]);
       }
       showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
+      applyLocalConversationMessages(
+        upsertImplementationPrepProgressMessage({
+          messages: removeImplementationPrepProgressMessages(
+            roomRef.current.requirementsConversation.messages,
+          ),
+          progressStatus: "failed",
+          nowIso: new Date().toISOString(),
+          errorMessage: msg,
+        }),
+      );
       showErrorToast(msg);
     } finally {
+      implementationPrepProgressTrackRef.current = null;
+      implementationPrepProgressStartedAtRef.current = null;
       setDeliverableGenerateBusy(false);
     }
   }, [
@@ -2504,10 +2592,43 @@ export function RequirementsWorkspace({
     latestProblemInterviewStateForGate,
     persistStateJsonOnly,
     appendServiceFlowWorkshopMessages,
+    applyLocalConversationMessages,
     appendSingleChatPromptTimeline,
     showErrorToast,
     showSuccessToast,
   ]);
+
+  useEffect(() => {
+    if (!deliverableGenerateBusy) return;
+    const timer = window.setInterval(() => {
+      const startedAt = implementationPrepProgressStartedAtRef.current;
+      if (startedAt == null) return;
+      const snapshot = buildPseudoImplementationPrepProgress(Date.now() - startedAt);
+      const track = implementationPrepProgressTrackRef.current;
+      if (
+        !shouldRefreshImplementationPrepProgressMessage({
+          previousPercent: track?.percent ?? null,
+          previousPhase: track?.phase ?? null,
+          next: snapshot,
+        })
+      ) {
+        return;
+      }
+      implementationPrepProgressTrackRef.current = {
+        percent: snapshot.percent,
+        phase: snapshot.phase,
+      };
+      applyLocalConversationMessages(
+        upsertImplementationPrepProgressMessage({
+          messages: roomRef.current.requirementsConversation.messages,
+          progressStatus: "running",
+          snapshot,
+          nowIso: new Date().toISOString(),
+        }),
+      );
+    }, 450);
+    return () => window.clearInterval(timer);
+  }, [deliverableGenerateBusy, applyLocalConversationMessages]);
 
   const handleGenerateFastPlanFromCurrentContext = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -2947,6 +3068,10 @@ export function RequirementsWorkspace({
           return;
         }
         setExecutionEnvironmentModalOpen(true);
+        return;
+      }
+      if (trimmed === IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL) {
+        setPromptDrawerOpen(true);
         return;
       }
       if (

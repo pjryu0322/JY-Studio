@@ -52,20 +52,24 @@ export function buildImplementationExecutionOverview(input: {
 
 export function formatImplementationExecutionOverviewLines(
   overview: ImplementationExecutionOverview,
+  input?: {
+    readonly selectedCodeTaskCount?: number;
+  },
 ): readonly string[] {
-  if (overview.isRunning) {
-    return [
-      `진행: ${overview.completedCount + overview.inProgressCount} / ${overview.codeTaskCount}`,
-      `실패: ${overview.failedCount}`,
-      `차단: ${overview.blockedCount}`,
-      ...(overview.currentTitle ? [`현재: ${overview.currentTitle}`] : []),
-    ];
-  }
   const progressDone = overview.completedCount + overview.inProgressCount;
-  return [
-    `진행: ${progressDone} / ${overview.codeTaskCount}`,
+  const lines = [
+    `CodeTask 진행: ${progressDone} / ${overview.codeTaskCount}`,
     `실패: ${overview.failedCount}`,
     `차단: ${overview.blockedCount}`,
-    overview.currentTitle ? `현재: ${overview.currentTitle}` : "현재: 없음",
+    `Process Task: ${overview.processTaskCount}개 그룹`,
+    ...(typeof input?.selectedCodeTaskCount === "number"
+      ? [`선택됨: ${input.selectedCodeTaskCount}개`]
+      : []),
+    overview.currentTitle
+      ? [`현재 CodeTask: ${overview.currentTitle}`]
+      : overview.isRunning
+        ? []
+        : ["현재 CodeTask: 없음"],
   ];
+  return lines;
 }

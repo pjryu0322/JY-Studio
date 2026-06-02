@@ -452,6 +452,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
   readonly checkedTaskIds?: readonly string[] | null;
+  readonly checkedCodeTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
@@ -467,6 +468,7 @@ export function buildImplementationTaskTreeNodes(input: {
     selectedTaskId: input.selectedTaskId,
     selectedCodeTaskId: input.selectedCodeTaskId,
     checkedTaskIds: input.checkedTaskIds,
+    checkedCodeTaskIds: input.checkedCodeTaskIds ?? input.checkedTaskIds,
     taskCursorExecution,
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
   });

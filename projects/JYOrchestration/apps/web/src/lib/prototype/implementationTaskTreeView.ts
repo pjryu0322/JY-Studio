@@ -8,7 +8,15 @@ import {
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import {
+  buildCodeTaskRowView,
+  summarizeCodeTaskRowViewsForProcess,
+} from "@/lib/prototype/codeTaskExecutionRunView";
 import { formatCodeTaskExecutionRunStatusKo } from "@/lib/prototype/codeTaskExecutionRunUi";
+import {
+  isProcessTaskCodeTasksFullySelected,
+  normalizeSelectedCodeTaskIds,
+} from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import {
   buildCodeTaskExecutionFlowSteps,
   deriveCodeTaskExecutionFlowPhase,
@@ -25,11 +33,9 @@ import { isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPip
 import { evaluateCodeTaskReviewSecurityPolicy } from "@/lib/prototype/implementationReviewSecurityPolicy";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import { resolveTaskRowUserRestartCapability } from "@/lib/prototype/implementationExecutionBoard";
 import {
   computeTaskTreeDependencyViews,
   formatTaskTreeDependencyLabel,
-  normalizeSelectedTaskIds,
   orderTaskRowsForTreeDisplay,
 } from "@/lib/prototype/implementationTaskTreeSelection";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -48,6 +54,9 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly executionFlowSteps: readonly CodeTaskExecutionFlowStepVm[];
   readonly isActive: boolean;
   readonly isSelected: boolean;
+  readonly isChecked: boolean;
+  readonly executable: boolean;
+  readonly canRunSingle: boolean;
   readonly failureReason?: string;
   readonly nextActionHint?: string;
 }>;
@@ -64,6 +73,7 @@ export type ImplementationProcessTaskTreeNode = Readonly<{
   readonly dependencyLabel?: string;
   readonly defaultExpanded: boolean;
   readonly codeTasks: readonly ImplementationCodeTaskTreeNode[];
+  /** @deprecated Process Task는 직접 실행하지 않음 — CodeTask 버튼 사용 */
   readonly canRestart: boolean;
   readonly canStop?: boolean;
   readonly canResumeStatusCheck?: boolean;
@@ -152,6 +162,7 @@ function buildCodeTaskNode(input: {
   readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
   readonly isActive: boolean;
   readonly isSelected: boolean;
+  readonly isChecked: boolean;
 }): ImplementationCodeTaskTreeNode {
   const policy = evaluateCodeTaskReviewSecurityPolicy({
     codeTask: input.codeTask,
@@ -200,8 +211,14 @@ function buildCodeTaskNode(input: {
   }
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
   const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
+  const rowView = buildCodeTaskRowView({
+    codeTask: input.codeTask,
+    runs: input.codeTaskExecutionRuns,
+    codeTaskPlan: input.codeTaskPlan,
+    dependencyCheck: dependencyCheck ?? undefined,
+  });
 
-  let collapsedSummary = formatCodeTaskExecutionFlowPhaseKo(phase);
+  let collapsedSummary = rowView.collapsedSummary || formatCodeTaskExecutionFlowPhaseKo(phase);
   if (phase === "prompt_ready") collapsedSummary = "대기";
   if (phase === "completed") collapsedSummary = "완료";
   if (phase === "failed") collapsedSummary = "재작업 필요";
@@ -210,18 +227,8 @@ function buildCodeTaskNode(input: {
   const dependencyHint = dependencyCheck
     ? formatCodeTaskDependencyTreeHint(dependencyCheck)
     : undefined;
-  const statusLabel =
-    latestRun && !dependencyBlocked
-      ? formatCodeTaskExecutionRunStatusKo(latestRun.status)
-      : formatCodeTaskExecutionFlowPhaseKo(phase);
-  const progressLabel =
-    phase === "blocked_by_dependency"
-      ? dependencyHint ?? "선행 작업 필요"
-      : latestRun && isInFlightCodeTaskExecutionRunStatus(latestRun.status)
-        ? formatCodeTaskExecutionRunStatusKo(latestRun.status)
-        : phase === "prompt_ready"
-          ? "Quick 실행 대기"
-          : formatCodeTaskExecutionProgressLine(phase);
+  const statusLabel = rowView.statusLabel;
+  const progressLabel = rowView.progressLabel;
 
   const metaLines: ImplementationTaskTreeMetaLine[] = [
     formatMetaLine("상태", statusLabel),
@@ -291,6 +298,7 @@ export function buildImplementationProcessTaskTreeNodes(input: {
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
   readonly checkedTaskIds?: readonly string[] | null;
+  readonly checkedCodeTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
 }): readonly ImplementationProcessTaskTreeNode[] {
@@ -301,10 +309,10 @@ export function buildImplementationProcessTaskTreeNodes(input: {
   const codeTasksByParent = groupCodeTasksByParent(input.codeTaskPlan);
   const orderedRows = orderTaskRowsForTreeDisplay(input.board.taskRows);
   const dependencyViews = computeTaskTreeDependencyViews(input.board.taskRows);
-  const checkedTaskIds = new Set(
-    normalizeSelectedTaskIds({
-      selectedTaskIds: input.checkedTaskIds,
-      taskRows: input.board.taskRows,
+  const checkedCodeTaskIds = new Set(
+    normalizeSelectedCodeTaskIds({
+      selectedCodeTaskIds: input.checkedCodeTaskIds ?? input.checkedTaskIds,
+      codeTaskPlan: input.codeTaskPlan,
     }),
   );
 
@@ -312,13 +320,22 @@ export function buildImplementationProcessTaskTreeNodes(input: {
     const dependencyView = dependencyViews.get(row.taskId);
     const isActive = activeTaskId === row.taskId;
     const isSelected = selectedTaskId === row.taskId;
-    const isChecked = checkedTaskIds.has(row.taskId);
-    const restart = resolveTaskRowUserRestartCapability({
-      row,
-      board: input.board,
-      taskCursorExecution,
-    });
     const codeTasksForParent = codeTasksByParent.get(row.taskId) ?? [];
+    const codeTaskRowViews = codeTasksForParent.map((codeTask) =>
+      buildCodeTaskRowView({
+        codeTask,
+        runs: input.codeTaskExecutionRuns,
+        codeTaskPlan: input.codeTaskPlan,
+      }),
+    );
+    const isChecked =
+      codeTasksForParent.length > 0
+        ? isProcessTaskCodeTasksFullySelected({
+            parentTaskId: row.taskId,
+            selectedCodeTaskIds: [...checkedCodeTaskIds],
+            codeTaskPlan: input.codeTaskPlan,
+          })
+        : false;
     const codeTasks: ImplementationCodeTaskTreeNode[] = codeTasksForParent.map((codeTask) =>
       buildCodeTaskNode({
         codeTask,
@@ -330,20 +347,24 @@ export function buildImplementationProcessTaskTreeNodes(input: {
         codeTaskExecutionRuns: input.codeTaskExecutionRuns,
         isActive: isActive && (selectedCodeTaskId === codeTask.codeTaskId || (!selectedCodeTaskId && codeTasksForParent[0]?.codeTaskId === codeTask.codeTaskId)),
         isSelected: selectedCodeTaskId === codeTask.codeTaskId,
+        isChecked: checkedCodeTaskIds.has(codeTask.codeTaskId),
       }),
     );
 
-    const collapsedSummary = isPerTaskPipelineComplete(row)
-      ? "완료"
-      : row.developerStatus === "done"
-        ? "개발 완료"
-        : row.developerStatus === "in_progress" || isActive
-          ? "Cursor 실행 중"
-          : row.developerStatus === "failed"
-            ? "재작업 필요"
-            : row.failureReason === "blocked_by_dependency"
-              ? "의존 차단"
-              : "개발 대기";
+    const collapsedSummary =
+      codeTaskRowViews.length > 0
+        ? summarizeCodeTaskRowViewsForProcess(codeTaskRowViews)
+        : isPerTaskPipelineComplete(row)
+          ? "완료"
+          : row.developerStatus === "done"
+            ? "개발 완료"
+            : row.developerStatus === "in_progress" || isActive
+              ? "Cursor 실행 중"
+              : row.developerStatus === "failed"
+                ? "재작업 필요"
+                : row.failureReason === "blocked_by_dependency"
+                  ? "의존 차단"
+                  : "개발 대기";
 
     return {
       taskId: row.taskId,
@@ -359,9 +380,8 @@ export function buildImplementationProcessTaskTreeNodes(input: {
         : {}),
       defaultExpanded: isActive || isSelected || codeTasks.some((ct) => ct.isSelected),
       codeTasks,
-      canRestart: restart.canRestart,
-      ...(restart.blockedReason ? { restartBlockedReason: restart.blockedReason } : {}),
-      needsReworkRegistration: restart.needsReworkRegistration,
+      canRestart: false,
+      needsReworkRegistration: false,
     };
   });
 }

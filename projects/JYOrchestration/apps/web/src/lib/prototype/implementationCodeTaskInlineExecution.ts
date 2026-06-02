@@ -24,8 +24,10 @@ export type CodeTaskInlineExecutionDetail = Readonly<{
   readonly technicalProgress?: CodeAgentExecutionProgressView;
 }>;
 
-export const CODE_TASK_INLINE_PARENT_SCOPE_LABEL =
-  "이 CodeTask가 포함된 Process Task 실행 상태입니다." as const;
+export const CODE_TASK_INLINE_SCOPE_LABEL = "이 CodeTask 실행 상태입니다." as const;
+
+/** @deprecated use CODE_TASK_INLINE_SCOPE_LABEL */
+export const CODE_TASK_INLINE_PARENT_SCOPE_LABEL = CODE_TASK_INLINE_SCOPE_LABEL;
 
 export {
   TASK_CURSOR_POLLING_CANCEL_HINT as CODE_TASK_INLINE_POLLING_CANCEL_HINT,
@@ -67,7 +69,7 @@ export function buildCodeTaskInlineExecutionDetail(input: {
   if (!matchesActiveParent) {
     return {
       statusLabel: "대기",
-      scopeLine: CODE_TASK_INLINE_PARENT_SCOPE_LABEL,
+      scopeLine: CODE_TASK_INLINE_SCOPE_LABEL,
       compactLine: `상태: 대기 · 진행: Quick 실행 대기`,
       nextProcessingHint: DEFAULT_NEXT_HINT,
     };
@@ -89,7 +91,7 @@ export function buildCodeTaskInlineExecutionDetail(input: {
 
   return {
     statusLabel: statusWithElapsed,
-    scopeLine: CODE_TASK_INLINE_PARENT_SCOPE_LABEL,
+    scopeLine: CODE_TASK_INLINE_SCOPE_LABEL,
     compactLine: buildCompactLine({
       statusLabel,
       progress: input.progress,
