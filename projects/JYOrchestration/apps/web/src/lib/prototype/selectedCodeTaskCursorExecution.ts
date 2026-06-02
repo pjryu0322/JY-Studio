@@ -46,7 +46,10 @@ export type PrepareSelectedCodeTaskCursorExecutionResult =
 export function isSelectedCodeTaskRunInFlight(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): boolean {
-  return Boolean(run && isInFlightCodeTaskExecutionRunStatus(run.status));
+  if (!run) return false;
+  // Queued runs are not yet dispatched to Cursor; allow (re)dispatch after a failed handoff.
+  if (run.status === "queued") return false;
+  return isInFlightCodeTaskExecutionRunStatus(run.status);
 }
 
 /** queueDispatch 기준 CodeTask 실행 준비. legacy WIP selector를 사용하지 않는다. */

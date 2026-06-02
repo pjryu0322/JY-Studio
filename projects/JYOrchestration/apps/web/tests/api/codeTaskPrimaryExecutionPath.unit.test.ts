@@ -9,7 +9,10 @@ import {
   formatCodeTaskExecutionQueueCompletionDetail,
   summarizeCodeTaskExecutionQueueRuns,
 } from "@/lib/prototype/codeTaskExecutionRunUi";
-import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import {
+  isSelectedCodeTaskRunInFlight,
+  prepareSelectedCodeTaskCursorExecution,
+} from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
@@ -116,6 +119,11 @@ describe("buildCodeTaskStatusCheckUserMessage", () => {
 });
 
 describe("prepareSelectedCodeTaskCursorExecution", () => {
+  it("treats queued run as dispatchable (not in-flight)", () => {
+    expect(isSelectedCodeTaskRunInFlight(sampleRun({ status: "queued" }))).toBe(false);
+    expect(isSelectedCodeTaskRunInFlight(sampleRun({ status: "cursor_running" }))).toBe(true);
+  });
+
   it("blocks in-flight run without runId in message", () => {
     const result = prepareSelectedCodeTaskCursorExecution({
       projectId: "p1",
@@ -194,7 +202,7 @@ describe("prepareSelectedCodeTaskCursorExecution", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.outcome).toBe("blocked");
-    expect(result.message).toContain("CT-1");
+    expect(result.message).toContain("로딩 상태 공통 기능 구현");
   });
 });
 
