@@ -11,6 +11,7 @@ import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementa
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import type { ImplementationRuntimeStateV1 } from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -107,6 +108,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   readonly codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   readonly codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
+  readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
 }>;
 
 export function buildPrototypeExecutionOrchestrationPersistPatch(
@@ -211,6 +213,9 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.codeTaskExecutionQueueV1 !== undefined
       ? { codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1 }
+      : {}),
+    ...(input.implementationRuntimeStateV1 !== undefined
+      ? { implementationRuntimeStateV1: input.implementationRuntimeStateV1 }
       : {}),
     lastSavedAt: new Date().toISOString(),
   });

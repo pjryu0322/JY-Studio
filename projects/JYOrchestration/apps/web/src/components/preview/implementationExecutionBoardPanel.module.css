@@ -83,8 +83,16 @@
   color: var(--text-secondary, #334155);
 }
 
-.forceReleaseButton {
+.runtimeAdminActions {
   margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.runtimeDiagnosticsButton,
+.runtimeRedispatchButton,
+.forceReleaseButton {
   align-self: flex-start;
   padding: 6px 12px;
   border-radius: 8px;
@@ -98,6 +106,28 @@
 
 .forceReleaseButton:hover {
   background: #fee2e2;
+}
+
+.runtimeDiagnosticsButton {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.runtimeRedispatchButton {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .workerStallBanner {

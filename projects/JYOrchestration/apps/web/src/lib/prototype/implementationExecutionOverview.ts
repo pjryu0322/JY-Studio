@@ -1,5 +1,11 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  formatRuntimeStateKo,
+  isRuntimeInFlight,
+  type ImplementationRuntimeStateV1,
+  type RuntimeState,
+} from "@/lib/prototype/implementationRuntimeState";
 
 export type ImplementationExecutionOverview = Readonly<{
   readonly processTaskCount: number;
@@ -10,6 +16,8 @@ export type ImplementationExecutionOverview = Readonly<{
   readonly blockedCount: number;
   readonly currentTitle?: string;
   readonly isRunning: boolean;
+  readonly runtimeState?: RuntimeState;
+  readonly runtimeStateLabel?: string;
 }>;
 
 export function buildImplementationExecutionOverview(input: {
@@ -17,6 +25,7 @@ export function buildImplementationExecutionOverview(input: {
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly activeTaskId?: string | null;
   readonly activeCodeTaskTitle?: string | null;
+  readonly runtime?: ImplementationRuntimeStateV1 | null;
 }): ImplementationExecutionOverview {
   const processTaskCount = input.board.taskRows.length;
   const planCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
@@ -36,7 +45,9 @@ export function buildImplementationExecutionOverview(input: {
     input.activeCodeTaskTitle?.trim() ||
     activeRow?.title?.trim() ||
     undefined;
-  const isRunning = inProgressCount > 0;
+  const runtimeState = input.runtime?.runtimeState;
+  const isRunning =
+    isRuntimeInFlight(runtimeState) || inProgressCount > 0 || runtimeState === "queued";
 
   return {
     processTaskCount,
@@ -47,6 +58,7 @@ export function buildImplementationExecutionOverview(input: {
     blockedCount,
     ...(currentTitle ? { currentTitle } : {}),
     isRunning,
+    ...(runtimeState ? { runtimeState, runtimeStateLabel: formatRuntimeStateKo(runtimeState) } : {}),
   };
 }
 
@@ -69,6 +81,7 @@ export function formatImplementationExecutionOverviewLines(
       : overview.isRunning
         ? []
         : ["현재 CodeTask: 없음"],
+    overview.runtimeStateLabel ? [`상태: ${overview.runtimeStateLabel}`] : [],
   ];
   return lines;
 }

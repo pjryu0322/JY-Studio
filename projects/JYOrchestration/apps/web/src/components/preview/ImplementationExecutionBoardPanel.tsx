@@ -32,6 +32,10 @@ import {
   resolveImplementationExecutionBoardSelectedTaskId,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { deriveImplementationQuickRunStatus, type ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import {
+  parseImplementationRuntimeStateV1,
+  type ImplementationRuntimeStateV1,
+} from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationExecutionOverview,
@@ -73,6 +77,9 @@ export function ImplementationExecutionBoardPanel({
   onSelectedCodeTaskIdsChange,
   onRunSingleCodeTask,
   onForceReleaseExecution,
+  onRedispatchRuntime,
+  onShowRuntimeDiagnostics,
+  implementationRuntimeStateV1,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
@@ -100,6 +107,9 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
   readonly onForceReleaseExecution?: () => void;
+  readonly onRedispatchRuntime?: () => void;
+  readonly onShowRuntimeDiagnostics?: () => void;
+  readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
@@ -193,8 +203,9 @@ export function ImplementationExecutionBoardPanel({
         activeCodeTaskTitle:
           implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === selectedCodeTaskId)?.title ??
           board.taskRows.find((row) => row.taskId === activeTaskId)?.title,
+        runtime: parseImplementationRuntimeStateV1(implementationRuntimeStateV1),
       }),
-    [board, implementationCodeTaskPlanV1, activeTaskId, selectedCodeTaskId],
+    [board, implementationCodeTaskPlanV1, activeTaskId, selectedCodeTaskId, implementationRuntimeStateV1],
   );
 
   const taskTreeNodes = useMemo(
@@ -319,15 +330,39 @@ export function ImplementationExecutionBoardPanel({
             {queueSummaryLine}
           </div>
         ) : null}
-        {executionOverview.isRunning && onForceReleaseExecution ? (
-          <button
-            type="button"
-            className={styles.forceReleaseButton}
-            data-testid="implementation-force-release-execution"
-            onClick={onForceReleaseExecution}
-          >
-            실행 잠금 해제
-          </button>
+        {executionOverview.isRunning ? (
+          <div className={styles.runtimeAdminActions}>
+            {onShowRuntimeDiagnostics ? (
+              <button
+                type="button"
+                className={styles.runtimeDiagnosticsButton}
+                data-testid="implementation-runtime-diagnostics"
+                onClick={onShowRuntimeDiagnostics}
+              >
+                Runtime 상태 보기
+              </button>
+            ) : null}
+            {onRedispatchRuntime ? (
+              <button
+                type="button"
+                className={styles.runtimeRedispatchButton}
+                data-testid="implementation-runtime-redispatch"
+                onClick={onRedispatchRuntime}
+              >
+                재디스패치
+              </button>
+            ) : null}
+            {onForceReleaseExecution ? (
+              <button
+                type="button"
+                className={styles.forceReleaseButton}
+                data-testid="implementation-force-release-execution"
+                onClick={onForceReleaseExecution}
+              >
+                실행 잠금 해제
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {reworkVm?.candidateCount ? (
           <div className={styles.reworkSummary}>

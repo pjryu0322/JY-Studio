@@ -1,0 +1,63 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.panel {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.summary {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.table th {
+  background: #f8fafc;
+  font-weight: 800;
+}

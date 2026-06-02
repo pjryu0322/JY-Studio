@@ -57,6 +57,10 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import {
+  parseImplementationRuntimeStateV1,
+  type ImplementationRuntimeStateV1,
+} from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -640,6 +644,8 @@ export type RequirementsStateJson = {
   codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   /** 사용자 선택 CodeTask 순차 실행 큐 */
   codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
+  /** CodeTask 구현 Runtime 상태머신 SoT */
+  implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1124,6 +1130,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const codeTaskExecutionQueueV1 = parseCodeTaskExecutionQueueV1(
     "codeTaskExecutionQueueV1" in o ? o.codeTaskExecutionQueueV1 : undefined,
   );
+  const implementationRuntimeStateV1 = parseImplementationRuntimeStateV1(
+    "implementationRuntimeStateV1" in o ? o.implementationRuntimeStateV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1301,6 +1310,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(codeTaskExecutionQueueV1 !== undefined ? { codeTaskExecutionQueueV1 } : {}),
+    ...(implementationRuntimeStateV1 !== undefined ? { implementationRuntimeStateV1 } : {}),
     ...(implementationAutoQualityGateHistoryV1 !== undefined
       ? { implementationAutoQualityGateHistoryV1 }
       : {}),

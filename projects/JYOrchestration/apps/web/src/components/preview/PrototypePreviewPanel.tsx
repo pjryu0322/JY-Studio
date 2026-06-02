@@ -345,6 +345,19 @@ import {
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import { recoverImplementationExecutionDeadlock } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
+import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
+import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
+import {
+  buildPersistedActiveDispatchPatch,
+  resolvePersistedQueueDispatch,
+} from "@/lib/prototype/implementationRuntimePanelBridge";
+import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
+import { ImplementationRuntimeDiagnosticsPanel } from "@/components/preview/ImplementationRuntimeDiagnosticsPanel";
+import {
+  buildActiveDispatchForQueueHead,
+  parseImplementationRuntimeStateV1,
+  patchRuntimeWatchdogPoll,
+} from "@/lib/prototype/implementationRuntimeState";
 import {
   buildCodeTaskRunLaunchToastMessage,
   buildCodeTaskRunUserStatus,
@@ -1571,19 +1584,15 @@ export function PrototypePreviewPanel({
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
-  const codeTaskQueueDispatchRef = useRef<{
-    readonly codeTaskId: string;
-    readonly parentTaskId: string;
-    readonly workItemId: string;
-  } | null>(null);
-  /** Runs created by Quick Run before React state catches up — read in REQUEST_TASK_CURSOR_EXECUTION. */
-  const codeTaskPendingExecutionRunsRef = useRef<readonly CodeTaskExecutionRunV1[] | null>(null);
   const codeTaskQueueAdvanceInFlightRef = useRef(false);
   const implementationRecoveryKeyRef = useRef("");
+  const [runtimeDiagnosticsOpen, setRuntimeDiagnosticsOpen] = useState(false);
 
   const enrichCodeTaskRunOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
-      const dispatch = codeTaskQueueDispatchRef.current;
+      const dispatch = readActiveRuntimeDispatchFromState(
+        parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>,
+      );
       const execution = parseTaskCursorExecutionV1(patch.taskCursorExecutionV1);
       if (!dispatch || !execution) return patch;
       const runs = syncCodeTaskExecutionRunsFromTaskCursor({
@@ -1626,6 +1635,11 @@ export function PrototypePreviewPanel({
         pendingPatch: pendingImplementationPatch,
       }),
     [parsedRequirementsState, pendingImplementationPatch],
+  );
+
+  const persistedQueueDispatch = useMemo(
+    () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
+    [orchestrationAwareRequirementsState.implementationRuntimeStateV1],
   );
 
   const prototypeRunSyncSnapshot = useMemo(
@@ -2261,10 +2275,14 @@ export function PrototypePreviewPanel({
         next: mergedWithoutAutoLog,
         patch: input.orchestrationPatch,
       });
-      const mergedRequirementsState =
+      const mergedBase =
         promptTimeline.length > 0
           ? { ...mergedWithoutAutoLog, promptTimeline }
           : mergedWithoutAutoLog;
+      const mergedRequirementsState = mergeRequirementsStateWithRuntime({
+        projectId: projectId.trim(),
+        state: mergedBase as Record<string, unknown>,
+      }) as typeof mergedBase;
       const orchestrationPatchWithTimeline: PrototypeExecutionOrchestrationPersistInput = {
         ...input.orchestrationPatch,
         ...(promptTimeline.length ? { promptTimeline } : {}),
@@ -2679,7 +2697,6 @@ export function PrototypePreviewPanel({
     });
 
     if (finished || !nextCodeTaskId) {
-      codeTaskQueueDispatchRef.current = null;
       codeTaskQueueAdvanceInFlightRef.current = false;
       if (finished) {
         const runSummary = summarizeCodeTaskExecutionQueueRuns({
@@ -2711,7 +2728,6 @@ export function PrototypePreviewPanel({
       cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
     });
     if (!dispatchTarget) {
-      codeTaskQueueDispatchRef.current = null;
       codeTaskQueueAdvanceInFlightRef.current = false;
       showToast(`다음 CodeTask ${nextCodeTaskId} WorkItem을 찾을 수 없습니다.`);
       return;
@@ -2732,26 +2748,37 @@ export function PrototypePreviewPanel({
           allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
         })
       : undefined;
-    const codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
-      nextRuns,
-      createCodeTaskExecutionRun({
-        projectId: pid,
-        processTaskId: dispatchTarget.parentTaskId,
-        workItemId: dispatchTarget.workItem.id,
-        codeTaskId: dispatchTarget.codeTask.codeTaskId,
-        developerPrompt,
-        nowIso,
-      }),
-    );
-    codeTaskQueueDispatchRef.current = {
+    const nextRun = createCodeTaskExecutionRun({
+      projectId: pid,
+      processTaskId: dispatchTarget.parentTaskId,
+      workItemId: dispatchTarget.workItem.id,
+      codeTaskId: dispatchTarget.codeTask.codeTaskId,
+      developerPrompt,
+      nowIso,
+    });
+    const codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(nextRuns, nextRun);
+    const activeDispatch = {
       codeTaskId: dispatchTarget.codeTask.codeTaskId,
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
+      runId: nextRun.runId,
     };
     codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     applyImplementationOrchestrationResult({
       messages: executionSingleChat.chatMessages,
-      orchestrationPatch: { codeTaskExecutionRunsV1 },
+      orchestrationPatch: {
+        codeTaskExecutionRunsV1,
+        implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+          projectId: pid,
+          dispatch: activeDispatch,
+          baseState: {
+            ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
+            codeTaskExecutionQueueV1: nextQueue,
+            codeTaskExecutionRunsV1,
+          },
+          nowIso,
+        }),
+      },
     });
     codeTaskQueueAdvanceInFlightRef.current = false;
     showToast(`다음 CodeTask 실행 · ${dispatchTarget.codeTask.codeTaskId}`);
@@ -2775,51 +2802,11 @@ export function PrototypePreviewPanel({
   ]);
 
   useEffect(() => {
-    if (codeTaskQueueDispatchRef.current) return;
-    const queue = parseCodeTaskExecutionQueueV1(
-      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    );
-    if (!queue || queue.status !== "running") return;
-    const execution = parseTaskCursorExecutionV1(
-      orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    );
-    if (isInFlightTaskCursorExecution(execution)) return;
-    const runs =
-      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
-      [];
-    const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
-    if (headRun?.status !== "queued") return;
-    const codeTaskId = getCurrentQueueCodeTaskId(queue);
-    if (!codeTaskId) return;
-    const target = resolveCodeTaskDispatchTarget({
-      codeTaskId,
-      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
-      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
-    });
-    if (!target) return;
-    codeTaskQueueDispatchRef.current = {
-      codeTaskId: target.codeTask.codeTaskId,
-      parentTaskId: target.parentTaskId,
-      workItemId: target.workItem.id,
-    };
-    codeTaskPendingExecutionRunsRef.current = runs;
-    void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-  }, [
-    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.cursorWorkItemsV1,
-    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-    orchestrationAwareRequirementsState.implementationTaskListV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-  ]);
-
-  useEffect(() => {
-    const recovery = recoverImplementationExecutionDeadlock({
+    const pid = projectId.trim();
+    if (!pid) return;
+    const recovery = recoverImplementationRuntimeState({
       rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
-      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
-      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+      projectId: pid,
     });
     if (!recovery.issues.length) return;
     const queue = parseCodeTaskExecutionQueueV1(
@@ -2844,10 +2831,27 @@ export function PrototypePreviewPanel({
         showToast(recovery.userMessage);
       }
     }
+    if (recovery.shouldWatchdogPoll) {
+      void runImplementationStageActionRef.current("CHECK_TASK_CURSOR_STATUS");
+    }
+    if (recovery.redispatch) {
+      applyImplementationOrchestrationResult({
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+            projectId: pid,
+            dispatch: recovery.redispatch,
+            baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
+          }),
+        },
+      });
+      void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    }
   }, [
     applyImplementationOrchestrationResult,
     executionSingleChat,
     orchestrationAwareRequirementsState,
+    projectId,
     showToast,
   ]);
 
@@ -4031,17 +4035,54 @@ export function PrototypePreviewPanel({
           return createImplementationSeedFromQuickDesignDraft();
         case "START_IMPLEMENTATION_QUICK_RUN":
           return startImplementationQuickRunRef.current();
+        case "REDISPATCH_IMPLEMENTATION_RUNTIME": {
+          const pid = projectId.trim();
+          const queue = parseCodeTaskExecutionQueueV1(
+            orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+          );
+          const runs =
+            parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+            [];
+          if (!queue || queue.status !== "running") {
+            const message = "실행 중인 CodeTask 큐가 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          const redispatch = buildActiveDispatchForQueueHead({
+            projectId: pid,
+            queue,
+            runs,
+          });
+          if (!redispatch) {
+            const message = "재디스패치할 queued CodeTask가 없습니다.";
+            showToast(message);
+            return { outcome: "blocked", message };
+          }
+          applyImplementationOrchestrationResult({
+            messages: executionSingleChat.chatMessages,
+            orchestrationPatch: {
+              implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+                projectId: pid,
+                dispatch: redispatch,
+                baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
+              }),
+            },
+          });
+          void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+          showToast(`CodeTask ${redispatch.codeTaskId} 재디스패치`);
+          return { outcome: "executed" };
+        }
+        case "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS": {
+          setRuntimeDiagnosticsOpen(true);
+          return { outcome: "executed" };
+        }
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
           cancelTaskCursorClientPoll();
-          codeTaskQueueDispatchRef.current = null;
-          codeTaskPendingExecutionRunsRef.current = null;
           implementationRecoveryKeyRef.current = "";
-          const release = recoverImplementationExecutionDeadlock({
+          const release = recoverImplementationRuntimeState({
             rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
+            projectId: projectId.trim(),
             forceRelease: true,
-            codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-            taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
-            cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
           });
           if (release.patch) {
             applyImplementationOrchestrationResult({
@@ -4503,7 +4544,7 @@ export function PrototypePreviewPanel({
             showToast(message);
             return { outcome: "blocked", message };
           }
-          const queueDispatch = codeTaskQueueDispatchRef.current;
+          const queueDispatch = persistedQueueDispatch;
           if (queueDispatch) {
             const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
               gitRepoUrl: executionSetupRow?.gitRepoUrl,
@@ -4521,10 +4562,11 @@ export function PrototypePreviewPanel({
             const prep = prepareSelectedCodeTaskCursorExecution({
               projectId: pid,
               queueDispatch,
-              runs: parseCodeTaskExecutionRunsV1(
-                codeTaskPendingExecutionRunsRef.current ??
-                  orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-              ),
+              runs:
+                parseCodeTaskExecutionRunsV1(
+                  parseRequirementsStateJson(requirementsStateJsonRef.current).codeTaskExecutionRunsV1,
+                ) ??
+                parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1),
               codeTaskPlan,
               taskList,
               cursorWorkItems: workItems,
@@ -4875,8 +4917,8 @@ export function PrototypePreviewPanel({
                     orchestrationAwareRequirementsState.implementationExecutionJobsV1,
                   codeTaskExecutionRunsV1:
                     orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-                  activeCodeTaskId: codeTaskQueueDispatchRef.current?.codeTaskId ?? null,
-                  activeWorkItemId: codeTaskQueueDispatchRef.current?.workItemId ?? null,
+                  activeCodeTaskId: persistedQueueDispatch?.codeTaskId ?? null,
+                  activeWorkItemId: persistedQueueDispatch?.workItemId ?? null,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
                   existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -6857,21 +6899,20 @@ export function PrototypePreviewPanel({
           allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
         })
       : undefined;
-    codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
-      codeTaskExecutionRunsV1,
-      createCodeTaskExecutionRun({
-        projectId: pid,
-        processTaskId: dispatchTarget.parentTaskId,
-        workItemId: dispatchTarget.workItem.id,
-        codeTaskId: dispatchTarget.codeTask.codeTaskId,
-        developerPrompt,
-        nowIso,
-      }),
-    );
-    codeTaskQueueDispatchRef.current = {
+    const quickRunNextRun = createCodeTaskExecutionRun({
+      projectId: pid,
+      processTaskId: dispatchTarget.parentTaskId,
+      workItemId: dispatchTarget.workItem.id,
+      codeTaskId: dispatchTarget.codeTask.codeTaskId,
+      developerPrompt,
+      nowIso,
+    });
+    codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(codeTaskExecutionRunsV1, quickRunNextRun);
+    const quickRunActiveDispatch = {
       codeTaskId: dispatchTarget.codeTask.codeTaskId,
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
+      runId: quickRunNextRun.runId,
     };
     const quickRunParentTaskIds = [
       ...new Set(
@@ -6889,11 +6930,21 @@ export function PrototypePreviewPanel({
       selectedTaskIds: quickRunParentTaskIds,
       nowIso,
     });
-    codeTaskPendingExecutionRunsRef.current = codeTaskExecutionRunsV1;
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       implementationQuickRunV1: quickRun,
       codeTaskExecutionQueueV1,
       codeTaskExecutionRunsV1,
+      implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+        projectId: pid,
+        dispatch: quickRunActiveDispatch,
+        baseState: {
+          ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
+          implementationQuickRunV1: quickRun,
+          codeTaskExecutionQueueV1,
+          codeTaskExecutionRunsV1,
+        },
+        nowIso,
+      }),
       promptTimeline: appendPromptTimeline(
         parsedRequirementsState.promptTimeline,
         buildImplementationQuickRunTimelineEntry({
@@ -6909,7 +6960,6 @@ export function PrototypePreviewPanel({
     );
     codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-    codeTaskPendingExecutionRunsRef.current = null;
     const dispatchNowIso = new Date().toISOString();
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       promptTimeline: appendPromptTimeline(
@@ -7138,7 +7188,6 @@ export function PrototypePreviewPanel({
     try {
       taskCursorPollTokenRef.current += 1;
       taskCursorPollActiveRunIdRef.current = null;
-      codeTaskQueueDispatchRef.current = null;
       codeTaskQueueAdvanceInFlightRef.current = false;
       setActiveTaskCursorJob(null);
       lastServerTaskCursorJobSyncFingerprintRef.current = "";
@@ -7425,6 +7474,12 @@ export function PrototypePreviewPanel({
           {toast}
         </div>
       ) : null}
+      {runtimeDiagnosticsOpen ? (
+        <ImplementationRuntimeDiagnosticsPanel
+          requirementsState={orchestrationAwareRequirementsState as Record<string, unknown>}
+          onClose={() => setRuntimeDiagnosticsOpen(false)}
+        />
+      ) : null}
 
       <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
         <ImplementationStageGlobalToolbar>{executionConversationIconToolbar}</ImplementationStageGlobalToolbar>
@@ -7455,6 +7510,15 @@ export function PrototypePreviewPanel({
             onForceReleaseExecution={() => {
               void runImplementationStageActionRef.current("RELEASE_IMPLEMENTATION_EXECUTION_LOCK");
             }}
+            onRedispatchRuntime={() => {
+              void runImplementationStageActionRef.current("REDISPATCH_IMPLEMENTATION_RUNTIME");
+            }}
+            onShowRuntimeDiagnostics={() => {
+              void runImplementationStageActionRef.current("SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS");
+            }}
+            implementationRuntimeStateV1={
+              orchestrationAwareRequirementsState.implementationRuntimeStateV1
+            }
             codeTaskExecutionFeedbackV1={
               orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
             }

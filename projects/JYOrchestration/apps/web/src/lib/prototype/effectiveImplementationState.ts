@@ -73,6 +73,8 @@ import {
   IMPLEMENTATION_QUICK_RUN_CHIP,
   IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
   IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP,
+  IMPLEMENTATION_RUNTIME_REDISPATCH_CHIP,
+  IMPLEMENTATION_RUNTIME_DIAGNOSTICS_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
 import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
@@ -117,6 +119,8 @@ export type ImplementationStageActionId =
   | "START_QUICK_DESIGN_FROM_IMPLEMENTATION"
   | "START_IMPLEMENTATION_QUICK_RUN"
   | "RELEASE_IMPLEMENTATION_EXECUTION_LOCK"
+  | "REDISPATCH_IMPLEMENTATION_RUNTIME"
+  | "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS"
   | "RETURN_TO_PLANNING_STAGE";
 
 export type PendingImplementationPatch = Readonly<{
@@ -136,6 +140,7 @@ export type PendingImplementationPatch = Readonly<{
   implementationExecutionJobsV1?: readonly import("@/lib/prototype/implementationExecutionJob").ImplementationExecutionJobV1[] | null;
   codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
   codeTaskExecutionQueueV1?: import("@/lib/prototype/codeTaskExecutionQueue").CodeTaskExecutionQueueV1 | null;
+  implementationRuntimeStateV1?: import("@/lib/prototype/implementationRuntimeState").ImplementationRuntimeStateV1 | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -190,6 +195,19 @@ export function resolveOrchestrationAwareRequirementsState(input: {
             ? [...pending.implementationExecutionJobsV1]
             : null,
         }
+      : {}),
+    ...(pending.codeTaskExecutionRunsV1 !== undefined
+      ? {
+          codeTaskExecutionRunsV1: pending.codeTaskExecutionRunsV1
+            ? [...pending.codeTaskExecutionRunsV1]
+            : null,
+        }
+      : {}),
+    ...(pending.codeTaskExecutionQueueV1 !== undefined
+      ? { codeTaskExecutionQueueV1: pending.codeTaskExecutionQueueV1 }
+      : {}),
+    ...(pending.implementationRuntimeStateV1 !== undefined
+      ? { implementationRuntimeStateV1: pending.implementationRuntimeStateV1 }
       : {}),
   });
 }
@@ -330,6 +348,9 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.codeTaskExecutionQueueV1 !== undefined) {
     next.codeTaskExecutionQueueV1 = patch.codeTaskExecutionQueueV1;
   }
+  if (patch.implementationRuntimeStateV1 !== undefined) {
+    next.implementationRuntimeStateV1 = patch.implementationRuntimeStateV1;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }
 
@@ -468,6 +489,10 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "CHECK_TASK_CURSOR_STATUS";
     case IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP:
       return "RELEASE_IMPLEMENTATION_EXECUTION_LOCK";
+    case IMPLEMENTATION_RUNTIME_REDISPATCH_CHIP:
+      return "REDISPATCH_IMPLEMENTATION_RUNTIME";
+    case IMPLEMENTATION_RUNTIME_DIAGNOSTICS_CHIP:
+      return "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS";
     case CHECK_TASK_CURSOR_STATUS_CHIP:
       return "CHECK_TASK_CURSOR_STATUS";
     case VERIFY_TASK_CURSOR_GITHUB_CHIP:

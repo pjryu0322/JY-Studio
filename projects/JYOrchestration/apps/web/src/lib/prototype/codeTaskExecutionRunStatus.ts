@@ -1,12 +1,17 @@
 import type { CodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRun";
 
-const IN_FLIGHT = new Set<CodeTaskExecutionRunStatus>([
-  "queued",
+/** queued는 대기 상태 — 실행 중이 아님 */
+const QUEUED_WAIT = new Set<CodeTaskExecutionRunStatus>(["queued"]);
+
+/** Runtime 실행 중: dispatching / cursor_running / github_verifying 에 대응 */
+const RUNTIME_ACTIVE = new Set<CodeTaskExecutionRunStatus>([
   "prompt_building",
   "cursor_requested",
   "cursor_running",
   "github_verifying",
 ]);
+
+const IN_FLIGHT = new Set<CodeTaskExecutionRunStatus>([...QUEUED_WAIT, ...RUNTIME_ACTIVE]);
 
 const TERMINAL = new Set<CodeTaskExecutionRunStatus>([
   "completed",
@@ -21,6 +26,16 @@ export function isInFlightCodeTaskExecutionRunStatus(
   status: CodeTaskExecutionRunStatus,
 ): boolean {
   return IN_FLIGHT.has(status);
+}
+
+export function isRuntimeActiveCodeTaskExecutionRunStatus(
+  status: CodeTaskExecutionRunStatus,
+): boolean {
+  return RUNTIME_ACTIVE.has(status);
+}
+
+export function isQueuedCodeTaskExecutionRunStatus(status: CodeTaskExecutionRunStatus): boolean {
+  return QUEUED_WAIT.has(status);
 }
 
 export function isTerminalCodeTaskExecutionRunStatus(

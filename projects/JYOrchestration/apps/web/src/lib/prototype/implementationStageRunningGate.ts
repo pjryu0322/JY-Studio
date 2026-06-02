@@ -1,4 +1,8 @@
 import { isActiveTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import {
+  isRuntimeInFlight,
+  parseImplementationRuntimeStateV1,
+} from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import type { ImplementationStageActionGateResult } from "@/lib/prototype/effectiveImplementationState";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -81,6 +85,21 @@ export function evaluateActiveImplementationExecutionGate(
   const job = boardContext?.activeTaskCursorJob ?? null;
   if (job && isActiveTaskCursorJobStatus(job.status) && !job.completedAt) {
     return blockForActiveJob(job);
+  }
+
+  const runtime = parseImplementationRuntimeStateV1(
+    (boardContext as { implementationRuntimeStateV1?: unknown } | null | undefined)
+      ?.implementationRuntimeStateV1,
+  );
+  if (isRuntimeInFlight(runtime?.runtimeState)) {
+    const execution = parseTaskCursorExecutionV1(boardContext?.taskCursorExecutionV1);
+    if (execution) {
+      return blockForInFlightExecution(execution);
+    }
+    return {
+      ok: false,
+      message: `현재 CodeTask Runtime이 ${runtime?.runtimeState ?? "실행 중"} 상태입니다. 완료 후 다시 시도해 주세요.`,
+    };
   }
 
   const execution = parseTaskCursorExecutionV1(boardContext?.taskCursorExecutionV1);
